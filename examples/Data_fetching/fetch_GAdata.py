@@ -15,13 +15,14 @@ import subprocess
 #python2.7 fetch_data.py
 
 #*******start of user block************
-output_path='/cscratch/curiem/Data_fetch_Basic'
+output_path='/cscratch/curiem/Data_fetch_CO2_s'
 ece_pcece=False
 size_GB=400
 directory_path="/cscratch/curiem" #to check the total file sizes
-shot_list=np.arange(170000,200000)
-
+shots = list(np.arange(150000,170000,dtype=int))
+shot_list=shots
 interval=1000
+suffix_list=['co2_s']
 #shot_list=shot_list[:10]
 #*******end of user block************
 
@@ -80,6 +81,7 @@ def data2dict(shotn, signame, hf, atlconn) :
 
 atlconn = MDSplus.Connection('atlas.gat.com')
 ech_gytname = ['lei','luk','r2d']
+co2_chords=['r0', 'v1', 'v2', 'v3']
 
 #shot_list = np.loadtxt('DIIID_BES_Shot_List_Fatima.txt',delimiter='\n',dtype=np.int32)
 # shot_list = np.load('tm-control-shots.npy');shot_list=np.unique(shot_list).astype(np.int)
@@ -93,7 +95,9 @@ cannot_find=['triangularity_u','triangularity_l','pech','neutronsrate']\
             
 #basic is fundimental measured quantities (in contrast of fitted quantities)
 
-signal_list= {
+signal_list_all= {
+'co2_s':[r'\den{}'.format(chord) for chord in co2_chords],\
+'mag_hi':["b"+str(i) for i in range(1, 9)],\
 'profiles':['betap','betan','pres', \
                     'wmhd','li',\
                     'q0','q95','qmin','qpsi','rhoqmin',\
@@ -127,6 +131,45 @@ signal_list= {
         'f1b','f2b','f3b','f4b','f5b','f6b','f7b','f8b','f9b'] 
 }
 
+name_list_all= {
+'co2_s':[r'{}'.format(chord) for chord in co2_chords],\
+'mag_hi':["b"+str(i) for i in range(1, 9)],\
+'profiles':['betap','betan','pres', \
+                    'wmhd','li',\
+                    'q0','q95','qmin','qpsi','rhoqmin',\
+                    'r0','aminor',\
+                    'kappa','tritop','tribot',\
+                    'alpha','psirz',\
+                    'ssibry', 'ssimag',\
+                    'rmaxis','zmaxis',\
+                    'volume',\
+                    'drsep','gapbot','gapin','gapout','gaptop',\
+                    'zxpt1','zxpt2',\
+                    'edensfit', 'etempfit',\
+                    'trotfit','itempfit','idensfit',\
+                    'n1rms','n2rms','n3rms'],
+                    \
+'basic':['ip', 'ipsip', 'iptipp','pcbcoil', 'bcoil','bt','vloop']\
+				+[ 'plasticfix', 'fzns']\
+				+['fs00','fs01','fs02','fs03','fs04','fs05'],\
+'actu': ['pinjf_%dl' % k for k in [15,21,30,33]]+['pinjf_%dr' % k for k in [15,21,30,33]]\
+    +['tinj_%dl' % k for k in [15,21,30,33]]+['tinj_%dr' % k for k in [15,21,30,33]]\
+    +['echpwrc','echpwr']\
+    +['ec%sfpwrc' % (x) for x in ech_gytname]\
+    +['ec%sxmfrac' % (x) for x in ech_gytname]\
+    +['ec%spolang' % (x) for x in ech_gytname]\
+    +['gasa', 'gasb', 'gasc', 'gasd', 'gase']\
+    +['c19', 'c79', 'c139', 'c199', 'c259', 'c319', \
+      'iu30', 'iu90', 'iu150', 'iu210', 'iu270', 'iu330', \
+      'il30', 'il90', 'il150', 'il210', 'il270', 'il330']\
+      +['ecoila', 'ecoilb', 'e567up', 'e567dn', 'e89dn', 'e89up']\
+      +['f1a','f2a','f3a','f4a','f5a','f6a','f7a','f8a','f9a',\
+        'f1b','f2b','f3b','f4b','f5b','f6b','f7b','f8b','f9b'] 
+}
+
+signal_list={suffix:signal_list_all[suffix] for suffix in suffix_list}
+
+name_list=  {suffix:name_list_all[suffix] for suffix in suffix_list}
 
 for i in tqdm(range(len(shot_list))):
 	shotn=shot_list[i]

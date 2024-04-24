@@ -6,6 +6,7 @@ import time
 import h5py
 import subprocess
 import sys
+from tqdm import tqdm
 
 #this one runs on iris, run the following
 #module purge 
@@ -25,16 +26,17 @@ interval=100
 directory_path="/cscratch/curiem"
 
 #list of discharges to fetch
-shots = np.arange(150000,170000,dtype=int) 
+shots = list(np.arange(150000,170000,dtype=int))
 
+#shots = list(np.arange(175910,190000,dtype=int))
 # one can set start_shot the where to start. (usually used for restarting the fetching due to unexpected termination)
 start_shot=min(shots) 
 
 #path to save the files
-path = '/cscratch/curiem/Data_fetch_CER/'
+path = f'/cscratch/curiem/Data_fetch_CO2_s/'
 
-#diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s, ts,ts_rz,ts_error,cer, mse,custom]
-diag_name='cer'
+#diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s, ts,ts_rz,ts_error,custom]
+diag_name='co2_s'
 
 #custom sig_names_custom, the suffix is fixed to be custom for now. 
 if diag_name=='custom':
@@ -170,6 +172,16 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
             signals.append(MdsSignal(name, 'ECE', location='remote://atlas.gat.com'))
             names.append(r'%02d'%chan)
 
+    elif diag_name=='co2_s':
+        chords = ['r0', 'v1', 'v2', 'v3']
+
+        
+        for chord in chords:
+            name = r'\den{}'.format(chord)
+            signals.append(MdsSignal(name, 'BCI', location='remote://atlas.gat.com'))
+            names.append(f'{chord}')
+
+
     elif diag_name=='co2_den':
         nums = range(1,15)
         chords = ['r0', 'v1', 'v2', 'v3']
@@ -226,7 +238,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
 
                 names.append(r'{}.{}'.format(thomson_mds_area,thomson_sig_name))
 
-    elif diag_name=='ts_error':
+    elif diag_name=='TS_ERROR':
         #thomson_mds_scale={'density': 1e19, 'temp': 1e3}
         thomson_mds_areas=['core','divertor','tangential']
         thomson_sig_names= ['DENSITY_E', 'TEMP_E']
@@ -286,7 +298,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
 
         sig_names=[r'\cerq{}{}'.format(output, channel) for channel in channels 
                                                         for output in outputs]
-        names=[r'q.{}.{}'.format(output, channel) for channel in name_channels 
+        names=[r'cer.{}.{}'.format(output, channel) for channel in name_channels 
                                                         for output in outputs]
 
         treename='ions'
@@ -308,7 +320,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
 def fetch_ece_2d_array_data(path, shots, diag_name):
     names, signals = signal_gen(diag_name)
 
-    for n,shot in enumerate(shots):
+    for n,shot in tqdm(enumerate(shots)):
         if shot>=start_shot:
             start = time.time()
             pipeline = Pipeline([shot])
@@ -367,9 +379,9 @@ def fetch_single_data(path, shots, diag_name):
     if not os.path.isdir(path):
         os.makedirs(path)
 
-    for n,shot in enumerate(shots):
+    for n,shot in tqdm(enumerate(shots)):
         if shot>=start_shot:
-            try:
+            if 1==1:
                 start = time.time()
                 pipeline = Pipeline([shot])
 
@@ -435,7 +447,7 @@ def fetch_single_data(path, shots, diag_name):
                             else:
                                 group.create_dataset(subkey, data=value)
 
-            except:
+            if 1==2:
                 pass
             if n % interval == 0:
                 size_limiter_sleep(size_GB=size_GB)
@@ -446,7 +458,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
     chords=['r0', 'v1', 'v2', 'v3']
     nums = range(1,15)
     names, signals = signal_gen(diag_name)
-    for n,shot in enumerate(shots):
+    for n,shot in tqdm(enumerate(shots)):
         if shot>=start_shot:
             try:
                 start = time.time()
