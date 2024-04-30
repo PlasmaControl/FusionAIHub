@@ -714,11 +714,11 @@ class DichargePerp():
                                                       mode=norm_mode)}
         return all_file_dict
 
+
     @staticmethod
     def get_order_of_magnitude(num):
         exponent = int(np.log10(abs(num)))
         return exponent
-
 
     @staticmethod
     def spec_filters(freq, time, amp_f_t, spec_params=spec_params_default,thr=0.9, gaussblr_win=(31, 3)):
@@ -821,7 +821,22 @@ class DichargePerp():
         plt.show()
 
     @staticmethod
-    def time_matching_merge_asof_1d(time1, data1, time_std):
+    def cut_time(time, data, t_min, t_max):
+        t_indx_min=np.argmin(abs(np.array(time)-t_min))
+        t_indx_max=np.argmin(abs(np.array(time)-t_max))
+
+        return time[t_indx_min:t_indx_max], data[...,t_indx_min:t_indx_max]
+
+
+    # Function to get windowed data
+    @staticmethod
+    def get_windowed_data(df, center_index, window_size=5):
+        start = max(center_index - window_size, 0)
+        end = min(center_index + window_size + 1, len(df))
+        return df.iloc[start:end].drop(columns=['xdata'])
+
+    @staticmethod
+    def time_matching_merge_asof_1d(time1, data1, time_std, left_window=0, right_window=0):
         # Convert input arrays to DataFrames
         df1 = pd.DataFrame({'time1': time1, 'data1': data1})
         df2 = pd.DataFrame({'time_std': time_std})
@@ -845,7 +860,7 @@ class DichargePerp():
         return matched_time, matched_data
         
     @staticmethod
-    def time_matching_merge_asof_2d(time1, data1, time_std):
+    def time_matching_merge_asof_2d(time1, data1, time_std,left_window=0, right_window=0):
         # Create DataFrames
         # Note: We assume time1 and time_std are already float arrays
         # representing time in seconds
@@ -880,7 +895,7 @@ class DichargePerp():
         return matched_time, matched_data
         
     @staticmethod
-    def time_matching_binary_search(time1, data1, time_std, mode='2d'):
+    def time_matching_binary_search(time1, data1, time_std, left_window=0, right_window=0):
         # Function to find the closest time in time1 to each time in time_std
         def find_closest(target):
             # Binary search for the closest timestamp
@@ -905,30 +920,188 @@ class DichargePerp():
         matched_time = []
         for t in time_std:
             closest_idx = find_closest(t)
-            if mode == '2d':
-                matched_data.append(data1[:, closest_idx])
-            else:
-                matched_data.append(data1[closest_idx])
-            matched_time.append(time1[closest_idx])
+            matched_data.append(data1[..., closest_idx-left_window:closest_idx+right_window+1])
+            matched_time.append(time1[closest_idx-left_window:closest_idx+right_window+1])
+        matched_time=np.array(matched_time)
+        matched_data=np.array(matched_data)
 
         return matched_time, matched_data
-        
-    @classmethod
-    def time_matching(cls,time, data, time_std, mode='merge_asof'):
-        if len(data.shape) == 1:
-            if mode == 'merge_asof':
-                return cls.time_matching_merge_asof_1d(time, data, time_std)
-            elif mode == 'binary':
-                return cls.time_matching_binary_search(time, data, time_std,
-                                                       mode='1d')
-        elif len(data.shape) == 2:
-            if mode == 'merge_asof':
-                return cls.time_matching_merge_asof_2d(time, data, time_std)
-            elif mode == 'binary':
-                return cls.time_matching_binary_search(time, data, time_std,
-                                                       mode='2d')
+
+    @staticmethod
+    def estimate_closest_indx_constant_dt(left_indx,time,target,dt):
+            time_distant=target-time[left_indx]
+            n_time=int(np.floor(time_distant/dt))
+            indx_start=left_indx+n_time
+            return indx_start
+
+    @staticmethod
+    def estimate_closest_indx_varing_dt(left_indx,time,target,dt,dt_std):
+        time_distant=target-time[left_indx]
+        n_time_min=int(np.floor(time_distant/(dt+dt_std)))
+        n_time_max=int(np.floor(time_distant/(dt-dt_std)))
+        indx_start=left_indx+n_time_min
+        indx_end=left_indx+n_time_max
+        return indx_start,indx_end
+
+    @staticmethod
+    def find_closest_indx_constant_dt(indx_start,time,target):
+        if indx_start==0:
+            return 0
+        #on target
+        if time[indx_start]==target:
+            return indx_start
+        #indx_start on the left 
+        elif time[indx_start]<target:
+            i=indx_start
+            while time[i]<target:
+                i+=1
+            return i
+        #indx_start on the left 
+        elif time[indx_start]>target:
+            i=indx_start
+            while time[i]>target:
+                i-=1
+            return i
+
+    @staticmethod
+    def find_closest_indx_binary(time,target,indx_start,indx_end):
+        # Binary search for the closest timestamp
+        low, high = indx_start, indx_end
+        best_idx = low
+        while low <= high:
+            mid = (low + high) // 2
+            if time[mid] < target:
+                low = mid + 1
+            elif time[mid] > target:
+                high = mid - 1
+            else:
+                return mid
+            # Update the best index if the current mid is closer to the
+            # target
+            if abs(time[mid] - target) < abs(time[best_idx] - target):
+                best_idx = mid
+        return best_idx
+
+    
+    @staticmethod
+    def custom_padding(time, data, left_slicing_indx, right_slicing_indx, padding='last'):
+        #padding to the left
+        if left_slicing_indx<0:
+            padding_config = [(0, 0)] * (data.ndim - 1) 
+
+            padd_len=-left_slicing_indx
+            if padding=='nan':
+                data_tmp=numpy.pad(data[..., 0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='empty')
+                time_tmp=numpy.pad(time[0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='empty')
+            elif padding=='last':
+                data_tmp=numpy.pad(data[..., 0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=data[...,0])
+                time_tmp=numpy.pad(time[0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=time[0])
+            elif padding=='zeros':
+                data_tmp=numpy.pad(data[..., 0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=0)
+                time_tmp=numpy.pad(time[0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=0)
+        elif (right_slicing_indx+1)>len(time):
+            padd_len=right_slicing_indx-len(time)
+            padding_config = [(0, 0)] * (data.ndim - 1) 
+
+            if padding=='nan':
+                data_tmp=numpy.pad(data[..., left_slicing_indx:],padding_config+(0,padd_len),mode='empty')
+                time_tmp=numpy.pad(time[left_slicing_indx:],padding_config+(0,padd_len),mode='empty')
+            elif padding=='last':
+                data_tmp=numpy.pad(data[..., left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=data[...,-1])
+                time_tmp=numpy.pad(time[left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=time[-1])
+            elif padding=='zeros':
+                data_tmp=numpy.pad(data[..., left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=0)
+                time_tmp=numpy.pad(time[left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=0)
         else:
-            print('The data has to be 1d array or 2d array')
+            data_tmp=data[..., left_slicing_indx:right_slicing_indx+1]
+            time_tmp=time[left_slicing_indx:right_slicing_indx+1]
+
+        return time_tmp,data_tmp
+
+
+    #assume the time is sorted
+    def time_matching_dynamic_search(self,time, data, time_std, left_window=0, right_window=0, padding='last'):
+        
+        dt,dt_std,if_dt_even=self.check_even_time_spacing(time,time_start=0.01)
+
+        # Align data to time_std
+        matched_data = []
+        matched_time = []
+
+        left_indx=0
+        #dt is constant
+        #print(f'std_norm={std_norm}')
+        if if_dt_even:
+            for target in time_std:
+                indx_start=self.estimate_closest_indx_constant_dt(left_indx,time,target,dt)
+                closest_idx=self.find_closest_indx_constant_dt(indx_start,time,target)
+                
+                left_slicing_indx=closest_idx-left_window
+                right_slicing_indx=closest_idx+right_window
+                time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
+
+                matched_data.append(data_tmp)
+                matched_time.append(time_tmp)
+
+                left_indx=closest_idx
+
+        else:
+            for target in time_std:
+                indx_start,indx_end=self.estimate_closest_indx_varing_dt(left_indx,time,target,dt,dt_std)
+                closest_idx=self.find_closest_indx_binary(time,target,indx_start,indx_end)
+
+                left_slicing_indx=closest_idx-left_window
+                right_slicing_indx=closest_idx+right_window
+                time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
+
+                matched_time.append(time_tmp)
+                matched_data.append(data_tmp)
+                
+
+                left_indx=closest_idx
+        
+        matched_time=np.array(matched_time)
+        matched_data=np.array(matched_data)
+        
+        return matched_time, matched_data
+        
+    
+    def time_matching(self,time, data, time_std, left_window=0, right_window=0, mode='merge_asof', padding='last'):
+        if mode == 'merge_asof':
+            if len(data.shape) == 1:
+                return self.time_matching_merge_asof_1d(time, data, time_std,\
+                                                        left_window=left_window, right_window=right_window)
+            elif len(data.shape) == 2:
+                return self.time_matching_merge_asof_2d(time, data, time_std,\
+                                                        left_window=left_window, right_window=right_window)
+            else:
+                print('The data has to be 1d array or 2d array')
+        elif mode == 'binary':
+            return self.time_matching_binary_search(time, data, time_std,\
+                                                        left_window=left_window, right_window=right_window)
+        elif mode == 'dynamic':
+            return self.time_matching_dynamic_search(time, data, time_std,\
+                                                        left_window=left_window, right_window=right_window,padding=padding)
+
+    @staticmethod
+    def check_even_time_spacing(time,time_start=0.01):
+        time_start_indx=np.argmin(abs(time-time_start))
+
+        time=np.array(time)
+        dt_tmp=time[time_start_indx+1:time_start_indx+101]-time[time_start_indx:time_start_indx+100]
+        
+
+        dt=np.mean(dt_tmp)
+        dt_std=np.std(dt_tmp)
+        std_norm=dt_std/dt
+
+        if std_norm>0.1**5:
+            if_dt_even=False 
+        else:
+            if_dt_even=True 
+
+        return dt,dt_std,if_dt_even
+
                 
     @staticmethod
     def time_interp_past_looking(time, data, time_std, mode='extrapolate'):
@@ -937,22 +1110,24 @@ class DichargePerp():
         elif mode == 'fill':
             pass
             
-    @staticmethod
-    def time_interp(time, data, time_std):
-        return np.interp(time_std, time, data)
+    
+    def time_interp_1d(self, time, data, time_std, mode='normal'):
+        if mode=='normal':
+            return np.interp(time_std, time, data)
+        else:
+            return self.time_interp_past_looking(time, data, time_std, mode)
 
     
-    def time_matching(self, discharge=None, suffix_list=None):
-        if discharge is None:
-            discharge = self.discharge
-        if suffix_list is None:
-            suffix_list = self.suffix_list
-        for suffix in suffix_list:
-            file_dict=discharge_obj.get_data(discharge, suffix, norm=True)
+    def time_interp(self, time, data, time_std, mode='normal'):
+        if len(data.shape) == 1:
+            return self.time_interp_1d(time, data, time_std, mode=mode)
+        elif len(data.shape) == 2:
+            data_interp=[]
+            for i in range(data.shape[0]):
+                data_interp.append(self.time_interp_1d(time, data[i,:], time_std, mode=mode))
 
-
-    def time_matching_windows(data):
-        file_dict=discharge_obj.get_data(self.discharge, suffix, norm=True)
+            return np.array(data_interp)
+            
 
     @staticmethod
     def find_plateau(series, window_size=40, threshold=0.1, plot=False):
@@ -971,7 +1146,9 @@ class DichargePerp():
         data_rolling_std = series.rolling(window=window_size, center=True).std()
 
         # Normalize the rolling standard deviation
-        normalized_std = data_rolling_std / rolling_avg
+        normalized_std = data_rolling_std / abs(rolling_avg)
+        if min(normalized_std)>=threshold:
+            return 0,0
 
         # Find the start and end indices of the plateau region
         plateau_start = normalized_std[normalized_std < threshold].index[0]
@@ -980,31 +1157,38 @@ class DichargePerp():
         if plot:
             plt.clf()
             plt.plot(normalized_std.index,normalized_std.values)
+            plt.xlabel('time (ms)')
+            plt.ylabel(f'std/avg(window={window_size})')
+
             plt.axvline(plateau_start,color='red')
             plt.axvline(plateau_end,color='red')
             plt.show()
 
         return plateau_start, plateau_end
         
-    def flat_top_finder(self,discharge, window_size=500, plot=False):
+    def flat_top_finder(self,discharge, window_size=500, threshold=0.01, plot=False):
         file_dict = self.get_data(discharge, 'basic', norm=True)
         time = file_dict['ip']['xdata'][:]
         data = file_dict['ip']['zdata'][:]
-        time=time[data>3]
-        data=data[data>3]
-        dip = np.gradient(data, time)
+        if max(data)<=3:
+            t_max, t_min = 0,0
+        else:
+            time=time[data>3]
+            data=data[data>3]
 
-        # Convert data and time to a pandas Series
-        series = pd.Series(data, index=time)
-        t_max, t_min=self.find_plateau(series,window_size=window_size, threshold=0.01, plot=plot)
+            dip = np.gradient(data, time)
+
+            # Convert data and time to a pandas Series
+            series = pd.Series(data, index=time)
+            t_max, t_min=self.find_plateau(series,window_size=window_size, threshold=threshold, plot=plot)
 
         if plot:
             plt.clf()
             plt.plot(series.index, series.values)
             plt.axvline(t_min,color='red')
             plt.axvline(t_max,color='red')
-            
-            plt.ylim(0,20)
+            plt.xlabel('time (ms)')
+            plt.ylabel(r'Plasma current $I_p$')
             plt.show()
 
         return t_max, t_min
@@ -1012,6 +1196,75 @@ class DichargePerp():
     def deal_with_missing_data(self):
         pass
 
+    
+    def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=True):
+        '''
+
+        time_std: the standard time
+
+        interp_suffix: the list suffix and key to 
+        e.g. interp_suffix=[['ts','core.dens'],['ts','core.dens']]  #e.g. [['ts','core.dens'],['ts','core.dens']]
+        interp_mode='normal'
+
+        time_matching_mode = ['merge_asof','binary','dynamic'] only 'dynamic' works for now (04/29/2024)
+
+        time_matching_padding=['zeros', 'last', 'nan']
+
+        plot_matched_data: plot the matched data
+        '''
+
+        #get all the data and normalize the data
+        all_file_dict=self.get_full_data(discharge, suffix_list, norm_mode=norm_mode)
+        if custom_time_std:
+            pass
+        else:
+            time_std=all_file_dict[time_std_key[0]][time_std_key[1]]['xdata'][:]
+
+        t_min, t_max=self.flat_top_finder(discharge, window_size=Ip_window_size, threshold=Ip_std_threshold, plot=plot_Ip)
+
+        #time_interp
+        for item in interp_suffix:
+            data_interp=self.time_interp(all_file_dict[item[0]][item[1]]['xdata'][:], \
+                                      all_file_dict[item[0]][item[1]]['zdata'][:], \
+                                      time_std, mode=interp_mode)
+            all_file_dict[item[0]][item[1]]['xdata']=time_std
+            all_file_dict[item[0]][item[1]]['zdata']=data_interp
+
+        #cut_time for standard time
+        [key1,_]=time_std_key
+        for key2 in all_file_dict[key1].keys():
+            time_cut,data_cut=self.cut_time(all_file_dict[key1][key2]['xdata'][:], \
+                                                             all_file_dict[key1][key2]['zdata'][:], \
+                                                             t_min, t_max)
+            all_file_dict[key1][key2]={'xdata':time_cut,'zdata':data_cut}
+            
+        time_std=time_cut
+
+        #time matching 
+        for key1 in all_file_dict.keys():
+            if key1==time_std_key[0] and (not custom_time_std):
+                continue
+            for key2 in all_file_dict[key1].keys():
+                matched_time, matched_data=self.time_matching(\
+                                                all_file_dict[key1][key2]['xdata'][:], \
+                                                all_file_dict[key1][key2]['zdata'][:], \
+                                                time_std, \
+                                                left_window=left_window[key1], \
+                                                right_window=right_window[key1], \
+                                                mode=time_matching_mode,\
+                                                padding=time_matching_padding)
+            
+                all_file_dict[item[0]][item[1]]['xdata']=matched_time
+                all_file_dict[item[0]][item[1]]['zdata']=matched_data
+                
+            if plot_matched_data:
+                plt.clf()
+                for i in range(len(matched_time)):
+                    plt.plot(matched_time[i,:],matched_data[i,:,:].T)
+                plt.xlabel('Time (ms)')
+                plt.ylabel(f'{key1}-{key2}')
+                plt.show()
+        return all_file_dict
 
 class DatasetPrep(DichargePerp):
     def __init__(self, discharge_search_list=[174823], suffix_list=['ts']):
@@ -1065,6 +1318,9 @@ class post_processing():
             smoothed_section,indx_min,indx_max=self.smooth_rolling_avg(time, data, smooth_point, center_window=center_window, edge_window=edge_window, time_spread=time_spread)
             data_smooth[indx_min:indx_max+1]=smoothed_section
         return data_smooth
+
+    def denorm_data():
+        pass
 
 class data_obj_rest():
     

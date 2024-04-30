@@ -339,9 +339,13 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
                 data_h5['zunits']=shot_data[names[0]]['units']['data']
                 data_tmp=[]
                 for name in names:
-                    if len(shot_data[name]['data'])<=10:
+                    try :
+                        len_tmp=len(shot_data[name]['data'])
+                        if len_tmp<10:
+                            break
+                    except:
                         break
-                    print(len(shot_data[name]['data']))
+                    #print(len(shot_data[name]['data']))
                     data_tmp.append(shot_data[name]['data'][:len(data_h5['xdata'])])
                 
                 data_tmp=np.array(data_tmp,dtype='float')
@@ -365,8 +369,6 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
             with h5py.File(f'{path}{shot}_{diag_name}.h5', 'w') as h5file:
                 save_dict_to_hdf5(data_h5, h5file)
 
-        if 1==0:
-            pass
         if n % interval == 0:
             size_limiter_sleep(size_GB=size_GB)
             print(f'shot={shot}')
