@@ -955,12 +955,18 @@ class DichargePerp():
             i=indx_start
             while time[i]<target:
                 i+=1
+
+            if abs(time[i] - target) > abs(time[i-1] - target):
+                return i-1
             return i
+
         #indx_start on the left 
         elif time[indx_start]>target:
             i=indx_start
             while time[i]>target:
                 i-=1
+            if abs(time[i] - target) > abs(time[i+1] - target):
+                return i+1
             return i
 
     @staticmethod
