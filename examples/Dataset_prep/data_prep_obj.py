@@ -1205,7 +1205,7 @@ class DichargePerp():
         pass
 
     
-    def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=True):
+    def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=False):
         '''
 
         time_std: the standard time
@@ -1255,7 +1255,7 @@ class DichargePerp():
         #time matching 
         for key1 in all_file_dict.keys():
             for key2 in all_file_dict[key1].keys():
-                print([key1,key2])
+                
                 try:
                     left_window_tmp=left_window[key1][key2]
                     right_window_tmp=right_window[key1][key2]
@@ -1275,13 +1275,23 @@ class DichargePerp():
                 all_file_dict[key1][key2]['xdata']=matched_time
                 all_file_dict[key1][key2]['zdata']=matched_data
                 
-            if plot_matched_data:
-                plt.clf()
-                for i in range(len(matched_time)):
-                    plt.plot(matched_time[i,:],matched_data[i,:,:].T)
-                plt.xlabel('Time (ms)')
-                plt.ylabel(f'{key1}-{key2}')
-                plt.show()
+        if plot_matched_data:
+            for key1 in all_file_dict.keys():
+                for key2 in all_file_dict[key1].keys():
+                    print([key1,key2])
+                    plt.clf()
+                    if all_file_dict[key1][key2]['zdata'].shape[2]==1:
+           
+                        plt.plot(all_file_dict[key1][key2]['xdata'][:,0],\
+                                all_file_dict[key1][key2]['zdata'][:,:,0])
+                    else:
+                        for i in range(len(all_file_dict[key1][key2]['xdata'][:])):
+                            plt.plot(all_file_dict[key1][key2]['xdata'][i,:].T,\
+                                    all_file_dict[key1][key2]['zdata'][i,:,:].T)
+                    plt.xlabel('Time (ms)')
+                    plt.ylabel(f'{key1}-{key2}')
+                    plt.show()
+
         return all_file_dict
 
 class DatasetPrep(DichargePerp):
