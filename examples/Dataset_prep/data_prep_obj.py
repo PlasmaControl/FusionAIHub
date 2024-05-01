@@ -972,7 +972,7 @@ class DichargePerp():
     @staticmethod
     def find_closest_indx_binary(time,target,indx_start,indx_end):
         # Binary search for the closest timestamp
-        low, high = indx_start, indx_end
+        low, high = max(0,indx_start), min(indx_end,len(time)-1)
         best_idx = low
         while low <= high:
             mid = (low + high) // 2
@@ -992,32 +992,34 @@ class DichargePerp():
     @staticmethod
     def custom_padding(time, data, left_slicing_indx, right_slicing_indx, padding='last'):
         #padding to the left
+
         if left_slicing_indx<0:
             padding_config = [(0, 0)] * (data.ndim - 1) 
 
             padd_len=-left_slicing_indx
+
             if padding=='nan':
-                data_tmp=numpy.pad(data[..., 0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='empty')
-                time_tmp=numpy.pad(time[0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='empty')
+                data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='empty')
+                time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='empty')
             elif padding=='last':
-                data_tmp=numpy.pad(data[..., 0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=data[...,0])
-                time_tmp=numpy.pad(time[0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=time[0])
+                data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=data[...,0])
+                time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=time[0])
             elif padding=='zeros':
-                data_tmp=numpy.pad(data[..., 0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=0)
-                time_tmp=numpy.pad(time[0:right_slicing_indx+1],padding_config+(padd_len, 0),mode='constant',constant_values=0)
+                data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
+                time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
         elif (right_slicing_indx+1)>len(time):
             padd_len=right_slicing_indx-len(time)
             padding_config = [(0, 0)] * (data.ndim - 1) 
 
             if padding=='nan':
-                data_tmp=numpy.pad(data[..., left_slicing_indx:],padding_config+(0,padd_len),mode='empty')
-                time_tmp=numpy.pad(time[left_slicing_indx:],padding_config+(0,padd_len),mode='empty')
+                data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
+                time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
             elif padding=='last':
-                data_tmp=numpy.pad(data[..., left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=data[...,-1])
-                time_tmp=numpy.pad(time[left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=time[-1])
+                data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=data[...,-1])
+                time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=time[-1])
             elif padding=='zeros':
-                data_tmp=numpy.pad(data[..., left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=0)
-                time_tmp=numpy.pad(time[left_slicing_indx:],padding_config+(0,padd_len),mode='constant',constant_values=0)
+                data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=0)
+                time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=0)
         else:
             data_tmp=data[..., left_slicing_indx:right_slicing_indx+1]
             time_tmp=time[left_slicing_indx:right_slicing_indx+1]
@@ -1238,30 +1240,40 @@ class DichargePerp():
 
         #cut_time for standard time
         [key1,_]=time_std_key
-        for key2 in all_file_dict[key1].keys():
-            time_cut,data_cut=self.cut_time(all_file_dict[key1][key2]['xdata'][:], \
-                                                             all_file_dict[key1][key2]['zdata'][:], \
-                                                             t_min, t_max)
-            all_file_dict[key1][key2]={'xdata':time_cut,'zdata':data_cut}
+
+        if custom_time_std:
+            time_cut,data_cut=self.cut_time(time_std, time_std,t_min, t_max)
+        else:
+            for key2 in all_file_dict[key1].keys():
+                time_cut,data_cut=self.cut_time(all_file_dict[key1][key2]['xdata'][:], \
+                                                                 all_file_dict[key1][key2]['zdata'][:], \
+                                                                 t_min, t_max)
+                all_file_dict[key1][key2]={'xdata':time_cut,'zdata':data_cut}
             
         time_std=time_cut
 
         #time matching 
         for key1 in all_file_dict.keys():
-            if key1==time_std_key[0] and (not custom_time_std):
-                continue
             for key2 in all_file_dict[key1].keys():
+                print([key1,key2])
+                try:
+                    left_window_tmp=left_window[key1][key2]
+                    right_window_tmp=right_window[key1][key2]
+                except:
+                    left_window_tmp=0
+                    right_window_tmp=0
+                
                 matched_time, matched_data=self.time_matching(\
                                                 all_file_dict[key1][key2]['xdata'][:], \
                                                 all_file_dict[key1][key2]['zdata'][:], \
                                                 time_std, \
-                                                left_window=left_window[key1], \
-                                                right_window=right_window[key1], \
+                                                left_window=left_window_tmp, \
+                                                right_window=right_window_tmp, \
                                                 mode=time_matching_mode,\
                                                 padding=time_matching_padding)
             
-                all_file_dict[item[0]][item[1]]['xdata']=matched_time
-                all_file_dict[item[0]][item[1]]['zdata']=matched_data
+                all_file_dict[key1][key2]['xdata']=matched_time
+                all_file_dict[key1][key2]['zdata']=matched_data
                 
             if plot_matched_data:
                 plt.clf()
