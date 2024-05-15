@@ -1,4 +1,4 @@
-from toksearch import MdsSignal, PtDataSignal
+from toksearch import MdsSignal,PtDataSignal
 from toksearch import Pipeline
 import numpy as np
 import os
@@ -6,51 +6,50 @@ import time
 import h5py
 import subprocess
 import sys
+from tqdm import tqdm
 
-# this one runs on iris, run the following
-# module purge
-# module load toksearch
+#this one runs on iris, run the following
+#module purge 
+#module load toksearch
 
-# for copy:
-# scp -r -o 'ProxyCommand ssh -p 2039 curiem@cybele.gat.com -W %h:%p' curiem@iris.gat.com:/cscratch/curiem/Data_fetch_TS/15* ./
+#for copy: 
+#scp -r -o 'ProxyCommand ssh -p 2039 curiem@cybele.gat.com -W %h:%p' curiem@iris.gat.com:/cscratch/curiem/Data_fetch_TS/15* ./
 
-# ***********start of user block******************
-# limit of the size
-size_GB = 400
+#***********start of user block******************
+#limit of the size 
+size_GB=400
 
-# After fetching (interval) discharges, check the total directory size
-interval = 100
+#After fetching (interval) discharges, check the total directory size
+interval=100
 
-# Root directory of the user for total size check
-directory_path = "/cscratch/curiem"
+#Root directory of the user for total size check
+directory_path="/cscratch/curiem"
 
-# list of discharges to fetch
-shots = np.arange(150000, 170000, dtype=int)
+#list of discharges to fetch
+shots = list(np.arange(150000,170000,dtype=int))
 
-# one can set start_shot the where to start.
-# (usually used for restarting the fetching due to unexpected termination)
-start_shot = min(shots)
+#shots = list(np.arange(175910,190000,dtype=int))
+# one can set start_shot the where to start. (usually used for restarting the fetching due to unexpected termination)
+start_shot=min(shots) 
 
-# path to save the files
-path = '/cscratch/curiem/Data_fetch_CER/'
+#path to save the files
+path = f'/cscratch/curiem/Data_fetch_CO2_s/'
 
-# diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s, ts,ts_rz,ts_error,cer, mse,custom]
-diag_name = 'cer'
+#diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s, ts,ts_rz,ts_error,custom]
+diag_name='co2_s'
 
-# custom sig_names_custom, the suffix is fixed to be custom for now.
-if diag_name == 'custom':
-    sig_names_custom = ['']
-    names_custom = ['']
-    tree = ''  # ptdata fo PTDATA, other trees names for MDS+
-# ***********end of user block******************
+#custom sig_names_custom, the suffix is fixed to be custom for now. 
+if diag_name=='custom':
+    sig_names_custom=['']
+    names_custom=['']
+    tree='' #ptdata fo PTDATA, other trees names for MDS+
+#***********end of user block******************
 
 shots.sort()
 
-
 def size_limiter(directory_path="/cscratch/curiem", size_GB=450):
     try:
-        size = subprocess.check_output(
-            ['du', '-sh', directory_path]).split()[0].decode('utf-8')
+        size = subprocess.check_output(['du', '-sh', directory_path]).split()[0].decode('utf-8')
     except subprocess.CalledProcessError as e:
         print(f"Error fetching directory size: {e}")
         return
@@ -63,11 +62,11 @@ def size_limiter(directory_path="/cscratch/curiem", size_GB=450):
 
 def size_limiter_sleep(directory_path="/cscratch/curiem", size_GB=450):
     try:
-        size = subprocess.check_output(
-            ['du', '-sh', directory_path]).split()[0].decode('utf-8')
+        size = subprocess.check_output(['du', '-sh', directory_path]).split()[0].decode('utf-8')
     except subprocess.CalledProcessError as e:
         print(f"Error fetching directory size: {e}")
         sys.exit(1)
+
 
     print(f"Size of {directory_path}: {size}")
 
@@ -79,16 +78,14 @@ def size_limiter_sleep(directory_path="/cscratch/curiem", size_GB=450):
         print("1 hour has passed. Checking size again...")
 
         try:
-            size = subprocess.check_output(
-                ['du', '-sh', directory_path]).split()[0].decode('utf-8')
+            size = subprocess.check_output(['du', '-sh', directory_path]).split()[0].decode('utf-8')
         except subprocess.CalledProcessError as e:
             print(f"Error fetching directory size: {e}")
             sys.exit(1)
 
         if size[-1] == "G" and float(size[:-1]) > size_GB:
-            print(f"Size still exceeds {size_GB}GB. Stopping")
+            print(f"Size still exceeds {size_GB}GB. Stoping")
             sys.exit(1)
-
 
 def save_dict_to_hdf5(dictionary, h5file):
     for key, value in dictionary.items():
@@ -98,90 +95,28 @@ def save_dict_to_hdf5(dictionary, h5file):
         else:
             h5file.create_dataset(key, data=value)
 
+#generate the name and signal to fetch i ntoksearch
+def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_custom=''):
+    signals=[]
+    names=[]
 
-# generate the name and signal to fetch i ntoksearch
-def signal_gen(diag_name='zipfit', sig_names_custom=[''], names_custom=[''],
-               tree_custom=''):
-    signals = []
-    names = []
-    # Counter: fncrate**
-    # Adjustable scintillator: fplastic, fzns
-    # Fixed scintillator: plasticfx*
-    # Approximate calibrated signal: neutronsrate*
-    if diag_name == 'neutron':
-        sig_names = ['fplastic', 'fzns', 'fncrate01', 'fncrate02', 'fncrate03',
-                     'fncrate04', 'plasticfx1', 'plasticfx2', 'plasticfx3',
-                     'plasticfx4', 'neutronsrate1', 'neutronsrate2',
-                     'neutronsrate3', 'neutronsrate4']
-        names = ['fplastic', 'fzns', 'fncrate01', 'fncrate02', 'fncrate03',
-                 'fncrate04', 'plasticfx1', 'plasticfx2', 'plasticfx3',
-                 'plasticfx4', 'cali.neutronsrate1', 'cali.neutronsrate2',
-                 'cali.neutronsrate3', 'cali.neutronsrate4']
+
+    #Counter: fncrate**
+    #Adjustable scintillator: fplastic, fzns
+    #Fixed scintillator: plasticfx*
+    #Approximate calibrated signal: neutronsrate*
+    if diag_name=='neutron':
+        sig_names=['fplastic', 'fzns',\
+                    'fncrate01', 'fncrate02', 'fncrate03', 'fncrate04',\
+                    'plasticfx1', 'plasticfx2', 'plasticfx3', 'plasticfx4',\
+                    'neutronsrate1','neutronsrate2','neutronsrate3', 'neutronsrate4']
+        names=      ['fplastic', 'fzns',\
+                    'fncrate01', 'fncrate02', 'fncrate03', 'fncrate04',\
+                    'plasticfx1', 'plasticfx2', 'plasticfx3', 'plasticfx4',\
+                    'cali.neutronsrate1','cali.neutronsrate2','cali.neutronsrate3', 'cali.neutronsrate4']
     
-    elif diag_name == 'mag_full':
-        sig_name_without_d = [
-            'mpi11m322', 'mpi1a322', 'mpi2a322', 'mpi3a322', 'mpi4a322',
-            'mpi5a322', 'mpi8a322', 'mpi89a322', 'mpi9a322', 'mpi79fa322',
-            'mpi79na322', 'mpi7fa322', 'mpi7na322', 'mpi67a322', 'mpi6fa322',
-            'mpi6na322', 'mpi66m322', 'mpi1b322', 'mpi2b322', 'mpi3b322',
-            'mpi4b322', 'mpi5b322', 'mpi8b322', 'mpi89b322', 'mpi9b322',
-            'mpi79b322', 'mpi7fb322', 'mpi7nb322', 'mpi67b322', 'mpi6fb322',
-            'mpi6nb322', 'mpi2a067', 'mpi11m067', 'mpi2b067', 'mpi67a097',
-            'mpi67a067', 'mpi66m067', 'mpi67b097', 'mpi67b067', 'mpi1a139',
-            'mpi2a139', 'mpi3a139', 'mpi4a139', 'mpi5a139', 'mpi79a147',
-            'mpi67a142', 'mpi67a157', 'mpi6na132', 'mpi6na157', 'mpi66m157',
-            'mpi6nb157', 'mpi6fb142', 'mpi67b157', 'mpi7nb142', 'mpi79b142',
-            'mpi5b139', 'mpi4b139', 'mpi3b139', 'mpi2b139', 'mpi1b139',
-            'mpi1b157', 'mpi1u157', 'mpi2u157', 'mpi3u157', 'mpi4u157',
-            'mpi5u157', 'mpi6u157', 'mpi7u157', 'dsl1u180', 'dsl2u180',
-            'dsl3u180', 'dsl4u157', 'dsl5u157', 'dsl6u157', 'mpi66m127',
-            'mpi66m132', 'mpi66m137', 'mpi66b137', 'mpi6nb137', 'mpi66m307',
-            'mpi66m312', 'mpi6na312', 'mpi66b312', 'mpi6nb312', 'mpi66m322',
-            'mpi1l020', 'mpi2l020', 'mpi1l050', 'mpi1l110', 'mpi1l180',
-            'mpi2l180', 'mpi3l180', 'mpi1l230', 'mpi1l320', 'mpi66m020',
-            'mpi66m067', 'mpi66m097', 'mpi66m127', 'mpi66m132', 'mpi66m137',
-            'mpi66m157', 'mpi66m200', 'mpi66m247', 'mpi66m277', 'mpi66m307',
-            'mpi66m312', 'mpi66m322', 'mpi66m340', 'mpi67a022', 'mpi67a037',
-            'mpi67a1', 'mpi67a052', 'mpi67a067', 'mpi67a082', 'mpi67a097',
-            'mpi67a2', 'mpi67a142', 'mpi67a157', 'mpi67a3', 'mpi67a217',
-            'mpi67a4', 'mpi67a262', 'mpi67a277', 'mpi67a5', 'mpi67a307',
-            'mpi67a337', 'mpi67a6', 'mpi67b022', 'mpi67b037', 'mpi67b1',
-            'mpi67b052', 'mpi67b097', 'mpi67b2', 'mpi67b157', 'mpi67b3',
-            'mpi67b217', 'mpi67b4', 'mpi67b277', 'mpi67b5', 'mpi67b337',
-            'mpi67b6', 'mpi79a072', 'mpi79a147', 'mpi79a222', 'mpi79a272',
-            'mpi79b067', 'mpi79b142', 'mpi79b217', 'mpi79b277', 'mpi5a139',
-            'mpi4a139', 'mpi3a139', 'mpi2a139', 'mpi1a139', 'mpi1b139',
-            'mpi2b139', 'mpi3b139', 'mpi4b139', 'mpi5b139', 'mpi5a199',
-            'mpi4a199', 'mpi3a199', 'mpi2a199', 'mpi1a199', 'mpi1b199',
-            'mpi2b199', 'mpi3b199', 'mpi4b199', 'mpi5b199', 'mpi1a011',
-            'mpi1a049', 'mpi1a109', 'mpi1a139', 'mpi1a199', 'mpi1a244',
-            'mpi1a274', 'mpi1a341', 'mpi1b011', 'mpi1b049', 'mpi1b109',
-            'mpi1b139', 'mpi1b199', 'mpi1b244', 'mpi1b274', 'mpi1b341',
-            'isl66m017', 'isl66m042', 'isl66m072', 'isl66m102', 'isl66m132',
-            'isl66m197', 'isl66m252', 'isl66m312', 'isl67a017', 'isl67a052',
-            'isl67a072', 'isl67a112', 'isl67a132', 'isl67a197', 'isl67a252',
-            'isl67a312', 'isl67b017', 'isl67b052', 'isl67b072', 'isl67b112',
-            'isl67b132', 'isl67b197', 'isl67b252', 'isl67b312', 'isl79a072',
-            'isl79a147', 'isl79a222', 'isl79a272', 'isl79b067', 'isl79b142',
-            'isl79b217', 'isl79b277', 'isl5a139', 'isl4a139', 'isl3a139',
-            'isl2a139', 'isl1a139', 'isl1b139', 'isl2b139', 'isl3b139',
-            'isl4b139', 'isl5b139', 'isl5a199', 'isl4a199', 'isl3a199',
-            'isl2a199', 'isl1a199', 'isl1b199', 'isl2b199', 'isl3b199',
-            'isl4b199', 'isl5b199', 'isl1a011', 'isl1a049', 'isl1a109',
-            'isl1a139', 'isl1a199', 'isl1a244', 'isl1a274', 'isl1a341',
-            'isl1b011', 'isl1b049', 'isl1b109', 'isl1b139', 'isl1b199',
-            'isl1b244', 'isl1b274', 'isl1b341', 'dsl12a067', 'dsl34a067',
-            'dsl59a067', 'dsl79a067', 'dsl67a067', 'dsl66m052', 'dsl67b067',
-            'dsl79b067', 'dsl59b067', 'dsl34b067', 'dsl12b067', 'dsl12a157',
-            'dsl34a157', 'dsl59a157', 'dsl79a157', 'dsl67a157', 'dsl66m152',
-            'dsl67b157', 'dsl79b157', 'dsl59b157', 'dsl34b157', 'dsl12b157',
-            'dsl67a067', 'dsl67a157', 'sl67fa345', 'sl67na345', 'dsl66m052',
-            'sl66a132', 'sl66b132', 'dsl66m152', 'sl66a312', 'sl66b312',
-            'sl67nb015', 'sl67fb015', 'dsl67b067', 'dsl67b157', 'esl66m019',
-            'esl019', 'esl66m079', 'esl079', 'esl66m139', 'esl139',
-            'esl66m199', 'esl199', 'esl66m259', 'esl259', 'esl66m319',
-            'esl319', 'esl67a004', 'esl67a034', 'esl67a064', 'esl67a094',
-            'esl67a124', 'esl67a154', 'esl67a184', 'esl67a214', 'esl67a244', 'esl67a274', 'esl67a304', 'esl67a334', 'esl67b004', 'esl67b034', 'esl67b064', 'esl67b094', 'esl67b124', 'esl67b154', 'esl67b184', 'esl67b214', 'esl67b244', 'esl67b274', 'esl67b304', 'esl67b334', 'bti66m053', 'bti66m132', 'bti66m233', 'bti66m312', 'psf1a', 'psf1a', 'psf1a', 'psf1a', 'psf6natotl', 'psf6na', 'psi11mtotl', 'psi11m', 'psi6atotl', 'psi6a', 'psf1a', 'psf6natotl', 'psi11mtotl', 'psi6atotl', 'psf2a', 'psf3a', 'psf4a', 'psf5a', 'psf8a', 'psf9a', 'psf7fa', 'psf7na', 'psf6fa', 'psf6na', 'psf6nb', 'psf6fb', 'psf7nb', 'psf7fb', 'psf9b', 'psf8b', 'psf5b', 'psf4b', 'psf3b', 'psf2b', 'psf1b', 'psi11m', 'psi12a', 'psi23a', 'psi34a', 'psi45a', 'psi58a', 'psi9a', 'psi7a', 'psi6a', 'psi6b', 'psi7b', 'psi9b', 'psi89nb', 'psi89fb', 'psi58b', 'psi45b', 'psi34b', 'psi23b', 'psi12b', 'psi1l', 'psi2l', 'psi3l', 'mpi1b', 'mpi66m020', 'mpi66m097', 'mpi66m020', 'mpi66m097', 'mpi66m067', 'mpi66m247', 'mpi66m097', 'mpi66m277', 'mpi66m127', 'mpi66m307', 'mpi66m157', 'mpi66m340', 'mpi66m200', 'mpi66m020', 'mpi66m247', 'mpi66m127', 'mpi66m277', 'mpi66m157', 'mpi66m307', 'mpi66m200', 'mpi66m340', 'mpi66m067', 'mpi67a022', 'mpi67a217', 'mpi67a037', 'mpi67a067', 'mpi67a052', 'mpi67a022', 'mpi67a067', 'mpi67a262', 'mpi67a082', 'mpi67a052', 'mpi67a097', 'mpi67a082', 'mpi67a142', 'mpi67a037', 'mpi67a217', 'mpi67a097', 'mpi67a262', 'mpi67a277', 'mpi67a277', 'mpi67a307', 'mpi67a307', 'mpi67a337', 'mpi67a337', 'mpi67a142', 'mpi67b022', 'mpi67b052', 'mpi67b037', 'mpi67b217', 'mpi67b052', 'mpi67b037', 'mpi67b097', 'mpi67b277', 'mpi67b157', 'mpi67b337', 'mpi67b217', 'mpi67b097', 'mpi67b277', 'mpi67b157', 'mpi67b337', 'mpi67b022', 'mpi79a072', 'mpi79a222', 'mpi79a147', 'mpi79a072', 'mpi79a222', 'mpi79a272', 'mpi79a272', 'mpi79a147', 'mpi79b067', 'mpi79b217', 'mpi79b142', 'mpi79b067', 'mpi79b217', 'mpi79b277', 'mpi79b277', 'mpi79b142', 'mpi1a011', 'mpi1a199', 'mpi1a049', 'mpi1a244', 'mpi1a109', 'mpi1a011', 'mpi1a139', 'mpi1a341', 'mpi1a199', 'mpi1a139', 'mpi1a244', 'mpi1a274', 'mpi1a274', 'mpi1a109', 'mpi1a341', 'mpi1a049', 'mpi1b011', 'mpi1b199', 'mpi1b049', 'mpi1b244', 'mpi1b109', 'mpi1b011', 'mpi1b139', 'mpi1b341', 'mpi1b199', 'mpi1b139', 'mpi1b244', 'mpi1b274', 'mpi1b274', 'mpi1b109', 'mpi1b341', 'mpi1b049', 'mpi5a199', 'mpi5a139', 'mpi4a199', 'mpi4a139', 'mpi3a199', 'mpi3a139', 'mpi2a199', 'mpi2a139', 'mpi1a199', 'mpi1a139', 'mpi1b199', 'mpi1b139', 'mpi2b199', 'mpi2b139', 'mpi3b199', 'mpi3b139', 'mpi4b199', 'mpi4b139', 'mpi5b199', 'mpi5b139', 'isl66m017', 'isl66m042', 'isl66m042', 'isl66m072', 'isl66m072', 'isl66m252', 'isl66m102', 'isl66m132', 'isl66m132', 'isl66m312', 'isl66m197', 'isl66m017', 'isl66m252', 'isl66m102', 'isl66m312', 'isl66m197', 'isl67a017', 'isl67a052', 'isl67a052', 'isl67a072', 'isl67a072', 'isl67a252', 'isl67a112', 'isl67a132', 'isl67a132', 'isl67a312', 'isl67a197', 'isl67a017', 'isl67a252', 'isl67a112', 'isl67a312', 'isl67a197', 'isl67b017', 'isl67b052', 'isl67b052', 'isl67b072', 'isl67b072', 'isl67b252', 'isl67b112', 'isl67b132', 'isl67b132', 'isl67b312', 'isl67b197', 'isl67b017', 'isl67b252', 'isl67b112', 'isl67b312', 'isl67b197', 'isl79a072', 'isl79a222', 'isl79a147', 'isl79a072', 'isl79a222', 'isl79a272', 'isl79a272', 'isl79a147', 'isl79b067', 'isl79b217', 'isl79b142', 'isl79b067', 'isl79b217', 'isl79b277', 'isl79b277', 'isl79b142', 'isl1a011', 'isl1a199', 'isl1a049', 'isl1a244', 'isl1a109', 'isl1a011', 'isl1a139', 'isl1a341', 'isl1a199', 'isl1a139', 'isl1a244', 'isl1a274', 'isl1a274', 'isl1a109', 'isl1a341', 'isl1a049', 'isl1b011', 'isl1b199', 'isl1b049', 'isl1b244', 'isl1b109', 'isl1b011', 'isl1b139', 'isl1b341', 'isl1b199', 'isl1b139', 'isl1b244', 'isl1b274', 'isl1b274', 'isl1b109', 'isl1b341', 'isl1b049', 'isl5a199', 'isl5a139', 'isl4a199', 'isl4a139', 'isl3a199', 'isl3a139', 'isl2a199', 'isl2a139', 'isl1a199', 'isl1a139', 'isl1b199', 'isl1b139', 'isl2b199', 'isl2b139', 'isl3b199', 'isl3b139', 'isl4b199', 'isl4b139', 'isl5b199', 'isl5b139', 'esl66m019', 'esl66m079', 'esl66m079', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m019', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m079', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m019', 'esl67a004', 'esl67a244', 'esl67a034', 'esl67a154', 'esl67a064', 'esl67a184', 'esl67a094', 'esl67a274', 'esl67a124', 'esl67a304', 'esl67a154', 'esl67a334', 'esl67a184', 'esl67a004', 'esl67a214', 'esl67a094', 'esl67a244', 'esl67a124', 'esl67a274', 'esl67a034', 'esl67a304', 'esl67a064', 'esl67a334', 'esl67a214', 'esl67b004', 'esl67b244', 'esl67b034', 'esl67b154', 'esl67b064', 'esl67b184', 'esl67b094', 'esl67b274', 'esl67b124', 'esl67b304', 'esl67b154', 'esl67b334', 'esl67b184', 'esl67b004', 'esl67b214', 'esl67b094', 'esl67b244', 'esl67b124', 'esl67b274', 'esl67b034', 'esl67b304', 'esl67b064', 'esl67b334', 'esl67b214', 'bti66m053', 'bti66m233', 'bti66m132', 'bti66m053', 'bti66m233', 'bti66m312', 'bti66m312', 'bti66m132', 'mpi2a067', 'mpi1u157', 'isl79a']
+    elif diag_name=='mag_full':
+        sig_name_without_d=['mpi11m322', 'mpi1a322', 'mpi2a322', 'mpi3a322', 'mpi4a322', 'mpi5a322', 'mpi8a322', 'mpi89a322', 'mpi9a322', 'mpi79fa322', 'mpi79na322', 'mpi7fa322', 'mpi7na322', 'mpi67a322', 'mpi6fa322', 'mpi6na322', 'mpi66m322', 'mpi1b322', 'mpi2b322', 'mpi3b322', 'mpi4b322', 'mpi5b322', 'mpi8b322', 'mpi89b322', 'mpi9b322', 'mpi79b322', 'mpi7fb322', 'mpi7nb322', 'mpi67b322', 'mpi6fb322', 'mpi6nb322', 'mpi2a067', 'mpi11m067', 'mpi2b067', 'mpi67a097', 'mpi67a067', 'mpi66m067', 'mpi67b097', 'mpi67b067', 'mpi1a139', 'mpi2a139', 'mpi3a139', 'mpi4a139', 'mpi5a139', 'mpi79a147', 'mpi67a142', 'mpi67a157', 'mpi6na132', 'mpi6na157', 'mpi66m157', 'mpi6nb157', 'mpi6fb142', 'mpi67b157', 'mpi7nb142', 'mpi79b142', 'mpi5b139', 'mpi4b139', 'mpi3b139', 'mpi2b139', 'mpi1b139', 'mpi1b157', 'mpi1u157', 'mpi2u157', 'mpi3u157', 'mpi4u157', 'mpi5u157', 'mpi6u157', 'mpi7u157', 'dsl1u180', 'dsl2u180', 'dsl3u180', 'dsl4u157', 'dsl5u157', 'dsl6u157', 'mpi66m127', 'mpi66m132', 'mpi66m137', 'mpi66b137', 'mpi6nb137', 'mpi66m307', 'mpi66m312', 'mpi6na312', 'mpi66b312', 'mpi6nb312', 'mpi66m322', 'mpi1l020', 'mpi2l020', 'mpi1l050', 'mpi1l110', 'mpi1l180', 'mpi2l180', 'mpi3l180', 'mpi1l230', 'mpi1l320', 'mpi66m020', 'mpi66m067', 'mpi66m097', 'mpi66m127', 'mpi66m132', 'mpi66m137', 'mpi66m157', 'mpi66m200', 'mpi66m247', 'mpi66m277', 'mpi66m307', 'mpi66m312', 'mpi66m322', 'mpi66m340', 'mpi67a022', 'mpi67a037', 'mpi67a1', 'mpi67a052', 'mpi67a067', 'mpi67a082', 'mpi67a097', 'mpi67a2', 'mpi67a142', 'mpi67a157', 'mpi67a3', 'mpi67a217', 'mpi67a4', 'mpi67a262', 'mpi67a277', 'mpi67a5', 'mpi67a307', 'mpi67a337', 'mpi67a6', 'mpi67b022', 'mpi67b037', 'mpi67b1', 'mpi67b052', 'mpi67b097', 'mpi67b2', 'mpi67b157', 'mpi67b3', 'mpi67b217', 'mpi67b4', 'mpi67b277', 'mpi67b5', 'mpi67b337', 'mpi67b6', 'mpi79a072', 'mpi79a147', 'mpi79a222', 'mpi79a272', 'mpi79b067', 'mpi79b142', 'mpi79b217', 'mpi79b277', 'mpi5a139', 'mpi4a139', 'mpi3a139', 'mpi2a139', 'mpi1a139', 'mpi1b139', 'mpi2b139', 'mpi3b139', 'mpi4b139', 'mpi5b139', 'mpi5a199', 'mpi4a199', 'mpi3a199', 'mpi2a199', 'mpi1a199', 'mpi1b199', 'mpi2b199', 'mpi3b199', 'mpi4b199', 'mpi5b199', 'mpi1a011', 'mpi1a049', 'mpi1a109', 'mpi1a139', 'mpi1a199', 'mpi1a244', 'mpi1a274', 'mpi1a341', 'mpi1b011', 'mpi1b049', 'mpi1b109', 'mpi1b139', 'mpi1b199', 'mpi1b244', 'mpi1b274', 'mpi1b341', 'isl66m017', 'isl66m042', 'isl66m072', 'isl66m102', 'isl66m132', 'isl66m197', 'isl66m252', 'isl66m312', 'isl67a017', 'isl67a052', 'isl67a072', 'isl67a112', 'isl67a132', 'isl67a197', 'isl67a252', 'isl67a312', 'isl67b017', 'isl67b052', 'isl67b072', 'isl67b112', 'isl67b132', 'isl67b197', 'isl67b252', 'isl67b312', 'isl79a072', 'isl79a147', 'isl79a222', 'isl79a272', 'isl79b067', 'isl79b142', 'isl79b217', 'isl79b277', 'isl5a139', 'isl4a139', 'isl3a139', 'isl2a139', 'isl1a139', 'isl1b139', 'isl2b139', 'isl3b139', 'isl4b139', 'isl5b139', 'isl5a199', 'isl4a199', 'isl3a199', 'isl2a199', 'isl1a199', 'isl1b199', 'isl2b199', 'isl3b199', 'isl4b199', 'isl5b199', 'isl1a011', 'isl1a049', 'isl1a109', 'isl1a139', 'isl1a199', 'isl1a244', 'isl1a274', 'isl1a341', 'isl1b011', 'isl1b049', 'isl1b109', 'isl1b139', 'isl1b199', 'isl1b244', 'isl1b274', 'isl1b341', 'dsl12a067', 'dsl34a067', 'dsl59a067', 'dsl79a067', 'dsl67a067', 'dsl66m052', 'dsl67b067', 'dsl79b067', 'dsl59b067', 'dsl34b067', 'dsl12b067', 'dsl12a157', 'dsl34a157', 'dsl59a157', 'dsl79a157', 'dsl67a157', 'dsl66m152', 'dsl67b157', 'dsl79b157', 'dsl59b157', 'dsl34b157', 'dsl12b157', 'dsl67a067', 'dsl67a157', 'sl67fa345', 'sl67na345', 'dsl66m052', 'sl66a132', 'sl66b132', 'dsl66m152', 'sl66a312', 'sl66b312', 'sl67nb015', 'sl67fb015', 'dsl67b067', 'dsl67b157', 'esl66m019', 'esl019', 'esl66m079', 'esl079', 'esl66m139', 'esl139', 'esl66m199', 'esl199', 'esl66m259', 'esl259', 'esl66m319', 'esl319', 'esl67a004', 'esl67a034', 'esl67a064', 'esl67a094', 'esl67a124', 'esl67a154', 'esl67a184', 'esl67a214', 'esl67a244', 'esl67a274', 'esl67a304', 'esl67a334', 'esl67b004', 'esl67b034', 'esl67b064', 'esl67b094', 'esl67b124', 'esl67b154', 'esl67b184', 'esl67b214', 'esl67b244', 'esl67b274', 'esl67b304', 'esl67b334', 'bti66m053', 'bti66m132', 'bti66m233', 'bti66m312', 'psf1a', 'psf1a', 'psf1a', 'psf1a', 'psf6natotl', 'psf6na', 'psi11mtotl', 'psi11m', 'psi6atotl', 'psi6a', 'psf1a', 'psf6natotl', 'psi11mtotl', 'psi6atotl', 'psf2a', 'psf3a', 'psf4a', 'psf5a', 'psf8a', 'psf9a', 'psf7fa', 'psf7na', 'psf6fa', 'psf6na', 'psf6nb', 'psf6fb', 'psf7nb', 'psf7fb', 'psf9b', 'psf8b', 'psf5b', 'psf4b', 'psf3b', 'psf2b', 'psf1b', 'psi11m', 'psi12a', 'psi23a', 'psi34a', 'psi45a', 'psi58a', 'psi9a', 'psi7a', 'psi6a', 'psi6b', 'psi7b', 'psi9b', 'psi89nb', 'psi89fb', 'psi58b', 'psi45b', 'psi34b', 'psi23b', 'psi12b', 'psi1l', 'psi2l', 'psi3l', 'mpi1b', 'mpi66m020', 'mpi66m097', 'mpi66m020', 'mpi66m097', 'mpi66m067', 'mpi66m247', 'mpi66m097', 'mpi66m277', 'mpi66m127', 'mpi66m307', 'mpi66m157', 'mpi66m340', 'mpi66m200', 'mpi66m020', 'mpi66m247', 'mpi66m127', 'mpi66m277', 'mpi66m157', 'mpi66m307', 'mpi66m200', 'mpi66m340', 'mpi66m067', 'mpi67a022', 'mpi67a217', 'mpi67a037', 'mpi67a067', 'mpi67a052', 'mpi67a022', 'mpi67a067', 'mpi67a262', 'mpi67a082', 'mpi67a052', 'mpi67a097', 'mpi67a082', 'mpi67a142', 'mpi67a037', 'mpi67a217', 'mpi67a097', 'mpi67a262', 'mpi67a277', 'mpi67a277', 'mpi67a307', 'mpi67a307', 'mpi67a337', 'mpi67a337', 'mpi67a142', 'mpi67b022', 'mpi67b052', 'mpi67b037', 'mpi67b217', 'mpi67b052', 'mpi67b037', 'mpi67b097', 'mpi67b277', 'mpi67b157', 'mpi67b337', 'mpi67b217', 'mpi67b097', 'mpi67b277', 'mpi67b157', 'mpi67b337', 'mpi67b022', 'mpi79a072', 'mpi79a222', 'mpi79a147', 'mpi79a072', 'mpi79a222', 'mpi79a272', 'mpi79a272', 'mpi79a147', 'mpi79b067', 'mpi79b217', 'mpi79b142', 'mpi79b067', 'mpi79b217', 'mpi79b277', 'mpi79b277', 'mpi79b142', 'mpi1a011', 'mpi1a199', 'mpi1a049', 'mpi1a244', 'mpi1a109', 'mpi1a011', 'mpi1a139', 'mpi1a341', 'mpi1a199', 'mpi1a139', 'mpi1a244', 'mpi1a274', 'mpi1a274', 'mpi1a109', 'mpi1a341', 'mpi1a049', 'mpi1b011', 'mpi1b199', 'mpi1b049', 'mpi1b244', 'mpi1b109', 'mpi1b011', 'mpi1b139', 'mpi1b341', 'mpi1b199', 'mpi1b139', 'mpi1b244', 'mpi1b274', 'mpi1b274', 'mpi1b109', 'mpi1b341', 'mpi1b049', 'mpi5a199', 'mpi5a139', 'mpi4a199', 'mpi4a139', 'mpi3a199', 'mpi3a139', 'mpi2a199', 'mpi2a139', 'mpi1a199', 'mpi1a139', 'mpi1b199', 'mpi1b139', 'mpi2b199', 'mpi2b139', 'mpi3b199', 'mpi3b139', 'mpi4b199', 'mpi4b139', 'mpi5b199', 'mpi5b139', 'isl66m017', 'isl66m042', 'isl66m042', 'isl66m072', 'isl66m072', 'isl66m252', 'isl66m102', 'isl66m132', 'isl66m132', 'isl66m312', 'isl66m197', 'isl66m017', 'isl66m252', 'isl66m102', 'isl66m312', 'isl66m197', 'isl67a017', 'isl67a052', 'isl67a052', 'isl67a072', 'isl67a072', 'isl67a252', 'isl67a112', 'isl67a132', 'isl67a132', 'isl67a312', 'isl67a197', 'isl67a017', 'isl67a252', 'isl67a112', 'isl67a312', 'isl67a197', 'isl67b017', 'isl67b052', 'isl67b052', 'isl67b072', 'isl67b072', 'isl67b252', 'isl67b112', 'isl67b132', 'isl67b132', 'isl67b312', 'isl67b197', 'isl67b017', 'isl67b252', 'isl67b112', 'isl67b312', 'isl67b197', 'isl79a072', 'isl79a222', 'isl79a147', 'isl79a072', 'isl79a222', 'isl79a272', 'isl79a272', 'isl79a147', 'isl79b067', 'isl79b217', 'isl79b142', 'isl79b067', 'isl79b217', 'isl79b277', 'isl79b277', 'isl79b142', 'isl1a011', 'isl1a199', 'isl1a049', 'isl1a244', 'isl1a109', 'isl1a011', 'isl1a139', 'isl1a341', 'isl1a199', 'isl1a139', 'isl1a244', 'isl1a274', 'isl1a274', 'isl1a109', 'isl1a341', 'isl1a049', 'isl1b011', 'isl1b199', 'isl1b049', 'isl1b244', 'isl1b109', 'isl1b011', 'isl1b139', 'isl1b341', 'isl1b199', 'isl1b139', 'isl1b244', 'isl1b274', 'isl1b274', 'isl1b109', 'isl1b341', 'isl1b049', 'isl5a199', 'isl5a139', 'isl4a199', 'isl4a139', 'isl3a199', 'isl3a139', 'isl2a199', 'isl2a139', 'isl1a199', 'isl1a139', 'isl1b199', 'isl1b139', 'isl2b199', 'isl2b139', 'isl3b199', 'isl3b139', 'isl4b199', 'isl4b139', 'isl5b199', 'isl5b139', 'esl66m019', 'esl66m079', 'esl66m079', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m019', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m079', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m019', 'esl67a004', 'esl67a244', 'esl67a034', 'esl67a154', 'esl67a064', 'esl67a184', 'esl67a094', 'esl67a274', 'esl67a124', 'esl67a304', 'esl67a154', 'esl67a334', 'esl67a184', 'esl67a004', 'esl67a214', 'esl67a094', 'esl67a244', 'esl67a124', 'esl67a274', 'esl67a034', 'esl67a304', 'esl67a064', 'esl67a334', 'esl67a214', 'esl67b004', 'esl67b244', 'esl67b034', 'esl67b154', 'esl67b064', 'esl67b184', 'esl67b094', 'esl67b274', 'esl67b124', 'esl67b304', 'esl67b154', 'esl67b334', 'esl67b184', 'esl67b004', 'esl67b214', 'esl67b094', 'esl67b244', 'esl67b124', 'esl67b274', 'esl67b034', 'esl67b304', 'esl67b064', 'esl67b334', 'esl67b214', 'bti66m053', 'bti66m233', 'bti66m132', 'bti66m053', 'bti66m233', 'bti66m312', 'bti66m312', 'bti66m132', 'mpi2a067', 'mpi1u157', 'isl79a']
 
         name_without_d=['mpi.11.m.322', 'mpi.1.a.322', 'mpi.2.a.322', 'mpi.3.a.322', 'mpi.4.a.322', 'mpi.5.a.322', 'mpi.8.a.322', 'mpi.89.a.322', 'mpi.9.a.322', 'mpi.79.fa.322', 'mpi.79.na.322', 'mpi.7.fa.322', 'mpi.7.na.322', 'mpi.67.a.322', 'mpi.6.fa.322', 'mpi.6.na.322', 'mpi.66.m.322', 'mpi.1.b.322', 'mpi.2.b.322', 'mpi.3.b.322', 'mpi.4.b.322', 'mpi.5.b.322', 'mpi.8.b.322', 'mpi.89.b.322', 'mpi.9.b.322', 'mpi.79.b.322', 'mpi.7.fb.322', 'mpi.7.nb.322', 'mpi.67.b.322', 'mpi.6.fb.322', 'mpi.6.nb.322', 'mpi.2.a.067', 'mpi.11.m.067', 'mpi.2.b.067', 'mpi.67.a.097', 'mpi.67.a.067', 'mpi.66.m.067', 'mpi.67.b.097', 'mpi.67.b.067', 'mpi.1.a.139', 'mpi.2.a.139', 'mpi.3.a.139', 'mpi.4.a.139', 'mpi.5.a.139', 'mpi.79.a.147', 'mpi.67.a.142', 'mpi.67.a.157', 'mpi.6.na.132', 'mpi.6.na.157', 'mpi.66.m.157', 'mpi.6.nb.157', 'mpi.6.fb.142', 'mpi.67.b.157', 'mpi.7.nb.142', 'mpi.79.b.142', 'mpi.5.b.139', 'mpi.4.b.139', 'mpi.3.b.139', 'mpi.2.b.139', 'mpi.1.b.139', 'mpi.1.b.157', 'mpi.1.u.157', 'mpi.2.u.157', 'mpi.3.u.157', 'mpi.4.u.157', 'mpi.5.u.157', 'mpi.6.u.157', 'mpi.7.u.157', 'dsl.1.u.180', 'dsl.2.u.180', 'dsl.3.u.180', 'dsl.4.u.157', 'dsl.5.u.157', 'dsl.6.u.157', 'mpi.66.m.127', 'mpi.66.m.132', 'mpi.66.m.137', 'mpi.66.b.137', 'mpi.6.nb.137', 'mpi.66.m.307', 'mpi.66.m.312', 'mpi.6.na.312', 'mpi.66.b.312', 'mpi.6.nb.312', 'mpi.66.m.322', 'mpi.1.l.020', 'mpi.2.l.020', 'mpi.1.l.050', 'mpi.1.l.110', 'mpi.1.l.180', 'mpi.2.l.180', 'mpi.3.l.180', 'mpi.1.l.230', 'mpi.1.l.320', 'mpi.66.m.020', 'mpi.66.m.067', 'mpi.66.m.097', 'mpi.66.m.127', 'mpi.66.m.132', 'mpi.66.m.137', 'mpi.66.m.157', 'mpi.66.m.200', 'mpi.66.m.247', 'mpi.66.m.277', 'mpi.66.m.307', 'mpi.66.m.312', 'mpi.66.m.322', 'mpi.66.m.340', 'mpi.67.a.022', 'mpi.67.a.037', 'mpi.67.a.1', 'mpi.67.a.052', 'mpi.67.a.067', 'mpi.67.a.082', 'mpi.67.a.097', 'mpi.67.a.2', 'mpi.67.a.142', 'mpi.67.a.157', 'mpi.67.a.3', 'mpi.67.a.217', 'mpi.67.a.4', 'mpi.67.a.262', 'mpi.67.a.277', 'mpi.67.a.5', 'mpi.67.a.307', 'mpi.67.a.337', 'mpi.67.a.6', 'mpi.67.b.022', 'mpi.67.b.037', 'mpi.67.b.1', 'mpi.67.b.052', 'mpi.67.b.097', 'mpi.67.b.2', 'mpi.67.b.157', 'mpi.67.b.3', 'mpi.67.b.217', 'mpi.67.b.4', 'mpi.67.b.277', 'mpi.67.b.5', 'mpi.67.b.337', 'mpi.67.b.6', 'mpi.79.a.072', 'mpi.79.a.147', 'mpi.79.a.222', 'mpi.79.a.272', 'mpi.79.b.067', 'mpi.79.b.142', 'mpi.79.b.217', 'mpi.79.b.277', 'mpi.5.a.139', 'mpi.4.a.139', 'mpi.3.a.139', 'mpi.2.a.139', 'mpi.1.a.139', 'mpi.1.b.139', 'mpi.2.b.139', 'mpi.3.b.139', 'mpi.4.b.139', 'mpi.5.b.139', 'mpi.5.a.199', 'mpi.4.a.199', 'mpi.3.a.199', 'mpi.2.a.199', 'mpi.1.a.199', 'mpi.1.b.199', 'mpi.2.b.199', 'mpi.3.b.199', 'mpi.4.b.199', 'mpi.5.b.199', 'mpi.1.a.011', 'mpi.1.a.049', 'mpi.1.a.109', 'mpi.1.a.139', 'mpi.1.a.199', 'mpi.1.a.244', 'mpi.1.a.274', 'mpi.1.a.341', 'mpi.1.b.011', 'mpi.1.b.049', 'mpi.1.b.109', 'mpi.1.b.139', 'mpi.1.b.199', 'mpi.1.b.244', 'mpi.1.b.274', 'mpi.1.b.341', 'isl.66.m.017', 'isl.66.m.042', 'isl.66.m.072', 'isl.66.m.102', 'isl.66.m.132', 'isl.66.m.197', 'isl.66.m.252', 'isl.66.m.312', 'isl.67.a.017', 'isl.67.a.052', 'isl.67.a.072', 'isl.67.a.112', 'isl.67.a.132', 'isl.67.a.197', 'isl.67.a.252', 'isl.67.a.312', 'isl.67.b.017', 'isl.67.b.052', 'isl.67.b.072', 'isl.67.b.112', 'isl.67.b.132', 'isl.67.b.197', 'isl.67.b.252', 'isl.67.b.312', 'isl.79.a.072', 'isl.79.a.147', 'isl.79.a.222', 'isl.79.a.272', 'isl.79.b.067', 'isl.79.b.142', 'isl.79.b.217', 'isl.79.b.277', 'isl.5.a.139', 'isl.4.a.139', 'isl.3.a.139', 'isl.2.a.139', 'isl.1.a.139', 'isl.1.b.139', 'isl.2.b.139', 'isl.3.b.139', 'isl.4.b.139', 'isl.5.b.139', 'isl.5.a.199', 'isl.4.a.199', 'isl.3.a.199', 'isl.2.a.199', 'isl.1.a.199', 'isl.1.b.199', 'isl.2.b.199', 'isl.3.b.199', 'isl.4.b.199', 'isl.5.b.199', 'isl.1.a.011', 'isl.1.a.049', 'isl.1.a.109', 'isl.1.a.139', 'isl.1.a.199', 'isl.1.a.244', 'isl.1.a.274', 'isl.1.a.341', 'isl.1.b.011', 'isl.1.b.049', 'isl.1.b.109', 'isl.1.b.139', 'isl.1.b.199', 'isl.1.b.244', 'isl.1.b.274', 'isl.1.b.341', 'dsl.12.a.067', 'dsl.34.a.067', 'dsl.59.a.067', 'dsl.79.a.067', 'dsl.67.a.067', 'dsl.66.m.052', 'dsl.67.b.067', 'dsl.79.b.067', 'dsl.59.b.067', 'dsl.34.b.067', 'dsl.12.b.067', 'dsl.12.a.157', 'dsl.34.a.157', 'dsl.59.a.157', 'dsl.79.a.157', 'dsl.67.a.157', 'dsl.66.m.152', 'dsl.67.b.157', 'dsl.79.b.157', 'dsl.59.b.157', 'dsl.34.b.157', 'dsl.12.b.157', 'dsl.67.a.067', 'dsl.67.a.157', 'sl.67.fa.345', 'sl.67.na.345', 'dsl.66.m.052', 'sl.66.a.132', 'sl.66.b.132', 'dsl.66.m.152', 'sl.66.a.312', 'sl.66.b.312', 'sl.67.nb.015', 'sl.67.fb.015', 'dsl.67.b.067', 'dsl.67.b.157', 'esl.66.m.019', 'esl.019..', 'esl.66.m.079', 'esl.079..', 'esl.66.m.139', 'esl.139..', 'esl.66.m.199', 'esl.199..', 'esl.66.m.259', 'esl.259..', 'esl.66.m.319', 'esl.319..', 'esl.67.a.004', 'esl.67.a.034', 'esl.67.a.064', 'esl.67.a.094', 'esl.67.a.124', 'esl.67.a.154', 'esl.67.a.184', 'esl.67.a.214', 'esl.67.a.244', 'esl.67.a.274', 'esl.67.a.304', 'esl.67.a.334', 'esl.67.b.004', 'esl.67.b.034', 'esl.67.b.064', 'esl.67.b.094', 'esl.67.b.124', 'esl.67.b.154', 'esl.67.b.184', 'esl.67.b.214', 'esl.67.b.244', 'esl.67.b.274', 'esl.67.b.304', 'esl.67.b.334', 'bti.66.m.053', 'bti.66.m.132', 'bti.66.m.233', 'bti.66.m.312', 'psf.1.a.', 'psf.1.a.', 'psf.1.a.', 'psf.1.a.', 'psf.6.natotl.', 'psf.6.na.', 'psi.11.mtotl.', 'psi.11.m.', 'psi.6.atotl.', 'psi.6.a.', 'psf.1.a.', 'psf.6.natotl.', 'psi.11.mtotl.', 'psi.6.atotl.', 'psf.2.a.', 'psf.3.a.', 'psf.4.a.', 'psf.5.a.', 'psf.8.a.', 'psf.9.a.', 'psf.7.fa.', 'psf.7.na.', 'psf.6.fa.', 'psf.6.na.', 'psf.6.nb.', 'psf.6.fb.', 'psf.7.nb.', 'psf.7.fb.', 'psf.9.b.', 'psf.8.b.', 'psf.5.b.', 'psf.4.b.', 'psf.3.b.', 'psf.2.b.', 'psf.1.b.', 'psi.11.m.', 'psi.12.a.', 'psi.23.a.', 'psi.34.a.', 'psi.45.a.', 'psi.58.a.', 'psi.9.a.', 'psi.7.a.', 'psi.6.a.', 'psi.6.b.', 'psi.7.b.', 'psi.9.b.', 'psi.89.nb.', 'psi.89.fb.', 'psi.58.b.', 'psi.45.b.', 'psi.34.b.', 'psi.23.b.', 'psi.12.b.', 'psi.1.l.', 'psi.2.l.', 'psi.3.l.', 'mpi.1.b.', 'mpi.66.m.020', 'mpi.66.m.097', 'mpi.66.m.020', 'mpi.66.m.097', 'mpi.66.m.067', 'mpi.66.m.247', 'mpi.66.m.097', 'mpi.66.m.277', 'mpi.66.m.127', 'mpi.66.m.307', 'mpi.66.m.157', 'mpi.66.m.340', 'mpi.66.m.200', 'mpi.66.m.020', 'mpi.66.m.247', 'mpi.66.m.127', 'mpi.66.m.277', 'mpi.66.m.157', 'mpi.66.m.307', 'mpi.66.m.200', 'mpi.66.m.340', 'mpi.66.m.067', 'mpi.67.a.022', 'mpi.67.a.217', 'mpi.67.a.037', 'mpi.67.a.067', 'mpi.67.a.052', 'mpi.67.a.022', 'mpi.67.a.067', 'mpi.67.a.262', 'mpi.67.a.082', 'mpi.67.a.052', 'mpi.67.a.097', 'mpi.67.a.082', 'mpi.67.a.142', 'mpi.67.a.037', 'mpi.67.a.217', 'mpi.67.a.097', 'mpi.67.a.262', 'mpi.67.a.277', 'mpi.67.a.277', 'mpi.67.a.307', 'mpi.67.a.307', 'mpi.67.a.337', 'mpi.67.a.337', 'mpi.67.a.142', 'mpi.67.b.022', 'mpi.67.b.052', 'mpi.67.b.037', 'mpi.67.b.217', 'mpi.67.b.052', 'mpi.67.b.037', 'mpi.67.b.097', 'mpi.67.b.277', 'mpi.67.b.157', 'mpi.67.b.337', 'mpi.67.b.217', 'mpi.67.b.097', 'mpi.67.b.277', 'mpi.67.b.157', 'mpi.67.b.337', 'mpi.67.b.022', 'mpi.79.a.072', 'mpi.79.a.222', 'mpi.79.a.147', 'mpi.79.a.072', 'mpi.79.a.222', 'mpi.79.a.272', 'mpi.79.a.272', 'mpi.79.a.147', 'mpi.79.b.067', 'mpi.79.b.217', 'mpi.79.b.142', 'mpi.79.b.067', 'mpi.79.b.217', 'mpi.79.b.277', 'mpi.79.b.277', 'mpi.79.b.142', 'mpi.1.a.011', 'mpi.1.a.199', 'mpi.1.a.049', 'mpi.1.a.244', 'mpi.1.a.109', 'mpi.1.a.011', 'mpi.1.a.139', 'mpi.1.a.341', 'mpi.1.a.199', 'mpi.1.a.139', 'mpi.1.a.244', 'mpi.1.a.274', 'mpi.1.a.274', 'mpi.1.a.109', 'mpi.1.a.341', 'mpi.1.a.049', 'mpi.1.b.011', 'mpi.1.b.199', 'mpi.1.b.049', 'mpi.1.b.244', 'mpi.1.b.109', 'mpi.1.b.011', 'mpi.1.b.139', 'mpi.1.b.341', 'mpi.1.b.199', 'mpi.1.b.139', 'mpi.1.b.244', 'mpi.1.b.274', 'mpi.1.b.274', 'mpi.1.b.109', 'mpi.1.b.341', 'mpi.1.b.049', 'mpi.5.a.199', 'mpi.5.a.139', 'mpi.4.a.199', 'mpi.4.a.139', 'mpi.3.a.199', 'mpi.3.a.139', 'mpi.2.a.199', 'mpi.2.a.139', 'mpi.1.a.199', 'mpi.1.a.139', 'mpi.1.b.199', 'mpi.1.b.139', 'mpi.2.b.199', 'mpi.2.b.139', 'mpi.3.b.199', 'mpi.3.b.139', 'mpi.4.b.199', 'mpi.4.b.139', 'mpi.5.b.199', 'mpi.5.b.139', 'isl.66.m.017', 'isl.66.m.042', 'isl.66.m.042', 'isl.66.m.072', 'isl.66.m.072', 'isl.66.m.252', 'isl.66.m.102', 'isl.66.m.132', 'isl.66.m.132', 'isl.66.m.312', 'isl.66.m.197', 'isl.66.m.017', 'isl.66.m.252', 'isl.66.m.102', 'isl.66.m.312', 'isl.66.m.197', 'isl.67.a.017', 'isl.67.a.052', 'isl.67.a.052', 'isl.67.a.072', 'isl.67.a.072', 'isl.67.a.252', 'isl.67.a.112', 'isl.67.a.132', 'isl.67.a.132', 'isl.67.a.312', 'isl.67.a.197', 'isl.67.a.017', 'isl.67.a.252', 'isl.67.a.112', 'isl.67.a.312', 'isl.67.a.197', 'isl.67.b.017', 'isl.67.b.052', 'isl.67.b.052', 'isl.67.b.072', 'isl.67.b.072', 'isl.67.b.252', 'isl.67.b.112', 'isl.67.b.132', 'isl.67.b.132', 'isl.67.b.312', 'isl.67.b.197', 'isl.67.b.017', 'isl.67.b.252', 'isl.67.b.112', 'isl.67.b.312', 'isl.67.b.197', 'isl.79.a.072', 'isl.79.a.222', 'isl.79.a.147', 'isl.79.a.072', 'isl.79.a.222', 'isl.79.a.272', 'isl.79.a.272', 'isl.79.a.147', 'isl.79.b.067', 'isl.79.b.217', 'isl.79.b.142', 'isl.79.b.067', 'isl.79.b.217', 'isl.79.b.277', 'isl.79.b.277', 'isl.79.b.142', 'isl.1.a.011', 'isl.1.a.199', 'isl.1.a.049', 'isl.1.a.244', 'isl.1.a.109', 'isl.1.a.011', 'isl.1.a.139', 'isl.1.a.341', 'isl.1.a.199', 'isl.1.a.139', 'isl.1.a.244', 'isl.1.a.274', 'isl.1.a.274', 'isl.1.a.109', 'isl.1.a.341', 'isl.1.a.049', 'isl.1.b.011', 'isl.1.b.199', 'isl.1.b.049', 'isl.1.b.244', 'isl.1.b.109', 'isl.1.b.011', 'isl.1.b.139', 'isl.1.b.341', 'isl.1.b.199', 'isl.1.b.139', 'isl.1.b.244', 'isl.1.b.274', 'isl.1.b.274', 'isl.1.b.109', 'isl.1.b.341', 'isl.1.b.049', 'isl.5.a.199', 'isl.5.a.139', 'isl.4.a.199', 'isl.4.a.139', 'isl.3.a.199', 'isl.3.a.139', 'isl.2.a.199', 'isl.2.a.139', 'isl.1.a.199', 'isl.1.a.139', 'isl.1.b.199', 'isl.1.b.139', 'isl.2.b.199', 'isl.2.b.139', 'isl.3.b.199', 'isl.3.b.139', 'isl.4.b.199', 'isl.4.b.139', 'isl.5.b.199', 'isl.5.b.139', 'esl.66.m.019', 'esl.66.m.079', 'esl.66.m.079', 'esl.66.m.259', 'esl.66.m.139', 'esl.66.m.319', 'esl.66.m.199', 'esl.66.m.019', 'esl.66.m.259', 'esl.66.m.139', 'esl.66.m.319', 'esl.66.m.199', 'esl.66.m.079', 'esl.66.m.259', 'esl.66.m.139', 'esl.66.m.319', 'esl.66.m.199', 'esl.66.m.019', 'esl.67.a.004', 'esl.67.a.244', 'esl.67.a.034', 'esl.67.a.154', 'esl.67.a.064', 'esl.67.a.184', 'esl.67.a.094', 'esl.67.a.274', 'esl.67.a.124', 'esl.67.a.304', 'esl.67.a.154', 'esl.67.a.334', 'esl.67.a.184', 'esl.67.a.004', 'esl.67.a.214', 'esl.67.a.094', 'esl.67.a.244', 'esl.67.a.124', 'esl.67.a.274', 'esl.67.a.034', 'esl.67.a.304', 'esl.67.a.064', 'esl.67.a.334', 'esl.67.a.214', 'esl.67.b.004', 'esl.67.b.244', 'esl.67.b.034', 'esl.67.b.154', 'esl.67.b.064', 'esl.67.b.184', 'esl.67.b.094', 'esl.67.b.274', 'esl.67.b.124', 'esl.67.b.304', 'esl.67.b.154', 'esl.67.b.334', 'esl.67.b.184', 'esl.67.b.004', 'esl.67.b.214', 'esl.67.b.094', 'esl.67.b.244', 'esl.67.b.124', 'esl.67.b.274', 'esl.67.b.034', 'esl.67.b.304', 'esl.67.b.064', 'esl.67.b.334', 'esl.67.b.214', 'bti.66.m.053', 'bti.66.m.233', 'bti.66.m.132', 'bti.66.m.053', 'bti.66.m.233', 'bti.66.m.312', 'bti.66.m.312', 'bti.66.m.132', 'mpi.2.a.067', 'mpi.1.u.157', 'isl.79.a.']
 
@@ -236,6 +171,16 @@ def signal_gen(diag_name='zipfit', sig_names_custom=[''], names_custom=[''],
             name = r'\TECE%02d'%chan
             signals.append(MdsSignal(name, 'ECE', location='remote://atlas.gat.com'))
             names.append(r'%02d'%chan)
+
+    elif diag_name=='co2_s':
+        chords = ['r0', 'v1', 'v2', 'v3']
+
+        
+        for chord in chords:
+            name = r'\den{}'.format(chord)
+            signals.append(MdsSignal(name, 'BCI', location='remote://atlas.gat.com'))
+            names.append(f'{chord}')
+
 
     elif diag_name=='co2_den':
         nums = range(1,15)
@@ -293,7 +238,7 @@ def signal_gen(diag_name='zipfit', sig_names_custom=[''], names_custom=[''],
 
                 names.append(r'{}.{}'.format(thomson_mds_area,thomson_sig_name))
 
-    elif diag_name=='ts_error':
+    elif diag_name=='TS_ERROR':
         #thomson_mds_scale={'density': 1e19, 'temp': 1e3}
         thomson_mds_areas=['core','divertor','tangential']
         thomson_sig_names= ['DENSITY_E', 'TEMP_E']
@@ -353,7 +298,7 @@ def signal_gen(diag_name='zipfit', sig_names_custom=[''], names_custom=[''],
 
         sig_names=[r'\cerq{}{}'.format(output, channel) for channel in channels 
                                                         for output in outputs]
-        names=[r'q.{}.{}'.format(output, channel) for channel in name_channels 
+        names=[r'cer.{}.{}'.format(output, channel) for channel in name_channels 
                                                         for output in outputs]
 
         treename='ions'
@@ -375,7 +320,7 @@ def signal_gen(diag_name='zipfit', sig_names_custom=[''], names_custom=[''],
 def fetch_ece_2d_array_data(path, shots, diag_name):
     names, signals = signal_gen(diag_name)
 
-    for n,shot in enumerate(shots):
+    for n,shot in tqdm(enumerate(shots)):
         if shot>=start_shot:
             start = time.time()
             pipeline = Pipeline([shot])
@@ -394,9 +339,13 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
                 data_h5['zunits']=shot_data[names[0]]['units']['data']
                 data_tmp=[]
                 for name in names:
-                    if len(shot_data[name]['data'])<=10:
+                    try :
+                        len_tmp=len(shot_data[name]['data'])
+                        if len_tmp<10:
+                            break
+                    except:
                         break
-                    print(len(shot_data[name]['data']))
+                    #print(len(shot_data[name]['data']))
                     data_tmp.append(shot_data[name]['data'][:len(data_h5['xdata'])])
                 
                 data_tmp=np.array(data_tmp,dtype='float')
@@ -420,8 +369,6 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
             with h5py.File(f'{path}{shot}_{diag_name}.h5', 'w') as h5file:
                 save_dict_to_hdf5(data_h5, h5file)
 
-        if 1==0:
-            pass
         if n % interval == 0:
             size_limiter_sleep(size_GB=size_GB)
             print(f'shot={shot}')
@@ -434,9 +381,9 @@ def fetch_single_data(path, shots, diag_name):
     if not os.path.isdir(path):
         os.makedirs(path)
 
-    for n,shot in enumerate(shots):
+    for n,shot in tqdm(enumerate(shots)):
         if shot>=start_shot:
-            try:
+            if 1==1:
                 start = time.time()
                 pipeline = Pipeline([shot])
 
@@ -502,7 +449,7 @@ def fetch_single_data(path, shots, diag_name):
                             else:
                                 group.create_dataset(subkey, data=value)
 
-            except:
+            if 1==2:
                 pass
             if n % interval == 0:
                 size_limiter_sleep(size_GB=size_GB)
@@ -513,7 +460,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
     chords=['r0', 'v1', 'v2', 'v3']
     nums = range(1,15)
     names, signals = signal_gen(diag_name)
-    for n,shot in enumerate(shots):
+    for n,shot in tqdm(enumerate(shots)):
         if shot>=start_shot:
             try:
                 start = time.time()
