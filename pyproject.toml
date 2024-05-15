@@ -4,6 +4,7 @@ version = "0.0.1"
 authors = [
     {name="Peter Steiner", email="peter.steiner@princeton.edu"},
     {name="Max Tian Curie", email="max.curie@princeton.edu"},
+    {name="Nathaniel Chen", email="nathaniel@princeton.edu"},
     {name="Azarakhsh Jalalvand", email="azarakhsh.jalalvand@princeton.edu"}
 ]
 description = "FusionAIHub - Fetch nuclear fusion data, preprocess it, and use it for training machine learning models."
@@ -16,7 +17,8 @@ classifiers = [
 ]
 license = {file = "LICENSE"}
 dependencies = [
-    "h5py", "numpy", "pandas", "matplotlib", "scipy", "tqdm", "opencv-python"
+    "h5py", "numpy", "pandas", "matplotlib", "scipy", "tqdm", "opencv-python",
+    "paramiko"
 ]
 
 [project.urls]
@@ -25,4 +27,3 @@ Documentation = "https://readthedocs.org"
 Repository = "https://github.com/PlasmaControl/FusionAIHub"
 Issues = "https://github.com/PlasmaControl/FusionAIHub/issues"
 Changelog = "https://github.com"
-
