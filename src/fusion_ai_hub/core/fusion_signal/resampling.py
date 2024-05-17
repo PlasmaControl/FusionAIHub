@@ -49,17 +49,6 @@ def resample(y: np.ndarray, *, orig_fs: float, target_fs: float,
     -------
     y_hat : np.ndarray [shape=(..., n * target_sr / orig_sr, ...)]
         ``y`` resampled from ``orig_sr`` to ``target_sr`` along the target axis
-
-    Raises
-    ------
-    ValueError
-        If ``res_type='polyphase'`` and ``orig_sr`` or ``target_sr`` are not
-        both integer-valued.
-
-    See Also
-    --------
-    librosa.util.fix_length
-    scipy.signal.resample
     """
     if orig_fs == target_fs:
         return y
