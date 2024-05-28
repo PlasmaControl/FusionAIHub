@@ -585,921 +585,921 @@ class DichargePerp():
         self.norm_factor_list=norm_factor_list
         self.file_normal_size=file_normal_size
 
-    @staticmethod
-    def file_path_gen(discharge, suffix):
-        return (f'/scratch/gpfs/EKOLEMEN/big_d3d_data/{str(discharge)[:2]}0000/{discharge}_{suffix}.h5')
+    # @staticmethod
+    # def file_path_gen(discharge, suffix):
+    #     return (f'/scratch/gpfs/EKOLEMEN/big_d3d_data/{str(discharge)[:2]}0000/{discharge}_{suffix}.h5')
 
-    def hdf5_to_dict(self, group):
-        result = {}
-        for key in group.keys():
-            if isinstance(group[key], h5py.Dataset):
-                result[key] = group[key][()]
-            elif isinstance(group[key], h5py.Group):
-                result[key] = self.hdf5_to_dict(group[key])
-        return result
+    # def hdf5_to_dict(self, group):
+    #     result = {}
+    #     for key in group.keys():
+    #         if isinstance(group[key], h5py.Dataset):
+    #             result[key] = group[key][()]
+    #         elif isinstance(group[key], h5py.Group):
+    #             result[key] = self.hdf5_to_dict(group[key])
+    #     return result
 
-    def order_of_magnitude_normal_factor_calc(self,discharge):
-        norm_factor_list_tmp={}
-        for suffix in self.file_keys.keys():
-            file_dict=self.get_data(discharge, suffix, norm=False)
-            norm_factor_list_tmp[suffix]={}
-            for key in file_dict.keys():
-                mean_tmp=abs(np.mean(file_dict[key]['zdata'][:]))
-                try:
-                    exponent=self.get_order_of_magnitude(mean_tmp)
-                    norm_factor_list_tmp[suffix][key]=10**exponent
-                except:
-                    norm_factor_list_tmp[suffix][key]=1.
-        return norm_factor_list_tmp
+    # def order_of_magnitude_normal_factor_calc(self,discharge):
+    #     norm_factor_list_tmp={}
+    #     for suffix in self.file_keys.keys():
+    #         file_dict=self.get_data(discharge, suffix, norm=False)
+    #         norm_factor_list_tmp[suffix]={}
+    #         for key in file_dict.keys():
+    #             mean_tmp=abs(np.mean(file_dict[key]['zdata'][:]))
+    #             try:
+    #                 exponent=self.get_order_of_magnitude(mean_tmp)
+    #                 norm_factor_list_tmp[suffix][key]=10**exponent
+    #             except:
+    #                 norm_factor_list_tmp[suffix][key]=1.
+    #     return norm_factor_list_tmp
 
-    def avg_factor_calc(self,discharge):
-        avg_factor={}
-        for suffix in self.file_keys.keys():
-            file_dict=self.get_data(discharge, suffix, norm=True)
-            avg_factor[suffix]={}
-            for key in file_dict.keys():
-                data=file_dict[key]['zdata'][:]
-                avg_tmp=np.mean(data,axis=len(data.shape)-1)
-                if np.isnan(avg_tmp).any():
-                    avg_tmp=0.
+    # def avg_factor_calc(self,discharge):
+    #     avg_factor={}
+    #     for suffix in self.file_keys.keys():
+    #         file_dict=self.get_data(discharge, suffix, norm=True)
+    #         avg_factor[suffix]={}
+    #         for key in file_dict.keys():
+    #             data=file_dict[key]['zdata'][:]
+    #             avg_tmp=np.mean(data,axis=len(data.shape)-1)
+    #             if np.isnan(avg_tmp).any():
+    #                 avg_tmp=0.
 
-                avg_factor[suffix][key]=avg_tmp
+    #             avg_factor[suffix][key]=avg_tmp
 
-        return avg_factor
+    #     return avg_factor
 
-    def std_factor_calc(self,discharge):
-        std_factor={}
-        for suffix in self.file_keys.keys():
-            file_dict=self.get_data(discharge, suffix, norm=True)
-            std_factor[suffix]={}
-            for key in file_dict.keys():
-                data=file_dict[key]['zdata'][:]
-                std_tmp=np.std(data,axis=len(data.shape)-1)
-                if np.isnan(std_tmp).any():
-                    std_tmp=1.
-                std_factor[suffix][key]=std_tmp
+    # def std_factor_calc(self,discharge):
+    #     std_factor={}
+    #     for suffix in self.file_keys.keys():
+    #         file_dict=self.get_data(discharge, suffix, norm=True)
+    #         std_factor[suffix]={}
+    #         for key in file_dict.keys():
+    #             data=file_dict[key]['zdata'][:]
+    #             std_tmp=np.std(data,axis=len(data.shape)-1)
+    #             if np.isnan(std_tmp).any():
+    #                 std_tmp=1.
+    #             std_factor[suffix][key]=std_tmp
 
-        return std_factor
+    #     return std_factor
     #all: apply tha same avg and mean to all the data
     #individual:apply tha individual avg and individual mean to the individual data row
     #std_all_avg_individual: apply tha individual avg to the individual data row, but apply the same std to the group
     #mode=[all,individual,std_all_avg_individual]
-    @staticmethod
-    def norm_data(data,avg_,std_,mode='all'):
-        avg_=np.array(avg_)
-        std_=np.array(std_)
-        if mode == 'all':
-            std_all=(np.mean(std_**2))**0.5
-            avg_all=np.mean(avg_)
-        elif mode=='std_all_avg_individual':
-            std_all=(np.mean(std_**2))**0.5
-            avg_all=np.expand_dims(avg_,axis=1)
+    # @staticmethod
+    # def norm_data(data,avg_,std_,mode='all'):
+    #     avg_=np.array(avg_)
+    #     std_=np.array(std_)
+    #     if mode == 'all':
+    #         std_all=(np.mean(std_**2))**0.5
+    #         avg_all=np.mean(avg_)
+    #     elif mode=='std_all_avg_individual':
+    #         std_all=(np.mean(std_**2))**0.5
+    #         avg_all=np.expand_dims(avg_,axis=1)
 
-        elif mode=='individual':
-            std_all=np.expand_dims(avg_,axis=1)
-            avg_all=np.expand_dims(avg_,axis=1)
+    #     elif mode=='individual':
+    #         std_all=np.expand_dims(avg_,axis=1)
+    #         avg_all=np.expand_dims(avg_,axis=1)
 
 
-        data_norm=(data-avg_all)/std_all
+    #     data_norm=(data-avg_all)/std_all
 
-        return data_norm
+    #     return data_norm
 
-    def get_data(self,discharge, suffix, norm=True):
-        discharge_path=self.file_path_gen(discharge, suffix)
-        input_file = h5py.File(discharge_path, 'r')
-        input_dict_tmp = self.hdf5_to_dict(input_file)
-        if suffix in no_level:
-            input_dict={suffix:input_dict_tmp}
-        else:
-            input_dict=input_dict_tmp
+    # def get_data(self,discharge, suffix, norm=True):
+    #     discharge_path=self.file_path_gen(discharge, suffix)
+    #     input_file = h5py.File(discharge_path, 'r')
+    #     input_dict_tmp = self.hdf5_to_dict(input_file)
+    #     if suffix in no_level:
+    #         input_dict={suffix:input_dict_tmp}
+    #     else:
+    #         input_dict=input_dict_tmp
 
-        if norm and (suffix in self.norm_factor_list):
-            for key in input_dict.keys():
-                if self.norm_factor_list[suffix][key]=='log':
-                    input_dict[key]['zdata']=np.log(np.array(input_dict[key]['zdata'][:]))
-                else:
-                    input_dict[key]['zdata']=np.array(input_dict[key]['zdata'][:])/self.norm_factor_list[suffix][key]
+    #     if norm and (suffix in self.norm_factor_list):
+    #         for key in input_dict.keys():
+    #             if self.norm_factor_list[suffix][key]=='log':
+    #                 input_dict[key]['zdata']=np.log(np.array(input_dict[key]['zdata'][:]))
+    #             else:
+    #                 input_dict[key]['zdata']=np.array(input_dict[key]['zdata'][:])/self.norm_factor_list[suffix][key]
         
-        return input_dict
+    #     return input_dict
 
     # divide the data into subcategory
-    def data_division(self, input_file, input_suffix):
-        if input_suffix in multi_level:
-            input_multi_level = {}
-            for key in file_keys[input_suffix].keys():
-                keys_of_this_category = file_keys[input_suffix][key]
-                input_multi_level[key] = {key_i: input_file[key_i]
-                                          for key_i in keys_of_this_category}
-        else:
-            input_multi_level = {input_suffix: input_file}
-        return input_multi_level
+    # def data_division(self, input_file, input_suffix):
+    #     if input_suffix in multi_level:
+    #         input_multi_level = {}
+    #         for key in file_keys[input_suffix].keys():
+    #             keys_of_this_category = file_keys[input_suffix][key]
+    #             input_multi_level[key] = {key_i: input_file[key_i]
+    #                                       for key_i in keys_of_this_category}
+    #     else:
+    #         input_multi_level = {input_suffix: input_file}
+    #     return input_multi_level
 
 
     #norm_mode=[no, all,individual,std_all_avg_individual] 
     #no, means no normalizations
-    def get_full_data(self, discharge, suffix_list, norm_mode='all'):
-        all_file_dict = {}
-        for suffix in suffix_list:
-            file_dict=self.get_data(discharge, suffix, norm=True)
-            all_file_dict[suffix]={}
-            for key in file_dict.keys():
-                if norm_mode=='no':
-                    all_file_dict[suffix][key]={'xdata':file_dict[key]['xdata'][:],\
-                                                'zdata':file_dict[key]['zdata'][:]}
-                else:   
-                    all_file_dict[suffix][key]={'xdata':file_dict[key]['xdata'][:],\
-                                            'zdata':self.norm_data(file_dict[key]['zdata'][:],\
-                                                      self.std_list[suffix][key],
-                                                      self.avg_list[suffix][key],\
-                                                      mode=norm_mode)}
-        return all_file_dict
+    # def get_full_data(self, discharge, suffix_list, norm_mode='all'):
+    #     all_file_dict = {}
+    #     for suffix in suffix_list:
+    #         file_dict=self.get_data(discharge, suffix, norm=True)
+    #         all_file_dict[suffix]={}
+    #         for key in file_dict.keys():
+    #             if norm_mode=='no':
+    #                 all_file_dict[suffix][key]={'xdata':file_dict[key]['xdata'][:],\
+    #                                             'zdata':file_dict[key]['zdata'][:]}
+    #             else:   
+    #                 all_file_dict[suffix][key]={'xdata':file_dict[key]['xdata'][:],\
+    #                                         'zdata':self.norm_data(file_dict[key]['zdata'][:],\
+    #                                                   self.std_list[suffix][key],
+    #                                                   self.avg_list[suffix][key],\
+    #                                                   mode=norm_mode)}
+    #     return all_file_dict
 
 
-    @staticmethod
-    def get_order_of_magnitude(num):
-        exponent = int(np.log10(abs(num)))
-        return exponent
+    # @staticmethod
+    # def get_order_of_magnitude(num):
+    #     exponent = int(np.log10(abs(num)))
+    #     return exponent
 
-    @staticmethod
-    def spec_filters(freq, time, amp_f_t, spec_params=spec_params_default,thr=0.9, gaussblr_win=(31, 3)):
-        def norm(amp_f_t):
-            mn = amp_f_t.mean()
-            std = amp_f_t.std()
-            return (amp_f_t-mn) / std
+    # @staticmethod
+    # def spec_filters(freq, time, amp_f_t, spec_params=spec_params_default,thr=0.9, gaussblr_win=(31, 3)):
+    #     def norm(amp_f_t):
+    #         mn = amp_f_t.mean()
+    #         std = amp_f_t.std()
+    #         return (amp_f_t-mn) / std
         
-        def rescale(amp_f_t):
-            return (amp_f_t-amp_f_t.min())/(amp_f_t.max()-amp_f_t.min())
+    #     def rescale(amp_f_t):
+    #         return (amp_f_t-amp_f_t.min())/(amp_f_t.max()-amp_f_t.min())
         
-        def quantfilt(amp_f_t, thr=0.9):
-            filt = np.quantile(amp_f_t, thr, axis=0)
-            out = np.where(amp_f_t < filt, 0, amp_f_t)
-            return out
+    #     def quantfilt(amp_f_t, thr=0.9):
+    #         filt = np.quantile(amp_f_t, thr, axis=0)
+    #         out = np.where(amp_f_t < filt, 0, amp_f_t)
+    #         return out
         
-        # gaussian filtering
-        def gaussblr(amp_f_t, filt=(31, 3)):
-            amp_f_t = (rescale(amp_f_t)*255).astype('uint8')
-            out = cv2.GaussianBlur(amp_f_t,filt,0)
-            return rescale(out)
+    #     # gaussian filtering
+    #     def gaussblr(amp_f_t, filt=(31, 3)):
+    #         amp_f_t = (rescale(amp_f_t)*255).astype('uint8')
+    #         out = cv2.GaussianBlur(amp_f_t,filt,0)
+    #         return rescale(out)
         
-        # mean filtering
-        def meansub(amp_f_t):
-            mn = np.mean(amp_f_t, axis=1)[:, np.newaxis]
-            out = np.absolute(amp_f_t - mn)
-            return rescale(out)
+    #     # mean filtering
+    #     def meansub(amp_f_t):
+    #         mn = np.mean(amp_f_t, axis=1)[:, np.newaxis]
+    #         out = np.absolute(amp_f_t - mn)
+    #         return rescale(out)
         
-        # morphological filtering
-        def morph(amp_f_t):
-            amp_f_t = (rescale(amp_f_t)*255).astype('uint8')
-            se1 = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
-            se2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
-            mask = cv2.morphologyEx(amp_f_t, cv2.MORPH_CLOSE, se1)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, se2)
-            return rescale(mask)
+    #     # morphological filtering
+    #     def morph(amp_f_t):
+    #         amp_f_t = (rescale(amp_f_t)*255).astype('uint8')
+    #         se1 = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
+    #         se2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
+    #         mask = cv2.morphologyEx(amp_f_t, cv2.MORPH_CLOSE, se1)
+    #         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, se2)
+    #         return rescale(mask)
         
-        def apply_all(freq, time, amp_f_t, spec_params, thr=thr,
-                      gaussblr_win=gaussblr_win):
+    #     def apply_all(freq, time, amp_f_t, spec_params, thr=thr,
+    #                   gaussblr_win=gaussblr_win):
             
-            Sxx = np.log(amp_f_t + spec_params['eps'])
-            # rescale the pixels to (0,1)
-            Sxx = (Sxx-np.min(Sxx))/(np.max(Sxx)-np.min(Sxx))
+    #         Sxx = np.log(amp_f_t + spec_params['eps'])
+    #         # rescale the pixels to (0,1)
+    #         Sxx = (Sxx-np.min(Sxx))/(np.max(Sxx)-np.min(Sxx))
             
-            Sxx_enhanced = quantfilt(Sxx, thr)
-            Sxx_enhanced = gaussblr(Sxx_enhanced, gaussblr_win)
-            Sxx_enhanced = meansub(Sxx_enhanced)
-            Sxx_enhanced = morph(Sxx_enhanced)
-            Sxx_enhanced = meansub(Sxx_enhanced)
+    #         Sxx_enhanced = quantfilt(Sxx, thr)
+    #         Sxx_enhanced = gaussblr(Sxx_enhanced, gaussblr_win)
+    #         Sxx_enhanced = meansub(Sxx_enhanced)
+    #         Sxx_enhanced = morph(Sxx_enhanced)
+    #         Sxx_enhanced = meansub(Sxx_enhanced)
             
-            return freq, time, Sxx_enhanced
+    #         return freq, time, Sxx_enhanced
 
-        return apply_all(freq, time, amp_f_t, spec_params, thr=thr,
-                         gaussblr_win=gaussblr_win)
+    #     return apply_all(freq, time, amp_f_t, spec_params, thr=thr,
+    #                      gaussblr_win=gaussblr_win)
 
-    @staticmethod
-    def spectro_calc(sig_time, data, spec_params=spec_params_default,plot=False):
-        spec_params['fs'] = 1./np.mean(sig_time[1:]-sig_time[:-1])
-        # default 1024
-        spec_params['nperseg'] = max(int(0.6*spec_params['fs']), 1)
-        # default: nperseg / 4
-        spec_params['noverlap'] = max(int(spec_params['nperseg']/4), 1)
-        print(spec_params)
+    # @staticmethod
+    # def spectro_calc(sig_time, data, spec_params=spec_params_default,plot=False):
+    #     spec_params['fs'] = 1./np.mean(sig_time[1:]-sig_time[:-1])
+    #     # default 1024
+    #     spec_params['nperseg'] = max(int(0.6*spec_params['fs']), 1)
+    #     # default: nperseg / 4
+    #     spec_params['noverlap'] = max(int(spec_params['nperseg']/4), 1)
+    #     print(spec_params)
         
-        freq, time, amp_f_t = signal.spectrogram(
-            data, nperseg=spec_params['nperseg'],
-            noverlap=spec_params['noverlap'], fs=spec_params['fs'],
-            window=spec_params['window'], scaling=spec_params['scaling'],
-            detrend=spec_params['detrend'])
-        if plot:
-            plt.clf()
-            plt.imshow(amp_f_t.T,aspect='auto',cmap='hot',
-                       extent=[time[0], time[-1], freq[-1], freq[0]])
-            plt.colorbar()
-            plt.ylabel('kHz')
-            plt.xlabel('ms')
-            plt.gca().invert_yaxis()
-            plt.show()
-        return freq, time, amp_f_t
+    #     freq, time, amp_f_t = signal.spectrogram(
+    #         data, nperseg=spec_params['nperseg'],
+    #         noverlap=spec_params['noverlap'], fs=spec_params['fs'],
+    #         window=spec_params['window'], scaling=spec_params['scaling'],
+    #         detrend=spec_params['detrend'])
+    #     if plot:
+    #         plt.clf()
+    #         plt.imshow(amp_f_t.T,aspect='auto',cmap='hot',
+    #                    extent=[time[0], time[-1], freq[-1], freq[0]])
+    #         plt.colorbar()
+    #         plt.ylabel('kHz')
+    #         plt.xlabel('ms')
+    #         plt.gca().invert_yaxis()
+    #         plt.show()
+    #     return freq, time, amp_f_t
         
-    @staticmethod
-    def spectro_plot(freq, time, amp_f_t):
-        plt.clf()
-        plt.imshow(amp_f_t,aspect='auto',cmap='hot',
-                   extent=[time[0], time[-1], freq[-1], freq[0]])
-        plt.colorbar()
-        plt.ylabel('kHz')
-        plt.xlabel('ms')
-        plt.gca().invert_yaxis()
-        plt.show()
+    # @staticmethod
+    # def spectro_plot(freq, time, amp_f_t):
+    #     plt.clf()
+    #     plt.imshow(amp_f_t,aspect='auto',cmap='hot',
+    #                extent=[time[0], time[-1], freq[-1], freq[0]])
+    #     plt.colorbar()
+    #     plt.ylabel('kHz')
+    #     plt.xlabel('ms')
+    #     plt.gca().invert_yaxis()
+    #     plt.show()
         
-    @staticmethod
-    def time_serie_plot(dict):
-        plt.clf()
-        if dict['zdata'][:].shape == 1:
-            plt.plot(dict['xdata'][:],dict['zdata'][:])
-        else:
-            plt.plot(dict['xdata'][:],dict['zdata'][:].T)
-        plt.xlabel('Time (ms)')
-        plt.show()
+    # @staticmethod
+    # def time_serie_plot(dict):
+    #     plt.clf()
+    #     if dict['zdata'][:].shape == 1:
+    #         plt.plot(dict['xdata'][:],dict['zdata'][:])
+    #     else:
+    #         plt.plot(dict['xdata'][:],dict['zdata'][:].T)
+    #     plt.xlabel('Time (ms)')
+    #     plt.show()
 
-    @staticmethod
-    def cut_time(time, data, t_min, t_max):
-        t_indx_min=np.argmin(abs(np.array(time)-t_min))
-        t_indx_max=np.argmin(abs(np.array(time)-t_max))
+    # @staticmethod
+    # def cut_time(time, data, t_min, t_max):
+    #     t_indx_min=np.argmin(abs(np.array(time)-t_min))
+    #     t_indx_max=np.argmin(abs(np.array(time)-t_max))
 
-        return time[t_indx_min:t_indx_max], data[...,t_indx_min:t_indx_max]
+    #     return time[t_indx_min:t_indx_max], data[...,t_indx_min:t_indx_max]
 
 
     # Function to get windowed data
-    @staticmethod
-    def get_windowed_data(df, center_index, window_size=5):
-        start = max(center_index - window_size, 0)
-        end = min(center_index + window_size + 1, len(df))
-        return df.iloc[start:end].drop(columns=['xdata'])
+    # @staticmethod
+    # def get_windowed_data(df, center_index, window_size=5):
+    #     start = max(center_index - window_size, 0)
+    #     end = min(center_index + window_size + 1, len(df))
+    #     return df.iloc[start:end].drop(columns=['xdata'])
 
-    @staticmethod
-    def time_matching_merge_asof_1d(time1, data1, time_std, left_window=0, right_window=0):
-        # Convert input arrays to DataFrames
-        df1 = pd.DataFrame({'time1': time1, 'data1': data1})
-        df2 = pd.DataFrame({'time_std': time_std})
+    # @staticmethod
+    # def time_matching_merge_asof_1d(time1, data1, time_std, left_window=0, right_window=0):
+    #     # Convert input arrays to DataFrames
+    #     df1 = pd.DataFrame({'time1': time1, 'data1': data1})
+    #     df2 = pd.DataFrame({'time_std': time_std})
         
-        # Sort the DataFrames by the time columns
-        df1.sort_values('time1', inplace=True)
-        df2.sort_values('time_std', inplace=True)
+    #     # Sort the DataFrames by the time columns
+    #     df1.sort_values('time1', inplace=True)
+    #     df2.sort_values('time_std', inplace=True)
         
-        # Perform the asof merge
-        merged_df = pd.merge_asof(df2, df1, left_on='time_std',
-                                  right_on='time1', direction='nearest')
+    #     # Perform the asof merge
+    #     merged_df = pd.merge_asof(df2, df1, left_on='time_std',
+    #                               right_on='time1', direction='nearest')
 
-        # Drop unnecessary columns and handle NaN values
-        merged_df.drop(columns='time_std', inplace=True)
-        merged_df.dropna(inplace=True)
+    #     # Drop unnecessary columns and handle NaN values
+    #     merged_df.drop(columns='time_std', inplace=True)
+    #     merged_df.dropna(inplace=True)
 
-        # Extract the matched time and data
-        matched_time = merged_df['time1'].values
-        matched_data = merged_df['data1'].values
+    #     # Extract the matched time and data
+    #     matched_time = merged_df['time1'].values
+    #     matched_data = merged_df['data1'].values
 
-        return matched_time, matched_data
+    #     return matched_time, matched_data
         
-    @staticmethod
-    def time_matching_merge_asof_2d(time1, data1, time_std,left_window=0, right_window=0):
-        # Create DataFrames
-        # Note: We assume time1 and time_std are already float arrays
-        # representing time in seconds
+    # @staticmethod
+    # def time_matching_merge_asof_2d(time1, data1, time_std,left_window=0, right_window=0):
+    #     # Create DataFrames
+    #     # Note: We assume time1 and time_std are already float arrays
+    #     # representing time in seconds
 
-        # Transpose data1 to align time as rows
-        df1 = pd.DataFrame(data1.T, index=time1)
-        df_std = pd.DataFrame(index=time_std)
+    #     # Transpose data1 to align time as rows
+    #     df1 = pd.DataFrame(data1.T, index=time1)
+    #     df_std = pd.DataFrame(index=time_std)
 
-        # Reset index to include time in the DataFrame directly for merging
-        df1 = df1.reset_index().rename(columns={'index': 'time1'})
-        df_std = df_std.reset_index().rename(columns={'index': 'time_std'})
+    #     # Reset index to include time in the DataFrame directly for merging
+    #     df1 = df1.reset_index().rename(columns={'index': 'time1'})
+    #     df_std = df_std.reset_index().rename(columns={'index': 'time_std'})
 
-        # Perform merge_asof to find the closest matches
-        merged = pd.merge_asof(df_std.sort_values('time_std'),
-                               df1.sort_values('time1'), left_on='time_std',
-                               right_on='time1', direction='nearest')
+    #     # Perform merge_asof to find the closest matches
+    #     merged = pd.merge_asof(df_std.sort_values('time_std'),
+    #                            df1.sort_values('time1'), left_on='time_std',
+    #                            right_on='time1', direction='nearest')
 
-        # Extract the aligned times (as float)
-        matched_time = merged['time1'].values
+    #     # Extract the aligned times (as float)
+    #     matched_time = merged['time1'].values
 
-        # Extract indices from the merged DataFrame
-        indices = merged['time1'].apply(
-            lambda x: np.where(df1['time1'] == x)[0][0]
-            if x in df1['time1'].values else -1).values
+    #     # Extract indices from the merged DataFrame
+    #     indices = merged['time1'].apply(
+    #         lambda x: np.where(df1['time1'] == x)[0][0]
+    #         if x in df1['time1'].values else -1).values
         
-        # Use indices to fetch data from the original 2D array,
-        # handle missing indices
-        matched_data = np.array([data1[:, int(idx)] if idx != -1
-                                 else np.full(data1.shape[0], np.nan)
-                                 for idx in indices]).T
+    #     # Use indices to fetch data from the original 2D array,
+    #     # handle missing indices
+    #     matched_data = np.array([data1[:, int(idx)] if idx != -1
+    #                              else np.full(data1.shape[0], np.nan)
+    #                              for idx in indices]).T
 
-        return matched_time, matched_data
+    #     return matched_time, matched_data
         
-    @staticmethod
-    def time_matching_binary_search(time1, data1, time_std, left_window=0, right_window=0):
-        # Function to find the closest time in time1 to each time in time_std
-        def find_closest(target):
-            # Binary search for the closest timestamp
-            low, high = 0, len(time1) - 1
-            best_idx = low
-            while low <= high:
-                mid = (low + high) // 2
-                if time1[mid] < target:
-                    low = mid + 1
-                elif time1[mid] > target:
-                    high = mid - 1
-                else:
-                    return mid
-                # Update the best index if the current mid is closer to the
-                # target
-                if abs(time1[mid] - target) < abs(time1[best_idx] - target):
-                    best_idx = mid
-            return best_idx
+    # @staticmethod
+    # def time_matching_binary_search(time1, data1, time_std, left_window=0, right_window=0):
+    #     # Function to find the closest time in time1 to each time in time_std
+    #     def find_closest(target):
+    #         # Binary search for the closest timestamp
+    #         low, high = 0, len(time1) - 1
+    #         best_idx = low
+    #         while low <= high:
+    #             mid = (low + high) // 2
+    #             if time1[mid] < target:
+    #                 low = mid + 1
+    #             elif time1[mid] > target:
+    #                 high = mid - 1
+    #             else:
+    #                 return mid
+    #             # Update the best index if the current mid is closer to the
+    #             # target
+    #             if abs(time1[mid] - target) < abs(time1[best_idx] - target):
+    #                 best_idx = mid
+    #         return best_idx
 
-        # Align data1 to time_std
-        matched_data = []
-        matched_time = []
-        for t in time_std:
-            closest_idx = find_closest(t)
-            matched_data.append(data1[..., closest_idx-left_window:closest_idx+right_window+1])
-            matched_time.append(time1[closest_idx-left_window:closest_idx+right_window+1])
-        matched_time=np.array(matched_time)
-        matched_data=np.array(matched_data)
+    #     # Align data1 to time_std
+    #     matched_data = []
+    #     matched_time = []
+    #     for t in time_std:
+    #         closest_idx = find_closest(t)
+    #         matched_data.append(data1[..., closest_idx-left_window:closest_idx+right_window+1])
+    #         matched_time.append(time1[closest_idx-left_window:closest_idx+right_window+1])
+    #     matched_time=np.array(matched_time)
+    #     matched_data=np.array(matched_data)
 
-        return matched_time, matched_data
+    #     return matched_time, matched_data
 
-    @staticmethod
-    def estimate_closest_indx_constant_dt(left_indx,time,target,dt):
-            time_distant=target-time[left_indx]
-            n_time=int(np.floor(time_distant/dt))
-            indx_start=left_indx+n_time
-            return indx_start
+    # @staticmethod
+    # def estimate_closest_indx_constant_dt(left_indx,time,target,dt):
+    #         time_distant=target-time[left_indx]
+    #         n_time=int(np.floor(time_distant/dt))
+    #         indx_start=left_indx+n_time
+    #         return indx_start
 
-    @staticmethod
-    def estimate_closest_indx_varing_dt(left_indx,time,target,dt,dt_std):
-        time_distant=target-time[left_indx]
-        n_time_min=int(np.floor(time_distant/(dt+dt_std)))
-        n_time_max=int(np.floor(time_distant/(dt-dt_std)))
-        indx_start=left_indx+n_time_min
-        indx_end=left_indx+n_time_max
-        return indx_start,indx_end
+    # @staticmethod
+    # def estimate_closest_indx_varing_dt(left_indx,time,target,dt,dt_std):
+    #     time_distant=target-time[left_indx]
+    #     n_time_min=int(np.floor(time_distant/(dt+dt_std)))
+    #     n_time_max=int(np.floor(time_distant/(dt-dt_std)))
+    #     indx_start=left_indx+n_time_min
+    #     indx_end=left_indx+n_time_max
+    #     return indx_start,indx_end
 
-    @staticmethod
-    def find_closest_indx_constant_dt(indx_start,time,target):
-        if indx_start==0:
-            return 0
-        #on target
-        if time[indx_start]==target:
-            return indx_start
-        #indx_start on the left 
-        elif time[indx_start]<target:
-            i=indx_start
-            while time[i]<target:
-                i+=1
+    # @staticmethod
+    # def find_closest_indx_constant_dt(indx_start,time,target):
+    #     if indx_start==0:
+    #         return 0
+    #     #on target
+    #     if time[indx_start]==target:
+    #         return indx_start
+    #     #indx_start on the left 
+    #     elif time[indx_start]<target:
+    #         i=indx_start
+    #         while time[i]<target:
+    #             i+=1
 
-            if abs(time[i] - target) > abs(time[i-1] - target):
-                return i-1
-            return i
+    #         if abs(time[i] - target) > abs(time[i-1] - target):
+    #             return i-1
+    #         return i
 
-        #indx_start on the left 
-        elif time[indx_start]>target:
-            i=indx_start
-            while time[i]>target:
-                i-=1
-            if abs(time[i] - target) > abs(time[i+1] - target):
-                return i+1
-            return i
+    #     #indx_start on the left 
+    #     elif time[indx_start]>target:
+    #         i=indx_start
+    #         while time[i]>target:
+    #             i-=1
+    #         if abs(time[i] - target) > abs(time[i+1] - target):
+    #             return i+1
+    #         return i
 
-    @staticmethod
-    def find_closest_indx_binary(time,target,indx_start,indx_end):
-        # Binary search for the closest timestamp
-        low, high = max(0,indx_start), min(indx_end,len(time)-1)
-        best_idx = low
-        while low <= high:
-            mid = (low + high) // 2
-            if time[mid] < target:
-                low = mid + 1
-            elif time[mid] > target:
-                high = mid - 1
-            else:
-                return mid
-            # Update the best index if the current mid is closer to the
-            # target
-            if abs(time[mid] - target) < abs(time[best_idx] - target):
-                best_idx = mid
-        return best_idx
+    # @staticmethod
+    # def find_closest_indx_binary(time,target,indx_start,indx_end):
+    #     # Binary search for the closest timestamp
+    #     low, high = max(0,indx_start), min(indx_end,len(time)-1)
+    #     best_idx = low
+    #     while low <= high:
+    #         mid = (low + high) // 2
+    #         if time[mid] < target:
+    #             low = mid + 1
+    #         elif time[mid] > target:
+    #             high = mid - 1
+    #         else:
+    #             return mid
+    #         # Update the best index if the current mid is closer to the
+    #         # target
+    #         if abs(time[mid] - target) < abs(time[best_idx] - target):
+    #             best_idx = mid
+    #     return best_idx
 
     
-    @staticmethod
-    def custom_padding(time, data, left_slicing_indx, right_slicing_indx, padding='last'):
-        #padding to the left
+    # @staticmethod
+    # def custom_padding(time, data, left_slicing_indx, right_slicing_indx, padding='last'):
+    #     #padding to the left
 
-        if left_slicing_indx<0:
-            padding_config = [(0, 0)] * (data.ndim - 1) 
+    #     if left_slicing_indx<0:
+    #         padding_config = [(0, 0)] * (data.ndim - 1) 
 
-            padd_len=-left_slicing_indx
+    #         padd_len=-left_slicing_indx
 
-            if padding=='nan':
-                data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='empty')
-                time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='empty')
-            elif padding=='last':
-                data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=data[...,0])
-                time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=time[0])
-            elif padding=='zeros':
-                data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
-                time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
-        elif (right_slicing_indx+1)>len(time):
-            padd_len=right_slicing_indx-len(time)
-            padding_config = [(0, 0)] * (data.ndim - 1) 
+    #         if padding=='nan':
+    #             data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='empty')
+    #             time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='empty')
+    #         elif padding=='last':
+    #             data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=data[...,0])
+    #             time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=time[0])
+    #         elif padding=='zeros':
+    #             data_tmp=np.pad(data[..., 0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
+    #             time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
+    #     elif (right_slicing_indx+1)>len(time):
+    #         padd_len=right_slicing_indx-len(time)
+    #         padding_config = [(0, 0)] * (data.ndim - 1) 
 
-            if padding=='nan':
-                data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
-                time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
-            elif padding=='last':
-                data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=data[...,-1])
-                time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=time[-1])
-            elif padding=='zeros':
-                data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=0)
-                time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=0)
-        else:
-            data_tmp=data[..., left_slicing_indx:right_slicing_indx+1]
-            time_tmp=time[left_slicing_indx:right_slicing_indx+1]
+    #         if padding=='nan':
+    #             data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
+    #             time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
+    #         elif padding=='last':
+    #             data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=data[...,-1])
+    #             time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=time[-1])
+    #         elif padding=='zeros':
+    #             data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=0)
+    #             time_tmp=np.pad(time[left_slicing_indx:],padding_config+[(0,padd_len)],mode='constant',constant_values=0)
+    #     else:
+    #         data_tmp=data[..., left_slicing_indx:right_slicing_indx+1]
+    #         time_tmp=time[left_slicing_indx:right_slicing_indx+1]
 
-        return time_tmp,data_tmp
+    #     return time_tmp,data_tmp
 
 
     #assume the time is sorted
-    def time_matching_dynamic_search(self,time, data, time_std, left_window=0, right_window=0, padding='last'):
+    # def time_matching_dynamic_search(self,time, data, time_std, left_window=0, right_window=0, padding='last'):
         
-        dt,dt_std,if_dt_even=self.check_even_time_spacing(time,time_start=0.01)
+    #     dt,dt_std,if_dt_even=self.check_even_time_spacing(time,time_start=0.01)
 
-        # Align data to time_std
-        matched_data = []
-        matched_time = []
+    #     # Align data to time_std
+    #     matched_data = []
+    #     matched_time = []
 
-        left_indx=0
-        #dt is constant
-        #print(f'std_norm={std_norm}')
-        if if_dt_even:
-            for target in time_std:
-                indx_start=self.estimate_closest_indx_constant_dt(left_indx,time,target,dt)
-                closest_idx=self.find_closest_indx_constant_dt(indx_start,time,target)
+    #     left_indx=0
+    #     #dt is constant
+    #     #print(f'std_norm={std_norm}')
+    #     if if_dt_even:
+    #         for target in time_std:
+    #             indx_start=self.estimate_closest_indx_constant_dt(left_indx,time,target,dt)
+    #             closest_idx=self.find_closest_indx_constant_dt(indx_start,time,target)
                 
-                left_slicing_indx=closest_idx-left_window
-                right_slicing_indx=closest_idx+right_window
-                time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
+    #             left_slicing_indx=closest_idx-left_window
+    #             right_slicing_indx=closest_idx+right_window
+    #             time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
 
-                matched_data.append(data_tmp)
-                matched_time.append(time_tmp)
+    #             matched_data.append(data_tmp)
+    #             matched_time.append(time_tmp)
 
-                left_indx=closest_idx
+    #             left_indx=closest_idx
 
-        else:
-            for target in time_std:
-                indx_start,indx_end=self.estimate_closest_indx_varing_dt(left_indx,time,target,dt,dt_std)
-                closest_idx=self.find_closest_indx_binary(time,target,indx_start,indx_end)
+    #     else:
+    #         for target in time_std:
+    #             indx_start,indx_end=self.estimate_closest_indx_varing_dt(left_indx,time,target,dt,dt_std)
+    #             closest_idx=self.find_closest_indx_binary(time,target,indx_start,indx_end)
 
-                left_slicing_indx=closest_idx-left_window
-                right_slicing_indx=closest_idx+right_window
-                time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
+    #             left_slicing_indx=closest_idx-left_window
+    #             right_slicing_indx=closest_idx+right_window
+    #             time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
 
-                matched_time.append(time_tmp)
-                matched_data.append(data_tmp)
+    #             matched_time.append(time_tmp)
+    #             matched_data.append(data_tmp)
                 
 
-                left_indx=closest_idx
+    #             left_indx=closest_idx
         
-        matched_time=np.array(matched_time)
-        matched_data=np.array(matched_data)
+    #     matched_time=np.array(matched_time)
+    #     matched_data=np.array(matched_data)
         
-        return matched_time, matched_data
+    #     return matched_time, matched_data
         
     
-    def time_matching(self,time, data, time_std, left_window=0, right_window=0, mode='merge_asof', padding='last'):
-        if mode == 'merge_asof':
-            if len(data.shape) == 1:
-                return self.time_matching_merge_asof_1d(time, data, time_std,\
-                                                        left_window=left_window, right_window=right_window)
-            elif len(data.shape) == 2:
-                return self.time_matching_merge_asof_2d(time, data, time_std,\
-                                                        left_window=left_window, right_window=right_window)
-            else:
-                print('The data has to be 1d array or 2d array')
-        elif mode == 'binary':
-            return self.time_matching_binary_search(time, data, time_std,\
-                                                        left_window=left_window, right_window=right_window)
-        elif mode == 'dynamic':
-            return self.time_matching_dynamic_search(time, data, time_std,\
-                                                        left_window=left_window, right_window=right_window,padding=padding)
+    # def time_matching(self,time, data, time_std, left_window=0, right_window=0, mode='merge_asof', padding='last'):
+    #     if mode == 'merge_asof':
+    #         if len(data.shape) == 1:
+    #             return self.time_matching_merge_asof_1d(time, data, time_std,\
+    #                                                     left_window=left_window, right_window=right_window)
+    #         elif len(data.shape) == 2:
+    #             return self.time_matching_merge_asof_2d(time, data, time_std,\
+    #                                                     left_window=left_window, right_window=right_window)
+    #         else:
+    #             print('The data has to be 1d array or 2d array')
+    #     elif mode == 'binary':
+    #         return self.time_matching_binary_search(time, data, time_std,\
+    #                                                     left_window=left_window, right_window=right_window)
+    #     elif mode == 'dynamic':
+    #         return self.time_matching_dynamic_search(time, data, time_std,\
+    #                                                     left_window=left_window, right_window=right_window,padding=padding)
 
-    @staticmethod
-    def check_even_time_spacing(time,time_start=0.01):
-        time_start_indx=np.argmin(abs(time-time_start))
+    # @staticmethod
+    # def check_even_time_spacing(time,time_start=0.01):
+    #     time_start_indx=np.argmin(abs(time-time_start))
 
-        time=np.array(time)
-        dt_tmp=time[time_start_indx+1:time_start_indx+101]-time[time_start_indx:time_start_indx+100]
+    #     time=np.array(time)
+    #     dt_tmp=time[time_start_indx+1:time_start_indx+101]-time[time_start_indx:time_start_indx+100]
         
 
-        dt=np.mean(dt_tmp)
-        dt_std=np.std(dt_tmp)
-        std_norm=dt_std/dt
+    #     dt=np.mean(dt_tmp)
+    #     dt_std=np.std(dt_tmp)
+    #     std_norm=dt_std/dt
 
-        if std_norm>0.1**5:
-            if_dt_even=False 
-        else:
-            if_dt_even=True 
+    #     if std_norm>0.1**5:
+    #         if_dt_even=False 
+    #     else:
+    #         if_dt_even=True 
 
-        return dt,dt_std,if_dt_even
+    #     return dt,dt_std,if_dt_even
 
                 
-    @staticmethod
-    def time_interp_past_looking(time, data, time_std, mode='extrapolate'):
-        if mode == 'extrapolate':
-            pass
-        elif mode == 'fill':
-            pass
+    # @staticmethod
+    # def time_interp_past_looking(time, data, time_std, mode='extrapolate'):
+    #     if mode == 'extrapolate':
+    #         pass
+    #     elif mode == 'fill':
+    #         pass
             
     
-    def time_interp_1d(self, time, data, time_std, mode='normal'):
-        if mode=='normal':
-            return np.interp(time_std, time, data)
-        else:
-            return self.time_interp_past_looking(time, data, time_std, mode)
+    # def time_interp_1d(self, time, data, time_std, mode='normal'):
+    #     if mode=='normal':
+    #         return np.interp(time_std, time, data)
+    #     else:
+    #         return self.time_interp_past_looking(time, data, time_std, mode)
 
     
-    def time_interp(self, time, data, time_std, mode='normal'):
-        if len(data.shape) == 1:
-            return self.time_interp_1d(time, data, time_std, mode=mode)
-        elif len(data.shape) == 2:
-            data_interp=[]
-            for i in range(data.shape[0]):
-                data_interp.append(self.time_interp_1d(time, data[i,:], time_std, mode=mode))
+    # def time_interp(self, time, data, time_std, mode='normal'):
+    #     if len(data.shape) == 1:
+    #         return self.time_interp_1d(time, data, time_std, mode=mode)
+    #     elif len(data.shape) == 2:
+    #         data_interp=[]
+    #         for i in range(data.shape[0]):
+    #             data_interp.append(self.time_interp_1d(time, data[i,:], time_std, mode=mode))
 
-            return np.array(data_interp)
+    #         return np.array(data_interp)
             
 
-    @staticmethod
-    def find_plateau(series, window_size=40, threshold=0.1, plot=False):
-        """
-        Finds the start and end times of the plateau region in the given time series.
+    # @staticmethod
+    # def find_plateau(series, window_size=40, threshold=0.1, plot=False):
+    #     """
+    #     Finds the start and end times of the plateau region in the given time series.
 
-        Args:
-            series (pd.Series): Time series data with time as index and values as data.
-            window_size (int, optional): Window size for rolling average and standard deviation. Default is 40.
-            threshold (float, optional): Threshold for determining the plateau region. Default is 0.1.
+    #     Args:
+    #         series (pd.Series): Time series data with time as index and values as data.
+    #         window_size (int, optional): Window size for rolling average and standard deviation. Default is 40.
+    #         threshold (float, optional): Threshold for determining the plateau region. Default is 0.1.
 
-        Returns:
-            tuple: (t_min, t_max) representing the start and end times of the plateau region.
-        """
-        rolling_avg = series.rolling(window=window_size, center=True).mean()
-        data_rolling_std = series.rolling(window=window_size, center=True).std()
+    #     Returns:
+    #         tuple: (t_min, t_max) representing the start and end times of the plateau region.
+    #     """
+    #     rolling_avg = series.rolling(window=window_size, center=True).mean()
+    #     data_rolling_std = series.rolling(window=window_size, center=True).std()
 
-        # Normalize the rolling standard deviation
-        normalized_std = data_rolling_std / abs(rolling_avg)
-        if min(normalized_std)>=threshold:
-            return 0,0
+    #     # Normalize the rolling standard deviation
+    #     normalized_std = data_rolling_std / abs(rolling_avg)
+    #     if min(normalized_std)>=threshold:
+    #         return 0,0
 
-        # Find the start and end indices of the plateau region
-        plateau_start = normalized_std[normalized_std < threshold].index[0]
-        plateau_end = normalized_std[normalized_std < threshold].index[-1]
+    #     # Find the start and end indices of the plateau region
+    #     plateau_start = normalized_std[normalized_std < threshold].index[0]
+    #     plateau_end = normalized_std[normalized_std < threshold].index[-1]
 
-        if plot:
-            plt.clf()
-            plt.plot(normalized_std.index,normalized_std.values)
-            plt.xlabel('time (ms)')
-            plt.ylabel(f'std/avg(window={window_size})')
+    #     if plot:
+    #         plt.clf()
+    #         plt.plot(normalized_std.index,normalized_std.values)
+    #         plt.xlabel('time (ms)')
+    #         plt.ylabel(f'std/avg(window={window_size})')
 
-            plt.axvline(plateau_start,color='red')
-            plt.axvline(plateau_end,color='red')
-            plt.show()
+    #         plt.axvline(plateau_start,color='red')
+    #         plt.axvline(plateau_end,color='red')
+    #         plt.show()
 
-        return plateau_start, plateau_end
+    #     return plateau_start, plateau_end
         
-    def flat_top_finder(self,discharge, window_size=500, threshold=0.01, plot=False):
-        file_dict = self.get_data(discharge, 'basic', norm=True)
-        time = file_dict['ip']['xdata'][:]
-        data = file_dict['ip']['zdata'][:]
-        if max(data)<=3:
-            t_max, t_min = 0,0
-        else:
-            time=time[data>3]
-            data=data[data>3]
+    # def flat_top_finder(self,discharge, window_size=500, threshold=0.01, plot=False):
+    #     file_dict = self.get_data(discharge, 'basic', norm=True)
+    #     time = file_dict['ip']['xdata'][:]
+    #     data = file_dict['ip']['zdata'][:]
+    #     if max(data)<=3:
+    #         t_max, t_min = 0,0
+    #     else:
+    #         time=time[data>3]
+    #         data=data[data>3]
 
-            dip = np.gradient(data, time)
+    #         dip = np.gradient(data, time)
 
-            # Convert data and time to a pandas Series
-            series = pd.Series(data, index=time)
-            t_max, t_min=self.find_plateau(series,window_size=window_size, threshold=threshold, plot=plot)
+    #         # Convert data and time to a pandas Series
+    #         series = pd.Series(data, index=time)
+    #         t_max, t_min=self.find_plateau(series,window_size=window_size, threshold=threshold, plot=plot)
 
-        if plot:
-            plt.clf()
-            plt.plot(series.index, series.values)
-            plt.axvline(t_min,color='red')
-            plt.axvline(t_max,color='red')
-            plt.xlabel('time (ms)')
-            plt.ylabel(r'Plasma current $I_p$')
-            plt.show()
+    #     if plot:
+    #         plt.clf()
+    #         plt.plot(series.index, series.values)
+    #         plt.axvline(t_min,color='red')
+    #         plt.axvline(t_max,color='red')
+    #         plt.xlabel('time (ms)')
+    #         plt.ylabel(r'Plasma current $I_p$')
+    #         plt.show()
 
-        return t_max, t_min
+    #     return t_max, t_min
 
     def deal_with_missing_data(self):
         pass
 
     
-    def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=False):
-        '''
+    # def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=False):
+    #     '''
 
-        time_std: the standard time
+    #     time_std: the standard time
 
-        interp_suffix: the list suffix and key to 
-        e.g. interp_suffix=[['ts','core.dens'],['ts','core.dens']]  #e.g. [['ts','core.dens'],['ts','core.dens']]
-        interp_mode='normal'
+    #     interp_suffix: the list suffix and key to 
+    #     e.g. interp_suffix=[['ts','core.dens'],['ts','core.dens']]  #e.g. [['ts','core.dens'],['ts','core.dens']]
+    #     interp_mode='normal'
 
-        time_matching_mode = ['merge_asof','binary','dynamic'] only 'dynamic' works for now (04/29/2024)
+    #     time_matching_mode = ['merge_asof','binary','dynamic'] only 'dynamic' works for now (04/29/2024)
 
-        time_matching_padding=['zeros', 'last', 'nan']
+    #     time_matching_padding=['zeros', 'last', 'nan']
 
-        plot_matched_data: plot the matched data
-        '''
+    #     plot_matched_data: plot the matched data
+    #     '''
 
-        #get all the data and normalize the data
-        all_file_dict=self.get_full_data(discharge, suffix_list, norm_mode=norm_mode)
-        if custom_time_std:
-            pass
-        else:
-            time_std=all_file_dict[time_std_key[0]][time_std_key[1]]['xdata'][:]
+    #     #get all the data and normalize the data
+    #     all_file_dict=self.get_full_data(discharge, suffix_list, norm_mode=norm_mode)
+    #     if custom_time_std:
+    #         pass
+    #     else:
+    #         time_std=all_file_dict[time_std_key[0]][time_std_key[1]]['xdata'][:]
 
-        t_min, t_max=self.flat_top_finder(discharge, window_size=Ip_window_size, threshold=Ip_std_threshold, plot=plot_Ip)
+    #     t_min, t_max=self.flat_top_finder(discharge, window_size=Ip_window_size, threshold=Ip_std_threshold, plot=plot_Ip)
 
-        #time_interp
-        for item in interp_suffix:
-            data_interp=self.time_interp(all_file_dict[item[0]][item[1]]['xdata'][:], \
-                                      all_file_dict[item[0]][item[1]]['zdata'][:], \
-                                      time_std, mode=interp_mode)
-            all_file_dict[item[0]][item[1]]['xdata']=time_std
-            all_file_dict[item[0]][item[1]]['zdata']=data_interp
+    #     #time_interp
+    #     for item in interp_suffix:
+    #         data_interp=self.time_interp(all_file_dict[item[0]][item[1]]['xdata'][:], \
+    #                                   all_file_dict[item[0]][item[1]]['zdata'][:], \
+    #                                   time_std, mode=interp_mode)
+    #         all_file_dict[item[0]][item[1]]['xdata']=time_std
+    #         all_file_dict[item[0]][item[1]]['zdata']=data_interp
 
-        #cut_time for standard time
-        [key1,_]=time_std_key
+    #     #cut_time for standard time
+    #     [key1,_]=time_std_key
 
-        if custom_time_std:
-            time_cut,data_cut=self.cut_time(time_std, time_std,t_min, t_max)
-        else:
-            for key2 in all_file_dict[key1].keys():
-                time_cut,data_cut=self.cut_time(all_file_dict[key1][key2]['xdata'][:], \
-                                                                 all_file_dict[key1][key2]['zdata'][:], \
-                                                                 t_min, t_max)
-                all_file_dict[key1][key2]={'xdata':time_cut,'zdata':data_cut}
+    #     if custom_time_std:
+    #         time_cut,data_cut=self.cut_time(time_std, time_std,t_min, t_max)
+    #     else:
+    #         for key2 in all_file_dict[key1].keys():
+    #             time_cut,data_cut=self.cut_time(all_file_dict[key1][key2]['xdata'][:], \
+    #                                                              all_file_dict[key1][key2]['zdata'][:], \
+    #                                                              t_min, t_max)
+    #             all_file_dict[key1][key2]={'xdata':time_cut,'zdata':data_cut}
             
-        time_std=time_cut
+    #     time_std=time_cut
 
-        #time matching 
-        for key1 in all_file_dict.keys():
-            for key2 in all_file_dict[key1].keys():
+    #     #time matching 
+    #     for key1 in all_file_dict.keys():
+    #         for key2 in all_file_dict[key1].keys():
                 
-                try:
-                    left_window_tmp=left_window[key1][key2]
-                    right_window_tmp=right_window[key1][key2]
-                except:
-                    left_window_tmp=0
-                    right_window_tmp=0
+    #             try:
+    #                 left_window_tmp=left_window[key1][key2]
+    #                 right_window_tmp=right_window[key1][key2]
+    #             except:
+    #                 left_window_tmp=0
+    #                 right_window_tmp=0
                 
-                matched_time, matched_data=self.time_matching(\
-                                                all_file_dict[key1][key2]['xdata'][:], \
-                                                all_file_dict[key1][key2]['zdata'][:], \
-                                                time_std, \
-                                                left_window=left_window_tmp, \
-                                                right_window=right_window_tmp, \
-                                                mode=time_matching_mode,\
-                                                padding=time_matching_padding)
+    #             matched_time, matched_data=self.time_matching(\
+    #                                             all_file_dict[key1][key2]['xdata'][:], \
+    #                                             all_file_dict[key1][key2]['zdata'][:], \
+    #                                             time_std, \
+    #                                             left_window=left_window_tmp, \
+    #                                             right_window=right_window_tmp, \
+    #                                             mode=time_matching_mode,\
+    #                                             padding=time_matching_padding)
             
-                all_file_dict[key1][key2]['xdata']=matched_time
-                all_file_dict[key1][key2]['zdata']=matched_data
+    #             all_file_dict[key1][key2]['xdata']=matched_time
+    #             all_file_dict[key1][key2]['zdata']=matched_data
                 
-        if plot_matched_data:
-            for key1 in all_file_dict.keys():
-                for key2 in all_file_dict[key1].keys():
-                    print([key1,key2])
-                    plt.clf()
-                    if all_file_dict[key1][key2]['zdata'].shape[2]==1:
+    #     if plot_matched_data:
+    #         for key1 in all_file_dict.keys():
+    #             for key2 in all_file_dict[key1].keys():
+    #                 print([key1,key2])
+    #                 plt.clf()
+    #                 if all_file_dict[key1][key2]['zdata'].shape[2]==1:
            
-                        plt.plot(all_file_dict[key1][key2]['xdata'][:,0],\
-                                all_file_dict[key1][key2]['zdata'][:,:,0])
-                    else:
-                        for i in range(len(all_file_dict[key1][key2]['xdata'][:])):
-                            plt.plot(all_file_dict[key1][key2]['xdata'][i,:].T,\
-                                    all_file_dict[key1][key2]['zdata'][i,:,:].T)
-                    plt.xlabel('Time (ms)')
-                    plt.ylabel(f'{key1}-{key2}')
-                    plt.show()
+    #                     plt.plot(all_file_dict[key1][key2]['xdata'][:,0],\
+    #                             all_file_dict[key1][key2]['zdata'][:,:,0])
+    #                 else:
+    #                     for i in range(len(all_file_dict[key1][key2]['xdata'][:])):
+    #                         plt.plot(all_file_dict[key1][key2]['xdata'][i,:].T,\
+    #                                 all_file_dict[key1][key2]['zdata'][i,:,:].T)
+    #                 plt.xlabel('Time (ms)')
+    #                 plt.ylabel(f'{key1}-{key2}')
+    #                 plt.show()
 
-        return all_file_dict
+    #     return all_file_dict
 
-class DatasetPrep(DichargePerp):
-    def __init__(self, discharge_search_list=[174823], suffix_list=['ts']):
-        self.discharge_search_list = discharge_search_list
-        self.suffix_list = suffix_list
+# class DatasetPrep(DichargePerp):
+#     def __init__(self, discharge_search_list=[174823], suffix_list=['ts']):
+#         self.discharge_search_list = discharge_search_list
+#         self.suffix_list = suffix_list
     
-    def filter_discharges(self):
-        suffix_list = self.suffix_list
-        discharge_search_list = self.discharge_search_list
-        # Define the criteria for the files you're interested in
-        criteria = {key: file_normal_size[key]*0.5 for key in suffix_list}
+#     def filter_discharges(self):
+#         suffix_list = self.suffix_list
+#         discharge_search_list = self.discharge_search_list
+#         # Define the criteria for the files you're interested in
+#         criteria = {key: file_normal_size[key]*0.5 for key in suffix_list}
 
-        discharge_list = {key: [] for key in suffix_list}
+#         discharge_list = {key: [] for key in suffix_list}
         
-        for discharge in tqdm(discharge_search_list):
-            for suffix, size_limit in criteria.items():
-                discharge_path = self.file_path_gen(discharge,suffix)
-                # Check if the file exists
-                if os.path.isfile(discharge_path):
-                    # Get the size of the file
-                    file_size = os.path.getsize(discharge_path)
-                    if file_size > size_limit:
-                        discharge_list[suffix].append(discharge)
-                else:
-                    pass
-        return discharge_list
+#         for discharge in tqdm(discharge_search_list):
+#             for suffix, size_limit in criteria.items():
+#                 discharge_path = self.file_path_gen(discharge,suffix)
+#                 # Check if the file exists
+#                 if os.path.isfile(discharge_path):
+#                     # Get the size of the file
+#                     file_size = os.path.getsize(discharge_path)
+#                     if file_size > size_limit:
+#                         discharge_list[suffix].append(discharge)
+#                 else:
+#                     pass
+#         return discharge_list
 
 
-    def normalization(data):
-        pass
+#     def normalization(data):
+#         pass
 
-    def merge_multi_discharge(self,discharge_list_tmp,):
-        pass
-
-
-class post_processing():
-    def smooth_rolling_avg(self, time, data, smooth_point, center_window=10000, edge_window=500, time_spread=5):
-        indx_min=np.argmin(abs(time-(smooth_point-time_spread)))
-        indx_max=np.argmin(abs(time-(smooth_point+time_spread)))
-        smoothed_section=np.zeros(indx_max-indx_min+1)
-        for i in range(indx_min,indx_max+1):
-            current_time=time[i]
-            window_size=center_window-abs(smooth_point-current_time)/time_spread*(center_window-edge_window)
-            smoothed_section[i-indx_min]=np.mean(data[i-int(window_size/2):i+int(window_size/2)+1])
-        return smoothed_section,indx_min,indx_max
+#     def merge_multi_discharge(self,discharge_list_tmp,):
+#         pass
 
 
-    def smooth_rolling_avg_and_put_back(self, time, data, smooth_point_list, center_window=10000, edge_window=500, time_spread=5):
-        data_smooth=data.copy()
-        for smooth_point in smooth_point_list:
-            smoothed_section,indx_min,indx_max=self.smooth_rolling_avg(time, data, smooth_point, center_window=center_window, edge_window=edge_window, time_spread=time_spread)
-            data_smooth[indx_min:indx_max+1]=smoothed_section
-        return data_smooth
+# class post_processing():
+#     def smooth_rolling_avg(self, time, data, smooth_point, center_window=10000, edge_window=500, time_spread=5):
+#         indx_min=np.argmin(abs(time-(smooth_point-time_spread)))
+#         indx_max=np.argmin(abs(time-(smooth_point+time_spread)))
+#         smoothed_section=np.zeros(indx_max-indx_min+1)
+#         for i in range(indx_min,indx_max+1):
+#             current_time=time[i]
+#             window_size=center_window-abs(smooth_point-current_time)/time_spread*(center_window-edge_window)
+#             smoothed_section[i-indx_min]=np.mean(data[i-int(window_size/2):i+int(window_size/2)+1])
+#         return smoothed_section,indx_min,indx_max
 
-    def denorm_data():
-        pass
 
-class data_obj_rest():
+#     def smooth_rolling_avg_and_put_back(self, time, data, smooth_point_list, center_window=10000, edge_window=500, time_spread=5):
+#         data_smooth=data.copy()
+#         for smooth_point in smooth_point_list:
+#             smoothed_section,indx_min,indx_max=self.smooth_rolling_avg(time, data, smooth_point, center_window=center_window, edge_window=edge_window, time_spread=time_spread)
+#             data_smooth[indx_min:indx_max+1]=smoothed_section
+#         return data_smooth
+
+#     def denorm_data():
+#         pass
+
+# class data_obj_rest():
     
-    def save_dict_to_hdf5(dictionary, h5file):
-        for key, value in dictionary.items():
-            if isinstance(value, dict):
-                group = h5file.create_group(key)
-                save_dict_to_hdf5(value, group)
-            else:
-                h5file.create_dataset(key, data=value)
+#     # def save_dict_to_hdf5(dictionary, h5file):
+#     #     for key, value in dictionary.items():
+#     #         if isinstance(value, dict):
+#     #             group = h5file.create_group(key)
+#     #             save_dict_to_hdf5(value, group)
+#     #         else:
+#     #             h5file.create_dataset(key, data=value)
 
-    def TS_interp_Z(discharge,write_h5=True,plot=False):
-        TS_Z_min_set = [0.0, 0.03, 0.09, 0.1, 0.15, 0.16,
-                        0.21, 0.22, 0.26, 0.27, 0.28, 0.3, 0.31, 0.32, 0.36,
-                        0.37, 0.39, 0.4, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46,
-                        0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55,
-                        0.56, 0.57, 0.58, 0.59, 0.6, 0.61, 0.62, 0.63, 0.64,
-                        0.65, 0.66, 0.67, 0.68, 0.69, 0.7, 0.71, 0.72, 0.73,
-                        0.74, 0.75, 0.76, 0.77, 0.78, 0.79, 0.8, 0.81, 0.82,
-                        0.83, 0.84, 0.85, 0.86, 0.87, 0.88, 0.89, 0.9, 0.91,
-                        0.92, 0.93]
-        str_shot = str(discharge)[:2]
-        path = f'/scratch/gpfs/EKOLEMEN/big_d3d_data/{str_shot}0000/'
+#     def TS_interp_Z(discharge,write_h5=True,plot=False):
+#         TS_Z_min_set = [0.0, 0.03, 0.09, 0.1, 0.15, 0.16,
+#                         0.21, 0.22, 0.26, 0.27, 0.28, 0.3, 0.31, 0.32, 0.36,
+#                         0.37, 0.39, 0.4, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46,
+#                         0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55,
+#                         0.56, 0.57, 0.58, 0.59, 0.6, 0.61, 0.62, 0.63, 0.64,
+#                         0.65, 0.66, 0.67, 0.68, 0.69, 0.7, 0.71, 0.72, 0.73,
+#                         0.74, 0.75, 0.76, 0.77, 0.78, 0.79, 0.8, 0.81, 0.82,
+#                         0.83, 0.84, 0.85, 0.86, 0.87, 0.88, 0.89, 0.9, 0.91,
+#                         0.92, 0.93]
+#         str_shot = str(discharge)[:2]
+#         path = f'/scratch/gpfs/EKOLEMEN/big_d3d_data/{str_shot}0000/'
         
-        TS_file = h5py.File(path + str(discharge) + '_TS.h5', 'r')
-        TS_RZ_file = h5py.File(path + str(discharge) + '_TS_RZ.h5', 'r')
+#         TS_file = h5py.File(path + str(discharge) + '_TS.h5', 'r')
+#         TS_RZ_file = h5py.File(path + str(discharge) + '_TS_RZ.h5', 'r')
         
-        TS_Z = TS_RZ_file['S.BLESSED.CORE.Z']['zdata'][:]
-        order_index = np.argsort(TS_Z)
-        TS_Z_sort = TS_Z[order_index]
+#         TS_Z = TS_RZ_file['S.BLESSED.CORE.Z']['zdata'][:]
+#         order_index = np.argsort(TS_Z)
+#         TS_Z_sort = TS_Z[order_index]
         
-        TS_interp = {}
-        TS_keys = ['TS.BLESSED.CORE.density', 'TS.BLESSED.CORE.temp']
-        for key in TS_keys:
-            TS_interp_list = []
-            TS_time = TS_file[key]['xdata'][:]
-            for i in range(len(TS_time)):
-                TS_data = TS_file[key]['zdata'][:, i]*0.1**19
-                TS_data_sort = TS_data[order_index]
-                TS_interp_tmp = np.interp(TS_Z_min_set, TS_Z_sort,
-                                          TS_data_sort)
-                TS_interp_list.append(TS_interp_tmp)
-            # start here
-            TS_interp[key] = {'xdata': np.array(TS_time),
-                              'ydata': np.array(TS_Z_min_set),
-                              'zdata': np.array(TS_interp_list).T*10.**19}
+#         TS_interp = {}
+#         TS_keys = ['TS.BLESSED.CORE.density', 'TS.BLESSED.CORE.temp']
+#         for key in TS_keys:
+#             TS_interp_list = []
+#             TS_time = TS_file[key]['xdata'][:]
+#             for i in range(len(TS_time)):
+#                 TS_data = TS_file[key]['zdata'][:, i]*0.1**19
+#                 TS_data_sort = TS_data[order_index]
+#                 TS_interp_tmp = np.interp(TS_Z_min_set, TS_Z_sort,
+#                                           TS_data_sort)
+#                 TS_interp_list.append(TS_interp_tmp)
+#             # start here
+#             TS_interp[key] = {'xdata': np.array(TS_time),
+#                               'ydata': np.array(TS_Z_min_set),
+#                               'zdata': np.array(TS_interp_list).T*10.**19}
 
-        if write_h5:
-            with h5py.File(f'{path}{discharge}_TS_core_interp.h5', 'w') as h5file:
-                save_dict_to_hdf5(TS_interp, h5file)
+#         if write_h5:
+#             with h5py.File(f'{path}{discharge}_TS_core_interp.h5', 'w') as h5file:
+#                 save_dict_to_hdf5(TS_interp, h5file)
 
-        if plot:
-            plt.clf()
-            plt.scatter(TS_Z_min_set, TS_interp[key]['zdata'][:, 600],
-                        label='interp')
-            plt.scatter(TS_Z_sort, (TS_file[key]['zdata'][:,600])[order_index],
-                        label='origin')
-            plt.legend()
-            plt.show()
+#         if plot:
+#             plt.clf()
+#             plt.scatter(TS_Z_min_set, TS_interp[key]['zdata'][:, 600],
+#                         label='interp')
+#             plt.scatter(TS_Z_sort, (TS_file[key]['zdata'][:,600])[order_index],
+#                         label='origin')
+#             plt.legend()
+#             plt.show()
             
-        return 0
+#         return 0
         
             
-    def read_file(discharge, file_suffix, df_time):
+    # def read_file(discharge, file_suffix, df_time):
 
-        path = find_path(discharge)
-        file = h5py.File(f'{path}{discharge}_{file_suffix}.h5', 'r')
-        keys = file.keys()
+    #     path = find_path(discharge)
+    #     file = h5py.File(f'{path}{discharge}_{file_suffix}.h5', 'r')
+    #     keys = file.keys()
 
-        for i, key in enumerate(keys):
-            dict_tmp = {'xdata': file[key]['xdata']}
-            if len(file[key]['zdata'].shape) == 2:
-                for j in range(file[key]['zdata'].shape[0]):
-                    dict_tmp[key+str(j)] = file[key]['zdata'][j, :]
-            elif len(file[key]['zdata'].shape) == 1:
-                dict_tmp[key] = file[key]['zdata']
+    #     for i, key in enumerate(keys):
+    #         dict_tmp = {'xdata': file[key]['xdata']}
+    #         if len(file[key]['zdata'].shape) == 2:
+    #             for j in range(file[key]['zdata'].shape[0]):
+    #                 dict_tmp[key+str(j)] = file[key]['zdata'][j, :]
+    #         elif len(file[key]['zdata'].shape) == 1:
+    #             dict_tmp[key] = file[key]['zdata']
                 
-            df_tmp = pd.DataFrame(dict_tmp).astype('float32')
-            if i == 0:
-                df = pd.merge_asof(df_time, df_tmp, on='xdata',
-                                   direction='nearest')
-            else:
-                df = pd.merge_asof(df, df_tmp, on='xdata',
-                                   direction='nearest')
-        file.close()
-        return df
+    #         df_tmp = pd.DataFrame(dict_tmp).astype('float32')
+    #         if i == 0:
+    #             df = pd.merge_asof(df_time, df_tmp, on='xdata',
+    #                                direction='nearest')
+    #         else:
+    #             df = pd.merge_asof(df, df_tmp, on='xdata',
+    #                                direction='nearest')
+    #     file.close()
+    #     return df
 
-    def hdf5_generator(discharge_list, h5_profiles,
-                       data_filename='diag2diag.pkl'):
-        all_X =[]
-        all_y = []
-        all_time = []
-        discharg_read_list = []
-        len_list = []
-        for discharge in tqdm(discharge_list):
-            print(discharge)
-            try:
-                dfs = {}
-                # creating the standard time
-                path=find_path(discharge)
+    # def hdf5_generator(discharge_list, h5_profiles,
+    #                    data_filename='diag2diag.pkl'):
+    #     all_X =[]
+    #     all_y = []
+    #     all_time = []
+    #     discharg_read_list = []
+    #     len_list = []
+    #     for discharge in tqdm(discharge_list):
+    #         print(discharge)
+    #         try:
+    #             dfs = {}
+    #             # creating the standard time
+    #             path=find_path(discharge)
                 
-                file = h5py.File(f'{path}{discharge}_shape.h5', 'r')
-                t_min = 0
-                t_max = file['R0']['xdata'][-1]
-                file.close()
+    #             file = h5py.File(f'{path}{discharge}_shape.h5', 'r')
+    #             t_min = 0
+    #             t_max = file['R0']['xdata'][-1]
+    #             file.close()
                 
-                file = h5py.File(f'{path}{discharge}_TS.h5', 'r')
-                df_time = pd.DataFrame({'xdata': file[list(file.keys())[0]]['xdata']})
-                time = file[list(file.keys())[0]]['xdata'][:]
+    #             file = h5py.File(f'{path}{discharge}_TS.h5', 'r')
+    #             df_time = pd.DataFrame({'xdata': file[list(file.keys())[0]]['xdata']})
+    #             time = file[list(file.keys())[0]]['xdata'][:]
                 
-                time_index = (time >= t_min) & (time <= t_max)
-                time_tmp = time[time_index]
-                df_time = pd.DataFrame({'xdata': time_tmp})
-                file.close()
+    #             time_index = (time >= t_min) & (time <= t_max)
+    #             time_tmp = time[time_index]
+    #             df_time = pd.DataFrame({'xdata': time_tmp})
+    #             file.close()
                 
-                # Read all the files
-                for file_suffix in h5_profiles:
-                    df = read_file(discharge, file_suffix, df_time)
-                    dfs[file_suffix] = df
+    #             # Read all the files
+    #             for file_suffix in h5_profiles:
+    #                 df = read_file(discharge, file_suffix, df_time)
+    #                 dfs[file_suffix] = df
 
-                # summarize all the data in this dicharge
-                df_tmp = np.concatenate(
-                    [dfs[key].to_numpy()[1:] for key in dfs.keys()], axis=1)
+    #             # summarize all the data in this dicharge
+    #             df_tmp = np.concatenate(
+    #                 [dfs[key].to_numpy()[1:] for key in dfs.keys()], axis=1)
 
-                key_list_dict = {}
-                key_list = []
-                for key in dfs.keys():
-                    key_list_dict[key]=list(dfs[key].keys())
-                    for key_ in key_list_dict[key]:
-                        key_list.append(key_)
+    #             key_list_dict = {}
+    #             key_list = []
+    #             for key in dfs.keys():
+    #                 key_list_dict[key]=list(dfs[key].keys())
+    #                 for key_ in key_list_dict[key]:
+    #                     key_list.append(key_)
                 
-                # add this discharge to the total file
-                all_X.append(df_tmp)
-                all_time.append(df_time['xdata'])
-                all_time_tmp= np.concatenate(all_time, axis=0)
-                all_X_tmp = np.concatenate(all_X, axis=0)
-                len_list.append(df_time['xdata'].shape[0])
-                discharg_read_list.append(discharge)
-                # Serialize the data and save to a file
-                with open(data_filename, 'wb') as file:
-                    pickle.dump([all_X_tmp, all_time_tmp, discharg_read_list,
-                                 len_list, key_list, key_list_dict], file)
+    #             # add this discharge to the total file
+    #             all_X.append(df_tmp)
+    #             all_time.append(df_time['xdata'])
+    #             all_time_tmp= np.concatenate(all_time, axis=0)
+    #             all_X_tmp = np.concatenate(all_X, axis=0)
+    #             len_list.append(df_time['xdata'].shape[0])
+    #             discharg_read_list.append(discharge)
+    #             # Serialize the data and save to a file
+    #             with open(data_filename, 'wb') as file:
+    #                 pickle.dump([all_X_tmp, all_time_tmp, discharg_read_list,
+    #                              len_list, key_list, key_list_dict], file)
 
-            except Exception as e:  # if 2==1:
-                print(f"Error: {e}")
-                continue
-            finally:  # if 2==1:
-                try:
-                    file.close()
-                except:
-                    continue
+    #         except Exception as e:  # if 2==1:
+    #             print(f"Error: {e}")
+    #             continue
+    #         finally:  # if 2==1:
+    #             try:
+    #                 file.close()
+    #             except:
+    #                 continue
 
-        return [all_X_tmp]
+    #     return [all_X_tmp]
 
