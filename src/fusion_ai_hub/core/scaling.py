@@ -2,6 +2,7 @@ import numpy as np
 
 from typing import Union, Callable, Literal
 
+# actually just use sklearn.preprocessing
 
 def signal_optimize(
     signal: Union[str, list],
