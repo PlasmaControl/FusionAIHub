@@ -800,7 +800,7 @@ class DichargePerp():
     #     return freq, time, amp_f_t
         
     # @staticmethod
-    # def spectro_plot(freq, time, amp_f_t):
+    # def spectro_plot(freq, time, amp_f_tz):
     #     plt.clf()
     #     plt.imshow(amp_f_t,aspect='auto',cmap='hot',
     #                extent=[time[0], time[-1], freq[-1], freq[0]])

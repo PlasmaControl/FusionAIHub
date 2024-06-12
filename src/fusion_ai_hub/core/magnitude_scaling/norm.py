@@ -1,4 +1,5 @@
-@staticmethod
+import numpy as np
+
 def norm_data(data,avg_,std_,mode='all'):
     avg_=np.array(avg_)
     std_=np.array(std_)

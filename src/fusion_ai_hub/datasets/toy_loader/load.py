@@ -1,3 +1,25 @@
+import h5py
+
+def load(file_path: str) -> dict:
+    """
+    Read data, time, and attributes from an HDF5 file.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the HDF5 file.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the data, time, and attributes stored in the HDF5 file.
+    """
+    with h5py.File(file_path, 'r') as f:
+        data = f['data'][()]
+        time = f['time'][()]
+        attributes = list(f.attrs.keys())
+    return {'data': data, 'time': time, 'attributes': attributes}
+
 def get_data(self,discharge, suffix, norm=True):
     discharge_path=self.file_path_gen(discharge, suffix)
     input_file = h5py.File(discharge_path, 'r')

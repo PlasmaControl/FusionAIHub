@@ -1,3 +1,5 @@
+
+# reference
 def hdf5_generator(discharge_list, h5_profiles,
                     data_filename='diag2diag.pkl'):
     all_X =[]

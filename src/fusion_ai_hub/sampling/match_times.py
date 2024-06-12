@@ -1,3 +1,7 @@
+import pandas as pd
+
+def merge_times_1d(t)
+# reference
 @staticmethod
 def time_matching_merge_asof_1d(time1, data1, time_std, left_window=0, right_window=0):
     # Convert input arrays to DataFrames
