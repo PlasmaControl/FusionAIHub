@@ -1,26 +1,59 @@
-## Mermaid Diagram
+## Function Organization
 
 ```mermaid
 graph LR
-    
-    A[hub]
-
-    subgraph base
+    subgraph physics
         direction LR
+        A41[flattop_finder.py]
+    end
 
-        A1[file.py]
-        A1 --> B1[load]
-        A1 --> B2[save]
-        A1 --> B3[merge]
+    subgraph util
+        direction LR
+        A4000[util.py]
+    end
+
+    subgraph resampling
+        direction LR
+        A2000[interpolation.py]
+        A2000 --> B2000[interpolate_signal]
+
+        A3000[resampling.py]
+        A3000 --> B3000[resample]
+    end
+
+    subgraph feature_extract
+        direction LR
+        A7[filterbanks.py]
+        A8[morphological_filters.py]
+        A9[frame_operations.py]
+        A10[delta_features.py]
+        A10 --> B30[closest_index]
+        A10 --> B31[time_matching_binary]
+    end
+
+    subgraph display
+        direction LR
+        A6[display.py]
+        A6 --> B13[specshow]
+        A6 --> B14[waveshow]
+    end
+
+    subgraph datasets
+        direction LR
+        A5[query]
+        B11[retrieve.py]
+        B12[modify.py - permission]
+        A5 --> B11
+        A5 --> B12
     end
 
     subgraph core
         direction LR
-
         A2[scaling.py]
-        A2 --> B4[compute_norms]
-        A2 --> B5[norm]
-        A2 --> B6[rescale]
+        A2 --> B4[signal_optimize]
+        A2 --> B5[get_scaling_factor]
+        A2 --> B6[normalize]
+        A2 --> Ba[standardize]
 
         A3[spectral.py]
         A3 --> B7[spectrogram]
@@ -41,66 +74,21 @@ graph LR
         B10 --> C7[splice_time]
     end
 
-    subgraph datasets
+    subgraph base
         direction LR
-
-        A5[query]
-        B11[retrieve.py]
-        B12[modify.py - permission]
-        A5 --> B11
-        A5 --> B12
+        base1[load.py]
+        base2[save.py]
+        base3[merge.py]
+        base1 --> base1a[list_signals]
+        base1 --> base1b[load_sample]
+        base1 --> base1c[load_time]
+        base1 --> base1d[load_attributes]
+        base1 --> base1e[load_channels]
+        base1 --> base1f[load]
+        base2 --> base2a[dict_to_hdf5]
+        base2 --> base2b[save]
+        base3 --> base3a[merge]
     end
 
-    subgraph display
-        direction LR
-
-        A6[display.py]
-        A6 --> B13[specshow]
-        A6 --> B14[waveshow]
-    end
-
-    subgraph feature_extract
-        direction LR
-
-        A7[filterbanks.py]
-
-        A8[morphological_filters.py]
-
-        A9[frame_operations.py]
-
-        A10[delta_features.py]
-        A10 --> B30[closest_index]
-        A10 --> B31[time_matching_binary]
-    end
-
-    subgraph resampling
-        direction LR
-
-        A2000[interpolation.py]
-        A2000 --> B2000[interpolate_signal]
-
-        A3000[resampling.py]
-        A3000 --> B3000[resample]
-    end
-
-    subgraph util
-        direction LR
-
-        A4000[util.py]
-    end
-
-    subgraph physics
-        direction LR
-
-        A41[flattop_finder.py]
-    end
-
-    A --> base
-    A --> core
-    A --> datasets
-    A --> display
-    A --> feature_extract
-    A --> resampling
-    A --> util
-    A --> physics
+    A[hub]
 ```
