@@ -1,75 +1,92 @@
 import numpy as np
-
 import h5py
-import os
+from typing import Any, Union, List, Optional
 from pathlib import Path
 
-from typing import Any, Union
-
-def list_signals(
-    path: Union[str, int, Any[os.Pathlike]],
-    ) -> list:
+def list_signals(path: Union[str, Path],
+                 ) -> List[str]:
     
     with h5py.File(path, 'r') as f:
         signals = list(f.keys())
         
     return signals
 
-
-def load_sample(
-    path: Union[str, int, Any[os.Pathlike]],
-    signal: Union[str, list[str]],
-    ) -> np.ndarray:
+def load_sample(path: Union[str, Path],
+                signal_name: Optional[Union[str, List[str]]] = None,
+                ) -> dict:
     
+    samples = {}
     with h5py.File(path, 'r') as f:
-        data = f[signal]
-        sample = data["data"][()]
-        
-    return sample
+        if signal_name is None:
+            signal_name = list(f.keys())
+        if isinstance(signal_name, str):
+            signal_name = [signal_name]
+        for signal in signal_name:
+            data = f[signal]
+            samples[signal] = data["data"][()]
+            
+    return samples
 
-
-def load_time(
-    path: Union[str, int, Any[os.Pathlike]],
-    signal: Union[str, list[str]],
-    ) -> np.ndarray:
+def load_time(path: Union[str, Path],
+              signal_name: Optional[Union[str, List[str]]] = None,
+              ) -> dict:
     
+    times = {}
     with h5py.File(path, 'r') as f:
-        data = f[signal]
-        time = data["time"][()]
-        
-    return time
+        if signal_name is None:
+            signal_name = list(f.keys())
+        if isinstance(signal_name, str):
+            signal_name = [signal_name]
+        for signal in signal_name:
+            data = f[signal]
+            times[signal] = data["time"][()]
+            
+    return times
 
-
-def load_attributes(
-    path: Union[str, int, Any[os.Pathlike]],
-    signal: Union[str, list[str]],
-    ) -> list:
+def load_attributes(path: Union[str, Path],
+                    signal_name: Optional[Union[str, List[str]]] = None,
+                    ) -> dict:
     
+    attributes = {}
     with h5py.File(path, 'r') as f:
-        data = f[signal]
-        attributes = list(data.attrs.keys())
-        
+        if signal_name is None:
+            signal_name = list(f.keys())
+        if isinstance(signal_name, str):
+            signal_name = [signal_name]
+        for signal in signal_name:
+            data = f[signal]
+            attributes[signal] = list(data.attrs.keys())
+            
     return attributes
 
-
-def load_channels(
-    path: Union[str, int, Any[os.Pathlike]],
-    signal: Union[str, list[str]],
-    ) -> list:
+def load_channels(path: Union[str, Path],
+                  signal_name: Optional[Union[str, List[str]]] = None,
+                  ) -> dict:
     
+    channels = {}
     with h5py.File(path, 'r') as f:
-        data = f[signal]
-        channels = data.attrs["channel_ids"]
-        
+        if signal_name is None:
+            signal_name = list(f.keys())
+        if isinstance(signal_name, str):
+            signal_name = [signal_name]
+        for signal in signal_name:
+            data = f[signal]
+            channels[signal] = data.attrs["channel_ids"]
+            
     return channels
 
-
-def load(
-    path: Union[str, int, Any[os.Pathlike]],
-    signal: Union[str, list[str]],
-    ) -> np.ndarray:
+def load(path: Union[str, Path],
+         signal_name: Optional[Union[str, List[str]]] = None,
+         ) -> dict:
     
+    loaded_data = {}
     with h5py.File(path, 'r') as f:
-        data = f[signal]
-
-    return data
+        if signal_name is None:
+            signal_name = list(f.keys())
+        if isinstance(signal_name, str):
+            signal_name = [signal_name]
+        for signal in signal_name:
+            data = f[signal]
+            loaded_data[signal] = data
+            
+    return loaded_data

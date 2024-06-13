@@ -6,6 +6,8 @@ from pathlib import Path
 
 from typing import Any, Union
 
+# also do other file formats
+
 def dict_to_hdf5(
     dictionary: dict,
     h5file: h5py.File,
@@ -40,25 +42,19 @@ def dict_to_hdf5(
 def save(
     dictionary: dict,
     path: Union[str, int, Any[os.Pathlike]],
+    file_format: str = 'h5',
     compression: str = None,
     ) -> None:
-    """_summary_
-
-    Parameters
-    ----------
-    dictionary : dict
-        _description_
-    path : Union[str, int, Any[os.Pathlike]]
-        _description_
-    compression : str, optional
-        _description_, by default None
-    """
     
-    if not path.endswith('.h5'):
-        path += '.h5'
-    
-    path.mkdir(parents=True, exist_ok=True)
-    with h5py.File(path, 'w') as f:
-        dict_to_hdf5(dictionary, f, compression)
+    if file_format == 'h5':
+        if not path.endswith('.h5'):
+            path += '.h5'
+        
+        path.mkdir(parents=True, exist_ok=True)
+        with h5py.File(path, 'w') as f:
+            dict_to_hdf5(dictionary, f, compression)
+            
+    else:
+        raise ValueError(f"Unsupported file format: {file_format}")
 
     print(f'Saved to {path}')
