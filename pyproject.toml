@@ -1,5 +1,5 @@
 [project]
-name = "fusion_ai_hub"
+name = "fusionaihub"
 version = "0.0.1"
 authors = [
     {name="Peter Steiner", email="peter.steiner@princeton.edu"},
@@ -17,9 +17,37 @@ classifiers = [
 ]
 license = {file = "LICENSE"}
 dependencies = [
-    "h5py", "numpy", "pandas", "matplotlib", "scipy", "tqdm", "opencv-python",
-    "paramiko"
+    "h5py",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "scipy",
+    "tqdm",
+    "opencv-python",
+    "paramiko",
+    "ipykernel>=6.29.5",
+    "ipywidgets>=8.1.7",
+    "scikit-learn>=1.6.1",
+    "torch>=2.7.1",
+    "tables>=3.9.2",
+    "pyyaml>=6.0.2",
 ]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv]
+package = true
 
 [project.urls]
 Homepage = "https://github.com"
