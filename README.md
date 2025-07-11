@@ -8,7 +8,6 @@ This repository serves as a centralized platform for fusion-related machine lear
 
 ## Setup
 
-When you are in the root directory, you can run the following command to activate the virtual environment:
 ```bash
 git clone git@github.com:PlasmaControl/FusionAIHub.git
 cd FusionAIHub
