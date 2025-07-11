@@ -131,18 +131,18 @@ The pipeline produces the following output structure:
 ```
 output_dir/
 ├── train/
-│   ├── 170000_0.pkl          # Processed samples
-│   ├── 170001_0.pkl
+│   ├── 170000_0.joblib          # Processed samples
+│   ├── 170001_0.joblib
 │   ├── ...
-│   └── index.pkl             # Dataset index
+│   └── index.csv             # Dataset index
 └── valid/
-    ├── 170010_0.pkl
-    ├── 170011_0.pkl
+    ├── 170010_0.joblib
+    ├── 170011_0.joblib
     ├── ...
-    └── index.pkl
+    └── index.csv
 ```
 
-Each `.pkl` file contains a dictionary with signal arrays, where transformed signals have STFT representation and non-transformed signals are resampled to match dimensions.
+Each `.joblib` file contains a dictionary with signal arrays, where transformed signals have STFT representation and non-transformed signals are resampled to match dimensions.
 
 ## Key Features
 
