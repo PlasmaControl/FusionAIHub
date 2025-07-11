@@ -71,22 +71,23 @@ def process_shot_stft(
     try:
         dfs = []
         missing_signals = []
-        for signal in cfg["signal"]:
+        for signal in cfg['signal'].items():
+            print(signal[1])
             try:
                 df = extract_signal(
                     shot_number=shot_number,
                     directory=Path(cfg["raw_data_dir"]),
-                    signal=signal['name'], 
+                    signal=signal[0], 
                     start_time=start_time,
                     end_time=end_time,
                 )
                 df.columns = [
-                    f"{signal['abbr']}{col}" if col != "time" else col
+                    f"{signal[1]['abbr']}_{col}" if col != "time" else col
                     for col in range(len(df.columns))
                 ]
 
                 # Add a log to validate our assumption about the config and the transform key:
-                logger.debug(f"Signal config for {signal['name']}: {signal}")
+                logger.debug(f"Signal config for {signal[0]}: {signal[1]}")
 
                 # Add a column to the dataframe for this signal indicating if a transform is present.
                 # We'll use the signal's abbreviation to name the column, e.g., 'IP_transform'
@@ -98,7 +99,8 @@ def process_shot_stft(
                 )
                 dfs.append(df)
             except Exception as e:
-                missing_signals.append((signal['name'], signal['abbr']))
+                for channel in range(int(signal[1]['expected_channels'])):
+                    missing_signals.append((signal[1]['abbr'], channel))
     except Exception as e:
         logger.error(f"Error: Could not extract signals for shot {shot_number}: {e}")
         raise e
@@ -113,9 +115,10 @@ def process_shot_stft(
     
     # Add missing signals
     try:
-        for signal_name, signal_abbr in missing_signals:
-            df[signal_abbr] = 0.0
-            df[f"{signal_abbr}_state"] = False
+        dfs = []
+        for signal_abbr, channel in missing_signals:
+            df[f"{signal_abbr}_{channel}"] = np.nan
+            df[f"{signal_abbr}_{channel}_state"] = False
     except Exception as e:
         logger.error(f"Error: Could not add missing signals for shot {shot_number}: {e}")
         raise e
@@ -146,8 +149,8 @@ def process_shot_stft(
             for sample in samples:
                 transformed_samples = {}
                 for key, value in sample.items():
-                    for signal in cfg["signal"]:
-                        abbr = signal['abbr']
+                    for signal in cfg['signal'].items():
+                        abbr = signal[1]['abbr']
                         cols = [col for col in value.columns if abbr in col]
                         transformed_samples[abbr] = identity_transform(
                             x=value[cols].to_numpy().T)
@@ -171,10 +174,10 @@ def process_shot_stft(
         for sample in samples:
             transformed_samples = {}
             for key, value in sample.items():
-                for signal in cfg["signal"]:
-                    abbr = signal['abbr']
+                for signal in cfg['signal'].items():
+                    abbr = signal[1]['abbr']
                     cols = [col for col in value.columns if abbr in col]
-                    if signal["make_stft"]:
+                    if signal[1]['make_stft']:
                         transformed_samples[abbr] = stft_transform(
                             x=value[cols].to_numpy().T,
                             n_fft=cfg["stft"]["n_fft"],

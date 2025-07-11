@@ -76,10 +76,10 @@ def prepare_dataset(cfg: dict) -> None:
 
     logger.info(f"Target sampling frequency: {cfg['fs_khz']} kHz")
     logger.info("Signals configured:")
-    for signal in cfg["signal"]:
-        signal_name = signal["name"]
-        signal_abbr = signal["abbr"]
-        should_transform = signal.get("make_stft", False)
+    for signal in cfg['signal'].items():
+        signal_name = signal[0]
+        signal_abbr = signal[1]['abbr']
+        should_transform = signal[1].get("make_stft", False)
         logger.info(f"  - {signal_name} ({signal_abbr}): transform={should_transform}")
     logger.info("=" * 40)
 
@@ -103,16 +103,16 @@ def prepare_dataset(cfg: dict) -> None:
     logger.info(f"Processing {len(all_shots)} shots into cache...")
     
     # Clean up existing cache directory if it exists
-    # if cache_dir.exists():
-    #     import shutil
-    #     logger.info(f"Removing existing cache directory: {cache_dir}")
-    #     shutil.rmtree(cache_dir)
-    #     cache_dir.mkdir(parents=True, exist_ok=True)
+    if cache_dir.exists():
+        import shutil
+        logger.info(f"Removing existing cache directory: {cache_dir}")
+        shutil.rmtree(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
     
     # Process shots using the appropriate function
     # process_shot_stft(170000, cfg, cache_dir) # For debugging
-    # mapper = ParallelMapper()
-    # mapper(process_shot_stft, all_shots, cfg=cfg, out_dir=cache_dir)
+    mapper = ParallelMapper()
+    mapper(process_shot_stft, all_shots, cfg=cfg, out_dir=cache_dir)
     
     # Move cached files into train/test split
     logger.info("Splitting dataset into train and valid sets...")

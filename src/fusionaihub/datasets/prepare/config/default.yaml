@@ -4,13 +4,34 @@
 # Signal configuration - list of signals to process
 # Each signal has: [signal_name, abbreviation, should_transform]
 signal:
-  - {name: "magnetics_high_resolution", abbr: "mhr", make_stft: true}
-  - {name: "ece_cali", abbr: "ece", make_stft: true}
-  - {name: "co2_density", abbr: "co2", make_stft: true}
-  - {name: "gas", abbr: "gas", make_stft: false}
-  - {name: "ech", abbr: "ech", make_stft: false}
-  - {name: "p_inj", abbr: "pin", make_stft: false}
-  - {name: "t_inj", abbr: "tin", make_stft: false}
+  magnetics_high_resolution:
+    abbr: "mhr"
+    make_stft: true
+    expected_channels: 8
+  ece_cali:
+    abbr: "ece"
+    make_stft: true
+    expected_channels: 48
+  co2_density:
+    abbr: "co2"
+    make_stft: true
+    expected_channels: 4
+  gas:
+    abbr: "gas"
+    make_stft: false
+    expected_channels: 5
+  ech:
+    abbr: "ech"
+    make_stft: false
+    expected_channels: 11
+  p_inj:
+    abbr: "pin"
+    make_stft: false
+    expected_channels: 8
+  t_inj:
+    abbr: "tin"
+    make_stft: false
+    expected_channels: 8
 
 # Data processing parameters
 randomize_shots: true
