@@ -1,0 +1,39 @@
+# Dataset preparation configuration
+# Configuration for fusion data processing pipeline
+
+# Signal configuration - list of signals to process
+# Each signal has: [signal_name, abbreviation, should_transform]
+signal:
+  - ["magnetics_high_resolution", "mhr", false]
+  - ["ece_cali", "ece", false]
+  - ["co2_density", "co2", false]
+  - ["gas", "gas", false]
+  - ["ech", "ech", false]
+  - ["p_inj", "pin", false]
+  - ["t_inj", "tin", false]
+
+# Data processing parameters
+randomize_shots: true
+random_seed: 42
+num_shots: 50
+fs_khz: 500  # Sampling frequency in kHz
+ip_threshold: 0.1  # Plasma current threshold
+window_ms: 250  # Window size in milliseconds
+hop_ms: 50  # Hop size in milliseconds
+remove_empty: true
+
+# Train/test split configuration
+train_test_split: 0.2
+
+# Directory paths
+raw_data_dir: "/scratch/gpfs/EKOLEMEN/d3d_fusion_data"
+output_dir: "/scratch/gpfs/EKOLEMEN/nc1514/foundation_v1"
+
+# Processing parameters
+stft:
+  n_fft: 1024
+  hop_length: 256
+  window_type: "hann"
+  
+# Output settings
+compression: true  # Whether to compress saved files 

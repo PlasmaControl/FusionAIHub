@@ -8,12 +8,17 @@ modular components and YAML configuration.
 
 import yaml
 import numpy as np
+import logging
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from typing import Optional
 from ...util.parmap import ParallelMapper
 
-from .core import process_shot_stft, index_dataset
+from .shot_processing import process_shot_stft
+from .dataset_utils import index_dataset
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 
 def load_config(config_path: Optional[str] = None) -> dict:
@@ -36,6 +41,22 @@ def load_config(config_path: Optional[str] = None) -> dict:
     return cfg
 
 
+def should_use_stft_processing(cfg: dict) -> bool:
+    """
+    Determine whether to use STFT processing based on configuration.
+    
+    Args:
+        cfg: Configuration dictionary
+        
+    Returns:
+        True if any signals should be transformed with STFT, False otherwise
+    """
+    for signal in cfg["signal"]:
+        if signal.get("make_stft", False):
+            return True
+    return False
+
+
 def prepare_dataset(cfg: dict) -> None:
     """
     Prepare the complete fusion dataset using the modular pipeline.
@@ -53,8 +74,17 @@ def prepare_dataset(cfg: dict) -> None:
     cache_dir = Path(cfg["output_dir"]) / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info(f"Target sampling frequency: {cfg['fs_khz']} kHz")
+    logger.info("Signals configured:")
+    for signal in cfg["signal"]:
+        signal_name = signal["name"]
+        signal_abbr = signal["abbr"]
+        should_transform = signal.get("make_stft", False)
+        logger.info(f"  - {signal_name} ({signal_abbr}): transform={should_transform}")
+    logger.info("=" * 40)
+
     # Collect and sort all shot numbers
-    print(f"Collecting shots from {raw_data_dir}...")
+    logger.info(f"Collecting shots from {raw_data_dir}...")
     all_shots = [
         int(p.stem) 
         for p in raw_data_dir.iterdir() 
@@ -70,35 +100,32 @@ def prepare_dataset(cfg: dict) -> None:
     if cfg.get("num_shots") is not None:
         all_shots = all_shots[:cfg["num_shots"]]
     
-    print(f"Processing {len(all_shots)} shots into cache...")
+    logger.info(f"Processing {len(all_shots)} shots into cache...")
     
     # Clean up existing cache directory if it exists
-    if cache_dir.exists():
-        import shutil
-        print(f"Removing existing cache directory: {cache_dir}")
-        shutil.rmtree(cache_dir)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    # Process shots using parallel mapping
-    # For debugging, process single shot
-    # process_shot_stft(170000, cfg, cache_dir)
-    mapper = ParallelMapper()
-    mapper(process_shot_stft, all_shots[:10], cfg=cfg, out_dir=cache_dir)
+    # if cache_dir.exists():
+    #     import shutil
+    #     logger.info(f"Removing existing cache directory: {cache_dir}")
+    #     shutil.rmtree(cache_dir)
+    #     cache_dir.mkdir(parents=True, exist_ok=True)
     
-    # For production, uncomment this line and comment the above
+    # Process shots using the appropriate function
+    # process_shot_stft(170000, cfg, cache_dir) # For debugging
+    # mapper = ParallelMapper()
     # mapper(process_shot_stft, all_shots, cfg=cfg, out_dir=cache_dir)
     
     # Move cached files into train/test split
-    print("Splitting dataset into train and valid sets...")
-    all_files = list(cache_dir.glob("*.pkl"))
+    logger.info("Splitting dataset into train and valid sets...")
+    all_files = list(cache_dir.glob("*.joblib"))
     all_files.sort()
     
     if len(all_files) == 0:
-        print("Warning: No processed files found. Dataset preparation incomplete.")
+        logger.warning("Warning: No processed files found. Dataset preparation incomplete.")
         return
     
     # Handle edge case where there are too few files for train-test split
     if len(all_files) == 1:
-        print("Warning: Only 1 file found. Placing in train directory.")
+        logger.warning("Warning: Only 1 file found. Placing in train directory.")
         train_files = all_files
         valid_files = []
     else:
@@ -129,9 +156,9 @@ def prepare_dataset(cfg: dict) -> None:
         f.unlink()
     cache_dir.rmdir()
 
-    print("Dataset preparation complete.")
-    print(f"Training samples: {len(train_files)}")
-    print(f"Validation samples: {len(valid_files)}")
+    logger.info("Dataset preparation complete.")
+    logger.info(f"Training samples: {len(train_files)}")
+    logger.info(f"Validation samples: {len(valid_files)}")
 
 
 def main():
@@ -145,8 +172,21 @@ def main():
         default=None,
         help="Path to configuration YAML file (default: config/default.yaml)"
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set logging level (default: INFO)"
+    )
     
     args = parser.parse_args()
+    
+    # Set up logging
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     
     # Load configuration
     cfg = load_config(args.config)

@@ -11,7 +11,13 @@ from pathlib import Path
 from scipy.signal import resample
 
 
-def extract(shot: int, directory: Path, signal: str) -> pd.DataFrame:
+def extract_signal(
+    shot_number: int,
+    directory: Path,
+    signal: str,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> pd.DataFrame:
     """
     Extract signal data from HDF5 file for a given shot.
     
@@ -23,33 +29,50 @@ def extract(shot: int, directory: Path, signal: str) -> pd.DataFrame:
     Returns:
         DataFrame containing the signal data
     """
-    path = (directory / str(shot)).with_suffix(".h5")
+    path = (directory / str(shot_number)).with_suffix(".h5")
     df = pd.read_hdf(path, key=signal)
     return pd.DataFrame(df)
 
 
-def running_time(directory: Path, shot: int, ip_threshold: float) -> tuple[float, float]:
+def extract_running_time(
+    shot_number: int,
+    directory: Path, 
+    ip_threshold: float,
+    start_time: float | None = None,
+    end_time: float | None = None,
+) -> tuple[float, float]:
     """
     Determine the plasma running time for a shot based on plasma current threshold.
     
     Args:
         directory: Directory containing HDF5 files
         shot: Shot number
-        ip_threshold: Plasma current threshold
+        ip_threshold: Plasma current threshold for a shot to be considered running
+        start_time: Manually set start time for the shot (ms) (optional)
+        end_time: Manually set end time for the shot (ms) (optional)
         
     Returns:
         Tuple of (start_time, end_time) in milliseconds
     """
-    path = (directory / str(shot)).with_suffix(".h5")
+    path = (directory / str(shot_number)).with_suffix(".h5")
     with pd.HDFStore(path, 'r') as store:
         df = store['ip']['ipsip']
     df = df.loc[df > ip_threshold]
-    start_time = df.index[0]
-    end_time = df.index[-1]
+    if start_time is not None:
+        df = df.loc[df.index >= start_time]
+    if end_time is not None:
+        df = df.loc[df.index <= end_time]
+    start_time = float(df.index[0])
+    end_time = float(df.index[-1])
     return start_time, end_time
 
 
-def align(df: pd.DataFrame, start_time: float, end_time: float, fs: float) -> pd.DataFrame:
+def align_signal(
+    df: pd.DataFrame,
+    start_time: float,
+    end_time: float,
+    fs: float,
+) -> pd.DataFrame:
     """
     Align signal data to a common timebase and sampling frequency.
     
