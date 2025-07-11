@@ -9,16 +9,16 @@ The pipeline has been refactored into a modular structure:
 ```
 src/fusionaihub/datasets/prepare/
 ├── config/
-│   └── default.yaml           # Default configuration file
-├── core/                      # Core processing modules
-│   ├── __init__.py           # Package initialization
-│   ├── signal_processing.py  # Signal resampling and transformation
-│   ├── data_extraction.py    # Data extraction and alignment
-│   ├── sample_processing.py  # Sample splitting and transformation
-│   ├── dataset_utils.py      # Dataset utilities and indexing
-│   └── shot_processing.py    # Shot-level processing orchestration
+│   ├── default.yaml           # Default configuration file
+│   └── raw.yaml              # Raw signal configuration
+├── __init__.py               # Package initialization
+├── signal_processing.py      # Signal resampling and transformation
+├── data_extraction.py        # Data extraction and alignment
+├── sample_processing.py      # Sample splitting and transformation
+├── dataset_utils.py          # Dataset utilities and indexing
+├── shot_processing.py        # Shot-level processing orchestration
 ├── prepare_dataset.py         # Main executable script
-├── prepare2.py               # Original monolithic script (legacy)
+├── __main__.py               # Module entry point for direct execution
 └── README.md                 # This file
 ```
 
@@ -87,10 +87,10 @@ Each signal is configured as a list: `[signal_name, abbreviation, should_transfo
 ### Command Line
 ```bash
 # Use default configuration
-python -m src.fusionaihub.datasets.prepare.prepare_dataset
+python -m src.fusionaihub.datasets.prepare
 
 # Use custom configuration file
-python -m src.fusionaihub.datasets.prepare.prepare_dataset --config /path/to/config.yaml
+python -m src.fusionaihub.datasets.prepare --config /path/to/config.yaml
 ```
 
 ### Programmatic Usage
@@ -152,15 +152,7 @@ Each `.pkl` file contains a dictionary with signal arrays, where transformed sig
 4. **Missing Signal Handling**: Automatically creates placeholder data for missing signals
 5. **Flexible Transformations**: Configurable per-signal transformation (STFT or raw)
 6. **Train/Validation Split**: Automatic dataset splitting with indexing
-
-## Migration from Legacy Code
-
-If you were using the original `prepare2.py`, the new modular structure provides the same functionality with improved organization:
-
-- Configuration moved from Python dictionary to YAML file
-- Functions split into logical modules
-- Same processing pipeline and output format
-- Command-line interface added for easier use
+7. **Multiple Configurations**: Includes default and raw signal configurations
 
 ## Dependencies
 
