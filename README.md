@@ -10,6 +10,9 @@ This repository serves as a centralized platform for fusion-related machine lear
 
 When you are in the root directory, you can run the following command to activate the virtual environment:
 ```bash
+git clone git@github.com:PlasmaControl/FusionAIHub.git
+cd FusionAIHub
+git switch foundation25
 module load anaconda3/2024.10
 python -m venv .venv
 source .venv/bin/activate
