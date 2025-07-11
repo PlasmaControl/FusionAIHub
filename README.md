@@ -6,15 +6,6 @@ A general fusion hub for the Princeton cluster designed to standardize fusion ma
 
 This repository serves as a centralized platform for fusion-related machine learning workflows, providing standardized tools, processes, and methodologies for plasma control research at Princeton.
 
-## Team
-
-This project is led by:
-- **Egemen Kolemen**
-- **Azarakash Jalalvand**
-- **Peter Steiner** 
-- **Kouroche Bouichat**
-- **Nathaniel Chen**
-
 ## Setup
 
 When you are in the root directory, you can run the following command to activate the virtual environment:
@@ -26,3 +17,11 @@ pip install --upgrade pip
 pip install uv
 uv sync
 ```
+
+## Contact
+
+For more information, please contact
+- **Azarakash Jalalvand**
+- **Peter Steiner** 
+- **Kouroche Bouichat**
+- **Nathaniel Chen**
