@@ -6,7 +6,7 @@
 signal:
   magnetics_high_resolution:
     abbr: "mhr"
-    make_stft: true
+    make_stft: false
     expected_channels: 8
 
 # Data processing parameters

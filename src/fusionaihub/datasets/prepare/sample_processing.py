@@ -46,13 +46,15 @@ def split_samples(
 
         # Separate samples
         samples = []
+        start_window_idx = 0
         for start_index in range(0, len(df) - num_samples + 1, hop_samples):
             end_index = start_index + num_samples
             sample = df.iloc[start_index:end_index]
             if len(sample) == num_samples:
                 samples.append({
-                    f"{shot_number}_{start_index}": sample,
+                    f"{shot_number}_{start_window_idx}": sample,
                 })
+                start_window_idx += 1
 
         return samples
 
