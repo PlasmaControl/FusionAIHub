@@ -36,7 +36,7 @@ signal:
 # Data processing parameters
 randomize_shots: true
 random_seed: 42
-num_shots: 50
+num_shots: 15000
 fs_khz: 500  # Sampling frequency in kHz
 ip_threshold: 0.1  # Plasma current threshold
 window_ms: null  # Window size in milliseconds
@@ -47,6 +47,7 @@ start_time: null  # Start time for signal extraction (null for auto-detection)
 end_time: null    # End time for signal extraction (null for auto-detection)
 
 # Train/test split configuration
+debug: false
 train_test_split: 0.2
 
 # Directory paths

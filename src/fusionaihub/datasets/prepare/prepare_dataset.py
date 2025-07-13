@@ -110,9 +110,11 @@ def prepare_dataset(cfg: dict) -> None:
         cache_dir.mkdir(parents=True, exist_ok=True)
     
     # Process shots using the appropriate function
-    # process_shot_stft(170000, cfg, cache_dir) # For debugging
-    mapper = ParallelMapper()
-    mapper(process_shot_stft, all_shots, cfg=cfg, out_dir=cache_dir)
+    if cfg.get("debug", False):
+        process_shot_stft(170000, cfg, cache_dir) # For debugging
+    else:
+        mapper = ParallelMapper()
+        mapper(process_shot_stft, all_shots, cfg=cfg, out_dir=cache_dir)
     
     # Move cached files into train/test split
     logger.info("Splitting dataset into train and valid sets...")

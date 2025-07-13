@@ -61,6 +61,7 @@ def stft_transform(
         return_complex=True
     )
     y = torch.log(torch.abs(y))
+    y = y.permute(0, 2, 1)
     return y.numpy()
 
 
@@ -79,9 +80,9 @@ def resample_transform(
         Resampled signal to match reference time dimension
     """
     x = x.astype(np.float32)
-    target_length = ref_shape[1]
+    target_length = ref_shape[1] # assuming time dimension is second dimension
     y = [resample_fn(x_, target_length) for x_ in x]
-    y = np.expand_dims(y, axis=1)
+    y = np.expand_dims(y, axis=2)
     return np.array(y)
 
 

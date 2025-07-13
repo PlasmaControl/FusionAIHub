@@ -10,6 +10,8 @@ import pandas as pd
 import logging
 from pathlib import Path
 from typing import Dict
+from warnings import simplefilter
+simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
 from .data_extraction import (
     extract_signal, 
@@ -72,7 +74,6 @@ def process_shot_stft(
         dfs = []
         missing_signals = []
         for signal in cfg['signal'].items():
-            print(signal[1])
             try:
                 df = extract_signal(
                     shot_number=shot_number,
@@ -85,12 +86,6 @@ def process_shot_stft(
                     f"{signal[1]['abbr']}_{col}" if col != "time" else col
                     for col in range(len(df.columns))
                 ]
-
-                # Add a log to validate our assumption about the config and the transform key:
-                logger.debug(f"Signal config for {signal[0]}: {signal[1]}")
-
-                # Add a column to the dataframe for this signal indicating if a transform is present.
-                # We'll use the signal's abbreviation to name the column, e.g., 'IP_transform'
                 df = align_signal(
                     df=df,
                     start_time=start_time,
@@ -114,14 +109,14 @@ def process_shot_stft(
         raise e
     
     # Add missing signals
-    try:
-        dfs = []
-        for signal_abbr, channel in missing_signals:
-            df[f"{signal_abbr}_{channel}"] = np.nan
-            df[f"{signal_abbr}_{channel}_state"] = False
-    except Exception as e:
-        logger.error(f"Error: Could not add missing signals for shot {shot_number}: {e}")
-        raise e
+    if len(missing_signals) > 0:
+        try:
+            for signal_abbr, channel in missing_signals:
+                df[f"{signal_abbr}_{channel}"] = np.nan
+                df[f"{signal_abbr}_{channel}_state"] = False
+        except Exception as e:
+            logger.error(f"Error: Could not add missing signals for shot {shot_number}: {e}")
+            raise e
 
     # Split into samples
     try:
@@ -162,9 +157,9 @@ def process_shot_stft(
 
     # Get the first transformed sample to determine STFT dimensions
     try:
-        first_arr = list(samples[0].values())[0].iloc[:, 0].values
+        first_arr = np.array([list(samples[0].values())[0].iloc[:, 0].values])
         transform_shape = stft_transform(x=first_arr).shape
-        logger.info(f"Using {getattr(first_arr, 'name', 'unknown')} as reference for STFT dimensions: {transform_shape}")
+        logger.info(f"Using {first_arr.shape} as reference for STFT dimensions: {transform_shape}")
     except Exception as e:
         logger.error(f"Error: Could not get first transformed sample for shot {shot_number}: {e}")
         raise e
@@ -188,6 +183,9 @@ def process_shot_stft(
                             x=value[cols].to_numpy().T,
                             ref_shape=transform_shape,
                         )
+                    # logger.info(
+                    #     f"Transformed {abbr} with shape {transformed_samples[abbr].shape}"
+                    # )
                 save_sample(transformed_samples, out_dir, key)
     except Exception as e:
         logger.error(f"Error: Could not transform samples for shot {shot_number}: {e}")
