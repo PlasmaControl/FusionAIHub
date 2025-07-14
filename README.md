@@ -7,6 +7,10 @@ A general fusion hub for the Princeton cluster designed to standardize fusion ma
 This repository serves as a centralized platform for fusion-related machine learning workflows, providing standardized tools, processes, and methodologies for plasma control research at Princeton.
 
 ## Setup
+
+Go to your scratch directory
+/scratch/gpfs/<username>
+
 In your scratch directory, run
 ```bash
 git clone git@github.com:PlasmaControl/FusionAIHub.git
