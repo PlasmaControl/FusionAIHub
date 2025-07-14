@@ -28,10 +28,15 @@ pip install uv
 uv sync
 ```
 
+From now on, whenever you go into the repo, all you need to do is to run
+```bash
+source .venv/bin/activate
+```
+
 ## Contact
 
 For more information, please contact
 - **Azarakash Jalalvand**
 - **Peter Steiner** 
-- **Kouroche Bouichat**
+- **Kouroche Bouchiat**
 - **Nathaniel Chen**
