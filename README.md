@@ -8,7 +8,8 @@ This repository serves as a centralized platform for fusion-related machine lear
 
 ## Setup
 
-Go to your scratch directory
+Go to your scratch directory while you are on the HEAD node (so you need internet access, which computing nodes do not have).
+
 /scratch/gpfs/[username]
 
 In your scratch directory, run
