@@ -9,7 +9,7 @@ This repository serves as a centralized platform for fusion-related machine lear
 ## Setup
 
 Go to your scratch directory
-/scratch/gpfs/<username>
+/scratch/gpfs/[username]
 
 In your scratch directory, run
 ```bash
