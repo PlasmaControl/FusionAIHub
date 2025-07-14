@@ -10,6 +10,8 @@ This repository serves as a centralized platform for fusion-related machine lear
 
 Go to your scratch directory while you are on the HEAD node (so you need internet access, which computing nodes do not have).
 
+We will be using Python 3.12.
+
 /scratch/gpfs/[username]
 
 In your scratch directory, run
