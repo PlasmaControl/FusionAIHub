@@ -21,6 +21,7 @@ cd FusionAIHub
 git switch foundation25
 module load anaconda3/2024.10
 python -m venv .venv
+conda deactivate
 source .venv/bin/activate
 pip install --upgrade pip
 pip install uv
