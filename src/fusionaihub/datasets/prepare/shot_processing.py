@@ -56,7 +56,10 @@ def process_shot_stft(
     """
 
     # Extract running time
+    # TODO: Change to call this running_time from ip_threshold
     try:
+        # TODO: shot defined as plasma current > 0.5 MA, or 0.5s
+        # TODO: George Sips, (find reference slide and cite it)
         start_time, end_time = extract_running_time(
             shot_number=shot_number,
             directory=Path(cfg["raw_data_dir"]),
@@ -103,6 +106,7 @@ def process_shot_stft(
     # Create main aligned dataframe (important since interpolated signals 
     # could have alignment off)
     try:
+        # TODO: if df is fixed to same length, then join without inner
         df = pd.concat(dfs, axis=1, join='inner')
     except Exception as e:
         logger.error(f"Error: Could not concatenate dataframes for shot {shot_number}: {e}")
@@ -119,6 +123,7 @@ def process_shot_stft(
             raise e
 
     # Split into samples
+    # TODO: rename this to slice_windows
     try:
         samples = split_samples(
             df=df,
@@ -132,6 +137,7 @@ def process_shot_stft(
         raise e
 
     # Remove empty samples
+    # TODO: Add warning if samples change even if no windows and using ip criterion
     try:
         samples = remove_empty_samples(samples)
     except Exception as e:
