@@ -8,6 +8,9 @@ from typing import Any, Union
 
 # also do other file formats
 
+import warnings
+
+@warnings._deprecated('Use the new function save instead')
 def dict_to_hdf5(
     dictionary: dict,
     h5file: h5py.File,

@@ -161,4 +161,6 @@ cython_debug/
 
 data/
 logs/
+outputs/
 *.pkl
+*.joblib

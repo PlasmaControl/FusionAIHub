@@ -12,10 +12,10 @@ import logging
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from typing import Optional
-from ...util.parmap import ParallelMapper
 
-from .shot_processing import process_shot_stft
-from .dataset_utils import index_dataset
+from .util import ParallelMapper
+from .pipelines import pipeline_v0_stable as pipeline
+from .util import index_dataset
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
@@ -113,10 +113,10 @@ def prepare_dataset(cfg: dict) -> None:
     
     # Process shots using the appropriate function
     if cfg.get("debug", False):
-        process_shot_stft(170000, cfg, cache_dir) # For debugging
+        pipeline(170000, cfg, cache_dir) # For debugging
     else:
         mapper = ParallelMapper()
-        mapper(process_shot_stft, all_shots, cfg=cfg, out_dir=cache_dir)
+        mapper(pipeline, all_shots, cfg=cfg, out_dir=cache_dir)
     
     # Move cached files into train/test split
     logger.info("Splitting dataset into train and valid sets...")
@@ -165,7 +165,7 @@ def prepare_dataset(cfg: dict) -> None:
     logger.info(f"Validation samples: {len(valid_files)}")
 
 
-def main():
+def preprocess():
     """Main entry point for the dataset preparation script."""
     import argparse
     
@@ -200,4 +200,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    preprocess() 

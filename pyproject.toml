@@ -1,13 +1,13 @@
 [project]
-name = "fusionaihub"
-version = "0.0.1"
+name = "faith"
+version = "0.0.1-alpha"
 authors = [
-    {name="Peter Steiner", email="peter.steiner@princeton.edu"},
-    {name="Max Tian Curie", email="max.curie@princeton.edu"},
-    {name="Nathaniel Chen", email="nathaniel@princeton.edu"},
-    {name="Azarakhsh Jalalvand", email="azarakhsh.jalalvand@princeton.edu"}
+    { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
+    { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
+    { name = "Kouroche Bouchiat", email = "bouchiat@princeton.edu" },
+    { name = "Azarakhsh Jalalvand", email = "azarakhsh.jalalvand@princeton.edu" }
 ]
-description = "FusionAIHub - Fetch nuclear fusion data, preprocess it, and use it for training machine learning models."
+description = "Fusion Artificial InTelligence Hub - Fetch nuclear fusion data, preprocess it, train machine learning models."
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
@@ -15,22 +15,30 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 dependencies = [
     "h5py",
+    "scikit-learn",
     "numpy",
     "pandas",
     "matplotlib",
+    "seaborn",
     "scipy",
     "tqdm",
-    "opencv-python",
     "paramiko",
-    "ipykernel>=6.29.5",
-    "ipywidgets>=8.1.7",
-    "scikit-learn>=1.6.1",
-    "torch>=2.7.1",
-    "tables>=3.9.2",
-    "pyyaml>=6.0.2",
+    "ipykernel",
+    "ipywidgets",
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torchmetrics",
+    "lightning",
+    "ray[data,train,tune,serve]",
+    "tables",
+    "pyyaml",
+    "jupyter",
+    "hydra-core",
+    "omegaconf",
 ]
 
 [tool.uv.sources]
