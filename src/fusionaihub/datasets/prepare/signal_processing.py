@@ -51,16 +51,19 @@ def stft_transform(
     Returns:
         Log-magnitude STFT representation
     """
+    # TODO: make this modular pipeline-ish
+    # TODO: parameterize window type
+    # TODO: parameterize window size (check if gives warning or allowed)
     x = x.astype(np.float32)
     x_tensor = torch.from_numpy(x).float()
     y = torch.stft(
-        x_tensor, 
+        x_tensor,
         n_fft=n_fft,
         hop_length=hop_length, 
         window=torch.hann_window(n_fft), 
-        return_complex=True
+        return_complex=True,
     )
-    y = torch.log(torch.abs(y))
+    y = torch.abs(y)
     y = y.permute(0, 2, 1)
     return y.numpy()
 

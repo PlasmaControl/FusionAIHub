@@ -12,7 +12,7 @@ signal:
 # Data processing parameters
 randomize_shots: true
 random_seed: 42
-num_shots: 50
+num_shots: 5000
 fs_khz: 440  # Sampling frequency in kHz
 ip_threshold: 0.1  # Plasma current threshold
 window_ms: 250  # Window size in milliseconds
@@ -23,7 +23,7 @@ start_time: 0  # Start time for signal extraction (null for auto-detection)
 end_time: 5000    # End time for signal extraction (null for auto-detection)
 
 # Train/test split configuration
-train_test_split: 0.2
+train_test_split: 0.1
 
 # Directory paths
 raw_data_dir: /scratch/gpfs/EKOLEMEN/d3d_fusion_data

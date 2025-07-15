@@ -97,6 +97,8 @@ def prepare_dataset(cfg: dict) -> None:
         np.random.seed(cfg["random_seed"])
         all_shots = np.random.permutation(all_shots)
     
+    # Set to -1 to use all shots, or just don't include as argument
+    # However, keep argument to stay consistent with other scripts
     if cfg.get("num_shots") is not None:
         all_shots = all_shots[:cfg["num_shots"]]
     

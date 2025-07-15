@@ -89,12 +89,16 @@ def align_signal(
         Aligned DataFrame with data and state columns
     """
     # get sampling frequency
+    # TODO: can change to getting mean or individual
     fs_raw = len(df) / (df.index[-1] - df.index[0])
     
     # crop time
     df = df.loc[(df.index >= start_time) & (df.index <= end_time)]
     
     # resample
+    # TODO: can this be precomputed?
+    # TODO: merge dataframe at closest time with a tolerance?
+    # TODO: have 2 modules based on "make_stft" function?
     num = len(df)
     num = int(num * fs / fs_raw)
     
@@ -104,6 +108,9 @@ def align_signal(
     )
     
     # mark on-off states
+    # TODO: add intermtermittent detection, not just beginning and end
+    # TODO: or just want the model to be robust
+    # TODO: shot defined as plasma current > 0.5 MA, or 0.5s.
     start_nan = (df.index[0] - start_time) * fs
     end_nan = (end_time - df.index[-1]) * fs
     start_pad = pd.DataFrame(
@@ -120,6 +127,7 @@ def align_signal(
     df_state.columns = [f"{col}_state" for col in df.columns]
     
     # combine data with state
+    # TODO: change this to a variable
     df = df.astype(np.float32)
     df_state = df_state.astype(np.bool)
     df = pd.concat([df, df_state], axis=1)

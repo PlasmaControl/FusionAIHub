@@ -13,4 +13,4 @@ module purge
 source .venv/bin/activate
 
 # Run pipeline
-srun python -m fusionaihub.datasets.prepare
+srun python -m fusionaihub.datasets.prepare --config config/raw.yaml --log-level DEBUG
