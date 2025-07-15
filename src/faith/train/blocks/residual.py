@@ -7,10 +7,9 @@ following the established patterns and interfaces defined in the base module.
 import torch
 import torch.nn as nn
 from typing import Union, Any
-from .base import BaseBlock, register_block, WeightInitializer
+from .base import BaseBlock, WeightInitializer
 
 
-@register_block('residual')
 class ResidualBlock(BaseBlock):
     """Residual convolutional block with batch normalization and ReLU.
 
@@ -127,8 +126,9 @@ class ResidualBlock(BaseBlock):
         # Initialize weights
         self._initialize_weights()
 
-    def _normalize_stride(self, stride: Union[int, tuple[int, int]]) \
-            -> tuple[int, int]:
+    def _normalize_stride(self,
+                          stride: Union[int, tuple[int, int]]
+                          ) -> tuple[int, int]:
         """Normalize stride to tuple format."""
         if isinstance(stride, int):
             return (stride, stride)
@@ -322,8 +322,10 @@ class ResidualBlock(BaseBlock):
         """Check if this block has a skip connection projection."""
         return self.skip_conv is not None
 
-    def get_output_shape(self, input_shape: tuple[int, ...]) \
-            -> tuple[int, ...]:
+    def get_output_shape(
+            self,
+            input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
         """Calculate output shape given input shape.
 
         Parameters
@@ -336,7 +338,7 @@ class ResidualBlock(BaseBlock):
         tuple
             Output tensor shape.
         """
-        from src import BlockUtils
+        from src.faith.train.blocks import BlockUtils
 
         # Account for stride in the first convolution
         temp_shape = BlockUtils.calculate_output_shape(
@@ -349,41 +351,3 @@ class ResidualBlock(BaseBlock):
         # Update channels
         batch_size, _, height, width = temp_shape
         return (batch_size, self.out_channels, height, width)
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test basic functionality
-    block = ResidualBlock(64, 128, stride=2)
-    x = torch.randn(1, 64, 32, 32)
-    output = block(x)
-    print(f"Input shape: {x.shape}")
-    print(f"Output shape: {output.shape}")
-    print(f"Block: {block}")
-
-    # Test configuration serialization
-    config = block.get_config()
-    print(f"Config: {config}")
-
-    # Create from config
-    new_block = ResidualBlock.from_config(config)
-    print(f"Recreated block: {new_block}")
-
-    # Test registry functionality
-    from src import BlockRegistry
-
-
-    registry_block = BlockRegistry.create(
-        'residual',
-        in_channels=32,
-        out_channels=64,
-        activation='gelu'
-    )
-    print(f"Registry block: {registry_block}")
-
-    # Test parameter counting
-    print(f"Parameter count: {block.parameter_count}")
-
-    # Test output shape calculation
-    output_shape = block.get_output_shape((1, 64, 32, 32))
-    print(f"Calculated output shape: {output_shape}")

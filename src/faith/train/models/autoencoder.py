@@ -66,8 +66,8 @@ class BlockBasedAutoencoder(nn.Module):
 
     >>> # Custom configuration
     >>> configs = [
-    ...     {'out_channels': 64, 'pool_size': (1, 2)},
-    ...     {'out_channels': 128, 'pool_size': (1, 4)},
+    ...    {'out_channels': 64, 'pool_size': (1, 2)},
+    ...    {'out_channels': 128, 'pool_size': (1, 4)},
     ... ]
     >>> autoencoder = BlockBasedAutoencoder(
     ...     input_channels=80,
@@ -155,14 +155,19 @@ class BlockBasedAutoencoder(nn.Module):
             init_method=init_method
         )
 
-    def _get_default_block_configs(self) -> list[dict[str, Any]]:
+    def _get_default_block_configs(
+            self
+    ) -> list[dict[str, Any]]:
         """Get default block configuration."""
         return [
             {'out_channels': 32, 'pool_size': (1, 2)},
             {'out_channels': 16, 'pool_size': (1, 2)},
         ]
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(
+            self,
+            x: torch.Tensor
+    ) -> torch.Tensor:
         """Encode input to latent representation.
 
         Parameters
@@ -178,7 +183,10 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return self.encoder(x)
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
+    def decode(
+            self,
+            z: torch.Tensor
+    ) -> torch.Tensor:
         """
         Decode latent representation to reconstructed output.
 
@@ -196,7 +204,10 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return self.decoder(z)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(
+            self,
+            inputs: torch.Tensor
+    ) -> torch.Tensor:
         """Forward pass through the complete autoencoder.
 
         Parameters
@@ -213,8 +224,10 @@ class BlockBasedAutoencoder(nn.Module):
         reconstructed = self.decode(latent)
         return reconstructed
 
-    def latent_with_reconstruction(self, inputs: torch.Tensor) \
-            -> tuple[torch.Tensor, torch.Tensor]:
+    def latent_with_reconstruction(
+            self,
+            inputs: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the complete autoencoder.
 
         Parameters
@@ -257,7 +270,10 @@ class BlockBasedAutoencoder(nn.Module):
         }
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> 'BlockBasedAutoencoder':
+    def from_config(
+            cls,
+            config: dict[str, Any]
+    ) -> 'BlockBasedAutoencoder':
         """Create BlockBasedAutoencoder instance from configuration dictionary.
 
         Parameters
@@ -272,8 +288,10 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return cls(**config)
 
-    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[
-        int, ...]:
+    def get_output_shape(
+            self,
+            input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
         """Calculate output shape given input shape.
 
         Parameters
@@ -291,8 +309,10 @@ class BlockBasedAutoencoder(nn.Module):
         output_shape = self.decoder.get_output_shape(latent_shape)
         return output_shape
 
-    def get_latent_shape(self, input_shape: tuple[int, ...]) -> tuple[
-        int, ...]:
+    def get_latent_shape(
+            self,
+            input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
         """Calculate latent representation shape given input shape.
 
         Parameters
@@ -307,8 +327,10 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return self.encoder.get_output_shape(input_shape)
 
-    def get_feature_maps(self, inputs: torch.Tensor) -> dict[
-        str, list[torch.Tensor]]:
+    def get_feature_maps(
+            self,
+            inputs: torch.Tensor
+    ) -> dict[str, list[torch.Tensor]]:
         """Get intermediate feature maps from encoder and decoder.
 
         Useful for visualization and debugging.
@@ -374,79 +396,11 @@ class BlockBasedAutoencoder(nn.Module):
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedAutoencoder."""
-        return (f"BlockBasedAutoencoder("
-                f"input_channels={self.input_channels}, "
-                f"encoder_blocks={len(self.encoder.blocks)}, "
-                f"decoder_blocks={len(self.decoder.blocks)}, "
-                f"bottleneck_channels={self.encoder.bottleneck_channels}, "
-                f"parameters={self.parameter_count:,})")
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test basic functionality
-    print("Testing BlockBasedAutoencoder...")
-
-    # Create autoencoder with default config
-    autoencoder = BlockBasedAutoencoder(input_channels=80)
-
-    # Test forward pass
-    x = torch.randn(2, 80, 100, 128)
-    reconstructed = autoencoder(x)
-    latent = autoencoder.encode(x)
-
-    print(f"Input shape: {x.shape}")
-    print(f"Latent shape: {latent.shape}")
-    print(f"Reconstructed shape: {reconstructed.shape}")
-    print(f"Autoencoder: {autoencoder}")
-
-    # Test individual methods
-    latent_only = autoencoder.get_latent_representation(x)
-    reconstructed_only = autoencoder.reconstruct(x)
-
-    print(f"Latent only shape: {latent_only.shape}")
-    print(f"Reconstructed only shape: {reconstructed_only.shape}")
-
-    # Test configuration serialization
-    config = autoencoder.get_config()
-    print(f"Config keys: {list(config.keys())}")
-
-    new_autoencoder = BlockBasedAutoencoder.from_config(config)
-    print(f"Recreated autoencoder: {new_autoencoder}")
-
-    # Test shape calculation
-    output_shape = autoencoder.get_output_shape((1, 80, 100, 128))
-    latent_shape = autoencoder.get_latent_shape((1, 80, 100, 128))
-    print(f"Calculated output shape: {output_shape}")
-    print(f"Calculated latent shape: {latent_shape}")
-
-    # Test parameter counting
-    print(f"Total parameters: {autoencoder.parameter_count:,}")
-    print(f"Encoder parameters: {autoencoder.encoder_parameter_count:,}")
-    print(f"Decoder parameters: {autoencoder.decoder_parameter_count:,}")
-
-    # Test feature map extraction
-    feature_maps = autoencoder.get_feature_maps(x)
-    print(f"Encoder feature maps: {len(feature_maps['encoder'])}")
-    print(f"Decoder feature maps: {len(feature_maps['decoder'])}")
-
-    # Test custom configuration
-    custom_configs = [
-        {'out_channels': 64, 'pool_size': (1, 2), 'dropout': 0.2},
-        {'out_channels': 128, 'pool_size': (1, 4), 'dropout': 0.3},
-    ]
-
-    custom_autoencoder = BlockBasedAutoencoder(
-        input_channels=80,
-        block_configs=custom_configs,
-        activation='gelu'
-    )
-
-    x_custom = torch.randn(1, 80, 100, 128)
-    reconstructed_custom, latent_custom = custom_autoencoder(x_custom)
-
-    print(f"\nCustom autoencoder:")
-    print(f"Input shape: {x_custom.shape}")
-    print(f"Latent shape: {latent_custom.shape}")
-    print(f"Reconstructed shape: {reconstructed_custom.shape}")
-    print(f"Custom autoencoder: {custom_autoencoder}")
+        return (
+            f"BlockBasedAutoencoder("
+            f"input_channels={self.input_channels}, "
+            f"encoder_blocks={len(self.encoder.blocks)}, "
+            f"decoder_blocks={len(self.decoder.blocks)}, "
+            f"bottleneck_channels={self.encoder.bottleneck_channels}, "
+            f"parameters={self.parameter_count:,})"
+        )

@@ -8,13 +8,11 @@ The decoder creates a symmetric reconstruction path to the encoder.
 import torch
 import torch.nn as nn
 from typing import Union, Any, Optional
-from .base import (SequentialBlock, ConfigurableBlock, register_block,
-                   WeightInitializer)
-from torch_training.blocks.residual import ResidualBlock
-from . import EncoderBlock
+from .base import SequentialBlock, ConfigurableBlock, WeightInitializer
+from .residual import ResidualBlock
+from .encoder import EncoderBlock
 
 
-@register_block('decoder')
 class DecoderBlock(SequentialBlock):
     # TODO: ConvTranspose2d
     """Single decoder block: Upsample + ResidualBlock + Dropout.
@@ -312,8 +310,8 @@ class BlockBasedDecoder(ConfigurableBlock):
 
         # Validate inputs
         if output_channels <= 0:
-            raise ValueError(
-                f"output_channels must be positive, got {output_channels}")
+            raise ValueError(f"output_channels must be positive, "
+                             f"got {output_channels}")
 
         if bottleneck_channels <= 0:
             raise ValueError(f"bottleneck_channels must be positive, "
@@ -591,77 +589,3 @@ class BlockBasedDecoder(ConfigurableBlock):
                 f"num_blocks={len(self.blocks)}, "
                 f"bottleneck_channels={self.bottleneck_channels}, "
                 f"upsampling_mode='{self.upsampling_mode}')")
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test DecoderBlock
-    print("Testing DecoderBlock...")
-    decoder_block = DecoderBlock(
-        in_channels=128,
-        out_channels=64,
-        upsample_factor=(1, 2),
-        dropout=0.3,
-        upsampling_mode='nearest',
-        activation='relu'
-    )
-
-    x = torch.randn(1, 128, 16, 8)
-    output = decoder_block(x)
-    print(f"DecoderBlock - Input: {x.shape}, Output: {output.shape}")
-
-    # Test configuration
-    config = decoder_block.get_config()
-    new_block = DecoderBlock.from_config(config)
-    print(f"Config serialization successful: {new_block}")
-
-    # Test BlockBasedDecoder with mock encoder blocks
-    print("\nTesting BlockBasedDecoder...")
-
-    # Create mock encoder blocks for testing
-    from src import EncoderBlock
-
-
-    mock_encoder_blocks = [
-        EncoderBlock(80, 128, pool_size=(1, 2)),
-        EncoderBlock(128, 256, pool_size=(1, 4)),
-        EncoderBlock(256, 128, pool_size=(1, 2)),
-    ]
-
-    decoder = BlockBasedDecoder(
-        output_channels=80,
-        encoder_blocks=mock_encoder_blocks,
-        bottleneck_channels=64,
-        upsampling_mode='nearest'
-    )
-
-    # Test forward pass
-    latent = torch.randn(2, 64, 25, 4)
-    reconstructed = decoder(latent)
-    print(f"Decoder - Input: {latent.shape}, Output: {reconstructed.shape}")
-
-    # Test feature map extraction
-    feature_maps = decoder.get_feature_maps(latent)
-    print(f"Feature maps shapes: {[fm.shape for fm in feature_maps]}")
-
-    # Test from_encoder class method
-    decoder2 = BlockBasedDecoder.from_encoder(
-        encoder_blocks=mock_encoder_blocks,
-        bottleneck_channels=64,
-        output_channels=80,
-        upsampling_mode='bilinear'
-    )
-    print(f"Decoder from encoder: {decoder2}")
-
-    # Test registry
-    from src import BlockRegistry
-
-
-    registry_block = BlockRegistry.create(
-        'decoder',
-        in_channels=64,
-        out_channels=32,
-        upsample_factor=(2, 2),
-        upsampling_mode='bilinear'
-    )
-    print(f"Registry block: {registry_block}")

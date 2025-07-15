@@ -7,8 +7,8 @@ utilities, and helper functions for working with autoencoder models.
 import torch
 from typing import Union, Optional, Any
 
-from torch_training.models.autoencoder import BlockBasedAutoencoder
-from torch_training.models.mae import MaskedAutoencoder, MASK_TYPES
+from .autoencoder import BlockBasedAutoencoder
+from .mae import MaskedAutoencoder, MASK_TYPES
 from . import create_block_autoencoder, PRESET_CONFIGS
 
 
@@ -377,7 +377,7 @@ def analyze_model_architecture(
         output_shape = base_model.get_output_shape(input_shape)
         compression_ratio = (input_shape[2] * input_shape[3]) / (
                 latent_shape[2] * latent_shape[3])
-    except Exception as e:
+    except Exception:
         latent_shape = None
         output_shape = None
         compression_ratio = None
@@ -503,7 +503,7 @@ def print_model_summary(
         print(f"Mask Ratio: {analysis['mask_info']['mask_ratio']:.2f}")
         print(f"Patch Size: {analysis['mask_info']['patch_size']}")
 
-    print(f"\nArchitecture:")
+    print("\nArchitecture:")
     print(f"  Input Channels: {analysis['architecture']['input_channels']}")
     print(f"  Bottleneck Channels: "
           f"{analysis['architecture']['bottleneck_channels']}")
@@ -516,7 +516,7 @@ def print_model_summary(
         print(f"  Compression Ratio: "
               f"{analysis['shapes']['compression_ratio']:.1f}x")
 
-    print(f"\nShapes:")
+    print("\nShapes:")
     print(f"  Input: {analysis['shapes']['input']}")
     print(f"  Latent: {analysis['shapes']['latent']}")
     print(f"  Output: {analysis['shapes']['output']}")
@@ -542,19 +542,19 @@ if __name__ == "__main__":
     # Test validation
     valid_shape = (32, 80, 100, 128)
     invalid_shape = (80, 100, 128)
-    print(f"\nShape validation:")
+    print("\nShape validation:")
     print(f"  {valid_shape}: {validate_input_shape(valid_shape)}")
     print(f"  {invalid_shape}: {validate_input_shape(invalid_shape)}")
 
     # Test memory estimation
     memory = get_memory_estimate(mae, (80, 100, 128), batch_size=32)
-    print(f"\nMemory estimate for MAE:")
+    print("\nMemory estimate for MAE:")
     print(f"  Total: {memory['total_mb']:.1f} MB")
     print(f"  Parameters: {memory['parameters_mb']:.1f} MB")
     print(f"  Activations: {memory['activations_mb']:.1f} MB")
 
     # Test architecture analysis
-    print(f"\nModel summary:")
+    print("\nModel summary:")
     print_model_summary(mae, (1, 80, 100, 128))
 
     # Test model comparison
@@ -563,7 +563,7 @@ if __name__ == "__main__":
         'autoencoder': autoencoder
     }
     comparison = compare_models(models)
-    print(f"\nModel comparison:")
+    print("\nModel comparison:")
     for name, params in comparison['summary']['parameter_counts'].items():
         memory = comparison['summary']['memory_usage'][name]
         print(f"  {name}: {params:,} params, {memory:.1f} MB")

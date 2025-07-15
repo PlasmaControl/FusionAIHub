@@ -66,8 +66,9 @@ class BaseBlock(nn.Module, ABC):
         self.bias = bias
 
     @staticmethod
-    def _normalize_kernel_size(kernel_size: Union[int, tuple[int, int]]) \
-            -> tuple[int, int]:
+    def _normalize_kernel_size(
+            kernel_size: Union[int, tuple[int, int]]
+    ) -> tuple[int, int]:
         """Normalize kernel size to tuple format."""
         if isinstance(kernel_size, int):
             return (kernel_size, kernel_size)
@@ -76,8 +77,8 @@ class BaseBlock(nn.Module, ABC):
     @staticmethod
     def _calculate_padding(
             kernel_size: Union[int, tuple[int, int]],
-            padding: Union[int, tuple[int, int], str]) \
-            -> tuple[int, ...]:
+            padding: Union[int, tuple[int, int], str]
+    ) -> tuple[int, ...]:
         """Calculate padding based on kernel size and padding specification."""
         if padding == 'auto':
             if isinstance(kernel_size, int):
@@ -90,7 +91,10 @@ class BaseBlock(nn.Module, ABC):
             return padding
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+            self,
+            x: torch.Tensor
+    ) -> torch.Tensor:
         """
         Forward pass through the block.
 
@@ -204,57 +208,12 @@ class ConfigurableBlock(BaseBlock):
         return config
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> 'ConfigurableBlock':
+    def from_config(
+            cls,
+            config: dict[str, Any]
+    ) -> 'ConfigurableBlock':
         """Create block instance from configuration dictionary."""
         return cls(**config)
-
-
-class BlockRegistry:
-    """Registry for different block types.
-
-    This class provides a way to register and retrieve different block
-    implementations, making it easy to create blocks from string names
-    or configuration files.
-    """
-
-    _registry: dict[str, type] = {}
-
-    @classmethod
-    def register(cls, name: str, block_class: type) -> None:
-        """Register a block class with a given name."""
-        if not issubclass(block_class, BaseBlock):
-            raise ValueError(
-                f"Block class must inherit from BaseBlock, got {block_class}")
-        cls._registry[name] = block_class
-
-    @classmethod
-    def get(cls, name: str) -> type:
-        """Get a block class by name."""
-        if name not in cls._registry:
-            raise KeyError(f"Block '{name}' not found in registry. "
-                           f"Available blocks: {list(cls._registry.keys())}")
-        return cls._registry[name]
-
-    @classmethod
-    def create(cls, name: str, **kwargs) -> BaseBlock:
-        """Create a block instance by name."""
-        block_class = cls.get(name)
-        return block_class(**kwargs)
-
-    @classmethod
-    def list_blocks(cls) -> list[str]:
-        """List all registered block names."""
-        return list(cls._registry.keys())
-
-
-def register_block(name: str):
-    """Decorator to register a block class."""
-
-    def decorator(block_class: type):
-        BlockRegistry.register(name, block_class)
-        return block_class
-
-    return decorator
 
 
 class WeightInitializer:
@@ -294,8 +253,8 @@ class BlockUtils:
             kernel_size: Union[int, tuple[int, int]],
             stride: Union[int, tuple[int, int]] = 1,
             padding: Union[int, tuple[int, int]] = 0,
-            dilation: Union[int, tuple[int, int]] = 1) \
-            -> tuple[int, ...]:
+            dilation: Union[int, tuple[int, int]] = 1
+    ) -> tuple[int, ...]:
         """Calculate output shape after convolution operation."""
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
@@ -310,18 +269,21 @@ class BlockUtils:
         height, width = input_shape[2:]
 
         out_height = math.floor(
-            (height + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1)
-            / stride[0] + 1
+            (height + 2 * padding[0]
+             - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0] + 1
         )
         out_width = math.floor(
-            (width + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) /
-            stride[1] + 1
+            (width + 2 * padding[1]
+             - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1] + 1
         )
 
-        return (batch_size, channels, out_height, out_width)
+        return batch_size, channels, out_height, out_width
 
     @staticmethod
-    def count_parameters(block: nn.Module, trainable_only: bool = True) -> int:
+    def count_parameters(
+            block: nn.Module,
+            trainable_only: bool = True
+    ) -> int:
         """Count parameters in a block."""
         if trainable_only:
             return sum(
@@ -330,55 +292,22 @@ class BlockUtils:
             return sum(p.numel() for p in block.parameters())
 
     @staticmethod
-    def get_memory_usage(block: nn.Module, input_shape: tuple[int, ...]) \
-            -> dict[str, float]:
+    def get_memory_usage(
+            block: nn.Module,
+            input_shape: tuple[int, ...]
+    ) -> dict[str, float]:
         """Estimate memory usage of a block."""
         # This is a simplified estimation
-        param_memory = BlockUtils.count_parameters(
-            block) * 4  # 4 bytes per float32
+        # 4 bytes per float32
+        param_memory = BlockUtils.count_parameters(block) * 4
 
-        # Rough estimation of activation memory
+        # Estimation of activation memory
         output_elements = math.prod(input_shape)
-        activation_memory = output_elements * 4  # 4 bytes per float32
+        # 4 bytes per float32
+        activation_memory = output_elements * 4
 
         return {
             'parameters_mb': param_memory / (1024 * 1024),
             'activations_mb': activation_memory / (1024 * 1024),
             'total_mb': (param_memory + activation_memory) / (1024 * 1024)
         }
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Example of how the base classes would be used
-
-    class ExampleBlock(BaseBlock):
-        """Example implementation of BaseBlock."""
-
-        def __init__(self, in_channels: int, out_channels: int, **kwargs):
-            super().__init__(in_channels, out_channels, **kwargs)
-            self.conv = nn.Conv2d(in_channels, out_channels,
-                                  kernel_size=self.kernel_size)
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            return self.conv(x)
-
-
-    # Register the block
-    BlockRegistry.register('example', ExampleBlock)
-
-    # Create block from registry
-    block = BlockRegistry.create('example', in_channels=64, out_channels=128)
-    print(f"Created block: {block}")
-    print(f"Parameter count: {block.parameter_count}")
-    print(f"Config: {block.get_config()}")
-
-    # Test utility functions
-    input_shape = (1, 64, 32, 32)
-    memory_info = BlockUtils.get_memory_usage(block, input_shape)
-    print(f"Memory usage: {memory_info}")
-
-    output_shape = BlockUtils.calculate_output_shape(
-        input_shape, kernel_size=3, stride=1, padding=1
-    )
-    print(f"Output shape: {output_shape}")

@@ -13,8 +13,8 @@ The main components are:
 Examples
 --------
 Basic usage:
->>> from faith.train.models import BlockBasedAutoencoder, \
-create_block_autoencoder
+>>> from faith.train.models import (
+...     BlockBasedAutoencoder, create_block_autoencoder)
 >>> autoencoder = create_block_autoencoder('default', input_channels=80)
 >>> x = torch.randn(1, 80, 100, 128)
 >>> reconstructed, latent = autoencoder(x)
@@ -44,6 +44,9 @@ from .configs import (
     get_preset_config,
     save_model_config,
     load_model_config,
+    list_preset_configs,
+    create_model_from_config_file,
+    create_autoencoder_from_config,
     ModelConfig,
     PRESET_CONFIGS
 )
@@ -53,13 +56,8 @@ from .utils import (
     create_mae_model,
     get_model_info,
     get_memory_estimate,
-    validate_input_shape
+    validate_input_shape,
 )
-
-# Package metadata
-__version__ = "0.1.0"
-__author__ = "Peter Steiner"
-__email__ = "peter.steiner@princeton.edu"
 
 # Public API - only these should be imported by users
 __all__ = [
@@ -84,9 +82,4 @@ __all__ = [
     "get_model_info",
     "get_memory_estimate",
     "validate_input_shape",
-
-    # Metadata
-    "__version__",
-    "__author__",
-    "__email__",
 ]

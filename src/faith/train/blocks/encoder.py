@@ -7,14 +7,13 @@ inherit from the base classes, following established patterns and interfaces.
 import torch
 import torch.nn as nn
 from typing import Union, Any, Optional
-from .base import (SequentialBlock, ConfigurableBlock, register_block,
-                   WeightInitializer)
+from .base import SequentialBlock, ConfigurableBlock, WeightInitializer
 from .residual import ResidualBlock
 
 
-@register_block('encoder')
 class EncoderBlock(SequentialBlock):
-    """Single encoder block: ResidualBlock + Dropout + MaxPool.
+    """
+    Single encoder block: ResidualBlock + Dropout + MaxPool.
 
     This block represents the fundamental building unit of the encoder,
     combining feature extraction through ResidualBlock, regularization
@@ -357,8 +356,8 @@ class BlockBasedEncoder(ConfigurableBlock):
             'bias': config.get('bias', self.bias),
             'use_batch_norm': config.get('use_batch_norm', True),
             'activation': config.get('activation', 'relu'),
-            'residual_init_method': config.get('residual_init_method',
-                                               'kaiming'),
+            'residual_init_method': config.get(
+                'residual_init_method', 'kaiming'),
         }
         return block_config
 
@@ -519,60 +518,3 @@ class BlockBasedEncoder(ConfigurableBlock):
                 f"num_blocks={len(self.blocks)}, "
                 f"bottleneck_channels={self.bottleneck_channels}, "
                 f"hidden_dim={self.hidden_dim})")
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test EncoderBlock
-    print("Testing EncoderBlock...")
-    encoder_block = EncoderBlock(
-        in_channels=64,
-        out_channels=128,
-        pool_size=(1, 2),
-        dropout=0.3,
-        activation='relu'
-    )
-
-    x = torch.randn(1, 64, 32, 32)
-    output = encoder_block(x)
-    print(f"EncoderBlock - Input: {x.shape}, Output: {output.shape}")
-
-    # Test configuration
-    config = encoder_block.get_config()
-    new_block = EncoderBlock.from_config(config)
-    print(f"Config serialization successful: {new_block}")
-
-    # Test BlockBasedEncoder
-    print("\nTesting BlockBasedEncoder...")
-    block_configs = [
-        {'out_channels': 128, 'pool_size': (1, 2), 'dropout': 0.2},
-        {'out_channels': 256, 'pool_size': (1, 4), 'dropout': 0.3},
-        {'out_channels': 128, 'pool_size': (1, 2), 'dropout': 0.4},
-    ]
-
-    encoder = BlockBasedEncoder(
-        input_channels=80,
-        block_configs=block_configs,
-        hidden_dim=16,
-        bottleneck_channels=64
-    )
-
-    x = torch.randn(2, 80, 100, 128)
-    latent = encoder(x)
-    print(f"Encoder - Input: {x.shape}, Output: {latent.shape}")
-
-    # Test feature map extraction
-    feature_maps = encoder.get_feature_maps(x)
-    print(f"Feature maps shapes: {[fm.shape for fm in feature_maps]}")
-
-    # Test registry
-    from src import BlockRegistry
-
-
-    registry_block = BlockRegistry.create(
-        'encoder',
-        in_channels=32,
-        out_channels=64,
-        activation='gelu'
-    )
-    print(f"Registry block: {registry_block}")
