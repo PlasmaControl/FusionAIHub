@@ -1,5 +1,5 @@
 [project]
-name = "Fusion Artificial InTelligence Hub"
+name = "faith"
 version = "0.0.1-alpha"
 authors = [
     { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
@@ -37,6 +37,8 @@ dependencies = [
     "tables",
     "pyyaml",
     "jupyter",
+    "hydra-core",
+    "omegaconf",
 ]
 
 [tool.uv.sources]
