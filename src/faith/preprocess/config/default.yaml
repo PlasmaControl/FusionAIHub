@@ -36,7 +36,7 @@ signal:
 # Data processing parameters
 randomize_shots: true
 random_seed: 42
-num_shots: 15000
+num_shots: 100
 fs_khz: 500  # Sampling frequency in kHz
 ip_threshold: 0.1  # Plasma current threshold
 window_ms: null  # Window size in milliseconds

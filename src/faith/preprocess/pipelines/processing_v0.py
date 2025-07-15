@@ -13,17 +13,17 @@ from typing import Dict
 from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
-from .data_extraction import (
+from ..extract.data_extraction import (
     extract_signal, 
     extract_running_time, 
     align_signal,
 )
-from .sample_processing import (
+from ..transform.sample_processing import (
     split_samples,
     remove_empty_samples,
     save_sample,
 )
-from .signal_processing import (
+from ..transform.signal_processing import (
     identity_transform,
     stft_transform,
     resample_transform,
@@ -33,13 +33,13 @@ from .signal_processing import (
 logger = logging.getLogger(__name__)
 
 
-def process_shot_stft(
+def pipeline(
     shot_number: int,
     cfg: Dict,
     out_dir: Path,
 ) -> None:
     """
-    Process a single shot through the complete data preparation pipeline accounting for STFT transformations.
+    Process a single shot through the complete data preparation pipeline accounting transformations.
     
     This function orchestrates the complete processing workflow for a shot:
     1. Determines plasma running time

@@ -1,13 +1,13 @@
 [project]
-name = "fusionaihub"
-version = "0.0.1"
+name = "Fusion Artificial InTelligence Hub"
+version = "0.0.1-alpha"
 authors = [
     { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
     { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
     { name = "Kouroche Bouchiat", email = "bouchiat@princeton.edu" },
     { name = "Azarakhsh Jalalvand", email = "azarakhsh.jalalvand@princeton.edu" }
 ]
-description = "FusionAIHub - Fetch nuclear fusion data, preprocess it, train machine learning models."
+description = "Fusion Artificial InTelligence Hub - Fetch nuclear fusion data, preprocess it, train machine learning models."
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
