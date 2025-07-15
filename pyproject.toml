@@ -2,12 +2,12 @@
 name = "fusionaihub"
 version = "0.0.1"
 authors = [
-    {name="Peter Steiner", email="peter.steiner@princeton.edu"},
-    {name="Max Tian Curie", email="max.curie@princeton.edu"},
-    {name="Nathaniel Chen", email="nathaniel@princeton.edu"},
-    {name="Azarakhsh Jalalvand", email="azarakhsh.jalalvand@princeton.edu"}
+    { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
+    { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
+    { name = "Kouroche Bouchiat", email = "bouchiat@princeton.edu" },
+    { name = "Azarakhsh Jalalvand", email = "azarakhsh.jalalvand@princeton.edu" }
 ]
-description = "FusionAIHub - Fetch nuclear fusion data, preprocess it, and use it for training machine learning models."
+description = "FusionAIHub - Fetch nuclear fusion data, preprocess it, train machine learning models."
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
@@ -15,12 +15,14 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 dependencies = [
     "h5py",
+    "scikit-learn",
     "numpy",
     "pandas",
     "matplotlib",
+    "seaborn",
     "scipy",
     "tqdm",
     "opencv-python",

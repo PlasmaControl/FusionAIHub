@@ -87,15 +87,18 @@ Each signal is configured as a list: `[signal_name, abbreviation, should_transfo
 ### Command Line
 ```bash
 # Use default configuration
-python -m src.fusionaihub.datasets.prepare
+python -m src.faith.datasets.prepare
 
 # Use custom configuration file
-python -m src.fusionaihub.datasets.prepare --config /path/to/config.yaml
+python -m src.faith.datasets.prepare --config /path/to/config.yaml
 ```
 
 ### Programmatic Usage
+
 ```python
-from src.fusionaihub.datasets.prepare.prepare_dataset import load_config, prepare_dataset
+from src.faith.datasets.prepare.prepare_dataset import load_config,
+    prepare_dataset
+
 
 # Load configuration
 cfg = load_config("path/to/config.yaml")
@@ -109,7 +112,8 @@ Create a custom YAML file based on `config/default.yaml`:
 
 ```python
 import yaml
-from src.fusionaihub.datasets.prepare.prepare_dataset import prepare_dataset
+from src.faith.datasets.prepare.prepare_dataset import prepare_dataset
+
 
 # Load and modify configuration
 with open("config/default.yaml", "r") as f:
