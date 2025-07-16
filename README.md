@@ -10,7 +10,7 @@ This repository serves as a centralized platform for fusion-related machine lear
 
 Go to your scratch directory while you are on the HEAD node (so you need internet access, which computing nodes do not have).
 
-We will be using Python 3.12 and uv as a package manageer. Since uv isn't on Stellar, for now we will install it via pip
+We will be using Python 3.12 and uv as a package manager. Since uv isn't on Stellar, for now we will install it via pip
 
 /scratch/gpfs/[username]
 
