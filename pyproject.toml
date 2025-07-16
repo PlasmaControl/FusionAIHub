@@ -41,7 +41,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "pytest >=8.1.1,<9"
+  "pytest >=8.1.1,<9",
+  "pre-commit",
 ]
 
 [tool.uv.sources]
@@ -62,7 +63,7 @@ package = true
 
 [tool.ruff]
 select = ["E", "F", "I", "B", "ANN"]
-line-length = 88  # TODO
+line-length = 79
 
 [project.urls]
 Homepage = "https://github.com"
