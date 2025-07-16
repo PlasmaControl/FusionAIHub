@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from src.faith.train.blocks import BaseConvBlock, BlockUtils
 
 
