@@ -4,9 +4,11 @@ This module implements the ResidualBlock class that inherits from BaseBlock,
 following the established patterns and interfaces defined in the base module.
 """
 
+from typing import Any, Union
+
 import torch
 import torch.nn as nn
-from typing import Union, Any
+
 from .base import BaseConvBlock, WeightInitializer
 
 
@@ -141,7 +143,8 @@ class ResidualBlock(BaseConvBlock):
 
     def _validate_parameters(self) -> None:
         """Validate input parameters."""
-        valid_activations = {'relu', 'leaky_relu', 'gelu', 'swish', 'mish'}
+        valid_activations = {'tanh', 'sigmoid', 'relu', 'leaky_relu', 'gelu',
+                             'swish', 'mish'}
         if self.activation_name not in valid_activations:
             raise ValueError(f"activation must be one of {valid_activations}, "
                              f"got {self.activation_name}")
@@ -210,6 +213,8 @@ class ResidualBlock(BaseConvBlock):
     def _create_activation(self) -> nn.Module:
         """Create activation function based on name."""
         activations = {
+            'tanh': nn.Tanh(),
+            'sigmoid': nn.Sigmoid(),
             'relu': nn.ReLU(inplace=True),
             'leaky_relu': nn.LeakyReLU(0.1, inplace=True),
             'gelu': nn.GELU(),

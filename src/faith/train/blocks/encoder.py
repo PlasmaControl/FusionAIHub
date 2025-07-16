@@ -32,9 +32,6 @@ class EncoderBlock(SequentialBlock):
     stride : int or tuple of int, default=1
         Stride for convolutions in ResidualBlock. The EncoderBlock uses
         stride=1 and relies on MaxPool for downsampling.
-    padding : int, tuple of int, or str, default='auto'
-        Padding for convolutions in ResidualBlock. 'auto' calculates
-        padding to maintain spatial dimensions.
     dropout : float, default=0.3
         Dropout probability. Must be between 0.0 and 1.0.
     bias : bool, default=True
@@ -81,7 +78,6 @@ class EncoderBlock(SequentialBlock):
             pool_size: tuple[int, int] = (1, 2),
             kernel_size: Union[int, tuple[int, int]] = 3,
             stride: Union[int, tuple[int, int]] = 1,
-            padding: Union[int, tuple[int, int], str] = 'auto',
             dropout: float = 0.3,
             bias: bool = True,
             use_batch_norm: bool = True,
@@ -108,7 +104,7 @@ class EncoderBlock(SequentialBlock):
 
         # Build the sequential operations
         operations = self._build_operations(
-            in_channels, out_channels, kernel_size, stride, padding,
+            in_channels, out_channels, kernel_size, stride,
             bias, use_batch_norm, activation, residual_init_method
         )
 
@@ -132,7 +128,6 @@ class EncoderBlock(SequentialBlock):
             out_channels: int,
             kernel_size: Union[int, tuple[int, int]],
             stride: Union[int, tuple[int, int]],
-            padding: Union[int, tuple[int, int], str],
             bias: bool,
             use_batch_norm: bool,
             activation: str,
@@ -148,7 +143,6 @@ class EncoderBlock(SequentialBlock):
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
-            padding=padding,
             bias=bias,
             use_batch_norm=use_batch_norm,
             activation=activation,
@@ -176,7 +170,6 @@ class EncoderBlock(SequentialBlock):
             'activation': self.activation_name,
             'residual_init_method': self.residual_init_method,
             'stride': getattr(self.residual_block, 'stride', 1),
-            'padding': getattr(self.residual_block, 'padding', 'auto'),
         })
         return config
 
@@ -221,7 +214,7 @@ class BlockBasedEncoder(ConfigurableBlock):
 
     Parameters
     ----------
-    input_channels : int
+    in_channels : int
         Number of input channels in the data.
     block_configs : list of dict
         Configuration for each encoder block. Each dict should contain:
@@ -262,7 +255,7 @@ class BlockBasedEncoder(ConfigurableBlock):
 
     def __init__(
             self,
-            input_channels: int,
+            in_channels: int,
             block_configs: list[dict[str, Any]],
             bottleneck_channels: Optional[int] = None,
             hidden_dim: Optional[int] = None,
@@ -276,8 +269,8 @@ class BlockBasedEncoder(ConfigurableBlock):
 
         # Initialize ConfigurableBlock
         super().__init__(
-            in_channels=input_channels,
-            out_channels=input_channels,  # Will be updated after building
+            in_channels=in_channels,
+            out_channels=in_channels,  # Will be updated after building
             kernel_size=kernel_size,
             bias=bias,
             block_configs=block_configs,
@@ -292,11 +285,11 @@ class BlockBasedEncoder(ConfigurableBlock):
         if not block_configs:
             raise ValueError("block_configs cannot be empty")
 
-        if input_channels <= 0:
+        if in_channels <= 0:
             raise ValueError(
-                f"input_channels must be positive, got {input_channels}")
+                f"in_channels must be positive, got {in_channels}")
 
-        self.input_channels = input_channels
+        self.in_channels = in_channels
         self.block_configs = block_configs
         self.hidden_dim = hidden_dim
         self.bottleneck_activation = bottleneck_activation
@@ -316,7 +309,7 @@ class BlockBasedEncoder(ConfigurableBlock):
     def _build_encoder_blocks(self) -> nn.ModuleList:
         """Build the sequence of encoder blocks."""
         blocks = []
-        current_channels = self.input_channels
+        current_channels = self.in_channels
 
         for i, config in enumerate(self.block_configs):
             if 'out_channels' not in config:
@@ -351,7 +344,6 @@ class BlockBasedEncoder(ConfigurableBlock):
             'pool_size': config.get('pool_size', (1, 2)),
             'kernel_size': config.get('kernel_size', self.kernel_size),
             'stride': config.get('stride', 1),
-            'padding': config.get('padding', 'auto'),
             'dropout': config.get('dropout', 0.3),
             'bias': config.get('bias', self.bias),
             'use_batch_norm': config.get('use_batch_norm', True),
@@ -374,7 +366,7 @@ class BlockBasedEncoder(ConfigurableBlock):
         if self.blocks:
             current_channels = self.blocks[-1].out_channels
         else:
-            current_channels = self.input_channels
+            current_channels = self.in_channels
 
         # Optional adaptive pooling
         if self.hidden_dim is not None:
@@ -450,7 +442,7 @@ class BlockBasedEncoder(ConfigurableBlock):
         Parameters
         ----------
         x : torch.Tensor
-            Input tensor with shape (batch_size, input_channels, height, width)
+            Input tensor with shape (batch_size, in_channels, height, width)
 
         Returns
         -------
@@ -514,7 +506,7 @@ class BlockBasedEncoder(ConfigurableBlock):
     def __repr__(self) -> str:
         """String representation of the BlockBasedEncoder."""
         return (f"BlockBasedEncoder("
-                f"input_channels={self.input_channels}, "
+                f"in_channels={self.in_channels}, "
                 f"num_blocks={len(self.blocks)}, "
                 f"bottleneck_channels={self.bottleneck_channels}, "
                 f"hidden_dim={self.hidden_dim})")

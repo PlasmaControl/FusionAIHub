@@ -34,9 +34,6 @@ class DecoderBlock(SequentialBlock):
     stride : int or tuple of int, default=1
         Stride for convolutions in ResidualBlock. The DecoderBlock uses
         stride=1 and relies on Upsample for dimension changes.
-    padding : int, tuple of int, or str, default='auto'
-        Padding for convolutions in ResidualBlock. 'auto' calculates
-        padding to maintain spatial dimensions.
     dropout : float, default=0.3
         Dropout probability. Must be between 0.0 and 1.0.
     bias : bool, default=True
@@ -89,7 +86,6 @@ class DecoderBlock(SequentialBlock):
             upsample_factor: tuple[int, int] = (1, 2),
             kernel_size: Union[int, tuple[int, int]] = 3,
             stride: Union[int, tuple[int, int]] = 1,
-            padding: Union[int, tuple[int, int], str] = 'auto',
             dropout: float = 0.3,
             bias: bool = True,
             use_batch_norm: bool = True,
@@ -124,7 +120,7 @@ class DecoderBlock(SequentialBlock):
 
         # Build the sequential operations
         operations = self._build_operations(
-            in_channels, out_channels, kernel_size, stride, padding,
+            in_channels, out_channels, kernel_size, stride,
             bias, use_batch_norm, activation, residual_init_method
         )
 
@@ -148,7 +144,6 @@ class DecoderBlock(SequentialBlock):
             out_channels: int,
             kernel_size: Union[int, tuple[int, int]],
             stride: Union[int, tuple[int, int]],
-            padding: Union[int, tuple[int, int], str],
             bias: bool,
             use_batch_norm: bool,
             activation: str,
@@ -171,7 +166,6 @@ class DecoderBlock(SequentialBlock):
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
-            padding=padding,
             bias=bias,
             use_batch_norm=use_batch_norm,
             activation=activation,
@@ -196,7 +190,6 @@ class DecoderBlock(SequentialBlock):
             'activation': self.activation_name,
             'residual_init_method': self.residual_init_method,
             'stride': getattr(self.residual_block, 'stride', 1),
-            'padding': getattr(self.residual_block, 'padding', 'auto'),
         })
         return config
 
@@ -421,7 +414,6 @@ class BlockBasedDecoder(ConfigurableBlock):
             'upsample_factor': encoder_block.pool_size,  # Mirror the pooling
             'kernel_size': self.kernel_size,
             'stride': 1,  # Always use stride=1 in decoder
-            'padding': 'auto',
             'dropout': encoder_block.dropout_prob,  # Match encoder dropout
             'bias': self.bias,
             'use_batch_norm': self.use_batch_norm,

@@ -86,13 +86,13 @@ class BaseConvBlock(nn.Module, ABC):
     ) -> tuple[int, int]:
         """Normalize kernel size to tuple format."""
         if isinstance(kernel_size, int):
-            return (kernel_size, kernel_size)
+            return kernel_size, kernel_size
         return kernel_size
 
     @staticmethod
     def _calculate_padding(
             kernel_size: Union[int, tuple[int, int]],
-            padding: Union[int, tuple[int, int], str]
+            padding: Union[int, tuple[int, int], str] = 'auto'
     ) -> tuple[int, ...]:
         """Calculate padding based on kernel size and padding specification."""
         if padding == 'auto':
