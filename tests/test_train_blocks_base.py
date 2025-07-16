@@ -1,10 +1,10 @@
 import torch
-from src.faith.train.blocks import BaseBlock, BlockUtils
+from src.faith.train.blocks import BaseConvBlock, BlockUtils
 
 
 # Example of how the base classes would be used
 
-class ExampleBlock(BaseBlock):
+class ExampleBlock(BaseConvBlock):
     """Example implementation of BaseBlock."""
 
     def __init__(self, in_channels: int, out_channels: int, **kwargs):

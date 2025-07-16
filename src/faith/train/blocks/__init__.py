@@ -3,7 +3,7 @@
 from .residual import ResidualBlock
 from .encoder import EncoderBlock, BlockBasedEncoder
 from .decoder import DecoderBlock, BlockBasedDecoder
-from .base import BaseBlock, BlockUtils
+from .base import BaseConvBlock, BlockUtils
 
 __all__ = [
     "ResidualBlock",
@@ -11,6 +11,6 @@ __all__ = [
     "BlockBasedEncoder",
     "DecoderBlock",
     "BlockBasedDecoder",
-    "BaseBlock",
+    "BaseConvBlock",
     "BlockUtils",
 ]

@@ -13,8 +13,8 @@ from typing import Union, Any, Optional
 import math
 
 
-class BaseBlock(nn.Module, ABC):
-    """Abstract base class for all neural network blocks.
+class BaseConvBlock(nn.Module, ABC):
+    """Abstract base class for all convolutional-based neural network blocks.
 
     This class defines the common interface that all blocks should implement,
     ensuring consistency across different block types in the autoencoder
@@ -60,6 +60,21 @@ class BaseBlock(nn.Module, ABC):
             raise ValueError(
                 f"out_channels must be positive, got {out_channels}")
 
+        if not isinstance(in_channels, int):
+            raise TypeError(
+                f"in_channels must be an int, got {type(in_channels)}")
+
+        if not isinstance(out_channels, int):
+            raise TypeError(
+                f"out_channels must be an int, got {type(out_channels)}")
+
+        if isinstance(kernel_size, int) and kernel_size <= 0:
+            raise ValueError(
+                f"kernel_size must be positive, got {kernel_size}")
+        if isinstance(kernel_size, tuple) and any(k <= 0 for k in kernel_size):
+            raise ValueError(
+                f"kernel_size must be positive, got {kernel_size}")
+
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = self._normalize_kernel_size(kernel_size)
@@ -82,11 +97,11 @@ class BaseBlock(nn.Module, ABC):
         """Calculate padding based on kernel size and padding specification."""
         if padding == 'auto':
             if isinstance(kernel_size, int):
-                return (kernel_size // 2, kernel_size // 2)
+                return kernel_size // 2, kernel_size // 2
             else:
                 return tuple(k // 2 for k in kernel_size)
         elif isinstance(padding, int):
-            return (padding, padding)
+            return padding, padding
         else:
             return padding
 
@@ -140,7 +155,7 @@ class BaseBlock(nn.Module, ABC):
                 f"bias={self.bias})")
 
 
-class SequentialBlock(BaseBlock):
+class SequentialBlock(BaseConvBlock):
     """Base class for blocks that apply operations sequentially.
 
     This class provides common functionality for blocks that consist of
@@ -181,7 +196,7 @@ class SequentialBlock(BaseBlock):
         self.operations.add_module(str(len(self.operations)), operation)
 
 
-class ConfigurableBlock(BaseBlock):
+class ConfigurableBlock(BaseConvBlock):
     """
     Base class for blocks with extensive configuration options.
 

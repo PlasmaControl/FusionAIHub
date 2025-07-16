@@ -7,10 +7,10 @@ following the established patterns and interfaces defined in the base module.
 import torch
 import torch.nn as nn
 from typing import Union, Any
-from .base import BaseBlock, WeightInitializer
+from .base import BaseConvBlock, WeightInitializer
 
 
-class ResidualBlock(BaseBlock):
+class ResidualBlock(BaseConvBlock):
     """Residual convolutional block with batch normalization and ReLU.
 
     This block implements a standard residual connection with two convolutional
@@ -27,9 +27,6 @@ class ResidualBlock(BaseBlock):
         Size of the convolving kernel.
     stride : int or tuple of int, default=1
         Stride of the convolution.
-    padding : int, tuple of int, or str, default='auto'
-        Padding added to all four sides of the input. If 'auto', padding is
-        calculated to maintain spatial dimensions when stride=1.
     bias : bool, default=True
         If True, adds a learnable bias to the output.
     use_batch_norm : bool, default=True
@@ -78,7 +75,6 @@ class ResidualBlock(BaseBlock):
             out_channels: int,
             kernel_size: Union[int, tuple[int, int]] = 3,
             stride: Union[int, tuple[int, int]] = 1,
-            padding: Union[int, tuple[int, int], str] = 'auto',
             bias: bool = True,
             use_batch_norm: bool = True,
             activation: str = 'relu',
@@ -96,8 +92,6 @@ class ResidualBlock(BaseBlock):
             Size of the convolving kernel.
         stride : int or tuple of int, default=1
             Stride of the convolution.
-        padding : int, tuple of int, or str, default='auto'
-            Padding specification.
         bias : bool, default=True
             Whether to use bias in convolutions.
         use_batch_norm : bool, default=True
@@ -110,9 +104,20 @@ class ResidualBlock(BaseBlock):
         # Initialize base class
         super().__init__(in_channels, out_channels, kernel_size, bias)
 
+        if isinstance(stride, int) and stride < 1:
+            raise ValueError(f"Stride must be a positive integer or tuple, "
+                             f"got {stride}")
+        if isinstance(stride, tuple) and any(s < 1 for s in stride):
+            raise ValueError(f"Stride must be a positive integer or tuple, "
+                             f"got {stride}")
+        if (isinstance(stride, float) or isinstance(stride, tuple)
+                and any(isinstance(s, float) for s in stride)):
+            raise TypeError(f"Stride must be an integer or tuple, "
+                            f"got float {stride}")
+
         # Normalize stride and padding
         self.stride = self._normalize_stride(stride)
-        self.padding = self._calculate_padding(self.kernel_size, padding)
+        self.padding = self._calculate_padding(self.kernel_size, "auto")
         self.use_batch_norm = use_batch_norm
         self.activation_name = activation
         self.init_method = init_method
@@ -239,8 +244,9 @@ class ResidualBlock(BaseBlock):
         Returns
         -------
         torch.Tensor
-            Output tensor with shape (batch_size, out_channels, height', width')
-            where height' and width' depend on stride.
+            Output tensor with shape
+            (batch_size, out_channels, height', width') where height'
+            and 'width' depend on stride.
         """
         # Store input for residual connection
         residual = x
@@ -350,4 +356,4 @@ class ResidualBlock(BaseBlock):
 
         # Update channels
         batch_size, _, height, width = temp_shape
-        return (batch_size, self.out_channels, height, width)
+        return batch_size, self.out_channels, height, width
