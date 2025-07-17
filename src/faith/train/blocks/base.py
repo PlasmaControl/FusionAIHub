@@ -8,7 +8,7 @@ patterns for initialization, forward passes, and configuration.
 
 import math
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Union
+from typing import Any, ClassVar, Literal, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -292,3 +292,96 @@ class BlockUtils:
             'activations_mb': activation_memory / (1024 * 1024),
             'total_mb': (param_memory + activation_memory) / (1024 * 1024)
         }
+
+# Kouroche's implementation.
+def padding_for_conv(
+    size: int, mode: Literal["valid", "same", "full"] = "same"
+) -> int:
+    if size % 2 == 0 and mode in ("same", "full"):
+        raise ValueError(f'Kernel size must be odd for "{mode}" convolution.')
+
+    if mode == "valid":
+        return 0
+    elif mode == "same":
+        return size // 2
+    elif mode == "full":
+        return size - 1
+    else:
+        raise ValueError(f'Invalid mode: "{mode}"')
+
+class _ResidualBlock(ABC, nn.Module):
+    _conv_type: ClassVar[
+        type[nn.Conv1d]
+        | type[nn.Conv2d]
+        | type[nn.ConvTranspose1d]
+        | type[nn.ConvTranspose2d]
+    ]
+    _norm_type: ClassVar[type[nn.BatchNorm1d] | type[nn.BatchNorm2d]]
+
+    conv_1: nn.Sequential
+    conv_2: nn.Sequential
+    downsample: nn.Sequential | None
+    activation: nn.ReLU
+
+    def __init__(
+        self, in_channels: int, out_channels: int, kernel_size: int = 3, stride: int = 1
+    ) -> None:
+        super().__init__()
+
+        padding = padding_for_conv(kernel_size)
+
+        self.conv_1 = nn.Sequential(
+            self._conv_type(in_channels, out_channels, kernel_size, stride, padding),
+            self._norm_type(out_channels),
+            nn.ReLU(inplace=True),
+        )
+        self.conv_2 = nn.Sequential(
+            self._conv_type(out_channels, out_channels, kernel_size, padding=padding),
+            self._norm_type(out_channels),
+        )
+
+        if in_channels != out_channels or stride != 1:
+            self.downsample = nn.Sequential(
+                self._conv_type(
+                    in_channels, out_channels, kernel_size=1, stride=stride
+                ),
+                self._norm_type(out_channels),
+            )
+        else:
+            self.downsample = None
+
+        self.activation = nn.ReLU(inplace=True)
+
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        residual = input
+
+        output = self.conv_1(input)
+        output = self.conv_2(output)
+
+        if self.downsample:
+            residual = self.downsample(residual)
+
+        output = output + residual
+        output = self.activation(output)
+        return output
+
+
+class ResidualEncoding1d(_ResidualBlock):
+    _conv_type = nn.Conv1d
+    _norm_type = nn.BatchNorm1d
+
+
+class ResidualEncoding2d(_ResidualBlock):
+    _conv_type = nn.Conv2d
+    _norm_type = nn.BatchNorm2d
+
+
+class ResidualDecoding1d(_ResidualBlock):
+    _conv_type = nn.ConvTranspose1d
+    _norm_type = nn.BatchNorm1d
+
+
+class ResidualDecoding2d(_ResidualBlock):
+    _conv_type = nn.ConvTranspose2d
+    _norm_type = nn.BatchNorm2d
