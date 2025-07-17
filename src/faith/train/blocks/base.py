@@ -6,11 +6,12 @@ It ensures consistency across different block types and provides common
 patterns for initialization, forward passes, and configuration.
 """
 
+import math
+from abc import ABC, abstractmethod
+from typing import Any, Optional, Union
+
 import torch
 import torch.nn as nn
-from abc import ABC, abstractmethod
-from typing import Union, Any, Optional
-import math
 
 
 class BaseConvBlock(nn.Module, ABC):
@@ -194,41 +195,6 @@ class SequentialBlock(BaseConvBlock):
     def add_operation(self, operation: nn.Module) -> None:
         """Add an operation to the sequential block."""
         self.operations.add_module(str(len(self.operations)), operation)
-
-
-class ConfigurableBlock(BaseConvBlock):
-    """
-    Base class for blocks with extensive configuration options.
-
-    This class provides utilities for blocks that need to handle complex
-    configuration dictionaries and parameter validation.
-    """
-
-    def __init__(self, **kwargs) -> None:
-        # Extract base parameters
-        in_channels = kwargs.pop('in_channels')
-        out_channels = kwargs.pop('out_channels')
-        kernel_size = kwargs.pop('kernel_size', 3)
-        bias = kwargs.pop('bias', True)
-
-        super().__init__(in_channels, out_channels, kernel_size, bias)
-
-        # Store additional configuration
-        self._config = kwargs
-
-    def get_config(self) -> dict[str, Any]:
-        """Get full configuration including additional parameters."""
-        config = super().get_config()
-        config.update(self._config)
-        return config
-
-    @classmethod
-    def from_config(
-            cls,
-            config: dict[str, Any]
-    ) -> 'ConfigurableBlock':
-        """Create block instance from configuration dictionary."""
-        return cls(**config)
 
 
 class WeightInitializer:

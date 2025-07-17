@@ -5,13 +5,13 @@ inherit from the base classes, following established patterns and interfaces.
 The decoder creates a symmetric reconstruction path to the encoder.
 """
 
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import torch
 import torch.nn as nn
 
-from .base import ConfigurableBlock, SequentialBlock, WeightInitializer
-from .encoder import EncoderBlock
+from .base import SequentialBlock
+from .encoder import BlockBasedEncoder
 from .residual import ResidualBlock
 
 
@@ -255,280 +255,152 @@ class DecoderBlock(SequentialBlock):
         )
 
 
-class BlockBasedDecoder(ConfigurableBlock):
+class BlockBasedDecoder(SequentialBlock):
     """Decoder architecture built from a sequence of DecoderBlocks.
 
-    This decoder mirrors the encoder architecture by using the encoder's
-    block configuration to create a symmetric upsampling path. Each decoding
-    stage consists of a DecoderBlock (Upsample + ResidualBlock + Dropout).
+    This decoder provides a flexible architecture where each decoding stage
+    consists of a DecoderBlock with configurable parameters. The blocks are
+    automatically chained together with matching input/output channels.
 
     Parameters
     ----------
-    output_channels : int
-        Number of channels in the final output (should match encoder input).
-    encoder_blocks : list of EncoderBlock
-        List of encoder blocks to create symmetric decoder from.
-    bottleneck_channels : int
-        Number of channels from the encoder's bottleneck.
-    kernel_size : int or tuple of int, default=3
-        Default kernel size for convolutions.
-    bias : bool, default=True
-        Default bias setting for convolutions.
-    upsampling_mode : str, default='nearest'
-        Upsampling algorithm for all decoder blocks.
-    use_batch_norm : bool, default=True
-        Whether to use batch normalization in blocks.
-    activation : str, default='relu'
-        Default activation function for blocks.
-    init_method : str, default='kaiming'
-        Weight initialization method.
-    reconstruction_kernel_size : int or tuple of int, optional
-        Kernel size for final reconstruction layer. If None, uses kernel_size.
+    in_channels : int
+        Number of input channels (typically from encoder bottleneck).
+    block_configs : list of dict
+        Configuration for each decoder block. Each dict should contain:
+        - 'out_channels' (int): Output channels for the block (required)
+        - 'upsample_factor' (tuple, optional): Upsampling factor,
+           default (1, 2)
+        - 'dropout' (float, optional): Dropout probability, default 0.3
+        - 'kernel_size' (int/tuple, optional): Conv kernel size, default 3
+        - 'activation' (str, optional): Activation function, default 'relu'
+        - 'use_batch_norm' (bool, optional): Use batch norm, default True
+        - 'bias' (bool, optional): Use bias in convolutions, default True
 
     Attributes
     ----------
-    decoder_start : nn.Sequential
-        Initial layers to process bottleneck output.
-    blocks : nn.ModuleList
-        List of DecoderBlock modules.
-    reconstruction : nn.Conv2d
-        Final reconstruction convolution layer.
-    output_channels : int
-        Number of output channels.
-    upsampling_mode : str
-        Upsampling mode used throughout decoder.
+    blocks : list of DecoderBlock
+        List of DecoderBlock modules (accessed via self.operations).
+    block_configs : list of dict
+        Stored block configurations.
+
+    Examples
+    --------
+    >>> # Simple 3-block decoder (reverse of encoder)
+    >>> configs = [
+    ...     {'out_channels': 128, 'upsample_factor': (2, 2)},
+    ...     {'out_channels': 64, 'upsample_factor': (1, 2)},
+    ...     {'out_channels': 3}  # Final output channels
+    ... ]
+    >>> decoder = BlockBasedDecoder(in_channels=256, block_configs=configs)
+    >>> z = torch.randn(1, 256, 8, 4)
+    >>> output = decoder(z)
+
+    >>> # Create decoder that mirrors an encoder
+    >>> encoder_configs = [
+    ...     {'out_channels': 64},
+    ...     {'out_channels': 128, 'pool_size': (2, 2)},
+    ...     {'out_channels': 256, 'pool_size': (1, 2)}
+    ... ]
+    >>> decoder_configs = BlockBasedDecoder.reverse_encoder_configs(
+    ...     encoder_configs, final_out_channels=3
+    ... )
+    >>> decoder = BlockBasedDecoder(in_channels=256,
+    ...     block_configs=decoder_configs)
     """
 
     def __init__(
-            self,
-            output_channels: int,
-            encoder_blocks: list[EncoderBlock],
-            bottleneck_channels: int,
-            kernel_size: Union[int, tuple[int, int]] = 3,
-            bias: bool = True,
-            upsampling_mode: str = 'nearest',
-            use_batch_norm: bool = True,
-            activation: str = 'relu',
-            init_method: str = 'kaiming',
-            reconstruction_kernel_size:
-            Optional[Union[int, tuple[int, int]]] = None,
-            **kwargs
+        self,
+        in_channels: int,
+        block_configs: list[dict[str, Any]],
+        kernel_size: Union[int, tuple[int, int]] = 3,
+        bias: bool = True,
     ) -> None:
         """Initialize BlockBasedDecoder."""
 
-        # Initialize ConfigurableBlock
+        # Validate inputs
+        if not block_configs:
+            raise ValueError("block_configs cannot be empty")
+
+        if in_channels <= 0:
+            raise ValueError(
+                f"in_channels must be positive, got {in_channels}"
+            )
+
+        # Validate that all configs have out_channels
+        for i, config in enumerate(block_configs):
+            if "out_channels" not in config:
+                raise ValueError(
+                    f"Block {i} missing required 'out_channels' key"
+                )
+            if config["out_channels"] <= 0:
+                raise ValueError(f"out_channels must be positive, "
+                                 f"got {config['out_channels']} in block {i}")
+
+        self.block_configs = block_configs
+
+        # Build decoder blocks
+        operations = self._build_decoder_blocks(in_channels, kernel_size, bias)
+
+        # Get final output channels from last block
+        final_out_channels = block_configs[-1]["out_channels"]
+
+        # Initialize SequentialBlock with operations
         super().__init__(
-            in_channels=bottleneck_channels,
-            out_channels=output_channels,
+            in_channels=in_channels,
+            out_channels=final_out_channels,
+            operations=operations,
             kernel_size=kernel_size,
             bias=bias,
-            encoder_blocks=encoder_blocks,
-            bottleneck_channels=bottleneck_channels,
-            upsampling_mode=upsampling_mode,
-            use_batch_norm=use_batch_norm,
-            activation=activation,
-            init_method=init_method,
-            reconstruction_kernel_size=reconstruction_kernel_size,
-            **kwargs
         )
 
-        # Validate inputs
-        if output_channels <= 0:
-            raise ValueError(f"output_channels must be positive, "
-                             f"got {output_channels}")
-
-        if bottleneck_channels <= 0:
-            raise ValueError(f"bottleneck_channels must be positive, "
-                             f"got {bottleneck_channels}")
-
-        self.output_channels = output_channels
-        self.encoder_blocks = encoder_blocks
-        self.bottleneck_channels = bottleneck_channels
-        self.upsampling_mode = upsampling_mode
-        self.use_batch_norm = use_batch_norm
-        self.activation_name = activation
-        self.init_method = init_method
-
-        if reconstruction_kernel_size is None:
-            reconstruction_kernel_size = kernel_size
-        self.reconstruction_kernel_size = reconstruction_kernel_size
-
-        # Build decoder components
-        self.decoder_start = self._build_decoder_start(kernel_size, bias)
-        self.blocks = self._build_decoder_blocks()
-        self.reconstruction = self._build_reconstruction_layer()
-
-        # Initialize weights
-        self._initialize_weights()
-
-    def _build_decoder_start(
+    def _build_decoder_blocks(
             self,
-            kernel_size: Union[int, tuple[int, int]],
-            bias: bool
-    ) -> nn.Sequential:
-        """Build the initial decoder layers to process bottleneck output."""
-        # Calculate padding for convolution
-        if isinstance(kernel_size, int):
-            padding = kernel_size // 2
-        else:
-            padding = tuple(k // 2 for k in kernel_size)
-
-        # Determine first block channels
-        first_block_channels = (
-            self.encoder_blocks[-1].out_channels
-            if self.encoder_blocks
-            else self.bottleneck_channels
-        )
-
-        layers = [
-            nn.Conv2d(
-                self.bottleneck_channels,
-                first_block_channels,
-                kernel_size=kernel_size,
-                padding=padding,
-                bias=bias and not self.use_batch_norm
-            )
-        ]
-
-        if self.use_batch_norm:
-            layers.append(nn.BatchNorm2d(first_block_channels))
-
-        layers.append(self._create_activation(self.activation_name))
-
-        return nn.Sequential(*layers)
-
-    def _build_decoder_blocks(self) -> nn.ModuleList:
-        """Build decoder blocks by mirroring encoder blocks."""
+            in_channels: int,
+            default_kernel_size: Union[int, tuple[int, int]],
+            default_bias: bool,
+    ) -> list[nn.Module]:
+        """
+        Build the sequence of decoder blocks with automatic channel chaining.
+        """
         blocks = []
+        current_channels = in_channels
 
-        # Get the output channels from decoder_start
-        current_channels = (
-            self.encoder_blocks[-1].out_channels
-            if self.encoder_blocks
-            else self.bottleneck_channels
-        )
-
-        # Create symmetric decoder by reversing encoder blocks
-        for i, encoder_block in enumerate(reversed(self.encoder_blocks)):
-            # Determine output channels for this decoder block
-            if i == len(self.encoder_blocks) - 1:
-                # Last block outputs to final channels
-                out_channels = self.output_channels
-            else:
-                # Use the input channels of the corresponding encoder block
-                corresponding_encoder_idx = len(self.encoder_blocks) - 2 - i
-                out_channels = (
-                    self.encoder_blocks[corresponding_encoder_idx].in_channels)
-
-            # Create decoder block configuration
-            block_config = self._create_decoder_block_config(
-                encoder_block, current_channels, out_channels
-            )
+        for i, config in enumerate(self.block_configs):
+            # Prepare block configuration with defaults
+            block_config = {
+                "in_channels": current_channels,
+                "out_channels": config["out_channels"],
+                "upsample_factor": config.get("upsample_factor", (1, 2)),
+                "kernel_size": config.get("kernel_size", default_kernel_size),
+                "stride": config.get("stride", 1),
+                "dropout": config.get("dropout", 0.3),
+                "bias": config.get("bias", default_bias),
+                "use_batch_norm": config.get("use_batch_norm", True),
+                "activation": config.get("activation", "relu"),
+                "residual_init_method": config.get(
+                    "residual_init_method", "kaiming"
+                ),
+            }
 
             # Create decoder block
-            decoder_block = DecoderBlock(**block_config)
-            blocks.append(decoder_block)
-            current_channels = out_channels
+            block = DecoderBlock(**block_config)
+            blocks.append(block)
 
-        return nn.ModuleList(blocks)
+            # Update current channels for next block
+            current_channels = config["out_channels"]
 
-    def _create_decoder_block_config(
-        self,
-        encoder_block: EncoderBlock,
-        in_channels: int,
-        out_channels: int
-    ) -> dict[str, Any]:
-        """Create configuration for a decoder block based on encoder block."""
-        return {
-            'in_channels': in_channels,
-            'out_channels': out_channels,
-            'upsample_factor': encoder_block.pool_size,  # Mirror the pooling
-            'kernel_size': self.kernel_size,
-            'stride': 1,  # Always use stride=1 in decoder
-            'dropout': encoder_block.dropout,  # Match encoder dropout
-            'bias': self.bias,
-            'use_batch_norm': self.use_batch_norm,
-            'activation': self.activation_name,
-            'residual_init_method': self.init_method,
-        }
+        return blocks
 
-    def _build_reconstruction_layer(self) -> nn.Conv2d:
-        """Build the final reconstruction convolution layer."""
-        # Calculate padding for reconstruction layer
-        if isinstance(self.reconstruction_kernel_size, int):
-            padding = self.reconstruction_kernel_size // 2
-        else:
-            padding = tuple(k // 2 for k in self.reconstruction_kernel_size)
-
-        return nn.Conv2d(
-            self.output_channels,
-            self.output_channels,
-            kernel_size=self.reconstruction_kernel_size,
-            padding=padding,
-            bias=self.bias
-        )
-
-    def _create_activation(self, activation: str) -> nn.Module:
-        """Create activation function based on name."""
-        activations = {
-            'relu': nn.ReLU(inplace=True),
-            'leaky_relu': nn.LeakyReLU(0.1, inplace=True),
-            'gelu': nn.GELU(),
-            'swish': nn.SiLU(),
-            'mish': nn.Mish(),
-        }
-        if activation not in activations:
-            raise ValueError(f"Unknown activation: {activation}")
-        return activations[activation]
-
-    def _initialize_weights(self) -> None:
-        """Initialize weights according to the specified method."""
-        if self.init_method == 'kaiming':
-            self.apply(WeightInitializer.kaiming_normal_)
-        elif self.init_method == 'xavier':
-            self.apply(WeightInitializer.xavier_uniform_)
-
-        # Always properly initialize batch norm
-        if self.use_batch_norm:
-            self.apply(WeightInitializer.init_batch_norm_)
-
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the decoder.
-
-        Parameters
-        ----------
-        z : torch.Tensor
-            Latent representation with shape
-            (batch_size, bottleneck_channels, height, width).
-
-        Returns
-        -------
-        torch.Tensor
-            Reconstructed output with shape
-            (batch_size, output_channels, height', width') where height'
-            and width' are restored to approximate original input dimensions.
-        """
-        # Process through decoder start
-        x = self.decoder_start(z)
-
-        # Process through decoder blocks
-        for block in self.blocks:
-            x = block(x)
-
-        # Final reconstruction
-        x = self.reconstruction(x)
-
-        return x
-
-    def get_feature_maps(self, z: torch.Tensor) -> list[torch.Tensor]:
+    def get_feature_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
         """Get intermediate feature maps from each decoder block.
 
-        Useful for visualization and debugging.
+        Useful for visualization, debugging, and skip connections.
 
         Parameters
         ----------
-        z : torch.Tensor
-            Latent representation.
+        x : torch.Tensor
+            Input tensor.
 
         Returns
         -------
@@ -537,77 +409,182 @@ class BlockBasedDecoder(ConfigurableBlock):
         """
         feature_maps = []
 
-        # Process through decoder start
-        x = self.decoder_start(z)
-        feature_maps.append(x.clone())
-
-        # Process through decoder blocks
-        for block in self.blocks:
+        for block in self.operations:
             x = block(x)
             feature_maps.append(x.clone())
 
         return feature_maps
 
-    def get_output_shape(
-            self,
-            input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
-        """Calculate output shape given input shape."""
-        current_shape = input_shape
+    def get_channel_progression(self) -> list[int]:
+        """Get the channel count progression through the decoder.
 
-        # Apply decoder start (changes channels but not spatial dims)
-        batch_size, _, height, width = current_shape
-        first_channels = (
-            self.encoder_blocks[-1].out_channels
-            if self.encoder_blocks
-            else self.bottleneck_channels
+        Returns
+        -------
+        list of int
+            Channel counts: [in_channels, block1_out, block2_out, ...]
+        """
+        channels = [self.in_channels]
+        for config in self.block_configs:
+            channels.append(config["out_channels"])
+        return channels
+
+    def get_config(self) -> dict[str, Any]:
+        """Get configuration dictionary for this decoder."""
+        config = super().get_config()
+        config.update(
+            {
+                "block_configs": self.block_configs,
+            }
         )
-        current_shape = (batch_size, first_channels, height, width)
+        return config
 
-        # Apply each decoder block
-        for block in self.blocks:
-            current_shape = block.get_output_shape(current_shape)
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "BlockBasedDecoder":
+        """Create BlockBasedDecoder instance from configuration dictionary."""
+        return cls(**config)
 
-        # Final reconstruction doesn't change shape
-        return current_shape
+    @classmethod
+    def reverse_encoder_configs(
+            cls,
+            encoder_configs: list[dict[str, Any]],
+            final_out_channels: int
+    ) -> list[dict[str, Any]]:
+        """Create decoder configs that reverse an encoder's configuration.
+
+        This method helps create symmetric encoder-decoder architectures by
+        automatically generating decoder configs that mirror the encoder.
+
+        Parameters
+        ----------
+        encoder_configs : list of dict
+            Encoder block configurations with 'out_channels' and optional
+            'pool_size'.
+        final_out_channels : int
+            Number of output channels for the final decoder block.
+
+        Returns
+        -------
+        list of dict
+            Decoder block configurations with reversed channel progression
+            and mirrored upsampling factors.
+
+        Examples
+        --------
+        >>> encoder_configs = [
+        ...     {'out_channels': 64, 'pool_size': (1, 2)},
+        ...     {'out_channels': 128, 'pool_size': (2, 2)},
+        ...     {'out_channels': 256, 'pool_size': (1, 2)}
+        ... ]
+        >>> decoder_configs = BlockBasedDecoder.reverse_encoder_configs(
+        ...     encoder_configs, final_out_channels=3
+        ... )
+        >>> # Result: [
+        >>> #     {'out_channels': 128, 'upsample_factor': (1, 2)},
+        >>> #     {'out_channels': 64, 'upsample_factor': (2, 2)},
+        >>> #     {'out_channels': 3, 'upsample_factor': (1, 2)}
+        >>> # ]
+        """
+        if not encoder_configs:
+            raise ValueError("encoder_configs cannot be empty")
+
+        # Get channel progression from encoder
+        encoder_channels = []
+        for config in encoder_configs:
+            encoder_channels.append(config["out_channels"])
+
+        # Create reversed decoder configs
+        decoder_configs = []
+
+        # Reverse the encoder configs
+        for i, encoder_config in enumerate(reversed(encoder_configs)):
+            # Determine output channels for this decoder block
+            if i == len(encoder_configs) - 1:
+                # Last decoder block outputs final channels
+                out_channels = final_out_channels
+            else:
+                # Use the input channels from the corresponding encoder stage
+                # For encoder: input -> block1 -> block2 -> block3
+                # For decoder: block3_out -> block2_in -> block1_in -> input
+                corresponding_encoder_idx = len(encoder_configs) - 2 - i
+                if corresponding_encoder_idx == 0:
+                    # This would be the original input channels to the encoder
+                    # We'll use the final_out_channels as a reasonable guess
+                    out_channels = final_out_channels
+                else:
+                    out_channels = encoder_configs[
+                        corresponding_encoder_idx - 1
+                    ]["out_channels"]
+
+            # Create decoder config
+            decoder_config = {
+                "out_channels": out_channels,
+                "upsample_factor": encoder_config.get("pool_size", (1, 2)),
+            }
+
+            # Copy other relevant parameters
+            for key in [
+                "dropout",
+                "kernel_size",
+                "activation",
+                "use_batch_norm",
+                "bias",
+            ]:
+                if key in encoder_config:
+                    decoder_config[key] = encoder_config[key]
+
+            decoder_configs.append(decoder_config)
+
+        return decoder_configs
 
     @classmethod
     def from_encoder(
             cls,
-            encoder_blocks: list[EncoderBlock],
-            bottleneck_channels: int,
-            output_channels: int,
+            encoder: "BlockBasedEncoder",
+            final_out_channels: int,
             **kwargs
-    ) -> 'BlockBasedDecoder':
-        """Create decoder that mirrors the given encoder blocks.
+    ) -> "BlockBasedDecoder":
+        """Create decoder that mirrors a BlockBasedEncoder.
 
         Parameters
         ----------
-        encoder_blocks : list of EncoderBlock
-            Encoder blocks to mirror.
-        bottleneck_channels : int
-            Number of channels from encoder bottleneck.
-        output_channels : int
-            Number of output channels.
+        encoder : BlockBasedEncoder
+            Encoder to mirror.
+        final_out_channels : int
+            Number of output channels for the decoder.
         **kwargs
             Additional arguments for decoder configuration.
 
         Returns
         -------
         BlockBasedDecoder
-            Configured decoder instance.
+            Configured decoder instance that mirrors the encoder.
+
+        Examples
+        --------
+        >>> encoder = BlockBasedEncoder(in_channels=3, block_configs=[...])
+        >>> decoder = BlockBasedDecoder.from_encoder(encoder,
+         ...     final_out_channels=3)
         """
-        return cls(
-            output_channels=output_channels,
-            encoder_blocks=encoder_blocks,
-            bottleneck_channels=bottleneck_channels,
-            **kwargs
+        # Create reversed configs from encoder
+        decoder_configs = cls.reverse_encoder_configs(
+            encoder.block_configs, final_out_channels
         )
+
+        return cls(
+            in_channels=encoder.out_channels,
+            block_configs=decoder_configs,
+            **kwargs,
+        )
+
+    @property
+    def blocks(self) -> list[nn.Module]:
+        """Access to decoder blocks for compatibility."""
+        return list(self.operations)
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedDecoder."""
+        channel_progression = ' → '.join(
+            map(str, self.get_channel_progression()))
         return (f"BlockBasedDecoder("
-                f"output_channels={self.output_channels}, "
-                f"num_blocks={len(self.blocks)}, "
-                f"bottleneck_channels={self.bottleneck_channels}, "
-                f"upsampling_mode='{self.upsampling_mode}')")
+                f"blocks={len(self.operations)}, "
+                f"channels={channel_progression})")

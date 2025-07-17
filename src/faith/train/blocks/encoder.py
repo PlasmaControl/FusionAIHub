@@ -4,10 +4,12 @@ This module implements the EncoderBlock and BlockBasedEncoder classes that
 inherit from the base classes, following established patterns and interfaces.
 """
 
+from typing import Any, Union
+
 import torch
 import torch.nn as nn
-from typing import Union, Any, Optional
-from .base import SequentialBlock, ConfigurableBlock, WeightInitializer
+
+from .base import SequentialBlock
 from .residual import ResidualBlock
 
 
@@ -193,24 +195,26 @@ class EncoderBlock(SequentialBlock):
         pooled_height = height // self.pool_size[0]
         pooled_width = width // self.pool_size[1]
 
-        return (batch_size, channels, pooled_height, pooled_width)
+        return batch_size, channels, pooled_height, pooled_width
 
     def __repr__(self) -> str:
         """String representation of the EncoderBlock."""
-        return (f"EncoderBlock("
-                f"in_channels={self.in_channels}, "
-                f"out_channels={self.out_channels}, "
-                f"pool_size={self.pool_size}, "
-                f"dropout={self.dropout_prob}, "
-                f"activation='{self.activation_name}')")
+        return (
+            f"EncoderBlock("
+            f"in_channels={self.in_channels}, "
+            f"out_channels={self.out_channels}, "
+            f"pool_size={self.pool_size}, "
+            f"dropout={self.dropout_prob}, "
+            f"activation='{self.activation_name}')"
+        )
 
 
-class BlockBasedEncoder(ConfigurableBlock):
+class BlockBasedEncoder(SequentialBlock):
     """Encoder architecture built from a sequence of EncoderBlocks.
 
     This encoder provides a flexible architecture where each encoding stage
-    consists of an EncoderBlock (ResidualBlock + Dropout + MaxPool) followed
-    by an optional bottleneck compression layer.
+    consists of an EncoderBlock with configurable parameters. The blocks are
+    automatically chained together with matching input/output channels.
 
     Parameters
     ----------
@@ -218,68 +222,42 @@ class BlockBasedEncoder(ConfigurableBlock):
         Number of input channels in the data.
     block_configs : list of dict
         Configuration for each encoder block. Each dict should contain:
-        - 'out_channels' (int): Output channels for the block
+        - 'out_channels' (int): Output channels for the block (required)
         - 'pool_size' (tuple, optional): MaxPool kernel size, default (1, 2)
         - 'dropout' (float, optional): Dropout probability, default 0.3
         - 'kernel_size' (int/tuple, optional): Conv kernel size, default 3
+        - 'activation' (str, optional): Activation function, default 'relu'
+        - 'use_batch_norm' (bool, optional): Use batch norm, default True
         - 'bias' (bool, optional): Use bias in convolutions, default True
-        - Other ResidualBlock parameters (activation, use_batch_norm, etc.)
-    bottleneck_channels : int, optional
-        Number of channels in the bottleneck layer. If None, defaults to
-        max(16, last_block_channels // 2).
-    hidden_dim : int, optional
-        Target frequency dimension after adaptive pooling. If None, no
-        adaptive pooling is applied.
-    kernel_size : int or tuple of int, default=3
-        Default kernel size for blocks that don't specify one.
-    bias : bool, default=True
-        Default bias setting for blocks that don't specify one.
-    bottleneck_activation : str, default='relu'
-        Activation function for bottleneck layer.
-    bottleneck_init_method : str, default='kaiming'
-        Weight initialization method for bottleneck.
 
     Attributes
     ----------
-    blocks : nn.ModuleList
-        List of EncoderBlock modules.
-    bottleneck : nn.Sequential
-        Bottleneck compression layers.
-    bottleneck_channels : int
-        Number of channels in the bottleneck output.
+    blocks : list of EncoderBlock
+        List of EncoderBlock modules (accessed via self.operations).
     block_configs : list of dict
         Stored block configurations.
-    hidden_dim : int or None
-        Stored target frequency dimension.
+
+    Examples
+    --------
+    >>> # Simple 3-block encoder
+    >>> configs = [
+    ...     {'out_channels': 64},
+    ...     {'out_channels': 128, 'pool_size': (2, 2)},
+    ...     {'out_channels': 256, 'dropout': 0.5}
+    ... ]
+    >>> encoder = BlockBasedEncoder(in_channels=3, block_configs=configs)
+    >>> x = torch.randn(1, 3, 32, 64)
+    >>> output = encoder(x)
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            block_configs: list[dict[str, Any]],
-            bottleneck_channels: Optional[int] = None,
-            hidden_dim: Optional[int] = None,
-            kernel_size: Union[int, tuple[int, int]] = 3,
-            bias: bool = True,
-            bottleneck_activation: str = 'relu',
-            bottleneck_init_method: str = 'kaiming',
-            **kwargs
+        self,
+        in_channels: int,
+        block_configs: list[dict[str, Any]],
+        kernel_size: Union[int, tuple[int, int]] = 3,
+        bias: bool = True,
     ) -> None:
         """Initialize BlockBasedEncoder."""
-
-        # Initialize ConfigurableBlock
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=in_channels,  # Will be updated after building
-            kernel_size=kernel_size,
-            bias=bias,
-            block_configs=block_configs,
-            bottleneck_channels=bottleneck_channels,
-            hidden_dim=hidden_dim,
-            bottleneck_activation=bottleneck_activation,
-            bottleneck_init_method=bottleneck_init_method,
-            **kwargs
-        )
 
         # Validate inputs
         if not block_configs:
@@ -287,183 +265,78 @@ class BlockBasedEncoder(ConfigurableBlock):
 
         if in_channels <= 0:
             raise ValueError(
-                f"in_channels must be positive, got {in_channels}")
+                f"in_channels must be positive, got {in_channels}"
+            )
 
-        self.in_channels = in_channels
+        # Validate that all configs have out_channels
+        for i, config in enumerate(block_configs):
+            if "out_channels" not in config:
+                raise ValueError(
+                    f"Block {i} missing required 'out_channels' key"
+                )
+            if config["out_channels"] <= 0:
+                raise ValueError(f"out_channels must be positive, "
+                                 f"got {config['out_channels']} in block {i}")
+
         self.block_configs = block_configs
-        self.hidden_dim = hidden_dim
-        self.bottleneck_activation = bottleneck_activation
-        self.bottleneck_init_method = bottleneck_init_method
 
         # Build encoder blocks
-        self.blocks = self._build_encoder_blocks()
+        operations = self._build_encoder_blocks(in_channels, kernel_size, bias)
 
-        # Build bottleneck
-        self.bottleneck, self.bottleneck_channels = self._build_bottleneck(
-            bottleneck_channels, kernel_size, bias
+        # Get final output channels from last block
+        final_out_channels = block_configs[-1]["out_channels"]
+
+        # Initialize SequentialBlock with operations
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=final_out_channels,
+            operations=operations,
+            kernel_size=kernel_size,
+            bias=bias,
         )
 
-        # Update out_channels after building
-        self.out_channels = self.bottleneck_channels
-
-    def _build_encoder_blocks(self) -> nn.ModuleList:
-        """Build the sequence of encoder blocks."""
+    def _build_encoder_blocks(
+        self,
+        in_channels: int,
+        default_kernel_size: Union[int, tuple[int, int]],
+        default_bias: bool,
+    ) -> list[nn.Module]:
+        """
+        Build the sequence of encoder blocks with automatic channel chaining.
+        """
         blocks = []
-        current_channels = self.in_channels
+        current_channels = in_channels
 
         for i, config in enumerate(self.block_configs):
-            if 'out_channels' not in config:
-                raise ValueError(
-                    f"Block {i} missing required 'out_channels' key")
-
-            # Extract config with defaults
-            block_config = self._prepare_block_config(config, current_channels)
-
-            # Validate channels
-            out_channels = block_config['out_channels']
-            if out_channels <= 0:
-                raise ValueError(f"out_channels must be positive, "
-                                 f"got {out_channels} in block {i}")
+            # Prepare block configuration with defaults
+            block_config = {
+                "in_channels": current_channels,
+                "out_channels": config["out_channels"],
+                "pool_size": config.get("pool_size", (1, 2)),
+                "kernel_size": config.get("kernel_size", default_kernel_size),
+                "stride": config.get("stride", 1),
+                "dropout": config.get("dropout", 0.3),
+                "bias": config.get("bias", default_bias),
+                "use_batch_norm": config.get("use_batch_norm", True),
+                "activation": config.get("activation", "relu"),
+                "residual_init_method": config.get(
+                    "residual_init_method", "kaiming"
+                ),
+            }
 
             # Create encoder block
             block = EncoderBlock(**block_config)
             blocks.append(block)
-            current_channels = out_channels
 
-        return nn.ModuleList(blocks)
+            # Update current channels for next block
+            current_channels = config["out_channels"]
 
-    def _prepare_block_config(
-            self,
-            config: dict[str, Any],
-            current_channels: int
-    ) -> dict[str, Any]:
-        """Prepare block configuration with defaults."""
-        block_config = {
-            'in_channels': current_channels,
-            'out_channels': config['out_channels'],
-            'pool_size': config.get('pool_size', (1, 2)),
-            'kernel_size': config.get('kernel_size', self.kernel_size),
-            'stride': config.get('stride', 1),
-            'dropout': config.get('dropout', 0.3),
-            'bias': config.get('bias', self.bias),
-            'use_batch_norm': config.get('use_batch_norm', True),
-            'activation': config.get('activation', 'relu'),
-            'residual_init_method': config.get(
-                'residual_init_method', 'kaiming'),
-        }
-        return block_config
-
-    def _build_bottleneck(
-            self,
-            bottleneck_channels: Optional[int],
-            kernel_size: Union[int, tuple[int, int]],
-            bias: bool
-    ) -> tuple[nn.Sequential, int]:
-        """Build the bottleneck compression layers."""
-        bottleneck_layers = []
-
-        # Get input channels from last block
-        if self.blocks:
-            current_channels = self.blocks[-1].out_channels
-        else:
-            current_channels = self.in_channels
-
-        # Optional adaptive pooling
-        if self.hidden_dim is not None:
-            if self.hidden_dim <= 0:
-                raise ValueError(f"hidden_dim must be positive, "
-                                 f"got {self.hidden_dim}")
-            bottleneck_layers.append(
-                nn.AdaptiveAvgPool2d((None, self.hidden_dim)))
-
-        # Channel compression
-        if bottleneck_channels is None:
-            bottleneck_channels = max(16, current_channels // 2)
-
-        if bottleneck_channels <= 0:
-            raise ValueError(f"bottleneck_channels must be positive, "
-                             f"got {bottleneck_channels}")
-
-        # Calculate padding for bottleneck convolution
-        if isinstance(kernel_size, int):
-            padding = kernel_size // 2
-        else:
-            padding = tuple(k // 2 for k in kernel_size)
-
-        # Add compression layers
-        bottleneck_layers.extend([
-            nn.Conv2d(
-                current_channels,
-                bottleneck_channels,
-                kernel_size=kernel_size,
-                padding=padding,
-                bias=bias
-            ),
-            nn.BatchNorm2d(bottleneck_channels),
-            self._create_activation(self.bottleneck_activation),
-        ])
-
-        bottleneck = nn.Sequential(*bottleneck_layers)
-
-        # Initialize bottleneck weights
-        self._initialize_bottleneck_weights(bottleneck)
-
-        return bottleneck, bottleneck_channels
-
-    def _create_activation(self, activation: str) -> nn.Module:
-        """Create activation function based on name."""
-        activations = {
-            'relu': nn.ReLU(inplace=True),
-            'leaky_relu': nn.LeakyReLU(0.1, inplace=True),
-            'gelu': nn.GELU(),
-            'swish': nn.SiLU(),
-            'mish': nn.Mish(),
-        }
-        if activation not in activations:
-            raise ValueError(f"Unknown activation: {activation}")
-        return activations[activation]
-
-    def _initialize_bottleneck_weights(
-            self,
-            bottleneck: nn.Sequential
-    ) -> None:
-        """Initialize bottleneck weights."""
-        if self.bottleneck_init_method == 'kaiming':
-            bottleneck.apply(WeightInitializer.kaiming_normal_)
-        elif self.bottleneck_init_method == 'xavier':
-            bottleneck.apply(WeightInitializer.xavier_uniform_)
-
-        # Always properly initialize batch norm
-        bottleneck.apply(WeightInitializer.init_batch_norm_)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the encoder.
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            Input tensor with shape (batch_size, in_channels, height, width)
-
-        Returns
-        -------
-        torch.Tensor
-            Encoded latent representation with shape
-            (batch_size, bottleneck_channels, height', width') where height'
-            and width' depend on the pooling operations and hidden_dim.
-        """
-        # Pass through encoder blocks
-        for block in self.blocks:
-            x = block(x)
-
-        # Pass through bottleneck
-        x = self.bottleneck(x)
-
-        return x
+        return blocks
 
     def get_feature_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
         """Get intermediate feature maps from each encoder block.
 
-        Useful for visualization and debugging.
+        Useful for visualization, debugging, and skip connections.
 
         Parameters
         ----------
@@ -477,36 +350,49 @@ class BlockBasedEncoder(ConfigurableBlock):
         """
         feature_maps = []
 
-        for block in self.blocks:
+        for block in self.operations:
             x = block(x)
             feature_maps.append(x.clone())
 
         return feature_maps
 
-    def get_output_shape(
-            self,
-            input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
-        """Calculate output shape given input shape."""
-        current_shape = input_shape
+    def get_channel_progression(self) -> list[int]:
+        """Get the channel count progression through the encoder.
 
-        # Apply each encoder block
-        for block in self.blocks:
-            current_shape = block.get_output_shape(current_shape)
+        Returns
+        -------
+        list of int
+            Channel counts: [in_channels, block1_out, block2_out, ...]
+        """
+        channels = [self.in_channels]
+        for config in self.block_configs:
+            channels.append(config["out_channels"])
+        return channels
 
-        # Apply adaptive pooling if present
-        if self.hidden_dim is not None:
-            batch_size, channels, height, _ = current_shape
-            current_shape = (batch_size, channels, height, self.hidden_dim)
+    def get_config(self) -> dict[str, Any]:
+        """Get configuration dictionary for this encoder."""
+        config = super().get_config()
+        config.update(
+            {
+                "block_configs": self.block_configs,
+            }
+        )
+        return config
 
-        # Apply bottleneck channel reduction
-        batch_size, _, height, width = current_shape
-        return (batch_size, self.bottleneck_channels, height, width)
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "BlockBasedEncoder":
+        """Create BlockBasedEncoder instance from configuration dictionary."""
+        return cls(**config)
+
+    @property
+    def blocks(self) -> list[nn.Module]:
+        """Access to encoder blocks for compatibility."""
+        return list(self.operations)
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedEncoder."""
+        channel_progression = ' → '.join(
+            map(str, self.get_channel_progression()))
         return (f"BlockBasedEncoder("
-                f"in_channels={self.in_channels}, "
-                f"num_blocks={len(self.blocks)}, "
-                f"bottleneck_channels={self.bottleneck_channels}, "
-                f"hidden_dim={self.hidden_dim})")
+                f"blocks={len(self.operations)}, "
+                f"channels={channel_progression})")
