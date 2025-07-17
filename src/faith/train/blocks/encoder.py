@@ -256,6 +256,7 @@ class BlockBasedEncoder(SequentialBlock):
         block_configs: list[dict[str, Any]],
         kernel_size: Union[int, tuple[int, int]] = 3,
         bias: bool = True,
+        **kwargs
     ) -> None:
         """Initialize BlockBasedEncoder."""
 
@@ -355,6 +356,14 @@ class BlockBasedEncoder(SequentialBlock):
             feature_maps.append(x.clone())
 
         return feature_maps
+
+    def get_output_shape(self, input_shape: tuple[int, ...]) \
+            -> tuple[int, ...]:
+        """Calculate output shape given input shape."""
+        shape = input_shape
+        for block in self.operations:
+            shape = block.get_output_shape(shape)
+        return shape
 
     def get_channel_progression(self) -> list[int]:
         """Get the channel count progression through the encoder.

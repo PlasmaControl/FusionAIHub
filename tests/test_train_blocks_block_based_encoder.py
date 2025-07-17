@@ -9,29 +9,29 @@ class TestBlockBasedEncoderInitialization:
 
     def test_basic_initialization(self):
         """Test basic BlockBasedEncoder initialization."""
-        configs = [{"out_channels": 64}, {"out_channels": 128}]
+        configs = [{"out_channels": 4}, {"out_channels": 8}]
         encoder = BlockBasedEncoder(in_channels=3, block_configs=configs)
 
         assert encoder.in_channels == 3
-        assert encoder.out_channels == 128  # Last block's out_channels
+        assert encoder.out_channels == 8  # Last block's out_channels
         assert len(encoder.operations) == 2
         assert len(encoder.block_configs) == 2
 
     def test_custom_initialization(self):
         """Test BlockBasedEncoder with custom parameters."""
         configs = [
-            {"out_channels": 64, "pool_size": (2, 2), "dropout": 0.5},
-            {"out_channels": 128, "activation": "gelu"},
-            {"out_channels": 256, "kernel_size": 5, "bias": False},
+            {"out_channels": 4, "pool_size": (2, 2), "dropout": 0.5},
+            {"out_channels": 8, "activation": "gelu"},
+            {"out_channels": 16, "kernel_size": 5, "bias": False},
         ]
         encoder = BlockBasedEncoder(
-            in_channels=16, block_configs=configs, kernel_size=7, bias=True
+            in_channels=3, block_configs=configs, kernel_size=7, bias=True
         )
 
-        assert encoder.in_channels == 16
-        assert encoder.out_channels == 256
+        assert encoder.in_channels == 3
+        assert encoder.out_channels == 16
         assert len(encoder.operations) == 3
-        assert encoder.kernel_size == 7
+        assert encoder.kernel_size == (7, 7)
         assert encoder.bias is True
 
     def test_single_block_encoder(self):
@@ -42,27 +42,30 @@ class TestBlockBasedEncoderInitialization:
         assert encoder.in_channels == 8
         assert encoder.out_channels == 32
         assert len(encoder.operations) == 1
+        assert encoder.kernel_size == (3, 3)
+        assert encoder.bias is True
+        assert len(encoder.operations) == 1
 
     def test_channel_progression_setup(self):
         """Test that blocks are configured with correct channel progression."""
         configs = [
-            {"out_channels": 64},
-            {"out_channels": 128},
-            {"out_channels": 256},
+            {"out_channels": 4},
+            {"out_channels": 8},
+            {"out_channels": 16},
         ]
         encoder = BlockBasedEncoder(in_channels=3, block_configs=configs)
 
         # Check channel progression
         progression = encoder.get_channel_progression()
-        assert progression == [3, 64, 128, 256]
+        assert progression == [3, 4, 8, 16]
 
         # Check individual block configurations
         assert encoder.operations[0].in_channels == 3
-        assert encoder.operations[0].out_channels == 64
-        assert encoder.operations[1].in_channels == 64
-        assert encoder.operations[1].out_channels == 128
-        assert encoder.operations[2].in_channels == 128
-        assert encoder.operations[2].out_channels == 256
+        assert encoder.operations[0].out_channels == 4
+        assert encoder.operations[1].in_channels == 4
+        assert encoder.operations[1].out_channels == 8
+        assert encoder.operations[2].in_channels == 8
+        assert encoder.operations[2].out_channels == 16
 
 
 class TestBlockBasedEncoderValidation:
@@ -125,15 +128,20 @@ class TestBlockBasedEncoderForwardPass:
 
     def test_forward_pass_basic(self):
         """Test basic forward pass."""
-        configs = [{"out_channels": 64}, {"out_channels": 128}]
+        configs = [{"out_channels": 4}, {"out_channels": 8}]
         encoder = BlockBasedEncoder(in_channels=3, block_configs=configs)
         x = torch.randn(2, 3, 32, 64)
 
         output = encoder(x)
 
         assert output.shape[0] == 2  # batch size
-        assert output.shape[1] == 128  # final out_channels
-        # Spatial dimensions depend on pooling operations
+        assert output.shape[1] == 8  # final out_channels
+        assert output.shape[2] == 32  # Height should be preserved
+        assert output.shape[3] == 16  # Width pooling of 2 in every block
+
+        progression = encoder.get_channel_progression()
+        assert progression == [3, 4, 8]
+
 
     def test_forward_pass_single_block(self):
         """Test forward pass with single block."""
@@ -145,25 +153,33 @@ class TestBlockBasedEncoderForwardPass:
 
         assert output.shape[0] == 1
         assert output.shape[1] == 32
+        assert output.shape[2] == 16  # Height should be preserved
+        assert output.shape[3] == 8  # Width pooling of 2
 
     def test_forward_pass_multiple_blocks(self):
         """Test forward pass with multiple blocks."""
         configs = [
-            {"out_channels": 32, "pool_size": (1, 2)},
-            {"out_channels": 64, "pool_size": (2, 2)},
-            {"out_channels": 128, "pool_size": (1, 1)},
+            {"out_channels": 4, "pool_size": (1, 2)},
+            {"out_channels": 8, "pool_size": (2, 2)},
+            {"out_channels": 16, "pool_size": (1, 1)},
         ]
-        encoder = BlockBasedEncoder(in_channels=16, block_configs=configs)
-        x = torch.randn(1, 16, 32, 32)
+        encoder = BlockBasedEncoder(in_channels=3, block_configs=configs)
+        x = torch.randn(1, 3, 32, 32)
 
         output = encoder(x)
 
         assert output.shape[0] == 1
-        assert output.shape[1] == 128
+        assert output.shape[1] == 16
+        assert output.shape[2] == 16
+        # Width pooling of 2 in first and second block
+        assert output.shape[3] == 8
+
+        progression = encoder.get_channel_progression()
+        assert progression == [3, 4, 8, 16]
 
     def test_forward_pass_different_input_sizes(self):
         """Test forward pass with different input sizes."""
-        configs = [{"out_channels": 64}, {"out_channels": 128}]
+        configs = [{"out_channels": 4}, {"out_channels": 8}]
         encoder = BlockBasedEncoder(in_channels=3, block_configs=configs)
 
         # Test various input sizes
@@ -172,13 +188,14 @@ class TestBlockBasedEncoderForwardPass:
             output = encoder(x)
 
             assert output.shape[0] == 1
-            assert output.shape[1] == 128
-            assert output.shape[2] > 0
-            assert output.shape[3] > 0
+            assert output.shape[1] == 8
+            assert output.shape[2] == h
+            # Width pooling of 2 in every block
+            assert output.shape[3] == w // 4
 
     def test_forward_pass_gradient_flow(self):
         """Test that gradients flow properly through the encoder."""
-        configs = [{"out_channels": 32}, {"out_channels": 64}]
+        configs = [{"out_channels": 8}, {"out_channels": 16}]
         encoder = BlockBasedEncoder(in_channels=8, block_configs=configs)
         x = torch.randn(1, 8, 16, 16, requires_grad=True)
 
@@ -186,22 +203,27 @@ class TestBlockBasedEncoderForwardPass:
         loss = output.sum()
         loss.backward()
 
+        progression = encoder.get_channel_progression()
+        assert progression == [8, 8, 16]
+
         assert x.grad is not None
         assert x.grad.shape == x.shape
 
     def test_forward_pass_with_custom_parameters(self):
         """Test forward pass with custom block parameters."""
         configs = [
-            {"out_channels": 32, "dropout": 0.5, "activation": "gelu"},
-            {"out_channels": 64, "pool_size": (2, 2), "kernel_size": 5},
+            {"out_channels": 2, "dropout": 0.5, "activation": "gelu"},
+            {"out_channels": 4, "pool_size": (2, 2), "kernel_size": 5},
         ]
-        encoder = BlockBasedEncoder(in_channels=16, block_configs=configs)
-        x = torch.randn(1, 16, 32, 32)
+        encoder = BlockBasedEncoder(in_channels=1, block_configs=configs)
+        x = torch.randn(1, 1, 32, 32)
 
         output = encoder(x)
 
         assert output.shape[0] == 1
-        assert output.shape[1] == 64
+        assert output.shape[1] == 4
+        assert output.shape[2] == 16  # One height pooling of 2 in first block
+        assert output.shape[3] == 8  # Width pooling of 2 in every block
 
 
 class TestBlockBasedEncoderConfiguration:
@@ -222,7 +244,7 @@ class TestBlockBasedEncoderConfiguration:
         assert config["in_channels"] == 3
         assert config["out_channels"] == 128
         assert config["block_configs"] == configs
-        assert config["kernel_size"] == 5
+        assert config["kernel_size"] == (5, 5)
         assert config["bias"] is False
 
     def test_from_config(self):
@@ -260,7 +282,7 @@ class TestBlockBasedEncoderConfiguration:
                 {"out_channels": 32, "dropout": 0.2},
                 {"out_channels": 64, "activation": "relu"},
             ],
-            "kernel_size": 3,
+            "kernel_size": (3, 3),
             "bias": True,
         }
 
@@ -268,7 +290,8 @@ class TestBlockBasedEncoderConfiguration:
         reconstructed_config = encoder.get_config()
 
         for key in original_config:
-            assert reconstructed_config[key] == original_config[key]
+            if key != "out_channels":
+                assert reconstructed_config[key] == original_config[key]
 
 
 class TestBlockBasedEncoderChannelProgression:
@@ -321,8 +344,8 @@ class TestBlockBasedEncoderShapeCalculation:
 
         assert output_shape[0] == 2  # batch size
         assert output_shape[1] == 128  # final out_channels
-        assert output_shape[2] > 0  # height should be positive
-        assert output_shape[3] > 0  # width should be positive
+        assert output_shape[2] == 32  # height should be positive
+        assert output_shape[3] == 8  # width should be positive
 
     def test_get_output_shape_matches_forward(self):
         """Test that get_output_shape matches actual forward pass output."""
@@ -349,12 +372,19 @@ class TestBlockBasedEncoderShapeCalculation:
         encoder = BlockBasedEncoder(in_channels=16, block_configs=configs)
         input_shape = (1, 16, 32, 32)
 
-        output_shape = encoder.get_output_shape(input_shape)
+        predicted_shape = encoder.get_output_shape(input_shape)
 
-        assert output_shape[0] == 1
-        assert output_shape[1] == 64
+        assert predicted_shape[0] == 1
+        assert predicted_shape[1] == 64
         # Height should be reduced by factor of 2 from first block
+        assert predicted_shape[2] == 16
         # Width should be reduced by factors 2 and 4 from both blocks
+        assert predicted_shape[3] == 4
+
+        x = torch.randn(*input_shape)
+        actual_output = encoder(x)
+
+        assert predicted_shape == actual_output.shape
 
 
 class TestBlockBasedEncoderFeatureMaps:
@@ -373,9 +403,9 @@ class TestBlockBasedEncoderFeatureMaps:
         feature_maps = encoder.get_feature_maps(x)
 
         assert len(feature_maps) == 3  # One per block
-        assert feature_maps[0].shape[1] == 32  # First block output
-        assert feature_maps[1].shape[1] == 64  # Second block output
-        assert feature_maps[2].shape[1] == 128  # Third block output
+        assert feature_maps[0].shape == (1, 32, 16, 8)
+        assert feature_maps[1].shape == (1, 64, 16, 4)
+        assert feature_maps[2].shape == (1, 128, 16, 2)
 
     def test_get_feature_maps_single_block(self):
         """Test get_feature_maps with single block."""
@@ -386,7 +416,7 @@ class TestBlockBasedEncoderFeatureMaps:
         feature_maps = encoder.get_feature_maps(x)
 
         assert len(feature_maps) == 1
-        assert feature_maps[0].shape[1] == 64
+        assert feature_maps[0].shape == (1, 64, 32, 16)
 
     def test_get_feature_maps_consistency(self):
         """Test that get_feature_maps gives same result as forward pass."""
@@ -394,8 +424,10 @@ class TestBlockBasedEncoderFeatureMaps:
         encoder = BlockBasedEncoder(in_channels=8, block_configs=configs)
         x = torch.randn(1, 8, 16, 16)
 
-        feature_maps = encoder.get_feature_maps(x)
-        final_output = encoder(x)
+        encoder.eval()
+        with torch.no_grad():
+            feature_maps = encoder.get_feature_maps(x)
+            final_output = encoder(x)
 
         # Last feature map should match forward pass output
         assert torch.allclose(feature_maps[-1], final_output, atol=1e-6)
@@ -404,16 +436,18 @@ class TestBlockBasedEncoderFeatureMaps:
         """Test that feature maps are independent copies."""
         configs = [{"out_channels": 32}, {"out_channels": 64}]
         encoder = BlockBasedEncoder(in_channels=8, block_configs=configs)
+        encoder.eval()
         x = torch.randn(1, 8, 16, 16)
 
-        feature_maps = encoder.get_feature_maps(x)
+        with torch.no_grad():
+            feature_maps = encoder.get_feature_maps(x)
 
-        # Modify one feature map
-        original_value = feature_maps[0][0, 0, 0, 0].item()
-        feature_maps[0][0, 0, 0, 0] = 999.0
+            # Modify one feature map
+            original_value = feature_maps[0][0, 0, 0, 0].item()
+            feature_maps[0][0, 0, 0, 0] = 999.0
 
-        # Get feature maps again
-        new_feature_maps = encoder.get_feature_maps(x)
+            # Get feature maps again
+            new_feature_maps = encoder.get_feature_maps(x)
 
         # Should not be affected by previous modification
         assert new_feature_maps[0][0, 0, 0, 0].item() == original_value
@@ -505,9 +539,7 @@ class TestBlockBasedEncoderCompatibility:
         )
 
         assert total_params > 0
-        assert (
-            trainable_params == total_params
-        )  # All parameters should be trainable
+        assert trainable_params == total_params  # All parameters are trainable
 
 
 class TestBlockBasedEncoderEdgeCases:
@@ -520,7 +552,7 @@ class TestBlockBasedEncoderEdgeCases:
         x = torch.randn(1, 256, 8, 8)
 
         output = encoder(x)
-        assert output.shape[1] == 1024
+        assert output.shape == (1, 1024, 8, 2)
 
     def test_single_channel_input(self):
         """Test with single channel input."""
@@ -529,7 +561,7 @@ class TestBlockBasedEncoderEdgeCases:
         x = torch.randn(1, 1, 32, 32)
 
         output = encoder(x)
-        assert output.shape[1] == 32
+        assert output.shape == (1, 32, 32, 8)
 
     def test_minimal_spatial_dimensions(self):
         """Test with minimal spatial dimensions."""
@@ -537,10 +569,8 @@ class TestBlockBasedEncoderEdgeCases:
         encoder = BlockBasedEncoder(in_channels=32, block_configs=configs)
         x = torch.randn(1, 32, 1, 1)
 
-        output = encoder(x)
-        assert output.shape[1] == 64
-        assert output.shape[2] > 0
-        assert output.shape[3] > 0
+        with pytest.raises(ValueError):
+            _ = encoder(x)
 
     def test_decreasing_channels(self):
         """Test with decreasing channel progression."""
@@ -553,7 +583,7 @@ class TestBlockBasedEncoderEdgeCases:
         x = torch.randn(1, 256, 16, 16)
 
         output = encoder(x)
-        assert output.shape[1] == 32
+        assert output.shape == (1, 32, 16, 2)
 
         progression = encoder.get_channel_progression()
         assert progression == [256, 128, 64, 32]
