@@ -315,6 +315,7 @@ class BlockBasedDecoder(SequentialBlock):
         block_configs: list[dict[str, Any]],
         kernel_size: Union[int, tuple[int, int]] = 3,
         bias: bool = True,
+        **kwargs
     ) -> None:
         """Initialize BlockBasedDecoder."""
 
@@ -391,6 +392,14 @@ class BlockBasedDecoder(SequentialBlock):
             current_channels = config["out_channels"]
 
         return blocks
+
+    def get_output_shape(self, input_shape: tuple[int, ...]) \
+            -> tuple[int, ...]:
+        """Calculate output shape given input shape."""
+        shape = input_shape
+        for block in self.operations:
+            shape = block.get_output_shape(shape)
+        return shape
 
     def get_feature_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
         """Get intermediate feature maps from each decoder block.
