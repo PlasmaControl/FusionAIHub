@@ -5,21 +5,23 @@ inherit from the base classes, following established patterns and interfaces.
 The decoder creates a symmetric reconstruction path to the encoder.
 """
 
+from typing import Any, Optional, Union
+
 import torch
 import torch.nn as nn
-from typing import Union, Any, Optional
-from .base import SequentialBlock, ConfigurableBlock, WeightInitializer
-from .residual import ResidualBlock
+
+from .base import ConfigurableBlock, SequentialBlock, WeightInitializer
 from .encoder import EncoderBlock
+from .residual import ResidualBlock
 
 
 class DecoderBlock(SequentialBlock):
-    # TODO: ConvTranspose2d
-    """Single decoder block: Upsample + ResidualBlock + Dropout.
+    """
+    Single decoder block: ConvTranspose2d + Dropout + ResidualBlock.
 
     This block represents the fundamental building unit of the decoder,
-    combining spatial upsampling, feature refinement through ResidualBlock,
-    and regularization through Dropout.
+    combining spatial upsampling through ConvTranspose2d, regularization
+    through Dropout, and feature refinement through ResidualBlock.
 
     Parameters
     ----------
@@ -33,7 +35,7 @@ class DecoderBlock(SequentialBlock):
         Kernel size for convolutions in ResidualBlock.
     stride : int or tuple of int, default=1
         Stride for convolutions in ResidualBlock. The DecoderBlock uses
-        stride=1 and relies on Upsample for dimension changes.
+        stride=1 and relies on ConvTranspose2d for upsampling.
     dropout : float, default=0.3
         Dropout probability. Must be between 0.0 and 1.0.
     bias : bool, default=True
@@ -42,26 +44,21 @@ class DecoderBlock(SequentialBlock):
         Whether to use batch normalization in ResidualBlock.
     activation : str, default='relu'
         Activation function for ResidualBlock.
-    upsampling_mode : str, default='nearest'
-        Upsampling algorithm. Options: 'nearest', 'linear', 'bilinear',
-        'bicubic', 'trilinear', 'area'.
     residual_init_method : str, default='kaiming'
         Weight initialization method for ResidualBlock.
 
     Attributes
     ----------
-    upsample : nn.Upsample
-        Upsampling layer for spatial dimension restoration.
+    conv_transpose : nn.ConvTranspose2d
+        Transposed convolution layer for spatial upsampling.
+    dropout_layer : nn.Dropout
+        Dropout layer for regularization.
     residual_block : ResidualBlock
         The residual convolutional block for feature refinement.
-    dropout : nn.Dropout
-        Dropout layer for regularization.
     upsample_factor : tuple of int
-        Stored upsampling factor.
-    dropout_prob : float
+        Stored upsampling factor for encoder symmetry.
+    dropout : float
         Stored dropout probability.
-    upsampling_mode : str
-        Stored upsampling mode.
 
     Examples
     --------
@@ -74,54 +71,52 @@ class DecoderBlock(SequentialBlock):
     >>> # Custom configuration
     >>> block = DecoderBlock(
     ...     in_channels=128, out_channels=64,
-    ...     upsample_factor=(2, 2), upsampling_mode='bilinear',
-    ...     activation='gelu'
+    ...     upsample_factor=(2, 2), dropout=0.5, activation='gelu'
     ... )
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            upsample_factor: tuple[int, int] = (1, 2),
-            kernel_size: Union[int, tuple[int, int]] = 3,
-            stride: Union[int, tuple[int, int]] = 1,
-            dropout: float = 0.3,
-            bias: bool = True,
-            use_batch_norm: bool = True,
-            activation: str = 'relu',
-            upsampling_mode: str = 'nearest',
-            residual_init_method: str = 'kaiming'
+        self,
+        in_channels: int,
+        out_channels: int,
+        upsample_factor: tuple[int, int] = (1, 2),
+        kernel_size: Union[int, tuple[int, int]] = 3,
+        stride: Union[int, tuple[int, int]] = 1,
+        dropout: float = 0.3,
+        bias: bool = True,
+        use_batch_norm: bool = True,
+        activation: str = "relu",
+        residual_init_method: str = "kaiming",
     ) -> None:
         """Initialize DecoderBlock."""
 
         # Validate parameters
         if not 0.0 <= dropout <= 1.0:
             raise ValueError(
-                f"Dropout must be between 0.0 and 1.0, got {dropout}")
+                f"Dropout must be between 0.0 and 1.0, got {dropout}"
+            )
 
         if len(upsample_factor) != 2:
             raise ValueError(f"upsample_factor must be a tuple of length 2, "
                              f"got {upsample_factor}")
 
-        valid_modes = {
-            'nearest', 'linear', 'bilinear', 'bicubic', 'trilinear', 'area'}
-        if upsampling_mode not in valid_modes:
-            raise ValueError(f"upsampling_mode must be one of {valid_modes}, "
-                             f"got {upsampling_mode}")
-
         # Store configuration
         self.upsample_factor = upsample_factor
-        self.dropout_prob = dropout
-        self.upsampling_mode = upsampling_mode
+        self.dropout = dropout
         self.use_batch_norm = use_batch_norm
         self.activation_name = activation
         self.residual_init_method = residual_init_method
 
         # Build the sequential operations
         operations = self._build_operations(
-            in_channels, out_channels, kernel_size, stride,
-            bias, use_batch_norm, activation, residual_init_method
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            bias,
+            use_batch_norm,
+            activation,
+            residual_init_method,
         )
 
         # Initialize SequentialBlock with operations
@@ -130,37 +125,52 @@ class DecoderBlock(SequentialBlock):
             out_channels=out_channels,
             operations=operations,
             kernel_size=kernel_size,
-            bias=bias
+            bias=bias,
         )
 
         # Store individual components for introspection
-        self.upsample = self.operations[0]
-        self.residual_block = self.operations[1]
-        self.dropout = self.operations[2]
+        self.conv_transpose = self.operations[0]
+        self.dropout_layer = self.operations[1]
+        self.residual_block = self.operations[2]
 
     def _build_operations(
-            self,
-            in_channels: int,
-            out_channels: int,
-            kernel_size: Union[int, tuple[int, int]],
-            stride: Union[int, tuple[int, int]],
-            bias: bool,
-            use_batch_norm: bool,
-            activation: str,
-            init_method: str
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, tuple[int, int]],
+        stride: Union[int, tuple[int, int]],
+        bias: bool,
+        use_batch_norm: bool,
+        activation: str,
+        init_method: str,
     ) -> list[nn.Module]:
         """Build the list of operations for this decoder block."""
 
         operations = []
 
-        # 1. Upsample for spatial dimension restoration
-        upsample_layer = nn.Upsample(
-            scale_factor=self.upsample_factor,
-            mode=self.upsampling_mode
-        )
-        operations.append(upsample_layer)
+        # 1. ConvTranspose2d for upsampling
+        # Calculate kernel size and padding based on upsample factor
+        # For stride=1 in any dimension, we need to handle it carefully
 
-        # 2. ResidualBlock for feature refinement
+        # Determine kernel size and padding for each dimension
+        kernel_h = 3 if self.upsample_factor[0] == 1 else 4
+        kernel_w = 3 if self.upsample_factor[1] == 1 else 4
+
+        conv_transpose_layer = nn.ConvTranspose2d(
+            in_channels=in_channels,
+            out_channels=in_channels,  # Keep same channels for upsampling
+            kernel_size=(kernel_h, kernel_w),
+            stride=self.upsample_factor,
+            padding=(1, 1),  # Use padding=1 for both cases
+            bias=bias,
+        )
+        operations.append(conv_transpose_layer)
+
+        # 2. Dropout for regularization
+        dropout_layer = nn.Dropout(p=self.dropout)
+        operations.append(dropout_layer)
+
+        # 3. ResidualBlock for feature refinement
         residual_block = ResidualBlock(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -169,59 +179,80 @@ class DecoderBlock(SequentialBlock):
             bias=bias,
             use_batch_norm=use_batch_norm,
             activation=activation,
-            init_method=init_method
+            init_method=init_method,
         )
         operations.append(residual_block)
-
-        # 3. Dropout for regularization
-        dropout_layer = nn.Dropout(p=self.dropout_prob)
-        operations.append(dropout_layer)
 
         return operations
 
     def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary for this block."""
         config = super().get_config()
-        config.update({
-            'upsample_factor': self.upsample_factor,
-            'dropout': self.dropout_prob,
-            'upsampling_mode': self.upsampling_mode,
-            'use_batch_norm': self.use_batch_norm,
-            'activation': self.activation_name,
-            'residual_init_method': self.residual_init_method,
-            'stride': getattr(self.residual_block, 'stride', 1),
-        })
+        config.update(
+            {
+                "upsample_factor": self.upsample_factor,
+                "dropout": self.dropout,
+                "use_batch_norm": self.use_batch_norm,
+                "activation": self.activation_name,
+                "residual_init_method": self.residual_init_method,
+                "stride": getattr(self.residual_block, "stride", 1),
+            }
+        )
         return config
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> 'DecoderBlock':
+    def from_config(cls, config: dict[str, Any]) -> "DecoderBlock":
         """Create DecoderBlock instance from configuration dictionary."""
         return cls(**config)
 
     def get_output_shape(
-            self,
-            input_shape: tuple[int, ...]
+        self, input_shape: tuple[int, ...]
     ) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
+
+        # Get shape after ConvTranspose2d upsampling
         batch_size, channels, height, width = input_shape
 
-        # Apply upsampling
-        upsampled_height = height * self.upsample_factor[0]
-        upsampled_width = width * self.upsample_factor[1]
+        # Calculate upsampled dimensions using ConvTranspose2d formula
+        # output_size = (input_size - 1) * stride - 2 * padding + kernel_size
 
-        # ResidualBlock changes channels but maintains spatial dimensions
-        return (batch_size, self.out_channels, upsampled_height,
-                upsampled_width)
+        # Use appropriate kernel for each dimension based on upsample factor
+        kernel_h = 3 if self.upsample_factor[0] == 1 else 4
+        kernel_w = 3 if self.upsample_factor[1] == 1 else 4
+        padding = 1  # Always use padding=1
+
+        upsampled_height = (
+            (height - 1) * self.upsample_factor[0] - 2 * padding + kernel_h
+        )
+        upsampled_width = (
+            (width - 1) * self.upsample_factor[1] - 2 * padding + kernel_w
+        )
+
+        # Shape after ConvTranspose2d (channels remain the same)
+        conv_transpose_output_shape = (
+            batch_size,
+            channels,
+            upsampled_height,
+            upsampled_width,
+        )
+
+        # Apply ResidualBlock (changes channels to out_channels)
+        residual_output_shape = self.residual_block.get_output_shape(
+            conv_transpose_output_shape
+        )
+
+        return residual_output_shape
 
     def __repr__(self) -> str:
         """String representation of the DecoderBlock."""
-        return (f"DecoderBlock("
-                f"in_channels={self.in_channels}, "
-                f"out_channels={self.out_channels}, "
-                f"upsample_factor={self.upsample_factor}, "
-                f"dropout={self.dropout_prob}, "
-                f"upsampling_mode='{self.upsampling_mode}', "
-                f"activation='{self.activation_name}')")
+        return (
+            f"DecoderBlock("
+            f"in_channels={self.in_channels}, "
+            f"out_channels={self.out_channels}, "
+            f"upsample_factor={self.upsample_factor}, "
+            f"dropout={self.dropout}, "
+            f"activation='{self.activation_name}')"
+        )
 
 
 class BlockBasedDecoder(ConfigurableBlock):
@@ -414,11 +445,10 @@ class BlockBasedDecoder(ConfigurableBlock):
             'upsample_factor': encoder_block.pool_size,  # Mirror the pooling
             'kernel_size': self.kernel_size,
             'stride': 1,  # Always use stride=1 in decoder
-            'dropout': encoder_block.dropout_prob,  # Match encoder dropout
+            'dropout': encoder_block.dropout,  # Match encoder dropout
             'bias': self.bias,
             'use_batch_norm': self.use_batch_norm,
             'activation': self.activation_name,
-            'upsampling_mode': self.upsampling_mode,
             'residual_init_method': self.init_method,
         }
 

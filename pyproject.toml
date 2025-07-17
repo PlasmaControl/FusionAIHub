@@ -37,6 +37,7 @@ dependencies = [
     "tables",
     "pyyaml",
     "jupyter",
+    "typing",
 ]
 
 [dependency-groups]
