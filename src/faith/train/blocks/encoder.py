@@ -3,23 +3,32 @@
 This module implements the EncoderBlock and BlockBasedEncoder classes that
 inherit from the base classes, following established patterns and interfaces.
 """
+from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 
-from .base import SequentialBlock
-from .residual import ResidualBlock
+from .base import SequentialBlock, _ResidualBlock
 
 
-class EncoderBlock(SequentialBlock):
+class ResidualEncoding1d(_ResidualBlock):
+    _conv_type = nn.Conv1d
+    _norm_type = nn.BatchNorm1d
+
+
+class ResidualEncoding2d(_ResidualBlock):
+    _conv_type = nn.Conv2d
+    _norm_type = nn.BatchNorm2d
+
+
+class EncoderBlock1d(nn.Module):
     """
-    Single encoder block: ResidualBlock + Dropout + MaxPool.
+    Single encoder block with 1D convolutions: ResidualEncoding1D + Dropout + MaxPool.
 
-    This block represents the fundamental building unit of the encoder,
-    combining feature extraction through ResidualBlock, regularization
-    through Dropout, and spatial downsampling through MaxPooling.
+    This block combines feature extraction through ResidualEncoding1D, regularization
+    through Dropout, and downsampling through MaxPooling.
 
     Parameters
     ----------
@@ -27,23 +36,21 @@ class EncoderBlock(SequentialBlock):
         Number of input channels.
     out_channels : int
         Number of output channels from the ResidualBlock.
-    pool_size : tuple of int, default=(1, 2)
-        Kernel size for MaxPool2d operation. Format: (height, width).
     kernel_size : int or tuple of int, default=3
         Kernel size for convolutions in ResidualBlock.
     stride : int or tuple of int, default=1
         Stride for convolutions in ResidualBlock. The EncoderBlock uses
         stride=1 and relies on MaxPool for downsampling.
-    dropout : float, default=0.3
-        Dropout probability. Must be between 0.0 and 1.0.
     bias : bool, default=True
         Whether to use bias in convolution layers.
-    use_batch_norm : bool, default=True
-        Whether to use batch normalization in ResidualBlock.
-    activation : str, default='relu'
+    activation_name : str, default='relu'
         Activation function for ResidualBlock.
-    residual_init_method : str, default='kaiming'
+    weight_init_method : str, default='kaiming'
         Weight initialization method for ResidualBlock.
+    pool_size : tuple of int, default=(1, 2)
+        Kernel size for MaxPool2d operation. Format: (height, width).
+    dropout : float, default=0.3
+        Dropout probability. Must be between 0.0 and 1.0.
 
     Attributes
     ----------
@@ -53,21 +60,17 @@ class EncoderBlock(SequentialBlock):
         Dropout layer for regularization.
     pool : nn.MaxPool2d
         Max pooling layer for spatial downsampling.
-    pool_size : tuple of int
-        Stored pooling size for decoder symmetry.
-    dropout_prob : float
-        Stored dropout probability.
 
     Examples
     --------
-    >>> block = EncoderBlock(in_channels=64, out_channels=128)
+    >>> block = EncoderBlock1d(in_channels=64, out_channels=128)
     >>> x = torch.randn(1, 64, 32, 32)
     >>> out = block(x)
     >>> print(out.shape)
     torch.Size([1, 128, 32, 16])
 
     >>> # Custom configuration
-    >>> block = EncoderBlock(
+    >>> block = EncoderBlock1d(
     ...     in_channels=64, out_channels=128,
     ...     pool_size=(2, 2), dropout=0.5, activation='gelu'
     ... )
@@ -77,90 +80,36 @@ class EncoderBlock(SequentialBlock):
             self,
             in_channels: int,
             out_channels: int,
-            pool_size: tuple[int, int] = (1, 2),
-            kernel_size: Union[int, tuple[int, int]] = 3,
-            stride: Union[int, tuple[int, int]] = 1,
-            dropout: float = 0.3,
+            kernel_size: int | tuple[int, int] = 3,
+            stride: int | tuple[int, int] = 1,
             bias: bool = True,
-            use_batch_norm: bool = True,
-            activation: str = 'relu',
-            residual_init_method: str = 'kaiming'
+            activation_name: str = 'relu',
+            weight_init_method: str = 'kaiming',
+            pool_size: tuple[int, int] = (1, 2),
+            dropout: float = 0.3,
     ) -> None:
         """Initialize EncoderBlock."""
+        super().__init__()
 
-        # Validate parameters
-        if not 0.0 <= dropout <= 1.0:
-            raise ValueError(
-                f"Dropout must be between 0.0 and 1.0, got {dropout}")
-
-        if len(pool_size) != 2:
-            raise ValueError(
-                f"pool_size must be a tuple of length 2, got {pool_size}")
-
-        # Store configuration
-        self.pool_size = pool_size
-        self.dropout_prob = dropout
-        self.use_batch_norm = use_batch_norm
-        self.activation_name = activation
-        self.residual_init_method = residual_init_method
-
-        # Build the sequential operations
-        operations = self._build_operations(
-            in_channels, out_channels, kernel_size, stride,
-            bias, use_batch_norm, activation, residual_init_method
-        )
-
-        # Initialize SequentialBlock with operations
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            operations=operations,
-            kernel_size=kernel_size,
-            bias=bias
+        self.encoder_block = nn.Sequential(
+            ResidualEncoding1d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                bias=bias,
+                activation_name=activation_name,
+                weight_init_method=weight_init_method
+            ),
+            nn.Dropout(p=dropout),
+            nn.MaxPool1d(kernel_size=pool_size, stride=pool_size)
         )
 
         # Store individual components for introspection
-        self.residual_block = self.operations[0]
-        self.dropout = self.operations[1]
-        self.pool = self.operations[2]
-
-    def _build_operations(
-            self,
-            in_channels: int,
-            out_channels: int,
-            kernel_size: Union[int, tuple[int, int]],
-            stride: Union[int, tuple[int, int]],
-            bias: bool,
-            use_batch_norm: bool,
-            activation: str,
-            init_method: str
-    ) -> list[nn.Module]:
-        """Build the list of operations for this encoder block."""
-
-        operations = []
-
-        # 1. ResidualBlock for feature extraction
-        residual_block = ResidualBlock(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            bias=bias,
-            use_batch_norm=use_batch_norm,
-            activation=activation,
-            init_method=init_method
-        )
-        operations.append(residual_block)
-
-        # 2. Dropout for regularization
-        dropout_layer = nn.Dropout(p=self.dropout_prob)
-        operations.append(dropout_layer)
-
-        # 3. MaxPool for downsampling
-        pool_layer = nn.MaxPool2d(kernel_size=self.pool_size)
-        operations.append(pool_layer)
-
-        return operations
+        self.residual_block = self.encoder_block[0]
+        self.dropout = self.encoder_block[1]
+        self.pool = self.encoder_block[2]
+        self.pool_size = pool_size if isinstance(pool_size, tuple) else (1, pool_size)
 
     def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary for this block."""
@@ -175,18 +124,11 @@ class EncoderBlock(SequentialBlock):
         })
         return config
 
-    @classmethod
-    def from_config(cls, config: dict[str, Any]) -> 'EncoderBlock':
-        """Create EncoderBlock instance from configuration dictionary."""
-        return cls(**config)
-
-    def get_output_shape(self, input_shape: tuple[int, ...]) \
-            -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
 
         # Get shape after residual block
-        residual_output_shape = (
-            self.residual_block.get_output_shape(input_shape))
+        residual_output_shape = (self.residual_block.get_output_shape(input_shape))
 
         # Apply pooling
         batch_size, channels, height, width = residual_output_shape
@@ -389,7 +331,7 @@ class BlockBasedEncoder(SequentialBlock):
         return config
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> "BlockBasedEncoder":
+    def from_config(cls, config: dict[str, Any]) -> BlockBasedEncoder:
         """Create BlockBasedEncoder instance from configuration dictionary."""
         return cls(**config)
 

@@ -10,9 +10,19 @@ from typing import Any, Union
 import torch
 import torch.nn as nn
 
-from .base import SequentialBlock
+from .base import SequentialBlock, _ResidualBlock
 from .encoder import BlockBasedEncoder
-from .residual import ResidualBlock
+
+
+class ResidualDecoding1d(_ResidualBlock):
+    _conv_type = nn.ConvTranspose1d
+    _norm_type = nn.BatchNorm1d
+
+
+class ResidualDecoding2d(_ResidualBlock):
+    _conv_type = nn.ConvTranspose2d
+    _norm_type = nn.BatchNorm2d
+
 
 
 class DecoderBlock(SequentialBlock):

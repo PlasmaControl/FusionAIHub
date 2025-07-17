@@ -5,10 +5,11 @@ functionality that can be inherited by specific block implementations.
 It ensures consistency across different block types and provides common
 patterns for initialization, forward passes, and configuration.
 """
+from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Literal, Optional, Union
+from typing import Any, ClassVar, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -89,22 +90,6 @@ class BaseConvBlock(nn.Module, ABC):
         if isinstance(kernel_size, int):
             return kernel_size, kernel_size
         return kernel_size
-
-    @staticmethod
-    def _calculate_padding(
-            kernel_size: Union[int, tuple[int, int]],
-            padding: Union[int, tuple[int, int], str] = 'auto'
-    ) -> tuple[int, ...]:
-        """Calculate padding based on kernel size and padding specification."""
-        if padding == 'auto':
-            if isinstance(kernel_size, int):
-                return kernel_size // 2, kernel_size // 2
-            else:
-                return tuple(k // 2 for k in kernel_size)
-        elif isinstance(padding, int):
-            return padding, padding
-        else:
-            return padding
 
     @abstractmethod
     def forward(
@@ -293,95 +278,221 @@ class BlockUtils:
             'total_mb': (param_memory + activation_memory) / (1024 * 1024)
         }
 
+class _Identity(nn.Module):
+    """Identity block that returns the input tensor unchanged."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Identity function that returns the input tensor unchanged."""
+        return x
+
+
+def _calculate_padding(
+        kernel_size: int | tuple[int, int],
+        padding: int | tuple[int, int] | str = 'auto'
+) -> int | tuple[int, int]:
+    """Calculate padding based on kernel size and padding specification."""
+    if isinstance(kernel_size, int) and kernel_size % 2 == 0:
+        raise ValueError(f"Kernel size must be odd, got {kernel_size} (even).")
+    if isinstance(kernel_size, tuple) and any(k % 2 == 0 for k in kernel_size):
+        raise ValueError(f"Kernel size must be odd, got {kernel_size} (even).")
+    if padding == 'auto':
+        if isinstance(kernel_size, int):
+            return kernel_size // 2
+        else:
+            return tuple(k // 2 for k in kernel_size)
+    return padding
+
+
+def _create_activation(activation_name: str = "relu") -> nn.Module:
+    """Create activation function based on name."""
+    activations = {
+        'tanh': nn.Tanh(),
+        'sigmoid': nn.Sigmoid(),
+        'relu': nn.ReLU(inplace=True),
+        'leaky_relu': nn.LeakyReLU(0.1, inplace=True),
+        'gelu': nn.GELU(),
+        'swish': nn.SiLU(),  # SiLU is the same as Swish
+        'mish': nn.Mish(),
+    }
+    return activations[activation_name]
+
+
+
 # Kouroche's implementation.
-def padding_for_conv(
-    size: int, mode: Literal["valid", "same", "full"] = "same"
-) -> int:
-    if size % 2 == 0 and mode in ("same", "full"):
-        raise ValueError(f'Kernel size must be odd for "{mode}" convolution.')
-
-    if mode == "valid":
-        return 0
-    elif mode == "same":
-        return size // 2
-    elif mode == "full":
-        return size - 1
-    else:
-        raise ValueError(f'Invalid mode: "{mode}"')
-
 class _ResidualBlock(ABC, nn.Module):
+    """
+    Abstract base class for residual blocks in neural networks.
+    """
     _conv_type: ClassVar[
-        type[nn.Conv1d]
-        | type[nn.Conv2d]
-        | type[nn.ConvTranspose1d]
-        | type[nn.ConvTranspose2d]
-    ]
-    _norm_type: ClassVar[type[nn.BatchNorm1d] | type[nn.BatchNorm2d]]
+        type[nn.Conv1d] | type[nn.Conv2d] |
+        type[nn.ConvTranspose1d] | type[nn.ConvTranspose2d]]
+    _norm_type: ClassVar[type[nn.BatchNorm1d] | type[nn.BatchNorm2d] | None]
 
     conv_1: nn.Sequential
     conv_2: nn.Sequential
-    downsample: nn.Sequential | None
-    activation: nn.ReLU
+    mixing: nn.Sequential | None
 
     def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: int = 3, stride: int = 1
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int] = 3,
+        stride: int | tuple[int, int] = 1,
+        bias: bool = True,
+        activation_name: str = "relu",
+        weight_init_method: str = "kaiming",
     ) -> None:
         super().__init__()
 
-        padding = padding_for_conv(kernel_size)
+        if isinstance(kernel_size, int) and kernel_size % 2 == 0:
+            raise ValueError(f"Kernel size must be odd, got {kernel_size} (even).")
+        if isinstance(kernel_size, tuple) and any(k % 2 == 0 for k in kernel_size):
+            raise ValueError(f"Kernel size must be odd, got {kernel_size} (even).")
+        if isinstance(kernel_size, int) and kernel_size <= 0:
+            raise ValueError(f"Kernel size must be positive, got {kernel_size}.")
+        if isinstance(kernel_size, tuple) and any(k <= 0 for k in kernel_size):
+            raise ValueError(f"Kernel size must be positive, got {kernel_size}.")
+
+        if in_channels <= 0:
+            raise ValueError(f"in_channels must be positive, got {in_channels}.")
+        if out_channels <= 0:
+            raise ValueError(f"out_channels must be positive, got {out_channels}.")
+
+        if not isinstance(in_channels, int):
+            raise TypeError(f"in_channels must be an int, got {type(in_channels)}.")
+        if not isinstance(out_channels, int):
+            raise TypeError(f"out_channels must be an int, got {type(out_channels)}.")
+
+        if isinstance(stride, int) and stride <= 0:
+            raise ValueError(f"stride must be positive, got {stride}.")
+        if isinstance(stride, tuple) and any(s <= 0 for s in stride):
+            raise ValueError(f"stride must be positive, got {stride}.")
+        if not isinstance(stride, int) and not isinstance(stride, tuple):
+            raise TypeError(f"stride must be an int or tuple, got {type(stride)}.")
+
+        self.padding = _calculate_padding(kernel_size, padding="auto")
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.bias = bias
+        self.out_channels = out_channels
 
         self.conv_1 = nn.Sequential(
-            self._conv_type(in_channels, out_channels, kernel_size, stride, padding),
-            self._norm_type(out_channels),
-            nn.ReLU(inplace=True),
+            self._conv_type(
+                in_channels=in_channels, out_channels=out_channels,
+                kernel_size=kernel_size, stride=stride, padding=self.padding, bias=bias
+            ),
+            self._norm_type(out_channels) if self._norm_type is not None \
+                else _Identity(),
+            _create_activation(activation_name),
         )
         self.conv_2 = nn.Sequential(
-            self._conv_type(out_channels, out_channels, kernel_size, padding=padding),
-            self._norm_type(out_channels),
+            self._conv_type(
+                in_channels=out_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                padding=self.padding,
+                bias=bias,
+            ),
+            self._norm_type(out_channels) if self._norm_type is not None \
+                else _Identity(),
         )
 
         if in_channels != out_channels or stride != 1:
-            self.downsample = nn.Sequential(
+            self.mixing = nn.Sequential(
                 self._conv_type(
                     in_channels, out_channels, kernel_size=1, stride=stride
                 ),
-                self._norm_type(out_channels),
+                self._norm_type(out_channels)
+                if self._norm_type is not None
+                else _Identity(),
             )
         else:
-            self.downsample = None
+            self.mixing = None
 
-        self.activation = nn.ReLU(inplace=True)
-
+        self.final_activation = _create_activation(activation_name)
+        self.init_method = weight_init_method
+        self._initialize_weights()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the residual block.
+
+        Parameters
+        ----------
+        input : torch.Tensor
+            Input tensor of shape (batch, channels, height, width).
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor after applying the residual block.
+        """
         residual = input
 
         output = self.conv_1(input)
         output = self.conv_2(output)
 
-        if self.downsample:
-            residual = self.downsample(residual)
+        if self.mixing:
+            residual = self.mixing(residual)
 
         output = output + residual
-        output = self.activation(output)
+        output = self.final_activation(output)
         return output
 
+    def _initialize_weights(self) -> None:
+        """Initialize weights according to the specified method."""
+        if self.init_method == 'kaiming':
+            self.apply(WeightInitializer.kaiming_normal_)
+        elif self.init_method == 'xavier':
+            self.apply(WeightInitializer.xavier_uniform_)
+        elif self.init_method == 'default':
+            pass  # Use PyTorch's default initialization
 
-class ResidualEncoding1d(_ResidualBlock):
-    _conv_type = nn.Conv1d
-    _norm_type = nn.BatchNorm1d
+        # Always properly initialize batch norm
+        if self._norm_type is not None:
+            self.apply(WeightInitializer.init_batch_norm_)
 
+    def __repr__(self) -> str:
+        """String representation of the ResidualBlock."""
+        return (f"ResidualBlock("
+                f"in_channels={self.in_channels}, "
+                f"out_channels={self.out_channels}, "
+                f"kernel_size={self.kernel_size}, "
+                f"stride={self.stride}, "
+                f"bias={self.bias}, "
+                f"activation_name='{self.activation_name}', "
+                f"weight_init_method={self.init_method})")
 
-class ResidualEncoding2d(_ResidualBlock):
-    _conv_type = nn.Conv2d
-    _norm_type = nn.BatchNorm2d
+    def get_output_shape(
+            self,
+            input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Calculate output shape given input shape.
 
+        Parameters
+        ----------
+        input_shape : tuple
+            Input tensor shape (batch, channels, height, width).
 
-class ResidualDecoding1d(_ResidualBlock):
-    _conv_type = nn.ConvTranspose1d
-    _norm_type = nn.BatchNorm1d
+        Returns
+        -------
+        tuple
+            Output tensor shape.
+        """
+        from src.faith.train.blocks import BlockUtils
 
+        # Account for stride in the first convolution
+        temp_shape = BlockUtils.calculate_output_shape(
+            input_shape,
+            kernel_size=self.kernel_size,
+            stride=self.stride,
+            padding=self.padding
+        )
 
-class ResidualDecoding2d(_ResidualBlock):
-    _conv_type = nn.ConvTranspose2d
-    _norm_type = nn.BatchNorm2d
+        # Update channels
+        batch_size, _, height, width = temp_shape
+        return batch_size, self.out_channels, height, width

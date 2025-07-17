@@ -1,16 +1,14 @@
-"""Neural network blocks for building autoencoders."""
+"""Neural network blocks."""
 
-from .residual import ResidualBlock
-from .encoder import EncoderBlock, BlockBasedEncoder
-from .decoder import DecoderBlock, BlockBasedDecoder
-from .base import BaseConvBlock, BlockUtils
+from .base import BlockUtils
+from .decoder import BlockBasedDecoder, DecoderBlock
+from .encoder import EncoderBlock1d, ResidualEncoding1d, ResidualEncoding2d
 
 __all__ = [
-    "ResidualBlock",
-    "EncoderBlock",
-    "BlockBasedEncoder",
+    "ResidualEncoding1d",
+    "ResidualEncoding2d",
+    "EncoderBlock1d",
     "DecoderBlock",
     "BlockBasedDecoder",
-    "BaseConvBlock",
     "BlockUtils",
 ]
