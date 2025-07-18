@@ -8,6 +8,7 @@ including STFT transformations and nearest-neighbor resampling.
 import numpy as np
 import torch
 from scipy.signal import resample
+from scipy.interpolate import interp1d
 import logging
 
 # Set up logger for this module
@@ -25,10 +26,10 @@ def resample_fn(y: np.ndarray, new_len: int) -> np.ndarray:
     Returns:
         Resampled signal as numpy array
     """
-    orig_len = len(y)
-    gcd = np.gcd(orig_len, new_len)
-    up = new_len // gcd
-    down = orig_len // gcd
+    # orig_len = len(y)
+    # gcd = np.gcd(orig_len, new_len)
+    # up = new_len // gcd
+    # down = orig_len // gcd
     # return resample_poly(y, up, down)
     resampled = resample(y, new_len)
     return np.asarray(resampled)
@@ -64,7 +65,6 @@ def stft_transform(
         return_complex=True,
     )
     y = torch.abs(y)
-    y = y.permute(0, 2, 1)
     return y.numpy()
 
 
@@ -83,9 +83,24 @@ def resample_transform(
         Resampled signal to match reference time dimension
     """
     x = x.astype(np.float32)
-    target_length = ref_shape[1] # assuming time dimension is second dimension
+    target_length = ref_shape[-1] # assuming time dimension is last dimension
     y = [resample_fn(x_, target_length) for x_ in x]
-    y = np.expand_dims(y, axis=2)
+    y = np.expand_dims(y, axis=1)
+    return np.array(y)
+
+def resample_linear_transform(
+    x: np.ndarray,
+    ref_shape: tuple,
+) -> np.ndarray:
+    """
+    Resample a signal to match a reference shape.
+    """
+    x = x.astype(np.float32)
+    target_length = ref_shape[-1] # assuming time dimension is last dimension
+    lold = np.linspace(0, 1, len(x[-1]))
+    lnew = np.linspace(0, 1, target_length)
+    y = [np.interp(lnew, lold, x_) for x_ in x]
+    y = np.expand_dims(y, axis=1)
     return np.array(y)
 
 

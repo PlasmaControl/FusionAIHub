@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from typing import Optional
+from omegaconf import DictConfig
 
 from .util import ParallelMapper
 from .pipelines import pipeline_v0_stable as pipeline
@@ -71,8 +72,8 @@ def prepare_dataset(cfg: dict) -> None:
         cfg: Configuration dictionary loaded from YAML
     """
     raw_data_dir = Path(cfg["raw_data_dir"])
-    cache_dir = Path(cfg["output_dir"]) / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(cfg["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Target sampling frequency: {cfg['fs_khz']} kHz")
     logger.info("Signals configured:")
@@ -105,99 +106,53 @@ def prepare_dataset(cfg: dict) -> None:
     logger.info(f"Processing {len(all_shots)} shots into cache...")
     
     # Clean up existing cache directory if it exists
-    if cache_dir.exists():
+    if output_dir.exists():
         import shutil
-        logger.info(f"Removing existing cache directory: {cache_dir}")
-        shutil.rmtree(cache_dir)
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Removing existing cache directory: {output_dir}")
+        shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
     
     # Process shots using the appropriate function
     if cfg.get("debug", False):
-        pipeline(170000, cfg, cache_dir) # For debugging
+        output_dir = Path("data") / "debug"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        pipeline(170000, cfg, output_dir) # For debugging
     else:
         mapper = ParallelMapper()
-        mapper(pipeline, all_shots, cfg=cfg, out_dir=cache_dir)
+        mapper(pipeline, all_shots, cfg=cfg, out_dir=output_dir)
     
     # Move cached files into train/test split
-    logger.info("Splitting dataset into train and valid sets...")
-    all_files = list(cache_dir.glob("*.joblib"))
+    logger.info("Indexing dataset...")
+    all_files = list(output_dir.glob("*.joblib"))
     all_files.sort()
     
     if len(all_files) == 0:
         logger.warning("Warning: No processed files found. Dataset preparation incomplete.")
         return
-    
-    # Handle edge case where there are too few files for train-test split
-    if len(all_files) == 1:
-        logger.warning("Warning: Only 1 file found. Placing in train directory.")
-        train_files = all_files
-        valid_files = []
-    else:
-        train_files, valid_files = train_test_split(
-            all_files, 
-            test_size=cfg.get("train_test_split", 0.2), 
-            random_state=cfg["random_seed"]
-        )
 
-    # Create train and validation directories
-    train_dir = Path(cfg["output_dir"]) / "train"
-    valid_dir = Path(cfg["output_dir"]) / "valid"
-    train_dir.mkdir(parents=True, exist_ok=True)
-    valid_dir.mkdir(parents=True, exist_ok=True)
-
-    # Move files to appropriate directories
-    for f in train_files:
-        f.rename(train_dir / f.name)
-    for f in valid_files:
-        f.rename(valid_dir / f.name)
-    
     # Index the datasets
-    index_dataset(train_dir)
-    index_dataset(valid_dir)
-        
-    # Clean up cache directory
-    for f in cache_dir.glob("*"): 
-        f.unlink()
-    cache_dir.rmdir()
-
-    logger.info("Dataset preparation complete.")
-    logger.info(f"Training samples: {len(train_files)}")
-    logger.info(f"Validation samples: {len(valid_files)}")
+    index_dataset(output_dir)
 
 
-def preprocess():
-    """Main entry point for the dataset preparation script."""
-    import argparse
+def preprocess(cfg: DictConfig) -> None:
+    """
+    Main entry point for dataset preparation using Hydra configuration.
     
-    parser = argparse.ArgumentParser(description="Prepare fusion dataset")
-    parser.add_argument(
-        "--config", 
-        type=str, 
-        default=None,
-        help="Path to configuration YAML file (default: config/default.yaml)"
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set logging level (default: INFO)"
-    )
-    
-    args = parser.parse_args()
-    
-    # Set up logging
+    Args:
+        cfg: Hydra DictConfig object containing configuration
+    """
+    # Set up logging based on Hydra's log level
+    log_level = getattr(logging, cfg.get('log_level', 'INFO').upper())
     logging.basicConfig(
-        level=getattr(logging, args.log_level.upper()),
+        level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     
-    # Load configuration
-    cfg = load_config(args.config)
+    # Convert DictConfig to regular dict for compatibility with existing code
+    cfg_dict = dict(cfg)
     
-    # Prepare dataset
-    prepare_dataset(cfg)
-
-
-if __name__ == "__main__":
-    preprocess() 
+    logger.info("Starting dataset preparation with Hydra configuration")
+    logger.info(f"Configuration: {cfg_dict}")
+    
+    # Prepare dataset using existing function
+    prepare_dataset(cfg_dict)

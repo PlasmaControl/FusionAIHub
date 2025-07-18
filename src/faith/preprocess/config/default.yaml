@@ -1,6 +1,9 @@
 # Dataset preparation configuration
 # Configuration for fusion data processing pipeline
 
+# Logging configuration
+log_level: INFO
+
 # Signal configuration - list of signals to process
 # Each signal has: [signal_name, abbreviation, should_transform]
 signal:
@@ -36,7 +39,7 @@ signal:
 # Data processing parameters
 randomize_shots: true
 random_seed: 42
-num_shots: 100
+num_shots: -1
 fs_khz: 500  # Sampling frequency in kHz
 ip_threshold: 0.1  # Plasma current threshold
 window_ms: null  # Window size in milliseconds
@@ -48,11 +51,10 @@ end_time: null    # End time for signal extraction (null for auto-detection)
 
 # Train/test split configuration
 debug: false
-train_test_split: 0.2
 
 # Directory paths
 raw_data_dir: /scratch/gpfs/EKOLEMEN/d3d_fusion_data
-output_dir: /scratch/gpfs/EKOLEMEN/hackathon/foundation25/
+output_dir: /scratch/gpfs/EKOLEMEN/hackathon/foundation25/spectrogram
 
 # Processing parameters
 stft:

@@ -1,14 +1,16 @@
 import hydra
 from omegaconf import DictConfig
 
-from . import preprocess
+from .preprocess import preprocess
 
 @hydra.main(
     config_path="config", 
-    config_name="config",
+    config_name="default",
     version_base=None,
     )
 def main(cfg: DictConfig):
-    
-    # TODO: Add hydra config to preprocess
-    preprocess()
+    # Pass hydra config to preprocess
+    preprocess(cfg)
+
+if __name__ == "__main__":
+    main()

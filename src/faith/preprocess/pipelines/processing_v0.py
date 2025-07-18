@@ -5,6 +5,7 @@ This module contains the main shot processing logic that orchestrates
 data extraction, alignment, transformation, and saving for individual shots.
 """
 
+# https://youtu.be/dQw4w9WgXcQ?si=0000000000000000
 import numpy as np
 import pandas as pd
 import logging
@@ -27,6 +28,7 @@ from ..transform.signal_processing import (
     identity_transform,
     stft_transform,
     resample_transform,
+    resample_linear_transform,
 )
 
 # Set up logger for this module
@@ -122,6 +124,9 @@ def pipeline(
             logger.error(f"Error: Could not add missing signals for shot {shot_number}: {e}")
             raise e
 
+    # Add time column
+    df['time_ms'] = np.linspace(start_time, end_time, len(df))
+
     # Split into samples
     # TODO: rename this to slice_windows
     try:
@@ -155,6 +160,8 @@ def pipeline(
                         cols = [col for col in value.columns if abbr in col]
                         transformed_samples[abbr] = identity_transform(
                             x=value[cols].to_numpy().T)
+                    transformed_samples['time_ms'] = identity_transform(
+                        x=np.array([value['time_ms'].to_numpy().T]))
                     save_sample(transformed_samples, out_dir, key)
             return
     except Exception as e:
@@ -189,9 +196,10 @@ def pipeline(
                             x=value[cols].to_numpy().T,
                             ref_shape=transform_shape,
                         )
-                    # logger.info(
-                    #     f"Transformed {abbr} with shape {transformed_samples[abbr].shape}"
-                    # )
+                    transformed_samples['time_ms'] = resample_linear_transform(
+                        x=np.array([value['time_ms'].to_numpy().T]),
+                        ref_shape=transform_shape,
+                    )
                 save_sample(transformed_samples, out_dir, key)
     except Exception as e:
         logger.error(f"Error: Could not transform samples for shot {shot_number}: {e}")
