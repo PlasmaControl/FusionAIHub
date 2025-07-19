@@ -162,7 +162,7 @@ cython_debug/
 # Ruff cache
 .ruff_cache/
 
-# Fusion AI Hub
+# Fusion Artificial Intelligence Hub (FAITH) Specific
 data/
 logs/
 outputs/
