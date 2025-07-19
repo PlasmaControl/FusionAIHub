@@ -21,12 +21,12 @@ def extract_signal(
 ) -> pd.DataFrame:
     """
     Extract signal data from HDF5 file for a given shot.
-    
+
     Args:
         shot: Shot number
         directory: Directory containing HDF5 files
         signal: Signal name to extract
-        
+
     Returns:
         DataFrame containing the signal data
     """
@@ -44,20 +44,20 @@ def extract_running_time(
 ) -> tuple[float, float]:
     """
     Determine the plasma running time for a shot based on plasma current threshold.
-    
+
     Args:
         directory: Directory containing HDF5 files
         shot: Shot number
         ip_threshold: Plasma current threshold for a shot to be considered running
         start_time: Manually set start time for the shot (ms) (optional)
         end_time: Manually set end time for the shot (ms) (optional)
-        
+
     Returns:
         Tuple of (start_time, end_time) in milliseconds
     """
     path = (directory / str(shot_number)).with_suffix(".h5")
-    with pd.HDFStore(path, 'r') as store:
-        df = store['ip']['ipsip']
+    with pd.HDFStore(path, "r") as store:
+        df = store["ip"]["ipsip"]
     df = df.loc[df > ip_threshold]
     if start_time is not None:
         df = df.loc[df.index >= start_time]
@@ -76,16 +76,16 @@ def align_signal(
 ) -> pd.DataFrame:
     """
     Align signal data to a common timebase and sampling frequency.
-    
+
     Crops the signal to the specified time window, resamples to the target
     sampling frequency, and adds padding and state information.
-    
+
     Args:
         df: Input DataFrame with signal data
         start_time: Start time for alignment (ms)
         end_time: End time for alignment (ms)
         fs: Target sampling frequency (kHz)
-        
+
     Returns:
         Aligned DataFrame with data and state columns
     """
@@ -105,7 +105,7 @@ def align_signal(
 
     df = pd.DataFrame(
         {col: resample(df[col].values, num) for col in df.columns},
-        index=np.linspace(df.index[0], df.index[-1], num)
+        index=np.linspace(df.index[0], df.index[-1], num),
     )
 
     # mark on-off states
@@ -115,16 +115,29 @@ def align_signal(
     start_nan = (df.index[0] - start_time) * fs
     end_nan = (end_time - df.index[-1]) * fs
     start_pad = pd.DataFrame(
-        0, index=pd.RangeIndex(start=int(start_nan)), columns=df.columns)
+        0, index=pd.RangeIndex(start=int(start_nan)), columns=df.columns
+    )
     end_pad = pd.DataFrame(
-        0, index=pd.RangeIndex(start=int(len(df) + start_nan), stop=int(len(df) + start_nan + end_nan)), columns=df.columns)
+        0,
+        index=pd.RangeIndex(
+            start=int(len(df) + start_nan),
+            stop=int(len(df) + start_nan + end_nan),
+        ),
+        columns=df.columns,
+    )
 
     df_state = pd.DataFrame(True, index=df.index, columns=df.columns)
-    start_pad_state = pd.DataFrame(False, index=start_pad.index, columns=df.columns)
-    end_pad_state = pd.DataFrame(False, index=end_pad.index, columns=df.columns)
+    start_pad_state = pd.DataFrame(
+        False, index=start_pad.index, columns=df.columns
+    )
+    end_pad_state = pd.DataFrame(
+        False, index=end_pad.index, columns=df.columns
+    )
 
     df = pd.concat([start_pad, df, end_pad], ignore_index=True)
-    df_state = pd.concat([start_pad_state, df_state, end_pad_state], ignore_index=True)
+    df_state = pd.concat(
+        [start_pad_state, df_state, end_pad_state], ignore_index=True
+    )
     df_state.columns = [f"{col}_state" for col in df.columns]
 
     # combine data with state

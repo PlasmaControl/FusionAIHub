@@ -1,4 +1,5 @@
 """Defines function parmap, a parallel version of map."""
+
 import gc
 import multiprocessing as mp
 import sys
@@ -17,6 +18,7 @@ class ProgressBar:
     An ASCII progression bar.
     Values of input should be floats or ints ranging from 0 to ntot (default 1).
     """
+
     def __init__(self, output=None, bar_length=50, ntot=None):
         """
         "output" is a function that takes a string as input and prints it (defaults to stdout).
@@ -51,8 +53,11 @@ class ProgressBar:
             status = "Done...\r\n"
         block = int(round(self.bar_length * progress))
         text = "\rPercent: [{0}] {1:.3f}% {2}"
-        text = text.format("#" * block + "-" * (self.bar_length - block),
-                           progress * 100, status)
+        text = text.format(
+            "#" * block + "-" * (self.bar_length - block),
+            progress * 100,
+            status,
+        )
         if self.output is None:
             sys.stdout.write(text)
             sys.stdout.flush()
@@ -66,6 +71,7 @@ class ProgressBar:
 
 class ParallelMapper:
     """Parallel version of map."""
+
     def __init__(self, nprocs=None, progress=True, fetcher=_identity):
         """
         nprocs is the number of processors to use (default is mp.cpu_count()).
@@ -132,8 +138,10 @@ class ParallelMapper:
         q_out = mp.Queue()
 
         # Create and start processes
-        proc = [mp.Process(target=self._fun, args=(f, q_in, q_out), kwargs=kwargs)
-                for _ in range(self.nprocs)]
+        proc = [
+            mp.Process(target=self._fun, args=(f, q_in, q_out), kwargs=kwargs)
+            for _ in range(self.nprocs)
+        ]
         for p in proc:
             p.daemon = True
             p.start()

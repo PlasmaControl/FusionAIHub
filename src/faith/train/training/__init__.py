@@ -6,8 +6,4 @@ from .lightning_trainer import (
     train_model,
 )
 
-__all__ = [
-    'LightningTrainer',
-    'MultimodalLightningTrainer',
-    'train_model'
-]
+__all__ = ["LightningTrainer", "MultimodalLightningTrainer", "train_model"]

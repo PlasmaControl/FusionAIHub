@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     # Test forward pass
     x = torch.randn(2, 80, 100, 128)
-    reconstructed, mask, masked_input = mae(x, mask_type='frequency')
+    reconstructed, mask, masked_input = mae(x, mask_type="frequency")
 
     print(f"Input shape: {x.shape}")
     print(f"Mask shape: {mask.shape}")
@@ -32,11 +32,11 @@ if __name__ == "__main__":
     print(f"Reconstructed shape: {reconstructed.shape}")
 
     # Test MAE loss
-    loss = mae_loss(reconstructed, x, mask, loss_type='mse')
+    loss = mae_loss(reconstructed, x, mask, loss_type="mse")
     print(f"MAE loss: {loss.item():.6f}")
 
     # Test different loss types
-    for loss_type in ['mse', 'l1', 'smooth_l1']:
+    for loss_type in ["mse", "l1", "smooth_l1"]:
         loss = mae_loss(reconstructed, x, mask, loss_type=loss_type)
         print(f"{loss_type} loss: {loss.item():.6f}")
 

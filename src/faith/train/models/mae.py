@@ -20,6 +20,7 @@ from .autoencoder import BlockBasedAutoencoder
 
 class MaskType(Enum):
     """Enumeration of available masking strategies."""
+
     RANDOM = "random"
     FREQUENCY = "frequency"
     TIME = "time"
@@ -69,11 +70,11 @@ class MaskGenerator:
     """
 
     def __init__(
-            self,
-            mask_ratio: float = 0.75,
-            patch_size: tuple[int, int] = (8, 8),
-            min_mask_size: int = 1,
-            max_mask_size: Optional[int] = None
+        self,
+        mask_ratio: float = 0.75,
+        patch_size: tuple[int, int] = (8, 8),
+        min_mask_size: int = 1,
+        max_mask_size: Optional[int] = None,
     ) -> None:
         """Initialize MaskGenerator.
 
@@ -90,19 +91,24 @@ class MaskGenerator:
         """
         if not 0.0 <= mask_ratio <= 1.0:
             raise ValueError(
-                f"mask_ratio must be between 0.0 and 1.0, got {mask_ratio}")
+                f"mask_ratio must be between 0.0 and 1.0, got {mask_ratio}"
+            )
 
         if len(patch_size) != 2 or any(s <= 0 for s in patch_size):
-            raise ValueError(f"patch_size must be a tuple of two positive "
-                             f"integers, got {patch_size}")
+            raise ValueError(
+                f"patch_size must be a tuple of two positive "
+                f"integers, got {patch_size}"
+            )
 
         if min_mask_size <= 0:
             raise ValueError(
-                f"min_mask_size must be positive, got {min_mask_size}")
+                f"min_mask_size must be positive, got {min_mask_size}"
+            )
 
         if max_mask_size is not None and max_mask_size < min_mask_size:
             raise ValueError(
-                f"max_mask_size must be >= min_mask_size, got {max_mask_size}")
+                f"max_mask_size must be >= min_mask_size, got {max_mask_size}"
+            )
 
         self.mask_ratio = mask_ratio
         self.patch_size = patch_size
@@ -123,8 +129,9 @@ class MaskGenerator:
             Binary mask tensor where 1 = keep, 0 = mask.
         """
         batch_size, channels, time_steps, freq_bins = shape
-        mask = torch.rand(batch_size, 1, time_steps,
-                          freq_bins) > self.mask_ratio
+        mask = (
+            torch.rand(batch_size, 1, time_steps, freq_bins) > self.mask_ratio
+        )
         return mask.float()
 
     def frequency_band_mask(self, shape: tuple[int, ...]) -> torch.Tensor:
@@ -152,8 +159,9 @@ class MaskGenerator:
 
             if num_bins_to_mask > 0:
                 # Choose number of bands to create
-                max_bands = min(num_bins_to_mask,
-                                freq_bins // self.min_mask_size)
+                max_bands = min(
+                    num_bins_to_mask, freq_bins // self.min_mask_size
+                )
                 num_bands = random.randint(1, max(1, max_bands))
 
                 bins_per_band = num_bins_to_mask // num_bands
@@ -183,7 +191,7 @@ class MaskGenerator:
                     max_start = freq_bins - band_size
                     if max_start >= 0:
                         start_freq = random.randint(0, max_start)
-                        mask[b, :, :, start_freq:start_freq + band_size] = 0
+                        mask[b, :, :, start_freq : start_freq + band_size] = 0
                         masked_bins += band_size
 
         return mask
@@ -213,8 +221,9 @@ class MaskGenerator:
 
             if num_frames_to_mask > 0:
                 # Choose number of segments to create
-                max_segments = min(num_frames_to_mask,
-                                   time_steps // self.min_mask_size)
+                max_segments = min(
+                    num_frames_to_mask, time_steps // self.min_mask_size
+                )
                 num_segments = random.randint(1, max(1, max_segments))
 
                 frames_per_segment = num_frames_to_mask // num_segments
@@ -235,8 +244,9 @@ class MaskGenerator:
                     if self.max_mask_size is not None:
                         segment_size = min(segment_size, self.max_mask_size)
                     segment_size = max(segment_size, self.min_mask_size)
-                    segment_size = min(segment_size,
-                                       time_steps - masked_frames)
+                    segment_size = min(
+                        segment_size, time_steps - masked_frames
+                    )
 
                     if segment_size <= 0:
                         break
@@ -245,7 +255,9 @@ class MaskGenerator:
                     max_start = time_steps - segment_size
                     if max_start >= 0:
                         start_time = random.randint(0, max_start)
-                        mask[b, :, start_time:start_time + segment_size, :] = 0
+                        mask[
+                            b, :, start_time : start_time + segment_size, :
+                        ] = 0
                         masked_frames += segment_size
 
         return mask
@@ -285,9 +297,10 @@ class MaskGenerator:
 
             if num_masked_patches > 0:
                 # Randomly select patches to mask
-                masked_patches = random.sample(range(total_patches),
-                                               min(num_masked_patches,
-                                                   total_patches))
+                masked_patches = random.sample(
+                    range(total_patches),
+                    min(num_masked_patches, total_patches),
+                )
 
                 for patch_idx in masked_patches:
                     # Convert patch index to 2D coordinates
@@ -324,7 +337,7 @@ class MaskGenerator:
             self.random_mask,
             self.frequency_band_mask,
             self.time_frame_mask,
-            self.patch_mask
+            self.patch_mask,
         ]
 
         # Generate masks using different strategies
@@ -337,8 +350,9 @@ class MaskGenerator:
 
         return torch.cat(masks, dim=0)
 
-    def generate_mask(self, shape: tuple[int, ...],
-                      mask_type: str) -> torch.Tensor:
+    def generate_mask(
+        self, shape: tuple[int, ...], mask_type: str
+    ) -> torch.Tensor:
         """Generate mask using specified strategy.
 
         Parameters
@@ -364,8 +378,10 @@ class MaskGenerator:
         elif mask_type == MaskType.MIXED.value:
             return self.mixed_mask(shape)
         else:
-            raise ValueError(f"Unknown mask_type: {mask_type}. "
-                             f"Available types: {MASK_TYPES}")
+            raise ValueError(
+                f"Unknown mask_type: {mask_type}. "
+                f"Available types: {MASK_TYPES}"
+            )
 
 
 class MaskedAutoencoder(nn.Module):
@@ -406,10 +422,10 @@ class MaskedAutoencoder(nn.Module):
     """
 
     def __init__(
-            self,
-            autoencoder: BlockBasedAutoencoder,
-            mask_generator: MaskGenerator,
-            mask_token_value: float = 0.0
+        self,
+        autoencoder: BlockBasedAutoencoder,
+        mask_generator: MaskGenerator,
+        mask_token_value: float = 0.0,
     ) -> None:
         """Initialize MaskedAutoencoder.
 
@@ -447,10 +463,10 @@ class MaskedAutoencoder(nn.Module):
         return x * mask + self.mask_token_value * (1 - mask)
 
     def forward(
-            self,
-            x: torch.Tensor,
-            mask_type: str = 'random',
-            mask: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        mask_type: str = "random",
+        mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward pass with masking.
 
@@ -487,8 +503,9 @@ class MaskedAutoencoder(nn.Module):
 
         return reconstructed, mask, masked_input
 
-    def encode(self, x: torch.Tensor,
-               mask_type: str = 'random') -> torch.Tensor:
+    def encode(
+        self, x: torch.Tensor, mask_type: str = "random"
+    ) -> torch.Tensor:
         """Encode masked input to latent representation.
 
         Parameters
@@ -511,48 +528,51 @@ class MaskedAutoencoder(nn.Module):
     def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         return {
-            'autoencoder_config': self.autoencoder.get_config(),
-            'mask_ratio': self.mask_generator.mask_ratio,
-            'patch_size': self.mask_generator.patch_size,
-            'min_mask_size': self.mask_generator.min_mask_size,
-            'max_mask_size': self.mask_generator.max_mask_size,
-            'mask_token_value': self.mask_token_value,
+            "autoencoder_config": self.autoencoder.get_config(),
+            "mask_ratio": self.mask_generator.mask_ratio,
+            "patch_size": self.mask_generator.patch_size,
+            "min_mask_size": self.mask_generator.min_mask_size,
+            "max_mask_size": self.mask_generator.max_mask_size,
+            "mask_token_value": self.mask_token_value,
         }
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> 'MaskedAutoencoder':
+    def from_config(cls, config: dict[str, Any]) -> "MaskedAutoencoder":
         """Create MaskedAutoencoder from configuration."""
         # Recreate autoencoder
         autoencoder = BlockBasedAutoencoder.from_config(
-            config['autoencoder_config'])
+            config["autoencoder_config"]
+        )
 
         # Recreate mask generator
         mask_generator = MaskGenerator(
-            mask_ratio=config['mask_ratio'],
-            patch_size=config['patch_size'],
-            min_mask_size=config['min_mask_size'],
-            max_mask_size=config['max_mask_size']
+            mask_ratio=config["mask_ratio"],
+            patch_size=config["patch_size"],
+            min_mask_size=config["min_mask_size"],
+            max_mask_size=config["max_mask_size"],
         )
 
         return cls(
             autoencoder=autoencoder,
             mask_generator=mask_generator,
-            mask_token_value=config['mask_token_value']
+            mask_token_value=config["mask_token_value"],
         )
 
     def __repr__(self) -> str:
         """String representation."""
-        return (f"MaskedAutoencoder("
-                f"mask_ratio={self.mask_generator.mask_ratio}, "
-                f"autoencoder={self.autoencoder})")
+        return (
+            f"MaskedAutoencoder("
+            f"mask_ratio={self.mask_generator.mask_ratio}, "
+            f"autoencoder={self.autoencoder})"
+        )
 
 
 def mae_loss(
-        reconstructed: torch.Tensor,
-        target: torch.Tensor,
-        mask: torch.Tensor,
-        loss_type: str = 'mse',
-        reduction: str = 'mean'
+    reconstructed: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+    loss_type: str = "mse",
+    reduction: str = "mean",
 ) -> torch.Tensor:
     """Compute MAE loss only on masked regions.
 
@@ -585,29 +605,32 @@ def mae_loss(
     >>> loss = mae_loss(reconstructed, target, mask, loss_type='mse')
     """
     # Invert mask: we want loss only on masked regions (where mask=0)
-    masked_regions = (1 - mask)
+    masked_regions = 1 - mask
 
     # Compute loss per pixel
-    if loss_type == 'mse':
-        loss_per_pixel = F.mse_loss(reconstructed, target, reduction='none')
-    elif loss_type == 'l1':
-        loss_per_pixel = F.l1_loss(reconstructed, target, reduction='none')
-    elif loss_type == 'smooth_l1':
-        loss_per_pixel = F.smooth_l1_loss(reconstructed, target,
-                                          reduction='none')
+    if loss_type == "mse":
+        loss_per_pixel = F.mse_loss(reconstructed, target, reduction="none")
+    elif loss_type == "l1":
+        loss_per_pixel = F.l1_loss(reconstructed, target, reduction="none")
+    elif loss_type == "smooth_l1":
+        loss_per_pixel = F.smooth_l1_loss(
+            reconstructed, target, reduction="none"
+        )
     else:
-        raise ValueError(f"Unknown loss_type: {loss_type}. "
-                         f"Available types: ['mse', 'l1', 'smooth_l1']")
+        raise ValueError(
+            f"Unknown loss_type: {loss_type}. "
+            f"Available types: ['mse', 'l1', 'smooth_l1']"
+        )
 
     # Only compute loss on masked regions
     masked_loss = loss_per_pixel * masked_regions
 
     # Apply reduction
-    if reduction == 'none':
+    if reduction == "none":
         return masked_loss
-    elif reduction == 'sum':
+    elif reduction == "sum":
         return masked_loss.sum()
-    elif reduction == 'mean':
+    elif reduction == "mean":
         # Average over masked pixels only
         num_masked_pixels = masked_regions.sum()
         if num_masked_pixels > 0:
@@ -615,5 +638,7 @@ def mae_loss(
         else:
             return torch.tensor(0.0, device=reconstructed.device)
     else:
-        raise ValueError(f"Unknown reduction: {reduction}. "
-                         f"Available reductions: ['none', 'sum', 'mean']")
+        raise ValueError(
+            f"Unknown reduction: {reduction}. "
+            f"Available reductions: ['none', 'sum', 'mean']"
+        )

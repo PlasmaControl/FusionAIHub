@@ -26,13 +26,13 @@ def split_samples(
 ) -> list[dict[str, pd.DataFrame]]:
     """
     Split signal data into overlapping time windows.
-    
+
     Args:
         df: Input DataFrame with signal data
         window_ms: Window size in milliseconds
-        hop_ms: Hop size in milliseconds  
+        hop_ms: Hop size in milliseconds
         fs_khz: Sampling frequency in kHz
-        
+
     Returns:
         List of DataFrame samples
     """
@@ -52,9 +52,11 @@ def split_samples(
             end_index = start_index + num_samples
             sample = df.iloc[start_index:end_index]
             if len(sample) == num_samples:
-                samples.append({
-                    f"{shot_number}_{start_window_idx}": sample,
-                })
+                samples.append(
+                    {
+                        f"{shot_number}_{start_window_idx}": sample,
+                    }
+                )
                 start_window_idx += 1
 
         return samples
@@ -65,7 +67,7 @@ def remove_empty_samples(
 ) -> list[dict[str, pd.DataFrame]]:
     """
     Remove empty samples from a list of samples.
-    
+
     Args:
         samples: List of sample DataFrames
 
@@ -73,9 +75,15 @@ def remove_empty_samples(
     """
     samples = [
         {
-            key: value.drop(columns=[col for col in value.columns if col.endswith('_state')])
+            key: value.drop(
+                columns=[
+                    col for col in value.columns if col.endswith("_state")
+                ]
+            )
             for key, value in sample.items()
-            if np.any(value.loc[:, value.columns.str.endswith('_state')].to_numpy())
+            if np.any(
+                value.loc[:, value.columns.str.endswith("_state")].to_numpy()
+            )
         }
         for sample in samples
     ]
@@ -90,7 +98,7 @@ def save_sample(
 ) -> None:
     """
     Save processed samples to disk using joblib.
-    
+
     Args:
         samples: List of sample dictionaries to save
         directory: Output directory

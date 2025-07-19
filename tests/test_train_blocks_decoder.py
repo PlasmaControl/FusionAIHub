@@ -31,8 +31,8 @@ class TestDecoderBlockInitialization:
             dropout=0.5,
             bias=False,
             use_batch_norm=False,
-            activation='gelu',
-            residual_init_method='xavier'
+            activation="gelu",
+            residual_init_method="xavier",
         )
 
         assert block.in_channels == 4
@@ -142,8 +142,9 @@ class TestDecoderBlockForwardPass:
     def test_forward_pass_2x1_upsampling(self):
         """Test forward pass with 2x1 upsampling."""
 
-        block = DecoderBlock(in_channels=8, out_channels=4,
-                             upsample_factor=(2, 1))
+        block = DecoderBlock(
+            in_channels=8, out_channels=4, upsample_factor=(2, 1)
+        )
         x = torch.randn(1, 8, 8, 8)
 
         output = block(x)
@@ -382,13 +383,12 @@ def custom_decoder_block():
         out_channels=128,
         upsample_factor=(2, 2),
         dropout=0.4,
-        activation='gelu'
+        activation="gelu",
     )
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
 
 
 #######################################################################

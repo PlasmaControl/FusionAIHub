@@ -16,15 +16,16 @@ from scipy.signal import resample
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
+
 def identity_transform(
     x: np.ndarray,
 ) -> np.ndarray:
     """
     Identity transform.
-    
+
     Args:
         x: Input signal
-        
+
     Returns:
         Input signal
     """
@@ -32,17 +33,18 @@ def identity_transform(
     y = np.expand_dims(y, axis=1)
     return y
 
+
 def resample_fn(
     y: np.ndarray,
     new_len: int,
 ) -> np.ndarray:
     """
     Resample a signal to a new length using scipy.signal.resample.
-    
+
     Args:
         y: Input signal array
         new_len: Target length for resampled signal
-        
+
     Returns:
         Resampled signal as numpy array
     """
@@ -62,13 +64,13 @@ def stft_transform(
 ) -> np.ndarray:
     """
     Apply STFT transformation to an individual sample.
-    
+
     Transforms time-domain signal to frequency-domain representation using
     Short-Time Fourier Transform with logarithmic magnitude scaling.
-    
+
     Args:
         x: Input time-domain signal
-        
+
     Returns:
         Log-magnitude STFT representation
     """
@@ -94,7 +96,7 @@ def resample_transform(
 ) -> np.ndarray:
     """
     Resample a signal to match a reference shape.
-    
+
     Args:
         x: Input signal
         ref_shape: Reference shape (tuple from STFT result)
@@ -103,10 +105,11 @@ def resample_transform(
         Resampled signal to match reference time dimension
     """
     x = x.astype(np.float32)
-    target_length = ref_shape[-1] # assuming time dimension is last dimension
+    target_length = ref_shape[-1]  # assuming time dimension is last dimension
     y = [resample_fn(x_, target_length) for x_ in x]
     y = np.expand_dims(y, axis=1)
     return np.array(y)
+
 
 def resample_linear_transform(
     x: np.ndarray,
@@ -116,7 +119,7 @@ def resample_linear_transform(
     Resample a signal to match a reference shape.
     """
     x = x.astype(np.float32)
-    target_length = ref_shape[-1] # assuming time dimension is last dimension
+    target_length = ref_shape[-1]  # assuming time dimension is last dimension
     lold = np.linspace(0, 1, len(x[-1]))
     lnew = np.linspace(0, 1, target_length)
     y = [np.interp(lnew, lold, x_) for x_ in x]

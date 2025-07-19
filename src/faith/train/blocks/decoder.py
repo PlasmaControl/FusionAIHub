@@ -24,7 +24,6 @@ class ResidualDecoding2d(_ResidualBlock):
     _norm_type = nn.BatchNorm2d
 
 
-
 class DecoderBlock(SequentialBlock):
     """
     Single decoder block: ConvTranspose2d + Dropout + ResidualBlock.
@@ -107,8 +106,10 @@ class DecoderBlock(SequentialBlock):
             )
 
         if len(upsample_factor) != 2:
-            raise ValueError(f"upsample_factor must be a tuple of length 2, "
-                             f"got {upsample_factor}")
+            raise ValueError(
+                f"upsample_factor must be a tuple of length 2, "
+                f"got {upsample_factor}"
+            )
 
         # Store configuration
         self.upsample_factor = upsample_factor
@@ -325,7 +326,7 @@ class BlockBasedDecoder(SequentialBlock):
         block_configs: list[dict[str, Any]],
         kernel_size: Union[int, tuple[int, int]] = 3,
         bias: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         """Initialize BlockBasedDecoder."""
 
@@ -345,8 +346,10 @@ class BlockBasedDecoder(SequentialBlock):
                     f"Block {i} missing required 'out_channels' key"
                 )
             if config["out_channels"] <= 0:
-                raise ValueError(f"out_channels must be positive, "
-                                 f"got {config['out_channels']} in block {i}")
+                raise ValueError(
+                    f"out_channels must be positive, "
+                    f"got {config['out_channels']} in block {i}"
+                )
 
         self.block_configs = block_configs
 
@@ -366,10 +369,10 @@ class BlockBasedDecoder(SequentialBlock):
         )
 
     def _build_decoder_blocks(
-            self,
-            in_channels: int,
-            default_kernel_size: Union[int, tuple[int, int]],
-            default_bias: bool,
+        self,
+        in_channels: int,
+        default_kernel_size: Union[int, tuple[int, int]],
+        default_bias: bool,
     ) -> list[nn.Module]:
         """
         Build the sequence of decoder blocks with automatic channel chaining.
@@ -403,8 +406,9 @@ class BlockBasedDecoder(SequentialBlock):
 
         return blocks
 
-    def get_output_shape(self, input_shape: tuple[int, ...]) \
-            -> tuple[int, ...]:
+    def get_output_shape(
+        self, input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
         shape = input_shape
         for block in self.operations:
@@ -464,9 +468,7 @@ class BlockBasedDecoder(SequentialBlock):
 
     @classmethod
     def reverse_encoder_configs(
-            cls,
-            encoder_configs: list[dict[str, Any]],
-            final_out_channels: int
+        cls, encoder_configs: list[dict[str, Any]], final_out_channels: int
     ) -> list[dict[str, Any]]:
         """Create decoder configs that reverse an encoder's configuration.
 
@@ -557,10 +559,7 @@ class BlockBasedDecoder(SequentialBlock):
 
     @classmethod
     def from_encoder(
-            cls,
-            encoder: "BlockBasedEncoder",
-            final_out_channels: int,
-            **kwargs
+        cls, encoder: "BlockBasedEncoder", final_out_channels: int, **kwargs
     ) -> "BlockBasedDecoder":
         """Create decoder that mirrors a BlockBasedEncoder.
 
@@ -602,8 +601,11 @@ class BlockBasedDecoder(SequentialBlock):
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedDecoder."""
-        channel_progression = ' → '.join(
-            map(str, self.get_channel_progression()))
-        return (f"BlockBasedDecoder("
-                f"blocks={len(self.operations)}, "
-                f"channels={channel_progression})")
+        channel_progression = " → ".join(
+            map(str, self.get_channel_progression())
+        )
+        return (
+            f"BlockBasedDecoder("
+            f"blocks={len(self.operations)}, "
+            f"channels={channel_progression})"
+        )

@@ -19,10 +19,10 @@ def waveshow(
     ax: Optional[mplaxes.Axes] = None,
     x_axis: Optional[Union[str, Deprecated]] = Deprecated(),
     **kwargs: Any,
-    ) -> QuadMesh:
+) -> QuadMesh:
     """
     Display a spectrogram/chromagram/cqt/etc.
-    
+
     Parameters
     ----------
     data : np.ndarray [shape=(d, n)]
@@ -53,7 +53,7 @@ def waveshow(
         Automatically set the aspect ratio of the plot to match the
         spectrogram's aspect ratio.
     kwargs : additional keyword arguments
-    
+
     Returns
     -------
     fig : matplotlib.figure.Figure
@@ -69,6 +69,7 @@ def waveshow(
     plt.clf
     plt.plot(y)
     plt.show()
+
 
 # @staticmethod
 # def time_serie_plot(dict):

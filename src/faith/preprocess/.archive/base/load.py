@@ -4,20 +4,21 @@ from typing import List, Optional, Union
 import h5py
 
 
-def list_signals(path: Union[str, Path],
-                 ) -> List[str]:
-
-    with h5py.File(path, 'r') as f:
+def list_signals(
+    path: Union[str, Path],
+) -> List[str]:
+    with h5py.File(path, "r") as f:
         signals = list(f.keys())
 
     return signals
 
-def load_sample(path: Union[str, Path],
-                signal_name: Optional[Union[str, List[str]]] = None,
-                ) -> dict:
 
+def load_sample(
+    path: Union[str, Path],
+    signal_name: Optional[Union[str, List[str]]] = None,
+) -> dict:
     samples = {}
-    with h5py.File(path, 'r') as f:
+    with h5py.File(path, "r") as f:
         if signal_name is None:
             signal_name = list(f.keys())
         if isinstance(signal_name, str):
@@ -28,12 +29,13 @@ def load_sample(path: Union[str, Path],
 
     return samples
 
-def load_time(path: Union[str, Path],
-              signal_name: Optional[Union[str, List[str]]] = None,
-              ) -> dict:
 
+def load_time(
+    path: Union[str, Path],
+    signal_name: Optional[Union[str, List[str]]] = None,
+) -> dict:
     times = {}
-    with h5py.File(path, 'r') as f:
+    with h5py.File(path, "r") as f:
         if signal_name is None:
             signal_name = list(f.keys())
         if isinstance(signal_name, str):
@@ -44,12 +46,13 @@ def load_time(path: Union[str, Path],
 
     return times
 
-def load_attributes(path: Union[str, Path],
-                    signal_name: Optional[Union[str, List[str]]] = None,
-                    ) -> dict:
 
+def load_attributes(
+    path: Union[str, Path],
+    signal_name: Optional[Union[str, List[str]]] = None,
+) -> dict:
     attributes = {}
-    with h5py.File(path, 'r') as f:
+    with h5py.File(path, "r") as f:
         if signal_name is None:
             signal_name = list(f.keys())
         if isinstance(signal_name, str):
@@ -60,12 +63,13 @@ def load_attributes(path: Union[str, Path],
 
     return attributes
 
-def load_channels(path: Union[str, Path],
-                  signal_name: Optional[Union[str, List[str]]] = None,
-                  ) -> dict:
 
+def load_channels(
+    path: Union[str, Path],
+    signal_name: Optional[Union[str, List[str]]] = None,
+) -> dict:
     channels = {}
-    with h5py.File(path, 'r') as f:
+    with h5py.File(path, "r") as f:
         if signal_name is None:
             signal_name = list(f.keys())
         if isinstance(signal_name, str):
@@ -76,12 +80,13 @@ def load_channels(path: Union[str, Path],
 
     return channels
 
-def load(path: Union[str, Path],
-         signal_name: Optional[Union[str, List[str]]] = None,
-         ) -> dict:
 
+def load(
+    path: Union[str, Path],
+    signal_name: Optional[Union[str, List[str]]] = None,
+) -> dict:
     loaded_data = {}
-    with h5py.File(path, 'r') as f:
+    with h5py.File(path, "r") as f:
         if signal_name is None:
             signal_name = list(f.keys())
         if isinstance(signal_name, str):

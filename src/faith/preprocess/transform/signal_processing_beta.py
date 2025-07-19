@@ -5,6 +5,7 @@ This module contains functions for signal resampling and transformations.
 
 NOTE: All transforms should take in a shape of (channels, time) and return a shape of (channels, features, time).
 """
+
 import logging
 
 import numpy as np
@@ -23,15 +24,16 @@ AVAILABLE_RESAMPLINGS = [
     "resample_fourier",
 ]
 
+
 def transform_identity(
     x: np.ndarray,
 ) -> np.ndarray:
     """
     Identity transform.
-    
+
     Args:
         x: Input signal
-        
+
     Returns:
         Input signal
     """
@@ -47,13 +49,13 @@ def transform_stft(
 ) -> np.ndarray:
     """
     Apply STFT transformation to an individual sample.
-    
+
     Transforms time-domain signal to frequency-domain representation using
     Short-Time Fourier Transform with logarithmic magnitude scaling.
-    
+
     Args:
         x: Input time-domain signal
-        
+
     Returns:
         Log-magnitude STFT representation
     """
@@ -61,6 +63,7 @@ def transform_stft(
     # TODO: parameterize window type
     # TODO: parameterize window size (check if gives warning or allowed)
     import torch
+
     x = x.astype(np.float32)
     x_tensor = torch.from_numpy(x).float()
     y = torch.stft(
@@ -73,17 +76,18 @@ def transform_stft(
     y = torch.abs(y)
     return y.numpy()
 
+
 def resample_fourier(
     x: np.ndarray,
     new_len: int,
 ) -> np.ndarray:
     """
     Resample a signal to a new length using scipy.signal.resample.
-    
+
     Args:
         x: Input signal
         new_len: Target length for resampled signal
-        
+
     Returns:
         Resampled signal as numpy array
     """
@@ -94,17 +98,18 @@ def resample_fourier(
     x = resample(x, target_length)
     return np.expand_dims(x, axis=1)
 
+
 def resample_polyphase(
     x: np.ndarray,
     new_len: int,
 ) -> np.ndarray:
     """
     Resample a signal to a new length using scipy.signal.resample.
-    
+
     Args:
         x: Input signal
         new_len: Target length for resampled signal
-        
+
     Returns:
         Resampled signal as numpy array
     """
@@ -113,6 +118,7 @@ def resample_polyphase(
     x = x.astype(np.float32)
     x = resample_poly(x, new_len, x.shape[-1])
     return np.expand_dims(x, axis=1)
+
 
 def resample_linear(
     x: np.ndarray,

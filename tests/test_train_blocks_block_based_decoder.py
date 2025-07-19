@@ -597,13 +597,14 @@ def complex_decoder():
 @pytest.fixture
 def mock_encoder():
     """Fixture providing mock encoder for testing from_encoder method."""
+
     class MockEncoder:
         def __init__(self):
             self.out_channels = 128
             self.block_configs = [
-                {'out_channels': 32, 'pool_size': (1, 2)},
-                {'out_channels': 64, 'pool_size': (2, 2)},
-                {'out_channels': 128, 'pool_size': (1, 2)}
+                {"out_channels": 32, "pool_size": (1, 2)},
+                {"out_channels": 64, "pool_size": (2, 2)},
+                {"out_channels": 128, "pool_size": (1, 2)},
             ]
 
     return MockEncoder()

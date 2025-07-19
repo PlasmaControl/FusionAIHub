@@ -16,21 +16,22 @@ try:
         get_search_space,
     )
 
-
     __all__ = [
-        'RayTuner',
-        'RayTuneReportCallback',
-        'SearchSpaces',
-        'CustomSearchSpace',
-        'get_search_space',
-        'create_basic_search_space',
-        'suggest_scheduler_config',
-        'cleanup_ray'
+        "RayTuner",
+        "RayTuneReportCallback",
+        "SearchSpaces",
+        "CustomSearchSpace",
+        "get_search_space",
+        "create_basic_search_space",
+        "suggest_scheduler_config",
+        "cleanup_ray",
     ]
 
 except ImportError:
-    warnings.warn("Ray Tune not available. Hyperparameter tuning "
-                  "functionality disabled. "
-                  "Install with: pip install ray[tune] optuna hyperopt")
+    warnings.warn(
+        "Ray Tune not available. Hyperparameter tuning "
+        "functionality disabled. "
+        "Install with: pip install ray[tune] optuna hyperopt"
+    )
 
     __all__ = []

@@ -142,7 +142,6 @@ class TestBlockBasedEncoderForwardPass:
         progression = encoder.get_channel_progression()
         assert progression == [3, 4, 8]
 
-
     def test_forward_pass_single_block(self):
         """Test forward pass with single block."""
         configs = [{"out_channels": 32}]
@@ -607,9 +606,9 @@ def basic_encoder():
 def complex_encoder():
     """Fixture providing complex BlockBasedEncoder instance."""
     configs = [
-        {'out_channels': 32, 'pool_size': (1, 2), 'dropout': 0.2},
-        {'out_channels': 64, 'pool_size': (2, 2), 'activation': 'gelu'},
-        {'out_channels': 128, 'kernel_size': 5, 'bias': False}
+        {"out_channels": 32, "pool_size": (1, 2), "dropout": 0.2},
+        {"out_channels": 64, "pool_size": (2, 2), "activation": "gelu"},
+        {"out_channels": 128, "kernel_size": 5, "bias": False},
     ]
     return BlockBasedEncoder(in_channels=8, block_configs=configs)
 

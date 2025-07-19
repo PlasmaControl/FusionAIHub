@@ -77,17 +77,17 @@ class BlockBasedAutoencoder(nn.Module):
     """
 
     def __init__(
-            self,
-            input_channels: int,
-            block_configs: Optional[list[dict[str, Any]]] = None,
-            bottleneck_channels: Optional[int] = None,
-            kernel_size: Union[int, tuple[int, int]] = 3,
-            bias: bool = True,
-            upsampling_mode: str = 'nearest',
-            use_batch_norm: bool = True,
-            activation: str = 'relu',
-            init_method: str = 'kaiming',
-            **kwargs
+        self,
+        input_channels: int,
+        block_configs: Optional[list[dict[str, Any]]] = None,
+        bottleneck_channels: Optional[int] = None,
+        kernel_size: Union[int, tuple[int, int]] = 3,
+        bias: bool = True,
+        upsampling_mode: str = "nearest",
+        use_batch_norm: bool = True,
+        activation: str = "relu",
+        init_method: str = "kaiming",
+        **kwargs,
     ) -> None:
         """Initialize BlockBasedAutoencoder.
 
@@ -118,7 +118,8 @@ class BlockBasedAutoencoder(nn.Module):
 
         if input_channels <= 0:
             raise ValueError(
-                f"input_channels must be positive, got {input_channels}")
+                f"input_channels must be positive, got {input_channels}"
+            )
 
         # Store configuration
         self.input_channels = input_channels
@@ -140,7 +141,7 @@ class BlockBasedAutoencoder(nn.Module):
             kernel_size=kernel_size,
             bias=bias,
             bottleneck_activation=activation,
-            bottleneck_init_method=init_method
+            bottleneck_init_method=init_method,
         )
 
         # Create decoder that mirrors the encoder
@@ -153,22 +154,17 @@ class BlockBasedAutoencoder(nn.Module):
             upsampling_mode=upsampling_mode,
             use_batch_norm=use_batch_norm,
             activation=activation,
-            init_method=init_method
+            init_method=init_method,
         )
 
-    def _get_default_block_configs(
-            self
-    ) -> list[dict[str, Any]]:
+    def _get_default_block_configs(self) -> list[dict[str, Any]]:
         """Get default block configuration."""
         return [
-            {'out_channels': 32, 'pool_size': (1, 2)},
-            {'out_channels': 16, 'pool_size': (1, 2)},
+            {"out_channels": 32, "pool_size": (1, 2)},
+            {"out_channels": 16, "pool_size": (1, 2)},
         ]
 
-    def encode(
-            self,
-            x: torch.Tensor
-    ) -> torch.Tensor:
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode input to latent representation.
 
         Parameters
@@ -184,10 +180,7 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return self.encoder(x)
 
-    def decode(
-            self,
-            z: torch.Tensor
-    ) -> torch.Tensor:
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
         """
         Decode latent representation to reconstructed output.
 
@@ -205,10 +198,7 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return self.decoder(z)
 
-    def forward(
-            self,
-            inputs: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Forward pass through the complete autoencoder.
 
         Parameters
@@ -226,8 +216,7 @@ class BlockBasedAutoencoder(nn.Module):
         return reconstructed
 
     def latent_with_reconstruction(
-            self,
-            inputs: torch.Tensor
+        self, inputs: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the complete autoencoder.
 
@@ -259,22 +248,19 @@ class BlockBasedAutoencoder(nn.Module):
             to reconstruct this autoencoder.
         """
         return {
-            'input_channels': self.input_channels,
-            'block_configs': self.block_configs,
-            'bottleneck_channels': self.encoder.bottleneck_channels,
-            'kernel_size': self.encoder.kernel_size,
-            'bias': self.encoder.bias,
-            'upsampling_mode': self.upsampling_mode,
-            'use_batch_norm': self.use_batch_norm,
-            'activation': self.activation,
-            'init_method': self.init_method,
+            "input_channels": self.input_channels,
+            "block_configs": self.block_configs,
+            "bottleneck_channels": self.encoder.bottleneck_channels,
+            "kernel_size": self.encoder.kernel_size,
+            "bias": self.encoder.bias,
+            "upsampling_mode": self.upsampling_mode,
+            "use_batch_norm": self.use_batch_norm,
+            "activation": self.activation,
+            "init_method": self.init_method,
         }
 
     @classmethod
-    def from_config(
-            cls,
-            config: dict[str, Any]
-    ) -> 'BlockBasedAutoencoder':
+    def from_config(cls, config: dict[str, Any]) -> "BlockBasedAutoencoder":
         """Create BlockBasedAutoencoder instance from configuration dictionary.
 
         Parameters
@@ -290,8 +276,7 @@ class BlockBasedAutoencoder(nn.Module):
         return cls(**config)
 
     def get_output_shape(
-            self,
-            input_shape: tuple[int, ...]
+        self, input_shape: tuple[int, ...]
     ) -> tuple[int, ...]:
         """Calculate output shape given input shape.
 
@@ -311,8 +296,7 @@ class BlockBasedAutoencoder(nn.Module):
         return output_shape
 
     def get_latent_shape(
-            self,
-            input_shape: tuple[int, ...]
+        self, input_shape: tuple[int, ...]
     ) -> tuple[int, ...]:
         """Calculate latent representation shape given input shape.
 
@@ -329,8 +313,7 @@ class BlockBasedAutoencoder(nn.Module):
         return self.encoder.get_output_shape(input_shape)
 
     def get_feature_maps(
-            self,
-            inputs: torch.Tensor
+        self, inputs: torch.Tensor
     ) -> dict[str, list[torch.Tensor]]:
         """Get intermediate feature maps from encoder and decoder.
 
@@ -358,9 +341,9 @@ class BlockBasedAutoencoder(nn.Module):
         decoder_features = self.decoder.get_feature_maps(latent)
 
         return {
-            'encoder': encoder_features,
-            'decoder': decoder_features,
-            'latent': latent
+            "encoder": encoder_features,
+            "decoder": decoder_features,
+            "latent": latent,
         }
 
     @property
@@ -372,13 +355,15 @@ class BlockBasedAutoencoder(nn.Module):
     def encoder_parameter_count(self) -> int:
         """Get number of trainable parameters in encoder."""
         return sum(
-            p.numel() for p in self.encoder.parameters() if p.requires_grad)
+            p.numel() for p in self.encoder.parameters() if p.requires_grad
+        )
 
     @property
     def decoder_parameter_count(self) -> int:
         """Get number of trainable parameters in decoder."""
         return sum(
-            p.numel() for p in self.decoder.parameters() if p.requires_grad)
+            p.numel() for p in self.decoder.parameters() if p.requires_grad
+        )
 
     def freeze_encoder(self) -> None:
         """Freeze encoder parameters (useful for fine-tuning decoder only)."""

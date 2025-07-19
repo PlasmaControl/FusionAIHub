@@ -3,6 +3,7 @@ import numpy as np
 # dalpha signal needs log, but no other signals
 # density needs to multiply by 10^-19
 
+
 def oom(x: float) -> int:
     """
     Calculate the order of magnitude of a number.

@@ -17,9 +17,9 @@ from src.faith.train.training import (
 
 
 def create_dummy_dataset(
-        batch_size: int = 16,
-        num_samples: int = 1000,
-        input_shape: tuple = (80, 100, 128)
+    batch_size: int = 16,
+    num_samples: int = 1000,
+    input_shape: tuple = (80, 100, 128),
 ) -> tuple:
     """Create dummy dataset for testing.
 
@@ -51,24 +51,17 @@ def create_dummy_dataset(
 
     # Create dataloaders
     train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=2
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
     )
     val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=2
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=2
     )
 
     return train_loader, val_loader
 
 
 def create_multimodal_dataset(
-    batch_size: int = 16,
-    num_samples: int = 1000
+    batch_size: int = 16, num_samples: int = 1000
 ) -> tuple:
     """Create dummy multimodal dataset.
 
@@ -99,21 +92,25 @@ def create_multimodal_dataset(
     # Create datasets as dictionaries
     train_data = []
     for i in range(len(train_audio)):
-        train_data.append({
-            'audio': train_audio[i],
-            'text': train_text[i],
-            'target_audio': train_audio[i],  # Reconstruction target
-            'target_text': train_text[i]
-        })
+        train_data.append(
+            {
+                "audio": train_audio[i],
+                "text": train_text[i],
+                "target_audio": train_audio[i],  # Reconstruction target
+                "target_text": train_text[i],
+            }
+        )
 
     val_data = []
     for i in range(len(val_audio)):
-        val_data.append({
-            'audio': val_audio[i],
-            'text': val_text[i],
-            'target_audio': val_audio[i],
-            'target_text': val_text[i]
-        })
+        val_data.append(
+            {
+                "audio": val_audio[i],
+                "text": val_text[i],
+                "target_audio": val_audio[i],
+                "target_text": val_text[i],
+            }
+        )
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
@@ -180,9 +177,9 @@ class CustomLossAutoencoder(LightningTrainer):
         total_loss = recon_loss + self.perceptual_weight * perceptual_loss
 
         metrics = {
-            f'{prefix}loss': total_loss,
-            f'{prefix}recon_loss': recon_loss,
-            f'{prefix}perceptual_loss': perceptual_loss,
+            f"{prefix}loss": total_loss,
+            f"{prefix}recon_loss": recon_loss,
+            f"{prefix}perceptual_loss": perceptual_loss,
         }
 
         return metrics
@@ -209,7 +206,7 @@ class MultimodalAutoencoder(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.AdaptiveAvgPool2d((8, 8)),
             torch.nn.Flatten(),
-            torch.nn.Linear(64 * 8 * 8, 256)
+            torch.nn.Linear(64 * 8 * 8, 256),
         )
 
         # Text encoder
@@ -225,13 +222,13 @@ class MultimodalAutoencoder(torch.nn.Module):
         self.audio_decoder = torch.nn.Sequential(
             torch.nn.Linear(256, 64 * 8 * 8),
             torch.nn.Unflatten(1, (64, 8, 8)),
-            torch.nn.ConvTranspose2d(64, audio_channels, 3, padding=1)
+            torch.nn.ConvTranspose2d(64, audio_channels, 3, padding=1),
         )
 
         self.text_decoder = torch.nn.Sequential(
             torch.nn.Linear(256, 128),
             torch.nn.LSTM(128, 128, batch_first=True),
-            torch.nn.Linear(128, text_vocab_size)
+            torch.nn.Linear(128, text_vocab_size),
         )
 
     def forward(self, batch):
@@ -247,10 +244,10 @@ class MultimodalAutoencoder(torch.nn.Module):
         dict
             Dictionary containing losses and outputs.
         """
-        audio = batch['audio']
-        text = batch['text']
-        target_audio = batch['target_audio']
-        target_text = batch['target_text']
+        audio = batch["audio"]
+        text = batch["text"]
+        target_audio = batch["target_audio"]
+        target_text = batch["target_text"]
 
         # Encode
         audio_features = self.audio_encoder(audio)
@@ -268,12 +265,15 @@ class MultimodalAutoencoder(torch.nn.Module):
         audio_reconstructed = F.interpolate(
             audio_reconstructed,
             size=(target_audio.shape[-2], target_audio.shape[-1]),
-            mode='bilinear',
-            align_corners=False
+            mode="bilinear",
+            align_corners=False,
         )
 
-        text_hidden = self.text_decoder[0](
-            latent).unsqueeze(1).repeat(1, text.size(1), 1)
+        text_hidden = (
+            self.text_decoder[0](latent)
+            .unsqueeze(1)
+            .repeat(1, text.size(1), 1)
+        )
         text_lstm_out, _ = self.text_decoder[1](text_hidden)
         text_reconstructed = self.text_decoder[2](text_lstm_out)
 
@@ -281,15 +281,15 @@ class MultimodalAutoencoder(torch.nn.Module):
         audio_loss = F.mse_loss(audio_reconstructed, target_audio)
         text_loss = F.cross_entropy(
             text_reconstructed.reshape(-1, text_reconstructed.size(-1)),
-            target_text.reshape(-1)
+            target_text.reshape(-1),
         )
 
         return {
-            'audio_reconstructed': audio_reconstructed,
-            'text_reconstructed': text_reconstructed,
-            'latent': latent,
-            'audio_loss': audio_loss,
-            'text_loss': text_loss,
+            "audio_reconstructed": audio_reconstructed,
+            "text_reconstructed": text_reconstructed,
+            "latent": latent,
+            "audio_loss": audio_loss,
+            "text_loss": text_loss,
         }
 
 
@@ -301,14 +301,15 @@ def example_basic_training():
 
     # Create autoencoder
     autoencoder = BlockBasedAutoencoder(input_channels=80)
-    print(f"Created autoencoder with "
-          f"{autoencoder.parameter_count:,} parameters")
+    print(
+        f"Created autoencoder with {autoencoder.parameter_count:,} parameters"
+    )
 
     # Create data
     train_loader, val_loader = create_dummy_dataset(
         batch_size=8,
         num_samples=100,  # Small for quick testing
-        input_shape=(80, 100, 128)
+        input_shape=(80, 100, 128),
     )
     print(f"Created dataset with {len(train_loader)} train batches")
 
@@ -323,7 +324,7 @@ def example_basic_training():
         logger_type="tensorboard",  # Use TensorBoard instead of wandb
         project_name="test-autoencoder",
         experiment_name="basic-example",
-        learning_rate=1e-3
+        learning_rate=1e-3,
     )
 
     print("Training completed!")
@@ -344,37 +345,32 @@ def example_custom_trainer():
     print("=" * 60)
 
     # Create autoencoder
-    autoencoder = BlockBasedAutoencoder(
-        input_channels=80,
-        activation='gelu'
-    )
+    autoencoder = BlockBasedAutoencoder(input_channels=80, activation="gelu")
 
     # Create custom trainer
     lightning_model = CustomLossAutoencoder(
         model=autoencoder,
         learning_rate=1e-3,
         perceptual_weight=0.1,
-        max_epochs=3
+        max_epochs=3,
     )
 
     # Create data
     train_loader, val_loader = create_dummy_dataset(
-        batch_size=4,
-        num_samples=50,
-        input_shape=(80, 100, 128)
+        batch_size=4, num_samples=50, input_shape=(80, 100, 128)
     )
 
     # Manual trainer setup
     trainer = Trainer(
         max_epochs=3,
-        accelerator='cpu',
+        accelerator="cpu",
         devices=1,
         callbacks=[
-            ModelCheckpoint(monitor='val_loss', mode='min'),
-            EarlyStopping(monitor='val_loss', patience=2)
+            ModelCheckpoint(monitor="val_loss", mode="min"),
+            EarlyStopping(monitor="val_loss", patience=2),
         ],
         enable_progress_bar=True,
-        logger=False  # Disable logging for testing
+        logger=False,  # Disable logging for testing
     )
 
     # Train
@@ -390,31 +386,29 @@ def example_multimodal_training():
 
     # Create multimodal model
     multimodal_model = MultimodalAutoencoder(
-        audio_channels=80,
-        text_vocab_size=1000
+        audio_channels=80, text_vocab_size=1000
     )
 
     # Create multimodal trainer with loss weights
     lightning_model = MultimodalLightningTrainer(
         model=multimodal_model,
-        loss_weights={'audio_loss': 1.0, 'text_loss': 0.5},
+        loss_weights={"audio_loss": 1.0, "text_loss": 0.5},
         learning_rate=1e-3,
-        max_epochs=3
+        max_epochs=3,
     )
 
     # Create multimodal data
     train_loader, val_loader = create_multimodal_dataset(
-        batch_size=4,
-        num_samples=50
+        batch_size=4, num_samples=50
     )
 
     # Train
     trainer = Trainer(
         max_epochs=3,
-        accelerator='cpu',
+        accelerator="cpu",
         devices=1,
         enable_progress_bar=True,
-        logger=False
+        logger=False,
     )
 
     trainer.fit(lightning_model, train_loader, val_loader)
@@ -429,35 +423,29 @@ def example_configuration_testing():
 
     # Test configurations similar to your example
     configs = [
+        {"name": "Default", "config": {"input_channels": 80}},
         {
-            'name': 'Default',
-            'config': {'input_channels': 80}
-        },
-        {
-            'name': 'Custom blocks',
-            'config': {
-                'input_channels': 80,
-                'block_configs': [
-                    {'out_channels': 64, 'pool_size': (1, 2), 'dropout': 0.2},
-                    {'out_channels': 128, 'pool_size': (1, 4), 'dropout': 0.3},
+            "name": "Custom blocks",
+            "config": {
+                "input_channels": 80,
+                "block_configs": [
+                    {"out_channels": 64, "pool_size": (1, 2), "dropout": 0.2},
+                    {"out_channels": 128, "pool_size": (1, 4), "dropout": 0.3},
                 ],
-                'activation': 'gelu'
-            }
+                "activation": "gelu",
+            },
         },
         {
-            'name': 'Large model',
-            'config': {
-                'input_channels': 80,
-                'activation': 'swish'
-            }
-        }
+            "name": "Large model",
+            "config": {"input_channels": 80, "activation": "swish"},
+        },
     ]
 
     for config_info in configs:
         print(f"\nTesting {config_info['name']} configuration:")
 
         # Create autoencoder
-        autoencoder = BlockBasedAutoencoder(**config_info['config'])
+        autoencoder = BlockBasedAutoencoder(**config_info["config"])
 
         # Test forward pass
         x = torch.randn(2, 80, 100, 128)
@@ -470,9 +458,7 @@ def example_configuration_testing():
 
         # Quick training test
         lightning_model = LightningTrainer(
-            model=autoencoder,
-            learning_rate=1e-3,
-            max_epochs=1
+            model=autoencoder, learning_rate=1e-3, max_epochs=1
         )
 
         # Create minimal data
@@ -481,10 +467,10 @@ def example_configuration_testing():
 
         trainer = Trainer(
             max_epochs=1,
-            accelerator='cpu',
+            accelerator="cpu",
             devices=1,
             enable_progress_bar=False,
-            logger=False
+            logger=False,
         )
 
         trainer.fit(lightning_model, train_loader)
@@ -501,24 +487,20 @@ def example_feature_extraction():
     autoencoder = BlockBasedAutoencoder(input_channels=80)
 
     lightning_model = LightningTrainer(
-        model=autoencoder,
-        learning_rate=1e-3,
-        max_epochs=2
+        model=autoencoder, learning_rate=1e-3, max_epochs=2
     )
 
     # Quick training
     train_loader, _ = create_dummy_dataset(
-        batch_size=4,
-        num_samples=20,
-        input_shape=(80, 100, 128)
+        batch_size=4, num_samples=20, input_shape=(80, 100, 128)
     )
 
     trainer = Trainer(
         max_epochs=2,
-        accelerator='cpu',
+        accelerator="cpu",
         devices=1,
         enable_progress_bar=False,
-        logger=False
+        logger=False,
     )
 
     trainer.fit(lightning_model, train_loader)
@@ -560,6 +542,7 @@ def run_all_examples():
     except Exception as e:
         print(f"\nError occurred: {e}")
         import traceback
+
         traceback.print_exc()
 
 

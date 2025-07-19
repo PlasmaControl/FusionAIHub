@@ -13,7 +13,7 @@ from faith.train.training import train_model
 
 
 def collate_fn(
-    data: list[tuple[torch.Tensor, ...]]
+    data: list[tuple[torch.Tensor, ...]],
 ) -> tuple[torch.Tensor, ...]:
     """
     Custom collate function to remove the highest frequency bin of
@@ -57,7 +57,7 @@ def inspect_joblib_file(file_path: str):
     print("=" * 50)
 
     # Load file to see structure
-    data_dict = load(file_path, mmap_mode='r')
+    data_dict = load(file_path, mmap_mode="r")
 
     print("Available keys:", list(data_dict.keys()))
     print()
@@ -65,7 +65,7 @@ def inspect_joblib_file(file_path: str):
     # Inspect each key
     for key, value in data_dict.items():
         print(f"Key: '{key}'")
-        if hasattr(value, 'shape'):
+        if hasattr(value, "shape"):
             print(f"  Type: {type(value)}")
             print(f"  Shape: {value.shape}")
             print(f"  Dtype: {value.dtype}")
@@ -100,7 +100,7 @@ def example_basic_usage():
         file_paths=[file_path],
         subseq_len=128,  # Extract 128-sample subsequences
         auto_detect_keys=True,  # Let it figure out the keys
-        validate_on_init=True
+        validate_on_init=True,
     )
 
     print("Dataset created successfully!")
@@ -128,7 +128,7 @@ def example_basic_usage():
         batch_size=4,
         shuffle=True,
         num_workers=2,
-        worker_init_fn=worker_init_fn
+        worker_init_fn=worker_init_fn,
     )
 
     # Test loading a batch
@@ -157,11 +157,11 @@ def example_custom_configuration():
     dataset = JoblibDataset(
         file_paths=[file_path],
         subseq_len=256,  # Longer subsequences
-        input_key=['co2', 'ece'],  # Specify your input keys as list
+        input_key=["co2", "ece"],  # Specify your input keys as list
         target_key=None,  # Autoencoder mode
-        chunking_strategy='sliding_window',  # Overlapping chunks
+        chunking_strategy="sliding_window",  # Overlapping chunks
         overlap=64,  # 64-sample overlap
-        validate_on_init=True
+        validate_on_init=True,
     )
 
     print("Dataset with custom config:")
@@ -177,7 +177,7 @@ def example_custom_configuration():
     summary = dataset.summary()
     print("Dataset summary:")
     for key, value in summary.items():
-        if key not in ['file_metadata', 'file_paths']:  # Skip verbose fields
+        if key not in ["file_metadata", "file_paths"]:  # Skip verbose fields
             print(f"  {key}: {value}")
     print()
 
@@ -193,11 +193,13 @@ def example_custom_configuration():
     if isinstance(sample_inputs, dict):
         for key, tensor in sample_inputs.items():
             print(
-                f"  Input '{key}': shape {tensor.shape}, dtype {tensor.dtype}")
+                f"  Input '{key}': shape {tensor.shape}, dtype {tensor.dtype}"
+            )
     if isinstance(sample_targets, dict):
         for key, tensor in sample_targets.items():
-            print(f"  Target '{key}': shape {tensor.shape}, "
-                  f"dtype {tensor.dtype}")
+            print(
+                f"  Target '{key}': shape {tensor.shape}, dtype {tensor.dtype}"
+            )
     print()
 
     # Create DataLoader
@@ -206,7 +208,7 @@ def example_custom_configuration():
         batch_size=4,
         shuffle=True,
         num_workers=1,
-        worker_init_fn=worker_init_fn
+        worker_init_fn=worker_init_fn,
     )
 
     # Test loading a batch
@@ -215,13 +217,16 @@ def example_custom_configuration():
         if isinstance(inputs, dict):
             print(f"  Input keys: {list(inputs.keys())}")
             for key, val in inputs.items():
-                print(f"    Input '{key}' shape: {val.shape}, "
-                      f"dtype: {val.dtype}")
+                print(
+                    f"    Input '{key}' shape: {val.shape}, dtype: {val.dtype}"
+                )
         if isinstance(targets, dict):
             print(f"  Target keys: {list(targets.keys())}")
             for key, val in targets.items():
-                print(f"    Target '{key}' shape: {val.shape}, "
-                      f"dtype: {val.dtype}")
+                print(
+                    f"    Target '{key}' shape: {val.shape}, "
+                    f"dtype: {val.dtype}"
+                )
 
         if batch_idx == 0:  # Only show first batch
             break
@@ -240,14 +245,14 @@ def example_multiple_files():
     dataset = JoblibDataset(
         file_paths=file_pattern,  # Can be directory, glob pattern, or list
         subseq_len=128,
-        input_key='ece',
+        input_key="ece",
         target_key=None,  # Autoencoder mode
         file_pattern="*.joblib",  # Pattern for file discovery
         max_files=10,  # Limit to 10 files
         sort_files=True,  # Sort files by name
         balance_files=True,  # Balance samples across files
-        chunking_strategy='non_overlapping',
-        validate_on_init=True
+        chunking_strategy="non_overlapping",
+        validate_on_init=True,
     )
 
     print("Multi-file dataset:")
@@ -281,14 +286,14 @@ def example_multiple_files():
     # Split dataset by files
     print("Splitting dataset by files...")
     train_ds, val_ds = dataset.split_by_files(
-        train_ratio=0.8,
-        val_ratio=0.2,
-        random_seed=42
+        train_ratio=0.8, val_ratio=0.2, random_seed=42
     )
 
     print("Split results:")
-    print(f"  Train: {len(train_ds)} subsequences from {train_ds.num_files} "
-          f"files")
+    print(
+        f"  Train: {len(train_ds)} subsequences from {train_ds.num_files} "
+        f"files"
+    )
     print(f"  Val: {len(val_ds)} subsequences from {val_ds.num_files} files")
     print()
 
@@ -304,10 +309,10 @@ def example_autoencoder_training():
     dataset = JoblibDataset(
         file_paths="171348_0.joblib",  # Adjust path
         subseq_len=128,
-        input_key='co2',
+        input_key="co2",
         target_key=None,  # Autoencoder mode: input = target
         auto_detect_keys=True,
-        validate_on_init=True
+        validate_on_init=True,
     )
 
     print(f"Autoencoder dataset: {len(dataset)} samples")
@@ -332,7 +337,7 @@ def example_autoencoder_training():
     model = BlockBasedAutoencoder(
         input_channels=sample_input.shape[0],  # Number of channels
         hidden_dim=64,
-        activation='gelu'
+        activation="gelu",
     )
 
     print(f"Model created with {model.parameter_count:,} parameters")
@@ -358,7 +363,7 @@ def example_autoencoder_training():
         max_epochs=5,
         learning_rate=1e-4,
         logger_type="tensorboard",
-        project_name="joblib-autoencoder"
+        project_name="joblib-autoencoder",
     )
 
     print("Training completed!")
@@ -375,10 +380,10 @@ def example_multikey_usage():
     dataset = JoblibDataset(
         file_paths="171348_0.joblib",  # Adjust path
         subseq_len=128,
-        input_key=['co2', 'ece'],  # Multiple input keys
-        target_key=['co2', 'mhr'],
+        input_key=["co2", "ece"],  # Multiple input keys
+        target_key=["co2", "mhr"],
         # Multiple target keys (or None for autoencoder)
-        validate_on_init=True
+        validate_on_init=True,
     )
 
     print("Multi-key dataset:")
@@ -408,22 +413,28 @@ def example_multikey_usage():
 
     for key, tensor in sample_inputs.items():
         print(f"  Input '{key}': shape {tensor.shape}, dtype {tensor.dtype}")
-        print(f"    Min: {tensor.min().item():.4f}, "
-              f"Max: {tensor.max().item():.4f}")
+        print(
+            f"    Min: {tensor.min().item():.4f}, "
+            f"Max: {tensor.max().item():.4f}"
+        )
 
     for key, tensor in sample_targets.items():
         print(f"  Target '{key}': shape {tensor.shape}, dtype {tensor.dtype}")
-        print(f"    Min: {tensor.min().item():.4f}, "
-              f"Max: {tensor.max().item():.4f}")
+        print(
+            f"    Min: {tensor.min().item():.4f}, "
+            f"Max: {tensor.max().item():.4f}"
+        )
     print()
 
     # Test DataLoader
-    loader = DataLoader(dataset,
-                        batch_size=4,
-                        shuffle=True,
-                        num_workers=2,
-                        worker_init_fn=worker_init_fn,
-                        collate_fn=collate_fn)
+    loader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True,
+        num_workers=2,
+        worker_init_fn=worker_init_fn,
+        collate_fn=collate_fn,
+    )
 
     print("DataLoader test:")
     for batch_idx, (inputs, targets) in enumerate(loader):
@@ -467,7 +478,8 @@ def example_error_handling():
         try:
             # Try to inspect the file directly
             from joblib import load
-            data_dict = load(file_path, mmap_mode='r')
+
+            data_dict = load(file_path, mmap_mode="r")
             available_keys = list(data_dict.keys())
             del data_dict  # Clean up
 
@@ -489,7 +501,7 @@ def example_error_handling():
             file_paths=valid_files,  # Only use valid files
             subseq_len=128,
             auto_detect_keys=True,
-            validate_on_init=True  # This should work with valid files
+            validate_on_init=True,  # This should work with valid files
         )
 
         print("✓ Dataset created successfully!")
@@ -504,9 +516,11 @@ def example_error_handling():
         for i in range(dataset.num_files):
             try:
                 input_shape, target_shape = dataset.get_sample_shape(
-                    file_idx=i)
+                    file_idx=i
+                )
                 print(
-                    f"  File {i}: ✓ Input {input_shape}, Target {target_shape}")
+                    f"  File {i}: ✓ Input {input_shape}, Target {target_shape}"
+                )
             except Exception as e:
                 print(f"  File {i}: ✗ Error - {e}")
         print()
@@ -516,13 +530,17 @@ def example_error_handling():
         try:
             sample_input, sample_target = dataset.peek_sample()
             print("  ✓ Peek successful!")
-            s = sample_input.shape \
-                if not isinstance(sample_input, dict) \
+            s = (
+                sample_input.shape
+                if not isinstance(sample_input, dict)
                 else {k: v.shape for k, v in sample_input.items()}
+            )
             print(f"    Input shape: {s}")
-            s = sample_target.shape \
-                if not isinstance(sample_target, dict) \
+            s = (
+                sample_target.shape
+                if not isinstance(sample_target, dict)
                 else {k: v.shape for k, v in sample_target.items()}
+            )
             print(f"    Target shape: {s}")
         except Exception as e:
             print(f"  ✗ Peek failed: {e}")
@@ -532,7 +550,7 @@ def example_error_handling():
         print("Dataset summary:")
         info = dataset.summary()
         for key, value in info.items():
-            if key not in ['file_metadata', 'file_paths']:
+            if key not in ["file_metadata", "file_paths"]:
                 print(f"  {key}: {value}")
         print()
 
@@ -542,6 +560,7 @@ def example_error_handling():
         print(f"✗ Failed to create dataset: {e}")
         print(f"Error type: {type(e).__name__}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -564,7 +583,7 @@ def example_error_handling_advanced():
             file_paths=test_files,
             subseq_len=128,
             auto_detect_keys=True,
-            validate_on_init=False  # Don't validate during init
+            validate_on_init=False,  # Don't validate during init
         )
 
         print("Testing validate_files() method:")
@@ -581,18 +600,22 @@ def example_error_handling_advanced():
         print()
 
         if valid_files:
-            print(f"Found {len(valid_files)} valid files. "
-                  f"Creating new dataset...")
+            print(
+                f"Found {len(valid_files)} valid files. "
+                f"Creating new dataset..."
+            )
             # Create a new dataset with only valid files
             valid_dataset = JoblibDataset(
                 file_paths=valid_files,
                 subseq_len=128,
                 auto_detect_keys=True,
-                validate_on_init=True
+                validate_on_init=True,
             )
 
-            print(f"✓ Valid dataset created with {len(valid_dataset)} "
-                  f"subsequences")
+            print(
+                f"✓ Valid dataset created with {len(valid_dataset)} "
+                f"subsequences"
+            )
 
             # Test this dataset
             input_shape, target_shape = valid_dataset.get_sample_shape()
@@ -607,6 +630,7 @@ def example_error_handling_advanced():
     except Exception as e:
         print(f"Error in advanced error handling: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -618,8 +642,10 @@ def main():
     print()
 
     # Note: You'll need to replace file paths with actual files
-    print("NOTE: Replace file paths with your actual joblib files in each "
-          "example.")
+    print(
+        "NOTE: Replace file paths with your actual joblib files in each "
+        "example."
+    )
     print()
 
     try:
@@ -649,8 +675,10 @@ def main():
         print(f"Error running examples: {e}")
         print("Make sure to:")
         print("1. Replace file paths with real joblib files")
-        print("2. Install required dependencies: joblib, torch, "
-              "pytorch-lightning")
+        print(
+            "2. Install required dependencies: joblib, torch, "
+            "pytorch-lightning"
+        )
         print("3. Ensure your files have the expected structure")
         print("4. Update the input_key and target_key based on your data")
 

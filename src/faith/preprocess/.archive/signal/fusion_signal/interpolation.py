@@ -3,8 +3,12 @@ from typing import Optional
 import numpy as np
 
 
-def interpolate_signal(y: np.ndarray, t_ori: np.ndarray, t_new: np.ndarray,
-                       axis: Optional[int] = 0) -> np.ndarray:
+def interpolate_signal(
+    y: np.ndarray,
+    t_ori: np.ndarray,
+    t_new: np.ndarray,
+    axis: Optional[int] = 0,
+) -> np.ndarray:
     """
     Resample and interpolate missing values in a multivariate time-series.
 
@@ -50,4 +54,3 @@ def interpolate_signal(y: np.ndarray, t_ori: np.ndarray, t_new: np.ndarray,
         resampled_data = resampled_data.T
 
     return resampled_data
-

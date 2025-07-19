@@ -16,12 +16,13 @@ try:
     from ray.tune.search.hyperopt import HyperOptSearch
     from ray.tune.search.optuna import OptunaSearch
 
-
     RAY_AVAILABLE = True
 except ImportError:
     RAY_AVAILABLE = False
-    warnings.warn("Ray Tune not available. "
-                  "Install with: pip install ray[tune] optuna hyperopt")
+    warnings.warn(
+        "Ray Tune not available. "
+        "Install with: pip install ray[tune] optuna hyperopt"
+    )
 
 import pytorch_lightning as pl
 import torch
@@ -65,16 +66,17 @@ def _safe_ray_init(**kwargs):
     try:
         # Default Ray init arguments for stability
         default_args = {
-            'ignore_reinit_error': True,
-            'include_dashboard': False,  # Disable dashboard for stability
-            'configure_logging': False,  # Avoid logging conflicts
+            "ignore_reinit_error": True,
+            "include_dashboard": False,  # Disable dashboard for stability
+            "configure_logging": False,  # Avoid logging conflicts
         }
         default_args.update(kwargs)
 
         ray.init(**default_args)
     except Exception as e:
         warnings.warn(
-            f"Ray initialization failed: {e}. Some features may not work.")
+            f"Ray initialization failed: {e}. Some features may not work."
+        )
 
 
 def cleanup_ray():
@@ -94,19 +96,19 @@ class RayTuner:
     """
 
     def __init__(
-            self,
-            model_class: type,
-            model_base_config: dict[str, Any],
-            data_loaders: dict[str, Any],
-            num_samples: int = 20,
-            max_epochs_per_trial: int = 10,
-            gpus_per_trial: float = 0.25,
-            cpus_per_trial: int = 1,
-            scheduler_type: str = "asha",
-            search_algorithm: str = "optuna",
-            metric: str = "val_loss",
-            mode: str = "min",
-            storage_path: Optional[str] = None
+        self,
+        model_class: type,
+        model_base_config: dict[str, Any],
+        data_loaders: dict[str, Any],
+        num_samples: int = 20,
+        max_epochs_per_trial: int = 10,
+        gpus_per_trial: float = 0.25,
+        cpus_per_trial: int = 1,
+        scheduler_type: str = "asha",
+        search_algorithm: str = "optuna",
+        metric: str = "val_loss",
+        mode: str = "min",
+        storage_path: Optional[str] = None,
     ) -> None:
         """Initialize Ray Tuner.
 
@@ -217,12 +219,13 @@ class RayTuner:
                 mode=self.mode,
                 max_t=max_t,
                 grace_period=grace_period,
-                reduction_factor=2
+                reduction_factor=2,
             )
         elif self.scheduler_type == "pbt":
             # For PBT, ensure perturbation_interval is reasonable
-            perturbation_interval = min(2,
-                                        max(1, self.max_epochs_per_trial // 3))
+            perturbation_interval = min(
+                2, max(1, self.max_epochs_per_trial // 3)
+            )
 
             return PopulationBasedTraining(
                 time_attr="training_iteration",
@@ -230,11 +233,13 @@ class RayTuner:
                 mode=self.mode,
                 perturbation_interval=perturbation_interval,
                 hyperparam_mutations={
-                    "learning_rate": lambda: tune.loguniform(1e-5,
-                                                             1e-2).sample(),
-                    "weight_decay": lambda: tune.loguniform(1e-6,
-                                                            1e-3).sample(),
-                }
+                    "learning_rate": lambda: tune.loguniform(
+                        1e-5, 1e-2
+                    ).sample(),
+                    "weight_decay": lambda: tune.loguniform(
+                        1e-6, 1e-3
+                    ).sample(),
+                },
             )
         elif self.scheduler_type == "fifo":
             return None  # FIFO is default
@@ -260,8 +265,9 @@ class RayTuner:
 
         for value in config.values():
             # Check if any value is a Ray Tune search space object
-            if hasattr(value, 'sample') or str(type(value)).startswith(
-                    '<class \'ray.tune'):
+            if hasattr(value, "sample") or str(type(value)).startswith(
+                "<class 'ray.tune"
+            ):
                 return True
         return False
 
@@ -290,7 +296,8 @@ class RayTuner:
             return None  # Random search is default
         else:
             raise ValueError(
-                f"Unknown search algorithm: {self.search_algorithm}")
+                f"Unknown search algorithm: {self.search_algorithm}"
+            )
 
     def _training_function(self, config: dict[str, Any]) -> None:
         """Training function for Ray Tune trials.
@@ -308,8 +315,13 @@ class RayTuner:
         training_params = {}
 
         for key, value in config.items():
-            if key in ['learning_rate', 'weight_decay', 'batch_size',
-                       'scheduler_type', 'warmup_epochs']:
+            if key in [
+                "learning_rate",
+                "weight_decay",
+                "batch_size",
+                "scheduler_type",
+                "warmup_epochs",
+            ]:
                 training_params[key] = value
             else:
                 model_params[key] = value
@@ -324,7 +336,7 @@ class RayTuner:
         lightning_model = LightningTrainer(
             model=model,
             max_epochs=self.max_epochs_per_trial,
-            **training_params
+            **training_params,
         )
 
         # Create temporary directory for this trial
@@ -332,7 +344,7 @@ class RayTuner:
             # Setup Lightning trainer
             trainer = Trainer(
                 max_epochs=self.max_epochs_per_trial,
-                accelerator='gpu' if self.gpus_per_trial > 0 else 'cpu',
+                accelerator="gpu" if self.gpus_per_trial > 0 else "cpu",
                 devices=1,  # Always use 1 device (GPU or CPU)
                 precision="16-mixed" if self.gpus_per_trial > 0 else "32",
                 default_root_dir=temp_dir,
@@ -344,25 +356,25 @@ class RayTuner:
                         metrics={
                             "loss": "train_loss",
                             "val_loss": "val_loss",
-                            "epoch": "epoch"
+                            "epoch": "epoch",
                         },
-                        on="validation_end"
+                        on="validation_end",
                     )
-                ]
+                ],
             )
 
             # Train
             trainer.fit(
                 lightning_model,
-                self.data_loaders['train'],
-                self.data_loaders.get('val', None)
+                self.data_loaders["train"],
+                self.data_loaders.get("val", None),
             )
 
     def tune(
-            self,
-            search_space: dict[str, Any],
-            name: str = "autoencoder_tune",
-            resume: bool = False
+        self,
+        search_space: dict[str, Any],
+        name: str = "autoencoder_tune",
+        resume: bool = False,
     ) -> Any:
         """Run hyperparameter tuning.
 
@@ -384,12 +396,15 @@ class RayTuner:
         has_search_space = self._has_search_space(search_space)
 
         # Warn if using advanced search algorithm with fixed values
-        if not has_search_space and self.search_algorithm in ["optuna",
-                                                              "hyperopt"]:
-            warnings.warn(f"Using {self.search_algorithm} with fixed values. "
-                          f"Consider using search_algorithm='random' "
-                          f"for fixed configurations."
-                          )
+        if not has_search_space and self.search_algorithm in [
+            "optuna",
+            "hyperopt",
+        ]:
+            warnings.warn(
+                f"Using {self.search_algorithm} with fixed values. "
+                f"Consider using search_algorithm='random' "
+                f"for fixed configurations."
+            )
 
         # Create scheduler and search algorithm
         scheduler = self._create_scheduler()
@@ -399,7 +414,7 @@ class RayTuner:
         reporter = CLIReporter(
             parameter_columns=list(search_space.keys())[:4],
             # Show first 4 params
-            metric_columns=[self.metric, "training_iteration"]
+            metric_columns=[self.metric, "training_iteration"],
         )
 
         # Run tuning
@@ -408,16 +423,16 @@ class RayTuner:
             config=search_space,
             num_samples=self.num_samples,
             scheduler=scheduler,
-            search_alg=search_alg if self.scheduler_type != 'pbt' else None,
+            search_alg=search_alg if self.scheduler_type != "pbt" else None,
             progress_reporter=reporter,
             name=name,
             storage_path=self.storage_path,
             resources_per_trial={
                 "cpu": self.cpus_per_trial,
-                "gpu": self.gpus_per_trial
+                "gpu": self.gpus_per_trial,
             },
             resume=resume,
-            raise_on_failed_trial=False
+            raise_on_failed_trial=False,
         )
 
         return analysis
@@ -439,10 +454,10 @@ class RayTuner:
         return best_trial.config
 
     def train_best_model(
-            self,
-            analysis: Any,
-            max_epochs: int = 100,
-            save_path: Optional[str] = None
+        self,
+        analysis: Any,
+        max_epochs: int = 100,
+        save_path: Optional[str] = None,
     ) -> LightningTrainer:
         """Train final model with best hyperparameters.
 
@@ -467,8 +482,13 @@ class RayTuner:
         training_params = {}
 
         for key, value in best_config.items():
-            if key in ['learning_rate', 'weight_decay', 'batch_size',
-                       'scheduler_type', 'warmup_epochs']:
+            if key in [
+                "learning_rate",
+                "weight_decay",
+                "batch_size",
+                "scheduler_type",
+                "warmup_epochs",
+            ]:
                 training_params[key] = value
             else:
                 model_config[key] = value
@@ -478,9 +498,7 @@ class RayTuner:
 
         # Create Lightning trainer
         lightning_model = LightningTrainer(
-            model=model,
-            max_epochs=max_epochs,
-            **training_params
+            model=model, max_epochs=max_epochs, **training_params
         )
 
         # Setup final trainer
@@ -488,19 +506,20 @@ class RayTuner:
 
         trainer = Trainer(
             max_epochs=max_epochs,
-            accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+            accelerator="gpu" if torch.cuda.is_available() else "cpu",
             devices=1 if torch.cuda.is_available() else None,
             precision="16-mixed" if torch.cuda.is_available() else "32",
             callbacks=callbacks,
-            logger=TensorBoardLogger("./final_training_logs",
-                                     name="best_model")
+            logger=TensorBoardLogger(
+                "./final_training_logs", name="best_model"
+            ),
         )
 
         # Train final model
         trainer.fit(
             lightning_model,
-            self.data_loaders['train'],
-            self.data_loaders.get('val', None)
+            self.data_loaders["train"],
+            self.data_loaders.get("val", None),
         )
 
         # Save model if requested
@@ -515,9 +534,7 @@ class RayTuneReportCallback(pl.Callback):
     """Callback to report metrics to Ray Tune."""
 
     def __init__(
-            self,
-            metrics: dict[str, str] = None,
-            on: str = "validation_end"
+        self, metrics: dict[str, str] = None, on: str = "validation_end"
     ) -> None:
         """Initialize callback.
 
@@ -535,7 +552,7 @@ class RayTuneReportCallback(pl.Callback):
             metrics = {
                 "loss": "train_loss",
                 "val_loss": "val_loss",
-                "epoch": "epoch"
+                "epoch": "epoch",
             }
 
         self.metrics = metrics
@@ -585,9 +602,9 @@ class RayTuneReportCallback(pl.Callback):
 
 
 def suggest_scheduler_config(
-        max_epochs_per_trial: int,
-        num_samples: int,
-        training_time_per_epoch: str = "medium"
+    max_epochs_per_trial: int,
+    num_samples: int,
+    training_time_per_epoch: str = "medium",
 ) -> dict[str, str]:
     """Suggest appropriate scheduler configuration.
 
@@ -612,17 +629,20 @@ def suggest_scheduler_config(
         suggestions["reason"] = "FIFO recommended for single epoch trials"
     elif max_epochs_per_trial < 4:
         suggestions["scheduler_type"] = "fifo"
-        suggestions["reason"] = \
+        suggestions["reason"] = (
             "FIFO recommended for very short trials (< 4 epochs)"
+        )
     elif max_epochs_per_trial >= 10 and num_samples >= 8:
         if training_time_per_epoch in ["fast", "medium"]:
             suggestions["scheduler_type"] = "asha"
-            suggestions["reason"] = \
+            suggestions["reason"] = (
                 "ASHA recommended for efficient early stopping"
+            )
         else:
             suggestions["scheduler_type"] = "pbt"
-            suggestions["reason"] = \
+            suggestions["reason"] = (
                 "PBT recommended for longer training with population evolution"
+            )
     elif num_samples >= 4 and max_epochs_per_trial >= 6:
         suggestions["scheduler_type"] = "pbt"
         suggestions["reason"] = "PBT recommended for medium-scale experiments"
@@ -634,9 +654,9 @@ def suggest_scheduler_config(
 
 
 def create_basic_search_space(
-        learning_rate_range: tuple = (1e-5, 1e-2),
-        weight_decay_range: tuple = (1e-6, 1e-3),
-        batch_size_choices: list = [16, 32, 64]
+    learning_rate_range: tuple = (1e-5, 1e-2),
+    weight_decay_range: tuple = (1e-6, 1e-3),
+    batch_size_choices: list = [16, 32, 64],
 ) -> dict[str, Any]:
     """Create a basic search space for autoencoder tuning.
 
@@ -662,5 +682,5 @@ def create_basic_search_space(
         "weight_decay": tune.loguniform(*weight_decay_range),
         "batch_size": tune.choice(batch_size_choices),
         "scheduler_type": tune.choice(["cosine", "linear"]),
-        "warmup_epochs": tune.choice([0, 3, 5])
+        "warmup_epochs": tune.choice([0, 3, 5]),
     }

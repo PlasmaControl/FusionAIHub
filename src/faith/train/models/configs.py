@@ -72,11 +72,11 @@ class ModelConfig:
     hidden_dim: Optional[int] = None
     kernel_size: Union[int, tuple[int, int]] = 3
     bias: bool = True
-    upsampling_mode: str = 'nearest'
+    upsampling_mode: str = "nearest"
     use_batch_norm: bool = True
-    activation: str = 'relu'
-    init_method: str = 'kaiming'
-    model_type: str = 'autoencoder'
+    activation: str = "relu"
+    init_method: str = "kaiming"
+    model_type: str = "autoencoder"
     mae_config: Optional[dict[str, Any]] = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -88,54 +88,61 @@ class ModelConfig:
         """Validate configuration parameters."""
         if self.input_channels <= 0:
             raise ValueError(
-                f"input_channels must be positive, got {self.input_channels}")
+                f"input_channels must be positive, got {self.input_channels}"
+            )
 
         if not self.block_configs:
             raise ValueError("block_configs cannot be empty")
 
         for i, config in enumerate(self.block_configs):
-            if 'out_channels' not in config:
+            if "out_channels" not in config:
                 raise ValueError(
-                    f"Block {i} missing required 'out_channels' key")
-            if config['out_channels'] <= 0:
+                    f"Block {i} missing required 'out_channels' key"
+                )
+            if config["out_channels"] <= 0:
                 raise ValueError(f"Block {i} out_channels must be positive")
 
-        if (self.bottleneck_channels is not None
-                and self.bottleneck_channels <= 0):
+        if (
+            self.bottleneck_channels is not None
+            and self.bottleneck_channels <= 0
+        ):
             raise ValueError(
-                "bottleneck_channels must be positive if specified")
+                "bottleneck_channels must be positive if specified"
+            )
 
         if self.hidden_dim is not None and self.hidden_dim <= 0:
             raise ValueError("hidden_dim must be positive if specified")
 
-        valid_model_types = ['autoencoder', 'mae']
+        valid_model_types = ["autoencoder", "mae"]
         if self.model_type not in valid_model_types:
             raise ValueError(f"model_type must be one of {valid_model_types}")
 
-        valid_activations = ['relu', 'leaky_relu', 'gelu', 'swish', 'mish']
+        valid_activations = ["relu", "leaky_relu", "gelu", "swish", "mish"]
         if self.activation not in valid_activations:
             raise ValueError(f"activation must be one of {valid_activations}")
 
-        valid_init_methods = ['kaiming', 'xavier', 'default']
+        valid_init_methods = ["kaiming", "xavier", "default"]
         if self.init_method not in valid_init_methods:
             raise ValueError(
-                f"init_method must be one of {valid_init_methods}")
+                f"init_method must be one of {valid_init_methods}"
+            )
 
-        valid_upsampling_modes = ['nearest', 'bilinear', 'bicubic', 'area']
+        valid_upsampling_modes = ["nearest", "bilinear", "bicubic", "area"]
         if self.upsampling_mode not in valid_upsampling_modes:
             raise ValueError(
-                f"upsampling_mode must be one of {valid_upsampling_modes}")
+                f"upsampling_mode must be one of {valid_upsampling_modes}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, config_dict: dict[str, Any]) -> 'ModelConfig':
+    def from_dict(cls, config_dict: dict[str, Any]) -> "ModelConfig":
         """Create configuration from dictionary."""
         return cls(**config_dict)
 
-    def save(self, filepath: Union[str, Path], format: str = 'yaml') -> None:
+    def save(self, filepath: Union[str, Path], format: str = "yaml") -> None:
         """Save configuration to file.
 
         Parameters
@@ -148,18 +155,19 @@ class ModelConfig:
         filepath = Path(filepath)
         config_dict = self.to_dict()
 
-        if format.lower() == 'yaml':
-            with open(filepath, 'w') as f:
+        if format.lower() == "yaml":
+            with open(filepath, "w") as f:
                 yaml.dump(config_dict, f, default_flow_style=False, indent=2)
-        elif format.lower() == 'json':
-            with open(filepath, 'w') as f:
+        elif format.lower() == "json":
+            with open(filepath, "w") as f:
                 json.dump(config_dict, f, indent=2)
         else:
             raise ValueError(
-                f"Unsupported format: {format}. Use 'yaml' or 'json'.")
+                f"Unsupported format: {format}. Use 'yaml' or 'json'."
+            )
 
     @classmethod
-    def load(cls, filepath: Union[str, Path]) -> 'ModelConfig':
+    def load(cls, filepath: Union[str, Path]) -> "ModelConfig":
         """Load configuration from file.
 
         Parameters
@@ -176,26 +184,29 @@ class ModelConfig:
 
         if not filepath.exists():
             raise FileNotFoundError(
-                f"Configuration file not found: {filepath}")
+                f"Configuration file not found: {filepath}"
+            )
 
         suffix = filepath.suffix.lower()
 
         with open(filepath) as f:
-            if suffix in ['.yaml', '.yml']:
+            if suffix in [".yaml", ".yml"]:
                 config_dict = yaml.safe_load(f)
-            elif suffix == '.json':
+            elif suffix == ".json":
                 config_dict = json.load(f)
             else:
-                raise ValueError(f"Unsupported file format: {suffix}. "
-                                 f"Use .yaml, .yml, or .json")
+                raise ValueError(
+                    f"Unsupported file format: {suffix}. "
+                    f"Use .yaml, .yml, or .json"
+                )
 
         return cls.from_dict(config_dict)
 
-    def copy(self) -> 'ModelConfig':
+    def copy(self) -> "ModelConfig":
         """Create a deep copy of the configuration."""
         return ModelConfig.from_dict(deepcopy(self.to_dict()))
 
-    def update(self, **kwargs) -> 'ModelConfig':
+    def update(self, **kwargs) -> "ModelConfig":
         """Create a new configuration with updated parameters.
 
         Parameters
@@ -215,118 +226,112 @@ class ModelConfig:
 
 # Preset configurations for common use cases
 PRESET_CONFIGS = {
-    'default': ModelConfig(
+    "default": ModelConfig(
         input_channels=80,  # Will be overridden by user
         block_configs=[
-            {'out_channels': 128, 'pool_size': (1, 2)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
-            {'out_channels': 128, 'pool_size': (1, 2)},
-            {'out_channels': 64, 'pool_size': (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
+            {"out_channels": 256, "pool_size": (1, 2)},
+            {"out_channels": 256, "pool_size": (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
+            {"out_channels": 64, "pool_size": (1, 2)},
         ],
         metadata={
-            'description': 'Default balanced configuration',
-            'use_case': 'General purpose autoencoder'
-        }
+            "description": "Default balanced configuration",
+            "use_case": "General purpose autoencoder",
+        },
     ),
-
-    'light': ModelConfig(
+    "light": ModelConfig(
         input_channels=80,
         block_configs=[
-            {'out_channels': 64, 'pool_size': (1, 2)},
-            {'out_channels': 128, 'pool_size': (1, 2)},
-            {'out_channels': 64, 'pool_size': (1, 2)},
+            {"out_channels": 64, "pool_size": (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
+            {"out_channels": 64, "pool_size": (1, 2)},
         ],
         metadata={
-            'description': 'Lightweight configuration for fast training',
-            'use_case': 'Resource-constrained environments'
-        }
+            "description": "Lightweight configuration for fast training",
+            "use_case": "Resource-constrained environments",
+        },
     ),
-
-    'heavy': ModelConfig(
+    "heavy": ModelConfig(
         input_channels=80,
         block_configs=[
-            {'out_channels': 128, 'pool_size': (1, 2)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
-            {'out_channels': 512, 'pool_size': (1, 2)},
-            {'out_channels': 512, 'pool_size': (1, 2)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
-            {'out_channels': 128, 'pool_size': (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
+            {"out_channels": 256, "pool_size": (1, 2)},
+            {"out_channels": 512, "pool_size": (1, 2)},
+            {"out_channels": 512, "pool_size": (1, 2)},
+            {"out_channels": 256, "pool_size": (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
         ],
         metadata={
-            'description': 'Heavy configuration for maximum capacity',
-            'use_case': 'Large datasets, high-quality reconstruction'
-        }
+            "description": "Heavy configuration for maximum capacity",
+            "use_case": "Large datasets, high-quality reconstruction",
+        },
     ),
-
-    'asymmetric': ModelConfig(
+    "asymmetric": ModelConfig(
         input_channels=80,
         block_configs=[
-            {'out_channels': 64, 'pool_size': (1, 4)},
-            {'out_channels': 128, 'pool_size': (1, 2)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
+            {"out_channels": 64, "pool_size": (1, 4)},
+            {"out_channels": 128, "pool_size": (1, 2)},
+            {"out_channels": 256, "pool_size": (1, 2)},
         ],
         metadata={
-            'description': 'Asymmetric pooling for different compression '
-                           'ratios',
-            'use_case': 'Audio with varying frequency resolution needs'
-        }
+            "description": "Asymmetric pooling for different compression "
+            "ratios",
+            "use_case": "Audio with varying frequency resolution needs",
+        },
     ),
-
-    'variable_dropout': ModelConfig(
+    "variable_dropout": ModelConfig(
         input_channels=80,
         block_configs=[
-            {'out_channels': 128, 'pool_size': (1, 2), 'dropout': 0.1},
-            {'out_channels': 256, 'pool_size': (1, 2), 'dropout': 0.2},
-            {'out_channels': 256, 'pool_size': (1, 2), 'dropout': 0.3},
-            {'out_channels': 128, 'pool_size': (1, 2), 'dropout': 0.4},
+            {"out_channels": 128, "pool_size": (1, 2), "dropout": 0.1},
+            {"out_channels": 256, "pool_size": (1, 2), "dropout": 0.2},
+            {"out_channels": 256, "pool_size": (1, 2), "dropout": 0.3},
+            {"out_channels": 128, "pool_size": (1, 2), "dropout": 0.4},
         ],
         metadata={
-            'description': 'Progressive dropout for regularization',
-            'use_case': 'Preventing overfitting in deep networks'
-        }
+            "description": "Progressive dropout for regularization",
+            "use_case": "Preventing overfitting in deep networks",
+        },
     ),
-
-    'mae_default': ModelConfig(
+    "mae_default": ModelConfig(
         input_channels=80,
         block_configs=[
-            {'out_channels': 128, 'pool_size': (1, 2)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
-            {'out_channels': 128, 'pool_size': (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
+            {"out_channels": 256, "pool_size": (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 2)},
         ],
-        model_type='mae',
+        model_type="mae",
         mae_config={
-            'mask_ratio': 0.75,
-            'patch_size': (8, 8),
-            'min_mask_size': 1,
-            'max_mask_size': None,
-            'mask_token_value': 0.0
+            "mask_ratio": 0.75,
+            "patch_size": (8, 8),
+            "min_mask_size": 1,
+            "max_mask_size": None,
+            "mask_token_value": 0.0,
         },
         metadata={
-            'description': 'Default configuration for Masked Autoencoder',
-            'use_case': 'Self-supervised pre-training'
-        }
+            "description": "Default configuration for Masked Autoencoder",
+            "use_case": "Self-supervised pre-training",
+        },
     ),
-
-    'mae_aggressive': ModelConfig(
+    "mae_aggressive": ModelConfig(
         input_channels=80,
         block_configs=[
-            {'out_channels': 64, 'pool_size': (1, 2)},
-            {'out_channels': 128, 'pool_size': (1, 4)},
-            {'out_channels': 256, 'pool_size': (1, 2)},
+            {"out_channels": 64, "pool_size": (1, 2)},
+            {"out_channels": 128, "pool_size": (1, 4)},
+            {"out_channels": 256, "pool_size": (1, 2)},
         ],
-        model_type='mae',
+        model_type="mae",
         mae_config={
-            'mask_ratio': 0.85,
-            'patch_size': (4, 4),
-            'min_mask_size': 2,
-            'max_mask_size': 16,
-            'mask_token_value': 0.0
+            "mask_ratio": 0.85,
+            "patch_size": (4, 4),
+            "min_mask_size": 2,
+            "max_mask_size": 16,
+            "mask_token_value": 0.0,
         },
         metadata={
-            'description': 'Aggressive masking for challenging pre-training',
-            'use_case': 'Learning robust representations'
-        }
+            "description": "Aggressive masking for challenging pre-training",
+            "use_case": "Learning robust representations",
+        },
     ),
 }
 
@@ -352,7 +357,8 @@ def get_preset_config(name: str) -> ModelConfig:
     if name not in PRESET_CONFIGS:
         available = list(PRESET_CONFIGS.keys())
         raise KeyError(
-            f"Unknown preset: {name}. Available presets: {available}")
+            f"Unknown preset: {name}. Available presets: {available}"
+        )
 
     return PRESET_CONFIGS[name].copy()
 
@@ -369,9 +375,9 @@ def list_preset_configs() -> list[str]:
 
 
 def create_block_autoencoder(
-        config_name: str = 'default',
-        input_channels: Optional[int] = None,
-        **kwargs
+    config_name: str = "default",
+    input_channels: Optional[int] = None,
+    **kwargs,
 ) -> BlockBasedAutoencoder:
     """Create autoencoder with predefined or custom configuration.
 
@@ -414,16 +420,17 @@ def create_block_autoencoder(
         config = config.update(**kwargs)
 
     # Create model based on type
-    if config.model_type == 'autoencoder':
+    if config.model_type == "autoencoder":
         return create_autoencoder_from_config(config)
-    elif config.model_type == 'mae':
+    elif config.model_type == "mae":
         return create_mae_from_config(config)
     else:
         raise ValueError(f"Unknown model_type: {config.model_type}")
 
 
 def create_autoencoder_from_config(
-        config: ModelConfig) -> BlockBasedAutoencoder:
+    config: ModelConfig,
+) -> BlockBasedAutoencoder:
     """Create BlockBasedAutoencoder from configuration.
 
     Parameters
@@ -438,16 +445,16 @@ def create_autoencoder_from_config(
     """
     # Extract autoencoder parameters
     autoencoder_params = {
-        'input_channels': config.input_channels,
-        'block_configs': config.block_configs,
-        'bottleneck_channels': config.bottleneck_channels,
-        'hidden_dim': config.hidden_dim,
-        'kernel_size': config.kernel_size,
-        'bias': config.bias,
-        'upsampling_mode': config.upsampling_mode,
-        'use_batch_norm': config.use_batch_norm,
-        'activation': config.activation,
-        'init_method': config.init_method,
+        "input_channels": config.input_channels,
+        "block_configs": config.block_configs,
+        "bottleneck_channels": config.bottleneck_channels,
+        "hidden_dim": config.hidden_dim,
+        "kernel_size": config.kernel_size,
+        "bias": config.bias,
+        "upsampling_mode": config.upsampling_mode,
+        "use_batch_norm": config.use_batch_norm,
+        "activation": config.activation,
+        "init_method": config.init_method,
     }
 
     return BlockBasedAutoencoder(**autoencoder_params)
@@ -472,27 +479,27 @@ def create_mae_from_config(config: ModelConfig) -> MaskedAutoencoder:
     # Create mask generator
     mae_config = config.mae_config or {}
     mask_generator = MaskGenerator(
-        mask_ratio=mae_config.get('mask_ratio', 0.75),
-        patch_size=mae_config.get('patch_size', (8, 8)),
-        min_mask_size=mae_config.get('min_mask_size', 1),
-        max_mask_size=mae_config.get('max_mask_size', None)
+        mask_ratio=mae_config.get("mask_ratio", 0.75),
+        patch_size=mae_config.get("patch_size", (8, 8)),
+        min_mask_size=mae_config.get("min_mask_size", 1),
+        max_mask_size=mae_config.get("max_mask_size", None),
     )
 
     # Create MAE
     mae = MaskedAutoencoder(
         autoencoder=autoencoder,
         mask_generator=mask_generator,
-        mask_token_value=mae_config.get('mask_token_value', 0.0)
+        mask_token_value=mae_config.get("mask_token_value", 0.0),
     )
 
     return mae
 
 
 def save_model_config(
-        model: Union[BlockBasedAutoencoder, MaskedAutoencoder],
-        filepath: Union[str, Path],
-        format: str = 'yaml',
-        include_metadata: bool = True
+    model: Union[BlockBasedAutoencoder, MaskedAutoencoder],
+    filepath: Union[str, Path],
+    format: str = "yaml",
+    include_metadata: bool = True,
 ) -> None:
     """Save model configuration to file.
 
@@ -509,25 +516,21 @@ def save_model_config(
     """
     if isinstance(model, MaskedAutoencoder):
         config_dict = model.get_config()
-        model_type = 'mae'
+        model_type = "mae"
 
         # Restructure for ModelConfig format
-        autoencoder_config = config_dict['autoencoder_config']
-        mae_params = {k: v for k, v in config_dict.items()
-                      if k != 'autoencoder_config'}
+        autoencoder_config = config_dict["autoencoder_config"]
+        mae_params = {
+            k: v for k, v in config_dict.items() if k != "autoencoder_config"
+        }
 
         config = ModelConfig(
-            model_type=model_type,
-            mae_config=mae_params,
-            **autoencoder_config
+            model_type=model_type, mae_config=mae_params, **autoencoder_config
         )
 
     elif isinstance(model, BlockBasedAutoencoder):
         config_dict = model.get_config()
-        config = ModelConfig(
-            model_type='autoencoder',
-            **config_dict
-        )
+        config = ModelConfig(model_type="autoencoder", **config_dict)
 
     else:
         raise TypeError(f"Unsupported model type: {type(model)}")
@@ -535,11 +538,14 @@ def save_model_config(
     # Add metadata if requested
     if include_metadata:
         import datetime
-        config.metadata.update({
-            'saved_at': datetime.datetime.now().isoformat(),
-            'model_class': model.__class__.__name__,
-            'parameter_count': getattr(model, 'parameter_count', None)
-        })
+
+        config.metadata.update(
+            {
+                "saved_at": datetime.datetime.now().isoformat(),
+                "model_class": model.__class__.__name__,
+                "parameter_count": getattr(model, "parameter_count", None),
+            }
+        )
 
     config.save(filepath, format)
 
@@ -560,8 +566,9 @@ def load_model_config(filepath: Union[str, Path]) -> ModelConfig:
     return ModelConfig.load(filepath)
 
 
-def create_model_from_config_file(filepath: Union[str, Path]) -> Union[
-    BlockBasedAutoencoder, MaskedAutoencoder]:
+def create_model_from_config_file(
+    filepath: Union[str, Path],
+) -> Union[BlockBasedAutoencoder, MaskedAutoencoder]:
     """Create model from configuration file.
 
     Parameters
@@ -576,9 +583,9 @@ def create_model_from_config_file(filepath: Union[str, Path]) -> Union[
     """
     config = load_model_config(filepath)
 
-    if config.model_type == 'autoencoder':
+    if config.model_type == "autoencoder":
         return create_autoencoder_from_config(config)
-    elif config.model_type == 'mae':
+    elif config.model_type == "mae":
         return create_mae_from_config(config)
     else:
         raise ValueError(f"Unknown model_type: {config.model_type}")

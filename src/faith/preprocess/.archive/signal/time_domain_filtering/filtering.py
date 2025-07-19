@@ -20,6 +20,7 @@ Window functions
     window_bandwidth
     get_window
 """
+
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -29,9 +30,14 @@ from scipy import signal
 __all__ = ["lfilter", "filtfilt"]
 
 
-def lfilter(y: np.ndarray, *, b: ArrayLike, a: Optional[ArrayLike] = None,
-            zi: Optional[ArrayLike] = None, return_zf: bool = False) \
-        -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+def lfilter(
+    y: np.ndarray,
+    *,
+    b: ArrayLike,
+    a: Optional[ArrayLike] = None,
+    zi: Optional[ArrayLike] = None,
+    return_zf: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """
     Filter a signal with a FIR or an IIR digital filter:
 
@@ -90,8 +96,9 @@ def lfilter(y: np.ndarray, *, b: ArrayLike, a: Optional[ArrayLike] = None,
     return y_out
 
 
-def filtfilt(y: np.ndarray, *, b: ArrayLike, a: Optional[ArrayLike] = None) \
-        -> np.ndarray:
+def filtfilt(
+    y: np.ndarray, *, b: ArrayLike, a: Optional[ArrayLike] = None
+) -> np.ndarray:
     """
     Filter a signal with a FIR or IIR digital filter forward and backward.
 

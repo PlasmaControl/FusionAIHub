@@ -5,7 +5,6 @@ from typing import Any
 try:
     from ray import tune
 
-
     RAY_AVAILABLE = True
 except ImportError:
     RAY_AVAILABLE = False
@@ -16,9 +15,9 @@ class SearchSpaces:
 
     @staticmethod
     def basic_autoencoder(
-            learning_rate_range: tuple[float, float] = (1e-5, 1e-2),
-            weight_decay_range: tuple[float, float] = (1e-6, 1e-3),
-            activation_choices: list[str] = None
+        learning_rate_range: tuple[float, float] = (1e-5, 1e-2),
+        weight_decay_range: tuple[float, float] = (1e-6, 1e-3),
+        activation_choices: list[str] = None,
     ) -> dict[str, Any]:
         """Basic autoencoder search space.
 
@@ -47,14 +46,14 @@ class SearchSpaces:
             "weight_decay": tune.loguniform(*weight_decay_range),
             "activation": tune.choice(activation_choices),
             "scheduler_type": tune.choice(["cosine", "linear"]),
-            "warmup_epochs": tune.choice([0, 3, 5, 10])
+            "warmup_epochs": tune.choice([0, 3, 5, 10]),
         }
 
     @staticmethod
     def block_based_autoencoder(
-            learning_rate_range: tuple[float, float] = (1e-5, 1e-2),
-            dropout_range: tuple[float, float] = (0.0, 0.5),
-            num_blocks_range: tuple[int, int] = (2, 6)
+        learning_rate_range: tuple[float, float] = (1e-5, 1e-2),
+        dropout_range: tuple[float, float] = (0.0, 0.5),
+        num_blocks_range: tuple[int, int] = (2, 6),
     ) -> dict[str, Any]:
         """Search space for BlockBasedAutoencoder architecture.
 
@@ -80,11 +79,9 @@ class SearchSpaces:
             "learning_rate": tune.loguniform(*learning_rate_range),
             "weight_decay": tune.loguniform(1e-6, 1e-3),
             "scheduler_type": tune.choice(["cosine", "linear", "none"]),
-
             # Model architecture
             "activation": tune.choice(["relu", "gelu", "swish", "leaky_relu"]),
             "dropout": tune.uniform(*dropout_range),
-
             # Block configuration (for custom block_configs)
             "base_channels": tune.choice([32, 64, 128]),
             "channel_multiplier": tune.choice([1.5, 2.0, 2.5]),
@@ -93,9 +90,9 @@ class SearchSpaces:
 
     @staticmethod
     def quick_search(
-            param_name: str,
-            param_choices: list[Any],
-            base_config: dict[str, Any] = None
+        param_name: str,
+        param_choices: list[Any],
+        base_config: dict[str, Any] = None,
     ) -> dict[str, Any]:
         """Quick search space for testing single parameters.
 
@@ -126,9 +123,9 @@ class SearchSpaces:
 
     @staticmethod
     def regularization_focused(
-            base_lr: float = 1e-4,
-            dropout_range: tuple[float, float] = (0.0, 0.5),
-            weight_decay_range: tuple[float, float] = (1e-6, 1e-2)
+        base_lr: float = 1e-4,
+        dropout_range: tuple[float, float] = (0.0, 0.5),
+        weight_decay_range: tuple[float, float] = (1e-6, 1e-2),
     ) -> dict[str, Any]:
         """Search space focused on regularization parameters.
 
@@ -153,11 +150,9 @@ class SearchSpaces:
             "learning_rate": base_lr,  # Fixed
             "weight_decay": tune.loguniform(*weight_decay_range),
             "dropout": tune.uniform(*dropout_range),
-
             # Regularization techniques
             "label_smoothing": tune.uniform(0.0, 0.2),
             "gradient_clip_val": tune.choice([0.5, 1.0, 2.0, None]),
-
             # Data augmentation (if applicable)
             "noise_factor": tune.uniform(0.0, 0.1),
             "mixup_alpha": tune.uniform(0.0, 0.4),
@@ -165,9 +160,9 @@ class SearchSpaces:
 
     @staticmethod
     def architecture_search(
-            learning_rate: float = 1e-4,
-            layer_choices: list[int] = None,
-            width_choices: list[int] = None
+        learning_rate: float = 1e-4,
+        layer_choices: list[int] = None,
+        width_choices: list[int] = None,
     ) -> dict[str, Any]:
         """Search space focused on architecture parameters.
 
@@ -196,16 +191,13 @@ class SearchSpaces:
         return {
             "learning_rate": learning_rate,  # Fixed
             "weight_decay": 1e-5,  # Fixed
-
             # Architecture parameters
             "num_layers": tune.choice(layer_choices),
             "bottleneck_dim": tune.choice([16, 32, 64, 128]),
-
             # Activation and normalization
             "activation": tune.choice(["relu", "gelu", "swish", "leaky_relu"]),
             "use_batch_norm": tune.choice([True, False]),
             "use_layer_norm": tune.choice([True, False]),
-
             # Skip connections
             "use_skip_connections": tune.choice([True, False]),
             "skip_type": tune.choice(["add", "concat"]),
@@ -223,12 +215,8 @@ class CustomSearchSpace:
         self.space = {}
 
     def add_continuous(
-            self,
-            name: str,
-            low: float,
-            high: float,
-            log_scale: bool = False
-    ) -> 'CustomSearchSpace':
+        self, name: str, low: float, high: float, log_scale: bool = False
+    ) -> "CustomSearchSpace":
         """Add continuous parameter.
 
         Parameters
@@ -253,8 +241,9 @@ class CustomSearchSpace:
             self.space[name] = tune.uniform(low, high)
         return self
 
-    def add_discrete(self, name: str, choices: list[Any]) \
-            -> 'CustomSearchSpace':
+    def add_discrete(
+        self, name: str, choices: list[Any]
+    ) -> "CustomSearchSpace":
         """Add discrete parameter.
 
         Parameters
@@ -272,8 +261,9 @@ class CustomSearchSpace:
         self.space[name] = tune.choice(choices)
         return self
 
-    def add_integer(self, name: str, low: int,
-                    high: int) -> 'CustomSearchSpace':
+    def add_integer(
+        self, name: str, low: int, high: int
+    ) -> "CustomSearchSpace":
         """Add integer parameter.
 
         Parameters
@@ -293,7 +283,7 @@ class CustomSearchSpace:
         self.space[name] = tune.randint(low, high + 1)
         return self
 
-    def add_fixed(self, name: str, value: Any) -> 'CustomSearchSpace':
+    def add_fixed(self, name: str, value: Any) -> "CustomSearchSpace":
         """Add fixed parameter.
 
         Parameters
@@ -354,6 +344,7 @@ def get_search_space(name: str, **kwargs) -> dict[str, Any]:
     if name not in spaces:
         available = ", ".join(spaces.keys())
         raise ValueError(
-            f"Unknown search space '{name}'. Available: {available}")
+            f"Unknown search space '{name}'. Available: {available}"
+        )
 
     return spaces[name](**kwargs)

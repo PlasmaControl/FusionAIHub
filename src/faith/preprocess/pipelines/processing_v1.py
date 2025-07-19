@@ -46,7 +46,7 @@ def pipeline(
 ) -> None:
     """
     Process a single shot through the complete data preparation pipeline accounting transformations.
-    
+
     This function orchestrates the complete processing workflow for a shot:
     1. Determines plasma running time
     2. Extracts and aligns all configured signals to be transformed
@@ -54,7 +54,7 @@ def pipeline(
     4. Combines all signals into a unified dataframe
     5. Splits into samples
     6. Transforms and saves the processed samples using STFT transformations.
-    
+
     Args:
         shot: Shot number to process
         cfg: Configuration dictionary
@@ -74,16 +74,20 @@ def pipeline(
             start_time=cfg["start_time"],
             end_time=cfg["end_time"],
         )
-        logger.info(f"Running time for shot {shot_number}: {start_time} to {end_time}")
+        logger.info(
+            f"Running time for shot {shot_number}: {start_time} to {end_time}"
+        )
     except Exception as e:
-        logger.error(f"Error: Could not determine running time for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not determine running time for shot {shot_number}: {e}"
+        )
         return
 
     # Extract all signals
     try:
         dfs = []
         missing_signals = []
-        for signal in cfg['signal'].items():
+        for signal in cfg["signal"].items():
             try:
                 df = extract_signal(
                     shot_number=shot_number,
@@ -104,19 +108,23 @@ def pipeline(
                 )
                 dfs.append(df)
             except Exception:
-                for channel in range(int(signal[1]['expected_channels'])):
-                    missing_signals.append((signal[1]['abbr'], channel))
+                for channel in range(int(signal[1]["expected_channels"])):
+                    missing_signals.append((signal[1]["abbr"], channel))
     except Exception as e:
-        logger.error(f"Error: Could not extract signals for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not extract signals for shot {shot_number}: {e}"
+        )
         raise e
 
     # Create main aligned dataframe (important since interpolated signals
     # could have alignment off)
     try:
         # TODO: if df is fixed to same length, then join without inner
-        df = pd.concat(dfs, axis=1, join='inner')
+        df = pd.concat(dfs, axis=1, join="inner")
     except Exception as e:
-        logger.error(f"Error: Could not concatenate dataframes for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not concatenate dataframes for shot {shot_number}: {e}"
+        )
         raise e
 
     # Add missing signals
@@ -126,11 +134,13 @@ def pipeline(
                 df[f"{signal_abbr}_{channel}"] = np.nan
                 df[f"{signal_abbr}_{channel}_state"] = False
         except Exception as e:
-            logger.error(f"Error: Could not add missing signals for shot {shot_number}: {e}")
+            logger.error(
+                f"Error: Could not add missing signals for shot {shot_number}: {e}"
+            )
             raise e
 
     # Add time column
-    df['time_ms'] = np.linspace(start_time, end_time, len(df))
+    df["time_ms"] = np.linspace(start_time, end_time, len(df))
 
     # Split into samples
     # TODO: rename this to slice_windows
@@ -143,7 +153,9 @@ def pipeline(
             fs_khz=cfg["fs_khz"],
         )
     except Exception as e:
-        logger.error(f"Error: Could not split samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not split samples for shot {shot_number}: {e}"
+        )
         raise e
 
     # Remove empty samples
@@ -151,7 +163,9 @@ def pipeline(
     try:
         samples = remove_empty_samples(samples)
     except Exception as e:
-        logger.error(f"Error: Could not remove empty samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not remove empty samples for shot {shot_number}: {e}"
+        )
         raise e
 
     # If no transform function is provided, save the samples as is
@@ -160,26 +174,34 @@ def pipeline(
             for sample in samples:
                 transformed_samples = {}
                 for key, value in sample.items():
-                    for signal in cfg['signal'].items():
-                        abbr = signal[1]['abbr']
+                    for signal in cfg["signal"].items():
+                        abbr = signal[1]["abbr"]
                         cols = [col for col in value.columns if abbr in col]
                         transformed_samples[abbr] = identity_transform(
-                            x=value[cols].to_numpy().T)
-                    transformed_samples['time_ms'] = identity_transform(
-                        x=np.array([value['time_ms'].to_numpy().T]))
+                            x=value[cols].to_numpy().T
+                        )
+                    transformed_samples["time_ms"] = identity_transform(
+                        x=np.array([value["time_ms"].to_numpy().T])
+                    )
                     save_sample(transformed_samples, out_dir, key)
             return
     except Exception as e:
-        logger.error(f"Error: Could not save samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not save samples for shot {shot_number}: {e}"
+        )
         raise e
 
     # Get the first transformed sample to determine STFT dimensions
     try:
         first_arr = np.array([list(samples[0].values())[0].iloc[:, 0].values])
         transform_shape = stft_transform(x=first_arr).shape
-        logger.info(f"Using {first_arr.shape} as reference for STFT dimensions: {transform_shape}")
+        logger.info(
+            f"Using {first_arr.shape} as reference for STFT dimensions: {transform_shape}"
+        )
     except Exception as e:
-        logger.error(f"Error: Could not get first transformed sample for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not get first transformed sample for shot {shot_number}: {e}"
+        )
         raise e
 
     # Transform and save samples
@@ -187,10 +209,10 @@ def pipeline(
         for sample in samples:
             transformed_samples = {}
             for key, value in sample.items():
-                for signal in cfg['signal'].items():
-                    abbr = signal[1]['abbr']
+                for signal in cfg["signal"].items():
+                    abbr = signal[1]["abbr"]
                     cols = [col for col in value.columns if abbr in col]
-                    if signal[1]['make_stft']:
+                    if signal[1]["make_stft"]:
                         transformed_samples[abbr] = stft_transform(
                             x=value[cols].to_numpy().T,
                             n_fft=cfg["stft"]["n_fft"],
@@ -201,13 +223,15 @@ def pipeline(
                             x=value[cols].to_numpy().T,
                             ref_shape=transform_shape,
                         )
-                    transformed_samples['time_ms'] = resample_linear_transform(
-                        x=np.array([value['time_ms'].to_numpy().T]),
+                    transformed_samples["time_ms"] = resample_linear_transform(
+                        x=np.array([value["time_ms"].to_numpy().T]),
                         ref_shape=transform_shape,
                     )
                 save_sample(transformed_samples, out_dir, key)
     except Exception as e:
-        logger.error(f"Error: Could not transform samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not transform samples for shot {shot_number}: {e}"
+        )
         raise e
 
     return

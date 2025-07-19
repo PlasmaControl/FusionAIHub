@@ -3,6 +3,7 @@
 This module implements the EncoderBlock and BlockBasedEncoder classes that
 inherit from the base classes, following established patterns and interfaces.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -77,16 +78,16 @@ class EncoderBlock1d(nn.Module):
     """
 
     def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            kernel_size: int | tuple[int, int] = 3,
-            stride: int | tuple[int, int] = 1,
-            bias: bool = True,
-            activation_name: str = 'relu',
-            weight_init_method: str = 'kaiming',
-            pool_size: tuple[int, int] = (1, 2),
-            dropout: float = 0.3,
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int] = 3,
+        stride: int | tuple[int, int] = 1,
+        bias: bool = True,
+        activation_name: str = "relu",
+        weight_init_method: str = "kaiming",
+        pool_size: tuple[int, int] = (1, 2),
+        dropout: float = 0.3,
     ) -> None:
         """Initialize EncoderBlock."""
         super().__init__()
@@ -99,36 +100,44 @@ class EncoderBlock1d(nn.Module):
                 stride=stride,
                 bias=bias,
                 activation_name=activation_name,
-                weight_init_method=weight_init_method
+                weight_init_method=weight_init_method,
             ),
             nn.Dropout(p=dropout),
-            nn.MaxPool1d(kernel_size=pool_size, stride=pool_size)
+            nn.MaxPool1d(kernel_size=pool_size, stride=pool_size),
         )
 
         # Store individual components for introspection
         self.residual_block = self.encoder_block[0]
         self.dropout = self.encoder_block[1]
         self.pool = self.encoder_block[2]
-        self.pool_size = pool_size if isinstance(pool_size, tuple) else (1, pool_size)
+        self.pool_size = (
+            pool_size if isinstance(pool_size, tuple) else (1, pool_size)
+        )
 
     def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary for this block."""
         config = super().get_config()
-        config.update({
-            'pool_size': self.pool_size,
-            'dropout': self.dropout_prob,
-            'use_batch_norm': self.use_batch_norm,
-            'activation': self.activation_name,
-            'residual_init_method': self.residual_init_method,
-            'stride': getattr(self.residual_block, 'stride', 1),
-        })
+        config.update(
+            {
+                "pool_size": self.pool_size,
+                "dropout": self.dropout_prob,
+                "use_batch_norm": self.use_batch_norm,
+                "activation": self.activation_name,
+                "residual_init_method": self.residual_init_method,
+                "stride": getattr(self.residual_block, "stride", 1),
+            }
+        )
         return config
 
-    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
+    def get_output_shape(
+        self, input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
 
         # Get shape after residual block
-        residual_output_shape = (self.residual_block.get_output_shape(input_shape))
+        residual_output_shape = self.residual_block.get_output_shape(
+            input_shape
+        )
 
         # Apply pooling
         batch_size, channels, height, width = residual_output_shape
@@ -198,7 +207,7 @@ class BlockBasedEncoder(SequentialBlock):
         block_configs: list[dict[str, Any]],
         kernel_size: Union[int, tuple[int, int]] = 3,
         bias: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         """Initialize BlockBasedEncoder."""
 
@@ -218,8 +227,10 @@ class BlockBasedEncoder(SequentialBlock):
                     f"Block {i} missing required 'out_channels' key"
                 )
             if config["out_channels"] <= 0:
-                raise ValueError(f"out_channels must be positive, "
-                                 f"got {config['out_channels']} in block {i}")
+                raise ValueError(
+                    f"out_channels must be positive, "
+                    f"got {config['out_channels']} in block {i}"
+                )
 
         self.block_configs = block_configs
 
@@ -299,8 +310,9 @@ class BlockBasedEncoder(SequentialBlock):
 
         return feature_maps
 
-    def get_output_shape(self, input_shape: tuple[int, ...]) \
-            -> tuple[int, ...]:
+    def get_output_shape(
+        self, input_shape: tuple[int, ...]
+    ) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
         shape = input_shape
         for block in self.operations:
@@ -342,8 +354,11 @@ class BlockBasedEncoder(SequentialBlock):
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedEncoder."""
-        channel_progression = ' → '.join(
-            map(str, self.get_channel_progression()))
-        return (f"BlockBasedEncoder("
-                f"blocks={len(self.operations)}, "
-                f"channels={channel_progression})")
+        channel_progression = " → ".join(
+            map(str, self.get_channel_progression())
+        )
+        return (
+            f"BlockBasedEncoder("
+            f"blocks={len(self.operations)}, "
+            f"channels={channel_progression})"
+        )

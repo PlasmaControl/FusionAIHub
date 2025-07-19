@@ -59,12 +59,10 @@ from .utils import (
 __all__ = [
     # Core models
     "BlockBasedAutoencoder",
-
     # Masked autoencoder components
     "MaskedAutoencoder",
     "MaskGenerator",
     "mae_loss",
-
     # Configuration utilities
     "create_block_autoencoder",
     "get_preset_config",
@@ -72,7 +70,6 @@ __all__ = [
     "load_model_config",
     "ModelConfig",
     "PRESET_CONFIGS",
-
     # Utility functions
     "create_mae_model",
     "get_model_info",

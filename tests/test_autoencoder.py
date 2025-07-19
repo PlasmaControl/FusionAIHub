@@ -50,14 +50,12 @@ print(f"Decoder feature maps: {len(feature_maps['decoder'])}")
 
 # Test custom configuration
 custom_configs = [
-    {'out_channels': 64, 'pool_size': (1, 2), 'dropout': 0.2},
-    {'out_channels': 128, 'pool_size': (1, 4), 'dropout': 0.3},
+    {"out_channels": 64, "pool_size": (1, 2), "dropout": 0.2},
+    {"out_channels": 128, "pool_size": (1, 4), "dropout": 0.3},
 ]
 
 custom_autoencoder = BlockBasedAutoencoder(
-    input_channels=80,
-    block_configs=custom_configs,
-    activation='gelu'
+    input_channels=80, block_configs=custom_configs, activation="gelu"
 )
 
 x_custom = torch.randn(1, 80, 100, 128)

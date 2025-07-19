@@ -1,7 +1,9 @@
 import numpy as np
 
 
-def cut_time(t: np.ndarray, data: np.ndarray, t_min: float, t_max: float) -> Tuple[np.ndarray, np.ndarray]:
+def cut_time(
+    t: np.ndarray, data: np.ndarray, t_min: float, t_max: float
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Cut the time-series data between two specified times.
 
@@ -25,6 +27,7 @@ def cut_time(t: np.ndarray, data: np.ndarray, t_min: float, t_max: float) -> Tup
     t_indx_max = np.argmin(abs(np.array(t) - t_max))
 
     return t[t_indx_min:t_indx_max], data[..., t_indx_min:t_indx_max]
+
 
 # reference
 # @staticmethod

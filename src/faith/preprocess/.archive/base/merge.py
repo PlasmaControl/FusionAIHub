@@ -1,4 +1,3 @@
-
 import os
 from typing import Any, Union
 
@@ -7,7 +6,7 @@ def merge(
     path_1: Union[str, int, Any[os.Pathlike]],
     path_2: Union[str, int, Any[os.Pathlike]],
     path_out: Union[str, int, Any[os.Pathlike]],
-    ) -> None:
+) -> None:
     """_summary_
 
     Parameters
@@ -26,6 +25,7 @@ def merge(
     """
 
     return None
+
 
 # reference
 # def hdf5_generator(discharge_list, h5_profiles,

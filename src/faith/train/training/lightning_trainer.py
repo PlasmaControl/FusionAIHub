@@ -18,16 +18,16 @@ class LightningTrainer(pl.LightningModule):
     """
 
     def __init__(
-            self,
-            model: torch.nn.Module,
-            learning_rate: float = 1e-4,
-            weight_decay: float = 1e-5,
-            warmup_epochs: int = 5,
-            max_epochs: int = 100,
-            loss_fn: Optional[Callable] = None,
-            scheduler_type: str = "cosine",
-            compile_model: bool = False,
-            **kwargs
+        self,
+        model: torch.nn.Module,
+        learning_rate: float = 1e-4,
+        weight_decay: float = 1e-5,
+        warmup_epochs: int = 5,
+        max_epochs: int = 100,
+        loss_fn: Optional[Callable] = None,
+        scheduler_type: str = "cosine",
+        compile_model: bool = False,
+        **kwargs,
     ) -> None:
         """Initialize the Lightning trainer.
 
@@ -58,10 +58,11 @@ class LightningTrainer(pl.LightningModule):
 
         # Validate scheduler configuration
         self._validate_scheduler_config(
-            warmup_epochs, max_epochs, scheduler_type)
+            warmup_epochs, max_epochs, scheduler_type
+        )
 
         # Save hyperparameters
-        self.save_hyperparameters(ignore=['model', 'loss_fn'])
+        self.save_hyperparameters(ignore=["model", "loss_fn"])
 
         # Model setup
         self.model = model
@@ -82,10 +83,7 @@ class LightningTrainer(pl.LightningModule):
         self.scheduler_type = scheduler_type
 
     def _validate_scheduler_config(
-            self,
-            warmup_epochs: int,
-            max_epochs: int,
-            scheduler_type: str
+        self, warmup_epochs: int, max_epochs: int, scheduler_type: str
     ) -> None:
         """Validate scheduler configuration to prevent runtime errors.
 
@@ -131,10 +129,7 @@ class LightningTrainer(pl.LightningModule):
         return self.model(x)
 
     def compute_loss(
-            self,
-            batch: Any,
-            batch_idx: int,
-            prefix: str = ""
+        self, batch: Any, batch_idx: int, prefix: str = ""
     ) -> dict[str, torch.Tensor]:
         """Compute loss for a batch.
 
@@ -157,8 +152,8 @@ class LightningTrainer(pl.LightningModule):
         # Handle different batch formats
         if isinstance(batch, dict):
             # Assume input/target are in the batch dict
-            inputs = batch.get('input', batch.get('x', batch.get('data')))
-            targets = batch.get('target', batch.get('y', inputs))
+            inputs = batch.get("input", batch.get("x", batch.get("data")))
+            targets = batch.get("target", batch.get("y", inputs))
         elif isinstance(batch, (list, tuple)) and len(batch) == 2:
             inputs, targets = batch
         else:
@@ -171,13 +166,13 @@ class LightningTrainer(pl.LightningModule):
         # Handle model outputs (could be tensor or dict)
         if isinstance(outputs, dict):
             reconstructed = outputs.get(
-                'reconstructed',
-                outputs.get('output', outputs.get('x_hat'))
+                "reconstructed", outputs.get("output", outputs.get("x_hat"))
             )
             # Extract additional outputs for logging
             additional_losses = {
-                k: v for k, v in outputs.items()
-                if k.endswith('_loss') and isinstance(v, torch.Tensor)
+                k: v
+                for k, v in outputs.items()
+                if k.endswith("_loss") and isinstance(v, torch.Tensor)
             }
         else:
             reconstructed = outputs
@@ -193,13 +188,13 @@ class LightningTrainer(pl.LightningModule):
 
         # Prepare metrics for logging
         metrics = {
-            f'{prefix}loss': total_loss,
-            f'{prefix}recon_loss': recon_loss,
+            f"{prefix}loss": total_loss,
+            f"{prefix}recon_loss": recon_loss,
         }
 
         # Add additional losses to metrics
         for loss_name, loss_value in additional_losses.items():
-            metrics[f'{prefix}{loss_name}'] = loss_value
+            metrics[f"{prefix}{loss_name}"] = loss_value
 
         return metrics
 
@@ -223,7 +218,7 @@ class LightningTrainer(pl.LightningModule):
         # Log metrics
         self.log_dict(metrics, on_step=True, on_epoch=True, prog_bar=True)
 
-        return metrics['train_loss']
+        return metrics["train_loss"]
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Validation step.
@@ -245,7 +240,7 @@ class LightningTrainer(pl.LightningModule):
         # Log metrics
         self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
 
-        return metrics['val_loss']
+        return metrics["val_loss"]
 
     def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Test step.
@@ -267,7 +262,7 @@ class LightningTrainer(pl.LightningModule):
         # Log metrics
         self.log_dict(metrics, on_step=False, on_epoch=True)
 
-        return metrics['test_loss']
+        return metrics["test_loss"]
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and learning rate scheduler.
@@ -281,7 +276,7 @@ class LightningTrainer(pl.LightningModule):
         optimizer = AdamW(
             self.model.parameters(),
             lr=self.learning_rate,
-            weight_decay=self.weight_decay
+            weight_decay=self.weight_decay,
         )
 
         if self.scheduler_type == "none":
@@ -298,29 +293,28 @@ class LightningTrainer(pl.LightningModule):
                     optimizer,
                     start_factor=0.1,
                     end_factor=1.0,
-                    total_iters=self.warmup_epochs
+                    total_iters=self.warmup_epochs,
                 )
                 cosine_scheduler = CosineAnnealingLR(
-                    optimizer,
-                    T_max=cosine_epochs
+                    optimizer, T_max=cosine_epochs
                 )
                 scheduler = SequentialLR(
                     optimizer,
                     schedulers=[warmup_scheduler, cosine_scheduler],
-                    milestones=[self.warmup_epochs]
+                    milestones=[self.warmup_epochs],
                 )
             else:
                 # Just cosine annealing without warmup
                 scheduler = CosineAnnealingLR(
                     optimizer,
-                    T_max=max(1, self.max_epochs)  # Ensure T_max > 0
+                    T_max=max(1, self.max_epochs),  # Ensure T_max > 0
                 )
         elif self.scheduler_type == "linear":
             scheduler = LinearLR(
                 optimizer,
                 start_factor=1.0,
                 end_factor=0.1,
-                total_iters=max(1, self.max_epochs)  # Ensure total_iters > 0
+                total_iters=max(1, self.max_epochs),  # Ensure total_iters > 0
             )
         else:
             raise ValueError(f"Unknown scheduler type: {self.scheduler_type}")
@@ -337,18 +331,18 @@ class LightningTrainer(pl.LightningModule):
     def on_train_epoch_end(self) -> None:
         """Called at the end of each training epoch."""
         # Log learning rate
-        current_lr = self.optimizers().param_groups[0]['lr']
-        self.log('learning_rate', current_lr, on_epoch=True)
+        current_lr = self.optimizers().param_groups[0]["lr"]
+        self.log("learning_rate", current_lr, on_epoch=True)
 
 
 class MultimodalLightningTrainer(LightningTrainer):
     """Extended trainer for multimodal models with multiple loss components."""
 
     def __init__(
-            self,
-            model: torch.nn.Module,
-            loss_weights: Optional[dict[str, float]] = None,
-            **kwargs
+        self,
+        model: torch.nn.Module,
+        loss_weights: Optional[dict[str, float]] = None,
+        **kwargs,
     ) -> None:
         """Initialize multimodal trainer.
 
@@ -365,10 +359,7 @@ class MultimodalLightningTrainer(LightningTrainer):
         self.loss_weights = loss_weights or {}
 
     def compute_loss(
-            self,
-            batch: Any,
-            batch_idx: int,
-            prefix: str = ""
+        self, batch: Any, batch_idx: int, prefix: str = ""
     ) -> dict[str, torch.Tensor]:
         """Compute multimodal loss with weighted components.
 
@@ -398,31 +389,31 @@ class MultimodalLightningTrainer(LightningTrainer):
         metrics = {}
 
         for key, value in outputs.items():
-            if key.endswith('_loss') and isinstance(value, torch.Tensor):
+            if key.endswith("_loss") and isinstance(value, torch.Tensor):
                 weight = self.loss_weights.get(key, 1.0)
                 weighted_loss = weight * value
                 total_loss += weighted_loss
 
                 # Log both weighted and unweighted losses
-                metrics[f'{prefix}{key}'] = value
-                metrics[f'{prefix}weighted_{key}'] = weighted_loss
+                metrics[f"{prefix}{key}"] = value
+                metrics[f"{prefix}weighted_{key}"] = weighted_loss
 
-        metrics[f'{prefix}loss'] = total_loss
+        metrics[f"{prefix}loss"] = total_loss
         return metrics
 
 
 def train_model(
-        model: torch.nn.Module,
-        train_dataloader,
-        val_dataloader=None,
-        max_epochs: int = 100,
-        gpus: int = 1,
-        precision: str = "16-mixed",
-        logger_type: str = "tensorboard",
-        project_name: str = "autoencoder-training",
-        experiment_name: Optional[str] = None,
-        log_dir: str = "./logs",
-        **trainer_kwargs
+    model: torch.nn.Module,
+    train_dataloader,
+    val_dataloader=None,
+    max_epochs: int = 100,
+    gpus: int = 1,
+    precision: str = "16-mixed",
+    logger_type: str = "tensorboard",
+    project_name: str = "autoencoder-training",
+    experiment_name: Optional[str] = None,
+    log_dir: str = "./logs",
+    **trainer_kwargs,
 ):
     """Convenience function to train a model with sensible defaults.
 
@@ -467,28 +458,27 @@ def train_model(
 
     # Create Lightning module
     lightning_model = LightningTrainer(
-        model=model,
-        max_epochs=max_epochs,
-        **trainer_kwargs
+        model=model, max_epochs=max_epochs, **trainer_kwargs
     )
 
     # Callbacks
     callbacks = [
         ModelCheckpoint(
-            monitor='val_loss' if val_dataloader else 'train_loss',
-            mode='min',
+            monitor="val_loss" if val_dataloader else "train_loss",
+            mode="min",
             save_top_k=1,
             filename=(
-                'best-{epoch}-{val_loss:.4f}' if val_dataloader
-                else 'best-{epoch}-{train_loss:.4f}'
-            )
+                "best-{epoch}-{val_loss:.4f}"
+                if val_dataloader
+                else "best-{epoch}-{train_loss:.4f}"
+            ),
         ),
-        LearningRateMonitor(logging_interval='epoch'),
+        LearningRateMonitor(logging_interval="epoch"),
     ]
 
     if val_dataloader:
         callbacks.append(
-            EarlyStopping(monitor='val_loss', patience=10, mode='min')
+            EarlyStopping(monitor="val_loss", patience=10, mode="min")
         )
 
     # Configure logger
@@ -496,21 +486,21 @@ def train_model(
     if logger_type == "tensorboard":
         try:
             from pytorch_lightning.loggers import TensorBoardLogger
+
             logger = TensorBoardLogger(
-                save_dir=log_dir,
-                name=project_name,
-                version=experiment_name
+                save_dir=log_dir, name=project_name, version=experiment_name
             )
         except ImportError:
-            warnings.warn("TensorBoard not available. "
-                          "Install with: pip install tensorboard")
+            warnings.warn(
+                "TensorBoard not available. "
+                "Install with: pip install tensorboard"
+            )
     elif logger_type == "csv":
         try:
             from pytorch_lightning.loggers import CSVLogger
+
             logger = CSVLogger(
-                save_dir=log_dir,
-                name=project_name,
-                version=experiment_name
+                save_dir=log_dir, name=project_name, version=experiment_name
             )
         except ImportError:
             warnings.warn("CSV logger not available.")
@@ -523,7 +513,7 @@ def train_model(
     # Trainer
     trainer = Trainer(
         max_epochs=max_epochs,
-        accelerator='gpu' if gpus > 0 else 'cpu',
+        accelerator="gpu" if gpus > 0 else "cpu",
         devices=gpus if gpus > 0 else 1,  # Use 1 CPU core when no GPU
         precision=precision,
         callbacks=callbacks,

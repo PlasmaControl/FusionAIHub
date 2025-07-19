@@ -2,9 +2,15 @@ import numpy as np
 from scipy import signal
 
 
-def resample(y: np.ndarray, *, orig_fs: float, target_fs: float,
-             resample_type: str = "scipy", scale: bool = False,
-             axis: int = -1) -> np.ndarray:
+def resample(
+    y: np.ndarray,
+    *,
+    orig_fs: float,
+    target_fs: float,
+    resample_type: str = "scipy",
+    scale: bool = False,
+    axis: int = -1,
+) -> np.ndarray:
     """
     Resample a time series from orig_fs to target_fs.
 
@@ -61,8 +67,10 @@ def resample(y: np.ndarray, *, orig_fs: float, target_fs: float,
         y_hat = signal.resample(y, n_samples, axis=axis)
     elif resample_type == "polyphase":
         if int(orig_fs) != orig_fs or int(target_fs) != target_fs:
-            raise ValueError("polyphase resampling is only supported for "
-                             "integer-valued sampling rates.")
+            raise ValueError(
+                "polyphase resampling is only supported for "
+                "integer-valued sampling rates."
+            )
 
         # For polyphase resampling, we need up- and down-sampling ratios
         # We can get those from the greatest common divisor of the rates
@@ -70,8 +78,9 @@ def resample(y: np.ndarray, *, orig_fs: float, target_fs: float,
         orig_fs = int(orig_fs)
         target_fs = int(target_fs)
         gcd = np.gcd(orig_fs, target_fs)
-        y_hat = signal.resample_poly(y, target_fs // gcd, orig_fs // gcd,
-                                     axis=axis)
+        y_hat = signal.resample_poly(
+            y, target_fs // gcd, orig_fs // gcd, axis=axis
+        )
     else:
         raise NameError("Unknown resampling type.")
 

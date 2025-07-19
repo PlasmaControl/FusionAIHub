@@ -2,127 +2,38 @@
 
 This guide covers the development setup and coding standards for this Python package.
 
+## Development Setup
+
+```bash
+# Create virtual environment
+python -m venv .venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install development dependencies
+pip install -e "."
+
+# Install pre-commit hooks
+pre-commit install
+
+# Run tests with coverage
+pytest --cov=src --cov-report=html
+
+# Run ruff linting
+ruff check .
+
+# Run ruff formatting
+ruff format .
+
+# Fix auto-fixable issues
+ruff check --fix .
+```
+
 ## Code Standards
 
 - **Line length**: 79 characters maximum
 - **Docstring format**: NumPy style
 - **Linting**: Ruff
 - **Function arguments**: Each argument on a new line for multi-argument functions
-
-## IDE Setup
-
-### PyCharm Setup
-
-#### 1. Install Ruff Plugin
-
-1. Go to **File → Settings**
-2. Navigate to **Plugins**
-3. Search for "Ruff" and install the official Ruff plugin
-4. Restart PyCharm
-
-#### 2. Configure Code Style
-
-1. Go to **File → Settings → Editor → Code Style → Python**
-2. Set **Hard wrap at: ** to `79`
-3. In the **Wrapping and Braces** tab:
-   - Set **Method declaration parameters** to "Chop down if long"
-   - Check "New line after '('" and "')' on new line"
-   - Set **Function call arguments** to "Chop down if long"
-
-#### 3. Configure Docstring Format
-
-1. Go to **File → Settings → Tools → Python Integrated Tools**
-2. Set **Docstring format** to "NumPy"
-
-#### 4. Configure Ruff
-
-1. Go to **File → Settings → Tools → Ruff**
-2. Enable **Use Ruff**
-3. Set the **Ruff executable** path (if not auto-detected)
-4. Enable **Run Ruff when files are saved**
-
-### VSCode Setup
-
-#### 1. Install Extensions
-
-Install these extensions from the VSCode marketplace:
-
-- **Ruff** (charliermarsh.ruff)
-- **Python** (ms-python.python)
-- **Python Docstring Generator** (njpwerner.autodocstring)
-
-#### 2. Configure Settings
-
-Create or update `.vscode/settings.json` in your project root:
-
-```json
-{
-  "python.defaultInterpreterPath": "./venv/bin/python",
-  "editor.rulers": [79],
-  "editor.wordWrap": "wordWrapColumn",
-  "editor.wordWrapColumn": 79,
-  
-  // Ruff configuration
-  "ruff.enable": true,
-  "ruff.organizeImports": true,
-  "ruff.fixAll": true,
-  "ruff.codeAction.fixViolation": {
-    "enable": true
-  },
-  
-  // Python formatting
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit",
-      "source.fixAll": "explicit"
-    }
-  },
-  
-  // Docstring configuration
-  "autoDocstring.docstringFormat": "numpy",
-  "autoDocstring.startOnNewLine": true,
-  "autoDocstring.includeExtendedSummary": true,
-  "autoDocstring.includeName": false,
-  
-  // Python specific settings
-  "python.formatting.provider": "none",
-  "python.linting.enabled": false,
-  "python.analysis.typeCheckingMode": "basic"
-}
-```
-
-#### 3. Configure Ruff
-
-Create `ruff.toml` in your project root:
-
-```toml
-line-length = 79
-target-version = "py38"
-
-[lint]
-select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "UP", # pyupgrade
-]
-ignore = [
-    "E501", # line too long (handled by formatter)
-]
-
-[format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
-```
-
----
 
 ## Code Examples
 

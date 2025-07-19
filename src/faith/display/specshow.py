@@ -5,7 +5,8 @@ import numpy as np
 from matplotlib.collections import QuadMesh
 
 
-def specshow(data: np.ndarray,
+def specshow(
+    data: np.ndarray,
     *,
     x_coords: Optional[np.ndarray] = None,
     y_coords: Optional[np.ndarray] = None,
@@ -19,10 +20,10 @@ def specshow(data: np.ndarray,
     fmax: Optional[float] = None,
     auto_aspect=True,
     **kwargs: Any,
-    ) -> QuadMesh:
+) -> QuadMesh:
     """
     Display a spectrogram/chromagram/cqt/etc.
-    
+
     Parameters
     ----------
     data : np.ndarray [shape=(d, n)]
@@ -53,7 +54,7 @@ def specshow(data: np.ndarray,
         Automatically set the aspect ratio of the plot to match the
         spectrogram's aspect ratio.
     kwargs : additional keyword arguments
-    
+
     Returns
     -------
     fig : matplotlib.figure.Figure
@@ -63,13 +64,18 @@ def specshow(data: np.ndarray,
     """
 
     plt.clf()
-    plt.imshow(data,aspect='auto',cmap='hot',
-                extent=[x_coords[0], x_coords[-1], y_coords[-1], y_coords[0]])
+    plt.imshow(
+        data,
+        aspect="auto",
+        cmap="hot",
+        extent=[x_coords[0], x_coords[-1], y_coords[-1], y_coords[0]],
+    )
     plt.colorbar()
-    plt.ylabel('kHz')
-    plt.xlabel('ms')
+    plt.ylabel("kHz")
+    plt.xlabel("ms")
     plt.gca().invert_yaxis()
     plt.show()
+
 
 # @staticmethod
 # def time_serie_plot(dict):

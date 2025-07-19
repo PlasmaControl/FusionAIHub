@@ -3,17 +3,22 @@ from typing import Any, Literal, Optional, Tuple, Union
 import numpy as np
 from scipy import signal
 
-__all__ = ['spectrogram', 'stft']
+__all__ = ["spectrogram", "stft"]
 
 
-def spectrogram(y: np.ndarray, *, fs: float = 48000, n_fft: int = 2048,
-                hop_length: int = 256, win_length: int = 2048,
-                window: Union[str, float, Tuple[str, Any, ...]] = "hamming",
-                scaling: Literal["magnitude", "psd"] = "magnitude",
-                detrend: Literal["linear", "constant"] = "constant",
-                pad_mode: Literal["zeros", "edge", "even", "odd"] = 'zeros',
-                return_t_f: bool = False) \
-        -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
+def spectrogram(
+    y: np.ndarray,
+    *,
+    fs: float = 48000,
+    n_fft: int = 2048,
+    hop_length: int = 256,
+    win_length: int = 2048,
+    window: Union[str, float, Tuple[str, Any, ...]] = "hamming",
+    scaling: Literal["magnitude", "psd"] = "magnitude",
+    detrend: Literal["linear", "constant"] = "constant",
+    pad_mode: Literal["zeros", "edge", "even", "odd"] = "zeros",
+    return_t_f: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
     """
     Spectrogram.
 
@@ -100,9 +105,16 @@ def spectrogram(y: np.ndarray, *, fs: float = 48000, n_fft: int = 2048,
     """
     fft_window = signal.get_window(window, win_length, fftbins=True)
 
-    sft = signal.ShortTimeFFT(fft_window, hop_length, fs, fft_mode='onesided',
-                              mfft=n_fft, dual_win=None, scale_to=scaling,
-                              phase_shift=None)
+    sft = signal.ShortTimeFFT(
+        fft_window,
+        hop_length,
+        fs,
+        fft_mode="onesided",
+        mfft=n_fft,
+        dual_win=None,
+        scale_to=scaling,
+        phase_shift=None,
+    )
 
     t = sft.t(y.shape[0])
     f = sft.f
@@ -114,13 +126,18 @@ def spectrogram(y: np.ndarray, *, fs: float = 48000, n_fft: int = 2048,
     return spectrogram_matrix
 
 
-def stft(y: np.ndarray, *, fs: float = 48000, n_fft: int = 2048,
-         hop_length: Optional[int] = None, win_length: Optional[int] = None,
-         window: Union[str, float, Tuple[str, Any, ...]] = "hamming",
-         scaling: Literal["magnitude", "psd"] = "magnitude",
-         pad_mode: Literal["zeros", "edge", "even", "odd"] = 'zeros',
-         return_t_f: bool = False) \
-        -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
+def stft(
+    y: np.ndarray,
+    *,
+    fs: float = 48000,
+    n_fft: int = 2048,
+    hop_length: Optional[int] = None,
+    win_length: Optional[int] = None,
+    window: Union[str, float, Tuple[str, Any, ...]] = "hamming",
+    scaling: Literal["magnitude", "psd"] = "magnitude",
+    pad_mode: Literal["zeros", "edge", "even", "odd"] = "zeros",
+    return_t_f: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
     """
     STFT.
 
@@ -202,9 +219,16 @@ def stft(y: np.ndarray, *, fs: float = 48000, n_fft: int = 2048,
     """
     fft_window = signal.get_window(window, win_length, fftbins=True)
 
-    sft = signal.ShortTimeFFT(fft_window, hop_length, fs, fft_mode='onesided',
-                              mfft=n_fft, dual_win=None, scale_to=scaling,
-                              phase_shift=None)
+    sft = signal.ShortTimeFFT(
+        fft_window,
+        hop_length,
+        fs,
+        fft_mode="onesided",
+        mfft=n_fft,
+        dual_win=None,
+        scale_to=scaling,
+        phase_shift=None,
+    )
 
     t = sft.t(y.shape[0])
     f = sft.f

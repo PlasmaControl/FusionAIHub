@@ -8,6 +8,7 @@ Preemphasis
     preemphasis
     deemphasis
 """
+
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -15,12 +16,16 @@ from numpy.typing import ArrayLike
 
 from .filtering import lfilter
 
-__all__ = ['preemphasis', 'deemphasis']
+__all__ = ["preemphasis", "deemphasis"]
 
 
-def preemphasis(y: np.ndarray, *, coef: float = 0.97,
-                zi: Optional[ArrayLike] = None, return_zf: bool = False) \
-        -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+def preemphasis(
+    y: np.ndarray,
+    *,
+    coef: float = 0.97,
+    zi: Optional[ArrayLike] = None,
+    return_zf: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """
     Pre-emphasis a signal with a first-order differencing filter:
 
@@ -72,9 +77,13 @@ def preemphasis(y: np.ndarray, *, coef: float = 0.97,
     return y_out
 
 
-def deemphasis(y: np.ndarray, *, coef: float = 0.97,
-               zi: Optional[ArrayLike] = None, return_zf: bool = False) \
-        -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+def deemphasis(
+    y: np.ndarray,
+    *,
+    coef: float = 0.97,
+    zi: Optional[ArrayLike] = None,
+    return_zf: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """
     De-emphasize an audio signal with the inverse operation of preemphasis.
 
@@ -125,9 +134,11 @@ def deemphasis(y: np.ndarray, *, coef: float = 0.97,
         y_out, zf = lfilter(y, b=b, zi=zi, return_zf=True)
 
         # factor in the linear extrapolation
-        y_out -= (((2 - coef) * y[..., 0:1] - y[..., 1:2]) / (3 - coef)
-                  * (coef ** np.arange(y.shape[-1]))
-                  )
+        y_out -= (
+            ((2 - coef) * y[..., 0:1] - y[..., 1:2])
+            / (3 - coef)
+            * (coef ** np.arange(y.shape[-1]))
+        )
 
     else:
         y_out, zf = lfilter(y, b=b, zi=zi, return_zf=True)

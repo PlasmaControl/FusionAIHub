@@ -102,20 +102,23 @@ class TestEncoderBlockIntegration:
         ]
 
         for pool_size, input_shape, expected_output in test_cases:
-            block = EncoderBlock(in_channels=2, out_channels=4,
-                                 pool_size=pool_size)
+            block = EncoderBlock(
+                in_channels=2, out_channels=4, pool_size=pool_size
+            )
 
             output_shape = block.get_output_shape(input_shape)
-            assert output_shape == expected_output, \
+            assert output_shape == expected_output, (
                 f"Failed for pool_size {pool_size}"
+            )
 
     def test_activation_functions_integration(self):
         """Test different activation functions with real ResidualBlock."""
         activations = ["relu", "gelu", "tanh", "sigmoid"]
 
         for activation in activations:
-            block = EncoderBlock(in_channels=4, out_channels=8,
-                                 activation=activation)
+            block = EncoderBlock(
+                in_channels=4, out_channels=8, activation=activation
+            )
 
             # Test that activation is stored correctly
             assert block.activation_name == activation
@@ -133,8 +136,9 @@ class TestEncoderBlockIntegration:
     def test_batch_norm_integration(self):
         """Test batch normalization configurations."""
         # With batch norm
-        block_bn = EncoderBlock(in_channels=32, out_channels=64,
-                                use_batch_norm=True)
+        block_bn = EncoderBlock(
+            in_channels=32, out_channels=64, use_batch_norm=True
+        )
 
         # Without batch norm
         block_no_bn = EncoderBlock(
@@ -170,9 +174,11 @@ class TestEncoderBlockIntegration:
 
         # Outputs should be different due to dropout randomness
         assert not torch.allclose(
-            outputs_train[0], outputs_train[1], atol=1e-6)
+            outputs_train[0], outputs_train[1], atol=1e-6
+        )
         assert not torch.allclose(
-            outputs_train[1], outputs_train[2], atol=1e-6)
+            outputs_train[1], outputs_train[2], atol=1e-6
+        )
 
         # Evaluation mode - should be deterministic
         block.eval()
@@ -267,8 +273,9 @@ class TestEncoderBlockIntegration:
     @pytest.mark.parametrize("dropout_val", [0.0, 0.3, 0.7, 1.0])
     def test_dropout_values_integration(self, dropout_val):
         """Test various dropout values."""
-        block = EncoderBlock(in_channels=16, out_channels=32,
-                             dropout=dropout_val)
+        block = EncoderBlock(
+            in_channels=16, out_channels=32, dropout=dropout_val
+        )
 
         assert block.dropout_prob == dropout_val
         assert block.dropout.p == dropout_val
@@ -347,20 +354,24 @@ class TestEncoderBlockErrorHandling:
         """Test parameter validation with real ResidualBlock."""
         # Test invalid dropout
         with pytest.raises(
-                ValueError, match="Dropout must be between 0.0 and 1.0"):
+            ValueError, match="Dropout must be between 0.0 and 1.0"
+        ):
             EncoderBlock(in_channels=4, out_channels=8, dropout=-0.1)
 
         with pytest.raises(
-                ValueError, match="Dropout must be between 0.0 and 1.0"):
+            ValueError, match="Dropout must be between 0.0 and 1.0"
+        ):
             EncoderBlock(in_channels=4, out_channels=8, dropout=1.1)
 
         # Test invalid pool_size
         with pytest.raises(
-                ValueError, match="pool_size must be a tuple of length 2"):
+            ValueError, match="pool_size must be a tuple of length 2"
+        ):
             EncoderBlock(in_channels=4, out_channels=8, pool_size=(1,))
 
         with pytest.raises(
-                ValueError, match="pool_size must be a tuple of length 2"):
+            ValueError, match="pool_size must be a tuple of length 2"
+        ):
             EncoderBlock(in_channels=4, out_channels=8, pool_size=(1, 2, 3))
 
     def test_incompatible_tensor_shapes(self):

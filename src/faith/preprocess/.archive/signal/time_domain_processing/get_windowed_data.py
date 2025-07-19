@@ -1,7 +1,9 @@
 import pandas as pd
 
 
-def get_window(df: pd.DataFrame, center_index: int, window_size: int = 5) -> pd.DataFrame:
+def get_window(
+    df: pd.DataFrame, center_index: int, window_size: int = 5
+) -> pd.DataFrame:
     """
     Get windowed data.
 
@@ -21,9 +23,10 @@ def get_window(df: pd.DataFrame, center_index: int, window_size: int = 5) -> pd.
     """
     start = max(center_index - window_size, 0)
     end = min(center_index + window_size + 1, len(df))
-    windowed = df.iloc[start:end].drop(columns=['xdata'])
+    windowed = df.iloc[start:end].drop(columns=["xdata"])
 
     return windowed
+
 
 # Function to get windowed data
 # @staticmethod
