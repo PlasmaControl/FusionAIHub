@@ -83,6 +83,8 @@ def prepare_dataset(
     
     Args:
         cfg: Configuration dictionary loaded from YAML
+
+    # TODO: Add option to check if the dataset is mid-way through processing, and if so, continue from there.
     """
     # Log the configuration
     log_config(cfg)
