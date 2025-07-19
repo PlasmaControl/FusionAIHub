@@ -1,6 +1,4 @@
 import data_prep_obj as data_prep
-import matplotlib.pyplot as plt
-import numpy as np 
 
 #************start of user block************
 discharge=174823
@@ -9,7 +7,7 @@ suffix_list=['ts','ece_s']
 #setting for finding flat top
 Ip_window_size=500
 Ip_std_threshold=0.01
-plot_Ip=False 
+plot_Ip=False
 
 #mode of normalization
 norm_mode='all'

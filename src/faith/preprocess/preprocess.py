@@ -6,56 +6,17 @@ This script orchestrates the complete dataset preparation pipeline using
 modular components and YAML configuration.
 """
 
-import yaml
-import numpy as np
 import logging
 from pathlib import Path
-from sklearn.model_selection import train_test_split
-from typing import Optional
+
+import numpy as np
 from omegaconf import DictConfig
 
-from .util import ParallelMapper
 from .pipelines import pipeline_v0_stable as pipeline
-from .util import index_dataset
+from .util import ParallelMapper, index_dataset
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
-
-
-def load_config(config_path: Optional[str] = None) -> dict:
-    """
-    Load configuration from YAML file.
-    
-    Args:
-        config_path: Path to YAML configuration file.
-                    If None, uses default.yaml in config directory.
-                    
-    Returns:
-        Configuration dictionary
-    """
-    if config_path is None:
-        config_path = str(Path(__file__).parent / "config" / "default.yaml")
-    
-    with open(config_path, 'r') as f:
-        cfg = yaml.safe_load(f)
-    
-    return cfg
-
-
-def should_use_stft_processing(cfg: dict) -> bool:
-    """
-    Determine whether to use STFT processing based on configuration.
-    
-    Args:
-        cfg: Configuration dictionary
-        
-    Returns:
-        True if any signals should be transformed with STFT, False otherwise
-    """
-    for signal in cfg["signal"]:
-        if signal.get("make_stft", False):
-            return True
-    return False
 
 
 def prepare_dataset(cfg: dict) -> None:
@@ -87,31 +48,31 @@ def prepare_dataset(cfg: dict) -> None:
     # Collect and sort all shot numbers
     logger.info(f"Collecting shots from {raw_data_dir}...")
     all_shots = [
-        int(p.stem) 
-        for p in raw_data_dir.iterdir() 
+        int(p.stem)
+        for p in raw_data_dir.iterdir()
         if p.suffix == ".h5"
     ]
     all_shots.sort()
-    
+
     # Apply shot selection and randomization if configured
     if cfg.get("randomize_shots", False):
         np.random.seed(cfg["random_seed"])
         all_shots = np.random.permutation(all_shots)
-    
+
     # Set to -1 to use all shots, or just don't include as argument
     # However, keep argument to stay consistent with other scripts
     if cfg.get("num_shots") is not None:
         all_shots = all_shots[:cfg["num_shots"]]
-    
+
     logger.info(f"Processing {len(all_shots)} shots into cache...")
-    
+
     # Clean up existing cache directory if it exists
     if output_dir.exists():
         import shutil
         logger.info(f"Removing existing cache directory: {output_dir}")
         shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Process shots using the appropriate function
     if cfg.get("debug", False):
         output_dir = Path("data") / "debug"
@@ -120,12 +81,12 @@ def prepare_dataset(cfg: dict) -> None:
     else:
         mapper = ParallelMapper()
         mapper(pipeline, all_shots, cfg=cfg, out_dir=output_dir)
-    
+
     # Move cached files into train/test split
     logger.info("Indexing dataset...")
     all_files = list(output_dir.glob("*.joblib"))
     all_files.sort()
-    
+
     if len(all_files) == 0:
         logger.warning("Warning: No processed files found. Dataset preparation incomplete.")
         return
@@ -147,12 +108,12 @@ def preprocess(cfg: DictConfig) -> None:
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
+
     # Convert DictConfig to regular dict for compatibility with existing code
     cfg_dict = dict(cfg)
-    
+
     logger.info("Starting dataset preparation with Hydra configuration")
     logger.info(f"Configuration: {cfg_dict}")
-    
+
     # Prepare dataset using existing function
     prepare_dataset(cfg_dict)

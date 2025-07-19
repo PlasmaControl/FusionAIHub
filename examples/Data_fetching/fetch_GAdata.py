@@ -1,14 +1,13 @@
-import MDSplus
-from mygadata import gadata
+import subprocess
+import sys
+import time
+
 #import matplotlib.pyplot as plt
 import h5py
-import pickle
+import MDSplus
 import numpy as np
-import time
+from mygadata import gadata
 from tqdm import tqdm
-import sys
-import subprocess
-
 
 #To run the code
 #module purge & module load defaults
@@ -65,7 +64,7 @@ def data2dict(shotn, signame, hf, atlconn) :
 		dict_group['xunits'] = data.xunits
 		dict_group['yunits'] = data.yunits
 		dict_group['zunits'] = data.zunits
-	except: 
+	except:
 		print('%s not available, filled with NULL!' % (signame))
 		dict_group['xdata'] = []
 		dict_group['ydata'] = []
@@ -92,11 +91,11 @@ cannot_find=['triangularity_u','triangularity_l','pech','neutronsrate']\
             'fncrate01', 'fncrate02', 'fncrate03', 'fncrate04',\
             'plasticfx1', 'plasticfx2', 'plasticfx3', 'plasticfx4',\
             'neutronsrate1','neutronsrate2','neutronsrate3', 'neutronsrate4']
-            
+
 #basic is fundimental measured quantities (in contrast of fitted quantities)
 
 signal_list_all= {
-'co2_s':[r'\den{}'.format(chord) for chord in co2_chords],\
+'co2_s':[rf'\den{chord}' for chord in co2_chords],\
 'mag_hi':["b"+str(i) for i in range(1, 9)],\
 'profiles':['betap','betan','pres', \
                     'wmhd','li',\
@@ -128,11 +127,11 @@ signal_list_all= {
       'il30', 'il90', 'il150', 'il210', 'il270', 'il330']\
       +['ecoila', 'ecoilb', 'e567up', 'e567dn', 'e89dn', 'e89up']\
       +['f1a','f2a','f3a','f4a','f5a','f6a','f7a','f8a','f9a',\
-        'f1b','f2b','f3b','f4b','f5b','f6b','f7b','f8b','f9b'] 
+        'f1b','f2b','f3b','f4b','f5b','f6b','f7b','f8b','f9b']
 }
 
 name_list_all= {
-'co2_s':[r'{}'.format(chord) for chord in co2_chords],\
+'co2_s':[rf'{chord}' for chord in co2_chords],\
 'mag_hi':["b"+str(i) for i in range(1, 9)],\
 'profiles':['betap','betan','pres', \
                     'wmhd','li',\
@@ -164,7 +163,7 @@ name_list_all= {
       'il30', 'il90', 'il150', 'il210', 'il270', 'il330']\
       +['ecoila', 'ecoilb', 'e567up', 'e567dn', 'e89dn', 'e89up']\
       +['f1a','f2a','f3a','f4a','f5a','f6a','f7a','f8a','f9a',\
-        'f1b','f2b','f3b','f4b','f5b','f6b','f7b','f8b','f9b'] 
+        'f1b','f2b','f3b','f4b','f5b','f6b','f7b','f8b','f9b']
 }
 
 signal_list={suffix:signal_list_all[suffix] for suffix in suffix_list}
@@ -174,36 +173,36 @@ name_list=  {suffix:name_list_all[suffix] for suffix in suffix_list}
 for i in tqdm(range(len(shot_list))):
 	shotn=shot_list[i]
 	t1=time.time()
-	
+
 	for grpname,signals in signal_list.items():
 		hf = h5py.File(output_path+'/'+ str(shotn)+'_'+grpname+'.h5','w')
 		for signame in signals:
 			atlconn=data2dict(shotn,signame,hf,atlconn)
 		hf.close()
-	
+
 
 	if ece_pcece:
 		hf = h5py.File(output_path+'/'+ str(shotn)+'_ece.h5','w')
-		pece_group = hf.create_group('pcece')	
+		pece_group = hf.create_group('pcece')
 		ece_group = hf.create_group('ece')
 		rtece_group = hf.create_group('rtece')
-                
+
 		for k in range(40):
 			print('chn %i' % (k+1))
 			pece_data = gadata('pcece%d' % (k+1), shotn, connection=atlconn)
 			pece_group['pcece%02d' % (k+1)] = pece_data.zdata
 			ece_data = gadata('tecef%02d' % (k+1), shotn, connection=atlconn)
 			ece_group['tecef%02d' % (k+1)] = ece_data.zdata
-                        
+
 			rtece_data = gadata('ecsdata%d' % (k+97), shotn, connection=atlconn)
 			rtece_group['ecsdata%d' % (k+97)] = rtece_data.zdata
-                        
+
 		pece_group['xdata'] = pece_data.xdata
 		pece_group['ydata'] = pece_data.ydata
 		pece_group['xunits'] = pece_data.xunits
 		pece_group['yunits'] = pece_data.yunits
 		pece_group['pceceunits'] = pece_data.zunits
-                
+
 		ece_group['xdata'] = ece_data.xdata
 		ece_group['ydata'] = ece_data.ydata
 		ece_group['xunits'] = ece_data.xunits

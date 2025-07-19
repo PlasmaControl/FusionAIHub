@@ -1,9 +1,9 @@
 """Defines function parmap, a parallel version of map."""
-from ctypes import c_ulong
-import multiprocessing as mp
-from multiprocessing.sharedctypes import Value
 import gc
+import multiprocessing as mp
 import sys
+from ctypes import c_ulong
+from multiprocessing.sharedctypes import Value
 
 
 def _identity(x):

@@ -1,5 +1,6 @@
 import h5py
 
+
 def load(file_path: str) -> dict:
     """
     Read data, time, and attributes from an HDF5 file.
@@ -35,5 +36,5 @@ def get_data(self,discharge, suffix, norm=True):
                 input_dict[key]['zdata']=np.log(np.array(input_dict[key]['zdata'][:]))
             else:
                 input_dict[key]['zdata']=np.array(input_dict[key]['zdata'][:])/self.norm_factor_list[suffix][key]
-    
+
     return input_dict

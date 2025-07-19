@@ -7,12 +7,13 @@ observed data, such as audio spectrograms with missing frequency bands or
 time frames.
 """
 
+import random
+from enum import Enum
+from typing import Any, Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import random
-from typing import Optional, Any
-from enum import Enum
 
 from .autoencoder import BlockBasedAutoencoder
 

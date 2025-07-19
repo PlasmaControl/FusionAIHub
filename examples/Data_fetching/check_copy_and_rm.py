@@ -1,12 +1,12 @@
 """This script is intended to copy the file from iris and..."""
+import getpass
+import re
+import socket
+import time
+
+import numpy as np
 import paramiko
 import paramiko.util
-import socket
-import getpass
-import numpy as np 
-import time
-import re
-
 
 num_min = 140000
 num_max = 200000-1
@@ -135,18 +135,18 @@ def search_copy_and_delete(diag_name, remote_directory, local_directory,
                 shot_numbers = extract_shot_numbers_remote(
                     sftp, remote_directory, diag_name)
                 shot_numbers = list(shot_numbers)
-                
+
                 shot_numbers.sort()
                 shot_numbers = np.array(shot_numbers)
                 shot_numbers = shot_numbers[
                     (num_min <= shot_numbers) & (shot_numbers <= num_max)]
-                
+
                 # print(shot_numbers)
                 if len(shot_numbers) <= 2*subtask:
                     print('No files to copy, waiting for 10 min')
                     # wait for 10min
                     time.sleep(600)
-                    continue 
+                    continue
                 cp_shot_num = shot_numbers[:-2*subtask]
                 print(cp_shot_num)
                 for shot_num in cp_shot_num:
@@ -170,6 +170,6 @@ def search_copy_and_delete(diag_name, remote_directory, local_directory,
         finally:
             ssh_client.close()
             proxy_transport.close()
-                
+
 
 search_copy_and_delete(diag_name, remote_directory, local_directory, retries=3)

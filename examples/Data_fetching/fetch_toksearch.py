@@ -1,22 +1,22 @@
-from toksearch import MdsSignal,PtDataSignal
-from toksearch import Pipeline
-import numpy as np
 import os
-import time
-import h5py
 import subprocess
 import sys
+import time
+
+import h5py
+import numpy as np
+from toksearch import MdsSignal, Pipeline, PtDataSignal
 from tqdm import tqdm
 
 #this one runs on iris, run the following
-#module purge 
+#module purge
 #module load toksearch
 
-#for copy: 
+#for copy:
 #scp -r -o 'ProxyCommand ssh -p 2039 curiem@cybele.gat.com -W %h:%p' curiem@iris.gat.com:/cscratch/curiem/Data_fetch_TS/15* ./
 
 #***********start of user block******************
-#limit of the size 
+#limit of the size
 size_GB=400
 
 #After fetching (interval) discharges, check the total directory size
@@ -30,15 +30,15 @@ shots = list(np.arange(150000,170000,dtype=int))
 
 #shots = list(np.arange(175910,190000,dtype=int))
 # one can set start_shot the where to start. (usually used for restarting the fetching due to unexpected termination)
-start_shot=min(shots) 
+start_shot=min(shots)
 
 #path to save the files
-path = f'/cscratch/curiem/Data_fetch_CO2_s/'
+path = '/cscratch/curiem/Data_fetch_CO2_s/'
 
 #diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s, ts,ts_rz,ts_error,custom]
 diag_name='co2_s'
 
-#custom sig_names_custom, the suffix is fixed to be custom for now. 
+#custom sig_names_custom, the suffix is fixed to be custom for now.
 if diag_name=='custom':
     sig_names_custom=['']
     names_custom=['']
@@ -114,7 +114,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
                     'fncrate01', 'fncrate02', 'fncrate03', 'fncrate04',\
                     'plasticfx1', 'plasticfx2', 'plasticfx3', 'plasticfx4',\
                     'cali.neutronsrate1','cali.neutronsrate2','cali.neutronsrate3', 'cali.neutronsrate4']
-    
+
     elif diag_name=='mag_full':
         sig_name_without_d=['mpi11m322', 'mpi1a322', 'mpi2a322', 'mpi3a322', 'mpi4a322', 'mpi5a322', 'mpi8a322', 'mpi89a322', 'mpi9a322', 'mpi79fa322', 'mpi79na322', 'mpi7fa322', 'mpi7na322', 'mpi67a322', 'mpi6fa322', 'mpi6na322', 'mpi66m322', 'mpi1b322', 'mpi2b322', 'mpi3b322', 'mpi4b322', 'mpi5b322', 'mpi8b322', 'mpi89b322', 'mpi9b322', 'mpi79b322', 'mpi7fb322', 'mpi7nb322', 'mpi67b322', 'mpi6fb322', 'mpi6nb322', 'mpi2a067', 'mpi11m067', 'mpi2b067', 'mpi67a097', 'mpi67a067', 'mpi66m067', 'mpi67b097', 'mpi67b067', 'mpi1a139', 'mpi2a139', 'mpi3a139', 'mpi4a139', 'mpi5a139', 'mpi79a147', 'mpi67a142', 'mpi67a157', 'mpi6na132', 'mpi6na157', 'mpi66m157', 'mpi6nb157', 'mpi6fb142', 'mpi67b157', 'mpi7nb142', 'mpi79b142', 'mpi5b139', 'mpi4b139', 'mpi3b139', 'mpi2b139', 'mpi1b139', 'mpi1b157', 'mpi1u157', 'mpi2u157', 'mpi3u157', 'mpi4u157', 'mpi5u157', 'mpi6u157', 'mpi7u157', 'dsl1u180', 'dsl2u180', 'dsl3u180', 'dsl4u157', 'dsl5u157', 'dsl6u157', 'mpi66m127', 'mpi66m132', 'mpi66m137', 'mpi66b137', 'mpi6nb137', 'mpi66m307', 'mpi66m312', 'mpi6na312', 'mpi66b312', 'mpi6nb312', 'mpi66m322', 'mpi1l020', 'mpi2l020', 'mpi1l050', 'mpi1l110', 'mpi1l180', 'mpi2l180', 'mpi3l180', 'mpi1l230', 'mpi1l320', 'mpi66m020', 'mpi66m067', 'mpi66m097', 'mpi66m127', 'mpi66m132', 'mpi66m137', 'mpi66m157', 'mpi66m200', 'mpi66m247', 'mpi66m277', 'mpi66m307', 'mpi66m312', 'mpi66m322', 'mpi66m340', 'mpi67a022', 'mpi67a037', 'mpi67a1', 'mpi67a052', 'mpi67a067', 'mpi67a082', 'mpi67a097', 'mpi67a2', 'mpi67a142', 'mpi67a157', 'mpi67a3', 'mpi67a217', 'mpi67a4', 'mpi67a262', 'mpi67a277', 'mpi67a5', 'mpi67a307', 'mpi67a337', 'mpi67a6', 'mpi67b022', 'mpi67b037', 'mpi67b1', 'mpi67b052', 'mpi67b097', 'mpi67b2', 'mpi67b157', 'mpi67b3', 'mpi67b217', 'mpi67b4', 'mpi67b277', 'mpi67b5', 'mpi67b337', 'mpi67b6', 'mpi79a072', 'mpi79a147', 'mpi79a222', 'mpi79a272', 'mpi79b067', 'mpi79b142', 'mpi79b217', 'mpi79b277', 'mpi5a139', 'mpi4a139', 'mpi3a139', 'mpi2a139', 'mpi1a139', 'mpi1b139', 'mpi2b139', 'mpi3b139', 'mpi4b139', 'mpi5b139', 'mpi5a199', 'mpi4a199', 'mpi3a199', 'mpi2a199', 'mpi1a199', 'mpi1b199', 'mpi2b199', 'mpi3b199', 'mpi4b199', 'mpi5b199', 'mpi1a011', 'mpi1a049', 'mpi1a109', 'mpi1a139', 'mpi1a199', 'mpi1a244', 'mpi1a274', 'mpi1a341', 'mpi1b011', 'mpi1b049', 'mpi1b109', 'mpi1b139', 'mpi1b199', 'mpi1b244', 'mpi1b274', 'mpi1b341', 'isl66m017', 'isl66m042', 'isl66m072', 'isl66m102', 'isl66m132', 'isl66m197', 'isl66m252', 'isl66m312', 'isl67a017', 'isl67a052', 'isl67a072', 'isl67a112', 'isl67a132', 'isl67a197', 'isl67a252', 'isl67a312', 'isl67b017', 'isl67b052', 'isl67b072', 'isl67b112', 'isl67b132', 'isl67b197', 'isl67b252', 'isl67b312', 'isl79a072', 'isl79a147', 'isl79a222', 'isl79a272', 'isl79b067', 'isl79b142', 'isl79b217', 'isl79b277', 'isl5a139', 'isl4a139', 'isl3a139', 'isl2a139', 'isl1a139', 'isl1b139', 'isl2b139', 'isl3b139', 'isl4b139', 'isl5b139', 'isl5a199', 'isl4a199', 'isl3a199', 'isl2a199', 'isl1a199', 'isl1b199', 'isl2b199', 'isl3b199', 'isl4b199', 'isl5b199', 'isl1a011', 'isl1a049', 'isl1a109', 'isl1a139', 'isl1a199', 'isl1a244', 'isl1a274', 'isl1a341', 'isl1b011', 'isl1b049', 'isl1b109', 'isl1b139', 'isl1b199', 'isl1b244', 'isl1b274', 'isl1b341', 'dsl12a067', 'dsl34a067', 'dsl59a067', 'dsl79a067', 'dsl67a067', 'dsl66m052', 'dsl67b067', 'dsl79b067', 'dsl59b067', 'dsl34b067', 'dsl12b067', 'dsl12a157', 'dsl34a157', 'dsl59a157', 'dsl79a157', 'dsl67a157', 'dsl66m152', 'dsl67b157', 'dsl79b157', 'dsl59b157', 'dsl34b157', 'dsl12b157', 'dsl67a067', 'dsl67a157', 'sl67fa345', 'sl67na345', 'dsl66m052', 'sl66a132', 'sl66b132', 'dsl66m152', 'sl66a312', 'sl66b312', 'sl67nb015', 'sl67fb015', 'dsl67b067', 'dsl67b157', 'esl66m019', 'esl019', 'esl66m079', 'esl079', 'esl66m139', 'esl139', 'esl66m199', 'esl199', 'esl66m259', 'esl259', 'esl66m319', 'esl319', 'esl67a004', 'esl67a034', 'esl67a064', 'esl67a094', 'esl67a124', 'esl67a154', 'esl67a184', 'esl67a214', 'esl67a244', 'esl67a274', 'esl67a304', 'esl67a334', 'esl67b004', 'esl67b034', 'esl67b064', 'esl67b094', 'esl67b124', 'esl67b154', 'esl67b184', 'esl67b214', 'esl67b244', 'esl67b274', 'esl67b304', 'esl67b334', 'bti66m053', 'bti66m132', 'bti66m233', 'bti66m312', 'psf1a', 'psf1a', 'psf1a', 'psf1a', 'psf6natotl', 'psf6na', 'psi11mtotl', 'psi11m', 'psi6atotl', 'psi6a', 'psf1a', 'psf6natotl', 'psi11mtotl', 'psi6atotl', 'psf2a', 'psf3a', 'psf4a', 'psf5a', 'psf8a', 'psf9a', 'psf7fa', 'psf7na', 'psf6fa', 'psf6na', 'psf6nb', 'psf6fb', 'psf7nb', 'psf7fb', 'psf9b', 'psf8b', 'psf5b', 'psf4b', 'psf3b', 'psf2b', 'psf1b', 'psi11m', 'psi12a', 'psi23a', 'psi34a', 'psi45a', 'psi58a', 'psi9a', 'psi7a', 'psi6a', 'psi6b', 'psi7b', 'psi9b', 'psi89nb', 'psi89fb', 'psi58b', 'psi45b', 'psi34b', 'psi23b', 'psi12b', 'psi1l', 'psi2l', 'psi3l', 'mpi1b', 'mpi66m020', 'mpi66m097', 'mpi66m020', 'mpi66m097', 'mpi66m067', 'mpi66m247', 'mpi66m097', 'mpi66m277', 'mpi66m127', 'mpi66m307', 'mpi66m157', 'mpi66m340', 'mpi66m200', 'mpi66m020', 'mpi66m247', 'mpi66m127', 'mpi66m277', 'mpi66m157', 'mpi66m307', 'mpi66m200', 'mpi66m340', 'mpi66m067', 'mpi67a022', 'mpi67a217', 'mpi67a037', 'mpi67a067', 'mpi67a052', 'mpi67a022', 'mpi67a067', 'mpi67a262', 'mpi67a082', 'mpi67a052', 'mpi67a097', 'mpi67a082', 'mpi67a142', 'mpi67a037', 'mpi67a217', 'mpi67a097', 'mpi67a262', 'mpi67a277', 'mpi67a277', 'mpi67a307', 'mpi67a307', 'mpi67a337', 'mpi67a337', 'mpi67a142', 'mpi67b022', 'mpi67b052', 'mpi67b037', 'mpi67b217', 'mpi67b052', 'mpi67b037', 'mpi67b097', 'mpi67b277', 'mpi67b157', 'mpi67b337', 'mpi67b217', 'mpi67b097', 'mpi67b277', 'mpi67b157', 'mpi67b337', 'mpi67b022', 'mpi79a072', 'mpi79a222', 'mpi79a147', 'mpi79a072', 'mpi79a222', 'mpi79a272', 'mpi79a272', 'mpi79a147', 'mpi79b067', 'mpi79b217', 'mpi79b142', 'mpi79b067', 'mpi79b217', 'mpi79b277', 'mpi79b277', 'mpi79b142', 'mpi1a011', 'mpi1a199', 'mpi1a049', 'mpi1a244', 'mpi1a109', 'mpi1a011', 'mpi1a139', 'mpi1a341', 'mpi1a199', 'mpi1a139', 'mpi1a244', 'mpi1a274', 'mpi1a274', 'mpi1a109', 'mpi1a341', 'mpi1a049', 'mpi1b011', 'mpi1b199', 'mpi1b049', 'mpi1b244', 'mpi1b109', 'mpi1b011', 'mpi1b139', 'mpi1b341', 'mpi1b199', 'mpi1b139', 'mpi1b244', 'mpi1b274', 'mpi1b274', 'mpi1b109', 'mpi1b341', 'mpi1b049', 'mpi5a199', 'mpi5a139', 'mpi4a199', 'mpi4a139', 'mpi3a199', 'mpi3a139', 'mpi2a199', 'mpi2a139', 'mpi1a199', 'mpi1a139', 'mpi1b199', 'mpi1b139', 'mpi2b199', 'mpi2b139', 'mpi3b199', 'mpi3b139', 'mpi4b199', 'mpi4b139', 'mpi5b199', 'mpi5b139', 'isl66m017', 'isl66m042', 'isl66m042', 'isl66m072', 'isl66m072', 'isl66m252', 'isl66m102', 'isl66m132', 'isl66m132', 'isl66m312', 'isl66m197', 'isl66m017', 'isl66m252', 'isl66m102', 'isl66m312', 'isl66m197', 'isl67a017', 'isl67a052', 'isl67a052', 'isl67a072', 'isl67a072', 'isl67a252', 'isl67a112', 'isl67a132', 'isl67a132', 'isl67a312', 'isl67a197', 'isl67a017', 'isl67a252', 'isl67a112', 'isl67a312', 'isl67a197', 'isl67b017', 'isl67b052', 'isl67b052', 'isl67b072', 'isl67b072', 'isl67b252', 'isl67b112', 'isl67b132', 'isl67b132', 'isl67b312', 'isl67b197', 'isl67b017', 'isl67b252', 'isl67b112', 'isl67b312', 'isl67b197', 'isl79a072', 'isl79a222', 'isl79a147', 'isl79a072', 'isl79a222', 'isl79a272', 'isl79a272', 'isl79a147', 'isl79b067', 'isl79b217', 'isl79b142', 'isl79b067', 'isl79b217', 'isl79b277', 'isl79b277', 'isl79b142', 'isl1a011', 'isl1a199', 'isl1a049', 'isl1a244', 'isl1a109', 'isl1a011', 'isl1a139', 'isl1a341', 'isl1a199', 'isl1a139', 'isl1a244', 'isl1a274', 'isl1a274', 'isl1a109', 'isl1a341', 'isl1a049', 'isl1b011', 'isl1b199', 'isl1b049', 'isl1b244', 'isl1b109', 'isl1b011', 'isl1b139', 'isl1b341', 'isl1b199', 'isl1b139', 'isl1b244', 'isl1b274', 'isl1b274', 'isl1b109', 'isl1b341', 'isl1b049', 'isl5a199', 'isl5a139', 'isl4a199', 'isl4a139', 'isl3a199', 'isl3a139', 'isl2a199', 'isl2a139', 'isl1a199', 'isl1a139', 'isl1b199', 'isl1b139', 'isl2b199', 'isl2b139', 'isl3b199', 'isl3b139', 'isl4b199', 'isl4b139', 'isl5b199', 'isl5b139', 'esl66m019', 'esl66m079', 'esl66m079', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m019', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m079', 'esl66m259', 'esl66m139', 'esl66m319', 'esl66m199', 'esl66m019', 'esl67a004', 'esl67a244', 'esl67a034', 'esl67a154', 'esl67a064', 'esl67a184', 'esl67a094', 'esl67a274', 'esl67a124', 'esl67a304', 'esl67a154', 'esl67a334', 'esl67a184', 'esl67a004', 'esl67a214', 'esl67a094', 'esl67a244', 'esl67a124', 'esl67a274', 'esl67a034', 'esl67a304', 'esl67a064', 'esl67a334', 'esl67a214', 'esl67b004', 'esl67b244', 'esl67b034', 'esl67b154', 'esl67b064', 'esl67b184', 'esl67b094', 'esl67b274', 'esl67b124', 'esl67b304', 'esl67b154', 'esl67b334', 'esl67b184', 'esl67b004', 'esl67b214', 'esl67b094', 'esl67b244', 'esl67b124', 'esl67b274', 'esl67b034', 'esl67b304', 'esl67b064', 'esl67b334', 'esl67b214', 'bti66m053', 'bti66m233', 'bti66m132', 'bti66m053', 'bti66m233', 'bti66m312', 'bti66m312', 'bti66m132', 'mpi2a067', 'mpi1u157', 'isl79a']
 
@@ -125,7 +125,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
         name_with_d=['mpid.66.m.020', 'mpid.66.m.020', 'mpid.66.m.067', 'mpid.067.u.', 'mpid.66.m.097', 'mpid.097.u.', 'mpid.66.m.127', 'mpid.127.u.', 'mpid.66.m.157', 'mpid.157.u.', 'mpid.66.m.200', 'mpid.66.m.247', 'mpid.66.m.277', 'mpid.66.m.307', 'mpid.66.m.340', 'mpid.67.a.022', 'mpid.67.a.037', 'mpid.67.a.052', 'mpid.67.a.067', 'mpid.67.a.082', 'mpid.67.a.097', 'mpid.67.a.142', 'mpid.67.a.217', 'mpid.67.a.262', 'mpid.67.a.277', 'mpid.67.a.307', 'mpid.67.a.337', 'mpid.67.b.022', 'mpid.67.b.037', 'mpid.67.b.052', 'mpid.67.b.097', 'mpid.67.b.157', 'mpid.67.b.217', 'mpid.67.b.277', 'mpid.67.b.337', 'mpid.79.a.072', 'mpid.79.a.147', 'mpid.79.a.222', 'mpid.79.a.272', 'mpid.79.b.067', 'mpid.79.b.142', 'mpid.79.b.217', 'mpid.79.b.277', 'mpid.1.a.011', 'mpid.1.a.049', 'mpid.1.a.109', 'mpid.1.a.139', 'mpid.1.a.199', 'mpid.1.a.244', 'mpid.1.a.274', 'mpid.1.a.341', 'mpid.1.b.011', 'mpid.1.b.049', 'mpid.1.b.109', 'mpid.1.b.139', 'mpid.1.b.199', 'mpid.1.b.244', 'mpid.1.b.274', 'mpid.1.b.341', 'mpid.5.a.199', 'mpid.4.a.199', 'mpid.3.a.199', 'mpid.2.a.199', 'mpid.1.a.199', 'mpid.1.b.199', 'mpid.2.b.199', 'mpid.3.b.199', 'mpid.4.b.199', 'mpid.5.b.199', 'isld.66.m.017', 'isld.66.m.042', 'isld.66.m.072', 'isld.079.u.', 'isld.66.m.102', 'isld.66.m.132', 'isld.139.u.', 'isld.66.m.197', 'isld.199.u.', 'isld.66.m.252', 'isld.66.m.312', 'isld.67.a.017', 'isld.67.a.052', 'isld.67.a.072', 'isld.67.a.112', 'isld.67.a.132', 'isld.67.a.197', 'isld.67.a.252', 'isld.67.a.312', 'isld.67.b.017', 'isld.67.b.052', 'isld.67.b.072', 'isld.67.b.112', 'isld.67.b.132', 'isld.67.b.197', 'isld.67.b.252', 'isld.67.b.312', 'isld.79.a.072', 'isld.79.a.147', 'isld.79.a.222', 'isld.79.a.272', 'isld.79.b.067', 'isld.79.b.142', 'isld.79.b.217', 'isld.79.b.277', 'isld.1.a.011', 'isld.1.a.049', 'isld.1.a.109', 'isld.1.a.139', 'isld.1.a.199', 'isld.1.a.244', 'isld.1.a.274', 'isld.1.a.341', 'isld.1.b.011', 'isld.1.b.049', 'isld.1.b.109', 'isld.1.b.139', 'isld.1.b.199', 'isld.1.b.244', 'isld.1.b.274', 'isld.1.b.341', 'isld.5.a.199', 'isld.4.a.199', 'isld.3.a.199', 'isld.2.a.199', 'isld.1.a.199', 'isld.1.b.199', 'isld.2.b.199', 'isld.3.b.199', 'isld.4.b.199', 'isld.5.b.199', 'esld.66.m.019', 'esld.66.m.079', 'esld.079.u.', 'esld.66.m.139', 'esld.139.u.', 'esld.66.m.199', 'esld.199.u.', 'esld.66.m.259', 'esld.66.m.319', 'esld.079..', 'esld.139..', 'esld.199..', 'esld.67.a.004', 'esld.67.a.034', 'esld.67.a.064', 'esld.67.a.094', 'esld.67.a.124', 'esld.67.a.154', 'esld.67.a.184', 'esld.67.a.214', 'esld.67.a.244', 'esld.67.a.274', 'esld.67.a.304', 'esld.67.a.334', 'esld.67.b.004', 'esld.67.b.034', 'esld.67.b.064', 'esld.67.b.094', 'esld.67.b.124', 'esld.67.b.154', 'esld.67.b.184', 'esld.67.b.214', 'esld.67.b.244', 'esld.67.b.274', 'esld.67.b.304', 'esld.67.b.334', 'btid.66.m.053', 'btid.66.m.132', 'btid.66.m.233', 'btid.66.m.312']
         sig_names=sig_name_with_d+sig_name_without_d
         names=name_with_d+name_without_d
-        
+
         for name in sig_names:
             signals.append(PtDataSignal(name))
 
@@ -175,9 +175,9 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
     elif diag_name=='co2_s':
         chords = ['r0', 'v1', 'v2', 'v3']
 
-        
+
         for chord in chords:
-            name = r'\den{}'.format(chord)
+            name = rf'\den{chord}'
             signals.append(MdsSignal(name, 'BCI', location='remote://atlas.gat.com'))
             names.append(f'{chord}')
 
@@ -190,7 +190,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
         for phase in phases:
             for chord in chords:
                 for num in nums:
-                    name = r'\den{}_uf_{}'.format(chord, num)
+                    name = rf'\den{chord}_uf_{num}'
                     signals.append(MdsSignal(name, 'BCI', location='remote://atlas.gat.com'))
                     names.append(f'{chord}_{num}')
 
@@ -202,7 +202,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
         for phase in phases:
             for chord in chords:
                 for num in nums:
-                    name = r'\pl1{}_uf_{}'.format(chord, num)
+                    name = rf'\pl1{chord}_uf_{num}'
                     signals.append(MdsSignal(name, 'BCI', location='remote://atlas.gat.com'))
                     names.append(f'{chord}_{num}')
 
@@ -214,16 +214,16 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
         thomson_names=['dens','temp']
         treename='electrons'
 
-        
+
 
         for thomson_mds_area in thomson_mds_areas:
             for thomson_sig_name, thomson_name in zip(thomson_sig_names,thomson_names):
 
-                name=r'TS.BLESSED.{}.{}'.format(thomson_mds_area,thomson_sig_name)
+                name=rf'TS.BLESSED.{thomson_mds_area}.{thomson_sig_name}'
 
                 signals.append(MdsSignal(name, treename, location='remote://atlas.gat.com'))
 
-                names.append(r'{}.{}'.format(thomson_mds_area,thomson_name))
+                names.append(rf'{thomson_mds_area}.{thomson_name}')
 
     elif diag_name=='ts_rz':
         #thomson_mds_scale={'density': 1e19, 'temp': 1e3}
@@ -233,10 +233,10 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
 
         for thomson_mds_area in thomson_mds_areas:
             for thomson_sig_name in thomson_sig_names:
-                name=r'TS.BLESSED.{}.{}'.format(thomson_mds_area,thomson_sig_name)
+                name=rf'TS.BLESSED.{thomson_mds_area}.{thomson_sig_name}'
                 signals.append(MdsSignal(name, treename, location='remote://atlas.gat.com'))
 
-                names.append(r'{}.{}'.format(thomson_mds_area,thomson_sig_name))
+                names.append(rf'{thomson_mds_area}.{thomson_sig_name}')
 
     elif diag_name=='TS_ERROR':
         #thomson_mds_scale={'density': 1e19, 'temp': 1e3}
@@ -249,7 +249,7 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
             for thomson_sig_name, thomson_name in zip(thomson_sig_names,thomson_names):
                 signals.append(MdsSignal(name, treename, location='remote://atlas.gat.com'))
 
-                names.append(r'{}.{}'.format(thomson_mds_area,thomson_name))
+                names.append(rf'{thomson_mds_area}.{thomson_name}')
 
 
     elif diag_name=='mag':
@@ -296,9 +296,9 @@ def signal_gen(diag_name='zipfit',sig_names_custom=[''],names_custom=[''],tree_c
                     ["t%02d"%i for i in range(1, 49)]
         outputs=['amp','samp','ti','sti','rot','srot','r','phi','nz','fz','zeff','vb','svb']
 
-        sig_names=[r'\cerq{}{}'.format(output, channel) for channel in channels 
+        sig_names=[rf'\cerq{output}{channel}' for channel in channels
                                                         for output in outputs]
-        names=[r'cer.{}.{}'.format(output, channel) for channel in name_channels 
+        names=[rf'cer.{output}.{channel}' for channel in name_channels
                                                         for output in outputs]
 
         treename='ions'
@@ -347,7 +347,7 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
                         break
                     #print(len(shot_data[name]['data']))
                     data_tmp.append(shot_data[name]['data'][:len(data_h5['xdata'])])
-                
+
                 data_tmp=np.array(data_tmp,dtype='float')
 
                 data_h5['zdata']=data_tmp
@@ -401,13 +401,13 @@ def fetch_single_data(path, shots, diag_name):
                     #print(data_h5)
                     data_tmp=shot_data[name]
                     #print(name)
-                    
-                    try:  
-                        
+
+                    try:
+
                         total_len=len(data_tmp['times'])
                         dt=data_tmp['times'][1]-data_tmp['times'][0]
                         cut_index=int(np.min([total_len+1,7500/dt]))
-                        
+
                         if diag_name in diag_3d:
                             #print(data_tmp.keys())
                             data_h5[name]['xdata']=data_tmp['times'][:cut_index]
@@ -479,14 +479,14 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                         #print(f'num={num}')
                         #print(f'chord={chord}')
 
-                        
+
                         data_tmp=shot_data[f'{chord}_{num}']
-                        
-                        try:  
+
+                        try:
                             len(data_tmp['data'])
                             #print(len(data_tmp['data']))
                         except:
-                            break 
+                            break
 
                         if num==1:
                             data_h5[chord]['xdata']=data_tmp['times']
@@ -498,7 +498,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                             data_h5[chord]['zunits']=data_tmp['units']['data']
                         else:
                             data_h5[chord]['xdata']=np.concatenate([data_h5[chord]['xdata'],data_tmp['times']])
-                            data_h5[chord]['zdata']=np.concatenate([data_h5[chord]['zdata'],data_tmp['data']]) 
+                            data_h5[chord]['zdata']=np.concatenate([data_h5[chord]['zdata'],data_tmp['data']])
                 shot_data=None
 
                 # Save to h5
@@ -515,7 +515,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                                 group.create_dataset(subkey, data=value)
             except:
                 pass
-            
+
             if n % interval == 0:
                 size_limiter_sleep(size_GB=size_GB)
                 print(f'shot={shot}')
@@ -544,14 +544,14 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                         #print(f'num={num}')
                         #print(f'chord={chord}')
 
-                        
+
                         data_tmp=shot_data[f'{chord}_{num}']
-                        
-                        try:  
+
+                        try:
                             len(data_tmp['data'])
                             #print(len(data_tmp['data']))
                         except:
-                            break 
+                            break
 
                         if num==1:
                             data_h5[chord]['xdata']=data_tmp['times']
@@ -563,7 +563,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                             data_h5[chord]['zunits']=data_tmp['units']['data']
                         else:
                             data_h5[chord]['xdata']=np.concatenate([data_h5[chord]['xdata'],data_tmp['times']])
-                            data_h5[chord]['zdata']=np.concatenate([data_h5[chord]['zdata'],data_tmp['data']]) 
+                            data_h5[chord]['zdata']=np.concatenate([data_h5[chord]['zdata'],data_tmp['data']])
                 shot_data=None
                 data_h5_new={}
                 data_h5_new['xdata']=np.array(data_h5[chords[0]]['xdata'])
@@ -585,7 +585,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                                 group.create_dataset(subkey, data=value)
             except:
                 pass
-            
+
             if n % interval == 0:
                 size_limiter_sleep(size_GB=size_GB)
                 print(f'shot={shot}')
@@ -604,4 +604,3 @@ def fetch_data(path, shots, diag_name):
 
 if __name__ == "__main__":
     fetch_data(path, shots, diag_name)
-    

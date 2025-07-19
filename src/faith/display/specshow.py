@@ -1,9 +1,9 @@
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import QuadMesh
+
 
 def specshow(data: np.ndarray,
     *,
@@ -61,7 +61,7 @@ def specshow(data: np.ndarray,
     ax : matplotlib.axes.Axes
         The axis containing the waveform and spectrogram plots.
     """
-    
+
     plt.clf()
     plt.imshow(data,aspect='auto',cmap='hot',
                 extent=[x_coords[0], x_coords[-1], y_coords[-1], y_coords[0]])

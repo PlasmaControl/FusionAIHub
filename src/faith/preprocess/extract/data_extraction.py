@@ -5,9 +5,10 @@ This module contains functions for extracting data from HDF5 files,
 determining plasma running time, and aligning signals to a common timebase.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from scipy.signal import resample
 
 
@@ -36,7 +37,7 @@ def extract_signal(
 
 def extract_running_time(
     shot_number: int,
-    directory: Path, 
+    directory: Path,
     ip_threshold: float,
     start_time: float | None = None,
     end_time: float | None = None,
@@ -91,22 +92,22 @@ def align_signal(
     # get sampling frequency
     # TODO: can change to getting mean or individual
     fs_raw = len(df) / (df.index[-1] - df.index[0])
-    
+
     # crop time
     df = df.loc[(df.index >= start_time) & (df.index <= end_time)]
-    
+
     # resample
     # TODO: can this be precomputed?
     # TODO: merge dataframe at closest time with a tolerance?
     # TODO: have 2 modules based on "make_stft" function?
     num = len(df)
     num = int(num * fs / fs_raw)
-    
+
     df = pd.DataFrame(
         {col: resample(df[col].values, num) for col in df.columns},
         index=np.linspace(df.index[0], df.index[-1], num)
     )
-    
+
     # mark on-off states
     # TODO: add intermtermittent detection, not just beginning and end
     # TODO: or just want the model to be robust
@@ -117,15 +118,15 @@ def align_signal(
         0, index=pd.RangeIndex(start=int(start_nan)), columns=df.columns)
     end_pad = pd.DataFrame(
         0, index=pd.RangeIndex(start=int(len(df) + start_nan), stop=int(len(df) + start_nan + end_nan)), columns=df.columns)
-    
+
     df_state = pd.DataFrame(True, index=df.index, columns=df.columns)
     start_pad_state = pd.DataFrame(False, index=start_pad.index, columns=df.columns)
     end_pad_state = pd.DataFrame(False, index=end_pad.index, columns=df.columns)
-    
+
     df = pd.concat([start_pad, df, end_pad], ignore_index=True)
     df_state = pd.concat([start_pad_state, df_state, end_pad_state], ignore_index=True)
     df_state.columns = [f"{col}_state" for col in df.columns]
-    
+
     # combine data with state
     # TODO: change this to a variable
     df = df.astype(np.float32)
@@ -135,4 +136,4 @@ def align_signal(
     # convert time to ms
     df = df.rename_axis("time")
 
-    return df 
+    return df

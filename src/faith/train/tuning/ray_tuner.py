@@ -2,19 +2,19 @@
 
 """Ray Tune integration for hyperparameter optimization."""
 
-import warnings
-from typing import Any, Optional
-import tempfile
 import os
+import tempfile
+import warnings
 from pathlib import Path
+from typing import Any, Optional
 
 try:
     import ray
     from ray import tune
     from ray.tune import CLIReporter
     from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
-    from ray.tune.search.optuna import OptunaSearch
     from ray.tune.search.hyperopt import HyperOptSearch
+    from ray.tune.search.optuna import OptunaSearch
 
 
     RAY_AVAILABLE = True
@@ -23,8 +23,8 @@ except ImportError:
     warnings.warn("Ray Tune not available. "
                   "Install with: pip install ray[tune] optuna hyperopt")
 
-import torch
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger

@@ -1,19 +1,24 @@
 """Examples demonstrating hyperparameter tuning with Ray Tune."""
 
-import torch
-from torch.utils.data import DataLoader, TensorDataset
-from ray import tune
+import atexit
 import os
 import sys
-import atexit
 from pathlib import Path
+
+import torch
+from ray import tune
+from torch.utils.data import DataLoader, TensorDataset
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.faith.train.models.autoencoder import BlockBasedAutoencoder
-from src.faith.train.tuning import (RayTuner, SearchSpaces, get_search_space,
-                                    CustomSearchSpace)
+from src.faith.train.tuning import (
+    CustomSearchSpace,
+    RayTuner,
+    SearchSpaces,
+    get_search_space,
+)
 
 # Ensure Ray cleanup on exit
 try:

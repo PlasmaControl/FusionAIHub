@@ -5,12 +5,13 @@ This module contains functions for splitting signals into time windows,
 applying transformations to samples, and saving processed data.
 """
 
-import numpy as np
-import pandas as pd
-import joblib
 import logging
 from pathlib import Path
 from typing import Dict
+
+import joblib
+import numpy as np
+import pandas as pd
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def split_samples(
 
     if window_ms is None or hop_ms is None or fs_khz is None:
         return [{f"{shot_number}_0": df}]
-    
+
     else:
         # Create sample indicies
         num_samples = int((window_ms) * fs_khz)
@@ -67,6 +68,8 @@ def remove_empty_samples(
     
     Args:
         samples: List of sample DataFrames
+
+    TODO: Add option to not remove states columns
     """
     samples = [
         {
@@ -86,7 +89,7 @@ def save_sample(
     id_val: str,
 ) -> None:
     """
-    Save processed samples to disk using joblib compression.
+    Save processed samples to disk using joblib.
     
     Args:
         samples: List of sample dictionaries to save
@@ -94,4 +97,4 @@ def save_sample(
         shot: Shot number for filename generation
     """
     logger.info(f"Saving sample to {directory / f'{id_val}.joblib'}")
-    joblib.dump(sample, directory / f"{id_val}.joblib") 
+    joblib.dump(sample, directory / f"{id_val}.joblib")

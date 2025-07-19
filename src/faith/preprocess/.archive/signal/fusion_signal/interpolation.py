@@ -1,6 +1,6 @@
-import numpy as np
-from scipy import interpolate
 from typing import Optional
+
+import numpy as np
 
 
 def interpolate_signal(y: np.ndarray, t_ori: np.ndarray, t_new: np.ndarray,

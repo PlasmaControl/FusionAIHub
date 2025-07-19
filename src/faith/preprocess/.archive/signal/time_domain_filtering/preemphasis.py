@@ -8,11 +8,12 @@ Preemphasis
     preemphasis
     deemphasis
 """
-import numpy as np
 from typing import Optional, Tuple, Union
-from numpy.typing import ArrayLike
-from .filtering import lfilter
 
+import numpy as np
+from numpy.typing import ArrayLike
+
+from .filtering import lfilter
 
 __all__ = ['preemphasis', 'deemphasis']
 

@@ -1,16 +1,19 @@
 """Examples and tests for the Lightning trainer with autoencoder models."""
 
+import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
-import pytorch_lightning as pl
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from torch.utils.data import DataLoader, TensorDataset
 
 # Assuming your package structure
 from src.faith.train.models.autoencoder import BlockBasedAutoencoder
 from src.faith.train.training import (
-    LightningTrainer, MultimodalLightningTrainer, train_model)
+    LightningTrainer,
+    MultimodalLightningTrainer,
+    train_model,
+)
 
 
 def create_dummy_dataset(

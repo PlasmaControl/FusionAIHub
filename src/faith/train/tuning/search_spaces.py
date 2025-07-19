@@ -2,7 +2,6 @@
 
 from typing import Any
 
-
 try:
     from ray import tune
 

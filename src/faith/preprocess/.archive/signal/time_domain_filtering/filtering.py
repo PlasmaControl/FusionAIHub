@@ -20,12 +20,11 @@ Window functions
     window_bandwidth
     get_window
 """
-import numpy as np
-from scipy import signal
 from typing import Optional, Tuple, Union
-from numpy.typing import ArrayLike
-from scipy.signal import get_window
 
+import numpy as np
+from numpy.typing import ArrayLike
+from scipy import signal
 
 __all__ = ["lfilter", "filtfilt"]
 

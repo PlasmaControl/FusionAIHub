@@ -1,7 +1,7 @@
-import numpy as np
-from scipy import signal
 from typing import Any, Literal, Optional, Tuple, Union
 
+import numpy as np
+from scipy import signal
 
 __all__ = ['spectrogram', 'stft']
 

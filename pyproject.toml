@@ -44,6 +44,7 @@ dependencies = [
 dev = [
     "pytest >=8.1.1,<9",
     "pre-commit",
+    "ruff",
 ]
 
 [tool.uv.sources]

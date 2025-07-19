@@ -3,7 +3,7 @@
 from .lightning_trainer import (
     LightningTrainer,
     MultimodalLightningTrainer,
-    train_model
+    train_model,
 )
 
 __all__ = [

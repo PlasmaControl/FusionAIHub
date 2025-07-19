@@ -1,14 +1,12 @@
-import numpy as np
-
-import h5py
 import os
-from pathlib import Path
-
-from typing import Any, Union
 
 # also do other file formats
-
 import warnings
+from typing import Any, Union
+
+import h5py
+import numpy as np
+
 
 @warnings._deprecated('Use the new function save instead')
 def dict_to_hdf5(
@@ -27,7 +25,7 @@ def dict_to_hdf5(
     compression : str, optional
         _description_, by default None
     """
-    
+
     for key, value in dictionary.items():
         if isinstance(value, dict):
             group = h5file.create_group(key)
@@ -48,15 +46,15 @@ def save(
     file_format: str = 'h5',
     compression: str = None,
     ) -> None:
-    
+
     if file_format == 'h5':
         if not path.endswith('.h5'):
             path += '.h5'
-        
+
         path.mkdir(parents=True, exist_ok=True)
         with h5py.File(path, 'w') as f:
             dict_to_hdf5(dictionary, f, compression)
-            
+
     else:
         raise ValueError(f"Unsupported file format: {file_format}")
 

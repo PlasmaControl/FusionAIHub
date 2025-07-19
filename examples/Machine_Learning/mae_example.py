@@ -1,6 +1,11 @@
 import torch
-from src.faith.train.models import (MaskGenerator, BlockBasedAutoencoder,
-                                    MaskedAutoencoder, mae_loss)
+
+from src.faith.train.models import (
+    BlockBasedAutoencoder,
+    MaskedAutoencoder,
+    MaskGenerator,
+    mae_loss,
+)
 
 # Example usage and testing
 if __name__ == "__main__":

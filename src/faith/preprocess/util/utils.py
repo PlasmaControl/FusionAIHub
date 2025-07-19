@@ -5,15 +5,17 @@ This module contains utility functions for handling missing signals,
 creating placeholder dataframes, and indexing dataset files.
 """
 
-import pandas as pd
 import logging
 from pathlib import Path
-from typing import Set, List, Dict
+
+import pandas as pd
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
-def index_dataset(out_dir: Path) -> None:
+def index_dataset(
+    out_dir: Path | str,
+    ) -> None:
     """
     Create an index file listing all dataset files in the directory.
     
@@ -23,19 +25,9 @@ def index_dataset(out_dir: Path) -> None:
     Args:
         out_dir: Directory to index
     """
+    out_dir = Path(out_dir)
     files = list(out_dir.glob("*.joblib"))
     df_files = pd.DataFrame({'files': [str(file) for file in files]})
     df_files.to_csv(out_dir / "index.csv", index=False)
 
-    logger.info(f"Indexed {len(files)} files.") 
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) != 2:
-        logger.error("Usage: python utils.py <output_dir>")
-        sys.exit(1)
-
-    output_dir = sys.argv[1]
-    logger.info(f"Indexing dataset in directory: {output_dir}")
-    index_dataset(Path(output_dir))
+    logger.info(f"Indexed {len(files)} files.")

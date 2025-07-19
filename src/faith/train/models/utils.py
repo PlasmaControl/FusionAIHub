@@ -4,12 +4,13 @@ This module provides convenience functions, model analysis tools, validation
 utilities, and helper functions for working with autoencoder models.
 """
 
-import torch
-from typing import Union, Optional, Any
+from typing import Any, Optional, Union
 
+import torch
+
+from . import PRESET_CONFIGS, create_block_autoencoder
 from .autoencoder import BlockBasedAutoencoder
-from .mae import MaskedAutoencoder, MASK_TYPES
-from . import create_block_autoencoder, PRESET_CONFIGS
+from .mae import MASK_TYPES, MaskedAutoencoder
 
 
 def create_mae_model(

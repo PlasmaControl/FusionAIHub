@@ -6,9 +6,10 @@ The autoencoder uses the modular blocks from the blocks package to create
 flexible and configurable models for audio and spectral data.
 """
 
+from typing import Any, Optional, Union
+
 import torch
 import torch.nn as nn
-from typing import Union, Optional, Any
 
 # Import the building blocks
 from ..blocks import BlockBasedEncoder

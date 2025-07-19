@@ -1,8 +1,9 @@
 """Example usage of JoblibDataset with real file inspection and training."""
 
-from torch.utils.data import DataLoader
-import torch
 from pathlib import Path
+
+import torch
+from torch.utils.data import DataLoader
 
 # Assuming your package structure
 from faith.train.data.datasets.file_based import JoblibDataset

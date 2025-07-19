@@ -1,9 +1,9 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import QuadMesh
+
 
 def waveshow(
     y: np.ndarray,
@@ -65,7 +65,7 @@ def waveshow(
     librosa.display.waveshow
     librosa.display.specshow
     """
-    
+
     plt.clf
     plt.plot(y)
     plt.show()

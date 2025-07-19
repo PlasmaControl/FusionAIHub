@@ -1,15 +1,6 @@
 """
 Data Preparation object from Max Curie with small adaptions by Peter Steiner.
 """
-import h5py
-import numpy as np
-import pandas as pd 
-import matplotlib.pyplot as plt
-from scipy import signal
-import os
-from tqdm import tqdm
-import pickle
-import cv2
 
 
 file_normal_size = {
@@ -471,16 +462,16 @@ file_keys = {'co2_s': {'co2_s': ['r0', 'v1', 'v2', 'v3']},
              'co2_pl': {'co2_pl': ['r0', 'v1', 'v2', 'v3']},
              'ece_cali': {'ece_cali':[]},
              'ece_s': {'ece_s':[]},
-             'ts': {r'{}.{}'.format(area,sig):
-                    [r'{}.{}'.format(area,sig)]
+             'ts': {rf'{area}.{sig}':
+                    [rf'{area}.{sig}']
                     for area in ['core', 'divertor', 'tangential']
                     for sig in ['dens', 'temp']},
-             'ts_error': {r'{}.{}'.format(area, sig):
-                          [r'{}.{}'.format(area, sig)]
+             'ts_error': {rf'{area}.{sig}':
+                          [rf'{area}.{sig}']
                           for area in ['core', 'divertor', 'tangential']
                           for sig in ['dens', 'temp']},
-             'ts_rz': {r'{}.{}'.format(area,sig):
-                       [r'{}.{}'.format(area, sig)]
+             'ts_rz': {rf'{area}.{sig}':
+                       [rf'{area}.{sig}']
                        for area in ['core','divertor','tangential']
                        for sig in ['r', 'z']},
              'cer': {output: [f'q.{output}.v{channel:02d}'
@@ -576,7 +567,7 @@ spec_params_default = {'window': 'hamm',
 
 
 
-class DichargePerp():
+class DichargePerp:
     """object that contains the functions to manipulate one discharge."""
     def __init__(self):
         self.file_keys=file_keys
@@ -679,7 +670,7 @@ class DichargePerp():
     #                 input_dict[key]['zdata']=np.log(np.array(input_dict[key]['zdata'][:]))
     #             else:
     #                 input_dict[key]['zdata']=np.array(input_dict[key]['zdata'][:])/self.norm_factor_list[suffix][key]
-        
+
     #     return input_dict
 
     # divide the data into subcategory
@@ -695,7 +686,7 @@ class DichargePerp():
     #     return input_multi_level
 
 
-    #norm_mode=[no, all,individual,std_all_avg_individual] 
+    #norm_mode=[no, all,individual,std_all_avg_individual]
     #no, means no normalizations
     # def get_full_data(self, discharge, suffix_list, norm_mode='all'):
     #     all_file_dict = {}
@@ -706,7 +697,7 @@ class DichargePerp():
     #             if norm_mode=='no':
     #                 all_file_dict[suffix][key]={'xdata':file_dict[key]['xdata'][:],\
     #                                             'zdata':file_dict[key]['zdata'][:]}
-    #             else:   
+    #             else:
     #                 all_file_dict[suffix][key]={'xdata':file_dict[key]['xdata'][:],\
     #                                         'zdata':self.norm_data(file_dict[key]['zdata'][:],\
     #                                                   self.std_list[suffix][key],
@@ -726,27 +717,27 @@ class DichargePerp():
     #         mn = amp_f_t.mean()
     #         std = amp_f_t.std()
     #         return (amp_f_t-mn) / std
-        
+
     #     def rescale(amp_f_t):
     #         return (amp_f_t-amp_f_t.min())/(amp_f_t.max()-amp_f_t.min())
-        
+
     #     def quantfilt(amp_f_t, thr=0.9):
     #         filt = np.quantile(amp_f_t, thr, axis=0)
     #         out = np.where(amp_f_t < filt, 0, amp_f_t)
     #         return out
-        
+
     #     # gaussian filtering
     #     def gaussblr(amp_f_t, filt=(31, 3)):
     #         amp_f_t = (rescale(amp_f_t)*255).astype('uint8')
     #         out = cv2.GaussianBlur(amp_f_t,filt,0)
     #         return rescale(out)
-        
+
     #     # mean filtering
     #     def meansub(amp_f_t):
     #         mn = np.mean(amp_f_t, axis=1)[:, np.newaxis]
     #         out = np.absolute(amp_f_t - mn)
     #         return rescale(out)
-        
+
     #     # morphological filtering
     #     def morph(amp_f_t):
     #         amp_f_t = (rescale(amp_f_t)*255).astype('uint8')
@@ -755,20 +746,20 @@ class DichargePerp():
     #         mask = cv2.morphologyEx(amp_f_t, cv2.MORPH_CLOSE, se1)
     #         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, se2)
     #         return rescale(mask)
-        
+
     #     def apply_all(freq, time, amp_f_t, spec_params, thr=thr,
     #                   gaussblr_win=gaussblr_win):
-            
+
     #         Sxx = np.log(amp_f_t + spec_params['eps'])
     #         # rescale the pixels to (0,1)
     #         Sxx = (Sxx-np.min(Sxx))/(np.max(Sxx)-np.min(Sxx))
-            
+
     #         Sxx_enhanced = quantfilt(Sxx, thr)
     #         Sxx_enhanced = gaussblr(Sxx_enhanced, gaussblr_win)
     #         Sxx_enhanced = meansub(Sxx_enhanced)
     #         Sxx_enhanced = morph(Sxx_enhanced)
     #         Sxx_enhanced = meansub(Sxx_enhanced)
-            
+
     #         return freq, time, Sxx_enhanced
 
     #     return apply_all(freq, time, amp_f_t, spec_params, thr=thr,
@@ -782,7 +773,7 @@ class DichargePerp():
     #     # default: nperseg / 4
     #     spec_params['noverlap'] = max(int(spec_params['nperseg']/4), 1)
     #     print(spec_params)
-        
+
     #     freq, time, amp_f_t = signal.spectrogram(
     #         data, nperseg=spec_params['nperseg'],
     #         noverlap=spec_params['noverlap'], fs=spec_params['fs'],
@@ -798,7 +789,7 @@ class DichargePerp():
     #         plt.gca().invert_yaxis()
     #         plt.show()
     #     return freq, time, amp_f_t
-        
+
     # @staticmethod
     # def spectro_plot(freq, time, amp_f_tz):
     #     plt.clf()
@@ -809,7 +800,7 @@ class DichargePerp():
     #     plt.xlabel('ms')
     #     plt.gca().invert_yaxis()
     #     plt.show()
-        
+
     # @staticmethod
     # def time_serie_plot(dict):
     #     plt.clf()
@@ -840,11 +831,11 @@ class DichargePerp():
     #     # Convert input arrays to DataFrames
     #     df1 = pd.DataFrame({'time1': time1, 'data1': data1})
     #     df2 = pd.DataFrame({'time_std': time_std})
-        
+
     #     # Sort the DataFrames by the time columns
     #     df1.sort_values('time1', inplace=True)
     #     df2.sort_values('time_std', inplace=True)
-        
+
     #     # Perform the asof merge
     #     merged_df = pd.merge_asof(df2, df1, left_on='time_std',
     #                               right_on='time1', direction='nearest')
@@ -858,7 +849,7 @@ class DichargePerp():
     #     matched_data = merged_df['data1'].values
 
     #     return matched_time, matched_data
-        
+
     # @staticmethod
     # def time_matching_merge_asof_2d(time1, data1, time_std,left_window=0, right_window=0):
     #     # Create DataFrames
@@ -885,7 +876,7 @@ class DichargePerp():
     #     indices = merged['time1'].apply(
     #         lambda x: np.where(df1['time1'] == x)[0][0]
     #         if x in df1['time1'].values else -1).values
-        
+
     #     # Use indices to fetch data from the original 2D array,
     #     # handle missing indices
     #     matched_data = np.array([data1[:, int(idx)] if idx != -1
@@ -893,7 +884,7 @@ class DichargePerp():
     #                              for idx in indices]).T
 
     #     return matched_time, matched_data
-        
+
     # @staticmethod
     # def time_matching_binary_search(time1, data1, time_std, left_window=0, right_window=0):
     #     # Function to find the closest time in time1 to each time in time_std
@@ -950,7 +941,7 @@ class DichargePerp():
     #     #on target
     #     if time[indx_start]==target:
     #         return indx_start
-    #     #indx_start on the left 
+    #     #indx_start on the left
     #     elif time[indx_start]<target:
     #         i=indx_start
     #         while time[i]<target:
@@ -960,7 +951,7 @@ class DichargePerp():
     #             return i-1
     #         return i
 
-    #     #indx_start on the left 
+    #     #indx_start on the left
     #     elif time[indx_start]>target:
     #         i=indx_start
     #         while time[i]>target:
@@ -988,13 +979,13 @@ class DichargePerp():
     #             best_idx = mid
     #     return best_idx
 
-    
+
     # @staticmethod
     # def custom_padding(time, data, left_slicing_indx, right_slicing_indx, padding='last'):
     #     #padding to the left
 
     #     if left_slicing_indx<0:
-    #         padding_config = [(0, 0)] * (data.ndim - 1) 
+    #         padding_config = [(0, 0)] * (data.ndim - 1)
 
     #         padd_len=-left_slicing_indx
 
@@ -1009,7 +1000,7 @@ class DichargePerp():
     #             time_tmp=np.pad(time[0:right_slicing_indx+1],padding_config+[(padd_len, 0)],mode='constant',constant_values=0)
     #     elif (right_slicing_indx+1)>len(time):
     #         padd_len=right_slicing_indx-len(time)
-    #         padding_config = [(0, 0)] * (data.ndim - 1) 
+    #         padding_config = [(0, 0)] * (data.ndim - 1)
 
     #         if padding=='nan':
     #             data_tmp=np.pad(data[..., left_slicing_indx:],padding_config+[(0,padd_len)],mode='empty')
@@ -1029,7 +1020,7 @@ class DichargePerp():
 
     #assume the time is sorted
     # def time_matching_dynamic_search(self,time, data, time_std, left_window=0, right_window=0, padding='last'):
-        
+
     #     dt,dt_std,if_dt_even=self.check_even_time_spacing(time,time_start=0.01)
 
     #     # Align data to time_std
@@ -1043,7 +1034,7 @@ class DichargePerp():
     #         for target in time_std:
     #             indx_start=self.estimate_closest_indx_constant_dt(left_indx,time,target,dt)
     #             closest_idx=self.find_closest_indx_constant_dt(indx_start,time,target)
-                
+
     #             left_slicing_indx=closest_idx-left_window
     #             right_slicing_indx=closest_idx+right_window
     #             time_tmp,data_tmp=self.custom_padding(time, data, left_slicing_indx,right_slicing_indx, padding=padding)
@@ -1064,16 +1055,16 @@ class DichargePerp():
 
     #             matched_time.append(time_tmp)
     #             matched_data.append(data_tmp)
-                
+
 
     #             left_indx=closest_idx
-        
+
     #     matched_time=np.array(matched_time)
     #     matched_data=np.array(matched_data)
-        
+
     #     return matched_time, matched_data
-        
-    
+
+
     # def time_matching(self,time, data, time_std, left_window=0, right_window=0, mode='merge_asof', padding='last'):
     #     if mode == 'merge_asof':
     #         if len(data.shape) == 1:
@@ -1097,35 +1088,35 @@ class DichargePerp():
 
     #     time=np.array(time)
     #     dt_tmp=time[time_start_indx+1:time_start_indx+101]-time[time_start_indx:time_start_indx+100]
-        
+
 
     #     dt=np.mean(dt_tmp)
     #     dt_std=np.std(dt_tmp)
     #     std_norm=dt_std/dt
 
     #     if std_norm>0.1**5:
-    #         if_dt_even=False 
+    #         if_dt_even=False
     #     else:
-    #         if_dt_even=True 
+    #         if_dt_even=True
 
     #     return dt,dt_std,if_dt_even
 
-                
+
     # @staticmethod
     # def time_interp_past_looking(time, data, time_std, mode='extrapolate'):
     #     if mode == 'extrapolate':
     #         pass
     #     elif mode == 'fill':
     #         pass
-            
-    
+
+
     # def time_interp_1d(self, time, data, time_std, mode='normal'):
     #     if mode=='normal':
     #         return np.interp(time_std, time, data)
     #     else:
     #         return self.time_interp_past_looking(time, data, time_std, mode)
 
-    
+
     # def time_interp(self, time, data, time_std, mode='normal'):
     #     if len(data.shape) == 1:
     #         return self.time_interp_1d(time, data, time_std, mode=mode)
@@ -1135,7 +1126,7 @@ class DichargePerp():
     #             data_interp.append(self.time_interp_1d(time, data[i,:], time_std, mode=mode))
 
     #         return np.array(data_interp)
-            
+
 
     # @staticmethod
     # def find_plateau(series, window_size=40, threshold=0.1, plot=False):
@@ -1173,7 +1164,7 @@ class DichargePerp():
     #         plt.show()
 
     #     return plateau_start, plateau_end
-        
+
     # def flat_top_finder(self,discharge, window_size=500, threshold=0.01, plot=False):
     #     file_dict = self.get_data(discharge, 'basic', norm=True)
     #     time = file_dict['ip']['xdata'][:]
@@ -1204,13 +1195,13 @@ class DichargePerp():
     def deal_with_missing_data(self):
         pass
 
-    
+
     # def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=False):
     #     '''
 
     #     time_std: the standard time
 
-    #     interp_suffix: the list suffix and key to 
+    #     interp_suffix: the list suffix and key to
     #     e.g. interp_suffix=[['ts','core.dens'],['ts','core.dens']]  #e.g. [['ts','core.dens'],['ts','core.dens']]
     #     interp_mode='normal'
 
@@ -1249,20 +1240,20 @@ class DichargePerp():
     #                                                              all_file_dict[key1][key2]['zdata'][:], \
     #                                                              t_min, t_max)
     #             all_file_dict[key1][key2]={'xdata':time_cut,'zdata':data_cut}
-            
+
     #     time_std=time_cut
 
-    #     #time matching 
+    #     #time matching
     #     for key1 in all_file_dict.keys():
     #         for key2 in all_file_dict[key1].keys():
-                
+
     #             try:
     #                 left_window_tmp=left_window[key1][key2]
     #                 right_window_tmp=right_window[key1][key2]
     #             except:
     #                 left_window_tmp=0
     #                 right_window_tmp=0
-                
+
     #             matched_time, matched_data=self.time_matching(\
     #                                             all_file_dict[key1][key2]['xdata'][:], \
     #                                             all_file_dict[key1][key2]['zdata'][:], \
@@ -1271,17 +1262,17 @@ class DichargePerp():
     #                                             right_window=right_window_tmp, \
     #                                             mode=time_matching_mode,\
     #                                             padding=time_matching_padding)
-            
+
     #             all_file_dict[key1][key2]['xdata']=matched_time
     #             all_file_dict[key1][key2]['zdata']=matched_data
-                
+
     #     if plot_matched_data:
     #         for key1 in all_file_dict.keys():
     #             for key2 in all_file_dict[key1].keys():
     #                 print([key1,key2])
     #                 plt.clf()
     #                 if all_file_dict[key1][key2]['zdata'].shape[2]==1:
-           
+
     #                     plt.plot(all_file_dict[key1][key2]['xdata'][:,0],\
     #                             all_file_dict[key1][key2]['zdata'][:,:,0])
     #                 else:
@@ -1298,7 +1289,7 @@ class DichargePerp():
 #     def __init__(self, discharge_search_list=[174823], suffix_list=['ts']):
 #         self.discharge_search_list = discharge_search_list
 #         self.suffix_list = suffix_list
-    
+
 #     def filter_discharges(self):
 #         suffix_list = self.suffix_list
 #         discharge_search_list = self.discharge_search_list
@@ -1306,7 +1297,7 @@ class DichargePerp():
 #         criteria = {key: file_normal_size[key]*0.5 for key in suffix_list}
 
 #         discharge_list = {key: [] for key in suffix_list}
-        
+
 #         for discharge in tqdm(discharge_search_list):
 #             for suffix, size_limit in criteria.items():
 #                 discharge_path = self.file_path_gen(discharge,suffix)
@@ -1351,7 +1342,7 @@ class DichargePerp():
 #         pass
 
 # class data_obj_rest():
-    
+
 #     # def save_dict_to_hdf5(dictionary, h5file):
 #     #     for key, value in dictionary.items():
 #     #         if isinstance(value, dict):
@@ -1372,14 +1363,14 @@ class DichargePerp():
 #                         0.92, 0.93]
 #         str_shot = str(discharge)[:2]
 #         path = f'/scratch/gpfs/EKOLEMEN/big_d3d_data/{str_shot}0000/'
-        
+
 #         TS_file = h5py.File(path + str(discharge) + '_TS.h5', 'r')
 #         TS_RZ_file = h5py.File(path + str(discharge) + '_TS_RZ.h5', 'r')
-        
+
 #         TS_Z = TS_RZ_file['S.BLESSED.CORE.Z']['zdata'][:]
 #         order_index = np.argsort(TS_Z)
 #         TS_Z_sort = TS_Z[order_index]
-        
+
 #         TS_interp = {}
 #         TS_keys = ['TS.BLESSED.CORE.density', 'TS.BLESSED.CORE.temp']
 #         for key in TS_keys:
@@ -1408,10 +1399,10 @@ class DichargePerp():
 #                         label='origin')
 #             plt.legend()
 #             plt.show()
-            
+
 #         return 0
-        
-            
+
+
     # def read_file(discharge, file_suffix, df_time):
 
     #     path = find_path(discharge)
@@ -1425,7 +1416,7 @@ class DichargePerp():
     #                 dict_tmp[key+str(j)] = file[key]['zdata'][j, :]
     #         elif len(file[key]['zdata'].shape) == 1:
     #             dict_tmp[key] = file[key]['zdata']
-                
+
     #         df_tmp = pd.DataFrame(dict_tmp).astype('float32')
     #         if i == 0:
     #             df = pd.merge_asof(df_time, df_tmp, on='xdata',
@@ -1449,21 +1440,21 @@ class DichargePerp():
     #             dfs = {}
     #             # creating the standard time
     #             path=find_path(discharge)
-                
+
     #             file = h5py.File(f'{path}{discharge}_shape.h5', 'r')
     #             t_min = 0
     #             t_max = file['R0']['xdata'][-1]
     #             file.close()
-                
+
     #             file = h5py.File(f'{path}{discharge}_TS.h5', 'r')
     #             df_time = pd.DataFrame({'xdata': file[list(file.keys())[0]]['xdata']})
     #             time = file[list(file.keys())[0]]['xdata'][:]
-                
+
     #             time_index = (time >= t_min) & (time <= t_max)
     #             time_tmp = time[time_index]
     #             df_time = pd.DataFrame({'xdata': time_tmp})
     #             file.close()
-                
+
     #             # Read all the files
     #             for file_suffix in h5_profiles:
     #                 df = read_file(discharge, file_suffix, df_time)
@@ -1479,7 +1470,7 @@ class DichargePerp():
     #                 key_list_dict[key]=list(dfs[key].keys())
     #                 for key_ in key_list_dict[key]:
     #                     key_list.append(key_)
-                
+
     #             # add this discharge to the total file
     #             all_X.append(df_tmp)
     #             all_time.append(df_time['xdata'])

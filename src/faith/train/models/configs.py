@@ -6,11 +6,12 @@ for common use cases and tools for custom configuration management.
 """
 
 import json
-import yaml
-from pathlib import Path
-from typing import Union, Optional, Any
-from dataclasses import dataclass, asdict, field
 from copy import deepcopy
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Optional, Union
+
+import yaml
 
 from .autoencoder import BlockBasedAutoencoder
 from .mae import MaskedAutoencoder, MaskGenerator
@@ -179,7 +180,7 @@ class ModelConfig:
 
         suffix = filepath.suffix.lower()
 
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             if suffix in ['.yaml', '.yml']:
                 config_dict = yaml.safe_load(f)
             elif suffix == '.json':

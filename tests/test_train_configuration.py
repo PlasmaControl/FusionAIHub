@@ -1,11 +1,11 @@
 from src.faith.train.models import (
-    get_preset_config,
+    ModelConfig,
+    create_autoencoder_from_config,
     create_block_autoencoder,
+    create_model_from_config_file,
+    get_preset_config,
     list_preset_configs,
     save_model_config,
-    create_model_from_config_file,
-    create_autoencoder_from_config,
-    ModelConfig,
 )
 
 # Example usage and testing
@@ -50,7 +50,6 @@ print(f"Recreated model: {type(recreated_model).__name__}")
 
 # Cleanup
 import os
-
 
 os.remove('test_config.yaml')
 os.remove('model_config.yaml')

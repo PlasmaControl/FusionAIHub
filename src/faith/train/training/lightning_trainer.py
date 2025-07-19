@@ -462,7 +462,7 @@ def train_model(
     from pytorch_lightning.callbacks import (
         EarlyStopping,
         LearningRateMonitor,
-        ModelCheckpoint
+        ModelCheckpoint,
     )
 
     # Create Lightning module

@@ -3,8 +3,9 @@ from omegaconf import DictConfig
 
 from .preprocess import preprocess
 
+
 @hydra.main(
-    config_path="config", 
+    config_path="config",
     config_name="default",
     version_base=None,
     )

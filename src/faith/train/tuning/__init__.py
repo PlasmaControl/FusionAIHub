@@ -6,12 +6,15 @@ try:
     from .ray_tuner import (
         RayTuner,
         RayTuneReportCallback,
+        cleanup_ray,
         create_basic_search_space,
         suggest_scheduler_config,
-        cleanup_ray
     )
-    from .search_spaces import (SearchSpaces, CustomSearchSpace,
-                                get_search_space)
+    from .search_spaces import (
+        CustomSearchSpace,
+        SearchSpaces,
+        get_search_space,
+    )
 
 
     __all__ = [

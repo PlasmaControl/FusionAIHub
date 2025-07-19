@@ -1,6 +1,6 @@
-import numpy as np
+from typing import Callable, Literal, Union
 
-from typing import Union, Callable, Literal
+import numpy as np
 
 # actually just use sklearn.preprocessing
 
@@ -23,7 +23,7 @@ def signal_optimize(
     dict
         _description_
     """
-    
+
     return None
 
 
@@ -55,17 +55,17 @@ def get_scaling_factor(
     >>> print(get_scaling_factor(data, scaling='max'))
     {'channel1': 3}
     """
-    
+
     # Map string identifiers to numpy functions
     scaling_functions = {
         "mean": np.mean,
         "std": np.std,
         "norm": np.linalg.norm,
-        "oom": lambda x: np.floor(np.log10(abs(x))),  
+        "oom": lambda x: np.floor(np.log10(abs(x))),
         "min": np.min,
         "max": np.max,
     }
-    
+
     # If the scaling argument is a string, use the corresponding numpy function
     if isinstance(scaling, str):
         scaling_function = scaling_functions.get(scaling)
@@ -75,7 +75,7 @@ def get_scaling_factor(
         scaling_function = scaling
     else:
         raise TypeError("Scaling must be either a string key for predefined functions or a callable.")
-    
+
     scaled_values = {}
     for key, value in data.items():
         try:
@@ -94,13 +94,13 @@ def normalize(
     norm: dict,
     std: dict,
 ) -> dict:
-    
+
     return None
-    
+
 def standardize(
     data: dict,
     mean: dict,
     std: dict,
 ) -> dict:
-    
+
     return None

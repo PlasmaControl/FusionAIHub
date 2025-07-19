@@ -1,10 +1,7 @@
-import numpy as np
 
-import h5py
 import os
-from pathlib import Path
-
 from typing import Any, Union
+
 
 def merge(
     path_1: Union[str, int, Any[os.Pathlike]],
@@ -44,21 +41,21 @@ def merge(
 #             dfs = {}
 #             # creating the standard time
 #             path=find_path(discharge)
-            
+
 #             file = h5py.File(f'{path}{discharge}_shape.h5', 'r')
 #             t_min = 0
 #             t_max = file['R0']['xdata'][-1]
 #             file.close()
-            
+
 #             file = h5py.File(f'{path}{discharge}_TS.h5', 'r')
 #             df_time = pd.DataFrame({'xdata': file[list(file.keys())[0]]['xdata']})
 #             time = file[list(file.keys())[0]]['xdata'][:]
-            
+
 #             time_index = (time >= t_min) & (time <= t_max)
 #             time_tmp = time[time_index]
 #             df_time = pd.DataFrame({'xdata': time_tmp})
 #             file.close()
-            
+
 #             # Read all the files
 #             for file_suffix in h5_profiles:
 #                 df = read_file(discharge, file_suffix, df_time)
@@ -74,7 +71,7 @@ def merge(
 #                 key_list_dict[key]=list(dfs[key].keys())
 #                 for key_ in key_list_dict[key]:
 #                     key_list.append(key_)
-            
+
 #             # add this discharge to the total file
 #             all_X.append(df_tmp)
 #             all_time.append(df_time['xdata'])

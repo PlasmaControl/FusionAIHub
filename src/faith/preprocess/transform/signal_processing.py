@@ -3,19 +3,39 @@ Signal processing utilities for fusion dataset preparation.
 
 This module contains functions for signal resampling and transformation,
 including STFT transformations and nearest-neighbor resampling.
+
+NOTE: All transforms should take in a shape of (channels, time) and return a shape of (channels, time).
 """
+
+import logging
 
 import numpy as np
 import torch
 from scipy.signal import resample
-from scipy.interpolate import interp1d
-import logging
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
+def identity_transform(
+    x: np.ndarray,
+) -> np.ndarray:
+    """
+    Identity transform.
+    
+    Args:
+        x: Input signal
+        
+    Returns:
+        Input signal
+    """
+    y = x.astype(np.float32)
+    y = np.expand_dims(y, axis=1)
+    return y
 
-def resample_fn(y: np.ndarray, new_len: int) -> np.ndarray:
+def resample_fn(
+    y: np.ndarray,
+    new_len: int,
+) -> np.ndarray:
     """
     Resample a signal to a new length using scipy.signal.resample.
     
@@ -37,8 +57,8 @@ def resample_fn(y: np.ndarray, new_len: int) -> np.ndarray:
 
 def stft_transform(
     x: np.ndarray,
-    n_fft: int = 1024,
-    hop_length: int = 256,
+    n_fft: int,
+    hop_length: int,
 ) -> np.ndarray:
     """
     Apply STFT transformation to an individual sample.
@@ -60,8 +80,8 @@ def stft_transform(
     y = torch.stft(
         x_tensor,
         n_fft=n_fft,
-        hop_length=hop_length, 
-        window=torch.hann_window(n_fft), 
+        hop_length=hop_length,
+        window=torch.hann_window(n_fft),
         return_complex=True,
     )
     y = torch.abs(y)
@@ -102,54 +122,3 @@ def resample_linear_transform(
     y = [np.interp(lnew, lold, x_) for x_ in x]
     y = np.expand_dims(y, axis=1)
     return np.array(y)
-
-
-def wav_like_transform(
-    x: np.ndarray,
-    max_lim: float = 40,
-    cutoff_freq: float = 1.0,
-    fs: float = 500,
-) -> np.ndarray:
-    """
-    Transform a signal to a WAV-like format.
-    """
-    from scipy.signal import butter, filtfilt
-    def highpass_filter(data, cutoff_freq=1.0, fs=44100, order=4):
-        nyquist = fs / 2
-        normal_cutoff = cutoff_freq / nyquist
-        b, a = butter(order, normal_cutoff, btype='high', analog=False)
-        filtered_data = filtfilt(b, a, data)
-        return filtered_data
-
-    signal = df[df['mhr_4_state'] == True]['mhr_4'].values
-    max_lim = 40
-    signal = signal[~np.isnan(signal)]
-    signal = highpass_filter(signal, cutoff_freq=1.0, fs=500)
-
-    # Remove outliers beyond 3 standard deviations
-    signal_std = signal.std()
-    signal_mean = np.mean(signal)
-    outlier_mask = np.abs(signal - signal_mean) <= 4 * signal_std
-    signal = signal[outlier_mask]
-
-    # Normalize signal to [-1, 1]
-    amplitude = np.max(np.abs(signal))
-    if amplitude > max_lim: print(f"Amplitude {amplitude} is greater than {max_lim}")
-    signal = signal / max_lim
-
-    # Convert to WAV format
-    wav_vals = np.int16(signal * 32767)
-
-def identity_transform(x: np.ndarray) -> np.ndarray:
-    """
-    Identity transform.
-    
-    Args:
-        x: Input signal
-        
-    Returns:
-        Input signal
-    """
-    y = x.astype(np.float32)
-    y = np.expand_dims(y, axis=1)
-    return y

@@ -1,4 +1,5 @@
 import torch
+
 from src.faith.train.models import BlockBasedAutoencoder
 
 # Test basic functionality

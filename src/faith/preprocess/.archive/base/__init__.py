@@ -1,6 +1,6 @@
 from .load import *
-from .save import *
 from .merge import *
+from .save import *
 
 __all__ = ["list_signals",
            "load_sample",
