@@ -13,7 +13,7 @@ FAITH serves as a centralized platform for fusion-related machine learning workf
 3. In your main project's virtual environment or anaconda environment, type `pip install </path/to/FusionAIHub>
 4. You can find tutorials on how to use this package in `docs`, `example` and `notebooks`
 
-`TODO: We will include this as a python package in the future`
+`TODO: We will include this as a pip package in the future`
 
 ## Setup [for developers]
 
