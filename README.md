@@ -1,4 +1,4 @@
-# Fusion Artificial InTelligence Hub (FAITH) - Princeton Plasma Control Group
+# Welcome to the Fusion Artificial Intelligence Hub (FAITH) - Princeton Plasma Control Group
 
 A general fusion hub for the Princeton cluster designed to standardize fusion machine learning processes for the plasma control group at Princeton University.
 
