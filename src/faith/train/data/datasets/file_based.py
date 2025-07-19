@@ -1161,3 +1161,19 @@ def worker_init_fn(worker_id: int) -> None:
             warnings.warn(
                 f"Dataset in worker {worker_id} does not have worker_init "
                 f"method. Got {type(worker_dataset)}.")
+
+
+# Helper function for getting the file paths for an indexed joblib dataset
+def get_file_paths(dataset_name: str) -> list[str]:
+    """Get the file paths for an indexed joblib dataset."""
+    import pandas as pd
+    base_path = Path('/scratch/gpfs/EKOLEMEN/hackathon/foundation25/')
+    file_path = base_path / dataset_name / 'index.csv'
+
+    if not file_path.exists():
+        available_datasets = [path.name for path in base_path.glob('*')]
+        raise ValueError(f"File '{dataset_name}' does not exist.\n" \
+                         f"Available datasets: {available_datasets}")
+
+    df = pd.read_csv(file_path)
+    return df.values[:,0]
