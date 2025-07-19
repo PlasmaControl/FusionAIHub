@@ -28,3 +28,14 @@ def index_dataset(out_dir: Path) -> None:
     df_files.to_csv(out_dir / "index.csv", index=False)
 
     logger.info(f"Indexed {len(files)} files.") 
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) != 2:
+        logger.error("Usage: python utils.py <output_dir>")
+        sys.exit(1)
+
+    output_dir = sys.argv[1]
+    logger.info(f"Indexing dataset in directory: {output_dir}")
+    index_dataset(Path(output_dir))

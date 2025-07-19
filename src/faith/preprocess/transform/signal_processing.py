@@ -104,6 +104,42 @@ def resample_linear_transform(
     return np.array(y)
 
 
+def wav_like_transform(
+    x: np.ndarray,
+    max_lim: float = 40,
+    cutoff_freq: float = 1.0,
+    fs: float = 500,
+) -> np.ndarray:
+    """
+    Transform a signal to a WAV-like format.
+    """
+    from scipy.signal import butter, filtfilt
+    def highpass_filter(data, cutoff_freq=1.0, fs=44100, order=4):
+        nyquist = fs / 2
+        normal_cutoff = cutoff_freq / nyquist
+        b, a = butter(order, normal_cutoff, btype='high', analog=False)
+        filtered_data = filtfilt(b, a, data)
+        return filtered_data
+
+    signal = df[df['mhr_4_state'] == True]['mhr_4'].values
+    max_lim = 40
+    signal = signal[~np.isnan(signal)]
+    signal = highpass_filter(signal, cutoff_freq=1.0, fs=500)
+
+    # Remove outliers beyond 3 standard deviations
+    signal_std = signal.std()
+    signal_mean = np.mean(signal)
+    outlier_mask = np.abs(signal - signal_mean) <= 4 * signal_std
+    signal = signal[outlier_mask]
+
+    # Normalize signal to [-1, 1]
+    amplitude = np.max(np.abs(signal))
+    if amplitude > max_lim: print(f"Amplitude {amplitude} is greater than {max_lim}")
+    signal = signal / max_lim
+
+    # Convert to WAV format
+    wav_vals = np.int16(signal * 32767)
+
 def identity_transform(x: np.ndarray) -> np.ndarray:
     """
     Identity transform.

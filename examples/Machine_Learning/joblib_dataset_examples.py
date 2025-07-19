@@ -5,14 +5,15 @@ import torch
 from pathlib import Path
 
 # Assuming your package structure
-from src.faith.train.data.datasets.file_based import JoblibDataset
-from src.faith.train.data.loaders.factory import worker_init_fn
-from src.faith.train.models.autoencoder import BlockBasedAutoencoder
-from src.faith.train.training import train_model
+from faith.train.data.datasets.file_based import JoblibDataset
+from faith.train.data.loaders.factory import worker_init_fn
+from faith.train.models.autoencoder import BlockBasedAutoencoder
+from faith.train.training import train_model
 
 
-def collate_fn(data: list[tuple[torch.Tensor, ...]]) \
-        -> tuple[torch.Tensor, ...]:
+def collate_fn(
+    data: list[tuple[torch.Tensor, ...]]
+) -> tuple[torch.Tensor, ...]:
     """
     Custom collate function to remove the highest frequency bin of
     spectrograms.  # TODO list of dicts to dict of tensors

@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1               # total number of tasks across all nodes
 #SBATCH --cpus-per-task=96        # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH --mem=500GB               # memory per node
-#SBATCH --time=1:00:00          # maximum time needed (HH:MM:SS)
+#SBATCH --time=3:00:00          # maximum time needed (HH:MM:SS)
 #SBATCH --output=logs/%A_%a.out
 #SBATCH --error=logs/%A_%a.err
 

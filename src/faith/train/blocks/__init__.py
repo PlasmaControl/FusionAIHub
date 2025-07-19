@@ -9,6 +9,7 @@ __all__ = [
     "ResidualEncoding2d",
     "EncoderBlock1d",
     "DecoderBlock",
+    "BlockBasedEncoder",
     "BlockBasedDecoder",
     "BlockUtils",
 ]

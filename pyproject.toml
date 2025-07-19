@@ -35,10 +35,9 @@ dependencies = [
     "lightning",
     "ray[data,train,tune,serve]",
     "tables",
-    "pyyaml",
     "jupyter",
     "typing",
-    "hydra-core>=1.3.2",
+    "hydra-core",
 ]
 
 [dependency-groups]
