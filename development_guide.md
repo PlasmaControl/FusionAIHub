@@ -14,10 +14,24 @@ pip install -e "."
 
 # Install pre-commit hooks
 pre-commit install
+```
 
+### 2. Running Tests
+
+```bash
 # Run tests with coverage
 pytest --cov=src --cov-report=html
 
+# Run specific test file
+pytest tests/test_example.py
+
+# Run with verbose output
+pytest -v
+```
+
+### 3. Code Quality Checks
+
+```bash
 # Run ruff linting
 ruff check .
 
@@ -119,47 +133,6 @@ class MyClass:
     def increment(self) -> None:
         """Increment the value by 1."""
         self.value += 1
-```
-
----
-
-## Development Workflow
-
-### 1. Setup Development Environment
-
-```bash
-# Create virtual environment
-python -m venv .venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install development dependencies
-pip install -e "."
-```
-
-### 2. Running Tests
-
-```bash
-# Run tests with coverage
-pytest --cov=src --cov-report=html
-
-# Run specific test file
-pytest tests/test_example.py
-
-# Run with verbose output
-pytest -v
-```
-
-### 3. Code Quality Checks
-
-```bash
-# Run ruff linting
-ruff check .
-
-# Run ruff formatting
-ruff format .
-
-# Fix auto-fixable issues
-ruff check --fix .
 ```
 
 ---
