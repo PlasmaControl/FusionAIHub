@@ -1,12 +1,21 @@
 # Welcome to the Fusion Artificial Intelligence Hub (FAITH) - Princeton Plasma Control Group
 
-A general fusion hub for the Princeton cluster designed to standardize fusion machine learning processes for the plasma control group at Princeton University.
+A general fusion hub for the Princeton cluster designed to standardize fusion machine learning processes at Princeton University.
 
 ## Purpose
 
 FAITH serves as a centralized platform for fusion-related machine learning workflows, providing standardized tools, processes, and background optimization for plasma control research at Princeton. This way, you can worry less about dataset/gpu optimiation and standardization. This platform primarily serves as a fast machine-learning trainer, but can also be used for general data analysis for fusion data stored at Princeton.
 
-## Setup
+## General Usage
+
+1. Clone this repository onto anywhere on Stellar
+2. Get the location of this repository (you can find it by typing `pwd` in the terminal)
+3. In your main project's virtual environment or anaconda environment, type `pip install </path/to/FusionAIHub>`
+4. You can find tutorials on how to use this package in `docs`, `example` and `notebooks`
+
+`TODO: We will include this as a pip package in the future`
+
+## Setup [for developers]
 
 Go to your scratch directory while you are on the HEAD node (so you need internet access, which computing nodes do not have).
 
