@@ -21,14 +21,14 @@ class JoblibDataset(MultiFileDataset):
     """
 
     def __init__(
-            self,
-            file_paths: str | list[str] | Path,
-            subseq_len: int,
-            input_key: str | list[str] | None = None,
-            target_key: str | list[str] | None = None,
-            target_slice: tuple | None = None,
-            auto_detect_keys: bool = True,
-            **kwargs,
+        self,
+        file_paths: str | list[str] | Path,
+        subseq_len: int,
+        input_key: str | list[str] | None = None,
+        target_key: str | list[str] | None = None,
+        target_slice: tuple | None = None,
+        auto_detect_keys: bool = True,
+        **kwargs,
     ) -> None:
         """Initialize joblib dataset.
 
@@ -111,20 +111,30 @@ class JoblibDataset(MultiFileDataset):
                 # If no standard key found, use the first array-like key
                 for key in available_keys:
                     if (
-                            hasattr(data_dict[key], "shape")
-                            and len(data_dict[key].shape) >= 2
+                        hasattr(data_dict[key], "shape")
+                        and len(data_dict[key].shape) >= 2
                     ):
                         self.input_key = key
-                        print(f"Using first array key as input_key: "
-                              f"{self.input_key}")
+                        print(
+                            f"Using first array key as input_key: "
+                            f"{self.input_key}"
+                        )
                         break
 
         # Try to find target key
         # (only if not in autoencoder mode and not multi-target)
-        if (not self.is_autoencoder_mode and not self.is_multi_target
-                and self.target_key is None):
+        if (
+            not self.is_autoencoder_mode
+            and not self.is_multi_target
+            and self.target_key is None
+        ):
             target_candidates = [
-                "target", "label", "y", "output", "ground_truth"]
+                "target",
+                "label",
+                "y",
+                "output",
+                "ground_truth",
+            ]
             for candidate in target_candidates:
                 if candidate in available_keys:
                     self.target_key = candidate
@@ -134,9 +144,10 @@ class JoblibDataset(MultiFileDataset):
                 # If no standard target key found,
                 # look for second array-like key
                 array_keys = [
-                    k for k in available_keys
+                    k
+                    for k in available_keys
                     if hasattr(data_dict[k], "shape")
-                       and len(data_dict[k].shape) >= 2
+                    and len(data_dict[k].shape) >= 2
                 ]
                 if len(array_keys) >= 2:
                     # Use second array key as target (first is input)
@@ -145,8 +156,10 @@ class JoblibDataset(MultiFileDataset):
                     ]
                     if target_candidates_from_arrays:
                         self.target_key = target_candidates_from_arrays[0]
-                        print(f"Using second array key as target_key: "
-                              f"{self.target_key}")
+                        print(
+                            f"Using second array key as target_key: "
+                            f"{self.target_key}"
+                        )
 
     def _infer_sequence_length_from_data(
         self,
@@ -196,7 +209,8 @@ class JoblibDataset(MultiFileDataset):
                     # Different sequence lengths - use the most common one or
                     # smallest
                     length_counts = Counter(
-                        length for _, length in sequence_lengths)
+                        length for _, length in sequence_lengths
+                    )
                     most_common_length = length_counts.most_common(1)[0][0]
 
                     # Warn about inconsistent lengths
@@ -214,7 +228,9 @@ class JoblibDataset(MultiFileDataset):
                 shape = input_data.shape
                 # Assume time dimension is longest dimension or axis 1 if >= 3D
                 if len(shape) >= 3:
-                    return shape[-1]  # Conventional: (channels, features, time)
+                    return shape[
+                        -1
+                    ]  # Conventional: (channels, features, time)
                 elif len(shape) == 2:
                     # Use the larger dimension as time
                     return max(shape)
@@ -265,7 +281,8 @@ class JoblibDataset(MultiFileDataset):
         # Validate input keys
         if self.is_multi_input:
             missing_input_keys = [
-                key for key in self.input_key if key not in data_dict]
+                key for key in self.input_key if key not in data_dict
+            ]
             if missing_input_keys:
                 return (
                     False,
@@ -291,8 +308,10 @@ class JoblibDataset(MultiFileDataset):
                         f"Missing target keys {missing_target_keys}. "
                         f"Available keys: {available_keys}",
                     )
-            elif (self.target_key is not None
-                  and self.target_key not in data_dict):
+            elif (
+                self.target_key is not None
+                and self.target_key not in data_dict
+            ):
                 return (
                     False,
                     f"Missing target key '{self.target_key}'. "
@@ -309,8 +328,10 @@ class JoblibDataset(MultiFileDataset):
         try:
             from joblib import load
         except ImportError:
-            raise ImportError("joblib is required for JoblibDataset. "
-                              "Install with: pip install joblib")
+            raise ImportError(
+                "joblib is required for JoblibDataset. "
+                "Install with: pip install joblib"
+            )
 
         try:
             data_dict = load(file_path, mmap_mode="r")
@@ -362,8 +383,10 @@ class JoblibDataset(MultiFileDataset):
                         for key in self.target_key
                         if key in data_dict
                     }
-                elif (self.target_key is not None
-                      and self.target_key in data_dict):
+                elif (
+                    self.target_key is not None
+                    and self.target_key in data_dict
+                ):
                     target_shape = data_dict[self.target_key].shape
 
             metadata = {
@@ -404,8 +427,10 @@ class JoblibDataset(MultiFileDataset):
         try:
             from joblib import load
         except ImportError:
-            raise ImportError("joblib is required for JoblibDataset. "
-                              "Install with: pip install joblib")
+            raise ImportError(
+                "joblib is required for JoblibDataset. "
+                "Install with: pip install joblib"
+            )
 
         return load(file_path, mmap_mode="r")
 
@@ -495,8 +520,9 @@ class JoblibDataset(MultiFileDataset):
         if self.is_autoencoder_mode:
             # Autoencoder mode: target = input
             if self.is_multi_input:
-                target_data = {key: tensor.clone()
-                               for key, tensor in input_data.items()}
+                target_data = {
+                    key: tensor.clone() for key, tensor in input_data.items()
+                }
             else:
                 target_data = input_data.clone()
         else:
@@ -510,10 +536,12 @@ class JoblibDataset(MultiFileDataset):
                         )
                     else:
                         raise ValueError(
-                            f"Target key '{key}' not found in file")
+                            f"Target key '{key}' not found in file"
+                        )
             else:
-                target_key = (metadata.get("inferred_target_key")
-                              or self.target_key)
+                target_key = (
+                    metadata.get("inferred_target_key") or self.target_key
+                )
                 if target_key and target_key in file_handle:
                     target_data = self._extract_tensor_from_array(
                         file_handle[target_key], start_idx, end_idx
@@ -521,8 +549,10 @@ class JoblibDataset(MultiFileDataset):
                 else:
                     # Fallback to input if no target found
                     if self.is_multi_input:
-                        target_data = {key: tensor.clone()
-                                       for key, tensor in input_data.items()}
+                        target_data = {
+                            key: tensor.clone()
+                            for key, tensor in input_data.items()
+                        }
                     else:
                         target_data = input_data.clone()
 
@@ -611,11 +641,10 @@ class JoblibDataset(MultiFileDataset):
         subseq_idx: int = 0,
         start_idx: int = 0,
         end_idx: int = 10,
-    ) \
-            -> tuple[
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-            ]:
+    ) -> tuple[
+        Union[torch.Tensor, dict[str, torch.Tensor]],
+        Union[torch.Tensor, dict[str, torch.Tensor]],
+    ]:
         """Peek at a sample without worker initialization.
 
         This method temporarily opens a file, extracts one sample, then closes
@@ -690,14 +719,15 @@ class HDF5Dataset(MultiFileDataset):
     """
 
     def __init__(
-            self,
-            file_paths: Union[str, list[str], Path],
-            subseq_len: int,
-            input_key: Union[str, list[str]] = "input",
-            target_key: Optional[Union[str, list[str]]] = None,
-            target_slice: Optional[tuple] = None,
-            auto_detect_keys: bool = False,
-            **kwargs) -> None:
+        self,
+        file_paths: Union[str, list[str], Path],
+        subseq_len: int,
+        input_key: Union[str, list[str]] = "input",
+        target_key: Optional[Union[str, list[str]]] = None,
+        target_slice: Optional[tuple] = None,
+        auto_detect_keys: bool = False,
+        **kwargs,
+    ) -> None:
         """Initialize HDF5 dataset.
 
         Parameters
@@ -781,7 +811,7 @@ class HDF5Dataset(MultiFileDataset):
             )
 
         try:
-            with (h5py.File(file_path, "r") as f):
+            with h5py.File(file_path, "r") as f:
                 # Auto-detect keys from first file if requested
                 if self.auto_detect_keys and not self._keys_detected:
                     self._detect_keys(f, file_path)
@@ -790,15 +820,15 @@ class HDF5Dataset(MultiFileDataset):
                 # Validate required keys exist
                 if self.is_multi_input:
                     missing_input_keys = [
-                        key for key in self.input_key if key not in f]
+                        key for key in self.input_key if key not in f
+                    ]
                     if missing_input_keys:
                         available_keys = list(f.keys())
                         return {
                             "path": file_path,
                             "valid": False,
-                            "error":
-                                f"Missing input keys {missing_input_keys}. "
-                                f"Available keys: {available_keys}",
+                            "error": f"Missing input keys {missing_input_keys}. "
+                            f"Available keys: {available_keys}",
                             "n_samples": 0,
                             "available_keys": available_keys,
                         }
@@ -807,9 +837,8 @@ class HDF5Dataset(MultiFileDataset):
                     return {
                         "path": file_path,
                         "valid": False,
-                        "error":
-                            f"Missing input key '{self.input_key}'. "
-                            f"Available keys: {available_keys}",
+                        "error": f"Missing input key '{self.input_key}'. "
+                        f"Available keys: {available_keys}",
                         "n_samples": 0,
                         "available_keys": available_keys,
                     }
@@ -825,10 +854,9 @@ class HDF5Dataset(MultiFileDataset):
                             return {
                                 "path": file_path,
                                 "valid": False,
-                                "error":
-                                    f"Missing target keys "
-                                    f"{missing_target_keys}. "
-                                    f"Available keys: {available_keys}",
+                                "error": f"Missing target keys "
+                                f"{missing_target_keys}. "
+                                f"Available keys: {available_keys}",
                                 "n_samples": 0,
                                 "available_keys": available_keys,
                             }
@@ -837,9 +865,8 @@ class HDF5Dataset(MultiFileDataset):
                         return {
                             "path": file_path,
                             "valid": False,
-                            "error":
-                                f"Missing target key '{self.target_key}'. "
-                                f"Available keys: {available_keys}",
+                            "error": f"Missing target key '{self.target_key}'. "
+                            f"Available keys: {available_keys}",
                             "n_samples": 0,
                             "available_keys": available_keys,
                         }
@@ -852,8 +879,9 @@ class HDF5Dataset(MultiFileDataset):
                     input_shape = f[first_key].shape
                 else:
                     input_shape = f[self.input_key].shape
-                n_samples = \
+                n_samples = (
                     input_shape[1] if len(input_shape) >= 2 else input_shape[0]
+                )
 
                 # Get target shape if available
                 target_shape = None
@@ -861,7 +889,8 @@ class HDF5Dataset(MultiFileDataset):
                     if self.is_multi_target:
                         target_shape = {
                             key: f[key].shape
-                            for key in self.target_key if key in f
+                            for key in self.target_key
+                            if key in f
                         }
                     elif self.target_key in f:
                         target_shape = f[self.target_key].shape
@@ -878,8 +907,12 @@ class HDF5Dataset(MultiFileDataset):
 
             return metadata
         except Exception as e:
-            return {"path": file_path, "valid": False,
-                    "error": str(e), "n_samples": 0}
+            return {
+                "path": file_path,
+                "valid": False,
+                "error": str(e),
+                "n_samples": 0,
+            }
 
     def _get_sequence_length(self, file_metadata: dict[str, Any]) -> int:
         """Get sequence length from metadata."""
@@ -890,8 +923,10 @@ class HDF5Dataset(MultiFileDataset):
         try:
             import h5py
         except ImportError:
-            raise ImportError("h5py is required for HDF5Dataset. "
-                              "Install with: pip install h5py")
+            raise ImportError(
+                "h5py is required for HDF5Dataset. "
+                "Install with: pip install h5py"
+            )
 
         return h5py.File(file_path, "r")
 
@@ -904,8 +939,9 @@ class HDF5Dataset(MultiFileDataset):
         file_idx: int,
         start_idx: int,
         end_idx: int,
-    ) -> tuple[torch.Tensor | dict[str, torch.Tensor],
-               torch.Tensor | dict[str, torch.Tensor],
+    ) -> tuple[
+        torch.Tensor | dict[str, torch.Tensor],
+        torch.Tensor | dict[str, torch.Tensor],
     ]:
         """Extract subsequence from HDF5 file."""
         file_handle = self.get_file_handle(file_idx)
@@ -924,8 +960,9 @@ class HDF5Dataset(MultiFileDataset):
         if self.is_autoencoder_mode:
             # Autoencoder mode: target = input
             if self.is_multi_input:
-                target_data = {key: tensor.clone()
-                               for key, tensor in input_data.items()}
+                target_data = {
+                    key: tensor.clone() for key, tensor in input_data.items()
+                }
             else:
                 target_data = input_data.clone()
         else:
@@ -936,8 +973,9 @@ class HDF5Dataset(MultiFileDataset):
                     target_arr = file_handle[key][:, :, start_idx:end_idx]
                     target_data[key] = torch.from_numpy(target_arr).float()
             else:
-                target_arr = \
-                    file_handle[self.target_key][:, :, start_idx:end_idx]
+                target_arr = file_handle[self.target_key][
+                    :, :, start_idx:end_idx
+                ]
                 target_data = torch.from_numpy(target_arr).float()
 
         # Apply target slice if specified (only for single tensor targets)
@@ -955,14 +993,14 @@ class NumpyDataset(MultiFileDataset):
     """
 
     def __init__(
-            self,
-            file_paths: Union[str, list[str], Path],
-            subseq_len: int,
-            input_key: Union[str, list[str]] = "input",
-            target_key: Optional[Union[str, list[str]]] = None,
-            target_slice: Optional[tuple] = None,
-            auto_detect_keys: bool = False,
-            **kwargs,
+        self,
+        file_paths: Union[str, list[str], Path],
+        subseq_len: int,
+        input_key: Union[str, list[str]] = "input",
+        target_key: Optional[Union[str, list[str]]] = None,
+        target_slice: Optional[tuple] = None,
+        auto_detect_keys: bool = False,
+        **kwargs,
     ) -> None:
         """Initialize NumPy dataset.
 
@@ -1049,15 +1087,15 @@ class NumpyDataset(MultiFileDataset):
                 # Validate required keys exist
                 if self.is_multi_input:
                     missing_input_keys = [
-                        key for key in self.input_key if key not in data]
+                        key for key in self.input_key if key not in data
+                    ]
                     if missing_input_keys:
                         available_keys = list(data.keys())
                         return {
                             "path": file_path,
                             "valid": False,
-                            "error":
-                                f"Missing input keys {missing_input_keys}. "
-                                f"Available keys: {available_keys}",
+                            "error": f"Missing input keys {missing_input_keys}. "
+                            f"Available keys: {available_keys}",
                             "n_samples": 0,
                             "available_keys": available_keys,
                         }
@@ -1066,9 +1104,8 @@ class NumpyDataset(MultiFileDataset):
                     return {
                         "path": file_path,
                         "valid": False,
-                        "error":
-                            f"Missing input key '{self.input_key}'. "
-                            f"Available keys: {available_keys}",
+                        "error": f"Missing input key '{self.input_key}'. "
+                        f"Available keys: {available_keys}",
                         "n_samples": 0,
                         "available_keys": available_keys,
                     }
@@ -1084,10 +1121,9 @@ class NumpyDataset(MultiFileDataset):
                             return {
                                 "path": file_path,
                                 "valid": False,
-                                "error":
-                                    f"Missing target keys "
-                                    f"{missing_target_keys}. "
-                                    f"Available keys: {available_keys}",
+                                "error": f"Missing target keys "
+                                f"{missing_target_keys}. "
+                                f"Available keys: {available_keys}",
                                 "n_samples": 0,
                                 "available_keys": available_keys,
                             }
@@ -1096,9 +1132,8 @@ class NumpyDataset(MultiFileDataset):
                         return {
                             "path": file_path,
                             "valid": False,
-                            "error":
-                                f"Missing target key '{self.target_key}'. "
-                                f"Available keys: {available_keys}",
+                            "error": f"Missing target key '{self.target_key}'. "
+                            f"Available keys: {available_keys}",
                             "n_samples": 0,
                             "available_keys": available_keys,
                         }
@@ -1113,8 +1148,8 @@ class NumpyDataset(MultiFileDataset):
                     input_arr = data[self.input_key]
                 input_shape = input_arr.shape
                 n_samples = (
-                    input_shape[1]
-                    if len(input_shape) >= 2 else input_shape[0])
+                    input_shape[1] if len(input_shape) >= 2 else input_shape[0]
+                )
 
                 # Get target shape if available
                 target_shape = None
@@ -1122,7 +1157,8 @@ class NumpyDataset(MultiFileDataset):
                     if self.is_multi_target:
                         target_shape = {
                             key: data[key].shape
-                            for key in self.target_key if key in data
+                            for key in self.target_key
+                            if key in data
                         }
                     elif self.target_key in data:
                         target_shape = data[self.target_key].shape
@@ -1139,8 +1175,12 @@ class NumpyDataset(MultiFileDataset):
 
             return metadata
         except Exception as e:
-            return {"path": file_path, "valid": False,
-                    "error": str(e), "n_samples": 0}
+            return {
+                "path": file_path,
+                "valid": False,
+                "error": str(e),
+                "n_samples": 0,
+            }
 
     def _get_sequence_length(self, file_metadata: dict[str, Any]) -> int:
         """Get sequence length from metadata."""
@@ -1155,11 +1195,11 @@ class NumpyDataset(MultiFileDataset):
         file_handle.close()
 
     def _extract_subsequence(
-            self, file_idx: int, start_idx: int, end_idx: int) \
-            -> tuple[
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-            ]:
+        self, file_idx: int, start_idx: int, end_idx: int
+    ) -> tuple[
+        Union[torch.Tensor, dict[str, torch.Tensor]],
+        Union[torch.Tensor, dict[str, torch.Tensor]],
+    ]:
         """Extract subsequence from NumPy file."""
         file_handle = self.get_file_handle(file_idx)
 
@@ -1177,8 +1217,9 @@ class NumpyDataset(MultiFileDataset):
         if self.is_autoencoder_mode:
             # Autoencoder mode: target = input
             if self.is_multi_input:
-                target_data = {key: tensor.clone()
-                               for key, tensor in input_data.items()}
+                target_data = {
+                    key: tensor.clone() for key, tensor in input_data.items()
+                }
             else:
                 target_data = input_data.clone()
         else:
@@ -1189,8 +1230,9 @@ class NumpyDataset(MultiFileDataset):
                     target_arr = file_handle[key][:, :, start_idx:end_idx]
                     target_data[key] = torch.from_numpy(target_arr).float()
             else:
-                target_arr = \
-                    file_handle[self.target_key][:, :, start_idx:end_idx]
+                target_arr = file_handle[self.target_key][
+                    :, :, start_idx:end_idx
+                ]
                 target_data = torch.from_numpy(target_arr).float()
 
         # Apply target slice if specified (only for single tensor targets)
@@ -1213,20 +1255,24 @@ def worker_init_fn(worker_id: int) -> None:
         else:
             warnings.warn(
                 f"Dataset in worker {worker_id} does not have worker_init "
-                f"method. Got {type(worker_dataset)}.")
+                f"method. Got {type(worker_dataset)}."
+            )
 
 
 # Helper function for getting the file paths for an indexed joblib dataset
 def get_file_paths(dataset_name: str) -> list[str]:
     """Get the file paths for an indexed joblib dataset."""
     import pandas as pd
-    base_path = Path('/scratch/gpfs/EKOLEMEN/hackathon/foundation25/')
-    file_path = base_path / dataset_name / 'index.csv'
+
+    base_path = Path("/scratch/gpfs/EKOLEMEN/hackathon/foundation25/")
+    file_path = base_path / dataset_name / "index.csv"
 
     if not file_path.exists():
-        available_datasets = [path.name for path in base_path.glob('*')]
-        raise ValueError(f"File '{dataset_name}' does not exist.\n" \
-                         f"Available datasets: {available_datasets}")
+        available_datasets = [path.name for path in base_path.glob("*")]
+        raise ValueError(
+            f"File '{dataset_name}' does not exist.\n"
+            f"Available datasets: {available_datasets}"
+        )
 
     df = pd.read_csv(file_path)
-    return df.values[:,0]
+    return df.values[:, 0]

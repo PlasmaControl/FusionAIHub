@@ -24,10 +24,10 @@ class LazyFileDataset(Dataset, ABC):
     """
 
     def __init__(
-            self,
-            file_paths: Union[str, list[str]],
-            validate_on_init: bool = True,
-            max_open_files: Optional[int] = None,
+        self,
+        file_paths: Union[str, list[str]],
+        validate_on_init: bool = True,
+        max_open_files: Optional[int] = None,
     ) -> None:
         """Initialize the lazy file dataset.
 
@@ -79,7 +79,8 @@ class LazyFileDataset(Dataset, ABC):
                 self.file_metadata.append(metadata)
             except Exception as e:
                 raise ValueError(
-                    f"Failed to inspect file {file_path}: {e}") from e
+                    f"Failed to inspect file {file_path}: {e}"
+                ) from e
 
     @abstractmethod
     def _inspect_file(self, file_path: str) -> dict[str, Any]:
@@ -323,14 +324,18 @@ class LazyFileDataset(Dataset, ABC):
                 )
 
                 if isinstance(sample_input, dict):
-                    input_shape = {key: tensor.shape
-                                   for key, tensor in sample_input.items()}
+                    input_shape = {
+                        key: tensor.shape
+                        for key, tensor in sample_input.items()
+                    }
                 else:
                     input_shape = sample_input.shape
 
                 if isinstance(sample_target, dict):
-                    target_shape = {key: tensor.shape
-                                    for key, tensor in sample_target.items()}
+                    target_shape = {
+                        key: tensor.shape
+                        for key, tensor in sample_target.items()
+                    }
                 else:
                     target_shape = sample_target.shape
 
@@ -345,11 +350,15 @@ class LazyFileDataset(Dataset, ABC):
                     "is_multi_target": getattr(self, "is_multi_target", False),
                 }
             except Exception as e:
-                return {"sample_idx": sample_idx,
-                        "error": f"Could not peek sample: {e}"}
+                return {
+                    "sample_idx": sample_idx,
+                    "error": f"Could not peek sample: {e}",
+                }
         else:
-            return {"sample_idx": sample_idx,
-                    "error": "Dataset does not support peeking"}
+            return {
+                "sample_idx": sample_idx,
+                "error": "Dataset does not support peeking",
+            }
 
     def validate_files(self) -> list[tuple[str, bool, Optional[str]]]:
         """Validate all files in the dataset.
@@ -470,14 +479,14 @@ class SequentialDataset(LazyFileDataset, ABC):
     """
 
     def __init__(
-            self,
-            file_paths: str | list[str],
-            subseq_len: int,
-            chunking_strategy: str = "non_overlapping",
-            overlap: int = 0,
-            min_seq_len: int | None = None,
-            validate_on_init: bool = True,
-            **kwargs,
+        self,
+        file_paths: str | list[str],
+        subseq_len: int,
+        chunking_strategy: str = "non_overlapping",
+        overlap: int = 0,
+        min_seq_len: int | None = None,
+        validate_on_init: bool = True,
+        **kwargs,
     ) -> None:
         """Initialize the sequential dataset.
 
@@ -545,11 +554,14 @@ class SequentialDataset(LazyFileDataset, ABC):
             )
 
         if self.overlap < 0:
-            raise ValueError(f"overlap must be non-negative, "
-                             f"got {self.overlap}")
+            raise ValueError(
+                f"overlap must be non-negative, got {self.overlap}"
+            )
 
-        if (self.chunking_strategy == "sliding_window"
-                and self.overlap >= self.subseq_len > 0):
+        if (
+            self.chunking_strategy == "sliding_window"
+            and self.overlap >= self.subseq_len > 0
+        ):
             raise ValueError(
                 f"overlap ({self.overlap}) must be less than subseq_len "
                 f"({self.subseq_len}) for sliding_window strategy"
@@ -600,8 +612,9 @@ class SequentialDataset(LazyFileDataset, ABC):
             subsequences = self._generate_subsequences(seq_len, file_idx)
             self.subseq_index.extend(subsequences)
 
-    def _generate_subsequences(self, seq_len: int, file_idx: int) \
-            -> list[tuple[int, int, int]]:
+    def _generate_subsequences(
+        self, seq_len: int, file_idx: int
+    ) -> list[tuple[int, int, int]]:
         """Generate subsequence indices for a single file.
 
         Parameters
@@ -661,8 +674,9 @@ class SequentialDataset(LazyFileDataset, ABC):
 
         return subsequences
 
-    def _generate_sliding_window(self, seq_len: int, file_idx: int) \
-            -> list[tuple[int, int, int]]:
+    def _generate_sliding_window(
+        self, seq_len: int, file_idx: int
+    ) -> list[tuple[int, int, int]]:
         """Generate sliding window subsequences.
 
         Parameters
@@ -690,8 +704,9 @@ class SequentialDataset(LazyFileDataset, ABC):
 
         return subsequences
 
-    def _generate_random_crop(self, seq_len: int, file_idx: int) \
-            -> list[tuple[int, int, int]]:
+    def _generate_random_crop(
+        self, seq_len: int, file_idx: int
+    ) -> list[tuple[int, int, int]]:
         """Generate random crop positions (one per file for now).
 
         For random cropping, we typically generate crop positions at runtime,
@@ -729,9 +744,11 @@ class SequentialDataset(LazyFileDataset, ABC):
         return len(self.subseq_index)
 
     def __getitem__(
-        self, idx: int,
-    ) -> tuple[torch.Tensor | dict[str, torch.Tensor],
-               torch.Tensor | dict[str, torch.Tensor],
+        self,
+        idx: int,
+    ) -> tuple[
+        torch.Tensor | dict[str, torch.Tensor],
+        torch.Tensor | dict[str, torch.Tensor],
     ]:
         """Get a subsequence by index.
 
@@ -757,8 +774,10 @@ class SequentialDataset(LazyFileDataset, ABC):
             If dataset is not properly initialized.
         """
         if not (0 <= idx < len(self.subseq_index)):
-            raise IndexError(f"Index {idx} out of range. Dataset has "
-                             f"{len(self.subseq_index)} subsequences.")
+            raise IndexError(
+                f"Index {idx} out of range. Dataset has "
+                f"{len(self.subseq_index)} subsequences."
+            )
 
         self._ensure_initialized()
 
@@ -792,8 +811,10 @@ class SequentialDataset(LazyFileDataset, ABC):
             Start and end indices for the random crop.
         """
         if seq_len < self.subseq_len:
-            raise ValueError(f"Sequence length {seq_len} < subsequence length "
-                             f"{self.subseq_len}")
+            raise ValueError(
+                f"Sequence length {seq_len} < subsequence length "
+                f"{self.subseq_len}"
+            )
 
         max_start = seq_len - self.subseq_len
         start_idx = torch.randint(0, max_start + 1, (1,)).item()
@@ -807,8 +828,9 @@ class SequentialDataset(LazyFileDataset, ABC):
         file_idx: int,
         start_idx: int,
         end_idx: int,
-    ) -> tuple[torch.Tensor | dict[str, torch.Tensor],
-               torch.Tensor | dict[str, torch.Tensor],
+    ) -> tuple[
+        torch.Tensor | dict[str, torch.Tensor],
+        torch.Tensor | dict[str, torch.Tensor],
     ]:
         """Extract a subsequence from a file.
 
@@ -859,8 +881,9 @@ class SequentialDataset(LazyFileDataset, ABC):
             "file_path": file_metadata.get("path", "unknown"),
             "start_idx": start_idx,
             "end_idx": end_idx,
-            "length":
-                end_idx - start_idx if start_idx != -1 else self.subseq_len,
+            "length": end_idx - start_idx
+            if start_idx != -1
+            else self.subseq_len,
             "is_random_crop": start_idx == -1,
         }
 
@@ -900,9 +923,10 @@ class SequentialDataset(LazyFileDataset, ABC):
             "overlap": self.overlap,
             "min_seq_len": self.min_seq_len,
             "total_subsequences": len(self.subseq_index),
-            "subsequences_per_file": [len(self.get_file_subsequences(i))
-                                      for i in range(self.num_files)
-                                      ],
+            "subsequences_per_file": [
+                len(self.get_file_subsequences(i))
+                for i in range(self.num_files)
+            ],
         }
 
         base_summary.update(sequential_info)
@@ -946,17 +970,17 @@ class MultiFileDataset(SequentialDataset, ABC):
     """
 
     def __init__(
-            self,
-            file_paths: str | list[str] | Path,
-            subseq_len: int,
-            file_pattern: str | None = None,
-            file_filter: callable | None = None,
-            sort_files: bool = True,
-            max_files: int | None = None,
-            balance_files: bool = False,
-            file_weights: dict[str, float] | None = None,
-            cache_metadata: bool = True,
-            **kwargs,
+        self,
+        file_paths: str | list[str] | Path,
+        subseq_len: int,
+        file_pattern: str | None = None,
+        file_filter: callable | None = None,
+        sort_files: bool = True,
+        max_files: int | None = None,
+        balance_files: bool = False,
+        file_weights: dict[str, float] | None = None,
+        cache_metadata: bool = True,
+        **kwargs,
     ) -> None:
         """Initialize the multi-file dataset.
 
@@ -1009,7 +1033,8 @@ class MultiFileDataset(SequentialDataset, ABC):
 
         # Initialize parent with resolved file paths
         super().__init__(
-            file_paths=resolved_file_paths, subseq_len=subseq_len, **kwargs)
+            file_paths=resolved_file_paths, subseq_len=subseq_len, **kwargs
+        )
 
         # Build file statistics and balancing if requested
         if self.validate_on_init:
@@ -1040,7 +1065,8 @@ class MultiFileDataset(SequentialDataset, ABC):
                 # Directory: search for files
                 discovered_files = list(file_paths.glob(self.file_pattern))
                 resolved_paths = [
-                    str(f) for f in discovered_files if f.is_file()]
+                    str(f) for f in discovered_files if f.is_file()
+                ]
             elif "*" in str(file_paths) or "?" in str(file_paths):
                 # Glob pattern
                 from glob import glob
@@ -1225,7 +1251,8 @@ class MultiFileDataset(SequentialDataset, ABC):
         regex = re.compile(pattern)
 
         return [
-            stats for stats in self.file_stats
+            stats
+            for stats in self.file_stats
             if regex.search(stats["file_path"])
         ]
 
@@ -1233,7 +1260,7 @@ class MultiFileDataset(SequentialDataset, ABC):
         self,
         min_subsequences: int = 1,
         max_subsequences: int | None = None,
-    ) -> "MultiFileDataset":
+    ) -> MultiFileDataset:
         """Create a new dataset with files filtered by subsequence count.
 
         Parameters
@@ -1268,11 +1295,11 @@ class MultiFileDataset(SequentialDataset, ABC):
         )
 
     def split_by_files(
-            self,
-            train_ratio: float = 0.8,
-            val_ratio: float = 0.2,
-            random_seed: int | None = None,
-    ) -> tuple["MultiFileDataset", "MultiFileDataset"]:
+        self,
+        train_ratio: float = 0.8,
+        val_ratio: float = 0.2,
+        random_seed: int | None = None,
+    ) -> tuple[MultiFileDataset, MultiFileDataset]:
         """Split the dataset by files (not by samples).
 
         This ensures that samples from the same file don't appear in both
@@ -1315,11 +1342,13 @@ class MultiFileDataset(SequentialDataset, ABC):
         val_paths = all_paths[n_train:]
 
         if n_train != len(train_paths):
-            raise ValueError("Training set size does not match expected "
-                             "number of files.")
+            raise ValueError(
+                "Training set size does not match expected number of files."
+            )
         if n_val != len(val_paths):
-            raise ValueError("Validation set size does not match expected "
-                             "number of files.")
+            raise ValueError(
+                "Validation set size does not match expected number of files."
+            )
 
         # Create split datasets
         common_params = {
@@ -1352,17 +1381,17 @@ class MultiFileDataset(SequentialDataset, ABC):
             try:
                 sample_input, sample_target = self[0]
 
-                input_size = (
-                        sample_input.numel() * sample_input.element_size())
+                input_size = sample_input.numel() * sample_input.element_size()
                 target_size = (
-                        sample_target.numel() * sample_target.element_size())
+                    sample_target.numel() * sample_target.element_size()
+                )
 
                 per_sample_bytes = input_size + target_size
 
                 return {
                     "per_sample_mb": per_sample_bytes / (1024 * 1024),
-                    "total_dataset_gb":
-                        (total_subseqs * per_sample_bytes) / (1024 ** 3),
+                    "total_dataset_gb": (total_subseqs * per_sample_bytes)
+                    / (1024**3),
                     "single_batch_mb": (32 * per_sample_bytes) / (1024 * 1024),
                     # Assume batch=32
                 }
@@ -1416,8 +1445,9 @@ class MultiFileDataset(SequentialDataset, ABC):
         """
         balance_info = ""
         if self.balance_files:
-            balanced = len(self.balanced_indices) \
-                if self.balanced_indices else 0
+            balanced = (
+                len(self.balanced_indices) if self.balanced_indices else 0
+            )
             balance_info = f", balanced={balanced}"
 
         return (
