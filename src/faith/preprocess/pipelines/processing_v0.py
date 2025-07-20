@@ -193,7 +193,11 @@ def pipeline(
     # Get the first transformed sample to determine STFT dimensions
     try:
         first_arr = np.array([list(samples[0].values())[0].iloc[:, 0].values])
-        transform_shape = stft_transform(x=first_arr).shape
+        transform_shape = stft_transform(
+            x=first_arr,
+            n_fft=cfg["stft"]["n_fft"],
+            hop_length=cfg["stft"]["hop_length"],
+        ).shape
         logger.info(
             f"Using {first_arr.shape} as reference for STFT dimensions: {transform_shape}"
         )

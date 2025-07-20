@@ -22,11 +22,11 @@ class JoblibDataset(MultiFileDataset):
 
     def __init__(
             self,
-            file_paths: Union[str, list[str], Path],
+            file_paths: str | list[str] | Path,
             subseq_len: int,
-            input_key: Optional[Union[str, list[str]]] = None,
-            target_key: Optional[Union[str, list[str]]] = None,
-            target_slice: Optional[tuple] = None,
+            input_key: str | list[str] | None = None,
+            target_key: str | list[str] | None = None,
+            target_slice: tuple | None = None,
             auto_detect_keys: bool = True,
             **kwargs,
     ) -> None:
@@ -34,18 +34,18 @@ class JoblibDataset(MultiFileDataset):
 
         Parameters
         ----------
-        file_paths : Union[str, list[str], Path]
+        file_paths : str | list[str] | Path
             Path(s) to joblib files.
         subseq_len : int
             Length of subsequences to extract.
-        input_key : Optional[Union[str, list[str]]], optional
+        input_key : str | list[str] | None, optional
             Key(s) for input data in joblib files. If None, will auto-detect.
             If list, returns dictionary of inputs, by default None.
-        target_key : Optional[Union[str, list[str]]], optional
+        target_key : str | list[str] | None, optional
             Key(s) for target data in joblib files. If None, uses input as
             target (autoencoder mode). If list, returns dictionary of targets,
             by default None.
-        target_slice : Optional[tuple], optional
+        target_slice : tuple | None, optional
             Slice to apply to target tensor
             (e.g., (slice(None, 48), slice(None), slice(None))
             for [:48, :, :]), by default None.
@@ -58,6 +58,7 @@ class JoblibDataset(MultiFileDataset):
         self.input_key = input_key
         self.target_key = target_key
         self.target_slice = target_slice
+
         # Auto-detect if no input key provided
         self.auto_detect_keys = auto_detect_keys or (input_key is None)
         self.is_autoencoder_mode = target_key is None
@@ -75,7 +76,11 @@ class JoblibDataset(MultiFileDataset):
 
         super().__init__(file_paths, subseq_len, **kwargs)
 
-    def _detect_keys(self, data_dict: dict[str, Any], file_path: str) -> None:
+    def _detect_keys(
+        self,
+        data_dict: dict[str, Any],
+        file_path: str,
+    ) -> None:
         """Auto-detect keys from file contents."""
         available_keys = list(data_dict.keys())
 
@@ -143,8 +148,10 @@ class JoblibDataset(MultiFileDataset):
                         print(f"Using second array key as target_key: "
                               f"{self.target_key}")
 
-    def _infer_sequence_length_from_data(self,
-                                         data_dict: dict[str, Any]) -> int:
+    def _infer_sequence_length_from_data(
+        self,
+        data_dict: dict[str, Any],
+    ) -> int:
         """Infer sequence length by examining data shapes.
 
         Parameters
@@ -169,7 +176,7 @@ class JoblibDataset(MultiFileDataset):
                         # axis 2 if >= 3D
                         if len(shape) >= 3:
                             # Conventional: (channels, features, time)
-                            seq_len = shape[1]
+                            seq_len = shape[-1]
                         elif len(shape) == 2:
                             # Use the larger dimension as time
                             seq_len = max(shape)
@@ -207,7 +214,7 @@ class JoblibDataset(MultiFileDataset):
                 shape = input_data.shape
                 # Assume time dimension is longest dimension or axis 1 if >= 3D
                 if len(shape) >= 3:
-                    return shape[1]  # Conventional: (channels, time, features)
+                    return shape[-1]  # Conventional: (channels, features, time)
                 elif len(shape) == 2:
                     # Use the larger dimension as time
                     return max(shape)
@@ -222,7 +229,7 @@ class JoblibDataset(MultiFileDataset):
                 # Try different conventions for time dimension
                 if len(shape) >= 3:
                     # Try axis 2 first (channels, features, time)
-                    candidate_time = shape[2]
+                    candidate_time = shape[-1]
                     max_samples = max(max_samples, candidate_time)
                 elif len(shape) >= 2:
                     # Use the larger dimension as time
@@ -234,9 +241,11 @@ class JoblibDataset(MultiFileDataset):
 
         return max_samples
 
-    def _validate_keys_in_file(self,
-                               data_dict: dict[str, Any],
-                               file_path: str) -> tuple[bool, str]:
+    def _validate_keys_in_file(
+        self,
+        data_dict: dict[str, Any],
+        file_path: str,
+    ) -> tuple[bool, str]:
         """Validate that required keys exist in the file.
 
         Parameters
@@ -292,7 +301,10 @@ class JoblibDataset(MultiFileDataset):
 
         return True, ""
 
-    def _inspect_file(self, file_path: str) -> dict[str, Any]:
+    def _inspect_file(
+        self,
+        file_path: str,
+    ) -> dict[str, Any]:
         """Inspect joblib file to extract metadata."""
         try:
             from joblib import load
@@ -312,8 +324,10 @@ class JoblibDataset(MultiFileDataset):
             available_keys = list(data_dict.keys())
 
             # Validate keys exist in file
-            is_valid, error_msg = self._validate_keys_in_file(data_dict,
-                                                              file_path)
+            is_valid, error_msg = self._validate_keys_in_file(
+                data_dict,
+                file_path,
+            )
             if not is_valid:
                 return {
                     "path": file_path,
@@ -324,7 +338,9 @@ class JoblibDataset(MultiFileDataset):
                 }
 
             # Infer sequence length from data shapes
-            n_samples = self._infer_sequence_length_from_data(data_dict)
+            n_samples = self._infer_sequence_length_from_data(
+                data_dict,
+            )
 
             # Get data shapes for metadata
             input_shape = None
@@ -373,11 +389,17 @@ class JoblibDataset(MultiFileDataset):
                 "n_samples": 0,
             }
 
-    def _get_sequence_length(self, file_metadata: dict[str, Any]) -> int:
+    def _get_sequence_length(
+        self,
+        file_metadata: dict[str, Any],
+    ) -> int:
         """Get sequence length from metadata."""
         return file_metadata.get("n_samples", 0)
 
-    def _open_file(self, file_path: str) -> Any:
+    def _open_file(
+        self,
+        file_path: str,
+    ) -> Any:
         """Open joblib file with memory mapping."""
         try:
             from joblib import load
@@ -387,12 +409,19 @@ class JoblibDataset(MultiFileDataset):
 
         return load(file_path, mmap_mode="r")
 
-    def _close_file(self, file_handle: Any) -> None:
+    def _close_file(
+        self,
+        file_handle: Any,
+    ) -> None:
         """Close joblib file handle."""
         del file_handle  # Joblib handles cleanup automatically
 
-    def _extract_tensor_from_array(self, array, start_idx: int, end_idx: int) \
-            -> torch.Tensor:
+    def _extract_tensor_from_array(
+        self,
+        array: np.ndarray,
+        start_idx: int,
+        end_idx: int,
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         """Extract a tensor from an array with flexible shape handling.
 
         Parameters
@@ -411,8 +440,8 @@ class JoblibDataset(MultiFileDataset):
         """
         # Handle different array shapes flexibly
         if len(array.shape) >= 3:
-            # Assume (channels, time, features) or similar
-            sub_array = array[:, start_idx:end_idx, :]
+            # Assume (channels, features, time) or similar
+            sub_array = array[:, :, start_idx:end_idx]
         elif len(array.shape) == 2:
             # Assume (features, time) or (time, features)
             # Check which dimension is longer to determine time axis
@@ -428,12 +457,15 @@ class JoblibDataset(MultiFileDataset):
 
         return torch.from_numpy(np.array(sub_array)).float()
 
-    def _extract_subsequence(self, file_idx: int,
-                             start_idx: int, end_idx: int) \
-            -> tuple[
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-            ]:
+    def _extract_subsequence(
+        self,
+        file_idx: int,
+        start_idx: int,
+        end_idx: int,
+    ) -> tuple[
+        torch.Tensor | dict[str, torch.Tensor],
+        torch.Tensor | dict[str, torch.Tensor],
+    ]:
         """Extract subsequence from joblib file."""
         file_handle = self.get_file_handle(file_idx)
 
@@ -500,7 +532,12 @@ class JoblibDataset(MultiFileDataset):
 
         return input_data, target_data
 
-    def get_sample_shape(self, file_idx: int = 0) -> tuple[Any, Any]:
+    def get_sample_shape(
+        self,
+        file_idx: int = 0,
+        start_idx: int = 0,
+        end_idx: int = 10,
+    ) -> tuple[Any, Any]:
         """Get sample input and target shapes without initializing workers.
 
         This method temporarily opens a file to inspect data shapes, then
@@ -510,6 +547,10 @@ class JoblibDataset(MultiFileDataset):
         ----------
         file_idx : int, optional
             Index of the file to sample from, by default 0.
+        start_idx : int, optional
+            Start index for extraction, by default 0.
+        end_idx : int, optional
+            End index for extraction, by default 10.
 
         Returns
         -------
@@ -564,7 +605,13 @@ class JoblibDataset(MultiFileDataset):
             self._is_initialized = original_initialized
             self._close_file(file_handle)
 
-    def peek_sample(self, file_idx: int = 0, subseq_idx: int = 0) \
+    def peek_sample(
+        self,
+        file_idx: int = 0,
+        subseq_idx: int = 0,
+        start_idx: int = 0,
+        end_idx: int = 10,
+    ) \
             -> tuple[
                 Union[torch.Tensor, dict[str, torch.Tensor]],
                 Union[torch.Tensor, dict[str, torch.Tensor]],
@@ -580,6 +627,10 @@ class JoblibDataset(MultiFileDataset):
             Index of the file to sample from, by default 0.
         subseq_idx : int, optional
             Index of the subsequence within the file, by default 0.
+        start_idx : int, optional
+            Start index for extraction, by default 0.
+        end_idx : int, optional
+            End index for extraction, by default 10.
 
         Returns
         -------
@@ -849,11 +900,13 @@ class HDF5Dataset(MultiFileDataset):
         file_handle.close()
 
     def _extract_subsequence(
-            self, file_idx: int, start_idx: int, end_idx: int) \
-            -> tuple[
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-                Union[torch.Tensor, dict[str, torch.Tensor]],
-            ]:
+        self,
+        file_idx: int,
+        start_idx: int,
+        end_idx: int,
+    ) -> tuple[torch.Tensor | dict[str, torch.Tensor],
+               torch.Tensor | dict[str, torch.Tensor],
+    ]:
         """Extract subsequence from HDF5 file."""
         file_handle = self.get_file_handle(file_idx)
 
@@ -861,10 +914,10 @@ class HDF5Dataset(MultiFileDataset):
         if self.is_multi_input:
             input_data = {}
             for key in self.input_key:
-                input_arr = file_handle[key][:, start_idx:end_idx, :]
+                input_arr = file_handle[key][:, :, start_idx:end_idx]
                 input_data[key] = torch.from_numpy(input_arr).float()
         else:
-            input_arr = file_handle[self.input_key][:, start_idx:end_idx, :]
+            input_arr = file_handle[self.input_key][:, :, start_idx:end_idx]
             input_data = torch.from_numpy(input_arr).float()
 
         # Extract target data
@@ -880,11 +933,11 @@ class HDF5Dataset(MultiFileDataset):
             if self.is_multi_target:
                 target_data = {}
                 for key in self.target_key:
-                    target_arr = file_handle[key][:, start_idx:end_idx, :]
+                    target_arr = file_handle[key][:, :, start_idx:end_idx]
                     target_data[key] = torch.from_numpy(target_arr).float()
             else:
                 target_arr = \
-                    file_handle[self.target_key][:, start_idx:end_idx, :]
+                    file_handle[self.target_key][:, :, start_idx:end_idx]
                 target_data = torch.from_numpy(target_arr).float()
 
         # Apply target slice if specified (only for single tensor targets)
@@ -1114,10 +1167,10 @@ class NumpyDataset(MultiFileDataset):
         if self.is_multi_input:
             input_data = {}
             for key in self.input_key:
-                input_arr = file_handle[key][:, start_idx:end_idx, :]
+                input_arr = file_handle[key][:, :, start_idx:end_idx]
                 input_data[key] = torch.from_numpy(input_arr).float()
         else:
-            input_arr = file_handle[self.input_key][:, start_idx:end_idx, :]
+            input_arr = file_handle[self.input_key][:, :, start_idx:end_idx]
             input_data = torch.from_numpy(input_arr).float()
 
         # Extract target data
@@ -1133,11 +1186,11 @@ class NumpyDataset(MultiFileDataset):
             if self.is_multi_target:
                 target_data = {}
                 for key in self.target_key:
-                    target_arr = file_handle[key][:, start_idx:end_idx, :]
+                    target_arr = file_handle[key][:, :, start_idx:end_idx]
                     target_data[key] = torch.from_numpy(target_arr).float()
             else:
                 target_arr = \
-                    file_handle[self.target_key][:, start_idx:end_idx, :]
+                    file_handle[self.target_key][:, :, start_idx:end_idx]
                 target_data = torch.from_numpy(target_arr).float()
 
         # Apply target slice if specified (only for single tensor targets)
