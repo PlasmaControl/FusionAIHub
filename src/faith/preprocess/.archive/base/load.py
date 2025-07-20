@@ -1,12 +1,11 @@
 from pathlib import Path
-from typing import List, Optional, Union
 
 import h5py
 
 
 def list_signals(
-    path: Union[str, Path],
-) -> List[str]:
+    path: str | Path,
+) -> list[str]:
     with h5py.File(path, "r") as f:
         signals = list(f.keys())
 
@@ -14,8 +13,8 @@ def list_signals(
 
 
 def load_sample(
-    path: Union[str, Path],
-    signal_name: Optional[Union[str, List[str]]] = None,
+    path: str | Path,
+    signal_name: str | list[str] | None = None,
 ) -> dict:
     samples = {}
     with h5py.File(path, "r") as f:
@@ -31,8 +30,8 @@ def load_sample(
 
 
 def load_time(
-    path: Union[str, Path],
-    signal_name: Optional[Union[str, List[str]]] = None,
+    path: str | Path,
+    signal_name: str | list[str] | None = None,
 ) -> dict:
     times = {}
     with h5py.File(path, "r") as f:
@@ -48,8 +47,8 @@ def load_time(
 
 
 def load_attributes(
-    path: Union[str, Path],
-    signal_name: Optional[Union[str, List[str]]] = None,
+    path: str | Path,
+    signal_name: str | list[str] | None = None,
 ) -> dict:
     attributes = {}
     with h5py.File(path, "r") as f:
@@ -65,8 +64,8 @@ def load_attributes(
 
 
 def load_channels(
-    path: Union[str, Path],
-    signal_name: Optional[Union[str, List[str]]] = None,
+    path: str | Path,
+    signal_name: str | list[str] | None = None,
 ) -> dict:
     channels = {}
     with h5py.File(path, "r") as f:
@@ -82,8 +81,8 @@ def load_channels(
 
 
 def load(
-    path: Union[str, Path],
-    signal_name: Optional[Union[str, List[str]]] = None,
+    path: str | Path,
+    signal_name: str | list[str] | None = None,
 ) -> dict:
     loaded_data = {}
     with h5py.File(path, "r") as f:

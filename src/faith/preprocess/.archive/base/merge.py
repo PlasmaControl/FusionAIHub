@@ -1,11 +1,10 @@
-import os
 from typing import Any, Union
 
 
 def merge(
-    path_1: Union[str, int, Any[os.Pathlike]],
-    path_2: Union[str, int, Any[os.Pathlike]],
-    path_out: Union[str, int, Any[os.Pathlike]],
+    path_1: Union[str, int, Any],
+    path_2: Union[str, int, Any],
+    path_out: Union[str, int, Any],
 ) -> None:
     """_summary_
 
@@ -48,7 +47,9 @@ def merge(
 #             file.close()
 
 #             file = h5py.File(f'{path}{discharge}_TS.h5', 'r')
-#             df_time = pd.DataFrame({'xdata': file[list(file.keys())[0]]['xdata']})
+#             df_time = pd.DataFrame(
+#                 {'xdata': file[list(file.keys())[0]]['xdata']}
+#             )
 #             time = file[list(file.keys())[0]]['xdata'][:]
 
 #             time_index = (time >= t_min) & (time <= t_max)

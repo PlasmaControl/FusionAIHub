@@ -65,7 +65,10 @@ __all__ = [
     "mae_loss",
     # Configuration utilities
     "create_block_autoencoder",
+    "create_autoencoder_from_config",
+    "create_model_from_config_file",
     "get_preset_config",
+    "list_preset_configs",
     "save_model_config",
     "load_model_config",
     "ModelConfig",

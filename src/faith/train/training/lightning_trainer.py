@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.utils.data import DataLoader
 
 
 class LightningTrainer(pl.LightningModule):
@@ -24,10 +25,10 @@ class LightningTrainer(pl.LightningModule):
         weight_decay: float = 1e-5,
         warmup_epochs: int = 5,
         max_epochs: int = 100,
-        loss_fn: Optional[Callable] = None,
+        loss_fn: Callable | None = None,
         scheduler_type: str = "cosine",
         compile_model: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the Lightning trainer.
 
@@ -57,9 +58,7 @@ class LightningTrainer(pl.LightningModule):
         super().__init__()
 
         # Validate scheduler configuration
-        self._validate_scheduler_config(
-            warmup_epochs, max_epochs, scheduler_type
-        )
+        self._validate_scheduler_config(warmup_epochs, max_epochs, scheduler_type)
 
         # Save hyperparameters
         self.save_hyperparameters(ignore=["model", "loss_fn"])
@@ -70,7 +69,7 @@ class LightningTrainer(pl.LightningModule):
             try:
                 self.model = torch.compile(model)
             except Exception as e:
-                warnings.warn(f"Model compilation failed: {e}")
+                warnings.warn(f"Model compilation failed: {e}", stacklevel=2)
 
         # Loss function
         self.loss_fn = loss_fn or F.mse_loss
@@ -109,7 +108,8 @@ class LightningTrainer(pl.LightningModule):
                 warnings.warn(
                     f"warmup_epochs ({warmup_epochs}) >= max_epochs "
                     f"({max_epochs}). Setting warmup_epochs to "
-                    f"{max(0, max_epochs - 1)}"
+                    f"{max(0, max_epochs - 1)}",
+                    stacklevel=2,
                 )
                 # Don't modify the values here, just warn
 
@@ -183,7 +183,7 @@ class LightningTrainer(pl.LightningModule):
 
         # Total loss (reconstruction + any additional losses)
         total_loss = recon_loss
-        for loss_name, loss_value in additional_losses.items():
+        for _loss_name, loss_value in additional_losses.items():
             total_loss += loss_value
 
         # Prepare metrics for logging
@@ -295,9 +295,7 @@ class LightningTrainer(pl.LightningModule):
                     end_factor=1.0,
                     total_iters=self.warmup_epochs,
                 )
-                cosine_scheduler = CosineAnnealingLR(
-                    optimizer, T_max=cosine_epochs
-                )
+                cosine_scheduler = CosineAnnealingLR(optimizer, T_max=cosine_epochs)
                 scheduler = SequentialLR(
                     optimizer,
                     schedulers=[warmup_scheduler, cosine_scheduler],
@@ -342,7 +340,7 @@ class MultimodalLightningTrainer(LightningTrainer):
         self,
         model: torch.nn.Module,
         loss_weights: Optional[dict[str, float]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize multimodal trainer.
 
@@ -404,8 +402,8 @@ class MultimodalLightningTrainer(LightningTrainer):
 
 def train_model(
     model: torch.nn.Module,
-    train_dataloader,
-    val_dataloader=None,
+    train_dataloader: DataLoader,
+    val_dataloader: DataLoader | None = None,
     max_epochs: int = 100,
     gpus: int = 1,
     precision: str = "16-mixed",
@@ -413,8 +411,8 @@ def train_model(
     project_name: str = "autoencoder-training",
     experiment_name: Optional[str] = None,
     log_dir: str = "./logs",
-    **trainer_kwargs,
-):
+    **trainer_kwargs: Any,
+) -> tuple[LightningTrainer, pl.Trainer]:
     """Convenience function to train a model with sensible defaults.
 
     Parameters
@@ -477,9 +475,7 @@ def train_model(
     ]
 
     if val_dataloader:
-        callbacks.append(
-            EarlyStopping(monitor="val_loss", patience=10, mode="min")
-        )
+        callbacks.append(EarlyStopping(monitor="val_loss", patience=10, mode="min"))
 
     # Configure logger
     logger = None
@@ -492,8 +488,8 @@ def train_model(
             )
         except ImportError:
             warnings.warn(
-                "TensorBoard not available. "
-                "Install with: pip install tensorboard"
+                "TensorBoard not available. Install with: pip install tensorboard",
+                stacklevel=2,
             )
     elif logger_type == "csv":
         try:
@@ -503,11 +499,14 @@ def train_model(
                 save_dir=log_dir, name=project_name, version=experiment_name
             )
         except ImportError:
-            warnings.warn("CSV logger not available.")
+            warnings.warn("CSV logger not available.", stacklevel=2)
     elif logger_type == "none":
         logger = False
     else:
-        warnings.warn(f"Unknown logger type: {logger_type}. Using no logger.")
+        warnings.warn(
+            f"Unknown logger type: {logger_type}. Using no logger.",
+            stacklevel=2,
+        )
         logger = False
 
     # Trainer

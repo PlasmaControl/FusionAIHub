@@ -13,7 +13,7 @@ from .preprocess_beta import prepare_dataset
 )
 def main(
     cfg: DictConfig,
-):
+) -> None:
     log_level = getattr(
         logging,
         cfg.get("log_level", "INFO").upper(),

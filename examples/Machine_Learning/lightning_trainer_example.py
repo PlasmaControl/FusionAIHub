@@ -60,9 +60,7 @@ def create_dummy_dataset(
     return train_loader, val_loader
 
 
-def create_multimodal_dataset(
-    batch_size: int = 16, num_samples: int = 1000
-) -> tuple:
+def create_multimodal_dataset(batch_size: int = 16, num_samples: int = 1000) -> tuple:
     """Create dummy multimodal dataset.
 
     Parameters
@@ -121,7 +119,7 @@ def create_multimodal_dataset(
 class CustomLossAutoencoder(LightningTrainer):
     """Example of custom loss computation for specific autoencoder needs."""
 
-    def __init__(self, model, perceptual_weight: float = 0.1, **kwargs):
+    def __init__(self, model, perceptual_weight: float = 0.1, **kwargs) -> None:
         """Initialize with perceptual loss component.
 
         Parameters
@@ -188,7 +186,7 @@ class CustomLossAutoencoder(LightningTrainer):
 class MultimodalAutoencoder(torch.nn.Module):
     """Example multimodal autoencoder for testing."""
 
-    def __init__(self, audio_channels: int = 80, text_vocab_size: int = 1000):
+    def __init__(self, audio_channels: int = 80, text_vocab_size: int = 1000) -> None:
         """Initialize multimodal autoencoder.
 
         Parameters
@@ -270,9 +268,7 @@ class MultimodalAutoencoder(torch.nn.Module):
         )
 
         text_hidden = (
-            self.text_decoder[0](latent)
-            .unsqueeze(1)
-            .repeat(1, text.size(1), 1)
+            self.text_decoder[0](latent).unsqueeze(1).repeat(1, text.size(1), 1)
         )
         text_lstm_out, _ = self.text_decoder[1](text_hidden)
         text_reconstructed = self.text_decoder[2](text_lstm_out)
@@ -293,7 +289,7 @@ class MultimodalAutoencoder(torch.nn.Module):
         }
 
 
-def example_basic_training():
+def example_basic_training() -> None:
     """Basic training example with BlockBasedAutoencoder."""
     print("=" * 60)
     print("EXAMPLE 1: Basic Autoencoder Training")
@@ -301,9 +297,7 @@ def example_basic_training():
 
     # Create autoencoder
     autoencoder = BlockBasedAutoencoder(input_channels=80)
-    print(
-        f"Created autoencoder with {autoencoder.parameter_count:,} parameters"
-    )
+    print(f"Created autoencoder with {autoencoder.parameter_count:,} parameters")
 
     # Create data
     train_loader, val_loader = create_dummy_dataset(
@@ -338,7 +332,7 @@ def example_basic_training():
     print(f"Test output shape: {output.shape}")
 
 
-def example_custom_trainer():
+def example_custom_trainer() -> None:
     """Example with custom trainer class."""
     print("\n" + "=" * 60)
     print("EXAMPLE 2: Custom Trainer with Perceptual Loss")
@@ -378,16 +372,14 @@ def example_custom_trainer():
     print("Custom training completed!")
 
 
-def example_multimodal_training():
+def example_multimodal_training() -> None:
     """Example with multimodal autoencoder."""
     print("\n" + "=" * 60)
     print("EXAMPLE 3: Multimodal Autoencoder Training")
     print("=" * 60)
 
     # Create multimodal model
-    multimodal_model = MultimodalAutoencoder(
-        audio_channels=80, text_vocab_size=1000
-    )
+    multimodal_model = MultimodalAutoencoder(audio_channels=80, text_vocab_size=1000)
 
     # Create multimodal trainer with loss weights
     lightning_model = MultimodalLightningTrainer(
@@ -398,9 +390,7 @@ def example_multimodal_training():
     )
 
     # Create multimodal data
-    train_loader, val_loader = create_multimodal_dataset(
-        batch_size=4, num_samples=50
-    )
+    train_loader, val_loader = create_multimodal_dataset(batch_size=4, num_samples=50)
 
     # Train
     trainer = Trainer(
@@ -415,7 +405,7 @@ def example_multimodal_training():
     print("Multimodal training completed!")
 
 
-def example_configuration_testing():
+def example_configuration_testing() -> None:
     """Test different autoencoder configurations."""
     print("\n" + "=" * 60)
     print("EXAMPLE 4: Testing Different Configurations")
@@ -430,7 +420,11 @@ def example_configuration_testing():
                 "input_channels": 80,
                 "block_configs": [
                     {"out_channels": 64, "pool_size": (1, 2), "dropout": 0.2},
-                    {"out_channels": 128, "pool_size": (1, 4), "dropout": 0.3},
+                    {
+                        "out_channels": 128,
+                        "pool_size": (1, 4),
+                        "dropout": 0.3,
+                    },
                 ],
                 "activation": "gelu",
             },
@@ -477,7 +471,7 @@ def example_configuration_testing():
         print("  Training test: PASSED")
 
 
-def example_feature_extraction():
+def example_feature_extraction() -> None:
     """Example showing feature extraction capabilities."""
     print("\n" + "=" * 60)
     print("EXAMPLE 5: Feature Extraction and Analysis")
@@ -522,7 +516,7 @@ def example_feature_extraction():
         print(f"Reconstruction MSE: {mse_error:.6f}")
 
 
-def run_all_examples():
+def run_all_examples() -> None:
     """Run all examples."""
     print("Running Lightning Trainer Examples...")
     print("Note: These are minimal examples for demonstration.")

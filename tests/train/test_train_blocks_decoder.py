@@ -2,13 +2,13 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.faith.train.blocks import DecoderBlock, ResidualBlock
+from faith.train.blocks import DecoderBlock, ResidualBlock
 
 
 class TestDecoderBlockInitialization:
     """Test DecoderBlock initialization and parameter validation."""
 
-    def test_basic_initialization(self):
+    def test_basic_initialization(self) -> None:
         """Test basic DecoderBlock initialization with default parameters."""
         block = DecoderBlock(in_channels=4, out_channels=2)
 
@@ -20,7 +20,7 @@ class TestDecoderBlockInitialization:
         assert block.activation_name == "relu"
         assert block.residual_init_method == "kaiming"
 
-    def test_custom_initialization(self):
+    def test_custom_initialization(self) -> None:
         """Test DecoderBlock initialization with custom parameters."""
         block = DecoderBlock(
             in_channels=4,
@@ -45,7 +45,7 @@ class TestDecoderBlockInitialization:
         assert block.activation_name == "gelu"
         assert block.residual_init_method == "xavier"
 
-    def test_operations_creation(self):
+    def test_operations_creation(self) -> None:
         """Test that all operations are created correctly."""
         block = DecoderBlock(in_channels=4, out_channels=2)
 
@@ -59,7 +59,7 @@ class TestDecoderBlockInitialization:
         assert isinstance(block.dropout_layer, nn.Dropout)
         assert isinstance(block.residual_block, ResidualBlock)
 
-    def test_conv_transpose_parameters(self):
+    def test_conv_transpose_parameters(self) -> None:
         """Test ConvTranspose2d layer parameters."""
         block = DecoderBlock(
             in_channels=8,
@@ -76,7 +76,7 @@ class TestDecoderBlockInitialization:
         assert conv_transpose.padding == (1, 1)  # (4-1)//2 = 1
         assert conv_transpose.bias is None  # bias=False
 
-    def test_operations_order(self):
+    def test_operations_order(self) -> None:
         """Test that operations are in correct order."""
         block = DecoderBlock(in_channels=8, out_channels=4)
 
@@ -89,19 +89,15 @@ class TestDecoderBlockInitialization:
 class TestDecoderBlockValidation:
     """Test parameter validation in DecoderBlock."""
 
-    def test_invalid_dropout_values(self):
+    def test_invalid_dropout_values(self) -> None:
         """Test that invalid dropout values raise ValueError."""
-        with pytest.raises(
-            ValueError, match="Dropout must be between 0.0 and 1.0"
-        ):
+        with pytest.raises(ValueError, match="Dropout must be between 0.0 and 1.0"):
             DecoderBlock(in_channels=4, out_channels=2, dropout=-0.1)
 
-        with pytest.raises(
-            ValueError, match="Dropout must be between 0.0 and 1.0"
-        ):
+        with pytest.raises(ValueError, match="Dropout must be between 0.0 and 1.0"):
             DecoderBlock(in_channels=4, out_channels=2, dropout=1.5)
 
-    def test_invalid_upsample_factor(self):
+    def test_invalid_upsample_factor(self) -> None:
         """Test that invalid upsample_factor raises ValueError."""
         with pytest.raises(
             ValueError, match="upsample_factor must be a tuple of length 2"
@@ -111,11 +107,9 @@ class TestDecoderBlockValidation:
         with pytest.raises(
             ValueError, match="upsample_factor must be a tuple of length 2"
         ):
-            DecoderBlock(
-                in_channels=4, out_channels=2, upsample_factor=(1, 2, 3)
-            )
+            DecoderBlock(in_channels=4, out_channels=2, upsample_factor=(1, 2, 3))
 
-    def test_boundary_dropout_values(self):
+    def test_boundary_dropout_values(self) -> None:
         """Test boundary dropout values (0.0 and 1.0)."""
         block1 = DecoderBlock(in_channels=4, out_channels=2, dropout=0.0)
         assert block1.dropout == 0.0
@@ -127,7 +121,7 @@ class TestDecoderBlockValidation:
 class TestDecoderBlockForwardPass:
     """Test DecoderBlock forward pass functionality."""
 
-    def test_forward_pass_basic(self):
+    def test_forward_pass_basic(self) -> None:
         """Test basic forward pass with default parameters."""
         block = DecoderBlock(in_channels=8, out_channels=4)
         x = torch.randn(2, 8, 16, 8)
@@ -139,12 +133,10 @@ class TestDecoderBlockForwardPass:
         assert output.shape[2] == 16  # height should be positive
         assert output.shape[3] == 16  # width should be positive
 
-    def test_forward_pass_2x1_upsampling(self):
+    def test_forward_pass_2x1_upsampling(self) -> None:
         """Test forward pass with 2x1 upsampling."""
 
-        block = DecoderBlock(
-            in_channels=8, out_channels=4, upsample_factor=(2, 1)
-        )
+        block = DecoderBlock(in_channels=8, out_channels=4, upsample_factor=(2, 1))
         x = torch.randn(1, 8, 8, 8)
 
         output = block(x)
@@ -155,7 +147,7 @@ class TestDecoderBlockForwardPass:
         assert output.shape[2] == 16
         assert output.shape[3] == 8
 
-    def test_forward_pass_no_dropout(self):
+    def test_forward_pass_no_dropout(self) -> None:
         """Test forward pass with dropout disabled."""
         block = DecoderBlock(in_channels=4, out_channels=2, dropout=0.0)
         x = torch.randn(2, 4, 8, 8)
@@ -163,7 +155,7 @@ class TestDecoderBlockForwardPass:
         output = block(x)
         assert output.shape[1] == 2
 
-    def test_dropout_parameters(self):
+    def test_dropout_parameters(self) -> None:
         """Test that Dropout is created with correct parameters."""
         block = DecoderBlock(in_channels=4, out_channels=2, dropout=0.7)
 
@@ -174,7 +166,7 @@ class TestDecoderBlockForwardPass:
 class TestDecoderBlockConfiguration:
     """Test DecoderBlock configuration methods."""
 
-    def test_get_config(self):
+    def test_get_config(self) -> None:
         """Test get_config method returns complete configuration."""
         block = DecoderBlock(
             in_channels=8,
@@ -193,7 +185,7 @@ class TestDecoderBlockConfiguration:
         assert config["dropout"] == 0.5
         assert config["activation"] == "gelu"
 
-    def test_from_config(self):
+    def test_from_config(self) -> None:
         """Test from_config class method creates equivalent block."""
         original_block = DecoderBlock(
             in_channels=8,
@@ -209,17 +201,11 @@ class TestDecoderBlockConfiguration:
         # Check key attributes match
         assert reconstructed_block.in_channels == original_block.in_channels
         assert reconstructed_block.out_channels == original_block.out_channels
-        assert (
-            reconstructed_block.upsample_factor
-            == original_block.upsample_factor
-        )
+        assert reconstructed_block.upsample_factor == original_block.upsample_factor
         assert reconstructed_block.dropout == original_block.dropout
-        assert (
-            reconstructed_block.activation_name
-            == original_block.activation_name
-        )
+        assert reconstructed_block.activation_name == original_block.activation_name
 
-    def test_config_roundtrip(self):
+    def test_config_roundtrip(self) -> None:
         """Test that config -> block -> config roundtrip works."""
         original_config = {
             "in_channels": 4,
@@ -240,7 +226,7 @@ class TestDecoderBlockConfiguration:
 class TestDecoderBlockShapeCalculation:
     """Test DecoderBlock shape calculation methods."""
 
-    def test_get_output_shape_basic(self):
+    def test_get_output_shape_basic(self) -> None:
         """Test get_output_shape with basic parameters."""
         block = DecoderBlock(in_channels=8, out_channels=4)
 
@@ -252,11 +238,9 @@ class TestDecoderBlockShapeCalculation:
         assert output_shape[2] == 16  # height should be positive
         assert output_shape[3] == 16  # width should be positive
 
-    def test_get_output_shape_2x2_upsampling(self):
+    def test_get_output_shape_2x2_upsampling(self) -> None:
         """Test get_output_shape with 2x2 upsampling."""
-        block = DecoderBlock(
-            in_channels=4, out_channels=2, upsample_factor=(2, 2)
-        )
+        block = DecoderBlock(in_channels=4, out_channels=2, upsample_factor=(2, 2))
 
         input_shape = (1, 4, 8, 8)
         output_shape = block.get_output_shape(input_shape)
@@ -271,7 +255,7 @@ class TestDecoderBlockShapeCalculation:
 class TestDecoderBlockRepresentation:
     """Test DecoderBlock string representation."""
 
-    def test_repr_basic(self):
+    def test_repr_basic(self) -> None:
         """Test __repr__ method with basic parameters."""
         block = DecoderBlock(in_channels=8, out_channels=4)
         repr_str = repr(block)
@@ -283,7 +267,7 @@ class TestDecoderBlockRepresentation:
         assert "dropout=0.3" in repr_str
         assert "activation='relu'" in repr_str
 
-    def test_repr_custom(self):
+    def test_repr_custom(self) -> None:
         """Test __repr__ method with custom parameters."""
         block = DecoderBlock(
             in_channels=6,
@@ -304,7 +288,7 @@ class TestDecoderBlockRepresentation:
 class TestDecoderBlockIntegration:
     """Test DecoderBlock integration aspects."""
 
-    def test_sequential_block_inheritance(self):
+    def test_sequential_block_inheritance(self) -> None:
         """Test that DecoderBlock inherits from SequentialBlock correctly."""
         block = DecoderBlock(in_channels=8, out_channels=4)
 
@@ -313,7 +297,7 @@ class TestDecoderBlockIntegration:
         assert hasattr(block, "in_channels")
         assert hasattr(block, "out_channels")
 
-    def test_component_access(self):
+    def test_component_access(self) -> None:
         """Test that individual components can be accessed."""
         block = DecoderBlock(in_channels=8, out_channels=4)
 
@@ -331,7 +315,7 @@ class TestDecoderBlockIntegration:
 class TestDecoderBlockEdgeCases:
     """Test edge cases and error conditions."""
 
-    def test_single_channel_input_output(self):
+    def test_single_channel_input_output(self) -> None:
         """Test with single channel input and output."""
         block = DecoderBlock(in_channels=1, out_channels=1)
         x = torch.randn(1, 1, 16, 16)
@@ -339,11 +323,9 @@ class TestDecoderBlockEdgeCases:
         output = block(x)
         assert output.shape[1] == 1
 
-    def test_large_upsampling_factor(self):
+    def test_large_upsampling_factor(self) -> None:
         """Test with large upsampling factors."""
-        block = DecoderBlock(
-            in_channels=4, out_channels=2, upsample_factor=(4, 4)
-        )
+        block = DecoderBlock(in_channels=4, out_channels=2, upsample_factor=(4, 4))
         x = torch.randn(1, 4, 2, 2)
 
         output = block(x)
@@ -351,7 +333,7 @@ class TestDecoderBlockEdgeCases:
         assert output.shape[2] == 6
         assert output.shape[3] == 6
 
-    def test_minimal_spatial_dimensions(self):
+    def test_minimal_spatial_dimensions(self) -> None:
         """Test with minimal spatial dimensions."""
         block = DecoderBlock(in_channels=4, out_channels=2)
         x = torch.randn(1, 4, 1, 1)

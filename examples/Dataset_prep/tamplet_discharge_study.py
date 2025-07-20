@@ -24,7 +24,8 @@ interp_suffix = [
 ]  # e.g. [['ts','core.dens'],['ts','core.dens']]
 interp_mode = "normal"
 
-# time_matching_mode = ['merge_asof','binary','dynamic'] only 'dynamic' works for now (04/29/2024)
+# time_matching_mode = ['merge_asof','binary','dynamic']
+# only 'dynamic' works for now (04/29/2024)
 time_matching_mode = "dynamic"
 
 

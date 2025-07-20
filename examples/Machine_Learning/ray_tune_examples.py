@@ -75,15 +75,13 @@ def create_dummy_dataset(num_samples: int = 1000, batch_size: int = 32):
     val_dataset = TensorDataset(val_data, val_data)
 
     # Create dataloaders
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
-    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     return {"train": train_loader, "val": val_loader}
 
 
-def example_basic_tuning():
+def example_basic_tuning() -> None:
     """Basic hyperparameter tuning example."""
     print("=" * 60)
     print("EXAMPLE 1: Basic Hyperparameter Tuning")
@@ -126,13 +124,11 @@ def example_basic_tuning():
 
     # Train final model
     print("\nTraining final model with best hyperparameters...")
-    best_model = tuner.train_best_model(
-        analysis, max_epochs=5, save_path="best_basic_model.pth"
-    )
+    tuner.train_best_model(analysis, max_epochs=5, save_path="best_basic_model.pth")
     print("Basic tuning completed!")
 
 
-def example_architecture_search():
+def example_architecture_search() -> None:
     """Architecture search example."""
     print("\n" + "=" * 60)
     print("EXAMPLE 2: Architecture Search")
@@ -181,7 +177,7 @@ def example_architecture_search():
     print(df[["config/num_layers", "val_loss"]].head())
 
 
-def example_custom_search_space():
+def example_custom_search_space() -> None:
     """Custom search space example."""
     print("\n" + "=" * 60)
     print("EXAMPLE 3: Custom Search Space")
@@ -225,7 +221,7 @@ def example_custom_search_space():
     print(f"\nBest custom configuration: {best_config}")
 
 
-def example_quick_parameter_test():
+def example_quick_parameter_test() -> None:
     """Quick single parameter testing."""
     print("\n" + "=" * 60)
     print("EXAMPLE 4: Quick Parameter Testing")
@@ -267,7 +263,7 @@ def example_quick_parameter_test():
         print(f"LR: {lr:.2e} -> Val Loss: {val_loss:.4f}")
 
 
-def example_advanced_configuration():
+def example_advanced_configuration() -> None:
     """Advanced tuning configuration example."""
     print("\n" + "=" * 60)
     print("EXAMPLE 5: Advanced Configuration")
@@ -312,31 +308,24 @@ def example_advanced_configuration():
     print("Advanced search space:", search_space)
 
     # Run tuning with custom name
-    analysis = tuner.tune(
-        search_space, name="advanced_block_autoencoder", resume=False
-    )
+    analysis = tuner.tune(search_space, name="advanced_block_autoencoder", resume=False)
 
     # Detailed analysis
     best_trial = analysis.get_best_trial("val_loss", "min")
     print("\nBest trial:")
     print(f"  Config: {best_trial.config}")
     print(f"  Final val_loss: {best_trial.last_result['val_loss']:.4f}")
-    print(
-        f"  Training time: "
-        f"{best_trial.last_result.get('time_total_s', 0):.1f}s"
-    )
+    print(f"  Training time: {best_trial.last_result.get('time_total_s', 0):.1f}s")
 
     # Train final model with more epochs
     print("\nTraining final model...")
-    final_model = tuner.train_best_model(
-        analysis, max_epochs=5, save_path="advanced_best_model.pth"
-    )
+    tuner.train_best_model(analysis, max_epochs=5, save_path="advanced_best_model.pth")
 
     print("Advanced tuning completed!")
     print(f"Results saved to: {tuner.storage_path}")
 
 
-def example_model_comparison():
+def example_model_comparison() -> None:
     """Compare different model configurations."""
     print("\n" + "=" * 60)
     print("EXAMPLE 6: Model Configuration Comparison")
@@ -378,18 +367,14 @@ def example_model_comparison():
             gpus_per_trial=0.0,
         )
 
-        analysis = tuner.tune(
-            config_info["search_space"], name=config_info["name"]
-        )
+        analysis = tuner.tune(config_info["search_space"], name=config_info["name"])
 
         best_trial = analysis.get_best_trial("val_loss", "min")
         results[config_info["name"]] = {
             "val_loss": best_trial.last_result["val_loss"],
             "params": sum(
                 p.numel()
-                for p in BlockBasedAutoencoder(
-                    **config_info["config"]
-                ).parameters()
+                for p in BlockBasedAutoencoder(**config_info["config"]).parameters()
             ),
         }
 
@@ -405,13 +390,10 @@ def example_model_comparison():
 
     # Find best model
     best_model = min(results.items(), key=lambda x: x[1]["val_loss"])
-    print(
-        f"\nBest model: {best_model[0]} "
-        f"(val_loss: {best_model[1]['val_loss']:.4f})"
-    )
+    print(f"\nBest model: {best_model[0]} (val_loss: {best_model[1]['val_loss']:.4f})")
 
 
-def run_all_examples():
+def run_all_examples() -> None:
     """Run all tuning examples."""
     print("Running Ray Tune Examples...")
     print("Note: These are minimal examples for demonstration.")

@@ -7,9 +7,9 @@ def visualize(
     y: np.ndarray,
     t: np.ndarray,
     labels: list,
-    xlabel: str = None,
-    ylabel: str = None,
-    title: str = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    title: str | None = None,
 ) -> plt.Figure:
     fig, axs = plt.subplots()
 
@@ -29,15 +29,19 @@ def spectrogram(
     t: np.ndarray,
     f: np.ndarray,
     labels: list,
-    xlabel: str = None,
-    ylabel: str = None,
-    title: str = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    title: str | None = None,
 ) -> plt.Figure:
     fig, axs = plt.subplots()
 
     for k, label in enumerate(labels):
         sns.heatmap(
-            y[:, :, k], xticklabels=t[:, k], yticklabels=f, ax=axs, label=label
+            y[:, :, k],
+            xticklabels=t[:, k],
+            yticklabels=f,
+            ax=axs,
+            label=label,
         )
 
     axs.set_xlabel(xlabel)

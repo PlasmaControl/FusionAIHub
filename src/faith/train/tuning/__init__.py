@@ -31,7 +31,8 @@ except ImportError:
     warnings.warn(
         "Ray Tune not available. Hyperparameter tuning "
         "functionality disabled. "
-        "Install with: pip install ray[tune] optuna hyperopt"
+        "Install with: pip install ray[tune] optuna hyperopt",
+        stacklevel=2,
     )
 
     __all__ = []

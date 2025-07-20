@@ -2,13 +2,13 @@ import pytest
 import torch
 
 # Assuming these imports exist in your codebase
-from src.faith.train.blocks import BlockBasedDecoder
+from faith.train.blocks import BlockBasedDecoder
 
 
 class TestBlockBasedDecoderInitialization:
     """Test BlockBasedDecoder initialization and parameter validation."""
 
-    def test_basic_initialization(self):
+    def test_basic_initialization(self) -> None:
         """Test basic BlockBasedDecoder initialization."""
         configs = [
             {"out_channels": 128, "upsample_factor": (2, 2)},
@@ -22,7 +22,7 @@ class TestBlockBasedDecoderInitialization:
         assert len(decoder.operations) == 3
         assert len(decoder.block_configs) == 3
 
-    def test_custom_initialization(self):
+    def test_custom_initialization(self) -> None:
         """Test BlockBasedDecoder with custom parameters."""
         configs = [
             {"out_channels": 128, "upsample_factor": (2, 2), "dropout": 0.5},
@@ -39,7 +39,7 @@ class TestBlockBasedDecoderInitialization:
         assert decoder.kernel_size == (7, 7)
         assert decoder.bias is True
 
-    def test_single_block_decoder(self):
+    def test_single_block_decoder(self) -> None:
         """Test decoder with single block."""
         configs = [{"out_channels": 3}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -48,7 +48,7 @@ class TestBlockBasedDecoderInitialization:
         assert decoder.out_channels == 3
         assert len(decoder.operations) == 1
 
-    def test_channel_progression_setup(self):
+    def test_channel_progression_setup(self) -> None:
         """Test that blocks are configured with correct channel progression."""
         configs = [
             {"out_channels": 128},
@@ -73,12 +73,12 @@ class TestBlockBasedDecoderInitialization:
 class TestBlockBasedDecoderValidation:
     """Test parameter validation in BlockBasedDecoder."""
 
-    def test_empty_block_configs(self):
+    def test_empty_block_configs(self) -> None:
         """Test that empty block_configs raises ValueError."""
         with pytest.raises(ValueError, match="block_configs cannot be empty"):
             BlockBasedDecoder(in_channels=256, block_configs=[])
 
-    def test_invalid_in_channels(self):
+    def test_invalid_in_channels(self) -> None:
         """Test that invalid in_channels raises ValueError."""
         configs = [{"out_channels": 64}]
 
@@ -88,7 +88,7 @@ class TestBlockBasedDecoderValidation:
         with pytest.raises(ValueError, match="in_channels must be positive"):
             BlockBasedDecoder(in_channels=-5, block_configs=configs)
 
-    def test_missing_out_channels(self):
+    def test_missing_out_channels(self) -> None:
         """Test that missing out_channels in config raises ValueError."""
         configs = [
             {"out_channels": 128},
@@ -101,7 +101,7 @@ class TestBlockBasedDecoderValidation:
         ):
             BlockBasedDecoder(in_channels=256, block_configs=configs)
 
-    def test_invalid_out_channels(self):
+    def test_invalid_out_channels(self) -> None:
         """Test that invalid out_channels raises ValueError."""
         configs = [
             {"out_channels": 128},
@@ -110,13 +110,12 @@ class TestBlockBasedDecoderValidation:
         ]
 
         with pytest.raises(
-            ValueError, match="out_channels must be positive, got 0 in block 1"
+            ValueError,
+            match="out_channels must be positive, got 0 in block 1",
         ):
             BlockBasedDecoder(in_channels=256, block_configs=configs)
 
-        configs = [
-            {"out_channels": -64}  # Invalid
-        ]
+        configs = [{"out_channels": -64}]  # Invalid
 
         with pytest.raises(
             ValueError,
@@ -128,7 +127,7 @@ class TestBlockBasedDecoderValidation:
 class TestBlockBasedDecoderForwardPass:
     """Test BlockBasedDecoder forward pass functionality."""
 
-    def test_forward_pass_basic(self):
+    def test_forward_pass_basic(self) -> None:
         """Test basic forward pass."""
         configs = [
             {"out_channels": 128, "upsample_factor": (1, 2)},
@@ -142,7 +141,7 @@ class TestBlockBasedDecoderForwardPass:
 
         assert output.shape == (2, 3, 16, 16)
 
-    def test_forward_pass_single_block(self):
+    def test_forward_pass_single_block(self) -> None:
         """Test forward pass with single block."""
         configs = [{"out_channels": 32}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -152,7 +151,7 @@ class TestBlockBasedDecoderForwardPass:
 
         assert output.shape == (1, 32, 8, 16)
 
-    def test_forward_pass_gradient_flow(self):
+    def test_forward_pass_gradient_flow(self) -> None:
         """Test that gradients flow properly through the decoder."""
         configs = [{"out_channels": 64}, {"out_channels": 32}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -169,7 +168,7 @@ class TestBlockBasedDecoderForwardPass:
 class TestBlockBasedDecoderConfiguration:
     """Test BlockBasedDecoder configuration methods."""
 
-    def test_get_config(self):
+    def test_get_config(self) -> None:
         """Test get_config method returns complete configuration."""
         configs = [
             {"out_channels": 128, "dropout": 0.4},
@@ -188,7 +187,7 @@ class TestBlockBasedDecoderConfiguration:
         assert config["kernel_size"] == (5, 5)
         assert config["bias"] is False
 
-    def test_from_config(self):
+    def test_from_config(self) -> None:
         """Test from_config class method creates equivalent decoder."""
         original_configs = [
             {"out_channels": 128, "dropout": 0.3},
@@ -202,21 +201,12 @@ class TestBlockBasedDecoderConfiguration:
         config = original_decoder.get_config()
         reconstructed_decoder = BlockBasedDecoder.from_config(config)
 
-        assert (
-            reconstructed_decoder.in_channels == original_decoder.in_channels
-        )
-        assert (
-            reconstructed_decoder.out_channels == original_decoder.out_channels
-        )
-        assert (
-            reconstructed_decoder.block_configs
-            == original_decoder.block_configs
-        )
-        assert (
-            reconstructed_decoder.kernel_size == original_decoder.kernel_size
-        )
+        assert reconstructed_decoder.in_channels == original_decoder.in_channels
+        assert reconstructed_decoder.out_channels == original_decoder.out_channels
+        assert reconstructed_decoder.block_configs == original_decoder.block_configs
+        assert reconstructed_decoder.kernel_size == original_decoder.kernel_size
 
-    def test_config_roundtrip(self):
+    def test_config_roundtrip(self) -> None:
         """Test that config -> decoder -> config roundtrip works."""
         original_config = {
             "in_channels": 128,
@@ -240,7 +230,7 @@ class TestBlockBasedDecoderConfiguration:
 class TestBlockBasedDecoderChannelProgression:
     """Test BlockBasedDecoder channel progression functionality."""
 
-    def test_get_channel_progression_basic(self):
+    def test_get_channel_progression_basic(self) -> None:
         """Test get_channel_progression with basic configuration."""
         configs = [
             {"out_channels": 128},
@@ -252,7 +242,7 @@ class TestBlockBasedDecoderChannelProgression:
         progression = decoder.get_channel_progression()
         assert progression == [256, 128, 64, 32]
 
-    def test_get_channel_progression_single_block(self):
+    def test_get_channel_progression_single_block(self) -> None:
         """Test get_channel_progression with single block."""
         configs = [{"out_channels": 3}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -264,7 +254,7 @@ class TestBlockBasedDecoderChannelProgression:
 class TestBlockBasedDecoderReverseConfigs:
     """Test BlockBasedDecoder encoder reversal functionality."""
 
-    def test_reverse_encoder_configs_basic(self):
+    def test_reverse_encoder_configs_basic(self) -> None:
         """Test reverse_encoder_configs with basic encoder configuration."""
         encoder_configs = [
             {"out_channels": 64, "pool_size": (1, 2)},
@@ -287,7 +277,7 @@ class TestBlockBasedDecoderReverseConfigs:
         assert decoder_configs[1]["upsample_factor"] == (2, 2)
         assert decoder_configs[2]["upsample_factor"] == (1, 2)
 
-    def test_reverse_encoder_configs_single_block(self):
+    def test_reverse_encoder_configs_single_block(self) -> None:
         """Test reverse_encoder_configs with single encoder block."""
         encoder_configs = [{"out_channels": 128, "pool_size": (2, 2)}]
 
@@ -299,23 +289,21 @@ class TestBlockBasedDecoderReverseConfigs:
         assert decoder_configs[0]["out_channels"] == 3
         assert decoder_configs[0]["upsample_factor"] == (2, 2)
 
-    def test_reverse_encoder_configs_empty_raises_error(self):
+    def test_reverse_encoder_configs_empty_raises_error(self) -> None:
         """Test that empty encoder_configs raises ValueError."""
-        with pytest.raises(
-            ValueError, match="encoder_configs cannot be empty"
-        ):
+        with pytest.raises(ValueError, match="encoder_configs cannot be empty"):
             BlockBasedDecoder.reverse_encoder_configs([], final_out_channels=3)
 
 
 class TestBlockBasedDecoderFromEncoder:
     """Test BlockBasedDecoder encoder mirroring functionality."""
 
-    def test_from_encoder_basic(self):
+    def test_from_encoder_basic(self) -> None:
         """Test from_encoder creates decoder that mirrors encoder."""
 
         # Create a mock encoder for testing
         class MockEncoder:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.out_channels = 256
                 self.block_configs = [
                     {"out_channels": 64, "pool_size": (1, 2)},
@@ -330,15 +318,13 @@ class TestBlockBasedDecoderFromEncoder:
         assert decoder.out_channels == 3
         assert len(decoder.block_configs) == 3
 
-    def test_from_encoder_with_kwargs(self):
+    def test_from_encoder_with_kwargs(self) -> None:
         """Test from_encoder with additional keyword arguments."""
 
         class MockEncoder:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.out_channels = 128
-                self.block_configs = [
-                    {"out_channels": 64, "pool_size": (2, 2)}
-                ]
+                self.block_configs = [{"out_channels": 64, "pool_size": (2, 2)}]
 
         encoder = MockEncoder()
         decoder = BlockBasedDecoder.from_encoder(
@@ -352,7 +338,7 @@ class TestBlockBasedDecoderFromEncoder:
 class TestBlockBasedDecoderShapeCalculation:
     """Test BlockBasedDecoder shape calculation methods."""
 
-    def test_get_output_shape_basic(self):
+    def test_get_output_shape_basic(self) -> None:
         """Test get_output_shape with basic configuration."""
         configs = [
             {"out_channels": 128, "upsample_factor": (1, 2)},
@@ -366,7 +352,7 @@ class TestBlockBasedDecoderShapeCalculation:
 
         assert output_shape == (2, 3, 16, 16)
 
-    def test_get_output_shape_matches_forward(self):
+    def test_get_output_shape_matches_forward(self) -> None:
         """Test that get_output_shape matches actual forward pass output."""
         configs = [
             {"out_channels": 64, "upsample_factor": (1, 2)},
@@ -387,7 +373,7 @@ class TestBlockBasedDecoderShapeCalculation:
 class TestBlockBasedDecoderFeatureMaps:
     """Test BlockBasedDecoder feature map extraction."""
 
-    def test_get_feature_maps_basic(self):
+    def test_get_feature_maps_basic(self) -> None:
         """Test get_feature_maps returns correct number of maps."""
         configs = [
             {"out_channels": 128},
@@ -404,7 +390,7 @@ class TestBlockBasedDecoderFeatureMaps:
         assert feature_maps[1].shape[1] == 64  # Second block output
         assert feature_maps[2].shape[1] == 32  # Third block output
 
-    def test_get_feature_maps_consistency(self):
+    def test_get_feature_maps_consistency(self) -> None:
         """Test that get_feature_maps gives same result as forward pass."""
         configs = [{"out_channels": 64}, {"out_channels": 32}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -422,7 +408,7 @@ class TestBlockBasedDecoderFeatureMaps:
 class TestBlockBasedDecoderRepresentation:
     """Test BlockBasedDecoder string representation."""
 
-    def test_repr_basic(self):
+    def test_repr_basic(self) -> None:
         """Test __repr__ method with basic configuration."""
         configs = [
             {"out_channels": 128},
@@ -436,7 +422,7 @@ class TestBlockBasedDecoderRepresentation:
         assert "blocks=3" in repr_str
         assert "channels=256 → 128 → 64 → 3" in repr_str
 
-    def test_repr_single_block(self):
+    def test_repr_single_block(self) -> None:
         """Test __repr__ method with single block."""
         configs = [{"out_channels": 3}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -449,7 +435,7 @@ class TestBlockBasedDecoderRepresentation:
 class TestBlockBasedDecoderCompatibility:
     """Test BlockBasedDecoder compatibility and integration."""
 
-    def test_sequential_block_inheritance(self):
+    def test_sequential_block_inheritance(self) -> None:
         """Test that BlockBasedDecoder properly inherits from SequentialBlock."""
         configs = [
             {"out_channels": 128},
@@ -464,7 +450,7 @@ class TestBlockBasedDecoderCompatibility:
         assert hasattr(decoder, "out_channels")
         assert len(decoder.operations) == 3
 
-    def test_blocks_property(self):
+    def test_blocks_property(self) -> None:
         """Test blocks property for backward compatibility."""
         configs = [{"out_channels": 64}, {"out_channels": 32}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -478,7 +464,7 @@ class TestBlockBasedDecoderCompatibility:
 class TestBlockBasedDecoderEdgeCases:
     """Test edge cases and boundary conditions."""
 
-    def test_large_channel_counts(self):
+    def test_large_channel_counts(self) -> None:
         """Test with large channel counts."""
         configs = [
             {"out_channels": 512},
@@ -491,7 +477,7 @@ class TestBlockBasedDecoderEdgeCases:
         output = decoder(z)
         assert output.shape[1] == 3
 
-    def test_single_channel_output(self):
+    def test_single_channel_output(self) -> None:
         """Test with single channel output."""
         configs = [
             {"out_channels": 32},
@@ -504,7 +490,7 @@ class TestBlockBasedDecoderEdgeCases:
         output = decoder(z)
         assert output.shape[1] == 1
 
-    def test_no_upsampling_decoder(self):
+    def test_no_upsampling_decoder(self) -> None:
         """Test decoder with no upsampling (all factors = (1,1))."""
         configs = [
             {"out_channels": 64, "upsample_factor": (1, 1)},
@@ -521,7 +507,7 @@ class TestBlockBasedDecoderEdgeCases:
 class TestBlockBasedDecoderIntegration:
     """Test BlockBasedDecoder integration with encoders."""
 
-    def test_encoder_decoder_symmetry(self):
+    def test_encoder_decoder_symmetry(self) -> None:
         """Test that decoder can process encoder output."""
         # Create encoder
         encoder_configs = [
@@ -530,7 +516,7 @@ class TestBlockBasedDecoderIntegration:
         ]
 
         class MockEncoder:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.out_channels = 128
                 self.block_configs = encoder_configs
 
@@ -552,7 +538,7 @@ class TestBlockBasedDecoderIntegration:
 class TestBlockBasedDecoderErrorHandling:
     """Test error handling and edge cases."""
 
-    def test_channel_mismatch(self):
+    def test_channel_mismatch(self) -> None:
         """Test behavior with channel count mismatch."""
         configs = [{"out_channels": 32}]
         decoder = BlockBasedDecoder(in_channels=128, block_configs=configs)
@@ -599,7 +585,7 @@ def mock_encoder():
     """Fixture providing mock encoder for testing from_encoder method."""
 
     class MockEncoder:
-        def __init__(self):
+        def __init__(self) -> None:
             self.out_channels = 128
             self.block_configs = [
                 {"out_channels": 32, "pool_size": (1, 2)},

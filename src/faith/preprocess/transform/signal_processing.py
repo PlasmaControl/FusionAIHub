@@ -1,10 +1,11 @@
 """
-Signal processing utilities for fusion dataset preparation.
+Signal processing utilities for fusion data transformations.
 
-This module contains functions for signal resampling and transformation,
+This module provides various signal processing functions for fusion data,
 including STFT transformations and nearest-neighbor resampling.
 
-NOTE: All transforms should take in a shape of (channels, time) and return a shape of (channels, time).
+NOTE: All transforms should take in a shape of (channels, time) and return a
+shape of (channels, time).
 """
 
 import logging

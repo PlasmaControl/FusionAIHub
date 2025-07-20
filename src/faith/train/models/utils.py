@@ -18,7 +18,7 @@ def create_mae_model(
     input_channels: Optional[int] = None,
     mask_ratio: float = 0.75,
     mask_type: str = "random",
-    **kwargs,
+    **kwargs: Any,
 ) -> MaskedAutoencoder:
     """Create a masked autoencoder with sensible defaults.
 
@@ -86,9 +86,7 @@ def create_mae_model(
     model = create_block_autoencoder(config_name, **kwargs)
 
     if not isinstance(model, MaskedAutoencoder):
-        raise RuntimeError(
-            f"Expected MaskedAutoencoder, got {type(model).__name__}"
-        )
+        raise RuntimeError(f"Expected MaskedAutoencoder, got {type(model).__name__}")
 
     return model
 
@@ -124,9 +122,7 @@ def get_model_info() -> dict[str, Any]:
 
     for name, config in PRESET_CONFIGS.items():
         preset_info[name] = {
-            "description": config.metadata.get(
-                "description", "No description"
-            ),
+            "description": config.metadata.get("description", "No description"),
             "use_case": config.metadata.get("use_case", "General"),
             "model_type": config.model_type,
             "num_blocks": len(config.block_configs),
@@ -240,9 +236,7 @@ def get_memory_estimate(
     elif len(input_shape) == 4:
         full_shape = input_shape
     else:
-        raise ValueError(
-            f"Input shape must be 3D or 4D, got {len(input_shape)}D"
-        )
+        raise ValueError(f"Input shape must be 3D or 4D, got {len(input_shape)}D")
 
     # Validate shape
     if not validate_input_shape(full_shape):
@@ -292,7 +286,7 @@ def get_memory_estimate(
         for dim in latent_shape:
             latent_elements *= dim
         latent_memory_mb = (latent_elements * dtype_bytes) / (1024 * 1024)
-    except:
+    except Exception:
         # Fallback estimation
         latent_memory_mb = input_memory_mb * 0.1  # Assume 10x compression
 
@@ -423,9 +417,9 @@ def analyze_model_architecture(
             "output": output_shape,
             "compression_ratio": compression_ratio,
         },
-        "config": base_model.get_config()
-        if hasattr(base_model, "get_config")
-        else None,
+        "config": (
+            base_model.get_config() if hasattr(base_model, "get_config") else None
+        ),
     }
 
     return analysis
@@ -523,22 +517,12 @@ def print_model_summary(
 
     print("\nArchitecture:")
     print(f"  Input Channels: {analysis['architecture']['input_channels']}")
-    print(
-        f"  Bottleneck Channels: "
-        f"{analysis['architecture']['bottleneck_channels']}"
-    )
-    print(
-        f"  Encoder Blocks: {analysis['architecture']['num_encoder_blocks']}"
-    )
-    print(
-        f"  Decoder Blocks: {analysis['architecture']['num_decoder_blocks']}"
-    )
+    print(f"  Bottleneck Channels: {analysis['architecture']['bottleneck_channels']}")
+    print(f"  Encoder Blocks: {analysis['architecture']['num_encoder_blocks']}")
+    print(f"  Decoder Blocks: {analysis['architecture']['num_decoder_blocks']}")
 
     if analysis["shapes"]["compression_ratio"]:
-        print(
-            f"  Compression Ratio: "
-            f"{analysis['shapes']['compression_ratio']:.1f}x"
-        )
+        print(f"  Compression Ratio: {analysis['shapes']['compression_ratio']:.1f}x")
 
     print("\nShapes:")
     print(f"  Input: {analysis['shapes']['input']}")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from torch.utils.data import Dataset, get_worker_info
@@ -25,20 +25,20 @@ class LazyFileDataset(Dataset, ABC):
 
     def __init__(
         self,
-        file_paths: Union[str, list[str]],
+        file_paths: str | list[str],
         validate_on_init: bool = True,
-        max_open_files: Optional[int] = None,
+        max_open_files: int | None = None,
     ) -> None:
         """Initialize the lazy file dataset.
 
         Parameters
         ----------
-        file_paths : Union[str, list[str]]
+        file_paths : str | list[str]
             Path or list of paths to data files.
         validate_on_init : bool, optional
             Whether to validate file existence and basic format on
             initialization, by default True.
-        max_open_files : Optional[int], optional
+        max_open_files : int | None, optional
             Maximum number of files to keep open simultaneously. If None,
             no limit is imposed, by default None.
         """
@@ -78,9 +78,7 @@ class LazyFileDataset(Dataset, ABC):
                 metadata = self._inspect_file(file_path)
                 self.file_metadata.append(metadata)
             except Exception as e:
-                raise ValueError(
-                    f"Failed to inspect file {file_path}: {e}"
-                ) from e
+                raise ValueError(f"Failed to inspect file {file_path}: {e}") from e
 
     @abstractmethod
     def _inspect_file(self, file_path: str) -> dict[str, Any]:
@@ -286,17 +284,20 @@ class LazyFileDataset(Dataset, ABC):
         return self._is_initialized
 
     @property
-    def worker_id(self) -> Optional[int]:
+    def worker_id(self) -> int | None:
         """Get the current worker ID.
 
         Returns
         -------
-        Optional[int]
+        int | None
             Worker ID if in a worker process, None otherwise.
         """
         return self._worker_id
 
-    def get_sample_info(self, sample_idx: int = 0) -> dict[str, Any]:
+    def get_sample_info(
+        self,
+        sample_idx: int = 0,
+    ) -> dict[str, Any]:
         """Get information about a sample without worker initialization.
 
         Parameters
@@ -325,16 +326,14 @@ class LazyFileDataset(Dataset, ABC):
 
                 if isinstance(sample_input, dict):
                     input_shape = {
-                        key: tensor.shape
-                        for key, tensor in sample_input.items()
+                        key: tensor.shape for key, tensor in sample_input.items()
                     }
                 else:
                     input_shape = sample_input.shape
 
                 if isinstance(sample_target, dict):
                     target_shape = {
-                        key: tensor.shape
-                        for key, tensor in sample_target.items()
+                        key: tensor.shape for key, tensor in sample_target.items()
                     }
                 else:
                     target_shape = sample_target.shape
@@ -360,12 +359,14 @@ class LazyFileDataset(Dataset, ABC):
                 "error": "Dataset does not support peeking",
             }
 
-    def validate_files(self) -> list[tuple[str, bool, Optional[str]]]:
+    def validate_files(
+        self,
+    ) -> list[tuple[str, bool, str | None]]:
         """Validate all files in the dataset.
 
         Returns
         -------
-        list[tuple[str, bool, Optional[str]]]
+        list[tuple[str, bool, str | None]]
             List of tuples containing (file_path, is_valid, error_message).
             error_message is None if the file is valid.
         """
@@ -554,9 +555,7 @@ class SequentialDataset(LazyFileDataset, ABC):
             )
 
         if self.overlap < 0:
-            raise ValueError(
-                f"overlap must be non-negative, got {self.overlap}"
-            )
+            raise ValueError(f"overlap must be non-negative, got {self.overlap}")
 
         if (
             self.chunking_strategy == "sliding_window"
@@ -812,8 +811,7 @@ class SequentialDataset(LazyFileDataset, ABC):
         """
         if seq_len < self.subseq_len:
             raise ValueError(
-                f"Sequence length {seq_len} < subsequence length "
-                f"{self.subseq_len}"
+                f"Sequence length {seq_len} < subsequence length {self.subseq_len}"
             )
 
         max_start = seq_len - self.subseq_len
@@ -881,9 +879,7 @@ class SequentialDataset(LazyFileDataset, ABC):
             "file_path": file_metadata.get("path", "unknown"),
             "start_idx": start_idx,
             "end_idx": end_idx,
-            "length": end_idx - start_idx
-            if start_idx != -1
-            else self.subseq_len,
+            "length": end_idx - start_idx if start_idx != -1 else self.subseq_len,
             "is_random_crop": start_idx == -1,
         }
 
@@ -924,8 +920,7 @@ class SequentialDataset(LazyFileDataset, ABC):
             "min_seq_len": self.min_seq_len,
             "total_subsequences": len(self.subseq_index),
             "subsequences_per_file": [
-                len(self.get_file_subsequences(i))
-                for i in range(self.num_files)
+                len(self.get_file_subsequences(i)) for i in range(self.num_files)
             ],
         }
 
@@ -1064,9 +1059,7 @@ class MultiFileDataset(SequentialDataset, ABC):
             if file_paths.is_dir():
                 # Directory: search for files
                 discovered_files = list(file_paths.glob(self.file_pattern))
-                resolved_paths = [
-                    str(f) for f in discovered_files if f.is_file()
-                ]
+                resolved_paths = [str(f) for f in discovered_files if f.is_file()]
             elif "*" in str(file_paths) or "?" in str(file_paths):
                 # Glob pattern
                 from glob import glob
@@ -1166,7 +1159,7 @@ class MultiFileDataset(SequentialDataset, ABC):
 
                 self.balanced_indices.extend(selected_indices)
 
-    def __len__(self) -> int:
+    def __len__(self) -> int:  # type: ignore
         """Get the total number of subsequences.
 
         Returns
@@ -1179,7 +1172,10 @@ class MultiFileDataset(SequentialDataset, ABC):
         else:
             return super().__len__()
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self,
+        idx: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Get a subsequence by index.
 
         Parameters
@@ -1205,7 +1201,9 @@ class MultiFileDataset(SequentialDataset, ABC):
         else:
             return super().__getitem__(idx)
 
-    def get_file_stats(self) -> list[dict[str, Any]]:
+    def get_file_stats(
+        self,
+    ) -> list[dict[str, Any]]:
         """Get statistics for all files.
 
         Returns
@@ -1215,7 +1213,10 @@ class MultiFileDataset(SequentialDataset, ABC):
         """
         return self.file_stats.copy()
 
-    def get_largest_files(self, n: int = 5) -> list[dict[str, Any]]:
+    def get_largest_files(
+        self,
+        n: int = 5,
+    ) -> list[dict[str, Any]]:
         """Get the n largest files by subsequence count.
 
         Parameters
@@ -1250,11 +1251,7 @@ class MultiFileDataset(SequentialDataset, ABC):
 
         regex = re.compile(pattern)
 
-        return [
-            stats
-            for stats in self.file_stats
-            if regex.search(stats["file_path"])
-        ]
+        return [stats for stats in self.file_stats if regex.search(stats["file_path"])]
 
     def filter_files_by_size(
         self,
@@ -1382,16 +1379,13 @@ class MultiFileDataset(SequentialDataset, ABC):
                 sample_input, sample_target = self[0]
 
                 input_size = sample_input.numel() * sample_input.element_size()
-                target_size = (
-                    sample_target.numel() * sample_target.element_size()
-                )
+                target_size = sample_target.numel() * sample_target.element_size()
 
                 per_sample_bytes = input_size + target_size
 
                 return {
                     "per_sample_mb": per_sample_bytes / (1024 * 1024),
-                    "total_dataset_gb": (total_subseqs * per_sample_bytes)
-                    / (1024**3),
+                    "total_dataset_gb": (total_subseqs * per_sample_bytes) / (1024**3),
                     "single_batch_mb": (32 * per_sample_bytes) / (1024 * 1024),
                     # Assume batch=32
                 }
@@ -1445,9 +1439,7 @@ class MultiFileDataset(SequentialDataset, ABC):
         """
         balance_info = ""
         if self.balance_files:
-            balanced = (
-                len(self.balanced_indices) if self.balanced_indices else 0
-            )
+            balanced = len(self.balanced_indices) if self.balanced_indices else 0
             balance_info = f", balanced={balanced}"
 
         return (

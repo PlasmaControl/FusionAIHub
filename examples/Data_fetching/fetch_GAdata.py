@@ -26,7 +26,9 @@ suffix_list = ["co2_s"]
 # *******end of user block************
 
 
-def size_limiter_sleep(directory_path="/cscratch/curiem", size_GB=450):
+def size_limiter_sleep(
+    directory_path: str = "/cscratch/curiem", size_GB: float = 450
+) -> None:
     try:
         size = (
             subprocess.check_output(["du", "-sh", directory_path])
@@ -61,7 +63,12 @@ def size_limiter_sleep(directory_path="/cscratch/curiem", size_GB=450):
             sys.exit(1)
 
 
-def data2dict(shotn, signame, hf, atlconn):
+def data2dict(
+    shotn: int,
+    signame: str,
+    hf: h5py.File,
+    atlconn: MDSplus.Connection,
+) -> MDSplus.Connection:
     dict_group = hf.create_group(str(signame))
     try:
         data = gadata(signame, shotn, connection=atlconn)
@@ -71,8 +78,8 @@ def data2dict(shotn, signame, hf, atlconn):
         dict_group["xunits"] = data.xunits
         dict_group["yunits"] = data.yunits
         dict_group["zunits"] = data.zunits
-    except:
-        print("%s not available, filled with NULL!" % (signame))
+    except Exception:
+        print(f"{signame} not available, filled with NULL!")
         dict_group["xdata"] = []
         dict_group["ydata"] = []
         dict_group["zdata"] = []
@@ -82,7 +89,6 @@ def data2dict(shotn, signame, hf, atlconn):
         del atlconn
         # global atlconn
         atlconn = MDSplus.Connection("atlas.gat.com")
-        pass
     return atlconn
 
 
@@ -163,14 +169,14 @@ signal_list_all = {
     "basic": ["ip", "ipsip", "iptipp", "pcbcoil", "bcoil", "bt", "vloop"]
     + ["plasticfix", "fzns"]
     + ["fs00", "fs01", "fs02", "fs03", "fs04", "fs05"],
-    "actu": ["pinjf_%dl" % k for k in [15, 21, 30, 33]]
-    + ["pinjf_%dr" % k for k in [15, 21, 30, 33]]
-    + ["tinj_%dl" % k for k in [15, 21, 30, 33]]
-    + ["tinj_%dr" % k for k in [15, 21, 30, 33]]
+    "actu": [f"pinjf_{k}l" for k in [15, 21, 30, 33]]
+    + [f"pinjf_{k}r" for k in [15, 21, 30, 33]]
+    + [f"tinj_{k}l" for k in [15, 21, 30, 33]]
+    + [f"tinj_{k}r" for k in [15, 21, 30, 33]]
     + ["echpwrc", "echpwr"]
-    + ["ec%sfpwrc" % (x) for x in ech_gytname]
-    + ["ec%sxmfrac" % (x) for x in ech_gytname]
-    + ["ec%spolang" % (x) for x in ech_gytname]
+    + [f"ec{x}fpwrc" for x in ech_gytname]
+    + [f"ec{x}xmfrac" for x in ech_gytname]
+    + [f"ec{x}polang" for x in ech_gytname]
     + ["gasa", "gasb", "gasc", "gasd", "gase"]
     + [
         "c19",
@@ -260,14 +266,14 @@ name_list_all = {
     "basic": ["ip", "ipsip", "iptipp", "pcbcoil", "bcoil", "bt", "vloop"]
     + ["plasticfix", "fzns"]
     + ["fs00", "fs01", "fs02", "fs03", "fs04", "fs05"],
-    "actu": ["pinjf_%dl" % k for k in [15, 21, 30, 33]]
-    + ["pinjf_%dr" % k for k in [15, 21, 30, 33]]
-    + ["tinj_%dl" % k for k in [15, 21, 30, 33]]
-    + ["tinj_%dr" % k for k in [15, 21, 30, 33]]
+    "actu": [f"pinjf_{k}l" for k in [15, 21, 30, 33]]
+    + [f"pinjf_{k}r" for k in [15, 21, 30, 33]]
+    + [f"tinj_{k}l" for k in [15, 21, 30, 33]]
+    + [f"tinj_{k}r" for k in [15, 21, 30, 33]]
     + ["echpwrc", "echpwr"]
-    + ["ec%sfpwrc" % (x) for x in ech_gytname]
-    + ["ec%sxmfrac" % (x) for x in ech_gytname]
-    + ["ec%spolang" % (x) for x in ech_gytname]
+    + [f"ec{x}fpwrc" for x in ech_gytname]
+    + [f"ec{x}xmfrac" for x in ech_gytname]
+    + [f"ec{x}polang" for x in ech_gytname]
     + ["gasa", "gasb", "gasc", "gasd", "gase"]
     + [
         "c19",
@@ -321,9 +327,7 @@ for i in tqdm(range(len(shot_list))):
     t1 = time.time()
 
     for grpname, signals in signal_list.items():
-        hf = h5py.File(
-            output_path + "/" + str(shotn) + "_" + grpname + ".h5", "w"
-        )
+        hf = h5py.File(output_path + "/" + str(shotn) + "_" + grpname + ".h5", "w")
         for signame in signals:
             atlconn = data2dict(shotn, signame, hf, atlconn)
         hf.close()
@@ -335,16 +339,14 @@ for i in tqdm(range(len(shot_list))):
         rtece_group = hf.create_group("rtece")
 
         for k in range(40):
-            print("chn %i" % (k + 1))
-            pece_data = gadata("pcece%d" % (k + 1), shotn, connection=atlconn)
-            pece_group["pcece%02d" % (k + 1)] = pece_data.zdata
-            ece_data = gadata("tecef%02d" % (k + 1), shotn, connection=atlconn)
-            ece_group["tecef%02d" % (k + 1)] = ece_data.zdata
+            print(f"chn {k + 1}")
+            pece_data = gadata(f"pcece{k + 1}", shotn, connection=atlconn)
+            pece_group[f"pcece{k + 1:02d}"] = pece_data.zdata
+            ece_data = gadata(f"tecef{k + 1:02d}", shotn, connection=atlconn)
+            ece_group[f"tecef{k + 1:02d}"] = ece_data.zdata
 
-            rtece_data = gadata(
-                "ecsdata%d" % (k + 97), shotn, connection=atlconn
-            )
-            rtece_group["ecsdata%d" % (k + 97)] = rtece_data.zdata
+            rtece_data = gadata(f"ecsdata{k + 97}", shotn, connection=atlconn)
+            rtece_group[f"ecsdata{k + 97}"] = rtece_data.zdata
 
         pece_group["xdata"] = pece_data.xdata
         pece_group["ydata"] = pece_data.ydata
@@ -366,6 +368,6 @@ for i in tqdm(range(len(shot_list))):
         hf.close()
     if i % interval == 0:
         size_limiter_sleep(size_GB=size_GB)
-        print("Shot #%d" % (shotn,))
+        print(f"Shot #{shotn}")
         print(i)
 # print('time per shot:%ds' % (time.time()-t1))

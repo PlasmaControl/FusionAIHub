@@ -26,10 +26,11 @@ class ResidualEncoding2d(_ResidualBlock):
 
 class EncoderBlock1d(nn.Module):
     """
-    Single encoder block with 1D convolutions: ResidualEncoding1D + Dropout + MaxPool.
+    Single encoder block with 1D convolutions: ResidualEncoding1D + Dropout +
+    MaxPool.
 
-    This block combines feature extraction through ResidualEncoding1D, regularization
-    through Dropout, and downsampling through MaxPooling.
+    This block combines feature extraction through ResidualEncoding1D,
+    regularization through Dropout, and downsampling through MaxPooling.
 
     Parameters
     ----------
@@ -110,9 +111,7 @@ class EncoderBlock1d(nn.Module):
         self.residual_block = self.encoder_block[0]
         self.dropout = self.encoder_block[1]
         self.pool = self.encoder_block[2]
-        self.pool_size = (
-            pool_size if isinstance(pool_size, tuple) else (1, pool_size)
-        )
+        self.pool_size = pool_size if isinstance(pool_size, tuple) else (1, pool_size)
 
     def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary for this block."""
@@ -129,15 +128,11 @@ class EncoderBlock1d(nn.Module):
         )
         return config
 
-    def get_output_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
 
         # Get shape after residual block
-        residual_output_shape = self.residual_block.get_output_shape(
-            input_shape
-        )
+        residual_output_shape = self.residual_block.get_output_shape(input_shape)
 
         # Apply pooling
         batch_size, channels, height, width = residual_output_shape
@@ -205,9 +200,9 @@ class BlockBasedEncoder(SequentialBlock):
         self,
         in_channels: int,
         block_configs: list[dict[str, Any]],
-        kernel_size: Union[int, tuple[int, int]] = 3,
+        kernel_size: int | tuple[int, int] = 3,
         bias: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize BlockBasedEncoder."""
 
@@ -216,16 +211,12 @@ class BlockBasedEncoder(SequentialBlock):
             raise ValueError("block_configs cannot be empty")
 
         if in_channels <= 0:
-            raise ValueError(
-                f"in_channels must be positive, got {in_channels}"
-            )
+            raise ValueError(f"in_channels must be positive, got {in_channels}")
 
         # Validate that all configs have out_channels
         for i, config in enumerate(block_configs):
             if "out_channels" not in config:
-                raise ValueError(
-                    f"Block {i} missing required 'out_channels' key"
-                )
+                raise ValueError(f"Block {i} missing required 'out_channels' key")
             if config["out_channels"] <= 0:
                 raise ValueError(
                     f"out_channels must be positive, "
@@ -252,7 +243,7 @@ class BlockBasedEncoder(SequentialBlock):
     def _build_encoder_blocks(
         self,
         in_channels: int,
-        default_kernel_size: Union[int, tuple[int, int]],
+        default_kernel_size: int | tuple[int, int],
         default_bias: bool,
     ) -> list[nn.Module]:
         """
@@ -261,7 +252,7 @@ class BlockBasedEncoder(SequentialBlock):
         blocks = []
         current_channels = in_channels
 
-        for i, config in enumerate(self.block_configs):
+        for _i, config in enumerate(self.block_configs):
             # Prepare block configuration with defaults
             block_config = {
                 "in_channels": current_channels,
@@ -273,13 +264,11 @@ class BlockBasedEncoder(SequentialBlock):
                 "bias": config.get("bias", default_bias),
                 "use_batch_norm": config.get("use_batch_norm", True),
                 "activation": config.get("activation", "relu"),
-                "residual_init_method": config.get(
-                    "residual_init_method", "kaiming"
-                ),
+                "residual_init_method": config.get("residual_init_method", "kaiming"),
             }
 
             # Create encoder block
-            block = EncoderBlock(**block_config)
+            block = EncoderBlock1d(**block_config)
             blocks.append(block)
 
             # Update current channels for next block
@@ -310,9 +299,7 @@ class BlockBasedEncoder(SequentialBlock):
 
         return feature_maps
 
-    def get_output_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
         shape = input_shape
         for block in self.operations:
@@ -354,9 +341,7 @@ class BlockBasedEncoder(SequentialBlock):
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedEncoder."""
-        channel_progression = " → ".join(
-            map(str, self.get_channel_progression())
-        )
+        channel_progression = " → ".join(map(str, self.get_channel_progression()))
         return (
             f"BlockBasedEncoder("
             f"blocks={len(self.operations)}, "

@@ -3,7 +3,7 @@ import numpy as np
 
 def cut_time(
     t: np.ndarray, data: np.ndarray, t_min: float, t_max: float
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Cut the time-series data between two specified times.
 

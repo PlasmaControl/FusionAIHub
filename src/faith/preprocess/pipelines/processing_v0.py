@@ -10,13 +10,10 @@ Da
 # https://youtu.be/dQw4w9WgXcQ?si=0000000000000000
 import logging
 from pathlib import Path
-from typing import Dict
 from warnings import simplefilter
 
 import numpy as np
 import pandas as pd
-
-simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
 from ..extract.data_extraction import (
     align_signal,
@@ -35,17 +32,20 @@ from ..transform.signal_processing import (
     stft_transform,
 )
 
+simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
 
 def pipeline(
     shot_number: int,
-    cfg: Dict,
+    cfg: dict,
     out_dir: Path,
 ) -> None:
     """
-    Process a single shot through the complete data preparation pipeline accounting transformations.
+    Process a single shot through the complete data preparation pipeline
+    accounting transformations.
 
     This function orchestrates the complete processing workflow for a shot:
     1. Determines plasma running time
@@ -73,9 +73,7 @@ def pipeline(
             start_time=cfg["start_time"],
             end_time=cfg["end_time"],
         )
-        logger.info(
-            f"Running time for shot {shot_number}: {start_time} to {end_time}"
-        )
+        logger.info(f"Running time for shot {shot_number}: {start_time} to {end_time}")
     except Exception as e:
         logger.error(
             f"Error: Could not determine running time for shot {shot_number}: {e}"
@@ -110,9 +108,7 @@ def pipeline(
                 for channel in range(int(signal[1]["expected_channels"])):
                     missing_signals.append((signal[1]["abbr"], channel))
     except Exception as e:
-        logger.error(
-            f"Error: Could not extract signals for shot {shot_number}: {e}"
-        )
+        logger.error(f"Error: Could not extract signals for shot {shot_number}: {e}")
         raise e
 
     # Create main aligned dataframe (important since interpolated signals
@@ -152,13 +148,12 @@ def pipeline(
             fs_khz=cfg["fs_khz"],
         )
     except Exception as e:
-        logger.error(
-            f"Error: Could not split samples for shot {shot_number}: {e}"
-        )
+        logger.error(f"Error: Could not split samples for shot {shot_number}: {e}")
         raise e
 
     # Remove empty samples
-    # TODO: Add warning if samples change even if no windows and using ip criterion
+    # TODO: Add warning if samples change even if no windows and using ip
+    # criterion
     try:
         samples = remove_empty_samples(samples)
     except Exception as e:
@@ -185,9 +180,7 @@ def pipeline(
                     save_sample(transformed_samples, out_dir, key)
             return
     except Exception as e:
-        logger.error(
-            f"Error: Could not save samples for shot {shot_number}: {e}"
-        )
+        logger.error(f"Error: Could not save samples for shot {shot_number}: {e}")
         raise e
 
     # Get the first transformed sample to determine STFT dimensions
@@ -199,7 +192,8 @@ def pipeline(
             hop_length=cfg["stft"]["hop_length"],
         ).shape
         logger.info(
-            f"Using {first_arr.shape} as reference for STFT dimensions: {transform_shape}"
+            f"Using {first_arr.shape} as reference for STFT dimensions: "
+            f"{transform_shape}"
         )
     except Exception as e:
         logger.error(
@@ -232,9 +226,7 @@ def pipeline(
                     )
                 save_sample(transformed_samples, out_dir, key)
     except Exception as e:
-        logger.error(
-            f"Error: Could not transform samples for shot {shot_number}: {e}"
-        )
+        logger.error(f"Error: Could not transform samples for shot {shot_number}: {e}")
         raise e
 
     return

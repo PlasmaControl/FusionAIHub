@@ -9,6 +9,8 @@ __all__ = [
     "__version__",
     "__author__",
     "__email__",
+    # Functions
+    "preprocess",
 ]
 
 from .preprocess import preprocess

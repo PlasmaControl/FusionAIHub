@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, ClassVar
 
 import torch
 import torch.nn as nn
@@ -50,39 +50,27 @@ class BaseConvBlock(nn.Module, ABC):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple[int, int]] = 3,
+        kernel_size: int | tuple[int, int] = 3,
         bias: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
 
         if in_channels <= 0:
-            raise ValueError(
-                f"in_channels must be positive, got {in_channels}"
-            )
+            raise ValueError(f"in_channels must be positive, got {in_channels}")
         if out_channels <= 0:
-            raise ValueError(
-                f"out_channels must be positive, got {out_channels}"
-            )
+            raise ValueError(f"out_channels must be positive, got {out_channels}")
 
         if not isinstance(in_channels, int):
-            raise TypeError(
-                f"in_channels must be an int, got {type(in_channels)}"
-            )
+            raise TypeError(f"in_channels must be an int, got {type(in_channels)}")
 
         if not isinstance(out_channels, int):
-            raise TypeError(
-                f"out_channels must be an int, got {type(out_channels)}"
-            )
+            raise TypeError(f"out_channels must be an int, got {type(out_channels)}")
 
         if isinstance(kernel_size, int) and kernel_size <= 0:
-            raise ValueError(
-                f"kernel_size must be positive, got {kernel_size}"
-            )
+            raise ValueError(f"kernel_size must be positive, got {kernel_size}")
         if isinstance(kernel_size, tuple) and any(k <= 0 for k in kernel_size):
-            raise ValueError(
-                f"kernel_size must be positive, got {kernel_size}"
-            )
+            raise ValueError(f"kernel_size must be positive, got {kernel_size}")
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -91,7 +79,7 @@ class BaseConvBlock(nn.Module, ABC):
 
     @staticmethod
     def _normalize_kernel_size(
-        kernel_size: Union[int, tuple[int, int]],
+        kernel_size: int | tuple[int, int],
     ) -> tuple[int, int]:
         """Normalize kernel size to tuple format."""
         if isinstance(kernel_size, int):
@@ -169,8 +157,8 @@ class SequentialBlock(BaseConvBlock):
         self,
         in_channels: int,
         out_channels: int,
-        operations: Optional[list[nn.Module]] = None,
-        **kwargs,
+        operations: list[nn.Module] | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(in_channels, out_channels, **kwargs)
 
@@ -203,9 +191,7 @@ class WeightInitializer:
     def kaiming_normal_(module: nn.Module) -> None:
         """Apply Kaiming normal initialization to conv and linear layers."""
         if isinstance(module, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(
-                module.weight, mode="fan_out", nonlinearity="relu"
-            )
+            nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
 
@@ -223,10 +209,10 @@ class BlockUtils:
     @staticmethod
     def calculate_output_shape(
         input_shape: tuple[int, ...],
-        kernel_size: Union[int, tuple[int, int]],
-        stride: Union[int, tuple[int, int]] = 1,
-        padding: Union[int, tuple[int, int]] = 0,
-        dilation: Union[int, tuple[int, int]] = 1,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int] = 1,
+        padding: int | tuple[int, int] = 0,
+        dilation: int | tuple[int, int] = 1,
     ) -> tuple[int, ...]:
         """Calculate output shape after convolution operation."""
         if isinstance(kernel_size, int):
@@ -258,9 +244,7 @@ class BlockUtils:
     def count_parameters(block: nn.Module, trainable_only: bool = True) -> int:
         """Count parameters in a block."""
         if trainable_only:
-            return sum(
-                p.numel() for p in block.parameters() if p.requires_grad
-            )
+            return sum(p.numel() for p in block.parameters() if p.requires_grad)
         else:
             return sum(p.numel() for p in block.parameters())
 
@@ -288,7 +272,7 @@ class BlockUtils:
 class _Identity(nn.Module):
     """Identity block that returns the input tensor unchanged."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -358,50 +342,30 @@ class _ResidualBlock(ABC, nn.Module):
         super().__init__()
 
         if isinstance(kernel_size, int) and kernel_size % 2 == 0:
-            raise ValueError(
-                f"Kernel size must be odd, got {kernel_size} (even)."
-            )
-        if isinstance(kernel_size, tuple) and any(
-            k % 2 == 0 for k in kernel_size
-        ):
-            raise ValueError(
-                f"Kernel size must be odd, got {kernel_size} (even)."
-            )
+            raise ValueError(f"Kernel size must be odd, got {kernel_size} (even).")
+        if isinstance(kernel_size, tuple) and any(k % 2 == 0 for k in kernel_size):
+            raise ValueError(f"Kernel size must be odd, got {kernel_size} (even).")
         if isinstance(kernel_size, int) and kernel_size <= 0:
-            raise ValueError(
-                f"Kernel size must be positive, got {kernel_size}."
-            )
+            raise ValueError(f"Kernel size must be positive, got {kernel_size}.")
         if isinstance(kernel_size, tuple) and any(k <= 0 for k in kernel_size):
-            raise ValueError(
-                f"Kernel size must be positive, got {kernel_size}."
-            )
+            raise ValueError(f"Kernel size must be positive, got {kernel_size}.")
 
         if in_channels <= 0:
-            raise ValueError(
-                f"in_channels must be positive, got {in_channels}."
-            )
+            raise ValueError(f"in_channels must be positive, got {in_channels}.")
         if out_channels <= 0:
-            raise ValueError(
-                f"out_channels must be positive, got {out_channels}."
-            )
+            raise ValueError(f"out_channels must be positive, got {out_channels}.")
 
         if not isinstance(in_channels, int):
-            raise TypeError(
-                f"in_channels must be an int, got {type(in_channels)}."
-            )
+            raise TypeError(f"in_channels must be an int, got {type(in_channels)}.")
         if not isinstance(out_channels, int):
-            raise TypeError(
-                f"out_channels must be an int, got {type(out_channels)}."
-            )
+            raise TypeError(f"out_channels must be an int, got {type(out_channels)}.")
 
         if isinstance(stride, int) and stride <= 0:
             raise ValueError(f"stride must be positive, got {stride}.")
         if isinstance(stride, tuple) and any(s <= 0 for s in stride):
             raise ValueError(f"stride must be positive, got {stride}.")
         if not isinstance(stride, int) and not isinstance(stride, tuple):
-            raise TypeError(
-                f"stride must be an int or tuple, got {type(stride)}."
-            )
+            raise TypeError(f"stride must be an int or tuple, got {type(stride)}.")
 
         self.padding = _calculate_padding(kernel_size, padding="auto")
         self.kernel_size = kernel_size
@@ -418,9 +382,11 @@ class _ResidualBlock(ABC, nn.Module):
                 padding=self.padding,
                 bias=bias,
             ),
-            self._norm_type(out_channels)
-            if self._norm_type is not None
-            else _Identity(),
+            (
+                self._norm_type(out_channels)
+                if self._norm_type is not None
+                else _Identity()
+            ),
             _create_activation(activation_name),
         )
         self.conv_2 = nn.Sequential(
@@ -431,9 +397,11 @@ class _ResidualBlock(ABC, nn.Module):
                 padding=self.padding,
                 bias=bias,
             ),
-            self._norm_type(out_channels)
-            if self._norm_type is not None
-            else _Identity(),
+            (
+                self._norm_type(out_channels)
+                if self._norm_type is not None
+                else _Identity()
+            ),
         )
 
         if in_channels != out_channels or stride != 1:
@@ -441,9 +409,11 @@ class _ResidualBlock(ABC, nn.Module):
                 self._conv_type(
                     in_channels, out_channels, kernel_size=1, stride=stride
                 ),
-                self._norm_type(out_channels)
-                if self._norm_type is not None
-                else _Identity(),
+                (
+                    self._norm_type(out_channels)
+                    if self._norm_type is not None
+                    else _Identity()
+                ),
             )
         else:
             self.mixing = None
@@ -504,9 +474,7 @@ class _ResidualBlock(ABC, nn.Module):
             f"weight_init_method={self.init_method})"
         )
 
-    def get_output_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """
         Calculate output shape given input shape.
 

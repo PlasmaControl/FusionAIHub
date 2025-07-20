@@ -10,14 +10,24 @@ def signal_optimize(
     apply: bool = True,
 ) -> dict:
     """
-    The idea is to have a user input a list of files and then the function will read through a library to see if the channel has any special scaling rules. If it will automatically apply the scaling. There's also an option to only output the scaling rule considerations without applying them. I'm thinking there could be some dictionary file with this.
+    The idea is to have a user input a list of files and then the function will
+    read through a library to see if the channel has any special scaling rules.
+    If it will automatically apply the scaling. There's also an option to only
+    output the scaling rule considerations without applying them. I'm thinking
+    there could be some dictionary file with this.
 
-    For example, the signal 'dalpha' needs to be log transformed, but no other signals need to be log transformed. The signal 'density' needs to be multiplied by 10^-19.
+    For example, the signal 'dalpha' needs to be log transformed,
+    but no other signals need to be log transformed. The signal 'density'
+    needs to be multiplied by 10^-19. The signal 'co2_pl' needs to be
+    normalized to the range [0, 1] and then log transformed. The signal 'co2_s'
+    to the range [0, 1] and then log transformed.
 
     Parameters
     ----------
-    signal : Union[str, list]
-        _description_
+    signal : str | list
+        The signal to be scaled.
+    apply : bool, optional
+        Whether to apply the scaling operation. Defaults to True.
 
     Returns
     -------
@@ -35,22 +45,27 @@ def get_scaling_factor(
     ] = "mean",
 ) -> dict:
     """
-    Apply a scaling operation specified by the `scaling` parameter to each array in the provided `data` dictionary.
-    Supports standard operations like 'mean', 'std', 'min', and 'max', or any function that operates over a numpy array.
-    Also supports getting order of magnitude (oom).
+    Apply a scaling operation specified by the `scaling` parameter to each
+    array in the provided `data` dictionary. Supports standard operations
+    like 'mean', 'std', 'min', and 'max', or any function that operates
+    over a numpy array. Also supports getting order of magnitude (oom).
+    The scaling operation is applied to the `zdata` array of each channel in
+    the `data` dictionary.
 
     Parameters
     ----------
     data : dict
-        Dictionary where keys are channel identifiers and values are dicts with key 'zdata' pointing to numpy arrays.
+        Dictionary where keys are channel identifiers and values are dicts with
+        key 'zdata' pointing to numpy arrays.
     scaling : Union[Literal["mean", "std", "min", "max"], Callable], optional
-        The scaling operation to apply. Can be one of 'mean', 'std', 'min', 'max', or a function that accepts a numpy array.
-        Defaults to 'mean'.
+        The scaling operation to apply. Can be one of 'mean', 'std', 'min',
+        'max', or a function that accepts a numpy array. Defaults to 'mean'.
 
     Returns
     -------
     dict
-        Dictionary with the same keys as `data`, where each value is the result of the scaling operation applied to `data[key]['zdata']`.
+        Dictionary with the same keys as `data`, where each value is the result
+        of the scaling operation applied to `data[key]['zdata']`.
 
     Examples
     --------
@@ -78,7 +93,8 @@ def get_scaling_factor(
         scaling_function = scaling
     else:
         raise TypeError(
-            "Scaling must be either a string key for predefined functions or a callable."
+            "Scaling must be either a string key for predefined functions"
+            " or a callable function."
         )
 
     scaled_values = {}
@@ -90,7 +106,7 @@ def get_scaling_factor(
                 scaled_value = 0  # Handle NaN values, if any
             scaled_values[key] = scaled_value
         except Exception as e:
-            raise RuntimeError(f"Error processing {key}: {str(e)}")
+            raise RuntimeError(f"Error processing {key}: {str(e)}") from e
 
     return scaled_values
 

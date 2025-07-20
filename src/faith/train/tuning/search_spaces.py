@@ -1,6 +1,9 @@
 """Predefined search spaces for common hyperparameter tuning scenarios."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from ray import tune
 
 try:
     from ray import tune
@@ -8,6 +11,7 @@ try:
     RAY_AVAILABLE = True
 except ImportError:
     RAY_AVAILABLE = False
+    tune = None  # type: ignore
 
 
 class SearchSpaces:
@@ -17,7 +21,7 @@ class SearchSpaces:
     def basic_autoencoder(
         learning_rate_range: tuple[float, float] = (1e-5, 1e-2),
         weight_decay_range: tuple[float, float] = (1e-6, 1e-3),
-        activation_choices: list[str] = None,
+        activation_choices: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         """Basic autoencoder search space.
 
@@ -35,7 +39,7 @@ class SearchSpaces:
         Dict[str, Any]
             Search space configuration.
         """
-        if not RAY_AVAILABLE:
+        if not RAY_AVAILABLE or tune is None:
             raise ImportError("Ray Tune required for search spaces")
 
         if activation_choices is None:
@@ -71,7 +75,7 @@ class SearchSpaces:
         Dict[str, Any]
             Search space configuration.
         """
-        if not RAY_AVAILABLE:
+        if not RAY_AVAILABLE or tune is None:
             raise ImportError("Ray Tune required for search spaces")
 
         return {
@@ -92,7 +96,7 @@ class SearchSpaces:
     def quick_search(
         param_name: str,
         param_choices: list[Any],
-        base_config: dict[str, Any] = None,
+        base_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Quick search space for testing single parameters.
 
@@ -110,7 +114,7 @@ class SearchSpaces:
         Dict[str, Any]
             Search space configuration.
         """
-        if not RAY_AVAILABLE:
+        if not RAY_AVAILABLE or tune is None:
             raise ImportError("Ray Tune required for search spaces")
 
         if base_config is None:
@@ -143,7 +147,7 @@ class SearchSpaces:
         Dict[str, Any]
             Search space configuration.
         """
-        if not RAY_AVAILABLE:
+        if not RAY_AVAILABLE or tune is None:
             raise ImportError("Ray Tune required for search spaces")
 
         return {
@@ -161,8 +165,8 @@ class SearchSpaces:
     @staticmethod
     def architecture_search(
         learning_rate: float = 1e-4,
-        layer_choices: list[int] = None,
-        width_choices: list[int] = None,
+        layer_choices: list[int] | None = None,
+        width_choices: list[int] | None = None,
     ) -> dict[str, Any]:
         """Search space focused on architecture parameters.
 
@@ -180,7 +184,7 @@ class SearchSpaces:
         Dict[str, Any]
             Search space configuration.
         """
-        if not RAY_AVAILABLE:
+        if not RAY_AVAILABLE or tune is None:
             raise ImportError("Ray Tune required for search spaces")
 
         if layer_choices is None:
@@ -207,15 +211,19 @@ class SearchSpaces:
 class CustomSearchSpace:
     """Builder for custom search spaces."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize custom search space builder."""
-        if not RAY_AVAILABLE:
+        if not RAY_AVAILABLE or tune is None:
             raise ImportError("Ray Tune required for custom search spaces")
 
         self.space = {}
 
     def add_continuous(
-        self, name: str, low: float, high: float, log_scale: bool = False
+        self,
+        name: str,
+        low: float,
+        high: float,
+        log_scale: bool = False,
     ) -> "CustomSearchSpace":
         """Add continuous parameter.
 
@@ -235,6 +243,9 @@ class CustomSearchSpace:
         CustomSearchSpace
             Self for chaining.
         """
+        if not RAY_AVAILABLE or tune is None:
+            raise ImportError("Ray Tune required for custom search spaces")
+
         if log_scale:
             self.space[name] = tune.loguniform(low, high)
         else:
@@ -242,7 +253,9 @@ class CustomSearchSpace:
         return self
 
     def add_discrete(
-        self, name: str, choices: list[Any]
+        self,
+        name: str,
+        choices: list[Any],
     ) -> "CustomSearchSpace":
         """Add discrete parameter.
 
@@ -258,11 +271,17 @@ class CustomSearchSpace:
         CustomSearchSpace
             Self for chaining.
         """
+        if not RAY_AVAILABLE or tune is None:
+            raise ImportError("Ray Tune required for custom search spaces")
+
         self.space[name] = tune.choice(choices)
         return self
 
     def add_integer(
-        self, name: str, low: int, high: int
+        self,
+        name: str,
+        low: int,
+        high: int,
     ) -> "CustomSearchSpace":
         """Add integer parameter.
 
@@ -280,10 +299,17 @@ class CustomSearchSpace:
         CustomSearchSpace
             Self for chaining.
         """
+        if not RAY_AVAILABLE or tune is None:
+            raise ImportError("Ray Tune required for custom search spaces")
+
         self.space[name] = tune.randint(low, high + 1)
         return self
 
-    def add_fixed(self, name: str, value: Any) -> "CustomSearchSpace":
+    def add_fixed(
+        self,
+        name: str,
+        value: Any,
+    ) -> "CustomSearchSpace":
         """Add fixed parameter.
 
         Parameters
@@ -313,7 +339,10 @@ class CustomSearchSpace:
 
 
 # Convenience function for quick access
-def get_search_space(name: str, **kwargs) -> dict[str, Any]:
+def get_search_space(
+    name: str,
+    **kwargs: Any,
+) -> dict[str, Any]:
     """Get predefined search space by name.
 
     Parameters
@@ -343,8 +372,6 @@ def get_search_space(name: str, **kwargs) -> dict[str, Any]:
 
     if name not in spaces:
         available = ", ".join(spaces.keys())
-        raise ValueError(
-            f"Unknown search space '{name}'. Available: {available}"
-        )
+        raise ValueError(f"Unknown search space '{name}'. Available: {available}")
 
     return spaces[name](**kwargs)

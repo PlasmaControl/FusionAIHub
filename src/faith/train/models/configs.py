@@ -80,11 +80,11 @@ class ModelConfig:
     mae_config: Optional[dict[str, Any]] = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         self._validate()
 
-    def _validate(self):
+    def _validate(self) -> None:
         """Validate configuration parameters."""
         if self.input_channels <= 0:
             raise ValueError(
@@ -96,19 +96,12 @@ class ModelConfig:
 
         for i, config in enumerate(self.block_configs):
             if "out_channels" not in config:
-                raise ValueError(
-                    f"Block {i} missing required 'out_channels' key"
-                )
+                raise ValueError(f"Block {i} missing required 'out_channels' key")
             if config["out_channels"] <= 0:
                 raise ValueError(f"Block {i} out_channels must be positive")
 
-        if (
-            self.bottleneck_channels is not None
-            and self.bottleneck_channels <= 0
-        ):
-            raise ValueError(
-                "bottleneck_channels must be positive if specified"
-            )
+        if self.bottleneck_channels is not None and self.bottleneck_channels <= 0:
+            raise ValueError("bottleneck_channels must be positive if specified")
 
         if self.hidden_dim is not None and self.hidden_dim <= 0:
             raise ValueError("hidden_dim must be positive if specified")
@@ -123,15 +116,11 @@ class ModelConfig:
 
         valid_init_methods = ["kaiming", "xavier", "default"]
         if self.init_method not in valid_init_methods:
-            raise ValueError(
-                f"init_method must be one of {valid_init_methods}"
-            )
+            raise ValueError(f"init_method must be one of {valid_init_methods}")
 
         valid_upsampling_modes = ["nearest", "bilinear", "bicubic", "area"]
         if self.upsampling_mode not in valid_upsampling_modes:
-            raise ValueError(
-                f"upsampling_mode must be one of {valid_upsampling_modes}"
-            )
+            raise ValueError(f"upsampling_mode must be one of {valid_upsampling_modes}")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
@@ -162,9 +151,7 @@ class ModelConfig:
             with open(filepath, "w") as f:
                 json.dump(config_dict, f, indent=2)
         else:
-            raise ValueError(
-                f"Unsupported format: {format}. Use 'yaml' or 'json'."
-            )
+            raise ValueError(f"Unsupported format: {format}. Use 'yaml' or 'json'.")
 
     @classmethod
     def load(cls, filepath: Union[str, Path]) -> "ModelConfig":
@@ -183,9 +170,7 @@ class ModelConfig:
         filepath = Path(filepath)
 
         if not filepath.exists():
-            raise FileNotFoundError(
-                f"Configuration file not found: {filepath}"
-            )
+            raise FileNotFoundError(f"Configuration file not found: {filepath}")
 
         suffix = filepath.suffix.lower()
 
@@ -196,8 +181,7 @@ class ModelConfig:
                 config_dict = json.load(f)
             else:
                 raise ValueError(
-                    f"Unsupported file format: {suffix}. "
-                    f"Use .yaml, .yml, or .json"
+                    f"Unsupported file format: {suffix}. Use .yaml, .yml, or .json"
                 )
 
         return cls.from_dict(config_dict)
@@ -206,7 +190,7 @@ class ModelConfig:
         """Create a deep copy of the configuration."""
         return ModelConfig.from_dict(deepcopy(self.to_dict()))
 
-    def update(self, **kwargs) -> "ModelConfig":
+    def update(self, **kwargs: Any) -> "ModelConfig":
         """Create a new configuration with updated parameters.
 
         Parameters
@@ -275,8 +259,7 @@ PRESET_CONFIGS = {
             {"out_channels": 256, "pool_size": (1, 2)},
         ],
         metadata={
-            "description": "Asymmetric pooling for different compression "
-            "ratios",
+            "description": "Asymmetric pooling for different compression ratios",
             "use_case": "Audio with varying frequency resolution needs",
         },
     ),
@@ -356,9 +339,7 @@ def get_preset_config(name: str) -> ModelConfig:
     """
     if name not in PRESET_CONFIGS:
         available = list(PRESET_CONFIGS.keys())
-        raise KeyError(
-            f"Unknown preset: {name}. Available presets: {available}"
-        )
+        raise KeyError(f"Unknown preset: {name}. Available presets: {available}")
 
     return PRESET_CONFIGS[name].copy()
 
@@ -376,8 +357,8 @@ def list_preset_configs() -> list[str]:
 
 def create_block_autoencoder(
     config_name: str = "default",
-    input_channels: Optional[int] = None,
-    **kwargs,
+    input_channels: int | None = None,
+    **kwargs: Any,
 ) -> BlockBasedAutoencoder:
     """Create autoencoder with predefined or custom configuration.
 
@@ -520,9 +501,7 @@ def save_model_config(
 
         # Restructure for ModelConfig format
         autoencoder_config = config_dict["autoencoder_config"]
-        mae_params = {
-            k: v for k, v in config_dict.items() if k != "autoencoder_config"
-        }
+        mae_params = {k: v for k, v in config_dict.items() if k != "autoencoder_config"}
 
         config = ModelConfig(
             model_type=model_type, mae_config=mae_params, **autoencoder_config

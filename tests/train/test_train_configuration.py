@@ -1,4 +1,6 @@
-from src.faith.train.models import (
+import os
+
+from faith.train.models import (
     ModelConfig,
     create_autoencoder_from_config,
     create_block_autoencoder,
@@ -48,7 +50,6 @@ recreated_model = create_model_from_config_file("model_config.yaml")
 print(f"Recreated model: {type(recreated_model).__name__}")
 
 # Cleanup
-import os
 
 os.remove("test_config.yaml")
 os.remove("model_config.yaml")

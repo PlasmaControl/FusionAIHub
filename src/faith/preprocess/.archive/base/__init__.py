@@ -1,15 +1,22 @@
-from .load import *
-from .merge import *
-from .save import *
+from .load import (
+    load,
+    load_attributes,
+    load_channels,
+    load_sample,
+    load_time,
+    list_signals,
+)
+from .merge import merge
+from .save import save, dict_to_hdf5
 
 __all__ = [
-    "list_signals",
-    "load_sample",
-    "load_time",
+    "load",
     "load_attributes",
     "load_channels",
-    "load",
-    "dict_to_hdf5",
-    "save",
+    "load_sample",
+    "load_time",
+    "list_signals",
     "merge",
+    "save",
+    "dict_to_hdf5",
 ]

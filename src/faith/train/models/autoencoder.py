@@ -6,7 +6,7 @@ The autoencoder uses the modular blocks from the blocks package to create
 flexible and configurable models for audio and spectral data.
 """
 
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -79,15 +79,15 @@ class BlockBasedAutoencoder(nn.Module):
     def __init__(
         self,
         input_channels: int,
-        block_configs: Optional[list[dict[str, Any]]] = None,
-        bottleneck_channels: Optional[int] = None,
-        kernel_size: Union[int, tuple[int, int]] = 3,
+        block_configs: list[dict[str, Any]] | None = None,
+        bottleneck_channels: int | None = None,
+        kernel_size: int | tuple[int, int] = 3,
         bias: bool = True,
         upsampling_mode: str = "nearest",
         use_batch_norm: bool = True,
         activation: str = "relu",
         init_method: str = "kaiming",
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize BlockBasedAutoencoder.
 
@@ -117,9 +117,7 @@ class BlockBasedAutoencoder(nn.Module):
         super().__init__()
 
         if input_channels <= 0:
-            raise ValueError(
-                f"input_channels must be positive, got {input_channels}"
-            )
+            raise ValueError(f"input_channels must be positive, got {input_channels}")
 
         # Store configuration
         self.input_channels = input_channels
@@ -135,7 +133,8 @@ class BlockBasedAutoencoder(nn.Module):
 
         # Create encoder
         self.encoder = BlockBasedEncoder(
-            input_channels=input_channels,
+            # TODO: rename in_channels to input_channels
+            in_channels=input_channels,
             block_configs=block_configs,
             bottleneck_channels=bottleneck_channels,
             kernel_size=kernel_size,
@@ -146,9 +145,9 @@ class BlockBasedAutoencoder(nn.Module):
 
         # Create decoder that mirrors the encoder
         self.decoder = BlockBasedDecoder(
-            output_channels=input_channels,
-            encoder_blocks=self.encoder.blocks,
-            bottleneck_channels=self.encoder.bottleneck_channels,
+            in_channels=input_channels,
+            block_configs=self.encoder.blocks,
+            bottleneck_channels=bottleneck_channels,
             kernel_size=kernel_size,
             bias=bias,
             upsampling_mode=upsampling_mode,
@@ -275,9 +274,7 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return cls(**config)
 
-    def get_output_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate output shape given input shape.
 
         Parameters
@@ -295,9 +292,7 @@ class BlockBasedAutoencoder(nn.Module):
         output_shape = self.decoder.get_output_shape(latent_shape)
         return output_shape
 
-    def get_latent_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_latent_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate latent representation shape given input shape.
 
         Parameters
@@ -312,9 +307,7 @@ class BlockBasedAutoencoder(nn.Module):
         """
         return self.encoder.get_output_shape(input_shape)
 
-    def get_feature_maps(
-        self, inputs: torch.Tensor
-    ) -> dict[str, list[torch.Tensor]]:
+    def get_feature_maps(self, inputs: torch.Tensor) -> dict[str, list[torch.Tensor]]:
         """Get intermediate feature maps from encoder and decoder.
 
         Useful for visualization and debugging.
@@ -354,16 +347,12 @@ class BlockBasedAutoencoder(nn.Module):
     @property
     def encoder_parameter_count(self) -> int:
         """Get number of trainable parameters in encoder."""
-        return sum(
-            p.numel() for p in self.encoder.parameters() if p.requires_grad
-        )
+        return sum(p.numel() for p in self.encoder.parameters() if p.requires_grad)
 
     @property
     def decoder_parameter_count(self) -> int:
         """Get number of trainable parameters in decoder."""
-        return sum(
-            p.numel() for p in self.decoder.parameters() if p.requires_grad
-        )
+        return sum(p.numel() for p in self.decoder.parameters() if p.requires_grad)
 
     def freeze_encoder(self) -> None:
         """Freeze encoder parameters (useful for fine-tuning decoder only)."""

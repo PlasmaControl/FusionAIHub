@@ -66,7 +66,8 @@ class MaskGenerator:
     >>> mask_gen = MaskGenerator(mask_ratio=0.75)
     >>> shape = (2, 80, 100, 128)  # batch, channels, time, freq
     >>> mask = mask_gen.random_mask(shape)
-    >>> print(f"Mask shape: {mask.shape}, Masked ratio: {(1 - mask.mean()).item():.2f}")
+    >>> print(f"Mask shape: {mask.shape}, Masked ratio: "
+    ...      f"{(1 - mask.mean()).item():.2f}")
     """
 
     def __init__(
@@ -96,14 +97,11 @@ class MaskGenerator:
 
         if len(patch_size) != 2 or any(s <= 0 for s in patch_size):
             raise ValueError(
-                f"patch_size must be a tuple of two positive "
-                f"integers, got {patch_size}"
+                f"patch_size must be a tuple of two positive integers, got {patch_size}"
             )
 
         if min_mask_size <= 0:
-            raise ValueError(
-                f"min_mask_size must be positive, got {min_mask_size}"
-            )
+            raise ValueError(f"min_mask_size must be positive, got {min_mask_size}")
 
         if max_mask_size is not None and max_mask_size < min_mask_size:
             raise ValueError(
@@ -129,9 +127,7 @@ class MaskGenerator:
             Binary mask tensor where 1 = keep, 0 = mask.
         """
         batch_size, channels, time_steps, freq_bins = shape
-        mask = (
-            torch.rand(batch_size, 1, time_steps, freq_bins) > self.mask_ratio
-        )
+        mask = torch.rand(batch_size, 1, time_steps, freq_bins) > self.mask_ratio
         return mask.float()
 
     def frequency_band_mask(self, shape: tuple[int, ...]) -> torch.Tensor:
@@ -159,9 +155,7 @@ class MaskGenerator:
 
             if num_bins_to_mask > 0:
                 # Choose number of bands to create
-                max_bands = min(
-                    num_bins_to_mask, freq_bins // self.min_mask_size
-                )
+                max_bands = min(num_bins_to_mask, freq_bins // self.min_mask_size)
                 num_bands = random.randint(1, max(1, max_bands))
 
                 bins_per_band = num_bins_to_mask // num_bands
@@ -221,9 +215,7 @@ class MaskGenerator:
 
             if num_frames_to_mask > 0:
                 # Choose number of segments to create
-                max_segments = min(
-                    num_frames_to_mask, time_steps // self.min_mask_size
-                )
+                max_segments = min(num_frames_to_mask, time_steps // self.min_mask_size)
                 num_segments = random.randint(1, max(1, max_segments))
 
                 frames_per_segment = num_frames_to_mask // num_segments
@@ -244,9 +236,7 @@ class MaskGenerator:
                     if self.max_mask_size is not None:
                         segment_size = min(segment_size, self.max_mask_size)
                     segment_size = max(segment_size, self.min_mask_size)
-                    segment_size = min(
-                        segment_size, time_steps - masked_frames
-                    )
+                    segment_size = min(segment_size, time_steps - masked_frames)
 
                     if segment_size <= 0:
                         break
@@ -255,9 +245,7 @@ class MaskGenerator:
                     max_start = time_steps - segment_size
                     if max_start >= 0:
                         start_time = random.randint(0, max_start)
-                        mask[
-                            b, :, start_time : start_time + segment_size, :
-                        ] = 0
+                        mask[b, :, start_time : start_time + segment_size, :] = 0
                         masked_frames += segment_size
 
         return mask
@@ -342,7 +330,7 @@ class MaskGenerator:
 
         # Generate masks using different strategies
         masks = []
-        for b in range(batch_size):
+        for _b in range(batch_size):
             strategy = random.choice(mask_strategies)
             single_batch_shape = (1,) + shape[1:]
             single_mask = strategy(single_batch_shape)
@@ -350,9 +338,7 @@ class MaskGenerator:
 
         return torch.cat(masks, dim=0)
 
-    def generate_mask(
-        self, shape: tuple[int, ...], mask_type: str
-    ) -> torch.Tensor:
+    def generate_mask(self, shape: tuple[int, ...], mask_type: str) -> torch.Tensor:
         """Generate mask using specified strategy.
 
         Parameters
@@ -379,8 +365,7 @@ class MaskGenerator:
             return self.mixed_mask(shape)
         else:
             raise ValueError(
-                f"Unknown mask_type: {mask_type}. "
-                f"Available types: {MASK_TYPES}"
+                f"Unknown mask_type: {mask_type}. Available types: {MASK_TYPES}"
             )
 
 
@@ -503,9 +488,7 @@ class MaskedAutoencoder(nn.Module):
 
         return reconstructed, mask, masked_input
 
-    def encode(
-        self, x: torch.Tensor, mask_type: str = "random"
-    ) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, mask_type: str = "random") -> torch.Tensor:
         """Encode masked input to latent representation.
 
         Parameters
@@ -540,9 +523,7 @@ class MaskedAutoencoder(nn.Module):
     def from_config(cls, config: dict[str, Any]) -> "MaskedAutoencoder":
         """Create MaskedAutoencoder from configuration."""
         # Recreate autoencoder
-        autoencoder = BlockBasedAutoencoder.from_config(
-            config["autoencoder_config"]
-        )
+        autoencoder = BlockBasedAutoencoder.from_config(config["autoencoder_config"])
 
         # Recreate mask generator
         mask_generator = MaskGenerator(
@@ -613,9 +594,7 @@ def mae_loss(
     elif loss_type == "l1":
         loss_per_pixel = F.l1_loss(reconstructed, target, reduction="none")
     elif loss_type == "smooth_l1":
-        loss_per_pixel = F.smooth_l1_loss(
-            reconstructed, target, reduction="none"
-        )
+        loss_per_pixel = F.smooth_l1_loss(reconstructed, target, reduction="none")
     else:
         raise ValueError(
             f"Unknown loss_type: {loss_type}. "
