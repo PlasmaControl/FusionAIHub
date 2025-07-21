@@ -1,12 +1,16 @@
 """Ray Tune integration for hyperparameter optimization."""
 
-"""Ray Tune integration for hyperparameter optimization."""
-
 import os
 import tempfile
 import warnings
 from pathlib import Path
 from typing import Any, Optional
+
+import pytorch_lightning as pl
+import torch
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger
 
 try:
     import ray
@@ -20,15 +24,9 @@ try:
 except ImportError:
     RAY_AVAILABLE = False
     warnings.warn(
-        "Ray Tune not available. "
-        "Install with: pip install ray[tune] optuna hyperopt"
+        "Ray Tune not available. Install with: pip install ray[tune] optuna hyperopt",
+        stacklevel=2,
     )
-
-import pytorch_lightning as pl
-import torch
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..training import LightningTrainer
 
@@ -49,7 +47,7 @@ def _resolve_path(path: str) -> str:
     return str(Path(path).resolve())
 
 
-def _safe_ray_init(**kwargs):
+def _safe_ray_init(**kwargs: Any) -> None:
     """Safely initialize Ray with error handling.
 
     Parameters
@@ -75,17 +73,18 @@ def _safe_ray_init(**kwargs):
         ray.init(**default_args)
     except Exception as e:
         warnings.warn(
-            f"Ray initialization failed: {e}. Some features may not work."
+            f"Ray initialization failed: {e}. Some features may not work.",
+            stacklevel=2,
         )
 
 
-def cleanup_ray():
+def cleanup_ray() -> None:
     """Safely shutdown Ray."""
     if RAY_AVAILABLE and ray.is_initialized():
         try:
             ray.shutdown()
         except Exception as e:
-            warnings.warn(f"Ray shutdown failed: {e}")
+            warnings.warn(f"Ray shutdown failed: {e}", stacklevel=2)
 
 
 class RayTuner:
@@ -190,15 +189,21 @@ class RayTuner:
                 warnings.warn(
                     f"PBT scheduler works best with max_epochs_per_trial >= 3"
                     f", got {self.max_epochs_per_trial}. "
-                    f"Consider using 'asha' or 'fifo'."
+                    f"Consider using 'asha' or 'fifo'.",
+                    stacklevel=2,
                 )
             if self.num_samples < 4:
                 warnings.warn(
-                    f"PBT scheduler works best with num_samples >= 4, "
-                    f"got {self.num_samples}. Consider using 'asha' scheduler."
+                    f"PBT scheduler works best with num_samples >= 4, got "
+                    f"{self.num_samples}. Consider using 'asha' scheduler.",
+                    stacklevel=2,
                 )
+        elif self.scheduler_type == "fifo":
+            return None  # FIFO is default
+        else:
+            raise ValueError(f"Unknown scheduler type: {self.scheduler_type}")
 
-    def _create_scheduler(self):
+    def _create_scheduler(self) -> tune.schedulers.TrialScheduler | None:
         """Create scheduler based on configuration.
 
         Returns
@@ -223,9 +228,7 @@ class RayTuner:
             )
         elif self.scheduler_type == "pbt":
             # For PBT, ensure perturbation_interval is reasonable
-            perturbation_interval = min(
-                2, max(1, self.max_epochs_per_trial // 3)
-            )
+            perturbation_interval = min(2, max(1, self.max_epochs_per_trial // 3))
 
             return PopulationBasedTraining(
                 time_attr="training_iteration",
@@ -233,12 +236,8 @@ class RayTuner:
                 mode=self.mode,
                 perturbation_interval=perturbation_interval,
                 hyperparam_mutations={
-                    "learning_rate": lambda: tune.loguniform(
-                        1e-5, 1e-2
-                    ).sample(),
-                    "weight_decay": lambda: tune.loguniform(
-                        1e-6, 1e-3
-                    ).sample(),
+                    "learning_rate": lambda: tune.loguniform(1e-5, 1e-2).sample(),
+                    "weight_decay": lambda: tune.loguniform(1e-6, 1e-3).sample(),
                 },
             )
         elif self.scheduler_type == "fifo":
@@ -271,7 +270,10 @@ class RayTuner:
                 return True
         return False
 
-    def _create_search_algorithm(self, search_space: dict[str, Any]):
+    def _create_search_algorithm(
+        self,
+        search_space: dict[str, Any],
+    ) -> tune.search.Searcher | None:
         """Create search algorithm based on configuration.
 
         Parameters
@@ -295,9 +297,7 @@ class RayTuner:
         elif self.search_algorithm == "random":
             return None  # Random search is default
         else:
-            raise ValueError(
-                f"Unknown search algorithm: {self.search_algorithm}"
-            )
+            raise ValueError(f"Unknown search algorithm: {self.search_algorithm}")
 
     def _training_function(self, config: dict[str, Any]) -> None:
         """Training function for Ray Tune trials.
@@ -403,7 +403,8 @@ class RayTuner:
             warnings.warn(
                 f"Using {self.search_algorithm} with fixed values. "
                 f"Consider using search_algorithm='random' "
-                f"for fixed configurations."
+                f"for fixed configurations.",
+                stacklevel=2,
             )
 
         # Create scheduler and search algorithm
@@ -510,9 +511,7 @@ class RayTuner:
             devices=1 if torch.cuda.is_available() else None,
             precision="16-mixed" if torch.cuda.is_available() else "32",
             callbacks=callbacks,
-            logger=TensorBoardLogger(
-                "./final_training_logs", name="best_model"
-            ),
+            logger=TensorBoardLogger("./final_training_logs", name="best_model"),
         )
 
         # Train final model
@@ -558,17 +557,29 @@ class RayTuneReportCallback(pl.Callback):
         self.metrics = metrics
         self.on = on
 
-    def on_validation_end(self, trainer, pl_module):
+    def on_validation_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+    ) -> None:
         """Report metrics after validation."""
         if self.on == "validation_end":
             self._report_metrics(trainer, pl_module)
 
-    def on_train_epoch_end(self, trainer, pl_module):
+    def on_train_epoch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+    ) -> None:
         """Report metrics after training epoch."""
         if self.on == "epoch_end":
             self._report_metrics(trainer, pl_module)
 
-    def _report_metrics(self, trainer, pl_module):
+    def _report_metrics(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+    ) -> None:
         """Report metrics to Ray Tune."""
         # Import here to avoid issues if Ray not available
         try:
@@ -629,15 +640,11 @@ def suggest_scheduler_config(
         suggestions["reason"] = "FIFO recommended for single epoch trials"
     elif max_epochs_per_trial < 4:
         suggestions["scheduler_type"] = "fifo"
-        suggestions["reason"] = (
-            "FIFO recommended for very short trials (< 4 epochs)"
-        )
+        suggestions["reason"] = "FIFO recommended for very short trials (< 4 epochs)"
     elif max_epochs_per_trial >= 10 and num_samples >= 8:
         if training_time_per_epoch in ["fast", "medium"]:
             suggestions["scheduler_type"] = "asha"
-            suggestions["reason"] = (
-                "ASHA recommended for efficient early stopping"
-            )
+            suggestions["reason"] = "ASHA recommended for efficient early stopping"
         else:
             suggestions["scheduler_type"] = "pbt"
             suggestions["reason"] = (
@@ -656,7 +663,7 @@ def suggest_scheduler_config(
 def create_basic_search_space(
     learning_rate_range: tuple = (1e-5, 1e-2),
     weight_decay_range: tuple = (1e-6, 1e-3),
-    batch_size_choices: list = [16, 32, 64],
+    batch_size_choices: list = None,
 ) -> dict[str, Any]:
     """Create a basic search space for autoencoder tuning.
 
@@ -674,6 +681,8 @@ def create_basic_search_space(
     Dict[str, Any]
         Search space configuration.
     """
+    if batch_size_choices is None:
+        batch_size_choices = [16, 32, 64]
     if not RAY_AVAILABLE:
         raise ImportError("Ray Tune is required to create search spaces")
 

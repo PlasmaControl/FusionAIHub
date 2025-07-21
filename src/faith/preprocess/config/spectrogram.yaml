@@ -50,7 +50,7 @@ start_time: null  # Start time for signal extraction (null for auto-detection)
 end_time: null    # End time for signal extraction (null for auto-detection)
 
 # Train/test split configuration
-debug: false
+debug: true
 
 # Directory paths
 raw_data_dir: /scratch/gpfs/EKOLEMEN/d3d_fusion_data

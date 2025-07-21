@@ -47,12 +47,14 @@ def extract_plasma_current_threshold(
     ip_threshold: float,
 ) -> tuple[float, float]:
     """
-    Extract the plasma current threshold for a shot. Plasma currents often measure the start and end of the shot.
+    Extract the plasma current threshold for a shot. Plasma currents often
+    measure the start and end of the shot.
 
     Args:
         shot_number: Shot number
         directory: Directory containing HDF5 files
-        ip_threshold: Plasma current threshold for a shot to be considered running
+        ip_threshold: Plasma current threshold for a shot to be considered
+        running
 
     Returns:
         Tuple of (start_time, end_time) in milliseconds
@@ -65,7 +67,8 @@ def extract_plasma_current_threshold(
     ...     0.5,
     ... )
 
-    TODO: This option is not used yet, but should be used to split the task of determining the running time.
+    TODO: This option is not used yet, but should be used to split the task of
+    determining the running time.
     """
     path = (directory / str(shot_number)).with_suffix(".h5")
     with pd.HDFStore(path, "r") as store:
@@ -82,12 +85,14 @@ def determine_running_time(
     end_time: float | None = None,
 ) -> tuple[float, float]:
     """
-    Determine the plasma running time for a shot based on plasma current threshold.
+    Determine the plasma running time for a shot based on plasma current
+    threshold.
 
     Args:
         directory: Directory containing HDF5 files
         shot: Shot number
-        ip_threshold: Plasma current threshold for a shot to be considered running
+        ip_threshold: Plasma current threshold for a shot to be considered
+        running
         start_time: Manually set start time for the shot (ms) (optional)
         end_time: Manually set end time for the shot (ms) (optional)
 
@@ -178,17 +183,11 @@ def align_signal(
     )
 
     df_state = pd.DataFrame(True, index=df.index, columns=df.columns)
-    start_pad_state = pd.DataFrame(
-        False, index=start_pad.index, columns=df.columns
-    )
-    end_pad_state = pd.DataFrame(
-        False, index=end_pad.index, columns=df.columns
-    )
+    start_pad_state = pd.DataFrame(False, index=start_pad.index, columns=df.columns)
+    end_pad_state = pd.DataFrame(False, index=end_pad.index, columns=df.columns)
 
     df = pd.concat([start_pad, df, end_pad], ignore_index=True)
-    df_state = pd.concat(
-        [start_pad_state, df_state, end_pad_state], ignore_index=True
-    )
+    df_state = pd.concat([start_pad_state, df_state, end_pad_state], ignore_index=True)
     df_state.columns = [f"{col}_state" for col in df.columns]
 
     # combine data with state

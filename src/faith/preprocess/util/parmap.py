@@ -3,11 +3,13 @@
 import gc
 import multiprocessing as mp
 import sys
+from collections.abc import Sequence
 from ctypes import c_ulong
 from multiprocessing.sharedctypes import Value
+from typing import Any, Callable
 
 
-def _identity(x):
+def _identity(x: Any) -> Any:
     """The identity function."""
     return x
 
@@ -16,12 +18,19 @@ class ProgressBar:
     """
     Usage : update_progress(progress)
     An ASCII progression bar.
-    Values of input should be floats or ints ranging from 0 to ntot (default 1).
+    Values of input should be floats or ints ranging from 0 to ntot
+    (default 1).
     """
 
-    def __init__(self, output=None, bar_length=50, ntot=None):
+    def __init__(
+        self,
+        output: Callable[[str], None] | None = None,
+        bar_length: int = 50,
+        ntot: float | None = None,
+    ) -> None:
         """
-        "output" is a function that takes a string as input and prints it (defaults to stdout).
+        "output" is a function that takes a string as input and prints it
+        (defaults to stdout).
         bar_length is the length of the progress bar in characters.
         ntot is the maximum value of the progress bar (default 1).
         """
@@ -30,10 +39,10 @@ class ProgressBar:
         self.ntot = ntot
         self._last = -1
 
-    def set_ntot(self, value):
+    def set_ntot(self, value: float) -> None:
         self.ntot = value
 
-    def _update(self, progress):
+    def _update(self, progress: float | int) -> None:
         status = ""
         try:
             progress = float(progress)
@@ -64,7 +73,7 @@ class ProgressBar:
         else:
             self.output(text)
 
-    def __call__(self, progress):
+    def __call__(self, progress: float | int) -> None:
         """Update the progress bar to specified value."""
         self._update(progress)
 
@@ -72,11 +81,18 @@ class ProgressBar:
 class ParallelMapper:
     """Parallel version of map."""
 
-    def __init__(self, nprocs=None, progress=True, fetcher=_identity):
+    def __init__(
+        self,
+        nprocs: int | None = None,
+        progress: bool | ProgressBar = True,
+        fetcher: Callable[[Any], Any] = _identity,
+    ) -> None:
         """
         nprocs is the number of processors to use (default is mp.cpu_count()).
-        progress is a boolean or a ProgressBar object. If True, a ProgressBar is used.
-        fetcher is a function that fetches the data from the iterable, defaults to identity function.
+        progress is a boolean or a ProgressBar object. If True, a ProgressBar
+        is used.
+        fetcher is a function that fetches the data from the iterable, defaults
+        to identity function.
         """
         if nprocs is None:
             nprocs = mp.cpu_count()
@@ -88,33 +104,41 @@ class ParallelMapper:
             progress = ProgressBar()
         self._progress = progress
 
-    def progress(self, value, ntot=None):
+    def progress(self, value: float | int, ntot: float | None = None) -> None:
         """Update the progress bar to specified value."""
         if self._progress:
             if ntot and value == 0:
                 self._progress.set_ntot(ntot)
             self._progress(value)
 
-    def _set_counter(self, value):
+    def _set_counter(self, value: int) -> None:
         """Set the counter to value."""
         with self._counter.get_lock():
             self._counter.value = value
 
-    def _get_counter(self):
+    def _get_counter(self) -> int:
         """Return the current value of the counter."""
         with self._counter.get_lock():
             out = self._counter.value
         return out
 
-    def _inc_counter(self, value=1):
+    def _inc_counter(self, value: int = 1) -> int:
         """Increment the counter by value and return the new value."""
         with self._counter.get_lock():
             self._counter.value += value
             out = self._counter.value
         return out
 
-    def _fun(self, f, q_in, q_out, **kwargs):
-        """Function to be executed by each process. Wrapper for f and progress bar."""
+    def _fun(
+        self,
+        f: Callable[..., Any],
+        q_in: mp.Queue,
+        q_out: mp.Queue,
+        **kwargs: Any,
+    ) -> None:
+        """Function to be executed by each process.
+        Wrapper for f and progress bar.
+        """
         while True:
             i, x = q_in.get()
             if i is None:
@@ -124,7 +148,12 @@ class ParallelMapper:
             gc.collect()
             self.progress(self._inc_counter())
 
-    def parmap(self, f, x, **kwargs):
+    def parmap(
+        self,
+        f: Callable[..., Any],
+        x: Sequence[Any],
+        **kwargs: Any,
+    ) -> list[Any]:
         """
         Parallelizes the computation of 'map(f, X)' over 'nprocs' processors,
         where f is a function, X is an iterable. Returns list of length len(X).
@@ -162,7 +191,9 @@ class ParallelMapper:
         gc.collect()
         return out
 
-    def __call__(self, f, x, **kwargs):
+    def __call__(
+        self, f: Callable[..., Any], x: Sequence[Any], **kwargs: Any
+    ) -> list[Any]:
         """
         Parallelizes the computation of 'map(f, X)' over 'nprocs' processors,
         where f is a function, X is an iterable. Returns list of length len(X).
@@ -170,9 +201,15 @@ class ParallelMapper:
         return self.parmap(f, x, **kwargs)
 
 
-def parmap(f, x, nprocs=None, **kwargs):
+def parmap(
+    f: Callable[..., Any],
+    x: Sequence[Any],
+    nprocs: int | None = None,
+    **kwargs: Any,
+) -> list[Any]:
     """
     Parallelizes the computation of 'map(f, x)' over 'nprocs' processors,
     where f is a function, x is an iterable. Returns list of length len(x).
     """
-    return ParallelMapper(nprocs=nprocs, **kwargs)(f, x)
+    mapper = ParallelMapper(nprocs=nprocs, **kwargs)
+    return mapper(f, x)

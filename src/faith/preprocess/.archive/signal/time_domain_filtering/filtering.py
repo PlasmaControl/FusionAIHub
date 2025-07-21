@@ -21,7 +21,7 @@ Window functions
     get_window
 """
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -37,7 +37,7 @@ def lfilter(
     a: Optional[ArrayLike] = None,
     zi: Optional[ArrayLike] = None,
     return_zf: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """
     Filter a signal with a FIR or an IIR digital filter:
 

@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional, Tuple, Union
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 from scipy import signal
@@ -13,12 +13,12 @@ def spectrogram(
     n_fft: int = 2048,
     hop_length: int = 256,
     win_length: int = 2048,
-    window: Union[str, float, Tuple[str, Any, ...]] = "hamming",
+    window: Union[str, float, tuple[str, Any, ...]] = "hamming",
     scaling: Literal["magnitude", "psd"] = "magnitude",
     detrend: Literal["linear", "constant"] = "constant",
     pad_mode: Literal["zeros", "edge", "even", "odd"] = "zeros",
     return_t_f: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
+) -> Union[np.ndarray, tuple[np.ndarray, ...]]:
     """
     Spectrogram.
 
@@ -133,11 +133,11 @@ def stft(
     n_fft: int = 2048,
     hop_length: Optional[int] = None,
     win_length: Optional[int] = None,
-    window: Union[str, float, Tuple[str, Any, ...]] = "hamming",
+    window: Union[str, float, tuple[str, Any, ...]] = "hamming",
     scaling: Literal["magnitude", "psd"] = "magnitude",
     pad_mode: Literal["zeros", "edge", "even", "odd"] = "zeros",
     return_t_f: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, ...]]:
+) -> Union[np.ndarray, tuple[np.ndarray, ...]]:
     """
     STFT.
 

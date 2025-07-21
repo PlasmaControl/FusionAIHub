@@ -1,18 +1,14 @@
-import os
-
-# also do other file formats
 import warnings
-from typing import Any, Union
+from pathlib import Path
 
 import h5py
 import numpy as np
 
 
-@warnings._deprecated("Use the new function save instead")
 def dict_to_hdf5(
     dictionary: dict,
     h5file: h5py.File,
-    compression: str = None,
+    compression: str | None = None,
 ) -> None:
     """_summary_
 
@@ -25,6 +21,11 @@ def dict_to_hdf5(
     compression : str, optional
         _description_, by default None
     """
+    warnings.warn(
+        "dict_to_hdf5 is deprecated. Use the new function save instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     for key, value in dictionary.items():
         if isinstance(value, dict):
@@ -43,15 +44,17 @@ def dict_to_hdf5(
 
 def save(
     dictionary: dict,
-    path: Union[str, int, Any[os.Pathlike]],
+    path: str | Path,
     file_format: str = "h5",
-    compression: str = None,
+    compression: str | None = None,
 ) -> None:
     if file_format == "h5":
-        if not path.endswith(".h5"):
-            path += ".h5"
+        if not isinstance(path, Path):
+            path = Path(path)
+        if not path.suffix == ".h5":
+            path = path.with_suffix(".h5")
 
-        path.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with h5py.File(path, "w") as f:
             dict_to_hdf5(dictionary, f, compression)
 

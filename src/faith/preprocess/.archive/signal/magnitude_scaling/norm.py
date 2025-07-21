@@ -1,7 +1,12 @@
 import numpy as np
 
 
-def norm_data(data, avg_, std_, mode="all"):
+def norm_data(
+    data: np.ndarray,
+    avg_: np.ndarray,
+    std_: np.ndarray,
+    mode: str = "all",
+) -> np.ndarray:
     avg_ = np.array(avg_)
     std_ = np.array(std_)
     if mode == "all":
@@ -12,8 +17,10 @@ def norm_data(data, avg_, std_, mode="all"):
         avg_all = np.expand_dims(avg_, axis=1)
 
     elif mode == "individual":
-        std_all = np.expand_dims(avg_, axis=1)
+        std_all = np.expand_dims(std_, axis=1)
         avg_all = np.expand_dims(avg_, axis=1)
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
     data_norm = (data - avg_all) / std_all
 

@@ -6511,7 +6511,13 @@ file_keys = {
             "zxpt1",
             "zxpt2",
         ],
-        "profile": ["edensfit", "etempfit", "itempfit", "idensfit", "trotfit"],
+        "profile": [
+            "edensfit",
+            "etempfit",
+            "itempfit",
+            "idensfit",
+            "trotfit",
+        ],
         "mag_mode_number": ["n1rms", "n2rms", "n3rms"],
     },
     "basic": {
@@ -6525,9 +6531,9 @@ file_keys = {
         "tinj": ["tinj_%dl" % k for k in [15, 21, 30, 33]]
         + ["tinj_%dr" % k for k in [15, 21, 30, 33]],
         "ech": ["echpwrc", "echpwr"]
-        + ["ec%sfpwrc" % (x) for x in ech_gytname]
-        + ["ec%sxmfrac" % (x) for x in ech_gytname]
-        + ["ec%spolang" % (x) for x in ech_gytname],
+        + [f"ec{x}fpwrc" for x in ech_gytname]
+        + [f"ec{x}xmfrac" for x in ech_gytname]
+        + [f"ec{x}polang" for x in ech_gytname],
         "gas": ["gasa", "gasb", "gasc", "gasd", "gase"],
         "rmp_current": [
             "c19",
@@ -6594,7 +6600,7 @@ spec_params_default = {
 class DichargePerp:
     """object that contains the functions to manipulate one discharge."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.file_keys = file_keys
         self.avg_list = avg_list
         self.std_list = std_list
@@ -7204,7 +7210,7 @@ class DichargePerp:
 
     #     return t_max, t_min
 
-    def deal_with_missing_data(self):
+    def deal_with_missing_data(self) -> None:
         pass
 
     # def time_series_full_pipeline(self,discharge,suffix_list,time_std_key, time_std=[],custom_time_std=False,Ip_window_size=500, Ip_std_threshold=0.01, plot_Ip=False, norm_mode='all', interp_suffix=[],  interp_mode='normal', time_matching_mode='dynamic', left_window={'ece_s':50}, right_window={'ece_s':50}, time_matching_padding='zeros', plot_matched_data=False):

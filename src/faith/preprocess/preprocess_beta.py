@@ -31,9 +31,7 @@ def list_shots(
     # Collect and sort all shot numbers
     raw_data_dir = Path(cfg["raw_data_dir"])
     logger.info(f"Collecting shots from {raw_data_dir}...")
-    all_shots = [
-        int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"
-    ]
+    all_shots = [int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"]
     all_shots.sort()
 
     # Apply shot selection and randomization if configured
@@ -63,9 +61,7 @@ def log_config(
         signal_name = signal[0]
         signal_abbr = signal[1]["abbr"]
         should_transform = signal[1].get("make_stft", False)
-        logger.info(
-            f"  - {signal_name} ({signal_abbr}): transform={should_transform}"
-        )
+        logger.info(f"  - {signal_name} ({signal_abbr}): transform={should_transform}")
     logger.info("=" * 40)
 
 
@@ -84,7 +80,8 @@ def prepare_dataset(
     Args:
         cfg: Configuration dictionary loaded from YAML
 
-    # TODO: Add option to check if the dataset is mid-way through processing, and if so, continue from there.
+    # TODO: Add option to check if the dataset is mid-way through processing,
+    # and if so, continue from there.
     """
     # Log the configuration
     log_config(cfg)

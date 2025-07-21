@@ -36,7 +36,9 @@ destination_user = "curiem"
 destination_password = proxy_password
 
 
-def create_ssh_connection():
+def create_ssh_connection() -> (
+    tuple[paramiko.SSHClient, paramiko.Transport] | tuple[None, None]
+):
     try:
         # Tunneling through the proxy
         proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -73,7 +75,11 @@ def create_ssh_connection():
         return None, None
 
 
-def extract_shot_numbers_remote(sftp, remote_path, suffix):
+def extract_shot_numbers_remote(
+    sftp: paramiko.SFTPClient,
+    remote_path: str,
+    suffix: str,
+) -> set[int]:
     """
     Extract shot numbers from file names in a remote directory via SFTP, based
     on a given suffix.
@@ -115,20 +121,31 @@ def extract_shot_numbers_remote(sftp, remote_path, suffix):
         return set()
 
 
-def copy_file(sftp, remote_path, local_path):
+def copy_file(
+    sftp: paramiko.SFTPClient,
+    remote_path: str,
+    local_path: str,
+) -> str:
     # Check the action and perform the corresponding task
     sftp.get(remote_path, local_path)
     message = f"File {remote_path} copied to {local_path} successfully."
     return message
 
 
-def remove_file(sftp, remote_path):
+def remove_file(
+    sftp: paramiko.SFTPClient,
+    remote_path: str,
+) -> str:
     sftp.remove(remote_path)
     message = f"File {remote_path} removed successfully."
     return message
 
 
-def copy_n_rm_file(sftp, remote_path, local_path):
+def copy_n_rm_file(
+    sftp: paramiko.SFTPClient,
+    remote_path: str,
+    local_path: str,
+) -> None:
     message = copy_file(sftp, remote_path, local_path)
     print(message)
     message = remove_file(sftp, remote_path)
@@ -136,8 +153,11 @@ def copy_n_rm_file(sftp, remote_path, local_path):
 
 
 def search_copy_and_delete(
-    diag_name, remote_directory, local_directory, retries=3
-):
+    diag_name: str,
+    remote_directory: str,
+    local_directory: str,
+    retries: int = 3,
+) -> None:
     for attempt in range(retries):
         try:
             ssh_client, proxy_transport = create_ssh_connection()
@@ -166,12 +186,8 @@ def search_copy_and_delete(
                 for shot_num in cp_shot_num:
                     if int(shot_num) % subtask == residue:
                         for name_tmp in fetching_name_list:
-                            remote_path = (
-                                f"{remote_directory}/{shot_num}_{name_tmp}.h5"
-                            )
-                            local_path = (
-                                f"{local_directory}/{shot_num}_{name_tmp}.h5"
-                            )
+                            remote_path = f"{remote_directory}/{shot_num}_{name_tmp}.h5"
+                            local_path = f"{local_directory}/{shot_num}_{name_tmp}.h5"
                             copy_n_rm_file(sftp, remote_path, local_path)
 
             ssh_client.close()
@@ -190,4 +206,9 @@ def search_copy_and_delete(
             proxy_transport.close()
 
 
-search_copy_and_delete(diag_name, remote_directory, local_directory, retries=3)
+search_copy_and_delete(
+    diag_name,
+    remote_directory,
+    local_directory,
+    retries=3,
+)

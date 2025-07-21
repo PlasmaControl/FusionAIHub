@@ -2,15 +2,15 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.faith.train.blocks import EncoderBlock, ResidualBlock
+from faith.train.blocks import EncoderBlock1d, ResidualEncoding1d
 
 
 class TestEncoderBlockIntegration:
-    """Integration tests using actual ResidualBlock implementation."""
+    """Integration tests using actual ResidualEncoding1d implementation."""
 
     def test_initialization_with_residual_block(self):
-        """Test EncoderBlock initialization with real ResidualBlock."""
-        block = EncoderBlock(in_channels=4, out_channels=8)
+        """Test EncoderBlock initialization with real ResidualEncoding1d."""
+        block = EncoderBlock1d(in_channels=4, out_channels=8)
 
         # Test basic attributes
         assert block.in_channels == 4
@@ -23,7 +23,7 @@ class TestEncoderBlockIntegration:
 
         # Test that operations are correctly built
         assert len(block.operations) == 3
-        assert isinstance(block.operations[0], ResidualBlock)
+        assert isinstance(block.operations[0], ResidualEncoding1d)
         assert isinstance(block.operations[1], nn.Dropout)
         assert isinstance(block.operations[2], nn.MaxPool2d)
 
@@ -34,7 +34,7 @@ class TestEncoderBlockIntegration:
 
     def test_custom_initialization_with_real_components(self):
         """Test custom initialization parameters."""
-        block = EncoderBlock(
+        block = EncoderBlock1d(
             in_channels=2,
             out_channels=4,
             pool_size=(2, 2),
@@ -47,11 +47,11 @@ class TestEncoderBlockIntegration:
             residual_init_method="xavier",
         )
 
-        # Test that ResidualBlock received correct parameters
+        # Test that ResidualEncoding1d received correct parameters
         residual = block.residual_block
         assert residual.in_channels == 2
         assert residual.out_channels == 4
-        # Add more assertions based on your ResidualBlock's interface
+        # Add more assertions based on your ResidualEncoding1d's interface
 
         # Test other components
         assert block.dropout.p == 0.5
@@ -59,7 +59,7 @@ class TestEncoderBlockIntegration:
 
     def test_forward_pass_integration(self):
         """Test actual forward pass with real tensors and components."""
-        block = EncoderBlock(in_channels=3, out_channels=16, pool_size=(2, 2))
+        block = EncoderBlock1d(in_channels=3, out_channels=16, pool_size=(2, 2))
 
         # Create real input tensor
         input_tensor = torch.randn(2, 3, 32, 32)
@@ -81,13 +81,13 @@ class TestEncoderBlockIntegration:
         assert output.std() > 0  # Should have some variation
 
     def test_output_shape_calculation_integration(self):
-        """Test output shape calculation with real ResidualBlock."""
-        block = EncoderBlock(in_channels=4, out_channels=8, pool_size=(2, 4))
+        """Test output shape calculation with real ResidualEncoding1d."""
+        block = EncoderBlock1d(in_channels=4, out_channels=8, pool_size=(2, 4))
 
         input_shape = (1, 64, 32, 64)
         output_shape = block.get_output_shape(input_shape)
 
-        # The calculation should work with real ResidualBlock
+        # The calculation should work with real ResidualEncoding1d
         expected_shape = (1, 8, 16, 16)  # 32//2=16, 64//4=16
         assert output_shape == expected_shape
 
@@ -102,23 +102,17 @@ class TestEncoderBlockIntegration:
         ]
 
         for pool_size, input_shape, expected_output in test_cases:
-            block = EncoderBlock(
-                in_channels=2, out_channels=4, pool_size=pool_size
-            )
+            block = EncoderBlock1d(in_channels=2, out_channels=4, pool_size=pool_size)
 
             output_shape = block.get_output_shape(input_shape)
-            assert output_shape == expected_output, (
-                f"Failed for pool_size {pool_size}"
-            )
+            assert output_shape == expected_output, f"Failed for pool_size {pool_size}"
 
     def test_activation_functions_integration(self):
-        """Test different activation functions with real ResidualBlock."""
+        """Test different activation functions with real ResidualEncoding1d."""
         activations = ["relu", "gelu", "tanh", "sigmoid"]
 
         for activation in activations:
-            block = EncoderBlock(
-                in_channels=4, out_channels=8, activation=activation
-            )
+            block = EncoderBlock1d(in_channels=4, out_channels=8, activation=activation)
 
             # Test that activation is stored correctly
             assert block.activation_name == activation
@@ -136,12 +130,10 @@ class TestEncoderBlockIntegration:
     def test_batch_norm_integration(self):
         """Test batch normalization configurations."""
         # With batch norm
-        block_bn = EncoderBlock(
-            in_channels=32, out_channels=64, use_batch_norm=True
-        )
+        block_bn = EncoderBlock1d(in_channels=32, out_channels=64, use_batch_norm=True)
 
         # Without batch norm
-        block_no_bn = EncoderBlock(
+        block_no_bn = EncoderBlock1d(
             in_channels=32, out_channels=64, use_batch_norm=False
         )
 
@@ -161,7 +153,7 @@ class TestEncoderBlockIntegration:
 
     def test_dropout_behavior_integration(self):
         """Test dropout behavior in training vs evaluation mode."""
-        block = EncoderBlock(in_channels=32, out_channels=64, dropout=0.5)
+        block = EncoderBlock1d(in_channels=32, out_channels=64, dropout=0.5)
         input_tensor = torch.randn(1, 32, 16, 16)
 
         # Training mode - dropout should introduce randomness
@@ -173,12 +165,8 @@ class TestEncoderBlockIntegration:
                 outputs_train.append(output.clone())
 
         # Outputs should be different due to dropout randomness
-        assert not torch.allclose(
-            outputs_train[0], outputs_train[1], atol=1e-6
-        )
-        assert not torch.allclose(
-            outputs_train[1], outputs_train[2], atol=1e-6
-        )
+        assert not torch.allclose(outputs_train[0], outputs_train[1], atol=1e-6)
+        assert not torch.allclose(outputs_train[1], outputs_train[2], atol=1e-6)
 
         # Evaluation mode - should be deterministic
         block.eval()
@@ -208,7 +196,7 @@ class TestEncoderBlockIntegration:
         }
 
         # Create block
-        block = EncoderBlock(**original_config)
+        block = EncoderBlock1d(**original_config)
 
         # Get configuration
         saved_config = block.get_config()
@@ -221,7 +209,7 @@ class TestEncoderBlockIntegration:
         assert saved_config["residual_init_method"] == "xavier"
 
         # Test from_config
-        recreated_block = EncoderBlock.from_config(saved_config)
+        recreated_block = EncoderBlock1d.from_config(saved_config)
 
         # Verify recreated block has same configuration
         assert recreated_block.pool_size == block.pool_size
@@ -230,7 +218,7 @@ class TestEncoderBlockIntegration:
 
     def test_gradient_flow_integration(self):
         """Test that gradients flow correctly through the block."""
-        block = EncoderBlock(in_channels=6, out_channels=8)
+        block = EncoderBlock1d(in_channels=6, out_channels=8)
         input_tensor = torch.randn(1, 6, 8, 8, requires_grad=True)
 
         # Forward pass
@@ -256,7 +244,7 @@ class TestEncoderBlockIntegration:
     @pytest.mark.parametrize("spatial_size", [8, 16, 32])
     def test_various_input_sizes_integration(self, batch_size, spatial_size):
         """Test with various input sizes."""
-        block = EncoderBlock(in_channels=8, out_channels=16, pool_size=(2, 2))
+        block = EncoderBlock1d(in_channels=8, out_channels=16, pool_size=(2, 2))
 
         input_tensor = torch.randn(batch_size, 8, spatial_size, spatial_size)
 
@@ -273,9 +261,7 @@ class TestEncoderBlockIntegration:
     @pytest.mark.parametrize("dropout_val", [0.0, 0.3, 0.7, 1.0])
     def test_dropout_values_integration(self, dropout_val):
         """Test various dropout values."""
-        block = EncoderBlock(
-            in_channels=16, out_channels=32, dropout=dropout_val
-        )
+        block = EncoderBlock1d(in_channels=16, out_channels=32, dropout=dropout_val)
 
         assert block.dropout_prob == dropout_val
         assert block.dropout.p == dropout_val
@@ -293,7 +279,7 @@ class TestEncoderBlockIntegration:
         if dropout_val == 1.0:
             block.train()
             with torch.no_grad():
-                output_train = block(input_tensor)
+                _ = block(input_tensor)  # We don't need the output for this test
             # Note: with dropout=1.0, the dropout layer zeros everything
             # but the residual block and pooling still contribute
 
@@ -302,7 +288,7 @@ class TestEncoderBlockIntegration:
         import gc
 
         # Create block
-        block = EncoderBlock(in_channels=4, out_channels=8, pool_size=(4, 4))
+        block = EncoderBlock1d(in_channels=4, out_channels=8, pool_size=(4, 4))
 
         # Large input tensor
         large_input = torch.randn(8, 4, 64, 64)
@@ -322,7 +308,7 @@ class TestEncoderBlockIntegration:
 
     def test_device_compatibility_integration(self):
         """Test that the block works on different devices."""
-        block = EncoderBlock(in_channels=16, out_channels=32)
+        block = EncoderBlock1d(in_channels=16, out_channels=32)
         input_tensor = torch.randn(1, 16, 8, 8)
 
         # Test on CPU
@@ -351,32 +337,24 @@ class TestEncoderBlockErrorHandling:
     """Test error handling with real components."""
 
     def test_invalid_parameters_real(self):
-        """Test parameter validation with real ResidualBlock."""
+        """Test parameter validation with real ResidualEncoding1d."""
         # Test invalid dropout
-        with pytest.raises(
-            ValueError, match="Dropout must be between 0.0 and 1.0"
-        ):
-            EncoderBlock(in_channels=4, out_channels=8, dropout=-0.1)
+        with pytest.raises(ValueError, match="Dropout must be between 0.0 and 1.0"):
+            EncoderBlock1d(in_channels=4, out_channels=8, dropout=-0.1)
 
-        with pytest.raises(
-            ValueError, match="Dropout must be between 0.0 and 1.0"
-        ):
-            EncoderBlock(in_channels=4, out_channels=8, dropout=1.1)
+        with pytest.raises(ValueError, match="Dropout must be between 0.0 and 1.0"):
+            EncoderBlock1d(in_channels=4, out_channels=8, dropout=1.1)
 
         # Test invalid pool_size
-        with pytest.raises(
-            ValueError, match="pool_size must be a tuple of length 2"
-        ):
-            EncoderBlock(in_channels=4, out_channels=8, pool_size=(1,))
+        with pytest.raises(ValueError, match="pool_size must be a tuple of length 2"):
+            EncoderBlock1d(in_channels=4, out_channels=8, pool_size=(1,))
 
-        with pytest.raises(
-            ValueError, match="pool_size must be a tuple of length 2"
-        ):
-            EncoderBlock(in_channels=4, out_channels=8, pool_size=(1, 2, 3))
+        with pytest.raises(ValueError, match="pool_size must be a tuple of length 2"):
+            EncoderBlock1d(in_channels=4, out_channels=8, pool_size=(1, 2, 3))
 
     def test_incompatible_tensor_shapes(self):
         """Test behavior with incompatible tensor shapes."""
-        block = EncoderBlock(in_channels=16, out_channels=32)
+        block = EncoderBlock1d(in_channels=16, out_channels=32)
 
         # Wrong number of channels
         wrong_channels = torch.randn(1, 8, 16, 16)  # 8 channels instead of 16
@@ -398,7 +376,7 @@ class TestEncoderBlockPerformance:
         """Basic inference speed test."""
         import time
 
-        block = EncoderBlock(in_channels=4, out_channels=8)
+        block = EncoderBlock1d(in_channels=4, out_channels=8)
         input_tensor = torch.randn(16, 4, 32, 32)
 
         block.eval()

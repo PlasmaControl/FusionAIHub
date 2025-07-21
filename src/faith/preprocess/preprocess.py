@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 from omegaconf import DictConfig
 
-from .pipelines import pipeline_v0_stable as pipeline
+from .pipelines import pipeline
 from .util import ParallelMapper, index_dataset
 
 # Set up logger for this module
@@ -42,16 +42,12 @@ def prepare_dataset(cfg: dict) -> None:
         signal_name = signal[0]
         signal_abbr = signal[1]["abbr"]
         should_transform = signal[1].get("make_stft", False)
-        logger.info(
-            f"  - {signal_name} ({signal_abbr}): transform={should_transform}"
-        )
+        logger.info(f"  - {signal_name} ({signal_abbr}): transform={should_transform}")
     logger.info("=" * 40)
 
     # Collect and sort all shot numbers
     logger.info(f"Collecting shots from {raw_data_dir}...")
-    all_shots = [
-        int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"
-    ]
+    all_shots = [int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"]
     all_shots.sort()
 
     # Apply shot selection and randomization if configured

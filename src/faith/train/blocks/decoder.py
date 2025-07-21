@@ -101,14 +101,11 @@ class DecoderBlock(SequentialBlock):
 
         # Validate parameters
         if not 0.0 <= dropout <= 1.0:
-            raise ValueError(
-                f"Dropout must be between 0.0 and 1.0, got {dropout}"
-            )
+            raise ValueError(f"Dropout must be between 0.0 and 1.0, got {dropout}")
 
         if len(upsample_factor) != 2:
             raise ValueError(
-                f"upsample_factor must be a tuple of length 2, "
-                f"got {upsample_factor}"
+                f"upsample_factor must be a tuple of length 2, got {upsample_factor}"
             )
 
         # Store configuration
@@ -181,16 +178,15 @@ class DecoderBlock(SequentialBlock):
         dropout_layer = nn.Dropout(p=self.dropout)
         operations.append(dropout_layer)
 
-        # 3. ResidualBlock for feature refinement
-        residual_block = ResidualBlock(
+        # 3. ResidualDecoding2d for feature refinement
+        residual_block = ResidualDecoding2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
             bias=bias,
-            use_batch_norm=use_batch_norm,
-            activation=activation,
-            init_method=init_method,
+            activation_name=activation,
+            weight_init_method=init_method,
         )
         operations.append(residual_block)
 
@@ -216,9 +212,7 @@ class DecoderBlock(SequentialBlock):
         """Create DecoderBlock instance from configuration dictionary."""
         return cls(**config)
 
-    def get_output_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
 
         # Get shape after ConvTranspose2d upsampling
@@ -235,9 +229,7 @@ class DecoderBlock(SequentialBlock):
         upsampled_height = (
             (height - 1) * self.upsample_factor[0] - 2 * padding + kernel_h
         )
-        upsampled_width = (
-            (width - 1) * self.upsample_factor[1] - 2 * padding + kernel_w
-        )
+        upsampled_width = (width - 1) * self.upsample_factor[1] - 2 * padding + kernel_w
 
         # Shape after ConvTranspose2d (channels remain the same)
         conv_transpose_output_shape = (
@@ -324,9 +316,9 @@ class BlockBasedDecoder(SequentialBlock):
         self,
         in_channels: int,
         block_configs: list[dict[str, Any]],
-        kernel_size: Union[int, tuple[int, int]] = 3,
+        kernel_size: int | tuple[int, int] = 3,
         bias: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize BlockBasedDecoder."""
 
@@ -335,16 +327,12 @@ class BlockBasedDecoder(SequentialBlock):
             raise ValueError("block_configs cannot be empty")
 
         if in_channels <= 0:
-            raise ValueError(
-                f"in_channels must be positive, got {in_channels}"
-            )
+            raise ValueError(f"in_channels must be positive, got {in_channels}")
 
         # Validate that all configs have out_channels
         for i, config in enumerate(block_configs):
             if "out_channels" not in config:
-                raise ValueError(
-                    f"Block {i} missing required 'out_channels' key"
-                )
+                raise ValueError(f"Block {i} missing required 'out_channels' key")
             if config["out_channels"] <= 0:
                 raise ValueError(
                     f"out_channels must be positive, "
@@ -371,7 +359,7 @@ class BlockBasedDecoder(SequentialBlock):
     def _build_decoder_blocks(
         self,
         in_channels: int,
-        default_kernel_size: Union[int, tuple[int, int]],
+        default_kernel_size: int | tuple[int, int],
         default_bias: bool,
     ) -> list[nn.Module]:
         """
@@ -380,7 +368,7 @@ class BlockBasedDecoder(SequentialBlock):
         blocks = []
         current_channels = in_channels
 
-        for i, config in enumerate(self.block_configs):
+        for _i, config in enumerate(self.block_configs):
             # Prepare block configuration with defaults
             block_config = {
                 "in_channels": current_channels,
@@ -392,9 +380,7 @@ class BlockBasedDecoder(SequentialBlock):
                 "bias": config.get("bias", default_bias),
                 "use_batch_norm": config.get("use_batch_norm", True),
                 "activation": config.get("activation", "relu"),
-                "residual_init_method": config.get(
-                    "residual_init_method", "kaiming"
-                ),
+                "residual_init_method": config.get("residual_init_method", "kaiming"),
             }
 
             # Create decoder block
@@ -406,9 +392,7 @@ class BlockBasedDecoder(SequentialBlock):
 
         return blocks
 
-    def get_output_shape(
-        self, input_shape: tuple[int, ...]
-    ) -> tuple[int, ...]:
+    def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Calculate output shape given input shape."""
         shape = input_shape
         for block in self.operations:
@@ -532,9 +516,9 @@ class BlockBasedDecoder(SequentialBlock):
                     # We'll use the final_out_channels as a reasonable guess
                     out_channels = final_out_channels
                 else:
-                    out_channels = encoder_configs[
-                        corresponding_encoder_idx - 1
-                    ]["out_channels"]
+                    out_channels = encoder_configs[corresponding_encoder_idx - 1][
+                        "out_channels"
+                    ]
 
             # Create decoder config
             decoder_config = {
@@ -559,7 +543,10 @@ class BlockBasedDecoder(SequentialBlock):
 
     @classmethod
     def from_encoder(
-        cls, encoder: "BlockBasedEncoder", final_out_channels: int, **kwargs
+        cls,
+        encoder: "BlockBasedEncoder",
+        final_out_channels: int,
+        **kwargs: Any,
     ) -> "BlockBasedDecoder":
         """Create decoder that mirrors a BlockBasedEncoder.
 
@@ -601,9 +588,7 @@ class BlockBasedDecoder(SequentialBlock):
 
     def __repr__(self) -> str:
         """String representation of the BlockBasedDecoder."""
-        channel_progression = " → ".join(
-            map(str, self.get_channel_progression())
-        )
+        channel_progression = " → ".join(map(str, self.get_channel_progression()))
         return (
             f"BlockBasedDecoder("
             f"blocks={len(self.operations)}, "

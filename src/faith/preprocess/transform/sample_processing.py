@@ -7,7 +7,6 @@ applying transformations to samples, and saving processed data.
 
 import logging
 from pathlib import Path
-from typing import Dict
 
 import joblib
 import numpy as np
@@ -76,14 +75,10 @@ def remove_empty_samples(
     samples = [
         {
             key: value.drop(
-                columns=[
-                    col for col in value.columns if col.endswith("_state")
-                ]
+                columns=[col for col in value.columns if col.endswith("_state")]
             )
             for key, value in sample.items()
-            if np.any(
-                value.loc[:, value.columns.str.endswith("_state")].to_numpy()
-            )
+            if np.any(value.loc[:, value.columns.str.endswith("_state")].to_numpy())
         }
         for sample in samples
     ]
@@ -92,7 +87,7 @@ def remove_empty_samples(
 
 
 def save_sample(
-    sample: Dict,
+    sample: dict,
     directory: Path,
     id_val: str,
 ) -> None:

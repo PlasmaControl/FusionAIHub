@@ -18,7 +18,7 @@ def specshow(
     win_length: Optional[int] = None,
     fmin: Optional[float] = None,
     fmax: Optional[float] = None,
-    auto_aspect=True,
+    auto_aspect: bool = True,
     **kwargs: Any,
 ) -> QuadMesh:
     """

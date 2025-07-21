@@ -1,4 +1,10 @@
+from typing import Any
+
 import h5py
+import numpy as np
+
+# Define no_level for special suffixes that don't have nested structure
+no_level = ["ece_cali", "ece_s"]
 
 
 def load(file_path: str) -> dict:
@@ -13,7 +19,8 @@ def load(file_path: str) -> dict:
     Returns
     -------
     dict
-        A dictionary containing the data, time, and attributes stored in the HDF5 file.
+        A dictionary containing the data, time, and attributes stored in
+        the HDF5 file.
     """
     with h5py.File(file_path, "r") as f:
         data = f["data"][()]
@@ -22,7 +29,12 @@ def load(file_path: str) -> dict:
     return {"data": data, "time": time, "attributes": attributes}
 
 
-def get_data(self, discharge, suffix, norm=True):
+def get_data(
+    self: Any,
+    discharge: str,
+    suffix: str,
+    norm: bool = True,
+) -> dict:
     discharge_path = self.file_path_gen(discharge, suffix)
     input_file = h5py.File(discharge_path, "r")
     input_dict_tmp = self.hdf5_to_dict(input_file)
@@ -34,9 +46,7 @@ def get_data(self, discharge, suffix, norm=True):
     if norm and (suffix in self.norm_factor_list):
         for key in input_dict.keys():
             if self.norm_factor_list[suffix][key] == "log":
-                input_dict[key]["zdata"] = np.log(
-                    np.array(input_dict[key]["zdata"][:])
-                )
+                input_dict[key]["zdata"] = np.log(np.array(input_dict[key]["zdata"][:]))
             else:
                 input_dict[key]["zdata"] = (
                     np.array(input_dict[key]["zdata"][:])

@@ -1,8 +1,12 @@
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
+import matplotlib.axes as mplaxes
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import QuadMesh
+from matplotlib.markers import MarkerStyle
+from matplotlib.path import Path as MplPath
+from matplotlib.util import _deprecate as Deprecated
 
 
 def waveshow(
@@ -17,7 +21,7 @@ def waveshow(
     label: Optional[str] = None,
     transpose: bool = False,
     ax: Optional[mplaxes.Axes] = None,
-    x_axis: Optional[Union[str, Deprecated]] = Deprecated(),
+    x_axis: Optional[Union[str, Deprecated]] = None,
     **kwargs: Any,
 ) -> QuadMesh:
     """
@@ -66,7 +70,7 @@ def waveshow(
     librosa.display.specshow
     """
 
-    plt.clf
+    plt.clf()
     plt.plot(y)
     plt.show()
 

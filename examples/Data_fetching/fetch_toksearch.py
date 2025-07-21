@@ -13,7 +13,8 @@ from tqdm import tqdm
 # module load toksearch
 
 # for copy:
-# scp -r -o 'ProxyCommand ssh -p 2039 curiem@cybele.gat.com -W %h:%p' curiem@iris.gat.com:/cscratch/curiem/Data_fetch_TS/15* ./
+# scp -r -o 'ProxyCommand ssh -p 2039 curiem@cybele.gat.com -W %h:%p' \
+#   curiem@iris.gat.com:/cscratch/curiem/Data_fetch_TS/15* ./
 
 # ***********start of user block******************
 # limit of the size
@@ -29,14 +30,19 @@ directory_path = "/cscratch/curiem"
 shots = list(np.arange(150000, 170000, dtype=int))
 
 # shots = list(np.arange(175910,190000,dtype=int))
-# one can set start_shot the where to start. (usually used for restarting the fetching due to unexpected termination)
+# one can set start_shot the where to start. (usually used for restarting the
+# fetching due to unexpected termination)
 start_shot = min(shots)
 
 # path to save the files
 path = "/cscratch/curiem/Data_fetch_CO2_s/"
 
-# diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s, ts,ts_rz,ts_error,custom]
+# diag_names=[mag,mag_hi,bes,ece_cali,ece_s, co2_den, co2_pl, co2_s,
+# ts,ts_rz,ts_error,custom]
 diag_name = "co2_s"
+
+# Define 3D diagnostics that have rhon data
+diag_3d = ["ts", "ts_rz"]
 
 # custom sig_names_custom, the suffix is fixed to be custom for now.
 if diag_name == "custom":
@@ -48,7 +54,10 @@ if diag_name == "custom":
 shots.sort()
 
 
-def size_limiter(directory_path="/cscratch/curiem", size_GB=450):
+def size_limiter(
+    directory_path: str = "/cscratch/curiem",
+    size_GB: float = 450,
+) -> None:
     try:
         size = (
             subprocess.check_output(["du", "-sh", directory_path])
@@ -66,7 +75,9 @@ def size_limiter(directory_path="/cscratch/curiem", size_GB=450):
         sys.exit(1)
 
 
-def size_limiter_sleep(directory_path="/cscratch/curiem", size_GB=450):
+def size_limiter_sleep(
+    directory_path: str = "/cscratch/curiem", size_GB: float = 450
+) -> None:
     try:
         size = (
             subprocess.check_output(["du", "-sh", directory_path])
@@ -101,7 +112,10 @@ def size_limiter_sleep(directory_path="/cscratch/curiem", size_GB=450):
             sys.exit(1)
 
 
-def save_dict_to_hdf5(dictionary, h5file):
+def save_dict_to_hdf5(
+    dictionary: dict,
+    h5file: h5py.File,
+) -> None:
     for key, value in dictionary.items():
         if isinstance(value, dict):
             group = h5file.create_group(key)
@@ -112,11 +126,15 @@ def save_dict_to_hdf5(dictionary, h5file):
 
 # generate the name and signal to fetch i ntoksearch
 def signal_gen(
-    diag_name="zipfit",
-    sig_names_custom=[""],
-    names_custom=[""],
-    tree_custom="",
-):
+    diag_name: str = "zipfit",
+    sig_names_custom: list | None = None,
+    names_custom: list | None = None,
+    tree_custom: str = "",
+) -> tuple[list, list]:
+    if names_custom is None:
+        names_custom = [""]
+    if sig_names_custom is None:
+        sig_names_custom = [""]
     signals = []
     names = []
 
@@ -1939,12 +1957,13 @@ def signal_gen(
     elif diag_name == "custom":
         sig_names = sig_names_custom
         names = names_custom
-        if tree_custom == "ptdata":
-            signals.append(PtDataSignal(name))
-        else:
-            signals.append(
-                MdsSignal(name, tree_custom, location="remote://atlas.gat.com")
-            )
+        for name in sig_names:
+            if tree_custom == "ptdata":
+                signals.append(PtDataSignal(name))
+            else:
+                signals.append(
+                    MdsSignal(name, tree_custom, location="remote://atlas.gat.com")
+                )
 
     elif diag_name == "mag_hi":
         sig_names = [f"b{i}" for i in range(1, 9)]
@@ -1969,30 +1988,24 @@ def signal_gen(
         channels = range(1, 49)  # 48
 
         for chan in channels:
-            name = r"\TECEF%02d" % chan
-            signals.append(
-                MdsSignal(name, "ECE", location="remote://atlas.gat.com")
-            )
-            names.append(r"%02d" % chan)
+            name = rf"\TECEF{chan:02d}"
+            signals.append(MdsSignal(name, "ECE", location="remote://atlas.gat.com"))
+            names.append(f"{chan:02d}")
 
     elif diag_name == "ece_s":
         channels = range(1, 49)  # 48
 
         for chan in channels:
-            name = r"\TECE%02d" % chan
-            signals.append(
-                MdsSignal(name, "ECE", location="remote://atlas.gat.com")
-            )
-            names.append(r"%02d" % chan)
+            name = rf"\TECE{chan:02d}"
+            signals.append(MdsSignal(name, "ECE", location="remote://atlas.gat.com"))
+            names.append(f"{chan:02d}")
 
     elif diag_name == "co2_s":
         chords = ["r0", "v1", "v2", "v3"]
 
         for chord in chords:
             name = rf"\den{chord}"
-            signals.append(
-                MdsSignal(name, "BCI", location="remote://atlas.gat.com")
-            )
+            signals.append(MdsSignal(name, "BCI", location="remote://atlas.gat.com"))
             names.append(f"{chord}")
 
     elif diag_name == "co2_den":
@@ -2000,14 +2013,12 @@ def signal_gen(
         chords = ["r0", "v1", "v2", "v3"]
         phases = ["den"]
 
-        for phase in phases:
+        for _phase in phases:
             for chord in chords:
                 for num in nums:
                     name = rf"\den{chord}_uf_{num}"
                     signals.append(
-                        MdsSignal(
-                            name, "BCI", location="remote://atlas.gat.com"
-                        )
+                        MdsSignal(name, "BCI", location="remote://atlas.gat.com")
                     )
                     names.append(f"{chord}_{num}")
 
@@ -2016,14 +2027,12 @@ def signal_gen(
         chords = ["r0", "v1", "v2", "v3"]
         phases = ["pl"]
 
-        for phase in phases:
+        for _phase in phases:
             for chord in chords:
                 for num in nums:
                     name = rf"\pl1{chord}_uf_{num}"
                     signals.append(
-                        MdsSignal(
-                            name, "BCI", location="remote://atlas.gat.com"
-                        )
+                        MdsSignal(name, "BCI", location="remote://atlas.gat.com")
                     )
                     names.append(f"{chord}_{num}")
 
@@ -2035,15 +2044,11 @@ def signal_gen(
         treename = "electrons"
 
         for thomson_mds_area in thomson_mds_areas:
-            for thomson_sig_name, thomson_name in zip(
-                thomson_sig_names, thomson_names
-            ):
+            for thomson_sig_name, thomson_name in zip(thomson_sig_names, thomson_names):
                 name = rf"TS.BLESSED.{thomson_mds_area}.{thomson_sig_name}"
 
                 signals.append(
-                    MdsSignal(
-                        name, treename, location="remote://atlas.gat.com"
-                    )
+                    MdsSignal(name, treename, location="remote://atlas.gat.com")
                 )
 
                 names.append(rf"{thomson_mds_area}.{thomson_name}")
@@ -2058,9 +2063,7 @@ def signal_gen(
             for thomson_sig_name in thomson_sig_names:
                 name = rf"TS.BLESSED.{thomson_mds_area}.{thomson_sig_name}"
                 signals.append(
-                    MdsSignal(
-                        name, treename, location="remote://atlas.gat.com"
-                    )
+                    MdsSignal(name, treename, location="remote://atlas.gat.com")
                 )
 
                 names.append(rf"{thomson_mds_area}.{thomson_sig_name}")
@@ -2073,13 +2076,10 @@ def signal_gen(
         treename = "electrons"
 
         for thomson_mds_area in thomson_mds_areas:
-            for thomson_sig_name, thomson_name in zip(
-                thomson_sig_names, thomson_names
-            ):
+            for thomson_sig_name, thomson_name in zip(thomson_sig_names, thomson_names):
+                name = rf"\TS_{thomson_mds_area}_{thomson_sig_name}"
                 signals.append(
-                    MdsSignal(
-                        name, treename, location="remote://atlas.gat.com"
-                    )
+                    MdsSignal(name, treename, location="remote://atlas.gat.com")
                 )
 
                 names.append(rf"{thomson_mds_area}.{thomson_name}")
@@ -2345,12 +2345,10 @@ def signal_gen(
             signals.append(PtDataSignal(name))
 
     elif diag_name == "cer":
-        channels = ["v%i" % i for i in range(1, 33)] + [
-            "t%i" % i for i in range(1, 49)
-        ]
+        channels = [f"v{i}" for i in range(1, 33)] + [f"t{i}" for i in range(1, 49)]
 
-        name_channels = ["v%02d" % i for i in range(1, 33)] + [
-            "t%02d" % i for i in range(1, 49)
+        name_channels = [f"v{i:02d}" for i in range(1, 33)] + [
+            f"t{i:02d}" for i in range(1, 49)
         ]
         outputs = [
             "amp",
@@ -2369,9 +2367,7 @@ def signal_gen(
         ]
 
         sig_names = [
-            rf"\cerq{output}{channel}"
-            for channel in channels
-            for output in outputs
+            rf"\cerq{output}{channel}" for channel in channels for output in outputs
         ]
         names = [
             rf"cer.{output}.{channel}"
@@ -2382,30 +2378,30 @@ def signal_gen(
         treename = "ions"
         signals = []
         for name in sig_names:
-            signals.append(
-                MdsSignal(name, treename, location="remote://atlas.gat.com")
-            )
+            signals.append(MdsSignal(name, treename, location="remote://atlas.gat.com"))
 
     elif diag_name == "mse":
         treename = "mse"
-        sig_names = [r"\msep%02d" % i for i in range(1, 70)]
-        names = [r"%02d" % i for i in range(1, 70)]
+        sig_names = [rf"\msep{i:02d}" for i in range(1, 70)]
+        names = [f"{i:02d}" for i in range(1, 70)]
 
         signals = []
         for name in sig_names:
-            signals.append(
-                MdsSignal(name, treename, location="remote://atlas.gat.com")
-            )
+            signals.append(MdsSignal(name, treename, location="remote://atlas.gat.com"))
 
     return names, signals
 
 
-def fetch_ece_2d_array_data(path, shots, diag_name):
+def fetch_ece_2d_array_data(
+    path: str,
+    shots: list[int],
+    diag_name: str,
+) -> None:
     names, signals = signal_gen(diag_name)
 
     for n, shot in tqdm(enumerate(shots)):
         if shot >= start_shot:
-            start = time.time()
+            time.time()
             pipeline = Pipeline([shot])
 
             for i, name in enumerate(names):
@@ -2426,12 +2422,10 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
                         len_tmp = len(shot_data[name]["data"])
                         if len_tmp < 10:
                             break
-                    except:
+                    except (KeyError, IndexError):
                         break
                     # print(len(shot_data[name]['data']))
-                    data_tmp.append(
-                        shot_data[name]["data"][: len(data_h5["xdata"])]
-                    )
+                    data_tmp.append(shot_data[name]["data"][: len(data_h5["xdata"])])
 
                 data_tmp = np.array(data_tmp, dtype="float")
 
@@ -2441,7 +2435,7 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
                 if len(data_h5["xdata"]) > 3500000:
                     data_h5["xdata"] = data_h5["xdata"][:3500000]
                     data_h5["zdata"] = data_h5["zdata"][:, :3500000]
-            except:
+            except (KeyError, IndexError, ValueError):
                 data_h5["xdata"] = []
                 data_h5["ydata"] = []
                 data_h5["zdata"] = []
@@ -2460,7 +2454,11 @@ def fetch_ece_2d_array_data(path, shots, diag_name):
 
 
 # fetching the data
-def fetch_single_data(path, shots, diag_name):
+def fetch_single_data(
+    path: str,
+    shots: list[int],
+    diag_name: str,
+) -> None:
     names, signals = signal_gen(diag_name)
 
     if not os.path.isdir(path):
@@ -2469,7 +2467,7 @@ def fetch_single_data(path, shots, diag_name):
     for n, shot in tqdm(enumerate(shots)):
         if shot >= start_shot:
             if 1 == 1:
-                start = time.time()
+                time.time()
                 pipeline = Pipeline([shot])
 
                 for i, name in enumerate(names):
@@ -2494,35 +2492,23 @@ def fetch_single_data(path, shots, diag_name):
 
                         if diag_name in diag_3d:
                             # print(data_tmp.keys())
-                            data_h5[name]["xdata"] = data_tmp["times"][
-                                :cut_index
-                            ]
+                            data_h5[name]["xdata"] = data_tmp["times"][:cut_index]
                             data_h5[name]["ydata"] = data_tmp["rhon"][:]
-                            data_h5[name]["zdata"] = data_tmp["data"][
-                                :cut_index
-                            ]
+                            data_h5[name]["zdata"] = data_tmp["data"][:cut_index]
 
-                            data_h5[name]["xunits"] = data_tmp["units"][
-                                "times"
-                            ]
+                            data_h5[name]["xunits"] = data_tmp["units"]["times"]
                             data_h5[name]["yunits"] = "rhon"
                             data_h5[name]["zunits"] = data_tmp["units"]["data"]
                         else:
                             # print(data_tmp.keys())
-                            data_h5[name]["xdata"] = data_tmp["times"][
-                                :cut_index
-                            ]
+                            data_h5[name]["xdata"] = data_tmp["times"][:cut_index]
                             data_h5[name]["ydata"] = []
-                            data_h5[name]["zdata"] = data_tmp["data"][
-                                :cut_index
-                            ]
+                            data_h5[name]["zdata"] = data_tmp["data"][:cut_index]
 
-                            data_h5[name]["xunits"] = data_tmp["units"][
-                                "times"
-                            ]
+                            data_h5[name]["xunits"] = data_tmp["units"]["times"]
                             data_h5[name]["yunits"] = ""
                             data_h5[name]["zunits"] = data_tmp["units"]["data"]
-                    except:
+                    except (KeyError, IndexError, ValueError):
                         data_h5[name]["xdata"] = []
                         data_h5[name]["ydata"] = []
                         data_h5[name]["zdata"] = []
@@ -2541,7 +2527,7 @@ def fetch_single_data(path, shots, diag_name):
                             if isinstance(value, np.ndarray) and np.issubdtype(
                                 value.dtype, np.str_
                             ):
-                                # Create a special dtype for storing string data
+                                # Special dtype for string data
                                 str_dtype = h5py.string_dtype(encoding="utf-8")
                                 group.create_dataset(
                                     subkey,
@@ -2559,14 +2545,18 @@ def fetch_single_data(path, shots, diag_name):
                 print(n, flush=True)
 
 
-def fetch_co2_chunked_data(path, shots, diag_name):
+def fetch_co2_chunked_data(
+    path: str,
+    shots: list[int],
+    diag_name: str,
+) -> None:
     chords = ["r0", "v1", "v2", "v3"]
     nums = range(1, 15)
     names, signals = signal_gen(diag_name)
     for n, shot in tqdm(enumerate(shots)):
         if shot >= start_shot:
             try:
-                start = time.time()
+                time.time()
                 pipeline = Pipeline([shot])
 
                 for i, name in enumerate(names):
@@ -2578,7 +2568,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                 for chord in chords:
                     data_h5[chord] = {}
                 for num in nums:
-                    for i_chord, chord in enumerate(chords):
+                    for _i_chord, chord in enumerate(chords):
                         # print(f'num={num}')
                         # print(f'chord={chord}')
 
@@ -2587,7 +2577,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                         try:
                             len(data_tmp["data"])
                             # print(len(data_tmp['data']))
-                        except:
+                        except (KeyError, TypeError, AttributeError):
                             break
 
                         if num == 1:
@@ -2595,13 +2585,9 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                             data_h5[chord]["ydata"] = []
                             data_h5[chord]["zdata"] = data_tmp["data"]
 
-                            data_h5[chord]["xunits"] = data_tmp["units"][
-                                "times"
-                            ]
+                            data_h5[chord]["xunits"] = data_tmp["units"]["times"]
                             data_h5[chord]["yunits"] = ""
-                            data_h5[chord]["zunits"] = data_tmp["units"][
-                                "data"
-                            ]
+                            data_h5[chord]["zunits"] = data_tmp["units"]["data"]
                         else:
                             data_h5[chord]["xdata"] = np.concatenate(
                                 [data_h5[chord]["xdata"], data_tmp["times"]]
@@ -2620,7 +2606,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                             if isinstance(value, np.ndarray) and np.issubdtype(
                                 value.dtype, np.str_
                             ):
-                                # Create a special dtype for storing string data
+                                # Special dtype for string data
                                 str_dtype = h5py.string_dtype(encoding="utf-8")
                                 group.create_dataset(
                                     subkey,
@@ -2629,7 +2615,7 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                                 )
                             else:
                                 group.create_dataset(subkey, data=value)
-            except:
+            except Exception:
                 pass
 
             if n % interval == 0:
@@ -2638,14 +2624,18 @@ def fetch_co2_chunked_data(path, shots, diag_name):
                 print(n, flush=True)
 
 
-def fetch_co2_chunked_data_2d(path, shots, diag_name):
+def fetch_co2_chunked_data_2d(
+    path: str,
+    shots: list[int],
+    diag_name: str,
+) -> None:
     chords = ["r0", "v1", "v2", "v3"]
     nums = range(1, 15)
     names, signals = signal_gen(diag_name)
     for n, shot in enumerate(shots):
         if shot >= start_shot:
             try:
-                start = time.time()
+                time.time()
                 pipeline = Pipeline([shot])
 
                 for i, name in enumerate(names):
@@ -2657,7 +2647,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                 for chord in chords:
                     data_h5[chord] = {}
                 for num in nums:
-                    for i_chord, chord in enumerate(chords):
+                    for _i_chord, chord in enumerate(chords):
                         # print(f'num={num}')
                         # print(f'chord={chord}')
 
@@ -2666,7 +2656,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                         try:
                             len(data_tmp["data"])
                             # print(len(data_tmp['data']))
-                        except:
+                        except (KeyError, TypeError, AttributeError):
                             break
 
                         if num == 1:
@@ -2674,13 +2664,9 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                             data_h5[chord]["ydata"] = []
                             data_h5[chord]["zdata"] = data_tmp["data"]
 
-                            data_h5[chord]["xunits"] = data_tmp["units"][
-                                "times"
-                            ]
+                            data_h5[chord]["xunits"] = data_tmp["units"]["times"]
                             data_h5[chord]["yunits"] = ""
-                            data_h5[chord]["zunits"] = data_tmp["units"][
-                                "data"
-                            ]
+                            data_h5[chord]["zunits"] = data_tmp["units"]["data"]
                         else:
                             data_h5[chord]["xdata"] = np.concatenate(
                                 [data_h5[chord]["xdata"], data_tmp["times"]]
@@ -2706,7 +2692,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                             if isinstance(value, np.ndarray) and np.issubdtype(
                                 value.dtype, np.str_
                             ):
-                                # Create a special dtype for storing string data
+                                # Special dtype for string data
                                 str_dtype = h5py.string_dtype(encoding="utf-8")
                                 group.create_dataset(
                                     subkey,
@@ -2715,7 +2701,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                                 )
                             else:
                                 group.create_dataset(subkey, data=value)
-            except:
+            except Exception:
                 pass
 
             if n % interval == 0:
@@ -2724,7 +2710,7 @@ def fetch_co2_chunked_data_2d(path, shots, diag_name):
                 print(n, flush=True)
 
 
-def fetch_data(path, shots, diag_name):
+def fetch_data(path: str, shots: list[int], diag_name: str) -> None:
     if diag_name in ["co2_den", "co2_pl"]:
         fetch_co2_chunked_data(path, shots, diag_name)
     elif diag_name in ["ece_s", "ece_cali"]:

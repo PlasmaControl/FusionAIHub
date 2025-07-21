@@ -15,6 +15,8 @@ FAITH serves as a centralized platform for fusion-related machine learning workf
 
 `TODO: We will include this as a pip package in the future`
 
+NOTE: If you want to reload the package (after changes are made), use `pip install --reinstall </path/to/FusionAIHub>`
+
 ## Setup [for developers]
 
 Go to your scratch directory while you are on the HEAD node (so you need internet access, which computing nodes do not have).

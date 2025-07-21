@@ -1,0 +1,35 @@
+activation: relu
+bias: true
+block_configs:
+- out_channels: 128
+  pool_size: !!python/tuple
+  - 1
+  - 2
+- out_channels: 256
+  pool_size: !!python/tuple
+  - 1
+  - 2
+- out_channels: 256
+  pool_size: !!python/tuple
+  - 1
+  - 2
+- out_channels: 128
+  pool_size: !!python/tuple
+  - 1
+  - 2
+- out_channels: 64
+  pool_size: !!python/tuple
+  - 1
+  - 2
+bottleneck_channels: null
+hidden_dim: 16
+init_method: kaiming
+input_channels: 80
+kernel_size: 3
+mae_config: null
+metadata:
+  description: Default balanced configuration
+  use_case: General purpose autoencoder
+model_type: autoencoder
+upsampling_mode: nearest
+use_batch_norm: true

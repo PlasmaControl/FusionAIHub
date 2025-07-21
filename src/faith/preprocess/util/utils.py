@@ -25,6 +25,10 @@ def index_dataset(
 
     Args:
         out_dir: Directory to index
+
+    Example:
+    >>> from faith.preprocess.util.utils import index_dataset
+    >>> index_dataset('scratch/gpfs/EKOLEMEN/hackathon/foundation25/magnetics')
     """
     out_dir = Path(out_dir)
     files = list(out_dir.glob("*.joblib"))

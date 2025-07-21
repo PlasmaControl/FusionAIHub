@@ -9,7 +9,7 @@ from .preprocess import preprocess
     config_name="default",
     version_base=None,
 )
-def main(cfg: DictConfig):
+def main(cfg: DictConfig) -> None:
     # Pass hydra config to preprocess
     preprocess(cfg)
 

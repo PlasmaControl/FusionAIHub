@@ -2,7 +2,12 @@
 
 from .base import BlockUtils
 from .decoder import BlockBasedDecoder, DecoderBlock
-from .encoder import EncoderBlock1d, ResidualEncoding1d, ResidualEncoding2d
+from .encoder import (
+    BlockBasedEncoder,
+    EncoderBlock1d,
+    ResidualEncoding1d,
+    ResidualEncoding2d,
+)
 
 __all__ = [
     "ResidualEncoding1d",

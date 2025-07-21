@@ -9,7 +9,7 @@ Preemphasis
     deemphasis
 """
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -25,7 +25,7 @@ def preemphasis(
     coef: float = 0.97,
     zi: Optional[ArrayLike] = None,
     return_zf: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """
     Pre-emphasis a signal with a first-order differencing filter:
 
@@ -83,7 +83,7 @@ def deemphasis(
     coef: float = 0.97,
     zi: Optional[ArrayLike] = None,
     return_zf: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """
     De-emphasize an audio signal with the inverse operation of preemphasis.
 
