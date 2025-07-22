@@ -6,10 +6,10 @@ import torch
 from torch.utils.data import DataLoader
 
 # Assuming your package structure
-from faith.train.data.datasets.file_based import JoblibDataset
-from faith.train.data.loaders.factory import worker_init_fn
-from faith.train.models.autoencoder import BlockBasedAutoencoder
-from faith.train.training import train_model
+from src.faith.train.data.datasets.file_based import JoblibDataset
+from src.faith.train.data.loaders.factory import worker_init_fn
+from src.faith.train.models.autoencoder import BlockBasedAutoencoder
+from src.faith.train.training import train_model
 
 
 def collate_fn(
