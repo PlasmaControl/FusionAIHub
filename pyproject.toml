@@ -45,7 +45,6 @@ dev = [
     "pytest >=8.1.1,<9",
     "pre-commit",
     "ruff",
-    "black[jupyter]",
 ]
 
 [tool.uv]
@@ -74,9 +73,6 @@ select = [
 ignore = [
     "ANN401", # (typing.Any) are disallowed in `**kwargs`
 ]
-
-[tool.black]
-line-length = 78
 
 [tool.numpydoc_validation]
 checks = [
