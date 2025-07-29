@@ -42,6 +42,7 @@ def pipeline(
     shot_number: int,
     cfg: dict,
     out_dir: Path,
+    override: bool = False,
 ) -> None:
     """
     Process a single shot through the complete data preparation pipeline
@@ -63,7 +64,7 @@ def pipeline(
     temp_dir = (
         out_dir / f"{shot_number}_0.joblib"
     )  # Only works for single shot processing
-    if temp_dir.exists():
+    if temp_dir.exists() and not override:
         logger.warning(f"Shot {shot_number} already processed. Skipping.")
         return
     # Extract running time
@@ -245,3 +246,41 @@ def pipeline(
         raise e
 
     return
+
+
+if __name__ == "__main__":
+    # python -m src.faith.preprocess.pipelines.processing_v0 --shot_number 123456 --out_dir /path/to/output
+    import argparse
+
+    from yaml import safe_load
+
+    parser = argparse.ArgumentParser(description="Process a single shot.")
+    parser.add_argument(
+        "--shot_number",
+        type=int,
+        required=True,
+        help="Shot number to process",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="/scratch/gpfs/nc1514/FusionAIHub/src/faith/preprocess/config/spectrogram.yaml",
+        help="Path to the configuration file",
+    )
+    args = parser.parse_args()
+
+    # Load configuration
+    with open(args.config) as f:
+        cfg = safe_load(f)
+
+    print(cfg)
+
+    output_dir = Path(cfg["output_dir"])
+
+    # # Run pipeline
+    pipeline(
+        shot_number=args.shot_number,
+        cfg=cfg,
+        out_dir=output_dir,
+        override=True,
+    )
