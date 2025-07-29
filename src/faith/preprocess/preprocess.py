@@ -42,12 +42,16 @@ def prepare_dataset(cfg: dict) -> None:
         signal_name = signal[0]
         signal_abbr = signal[1]["abbr"]
         should_transform = signal[1].get("make_stft", False)
-        logger.info(f"  - {signal_name} ({signal_abbr}): transform={should_transform}")
+        logger.info(
+            f"  - {signal_name} ({signal_abbr}): transform={should_transform}"
+        )
     logger.info("=" * 40)
 
     # Collect and sort all shot numbers
     logger.info(f"Collecting shots from {raw_data_dir}...")
-    all_shots = [int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"]
+    all_shots = [
+        int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"
+    ]
     all_shots.sort()
 
     # Apply shot selection and randomization if configured
@@ -63,12 +67,12 @@ def prepare_dataset(cfg: dict) -> None:
     logger.info(f"Processing {len(all_shots)} shots into cache...")
 
     # Clean up existing cache directory if it exists
-    if output_dir.exists():
-        import shutil
+    # if output_dir.exists():
+    #     import shutil
 
-        logger.info(f"Removing existing cache directory: {output_dir}")
-        shutil.rmtree(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+    #     logger.info(f"Removing existing cache directory: {output_dir}")
+    #     shutil.rmtree(output_dir)
+    #     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Process shots using the appropriate function
     if cfg.get("debug", False):

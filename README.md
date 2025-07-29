@@ -6,6 +6,8 @@ A general fusion hub for the Princeton cluster designed to standardize fusion ma
 
 FAITH serves as a centralized platform for fusion-related machine learning workflows, providing standardized tools, processes, and background optimization for plasma control research at Princeton. This way, you can worry less about dataset/gpu optimiation and standardization. This platform primarily serves as a fast machine-learning trainer, but can also be used for general data analysis for fusion data stored at Princeton.
 
+![faith automatically maximizes your gpu efficiency with minimal tuning on your end](assets/gpu-usage.png)
+
 ## General Usage
 
 1. Clone this repository onto anywhere on Stellar
