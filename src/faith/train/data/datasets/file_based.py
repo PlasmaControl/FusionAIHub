@@ -89,7 +89,12 @@ class JoblibDataset(MultiFileDataset):
 
         # Skip auto-detection if keys are already provided as lists
         if self.is_multi_input or self.is_multi_target:
-            print("Skipping auto-detection since list of keys provided")
+        logging.info(f"Auto-detecting keys from {file_path}")
+        logging.info(f"Available keys: {available_keys}")
+
+        # Skip auto-detection if keys are already provided as lists
+        if self.is_multi_input or self.is_multi_target:
+            logging.info("Skipping auto-detection since list of keys provided")
             return
 
         # Try to find input key
