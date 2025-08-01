@@ -615,7 +615,11 @@ def mae_loss(
         if num_masked_pixels > 0:
             return masked_loss.sum() / num_masked_pixels
         else:
-            return torch.tensor(0.0, device=reconstructed.device)
+        if num_masked_pixels < 1:
+            raise ValueError(
+                "No masked pixels found in mae_loss. This likely indicates a problem with mask generation or input data."
+            )
+        return masked_loss.sum() / num_masked_pixels
     else:
         raise ValueError(
             f"Unknown reduction: {reduction}. "
