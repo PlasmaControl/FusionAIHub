@@ -1,0 +1,97 @@
+[project]
+name = "faith"
+version = "0.0.1-alpha"
+authors = [
+    { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
+    { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
+    { name = "Kouroche Bouchiat", email = "bouchiat@princeton.edu" },
+    { name = "Azarakhsh Jalalvand", email = "azarakhsh.jalalvand@princeton.edu" },
+]
+description = "Fusion Artificial InTelligence Hub - Fetch nuclear fusion data, preprocess it, train machine learning models."
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+license = { file = "LICENSE" }
+dependencies = [
+    "h5py",
+    "scikit-learn",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "scipy",
+    "tqdm",
+    "paramiko",
+    "ipykernel",
+    "ipywidgets",
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torchmetrics",
+    "lightning",
+    "ray[data,train,tune,serve]",
+    "tables",
+    "jupyter",
+    "typing",
+    "hydra-core",
+]
+
+[dependency-groups]
+dev = [
+    "pytest >=8.1.1,<9",
+    "pre-commit",
+    "ruff",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 79
+exclude = ["tests", "docs", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "Q",   # flake8-quotes
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations
+]
+ignore = [
+    "ANN401", # (typing.Any) are disallowed in `**kwargs`
+]
+
+[tool.numpydoc_validation]
+checks = [
+    "all",  # report on all checks
+    "ES01", # but don't require an extended summary
+    "EX01", # or examples
+    "SA01", # or a see also section
+    "SS06", # and don't require the summary to fit on one line
+]
+exclude = [ # don't report on checks for these
+    '\\.__init__$',
+    '\\.__repr__$',
+    '\\.__str__$',
+]
+override_SS05 = [ # allow docstrings to start with these words
+    '^Process ',
+    '^Assess ',
+    '^Access ',
+]
+
+[project.urls]
+Homepage = "https://github.com"
+Documentation = "https://readthedocs.org"
+Repository = "https://github.com/PlasmaControl/FusionAIHub"
+Issues = "https://github.com/PlasmaControl/FusionAIHub/issues"
+Changelog = "https://github.com"
