@@ -134,7 +134,8 @@ class BlockBasedAutoencoder(nn.Module):
         # Create encoder
         self.encoder = BlockBasedEncoder(
             # TODO: rename in_channels to input_channels
-            in_channels=input_channels,
+            # Renamed in_channels to input_channels for API consistency
+            input_channels=input_channels,
             block_configs=block_configs,
             bottleneck_channels=bottleneck_channels,
             kernel_size=kernel_size,
