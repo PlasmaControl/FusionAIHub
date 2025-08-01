@@ -59,7 +59,8 @@ custom_autoencoder = BlockBasedAutoencoder(
 )
 
 x_custom = torch.randn(1, 80, 100, 128)
-reconstructed_custom, latent_custom = custom_autoencoder(x_custom)
+reconstructed_custom = custom_autoencoder(x_custom)
+latent_custom = custom_autoencoder.encode(x_custom)
 
 print("\nCustom autoencoder:")
 print(f"Input shape: {x_custom.shape}")
