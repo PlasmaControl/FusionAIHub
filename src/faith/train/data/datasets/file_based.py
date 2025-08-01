@@ -1264,7 +1264,10 @@ def get_file_paths(dataset_name: str) -> list[str]:
     """Get the file paths for an indexed joblib dataset."""
     import pandas as pd
 
-    base_path = Path("/scratch/gpfs/EKOLEMEN/hackathon/foundation25/")
+    import os
+
+    base_path_str = os.environ.get("FOUNDATION25_BASE_PATH", "/scratch/gpfs/EKOLEMEN/hackathon/foundation25/")
+    base_path = Path(base_path_str)
     file_path = base_path / dataset_name / "index.csv"
 
     if not file_path.exists():
