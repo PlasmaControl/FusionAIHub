@@ -609,7 +609,13 @@ class RayTuneReportCallback(pl.Callback):
         # Report to Ray Tune using positional argument
         if metrics_to_report:
             # Use the correct Ray Train reporting format
-            train.report(metrics_to_report)
+            try:
+                train.report(metrics_to_report)
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to report metrics to Ray Tune: {metrics_to_report}. Exception: {e}",
+                    stacklevel=2,
+                )
 
 
 def suggest_scheduler_config(
