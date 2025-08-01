@@ -199,7 +199,7 @@ class RayTuner:
                     stacklevel=2,
                 )
         elif self.scheduler_type == "fifo":
-            return None  # FIFO is default
+            return SchedulerType.FIFO  # Explicitly represent FIFO
         else:
             raise ValueError(f"Unknown scheduler type: {self.scheduler_type}")
 
