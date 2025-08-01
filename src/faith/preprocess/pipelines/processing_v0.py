@@ -60,7 +60,12 @@ def pipeline(
         cfg: Configuration dictionary
         out_dir: Output directory for processed files
     """
-
+    temp_dir = (
+        out_dir / f"{shot_number}_0.joblib"
+    )  # Only works for single shot processing
+    if temp_dir.exists():
+        logger.warning(f"Shot {shot_number} already processed. Skipping.")
+        return
     # Extract running time
     # TODO: Change to call this running_time from ip_threshold
     try:
@@ -73,7 +78,9 @@ def pipeline(
             start_time=cfg["start_time"],
             end_time=cfg["end_time"],
         )
-        logger.info(f"Running time for shot {shot_number}: {start_time} to {end_time}")
+        logger.info(
+            f"Running time for shot {shot_number}: {start_time} to {end_time}"
+        )
     except Exception as e:
         logger.error(
             f"Error: Could not determine running time for shot {shot_number}: {e}"
@@ -108,7 +115,9 @@ def pipeline(
                 for channel in range(int(signal[1]["expected_channels"])):
                     missing_signals.append((signal[1]["abbr"], channel))
     except Exception as e:
-        logger.error(f"Error: Could not extract signals for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not extract signals for shot {shot_number}: {e}"
+        )
         raise e
 
     # Create main aligned dataframe (important since interpolated signals
@@ -148,7 +157,9 @@ def pipeline(
             fs_khz=cfg["fs_khz"],
         )
     except Exception as e:
-        logger.error(f"Error: Could not split samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not split samples for shot {shot_number}: {e}"
+        )
         raise e
 
     # Remove empty samples
@@ -180,7 +191,9 @@ def pipeline(
                     save_sample(transformed_samples, out_dir, key)
             return
     except Exception as e:
-        logger.error(f"Error: Could not save samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not save samples for shot {shot_number}: {e}"
+        )
         raise e
 
     # Get the first transformed sample to determine STFT dimensions
@@ -226,7 +239,9 @@ def pipeline(
                     )
                 save_sample(transformed_samples, out_dir, key)
     except Exception as e:
-        logger.error(f"Error: Could not transform samples for shot {shot_number}: {e}")
+        logger.error(
+            f"Error: Could not transform samples for shot {shot_number}: {e}"
+        )
         raise e
 
     return

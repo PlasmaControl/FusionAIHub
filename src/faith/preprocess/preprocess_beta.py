@@ -31,13 +31,15 @@ def list_shots(
     # Collect and sort all shot numbers
     raw_data_dir = Path(cfg["raw_data_dir"])
     logger.info(f"Collecting shots from {raw_data_dir}...")
-    all_shots = [int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"]
+    all_shots = [
+        int(p.stem) for p in raw_data_dir.iterdir() if p.suffix == ".h5"
+    ]
     all_shots.sort()
 
     # Apply shot selection and randomization if configured
     if cfg.get("randomize_shots", False):
         np.random.seed(cfg["random_seed"])
-        all_shots = np.random.permutation(all_shots)
+        all_shots = list(np.random.permutation(all_shots))
 
     # Set to -1 to use all shots, or just don't include as argument
     # However, keep argument to stay consistent with other scripts
@@ -61,7 +63,9 @@ def log_config(
         signal_name = signal[0]
         signal_abbr = signal[1]["abbr"]
         should_transform = signal[1].get("make_stft", False)
-        logger.info(f"  - {signal_name} ({signal_abbr}): transform={should_transform}")
+        logger.info(
+            f"  - {signal_name} ({signal_abbr}): transform={should_transform}"
+        )
     logger.info("=" * 40)
 
 

@@ -41,16 +41,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest >=8.1.1,<9", "pre-commit", "ruff", "black[jupyter]"]
-
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
-torchvision = [{ index = "pytorch-cpu" }]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
+dev = [
+    "pytest >=8.1.1,<9",
+    "pre-commit",
+    "ruff",
+]
 
 [tool.uv]
 package = true
@@ -74,9 +69,6 @@ select = [
 ignore = [
     "ANN401", # (typing.Any) are disallowed in `**kwargs`
 ]
-
-[tool.black]
-line-length = 78
 
 [tool.numpydoc_validation]
 checks = [
