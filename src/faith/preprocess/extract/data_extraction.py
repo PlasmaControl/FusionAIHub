@@ -129,17 +129,23 @@ def align_signal(
     )
 
     df_state = pd.DataFrame(True, index=df.index, columns=df.columns)
-    start_pad_state = pd.DataFrame(False, index=start_pad.index, columns=df.columns)
-    end_pad_state = pd.DataFrame(False, index=end_pad.index, columns=df.columns)
+    start_pad_state = pd.DataFrame(
+        False, index=start_pad.index, columns=df.columns
+    )
+    end_pad_state = pd.DataFrame(
+        False, index=end_pad.index, columns=df.columns
+    )
 
     df = pd.concat([start_pad, df, end_pad], ignore_index=True)
-    df_state = pd.concat([start_pad_state, df_state, end_pad_state], ignore_index=True)
+    df_state = pd.concat(
+        [start_pad_state, df_state, end_pad_state], ignore_index=True
+    )
     df_state.columns = [f"{col}_state" for col in df.columns]
 
     # combine data with state
     # TODO: change this to a variable
     df = df.astype(np.float32)
-    df_state = df_state.astype(np.bool)
+    df_state = df_state.astype(bool)
     df = pd.concat([df, df_state], axis=1)
 
     # convert time to ms

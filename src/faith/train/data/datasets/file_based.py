@@ -1260,11 +1260,17 @@ def worker_init_fn(worker_id: int) -> None:
 
 
 # Helper function for getting the file paths for an indexed joblib dataset
-def get_file_paths(dataset_name: str) -> list[str]:
+def get_file_paths(
+    dataset_name: str,
+    base_path: str | Path = "",
+) -> list[str]:
     """Get the file paths for an indexed joblib dataset."""
     import pandas as pd
 
-    base_path = Path("/scratch/gpfs/EKOLEMEN/hackathon/foundation25/")
+    if base_path == "":
+        base_path = Path("/scratch/gpfs/EKOLEMEN/hackathon/foundation25/")
+    elif isinstance(base_path, str):
+        base_path = Path(base_path)
     file_path = base_path / dataset_name / "index.csv"
 
     if not file_path.exists():
@@ -1275,4 +1281,4 @@ def get_file_paths(dataset_name: str) -> list[str]:
         )
 
     df = pd.read_csv(file_path)
-    return df.values[:, 0]
+    return df.values[:, 0].sort()

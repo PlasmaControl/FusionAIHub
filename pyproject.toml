@@ -38,6 +38,7 @@ dependencies = [
     "jupyter",
     "typing",
     "hydra-core",
+    "scikit-image",
 ]
 
 [dependency-groups]

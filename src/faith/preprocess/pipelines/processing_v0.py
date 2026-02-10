@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 def pipeline(
     shot_number: int,
     cfg: dict,
-    out_dir: Path,
+    out_dir: str | Path,
     override: bool = False,
 ) -> None:
     """
@@ -61,6 +61,8 @@ def pipeline(
         cfg: Configuration dictionary
         out_dir: Output directory for processed files
     """
+    if isinstance(out_dir, str):
+        out_dir = Path(out_dir)
     temp_dir = (
         out_dir / f"{shot_number}_0.joblib"
     )  # Only works for single shot processing

@@ -1,3 +1,6 @@
+from .data import get_file_paths
+from .data.datasets.file_based import JoblibDataset as Dataset
+
 # Package metadata
 __version__ = "0.1.0"
 __author__ = "Peter Steiner"
