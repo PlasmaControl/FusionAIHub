@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fusionaihub"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ipykernel",
+    "ipywidgets",
+
+    "h5py",
+
+    "matplotlib",
+
+    "numpy",
+    "torch",
+    "transformers",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tokamak_foundation_model"]

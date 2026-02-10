@@ -27,7 +27,7 @@ def worker_init_fn(worker_id):
 
 print("Initializing and demonstrating custom DataLoader with updated TokamakH5Dataset")
 # Use glob to find all generated HDF5 files
-hdf5_files = sorted(Path(".").glob("??????_processed.h5"))
+hdf5_files = sorted(Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data").glob("*_processed.h5"))
 
 # Create TokamakH5Dataset instances for each HDF5 file
 # datasets = [TokamakH5Dataset(hdf5_path=str(f)) for f in hdf5_files]
