@@ -1,26 +1,40 @@
+[project]
+name = "faith"
+requires-python = ">= 3.11"
+authors = [
+  { name = "Azarakhsh Jalalvand", email = "azarakhsh.jalalvand@princeton.edu" },
+  { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
+  { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
+  { name = "Kouroche Bouchiat", email = "bouchiat@princeton.edu" },
+]
+dependencies = []
+dynamic = ["version"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[project]
-name = "fusionaihub"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "ipykernel",
-    "ipywidgets",
-    "h5py",
-    "matplotlib",
-    "numpy",
-    "torch",
-    "torchinfo",
-    "transformers",
-    "einops>=0.8.2",
-    "pandas>=3.0.0",
-    "tables>=3.10.2",
-]
+[tool.hatch.version]
+path = "src/faith/__init__.py"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/tokamak_foundation_model"]
+[tool.pixi.workspace]
+channels = ["conda-forge", "ga-fdp"]
+platforms = ["linux-64", "win-64", "osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+faith = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+python = ">=3.11,<3.12"
+
+[tool.pixi.feature.fdp]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.fdp.dependencies]
+toksearch = { channel = "ga-fdp" }
+toksearch_d3d = { channel = "ga-fdp" }
+
+[tool.pixi.environments]
+fdp = ["fdp"]
