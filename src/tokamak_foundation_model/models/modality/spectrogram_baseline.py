@@ -4,13 +4,21 @@ from .base import ModalityEncoder, ModalityDecoder
 
 
 class SpectrogramEncoder(ModalityEncoder):
-    def __init__(self, in_channels, out_features=64):
+    def __init__(self, in_channels, out_features=64, kernel_size=3):
         super().__init__(in_channels, out_features)
         self.net = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(), nn.Linear(128, out_features), nn.ReLU(),
+            nn.Conv2d(in_channels, 32, kernel_size, padding=kernel_size // 2),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size, padding=kernel_size // 2),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size, padding=kernel_size // 2),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(128, out_features),
+            nn.ReLU(),
         )
 
     def forward(self, x):
