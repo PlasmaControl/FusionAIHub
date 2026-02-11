@@ -4,10 +4,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
+from torchinfo import summary
 
 from tokamak_foundation_model.data.data_loader import (
     TokamakH5Dataset, collate_fn, collate_fn_prediction, compute_preprocessing_stats)
-from tokamak_foundation_model.models.dummy_model import MultiModalTokamakModel, MultiModalPredictionModel
+from tokamak_foundation_model.models.dummy_model_2 import MultiModalTokamakModel, MultiModalPredictionModel
 from tokamak_foundation_model.trainer.trainer import Trainer
 
 
@@ -72,44 +73,45 @@ batch = next(iter(dataloader)) # Get the first batch to verify functionality
 # --- 3. Initialize and Demonstrate Dummy PyTorch Model with text input ---
 print("\n--- 3. Initializing and demonstrating Dummy PyTorch Model with text input ---")
 model = MultiModalPredictionModel()
-print("MultiModalPredictionModel structure:")
-print(model)
+summary(model, depth=2)
 
 model.eval()
 with torch.no_grad():
     # The batch now includes 'text' data
     output = model(batch)
-print(f"Model output type: {type(output)}, shape: {output.shape}")
+print(f"Model output type: {type(output)}")
+for k, v in output.items():
+    print(f"  {k}: {v.shape}")
 
 # # --- 4. Initialize and Demonstrate Extensible PyTorch Trainer ---
-# print("\n--- 4. Initializing and demonstrating Extensible PyTorch Trainer ---")
-# optimizer = optim.Adam(model.parameters(), lr=0.001)
-# loss_fn = nn.MSELoss()  # Dummy loss for regression
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# model.to(device)
-# print(f"Using device: {device}")
+print("\n--- 4. Initializing and demonstrating Extensible PyTorch Trainer ---")
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+loss_fn = nn.MSELoss()  # Dummy loss for regression
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+print(f"Using device: {device}")
 
-# trainer = Trainer(
-#     model=model,
-#     optimizer=optimizer,
-#     loss_fn=loss_fn,
-#     device=device,
-#     epochs=10, # Only 1 epoch for demonstration
-#     batch_size=2,
-#     checkpoint_path="dummy_trainer_checkpoint.pth"
-# )
-# print("Trainer class initialized.")
+trainer = Trainer(
+    model=model,
+    optimizer=optimizer,
+    loss_fn=loss_fn,
+    device=device,
+    epochs=10, # Only 1 epoch for demonstration
+    batch_size=2,
+    checkpoint_path="dummy_trainer_checkpoint.pth"
+)
+print("Trainer class initialized.")
 
-# print("Running dummy training epoch...")
-# # Ensure the model is in training mode before calling _train_epoch
-# model.train()
-# train_metrics = trainer.train(dataloader) # Corrected method call
-# print(f"  Finished dummy training epoch. Metrics: {train_metrics}")
+print("Running dummy training epoch...")
+# Ensure the model is in training mode before calling _train_epoch
+model.train()
+train_metrics = trainer.train(dataloader) # Corrected method call
+print(f"  Finished dummy training epoch. Metrics: {train_metrics}")
 
-# print("Running dummy validation epoch...")
-# # Ensure the model is in evaluation mode before calling _validate_epoch
-# model.eval()
-# val_metrics = trainer._validate_epoch(dataloader) # Corrected method call
-# print(f"  Finished dummy validation epoch. Metrics: {val_metrics}")
+print("Running dummy validation epoch...")
+# Ensure the model is in evaluation mode before calling _validate_epoch
+model.eval()
+val_metrics = trainer._validate_epoch(dataloader) # Corrected method call
+print(f"  Finished dummy validation epoch. Metrics: {val_metrics}")
 
-# print("\nDemonstration complete!")
+print("\nDemonstration complete!")

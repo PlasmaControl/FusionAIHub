@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Optional
 import torch.nn.functional as F
 
+from einops import rearrange
+
 
 def compute_preprocessing_stats(
     datasets, output_path="preprocessing_stats.pt", num_samples=1000
@@ -591,8 +593,9 @@ class TokamakH5Dataset(Dataset):
         mask = (xdata >= t_start) & (xdata < t_end)
         duration_s = t_end - t_start
 
+        raw_height, raw_width = ydata_ds.shape[1], ydata_ds.shape[2]
         ydata = np.zeros(
-            (round(duration_s * fps_raw), config.height, config.width), dtype=np.float32
+            (round(duration_s * fps_raw), raw_height, raw_width), dtype=np.float32
         )
 
         if np.any(mask):
@@ -600,6 +603,7 @@ class TokamakH5Dataset(Dataset):
             data[np.isnan(data)] = 0.0
             idx_1 = round((xdata[mask][0] - t_start) * fps_raw)
             idx_2 = idx_1 + data.shape[0]
+
             ydata[idx_1:idx_2] = data
 
         tensor = torch.from_numpy(ydata).float()

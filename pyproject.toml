@@ -11,14 +11,15 @@ requires-python = ">=3.12"
 dependencies = [
     "ipykernel",
     "ipywidgets",
-
     "h5py",
-
     "matplotlib",
-
     "numpy",
     "torch",
+    "torchinfo",
     "transformers",
+    "einops>=0.8.2",
+    "pandas>=3.0.0",
+    "tables>=3.10.2",
 ]
 
 [tool.hatch.build.targets.wheel]
