@@ -3,9 +3,9 @@ name = "faith"
 requires-python = ">= 3.11"
 authors = [
   { name = "Azarakhsh Jalalvand", email = "azarakhsh.jalalvand@princeton.edu" },
-  { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
-  { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
   { name = "Kouroche Bouchiat", email = "bouchiat@princeton.edu" },
+  { name = "Nathaniel Chen", email = "nathaniel@princeton.edu" },
+  { name = "Peter Steiner", email = "peter.steiner@princeton.edu" },
 ]
 dependencies = [
   "einops>=0.8.2,<0.9",
