@@ -46,8 +46,10 @@ class Trainer:
         total_loss = 0
         with torch.no_grad():
             for batch_idx, batch in enumerate(dataloader):
-                inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items() if k != 'target'}
-                targets = batch['target'].to(self.device).float().unsqueeze(1)
+                inputs = batch['inputs']
+                targets = batch['targets']
+                inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+                targets = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in targets.items()}
 
                 outputs = self.model(inputs)
                 loss = self.loss_fn(outputs, targets)

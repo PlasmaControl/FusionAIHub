@@ -4,6 +4,7 @@ from .fast_time_series_baseline import FastTimeSeriesEncoder, FastTimeSeriesDeco
 from .spectrogram_baseline import SpectrogramEncoder, SpectrogramDecoder
 from .video_baseline import VideoEncoder, VideoDecoder
 from .text_baseline import TextEncoder, TextDecoder
+from .modality_fusion import CrossAttentionBaselineModel, ConcatenationBaselineModel
 
 PROCESSOR_REGISTRY = {
     "spectrogram": SpectrogramEncoder,
@@ -11,6 +12,8 @@ PROCESSOR_REGISTRY = {
     "fast_timeseries": FastTimeSeriesEncoder,
     "video": VideoEncoder,
     "text": TextEncoder,
+    "cross_attention": CrossAttentionBaselineModel,
+    "concatenation": ConcatenationBaselineModel,
 }
 
 DECODER_REGISTRY = {
@@ -30,4 +33,5 @@ __all__ = [
     "TextEncoder", "TextDecoder",
     "PROCESSOR_REGISTRY",
     "DECODER_REGISTRY",
+    "CrossAttentionBaselineModel", "ConcatenationBaselineModel",
 ]

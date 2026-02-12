@@ -4,7 +4,8 @@ import torch.nn as nn
 class CrossAttentionBaselineModel(nn.Module):
     def __init__(self, feature_dim: int, num_modalities: int):
         super().__init__()
-        self.output_dim = feature_dim
+        self.feature_dim = feature_dim
+        self.num_modalities = num_modalities
         self.attn = nn.MultiheadAttention(embed_dim=feature_dim, num_heads=num_modalities, batch_first=True)
 
     def forward(self, features):
@@ -14,9 +15,11 @@ class CrossAttentionBaselineModel(nn.Module):
 
 
 class ConcatenationBaselineModel(nn.Module):
-    def __init__(self, modality_configs: list[ModalityConfig]):
+    def __init__(self, feature_dim: int, num_modalities: int):
         super().__init__()
-        self.output_dim = sum(cfg.out_features for cfg in modality_configs)
+        self.feature_dim = feature_dim
+        self.num_modalities = num_modalities
+        self.fc = nn.Linear(feature_dim * num_modalities, feature_dim)
 
     def forward(self, features: list[torch.Tensor]) -> torch.Tensor:
-        return torch.cat(features, dim=1)
+        return self.fc(torch.cat(features, dim=1))

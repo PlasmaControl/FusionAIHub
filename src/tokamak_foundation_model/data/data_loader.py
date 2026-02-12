@@ -398,9 +398,14 @@ class TokamakH5Dataset(Dataset):
         # Extract data with time slicing
         ydata_ds = data_group["ydata"]
         xdata = data_group["xdata"][:] / 1000.0  # Convert to seconds
-        fs_raw = len(xdata) / (xdata[-1] - xdata[0])
-        mask = (xdata >= t_start) & (xdata < t_end)
         duration_s = t_end - t_start
+        if len(xdata) < 2 or xdata[-1] == xdata[0]:
+            # Degenerate signal with zero time span — return zeros
+            n_out = round(duration_s * config.target_fs)
+            return torch.zeros(max(n_out, 1), config.num_channels)
+        xdata_range = xdata[-1] - xdata[0]
+        fs_raw = len(xdata) / xdata_range
+        mask = (xdata >= t_start) & (xdata < t_end)
         ydata = np.zeros(
             (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
         )
@@ -588,12 +593,16 @@ class TokamakH5Dataset(Dataset):
         # Extract data with time slicing
         ydata_ds = data_group["ydata"]
         xdata = data_group["xdata"][:] / 1000.0  # Convert to seconds
-        fps_raw = len(xdata) / (xdata[-1] - xdata[0])
-
-        mask = (xdata >= t_start) & (xdata < t_end)
         duration_s = t_end - t_start
 
+        if len(xdata) < 2 or xdata[-1] == xdata[0]:
+            n_frames = round(duration_s * config.target_fps)
+            return torch.zeros(max(n_frames, 1), config.height, config.width)
+
+        xdata_range = xdata[-1] - xdata[0]
         raw_height, raw_width = ydata_ds.shape[1], ydata_ds.shape[2]
+        mask = (xdata >= t_start) & (xdata < t_end)
+        fps_raw = len(xdata) / xdata_range
         ydata = np.zeros(
             (round(duration_s * fps_raw), raw_height, raw_width), dtype=np.float32
         )
@@ -604,7 +613,18 @@ class TokamakH5Dataset(Dataset):
             idx_1 = round((xdata[mask][0] - t_start) * fps_raw)
             idx_2 = idx_1 + data.shape[0]
 
-            ydata[idx_1:idx_2] = data
+            # Clamp to array bounds
+            src_start = 0
+            src_end = data.shape[0]
+
+            if idx_1 < 0:
+                src_start = -idx_1
+                idx_1 = 0
+            if idx_2 > ydata.shape[0]:
+                src_end -= idx_2 - ydata.shape[0]
+                idx_2 = ydata.shape[0]
+
+            ydata[idx_1:idx_2] = data[src_start:src_end]
 
         tensor = torch.from_numpy(ydata).float()
 

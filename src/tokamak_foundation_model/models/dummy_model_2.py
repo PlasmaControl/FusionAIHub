@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from typing import Any
-from tokamak_foundation_model.models.modality import PROCESSOR_REGISTRY
+
+from .modality import PROCESSOR_REGISTRY
+from .loss import DictMSELoss
 
 
 # ====== Configuration ======
@@ -35,159 +36,101 @@ DEFAULT_MODALITY_CONFIGS = [
     ModalityConfig("text", "text", in_channels=1, out_features=64, context="global", group=None),
 ]
 
-
-# ====== Fusion ======
-
-class CrossAttentionBaselineModel(nn.Module):
-    def __init__(self, feature_dim, num_modalities):
-        super().__init__()
-        self.output_dim = feature_dim
-        self.attn = nn.MultiheadAttention(embed_dim=feature_dim, num_heads=num_modalities, batch_first=True)
-
-    def forward(self, features):
-        stacked = torch.stack(features, dim=1)
-        attended, _ = self.attn(stacked, stacked, stacked)
-        return attended.mean(dim=1)
-
-
-class ConcatenationBaselineModel(nn.Module):
-    def __init__(self, modality_configs: list[ModalityConfig]):
-        super().__init__()
-        self.output_dim = sum(cfg.out_features for cfg in modality_configs)
-
-    def forward(self, features: list[torch.Tensor]) -> torch.Tensor:
-        return torch.cat(features, dim=1)
-
-FUSION_REGISTRY = {
-    "attention": CrossAttentionBaselineModel,
-    "concat": ConcatenationBaselineModel,
-}
-
+DEFAULT_FUSION_MODEL = "concatenation"
 
 class Fusion4FusionModel(nn.Module):
     """
-    Based on the 4M-21 (Massively Multimodal Masked Modeling) organizational framework
-    Will allow modular scalable fusion of modalities.
+    Based on the 4M-21 (Massively Multimodal Masked Modeling) organizational framework.
+    Encodes each modality with its own encoder and fuses via cross-modal attention.
     """
 
-    def __init__(self,
-        encoder_embeddings: dict[str, nn.Module],
-        decoder_embeddings: dict[str, nn.Module],
-        global_embeddings: dict[str, nn.Module], # not used for now, will be like text, etc to be used once during autoregression
-        modality_info: dict[str, Any],
-        fusion_model: dict[str, Any],
-    ):
+    def __init__(self, modality_configs=None, feature_dim=64, num_heads=4):
         super().__init__()
+        if modality_configs is None:
+            modality_configs = DEFAULT_MODALITY_CONFIGS
+        self.modality_configs = modality_configs
+        self.feature_dim = feature_dim
 
-        self.modality_info = modality_info
+        # Build one encoder per modality from the registry
+        self.encoders = nn.ModuleDict()
+        for cfg in modality_configs:
+            encoder_cls = PROCESSOR_REGISTRY[cfg.processor_type]
+            self.encoders[cfg.name] = encoder_cls(
+                in_channels=cfg.in_channels, out_features=cfg.out_features
+            )
 
-        # initialize encoder embeddings
-        self.encoder_modalities = set(encoder_embeddings.keys())
-        for embedding in encoder_embeddings.values():
-            embedding.init()
-        
-        # initialize decoder embeddings
-        self.decoder_modalities = set(decoder_embeddings.keys())
-        for embedding in decoder_embeddings.values():
-            embedding.init()
-        
-    def encode(self,
-        mod_dict: dict[str, dict[str, torch.Tensor]],
-        return_logits: bool = False,
-        ):
+        # Fusion model
+        self.fusion = PROCESSOR_REGISTRY[DEFAULT_FUSION_MODEL](
+            feature_dim=feature_dim,
+            num_modalities=len(modality_configs),
+        )
+
+    def encode(self, inputs: dict) -> torch.Tensor:
         """
-        Encode individual modalities.
+        Encode all available modalities and fuse into a single feature vector.
+
+        Args:
+            inputs: dict mapping modality name to tensor/data
+        Returns:
+            fused: (B, feature_dim)
         """
-        embeddings = []
+        features = []
+        for cfg in self.modality_configs:
+            if cfg.name not in inputs:
+                continue
+            x = inputs[cfg.name]
+            # Shape preprocessing per modality type
+            if cfg.processor_type in ("timeseries", "fast_timeseries"):
+                # (B, C, 1, T) -> (B, C, T)
+                if isinstance(x, torch.Tensor) and x.dim() == 4 and x.shape[2] == 1:
+                    x = x.squeeze(2)
+            features.append(self.encoders[cfg.name](x))
 
-        # TODO: Encode individual
+        return self.fusion(features)
 
-        # TODO: Combine individual encodings
-        embeddings = self.fusion_model(embeddings)
-
-        pass
-
-    def decode(self,
-        embeddings: torch.Tensor,
-        return_logits: bool = False,
-        ):
-        """
-        Decode embeddings.
-        """
-        # TODO: Decode
-
-        pass
-
-    def forward(self,
-        mod_dict: dict[str, dict[str, torch.Tensor]],
-        return_logits: bool = False,
-        ):
-
-        encoder_mod_dict = {
-            mod: self.encoder_embeddings[mod](d)
-            for mod, d in mod_dict.items()
-            if mod in self.encoder_embeddings
-        }
-        encoder_info = self.prepare_encoder(encoder_mod_dict)
-
-        decoder_mod_dict = {
-            mod: self.decoder_embeddings[mod](d)
-            for mod, d in mod_dict.items()
-            if mod in self.decoder_embeddings
-        }
-        decoder_info = self.prepare_decoder(decoder_mod_dict)
-
-        # TODO: Add encoding context
-        x = encoder_info['embeddings']
-        x = self.encode(x)
-
-        # TODO: Add decoding context
-        y = x
-        y = self.decode(y)
-
-        if return_logits:
-            return y
-
-        loss, mod_loss = self.loss(x, y)
-        return loss, mod_loss
+    def forward(self, inputs: dict) -> torch.Tensor:
+        return self.encode(inputs)
 
 
 class Prediction4FusionModel(nn.Module):
     """
-    Idea is to first train Fusion4FusionModel and then freeze it and use it to train Prediction4FusionModel.
-    Later we can train the whole model end-to-end.
+    Uses Fusion4FusionModel as encoder, adds per-target prediction heads.
+    Can optionally freeze the encoder for transfer learning.
     """
 
-    def __init__(self,
-        fusion_model: nn.Module,
-    ):
+    def __init__(self, modality_configs=None, feature_dim=64, num_heads=4,
+                 target_configs=None, freeze_encoder=False):
         super().__init__()
+        self.encoder = Fusion4FusionModel(modality_configs, feature_dim, num_heads)
 
-        # set up and freeze encoder-decoder model
-        self.fusion_model = fusion_model
-        self.fusion_model.eval()
-        for param in self.fusion_model.parameters():
-            param.requires_grad = False
+        if freeze_encoder:
+            for param in self.encoder.parameters():
+                param.requires_grad = False
 
-        
-    def generate(self,
-        mod_dict: dict[str, dict[str, torch.Tensor]],
-        return_logits: bool = False,
-        ):
-        """
-        Generate output from embeddings.
-        """
-        # TODO: Generate output
-        pass
+        # target_configs: {"d_alpha": (6, 20), "mse": (69, 20), ...}
+        # maps target name -> (n_channels, n_frames)
+        self.target_configs = target_configs or {}
+        self.heads = nn.ModuleDict()
+        for name, (n_channels, n_frames) in self.target_configs.items():
+            self.heads[name] = nn.Sequential(
+                nn.Linear(feature_dim, 256),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Linear(256, n_channels * n_frames),
+            )
 
-    def forward(self,
-        mod_dict: dict[str, dict[str, torch.Tensor]],
-        return_logits: bool = False,
-        ):
+    def forward(self, inputs: dict) -> dict:
+        # Handle {"inputs": ..., "targets": ...} format from dataloader
+        if "inputs" in inputs:
+            inputs = inputs["inputs"]
 
-        embeddings = self.fusion_model.encode(mod_dict)
-        
-        output = self.generate(embeddings, return_logits)
+        fused = self.encoder.encode(inputs)
 
-        return output
+        outputs = {}
+        for name, head in self.heads.items():
+            n_channels, n_frames = self.target_configs[name]
+            out = head(fused)  # (B, n_channels * n_frames)
+            outputs[name] = out.view(-1, n_channels, n_frames)  # (B, C, T)
+
+        return outputs
 
