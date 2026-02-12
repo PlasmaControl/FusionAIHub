@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from .base import ModalityEncoder, ModalityDecoder
+from base import ModalityEncoder, ModalityDecoder
 
 
 def create_video_test_signal(
@@ -84,12 +84,12 @@ class VideoEncoder(nn.Module):
     """
 
     def __init__(
-        self,
-        input_frames: int = 50,
-        frame_size: int = 256,
-        d_model: int = 512,
-        n_output_tokens: int = 192,
-        verbose: bool = False
+            self,
+            input_frames: int = 50,
+            frame_size: int = 256,
+            d_model: int = 512,
+            n_output_tokens: int = 192,
+            verbose: bool = False
     ):
         super().__init__()
 

@@ -75,6 +75,8 @@ class TimeSeriesEncoder(nn.Module):
         Number of temporal tokens to output, by default 100
     n_conv_layers : int, optional
         Number of convolutional layers, by default 4
+    kernel_size : int, optional
+        Kernel size for convolutions, by default 15
     verbose : bool, optional
         If True, print debug information during initialization, by default False
 
@@ -91,13 +93,14 @@ class TimeSeriesEncoder(nn.Module):
     """
 
     def __init__(
-        self,
-        n_channels: int = 6,
-        input_length: int = 5000,
-        d_model: int = 512,
-        n_output_tokens: int = 100,
-        n_conv_layers: int = 4,
-        verbose: bool = False
+            self,
+            n_channels: int = 6,
+            input_length: int = 5000,
+            d_model: int = 512,
+            n_output_tokens: int = 100,
+            n_conv_layers: int = 4,
+            kernel_size: int = 15,
+            verbose: bool = False
     ):
         super().__init__()
 
@@ -124,9 +127,9 @@ class TimeSeriesEncoder(nn.Module):
             nn.Conv1d(
                 in_channels=self.channels[i],
                 out_channels=self.channels[i + 1],
-                kernel_size=15,
+                kernel_size=kernel_size,
                 stride=self.stride,
-                padding=7
+                padding=kernel_size // 2
             )
             for i in range(n_conv_layers)
         ])
@@ -184,6 +187,8 @@ class TimeSeriesDecoder(nn.Module):
         Number of input tokens from encoder, by default 100
     n_deconv_layers : int, optional
         Number of deconvolutional layers (should match encoder), by default 4
+    kernel_size : int, optional
+        Kernel size for transposed convolutions, by default 15
     verbose : bool, optional
         If True, print debug information during initialization, by default False
 
@@ -200,13 +205,14 @@ class TimeSeriesDecoder(nn.Module):
     """
 
     def __init__(
-        self,
-        n_channels: int = 6,
-        input_length: int = 5000,
-        d_model: int = 512,
-        n_input_tokens: int = 100,
-        n_deconv_layers: int = 4,
-        verbose: bool = False
+            self,
+            n_channels: int = 6,
+            input_length: int = 5000,
+            d_model: int = 512,
+            n_input_tokens: int = 100,
+            n_deconv_layers: int = 4,
+            kernel_size: int = 15,
+            verbose: bool = False
     ):
         super().__init__()
 
@@ -231,9 +237,9 @@ class TimeSeriesDecoder(nn.Module):
             nn.ConvTranspose1d(
                 in_channels=self.channels[i],
                 out_channels=self.channels[i + 1],
-                kernel_size=15,
+                kernel_size=kernel_size,
                 stride=self.stride,
-                padding=7,
+                padding=kernel_size // 2,
                 output_padding=self.stride - 1
             )
             for i in range(n_deconv_layers)

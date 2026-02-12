@@ -80,6 +80,8 @@ class SpatialProfileEncoder(nn.Module):
         Model dimension for transformer, by default 512
     n_output_tokens : int, optional
         Number of output tokens, by default 10
+    kernel_size : int
+        Kernel size for temporal convolution
     verbose : bool, optional
         If True, print debug information during initialization, by default False
 
@@ -94,12 +96,13 @@ class SpatialProfileEncoder(nn.Module):
     """
 
     def __init__(
-        self,
-        n_spatial_points: int = 50,
-        n_time_points: int = 50,
-        d_model: int = 512,
-        n_output_tokens: int = 10,
-        verbose: bool = False
+            self,
+            n_spatial_points: int = 50,
+            n_time_points: int = 50,
+            d_model: int = 512,
+            n_output_tokens: int = 10,
+            kernel_size: int = 5,
+            verbose: bool = False,
     ):
         super().__init__()
 
@@ -109,12 +112,16 @@ class SpatialProfileEncoder(nn.Module):
         self.n_output_tokens = n_output_tokens
         self.verbose = verbose
 
+        self.adaptive_pool = nn.AdaptiveAvgPool1d(n_output_tokens)
+        self.activation = nn.GELU()
+        self.norm = nn.LayerNorm(d_model)
+
         # Spatial MLP: encodes each time step's spatial profile
         self.spatial_encoder = nn.Sequential(
             nn.Linear(n_spatial_points, 128),
-            nn.GELU(),
+            self.activation,
             nn.Linear(128, 256),
-            nn.GELU(),
+            self.activation,
             nn.Linear(256, d_model)
         )
 
@@ -122,14 +129,10 @@ class SpatialProfileEncoder(nn.Module):
         self.temporal_conv = nn.Conv1d(
             in_channels=d_model,
             out_channels=d_model,
-            kernel_size=5,
-            stride=2,
-            padding=2
+            kernel_size=kernel_size,
+            stride=kernel_size // 2,
+            padding=kernel_size // 2
         )
-
-        self.adaptive_pool = nn.AdaptiveAvgPool1d(n_output_tokens)
-        self.activation = nn.GELU()
-        self.norm = nn.LayerNorm(d_model)
 
         if self.verbose:
             print(f"SpatialProfileEncoder:")
@@ -154,7 +157,7 @@ class SpatialProfileEncoder(nn.Module):
         B, S, T = x.shape
 
         # Encode spatial structure at each time step independently
-        x = x.transpose(1, 2)                    # [B, T, S]
+        x = x.transpose(1, 2)                # [B, n_time, S]
         x = x.reshape(B * T, S)                  # [B*T, S]
         x = self.spatial_encoder(x)               # [B*T, d_model]
         x = x.reshape(B, T, self.d_model)         # [B, T, d_model]
@@ -185,6 +188,8 @@ class SpatialProfileDecoder(nn.Module):
         Model dimension from encoder, by default 512
     n_input_tokens : int, optional
         Number of input tokens from encoder, by default 10
+    kernel_size : int
+        Kernel size for temporal convolution
     verbose : bool, optional
         If True, print debug information during initialization, by default False
 
@@ -199,12 +204,13 @@ class SpatialProfileDecoder(nn.Module):
     """
 
     def __init__(
-        self,
-        n_spatial_points: int = 50,
-        n_time_points: int = 50,
-        d_model: int = 512,
-        n_input_tokens: int = 10,
-        verbose: bool = False
+            self,
+            n_spatial_points: int = 50,
+            n_time_points: int = 50,
+            d_model: int = 512,
+            n_input_tokens: int = 10,
+            kernel_size: int = 5,
+            verbose: bool = False
     ):
         super().__init__()
 
@@ -214,28 +220,27 @@ class SpatialProfileDecoder(nn.Module):
         self.n_input_tokens = n_input_tokens
         self.verbose = verbose
 
+        self.activation = nn.GELU()
+        self.adaptive_pool = nn.AdaptiveAvgPool1d(n_time_points)
+
         # Mirror temporal conv
         self.temporal_deconv = nn.ConvTranspose1d(
             in_channels=d_model,
             out_channels=d_model,
-            kernel_size=5,
-            stride=2,
-            padding=2,
-            output_padding=1
+            kernel_size=kernel_size,
+            stride=kernel_size // 2,
+            padding=kernel_size // 2,
+            output_padding=max(0, (kernel_size // 2) - 1)
         )
-
-        self.adaptive_pool = nn.AdaptiveAvgPool1d(n_time_points)
 
         # Mirror spatial MLP (reversed)
         self.spatial_decoder = nn.Sequential(
             nn.Linear(d_model, 256),
-            nn.GELU(),
+            self.activation,
             nn.Linear(256, 128),
-            nn.GELU(),
+            self.activation,
             nn.Linear(128, n_spatial_points)
         )
-
-        self.activation = nn.GELU()
 
         if self.verbose:
             print(f"SpatialProfileDecoder:")
@@ -260,17 +265,17 @@ class SpatialProfileDecoder(nn.Module):
         B = x.shape[0]
 
         # Upsample temporal dimension
-        x = x.transpose(1, 2)                       # [B, d_model, n_input_tokens]
-        x = self.activation(self.temporal_deconv(x)) # [B, d_model, T']
-        x = self.adaptive_pool(x)                   # [B, d_model, n_time_points]
+        x = x.transpose(1, 2)              # [B, d_model, n_input_tokens]
+        x = self.activation(self.temporal_deconv(x))  # [B, d_model, T']
+        x = self.adaptive_pool(x)                     # [B, d_model, n_time]
 
         # Decode spatial structure at each time step independently
-        x = x.transpose(1, 2)                       # [B, n_time_points, d_model]
+        x = x.transpose(1, 2)                         # [B, n_time, d_model]
         T = x.shape[1]
-        x = x.reshape(B * T, self.d_model)           # [B*T, d_model]
-        x = self.spatial_decoder(x)                  # [B*T, n_spatial_points]
-        x = x.reshape(B, T, self.n_spatial_points)   # [B, T, n_spatial_points]
-        x = x.transpose(1, 2)                        # [B, n_spatial_points, n_time_points]
+        x = x.reshape(B * T, self.d_model)            # [B*T, d_model]
+        x = self.spatial_decoder(x)                   # [B*n_time, n_spatial]
+        x = x.reshape(B, T, self.n_spatial_points)    # [B, n_time, n_spatial]
+        x = x.transpose(1, 2)                         # [B, n_spatial, n_time]
 
         return x
 
@@ -280,9 +285,11 @@ if __name__ == "__main__":
     print("SpatialProfileEncoder / SpatialProfileDecoder")
     print("=" * 60)
     sp_enc = SpatialProfileEncoder(n_spatial_points=50, n_time_points=50,
-                                   d_model=512, n_output_tokens=10, verbose=True)
+                                   d_model=512, n_output_tokens=10, kernel_size=3,
+                                   verbose=True)
     sp_dec = SpatialProfileDecoder(n_spatial_points=50, n_time_points=50,
-                                   d_model=512, n_input_tokens=10, verbose=True)
+                                   d_model=512, n_input_tokens=10, kernel_size=3,
+                                   verbose=True)
     x_sp = create_spatial_profile_test_signal()
     tokens_sp = sp_enc(x_sp)
     recon_sp = sp_dec(tokens_sp)
