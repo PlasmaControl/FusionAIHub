@@ -1,7 +1,7 @@
 import math
 import torch.nn as nn
 import torch
-from base import ModalityEncoder, ModalityDecoder
+from .base import ModalityEncoder, ModalityDecoder
 import numpy as np
 
 
@@ -366,6 +366,7 @@ if __name__ == "__main__":
                                d_model=512, n_output_tokens=100, verbose=True)
     ts_dec = TimeSeriesDecoder(n_channels=6, input_length=5000,
                                d_model=512, n_input_tokens=100, verbose=True)
+
     x_ts = create_timeseries_test_signal()
     tokens_ts = ts_enc(x_ts)
     recon_ts = ts_dec(tokens_ts)
