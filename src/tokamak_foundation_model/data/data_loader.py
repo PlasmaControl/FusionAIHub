@@ -6,6 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 import torch.nn.functional as F
+from line_profiler import profile
 
 
 def compute_preprocessing_stats(
@@ -376,6 +377,7 @@ class TokamakH5Dataset(Dataset):
                 rdcc_nslots=10000,  # Number of chunk slots
             )
 
+    @profile
     def _load_signal_raw(
         self, f: h5py.File, config: SignalConfig, t_start: float, t_end: float
     ) -> torch.Tensor:
@@ -399,19 +401,26 @@ class TokamakH5Dataset(Dataset):
 
         # Extract data with time slicing
         ydata_ds = data_group["ydata"]
-        xdata = data_group["xdata"][:] / 1000.0  # Convert to seconds
-        fs_raw = len(xdata) / (xdata[-1] - xdata[0])
-        mask = (xdata >= t_start) & (xdata < t_end)
+        xdata_ds = data_group["xdata"]
+
+        # Load only first and last timestamp
+        t0 = xdata_ds[0] / 1000.0
+        t1 = xdata_ds[-1] / 1000.0
+        n_samples = xdata_ds.shape[0]
+
+        fs_raw = (n_samples - 1) / (t1 - t0)
         duration_s = t_end - t_start
         ydata = np.zeros(
             (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
         )
-        if np.any(mask):
-            data = ydata_ds[mask]
+        start_idx = max(0, int((t_start - t0) * fs_raw))
+        end_idx = min(n_samples, int((t_end - t0) * fs_raw))
+        if end_idx > start_idx:
+            data = ydata_ds[start_idx:end_idx]  # FAST: single contiguous read
             data[np.isnan(data)] = 0.0
-            idx_1 = round((xdata[mask][0] - t_start) * fs_raw)
+            actual_t_start = t0 + start_idx / fs_raw
+            idx_1 = round((actual_t_start - t_start) * fs_raw)
             idx_2 = idx_1 + data.shape[0]
-
             # Clamp to array bounds
             src_start = 0
             src_end = data.shape[0]
@@ -600,8 +609,10 @@ class TokamakH5Dataset(Dataset):
             (round(duration_s * fps_raw), raw_height, raw_width), dtype=np.float32
         )
 
+        indices = np.where((xdata >= t_start) & (xdata < t_end))[0]
         if np.any(mask):
-            data = ydata_ds[mask]
+            start_idx, end_idx = indices[0], indices[-1] + 1
+            data = ydata_ds[start_idx:end_idx]
             data[np.isnan(data)] = 0.0
             idx_1 = round((xdata[mask][0] - t_start) * fps_raw)
             idx_2 = idx_1 + data.shape[0]
