@@ -220,7 +220,7 @@ class TokamakH5Dataset(Dataset):
         self,
         hdf5_path: str,
         chunk_duration_s: float = 0.5,
-        n_fft: int = 256,
+        n_fft: int = 1024,
         hop_length: int = 256,
         preprocessing_stats: Optional[dict] = None,
         prediction_mode: bool = True,
@@ -408,10 +408,6 @@ class TokamakH5Dataset(Dataset):
 
         duration_s = t_end - t_start
 
-        if n_samples < 2 or t1 == t0:
-            n_out = max(1, round(duration_s * 1.0))
-            return torch.zeros(n_out, config.num_channels)
-
         fs_raw = (n_samples - 1) / (t1 - t0)
 
         ydata = np.zeros(
@@ -478,7 +474,7 @@ class TokamakH5Dataset(Dataset):
             window=self.stft_window,
             return_complex=True,
         )
-        spec = spec[:, 1:, :]
+        spec = spec[:, 1:, :] # Remove DC component (extreme values)
         return torch.abs(spec)
 
     def _load_metadata(self, f: h5py.File) -> dict:

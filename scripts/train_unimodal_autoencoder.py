@@ -4,7 +4,6 @@ import logging
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
@@ -13,13 +12,15 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 
 from tokamak_foundation_model.utils import DefaultDrawer
 from tokamak_foundation_model.models.modality import (
-    SlowTimeSeriesAutoEncoder,
-    FastTimeSeriesAutoEncoder,
-    SpatialProfileAutoEncoder,
-    SpectrogramAutoEncoder,
-    VideoAutoEncoder,
+    ActuatorBaselineAutoEncoder,
+    SlowTimeSeriesBaselineAutoEncoder,
+    FastTimeSeriesBaselineAutoEncoder,
+    SpatialProfileBaselineAutoEncoder,
+    SpectrogramBaselineAutoEncoder,
+    VideoBaselineAutoEncoder,
 )
 
+# TODO: Add ddp support
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 logging.basicConfig(level=logging.INFO)
@@ -28,30 +29,32 @@ logger = logging.getLogger(__name__)
 ### Signal-to-model default mapping ###
 
 SIGNAL_MODEL_DEFAULTS = {
+    "gas": "actuator", 
+    "ech": "actuator",
+    "pin": "actuator", 
+    "tin": "actuator",
+    "d_alpha": "fast_time_series",
+    "mse": "profile",
+    "ts_core_density": "profile",
     "mhr": "spectrogram", 
     "ece": "spectrogram", 
     "co2": "spectrogram",
-    "d_alpha": "fast_time_series", 
-    "gas": "fast_time_series", 
-    "ech": "fast_time_series",
-    "pin": "fast_time_series", 
-    "tin": "fast_time_series",
-    "mse": "profile", 
-    "ts_core_density": "profile",
     "bolo": "video", 
     "irtv": "video", 
     "tangtv": "video",
 }
 
 MODEL_REGISTRY = {
-    "fast_time_series": FastTimeSeriesAutoEncoder,
-    "slow_time_series": SlowTimeSeriesAutoEncoder,
-    "profile": SpatialProfileAutoEncoder,
-    "spectrogram": SpectrogramAutoEncoder,
-    "video": VideoAutoEncoder,
+    "actuator": ActuatorBaselineAutoEncoder,
+    "fast_time_series": FastTimeSeriesBaselineAutoEncoder,
+    "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
+    "profile": SpatialProfileBaselineAutoEncoder,
+    "spectrogram": SpectrogramBaselineAutoEncoder,
+    "video": VideoBaselineAutoEncoder,
 }
 
 
+# TODO: Move into source code
 def build_model(model_name, n_channels, d_model, n_tokens):
     """Build the appropriate autoencoder.
 
@@ -59,34 +62,8 @@ def build_model(model_name, n_channels, d_model, n_tokens):
     """
     cls = MODEL_REGISTRY[model_name]
     kwargs = dict(n_channels=n_channels, d_model=d_model)
-    if n_tokens is not None:
-        kwargs["n_tokens"] = n_tokens
+    if n_tokens is not None: kwargs["n_tokens"] = n_tokens
     return cls(**kwargs)
-
-
-def collate_fn_pad(batch):
-    """Collate that pads variable-length tensors to the max size in the batch."""
-    elem = batch[0]
-    collated = {}
-    for key in elem:
-        if key == "text":
-            collated[key] = [d[key] for d in batch]
-            continue
-        tensors = [d[key] for d in batch]
-        shapes = [t.shape for t in tensors]
-        if all(s == shapes[0] for s in shapes):
-            collated[key] = torch.stack(tensors)
-        else:
-            max_shape = [max(s[dim] for s in shapes) for dim in range(len(shapes[0]))]
-            padded = []
-            for t in tensors:
-                pad_widths = []
-                for dim in reversed(range(len(max_shape))):
-                    pad_widths.extend([0, max_shape[dim] - t.shape[dim]])
-                padded.append(F.pad(t, pad_widths))
-            collated[key] = torch.stack(padded)
-    return collated
-
 
 # TODO: Move to data loader
 def worker_init_fn(worker_id):
@@ -125,7 +102,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.05,
-                        help="AdamW weight decay (FCMAE default: 0.05)")
+                        help="AdamW weight decay")
     parser.add_argument("--warmup_epochs", type=int, default=5,
                         help="LR warmup epochs (0 to disable scheduler)")
     parser.add_argument("--min_lr", type=float, default=0.0,
@@ -160,6 +137,8 @@ def main():
             preprocessing_stats=stats,
             input_signals=[signal_name],
             target_signals=[signal_name],
+            n_fft=args.n_fft,
+            hop_length=args.hop_length,
             prediction_mode=False,
         )
         for f in hdf5_files
@@ -167,6 +146,7 @@ def main():
 
     concatenated_dataset = ConcatDataset(datasets_processed)
 
+    # Not sure if this is elegant
     sample_data = next(iter(concatenated_dataset))[signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
@@ -177,19 +157,16 @@ def main():
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
 
-    # FCMAE-style optimizer: AdamW with betas=(0.9, 0.95)
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
-        betas=(0.9, 0.95),
-        weight_decay=args.weight_decay,
     )
     loss_fn = nn.L1Loss()
 
     dataloader = DataLoader(
         concatenated_dataset,
         batch_size=args.batch_size,
-        collate_fn=collate_fn_pad,
+        collate_fn=collate_fn,
         worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
@@ -209,9 +186,11 @@ def main():
         drawer=drawer,
         log_interval=args.log_interval,
     )
+
     if args.resume and checkpoint_path.exists():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
+
     trainer.train(dataloader, modality_key=signal_name)
 
 

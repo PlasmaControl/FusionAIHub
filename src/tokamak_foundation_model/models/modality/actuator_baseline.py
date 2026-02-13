@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
 
 
-class SlowTimeSeriesBaselineEncoder(ModalityEncoder):
+class ActuatorBaselineEncoder(ModalityEncoder):
 
     def __init__(self, 
         n_channels: int, 
@@ -17,7 +17,6 @@ class SlowTimeSeriesBaselineEncoder(ModalityEncoder):
         self.n_conv_layers = 3
         self.kernel_size = 7
 
-        # Build channel progression: n_channels -> intermediates -> d_model
         intermediate = [min(32 * (2 ** i), d_model) for i in range(self.n_conv_layers - 1)]
         channels = [n_channels] + intermediate + [d_model]
 
@@ -52,19 +51,7 @@ class SlowTimeSeriesBaselineEncoder(ModalityEncoder):
         return x
 
 
-class SlowTimeSeriesBaselineDecoder(ModalityDecoder):
-    """
-    Mirrors SlowTimeSeriesEncoder for pre-training via autoencoding.
-
-    Parameters
-    ----------
-    n_channels : int
-        Number of output channels
-    d_model : int
-        Model dimension from encoder
-    n_output_tokens : int
-        Number of input tokens from encoder
-    """
+class ActuatorBaselineDecoder(ModalityDecoder):
 
     def __init__(self, 
         n_channels: int, 
@@ -102,12 +89,12 @@ class SlowTimeSeriesBaselineDecoder(ModalityDecoder):
                 z = self.activation(z)
 
         if output_shape is not None:
-            z = F.adaptive_avg_pool1d(z, output_shape)
+            z = F.adaptive_avg_pool1d(z, output_shape[-1])
 
         return z
 
 
-class SlowTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
+class ActuatorBaselineAutoEncoder(ModalityAutoEncoder):
 
     def __init__(self, 
         n_channels: int, 
@@ -115,33 +102,37 @@ class SlowTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
         n_tokens: int = 0,
     ):
         super().__init__(n_channels, d_model, n_tokens)
-        self.encoder = SlowTimeSeriesBaselineEncoder(n_channels, d_model, n_tokens)
-        self.decoder = SlowTimeSeriesBaselineDecoder(n_channels, d_model)
+        self.encoder = ActuatorBaselineEncoder(n_channels, d_model, n_tokens)
+        self.decoder = ActuatorBaselineDecoder(n_channels, d_model)
 
     def forward(self, x):
-        output_length = x.shape[-1]
-        return self.decoder(self.encoder(x), output_length=output_length)
+        output_shape = x.shape[:-1]
+        return self.decoder(self.encoder(x), output_shape=output_shape)
 
 
 if __name__ == "__main__":
-    # python -m tokamak_foundation_model.models.modality.slow_time_series_baseline
+    # python -m tokamak_foundation_model.models.modality.actuator_baseline
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     B, C, T = 4, 6, 100
     d_model = 64
 
     n_tokens = 10
 
-    encoder = SlowTimeSeriesBaselineEncoder(C, d_model, n_tokens=n_tokens)
-    decoder = SlowTimeSeriesBaselineDecoder(C, d_model)
+    encoder = ActuatorBaselineEncoder(C, d_model, n_tokens=n_tokens).to(device)
+    decoder = ActuatorBaselineDecoder(C, d_model).to(device)
 
     x = torch.randn(B, C, T)
-    z = encoder(x)
-    y = decoder(z, output_length=T)
+    z = encoder(x.to(device))
+    y = decoder(z, output_shape=(B, C, T))
 
     print(f"Input:   {x.shape}")
     print(f"Encoded: {z.shape}")
     print(f"Decoded: {y.shape}")
 
-    autoencoder = SlowTimeSeriesBaselineAutoEncoder(C, d_model, n_tokens=n_tokens)
-    y = autoencoder(x)
-    
+    autoencoder = ActuatorBaselineAutoEncoder(C, d_model, n_tokens=n_tokens).to(device)
+    y = autoencoder(x.to(device))
+    y = y.cpu().detach()
+
     print(f"Autoencoder Input:  {x.shape}, Output: {y.shape}")
