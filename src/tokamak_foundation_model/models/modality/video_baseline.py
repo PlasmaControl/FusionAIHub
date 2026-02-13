@@ -1,305 +1,245 @@
-import numpy as np
 import torch
 import torch.nn as nn
-from base import ModalityEncoder, ModalityDecoder
+import torch.nn.functional as F
+from .base import ModalityEncoder, ModalityDecoder
+from typing import Optional
 
 
-def create_video_test_signal(
-    batch_size: int = 4,
-    input_frames: int = 50,
-    frame_size: int = 256
-):
-    """
-    Create deterministic test video sequences for video encoder/decoder.
+# class VideoEncoder(nn.Module):
+#     def __init__(self, in_channels=1, n_tokens=8, token_dim=512):
+#         super().__init__()
+#         self.n_tokens = n_tokens
+#         self.token_dim = token_dim
 
-    Parameters
-    ----------
-    batch_size : int, optional
-        Number of samples in batch, by default 4
-    input_frames : int, optional
-        Number of frames per video, by default 50
-    frame_size : int, optional
-        Height and width of each frame, by default 256
+#         self.net = nn.Sequential(
+#             nn.Conv3d(in_channels, 32, 3, padding=1), nn.ReLU(),
+#             nn.Conv3d(32, 64, 3, stride=(1,2,2), padding=1), nn.ReLU(),
+#             nn.Conv3d(64, 128, 3, stride=(1,2,2), padding=1), nn.ReLU(),
+#             nn.Conv3d(128, 256, 3, stride=(1,2,2), padding=1), nn.ReLU(),
+#             nn.Conv3d(256, token_dim, 1), nn.ReLU(),
+#             nn.AdaptiveAvgPool3d((n_tokens, 1, 1)),  # <-- THIS must be n_tokens
+#         )
 
-    Returns
-    -------
-    torch.Tensor
-        Test video of shape [batch_size, 1, input_frames, frame_size, frame_size]
+#     def forward(self, x):
+#         # x: (B,T,H,W) -> (B,1,T,H,W)
+#         y = self.net(x.unsqueeze(1))                  # (B,512,N,1,1)
+#         z = y.squeeze(-1).squeeze(-1).permute(0,2,1)  # (B,N,512)
+#         return z
 
-    Notes
-    -----
-    Test patterns per batch:
-    - Batch 0: Constant frame (all ones) - tests DC preservation
-    - Batch 1: Vertical edge (left half 0, right half 1) - tests spatial edges
-    - Batch 2: Single spatial impulse at center - tests spatial localization
-    - Batch 3: Temporal flash (single frame lit up) - tests temporal localization
-    """
-    signal = np.zeros((batch_size, 1, input_frames, frame_size, frame_size))
 
-    if batch_size > 0:
-        signal[0, 0, :, :, :] = 1.0
+# class VideoDecoder(nn.Module):
+#     """
+#     Input:  z (B, N, 512)
+#     Output: x_hat (B, T, H, W)
+#     """
+#     def __init__(self, out_channels: int = 1, n_tokens: int = 8, token_dim: int = 512,
+#                  target_size=(25, 256, 256)):
+#         super().__init__()
+#         self.target_size = target_size
 
-    if batch_size > 1:
-        signal[1, 0, :, :, frame_size // 2:] = 1.0
+#         self.net = nn.Sequential(
+#             nn.ConvTranspose3d(token_dim, 256, kernel_size=(3, 4, 4), stride=(1, 2, 2), padding=(1, 1, 1)),
+#             nn.ReLU(),
+#             nn.ConvTranspose3d(256, 128, kernel_size=(3, 4, 4), stride=(1, 2, 2), padding=(1, 1, 1)),
+#             nn.ReLU(),
+#             nn.ConvTranspose3d(128, 64, kernel_size=(3, 4, 4), stride=(1, 2, 2), padding=(1, 1, 1)),
+#             nn.ReLU(),
+#             nn.ConvTranspose3d(64, 32, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.ConvTranspose3d(32, out_channels, kernel_size=3, padding=1),
+#         )
+#         self.refine = nn.Sequential(
+#             nn.Upsample(scale_factor=(1,2,2), mode="trilinear", align_corners=False),
+#             nn.Conv3d(1, 16, 3, padding=1), nn.ReLU(),
+#             nn.Upsample(scale_factor=(1,2,2), mode="trilinear", align_corners=False),
+#             nn.Conv3d(16, 16, 3, padding=1), nn.ReLU(),
+#             nn.Upsample(scale_factor=(1,2,2), mode="trilinear", align_corners=False),
+#             nn.Conv3d(16, 16, 3, padding=1), nn.ReLU(),
+#             nn.Upsample(scale_factor=(1,2,2), mode="trilinear", align_corners=False),
+#             nn.Conv3d(16, 16, 3, padding=1), nn.ReLU(),
+#             nn.Upsample(scale_factor=(1,2,2), mode="trilinear", align_corners=False),
+#             nn.Conv3d(16, 1, 3, padding=1),
+#         )
+#         self.resample = nn.AdaptiveAvgPool3d(target_size)
 
-    if batch_size > 2:
-        signal[2, 0, :, frame_size // 2, frame_size // 2] = 1.0
+#     def forward(self, z):
+#         y = z.permute(0,2,1).unsqueeze(-1).unsqueeze(-1)
+#         x = self.net(y)
+#         x = self.refine(x)   # (B,1,N,256,256)
+#         x = torch.tanh(x)
+#         x = F.interpolate(x, size=self.target_size, mode="trilinear", align_corners=False)
+#         return x.squeeze(1)
 
-    if batch_size > 3:
-        signal[3, 0, input_frames // 2, :, :] = 1.0
 
-    return torch.from_numpy(signal).float()
+# class VideoAutoEncoder(nn.Module):
+#     def __init__(self, n_tokens: int, target_size=(25, 256, 256), token_dim: int = 512):
+#         super().__init__()
+#         self.encoder = VideoEncoder(n_tokens=n_tokens, token_dim=token_dim)
+#         self.decoder = VideoDecoder(n_tokens=n_tokens, token_dim=token_dim, target_size=target_size)
+
+#     def forward(self, x):
+#         z = self.encoder(x)
+#         x_hat = self.decoder(z)
+#         return x_hat, z
+
+#     def encode(self, x):
+#         z = self.encoder(x)
+#         return z
+
+#     def decode(self, z):
+#         x_hat = self.decoder(z)
+#         return x_hat
 
 
 class VideoEncoder(nn.Module):
     """
-    Encodes grayscale video sequences using joint 3D convolutions.
-
-    Parameters
-    ----------
-    input_frames : int, optional
-        Number of input frames (e.g., 50 for 500ms @ 100fps), by default 50
-    frame_size : int, optional
-        Height and width of each frame (assumed square), by default 256
-    d_model : int, optional
-        Model dimension for transformer, by default 512
-    n_output_tokens : int, optional
-        Number of output tokens, must equal t_tokens * h_tokens * w_tokens,
-        by default 192 (3 * 8 * 8)
-    verbose : bool, optional
-        If True, print debug information during initialization, by default False
-
-    Attributes
-    ----------
-    conv_layers : nn.ModuleList
-        List of 3D convolutional layers
-    t_tokens : int
-        Temporal dimension of token grid (3)
-    h_tokens : int
-        Height dimension of token grid (8)
-    w_tokens : int
-        Width dimension of token grid (8)
-    adaptive_pool : nn.AdaptiveAvgPool3d
-        Adaptive pooling to exact token dimensions
-    """
-
-    def __init__(
-            self,
-            input_frames: int = 50,
-            frame_size: int = 256,
-            d_model: int = 512,
-            n_output_tokens: int = 192,
-            verbose: bool = False
-    ):
-        super().__init__()
-
-        self.input_frames = input_frames
-        self.frame_size = frame_size
-        self.d_model = d_model
-        self.n_output_tokens = n_output_tokens
-        self.verbose = verbose
-
-        # Token grid: 192 = 3 × 8 × 8
-        self.t_tokens = 3
-        self.h_tokens = 8
-        self.w_tokens = 8
-
-        assert self.t_tokens * self.h_tokens * self.w_tokens == n_output_tokens, (
-            f"n_output_tokens ({n_output_tokens}) must equal "
-            f"t_tokens * h_tokens * w_tokens "
-            f"({self.t_tokens} * {self.h_tokens} * {self.w_tokens})"
-        )
-
-        # 3D conv stack:
-        # Layers 1-3: spatial stride only (preserve temporal resolution)
-        # Layers 4-5: joint stride (compress both space and time)
-        self.conv_layers = nn.ModuleList([
-            # [B, 1,   50, 256, 256] → [B, 32,  50, 128, 128]
-            nn.Conv3d(1,   32,  kernel_size=(3,7,7), stride=(1,2,2), padding=(1,3,3)),
-            # [B, 32,  50, 128, 128] → [B, 64,  50,  64,  64]
-            nn.Conv3d(32,  64,  kernel_size=(3,5,5), stride=(1,2,2), padding=(1,2,2)),
-            # [B, 64,  50,  64,  64] → [B, 128, 50,  32,  32]
-            nn.Conv3d(64,  128, kernel_size=(3,5,5), stride=(1,2,2), padding=(1,2,2)),
-            # [B, 128, 50,  32,  32] → [B, 256, 25,  16,  16]
-            nn.Conv3d(128, 256, kernel_size=(3,3,3), stride=(2,2,2), padding=(1,1,1)),
-            # [B, 256, 25,  16,  16] → [B, d_model, 12, 8, 8]
-            nn.Conv3d(256, d_model, kernel_size=(3,3,3), stride=(2,2,2), padding=(1,1,1)),
-        ])
-
-        self.adaptive_pool = nn.AdaptiveAvgPool3d(
-            (self.t_tokens, self.h_tokens, self.w_tokens)
-        )
-        self.activation = nn.GELU()
-        self.norm = nn.LayerNorm(d_model)
-
-        if self.verbose:
-            print(f"VideoEncoder:")
-            print(f"  Input:  [B, 1, {input_frames}, {frame_size}, {frame_size}]")
-            print(f"  Conv1:  [B, 32,  50, 128, 128]")
-            print(f"  Conv2:  [B, 64,  50,  64,  64]")
-            print(f"  Conv3:  [B, 128, 50,  32,  32]")
-            print(f"  Conv4:  [B, 256, 25,  16,  16]")
-            print(f"  Conv5:  [B, {d_model}, 12,   8,   8]")
-            print(f"  Pool:   [B, {d_model},  {self.t_tokens},   {self.h_tokens},   {self.w_tokens}]")
-            print(f"  Output: [B, {n_output_tokens}, {d_model}]")
-
-    def forward(self, x):
-        """
-        Encode video sequence into tokens.
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            Input video of shape [batch, 1, input_frames, frame_size, frame_size]
-
-        Returns
-        -------
-        torch.Tensor
-            Encoded tokens of shape [batch, n_output_tokens, d_model]
-        """
-        B = x.shape[0]
-
-        for conv in self.conv_layers:
-            x = self.activation(conv(x))
-
-        x = self.adaptive_pool(x)                # [B, d_model, t_tokens, h_tokens, w_tokens]
-        x = x.flatten(2)                         # [B, d_model, n_output_tokens]
-        x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
-        x = self.norm(x)
-
-        return x
-
-
-class VideoDecoder(nn.Module):
-    """
-    Mirrors VideoEncoder for pre-training via masked autoencoding.
-    Reconstructs the original input video from encoder tokens.
-
-    Parameters
-    ----------
-    input_frames : int, optional
-        Number of frames to reconstruct (must match VideoEncoder.input_frames),
-        by default 50
-    frame_size : int, optional
-        Height and width of frames to reconstruct, by default 256
-    d_model : int, optional
-        Model dimension from encoder, by default 512
-    n_input_tokens : int, optional
-        Number of input tokens from encoder, by default 192
-    verbose : bool, optional
-        If True, print debug information during initialization, by default False
-
-    Attributes
-    ----------
-    deconv_layers : nn.ModuleList
-        List of 3D transposed convolutional layers mirroring encoder
-    adaptive_pool : nn.AdaptiveAvgPool3d
-        Ensures exact output dimensions
+    Input:  x (B, T, H, W)  grayscale
+    Output: z_tokens (B, N, 512)
+    Also returns z_vec (B, N*512) for decoding.
     """
 
     def __init__(
         self,
-        input_frames: int = 50,
-        frame_size: int = 256,
-        d_model: int = 512,
-        n_input_tokens: int = 192,
-        verbose: bool = False
+        n_tokens: int,
+        token_dim: int = 512,
+        t_chunk: int = 25,
+        img_size: int = 256,
     ):
         super().__init__()
+        self.n_tokens = n_tokens
+        self.token_dim = token_dim
+        self.latent_dim = n_tokens * token_dim
 
-        self.input_frames = input_frames
-        self.frame_size = frame_size
-        self.d_model = d_model
-        self.n_input_tokens = n_input_tokens
-        self.verbose = verbose
-
-        # Starting spatiotemporal dimensions (mirrors encoder adaptive pool output)
-        self.t_start = 3
-        self.h_start = 8
-        self.w_start = 8
-
-        assert self.t_start * self.h_start * self.w_start == n_input_tokens, (
-            f"n_input_tokens ({n_input_tokens}) must equal "
-            f"t_start * h_start * w_start "
-            f"({self.t_start} * {self.h_start} * {self.w_start})"
+        # Attached-style: stride-2 conv stack + BN + ReLU
+        self.enc = nn.Sequential(
+            nn.Conv3d(1, 16, 3, stride=2, padding=1),
+            nn.BatchNorm3d(16),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(16, 32, 3, stride=2, padding=1),
+            nn.BatchNorm3d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(32, 64, 3, stride=2, padding=1),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 128, 3, stride=2, padding=1),
+            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(128, 256, 3, stride=2, padding=1),
+            nn.BatchNorm3d(256),
+            nn.ReLU(inplace=True),
         )
 
-        # Mirror encoder in reverse:
-        # Layers 1-2: joint upsample
-        # Layers 3-5: spatial upsample only
-        self.deconv_layers = nn.ModuleList([
-            # [B, d_model, 3,  8,  8] → [B, 256, 6,  16, 16]
-            nn.ConvTranspose3d(d_model, 256, kernel_size=(3,3,3), stride=(2,2,2),
-                               padding=(1,1,1), output_padding=(1,1,1)),
-            # [B, 256, 6,  16, 16] → [B, 128, 12, 32, 32]
-            nn.ConvTranspose3d(256, 128, kernel_size=(3,3,3), stride=(2,2,2),
-                               padding=(1,1,1), output_padding=(1,1,1)),
-            # [B, 128, 12, 32, 32] → [B, 64,  12, 64, 64]
-            nn.ConvTranspose3d(128, 64,  kernel_size=(3,5,5), stride=(1,2,2),
-                               padding=(1,2,2), output_padding=(0,1,1)),
-            # [B, 64,  12, 64, 64] → [B, 32,  12, 128, 128]
-            nn.ConvTranspose3d(64,  32,  kernel_size=(3,5,5), stride=(1,2,2),
-                               padding=(1,2,2), output_padding=(0,1,1)),
-            # [B, 32,  12, 128, 128] → [B, 1, 12, 256, 256]
-            nn.ConvTranspose3d(32,  1,   kernel_size=(3,7,7), stride=(1,2,2),
-                               padding=(1,3,3), output_padding=(0,1,1)),
-        ])
+        # Infer flatten dim once (keeps your structure clean in notebook)
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1, t_chunk, img_size, img_size)
+            h = self.enc(dummy)
+            self._enc_shape = h.shape  # (1, C0, T0, H0, W0)
+            flat_dim = h.flatten(1).shape[1]
 
-        self.adaptive_pool = nn.AdaptiveAvgPool3d(
-            (input_frames, frame_size, frame_size)
+        self.fc = nn.Linear(flat_dim, self.latent_dim)
+
+    def forward(self, x: torch.Tensor):
+        # x: (B,T,H,W) -> (B,1,T,H,W)
+        h = self.enc(x.unsqueeze(1))
+        z_vec = self.fc(h.flatten(1))  # (B, N*512)
+        z_tokens = z_vec.view(x.shape[0], self.n_tokens, self.token_dim)  # (B,N,512)
+        return z_tokens, z_vec
+
+
+class VideoDecoder(nn.Module):
+    """
+    Input:  z_tokens (B, N, 512)  OR z_vec (B, N*512)
+    Output: x_hat (B, T, H, W)
+    """
+
+    def __init__(
+        self,
+        n_tokens: int,
+        token_dim: int = 512,
+        t_chunk: int = 25,
+        img_size: int = 256,
+        enc_shape=(1, 256, 1, 8, 8),  # will be overwritten by encoder-provided shape
+    ):
+        super().__init__()
+        self.n_tokens = n_tokens
+        self.token_dim = token_dim
+        self.latent_dim = n_tokens * token_dim
+        self.t_chunk = t_chunk
+        self.img_size = img_size
+
+        # Use encoder's conv output shape to reshape back
+        _, C0, T0, H0, W0 = enc_shape
+        self.C0, self.T0, self.H0, self.W0 = C0, T0, H0, W0
+
+        self.fc = nn.Linear(self.latent_dim, C0 * T0 * H0 * W0)
+
+        # Attached-style: ConvTranspose3d + BN + ReLU, final conv to 1 channel
+        self.dec = nn.Sequential(
+            nn.ConvTranspose3d(C0, 128, 3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose3d(128, 64, 3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose3d(64, 32, 3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm3d(32),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose3d(32, 16, 3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm3d(16),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose3d(16, 1, 3, stride=2, padding=1, output_padding=1),
         )
-        self.activation = nn.GELU()
 
-        if self.verbose:
-            print(f"VideoDecoder:")
-            print(f"  Input:    [B, {n_input_tokens}, {d_model}]")
-            print(f"  Reshape:  [B, {d_model}, {self.t_start}, {self.h_start}, {self.w_start}]")
-            print(f"  Deconv1:  [B, 256, 6,   16,  16]")
-            print(f"  Deconv2:  [B, 128, 12,  32,  32]")
-            print(f"  Deconv3:  [B, 64,  12,  64,  64]")
-            print(f"  Deconv4:  [B, 32,  12, 128, 128]")
-            print(f"  Deconv5:  [B, 1,   12, 256, 256]")
-            print(f"  Pool:     [B, 1, {input_frames}, {frame_size}, {frame_size}]")
+    def forward(
+        self, z_tokens: torch.Tensor, z_vec: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        # Accept either z_tokens or z_vec
+        if z_vec is None:
+            B = z_tokens.shape[0]
+            z_vec = z_tokens.reshape(B, self.latent_dim)  # (B, N*512)
 
-    def forward(self, x):
-        """
-        Encode video sequence into tokens.
+        x = self.fc(z_vec).view(
+            -1, self.C0, self.T0, self.H0, self.W0
+        )  # (B,C0,T0,H0,W0)
+        x = self.dec(x)  # (B,1,T',H',W')
 
-        Parameters
-        ----------
-        x : torch.Tensor
-            Input video of shape [batch, 1, input_frames, frame_size, frame_size]
+        # Force exact output size (like the attached code typically does)
+        x = F.interpolate(
+            x,
+            size=(self.t_chunk, self.img_size, self.img_size),
+            mode="trilinear",
+            align_corners=False,
+        )
 
-        Returns
-        -------
-        torch.Tensor
-            Encoded tokens of shape [batch, n_output_tokens, d_model]
-        """
-        B = x.shape[0]
+        # If your input is normalized to [0,1], keep sigmoid:
+        x = torch.sigmoid(x)
 
-        for conv in self.conv_layers:
-            x = self.activation(conv(x))
-
-        x = self.adaptive_pool(x)                # [B, d_model, t_tokens, h_tokens, w_tokens]
-        x = x.flatten(2)                         # [B, d_model, n_output_tokens]
-        x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
-        x = self.norm(x)
-
-        return x
+        return x.squeeze(1)  # (B,T,H,W)
 
 
-if __name__ == "__main__":
+class VideoAutoEncoder(nn.Module):
+    def __init__(
+        self,
+        n_tokens: int,
+        t_chunk: int = 25,
+        img_size: int = 256,
+        token_dim: int = 512,
+    ):
+        super().__init__()
+        self.encoder = VideoEncoder(
+            n_tokens=n_tokens, token_dim=token_dim, t_chunk=t_chunk, img_size=img_size
+        )
 
-    print("=" * 60)
-    print("VideoEncoder / VideoDecoder")
-    print("=" * 60)
-    vid_enc = VideoEncoder(input_frames=50, frame_size=256,
-                           d_model=512, n_output_tokens=192, verbose=True)
-    vid_dec = VideoDecoder(input_frames=50, frame_size=256,
-                           d_model=512, n_input_tokens=192, verbose=True)
-    x_vid = create_video_test_signal()
-    tokens_vid = vid_enc(x_vid)
-    recon_vid = vid_dec(tokens_vid)
-    print(f"Input:  {x_vid.shape}")       # [4, 1, 50, 256, 256]
-    print(f"Tokens: {tokens_vid.shape}")  # [4, 192, 512]
-    print(f"Recon:  {recon_vid.shape}")   # [4, 1, 50, 256, 256]
+        # Build decoder using encoder's inferred shape
+        self.decoder = VideoDecoder(
+            n_tokens=n_tokens,
+            token_dim=token_dim,
+            t_chunk=t_chunk,
+            img_size=img_size,
+            enc_shape=self.encoder._enc_shape,
+        )
+
+    def forward(self, x: torch.Tensor):
+        z_tokens, z_vec = self.encoder(x)
+        x_hat = self.decoder(z_tokens, z_vec=z_vec)
+        return x_hat, z_tokens
