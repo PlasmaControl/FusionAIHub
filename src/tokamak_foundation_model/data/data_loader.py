@@ -541,7 +541,7 @@ class TokamakH5Dataset(Dataset):
                 break
             except KeyError:
                 continue
-
+        
         # Extract data with time slicing
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
@@ -558,7 +558,7 @@ class TokamakH5Dataset(Dataset):
         ydata = np.zeros(
             (round(duration_s * fps_raw), raw_height, raw_width), dtype=np.float32
         )
-
+        
         # Compute indices directly (no full xdata load)
         start_idx = max(0, int((t_start - t0) * fps_raw))
         end_idx = min(n_samples, int((t_end - t0) * fps_raw))
@@ -614,7 +614,7 @@ class TokamakH5Dataset(Dataset):
             return self._getitem_prediction(idx)
         else:
             return self._getitem_standard(idx)
-
+    
     def _getitem_standard(self, idx):
         """Original __getitem__ logic."""
         t_start = idx * self.chunk_duration_s
@@ -639,7 +639,7 @@ class TokamakH5Dataset(Dataset):
             all_metadata = self._load_metadata(self.h5_file)
         else:
             all_metadata = {}
-
+       
         return {**all_signals, **all_movies, **all_metadata}
 
     def _getitem_prediction(self, idx):

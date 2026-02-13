@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from .base import ModalityEncoder, ModalityDecoder
+from base import ModalityEncoder, ModalityDecoder
 
 
 def create_video_test_signal(
@@ -263,31 +263,27 @@ class VideoDecoder(nn.Module):
 
     def forward(self, x):
         """
-        Decode tokens back to original video (pre-training only).
+        Encode video sequence into tokens.
 
         Parameters
         ----------
         x : torch.Tensor
-            Input tokens of shape [batch, n_input_tokens, d_model]
+            Input video of shape [batch, 1, input_frames, frame_size, frame_size]
 
         Returns
         -------
         torch.Tensor
-            Reconstructed video of shape [batch, 1, input_frames, frame_size, frame_size]
+            Encoded tokens of shape [batch, n_output_tokens, d_model]
         """
         B = x.shape[0]
 
-        x = x.transpose(1, 2)  # [B, d_model, n_input_tokens]
-        x = x.reshape(
-            B, self.d_model, self.t_start, self.h_start, self.w_start
-        )  # [B, d_model, 3, 8, 8]
+        for conv in self.conv_layers:
+            x = self.activation(conv(x))
 
-        for i, deconv in enumerate(self.deconv_layers):
-            x = deconv(x)
-            if i < len(self.deconv_layers) - 1:
-                x = self.activation(x)
-
-        x = self.adaptive_pool(x)  # [B, 1, input_frames, frame_size, frame_size]
+        x = self.adaptive_pool(x)                # [B, d_model, t_tokens, h_tokens, w_tokens]
+        x = x.flatten(2)                         # [B, d_model, n_output_tokens]
+        x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
+        x = self.norm(x)
 
         return x
 
