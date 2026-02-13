@@ -1,6 +1,7 @@
 import math
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
 from .base import ModalityEncoder, ModalityDecoder
 import numpy as np
 
@@ -356,6 +357,22 @@ class FastTimeSeriesDecoder(ModalityDecoder):
 
     def forward(self, z):
         return self.resample(self.deconv_layers(self.proj(z)))
+
+
+class FastTimeSeriesAutoEncoder(nn.Module):
+
+    def __init__(self, n_channels, d_model=64, n_tokens=None):
+        super().__init__()
+        self.encoder = FastTimeSeriesEncoder(in_channels=n_channels, out_features=d_model)
+        self.decoder = FastTimeSeriesDecoder(in_features=d_model, out_channels=n_channels, target_length=5000)
+
+    def forward(self, x):
+        target_length = x.shape[-1]
+        z = self.encoder(x)
+        out = self.decoder(z)
+        if out.shape[-1] != target_length:
+            out = F.adaptive_avg_pool1d(out, target_length)
+        return out
 
 
 if __name__ == "__main__":

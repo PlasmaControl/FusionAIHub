@@ -55,7 +55,7 @@ class DefaultDrawer:
         model.eval()
         for i, input_tensor in enumerate(self.input_data):
             x = input_tensor.unsqueeze(0).to(next(model.parameters()).device)
-            output = model(x)[self.half_channel].cpu()
+            output = model(x)[0].cpu()
             inp = input_tensor
 
             title = f"Epoch {epoch+1} | Train L1={train_loss:.4f} Val L1={val_loss:.4f}"

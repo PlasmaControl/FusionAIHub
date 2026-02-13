@@ -4,6 +4,7 @@ import logging
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
@@ -61,6 +62,30 @@ def build_model(model_name, n_channels, d_model, n_tokens):
     if n_tokens is not None:
         kwargs["n_tokens"] = n_tokens
     return cls(**kwargs)
+
+
+def collate_fn_pad(batch):
+    """Collate that pads variable-length tensors to the max size in the batch."""
+    elem = batch[0]
+    collated = {}
+    for key in elem:
+        if key == "text":
+            collated[key] = [d[key] for d in batch]
+            continue
+        tensors = [d[key] for d in batch]
+        shapes = [t.shape for t in tensors]
+        if all(s == shapes[0] for s in shapes):
+            collated[key] = torch.stack(tensors)
+        else:
+            max_shape = [max(s[dim] for s in shapes) for dim in range(len(shapes[0]))]
+            padded = []
+            for t in tensors:
+                pad_widths = []
+                for dim in reversed(range(len(max_shape))):
+                    pad_widths.extend([0, max_shape[dim] - t.shape[dim]])
+                padded.append(F.pad(t, pad_widths))
+            collated[key] = torch.stack(padded)
+    return collated
 
 
 # TODO: Move to data loader
@@ -164,10 +189,10 @@ def main():
     dataloader = DataLoader(
         concatenated_dataset,
         batch_size=args.batch_size,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_pad,
         worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
-        persistent_workers=True,
+        persistent_workers=args.num_workers > 0,
         pin_memory=True,
         shuffle=True,
     )

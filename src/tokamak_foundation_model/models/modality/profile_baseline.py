@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 
@@ -278,6 +279,29 @@ class SpatialProfileDecoder(nn.Module):
         x = x.transpose(1, 2)                         # [B, n_spatial, n_time]
 
         return x
+
+
+class SpatialProfileAutoEncoder(nn.Module):
+
+    def __init__(self, n_channels, d_model=64, n_tokens=None):
+        super().__init__()
+        n_tokens = n_tokens or 10
+        self.encoder = SpatialProfileEncoder(
+            n_spatial_points=n_channels, n_time_points=50,
+            d_model=d_model, n_output_tokens=n_tokens,
+        )
+        self.decoder = SpatialProfileDecoder(
+            n_spatial_points=n_channels, n_time_points=50,
+            d_model=d_model, n_input_tokens=n_tokens,
+        )
+
+    def forward(self, x):
+        n_time = x.shape[-1]
+        z = self.encoder(x)
+        out = self.decoder(z)
+        if out.shape[-1] != n_time:
+            out = F.adaptive_avg_pool1d(out, n_time)
+        return out
 
 
 if __name__ == "__main__":

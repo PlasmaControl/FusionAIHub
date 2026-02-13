@@ -22,14 +22,14 @@ WARMUP_EPOCHS=5
 MIN_LR=0.0
 CHECKPOINT_DIR=runs
 
-# Spectrograms + fast time series (no profiles or videos)
-SIGNALS=(mhr ece co2 d_alpha gas ech pin tin)
+# All modalities: spectrograms, fast time series, profiles, videos
+SIGNALS=(mhr ece co2 d_alpha gas ech pin tin mse ts_core_density bolo irtv tangtv)
 
 for SIGNAL in "${SIGNALS[@]}"; do
     echo "============================================"
     echo "Training signal: ${SIGNAL}"
     echo "============================================"
-    srun pixi run python train_unimodal_autoencoder.py \
+    srun pixi run python scripts/train_unimodal_autoencoder.py \
         --signal "${SIGNAL}" \
         --d_model "${D_MODEL}" \
         --batch_size "${BATCH_SIZE}" \

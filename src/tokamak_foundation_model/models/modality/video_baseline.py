@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from base import ModalityEncoder, ModalityDecoder
+import torch.nn.functional as F
 
 
 def create_video_test_signal(
@@ -263,29 +263,68 @@ class VideoDecoder(nn.Module):
 
     def forward(self, x):
         """
-        Encode video sequence into tokens.
+        Decode tokens back to original video.
 
         Parameters
         ----------
         x : torch.Tensor
-            Input video of shape [batch, 1, input_frames, frame_size, frame_size]
+            Input tokens of shape [batch, n_input_tokens, d_model]
 
         Returns
         -------
         torch.Tensor
-            Encoded tokens of shape [batch, n_output_tokens, d_model]
+            Reconstructed video of shape [batch, 1, input_frames, frame_size, frame_size]
         """
         B = x.shape[0]
 
-        for conv in self.conv_layers:
-            x = self.activation(conv(x))
+        x = x.transpose(1, 2)  # [B, d_model, n_input_tokens]
+        x = x.view(B, self.d_model, self.t_start, self.h_start, self.w_start)
 
-        x = self.adaptive_pool(x)                # [B, d_model, t_tokens, h_tokens, w_tokens]
-        x = x.flatten(2)                         # [B, d_model, n_output_tokens]
-        x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
-        x = self.norm(x)
+        for i, deconv in enumerate(self.deconv_layers):
+            x = deconv(x)
+            if i < len(self.deconv_layers) - 1:
+                x = self.activation(x)
+
+        x = self.adaptive_pool(x)  # [B, 1, input_frames, frame_size, frame_size]
 
         return x
+
+
+class VideoAutoEncoder(nn.Module):
+    """Video autoencoder using 3D convolutions. Input/output: [B, T, H, W]."""
+
+    def __init__(self, n_channels, d_model=64, n_tokens=None):
+        super().__init__()
+
+        dims = [1, 32, 64, d_model]
+
+        encoder_layers = []
+        for i in range(len(dims) - 1):
+            encoder_layers.extend([
+                nn.Conv3d(dims[i], dims[i + 1], kernel_size=3, stride=2, padding=1),
+                nn.GELU(),
+            ])
+        self.encoder = nn.Sequential(*encoder_layers)
+
+        decoder_layers = []
+        for i in range(len(dims) - 1, 0, -1):
+            decoder_layers.append(
+                nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
+            )
+            decoder_layers.append(
+                nn.Conv3d(dims[i], dims[i - 1], kernel_size=3, padding=1),
+            )
+            if i > 1:
+                decoder_layers.append(nn.GELU())
+        self.decoder = nn.Sequential(*decoder_layers)
+
+    def forward(self, x):
+        B, T, H, W = x.shape
+        x = x.unsqueeze(1)  # [B, 1, T, H, W]
+        z = self.encoder(x)
+        x = self.decoder(z)
+        x = F.interpolate(x, size=(T, H, W), mode='trilinear', align_corners=False)
+        return x.squeeze(1)  # [B, T, H, W]
 
 
 if __name__ == "__main__":

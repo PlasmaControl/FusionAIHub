@@ -4,6 +4,9 @@ import torch.nn.functional as F
 
 
 class SpectrogramAutoEncoder(nn.Module):
+    """
+    Based on 3DCAE implementation at https://github.com/micah35s/Autoencoder-Image-Compression
+    """
 
     def __init__(self, n_channels: int, d_model: int = 256):
         super().__init__()
