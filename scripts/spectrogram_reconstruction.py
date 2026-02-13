@@ -10,19 +10,6 @@ from tokamak_foundation_model.models.modality.fast_time_series_baseline import (
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 
 
-class DummyModel(torch.nn.Module):
-    def __init__(self):
-        super(DummyModel, self).__init__()
-        self.encoder = TimeSeriesEncoder(
-            n_channels=6, input_length=5000, d_model=512, n_output_tokens=100)
-        self.decoder = TimeSeriesDecoder(
-            n_channels=6, input_length=5000, d_model=512, n_input_tokens=100)
-
-    def forward(self, x):
-        x_encoded = self.encoder(x)
-        return self.decoder(x_encoded)
-
-
 def worker_init_fn(worker_id):
     """Each worker needs to open its own file handle."""
     worker_info = torch.utils.data.get_worker_info()
@@ -78,4 +65,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 trainer = UnimodalTrainer(model, optimizer, loss_fn, device=device, epochs=10,
                           batch_size=2)
+
+checkpoint_path = Path("runs/d_alpha_spectrogram/checkpoint.pth")
+trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 trainer.train(dataloader, modality_key="d_alpha")
