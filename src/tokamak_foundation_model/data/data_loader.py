@@ -305,8 +305,10 @@ class TokamakH5Dataset(Dataset):
                 return tensor
 
             # Convert to tensor and reshape for broadcasting
-            mean = torch.tensor(config.mean, dtype=tensor.dtype, device=tensor.device)
-            std = torch.tensor(config.std, dtype=tensor.dtype, device=tensor.device)
+            mean = torch.as_tensor(
+                config.mean, dtype=tensor.dtype, device=tensor.device)
+            std = torch.as_tensor(
+                config.std, dtype=tensor.dtype, device=tensor.device)
 
             if reshape_dims is not None:
                 mean = mean.reshape(reshape_dims)
@@ -337,8 +339,10 @@ class TokamakH5Dataset(Dataset):
                 return tensor_log
 
             # Convert to tensor and reshape for broadcasting
-            mean = torch.tensor(config.mean, dtype=tensor.dtype, device=tensor.device)
-            std = torch.tensor(config.std, dtype=tensor.dtype, device=tensor.device)
+            mean = torch.as_tensor(
+                config.mean, dtype=tensor.dtype, device=tensor.device)
+            std = torch.as_tensor(
+                config.std, dtype=tensor.dtype, device=tensor.device)
 
             if reshape_dims is not None:
                 mean = mean.reshape(reshape_dims)
@@ -630,8 +634,10 @@ class TokamakH5Dataset(Dataset):
         # Load and process movies
         all_movies = {}
         for movie_config in self.MOVIE_CONFIGS:
-            if config.name in self.input_signals:
-                raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
+            if movie_config.name in self.input_signals:
+                raw_movie = self._load_movie_raw(
+                    self.h5_file, movie_config, t_start, t_end
+                )
                 all_movies[movie_config.name] = raw_movie
 
         # Load metadata
@@ -639,7 +645,7 @@ class TokamakH5Dataset(Dataset):
             all_metadata = self._load_metadata(self.h5_file)
         else:
             all_metadata = {}
-       
+
         return {**all_signals, **all_movies, **all_metadata}
 
     def _getitem_prediction(self, idx):
@@ -648,15 +654,21 @@ class TokamakH5Dataset(Dataset):
         t_start = idx * self.chunk_duration_s
         t_end = t_start + self.chunk_duration_s + self.prediction_horizon_s
 
+        signals_to_load = set(self.input_signals) | set(self.target_signals)
+
         # Load and process all signals with extended window
         all_signals = {}
         for config in self.SIGNAL_CONFIGS:
+            if config.name not in signals_to_load:
+                continue
             raw_data = self._load_signal_raw(self.h5_file, config, t_start, t_end)
             all_signals[config.name] = self._process_signal(raw_data, config)
 
         # Load and process movies
         all_movies = {}
         for movie_config in self.MOVIE_CONFIGS:
+            if movie_config.name not in signals_to_load:
+                continue
             # Load raw movie data
             raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
             all_movies[movie_config.name] = raw_movie

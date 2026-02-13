@@ -285,6 +285,57 @@ class TimeSeriesDecoder(nn.Module):
 
         return x
 
+class TimeSeriesAutoencoder(nn.Module):
+    """Combines TimeSeriesEncoder and TimeSeriesDecoder into an autoencoder model."""
+
+    def __init__(
+            self,
+            n_channels: int = 6,
+            input_length: int = 5000,
+            d_model: int = 512,
+            n_tokens: int = 100,
+            n_layers: int = 4,
+            kernel_size: int = 3,
+            verbose: bool = False
+    ):
+        super().__init__()
+        self.encoder = TimeSeriesEncoder(
+            n_channels=n_channels,
+            input_length=input_length,
+            d_model=d_model,
+            n_output_tokens=n_tokens,
+            n_conv_layers=n_layers,
+            kernel_size=kernel_size,
+            verbose=verbose
+        )
+        self.decoder = TimeSeriesDecoder(
+            n_channels=n_channels,
+            input_length=input_length,
+            d_model=d_model,
+            n_input_tokens=n_tokens,
+            n_deconv_layers=n_layers,
+            kernel_size=kernel_size,
+            verbose=verbose
+        )
+
+    def forward(self, x):
+        """
+        Forward pass through the autoencoder.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input time-series of shape [batch, n_channels, input_length]
+
+        Returns
+        -------
+        torch.Tensor
+            Reconstructed time-series of shape [batch, n_channels, input_length]
+        """
+        tokens = self.encoder(x)
+        recon = self.decoder(tokens)
+        return recon
+
 
 class FastTimeSeriesEncoder(ModalityEncoder):
 
