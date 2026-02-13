@@ -12,14 +12,12 @@ class MultimodalTrainer:
                  loss_fn: nn.Module,
                  device: torch.device,
                  epochs: int,
-                 batch_size: int,
                  checkpoint_path: str = "checkpoint.pth"):
         self.model = model
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.device = device
         self.epochs = epochs
-        self.batch_size = batch_size
         self.checkpoint_path = checkpoint_path
 
     def _train_epoch(self, dataloader: DataLoader):
@@ -90,14 +88,12 @@ class UnimodalTrainer:
                  loss_fn: nn.Module,
                  device: torch.device,
                  epochs: int,
-                 batch_size: int,
                  checkpoint_path: str = "checkpoint.pth"):
         self.model = model
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.device = device
         self.epochs = epochs
-        self.batch_size = batch_size
         self.checkpoint_path = checkpoint_path
 
     def _train_epoch(self, dataloader: DataLoader, modality_key: str):

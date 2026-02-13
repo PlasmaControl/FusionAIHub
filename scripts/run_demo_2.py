@@ -7,9 +7,9 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchinfo import summary
 
 from tokamak_foundation_model.data.data_loader import (
-    TokamakH5Dataset, collate_fn, collate_fn_prediction, compute_preprocessing_stats)
+    TokamakH5Dataset, collate_fn_prediction, compute_preprocessing_stats)
 from tokamak_foundation_model.models.dummy_model_2 import MultiModalTokamakModel, MultiModalPredictionModel
-from tokamak_foundation_model.trainer.trainer import Trainer
+from tokamak_foundation_model.trainer.trainer import MultimodalTrainer
 
 
 def worker_init_fn(worker_id):
@@ -29,13 +29,16 @@ def worker_init_fn(worker_id):
 print("Initializing and demonstrating custom DataLoader with updated TokamakH5Dataset")
 # Use glob to find all generated HDF5 files
 hdf5_files = sorted(
-    Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data").glob("*_processed.h5")
-    )
+    Path(
+        r"C:\Users\admin\PycharmProjects\nstx\foundation_model_notes\tokamak_package"
+    ).glob("*_processed.h5")
+)
 
 # Create TokamakH5Dataset instances for each HDF5 file
 # datasets = [TokamakH5Dataset(hdf5_path=str(f)) for f in hdf5_files]
 # stats = compute_preprocessing_stats(datasets, 'preprocessing_stats.pt')
-stats = torch.load('data/preprocessing_stats.pt')
+stats = torch.load(r'C:\Users\admin\PycharmProjects\nstx\foundation_model_notes'
+                   r'\tokamak_package/preprocessing_stats.pt')
 
 # All signals the model expects as inputs
 all_input_signals = [
@@ -91,7 +94,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 print(f"Using device: {device}")
 
-trainer = Trainer(
+trainer = MultimodalTrainer(
     model=model,
     optimizer=optimizer,
     loss_fn=loss_fn,

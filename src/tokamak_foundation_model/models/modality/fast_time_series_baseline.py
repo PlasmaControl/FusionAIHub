@@ -99,7 +99,7 @@ class TimeSeriesEncoder(nn.Module):
             d_model: int = 512,
             n_output_tokens: int = 100,
             n_conv_layers: int = 4,
-            kernel_size: int = 15,
+            kernel_size: int = 3,
             verbose: bool = False
     ):
         super().__init__()
@@ -134,6 +134,10 @@ class TimeSeriesEncoder(nn.Module):
             for i in range(n_conv_layers)
         ])
 
+        self.norms = nn.ModuleList([
+            nn.InstanceNorm1d(self.channels[i + 1]) for i in range(n_conv_layers)
+        ])
+
         self.adaptive_pool = nn.AdaptiveAvgPool1d(n_output_tokens)
         self.activation = nn.GELU()
         self.norm = nn.LayerNorm(d_model)
@@ -159,12 +163,13 @@ class TimeSeriesEncoder(nn.Module):
         torch.Tensor
             Encoded tokens of shape [batch, n_output_tokens, d_model]
         """
-        for conv in self.conv_layers:
-            x = self.activation(conv(x))         # [B, channels[i+1], T']
+        for conv, norm in zip(self.conv_layers, self.norms):
+            x = conv(x)         # [B, channels[i+1], T']
+            x = norm(x)
+            x = self.activation(x)
 
         x = self.adaptive_pool(x)                # [B, d_model, n_output_tokens]
         x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
-        x = self.norm(x)
 
         return x
 
@@ -211,7 +216,7 @@ class TimeSeriesDecoder(nn.Module):
             d_model: int = 512,
             n_input_tokens: int = 100,
             n_deconv_layers: int = 4,
-            kernel_size: int = 15,
+            kernel_size: int = 3,
             verbose: bool = False
     ):
         super().__init__()
