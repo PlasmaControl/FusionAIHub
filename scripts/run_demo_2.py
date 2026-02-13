@@ -8,7 +8,8 @@ from torchinfo import summary
 
 from tokamak_foundation_model.data.data_loader import (
     TokamakH5Dataset, collate_fn, collate_fn_prediction, compute_preprocessing_stats)
-from tokamak_foundation_model.models.dummy_model_2 import MultiModalTokamakModel, MultiModalPredictionModel
+from tokamak_foundation_model.models.dummy_model_2 import Fusion4FusionModel, Prediction4FusionModel
+from tokamak_foundation_model.models.loss import DictMSELoss
 from tokamak_foundation_model.trainer.trainer import Trainer
 
 
@@ -72,7 +73,16 @@ batch = next(iter(dataloader)) # Get the first batch to verify functionality
 
 # --- 3. Initialize and Demonstrate Dummy PyTorch Model with text input ---
 print("\n--- 3. Initializing and demonstrating Dummy PyTorch Model with text input ---")
-model = MultiModalPredictionModel()
+# Target configs: (n_channels, n_frames) matching dataloader prediction targets
+# d_alpha: 6ch, prediction_horizon 0.2s @ 10kHz = 2000 frames
+# mse: 69ch, prediction_horizon 0.2s @ 100Hz = 20 frames
+# ts_core_density: 44ch, prediction_horizon 0.2s @ 100Hz = 20 frames
+target_configs = {
+    "d_alpha": (6, 2000),
+    "mse": (69, 20),
+    "ts_core_density": (44, 20),
+}
+model = Prediction4FusionModel(target_configs=target_configs)
 summary(model, depth=2)
 
 model.eval()
@@ -86,7 +96,7 @@ for k, v in output.items():
 # # --- 4. Initialize and Demonstrate Extensible PyTorch Trainer ---
 print("\n--- 4. Initializing and demonstrating Extensible PyTorch Trainer ---")
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-loss_fn = nn.MSELoss()  # Dummy loss for regression
+loss_fn = DictMSELoss()  # MSE loss for dict-based outputs
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 print(f"Using device: {device}")

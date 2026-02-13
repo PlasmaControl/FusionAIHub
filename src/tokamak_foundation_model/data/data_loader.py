@@ -406,11 +406,12 @@ class TokamakH5Dataset(Dataset):
         t1 = xdata_ds[-1] / 1000.0
         n_samples = xdata_ds.shape[0]
 
-        fs_raw = (n_samples - 1) / (t1 - t0)
         duration_s = t_end - t_start
 
+        fs_raw = (n_samples - 1) / (t1 - t0)
+
         ydata = np.zeros(
-            (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
+            (max(1, round(duration_s * fs_raw)), config.num_channels), dtype=np.float32
         )
 
         start_idx = max(0, int((t_start - t0) * fs_raw))
@@ -473,6 +474,7 @@ class TokamakH5Dataset(Dataset):
             window=self.stft_window,
             return_complex=True,
         )
+        spec = spec[:, 1:, :] # Remove DC component (extreme values)
         return torch.abs(spec)
 
     def _load_metadata(self, f: h5py.File) -> dict:
@@ -554,9 +556,13 @@ class TokamakH5Dataset(Dataset):
         fps_raw = (n_samples - 1) / (t1 - t0)
         duration_s = t_end - t_start
 
+        if n_samples < 2 or t1 == t0:
+            n_frames = round(duration_s * config.target_fps)
+            return torch.zeros(max(n_frames, 1), config.height, config.width)
+
         raw_height, raw_width = ydata_ds.shape[1], ydata_ds.shape[2]
         ydata = np.zeros(
-            (round(duration_s * fps_raw), raw_height, raw_width), dtype=np.float32
+            (max(1, round(duration_s * fps_raw)), raw_height, raw_width), dtype=np.float32
         )
         
         # Compute indices directly (no full xdata load)
@@ -630,7 +636,7 @@ class TokamakH5Dataset(Dataset):
         # Load and process movies
         all_movies = {}
         for movie_config in self.MOVIE_CONFIGS:
-            if config.name in self.input_signals:
+            if movie_config.name in self.input_signals:
                 raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
                 all_movies[movie_config.name] = raw_movie
 
