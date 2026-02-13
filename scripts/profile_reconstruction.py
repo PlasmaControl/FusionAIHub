@@ -44,13 +44,10 @@ model = DummyModel()
 
 
 hdf5_files = sorted(
-    Path(
-        "C:/Users/admin/PycharmProjects/nstx/foundation_model_notes/tokamak_package/"
-    ).glob("*_processed.h5")
+    Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/").glob("*_processed.h5")
 )
 stats = torch.load(
-    "C:/Users/admin/PycharmProjects/nstx/foundation_model_notes/"
-    "tokamak_package/preprocessing_stats.pt"
+    Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt")
 )
 
 datasets_processed = [
