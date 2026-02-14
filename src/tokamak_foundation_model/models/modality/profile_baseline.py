@@ -101,7 +101,7 @@ class SpatialProfileEncoder(nn.Module):
             n_time_points: int = 50,
             d_model: int = 512,
             n_output_tokens: int = 10,
-            kernel_size: int = 5,
+            kernel_size: int = 3,
             verbose: bool = False,
     ):
         super().__init__()
@@ -119,8 +119,10 @@ class SpatialProfileEncoder(nn.Module):
         # Spatial MLP: encodes each time step's spatial profile
         self.spatial_encoder = nn.Sequential(
             nn.Linear(n_spatial_points, 128),
+            nn.InstanceNorm1d(128),
             self.activation,
             nn.Linear(128, 256),
+            nn.InstanceNorm1d(256),
             self.activation,
             nn.Linear(256, d_model)
         )

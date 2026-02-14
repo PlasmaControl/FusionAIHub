@@ -158,7 +158,7 @@ class TokamakH5Dataset(Dataset):
             6,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "gas",
@@ -166,7 +166,7 @@ class TokamakH5Dataset(Dataset):
             5,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "ech",
@@ -174,7 +174,7 @@ class TokamakH5Dataset(Dataset):
             11,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "pin",
@@ -190,7 +190,7 @@ class TokamakH5Dataset(Dataset):
             8,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "mse",
@@ -206,7 +206,7 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="log"),
         ),
     ]
 
@@ -332,7 +332,7 @@ class TokamakH5Dataset(Dataset):
             return (tensor - min_val) / (max_val - min_val + config.eps)
 
         elif config.method == "log_standardize":
-            tensor_log = torch.log(tensor + 1)
+            tensor_log = torch.log10(tensor + 1)
 
             if config.mean is None or config.std is None:
                 print("Warning: log_standardize requested but no statistics provided")
@@ -349,6 +349,10 @@ class TokamakH5Dataset(Dataset):
                 std = std.reshape(reshape_dims)
 
             return (tensor_log - mean) / (std + config.eps)
+
+        elif config.method == "log":
+            tensor_log = torch.log10(tensor + 1)
+            return tensor_log
 
         return tensor
 
