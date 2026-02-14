@@ -4,7 +4,7 @@ from tokamak_foundation_model.data.data_loader import (
 
 hdf5_files = sorted(
     Path(
-        "C:/Users/admin/PycharmProjects/nstx/foundation_model_notes/tokamak_package/"
+        "C:/Users/admin/PycharmProjects/FusionAIHub/scripts/"
     ).glob("*_processed.h5")
 )
 all_input_signals = [

@@ -2,112 +2,72 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
+from .fast_time_series_baseline import (FastTimeSeriesBaselineEncoder,
+                                        FastTimeSeriesBaselineDecoder,
+                                        FastTimeSeriesBaselineAutoEncoder)
 
 
-class ActuatorBaselineEncoder(ModalityEncoder):
+class ActuatorBaselineEncoder(FastTimeSeriesBaselineEncoder):
 
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 64,
-        n_tokens: int = 0,
+    def __init__(
+            self,
+            n_channels: int,
+            d_model: int = 512,
+            n_tokens: int = 100,
+            input_length: int = 5000,
+            n_conv_layers: int = 4,
+            kernel_size: int = 3,
     ):
-        super().__init__(n_channels, d_model, n_tokens)
-
-        self.n_conv_layers = 3
-        self.kernel_size = 7
-
-        intermediate = [min(32 * (2 ** i), d_model) for i in range(self.n_conv_layers - 1)]
-        channels = [n_channels] + intermediate + [d_model]
-
-        self.conv_layers = nn.ModuleList([
-            nn.Conv1d(
-                in_channels=channels[i],
-                out_channels=channels[i + 1],
-                kernel_size=self.kernel_size,
-                padding=self.kernel_size // 2,
-            )
-            for i in range(self.n_conv_layers)
-        ])
-
-        if n_tokens > 0:
-            self.adaptive_pool = nn.AdaptiveAvgPool1d(n_tokens)
-
-        self.activation = nn.GELU()
-        self.norm = nn.LayerNorm(d_model)
-
-    def forward(self, x):
-        B, C, T = x.shape
-
-        for conv in self.conv_layers:
-            x = self.activation(conv(x))
-
-        if self.n_tokens > 0:
-            x = self.adaptive_pool(x)                 # [B, d_model, n_tokens]
-
-        x = x.transpose(1, 2)                     # [B, n_tokens, d_model]
-        x = self.norm(x)
-
-        return x
+        super().__init__(
+            n_channels,
+            d_model,
+            n_tokens,
+            input_length,
+            n_conv_layers,
+            kernel_size
+        )
 
 
-class ActuatorBaselineDecoder(ModalityDecoder):
+class ActuatorBaselineDecoder(FastTimeSeriesBaselineDecoder):
 
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 64,
+    def __init__(
+            self,
+            n_channels: int = 6,
+            input_length: int = 5000,
+            d_model: int = 512,
+            n_tokens: int = 100,
+            n_deconv_layers: int = 4,
+            kernel_size: int = 3,
     ):
-        super().__init__(n_channels, d_model)
-
-        self.n_deconv_layers = 3
-        self.kernel_size = 7
-
-        # Mirror encoder channel progression (reversed)
-        intermediate = [min(32 * (2 ** i), d_model) for i in range(self.n_deconv_layers - 1)]
-        channels = [d_model] + list(reversed(intermediate)) + [n_channels]
-
-        self.deconv_layers = nn.ModuleList([
-            nn.ConvTranspose1d(
-                in_channels=channels[i],
-                out_channels=channels[i + 1],
-                kernel_size=self.kernel_size,
-                padding=self.kernel_size // 2,
-            )
-            for i in range(self.n_deconv_layers)
-        ])
-
-        self.activation = nn.GELU()
-
-    def forward(self, z, output_shape=None):
-        B, D, T = z.shape
-
-        z = z.transpose(1, 2)                     # [B, d_model, n_tokens]
-
-        for i, deconv in enumerate(self.deconv_layers):
-            z = deconv(z)
-            if i < len(self.deconv_layers) - 1:
-                z = self.activation(z)
-
-        if output_shape is not None:
-            z = F.adaptive_avg_pool1d(z, output_shape[-1])
-
-        return z
+        super().__init__(
+            n_channels,
+            input_length,
+            d_model,
+            n_tokens,
+            n_deconv_layers,
+            kernel_size
+        )
 
 
-class ActuatorBaselineAutoEncoder(ModalityAutoEncoder):
-
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 64,
-        n_tokens: int = 0,
+class ActuatorBaselineAutoEncoder(FastTimeSeriesBaselineAutoEncoder):
+    def __init__(
+        self,
+        n_channels: int = 6,
+        input_length: int = 5000,
+        d_model: int = 512,
+        n_tokens: int = 100,
+        n_layers: int = 4,
+        kernel_size: int = 3,
     ):
-        super().__init__(n_channels, d_model, n_tokens)
-        self.encoder = ActuatorBaselineEncoder(n_channels, d_model, n_tokens)
-        self.decoder = ActuatorBaselineDecoder(n_channels, d_model)
+        super().__init__(
+            n_channels,
+            input_length,
+            d_model,
+            n_tokens,
+            n_layers,
+            kernel_size
+        )
 
-    def forward(self, x):
-        output_shape = x.shape[:-1]
-        return self.decoder(self.encoder(x), output_shape=output_shape)
 
 
 if __name__ == "__main__":
