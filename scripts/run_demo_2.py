@@ -7,9 +7,10 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchinfo import summary
 
 from tokamak_foundation_model.data.data_loader import (
-    TokamakH5Dataset, collate_fn_prediction, compute_preprocessing_stats)
-from tokamak_foundation_model.models.dummy_model_2 import MultiModalTokamakModel, MultiModalPredictionModel
-from tokamak_foundation_model.trainer.trainer import MultimodalTrainer
+    TokamakH5Dataset, collate_fn, collate_fn_prediction, compute_preprocessing_stats)
+from tokamak_foundation_model.models.dummy_model_2 import Fusion4FusionModel, Prediction4FusionModel
+from tokamak_foundation_model.models.loss import DictMSELoss
+from tokamak_foundation_model.trainer.trainer import Trainer
 
 
 def worker_init_fn(worker_id):
@@ -29,16 +30,13 @@ def worker_init_fn(worker_id):
 print("Initializing and demonstrating custom DataLoader with updated TokamakH5Dataset")
 # Use glob to find all generated HDF5 files
 hdf5_files = sorted(
-    Path(
-        r"C:\Users\admin\PycharmProjects\nstx\foundation_model_notes\tokamak_package"
-    ).glob("*_processed.h5")
-)
+    Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data").glob("*_processed.h5")
+    )
 
 # Create TokamakH5Dataset instances for each HDF5 file
 # datasets = [TokamakH5Dataset(hdf5_path=str(f)) for f in hdf5_files]
 # stats = compute_preprocessing_stats(datasets, 'preprocessing_stats.pt')
-stats = torch.load(r'C:\Users\admin\PycharmProjects\nstx\foundation_model_notes'
-                   r'\tokamak_package/preprocessing_stats.pt')
+stats = torch.load('data/preprocessing_stats.pt')
 
 # All signals the model expects as inputs
 all_input_signals = [
@@ -75,7 +73,16 @@ batch = next(iter(dataloader)) # Get the first batch to verify functionality
 
 # --- 3. Initialize and Demonstrate Dummy PyTorch Model with text input ---
 print("\n--- 3. Initializing and demonstrating Dummy PyTorch Model with text input ---")
-model = MultiModalPredictionModel()
+# Target configs: (n_channels, n_frames) matching dataloader prediction targets
+# d_alpha: 6ch, prediction_horizon 0.2s @ 10kHz = 2000 frames
+# mse: 69ch, prediction_horizon 0.2s @ 100Hz = 20 frames
+# ts_core_density: 44ch, prediction_horizon 0.2s @ 100Hz = 20 frames
+target_configs = {
+    "d_alpha": (6, 2000),
+    "mse": (69, 20),
+    "ts_core_density": (44, 20),
+}
+model = Prediction4FusionModel(target_configs=target_configs)
 summary(model, depth=2)
 
 model.eval()
@@ -89,12 +96,12 @@ for k, v in output.items():
 # # --- 4. Initialize and Demonstrate Extensible PyTorch Trainer ---
 print("\n--- 4. Initializing and demonstrating Extensible PyTorch Trainer ---")
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-loss_fn = nn.MSELoss()  # Dummy loss for regression
+loss_fn = DictMSELoss()  # MSE loss for dict-based outputs
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 print(f"Using device: {device}")
 
-trainer = MultimodalTrainer(
+trainer = Trainer(
     model=model,
     optimizer=optimizer,
     loss_fn=loss_fn,
