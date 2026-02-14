@@ -5,9 +5,24 @@ import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
-from tokamak_foundation_model.models.modality.fast_time_series_baseline import (
-    TimeSeriesAutoencoder)
+from tokamak_foundation_model.models.modality.profile_baseline import (
+    SpatialProfileEncoder, SpatialProfileDecoder)
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
+
+
+class DummyModel(torch.nn.Module):
+    def __init__(self):
+        super(DummyModel, self).__init__()
+        self.encoder = SpatialProfileEncoder(
+            kernel_size=3, n_spatial_points=44, n_time_points=50, d_model=512,
+            n_output_tokens=100)
+        self.decoder = SpatialProfileDecoder(
+            kernel_size=3, n_spatial_points=44, n_time_points=50, d_model=512,
+            n_input_tokens=100)
+
+    def forward(self, x):
+        x_encoded = self.encoder(x)
+        return self.decoder(x_encoded)
 
 
 def worker_init_fn(worker_id):
@@ -25,6 +40,9 @@ def worker_init_fn(worker_id):
             dataset._open_hdf5()
 
 
+model = DummyModel()
+
+
 hdf5_files = sorted(
     Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/").glob("*_processed.h5")
 )
@@ -36,8 +54,8 @@ datasets_processed = [
     TokamakH5Dataset(
         hdf5_path=str(f),
         preprocessing_stats=stats,
-        input_signals=["d_alpha", ],
-        target_signals=["d_alpha", ],
+        input_signals=["ts_core_density", ],
+        target_signals=["ts_core_density", ],
         prediction_mode=False,
     )
     for f in hdf5_files
@@ -53,11 +71,10 @@ dataloader = DataLoader(
     worker_init_fn=worker_init_fn
     )
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-model = TimeSeriesAutoencoder()
-model = model.to(device)
-loss_fn = nn.MSELoss()
 optimizer = optim.AdamW(model.parameters(), lr=0.005)
+loss_fn = nn.L1Loss()  # Be careful
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
 trainer = UnimodalTrainer(model, optimizer, loss_fn, device=device, epochs=50)
-trainer.train(dataloader, val_dataloader=dataloader, modality_key="d_alpha")
+trainer.train(dataloader, val_dataloader=dataloader, modality_key="ts_core_density")
+

@@ -158,7 +158,7 @@ class TokamakH5Dataset(Dataset):
             6,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "gas",
@@ -166,7 +166,7 @@ class TokamakH5Dataset(Dataset):
             5,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "ech",
@@ -174,7 +174,7 @@ class TokamakH5Dataset(Dataset):
             11,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "pin",
@@ -190,7 +190,7 @@ class TokamakH5Dataset(Dataset):
             8,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "mse",
@@ -206,7 +206,7 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="log"),
         ),
     ]
 
@@ -305,8 +305,10 @@ class TokamakH5Dataset(Dataset):
                 return tensor
 
             # Convert to tensor and reshape for broadcasting
-            mean = torch.tensor(config.mean, dtype=tensor.dtype, device=tensor.device)
-            std = torch.tensor(config.std, dtype=tensor.dtype, device=tensor.device)
+            mean = torch.as_tensor(
+                config.mean, dtype=tensor.dtype, device=tensor.device)
+            std = torch.as_tensor(
+                config.std, dtype=tensor.dtype, device=tensor.device)
 
             if reshape_dims is not None:
                 mean = mean.reshape(reshape_dims)
@@ -330,21 +332,27 @@ class TokamakH5Dataset(Dataset):
             return (tensor - min_val) / (max_val - min_val + config.eps)
 
         elif config.method == "log_standardize":
-            tensor_log = torch.log(tensor + 1)
+            tensor_log = torch.log10(tensor + 1)
 
             if config.mean is None or config.std is None:
                 print("Warning: log_standardize requested but no statistics provided")
                 return tensor_log
 
             # Convert to tensor and reshape for broadcasting
-            mean = torch.tensor(config.mean, dtype=tensor.dtype, device=tensor.device)
-            std = torch.tensor(config.std, dtype=tensor.dtype, device=tensor.device)
+            mean = torch.as_tensor(
+                config.mean, dtype=tensor.dtype, device=tensor.device)
+            std = torch.as_tensor(
+                config.std, dtype=tensor.dtype, device=tensor.device)
 
             if reshape_dims is not None:
                 mean = mean.reshape(reshape_dims)
                 std = std.reshape(reshape_dims)
 
             return (tensor_log - mean) / (std + config.eps)
+
+        elif config.method == "log":
+            tensor_log = torch.log10(tensor + 1)
+            return tensor_log
 
         return tensor
 
@@ -637,7 +645,9 @@ class TokamakH5Dataset(Dataset):
         all_movies = {}
         for movie_config in self.MOVIE_CONFIGS:
             if movie_config.name in self.input_signals:
-                raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
+                raw_movie = self._load_movie_raw(
+                    self.h5_file, movie_config, t_start, t_end
+                )
                 all_movies[movie_config.name] = raw_movie
 
         # Load metadata
@@ -645,7 +655,7 @@ class TokamakH5Dataset(Dataset):
             all_metadata = self._load_metadata(self.h5_file)
         else:
             all_metadata = {}
-       
+
         return {**all_signals, **all_movies, **all_metadata}
 
     def _getitem_prediction(self, idx):
@@ -654,15 +664,21 @@ class TokamakH5Dataset(Dataset):
         t_start = idx * self.chunk_duration_s
         t_end = t_start + self.chunk_duration_s + self.prediction_horizon_s
 
+        signals_to_load = set(self.input_signals) | set(self.target_signals)
+
         # Load and process all signals with extended window
         all_signals = {}
         for config in self.SIGNAL_CONFIGS:
+            if config.name not in signals_to_load:
+                continue
             raw_data = self._load_signal_raw(self.h5_file, config, t_start, t_end)
             all_signals[config.name] = self._process_signal(raw_data, config)
 
         # Load and process movies
         all_movies = {}
         for movie_config in self.MOVIE_CONFIGS:
+            if movie_config.name not in signals_to_load:
+                continue
             # Load raw movie data
             raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
             all_movies[movie_config.name] = raw_movie
