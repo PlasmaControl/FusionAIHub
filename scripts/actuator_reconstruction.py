@@ -36,8 +36,9 @@ datasets_processed = [
     TokamakH5Dataset(
         hdf5_path=str(f),
         preprocessing_stats=stats,
-        input_signals=["d_alpha", ],
-        target_signals=["d_alpha", ],
+        chunk_duration_s=0.7,
+        input_signals=["tin", ],
+        target_signals=["tin", ],
         prediction_mode=False,
     )
     for f in hdf5_files
@@ -55,9 +56,11 @@ dataloader = DataLoader(
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = TimeSeriesAutoencoder()
+model = TimeSeriesAutoencoder(n_channels=8, input_length=7000, n_tokens=140)
 model = model.to(device)
 loss_fn = nn.MSELoss()
 optimizer = optim.AdamW(model.parameters(), lr=0.005)
-trainer = UnimodalTrainer(model, optimizer, loss_fn, device=device, epochs=50)
-trainer.train(dataloader, val_dataloader=dataloader, modality_key="d_alpha")
+trainer = UnimodalTrainer(model, optimizer, loss_fn, device=device, epochs=50,
+                          checkpoint_path='checkpoint_tin.pth')
+# ECH and gas are critical
+trainer.train(dataloader, val_dataloader=dataloader, modality_key="tin")

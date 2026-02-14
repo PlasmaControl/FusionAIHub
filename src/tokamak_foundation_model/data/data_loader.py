@@ -332,7 +332,7 @@ class TokamakH5Dataset(Dataset):
             12,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "ech_pol_angle",
