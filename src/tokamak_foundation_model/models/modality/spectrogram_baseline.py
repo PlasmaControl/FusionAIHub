@@ -67,6 +67,7 @@ class SpectrogramBaselineDecoder(ModalityDecoder):
 class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
     """
     Based on 3DCAE implementation at https://github.com/micah35s/Autoencoder-Image-Compression
+    https://github.com/faadi809/HSI-compression-benchmark
     """
 
     def __init__(self, 
