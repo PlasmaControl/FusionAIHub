@@ -75,18 +75,6 @@ def compute_preprocessing_stats(
 
 
 @dataclass
-class MovieConfig:
-    """Configuration for a movie/video diagnostic."""
-
-    name: str  # Key in output dict
-    hdf5_keys: list[str]  # Possible HDF5 paths to search
-    channels: int  # Color channels (e.g., 3 for RGB)
-    target_fps: int  # Target frames per second after resampling
-    height: int  # Frame height
-    width: int  # Frame width
-
-
-@dataclass
 class PreprocessConfig:
     """Preprocessing configuration."""
 
@@ -107,6 +95,23 @@ class SignalConfig:
     num_channels: int
     target_fs: float
     apply_stft: bool
+    preprocess: PreprocessConfig = None  # Add preprocessing config
+
+    def __post_init__(self):
+        if self.preprocess is None:
+            self.preprocess = PreprocessConfig()
+
+
+@dataclass
+class MovieConfig:
+    """Configuration for a movie/video diagnostic."""
+
+    name: str  # Key in output dict
+    hdf5_keys: list[str]  # Possible HDF5 paths to search
+    channels: int  # Color channels (e.g., 3 for RGB)
+    target_fps: int  # Target frames per second after resampling
+    height: int  # Frame height
+    width: int  # Frame width
     preprocess: PreprocessConfig = None  # Add preprocessing config
 
     def __post_init__(self):
