@@ -28,7 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="pin",
+        default="gas",
         help="Signal name to train on"
     )
     parser.add_argument(
@@ -70,10 +70,10 @@ def main():
         "--epochs", type=int, default=50, help="Number of training epochs"
     )
     parser.add_argument(
-        "--lr", type=float, default=1e-3, help="Learning rate"
+        "--lr", type=float, default=5e-3, help="Learning rate"
     )
     parser.add_argument(
-        "--weight_decay", type=float, default=0.05, help="AdamW weight decay"
+        "--weight_decay", type=float, default=1e-3, help="AdamW weight decay"
     )
     parser.add_argument(
         "--warmup_epochs", type=int, default=5,
@@ -111,7 +111,7 @@ def main():
     logger.info(f"Signal: {signal_name}, Model: {model_name}")
 
     ### Dataset Setup ###
-    hdf5_files = sorted(data_dir.glob("*.h5"))
+    hdf5_files = sorted(data_dir.glob("*_processed.h5"))
     stats = torch.load(statistics_path)
 
     datasets_processed = [
@@ -144,6 +144,13 @@ def main():
         model.parameters(),
         lr=args.lr,
     )
+
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=args.epochs,
+        eta_min=args.min_lr
+    )
+
     # loss_fn = nn.L1Loss()
     loss_fn = nn.MSELoss()
 
@@ -165,6 +172,7 @@ def main():
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
+        # lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
