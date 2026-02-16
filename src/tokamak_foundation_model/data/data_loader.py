@@ -49,6 +49,8 @@ def compute_preprocessing_stats(
             all_values = torch.cat(values, dim=1)  # (channels, time)
         elif values[0].ndim == 3:
             all_values = torch.cat(values, dim=2)  # (channels, freq_bins, time)
+        else:
+            raise ValueError(f"Invalid tensor shape: {values[0].shape}")
 
         # Compute per-channel statistics
         # Reduce over all dimensions except channel dimension (dim=1)
@@ -151,7 +153,7 @@ class TokamakH5Dataset(Dataset):
             4,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="standardize"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "d_alpha",
@@ -159,7 +161,7 @@ class TokamakH5Dataset(Dataset):
             6,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "gas",
@@ -337,7 +339,7 @@ class TokamakH5Dataset(Dataset):
             return (tensor - min_val) / (max_val - min_val + config.eps)
 
         elif config.method == "log_standardize":
-            tensor_log = torch.log(tensor + 1)
+            tensor_log = torch.log10(tensor + 1)
 
             if config.mean is None or config.std is None:
                 print("Warning: log_standardize requested but no statistics provided")
@@ -354,6 +356,10 @@ class TokamakH5Dataset(Dataset):
                 std = std.reshape(reshape_dims)
 
             return (tensor_log - mean) / (std + config.eps)
+
+        elif config.method == "log":
+            tensor_log = torch.log10(tensor + 1)
+            return tensor_log
 
         return tensor
 
@@ -415,12 +421,11 @@ class TokamakH5Dataset(Dataset):
         t1 = xdata_ds[-1] / 1000.0
         n_samples = xdata_ds.shape[0]
 
+        fs_raw = (n_samples - 1) / (t1 - t0)
         duration_s = t_end - t_start
 
-        fs_raw = (n_samples - 1) / (t1 - t0)
-
         ydata = np.zeros(
-            (max(1, round(duration_s * fs_raw)), config.num_channels), dtype=np.float32
+            (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
         )
 
         start_idx = max(0, int((t_start - t0) * fs_raw))
