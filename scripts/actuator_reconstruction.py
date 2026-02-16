@@ -28,7 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="gas",
+        default="pin",
         help="Signal name to train on"
     )
     parser.add_argument(
@@ -135,7 +135,8 @@ def main():
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
     ### Model Setup ###
-    model = build_model(model_name, n_channels, args.d_model, args.n_tokens).to(device)
+    model = build_model(model_name, d_model=args.d_model, n_tokens=args.n_tokens,
+                        n_channels=n_channels, kernel_size=3).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -172,7 +173,7 @@ def main():
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
-        # lr_scheduler=lr_scheduler,
+        lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
