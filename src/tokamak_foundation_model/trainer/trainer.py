@@ -220,6 +220,8 @@ class UnimodalTrainer:
 
             self.lr_scheduler.step()
 
+            self.lr_scheduler.step()
+
             # Logging
             if self.log_interval is not None:
                 if epoch % self.log_interval == 0:
