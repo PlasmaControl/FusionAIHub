@@ -28,7 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="d_alpha",
+        default="co2",
         help="Signal name to train on"
     )
     parser.add_argument(
@@ -38,7 +38,7 @@ def main():
         "--hop_length", type=int, default=256, help="Hop length for STFT.",
     )
     parser.add_argument(
-        "--model", choices=list(MODEL_REGISTRY.keys()), default="fast_time_series",
+        "--model", choices=list(MODEL_REGISTRY.keys()), default="actuator",
         help="Model type (default: auto-selected from signal)"
     )
     parser.add_argument(
@@ -64,7 +64,7 @@ def main():
              "independently, so effective batch = batch_size * C)"
     )
     parser.add_argument(
-        "--num_workers", type=int, default=4, help="Number of data loader workers"
+        "--num_workers", type=int, default=1, help="Number of data loader workers"
     )
     parser.add_argument(
         "--epochs", type=int, default=50, help="Number of training epochs"
@@ -73,7 +73,7 @@ def main():
         "--lr", type=float, default=5e-3, help="Learning rate"
     )
     parser.add_argument(
-        "--weight_decay", type=float, default=0.05, help="AdamW weight decay"
+        "--weight_decay", type=float, default=1e-3, help="AdamW weight decay"
     )
     parser.add_argument(
         "--warmup_epochs", type=int, default=5,
@@ -144,7 +144,15 @@ def main():
         model.parameters(),
         lr=args.lr,
     )
-    loss_fn = nn.L1Loss()
+
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=args.epochs,
+        eta_min=args.min_lr
+    )
+
+    # loss_fn = nn.L1Loss()
+    loss_fn = nn.MSELoss()
 
     dataloader = DataLoader(
         concatenated_dataset,
@@ -164,6 +172,7 @@ def main():
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
+        # lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
