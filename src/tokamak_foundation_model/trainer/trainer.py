@@ -175,12 +175,19 @@ class UnimodalTrainer:
         for epoch in range(self.epochs):
             self._current_epoch = epoch
 
-            logger.info(f"Epoch {epoch+1}/{self.epochs}")
+            logger.info(f"Epoch {epoch + 1}/{self.epochs}")
             train_loss = self._train_epoch(train_dataloader, modality_key)
             logger.info(f"  Training Loss: {train_loss:.4f}")
 
-            torch.save(self.model.state_dict(), self.checkpoint_path)
-            
+            torch.save(
+                {"model": self.model,
+                 "optimizer_state_dict": self.optimizer.state_dict(),
+                 "scheduler_state_dict": self.lr_scheduler.state_dict(),
+                 "epoch": epoch,
+                 "loss": train_loss,
+                 },
+                self.checkpoint_path)
+
             # Validation
             if val_dataloader:
                 val_loss = self._validate_epoch(val_dataloader, modality_key)
@@ -188,7 +195,8 @@ class UnimodalTrainer:
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     torch.save(self.model.state_dict(), self.best_checkpoint_path)
-                    logger.info(f"  Best validation loss: {best_val_loss:.4f}, best model checkpoint saved!")
+                    logger.info(f"  Best validation loss: {best_val_loss:.4f}, "
+                                f"best model checkpoint saved!")
 
             self.lr_scheduler.step()
 
