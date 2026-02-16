@@ -135,7 +135,8 @@ def main():
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
     ### Model Setup ###
-    model = build_model(model_name, n_channels, args.d_model, args.n_tokens).to(device)
+    model = build_model(model_name, d_model=args.d_model, n_tokens=args.n_tokens,
+                        n_channels=n_channels, kernel_size=3).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -144,6 +145,13 @@ def main():
         model.parameters(),
         lr=args.lr,
     )
+
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=args.epochs,
+        eta_min=args.min_lr
+    )
+
     loss_fn = nn.L1Loss()
 
     dataloader = DataLoader(
@@ -164,6 +172,7 @@ def main():
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
+        lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,

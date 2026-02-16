@@ -28,7 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="ts_core_density",
+        default="mse",
         help="Signal name to train on"
     )
     parser.add_argument(
