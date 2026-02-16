@@ -708,6 +708,8 @@ class TokamakH5Dataset(Dataset):
 
         # For signals: split at input_frames
         for config in self.signal_configs:
+            if config.name not in signals_to_load:
+                continue
             signal = all_signals[config.name]
 
             if config.apply_stft:
@@ -725,6 +727,8 @@ class TokamakH5Dataset(Dataset):
 
         # Movies: split along time dimension
         for movie_config in self.movie_configs:
+            if movie_config.name not in signals_to_load:
+                continue
             movie_name = movie_config.name
             movie_data = all_movies[movie_name]
             n_training_frames = round(self.chunk_duration_s * movie_config.target_fps)
