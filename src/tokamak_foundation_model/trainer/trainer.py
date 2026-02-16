@@ -89,18 +89,21 @@ class MultimodalTrainer:
 
 
 class UnimodalTrainer:
-    def __init__(self,
-        model: nn.Module,
-        optimizer: optim.Optimizer,
-        loss_fn: nn.Module,
-        device: torch.device,
-        epochs: int,
-        log_interval: int | None = None,
-        drawer: object | None = None,
-        checkpoint_path: str | Path = "checkpoint.pth",
-        ):
+    def __init__(
+            self,
+            model: nn.Module,
+            optimizer: optim.Optimizer,
+            loss_fn: nn.Module,
+            device: torch.device,
+            epochs: int,
+            lr_scheduler: optim.lr_scheduler.LRScheduler | None = None,
+            log_interval: int | None = None,
+            drawer: object | None = None,
+            checkpoint_path: str | Path = "checkpoint.pth",
+    ):
         self.model = model
         self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
         self.loss_fn = loss_fn
         self.device = device
         self.epochs = epochs
@@ -186,6 +189,8 @@ class UnimodalTrainer:
                     best_val_loss = val_loss
                     torch.save(self.model.state_dict(), self.best_checkpoint_path)
                     logger.info(f"  Best validation loss: {best_val_loss:.4f}, best model checkpoint saved!")
+
+            self.lr_scheduler.step()
 
             # Logging
             if self.log_interval is not None:
