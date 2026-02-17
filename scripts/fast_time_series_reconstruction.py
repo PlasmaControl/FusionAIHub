@@ -15,7 +15,7 @@ from tokamak_foundation_model.models.model_factory import (
 
 from tokamak_foundation_model.utils import DefaultDrawer
 
-# TODO: Add ddp support
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 logging.basicConfig(level=logging.INFO)
@@ -27,30 +27,35 @@ def main():
     ### Settings ###
     parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
     parser.add_argument(
-        "--signal", required=True, choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
+        "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
+        default="d_alpha",
         help="Signal name to train on"
     )
     parser.add_argument(
         "--n_fft", type=int, default=1024, help="FFT size",
     )
     parser.add_argument(
-        "--model", choices=list(MODEL_REGISTRY.keys()), default=None,
+        "--hop_length", type=int, default=256, help="Hop length for STFT.",
+    )
+    parser.add_argument(
+        "--model", choices=list(MODEL_REGISTRY.keys()), default="fast_time_series",
         help="Model type (default: auto-selected from signal)"
     )
     parser.add_argument(
         "--data_dir", type=str,
-        default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data",
+        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/",
         help="Path to HDF5 data directory"
     )
     parser.add_argument(
-        "--stats_path", type=str, default="data/preprocessing_stats.pt",
+        "--stats_path", type=str,
+        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
     )
     parser.add_argument(
-        "--d_model", type=int, default=64, help="Model dimension"
+        "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
-        "--n_tokens", type=int, default=None,
+        "--n_tokens", type=int, default=140,
         help="Number of latent tokens (default: use model default)"
     )
     parser.add_argument(
@@ -62,10 +67,10 @@ def main():
         "--num_workers", type=int, default=4, help="Number of data loader workers"
     )
     parser.add_argument(
-        "--epochs", type=int, default=10, help="Number of training epochs"
+        "--epochs", type=int, default=50, help="Number of training epochs"
     )
     parser.add_argument(
-        "--lr", type=float, default=1e-3, help="Learning rate"
+        "--lr", type=float, default=5e-3, help="Learning rate"
     )
     parser.add_argument(
         "--weight_decay", type=float, default=0.05, help="AdamW weight decay"
@@ -106,7 +111,7 @@ def main():
     logger.info(f"Signal: {signal_name}, Model: {model_name}")
 
     ### Dataset Setup ###
-    hdf5_files = sorted(data_dir.glob("*.h5"))
+    hdf5_files = sorted(data_dir.glob("*_processed.h5"))
     stats = torch.load(statistics_path)
 
     datasets_processed = [
@@ -115,7 +120,6 @@ def main():
             preprocessing_stats=stats,
             input_signals=[signal_name],
             target_signals=[signal_name],
-            chunk_duration_s=args.chunk_duration_s,
             n_fft=args.n_fft,
             hop_length=args.hop_length,
             prediction_mode=False,
@@ -124,15 +128,15 @@ def main():
     ]
 
     concatenated_dataset = ConcatDataset(datasets_processed)
-    logger.info(f"Concatenated dataset length: {len(concatenated_dataset)}")
-    
+
     # Not sure if this is elegant
     sample_data = next(iter(concatenated_dataset))[signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
     ### Model Setup ###
-    model = build_model(model_name, n_channels, args.d_model, args.n_tokens).to(device)
+    model = build_model(model_name, d_model=args.d_model, n_tokens=args.n_tokens,
+                        n_channels=n_channels, kernel_size=3).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -140,16 +144,15 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
-        weight_decay=args.weight_decay,
     )
-    loss_fn = nn.L1Loss()
 
-    if args.warmup_epochs > 0:
-        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=args.epochs - args.warmup_epochs, eta_min=args.min_lr
-        )
-    else:
-        lr_scheduler = optim.lr_scheduler.LRScheduler(optimizer)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=args.epochs,
+        eta_min=args.min_lr
+    )
+
+    loss_fn = nn.L1Loss()
 
     dataloader = DataLoader(
         concatenated_dataset,
@@ -163,16 +166,16 @@ def main():
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots) # TODO: make more consistent
+    drawer = DefaultDrawer(num_plots=args.num_plots)
     trainer = UnimodalTrainer(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
+        lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
-        lr_scheduler=lr_scheduler,
         log_interval=args.log_interval,
     )
 

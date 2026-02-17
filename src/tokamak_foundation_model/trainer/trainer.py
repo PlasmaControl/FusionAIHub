@@ -111,7 +111,6 @@ class UnimodalTrainer:
         lr_scheduler: optim.lr_scheduler.LRScheduler | None = None,
         log_interval: int | None = None,
         drawer: object | None = None,
-        scheduler: optim.lr_scheduler.LRScheduler | None = None,
         checkpoint_path: str | Path = "checkpoint.pth",
     ):
         self.model = model
@@ -123,7 +122,6 @@ class UnimodalTrainer:
         self.checkpoint_path = checkpoint_path
         self.log_interval = log_interval
         self.drawer = drawer
-        self.scheduler = scheduler
 
         p = Path(checkpoint_path)
         self.best_checkpoint_path = p.with_name(p.stem + "_best" + p.suffix)
