@@ -112,6 +112,7 @@ class MovieConfig:
     target_fps: int  # Target frames per second after resampling
     height: int  # Frame height
     width: int  # Frame width
+    apply_stft: bool # Just to unify the config with other signal configs
     preprocess: PreprocessConfig = None  # Add preprocessing config
 
     def __post_init__(self):
@@ -219,9 +220,48 @@ class TokamakH5Dataset(Dataset):
     ]
 
     MOVIE_CONFIGS = [
-        MovieConfig("bolo", ["bolo"], 1, 50, 80, 120),
-        MovieConfig("irtv", ["irtv"], 1, 50, 513, 640),
-        MovieConfig("tangtv", ["tangtv"], 1, 50, 240, 720),
+        MovieConfig(
+            "bolo",
+            ["bolo"],
+            channels = 1,
+            target_fps = 50,
+            height = 256,
+            width = 256,
+            apply_stft=False,
+            preprocess=PreprocessConfig(
+                method = "normalize",
+                min_val = 0, # For bad Bolo data the range is [-2^16, 0]
+                max_val = np.power(2,16), # For bad Bolo data the range is [-2^16, 0]
+                )
+            ),
+        
+        MovieConfig(
+            "irtv",
+            ["irtv"],
+            channels = 1,
+            target_fps = 50,
+            height = 513,
+            width = 640,
+            apply_stft=False,
+            preprocess=PreprocessConfig(
+                method = "normalize",
+                min_val = 0,
+                max_val = 16000, # To be checked
+                )
+            ),
+        MovieConfig("tangtv",
+            ["tangtv"],
+            channels = 1,
+            target_fps = 50,
+            height = 240,
+            width = 720,
+            apply_stft=False,
+            preprocess=PreprocessConfig(
+                method = "normalize",
+                min_val = 0,
+                max_val = 255,
+                ),
+        )
     ]
 
     def __init__(
@@ -298,7 +338,6 @@ class TokamakH5Dataset(Dataset):
         """
         if config.method == "none":
             return tensor
-
         # Determine how to reshape statistics based on tensor dimensions
         # For (C, F, T) spectrograms, we want (C, 1, 1) for per-channel stats
         # For (C, 1, T) timeseries, we want (C, 1, 1) for per-channel stats
@@ -669,8 +708,7 @@ class TokamakH5Dataset(Dataset):
                 raw_movie = self._load_movie_raw(
                     self.h5_file, movie_config, t_start, t_end
                 )
-                all_movies[movie_config.name] = raw_movie
-
+                all_movies[movie_config.name] = self._process_signal(raw_movie, movie_config).T
         # Load metadata
         if "text" in self.input_signals:
             all_metadata = self._load_metadata(self.h5_file)
@@ -702,7 +740,7 @@ class TokamakH5Dataset(Dataset):
                 continue
             # Load raw movie data
             raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
-            all_movies[movie_config.name] = raw_movie
+            all_movies[movie_config.name] = self._process_signal(raw_movie, movie_config).T
 
         # Load metadata
         all_metadata = self._load_metadata(self.h5_file)
