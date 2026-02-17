@@ -69,9 +69,8 @@ def compute_preprocessing_stats(
 
         # Collect values
         values = []
-        indices = torch.randperm(len(combined))[:num_samples]
 
-        for idx in tqdm(indices):
+        for idx in tqdm(range(len(combined))):
             batch = combined[int(idx)]
             if config.name in batch['inputs']:
                 values.append(batch['inputs'][config.name])
@@ -301,7 +300,7 @@ class TokamakH5Dataset(Dataset):
         self.h5_file = None
 
         with h5py.File(self.hdf5_path, "r") as f:
-            self.duration = self._compute_duration_from_handle(f)
+            self.duration, self.t0_indices = self._compute_duration_and_t0_indices(f)
 
         # In prediction mode, reduce length to ensure extended window fits
         if self.prediction_mode:
@@ -313,6 +312,138 @@ class TokamakH5Dataset(Dataset):
 
         self.n_freq_bins = n_fft // 2 + 1
         self.stft_window = torch.hann_window(n_fft)
+
+    def _find_t0_index(self, xdata_ms: np.ndarray) -> tuple[int, float]:
+        """
+        Find the index and exact time of t=0 in xdata.
+
+        Parameters
+        ----------
+        xdata_ms : np.ndarray
+            Array of timestamps in milliseconds
+
+        Returns
+        -------
+        tuple[int, float]
+            (index, actual_time_ms) where:
+            - index: Index closest to t=0, or -1 if all data is before t=0
+            - actual_time_ms: The actual timestamp at that index
+        """
+        if len(xdata_ms) == 0:
+            return -1, 0.0
+
+        if len(xdata_ms) == 1:
+            # Single sample - use it if >= 0, else -1
+            if xdata_ms[0] >= 0:
+                return 0, xdata_ms[0]
+            else:
+                return -1, xdata_ms[0]
+
+        # All data before t=0
+        if xdata_ms[-1] < 0:
+            return -1, xdata_ms[-1]
+
+        # All data after t=0 (first sample is already past t=0)
+        if xdata_ms[0] > 0:
+            return 0, xdata_ms[0]
+
+        # t=0 is within range - find nearest index using binary search
+        idx = np.searchsorted(xdata_ms, 0)
+
+        # searchsorted returns insertion point
+        # Check if previous index is closer to 0
+        if idx > 0 and idx < len(xdata_ms):
+            if abs(xdata_ms[idx - 1]) < abs(xdata_ms[idx]):
+                idx = idx - 1
+        elif idx >= len(xdata_ms):
+            idx = len(xdata_ms) - 1
+
+        return idx, xdata_ms[idx]
+
+    def _compute_duration_and_t0_indices(self, f: h5py.File) -> tuple[float, dict]:
+        """
+        Compute duration from t=0 and store info about where t=0 occurs for each signal.
+
+        Returns
+        -------
+        tuple[float, dict]
+            (max_duration_from_t0, {signal_name: {'index': int, 'time_s': float}})
+            where:
+            - 'index': first index where xdata >= 0
+            - 'time_s': actual time value (in seconds) at that index
+        """
+        max_duration = 0.0
+        t0_indices = {}
+
+        # Process signals
+        for config in self.signal_configs:
+            for key_path in config.hdf5_keys:
+                try:
+                    parts = key_path.split("/")
+                    curr = f
+                    for part in parts:
+                        curr = curr[part]
+
+                    xdata_ms = curr["xdata"][:]
+
+                    if len(xdata_ms) < 2:
+                        continue
+
+                    # Find first index where t >= 0
+                    t0_idx = np.searchsorted(xdata_ms, 0, side="left")
+
+                    # If all data is before t=0, skip
+                    if t0_idx >= len(xdata_ms):
+                        continue
+
+                    # Store both index and actual time at that index
+                    t0_indices[config.name] = {
+                        "index": int(t0_idx),
+                        "time_s": float(xdata_ms[t0_idx]) / 1000.0,
+                    }
+
+                    # Duration from t=0 to end
+                    duration_s = (xdata_ms[-1] - 0.0) / 1000.0
+                    max_duration = max(max_duration, duration_s)
+
+                    break
+
+                except (KeyError, ValueError):
+                    continue
+
+        # Process movies
+        for movie_config in self.movie_configs:
+            for key_path in movie_config.hdf5_keys:
+                try:
+                    parts = key_path.split("/")
+                    curr = f
+                    for part in parts:
+                        curr = curr[part]
+
+                    xdata_ms = curr["xdata"][:]
+
+                    if len(xdata_ms) < 2:
+                        continue
+
+                    t0_idx = np.searchsorted(xdata_ms, 0, side="left")
+
+                    if t0_idx >= len(xdata_ms):
+                        continue
+
+                    t0_indices[movie_config.name] = {
+                        "index": int(t0_idx),
+                        "time_s": float(xdata_ms[t0_idx]) / 1000.0,
+                    }
+
+                    duration_s = (xdata_ms[-1] - 0.0) / 1000.0
+                    max_duration = max(max_duration, duration_s)
+
+                    break
+
+                except (KeyError, ValueError):
+                    continue
+
+        return max(max_duration, 1.0), t0_indices
 
     def _update_preprocessing_stats(self):
         """Update preprocessing configs with loaded statistics."""
@@ -410,24 +541,6 @@ class TokamakH5Dataset(Dataset):
 
         return tensor
 
-    def _compute_duration_from_handle(self, f: h5py.File) -> float:
-        """Compute total duration from an open HDF5 file handle."""
-        try:
-            for key_path in ["mhr/xdata", "ece/xdata", "co2/xdata"]:
-                try:
-                    parts = key_path.split("/")
-                    data = f
-                    for part in parts:
-                        data = data[part]
-                    xdata = data[:]
-                    return (xdata[-1] - xdata[0]) / 1000.0
-                except (KeyError, ValueError):
-                    continue
-        except Exception as e:
-            print(f"Warning: Could not determine duration from {self.hdf5_path}: {e}")
-
-        return 1.0  # Default fallback
-
     def _open_hdf5(self):
         """Open HDF5 file for this worker with optimized cache settings."""
         if self.h5_file is None:
@@ -441,12 +554,38 @@ class TokamakH5Dataset(Dataset):
     def _load_signal_raw(
         self, f: h5py.File, config: SignalConfig, t_start: float, t_end: float
     ) -> torch.Tensor:
-        """Load raw signal at native sampling rate within time window.
-
-        Returns:
-            Array of shape (time, channels) at native sampling rate
         """
-        # Try to find the signal in HDF5
+        Load raw signal at native sampling rate within time window.
+
+        Parameters
+        ----------
+        f : h5py.File
+            Open HDF5 file handle
+        config : SignalConfig
+            Signal configuration
+        t_start : float
+            Start time in seconds (relative to t=0)
+        t_end : float
+            End time in seconds (relative to t=0)
+
+        Returns
+        -------
+        torch.Tensor
+            Array of shape (time_samples, channels) at native sampling rate
+        """
+        duration_s = t_end - t_start
+
+        # Step 1: Check if signal has data after t=0
+        if config.name not in self.t0_indices:
+            return torch.zeros(
+                (round(duration_s * config.target_fs), config.num_channels)
+            )
+
+        t0_info = self.t0_indices[config.name]
+        t0_idx = t0_info["index"]
+        t0_time_s = t0_info["time_s"]
+
+        # Step 2: Find the signal in HDF5
         data_group = None
         for key_path in config.hdf5_keys:
             try:
@@ -459,52 +598,75 @@ class TokamakH5Dataset(Dataset):
             except KeyError:
                 continue
 
-        # Extract data with time slicing
+        if data_group is None:
+            return torch.zeros(
+                (round(duration_s * config.target_fs), config.num_channels)
+            )
+
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
 
-        # Load only first and last timestamp
-        t0 = xdata_ds[0] / 1000.0
-        t1 = xdata_ds[-1] / 1000.0
+        # Load first and last timestamp to compute sampling rate
+        t_first = xdata_ds[0] / 1000.0
+        t_last = xdata_ds[-1] / 1000.0
         n_samples = xdata_ds.shape[0]
 
-        fs_raw = (n_samples - 1) / (t1 - t0)
-        duration_s = t_end - t_start
+        if n_samples < 2 or t_last == t_first:
+            return torch.zeros(
+                (round(duration_s * config.target_fs), config.num_channels)
+            )
 
-        ydata = np.zeros(
-            (max(1, round(duration_s * fs_raw)), config.num_channels), dtype=np.float32
+        fs_raw = (n_samples - 1) / (t_last - t_first)
+
+        # Step 3: Initialize output with zeros at raw sampling rate
+        output = np.zeros(
+            (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
         )
 
-        start_idx = max(0, int((t_start - t0) * fs_raw))
-        end_idx = min(n_samples, int((t_end - t0) * fs_raw))
+        # Step 4: Calculate HDF5 indices for requested time range
+        # xdata[t0_idx] = t0_time_s (actual time, e.g., 0.005s if first sample is at 5ms)
+        # To find data at user's t_start:
+        # We want: xdata[i] ≈ t_start
+        # We know: xdata[i] ≈ t0_time_s + (i - t0_idx) / fs_raw
+        # Solving: i ≈ t0_idx + (t_start - t0_time_s) * fs_raw
+        hdf5_start = t0_idx + round((t_start - t0_time_s) * fs_raw)
+        hdf5_end = t0_idx + round((t_end - t0_time_s) * fs_raw)
 
-        if end_idx > start_idx:
-            data = ydata_ds[start_idx:end_idx]
+        # Clamp to valid HDF5 range
+        hdf5_start = max(0, min(hdf5_start, n_samples))
+        hdf5_end = max(0, min(hdf5_end, n_samples))
+
+        # Step 5: If there's data to load
+        if hdf5_start < hdf5_end:
+            # Load from HDF5
+            data = ydata_ds[hdf5_start:hdf5_end]
             np.nan_to_num(data, copy=False, nan=0.0)
 
-            # Compute offset based on actual start time
-            actual_t_start = t0 + start_idx / fs_raw
-            idx_1 = round((actual_t_start - t_start) * fs_raw)
-            idx_2 = idx_1 + data.shape[0]
+            # Calculate what time range the loaded data represents
+            # xdata[hdf5_start] ≈ t0_time_s + (hdf5_start - t0_idx) / fs_raw
+            loaded_t_start = t0_time_s + (hdf5_start - t0_idx) / fs_raw
 
-            # Clamp to array bounds
+            # Position in output (which represents [t_start, t_end])
+            output_start = round((loaded_t_start - t_start) * fs_raw)
+            output_end = output_start + data.shape[0]
+
+            # Clamp to output bounds
             src_start = 0
             src_end = data.shape[0]
 
-            if idx_1 < 0:
-                src_start = -idx_1
-                idx_1 = 0
-            if idx_2 > ydata.shape[0]:
-                src_end -= idx_2 - ydata.shape[0]
-                idx_2 = ydata.shape[0]
+            if output_start < 0:
+                src_start = -output_start
+                output_start = 0
+            if output_end > output.shape[0]:
+                src_end -= output_end - output.shape[0]
+                output_end = output.shape[0]
 
-            if (idx_1 == 0 and idx_2 == ydata.shape[0]
-                    and src_start == 0 and src_end == data.shape[0]):
-                ydata = data  # No copy needed
-            else:
-                ydata[idx_1:idx_2] = data[src_start:src_end]
+            # Copy data to output
+            if src_start < src_end and output_start < output_end:
+                output[output_start:output_end] = data[src_start:src_end]
 
-        tensor = torch.from_numpy(ydata).float()
+        # Step 6: Convert to tensor and resample to target frequency
+        tensor = torch.from_numpy(output).float()
 
         tensor = (
             F.interpolate(

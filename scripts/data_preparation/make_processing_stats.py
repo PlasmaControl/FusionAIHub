@@ -3,17 +3,15 @@ from tokamak_foundation_model.data.data_loader import (
     TokamakH5Dataset, compute_preprocessing_stats)
 
 def main():
-    # hdf5_files = sorted(
-    #     Path(
-    #         "/scratch/gpfs/EKOLEMEN/foundation_model"
-    #     ).glob("*_processed.h5")
-    # )
-
     hdf5_files = sorted(
-    Path(
-        "/scratch/gpfs/EKOLEMEN/foundation_model"
-    ).glob("*_processed.h5")
+        Path(
+            "C:/Users/admin/PycharmProjects/FusionAIHub/scripts/training/"
+        ).glob("*_processed.h5")
     )
+
+    # hdf5_files = sorted(
+    #     Path("/scratch/gpfs/EKOLEMEN/foundation_model").glob("*_processed.h5")
+    # )
 
     all_input_signals = [
         "mhr", "ece", "co2", "bes",              # spectrograms
