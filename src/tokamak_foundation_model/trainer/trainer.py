@@ -97,6 +97,7 @@ class UnimodalTrainer:
         epochs: int,
         log_interval: int | None = None,
         drawer: object | None = None,
+        scheduler: optim.lr_scheduler.LRScheduler | None = None,
         checkpoint_path: str | Path = "checkpoint.pth",
         ):
         self.model = model
@@ -107,6 +108,7 @@ class UnimodalTrainer:
         self.checkpoint_path = checkpoint_path
         self.log_interval = log_interval
         self.drawer = drawer
+        self.scheduler = scheduler
 
         p = Path(checkpoint_path)
         self.best_checkpoint_path = p.with_name(p.stem + "_best" + p.suffix)
@@ -176,6 +178,10 @@ class UnimodalTrainer:
             train_loss = self._train_epoch(train_dataloader, modality_key)
             logger.info(f"  Training Loss: {train_loss:.4f}")
 
+            if self.scheduler is not None:
+                self.scheduler.step()
+                logger.info(f"  LR: {self.scheduler.get_last_lr()[0]:.6f}")
+
             torch.save(self.model.state_dict(), self.checkpoint_path)
             
             # Validation
@@ -193,3 +199,11 @@ class UnimodalTrainer:
                     self._log_epoch(epoch, train_loss, val_loss)
 
         logger.info("Training complete.")
+
+    def load_checkpoint(self, checkpoint_path=None):
+        path = checkpoint_path if checkpoint_path else self.checkpoint_path
+        if os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            print(f"Model loaded from checkpoint: {path}")
+        else:
+            print(f"No checkpoint found at: {path}")

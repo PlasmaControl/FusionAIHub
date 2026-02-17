@@ -88,7 +88,7 @@ def main():
     parser.add_argument("--model", choices=list(MODEL_REGISTRY.keys()), default=None,
                         help="Model type (default: auto-selected from signal)")
     parser.add_argument("--data_dir", type=str,
-                        default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data",
+                        default="/scratch/gpfs/EKOLEMEN/foundation_model",
                         help="Path to HDF5 data directory")
     parser.add_argument("--stats_path", type=str, default="data/preprocessing_stats.pt",
                         help="Path to preprocessing stats file")
@@ -103,6 +103,9 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.05,
                         help="AdamW weight decay")
+    parser.add_argument("--n_fft", type=int, default=256, help="Number of FFT bins")
+    parser.add_argument("--hop_length", type=int, default=128, help="Hop length for spectrograms")
+    parser.add_argument("--chunk_duration_s", type=float, default=0.05, help="Chunk duration in seconds")
     parser.add_argument("--warmup_epochs", type=int, default=5,
                         help="LR warmup epochs (0 to disable scheduler)")
     parser.add_argument("--min_lr", type=float, default=0.0,
@@ -137,6 +140,7 @@ def main():
             preprocessing_stats=stats,
             input_signals=[signal_name],
             target_signals=[signal_name],
+            chunk_duration_s=args.chunk_duration_s,
             n_fft=args.n_fft,
             hop_length=args.hop_length,
             prediction_mode=False,
@@ -145,7 +149,8 @@ def main():
     ]
 
     concatenated_dataset = ConcatDataset(datasets_processed)
-
+    logger.info(f"Concatenated dataset length: {len(concatenated_dataset)}")
+    
     # Not sure if this is elegant
     sample_data = next(iter(concatenated_dataset))[signal_name]
     n_channels = sample_data.shape[0]
@@ -160,8 +165,16 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
+        weight_decay=args.weight_decay,
     )
     loss_fn = nn.L1Loss()
+
+    if args.warmup_epochs > 0:
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs - args.warmup_epochs, eta_min=args.min_lr
+        )
+    else:
+        scheduler = None
 
     dataloader = DataLoader(
         concatenated_dataset,
@@ -175,7 +188,7 @@ def main():
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots)
+    drawer = DefaultDrawer(num_plots=args.num_plots) # TODO: make more consistent
     trainer = UnimodalTrainer(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
@@ -184,6 +197,7 @@ def main():
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
+        scheduler=scheduler,
         log_interval=args.log_interval,
     )
 
