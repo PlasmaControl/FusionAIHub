@@ -15,17 +15,26 @@ class Welford:
         self.min_val = 0
         self.max_val = 0
         self.n = 0
+        self.M2 = 0
 
     def update(self, value):
+        
+        if np.isnan(value):
+            return
+
         self.n += 1
         delta = value - self.mean
         self.mean += delta / self.n
         delta2 = value - self.mean
-        self.std += delta * delta2
+        self.M2 += delta * delta2
         self.min_val = min(self.min_val, value)
         self.max_val = max(self.max_val, value)
 
-    def get_stats(self):
+    def _compute_std(self):
+        self.std = np.sqrt(self.M2 / (self.n - 1 + 1e-8))
+
+    def compute(self):
+        self._compute_std()
         return {
             "mean": self.mean,
             "std": self.std,
