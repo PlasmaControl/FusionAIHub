@@ -121,6 +121,8 @@ class UnimodalTrainer:
         self.log_interval = log_interval
         self.drawer = drawer
         self.scheduler = scheduler
+
+        # Distributed Training
         self.dm = distributed_manager
         self.is_main = self.dm.is_main_process if self.dm else True
 
