@@ -220,11 +220,20 @@ class UnimodalTrainer:
 
             self.lr_scheduler.step()
 
-            self.lr_scheduler.step()
-
             # Logging
             if self.log_interval is not None:
                 if epoch % self.log_interval == 0:
                     self._log_epoch(epoch, train_loss, val_loss)
 
         logger.info("Training complete.")
+
+    def load_checkpoint(self, checkpoint_path=None):
+        """
+        TODO: Modify this as we have more information stored in the checkpoint now.
+        """
+        path = checkpoint_path if checkpoint_path else self.checkpoint_path
+        if os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            print(f"Model loaded from checkpoint: {path}")
+        else:
+            print(f"No checkpoint found at: {path}")

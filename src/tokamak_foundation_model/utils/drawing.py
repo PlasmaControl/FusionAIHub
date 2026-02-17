@@ -61,9 +61,9 @@ class DefaultDrawer:
             title = f"Epoch {epoch+1} | Train L1={train_loss:.4f} Val L1={val_loss:.4f}"
             path = self.drawing_path / f"epoch_{epoch+1:03d}_sample_{i}.png"
 
-            # Pick first channel for visualization
-            inp_vis = inp[0]
-            out_vis = output[0]
+            # Visualize the channel in the middle of the signal (usually more activity)
+            inp_vis = inp[self.half_channel]
+            out_vis = output[self.half_channel]
 
             match self.ndim:
                 case 2:  # (C, T) — 1D signals

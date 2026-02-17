@@ -9,6 +9,42 @@ import torch.nn.functional as F
 import copy
 
 
+# TODO: implement this for calculation
+class Welford:
+    def __init__(self):
+        self.mean = 0
+        self.std = 0
+        self.min_val = 0
+        self.max_val = 0
+        self.n = 0
+        self.M2 = 0
+
+    def update(self, value):
+
+        if np.isnan(value):
+            return
+
+        self.n += 1
+        delta = value - self.mean
+        self.mean += delta / self.n
+        delta2 = value - self.mean
+        self.M2 += delta * delta2
+        self.min_val = min(self.min_val, value)
+        self.max_val = max(self.max_val, value)
+
+    def _compute_std(self):
+        self.std = np.sqrt(self.M2 / (self.n - 1 + 1e-8))
+
+    def compute(self):
+        self._compute_std()
+        return {
+            "mean": self.mean,
+            "std": self.std,
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+        }
+
+
 def compute_preprocessing_stats(
     datasets, output_path="preprocessing_stats.pt", num_samples=1000
 ):
@@ -164,7 +200,7 @@ class TokamakH5Dataset(Dataset):
             4,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="log"),
         ),
         SignalConfig(
             "d_alpha",
@@ -436,7 +472,7 @@ class TokamakH5Dataset(Dataset):
         duration_s = t_end - t_start
 
         ydata = np.zeros(
-            (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
+            (max(1, round(duration_s * fs_raw)), config.num_channels), dtype=np.float32
         )
 
         start_idx = max(0, int((t_start - t0) * fs_raw))

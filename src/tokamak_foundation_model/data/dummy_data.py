@@ -162,7 +162,7 @@ def create_multi_sample_hdf5(
 
 
 def create_single_sample_hdf5():
-    data_path = Path("C:\\Temp")
+    data_path = Path("/scratch/gpfs/EKOLEMEN/d3d_fusion_data")
     shot = 182620
     with h5py.File(data_path / f"{shot}.h5", "r") as f:
         bes = (
@@ -224,8 +224,8 @@ def create_single_sample_hdf5():
             f["tangtv"]["data"][:],
         )
 
-    with open(data_path / f"{shot}.txt", "r") as f:
-        logfile = f.read()
+    # with open(data_path / f"{shot}.txt", "r") as f:
+    #     logfile = f.read()
 
     with h5py.File(data_path / f"{shot}_processed.h5", "w") as f:
         signal_group = f.create_group("bes")
@@ -271,6 +271,6 @@ def create_single_sample_hdf5():
         signal_group.create_dataset("xdata", data=tangtv[0])
         signal_group.create_dataset("ydata", data=tangtv[1])
         signal_group = f.create_group("log")
-        signal_group.create_dataset(
-            "data", data=np.array(logfile, dtype=h5py.string_dtype(encoding="utf-8"))
-        )
+        # signal_group.create_dataset(
+        #     "data", data=np.array(logfile, dtype=h5py.string_dtype(encoding="utf-8"))
+        # )
