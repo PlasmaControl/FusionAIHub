@@ -21,4 +21,4 @@ datasets = [
         input_signals=all_input_signals,
         target_signals=all_input_signals,
     ) for f in hdf5_files]
-stats = compute_preprocessing_stats(datasets, 'preprocessing_stats.pt')
+stats = compute_preprocessing_stats(datasets, '../preprocessing_stats.pt')
