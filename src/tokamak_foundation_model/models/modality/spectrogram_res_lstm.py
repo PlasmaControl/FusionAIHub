@@ -5,7 +5,40 @@ import torch.nn.functional as F
 from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
 
 
-class SpectrogramBaselineEncoder(ModalityEncoder):
+class ResBlock3d(nn.Module):
+    def __init__(self, channels, bottleneck=32):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Conv3d(channels, bottleneck, kernel_size=1),
+            nn.BatchNorm3d(bottleneck),
+            nn.GELU(),
+            nn.Conv3d(bottleneck, bottleneck, kernel_size=3, padding=1),
+            nn.BatchNorm3d(bottleneck),
+            nn.GELU(),
+            nn.Conv3d(bottleneck, channels, kernel_size=1),
+            nn.BatchNorm3d(channels),
+        )
+        self.act = nn.GELU()
+
+    def forward(self, x):
+        return self.act(x + self.block(x))
+
+
+class TemporalLSTM(nn.Module):
+    """LSTM along the time dimension of a 5D tensor (B, C, D, H, T)."""
+    def __init__(self, channels: int, num_layers: int = 1):
+        super().__init__()
+        self.lstm = nn.LSTM(channels, channels, num_layers=num_layers, batch_first=True)
+
+    def forward(self, x):
+        B, C, D, H, T = x.shape
+        x = x.permute(0, 2, 3, 4, 1).reshape(B * D * H, T, C)
+        x, _ = self.lstm(x)
+        x = x.reshape(B, D, H, T, C).permute(0, 4, 1, 2, 3)
+        return x
+
+
+class SpectrogramResLSTMEncoder(ModalityEncoder):
     def __init__(self, 
         n_channels: int, 
         d_model: int = 256, 
@@ -25,6 +58,8 @@ class SpectrogramBaselineEncoder(ModalityEncoder):
             nn.Conv3d(dims[2], dims[3], kernel_size=3, stride=2, padding=1),
             nn.BatchNorm3d(dims[3]),
             nn.GELU(),
+            ResBlock3d(dims[3]),
+            TemporalLSTM(dims[3]),
             nn.Conv3d(dims[3], dims[4], kernel_size=3, stride=2, padding=1),
             nn.BatchNorm3d(dims[4]),
             nn.GELU(),
@@ -37,7 +72,7 @@ class SpectrogramBaselineEncoder(ModalityEncoder):
         return z
 
 
-class SpectrogramBaselineDecoder(ModalityDecoder):
+class SpectrogramResLSTMDecoder(ModalityDecoder):
     def __init__(self, 
         n_channels: int, 
         d_model: int = 256, 
@@ -51,6 +86,8 @@ class SpectrogramBaselineDecoder(ModalityDecoder):
             nn.Conv3d(dims[4], dims[3], kernel_size=3, padding=1),
             nn.BatchNorm3d(dims[3]),
             nn.GELU(),
+            TemporalLSTM(dims[3]),
+            ResBlock3d(dims[3]),
             nn.Upsample(scale_factor=2, mode="trilinear", align_corners=False),
             nn.Conv3d(dims[3], dims[2], kernel_size=3, padding=1),
             nn.BatchNorm3d(dims[2]),
@@ -71,7 +108,7 @@ class SpectrogramBaselineDecoder(ModalityDecoder):
         y = y.squeeze(1)
         return y
 
-class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
+class SpectrogramResLSTMAutoEncoder(ModalityAutoEncoder):
     """
     Based on 3DCAE implementation at https://github.com/micah35s/Autoencoder-Image-Compression
     https://github.com/faadi809/HSI-compression-benchmark
@@ -86,8 +123,8 @@ class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
         self.n_channels = n_channels
         self.d_model = d_model
 
-        self.encoder = SpectrogramBaselineEncoder(n_channels, d_model, n_output_tokens)
-        self.decoder = SpectrogramBaselineDecoder(n_channels, d_model)
+        self.encoder = SpectrogramResLSTMEncoder(n_channels, d_model, n_output_tokens)
+        self.decoder = SpectrogramResLSTMDecoder(n_channels, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, Fr, T = x.shape
@@ -98,7 +135,7 @@ class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
 
 def _run_test(label, n_channels, freq, time, d_model, device):
     print(f"=== {label} ===")
-    autoencoder = SpectrogramBaselineAutoEncoder(n_channels, d_model)
+    autoencoder = SpectrogramResLSTMAutoEncoder(n_channels, d_model)
     autoencoder.to(device)
     x = torch.randn(2, n_channels, freq, time)
 
@@ -125,6 +162,11 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    _run_test("MHR", n_channels=8, freq=513, time=977, d_model=32, device=device)
-    _run_test("CO2", n_channels=4, freq=513, time=977, d_model=32, device=device)
-    _run_test("ECE", n_channels=48, freq=513, time=977, d_model=32, device=device)
+    # --- MHR ---
+    _run_test("MHR (8ch)", n_channels=8, freq=513, time=977, d_model=32, device=device)
+
+    # --- CO2 ---
+    _run_test("CO2 (4ch)", n_channels=4, freq=513, time=977, d_model=32, device=device)
+
+    # --- ECE ---
+    _run_test("ECE (48ch)", n_channels=48, freq=513, time=977, d_model=32, device=device)

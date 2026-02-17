@@ -60,12 +60,16 @@ class MultimodalTrainer:
         total_loss = 0
         with torch.no_grad():
             for batch_idx, batch in enumerate(dataloader):
+                inputs = batch["inputs"]
+                targets = batch["targets"]
                 inputs = {
                     k: v.to(self.device) if isinstance(v, torch.Tensor) else v
-                    for k, v in batch.items()
-                    if k != "target"
+                    for k, v in inputs.items()
                 }
-                targets = batch["target"].to(self.device).float().unsqueeze(1)
+                targets = {
+                    k: v.to(self.device) if isinstance(v, torch.Tensor) else v
+                    for k, v in targets.items()
+                }
 
                 outputs = self.model(inputs)
                 loss = self.loss_fn(outputs, targets)
@@ -197,9 +201,12 @@ class UnimodalTrainer:
 
             torch.save(
                 {
-                    "model": self.model,
+                    "model_state_dict": self.model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
-                    "scheduler_state_dict": self.lr_scheduler.state_dict(),
+                    "scheduler_state_dict": (
+                        self.lr_scheduler.state_dict()
+                        if self.lr_scheduler else None
+                    ),
                     "epoch": epoch,
                     "loss": train_loss,
                 },
@@ -218,7 +225,8 @@ class UnimodalTrainer:
                         f"best model checkpoint saved!"
                     )
 
-            self.lr_scheduler.step()
+            if self.lr_scheduler:
+                self.lr_scheduler.step()
 
             # Logging
             if self.log_interval is not None:

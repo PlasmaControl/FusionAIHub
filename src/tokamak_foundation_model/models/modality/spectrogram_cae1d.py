@@ -7,14 +7,11 @@ from torch import nn
 def cae1d_cr4(src_channels=103):
     return ModifiedConvolutionalAutoencoder1D(src_channels=src_channels, target_bpppc=8)
 
-
 def cae1d_cr8(src_channels=103):
     return ModifiedConvolutionalAutoencoder1D(src_channels=src_channels, target_bpppc=4)
 
-
 def cae1d_cr16(src_channels=103):
     return ModifiedConvolutionalAutoencoder1D(src_channels=src_channels, target_bpppc=2)
-
 
 def cae1d_cr32(src_channels=103):
     return ModifiedConvolutionalAutoencoder1D(src_channels=src_channels, target_bpppc=1)
@@ -55,15 +52,15 @@ class ModifiedConvolutionalAutoencoder1D(nn.Module):
     """
 
     def __init__(self, src_channels=202, target_bpppc=8):
-        super(ModifiedConvolutionalAutoencoder1D, self).__init__()
+        super().__init__()
 
-        #assert math.log2(32 // target_bpppc) % 1 == 0
-        #self.num_blocks = int(math.log2(32 // target_bpppc))
         self.target_bpppc = target_bpppc
         self.compression_ratio = 32.0 / target_bpppc
         self.num_blocks = max(1, int(round(math.log2(self.compression_ratio))))
+
         max_possible_blocks = int(math.log2(src_channels))
         self.num_blocks = min(self.num_blocks, max_possible_blocks)
+
         # Calculate actual achieved compression
         self.spectral_downsampling_factor_estimated = 2 ** self.num_blocks
         self.actual_bpppc = 32.0 / self.spectral_downsampling_factor_estimated
@@ -84,44 +81,18 @@ class ModifiedConvolutionalAutoencoder1D(nn.Module):
                 ])
                 for i in range(self.num_blocks)
             ]),
-            nn.Conv1d(
-                in_channels=32,
-                out_channels=16,
-                kernel_size=9,
-                stride=1,
-                padding="same",
-            ),
+            nn.Conv1d(in_channels=32, out_channels=16, kernel_size=9, stride=1, padding="same"),
             nn.LeakyReLU(),
-            nn.Conv1d(
-                in_channels=16,
-                out_channels=1,
-                kernel_size=7,
-                stride=1,
-                padding="same",
-            ),
+            nn.Conv1d(in_channels=16, out_channels=1, kernel_size=7, stride=1, padding="same"),
             nn.LeakyReLU(),
         )
 
         self.decoder = nn.Sequential(
-            nn.Conv1d(
-                in_channels=1,
-                out_channels=16,
-                kernel_size=7,
-                stride=1,
-                padding="same",
-            ),
+            nn.Conv1d(in_channels=1, out_channels=16, kernel_size=7, stride=1, padding="same"),
             nn.LeakyReLU(),
-            nn.Conv1d(
-                in_channels=16,
-                out_channels=32,
-                kernel_size=9,
-                stride=1,
-                padding="same",
-            ),
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=9, stride=1, padding="same"),
             nn.LeakyReLU(),
-            nn.Upsample(
-                scale_factor=2
-            ),
+            nn.Upsample(scale_factor=2),
             nn.Sequential(*[
                 nn.Sequential(*[
                     nn.Conv1d(

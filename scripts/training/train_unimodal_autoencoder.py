@@ -34,6 +34,13 @@ def main():
         "--n_fft", type=int, default=1024, help="FFT size",
     )
     parser.add_argument(
+        "--hop_length", type=int, default=256, help="Hop length for STFT.",
+    )
+    parser.add_argument(
+        "--chunk_duration_s", type=float, default=0.5,
+        help="Duration of each data chunk in seconds",
+    )
+    parser.add_argument(
         "--model", choices=list(MODEL_REGISTRY.keys()), default=None,
         help="Model type (default: auto-selected from signal)"
     )

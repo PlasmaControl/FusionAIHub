@@ -21,10 +21,28 @@ class TextEncoder(ModalityEncoder):
         self.proj = nn.Sequential(nn.Linear(self.hidden_size, out_features), nn.ReLU())
 
     def forward(self, x):
-        enc = self.tokenizer(x, padding=True, truncation=True, max_length=512, return_tensors="pt")
+        """Forward pass accepting either raw strings or pre-tokenized dict.
+
+        Args:
+            x: Either a list of strings (tokenized on-the-fly) or a dict with
+               keys "text_input_ids" and "text_attention_mask" (pre-tokenized
+               tensors from the dataset).
+        """
         device = next(self.parameters()).device
+
+        if isinstance(x, dict):
+            input_ids = x["text_input_ids"].to(device)
+            attention_mask = x["text_attention_mask"].to(device)
+        else:
+            enc = self.tokenizer(
+                x, padding=True, truncation=True, max_length=512,
+                return_tensors="pt",
+            )
+            input_ids = enc["input_ids"].to(device)
+            attention_mask = enc["attention_mask"].to(device)
+
         with torch.no_grad():
-            out = self.encoder(enc["input_ids"].to(device), attention_mask=enc["attention_mask"].to(device))
+            out = self.encoder(input_ids, attention_mask=attention_mask)
         return self.proj(out.last_hidden_state[:, 0, :])
 
 
