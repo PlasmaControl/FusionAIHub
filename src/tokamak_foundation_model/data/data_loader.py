@@ -93,10 +93,16 @@ def compute_preprocessing_stats(
         dims_to_reduce = list(range(all_values.ndim))
         dims_to_reduce.remove(0)  # Keep channel dimension
 
-        mean = all_values.mean(dim=dims_to_reduce)
-        std = all_values.std(dim=dims_to_reduce)
-        min_val = all_values.min()
-        max_val = all_values.max()
+        valid_mask = ~torch.isnan(all_values)
+
+        # For mean/std: use nanmean + manual std
+        mean = all_values.nanmean(dim=dims_to_reduce)
+        mean_expanded = mean.view(-1, *([1] * (all_values.ndim - 1)))
+        std = ((all_values - mean_expanded) ** 2).nanmean(dim=dims_to_reduce).sqrt()
+
+        # For min/max: mask out NaNs with inf
+        min_val = all_values.nan_to_num(posinf=float("inf"), nan=float("inf")).min()
+        max_val = all_values.nan_to_num(neginf=float("-inf"), nan=float("-inf")).max()
 
         stats[config.name] = {
             "mean": mean,

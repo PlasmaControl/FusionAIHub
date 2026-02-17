@@ -263,7 +263,7 @@ def create_single_sample_hdf5():
         signal_group.create_dataset("ydata", data=tin[1])
         signal_group = f.create_group("bolo")
         signal_group.create_dataset("xdata", data=bolo[0])
-        signal_group.create_dataset("ydata", data=bolo[1].swapaxes(0, 2))
+        signal_group.create_dataset("ydata", data=bolo[1])
         signal_group = f.create_group("irtv")
         signal_group.create_dataset("xdata", data=irtv[0])
         signal_group.create_dataset("ydata", data=irtv[1])
