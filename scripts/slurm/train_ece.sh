@@ -12,7 +12,11 @@
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 
-srun pixi run python scripts/training/train_unimodal_autoencoder.py \
+srun pixi run torchrun \
+    --nproc_per_node=1 \
+    --rdzv_id=ece \
+    --rdzv_backend=c10d \
+    scripts/training/train_unimodal_autoencoder.py \
     --signal ece \
     --data_dir /scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data \
     --d_model 16 \
