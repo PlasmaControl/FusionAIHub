@@ -6,6 +6,43 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 import torch.nn.functional as F
+import copy
+
+
+# TODO: implement this for calculation
+class Welford:
+    def __init__(self):
+        self.mean = 0
+        self.std = 0
+        self.min_val = 0
+        self.max_val = 0
+        self.n = 0
+        self.M2 = 0
+
+    def update(self, value):
+
+        if np.isnan(value):
+            return
+
+        self.n += 1
+        delta = value - self.mean
+        self.mean += delta / self.n
+        delta2 = value - self.mean
+        self.M2 += delta * delta2
+        self.min_val = min(self.min_val, value)
+        self.max_val = max(self.max_val, value)
+
+    def _compute_std(self):
+        self.std = np.sqrt(self.M2 / (self.n - 1 + 1e-8))
+
+    def compute(self):
+        self._compute_std()
+        return {
+            "mean": self.mean,
+            "std": self.std,
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+        }
 
 # TODO: implement this for calculation
 class Welford:
@@ -82,16 +119,24 @@ def compute_preprocessing_stats(
             all_values = torch.cat(values, dim=1)  # (channels, time)
         elif values[0].ndim == 3:
             all_values = torch.cat(values, dim=2)  # (channels, freq_bins, time)
+        else:
+            raise ValueError(f"Invalid tensor shape: {values[0].shape}")
 
         # Compute per-channel statistics
         # Reduce over all dimensions except channel dimension (dim=1)
         dims_to_reduce = list(range(all_values.ndim))
         dims_to_reduce.remove(0)  # Keep channel dimension
 
-        mean = all_values.mean(dim=dims_to_reduce)
-        std = all_values.std(dim=dims_to_reduce)
-        min_val = all_values.min()
-        max_val = all_values.max()
+        valid_mask = ~torch.isnan(all_values)
+
+        # For mean/std: use nanmean + manual std
+        mean = all_values.nanmean(dim=dims_to_reduce)
+        mean_expanded = mean.view(-1, *([1] * (all_values.ndim - 1)))
+        std = ((all_values - mean_expanded) ** 2).nanmean(dim=dims_to_reduce).sqrt()
+
+        # For min/max: mask out NaNs with inf
+        min_val = all_values.nan_to_num(posinf=float("inf"), nan=float("inf")).min()
+        max_val = all_values.nan_to_num(neginf=float("-inf"), nan=float("-inf")).max()
 
         stats[config.name] = {
             "mean": mean,
@@ -103,18 +148,6 @@ def compute_preprocessing_stats(
     torch.save(stats, output_path)
     print(f"Saved statistics to {output_path}")
     return stats
-
-
-@dataclass
-class MovieConfig:
-    """Configuration for a movie/video diagnostic."""
-
-    name: str  # Key in output dict
-    hdf5_keys: list[str]  # Possible HDF5 paths to search
-    channels: int  # Color channels (e.g., 3 for RGB)
-    target_fps: int  # Target frames per second after resampling
-    height: int  # Frame height
-    width: int  # Frame width
 
 
 @dataclass
@@ -138,6 +171,23 @@ class SignalConfig:
     num_channels: int
     target_fs: float
     apply_stft: bool
+    preprocess: PreprocessConfig = None  # Add preprocessing config
+
+    def __post_init__(self):
+        if self.preprocess is None:
+            self.preprocess = PreprocessConfig()
+
+
+@dataclass
+class MovieConfig:
+    """Configuration for a movie/video diagnostic."""
+
+    name: str  # Key in output dict
+    hdf5_keys: list[str]  # Possible HDF5 paths to search
+    channels: int  # Color channels (e.g., 3 for RGB)
+    target_fps: int  # Target frames per second after resampling
+    height: int  # Frame height
+    width: int  # Frame width
     preprocess: PreprocessConfig = None  # Add preprocessing config
 
     def __post_init__(self):
@@ -192,7 +242,7 @@ class TokamakH5Dataset(Dataset):
             6,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "gas",
@@ -262,6 +312,10 @@ class TokamakH5Dataset(Dataset):
         input_signals: Optional[list[str]] = None,
         target_signals: Optional[list[str]] = None,
     ):
+        # Make instance-level copies to avoid class-level mutation
+        self.signal_configs = copy.deepcopy(self.SIGNAL_CONFIGS)
+        self.movie_configs = copy.deepcopy(self.MOVIE_CONFIGS)
+
         self.hdf5_path = Path(hdf5_path)
         self.chunk_duration_s = chunk_duration_s
         self.n_fft = n_fft
@@ -296,7 +350,7 @@ class TokamakH5Dataset(Dataset):
 
     def _update_preprocessing_stats(self):
         """Update preprocessing configs with loaded statistics."""
-        for config in self.SIGNAL_CONFIGS:
+        for config in self.signal_configs:
             if config.name in self.preprocessing_stats:
                 stats = self.preprocessing_stats[config.name]
                 if "mean" in stats:
@@ -448,9 +502,8 @@ class TokamakH5Dataset(Dataset):
         t1 = xdata_ds[-1] / 1000.0
         n_samples = xdata_ds.shape[0]
 
-        duration_s = t_end - t_start
-
         fs_raw = (n_samples - 1) / (t1 - t0)
+        duration_s = t_end - t_start
 
         ydata = np.zeros(
             (max(1, round(duration_s * fs_raw)), config.num_channels), dtype=np.float32
@@ -516,7 +569,7 @@ class TokamakH5Dataset(Dataset):
             window=self.stft_window,
             return_complex=True,
         )
-        spec = spec[:, 1:, :] # Remove DC component (extreme values)
+        spec = spec[:, 1:, :]  # Remove DC component (extreme values)
         return torch.abs(spec)
 
     def _load_metadata(self, f: h5py.File) -> dict:
@@ -537,6 +590,16 @@ class TokamakH5Dataset(Dataset):
 
     def __len__(self):
         return self.length
+
+    def __getstate__(self):
+        """Prepare state for pickling - exclude HDF5 file handle."""
+        state = self.__dict__.copy()
+        state['h5_file'] = None
+        return state
+
+    def __setstate__(self, state):
+        """Restore state after unpickling."""
+        self.__dict__.update(state)
 
     def _process_signal(
         self, data: torch.Tensor, config: SignalConfig
@@ -670,14 +733,14 @@ class TokamakH5Dataset(Dataset):
 
         # Load and process all signals
         all_signals = {}
-        for config in self.SIGNAL_CONFIGS:
+        for config in self.signal_configs:
             if config.name in self.input_signals:
                 raw_data = self._load_signal_raw(self.h5_file, config, t_start, t_end)
                 all_signals[config.name] = self._process_signal(raw_data, config)
 
         # Load and process movies
         all_movies = {}
-        for movie_config in self.MOVIE_CONFIGS:
+        for movie_config in self.movie_configs:
             if movie_config.name in self.input_signals:
                 raw_movie = self._load_movie_raw(
                     self.h5_file, movie_config, t_start, t_end
@@ -702,7 +765,7 @@ class TokamakH5Dataset(Dataset):
 
         # Load and process all signals with extended window
         all_signals = {}
-        for config in self.SIGNAL_CONFIGS:
+        for config in self.signal_configs:
             if config.name not in signals_to_load:
                 continue
             raw_data = self._load_signal_raw(self.h5_file, config, t_start, t_end)
@@ -710,7 +773,7 @@ class TokamakH5Dataset(Dataset):
 
         # Load and process movies
         all_movies = {}
-        for movie_config in self.MOVIE_CONFIGS:
+        for movie_config in self.movie_configs:
             if movie_config.name not in signals_to_load:
                 continue
             # Load raw movie data
@@ -725,7 +788,9 @@ class TokamakH5Dataset(Dataset):
         targets = {}
 
         # For signals: split at input_frames
-        for config in self.SIGNAL_CONFIGS:
+        for config in self.signal_configs:
+            if config.name not in signals_to_load:
+                continue
             signal = all_signals[config.name]
 
             if config.apply_stft:
@@ -742,7 +807,9 @@ class TokamakH5Dataset(Dataset):
                 targets[config.name] = signal[..., n_training_frames:]
 
         # Movies: split along time dimension
-        for movie_config in self.MOVIE_CONFIGS:
+        for movie_config in self.movie_configs:
+            if movie_config.name not in signals_to_load:
+                continue
             movie_name = movie_config.name
             movie_data = all_movies[movie_name]
             n_training_frames = round(self.chunk_duration_s * movie_config.target_fps)

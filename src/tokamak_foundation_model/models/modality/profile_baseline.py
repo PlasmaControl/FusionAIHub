@@ -82,7 +82,7 @@ class SpatialProfileBaselineDecoder(ModalityDecoder):
         self.n_tokens = n_tokens
 
         self.activation = nn.GELU()
-        self.adaptive_pool = nn.AdaptiveAvgPool1d(n_tokens)
+        self.adaptive_pool = nn.AdaptiveAvgPool1d(n_time_points)
 
         # Mirror temporal conv
         self.temporal_deconv = nn.ConvTranspose1d(
@@ -103,35 +103,44 @@ class SpatialProfileBaselineDecoder(ModalityDecoder):
             nn.Linear(128, n_spatial_points)
         )
 
-    def forward(self, z, output_shape=None):
-        B, D, T = z.shape
+    def forward(self, x, output_shape=None):
+        B = x.shape[0]
 
         # Upsample temporal dimension
-        z = z.transpose(1, 2)              # [B, d_model, n_input_tokens]
-        z = self.activation(self.temporal_deconv(z))  # [B, d_model, T']
-        z = self.adaptive_pool(z)                     # [B, d_model, n_time]
+        x = x.transpose(1, 2)              # [B, d_model, n_input_tokens]
+        x = self.activation(self.temporal_deconv(x))  # [B, d_model, T']
+        x = self.adaptive_pool(x)                     # [B, d_model, n_time]
 
         # Decode spatial structure at each time step independently
-        z = z.transpose(1, 2)                         # [B, n_time, d_model]
-        T = z.shape[1]
-        z = z.reshape(B * T, self.d_model)            # [B*T, d_model]
-        z = self.spatial_decoder(z)                   # [B*n_time, n_spatial]
-        z = z.reshape(B, T, self.n_spatial_points)    # [B, n_time, n_spatial]
-        z = z.transpose(1, 2)                         # [B, n_spatial, n_time]
+        x = x.transpose(1, 2)                         # [B, n_time, d_model]
+        T = x.shape[1]
+        x = x.reshape(B * T, self.d_model)            # [B*T, d_model]
+        x = self.spatial_decoder(x)                   # [B*n_time, n_spatial]
+        x = x.reshape(B, T, self.n_spatial_points)    # [B, n_time, n_spatial]
+        x = x.transpose(1, 2)                         # [B, n_spatial, n_time]
 
-        return z
+        return x
 
 
 class SpatialProfileBaselineAutoEncoder(ModalityAutoEncoder):
 
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 64, 
-        n_tokens: int = 0,
+    def __init__(
+            self,
+            n_channels: int,
+            d_model: int = 64,
+            n_tokens: int = 0,
+            n_spatial_points: int = 50,
+            n_time_points: int = 50,
+            kernel_size: int = 3,
     ):
         super().__init__(n_channels, d_model, n_tokens)
-        self.encoder = SpatialProfileBaselineEncoder(n_channels, d_model, n_tokens)
-        self.decoder = SpatialProfileBaselineDecoder(n_channels, d_model, n_tokens)
+
+        self.encoder = SpatialProfileBaselineEncoder(n_channels, d_model, n_tokens,
+                                                     n_spatial_points, n_time_points,
+                                                     kernel_size)
+        self.decoder = SpatialProfileBaselineDecoder(n_channels, d_model, n_tokens,
+                                                     n_spatial_points, n_time_points,
+                                                     kernel_size)
 
     def forward(self, x):
         n_time = x.shape[-1]
