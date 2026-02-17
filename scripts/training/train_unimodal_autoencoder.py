@@ -4,11 +4,15 @@ import logging
 
 import torch
 import torch.nn as nn
+
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
+from torch.utils.data.distributed import DistributedSampler
+
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
+from tokamak_foundation_model.utils.distributed import DistributedManager
 
 from tokamak_foundation_model.utils import DefaultDrawer
 from tokamak_foundation_model.models.modality import (
@@ -20,10 +24,8 @@ from tokamak_foundation_model.models.modality import (
     VideoBaselineAutoEncoder,
 )
 
-# TODO: Add ddp support
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DistributedManager is created inside main() for DDP support
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ### Signal-to-model default mapping ###
@@ -157,13 +159,22 @@ def main():
     )
     args = parser.parse_args()
 
+    ### Distributed Setup ###
+    dm = DistributedManager()
+    device = dm.device
+
+    log_level = logging.INFO if dm.is_main_process else logging.WARNING
+    logging.basicConfig(level=log_level)
+
     ### Paths ###
     signal_name = args.signal
     model_name = args.model or SIGNAL_MODEL_DEFAULTS[signal_name]
     data_dir = Path(args.data_dir)
     statistics_path = Path(args.stats_path)
     checkpoint_path = Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    if dm.is_main_process:
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    dm.barrier()
 
     logger.info(f"Signal: {signal_name}, Model: {model_name}")
 
@@ -213,6 +224,15 @@ def main():
     else:
         scheduler = None
 
+    train_sampler = None
+    if dm.distributed:
+        train_sampler = DistributedSampler(
+            concatenated_dataset,
+            num_replicas=dm.world_size,
+            rank=dm.rank,
+            shuffle=True,
+        )
+
     dataloader = DataLoader(
         concatenated_dataset,
         batch_size=args.batch_size,
@@ -221,11 +241,12 @@ def main():
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
         pin_memory=True,
-        shuffle=True,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots) # TODO: make more consistent
+    drawer = DefaultDrawer(num_plots=args.num_plots) if dm.is_main_process else None
     trainer = UnimodalTrainer(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
@@ -236,13 +257,14 @@ def main():
         drawer=drawer,
         scheduler=scheduler,
         log_interval=args.log_interval,
+        distributed_manager=dm,
     )
 
     if args.resume and checkpoint_path.exists():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.train(dataloader, modality_key=signal_name)
+    trainer.train(dataloader, modality_key=signal_name, train_sampler=train_sampler)
 
 
 if __name__ == "__main__":
