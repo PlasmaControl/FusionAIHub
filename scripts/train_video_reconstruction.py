@@ -16,6 +16,8 @@ from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_
 from tokamak_foundation_model.data.utils import worker_init_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.utils import DefaultDrawer
+from tokamak_foundation_model.models.loss import WeightedMSELoss
+
 
 from tokamak_foundation_model.models.modality import video_baseline
 
@@ -25,6 +27,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def weight_mse_loss(input,target):
+    weight = 1 + (target * 10)
+    loss   = weight * (input - target) ** 2
+    return torch.mean(loss)
 
 def build_dataloader(data_dir: Path, file_glob: str, signal: str, batch_size: int,
                      num_workers: int, shuffle: bool) -> DataLoader:
@@ -83,7 +89,7 @@ def main():
                         help="Token dimension (keep 512 to match the design)")
 
     # Optimization
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -130,7 +136,6 @@ def main():
     # Model
     model = video_baseline.VideoBaselineAutoEncoder(
         n_tokens=args.n_tokens,
-        target_size=(t_clip, args.image_size, args.image_size),
         token_dim=args.token_dim,
     ).to(device)
 
@@ -142,7 +147,8 @@ def main():
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
-    loss_fn = nn.MSELoss()
+    # loss_fn = nn.MSELoss()
+    loss_fn = WeightedMSELoss()
 
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,

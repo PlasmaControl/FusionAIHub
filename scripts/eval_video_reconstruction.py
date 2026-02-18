@@ -51,9 +51,6 @@ def add_src_to_path() -> Path:
     return repo_root
 
 
-# -------------------------
-# Data + model builders (match training script)
-# -------------------------
 def build_dataloader(
     data_dir: Path,
     file_glob: str,
@@ -103,15 +100,11 @@ def build_model(
 
     model = video_baseline.VideoBaselineAutoEncoder(
         n_tokens=n_tokens,
-        target_size=(t_clip, image_size, image_size),
         token_dim=token_dim,
     ).to(device)
     return model
 
 
-# -------------------------
-# Checkpoint loading (robust)
-# -------------------------
 def load_checkpoint_weights(model: nn.Module, checkpoint_path: Path, device: torch.device) -> None:
     ckpt = torch.load(checkpoint_path, map_location=device)
     # Common patterns
@@ -134,9 +127,6 @@ def load_checkpoint_weights(model: nn.Module, checkpoint_path: Path, device: tor
     )
 
 
-# -------------------------
-# Batch extraction (collate_fn dependent)
-# -------------------------
 def extract_xy(batch: Any, signal: str) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Tries common batch formats used by collate_fn.
@@ -309,7 +299,6 @@ def main():
         x = x.to(device).float()
         with torch.no_grad():
             x_hat = model(x)
-
         # bring one sample to cpu for plotting
         b = max(0, min(args.sample_index, x.shape[0] - 1))
         vin = x[b].detach().cpu()
@@ -334,7 +323,7 @@ def main():
 
         # log quick stats
         logger.info(
-            "batch=%d  x_hat_mean=%.4g x_hat_std=%.4g  z_shape=%s",
+            "batch=%d  x_hat_mean=%.4g x_hat_std=%.4g",#  z_shape=%s",
             batch_idx,
             float(x_hat.mean().item()),
             float(x_hat.std().item()),

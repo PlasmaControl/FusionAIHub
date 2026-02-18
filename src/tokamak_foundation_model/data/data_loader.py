@@ -708,7 +708,8 @@ class TokamakH5Dataset(Dataset):
                 raw_movie = self._load_movie_raw(
                     self.h5_file, movie_config, t_start, t_end
                 )
-                all_movies[movie_config.name] = self._process_signal(raw_movie, movie_config).T
+                raw_movie = torch.abs(raw_movie) # Bolo can be negastive for bad shots
+                all_movies[movie_config.name] = self._apply_preprocessing(raw_movie, movie_config.preprocess)
         # Load metadata
         if "text" in self.input_signals:
             all_metadata = self._load_metadata(self.h5_file)
@@ -740,7 +741,8 @@ class TokamakH5Dataset(Dataset):
                 continue
             # Load raw movie data
             raw_movie = self._load_movie_raw(self.h5_file, movie_config, t_start, t_end)
-            all_movies[movie_config.name] = self._process_signal(raw_movie, movie_config).T
+            raw_movie = torch.abs(raw_movie) # Bolo can be negastive for bad shots
+            all_movies[movie_config.name] = self._apply_preprocessing(raw_movie, movie_config.preprocess)
 
         # Load metadata
         all_metadata = self._load_metadata(self.h5_file)
