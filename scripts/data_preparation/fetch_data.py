@@ -1,3 +1,6 @@
+# TODO: Refactor to reference SIGNAL_CONFIGS from
+# tokamak_foundation_model.data.data_loader for signal definitions,
+# instead of hardcoding signal names and channel counts.
 import MDSplus
 from mygadata import gadata
 #import matplotlib.pyplot as plt

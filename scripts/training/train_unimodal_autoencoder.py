@@ -4,22 +4,81 @@ import logging
 
 import torch
 import torch.nn as nn
+
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
+from torch.utils.data.distributed import DistributedSampler
+
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
-from tokamak_foundation_model.data.utils import worker_init_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
-from tokamak_foundation_model.models.model_factory import (
-    build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
+from tokamak_foundation_model.utils.distributed import DistributedManager
 
 from tokamak_foundation_model.utils import DefaultDrawer
+from tokamak_foundation_model.models.modality import (
+    ActuatorBaselineAutoEncoder,
+    SlowTimeSeriesBaselineAutoEncoder,
+    FastTimeSeriesBaselineAutoEncoder,
+    SpatialProfileBaselineAutoEncoder,
+    SpectrogramBaselineAutoEncoder,
+    VideoBaselineAutoEncoder,
+)
 
-# TODO: Add ddp support
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DistributedManager is created inside main() for DDP support
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+### Signal-to-model default mapping ###
+
+SIGNAL_MODEL_DEFAULTS = {
+    "gas": "actuator", 
+    "ech": "actuator",
+    "pin": "actuator", 
+    "tin": "actuator",
+    "d_alpha": "fast_time_series",
+    "mse": "profile",
+    "ts_core_density": "profile",
+    "mhr": "spectrogram", 
+    "ece": "spectrogram", 
+    "co2": "spectrogram",
+    "bolo": "video", 
+    "irtv": "video", 
+    "tangtv": "video",
+}
+
+MODEL_REGISTRY = {
+    "actuator": ActuatorBaselineAutoEncoder,
+    "fast_time_series": FastTimeSeriesBaselineAutoEncoder,
+    "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
+    "profile": SpatialProfileBaselineAutoEncoder,
+    "spectrogram": SpectrogramBaselineAutoEncoder,
+    "video": VideoBaselineAutoEncoder,
+}
+
+
+# TODO: Move into source code
+def build_model(model_name, n_channels, d_model, n_tokens):
+    """Build the appropriate autoencoder.
+
+    All autoencoders share the same interface: (n_channels, d_model, n_tokens).
+    """
+    cls = MODEL_REGISTRY[model_name]
+    kwargs = dict(n_channels=n_channels, d_model=d_model)
+    if n_tokens is not None: kwargs["n_tokens"] = n_tokens
+    return cls(**kwargs)
+
+# TODO: Move to data loader
+def worker_init_fn(worker_id):
+    worker_info = torch.utils.data.get_worker_info()
+    if worker_info is not None:
+        dataset = worker_info.dataset
+        if hasattr(dataset, 'datasets'):
+            for ds in dataset.datasets:
+                ds.h5_file = None
+                ds._open_hdf5()
+        else:
+            dataset.h5_file = None
+            dataset._open_hdf5()
 
 
 def main():
@@ -32,6 +91,13 @@ def main():
     )
     parser.add_argument(
         "--n_fft", type=int, default=1024, help="FFT size",
+    )
+    parser.add_argument(
+        "--hop_length", type=int, default=256, help="Hop length for STFT.",
+    )
+    parser.add_argument(
+        "--chunk_duration_s", type=float, default=0.5,
+        help="Duration of each data chunk in seconds",
     )
     parser.add_argument(
         "--model", choices=list(MODEL_REGISTRY.keys()), default=None,
@@ -93,15 +159,22 @@ def main():
     )
     args = parser.parse_args()
 
+    ### Distributed Setup ###
+    dm = DistributedManager()
+    device = dm.device
+
+    log_level = logging.INFO if dm.is_main_process else logging.WARNING
+    logging.basicConfig(level=log_level)
+
     ### Paths ###
     signal_name = args.signal
     model_name = args.model or SIGNAL_MODEL_DEFAULTS[signal_name]
     data_dir = Path(args.data_dir)
     statistics_path = Path(args.stats_path)
-    checkpoint_path = (
-            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
-    )
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
+    if dm.is_main_process:
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    dm.barrier()
 
     logger.info(f"Signal: {signal_name}, Model: {model_name}")
 
@@ -115,6 +188,7 @@ def main():
             preprocessing_stats=stats,
             input_signals=[signal_name],
             target_signals=[signal_name],
+            chunk_duration_s=args.chunk_duration_s,
             n_fft=args.n_fft,
             hop_length=args.hop_length,
             prediction_mode=False,
@@ -123,7 +197,8 @@ def main():
     ]
 
     concatenated_dataset = ConcatDataset(datasets_processed)
-
+    logger.info(f"Concatenated dataset length: {len(concatenated_dataset)}")
+    
     # Not sure if this is elegant
     sample_data = next(iter(concatenated_dataset))[signal_name]
     n_channels = sample_data.shape[0]
@@ -138,8 +213,25 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
+        weight_decay=args.weight_decay,
     )
     loss_fn = nn.L1Loss()
+
+    if args.warmup_epochs > 0:
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs - args.warmup_epochs, eta_min=args.min_lr
+        )
+    else:
+        scheduler = None
+
+    train_sampler = None
+    if dm.distributed:
+        train_sampler = DistributedSampler(
+            concatenated_dataset,
+            num_replicas=dm.world_size,
+            rank=dm.rank,
+            shuffle=True,
+        )
 
     dataloader = DataLoader(
         concatenated_dataset,
@@ -149,11 +241,12 @@ def main():
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
         pin_memory=True,
-        shuffle=True,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots)
+    drawer = DefaultDrawer(num_plots=args.num_plots) if dm.is_main_process else None
     trainer = UnimodalTrainer(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
@@ -162,14 +255,16 @@ def main():
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
+        scheduler=scheduler,
         log_interval=args.log_interval,
+        distributed_manager=dm,
     )
 
     if args.resume and checkpoint_path.exists():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.train(dataloader, modality_key=signal_name)
+    trainer.train(dataloader, modality_key=signal_name, train_sampler=train_sampler)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,11 @@ from .spectrogram_baseline import (
     SpectrogramBaselineDecoder,
     SpectrogramBaselineAutoEncoder,
 )
+from .spectrogram_res_lstm import (
+    SpectrogramResLSTMEncoder,
+    SpectrogramResLSTMDecoder,
+    SpectrogramResLSTMAutoEncoder,
+)
 from .video_baseline import (
     VideoBaselineEncoder,
     VideoBaselineDecoder,
@@ -49,7 +54,11 @@ __all__ = [
     "SpectrogramBaselineEncoder",
     "SpectrogramBaselineDecoder",
     "SpectrogramBaselineAutoEncoder",
-    
+
+    "SpectrogramResLSTMEncoder",
+    "SpectrogramResLSTMDecoder",
+    "SpectrogramResLSTMAutoEncoder",
+
     "VideoBaselineEncoder",
     "VideoBaselineDecoder",
     "VideoBaselineAutoEncoder",

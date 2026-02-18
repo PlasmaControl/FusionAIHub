@@ -9,6 +9,76 @@ import torch.nn.functional as F
 import copy
 
 
+# TODO: implement this for calculation
+class Welford:
+    def __init__(self):
+        self.mean = 0
+        self.std = 0
+        self.min_val = 0
+        self.max_val = 0
+        self.n = 0
+        self.M2 = 0
+
+    def update(self, value):
+
+        if np.isnan(value):
+            return
+
+        self.n += 1
+        delta = value - self.mean
+        self.mean += delta / self.n
+        delta2 = value - self.mean
+        self.M2 += delta * delta2
+        self.min_val = min(self.min_val, value)
+        self.max_val = max(self.max_val, value)
+
+    def _compute_std(self):
+        self.std = np.sqrt(self.M2 / (self.n - 1 + 1e-8))
+
+    def compute(self):
+        self._compute_std()
+        return {
+            "mean": self.mean,
+            "std": self.std,
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+        }
+
+# TODO: implement this for calculation
+class Welford:
+    def __init__(self):
+        self.mean = 0
+        self.std = 0
+        self.min_val = 0
+        self.max_val = 0
+        self.n = 0
+        self.M2 = 0
+
+    def update(self, value):
+        
+        if np.isnan(value):
+            return
+
+        self.n += 1
+        delta = value - self.mean
+        self.mean += delta / self.n
+        delta2 = value - self.mean
+        self.M2 += delta * delta2
+        self.min_val = min(self.min_val, value)
+        self.max_val = max(self.max_val, value)
+
+    def _compute_std(self):
+        self.std = np.sqrt(self.M2 / (self.n - 1 + 1e-8))
+
+    def compute(self):
+        self._compute_std()
+        return {
+            "mean": self.mean,
+            "std": self.std,
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+        }
+
 def compute_preprocessing_stats(
     datasets, output_path="preprocessing_stats.pt", num_samples=1000
 ):
@@ -57,10 +127,16 @@ def compute_preprocessing_stats(
         dims_to_reduce = list(range(all_values.ndim))
         dims_to_reduce.remove(0)  # Keep channel dimension
 
-        mean = all_values.mean(dim=dims_to_reduce)
-        std = all_values.std(dim=dims_to_reduce)
-        min_val = all_values.min()
-        max_val = all_values.max()
+        valid_mask = ~torch.isnan(all_values)
+
+        # For mean/std: use nanmean + manual std
+        mean = all_values.nanmean(dim=dims_to_reduce)
+        mean_expanded = mean.view(-1, *([1] * (all_values.ndim - 1)))
+        std = ((all_values - mean_expanded) ** 2).nanmean(dim=dims_to_reduce).sqrt()
+
+        # For min/max: mask out NaNs with inf
+        min_val = all_values.nan_to_num(posinf=float("inf"), nan=float("inf")).min()
+        max_val = all_values.nan_to_num(neginf=float("-inf"), nan=float("-inf")).max()
 
         stats[config.name] = {
             "mean": mean,
@@ -159,7 +235,7 @@ class TokamakH5Dataset(Dataset):
             4,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="log"),
         ),
         SignalConfig(
             "d_alpha",
@@ -465,11 +541,12 @@ class TokamakH5Dataset(Dataset):
         t1 = xdata_ds[-1] / 1000.0
         n_samples = xdata_ds.shape[0]
 
-        fs_raw = (n_samples - 1) / (t1 - t0)
         duration_s = t_end - t_start
 
+        fs_raw = (n_samples - 1) / (t1 - t0)
+
         ydata = np.zeros(
-            (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
+            (max(1, round(duration_s * fs_raw)), config.num_channels), dtype=np.float32
         )
 
         start_idx = max(0, int((t_start - t0) * fs_raw))
@@ -532,7 +609,7 @@ class TokamakH5Dataset(Dataset):
             window=self.stft_window,
             return_complex=True,
         )
-        spec = spec[:, 1:, :]  # Remove DC component (extreme values)
+        spec = spec[:, 1:, :] # Remove DC component (extreme values)
         return torch.abs(spec)
 
     def _load_metadata(self, f: h5py.File) -> dict:
@@ -614,14 +691,7 @@ class TokamakH5Dataset(Dataset):
         
         # Extract data with time slicing
         ydata_ds = data_group["ydata"]
-        xdata_ds = data_group["xdata"]
-
-        # Load only first and last timestamp
-        t0 = xdata_ds[0] / 1000.0
-        t1 = xdata_ds[-1] / 1000.0
-        n_samples = xdata_ds.shape[0]
-
-        fps_raw = (n_samples - 1) / (t1 - t0)
+        xdata = data_group["xdata"][:] / 1000.0  # Convert to seconds
         duration_s = t_end - t_start
 
         if n_samples < 2 or t1 == t0:
@@ -656,11 +726,7 @@ class TokamakH5Dataset(Dataset):
                 src_end -= idx_2 - ydata.shape[0]
                 idx_2 = ydata.shape[0]
 
-            if (idx_1 == 0 and idx_2 == ydata.shape[0] and
-                    src_start == 0 and src_end == data.shape[0]):
-                ydata = data  # No copy needed
-            else:
-                ydata[idx_1:idx_2] = data[src_start:src_end]
+            ydata[idx_1:idx_2] = data[src_start:src_end]
 
         tensor = torch.from_numpy(ydata).float()
 
@@ -703,7 +769,7 @@ class TokamakH5Dataset(Dataset):
 
         # Load and process movies
         all_movies = {}
-        for movie_config in self.movie_configs:
+        for movie_config in self.MOVIE_CONFIGS:
             if movie_config.name in self.input_signals:
                 raw_movie = self._load_movie_raw(
                     self.h5_file, movie_config, t_start, t_end

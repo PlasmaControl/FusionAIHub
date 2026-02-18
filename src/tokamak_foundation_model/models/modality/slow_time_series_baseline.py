@@ -120,7 +120,7 @@ class SlowTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
 
     def forward(self, x):
         output_length = x.shape[-1]
-        return self.decoder(self.encoder(x), output_length=output_length)
+        return self.decoder(self.encoder(x), output_shape=output_length)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,138 @@
+# Modality definitions for data processing
+# Each modality specifies how to read from the input HDF5 and write to output
+
+input_data_path: /scratch/gpfs/EKOLEMEN/d3d_fusion_data
+output_data_path: /scratch/gpfs/EKOLEMEN/foundation_model
+
+# TODO: merge video data into input_data_path, then remove this
+video_data_path: /scratch/gpfs/EKOLEMEN/big_d3d_data/d3d_image_data
+
+num_workers: 64
+
+signals:
+  bes:
+    input_group: bes
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default  # reads from {shot}.h5
+    stft: true
+    sampling_rate: 500000
+    num_channels: 64
+
+  dalpha:
+    input_group: d_alpha
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: true
+    sampling_rate: 500000
+    num_channels: 16
+
+  mse:
+    input_group: mse
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: false
+    sampling_rate: 1000
+    num_channels: 36
+
+  ts_core_density:
+    input_group: ts_core_density
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: false
+    sampling_rate: 1000
+    num_channels: 40
+
+  mhr:
+    input_group: magnetics_high_resolution
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: true
+    sampling_rate: 500000
+    num_channels: 8
+
+  ece:
+    input_group: ece_cali
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: true
+    sampling_rate: 500000
+    num_channels: 48
+
+  co2:
+    input_group: co2_density
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: true
+    sampling_rate: 500000
+    num_channels: 4
+
+  gas:
+    input_group: gas
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: false
+    sampling_rate: 1000
+    num_channels: 5
+
+  ech:
+    input_group: ech
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: false
+    sampling_rate: 1000
+    num_channels: 11
+
+  pin:
+    input_group: p_inj
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: false
+    sampling_rate: 1000
+    num_channels: 8
+
+  tin:
+    input_group: t_inj
+    input_xkey: axis1
+    input_ykey: block0_values
+    source: default
+    stft: false
+    sampling_rate: 1000
+    num_channels: 8
+
+  bolo:
+    input_group: bolo
+    input_xkey: time
+    input_ykey: data
+    source: video  # reads from video_data_path/{shot}_image.h5
+    stft: false
+    sampling_rate: 1000
+    num_channels: 48
+    # swap_axes: [0, 2]  # swapaxes on ydata
+
+  irtv:
+    input_group: irtv
+    input_xkey: time
+    input_ykey: data
+    source: video
+    stft: false
+    sampling_rate: 1000
+    num_channels: 48
+
+  tangtv:
+    input_group: tangtv
+    input_xkey: time
+    input_ykey: data
+    source: video
+    stft: false
+    sampling_rate: 1000
+    num_channels: 48

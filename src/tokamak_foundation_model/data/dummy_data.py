@@ -1,43 +1,16 @@
 import numpy as np
 import h5py
-from dataclasses import dataclass
-import typing
 import random
 from pathlib import Path
 
-
-@dataclass
-class Signal:
-    abbr: str
-    """Abbreviated name, e.g. `mhr`."""
-    name: str
-    """HDF5 group name, e.g. `magnetics_high_resolution`."""
-    stft: bool
-    """Whether to apply Short-Time Fourier Transform (STFT)."""
-    num_channels: int
-    """Number of channels."""
+from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
 
 
-_DEFAULT_SIGNALS: typing.Final[list[Signal]] = [
-    Signal(abbr="mhr", name="magnetics_high_resolution", stft=True, num_channels=8),
-    Signal(abbr="ece", name="ece_cali", stft=True, num_channels=48),
-    Signal(abbr="co2", name="co2_density", stft=True, num_channels=4),
-    Signal(abbr="gas", name="gas", stft=False, num_channels=5),
-    Signal(abbr="ech", name="ech", stft=False, num_channels=11),
-    Signal(abbr="pin", name="p_inj", stft=False, num_channels=8),
-    Signal(abbr="tin", name="t_inj", stft=False, num_channels=8),
-]
-
-# Define sampling rates for specific signals
-_SAMPLING_RATES = {
-    "mhr": 500e3,  # 500 kHz
-    "ece": 500e3,  # 500 kHz
-    "co2": 500e3,  # 500 kHz
-    "gas": 1e3,  # 1 kHz
-    "ech": 1e3,  # 1 kHz
-    "pin": 1e3,  # 1 kHz
-    "tin": 1e3,  # 1 kHz
-}
+# Derive signal definitions from the single source of truth: SIGNAL_CONFIGS
+_SIGNAL_CONFIGS = TokamakH5Dataset.SIGNAL_CONFIGS
+_SIGNAL_NAMES = [s.name for s in _SIGNAL_CONFIGS]
+_SIGNAL_CHANNELS = {s.name: s.num_channels for s in _SIGNAL_CONFIGS}
+_SAMPLING_RATES = {s.name: s.target_fs for s in _SIGNAL_CONFIGS}
 
 
 def _get_signal_data(duration_s: float, sampling_rate: float, num_channels: int):
@@ -72,15 +45,13 @@ def generate_multi_modal_dummy_sample(duration_s: float = 1.0):
     """
     sample_data = {}
 
-    # Generate time-series signals using _DEFAULT_SIGNALS and _SAMPLING_RATES
-    for signal_def in _DEFAULT_SIGNALS:
-        sampling_rate = _SAMPLING_RATES.get(
-            signal_def.abbr, 1e3
-        )  # Default to 1kHz if not specified
+    # Generate time-series signals using SIGNAL_CONFIGS as single source of truth
+    for config in _SIGNAL_CONFIGS:
+        sampling_rate = _SAMPLING_RATES.get(config.name, 1e3)
         xdata, ydata = _get_signal_data(
-            duration_s, sampling_rate, signal_def.num_channels
+            duration_s, sampling_rate, config.num_channels
         )
-        sample_data[signal_def.abbr] = {
+        sample_data[config.name] = {
             "xdata": xdata.astype(np.float32),
             "ydata": ydata.astype(np.float32),
         }
@@ -162,7 +133,7 @@ def create_multi_sample_hdf5(
 
 
 def create_single_sample_hdf5():
-    data_path = Path("C:\\Temp")
+    data_path = Path("/scratch/gpfs/EKOLEMEN/d3d_fusion_data")
     shot = 182620
     with h5py.File(data_path / f"{shot}.h5", "r") as f:
         bes = (
@@ -224,8 +195,8 @@ def create_single_sample_hdf5():
             f["tangtv"]["data"][:],
         )
 
-    with open(data_path / f"{shot}.txt", "r") as f:
-        logfile = f.read()
+    # with open(data_path / f"{shot}.txt", "r") as f:
+    #     logfile = f.read()
 
     with h5py.File(data_path / f"{shot}_processed.h5", "w") as f:
         signal_group = f.create_group("bes")
@@ -263,7 +234,7 @@ def create_single_sample_hdf5():
         signal_group.create_dataset("ydata", data=tin[1])
         signal_group = f.create_group("bolo")
         signal_group.create_dataset("xdata", data=bolo[0])
-        signal_group.create_dataset("ydata", data=bolo[1].swapaxes(0, 2))
+        signal_group.create_dataset("ydata", data=bolo[1])
         signal_group = f.create_group("irtv")
         signal_group.create_dataset("xdata", data=irtv[0])
         signal_group.create_dataset("ydata", data=irtv[1])
@@ -271,6 +242,6 @@ def create_single_sample_hdf5():
         signal_group.create_dataset("xdata", data=tangtv[0])
         signal_group.create_dataset("ydata", data=tangtv[1])
         signal_group = f.create_group("log")
-        signal_group.create_dataset(
-            "data", data=np.array(logfile, dtype=h5py.string_dtype(encoding="utf-8"))
-        )
+        # signal_group.create_dataset(
+        #     "data", data=np.array(logfile, dtype=h5py.string_dtype(encoding="utf-8"))
+        # )

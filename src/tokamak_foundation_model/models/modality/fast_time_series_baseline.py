@@ -2,7 +2,7 @@ import math
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from .base import ModalityEncoder, ModalityDecoder
+from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
 import numpy as np
 
 
@@ -203,7 +203,7 @@ class FastTimeSeriesBaselineDecoder(ModalityDecoder):
         return x
 
 
-class FastTimeSeriesBaselineAutoEncoder(nn.Module):
+class FastTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
     """Combines TimeSeriesEncoder and TimeSeriesDecoder into an autoencoder model."""
 
     def __init__(
@@ -215,7 +215,7 @@ class FastTimeSeriesBaselineAutoEncoder(nn.Module):
             n_layers: int = 4,
             kernel_size: int = 3,
     ):
-        super().__init__()
+        super().__init__(n_channels, d_model, n_tokens)
         self.encoder = FastTimeSeriesBaselineEncoder(
             n_channels=n_channels,
             input_length=input_length,
