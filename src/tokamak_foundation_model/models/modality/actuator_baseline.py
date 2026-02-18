@@ -2,21 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .fast_time_series_baseline import (FastTimeSeriesBaselineEncoder,
-                                        FastTimeSeriesBaselineDecoder,
-                                        FastTimeSeriesBaselineAutoEncoder)
+from .fast_time_series_baseline import (
+    FastTimeSeriesBaselineEncoder,
+    FastTimeSeriesBaselineDecoder,
+    FastTimeSeriesBaselineAutoEncoder
+    )
 
 
 class ActuatorBaselineEncoder(FastTimeSeriesBaselineEncoder):
 
-    def __init__(
-            self,
-            n_channels: int,
-            d_model: int = 512,
-            n_tokens: int = 100,
-            input_length: int = 5000,
-            n_conv_layers: int = 4,
-            kernel_size: int = 3,
+    def __init__(self,
+        n_channels: int,
+        d_model: int = 512,
+        n_tokens: int = 100,
+        input_length: int = 5000,
+        n_conv_layers: int = 4,
+        kernel_size: int = 3,
     ):
         super().__init__(
             n_channels,

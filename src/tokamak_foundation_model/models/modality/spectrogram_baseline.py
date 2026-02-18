@@ -5,89 +5,219 @@ import torch.nn.functional as F
 from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
 
 
-class SpectrogramBaselineEncoder(ModalityEncoder):
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 256, 
-        n_output_tokens: int = 0,
+class Conv3dEncoderBlock(nn.Module):
+    def __init__(self,
+        in_channels,
+        out_channels,
+        kernel_size=3,
+        stride=1,
+        padding=1,
     ):
-        super().__init__(n_channels, d_model, n_output_tokens)
-
-        dims = [1, 32, 64, 128, d_model]
-
+        super().__init__()
         self.net = nn.Sequential(
-            nn.Conv3d(dims[0], dims[1], kernel_size=3, padding=1),
-            nn.BatchNorm3d(dims[1]),
-            nn.GELU(),
-            nn.Conv3d(dims[1], dims[2], kernel_size=3, stride=(1, 2, 2), padding=1),
-            nn.BatchNorm3d(dims[2]),
-            nn.GELU(),
-            nn.Conv3d(dims[2], dims[3], kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm3d(dims[3]),
-            nn.GELU(),
-            nn.Conv3d(dims[3], dims[4], kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm3d(dims[4]),
+            nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding),
+            nn.BatchNorm3d(out_channels),
             nn.GELU(),
         )
 
     def forward(self, x):
+        return self.net(x)
+
+
+class Conv3dDecoderBlock(nn.Module):
+    def __init__(self,
+        in_channels,
+        out_channels,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        activate=True,
+    ):
+        super().__init__()
+        layers = [
+            nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding),
+        ]
+        if activate:
+            layers += [nn.BatchNorm3d(out_channels), nn.GELU()]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+class TemporalLSTM(nn.Module):
+    """LSTM along the time dimension of a 5D tensor (B, C, D, H, T)."""
+    def __init__(self, channels: int, num_layers: int = 1):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            channels,
+            channels // 2,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True,
+        )
+
+    def forward(self, x):
+        B, C, D, H, T = x.shape
+        x = x.permute(0, 2, 3, 4, 1).reshape(B * D * H, T, C)
+        x, _ = self.lstm(x)
+        x = x.reshape(B, D, H, T, C).permute(0, 4, 1, 2, 3)
+        return x
+
+def _build_channel_dims(d_model: int, n_layers: int, base_channels: int = 32) -> list[int]:
+    dims = [1]
+    if n_layers <= 1:
+        dims.append(d_model)
+        return dims
+    for i in range(n_layers - 1):
+        t = i / (n_layers - 2) if n_layers > 2 else 1.0
+        ch = int(round(base_channels * (d_model / base_channels) ** t))
+        ch = max(8, (ch + 3) // 8 * 8)
+        dims.append(ch)
+    dims.append(d_model)
+    return dims
+
+
+class SpectrogramBaselineEncoder(ModalityEncoder):
+    def __init__(self,
+        n_channels: int,
+        d_model: int = 256,
+        n_output_tokens: int = 0,
+        n_layers: int = 4,
+        base_channels: int = 32,
+        kernel_size: tuple[int, int, int] = (5, 13, 5),
+        stride: tuple[int, int, int] = (1, 2, 2),
+        lstm_on: bool = False,
+    ):
+        super().__init__(n_channels, d_model, n_output_tokens)
+        self.n_layers = n_layers
+        self.stride = stride
+        dims = _build_channel_dims(d_model, n_layers, base_channels)
+        padding = tuple(k // 2 for k in kernel_size)
+
+        self.blocks = nn.ModuleList()
+        for i in range(n_layers - 1):
+            self.blocks.append(Conv3dEncoderBlock(
+                dims[i], dims[i + 1], kernel_size=kernel_size, stride=stride, padding=padding,
+            ))
+        # Final conv with stride
+        self.blocks.append(Conv3dEncoderBlock(
+            dims[-2], dims[-1], kernel_size=kernel_size, stride=stride, padding=padding,
+        ))
+
+        self.lstm_on = lstm_on
+        if lstm_on:
+            self.lstm = TemporalLSTM(dims[-1], num_layers=1)
+            self.lstm_conv = Conv3dEncoderBlock(
+                dims[-1], dims[-1], kernel_size=kernel_size, stride=1, padding=padding,
+            )
+
+    def forward(self, x):
         B, C, Fr, T = x.shape
-        x = x.unsqueeze(1)
-        z = self.net(x)
-        return z
+        x = x.unsqueeze(1)  # (B, 1, C, Fr, T)
+        for block in self.blocks:
+            x = block(x)
+        if self.lstm_on:
+            x = self.lstm(x)
+            x = self.lstm_conv(x)
+        return x
 
 
 class SpectrogramBaselineDecoder(ModalityDecoder):
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 256, 
+    def __init__(self,
+        n_channels: int,
+        d_model: int = 256,
+        n_layers: int = 4,
+        base_channels: int = 32,
+        kernel_size: tuple[int, int, int] = (5, 13, 5),
+        stride: tuple[int, int, int] = (1, 2, 2),
+        lstm_on: bool = False,
     ):
         super().__init__(n_channels, d_model)
+        self.n_layers = n_layers
+        dims = _build_channel_dims(d_model, n_layers, base_channels)
+        padding = tuple(k // 2 for k in kernel_size)
+        upsample_scale = tuple(float(s) for s in stride)
 
-        dims = [1, 32, 64, 128, d_model]
+        self.lstm_on = lstm_on
+        if lstm_on:
+            self.lstm_conv = Conv3dDecoderBlock(
+                dims[-1], dims[-1], kernel_size=kernel_size, stride=1, padding=padding,
+            )
+            self.lstm = TemporalLSTM(dims[-1], num_layers=1)
 
-        self.net = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode="trilinear", align_corners=False),
-            nn.Conv3d(dims[4], dims[3], kernel_size=3, padding=1),
-            nn.BatchNorm3d(dims[3]),
-            nn.GELU(),
-            nn.Upsample(scale_factor=2, mode="trilinear", align_corners=False),
-            nn.Conv3d(dims[3], dims[2], kernel_size=3, padding=1),
-            nn.BatchNorm3d(dims[2]),
-            nn.GELU(),
-            nn.Upsample(scale_factor=(1, 2, 2), mode="trilinear", align_corners=False),
-            nn.Conv3d(dims[2], dims[1], kernel_size=3, padding=1),
-            nn.BatchNorm3d(dims[1]),
-            nn.GELU(),
-            nn.Conv3d(dims[1], dims[0], kernel_size=3, padding=1),
-        )
+        # Decoder mirrors encoder in reverse
+        self.upsample_blocks = nn.ModuleList()
+        self.conv_blocks = nn.ModuleList()
+
+        for i in range(n_layers - 1, -1, -1):
+            in_ch = dims[i + 1]
+            out_ch = dims[i]
+            is_last = (i == 0)
+
+            self.upsample_blocks.append(
+                nn.Upsample(scale_factor=upsample_scale, mode="trilinear", align_corners=False)
+            )
+            self.conv_blocks.append(Conv3dDecoderBlock(
+                in_ch, out_ch, kernel_size=kernel_size, stride=1, padding=padding,
+                activate=not is_last,
+            ))
 
     def forward(self, z, output_shape=None):
-        y = self.net(z)
+        y = z
+        if self.lstm_on:
+            y = self.lstm_conv(y)
+            y = self.lstm(y)
+        for upsample, conv in zip(self.upsample_blocks, self.conv_blocks):
+            y = upsample(y)
+            y = conv(y)
+
         if output_shape is not None:
-            y = F.interpolate(
-                y, size=output_shape, mode="trilinear", align_corners=False
-            )
+            y = F.interpolate(y, size=output_shape, mode="trilinear", align_corners=False)
         y = y.squeeze(1)
         return y
 
+
 class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
     """
-    Based on 3DCAE implementation at https://github.com/micah35s/Autoencoder-Image-Compression
+    Scalable 3D convolutional autoencoder for spectrogram compression.
+
+    Based on 3DCAE implementation at
     https://github.com/faadi809/HSI-compression-benchmark
+
+    Args:
+        n_channels: Number of input signal channels.
+        d_model: Latent channel dimension (bottleneck width).
+        n_output_tokens: Number of output tokens (unused, for interface compat).
+        n_layers: Number of encoder/decoder stages. More layers = more compression + capacity.
+        base_channels: Starting channel width after first conv.
     """
 
-    def __init__(self, 
-        n_channels: int, 
-        d_model: int = 256, 
+    def __init__(self,
+        n_channels: int,
+        d_model: int = 256,
         n_output_tokens: int = 0,
+        n_layers: int = 4,
+        base_channels: int = 32,
+        kernel_size: tuple[int, int, int] = (3, 5, 5),
+        stride: tuple[int, int, int] = (1, 2, 2),
+        lstm_on: bool = False,
     ):
         super().__init__(n_channels, d_model, n_output_tokens)
         self.n_channels = n_channels
         self.d_model = d_model
 
-        self.encoder = SpectrogramBaselineEncoder(n_channels, d_model, n_output_tokens)
-        self.decoder = SpectrogramBaselineDecoder(n_channels, d_model)
+        self.encoder = SpectrogramBaselineEncoder(
+            n_channels, d_model, n_output_tokens,
+            n_layers=n_layers, base_channels=base_channels,
+            kernel_size=kernel_size, stride=stride,
+            lstm_on=lstm_on,
+        )
+        self.decoder = SpectrogramBaselineDecoder(
+            n_channels, d_model,
+            n_layers=n_layers, base_channels=base_channels,
+            kernel_size=kernel_size, stride=stride,
+            lstm_on=lstm_on,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, Fr, T = x.shape
@@ -96,11 +226,17 @@ class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
         return y
 
 
-def _run_test(label, n_channels, freq, time, d_model, device):
-    print(f"=== {label} ===")
-    autoencoder = SpectrogramBaselineAutoEncoder(n_channels, d_model)
+def _run_test(label, n_channels, freq, time, d_model, n_layers, lstm_on, device):
+    print(f"=== {label} (n_layers={n_layers}) ===")
+    autoencoder = SpectrogramBaselineAutoEncoder(
+        n_channels, d_model, n_layers=n_layers, lstm_on=lstm_on,
+    )
     autoencoder.to(device)
-    x = torch.randn(2, n_channels, freq, time)
+
+    n_params = sum(p.numel() for p in autoencoder.parameters())
+    print(f"  Parameters: {n_params:,}")
+
+    x = torch.randn(1, n_channels, freq, time)
 
     with torch.inference_mode():
         y = autoencoder(x.to(device))
@@ -118,6 +254,7 @@ def _run_test(label, n_channels, freq, time, d_model, device):
     print(f"  Latent:  {list(z.shape)}  ({latent_size:,} values)")
     print(f"  Output:  {y.shape}")
     print(f"  Compression: {ratio:.1f}:1")
+    print()
 
 
 if __name__ == "__main__":
@@ -125,6 +262,13 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    _run_test("MHR", n_channels=8, freq=513, time=977, d_model=32, device=device)
-    _run_test("CO2", n_channels=4, freq=513, time=977, d_model=32, device=device)
-    _run_test("ECE", n_channels=48, freq=513, time=977, d_model=32, device=device)
+    _run_test(
+        "CO2", 
+        n_channels=4, 
+        freq=128, 
+        time=256, 
+        d_model=64, 
+        n_layers=6, 
+        lstm_on=True,
+        device=device,
+    )
