@@ -7,6 +7,9 @@ from functools import partial
 from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from tqdm.auto import tqdm
+from scipy.interpolate import interp1d
+import os
+
 
 log = logging.getLogger(__name__)
 
@@ -14,10 +17,83 @@ log = logging.getLogger(__name__)
 _VIDEO_DATA_PATH = Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/d3d_image_data")
 
 
+def _resample_time_series(data, time, target_frequency):
+    """
+    Resample non-uniformly sampled time series to uniform sampling.
+
+    Parameters:
+    -----------
+    data : np.ndarray, shape (n_samples, ...)
+        Time series data
+    time : np.ndarray, shape (n_samples,)
+        Time axis (can be non-uniform)
+    target_frequency : float
+        Desired sampling frequency in Hz
+
+    Returns:
+    --------
+    resampled_data : np.ndarray
+        Uniformly resampled data
+    new_time : np.ndarray
+        New uniform time axis
+    """
+    if len(data) <= 1:
+        return time.copy(), data.copy()
+
+    # Calculate target sampling period
+    dt = 1.0 / target_frequency
+
+    # Create uniform time grid
+    n_samples = int(np.ceil((time[-1] - time[0]) / dt)) + 1
+    new_time = time[0] + np.arange(n_samples) * dt
+
+    # Handle multi-dimensional data
+    original_shape = data.shape
+    if data.ndim > 1:
+        # Flatten all dimensions except the first (time)
+        data_flat = data.reshape(data.shape[0], -1)
+        resampled_flat = np.full((len(new_time), data_flat.shape[1]), np.nan)
+
+        # Interpolate each channel, handling NaNs
+        for i in range(data_flat.shape[1]):
+            # Find valid (non-NaN) data points
+            valid_mask = ~np.isnan(data_flat[:, i])
+
+            if np.sum(valid_mask) >= 2:  # Need at least 2 points to interpolate
+                valid_time = time[valid_mask]
+                valid_data = data_flat[valid_mask, i]
+
+                # Only interpolate within the range of valid data
+                interpolator = interp1d(valid_time, valid_data, kind='linear',
+                                        bounds_error=False, fill_value=np.nan)
+                resampled_flat[:, i] = interpolator(new_time)
+            # else: remains NaN (initialized above)
+
+        # Reshape back to original dimensions (except time axis)
+        new_shape = (len(new_time),) + original_shape[1:]
+        resampled_data = resampled_flat.reshape(new_shape)
+    else:
+        # 1D case
+        valid_mask = ~np.isnan(data)
+
+        if np.sum(valid_mask) >= 2:
+            valid_time = time[valid_mask]
+            valid_data = data[valid_mask]
+
+            interpolator = interp1d(valid_time, valid_data, kind='linear',
+                                    bounds_error=False, fill_value=np.nan)
+            resampled_data = interpolator(new_time)
+        else:
+            # Not enough valid data to interpolate
+            resampled_data = np.full(len(new_time), np.nan)
+
+    return new_time, resampled_data
+
+
 def _get_valid_shots(
-    shot_list: list[int],
-    input_data_path: Path,
-    video_data_path: Path,
+        shot_list: list[int],
+        input_data_path: Path,
+        video_data_path: Path,
 ) -> list[int]:
     """Return only shots that have files in *both* the main data path and the
     video data path.  Expects ``{shot}.h5`` in input_data_path and
@@ -39,8 +115,8 @@ def _get_valid_shots(
     n_missing = len(requested) - len(valid)
     if n_missing:
         log.warning(
-            f"{n_missing}/{len(requested)} requested shots missing from one or "
-            f"both data paths – skipped"
+            f"{n_missing}/{len(requested)} requested shots missing from one "
+            f"or both data paths – skipped"
         )
     log.info(f"{len(valid)} shots available in both paths")
     return valid
@@ -58,7 +134,8 @@ def _process_shot(shot: int, cfg_dict: dict) -> str | None:
     """
     try:
         input_data_path = Path(cfg_dict["input_data_path"])
-        video_data_path = Path(cfg_dict.get("video_data_path", str(_VIDEO_DATA_PATH)))
+        video_data_path = Path(
+            cfg_dict.get("video_data_path", str(_VIDEO_DATA_PATH)))
         output_data_path = Path(cfg_dict["output_data_path"])
         output_data_path.mkdir(parents=True, exist_ok=True)
 
@@ -98,7 +175,12 @@ def _process_shot(shot: int, cfg_dict: dict) -> str | None:
                     if sig_cfg.get("swap_axes") is not None:
                         ydata = ydata.swapaxes(*sig_cfg["swap_axes"])
 
-                    read_data[abbr] = (xdata, ydata)
+                    xdata, ydata = _resample_time_series(
+                        data=ydata,
+                        time=xdata / 1000,
+                        target_frequency=sig_cfg["sampling_rate"])
+
+                    read_data[abbr] = (xdata * 1000, ydata)
 
         if not read_data:
             return f"shot {shot}: no data read – skipped"
@@ -107,12 +189,14 @@ def _process_shot(shot: int, cfg_dict: dict) -> str | None:
         with h5py.File(output_file, "w") as f:
             for abbr, (xdata, ydata) in read_data.items():
                 grp = f.create_group(abbr)
-                grp.create_dataset("xdata", data=xdata)
-                grp.create_dataset("ydata", data=ydata)
+                grp.create_dataset("xdata", data=xdata, dtype='f8')
+                grp.create_dataset("ydata", data=ydata, dtype='f8')
 
+        os.chmod(output_file, 0o664)
         return None  # success
 
     except Exception as e:
+        log.info(f"shot {shot}: {type(e).__name__}: {e}")
         return f"shot {shot}: {type(e).__name__}: {e}"
 
 
@@ -122,7 +206,8 @@ def main(cfg: DictConfig) -> None:
 
     mod_cfg = cfg.modalities
     input_data_path = Path(mod_cfg.input_data_path)
-    video_data_path = Path(mod_cfg.get("video_data_path", str(_VIDEO_DATA_PATH)))
+    video_data_path = Path(
+        mod_cfg.get("video_data_path", str(_VIDEO_DATA_PATH)))
     num_workers = mod_cfg.get("num_workers", 8)
 
     # ── filter to shots that exist in both paths ──
@@ -144,9 +229,10 @@ def main(cfg: DictConfig) -> None:
     worker = partial(_process_shot, cfg_dict=cfg_dict)
 
     errors = []
-    
+
     with Pool(processes=num_workers) as pool:
-        for i, err in enumerate(tqdm(pool.imap_unordered(worker, shots), total=len(shots))):
+        for i, err in enumerate(
+                tqdm(pool.imap_unordered(worker, shots), total=len(shots))):
             if err is not None:
                 log.error(err)
                 errors.append(err)
@@ -158,5 +244,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    # python -m tokamak_foundation_model.data.prepare_data
     main()

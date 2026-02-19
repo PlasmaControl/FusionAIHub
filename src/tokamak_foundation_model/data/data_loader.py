@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import h5py
 from pathlib import Path
@@ -10,43 +10,171 @@ import copy
 
 
 # TODO: implement this for calculation
-class Welford:
+class WelfordTensor:
+    """
+    Welford algorithm for computing running statistics on batched multi-channel tensors.
+
+    Computes per-channel statistics by aggregating across batch and all other dimensions.
+
+    For signals (B, C, F, T) or (B, C, 1, T): computes stats per channel → shape (C,)
+    For profiles (B, S, T): computes stats per spatial point → shape (S,)
+    For videos (B, T, H, W): computes global stats → shape (1,)
+    """
+
     def __init__(self):
-        self.mean = 0
-        self.std = 0
-        self.min_val = 0
-        self.max_val = 0
+        self.mean = None
+        self.std = None
+        self.min_val = None
+        self.max_val = None
         self.n = 0
-        self.M2 = 0
+        self.M2 = None
+        self.initialized = False
 
-    def update(self, value):
+    def _initialize(self, value: torch.Tensor):
+        """Initialize arrays based on first tensor's shape."""
+        # Determine number of channels based on tensor shape (excluding batch dim)
+        if value.ndim == 4:
+            # (batch, channels, freq_bins, time) or (batch, channels, 1, time)
+            n_channels = value.shape[1]
+        elif value.ndim == 3:
+            # (batch, spatial_points, time) or (batch, time, height) - ambiguous
+            # Assume spatial/channel dim is second
+            n_channels = value.shape[1]
+        elif value.ndim == 2:
+            # (batch, time) - single channel
+            n_channels = 1
+        else:
+            # Shouldn't happen, but treat as single channel
+            n_channels = 1
 
-        if np.isnan(value):
+        self.mean = torch.zeros(n_channels, dtype=torch.float64)
+        self.M2 = torch.zeros(n_channels, dtype=torch.float64)
+        self.min_val = torch.full((n_channels,), float('inf'), dtype=torch.float64)
+        self.max_val = torch.full((n_channels,), float('-inf'), dtype=torch.float64)
+        self.initialized = True
+
+    def update(self, value: torch.Tensor):
+        """
+        Update statistics with new batched tensor.
+
+        Parameters
+        ----------
+        value : torch.Tensor
+            Input tensor of shape:
+            - (batch, channels, freq_bins, time) for spectrograms
+            - (batch, channels, 1, time) for time series
+            - (batch, spatial_points, time) for profiles
+            - (batch, time, height, width) for videos
+        """
+        # Skip if contains NaN
+        if torch.isnan(value).any():
             return
 
-        self.n += 1
-        delta = value - self.mean
-        self.mean += delta / self.n
-        delta2 = value - self.mean
-        self.M2 += delta * delta2
-        self.min_val = min(self.min_val, value)
-        self.max_val = max(self.max_val, value)
+        # Initialize on first call
+        if not self.initialized:
+            self._initialize(value)
+
+        # Convert to float64 for numerical stability
+        value = value.to(dtype=torch.float64)
+
+        # Compute per-channel statistics by flattening batch and all non-channel dims
+        if value.ndim == 4 and value.shape[1] == self.mean.shape[0]:
+            # (batch, channels, freq_bins, time) → flatten batch, freq, time
+            # (B, C, F, T) → (C, B*F*T)
+            batch_size = value.shape[0]
+            n_channels = value.shape[1]
+            value_flat = value.permute(1, 0, 2, 3).reshape(n_channels, -1)  # (C, B*F*T)
+
+            # Per-channel mean, min, max
+            batch_mean = value_flat.mean(dim=1)
+            batch_min = value_flat.min(dim=1).values
+            batch_max = value_flat.max(dim=1).values
+            n_samples = value_flat.shape[1]
+
+            # For variance, we need sum of squared deviations
+            batch_var = value_flat.var(dim=1, unbiased=False)
+            batch_M2 = batch_var * n_samples
+
+        elif value.ndim == 3:
+            # (batch, spatial_points, time) → flatten batch, time
+            # (B, S, T) → (S, B*T)
+            n_channels = value.shape[1]
+            value_flat = value.permute(1, 0, 2).reshape(n_channels, -1)  # (S, B*T)
+
+            batch_mean = value_flat.mean(dim=1)
+            batch_min = value_flat.min(dim=1).values
+            batch_max = value_flat.max(dim=1).values
+            n_samples = value_flat.shape[1]
+
+            batch_var = value_flat.var(dim=1, unbiased=False)
+            batch_M2 = batch_var * n_samples
+
+        else:
+            # Video (batch, time, height, width) → global statistics
+            value_flat = value.flatten()
+
+            batch_mean = torch.tensor([value_flat.mean()], dtype=torch.float64)
+            batch_min = torch.tensor([value_flat.min()], dtype=torch.float64)
+            batch_max = torch.tensor([value_flat.max()], dtype=torch.float64)
+            n_samples = value_flat.shape[0]
+
+            batch_var = value_flat.var(unbiased=False)
+            batch_M2 = batch_var * n_samples
+
+        # Parallel Welford's algorithm for combining batches
+        # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+        n_old = self.n
+        n_new = n_samples
+        n_total = n_old + n_new
+
+        # Update mean
+        delta = batch_mean - self.mean
+        self.mean = (n_old * self.mean + n_new * batch_mean) / n_total
+
+        # Update M2 (sum of squared deviations)
+        # M2_total = M2_old + M2_new + delta^2 * n_old * n_new / n_total
+        self.M2 = self.M2 + batch_M2 + delta * delta * n_old * n_new / n_total
+
+        self.n = n_total
+
+        # Update min/max
+        self.min_val = torch.minimum(self.min_val, batch_min)
+        self.max_val = torch.maximum(self.max_val, batch_max)
 
     def _compute_std(self):
-        self.std = np.sqrt(self.M2 / (self.n - 1 + 1e-8))
+        """Compute standard deviation from M2."""
+        if self.n > 1:
+            self.std = torch.sqrt(self.M2 / (self.n - 1))
+        else:
+            self.std = torch.zeros_like(self.mean)
 
     def compute(self):
+        """
+        Compute final statistics.
+
+        Returns
+        -------
+        dict
+            Dictionary with numpy arrays:
+            - 'mean': per-channel mean
+            - 'std': per-channel standard deviation
+            - 'min_val': per-channel minimum
+            - 'max_val': per-channel maximum
+        """
         self._compute_std()
+
         return {
-            "mean": self.mean,
-            "std": self.std,
-            "min_val": self.min_val,
-            "max_val": self.max_val,
+            "mean": self.mean.numpy(),
+            "std": self.std.numpy(),
+            "min_val": self.min_val.numpy(),
+            "max_val": self.max_val.numpy(),
         }
 
 
 def compute_preprocessing_stats(
-    datasets, output_path="preprocessing_stats.pt", num_samples=1000
+        datasets,
+        output_path="preprocessing_stats.pt",
+        num_samples=1000
 ):
     """Compute preprocessing statistics across multiple datasets.
 
@@ -59,60 +187,28 @@ def compute_preprocessing_stats(
     from tqdm import tqdm
 
     combined = ConcatDataset(datasets)
-    stats = {}
+    dataloader = DataLoader(combined, batch_size=32, collate_fn=collate_fn, num_workers=1)
 
     # Get signal names from first dataset
     signal_configs = datasets[0].SIGNAL_CONFIGS
+    movie_configs = datasets[0].MOVIE_CONFIGS
 
-    for config in signal_configs:
-        print(f"Computing statistics for {config.name}...")
+    welford_stats = {cfg.name: WelfordTensor() for cfg in signal_configs + movie_configs}
 
-        # Collect values
-        values = []
+    for batch in tqdm(dataloader):
+        for modality_name, tensor in batch.items():
+            # Update statistics
+            welford_stats[modality_name].update(tensor)
 
-        for idx in tqdm(range(len(combined))):
-            batch = combined[int(idx)]
-            if config.name in batch['inputs']:
-                values.append(batch['inputs'][config.name])
-                values.append(batch['targets'][config.name])
+    # Compute final statistics
+    final_stats = {
+        modality: tracker.compute()
+        for modality, tracker in welford_stats.items()
+    }
+    torch.save(final_stats, output_path)
 
-        if not values:
-            continue
-
-        # Stack and compute statistics
-        if values[0].ndim == 2:
-            all_values = torch.cat(values, dim=1)  # (channels, time)
-        elif values[0].ndim == 3:
-            all_values = torch.cat(values, dim=2)  # (channels, freq_bins, time)
-        else:
-            raise ValueError(f"Invalid tensor shape: {values[0].shape}")
-
-        # Compute per-channel statistics
-        # Reduce over all dimensions except channel dimension (dim=1)
-        dims_to_reduce = list(range(all_values.ndim))
-        dims_to_reduce.remove(0)  # Keep channel dimension
-
-        valid_mask = ~torch.isnan(all_values)
-
-        # For mean/std: use nanmean + manual std
-        mean = all_values.nanmean(dim=dims_to_reduce)
-        mean_expanded = mean.view(-1, *([1] * (all_values.ndim - 1)))
-        std = ((all_values - mean_expanded) ** 2).nanmean(dim=dims_to_reduce).sqrt()
-
-        # For min/max: mask out NaNs with inf
-        min_val = all_values.nan_to_num(posinf=float("inf"), nan=float("inf")).min()
-        max_val = all_values.nan_to_num(neginf=float("-inf"), nan=float("-inf")).max()
-
-        stats[config.name] = {
-            "mean": mean,
-            "std": std,
-            "min_val": min_val.item(),
-            "max_val": max_val.item(),
-        }
-
-    torch.save(stats, output_path)
     print(f"Saved statistics to {output_path}")
-    return stats
+    return final_stats
 
 
 @dataclass
@@ -241,6 +337,7 @@ class TokamakH5Dataset(Dataset):
             apply_stft=False,
             preprocess=PreprocessConfig(method="none"),
         ),
+        # TODO: Include Gas as additional actuator!!!
         SignalConfig(
             "mse",
             ["mse"],
@@ -266,16 +363,16 @@ class TokamakH5Dataset(Dataset):
     ]
 
     def __init__(
-        self,
-        hdf5_path: str,
-        chunk_duration_s: float = 0.5,
-        n_fft: int = 1024,
-        hop_length: int = 256,
-        preprocessing_stats: Optional[dict] = None,
-        prediction_mode: bool = True,
-        prediction_horizon_s: float = 0.2,
-        input_signals: Optional[list[str]] = None,
-        target_signals: Optional[list[str]] = None,
+            self,
+            hdf5_path: str,
+            chunk_duration_s: float = 0.5,
+            n_fft: int = 1024,
+            hop_length: int = 256,
+            preprocessing_stats: Optional[dict] = None,
+            prediction_mode: bool = False,
+            prediction_horizon_s: float = 0.2,
+            input_signals: Optional[list[str]] = None,
+            target_signals: Optional[list[str]] = None,
     ):
         # Make instance-level copies to avoid class-level mutation
         self.signal_configs = copy.deepcopy(self.SIGNAL_CONFIGS)
@@ -298,10 +395,12 @@ class TokamakH5Dataset(Dataset):
 
         self._update_preprocessing_stats()
         self.h5_file = None
-
-        with h5py.File(self.hdf5_path, "r") as f:
-            self.duration, self.t0_indices = self._compute_duration_and_t0_indices(f)
-
+        try:
+            with h5py.File(self.hdf5_path, "r") as f:
+                self.duration, self.t0_indices = self._compute_duration_and_t0_indices(f)
+        except OSError as e:
+            print(self.hdf5_path)
+            raise e
         # In prediction mode, reduce length to ensure extended window fits
         if self.prediction_mode:
             total_window = self.chunk_duration_s + self.prediction_horizon_s
@@ -552,7 +651,11 @@ class TokamakH5Dataset(Dataset):
             )
 
     def _load_signal_raw(
-        self, f: h5py.File, config: SignalConfig, t_start: float, t_end: float
+            self,
+            f: h5py.File,
+            config: SignalConfig,
+            t_start: float,
+            t_end: float
     ) -> torch.Tensor:
         """
         Load raw signal at native sampling rate within time window.
@@ -575,17 +678,7 @@ class TokamakH5Dataset(Dataset):
         """
         duration_s = t_end - t_start
 
-        # Step 1: Check if signal has data after t=0
-        if config.name not in self.t0_indices:
-            return torch.zeros(
-                (round(duration_s * config.target_fs), config.num_channels)
-            )
-
-        t0_info = self.t0_indices[config.name]
-        t0_idx = t0_info["index"]
-        t0_time_s = t0_info["time_s"]
-
-        # Step 2: Find the signal in HDF5
+        # Find the signal in HDF5
         data_group = None
         for key_path in config.hdf5_keys:
             try:
@@ -606,48 +699,44 @@ class TokamakH5Dataset(Dataset):
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
 
-        # Load first and last timestamp to compute sampling rate
-        t_first = xdata_ds[0] / 1000.0
-        t_last = xdata_ds[-1] / 1000.0
+        # Get time range and sample count
+        xdata_start_s = xdata_ds[0] / 1000.0
+        xdata_end_s = xdata_ds[-1] / 1000.0
         n_samples = xdata_ds.shape[0]
 
-        if n_samples < 2 or t_last == t_first:
+        if n_samples < 2 or xdata_end_s == xdata_start_s:
             return torch.zeros(
                 (round(duration_s * config.target_fs), config.num_channels)
             )
 
-        fs_raw = (n_samples - 1) / (t_last - t_first)
+        # Compute actual sampling frequency from the data
+        actual_fs = (n_samples - 1) / (xdata_end_s - xdata_start_s)
 
-        # Step 3: Initialize output with zeros at raw sampling rate
+        # Step 1: Initialize output array with zeros
         output = np.zeros(
-            (round(duration_s * fs_raw), config.num_channels), dtype=np.float32
+            (round(duration_s * actual_fs), config.num_channels),
+            dtype=np.float32
         )
 
-        # Step 4: Calculate HDF5 indices for requested time range
-        # xdata[t0_idx] = t0_time_s (actual time, e.g., 0.005s if first sample is at 5ms)
-        # To find data at user's t_start:
-        # We want: xdata[i] ≈ t_start
-        # We know: xdata[i] ≈ t0_time_s + (i - t0_idx) / fs_raw
-        # Solving: i ≈ t0_idx + (t_start - t0_time_s) * fs_raw
-        hdf5_start = t0_idx + round((t_start - t0_time_s) * fs_raw)
-        hdf5_end = t0_idx + round((t_end - t0_time_s) * fs_raw)
+        # Step 2: Calculate which HDF5 indices correspond to [t_start, t_end]
+        # xdata[i] = xdata_start_s + i / actual_fs
+        # Solving for i: i = (t - xdata_start_s) * actual_fs
+        hdf5_start = round((t_start - xdata_start_s) * actual_fs)
+        hdf5_end = round((t_end - xdata_start_s) * actual_fs)
 
-        # Clamp to valid HDF5 range
-        hdf5_start = max(0, min(hdf5_start, n_samples))
-        hdf5_end = max(0, min(hdf5_end, n_samples))
+        # Clamp to valid HDF5 range [0, n_samples]
+        hdf5_start_clamped = max(0, min(hdf5_start, n_samples))
+        hdf5_end_clamped = max(0, min(hdf5_end, n_samples))
 
-        # Step 5: If there's data to load
-        if hdf5_start < hdf5_end:
-            # Load from HDF5
-            data = ydata_ds[hdf5_start:hdf5_end]
+        # Step 3: Load data if there's any overlap
+        if hdf5_start_clamped < hdf5_end_clamped:
+            data = ydata_ds[hdf5_start_clamped:hdf5_end_clamped]
             np.nan_to_num(data, copy=False, nan=0.0)
 
-            # Calculate what time range the loaded data represents
-            # xdata[hdf5_start] ≈ t0_time_s + (hdf5_start - t0_idx) / fs_raw
-            loaded_t_start = t0_time_s + (hdf5_start - t0_idx) / fs_raw
-
-            # Position in output (which represents [t_start, t_end])
-            output_start = round((loaded_t_start - t_start) * fs_raw)
+            # Step 4: Calculate where to insert in output array
+            # The loaded data starts at time: xdata_start_s + hdf5_start_clamped / actual_fs
+            # This corresponds to output index: (that_time - t_start) * actual_fs
+            output_start = hdf5_start_clamped - hdf5_start
             output_end = output_start + data.shape[0]
 
             # Clamp to output bounds
@@ -661,9 +750,14 @@ class TokamakH5Dataset(Dataset):
                 src_end -= output_end - output.shape[0]
                 output_end = output.shape[0]
 
-            # Copy data to output
+            # Insert data into output
             if src_start < src_end and output_start < output_end:
-                output[output_start:output_end] = data[src_start:src_end]
+                if data.shape[1] == config.num_channels:
+                    output[output_start:output_end] = data[src_start:src_end]
+                elif data.shape[1] > config.num_channels:
+                    output[output_start:output_end] = data[src_start:src_end, :config.num_channels]
+                else:
+                    output[output_start:output_end, :data.shape[1]] = data[src_start:src_end]
 
         # Step 6: Convert to tensor and resample to target frequency
         tensor = torch.from_numpy(output).float()
@@ -757,14 +851,20 @@ class TokamakH5Dataset(Dataset):
         return processed
 
     def _load_movie_raw(
-        self, f: h5py.File, config: MovieConfig, t_start: float, t_end: float
+            self,
+            f: h5py.File,
+            config: MovieConfig,
+            t_start: float,
+            t_end: float
     ) -> torch.Tensor:
         """Load raw movie data without resampling (for prediction mode).
 
         Returns:
             Raw movie array at native frame rate, shape (time, height, width)
         """
-        # Try to find the movie in HDF5
+        duration_s = t_end - t_start
+
+        # Find the movie in HDF5
         data_group = None
         for key_path in config.hdf5_keys:
             try:
@@ -776,72 +876,88 @@ class TokamakH5Dataset(Dataset):
                 break
             except KeyError:
                 continue
-        
-        # Extract data with time slicing
+
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
 
-        # Load only first and last timestamp
-        t0 = xdata_ds[0] / 1000.0
-        t1 = xdata_ds[-1] / 1000.0
-        n_samples = xdata_ds.shape[0]
+        if ydata_ds.size == 0:
+            return torch.zeros(
+                (round(duration_s * config.target_fps), config.height, config.width)
+            )
 
-        fps_raw = (n_samples - 1) / (t1 - t0)
-        duration_s = t_end - t_start
+        # Get time range and frame count
+        xdata_start_s = xdata_ds[0] / 1000.0
+        xdata_end_s = xdata_ds[-1] / 1000.0
+        n_frames = xdata_ds.shape[0]
 
-        if n_samples < 2 or t1 == t0:
-            n_frames = round(duration_s * config.target_fps)
-            return torch.zeros(max(n_frames, 1), config.height, config.width)
+        if n_frames < 2 or xdata_end_s == xdata_start_s:
+            return torch.zeros(
+                (round(duration_s * config.target_fps), config.height, config.width)
+            )
 
+        # Compute actual frame rate from the data
+        actual_fps = (n_frames - 1) / (xdata_end_s - xdata_start_s)
+
+        # Get actual dimensions from data
         raw_height, raw_width = ydata_ds.shape[1], ydata_ds.shape[2]
-        ydata = np.zeros(
-            (max(1, round(duration_s * fps_raw)), raw_height, raw_width), dtype=np.float32
+
+        # Step 1: Initialize output array with zeros at actual fps
+        output = np.zeros(
+            (round(duration_s * actual_fps), raw_height, raw_width),
+            dtype=np.float32
         )
-        
-        # Compute indices directly (no full xdata load)
-        start_idx = max(0, int((t_start - t0) * fps_raw))
-        end_idx = min(n_samples, int((t_end - t0) * fps_raw))
 
-        if end_idx > start_idx:
-            data = ydata_ds[start_idx:end_idx]
+        # Step 2: Calculate which HDF5 indices correspond to [t_start, t_end]
+        # xdata[i] = xdata_start_s + i / actual_fps
+        # Solving for i: i = (t - xdata_start_s) * actual_fps
+        hdf5_start = round((t_start - xdata_start_s) * actual_fps)
+        hdf5_end = round((t_end - xdata_start_s) * actual_fps)
+
+        # Clamp to valid HDF5 range [0, n_frames]
+        hdf5_start_clamped = max(0, min(hdf5_start, n_frames))
+        hdf5_end_clamped = max(0, min(hdf5_end, n_frames))
+
+        # Step 3: Load data if there's any overlap
+        if hdf5_start_clamped < hdf5_end_clamped:
+            data = ydata_ds[hdf5_start_clamped:hdf5_end_clamped]
             data[np.isnan(data)] = 0.0
-            # Compute offset based on actual start time
-            actual_t_start = t0 + start_idx / fps_raw
-            idx_1 = round((actual_t_start - t_start) * fps_raw)
-            idx_2 = idx_1 + data.shape[0]
 
-            # Clamp to array bounds
+            # Step 4: Calculate where to insert in output array
+            # The loaded data starts at time: xdata_start_s + hdf5_start_clamped / actual_fps
+            # This corresponds to output index: (that_time - t_start) * actual_fps
+            output_start = hdf5_start_clamped - hdf5_start
+            output_end = output_start + data.shape[0]
+
+            # Clamp to output bounds
             src_start = 0
             src_end = data.shape[0]
 
-            if idx_1 < 0:
-                src_start = -idx_1
-                idx_1 = 0
-            if idx_2 > ydata.shape[0]:
-                src_end -= idx_2 - ydata.shape[0]
-                idx_2 = ydata.shape[0]
+            if output_start < 0:
+                src_start = -output_start
+                output_start = 0
+            if output_end > output.shape[0]:
+                src_end -= output_end - output.shape[0]
+                output_end = output.shape[0]
 
-            if (idx_1 == 0 and idx_2 == ydata.shape[0] and
-                    src_start == 0 and src_end == data.shape[0]):
-                ydata = data  # No copy needed
-            else:
-                ydata[idx_1:idx_2] = data[src_start:src_end]
+            # Insert data into output
+            if src_start < src_end and output_start < output_end:
+                output[output_start:output_end] = data[src_start:src_end]
 
-        tensor = torch.from_numpy(ydata).float()
+        # Step 5: Convert to tensor and resample to target fps and dimensions
+        tensor = torch.from_numpy(output).float()
 
+        # Resample using trilinear interpolation
+        # Input: (time, height, width) → add batch and channel dims
+        # Output: (batch=1, channels=1, time, height, width)
         tensor = (
-            F.interpolate(
-                tensor.unsqueeze(0).unsqueeze(0),
-                size=(
-                    round(duration_s * config.target_fps),
-                    config.height,
-                    config.width,
-                ),
-                mode="trilinear",
-                align_corners=False,
-            )
-            .squeeze(0)
-            .squeeze(0)
+            F.interpolate(tensor.unsqueeze(0).unsqueeze(0),
+                          size=(round(duration_s * config.target_fps),
+                                config.height,
+                                config.width,
+                                ),
+                          mode="trilinear",
+                          align_corners=False,
+                          ).squeeze(0).squeeze(0)
         )
 
         return tensor
@@ -853,7 +969,7 @@ class TokamakH5Dataset(Dataset):
             return self._getitem_prediction(idx)
         else:
             return self._getitem_standard(idx)
-    
+
     def _getitem_standard(self, idx):
         """Original __getitem__ logic."""
         t_start = idx * self.chunk_duration_s

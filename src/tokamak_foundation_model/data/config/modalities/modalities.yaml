@@ -25,7 +25,7 @@ signals:
     input_ykey: block0_values
     source: default
     stft: true
-    sampling_rate: 500000
+    sampling_rate: 10000
     num_channels: 16
 
   mse:
@@ -34,7 +34,7 @@ signals:
     input_ykey: block0_values
     source: default
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 100
     num_channels: 36
 
   ts_core_density:
@@ -43,8 +43,8 @@ signals:
     input_ykey: block0_values
     source: default
     stft: false
-    sampling_rate: 1000
-    num_channels: 40
+    sampling_rate: 100
+    num_channels: 44
 
   mhr:
     input_group: magnetics_high_resolution
@@ -79,7 +79,7 @@ signals:
     input_ykey: block0_values
     source: default
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 10000
     num_channels: 5
 
   ech:
@@ -88,7 +88,7 @@ signals:
     input_ykey: block0_values
     source: default
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 10000
     num_channels: 11
 
   pin:
@@ -97,7 +97,7 @@ signals:
     input_ykey: block0_values
     source: default
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 10000
     num_channels: 8
 
   tin:
@@ -106,7 +106,7 @@ signals:
     input_ykey: block0_values
     source: default
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 10000
     num_channels: 8
 
   bolo:
@@ -115,7 +115,7 @@ signals:
     input_ykey: data
     source: video  # reads from video_data_path/{shot}_image.h5
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 50
     num_channels: 48
     # swap_axes: [0, 2]  # swapaxes on ydata
 
@@ -125,7 +125,7 @@ signals:
     input_ykey: data
     source: video
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 50
     num_channels: 48
 
   tangtv:
@@ -134,5 +134,5 @@ signals:
     input_ykey: data
     source: video
     stft: false
-    sampling_rate: 1000
+    sampling_rate: 50
     num_channels: 48

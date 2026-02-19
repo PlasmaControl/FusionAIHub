@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 class MultimodalTrainer:
     def __init__(
-        self,
-        model: nn.Module,
-        optimizer: optim.Optimizer,
-        loss_fn: nn.Module,
-        device: torch.device,
-        epochs: int,
-        checkpoint_path: str | Path = "checkpoint.pth",
+            self,
+            model: nn.Module,
+            optimizer: optim.Optimizer,
+            loss_fn: nn.Module,
+            device: torch.device,
+            epochs: int,
+            checkpoint_path: str | Path = "checkpoint.pth",
     ):
         self.model = model
         self.optimizer = optimizer
@@ -52,7 +52,8 @@ class MultimodalTrainer:
 
             total_loss += loss.item()
             if batch_idx % 10 == 0:
-                print(f"  Batch {batch_idx}/{len(dataloader)}, Loss: {loss.item():.4f}")
+                print(f"  Batch {batch_idx}/{len(dataloader)},"
+                      f" Loss: {loss.item():.4f}")
         return total_loss / len(dataloader)
 
     def _validate_epoch(self, dataloader: DataLoader):
@@ -72,7 +73,11 @@ class MultimodalTrainer:
                 total_loss += loss.item()
         return total_loss / len(dataloader)
 
-    def train(self, train_dataloader: DataLoader, val_dataloader: DataLoader = None):
+    def train(
+            self,
+            train_dataloader: DataLoader,
+            val_dataloader: DataLoader = None
+    ):
         best_val_loss = float("inf")
         for epoch in range(self.epochs):
             print(f"Epoch {epoch + 1}/{self.epochs}")
@@ -94,7 +99,8 @@ class MultimodalTrainer:
     def load_checkpoint(self, checkpoint_path=None):
         path = checkpoint_path if checkpoint_path else self.checkpoint_path
         if os.path.exists(path):
-            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            self.model.load_state_dict(torch.load(
+                path, map_location=self.device))
             print(f"Model loaded from checkpoint: {path}")
         else:
             print(f"No checkpoint found at: {path}")
@@ -102,16 +108,16 @@ class MultimodalTrainer:
 
 class UnimodalTrainer:
     def __init__(
-        self,
-        model: nn.Module,
-        optimizer: optim.Optimizer,
-        loss_fn: nn.Module,
-        device: torch.device,
-        epochs: int,
-        lr_scheduler: optim.lr_scheduler.LRScheduler | None = None,
-        log_interval: int | None = None,
-        drawer: object | None = None,
-        checkpoint_path: str | Path = "checkpoint.pth",
+            self,
+            model: nn.Module,
+            optimizer: optim.Optimizer,
+            loss_fn: nn.Module,
+            device: torch.device,
+            epochs: int,
+            lr_scheduler: optim.lr_scheduler.LRScheduler | None = None,
+            log_interval: int | None = None,
+            drawer: object | None = None,
+            checkpoint_path: str | Path = "checkpoint.pth",
     ):
         self.model = model
         self.optimizer = optimizer
@@ -127,10 +133,10 @@ class UnimodalTrainer:
         self.best_checkpoint_path = p.with_name(p.stem + "_best" + p.suffix)
 
     def _log_epoch(
-        self,
-        epoch: int,
-        train_loss: float,
-        val_loss: float = 0,
+            self,
+            epoch: int,
+            train_loss: float,
+            val_loss: float = 0,
     ):
         logger.info(
             f"Epoch {epoch + 1}/{self.epochs},"
@@ -142,9 +148,9 @@ class UnimodalTrainer:
             self.drawer(self.model, epoch, train_loss, val_loss)
 
     def _train_epoch(
-        self,
-        dataloader: DataLoader,
-        modality_key: str,
+            self,
+            dataloader: DataLoader,
+            modality_key: str,
     ):
         self.model.train()
         total_loss = 0
@@ -159,9 +165,9 @@ class UnimodalTrainer:
         return total_loss / len(dataloader)
 
     def _validate_epoch(
-        self,
-        dataloader: DataLoader,
-        modality_key: str,
+            self,
+            dataloader: DataLoader,
+            modality_key: str,
     ):
         self.model.eval()
         total_loss = 0
@@ -174,10 +180,10 @@ class UnimodalTrainer:
         return total_loss / len(dataloader)
 
     def train(
-        self,
-        train_dataloader: DataLoader,
-        val_dataloader: DataLoader = None,
-        modality_key: str = "dalpha",
+            self,
+            train_dataloader: DataLoader,
+            val_dataloader: DataLoader = None,
+            modality_key: str = "dalpha",
     ):
         # Setup Training Loop
         self._current_epoch = 0
@@ -185,7 +191,8 @@ class UnimodalTrainer:
         best_val_loss = float("inf")
         if self.drawer:
             self.drawing_path = Path(self.checkpoint_path).parent / "plots"
-            self.drawer.setup(train_dataloader, self.drawing_path, modality_key)
+            self.drawer.setup(
+                train_dataloader, self.drawing_path, modality_key)
 
         # Train
         for epoch in range(self.epochs):
@@ -212,7 +219,15 @@ class UnimodalTrainer:
                 logger.info(f"  Validation Loss: {val_loss:.4f}")
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
-                    torch.save(self.model.state_dict(), self.best_checkpoint_path)
+                    torch.save({
+                        "model": self.model,
+                        "optimizer_state_dict": self.optimizer.state_dict(),
+                        "scheduler_state_dict": self.lr_scheduler.state_dict(),
+                        "epoch": epoch,
+                        "loss": train_loss,
+                    },
+                        self.best_checkpoint_path,
+                    )
                     logger.info(
                         f"  Best validation loss: {best_val_loss:.4f}, "
                         f"best model checkpoint saved!"
@@ -228,12 +243,11 @@ class UnimodalTrainer:
         logger.info("Training complete.")
 
     def load_checkpoint(self, checkpoint_path=None):
-        """
-        TODO: Modify this as we have more information stored in the checkpoint now.
-        """
         path = checkpoint_path if checkpoint_path else self.checkpoint_path
         if os.path.exists(path):
-            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            checkpoint = torch.load(
+                path, weights_only=False, map_location=self.device)
+            self.model = checkpoint["model"]
             print(f"Model loaded from checkpoint: {path}")
         else:
             print(f"No checkpoint found at: {path}")
