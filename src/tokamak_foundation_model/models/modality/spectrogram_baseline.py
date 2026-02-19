@@ -9,9 +9,9 @@ class Conv3dEncoderBlock(nn.Module):
     def __init__(self,
         in_channels,
         out_channels,
-        kernel_size=3,
-        stride=1,
-        padding=1,
+        kernel_size,
+        stride,
+        padding,
     ):
         super().__init__()
         self.net = nn.Sequential(
@@ -28,9 +28,9 @@ class Conv3dDecoderBlock(nn.Module):
     def __init__(self,
         in_channels,
         out_channels,
-        kernel_size=3,
-        stride=1,
-        padding=1,
+        kernel_size,
+        stride,
+        padding,
         activate=True,
     ):
         super().__init__()
@@ -45,8 +45,10 @@ class Conv3dDecoderBlock(nn.Module):
         return self.net(x)
 
 class TemporalLSTM(nn.Module):
-    """LSTM along the time dimension of a 5D tensor (B, C, D, H, T)."""
-    def __init__(self, channels: int, num_layers: int = 1):
+    def __init__(self, 
+        channels: int,
+        num_layers: int = 1,
+    ):
         super().__init__()
         self.lstm = nn.LSTM(
             channels,
@@ -179,16 +181,16 @@ class SpectrogramBaselineDecoder(ModalityDecoder):
 
 class SpectrogramBaselineAutoEncoder(ModalityAutoEncoder):
     """
-    Scalable 3D convolutional autoencoder for spectrogram compression.
-
     Based on 3DCAE implementation at
     https://github.com/faadi809/HSI-compression-benchmark
 
+    Added LSTM based on ENCODEC.
+
     Args:
         n_channels: Number of input signal channels.
-        d_model: Latent channel dimension (bottleneck width).
-        n_output_tokens: Number of output tokens (unused, for interface compat).
-        n_layers: Number of encoder/decoder stages. More layers = more compression + capacity.
+        d_model: Latent channel dimension.
+        n_output_tokens: Number of output tokens. TODO: Implement.
+        n_layers: Number of encoder/decoder stages.
         base_channels: Starting channel width after first conv.
     """
 

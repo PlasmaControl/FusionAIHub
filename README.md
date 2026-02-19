@@ -1,7 +1,7 @@
 # Fusion AI Toolkit & Hub (FAITH)
 
-## Enviornment Setup
-
+## Environment Setup
+Instead of Anaconda, we use Pixi (much faster) to manage our environment.
 1. Install Pixi
 
 ```bash
@@ -20,7 +20,7 @@ pixi install
 pixi shell
 ```
 
-## Datas
+## Data
 
 Unprocessed data is stored in `/scratch/gpfs/EKOLEMEN/d3d_fusion_data/`.
 
@@ -32,9 +32,7 @@ Model-ready files should be set with `664` permissions at least.
 
 ## Flash Attention
 
-O($N^2$)$\to$ O($N$) complexity. 10x speedup + 10x memory reduction.
-
-Flash Attention is a fast attention mechanism that can be used make models models more efficient. This allows usage on sequences much longer than 2048 tokens for standard attention. Using it often leads to 75% GPU utilization of the theoretical maximum.
+O($N^2$)$\to$ O($N$)
 
 Pytorch automatically uses this as a backend once you install it, so you don't need to do anything special to use it.
 
