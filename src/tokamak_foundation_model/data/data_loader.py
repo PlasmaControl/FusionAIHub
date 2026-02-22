@@ -693,6 +693,11 @@ class TokamakH5Dataset(Dataset):
         ydata_ds = data_group["ydata"]
         xdata = data_group["xdata"][:] / 1000.0  # Convert to seconds
         duration_s = t_end - t_start
+        # Load only first and last timestamp
+        t0 = xdata[0] / 1000.0
+        t1 = xdata[-1] / 1000.0
+        n_samples = xdata.shape[0]
+        fps_raw = 1/np.mean(np.diff(xdata))
 
         if n_samples < 2 or t1 == t0:
             n_frames = round(duration_s * config.target_fps)

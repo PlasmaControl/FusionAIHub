@@ -46,7 +46,7 @@ except Exception:
 # -------------------------
 def add_src_to_path() -> Path:
     this_file = Path(__file__).resolve()
-    repo_root = Path().resolve().parents[0]
+    repo_root = Path().resolve().parents[1]
     sys.path.append(str(repo_root / "src"))
     return repo_root
 
@@ -225,116 +225,116 @@ def save_gif(out_path: Path, vid_in, vid_rec, fps: float = 20.0, vmin=None, vmax
     imageio.mimsave(out_path, frames, duration=duration)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate reconstructions from a trained video autoencoder")
-    parser.add_argument("--signal", type=str, default="bolo")
-    parser.add_argument("--data_dir", type=str, default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data/")
-    parser.add_argument("--file_glob", type=str, default="*_processed.h5")
+# def main():
+parser = argparse.ArgumentParser(description="Evaluate reconstructions from a trained video autoencoder")
+parser.add_argument("--signal", type=str, default="bolo")
+parser.add_argument("--data_dir", type=str, default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data/")
+parser.add_argument("--file_glob", type=str, default="*_processed.h5")
 
-    # Model / preprocessing hyperparams (must match training)
-    parser.add_argument("--clip_seconds", type=float, default=0.5)
-    parser.add_argument("--target_fps", type=float, default=50.0)
-    parser.add_argument("--image_size", type=int, default=256)
-    parser.add_argument("--n_tokens", type=int, default=32)
-    parser.add_argument("--token_dim", type=int, default=512)
+# Model / preprocessing hyperparams (must match training)
+parser.add_argument("--clip_seconds", type=float, default=0.5)
+parser.add_argument("--target_fps", type=float, default=50.0)
+parser.add_argument("--image_size", type=int, default=256)
+parser.add_argument("--n_tokens", type=int, default=32)
+parser.add_argument("--token_dim", type=int, default=512)
 
-    # Eval options
-    parser.add_argument("--checkpoint_path", type=str, required=True)
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--num_workers", type=int, default=2)
-    parser.add_argument("--num_batches", type=int, default=2, help="How many batches to visualize")
-    parser.add_argument("--sample_index", type=int, default=0, help="Which sample in batch to visualize")
-    parser.add_argument("--out_dir", type=str, default="recon_debug")
-    parser.add_argument("--make_gif", action="store_true", help="Save GIF for first visualized sample")
-    parser.add_argument("--gif_fps", type=float, default=20.0)
-    parser.add_argument("--shuffle", action="store_true")
+# Eval options
+parser.add_argument("--checkpoint_path", type=str, required=True)
+parser.add_argument("--batch_size", type=int, default=4)
+parser.add_argument("--num_workers", type=int, default=2)
+parser.add_argument("--num_batches", type=int, default=2, help="How many batches to visualize")
+parser.add_argument("--sample_index", type=int, default=0, help="Which sample in batch to visualize")
+parser.add_argument("--out_dir", type=str, default="recon_debug")
+parser.add_argument("--make_gif", action="store_true", help="Save GIF for first visualized sample")
+parser.add_argument("--gif_fps", type=float, default=20.0)
+parser.add_argument("--shuffle", action="store_true")
 
-    args = parser.parse_args()
+args = parser.parse_args()
 
-    repo_root = add_src_to_path()
+repo_root = add_src_to_path()
 
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("eval_video_reconstruction")
-    logger.info("repo_root=%s", repo_root)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("eval_video_reconstruction")
+logger.info("repo_root=%s", repo_root)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info("device=%s", device)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logger.info("device=%s", device)
 
-    data_dir = Path(args.data_dir)
-    checkpoint_path = Path(args.checkpoint_path)
-    out_dir = Path(args.out_dir)
+data_dir = Path(args.data_dir)
+checkpoint_path = Path(args.checkpoint_path)
+out_dir = Path(args.out_dir)
 
-    t_clip = int(round(args.clip_seconds * args.target_fps))
-    logger.info("t_clip=%d", t_clip)
+t_clip = int(round(args.clip_seconds * args.target_fps))
+logger.info("t_clip=%d", t_clip)
 
-    dl = build_dataloader(
-        data_dir=data_dir,
-        file_glob=args.file_glob,
-        signal=args.signal,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        shuffle=args.shuffle,
+dl = build_dataloader(
+    data_dir=data_dir,
+    file_glob=args.file_glob,
+    signal=args.signal,
+    batch_size=args.batch_size,
+    num_workers=args.num_workers,
+    shuffle=args.shuffle,
+)
+
+model = build_model(
+    n_tokens=args.n_tokens,
+    token_dim=args.token_dim,
+    t_clip=t_clip,
+    image_size=args.image_size,
+    device=device,
+)
+logger.info("model params=%d", sum(p.numel() for p in model.parameters()))
+
+if not checkpoint_path.exists():
+    raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+load_checkpoint_weights(model, checkpoint_path, device)
+model.eval()
+logger.info("Loaded checkpoint: %s", checkpoint_path)
+
+# Visualize a few batches
+batches_done = 0
+for batch_idx, batch in enumerate(dl):
+    x, y = extract_xy(batch, args.signal)
+    x = x.to(device).float()
+    with torch.no_grad():
+        x_hat = model(x)
+    # bring one sample to cpu for plotting
+    b = max(0, min(args.sample_index, x.shape[0] - 1))
+    vin = x[b].detach().cpu()
+    vrec = x_hat[b].detach().cpu()
+
+    # choose vmin/vmax from input range for consistent appearance
+    vmin = float(vin.min().item())
+    vmax = float(vin.max().item())
+
+    # save a few frame triplets
+    T = vin.shape[0]
+    frame_ids = [0, T // 4, T // 2, (3 * T) // 4]
+    for t in frame_ids:
+        prefix = f"batch{batch_idx:03d}_sample{b}_t{t:03d}"
+        save_frame_triplet(out_dir, prefix, vin[t], vrec[t], vmin=vmin, vmax=vmax)
+
+    # optional gif
+    if args.make_gif and batches_done == 0:
+        gif_path = out_dir / f"batch{batch_idx:03d}_sample{b}.gif"
+        save_gif(gif_path, vin, vrec, fps=args.gif_fps, vmin=vmin, vmax=vmax)
+        logger.info("Saved GIF: %s", gif_path)
+
+    # log quick stats
+    logger.info(
+        "batch=%d  x_hat_mean=%.4g x_hat_std=%.4g",#  z_shape=%s",
+        batch_idx,
+        float(x_hat.mean().item()),
+        float(x_hat.std().item()),
     )
 
-    model = build_model(
-        n_tokens=args.n_tokens,
-        token_dim=args.token_dim,
-        t_clip=t_clip,
-        image_size=args.image_size,
-        device=device,
-    )
-    logger.info("model params=%d", sum(p.numel() for p in model.parameters()))
+    batches_done += 1
+    if batches_done >= args.num_batches:
+        break
 
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
-    load_checkpoint_weights(model, checkpoint_path, device)
-    model.eval()
-    logger.info("Loaded checkpoint: %s", checkpoint_path)
-
-    # Visualize a few batches
-    batches_done = 0
-    for batch_idx, batch in enumerate(dl):
-        x, y = extract_xy(batch, args.signal)
-        x = x.to(device).float()
-        with torch.no_grad():
-            x_hat = model(x)
-        # bring one sample to cpu for plotting
-        b = max(0, min(args.sample_index, x.shape[0] - 1))
-        vin = x[b].detach().cpu()
-        vrec = x_hat[b].detach().cpu()
-
-        # choose vmin/vmax from input range for consistent appearance
-        vmin = float(vin.min().item())
-        vmax = float(vin.max().item())
-
-        # save a few frame triplets
-        T = vin.shape[0]
-        frame_ids = [0, T // 4, T // 2, (3 * T) // 4]
-        for t in frame_ids:
-            prefix = f"batch{batch_idx:03d}_sample{b}_t{t:03d}"
-            save_frame_triplet(out_dir, prefix, vin[t], vrec[t], vmin=vmin, vmax=vmax)
-
-        # optional gif
-        if args.make_gif and batches_done == 0:
-            gif_path = out_dir / f"batch{batch_idx:03d}_sample{b}.gif"
-            save_gif(gif_path, vin, vrec, fps=args.gif_fps, vmin=vmin, vmax=vmax)
-            logger.info("Saved GIF: %s", gif_path)
-
-        # log quick stats
-        logger.info(
-            "batch=%d  x_hat_mean=%.4g x_hat_std=%.4g",#  z_shape=%s",
-            batch_idx,
-            float(x_hat.mean().item()),
-            float(x_hat.std().item()),
-        )
-
-        batches_done += 1
-        if batches_done >= args.num_batches:
-            break
-
-    logger.info("Saved outputs to: %s", out_dir.resolve())
+logger.info("Saved outputs to: %s", out_dir.resolve())
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-repo_root = Path().resolve().parents[0]
+repo_root = Path().resolve().parents[1]
 sys.path.append(str(repo_root / "src"))
 print(repo_root)
 
@@ -165,7 +165,6 @@ def main():
         loss_fn=loss_fn,
         device=device,
         drawer=drawer,
-        lr_scheduler=lr_scheduler,
         log_interval=args.log_interval,
     )
 

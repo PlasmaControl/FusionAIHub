@@ -1,4 +1,8 @@
 from pathlib import Path
+import sys
+repo_root = Path().resolve().parents[1]
+sys.path.append(str(repo_root / "src"))
+print(repo_root)
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,7 +10,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
 from tokamak_foundation_model.models.modality.video_baseline import (
-    VideoEncoder, VideoDecoder, VideoAutoEncoder)
+    VideoBaselineEncoder, VideoBaselineDecoder, VideoBaselineAutoEncoder)
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 
 
@@ -25,22 +29,22 @@ def worker_init_fn(worker_id):
             dataset._open_hdf5()
 
 
-model = VideoAutoEncoder(n_tokens=100)
+model = VideoBaselineAutoEncoder(n_tokens=32)
 
 
 hdf5_files = sorted(
-    Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/").glob("*_processed.h5")
+    Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data/").glob("*_processed.h5")
 )
-stats = torch.load(
-    Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt")
-)
+# stats = torch.load(
+#     Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt")
+# )
 
 datasets_processed = [
     TokamakH5Dataset(
         hdf5_path=str(f),
-        preprocessing_stats=stats,
-        input_signals=["bolo", ],
-        target_signals=["bolo", ],
+        # preprocessing_stats=stats,
+        input_signals=["tangtv", ],
+        target_signals=["tangtv", ],
         prediction_mode=False,
     )
     for f in hdf5_files
@@ -55,7 +59,9 @@ dataloader = DataLoader(
     collate_fn=collate_fn,
     worker_init_fn=worker_init_fn
     )
-
+x = next(iter(dataloader))
+x = x.to(device)
+print("x     :", tuple(x.shape))
 optimizer = optim.AdamW(model.parameters(), lr=0.001)
 loss_fn = nn.MSELoss()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
