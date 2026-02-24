@@ -14,7 +14,7 @@ SHOT_END=200800
 SHOT_LIST_FILE="shots_to_process.txt"
 
 # Common configuration
-CONFIG_FILES="config_atlas.yaml config_chiron.yaml"  # Process both servers
+CONFIG_FILE="config_atlas.yaml"
 OUTPUT_DIR="/cscratch/steinerp/database/data"
 NODE_PATHS_DIR="/cscratch/steinerp/database/node_paths"  # Deprecated but kept for compatibility
 
@@ -43,7 +43,7 @@ echo "========================================="
 echo "MDSPlus Batch Data Fetcher"
 echo "========================================="
 echo "Mode: ${MODE}"
-echo "Config files: ${CONFIG_FILES}"
+echo "Config file: ${CONFIG_FILE}"
 
 if [ "${MODE}" = "range" ]; then
     echo "Shot range: ${SHOT_START} to ${SHOT_END}"
@@ -53,14 +53,6 @@ else
     echo "ERROR: Invalid MODE '${MODE}'. Must be 'range' or 'list'"
     exit 1
 fi
-
-# Verify all config files exist
-for config in ${CONFIG_FILES}; do
-    if [ ! -f "${config}" ]; then
-        echo "ERROR: Config file not found: ${config}"
-        exit 1
-    fi
-done
 
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Batch size: ${BATCH_SIZE}"
@@ -151,7 +143,7 @@ while [ ${SHOT_INDEX} -lt ${TOTAL_SHOTS} ]; do
         --array=1-${BATCH_SHOTS} \
         --output=jobs/job_%A_%a.out \
         --error=jobs/job_%A_%a.err \
-        --export=ALL,BATCH_FILE=${BATCH_FILE},CONFIG_FILES="${CONFIG_FILES}",OUTPUT_DIR=${OUTPUT_DIR},NODE_PATHS_DIR=${NODE_PATHS_DIR},COMPLETED_FILE=${COMPLETED_FILE},FAILED_FILE=${FAILED_FILE} \
+        --export=ALL,BATCH_FILE=${BATCH_FILE},CONFIG_FILE=${CONFIG_FILE},OUTPUT_DIR=${OUTPUT_DIR},NODE_PATHS_DIR=${NODE_PATHS_DIR},COMPLETED_FILE=${COMPLETED_FILE},FAILED_FILE=${FAILED_FILE} \
         read_mds.sh)
 
     echo "Submitted batch ${BATCH_NUM} as job ${JOB_ID}"
