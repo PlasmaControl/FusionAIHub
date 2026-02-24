@@ -26,11 +26,11 @@ class DistributedManager:
             self.rank, self.local_rank, self.world_size = 0, 0, 1
             self.distributed = False
             if torch.cuda.is_available():
-                torch.cuda.set_device(self.local_rank)
+                torch.cuda.set_device(self.local_rank) # should this be changed to torch.device("cuda", self.local_rank)?
         self.barrier()
 
     @property
-    def is_main_process(self) -> bool:
+    def is_main(self) -> bool:
         return self.rank == 0
 
     @property
@@ -39,10 +39,15 @@ class DistributedManager:
             return torch.device("cuda", self.local_rank)
         return torch.device("cpu")
 
-    def wrap_ddp(self, model: torch.nn.Module) -> torch.nn.Module:
+    def wrap(self, model: torch.nn.Module) -> torch.nn.Module:
         """Wrap model with DDP if distributed, otherwise return as-is."""
         if self.distributed:
             return DistributedDataParallel(model, device_ids=[self.local_rank])
+        return model
+
+    def unwrap(self, model: torch.nn.Module):
+        if self.distributed and hasattr(model, 'module'):
+            return model.module
         return model
 
     def barrier(self) -> None:

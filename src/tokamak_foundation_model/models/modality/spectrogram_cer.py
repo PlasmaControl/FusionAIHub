@@ -74,7 +74,7 @@ class Encoder(nn.Module):
 
 
 if __name__ == "__main__":
-    # python -m tokamak_foundation_model.models.modality.cer_model
+    # python -m tokamak_foundation_model.models.modality.spectrogram_cer
     encoder = Encoder(input_channels=80, kernel_size=3, bias=True, dropout=0.1)
     x = torch.randn(2, 80, 256, 530)
     with torch.inference_mode():

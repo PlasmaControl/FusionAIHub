@@ -20,6 +20,21 @@ pixi install
 pixi shell
 ```
 
+## Training
+
+Models can be trained with either single GPU or multi-GPU (DDP).
+
+### Profiling on Princeton Clusters
+Type `squeue -u <your_username>` to see your jobs.
+Type `jobstats <job_id>` to see the job's statistics.
+And you can view the interactive profile by clicking on the link in the output.
+
+### Loggging
+Wandb is set to offline by default. To sync it, run
+```bash
+wandb sync --sync-all --include-offline
+```
+
 ## Data
 
 Unprocessed data is stored in `/scratch/gpfs/EKOLEMEN/d3d_fusion_data/`.

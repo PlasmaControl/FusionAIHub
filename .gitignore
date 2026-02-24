@@ -213,4 +213,9 @@ marimo/_lsp/
 __marimo__/
 
 # Streamlit
-.streamlit/secrets.toml
+.streamlit/secrets.toml# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# Wandb
+wandb/

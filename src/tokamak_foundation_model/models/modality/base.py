@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import Any
 from abc import ABC, abstractmethod
 
 
@@ -47,5 +48,6 @@ class ModalityAutoEncoder(nn.Module):
         self.d_model = d_model
         self.n_tokens = n_tokens
 
-    def forward(self, x) -> torch.Tensor:
-        return self.decoder(self.encoder(x))
+    @abstractmethod
+    def forward(self, x) -> tuple[torch.Tensor, ...]:
+        raise NotImplementedError
