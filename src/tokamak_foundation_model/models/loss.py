@@ -12,29 +12,50 @@ class DictMSELoss(nn.Module):
                 losses.append(F.mse_loss(outputs[key], targets[key]))
         return torch.stack(losses).mean()
 
-class WeightedMSELoss(nn.Module): # For video reconstruction
-    def __init__(self, reduction: str = "mean", eps: float = 1e-12):
+
+class SparseVideoWeightedMSE(nn.Module):
+    """
+    Weighted MSE Loss optimized for sparse bright spots in dark movies.
+    Applies a fixed multiplier to errors on pixels exceeding a brightness threshold.
+    """
+    def __init__(
+        self, 
+        reduction: str = "mean", 
+        threshold: float = 0.2, 
+        bright_weight: float = 15.0, 
+        eps: float = 1e-12
+    ):
         super().__init__()
         if reduction not in ("mean", "sum", "none"):
             raise ValueError("reduction must be one of: mean, sum, none")
+        
         self.reduction = reduction
+        self.threshold = threshold
+        self.bright_weight = bright_weight
         self.eps = eps
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        pred, target: (B,T,H,W) or broadcast-compatible
-        weight:       broadcast-compatible with pred (e.g., (B,T,H,W), (1,T,1,1), (B,1,1,1), etc.)
+        pred, target: (B, T, H, W) or (B, C, T, H, W)
         """
-        weight = 1 + (target * 10)
+        # Calculate standard squared error
         err2 = (pred - target) ** 2
-        w = weight.to(err2.dtype).to(err2.device)
+        
+        # Create a weight map: 
+        # 1.0 for dark areas, bright_weight for spots > threshold
+        # This is the logic from my original suggestion
+        weight_map = torch.where(target > self.threshold, self.bright_weight, 1.0)
+        
+        # Ensure weight map is on the correct device and dtype
+        weight_map = weight_map.to(err2.dtype).to(err2.device)
 
-        weighted = err2 * w
+        weighted_err = err2 * weight_map
 
         if self.reduction == "none":
-            return weighted
+            return weighted_err
 
         if self.reduction == "sum":
-            return weighted.sum()
+            return weighted_err.sum()
         
-        return torch.mean(weighted) # Or "weighted.sum() / (w.sum() + self.eps)" to normalize by sum of weights (not by number of elements)
+        # Default to mean reduction across all elements
+        return torch.mean(weighted_err)

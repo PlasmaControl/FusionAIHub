@@ -11,12 +11,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
+from torchinfo import summary
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
 from tokamak_foundation_model.data.utils import worker_init_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.utils import DefaultDrawer
-from tokamak_foundation_model.models.loss import WeightedMSELoss
+from tokamak_foundation_model.models.loss import SparseVideoWeightedMSE
 
 
 from tokamak_foundation_model.models.modality import video_baseline
@@ -26,11 +27,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def weight_mse_loss(input,target):
-    weight = 1 + (target * 10)
-    loss   = weight * (input - target) ** 2
-    return torch.mean(loss)
 
 def build_dataloader(data_dir: Path, file_glob: str, signal: str, batch_size: int,
                      num_workers: int, shuffle: bool) -> DataLoader:
@@ -83,17 +79,17 @@ def main():
                         help="Spatial size (H=W=image_size)")
 
     # Latent / model
-    parser.add_argument("--n_tokens", type=int, default=32,
+    parser.add_argument("--n_tokens", type=int, default=128,
                         help="Latent tokens N (latent is N x 512)")
     parser.add_argument("--token_dim", type=int, default=512,
                         help="Token dimension (keep 512 to match the design)")
 
     # Optimization
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=16) # 32 is also good
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=10) # 500 epochs?
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--weight_decay", type=float, default=0.05)
+    parser.add_argument("--weight_decay", type=float, default=1e-5)
     parser.add_argument("--min_lr", type=float, default=0.0,
                         help="Minimum LR at end of cosine decay")
     # Logging / checkpoints
@@ -139,6 +135,11 @@ def main():
         token_dim=args.token_dim,
     ).to(device)
 
+    summary(
+        model,
+        input_size=(1, 25, 128, 128),  # batch=1
+        col_names=("input_size", "output_size", "num_params"),
+        )
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
 
@@ -148,7 +149,7 @@ def main():
         weight_decay=args.weight_decay,
     )
     # loss_fn = nn.MSELoss()
-    loss_fn = WeightedMSELoss()
+    loss_fn = SparseVideoWeightedMSE()
 
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,

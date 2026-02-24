@@ -301,8 +301,8 @@ class TokamakH5Dataset(Dataset):
             ["bolo"],
             channels = 1,
             target_fps = 50,
-            height = 256,
-            width = 256,
+            height = 128,
+            width = 128,
             apply_stft=False,
             preprocess=PreprocessConfig(
                 method = "normalize",
