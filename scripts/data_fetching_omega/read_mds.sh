@@ -10,6 +10,7 @@ module load mdsplus
 CHUNK_SIZE=100
 
 # Globus configuration
+ENABLE_GLOBUS=true  # Set to false to disable Globus transfer
 GLOBUS_SOURCE_ENDPOINT="20749357-d221-43c6-bbc4-79691e6776b8"
 GLOBUS_DEST_ENDPOINT="544b12dc-cb3d-11e9-939b-02ff96a5aa76"
 GLOBUS_DEST_PATH="/scratch/gpfs/EKOLEMEN/big_d3d_data/d3d_time_series_data/"
@@ -165,68 +166,76 @@ if [ ${FAILED_CHUNKS} -eq 0 ]; then
         # ============================================
         # GLOBUS TRANSFER SECTION
         # ============================================
-        echo ""
-        echo "========================================="
-        echo "Starting Globus transfer..."
+        if [ "${ENABLE_GLOBUS}" = true ]; then
+            echo ""
+            echo "========================================="
+            echo "Starting Globus transfer..."
 
-        # Get relative path of the output file
-        OUTPUT_FILENAME=$(basename "${OUTPUT_FILE}")
+            # Get relative path of the output file
+            OUTPUT_FILENAME=$(basename "${OUTPUT_FILE}")
 
-        # Strip /cscratch/ from the path for Globus
-        # If OUTPUT_FILE="/cscratch/steinerp/database/data/170659.h5"
-        # Then GLOBUS_SOURCE_PATH="steinerp/database/data/170659.h5"
-        GLOBUS_SOURCE_PATH="${OUTPUT_FILE#/cscratch/}"
+            # Strip /cscratch/ from the path for Globus
+            # If OUTPUT_FILE="/cscratch/steinerp/database/data/170659.h5"
+            # Then GLOBUS_SOURCE_PATH="steinerp/database/data/170659.h5"
+            GLOBUS_SOURCE_PATH="${OUTPUT_FILE#/cscratch/}"
 
-        # Transfer this file
-        echo "Transferring: ${OUTPUT_FILENAME}"
-        echo "Source path: ${GLOBUS_SOURCE_PATH}"
-        echo "Dest path: ${GLOBUS_DEST_PATH}${OUTPUT_FILENAME}"
+            # Transfer this file
+            echo "Transferring: ${OUTPUT_FILENAME}"
+            echo "Source path: ${GLOBUS_SOURCE_PATH}"
+            echo "Dest path: ${GLOBUS_DEST_PATH}${OUTPUT_FILENAME}"
 
-        TRANSFER_TASK_ID=$(globus transfer \
-            --preserve-mtime \
-            --label "Auto-transfer ${OUTPUT_FILENAME} $(date +%Y%m%d-%H%M%S)" \
-            --jmespath 'task_id' \
-            --format unix \
-	    --notify off \
-            "${GLOBUS_SOURCE_ENDPOINT}:${GLOBUS_SOURCE_PATH}" \
-            "${GLOBUS_DEST_ENDPOINT}:${GLOBUS_DEST_PATH}${OUTPUT_FILENAME}")
+            TRANSFER_TASK_ID=$(globus transfer \
+                --preserve-mtime \
+                --label "Auto-transfer ${OUTPUT_FILENAME} $(date +%Y%m%d-%H%M%S)" \
+                --jmespath 'task_id' \
+                --format unix \
+	        --notify off \
+                "${GLOBUS_SOURCE_ENDPOINT}:${GLOBUS_SOURCE_PATH}" \
+                "${GLOBUS_DEST_ENDPOINT}:${GLOBUS_DEST_PATH}${OUTPUT_FILENAME}")
 
-        TRANSFER_EXIT_CODE=$?
-        echo "Transfer exit code: ${TRANSFER_EXIT_CODE}"
+            TRANSFER_EXIT_CODE=$?
+            echo "Transfer exit code: ${TRANSFER_EXIT_CODE}"
 
-        if [ ${TRANSFER_EXIT_CODE} -eq 0 ]; then
-            echo "Transfer submitted: Task ID ${TRANSFER_TASK_ID}"
-            echo "Waiting for transfer to complete..."
+            if [ ${TRANSFER_EXIT_CODE} -eq 0 ]; then
+                echo "Transfer submitted: Task ID ${TRANSFER_TASK_ID}"
+                echo "Waiting for transfer to complete..."
 
-            # Wait for transfer (with 2 hour timeout)
-            globus task wait "${TRANSFER_TASK_ID}" --timeout 7200 --polling-interval 30
-
-            if [ $? -eq 0 ]; then
-                echo "✓ Transfer completed successfully!"
-                echo "Deleting local file to free up space..."
-
-                # Delete the transferred file
-                rm -f "${OUTPUT_FILE}"
+                # Wait for transfer (with 2 hour timeout)
+                globus task wait "${TRANSFER_TASK_ID}" --timeout 7200 --polling-interval 30
 
                 if [ $? -eq 0 ]; then
-                    echo "✓ Local file deleted: ${OUTPUT_FILE}"
+                    echo "✓ Transfer completed successfully!"
+                    echo "Deleting local file to free up space..."
 
-                    # Log the transfer
-                    TRANSFER_LOG="${OUTPUT_DIR}/globus_transfers.log"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S') | ${SHOT_NUMBER} | ${OUTPUT_FILENAME} | TRANSFERRED_AND_DELETED" >> ${TRANSFER_LOG}
+                    # Delete the transferred file
+                    rm -f "${OUTPUT_FILE}"
+
+                    if [ $? -eq 0 ]; then
+                        echo "✓ Local file deleted: ${OUTPUT_FILE}"
+
+                        # Log the transfer
+                        TRANSFER_LOG="${OUTPUT_DIR}/globus_transfers.log"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') | ${SHOT_NUMBER} | ${OUTPUT_FILENAME} | TRANSFERRED_AND_DELETED" >> ${TRANSFER_LOG}
+                    else
+                        echo "✗ WARNING: Could not delete local file"
+                    fi
                 else
-                    echo "✗ WARNING: Could not delete local file"
+                    echo "✗ Transfer failed or timed out"
+                    echo "Local file preserved: ${OUTPUT_FILE}"
                 fi
             else
-                echo "✗ Transfer failed or timed out"
-                echo "Local file preserved: ${OUTPUT_FILE}"
+                echo "✗ Transfer submission failed with exit code ${TRANSFER_EXIT_CODE}"
+                echo "Check: endpoint IDs, paths, and activation status"
             fi
+            echo "========================================="
         else
-            echo "✗ Transfer submission failed with exit code ${TRANSFER_EXIT_CODE}"
-            echo "Check: endpoint IDs, paths, and activation status"
+            echo ""
+	    echo "========================================="
+	    echo "Globus transfer disabled - file retained locally"
+	    echo "File location: ${OUTPUT_FILE}"
+	    echo "========================================="
         fi
-        echo "========================================="
-        # ============================================
+	# ============================================
         # END GLOBUS TRANSFER SECTION
         # ============================================
 
