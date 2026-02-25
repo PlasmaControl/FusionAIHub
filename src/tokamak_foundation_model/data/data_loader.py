@@ -170,7 +170,8 @@ class WelfordTensor:
         # Convert to float64 for numerical stability
         value = value.to(dtype=torch.float64)
 
-        # Compute per-channel statistics by flattening batch and all non-channel dims
+        # Compute per-channel statistics by flattening batch
+        # and all non-channel dims
         if value.ndim == 4 and value.shape[1] == self.mean.shape[0]:
             # (batch, channels, freq_bins, time) → flatten batch, freq, time
             # (B, C, F, T) → (C, B*F*T)
@@ -256,11 +257,13 @@ class WelfordTensor:
 
         Calls :meth:`_compute_std` internally to derive the standard
         deviation from the Welford M2 accumulator before returning.
+        Returns ``None`` if :meth:`update` was never called.
 
         Returns
         -------
-        dict
-            Dictionary with the following keys, each mapping to a
+        dict or None
+            ``None`` if no data was ever seen.  Otherwise a dictionary
+            with the following keys, each mapping to a
             ``numpy.ndarray`` of shape ``(C,)``:
 
             ``'mean'``
@@ -272,6 +275,9 @@ class WelfordTensor:
             ``'max_val'``
                 Per-channel maximum value seen across all batches.
         """
+        if not self.initialized:
+            return None
+
         self._compute_std()
 
         return {
@@ -283,38 +289,86 @@ class WelfordTensor:
 
 
 def compute_preprocessing_stats(
-        datasets,
-        output_path="preprocessing_stats.pt",
-        num_samples=1000
-):
-    """Compute preprocessing statistics across multiple datasets.
-
-    Args:
-        datasets: List of TokamakH5Dataset instances
-        output_path: Where to save statistics
-        num_samples: Number of samples per dataset to use
+        datasets: "list[TokamakH5Dataset]",
+        output_path: str | Path = "preprocessing_stats.pt",
+        num_samples: int = 1000,
+        batch_size: int = 32,
+        num_workers: int = 1,
+) -> dict[str, dict[str, np.ndarray]]:
     """
-    from torch.utils.data import ConcatDataset
+    Compute per-modality preprocessing statistics over a collection of
+    datasets.
+
+    For each dataset, draws a random subset of up to *num_samples* chunks,
+    concatenates the subsets, then accumulates running statistics with
+    :class:`WelfordTensor`.  The result is saved to *output_path* via
+    :func:`torch.save`.  Only modalities that actually appear in the loaded
+    batches are included in the output.
+
+    Parameters
+    ----------
+    datasets : list of TokamakH5Dataset
+        One or more dataset instances whose data will be concatenated.
+        Signal and movie configurations are read from ``datasets[0]``.
+    output_path : str or Path, optional
+        Filesystem path for the saved ``.pt`` statistics file.
+        Default is ``"preprocessing_stats.pt"``.
+    num_samples : int, optional
+        Maximum number of chunks to draw randomly from *each* dataset.
+        Default is ``1000``.
+    batch_size : int, optional
+        Batch size for the internal DataLoader.  Default is ``32``.
+    num_workers : int, optional
+        Number of DataLoader worker processes.  Default is ``1``.
+
+    Returns
+    -------
+    dict[str, dict[str, numpy.ndarray]]
+        Nested dictionary ``{modality_name: stats}``, where *stats* is the
+        dictionary returned by :meth:`WelfordTensor.compute`:
+
+        ``'mean'``
+            Per-channel arithmetic mean, shape ``(C,)``.
+        ``'std'``
+            Per-channel sample standard deviation, shape ``(C,)``.
+        ``'min_val'``
+            Per-channel minimum, shape ``(C,)``.
+        ``'max_val'``
+            Per-channel maximum, shape ``(C,)``.
+    """
+    from torch.utils.data import ConcatDataset, Subset
     from tqdm import tqdm
 
-    combined = ConcatDataset(datasets)
-    dataloader = DataLoader(combined, batch_size=32, collate_fn=collate_fn, num_workers=32)
+    # Draw a random subset from each dataset to stay within num_samples
+    sampled = []
+    for ds in datasets:
+        n = min(num_samples, len(ds))
+        indices = torch.randperm(len(ds))[:n].tolist()
+        sampled.append(Subset(ds, indices))
 
-    # Get signal names from first dataset
-    signal_configs = datasets[0].SIGNAL_CONFIGS
-    movie_configs = datasets[0].MOVIE_CONFIGS
+    combined = ConcatDataset(sampled)
+    dataloader = DataLoader(
+        combined, batch_size=batch_size, collate_fn=collate_fn,
+        num_workers=num_workers)
 
-    welford_stats = {cfg.name: WelfordTensor() for cfg in signal_configs + movie_configs}
+    # Use instance-level configs (deep copies that may have been modified)
+    signal_configs = datasets[0].signal_configs
+    movie_configs = datasets[0].movie_configs
+
+    welford_stats = {
+        cfg.name: WelfordTensor() for cfg in signal_configs + movie_configs}
 
     for batch in tqdm(dataloader):
         for modality_name, tensor in batch.items():
-            # Update statistics
+            if modality_name not in welford_stats:
+                continue
             welford_stats[modality_name].update(tensor)
 
-    # Compute final statistics
+    # Only include trackers that received data
     final_stats = {
         modality: tracker.compute()
         for modality, tracker in welford_stats.items()
+        if tracker.initialized
     }
     torch.save(final_stats, output_path)
 
@@ -324,9 +378,49 @@ def compute_preprocessing_stats(
 
 @dataclass
 class PreprocessConfig:
-    """Preprocessing configuration."""
+    """
+    Configuration for a signal preprocessing transformation.
 
-    method: str = "none"  # "none", "standardize", "normalize", "log_standardize"
+    Specifies which normalisation strategy to apply to a tensor before it is
+    fed into the model.  Statistics (*mean*, *std*, *min_val*, *max_val*)
+    are populated at runtime from pre-computed dataset statistics (see
+    :func:`compute_preprocessing_stats`).
+
+    Parameters
+    ----------
+    method : str, optional
+        Transformation to apply.  One of:
+
+        ``'none'``
+            Pass the tensor through unchanged.
+        ``'standardize'``
+            Zero-mean, unit-variance scaling:
+            ``(x - mean) / (std + eps)``.
+        ``'normalize'``
+            Min-max scaling to ``[0, 1]``:
+            ``(x - min_val) / (max_val - min_val + eps)``.
+        ``'log_standardize'``
+            Apply ``log10(x + 1)``, then standardize.
+        ``'log'``
+            Apply ``log10(x + 1)`` only.
+
+        Default is ``'none'``.
+    mean : float or None, optional
+        Per-channel mean used by ``'standardize'`` and
+        ``'log_standardize'``.  Default is ``None``.
+    std : float or None, optional
+        Per-channel standard deviation used by ``'standardize'`` and
+        ``'log_standardize'``.  Default is ``None``.
+    min_val : float or None, optional
+        Per-channel minimum used by ``'normalize'``.  Default is ``None``.
+    max_val : float or None, optional
+        Per-channel maximum used by ``'normalize'``.  Default is ``None``.
+    eps : float, optional
+        Small constant added to denominators for numerical stability.
+        Default is ``1e-8``.
+    """
+
+    method: str = "none"
     mean: Optional[float] = None
     std: Optional[float] = None
     min_val: Optional[float] = None
@@ -336,14 +430,44 @@ class PreprocessConfig:
 
 @dataclass
 class SignalConfig:
-    """Configuration for a single signal/diagnostic."""
+    """
+    Configuration for a single time-series or spectrogram diagnostic.
+
+    Collects all parameters needed to load, resample, and preprocess one
+    modality from an HDF5 file produced by the data-preparation pipeline.
+
+    Parameters
+    ----------
+    name : str
+        Unique identifier for this modality; used as the dictionary key
+        in the batch returned by :class:`TokamakH5Dataset`.
+    hdf5_keys : list of str
+        Ordered list of HDF5 group paths to search for the signal data.
+        The first path that exists in the file is used.
+    num_channels : int
+        Expected number of signal channels (``C``).
+    target_fs : float
+        Target sampling frequency in Hz.  The raw signal is resampled to
+        this rate before being returned.
+    apply_stft : bool
+        If ``True``, compute an STFT magnitude spectrogram after loading,
+        yielding output shape ``(C, F, T)``.  If ``False``, the signal is
+        returned as ``(C, 1, T)``.
+    channels_to_use : slice
+        Optional slice to select specific channels
+    preprocess : PreprocessConfig, optional
+        Preprocessing transformation applied after the STFT (or
+        pass-through).  Defaults to :class:`PreprocessConfig` with
+        ``method='none'``.
+    """
 
     name: str
     hdf5_keys: list[str]
     num_channels: int
     target_fs: float
     apply_stft: bool
-    preprocess: PreprocessConfig = None  # Add preprocessing config
+    channels_to_use: slice = field(default_factory=lambda: slice(0, -1))
+    preprocess: PreprocessConfig = None
 
     def __post_init__(self):
         if self.preprocess is None:
@@ -352,7 +476,35 @@ class SignalConfig:
 
 @dataclass
 class MovieConfig:
-    """Configuration for a movie/video diagnostic."""
+    """
+    Configuration for a video / camera diagnostic.
+
+    Collects all parameters needed to load, resample, and preprocess one
+    movie modality from an HDF5 file produced by the data-preparation
+    pipeline.
+
+    Parameters
+    ----------
+    name : str
+        Unique identifier for this modality; used as the dictionary key
+        in the batch returned by :class:`TokamakH5Dataset`.
+    hdf5_keys : list of str
+        Ordered list of HDF5 group paths to search for the movie data.
+        The first path that exists in the file is used.
+    channels : int
+        Number of colour channels (e.g. ``1`` for grayscale, ``3`` for
+        RGB).
+    target_fps : int
+        Target frame rate in frames per second.  The raw video is
+        resampled to this rate via trilinear interpolation.
+    height : int
+        Output frame height in pixels after spatial resampling.
+    width : int
+        Output frame width in pixels after spatial resampling.
+    preprocess : PreprocessConfig, optional
+        Preprocessing transformation applied to the video tensor.
+        Defaults to :class:`PreprocessConfig` with ``method='none'``.
+    """
 
     name: str  # Key in output dict
     hdf5_keys: list[str]  # Possible HDF5 paths to search
@@ -369,17 +521,130 @@ class MovieConfig:
 
 class TokamakH5Dataset(Dataset):
     """
-    Dataset for loading multi-modal tokamak data from HDF5 files.
+    PyTorch Dataset for multi-modal tokamak plasma diagnostics stored in HDF5.
 
-    Processing pipeline:
-    1. Load raw data at native sampling rate
-    2. Apply processing (STFT or nothing)
-    3. Resample to target time frames
+    Each item corresponds to a fixed-duration time window (chunk) drawn from a
+    single shot file.  The processing pipeline for every chunk is:
 
-    For prediction mode:
-    - Loads extended window (input_duration + prediction_horizon)
-    - Processes entire window jointly
-    - Splits into input and target frames
+    1. Load raw signal / movie data at the native sampling rate from HDF5.
+    2. Optionally compute an STFT magnitude spectrogram (signals only).
+    3. Resample to the modality's target frequency via linear or trilinear
+       interpolation.
+    4. Apply the configured preprocessing transformation
+       (see :class:`PreprocessConfig`).
+
+    Two operating modes are supported:
+
+    **Standard mode** (``prediction_mode=False``)
+        Returns a flat dictionary ``{modality_name: tensor}`` covering the
+        half-open interval ``[t_start, t_start + chunk_duration_s)``.
+
+    **Prediction mode** (``prediction_mode=True``)
+        Loads an extended window of
+        ``chunk_duration_s + prediction_horizon_s`` seconds, processes it
+        jointly, then splits into
+        ``{"inputs": {…}, "targets": {…}}``.
+
+    Parameters
+    ----------
+    hdf5_path : str
+        Path to a preprocessed HDF5 shot file (output of the
+        data-preparation pipeline).
+    chunk_duration_s : float, optional
+        Duration of each time window in seconds.  Default is ``0.5``.
+    n_fft : int, optional
+        FFT size used for STFT computation.  Determines the number of
+        frequency bins: ``n_fft // 2 + 1``.  Default is ``1024``.
+    hop_length : int, optional
+        STFT hop size in samples.  Default is ``256``.
+    preprocessing_stats : dict or None, optional
+        Nested statistics dictionary as returned by
+        :func:`compute_preprocessing_stats`.  When provided, the per-modality
+        statistics are injected into the corresponding
+        :class:`PreprocessConfig` instances.  Default is ``None``
+        (no statistics applied).
+    prediction_mode : bool, optional
+        If ``True``, operate in prediction mode.  Default is ``False``.
+    prediction_horizon_s : float, optional
+        Duration of the prediction target window in seconds.  Only used
+        when ``prediction_mode=True``.  Default is ``0.2``.
+    input_signals : list of str or None, optional
+        Modality names to include in the returned batch (or in the
+        ``'inputs'`` dict in prediction mode).  Defaults to
+        ``['ece', 'co2', 'mhr']``.
+    target_signals : list of str or None, optional
+        Modality names to include in the ``'targets'`` dict in prediction
+        mode.  Defaults to ``['d_alpha', 'mse', 'ts_core_density']``.
+
+    Attributes
+    ----------
+    signal_configs : list of SignalConfig
+        Per-instance deep copy of :attr:`SIGNAL_CONFIGS`, updated with
+        any statistics from *preprocessing_stats*.
+    movie_configs : list of MovieConfig
+        Per-instance deep copy of :attr:`MOVIE_CONFIGS`.
+    hdf5_path : Path
+        Resolved path to the HDF5 file.
+    duration : float
+        Total shot duration from t = 0 in seconds, as inferred from the
+        HDF5 time axes.
+    t0_indices : dict
+        Mapping ``{modality_name: {'index': int, 'time_s': float}}``
+        giving the HDF5 array index and exact timestamp (seconds) of
+        t = 0 for each modality.
+    length : int
+        Number of non-overlapping chunks available (i.e. ``__len__``).
+    n_freq_bins : int
+        Number of STFT frequency bins: ``n_fft // 2 + 1``.
+    stft_window : torch.Tensor
+        Hann window tensor of length ``n_fft`` used for STFT computation.
+
+    Notes
+    -----
+    The class-level :attr:`SIGNAL_CONFIGS` and :attr:`MOVIE_CONFIGS` lists
+    define the full set of supported diagnostics:
+
+    **Signals** (``SIGNAL_CONFIGS``)
+
+    ==========================  ========  ==========  =====  ==================
+    Name                        Channels  Target fs   STFT   Preprocessing
+    ==========================  ========  ==========  =====  ==================
+    ``mhr``                     8         500 kHz     yes    log
+    ``ece``                     48        500 kHz     yes    log
+    ``co2``                     4         500 kHz     yes    log
+    ``gas``                     5         10 kHz      no     none
+    ``ech``                     11        10 kHz      no     none
+    ``pin``                     8         10 kHz      no     standardize
+    ``tin``                     8         10 kHz      no     none
+    ``mse``                     69        100 Hz      no     none
+    ``ts_core_density``         44        100 Hz      no     log
+    ``filterscopes``            104       10 kHz      yes    log
+    ``cer_ti``                  48        100 Hz      no     log
+    ``cer_rot``                 48        100 Hz      no     none
+    ``sxr``                     320       10 kHz      no     log
+    ``neutron_rate``            4         40 kHz      no     log
+    ``ts_tangential_density``   10        100 Hz      no     log
+    ``ts_core_temp``            44        100 Hz      no     log
+    ``ts_tangential_temp``      10        100 Hz      no     log
+    ``vib``                     24        50 Hz       yes    log
+    ``bolo_raw``                48        10 kHz      no     log
+    ``gas_flow``                11        10 kHz      no     none
+    ``gas_raw``                 11        10 kHz      no     none
+    ``ich``                     1         10 kHz      no     none
+    ``mirnov``                  29        500 kHz     no     log
+    ``langmuir``                72        500 kHz     no     log
+    ``i_coil``                  18        50 kHz      no     none
+    ``bes``                     64        500 kHz     no     log
+    ==========================  ========  ==========  =====  ==================
+
+    **Movies** (``MOVIE_CONFIGS``)
+
+    ===========  ===  =======  =========
+    Name         FPS  Height   Width
+    ===========  ===  =======  =========
+    ``irtv``     50   513      640
+    ``tangtv``   50   240      720
+    ===========  ===  =======  =========
     """
 
     # Define all signal configurations with preprocessing
@@ -390,7 +655,8 @@ class TokamakH5Dataset(Dataset):
             8,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            channels_to_use=slice(2, 8),  # Use only the first 8 channels
+            preprocess=PreprocessConfig(method="log"),
         ),
         SignalConfig(
             "ece",
@@ -398,7 +664,8 @@ class TokamakH5Dataset(Dataset):
             48,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            channels_to_use=slice(0, 40),  # Use only the first 40 channels
+            preprocess=PreprocessConfig(method="log"),
         ),
         SignalConfig(
             "co2",
@@ -407,14 +674,6 @@ class TokamakH5Dataset(Dataset):
             500e3,
             apply_stft=True,
             preprocess=PreprocessConfig(method="log"),
-        ),
-        SignalConfig(
-            "d_alpha",
-            ["dalpha"],
-            6,
-            10e3,
-            apply_stft=False,
-            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "gas",
@@ -448,7 +707,6 @@ class TokamakH5Dataset(Dataset):
             apply_stft=False,
             preprocess=PreprocessConfig(method="none"),
         ),
-        # TODO: Include Gas as additional actuator!!!
         SignalConfig(
             "mse",
             ["mse"],
@@ -465,17 +723,153 @@ class TokamakH5Dataset(Dataset):
             apply_stft=False,
             preprocess=PreprocessConfig(method="log"),
         ),
+        # --- groups below added from modalities.yaml ---
+        SignalConfig(
+            "filterscopes",
+            ["filterscopes"],
+            104,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "cer_ti",
+            ["cer_ti"],
+            48,
+            1e2,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "cer_rot",
+            ["cer_rot"],
+            48,
+            1e2,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "sxr",
+            ["sxr"],
+            320,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "neutron_rate",
+            ["neutron_rate"],
+            4,
+            40e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "ts_tangential_density",
+            ["ts_tangential_density"],
+            10,
+            1e2,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "ts_core_temp",
+            ["ts_core_temp"],
+            44,
+            1e2,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "ts_tangential_temp",
+            ["ts_tangential_temp"],
+            10,
+            1e2,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "vib",
+            ["vib"],
+            24,
+            50,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "bolo_raw",
+            ["bolo"],
+            48,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "gas_flow",
+            ["gas_flow"],
+            11,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "gas_raw",
+            ["gas_raw"],
+            11,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "ich",
+            ["ich"],
+            1,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "mirnov",
+            ["mirnov"],
+            29,
+            500e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "langmuir",
+            ["langmuir"],
+            72,
+            500e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
+        SignalConfig(
+            "i_coil",
+            ["i_coil"],
+            18,
+            50e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "bes",
+            ["bes"],
+            64,
+            500e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="log"),
+        ),
     ]
 
     MOVIE_CONFIGS = [
-        MovieConfig("bolo", ["bolo"], 1, 50, 80, 120),
         MovieConfig("irtv", ["irtv"], 1, 50, 513, 640),
         MovieConfig("tangtv", ["tangtv"], 1, 50, 240, 720),
     ]
 
     def __init__(
             self,
-            hdf5_path: str,
+            hdf5_path: str | Path,
             chunk_duration_s: float = 0.5,
             n_fft: int = 1024,
             hop_length: int = 256,
@@ -489,7 +883,10 @@ class TokamakH5Dataset(Dataset):
         self.signal_configs = copy.deepcopy(self.SIGNAL_CONFIGS)
         self.movie_configs = copy.deepcopy(self.MOVIE_CONFIGS)
 
-        self.hdf5_path = Path(hdf5_path)
+        if isinstance(hdf5_path, str):
+            self.hdf5_path = Path(hdf5_path)
+        else:
+            self.hdf5_path = hdf5_path
         self.chunk_duration_s = chunk_duration_s
         self.n_fft = n_fft
         self.hop_length = hop_length
@@ -499,7 +896,8 @@ class TokamakH5Dataset(Dataset):
         self.prediction_mode = prediction_mode
         self.prediction_horizon_s = prediction_horizon_s
         self.input_signals = input_signals or ["ece", "co2", "mhr"]
-        self.target_signals = target_signals or ["d_alpha", "mse", "ts_core_density"]
+        self.target_signals = (
+                target_signals or ["d_alpha", "mse", "ts_core_density"])
 
         if not self.hdf5_path.exists():
             raise FileNotFoundError(f"HDF5 file not found: {self.hdf5_path}")
@@ -508,7 +906,8 @@ class TokamakH5Dataset(Dataset):
         self.h5_file = None
         try:
             with h5py.File(self.hdf5_path, "r") as f:
-                self.duration, self.t0_indices = self._compute_duration_and_t0_indices(f)
+                self.duration, self.t0_indices = \
+                    self._compute_duration_and_t0_indices(f)
         except OSError as e:
             print(self.hdf5_path)
             raise e
@@ -516,9 +915,11 @@ class TokamakH5Dataset(Dataset):
         if self.prediction_mode:
             total_window = self.chunk_duration_s + self.prediction_horizon_s
             max_time = self.duration - total_window
-            self.length = max(1, int(np.floor(max_time / self.chunk_duration_s)))
+            self.length = max(
+                1, int(np.floor(max_time / self.chunk_duration_s)))
         else:
-            self.length = max(1, int(np.ceil(self.duration / self.chunk_duration_s)))
+            self.length = max(
+                1, int(np.ceil(self.duration / self.chunk_duration_s)))
 
         self.n_freq_bins = n_fft // 2 + 1
         self.stft_window = torch.hann_window(n_fft)
@@ -530,14 +931,14 @@ class TokamakH5Dataset(Dataset):
         Parameters
         ----------
         xdata_ms : np.ndarray
-            Array of timestamps in milliseconds
+            Array of timestamps in milliseconds, assumed sorted ascending.
 
         Returns
         -------
-        tuple[int, float]
-            (index, actual_time_ms) where:
-            - index: Index closest to t=0, or -1 if all data is before t=0
-            - actual_time_ms: The actual timestamp at that index
+        index : int
+            Index closest to t=0, or ``-1`` if all data is before t=0.
+        actual_time_ms : float
+            The actual timestamp at that index, in milliseconds.
         """
         if len(xdata_ms) == 0:
             return -1, 0.0
@@ -570,17 +971,33 @@ class TokamakH5Dataset(Dataset):
 
         return idx, xdata_ms[idx]
 
-    def _compute_duration_and_t0_indices(self, f: h5py.File) -> tuple[float, dict]:
+    def _compute_duration_and_t0_indices(
+            self,
+            f: h5py.File
+    ) -> tuple[float, dict]:
         """
-        Compute duration from t=0 and store info about where t=0 occurs for each signal.
+        Compute shot duration from t=0 and locate the t=0 index per signal.
+
+        Iterates over all signal and movie configurations, reads the
+        ``xdata`` timestamps from the HDF5 file, finds the first sample at
+        or after t=0, and accumulates the maximum duration across all
+        available diagnostics.
+
+        Parameters
+        ----------
+        f : h5py.File
+            Open HDF5 file handle for the shot.
 
         Returns
         -------
-        tuple[float, dict]
-            (max_duration_from_t0, {signal_name: {'index': int, 'time_s': float}})
-            where:
-            - 'index': first index where xdata >= 0
-            - 'time_s': actual time value (in seconds) at that index
+        max_duration : float
+            Duration in seconds from t=0 to the last sample, across all
+            signals and movies.  Guaranteed to be at least 1.0 s.
+        t0_indices : dict[str, dict[str, int | float]]
+            Mapping from signal/movie name to a dict with keys:
+
+            - ``'index'``: first HDF5 sample index where ``xdata >= 0``.
+            - ``'time_s'``: actual timestamp at that index, in seconds.
         """
         max_duration = 0.0
         t0_indices = {}
@@ -656,7 +1073,19 @@ class TokamakH5Dataset(Dataset):
         return max(max_duration, 1.0), t0_indices
 
     def _update_preprocessing_stats(self):
-        """Update preprocessing configs with loaded statistics."""
+        """
+        Propagate loaded statistics into each signal's preprocessing config.
+
+        Reads ``self.preprocessing_stats`` — a mapping from signal name to
+        a dict of arrays keyed by ``'mean'``, ``'std'``, ``'min_val'``, and
+        ``'max_val'`` — and writes found values into the corresponding
+        :class:`PreprocessConfig` objects in ``self.signal_configs``.
+        Signals not present in ``self.preprocessing_stats`` are unchanged.
+
+        Returns
+        -------
+        None
+        """
         for config in self.signal_configs:
             if config.name in self.preprocessing_stats:
                 stats = self.preprocessing_stats[config.name]
@@ -670,14 +1099,30 @@ class TokamakH5Dataset(Dataset):
                     config.preprocess.max_val = stats["max_val"]
 
     def _apply_preprocessing(
-        self, tensor: torch.Tensor, config: PreprocessConfig
+            self,
+            tensor: torch.Tensor,
+            config: PreprocessConfig
     ) -> torch.Tensor:
-        """Apply preprocessing transformation.
+        """
+        Apply the configured preprocessing transformation to a tensor.
 
-        Args:
-            tensor: Can be:
-                - Spectrogram: (channels, freq_bins, time_frames)
-                - Timeseries: (channels, 1, time_frames)
+        Statistics stored on *config* (mean, std, min_val, max_val) are
+        reshaped to ``(C, 1, 1)`` or ``(C, 1)`` as needed so they broadcast
+        correctly over time and frequency dimensions.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Input data; either a spectrogram of shape ``(C, F, T)`` or a
+            time-series of shape ``(C, T)``.
+        config : PreprocessConfig
+            Preprocessing configuration specifying ``method`` and the
+            optional statistical parameters.
+
+        Returns
+        -------
+        torch.Tensor
+            Transformed tensor with the same shape as *tensor*.
         """
         if config.method == "none":
             return tensor
@@ -752,7 +1197,17 @@ class TokamakH5Dataset(Dataset):
         return tensor
 
     def _open_hdf5(self):
-        """Open HDF5 file for this worker with optimized cache settings."""
+        """
+        Open the HDF5 file for the current worker, if not already open.
+
+        Uses a large chunk cache (256 MB, 10 000 slots) to amortise
+        repeated random-access reads during training.  The open file handle
+        is stored in ``self.h5_file`` and reused across subsequent calls.
+
+        Returns
+        -------
+        None
+        """
         if self.h5_file is None:
             self.h5_file = h5py.File(
                 self.hdf5_path,
@@ -887,13 +1342,22 @@ class TokamakH5Dataset(Dataset):
         return tensor
 
     def _compute_stft(self, signal: torch.Tensor) -> torch.Tensor:
-        """Compute STFT magnitude spectrogram.
+        """
+        Compute the STFT magnitude spectrogram of a multi-channel signal.
 
-        Args:
-            signal: (channels, time_samples) at native sampling rate
+        Applies a Hann-windowed STFT and discards the DC component (bin 0)
+        to avoid extreme values from the signal offset.
 
-        Returns:
-            Magnitude spectrogram (channels, freq_bins, time_frames)
+        Parameters
+        ----------
+        signal : torch.Tensor
+            Multi-channel time-series of shape ``(C, T)`` at the signal's
+            native sampling rate.
+
+        Returns
+        -------
+        torch.Tensor
+            Magnitude spectrogram of shape ``(C, n_fft // 2, time_frames)``.
         """
         spec = torch.stft(
             signal,
@@ -906,7 +1370,24 @@ class TokamakH5Dataset(Dataset):
         return torch.abs(spec)
 
     def _load_metadata(self, f: h5py.File) -> dict:
-        """Load text data."""
+        """
+        Load shot metadata from the HDF5 file.
+
+        Extracts the operator log stored under ``f['log']['data']`` as a
+        UTF-8 string.  Returns an empty string for the ``'text'`` key when
+        the ``'log'`` group is absent.
+
+        Parameters
+        ----------
+        f : h5py.File
+            Open HDF5 file handle for the shot.
+
+        Returns
+        -------
+        dict
+            Dictionary with a single key ``'text'`` mapping to the decoded
+            log string.
+        """
         metadata = {}
 
         # Text
@@ -921,7 +1402,17 @@ class TokamakH5Dataset(Dataset):
 
         return metadata
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Return the number of non-overlapping chunks in the shot.
+
+        Returns
+        -------
+        int
+            ``ceil(duration / chunk_duration_s)`` in standard mode, or
+            ``floor((duration - prediction_horizon_s) / chunk_duration_s)``
+            in prediction mode; at least 1.
+        """
         return self.length
 
     def __getstate__(self):
@@ -937,15 +1428,26 @@ class TokamakH5Dataset(Dataset):
     def _process_signal(
         self, data: torch.Tensor, config: SignalConfig
     ) -> torch.Tensor:
-        """Process signal for extended window (input + prediction horizon).
+        """
+        Transpose, optionally compute STFT, and preprocess a raw signal.
 
-        Args:
-            data: Raw signal data
-            config: Signal configuration
+        Parameters
+        ----------
+        data : torch.Tensor
+            Raw signal of shape ``(T, C)`` as returned by
+            :meth:`_load_signal_raw`.
+        config : SignalConfig
+            Configuration for the signal, including ``apply_stft`` and
+            ``preprocess`` settings.
 
-        Returns:
-            STFT signals: (channels, freq_bins, extended_frames)
-            Non-STFT signals: (channels, 1, extended_frames)
+        Returns
+        -------
+        torch.Tensor
+            Processed tensor:
+
+            - ``(C, n_fft // 2, time_frames)`` when
+              ``config.apply_stft`` is ``True``.
+            - ``(C, T)`` otherwise.
         """
         # Step 1: Convert to torch and transpose to (channels, time)
         tensor = data.T
@@ -968,10 +1470,30 @@ class TokamakH5Dataset(Dataset):
             t_start: float,
             t_end: float
     ) -> torch.Tensor:
-        """Load raw movie data without resampling (for prediction mode).
+        """
+        Load, window, and resample a raw movie to the target resolution.
 
-        Returns:
-            Raw movie array at native frame rate, shape (time, height, width)
+        Reads frame data from the HDF5 file, clips to the requested time
+        window, and resamples with trilinear interpolation to the target
+        frame rate and spatial dimensions defined in *config*.
+
+        Parameters
+        ----------
+        f : h5py.File
+            Open HDF5 file handle for the shot.
+        config : MovieConfig
+            Camera configuration specifying target FPS, height, and width.
+        t_start : float
+            Start time in seconds (relative to t=0).
+        t_end : float
+            End time in seconds (relative to t=0).
+
+        Returns
+        -------
+        torch.Tensor
+            Resampled movie of shape
+            ``(round((t_end - t_start) * config.target_fps),
+            config.height, config.width)``.
         """
         duration_s = t_end - t_start
 
@@ -1073,7 +1595,26 @@ class TokamakH5Dataset(Dataset):
 
         return tensor
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict:
+        """
+        Return the data chunk at position *idx*.
+
+        Opens the HDF5 file on the first call (lazy initialisation) and
+        delegates to :meth:`_getitem_standard` or
+        :meth:`_getitem_prediction` depending on ``self.prediction_mode``.
+
+        Parameters
+        ----------
+        idx : int
+            Chunk index in ``[0, len(self))``.
+
+        Returns
+        -------
+        dict
+            In standard mode: flat mapping from signal/movie/metadata name
+            to processed tensor or string.
+            In prediction mode: ``{'inputs': dict, 'targets': dict}``.
+        """
         self._open_hdf5()
 
         if self.prediction_mode:
@@ -1081,8 +1622,27 @@ class TokamakH5Dataset(Dataset):
         else:
             return self._getitem_standard(idx)
 
-    def _getitem_standard(self, idx):
-        """Original __getitem__ logic."""
+    def _getitem_standard(self, idx: int) -> dict:
+        """
+        Load and return the data chunk at *idx* in standard mode.
+
+        Computes the time window
+        ``[idx * chunk_duration_s, (idx + 1) * chunk_duration_s]``, loads
+        all active signals, movies, and metadata, and returns them as a
+        flat dictionary.
+
+        Parameters
+        ----------
+        idx : int
+            Chunk index in ``[0, len(self))``.
+
+        Returns
+        -------
+        dict[str, torch.Tensor | str]
+            Keys are signal/movie names plus ``'text'`` (when ``'text'``
+            is in ``self.input_signals``).  Tensor shapes follow the rules
+            in :meth:`_process_signal` and :meth:`_load_movie_raw`.
+        """
         t_start = idx * self.chunk_duration_s
         t_end = t_start + self.chunk_duration_s
 
@@ -1110,8 +1670,29 @@ class TokamakH5Dataset(Dataset):
 
         return {**all_signals, **all_movies, **all_metadata}
 
-    def _getitem_prediction(self, idx):
-        """Load extended window, process jointly, then split into input/target."""
+    def _getitem_prediction(self, idx: int) -> dict:
+        """
+        Load an extended window and split it into input and target chunks.
+
+        The extended window spans
+        ``[idx * chunk_duration_s,
+        idx * chunk_duration_s + chunk_duration_s + prediction_horizon_s]``.
+        All configured signals are processed over this window and then split
+        at ``chunk_duration_s`` frames into the input and target portions.
+
+        Parameters
+        ----------
+        idx : int
+            Chunk index in ``[0, len(self))``.
+
+        Returns
+        -------
+        dict
+            ``{'inputs': dict[str, torch.Tensor | str],
+            'targets': dict[str, torch.Tensor]}``.
+            Each inner dict maps signal names to the corresponding slice of
+            the processed tensor.
+        """
         # Extended window: from t to t + chunk_duration + prediction_horizon
         t_start = idx * self.chunk_duration_s
         t_end = t_start + self.chunk_duration_s + self.prediction_horizon_s
@@ -1183,7 +1764,16 @@ class TokamakH5Dataset(Dataset):
         return {"inputs": inputs, "targets": targets}
 
     def __del__(self):
-        """Close file when dataset is deleted."""
+        """
+        Close the HDF5 file handle when the dataset is garbage-collected.
+
+        Silently ignores errors that may occur if the file was already
+        closed or if Python is shutting down.
+
+        Returns
+        -------
+        None
+        """
         if self.h5_file is not None:
             try:
                 self.h5_file.close()
