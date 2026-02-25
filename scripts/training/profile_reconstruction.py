@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-
     ### Settings ###
     parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
     parser.add_argument(
