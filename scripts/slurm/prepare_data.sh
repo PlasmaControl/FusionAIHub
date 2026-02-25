@@ -9,4 +9,4 @@
 #SBATCH --mail-type=all              # send email on job start, end and fault
 #SBATCH --mail-user=ps9551@princeton.edu
 
-pixi run python -u ../data_preparation/prepare_data.py
+pixi run python scripts/prepare_data.py

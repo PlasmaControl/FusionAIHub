@@ -75,9 +75,6 @@ class SignalLoader:
             shot_group = self.h5_file[self.shot_number]
 
             if tree not in shot_group:
-                tree = tree.lower()
-
-            if tree not in shot_group:
                 if self.verbose:
                     warnings.warn(
                         f"Tree '{tree}' not found for shot {self.shot_number}")
@@ -402,163 +399,155 @@ def resample_signal_groups(loaded_data: dict[str, dict]) -> dict[str, dict]:
             continue
 
         # Handle stacked array (channels x time) - all share same time axis
-        # Standard 1D signals usually come in as (channels, time)
-        # But we need to be careful not to catch video data here if it happens
-        # to match criteria checking ndim=2 helps distinguish 1D signals from
-        # 3D video tensors
-        if isinstance(data, np.ndarray) and time.ndim == 1 and data.ndim == 2:
+        if isinstance(data, np.ndarray) and time.ndim == 1:
             if time.size == 0:
                 print(f"  Skipping - no time axis")
                 resampled[group_name] = group_data.copy()
                 continue
 
-            pass
+            # Transpose from (channels, time) to (time, channels)
+            data_transposed = data.T
+            time = time / 1000
 
-            # --- Robust General Processing ---
-        print(f"  Processing signals with potentially different time axes")
+            print(f"  Data shape: {data.shape}")
+            print(f"  Time range: {time[0]:.3f} to {time[-1]:.3f} s")
+            print(f"  Target frequency: {target_freq} Hz")
 
-        # Normalize inputs to lists
-        if isinstance(data, np.ndarray):
-            if data.ndim == 2:  # (Channels, Time)
-                data_list = list(data)
-            else:
-                # For 3D+ data, it's likely (Channels, ...)
-                # or if it's a single video volume, maybe it shouldn't be split
-                # yet?
-                # But the loop below expects data_list to match num_channels.
-                # If shape is (W, H, T), this is ONE signal (one channel).
-                # If data is a list, it's a list of signals.
-                data_list = [data[i] for i in range(data.shape[0])]
-        else:
-            data_list = list(data)
+            # Resample all channels together (they share time axis)
+            new_time, resampled_data = _resample_time_series(
+                data_transposed, time, target_freq
+            )
 
-        if isinstance(time, np.ndarray):
-            # shared time axis
-            time_list = [time] * len(data_list)
-        else:
-            time_list = list(time)
+            # Transpose back to (channels, time)
+            resampled_data = resampled_data.T
 
-        # Step 1: Find global time range across ALL signals
-        t_min = np.inf
-        t_max = -np.inf
+            print(f"  Resampled: {resampled_data.shape}")
+            print(f"  New time range: {new_time[0]:.3f} "
+                  f"to {new_time[-1]:.3f} s")
 
-        for t in time_list:
-            if isinstance(t, np.ndarray) and len(t) > 0:
-                t_min = min(t_min, t[0] / 1000)
-                t_max = max(t_max, t[-1] / 1000)
+            new_time = new_time * 1000
 
-        if np.isinf(t_min) or np.isinf(t_max):
-            print(f"  No valid time data found")
             resampled[group_name] = group_data.copy()
-            continue
+            resampled[group_name]['data'] = resampled_data
+            resampled[group_name]['time'] = new_time
 
-        # Step 2: Create single uniform time grid for entire group
-        dt = 1.0 / target_freq
-        n_samples = int(np.ceil((t_max - t_min) / dt)) + 1
-        common_time = t_min + np.arange(n_samples) * dt
+        # Handle list of arrays OR stacked with different time axes
+        else:
+            print(f"  Processing {len(data)} signals "
+                  f"with potentially different time axes")
 
-        print(f"  Global time range: {t_min:.3f} to {t_max:.3f} s")
-        print(f"  Common time grid: {len(common_time)} samples "
-              f"@ {target_freq} Hz")
-        common_time = common_time * 1000  # Back to ms for interpolation
+            # Step 1: Find global time range across ALL signals
+            # time_list = time if isinstance(time, list) else [time] * len(data)
+            time_list = time if isinstance(time, list) else list(time)
+            data_list = data if isinstance(data, list) else list(data)
 
-        # Step 3: Determine Spatial Shape and Prepare Output Array
-        spatial_shape = None
+            t_min = np.inf
+            t_max = -np.inf
 
-        def fix_video_shape(d):
-            # Force reshape for EDICAM video data if size matches
-            # The user confirmed that reshaping to (-1, 240, 720) is correct.
-            # 240*720 = 172800 pixels per frame.
-            PIXELS_PER_FRAME = 240 * 720
-            if d.size > 0 and d.size % PIXELS_PER_FRAME == 0:
-                frames = d.size // PIXELS_PER_FRAME
-                # Return shape (Time, Height, Width)
-                return d.reshape(frames, 240, 720)
-            return d
+            for t in time_list:
+                if isinstance(t, np.ndarray) and len(t) > 0:
+                    t_min = min(t_min, t[0] / 1000)
+                    t_max = max(t_max, t[-1] / 1000)
 
-        # Scan for shape
-        for d in data_list:
-            d_fixed = fix_video_shape(d)
-            # If it's a video, d_fixed will be (Time, 240, 720) -> ndim=3
-            if isinstance(d_fixed, np.ndarray) and d_fixed.ndim > 1 and d_fixed.size > 0:
-                # Standardize on (Time, H, W) -> Spatial is (H, W)
-                if d_fixed.ndim == 3:
-                    spatial_shape = d_fixed.shape[1:]
+            if np.isinf(t_min) or np.isinf(t_max):
+                print(f"  No valid time data found")
+                resampled[group_name] = group_data.copy()
+                continue
+
+            # Step 2: Create single uniform time grid for entire group
+            dt = 1.0 / target_freq
+            n_samples = int(np.ceil((t_max - t_min) / dt)) + 1
+            common_time = t_min + np.arange(n_samples) * dt
+
+            print(f"  Global time range: {t_min:.3f} to {t_max:.3f} s")
+            print(f"  Common time grid: {len(common_time)} "
+                  f"samples @ {target_freq} Hz")
+            common_time = common_time * 1000
+
+            # Step 3: Resample each signal to the COMMON time grid
+            # Detect spatial dimensions from the first non-empty multi-dim channel.
+            # For video the shape is (W, H, T) so spatial_shape = (W, H);
+            # for 1D time series spatial_shape stays None.
+            spatial_shape = None
+            for d in data_list:
+                if (isinstance(d, np.ndarray) and d.ndim > 1
+                        and d.size > 0):
+                    spatial_shape = d.shape[:-1]  # all axes except last (time)
                     break
 
-        # Allocate output array: (Channels, Time, H, W)
-        # This is the PyTorch-friendly format we want to end up with.
-        if spatial_shape is not None:
-            resampled_data_array = np.full(
-                (num_channels, len(common_time)) + spatial_shape, np.nan, dtype='f4')
-        else:
-            resampled_data_array = np.full((num_channels, len(common_time)), np.nan,
-                                           dtype='f4')
+            if spatial_shape is not None:
+                resampled_data_array = np.full(
+                    (num_channels,) + spatial_shape + (len(common_time),),
+                    np.nan, dtype='f8')
+            else:
+                resampled_data_array = np.full(
+                    (num_channels, len(common_time)), np.nan, dtype='f8')
 
-        # Step 4: Resample
-        for i, (signal_data, signal_time) in enumerate(zip(data_list, time_list)):
-            if i >= num_channels: break
+            for i, (signal_data, signal_time) in enumerate(
+                    zip(data_list, time_list)):
+                if i >= num_channels:
+                    break
 
-            signal_data = fix_video_shape(signal_data)
+                if (not isinstance(signal_data, np.ndarray)
+                        or signal_data.size == 0):
+                    continue  # Leave as NaN
 
-            if not isinstance(signal_data, np.ndarray) or signal_data.size == 0: continue
-            if not isinstance(signal_time, np.ndarray) or signal_time.size == 0: continue
+                if (not isinstance(signal_time, np.ndarray)
+                        or signal_time.size == 0):
+                    continue  # Leave as NaN
 
-            if len(signal_time) < 2: continue
+                if signal_data.ndim == 1:
+                    # 1D time series: interpolate directly
+                    valid_mask = ~np.isnan(signal_data)
+                    if np.sum(valid_mask) >= 2:
+                        interpolator = interp1d(
+                            signal_time[valid_mask],
+                            signal_data[valid_mask],
+                            kind='linear',
+                            bounds_error=False,
+                            fill_value=np.nan
+                        )
+                        resampled_data_array[i, :] = interpolator(common_time)
+                else:
+                    # Multi-dim channel (e.g. video shape (W, H, T)):
+                    # time is the last axis; interpolate per spatial location.
+                    ch_spatial = signal_data.shape[:-1]
+                    n_time = signal_data.shape[-1]
 
-            # --- 1D Case ---
-            if signal_data.ndim == 1:
-                valid_mask = ~np.isnan(signal_data)
-                if np.sum(valid_mask) >= 2:
-                    f = interp1d(signal_time[valid_mask], signal_data[valid_mask],
-                                 kind='linear', bounds_error=False, fill_value=np.nan)
-                    resampled_data_array[i, :] = f(common_time)
+                    # (spatial..., T) -> (T, spatial_flat)
+                    data_t = np.moveaxis(signal_data, -1, 0)
+                    data_flat = data_t.reshape(n_time, -1)
 
-            # --- Video / Multi-dim Case ---
-            # We now expect (Time, H, W) from fix_video_shape
-            elif signal_data.ndim == 3:
-                # signal_data is (T, H, W)
-                # We need to interpolate along axis 0 (Time)
+                    resampled_flat = np.full(
+                        (len(common_time), data_flat.shape[1]),
+                        np.nan, dtype='f8')
 
-                # Check if time dimension matches signal_time length
-                if signal_data.shape[0] != len(signal_time):
-                    print(
-                        f"    Warning: Time dim {signal_data.shape[0]} != Time vec {len(signal_time)}")
-                    # Try to transpose if it helps (e.g. if it came in as H,W,T)
-                    if signal_data.shape[-1] == len(signal_time):
-                        signal_data = np.moveaxis(signal_data, -1, 0)
-                    else:
-                        continue
+                    for j in range(data_flat.shape[1]):
+                        pixel_series = data_flat[:, j]
+                        valid_mask = ~np.isnan(pixel_series)
+                        if np.sum(valid_mask) >= 2:
+                            interpolator = interp1d(
+                                signal_time[valid_mask],
+                                pixel_series[valid_mask],
+                                kind='linear',
+                                bounds_error=False,
+                                fill_value=np.nan
+                            )
+                            resampled_flat[:, j] = interpolator(common_time)
 
-                T_in, H, W = signal_data.shape
+                    # (new_T, spatial_flat) -> (spatial..., new_T)
+                    resampled_nd = resampled_flat.reshape(
+                        (len(common_time),) + ch_spatial)
+                    resampled_data_array[i] = np.moveaxis(resampled_nd, 0, -1)
 
-                # Flatten spatial dims: (T, H*W)
-                flat_data = signal_data.reshape(T_in, -1)
+                valid_samples = int(np.sum(~np.isnan(resampled_data_array[i])))
+                print(f"    Channel {i}: {valid_samples} valid samples")
 
-                # Interpolate along axis 0
-                f = interp1d(signal_time, flat_data, axis=0, kind='linear',
-                             bounds_error=False, fill_value=np.nan)
-
-                flat_resampled = f(common_time)
-
-                # Reshape back to (NewTime, H, W)
-                resampled_nd = flat_resampled.reshape(len(common_time), H, W)
-
-                # Assign to output array (Channels, Time, H, W)
-                # Since resampled_data_array is (C, T, H, W), we assign directly
-                try:
-                    resampled_data_array[i] = resampled_nd
-                except ValueError:
-                    print(
-                        f"    Mismatch: Target {resampled_data_array[i].shape}, Got {resampled_nd.shape}")
-
-            valid_samples = int(np.sum(~np.isnan(resampled_data_array[i])))
-            print(f"    Channel {i}: {valid_samples} valid samples")
-
-        resampled[group_name] = group_data.copy()
-        resampled[group_name]['data'] = resampled_data_array
-        resampled[group_name]['time'] = common_time / 1000.0
-        print(f"    Final group shape: {resampled_data_array.shape}")
+            resampled[group_name] = group_data.copy()
+            resampled[group_name]['data'] = resampled_data_array
+            resampled[group_name]['time'] = common_time / 1000.
+            print(
+                f"    Resampled to common grid: {resampled_data_array.shape}")
 
     return resampled
 
@@ -594,7 +583,7 @@ def write_resampled_data(
                 if data.size == 0 or time.size == 0:
                     # Create minimal time axis (single point)
                     time_out = np.array([0.0])
-                    data_out = np.full((num_channels, 1), np.nan, dtype='f4')
+                    data_out = np.full((num_channels, 1), np.nan, dtype='f8')
                     print(f"  ! {group_name}: "
                           f"No data, writing NaN array {data_out.shape}")
                 else:
@@ -607,7 +596,7 @@ def write_resampled_data(
                         nan_channels = np.full(
                             (missing_channels, data.shape[1]),
                             np.nan,
-                            dtype='f4')
+                            dtype='f8')
                         data_out = np.vstack([data, nan_channels])
                         print(f"  ! {group_name}: "
                               f"Padded {missing_channels} NaN channels")
@@ -619,8 +608,8 @@ def write_resampled_data(
                     else:
                         data_out = data
 
-                grp.create_dataset('xdata', data=time_out, dtype='f4')
-                grp.create_dataset('ydata', data=data_out, dtype='f4')
+                grp.create_dataset('xdata', data=time_out, dtype='f8')
+                grp.create_dataset('ydata', data=data_out, dtype='f8')
 
                 print(f"    {group_name}: "
                       f"{data_out.shape} @ {len(time_out)} samples")
@@ -638,7 +627,7 @@ def write_resampled_data(
 
                 # Build full data array with NaN padding
                 data_out = np.full(
-                    (num_channels, max_time_len), np.nan, dtype='f4')
+                    (num_channels, max_time_len), np.nan, dtype='f8')
 
                 for i, channel_data in enumerate(data):
                     if i >= num_channels:
@@ -649,8 +638,8 @@ def write_resampled_data(
                         n_samples = min(len(channel_data), max_time_len)
                         data_out[i, :n_samples] = channel_data[:n_samples]
 
-                grp.create_dataset('xdata', data=reference_time, dtype='f4')
-                grp.create_dataset('ydata', data=data_out, dtype='f4')
+                grp.create_dataset('xdata', data=reference_time, dtype='f8')
+                grp.create_dataset('ydata', data=data_out, dtype='f8')
 
                 print(f"    {group_name}: {data_out.shape} "
                       f"@ {len(reference_time)} samples (from list)")

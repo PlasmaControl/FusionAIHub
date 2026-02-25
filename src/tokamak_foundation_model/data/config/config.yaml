@@ -1,6 +1,6 @@
 defaults:
   - modalities: modalities
-  - shot_list: train_small
+  - shot_list: train_additional
 
 # These can be overridden from CLI, e.g.:
 #   python generate_data.py shot_list=train
