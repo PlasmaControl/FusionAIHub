@@ -7,6 +7,7 @@ from tokamak_foundation_model.models.modality import (
     FastTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
+    SpectrogramTFAttnAutoEncoder,
     SpectrogramResLSTMAutoEncoder,
     VideoBaselineAutoEncoder,
 )
@@ -34,6 +35,7 @@ MODEL_REGISTRY = {
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
+    "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
     "spectrogram_res_lstm": SpectrogramResLSTMAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }

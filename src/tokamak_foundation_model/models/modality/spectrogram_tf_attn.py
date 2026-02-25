@@ -49,7 +49,6 @@ class LSTMBlock(nn.Module):
 
     def __init__(self, channels, freq_dim, hidden_dim=128, num_layers=1):
         super().__init__()
-        self.channels = channels
         input_dim = channels * freq_dim
 
         self.lstm = nn.LSTM(
@@ -66,20 +65,44 @@ class LSTMBlock(nn.Module):
             nn.GELU(),
         )
         self.norm = nn.BatchNorm2d(channels)
-        self.freq_dim = freq_dim
 
     def forward(self, x):
-        B, C, F, T = x.shape
+        _, c, f, _ = x.shape
         residual = x
 
         x_seq = rearrange(x, 'b c f t -> b t (c f)')
         lstm_out, _ = self.lstm(x_seq)
         proj_out = self.proj(lstm_out)
-        x_back = rearrange(proj_out, 'b t (c f) -> b c f t', c=C, f=F)
+        x_back = rearrange(proj_out, 'b t (c f) -> b c f t', c=c, f=f)
 
         x_back = self.conv(x_back)
         out = self.norm(x_back + residual)
         return out
+
+
+class BottleneckChannelAttention(nn.Module):
+    """Lightweight squeeze-excitation style attention across latent channels.
+
+    Designed for low memory overhead by operating on pooled features only.
+    """
+
+    def __init__(self, channels: int, reduction: int = 8, min_hidden: int = 16):
+        super().__init__()
+        hidden = max(min_hidden, channels // max(reduction, 1))
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.mlp = nn.Sequential(
+            nn.Linear(channels, hidden, bias=True),
+            nn.GELU(),
+            nn.Linear(hidden, channels, bias=True),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C_latent, F', T')
+        b, c, _, _ = x.shape
+        pooled = self.pool(x).view(b, c)
+        gate = self.mlp(pooled).view(b, c, 1, 1)
+        return x * gate
 
 
 class Encoder(nn.Module):
@@ -158,35 +181,20 @@ class Decoder(nn.Module):
         return y
 
 
-class SpectrogramTFOnlyAutoEncoder(nn.Module):
-    """Conv2D + BiLSTM channel-independent autoencoder for spectrograms.
+class SpectrogramTFAttnAutoEncoder(nn.Module):
+    """Conv2D + BiLSTM spectrogram autoencoder with bottleneck channel attention.
 
-    Each channel is processed independently via batch folding (einops rearrange).
-    Architecture: ResidualBlock convs with stride-2 downsampling, BiLSTM at
-    bottleneck, upsample + ResidualBlock decoder with bilinear interpolation
-    to match input dimensions.
-
-    Parameters
-    ----------
-    n_channels : int
-        Number of spectrogram channels (e.g. 8 for MHR, 48 for ECE).
-    hidden_dim : int
-        Width of conv layers in encoder/decoder.
-    latent_dim : int
-        Number of latent channels at the bottleneck.
-    freq_dim : int
-        Frequency dimension at the bottleneck (after 3x stride-2 downsampling).
-    lstm_hidden : int
-        Hidden size of the bidirectional LSTM.
-    lstm_layers : int
-        Number of LSTM layers.
+    Mirrors SpectrogramTFOnlyAutoEncoder behavior while adding lightweight
+    cross-channel mixing on the folded latent tensor.
     """
 
     def __init__(self, n_channels=8, hidden_dim=64, latent_dim=2,
-                 freq_dim=16, lstm_hidden=32, lstm_layers=1, lstm_on=True, **kwargs):
+                 freq_dim=16, lstm_hidden=32, lstm_layers=1, lstm_on=True,
+                 attn_on=True, attn_reduction=8, attn_min_hidden=16, **kwargs):
         super().__init__()
         self.n_channels = n_channels
         self.latent_dim = latent_dim
+        self.attn_on = attn_on
 
         self.encoder = Encoder(
             in_channels=1, dims=[hidden_dim, hidden_dim, hidden_dim],
@@ -199,46 +207,33 @@ class SpectrogramTFOnlyAutoEncoder(nn.Module):
             lstm_hidden=lstm_hidden, lstm_layers=lstm_layers, lstm_on=lstm_on,
         )
 
+        if self.attn_on:
+            self.channel_attn = BottleneckChannelAttention(
+                channels=n_channels * latent_dim,
+                reduction=attn_reduction,
+                min_hidden=attn_min_hidden,
+            )
+
     def forward(self, x):
-        B, C, F, T = x.shape
+        b, c, f, t = x.shape
         x_flat = rearrange(x, 'b c f t -> (b c) 1 f t')
 
         z = self.encoder(x_flat)
-        y_flat = self.decoder(z, output_dim=(F, T))
+        z_joint = rearrange(z, '(b c) d f t -> b (c d) f t', b=b, c=c)
 
-        y = rearrange(y_flat, '(b c) 1 f t -> b c f t', b=B, c=C)
-        z_reshaped = rearrange(z, '(b c) d f t -> b (c d) f t', b=B, c=C)
-        return y, z_reshaped
+        if self.attn_on:
+            z_joint = self.channel_attn(z_joint)
 
+        z_decode = rearrange(z_joint, 'b (c d) f t -> (b c) d f t', c=c, d=self.latent_dim)
+        y_flat = self.decoder(z_decode, output_dim=(f, t))
 
-class PatchDiscriminator(nn.Module):
-    """PatchGAN-style discriminator for spectrogram data.
-
-    Takes (B, C, Fr, T) input and outputs per-patch logits.
-    Not used in default training; groundwork for future GAN loss.
-    """
-
-    def __init__(self, n_channels: int):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(n_channels, 64, 4, stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 128, 4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, 256, 4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(256, 1, 4, stride=1, padding=1),
-        )
-
-    def forward(self, x):
-        return self.net(x)
+        y = rearrange(y_flat, '(b c) 1 f t -> b c f t', b=b, c=c)
+        return y, z_joint
 
 
 def _run_test(label, n_channels, freq, time, device, **kwargs):
     print(f"=== {label} (n_channels={n_channels}) ===")
-    model = SpectrogramTFOnlyAutoEncoder(n_channels=n_channels, **kwargs)
+    model = SpectrogramTFAttnAutoEncoder(n_channels=n_channels, **kwargs)
     model.to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -263,21 +258,9 @@ def _run_test(label, n_channels, freq, time, device, **kwargs):
 
 
 if __name__ == "__main__":
-    # python -m tokamak_foundation_model.models.modality.spectrogram_tf_only
+    # python -m tokamak_foundation_model.models.modality.spectrogram_tf_attn
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Notebook baseline (~912K params)
-    _run_test("MHR (notebook)", n_channels=8, freq=128, time=391, device=device,
-              hidden_dim=64, latent_dim=2, freq_dim=16, lstm_hidden=32, lstm_layers=1)
-
-    # Scaled up (~4.5M params target)
-    _run_test("MHR (scaled)", n_channels=8, freq=128, time=391, device=device,
-              hidden_dim=128, latent_dim=4, freq_dim=16, lstm_hidden=96, lstm_layers=1)
-
-    # ECE
-    _run_test("ECE (notebook)", n_channels=48, freq=128, time=196, device=device,
-              hidden_dim=128, latent_dim=4, freq_dim=16, lstm_hidden=96, lstm_layers=1)
-
-    # CO2
-    _run_test("CO2 (notebook)", n_channels=4, freq=128, time=196, device=device,
-              hidden_dim=128, latent_dim=2, freq_dim=16, lstm_hidden=96, lstm_layers=1)
+    _run_test("MHR (attn)", n_channels=8, freq=128, time=391, device=device,
+              hidden_dim=64, latent_dim=2, freq_dim=16, lstm_hidden=32, lstm_layers=1,
+              attn_on=True, attn_reduction=8)

@@ -3,7 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import h5py
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import torch.nn.functional as F
 import copy
@@ -232,6 +232,7 @@ class SignalConfig:
     num_channels: int
     target_fs: float
     apply_stft: bool
+    channels_to_use: slice = field(default_factory=lambda: slice(0, -1))  # Optional slice to select specific channels
     preprocess: PreprocessConfig = None  # Add preprocessing config
 
     def __post_init__(self):
@@ -282,19 +283,21 @@ class TokamakH5Dataset(Dataset):
     # Define all signal configurations with preprocessing
     SIGNAL_CONFIGS = [
         SignalConfig(
-            "mhr",
-            ["mhr"],
-            8,
-            500e3,
+            name = "mhr",
+            hdf5_keys=["mhr"],
+            num_channels=8, # change to 6?, and then later specify which ones
+            target_fs=500e3,
             apply_stft=True,
+            channels_to_use=slice(2, 8),  # Use only the first 8 channels
             preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ece",
             ["ece"],
-            48,
+            48, # change to 40?, and then later specify which ones
             500e3,
             apply_stft=True,
+            channels_to_use=slice(0, 40),  # Use only the first 40 channels
             preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(

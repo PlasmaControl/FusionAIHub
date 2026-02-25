@@ -5,12 +5,12 @@ import logging
 
 import torch
 import torch.nn as nn
+from torchvision.transforms import GaussianBlur
 
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
 from torch.utils.data.distributed import DistributedSampler
-from torchmetrics.functional.image import structural_similarity_index_measure
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
@@ -23,6 +23,7 @@ from tokamak_foundation_model.models.modality import (
     FastTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
+    SpectrogramTFAttnAutoEncoder,
     SpectrogramTFOnlyAutoEncoder,
     VideoBaselineAutoEncoder,
 )
@@ -52,29 +53,50 @@ MODEL_REGISTRY = {
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
     "spectrogram_tf_only": SpectrogramTFOnlyAutoEncoder,
+    "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
 
-# TODO: Temporary, move into src later
-class L1SSIMLoss(nn.Module):
-    """Combined L1 + SSIM loss: L1(pred, target) + weight * (1 - SSIM(pred, target))."""
+# TODO: Move into src
+class SpectralGate(nn.Module):
+    def __init__(self, eps=1e-8):
+        super().__init__()
+        self.threshold = 1.5
+        self.gate_factor = 0.9
+        self.eps = eps
+        self.gaussian = GaussianBlur(kernel_size=3, sigma=2.0)
 
-    def __init__(self, ssim_weight: float = 0.1, data_range: float = 1.0):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 3:
+            mean = x.mean(dim=1, keepdim=True)
+            std = x.std(dim=1, keepdim=True)
+        elif x.dim() == 4:
+            mean = x.mean(dim=2, keepdim=True)
+            std = x.std(dim=2, keepdim=True)
+        else:
+            raise ValueError(f"Expected 3D or 4D tensor, got shape {tuple(x.shape)}")
+
+        x_gate = (x > (mean + self.threshold * std)).float()
+        x_gate = self.gaussian(x_gate)
+
+        gmin = x_gate.amin(dim=(-2, -1), keepdim=True)
+        gmax = x_gate.amax(dim=(-2, -1), keepdim=True)
+        x_gate = (x_gate - gmin) / (gmax - gmin + self.eps)
+        return x * (x_gate * self.gate_factor + (1.0 - self.gate_factor))
+
+
+# TODO: Move into src and generalize
+class GatedTargetL1Loss(nn.Module):
+    def __init__(self):
         super().__init__()
         self.l1 = nn.L1Loss()
-        self.ssim_weight = ssim_weight
-        self.data_range = data_range
+        self.gate = SpectralGate()
 
-    def forward(self, pred, target):
-        l1_loss = self.l1(pred, target)
-        # SSIM expects (B, C, H, W); for (B, C, T) spectrograms add a dim
-        p, t = pred, target
-        if p.dim() == 3:
-            p = p.unsqueeze(2)
-            t = t.unsqueeze(2)
-        ssim_val = structural_similarity_index_measure(p, t, data_range=self.data_range)
-        return l1_loss + self.ssim_weight * (1 - ssim_val)
+    def forward(self, pred: torch.Tensor, target: torch.Tensor):
+        target_amp = target - target.amin(dim=(-2, -1), keepdim=True)
+        gated_target = self.gate(target_amp)
+        return self.l1(pred, gated_target)
 
 
 # TODO: Move into source code
@@ -202,12 +224,12 @@ def main():
         help="Enable PSNR/SSIM metric tracking"
     )
     parser.add_argument(
-        "--loss_type", choices=["l1", "l1_ssim"], default="l1",
-        help="Loss function type"
-    )
-    parser.add_argument(
         "--patience", type=int, default=0,
         help="Early stopping patience (0 = disabled)"
+    )
+    parser.add_argument(
+        "--use_gated_target", action="store_true", default=False,
+        help="Train against spectral-gated target instead of raw target"
     )
     args = parser.parse_args()
 
@@ -294,8 +316,11 @@ def main():
         weight_decay=args.weight_decay,
     )
 
-    if args.loss_type == "l1_ssim":
-        loss_fn = L1SSIMLoss()
+    if args.use_gated_target:
+        if model_name != "spectrogram_tf_only":
+            logger.warning("--use_gated_target is intended for spectrogram_tf_only; continuing anyway")
+        loss_fn = GatedTargetL1Loss()
+        logger.info("Using gated target L1 loss")
     else:
         loss_fn = nn.L1Loss()
 
