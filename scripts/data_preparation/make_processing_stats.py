@@ -5,7 +5,7 @@ from tokamak_foundation_model.data.data_loader import (
 def main():
     hdf5_files = sorted(
         Path("/scratch/gpfs/EKOLEMEN/foundation_model/"
-             ).glob("[0-9]*_processed.h5")
+             ).glob("20000[0-7]_processed.h5")
     )
 
     # hdf5_files = sorted(
@@ -13,10 +13,17 @@ def main():
     # )
 
     all_input_signals = [
-        "mhr", "ece", "co2", "bes",  # spectrograms
-        "gas", "ech", "pin", "tin",  # actuators
-        "d_alpha", "mse", "ts_core_density",  # diagnostics
-        "bolo", "irtv", "tangtv",  # videos
+        # STFT spectrograms
+        "mhr", "ece", "co2",
+        # actuators / gas / heating
+        "gas", "ech", "pin", "tin", "gas_flow", "gas_raw", "ich",
+        # diagnostics
+        "filterscopes", "vib", "mse", "ts_core_density", "ts_core_temp",
+        "ts_tangential_density", "ts_tangential_temp", "cer_ti", "cer_rot",
+        "sxr", "neutron_rate", "bolo_raw", "mirnov", "langmuir", "i_coil",
+        "bes",
+        # cameras
+        "irtv", "tangtv",
         # "text",  # metadata
     ]
 
@@ -27,7 +34,7 @@ def main():
             target_signals=all_input_signals,
         ) for f in hdf5_files]
 
-    stats = compute_preprocessing_stats(datasets, 'preprocessing_stats.pt')
+    compute_preprocessing_stats(datasets, 'preprocessing_stats.pt')
 
 
 if __name__ == "__main__":
