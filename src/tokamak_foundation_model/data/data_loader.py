@@ -3,22 +3,83 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import h5py
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import torch.nn.functional as F
 import copy
 
 
-# TODO: implement this for calculation
 class WelfordTensor:
     """
-    Welford algorithm for computing running statistics on batched multi-channel tensors.
+    Online Welford algorithm for per-channel statistics on batched tensors.
 
-    Computes per-channel statistics by aggregating across batch and all other dimensions.
+    Accumulates running mean, variance, minimum, and maximum over an arbitrary
+    number of :meth:`update` calls without storing the full dataset in memory.
+    Statistics are computed along the channel axis (axis 1 for 3-D and 4-D
+    tensors) by aggregating across the batch dimension and all remaining
+    non-channel dimensions.  Batches that contain any ``NaN`` value are
+    silently skipped.
 
-    For signals (B, C, F, T) or (B, C, 1, T): computes stats per channel → shape (C,)
-    For profiles (B, S, T): computes stats per spatial point → shape (S,)
-    For videos (B, T, H, W): computes global stats → shape (1,)
+    The shape of the statistics vectors depends on the input rank:
+
+    =========  ===================================  ===========
+    ``ndim``   Interpretation                       Stats shape
+    =========  ===================================  ===========
+    4          ``(B, C, F, T)`` — spectrograms /    ``(C,)``
+               time series
+    3          ``(B, S, T)`` — profiles             ``(S,)``
+    ≤ 2        ``(B, T)`` or scalar — video /       ``(1,)``
+               fallback
+    =========  ===================================  ===========
+
+    Attributes
+    ----------
+    mean : torch.Tensor or None
+        Running per-channel mean, shape ``(C,)``.  ``None`` before the first
+        :meth:`update` call.
+    std : torch.Tensor or None
+        Per-channel sample standard deviation, shape ``(C,)``.  Populated
+        only after :meth:`compute` is called.
+    min_val : torch.Tensor or None
+        Running per-channel minimum, shape ``(C,)``.  ``None`` before the
+        first :meth:`update` call.
+    max_val : torch.Tensor or None
+        Running per-channel maximum, shape ``(C,)``.  ``None`` before the
+        first :meth:`update` call.
+    n : int
+        Total number of scalar samples seen so far (summed over all
+        non-channel dimensions across all batches).
+    M2 : torch.Tensor or None
+        Running sum of squared deviations from the mean (Welford
+        accumulator), shape ``(C,)``.  ``None`` before the first
+        :meth:`update` call.
+    initialized : bool
+        ``True`` once the internal buffers have been allocated on the first
+        :meth:`update` call.
+
+    Notes
+    -----
+    The parallel (batch) variant of Welford's algorithm is used to combine
+    each incoming batch with the accumulated state in a single pass
+    [1]_.  All accumulation is done in ``float64`` regardless of the input
+    dtype to minimise floating-point cancellation errors.
+
+    References
+    ----------
+    .. [1] Welford, B. P. (1962). Note on a method for calculating corrected
+       sums of squares and products. *Technometrics*, 4(3), 419–420.
+       https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+
+    Examples
+    --------
+    >>> import torch
+    >>> tracker = WelfordTensor()
+    >>> for _ in range(10):
+    ...     batch = torch.randn(32, 8, 512, 200)  # (B, C, F, T)
+    ...     tracker.update(batch)
+    >>> stats = tracker.compute()
+    >>> stats['mean'].shape
+    (8,)
     """
 
     def __init__(self):
@@ -31,7 +92,26 @@ class WelfordTensor:
         self.initialized = False
 
     def _initialize(self, value: torch.Tensor):
-        """Initialize arrays based on first tensor's shape."""
+        """
+        Allocate accumulator buffers sized to match *value*.
+
+        Called automatically by :meth:`update` on the first non-NaN batch.
+        Derives the number of channels from the input rank:
+
+        * ``ndim == 4``: channel axis is 1 (spectrograms / time series).
+        * ``ndim == 3``: channel axis is 1 (profiles / spatial signals).
+        * ``ndim <= 2``: treated as single-channel (``n_channels = 1``).
+
+        Parameters
+        ----------
+        value : torch.Tensor
+            First batch tensor, used only to infer ``n_channels``.
+            Shape must be ``(B, C, ...)`` for 3-D or 4-D inputs.
+
+        Returns
+        -------
+        None
+        """
         # Determine number of channels based on tensor shape (excluding batch dim)
         if value.ndim == 4:
             # (batch, channels, freq_bins, time) or (batch, channels, 1, time)
@@ -49,22 +129,35 @@ class WelfordTensor:
 
         self.mean = torch.zeros(n_channels, dtype=torch.float64)
         self.M2 = torch.zeros(n_channels, dtype=torch.float64)
-        self.min_val = torch.full((n_channels,), float('inf'), dtype=torch.float64)
-        self.max_val = torch.full((n_channels,), float('-inf'), dtype=torch.float64)
+        self.min_val = torch.full(
+            (n_channels,), float('inf'), dtype=torch.float64)
+        self.max_val = torch.full(
+            (n_channels,), float('-inf'), dtype=torch.float64)
         self.initialized = True
 
     def update(self, value: torch.Tensor):
         """
-        Update statistics with new batched tensor.
+        Incorporate a new batch into the running statistics.
+
+        Batches that contain any ``NaN`` element are silently skipped.  On
+        the first valid call the accumulator buffers are allocated via
+        :meth:`_initialize`.  Subsequent calls merge the incoming batch
+        statistics with the accumulated state using the parallel Welford
+        update rule.
 
         Parameters
         ----------
         value : torch.Tensor
-            Input tensor of shape:
-            - (batch, channels, freq_bins, time) for spectrograms
-            - (batch, channels, 1, time) for time series
-            - (batch, spatial_points, time) for profiles
-            - (batch, time, height, width) for videos
+            Batched input tensor.  Supported shapes:
+
+            * ``(B, C, F, T)`` — spectrograms or multi-channel time series.
+            * ``(B, C, 1, T)`` — single-frequency time series.
+            * ``(B, S, T)``    — spatial profiles.
+            * ``(B, T, H, W)`` — video frames (global statistics).
+
+        Returns
+        -------
+        None
         """
         # Skip if contains NaN
         if torch.isnan(value).any():
@@ -81,9 +174,8 @@ class WelfordTensor:
         if value.ndim == 4 and value.shape[1] == self.mean.shape[0]:
             # (batch, channels, freq_bins, time) → flatten batch, freq, time
             # (B, C, F, T) → (C, B*F*T)
-            batch_size = value.shape[0]
             n_channels = value.shape[1]
-            value_flat = value.permute(1, 0, 2, 3).reshape(n_channels, -1)  # (C, B*F*T)
+            value_flat = value.permute(1, 0, 2, 3).reshape(n_channels, -1)
 
             # Per-channel mean, min, max
             batch_mean = value_flat.mean(dim=1)
@@ -99,7 +191,7 @@ class WelfordTensor:
             # (batch, spatial_points, time) → flatten batch, time
             # (B, S, T) → (S, B*T)
             n_channels = value.shape[1]
-            value_flat = value.permute(1, 0, 2).reshape(n_channels, -1)  # (S, B*T)
+            value_flat = value.permute(1, 0, 2).reshape(n_channels, -1)
 
             batch_mean = value_flat.mean(dim=1)
             batch_min = value_flat.min(dim=1).values
@@ -142,7 +234,17 @@ class WelfordTensor:
         self.max_val = torch.maximum(self.max_val, batch_max)
 
     def _compute_std(self):
-        """Compute standard deviation from M2."""
+        """
+        Derive sample standard deviation from the Welford M2 accumulator.
+
+        Uses Bessel's correction (``n - 1``) when more than one sample has
+        been seen; falls back to zeros when ``n <= 1`` to avoid division by
+        zero.  The result is written to :attr:`std` in-place.
+
+        Returns
+        -------
+        None
+        """
         if self.n > 1:
             self.std = torch.sqrt(self.M2 / (self.n - 1))
         else:
@@ -150,16 +252,25 @@ class WelfordTensor:
 
     def compute(self):
         """
-        Compute final statistics.
+        Finalise and return all accumulated statistics as NumPy arrays.
+
+        Calls :meth:`_compute_std` internally to derive the standard
+        deviation from the Welford M2 accumulator before returning.
 
         Returns
         -------
         dict
-            Dictionary with numpy arrays:
-            - 'mean': per-channel mean
-            - 'std': per-channel standard deviation
-            - 'min_val': per-channel minimum
-            - 'max_val': per-channel maximum
+            Dictionary with the following keys, each mapping to a
+            ``numpy.ndarray`` of shape ``(C,)``:
+
+            ``'mean'``
+                Per-channel arithmetic mean.
+            ``'std'``
+                Per-channel sample standard deviation (Bessel-corrected).
+            ``'min_val'``
+                Per-channel minimum value seen across all batches.
+            ``'max_val'``
+                Per-channel maximum value seen across all batches.
         """
         self._compute_std()
 
@@ -187,7 +298,7 @@ def compute_preprocessing_stats(
     from tqdm import tqdm
 
     combined = ConcatDataset(datasets)
-    dataloader = DataLoader(combined, batch_size=32, collate_fn=collate_fn, num_workers=1)
+    dataloader = DataLoader(combined, batch_size=32, collate_fn=collate_fn, num_workers=32)
 
     # Get signal names from first dataset
     signal_configs = datasets[0].SIGNAL_CONFIGS
