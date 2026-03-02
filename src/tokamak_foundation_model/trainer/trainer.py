@@ -15,13 +15,14 @@ from tokamak_foundation_model.utils.tracking import Tracker
 logger = logging.getLogger(__name__)
 
 class MultimodalTrainer:
-    def __init__(self,
-        model: nn.Module,
-        optimizer: optim.Optimizer,
-        loss_fn: nn.Module,
-        device: torch.device,
-        epochs: int,
-        checkpoint_path: str | Path = "checkpoint.pth"
+    def __init__(
+            self,
+            model: nn.Module,
+            optimizer: optim.Optimizer,
+            loss_fn: nn.Module,
+            device: torch.device,
+            epochs: int,
+            checkpoint_path: str | Path = "checkpoint.pth"
     ):
         self.model = model
         self.optimizer = optimizer
@@ -47,7 +48,8 @@ class MultimodalTrainer:
 
             total_loss += loss.item()
             if batch_idx % 10 == 0:
-                print(f"  Batch {batch_idx}/{len(dataloader)}, Loss: {loss.item():.4f}")
+                print(f"  Batch {batch_idx}/{len(dataloader)},"
+                      f" Loss: {loss.item():.4f}")
         return total_loss / len(dataloader)
 
     def _validate_epoch(self, dataloader: DataLoader):
@@ -71,8 +73,12 @@ class MultimodalTrainer:
                 total_loss += loss.item()
         return total_loss / len(dataloader)
 
-    def train(self, train_dataloader: DataLoader, val_dataloader: DataLoader = None):
-        best_val_loss = float('inf')
+    def train(
+            self,
+            train_dataloader: DataLoader,
+            val_dataloader: DataLoader = None
+    ):
+        best_val_loss = float("inf")
         for epoch in range(self.epochs):
             print(f"Epoch {epoch+1}/{self.epochs}")
             train_loss = self._train_epoch(train_dataloader)
@@ -93,7 +99,8 @@ class MultimodalTrainer:
     def load_checkpoint(self, checkpoint_path=None):
         path = checkpoint_path if checkpoint_path else self.checkpoint_path
         if os.path.exists(path):
-            self.model.load_state_dict(torch.load(path, map_location=self.device))
+            self.model.load_state_dict(torch.load(
+                path, map_location=self.device))
             print(f"Model loaded from checkpoint: {path}")
         else:
             print(f"No checkpoint found at: {path}")

@@ -13,9 +13,13 @@ from torch.utils.data import ConcatDataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
+from tokamak_foundation_model.data.utils import worker_init_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
+from tokamak_foundation_model.models.model_factory import (
+    build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 from tokamak_foundation_model.utils.distributed import DistributedManager
 
+from tokamak_foundation_model.utils import DefaultDrawer
 from tokamak_foundation_model.utils import DefaultDrawer, NullDrawer
 from tokamak_foundation_model.models.modality import (
     ActuatorBaselineAutoEncoder,
@@ -28,6 +32,10 @@ from tokamak_foundation_model.models.modality import (
     VideoBaselineAutoEncoder,
 )
 
+# TODO: Add ddp support
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SIGNAL_MODEL_DEFAULTS = {
@@ -186,7 +194,7 @@ def main():
         "--min_lr", type=float, default=0.0, help="Minimum LR at end of cosine decay"
     )
     parser.add_argument(
-        "--checkpoint_dir", type=str, default="runs", help="Run directory for checkpoints (used directly, e.g. runs/ece_spectrogram)"
+        "--checkpoint_dir", type=str, default="runs", help="Directory for checkpoints"
     )
     parser.add_argument(
         "--num_plots", type=int, default=4,
@@ -411,7 +419,6 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.fit(dataloader, val_dataloader=val_dataloader, modality_key=signal_name, train_sampler=train_sampler)
 
 
 if __name__ == "__main__":
