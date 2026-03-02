@@ -1,13 +1,15 @@
+import torch
 import torch.nn as nn
-from abc import abstractmethod
+from typing import Any
+from abc import ABC, abstractmethod
 
 
-class ModalityEncoder(nn.Module):
+class ModalityEncoder(nn.Module, ABC):
 
-    def __init__(self, 
-        n_channels: int, 
+    def __init__(self,
+        n_channels: int,
         d_model: int = 64,
-        n_tokens: int = 0, 
+        n_tokens: int = 0,
         ):
         super().__init__()
         self.n_channels = n_channels
@@ -15,14 +17,14 @@ class ModalityEncoder(nn.Module):
         self.n_tokens = n_tokens
 
     @abstractmethod
-    def forward(self, x):
-        ...
+    def forward(self, x) -> torch.Tensor:
+        raise NotImplementedError
 
 
-class ModalityDecoder(nn.Module):
+class ModalityDecoder(nn.Module, ABC):
 
-    def __init__(self, 
-        n_channels: int, 
+    def __init__(self,
+        n_channels: int,
         d_model: int,
         ):
         super().__init__()
@@ -30,20 +32,22 @@ class ModalityDecoder(nn.Module):
         self.d_model = d_model
 
     @abstractmethod
-    def forward(self, z, output_shape=None):
-        ...
+    def forward(self, z, output_shape=None) -> torch.Tensor:
+        raise NotImplementedError
 
 
 class ModalityAutoEncoder(nn.Module):
 
-    def __init__(self, 
-        n_channels: int, 
+    def __init__(self,
+        n_channels: int,
         d_model: int = 64,
         n_tokens: int = 0,
         ):
         super().__init__()
-        self.encoder = ModalityEncoder(n_channels, d_model, n_tokens)
-        self.decoder = ModalityDecoder(n_channels, d_model)
+        self.n_channels = n_channels
+        self.d_model = d_model
+        self.n_tokens = n_tokens
 
-    def forward(self, x):
-        return self.decoder(self.encoder(x))
+    @abstractmethod
+    def forward(self, x) -> tuple[torch.Tensor, ...]:
+        raise NotImplementedError

@@ -5,12 +5,8 @@ from tokamak_foundation_model.data.data_loader import (
 def main():
     hdf5_files = sorted(
         Path("/scratch/gpfs/EKOLEMEN/foundation_model/"
-             ).glob("2000*_processed.h5")
+             ).glob("*_processed.h5")
     )
-
-    # hdf5_files = sorted(
-    #     Path("/scratch/gpfs/EKOLEMEN/foundation_model").glob("*_processed.h5")
-    # )
 
     all_input_signals = [
         # STFT spectrograms

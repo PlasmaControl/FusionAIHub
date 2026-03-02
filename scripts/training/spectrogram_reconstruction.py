@@ -112,6 +112,7 @@ def main():
 
     ### Dataset Setup ###
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
+    hdf5_files = hdf5_files[:1]
     stats = torch.load(statistics_path)
 
     datasets_processed = [
@@ -151,8 +152,8 @@ def main():
         eta_min=args.min_lr
     )
 
-    # loss_fn = nn.L1Loss()
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.L1Loss()
+    # loss_fn = nn.MSELoss()
 
     dataloader = DataLoader(
         concatenated_dataset,
@@ -161,7 +162,8 @@ def main():
         worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
-        pin_memory=True,
+        prefetch_factor=0,
+        pin_memory=False,
         shuffle=True,
     )
 

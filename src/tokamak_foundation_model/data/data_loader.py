@@ -517,6 +517,14 @@ class MovieConfig:
             self.preprocess = PreprocessConfig()
 
 
+@dataclass
+class ValueConfig:
+    """Configuration for dataloader numericals (maybe a another description)"""
+
+    rdcc_nbytes: int # Number of bytes for the chunk cache. Adjust based on dataset size and memory constraints.
+    rdcc_nslots: int # Number of chunk slots in the cache. Adjust based on dataset size and access patterns.
+    ms_to_s: float = 1/1000 # Conversion factor from seconds to milliseconds for time calculations
+
 class TokamakH5Dataset(Dataset):
     """
     PyTorch Dataset for multi-modal tokamak plasma diagnostics stored in HDF5.
@@ -649,10 +657,10 @@ class TokamakH5Dataset(Dataset):
     # Define all signal configurations with preprocessing
     SIGNAL_CONFIGS = [
         SignalConfig(
-            "mhr",
-            ["mhr"],
-            6,
-            500e3,
+            name = "mhr",
+            hdf5_keys=["mhr"],
+            num_channels=8,
+            target_fs=500e3,
             apply_stft=True,
             channels_to_use=slice(2, 8),  # Skip first 2 channels
             preprocess=PreprocessConfig(method="log"),
@@ -660,11 +668,11 @@ class TokamakH5Dataset(Dataset):
         SignalConfig(
             "ece",
             ["ece"],
-            40,
+            48,
             500e3,
             apply_stft=True,
-            channels_to_use=slice(0, 40),  # Use the first 40 of 48 channels
-            preprocess=PreprocessConfig(method="log"),
+            channels_to_use=slice(0, 40),  # Use only the first 40 channels
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "co2",
@@ -858,6 +866,12 @@ class TokamakH5Dataset(Dataset):
         MovieConfig("tangtv", ["tangtv"], 7, 50, 240, 720),
     ]
 
+    VALUE_CONFIG = ValueConfig(
+        rdcc_nbytes=1024**2 * 256,  # 256 MB chunk cache
+        rdcc_nslots=10000,  # Number of chunk slots
+        ms_to_s=1/1000,  # Conversion factor from milliseconds to seconds
+    )
+
     def __init__(
             self,
             hdf5_path: str | Path,
@@ -889,7 +903,7 @@ class TokamakH5Dataset(Dataset):
         self.prediction_horizon_s = prediction_horizon_s
         self.input_signals = input_signals or ["ece", "co2", "mhr"]
         self.target_signals = (
-                target_signals or ["d_alpha", "mse", "ts_core_density"])
+                target_signals or ["mse", "ts_core_density"])
 
         if not self.hdf5_path.exists():
             raise FileNotFoundError(f"HDF5 file not found: {self.hdf5_path}")
@@ -1214,8 +1228,8 @@ class TokamakH5Dataset(Dataset):
             self.h5_file = h5py.File(
                 self.hdf5_path,
                 "r",
-                rdcc_nbytes=1024**2 * 256,  # 256 MB chunk cache
-                rdcc_nslots=10000,  # Number of chunk slots
+                rdcc_nbytes=self.VALUE_CONFIG.rdcc_nbytes,
+                rdcc_nslots=self.VALUE_CONFIG.rdcc_nslots,
             )
 
     def _load_signal_raw(

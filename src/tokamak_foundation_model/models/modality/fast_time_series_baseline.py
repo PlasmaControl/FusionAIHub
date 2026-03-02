@@ -2,7 +2,7 @@ import math
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from .base import ModalityEncoder, ModalityDecoder
+from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
 import numpy as np
 
 
@@ -177,13 +177,13 @@ class FastTimeSeriesBaselineDecoder(ModalityDecoder):
         self.adaptive_pool = nn.AdaptiveAvgPool1d(input_length)
         self.activation = nn.GELU()
 
-    def forward(self, x, output_shape=None):
+    def forward(self, z, output_shape=None):
         """
         Decode tokens back to original time-series (pre-training only).
 
         Parameters
         ----------
-        x : torch.Tensor
+        z : torch.Tensor
             Input tokens of shape [batch, n_input_tokens, d_model]
 
         Returns
@@ -191,19 +191,19 @@ class FastTimeSeriesBaselineDecoder(ModalityDecoder):
         torch.Tensor
             Reconstructed time-series of shape [batch, n_channels, input_length]
         """
-        x = x.transpose(1, 2)                    # [B, d_model, n_input_tokens]
+        z = z.transpose(1, 2)                    # [B, d_model, n_input_tokens]
 
         for i, deconv in enumerate(self.deconv_layers):
-            x = deconv(x)
+            z = deconv(z)
             if i < len(self.deconv_layers) - 1:
-                x = self.activation(x)
+                z = self.activation(z)
 
-        x = self.adaptive_pool(x)                # [B, n_channels, input_length]
+        z = self.adaptive_pool(z)                # [B, n_channels, input_length]
 
-        return x
+        return z
 
 
-class FastTimeSeriesBaselineAutoEncoder(nn.Module):
+class FastTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
     """Combines TimeSeriesEncoder and TimeSeriesDecoder into an autoencoder model."""
 
     def __init__(
@@ -215,7 +215,7 @@ class FastTimeSeriesBaselineAutoEncoder(nn.Module):
             n_layers: int = 4,
             kernel_size: int = 3,
     ):
-        super().__init__()
+        super().__init__(n_channels, d_model, n_tokens)
         self.encoder = FastTimeSeriesBaselineEncoder(
             n_channels=n_channels,
             input_length=input_length,

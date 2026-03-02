@@ -134,6 +134,7 @@ def main():
     n_spatial_points = sample_data.shape[0]
     n_time_points = sample_data.shape[1]
     logger.info(f"n_spatial_points: {n_spatial_points}, n_time_points: {n_time_points}")
+    
     ### Model Setup ###
     model = build_model(model_name, d_model=args.d_model, n_tokens=args.n_tokens,
                         n_channels=1, n_spatial_points=n_spatial_points,
