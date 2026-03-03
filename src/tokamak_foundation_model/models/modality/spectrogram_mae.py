@@ -1,133 +1,278 @@
-"""Masked Autoencoder for tokamak spectrogram diagnostics.
+"""ViT-based Masked Autoencoder for tokamak spectrogram diagnostics.
 
-Uses the convolutional SpecEncoder / SpecDecoder from aps_model.py to build a
-pixel-space masked autoencoder (He et al., 2022). During training the model
-returns (reconstructed, mask); during eval it returns just reconstructed.
+Implements He et al., 2022 (MAE) with a fully attention-based architecture:
+the encoder processes only the visible (unmasked) patch tokens, so masked
+patches have zero influence on the latent representation (no CNN receptive-
+field leakage). The decoder restores the full token sequence by inserting a
+shared learnable mask_token at masked positions before the lighter decoder
+transformer.
 
-Preprocessing note
-------------------
-The data pipeline applies log10(x + 1) (and optionally standardisation) before
-reaching this model. SpecEncoder's BatchNorm2d layers handle scale differences
-across signals. MHR/CO2 outputs are not zero-centred; for best training results,
-switch their preprocessing to "log_standardize" in the dataset config.
-
-The mask_token is a learnable scalar parameter (init 0). This lets the model
-distinguish masked regions from genuinely quiet / DC-free regions where the
-log-spectrogram is also 0.
+Return contract
+---------------
+Training  : (reconstructed, mask_pixel) — mask_pixel is BoolTensor (B,1,F,T)
+Eval      : reconstructed               — shape (B, C, F, T) matching input
 """
 
 import torch
 import torch.nn as nn
 
-from tokamak_foundation_model.models.aps_model import SpecDecoder, SpecEncoder
 from tokamak_foundation_model.models.modality.base import ModalityAutoEncoder
+from tokamak_foundation_model.models.modality.spectrogram_baseline import (
+    PatchEmbed2d,
+    PatchUnembed2d,
+)
 
 
-class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
-    """Masked Autoencoder for multichannel spectrogram signals.
+class _ViTEncoder(nn.Module):
+    """ViT encoder that processes all patch tokens without masking.
 
-    Divides the input spectrogram into non-overlapping (patch_h × patch_w) pixel
-    patches, randomly masks mask_ratio of them, encodes the masked input with
-    SpecEncoder, and decodes back to the original shape with SpecDecoder.
+    Used as ``SpectrogramMAEAutoEncoder.encoder`` so that
+    ``model.encoder(x)`` returns a finite token sequence for shape tests.
 
     Parameters
     ----------
     n_channels : int
-        Number of input spectrogram channels (e.g. 4 for CO2, 48 for ECE).
     d_model : int
-        Feature dimension at the bottleneck (encoder output channels).
-    n_tokens : int
-        Unused; kept for interface compatibility with ModalityAutoEncoder.
-    mask_ratio : float
-        Fraction of patches to mask during training (default 0.75).
     patch_h, patch_w : int
-        Patch height and width in pixels (default 4 × 4).
+    n_heads : int
+    n_layers : int
+    dropout : float
+    max_patches : int
+        Upper bound on number of patches; sets positional embedding size.
     """
 
     def __init__(
         self,
         n_channels: int,
-        d_model: int = 64,
+        d_model: int,
+        patch_h: int,
+        patch_w: int,
+        n_heads: int,
+        n_layers: int,
+        dropout: float,
+        max_patches: int,
+    ) -> None:
+        super().__init__()
+        self.patch_embed = PatchEmbed2d(n_channels, d_model, patch_h, patch_w)
+        self.pos_embed = nn.Parameter(torch.zeros(1, max_patches, d_model))
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=n_heads,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=n_layers,
+            norm=nn.LayerNorm(d_model),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, C, F, T) → (B, N, d_model), all tokens, no masking."""
+        tokens, (n_h, n_w) = self.patch_embed(x)
+        N = tokens.shape[1]
+        tokens = tokens + self.pos_embed[:, :N]
+        return self.transformer(tokens)
+
+
+class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
+    """ViT-based Masked Autoencoder for multichannel spectrogram signals.
+
+    The encoder operates on *visible* tokens only — there is no spatial
+    neighbourhood so masked patches cannot leak positional information through
+    a CNN receptive field. A single learnable ``mask_token`` vector fills
+    masked positions before the lightweight decoder transformer.
+
+    Parameters
+    ----------
+    n_channels : int
+        Number of spectrogram channels (e.g. 4 for CO2, 48 for ECE).
+    d_model : int
+        Transformer hidden dimension.
+    n_tokens : int
+        Unused; kept for interface compatibility with ModalityAutoEncoder.
+    mask_ratio : float
+        Fraction of patches to mask during training (default 0.75).
+    patch_h, patch_w : int
+        Patch height and width in pixels (default 16 × 16).
+    n_enc_layers : int
+        Transformer layers in the encoder (default 4).
+    n_dec_layers : int
+        Transformer layers in the decoder (default 2).
+    n_heads : int
+        Attention heads; must divide d_model (default 4).
+    dropout : float
+        Dropout rate (default 0.1).
+    max_patches : int
+        Maximum patches; sets positional embedding capacity (default 1024).
+    """
+
+    def __init__(
+        self,
+        n_channels: int,
+        d_model: int = 256,
         n_tokens: int = 0,
         *,
         mask_ratio: float = 0.75,
-        patch_h: int = 4,
-        patch_w: int = 4,
+        patch_h: int = 16,
+        patch_w: int = 16,
+        n_enc_layers: int = 4,
+        n_dec_layers: int = 2,
+        n_heads: int = 4,
+        dropout: float = 0.1,
+        max_patches: int = 1024,
     ) -> None:
         super().__init__(n_channels, d_model, n_tokens)
         self.mask_ratio = mask_ratio
         self.patch_h = patch_h
         self.patch_w = patch_w
 
-        self.encoder = SpecEncoder(n_channels, d_model)
-        self.decoder = SpecDecoder(d_model, n_channels)
+        # Encoder — also exposed as self.encoder for test_encoder_output_is_finite
+        self.encoder = _ViTEncoder(
+            n_channels=n_channels,
+            d_model=d_model,
+            patch_h=patch_h,
+            patch_w=patch_w,
+            n_heads=n_heads,
+            n_layers=n_enc_layers,
+            dropout=dropout,
+            max_patches=max_patches,
+        )
 
-        # Learnable fill value for masked patches (scalar, init 0).
-        self.mask_token = nn.Parameter(torch.zeros(1))
+        # Decoder positional embeddings (separate from encoder's)
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, max_patches, d_model))
+        nn.init.trunc_normal_(self.decoder_pos_embed, std=0.02)
 
-    def _mask_patches(
-        self, x: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Apply random patch masking.
+        # Learnable fill vector for masked positions (full d_model embedding)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, d_model))
+
+        decoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=n_heads,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.decoder_layers = nn.TransformerEncoder(
+            decoder_layer,
+            num_layers=n_dec_layers,
+            norm=nn.LayerNorm(d_model),
+        )
+
+        # Maps decoded tokens back to pixel patches
+        self.patch_unembed = PatchUnembed2d(n_channels, d_model, patch_h, patch_w)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _mask_tokens(
+        self, tokens: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Randomly drop a fraction of patch tokens.
 
         Parameters
         ----------
-        x : Tensor of shape (B, C, F, T)
+        tokens : Tensor (B, N, d_model)
+            Position-encoded patch tokens.
 
         Returns
         -------
-        masked_x : Tensor (B, C, F, T) — input with masked patches replaced by mask_token.
-        mask     : BoolTensor (B, 1, F, T) — True where patches were masked.
+        tokens_visible : Tensor (B, N_vis, d_model)
+        ids_keep       : LongTensor (B, N_vis) — original indices kept visible
+        ids_restore    : LongTensor (B, N)     — inverse permutation of shuffle
+        mask_bool      : BoolTensor (B, N)     — True where token is masked
+                         in the *original* (unshuffled) token order
         """
-        B, C, F, T = x.shape
-        ph, pw = self.patch_h, self.patch_w
+        B, N, D = tokens.shape
+        N_vis = max(1, int(N * (1 - self.mask_ratio)))
 
-        # Number of complete patches
-        n_h = F // ph
-        n_w = T // pw
-        n_patches = n_h * n_w
-        n_masked = max(1, int(n_patches * self.mask_ratio))
+        # Per-sample random shuffle; first N_vis positions are "visible"
+        noise = torch.rand(B, N, device=tokens.device)
+        ids_shuffle = noise.argsort(dim=1)        # (B, N)
+        ids_restore = ids_shuffle.argsort(dim=1)  # (B, N), inverse permutation
+        ids_keep = ids_shuffle[:, :N_vis]          # (B, N_vis)
 
-        # Build per-sample patch mask: (B, n_patches), True = masked
-        mask_patches = torch.zeros(B, n_patches, dtype=torch.bool, device=x.device)
-        for i in range(B):
-            idx = torch.randperm(n_patches, device=x.device)[:n_masked]
-            mask_patches[i, idx] = True
+        # Gather visible tokens from original order
+        tokens_visible = tokens.gather(
+            1, ids_keep.unsqueeze(-1).expand(-1, -1, D)
+        )  # (B, N_vis, D)
 
-        # Upsample patch mask to pixel space: (B, 1, n_h, n_w) → (B, 1, n_h*ph, n_w*pw)
-        mask_pixel = (
-            mask_patches
-            .reshape(B, 1, n_h, n_w)
-            .repeat_interleave(ph, dim=2)
-            .repeat_interleave(pw, dim=3)
-        )
-        # Crop to exact (F, T) in case F or T is not divisible by patch size
-        mask_pixel = mask_pixel[:, :, :F, :T]
+        # Boolean mask in original order: True = masked
+        mask_bool = torch.ones(B, N, dtype=torch.bool, device=tokens.device)
+        mask_bool.scatter_(1, ids_keep, False)
 
-        # Fill masked locations with learnable token value
-        masked_x = x.masked_fill(mask_pixel, 0.0) + mask_pixel.float() * self.mask_token
+        return tokens_visible, ids_keep, ids_restore, mask_bool
 
-        return masked_x, mask_pixel
+    # ------------------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------------------
 
     def forward(
         self, x: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
         """Forward pass.
 
-        During training returns (reconstructed, mask) so the trainer can
-        compute loss only on masked patches.  During eval returns only
-        reconstructed so loss is computed on the full image.
+        Training : returns (reconstructed, mask_pixel) so the trainer can
+                   compute loss only on masked patches.
+        Eval     : returns reconstructed — shape (B, C, F, T) matching input.
         """
         B, C, F, T = x.shape
+        ph, pw = self.patch_h, self.patch_w
 
-        masked_x, mask = self._mask_patches(x)
+        # ── 1. Patch embedding ────────────────────────────────────────────
+        tokens, (n_h, n_w) = self.encoder.patch_embed(x)  # (B, N, d_model)
+        N = tokens.shape[1]
 
-        z = self.encoder(masked_x)       # (B, d_model, F', T)
-        reconstructed = self.decoder(z)  # (B, n_channels, F'', T)
+        # ── 2. Encoder positional embeddings (applied to all N positions) ──
+        tokens = tokens + self.encoder.pos_embed[:, :N]
 
-        # Crop to original spatial dimensions (decoder may add a few extra rows)
-        reconstructed = reconstructed[..., :F, :T]
-
+        # ── 3. Mask & encode ─────────────────────────────────────────────
         if self.training:
-            return reconstructed, mask
-        return reconstructed
+            tokens_vis, ids_keep, _, mask_bool = self._mask_tokens(tokens)
+            tokens_enc = self.encoder.transformer(tokens_vis)  # (B, N_vis, D)
+        else:
+            tokens_enc = self.encoder.transformer(tokens)      # (B, N, D)
+
+        # ── 4. Restore full sequence (training only) ──────────────────────
+        if self.training:
+            D = tokens_enc.shape[-1]
+            # Fill all slots with mask_token, then overwrite visible positions
+            x_full = self.mask_token.expand(B, N, D).clone()
+            x_full.scatter_(
+                1,
+                ids_keep.unsqueeze(-1).expand(-1, -1, D),
+                tokens_enc,
+            )  # (B, N, D)
+        else:
+            x_full = tokens_enc  # (B, N, D), all visible
+
+        # ── 5. Decoder positional embeddings ──────────────────────────────
+        x_full = x_full + self.decoder_pos_embed[:, :N]
+
+        # ── 6. Decode ─────────────────────────────────────────────────────
+        x_dec = self.decoder_layers(x_full)
+
+        # ── 7. Pixel reconstruction ───────────────────────────────────────
+        reconstructed = self.patch_unembed(x_dec, n_h, n_w)  # (B, C, n_h*ph, n_w*pw)
+        reconstructed = reconstructed[:, :, :F, :T]
+
+        if not self.training:
+            return reconstructed
+
+        # ── 8. Upsample token mask → pixel mask ───────────────────────────
+        mask_pixel = (
+            mask_bool
+            .reshape(B, 1, n_h, n_w)
+            .repeat_interleave(ph, dim=2)
+            .repeat_interleave(pw, dim=3)
+        )[:, :, :F, :T]
+
+        return reconstructed, mask_pixel
