@@ -16,6 +16,35 @@ from tokamak_foundation_model.models.model_factory import (
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
+class MAEUnimodalTrainer(UnimodalTrainer):
+    """UnimodalTrainer variant that computes loss only on masked patches.
+
+    When the model returns (reconstructed, mask) — i.e. during training with
+    SpectrogramMAEAutoEncoder — the loss is restricted to masked pixels.
+    Validation inherits the base _validate_step which computes full-image loss
+    (the model returns only reconstructed in eval mode), giving a consistent
+    reconstruction metric.
+    """
+
+    def _train_step(self, batch: dict):
+        data = batch[self.modality_key].to(self.dm.device)
+        self.optimizer.zero_grad()
+        output = self.model(data)
+        if isinstance(output, tuple):
+            reconstructed, mask = output
+            # Expand mask (B,1,F,T) → (B,C,F,T) to index both tensors
+            mask_expanded = mask.expand_as(reconstructed)
+            loss = self.loss_fn(
+                reconstructed[mask_expanded],
+                data[mask_expanded],
+            )
+        else:
+            loss = self.loss_fn(output, data)
+        loss.backward()
+        self.optimizer.step()
+        return {"loss": loss}
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 logging.basicConfig(level=logging.INFO)
@@ -43,13 +72,17 @@ def main():
     )
     parser.add_argument(
         "--data_dir", type=str,
-        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/",
+        default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data",
         help="Path to HDF5 data directory"
     )
     parser.add_argument(
         "--stats_path", type=str,
-        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt",
+        default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
+    )
+    parser.add_argument(
+        "--mask_ratio", type=float, default=0.75,
+        help="Fraction of patches to mask (spectrogram_mae only)"
     )
     parser.add_argument(
         "--d_model", type=int, default=512, help="Model dimension"
@@ -136,7 +169,12 @@ def main():
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
     ### Model Setup ###
-    model = build_model(model_name, n_channels, args.d_model, args.n_tokens).to(device)
+    extra_kwargs = {}
+    if model_name == "spectrogram_mae":
+        extra_kwargs["mask_ratio"] = args.mask_ratio
+    model = build_model(
+        model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
+    ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -169,14 +207,14 @@ def main():
 
     ### Training ###
     drawer = DefaultDrawer(num_plots=args.num_plots)
-    trainer = UnimodalTrainer(
+    TrainerClass = MAEUnimodalTrainer if model_name == "spectrogram_mae" else UnimodalTrainer
+    trainer = TrainerClass(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
-        # lr_scheduler=lr_scheduler,
+        # scheduler=lr_scheduler,
         loss_fn=loss_fn,
-        device=device,
         drawer=drawer,
         log_interval=args.log_interval,
     )
@@ -185,7 +223,7 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.train(dataloader, modality_key=signal_name)
+    trainer.fit(dataloader, modality_key=signal_name)
 
 
 if __name__ == "__main__":

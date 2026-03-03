@@ -41,6 +41,16 @@ MODEL_TEST_CONFIGS = [
         (4, 64, 64),  # (channels, freq, time)
     ),
     (
+        "spectrogram_tf_attn",
+        {"n_channels": 4, "hidden_dim": 32, "latent_dim": 2, "freq_dim": 8},
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    (
+        "spectrogram_mae",
+        {"n_channels": 4, "d_model": 32, "n_tokens": 0, "patch_h": 4, "patch_w": 4},
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
         (10, 32, 32),  # (time, height, width)

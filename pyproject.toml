@@ -22,10 +22,10 @@ dependencies = [
   "torchinfo>=1.8.0,<2",
   "torchvision",
   "transformers>=5.1.0,<6",
-  "transformers>=5.1.0,<6",
   "wandb",
   "hydra-core",
   "tensorboard",
+  "pytest>=9.0.2,<10",
 ]
 dynamic = ["version"]
 

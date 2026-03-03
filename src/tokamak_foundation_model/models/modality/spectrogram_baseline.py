@@ -174,6 +174,10 @@ class SpectrogramBaselineAutoEncoder(nn.Module):
         return reconstructed, latent
 
 
+# Alias kept for backwards compatibility with older checkpoints/configs.
+SpectrogramResLSTMAutoEncoder = SpectrogramBaselineAutoEncoder
+
+
 def _run_test(label, n_channels, freq, time, device, **kwargs):
     print(f"=== {label} (n_channels={n_channels}) ===")
     autoencoder = SpectrogramBaselineAutoEncoder(n_channels, **kwargs)

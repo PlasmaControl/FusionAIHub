@@ -20,9 +20,11 @@ from .profile_baseline import (
 )
 from .spectrogram_baseline import (
     SpectrogramBaselineAutoEncoder,
+    SpectrogramResLSTMAutoEncoder,
     SpectrogramTransformerEncoder,
     SpectrogramTransformerDecoder,
 )
+from .spectrogram_mae import SpectrogramMAEAutoEncoder
 from .spectrogram_tf_only import SpectrogramTFOnlyAutoEncoder
 from .spectrogram_tf_attn import SpectrogramTFAttnAutoEncoder
 from .video_baseline import (
@@ -49,8 +51,11 @@ __all__ = [
     "SpatialProfileBaselineAutoEncoder",
     
     "SpectrogramBaselineAutoEncoder",
+    "SpectrogramResLSTMAutoEncoder",
     "SpectrogramTransformerEncoder",
     "SpectrogramTransformerDecoder",
+
+    "SpectrogramMAEAutoEncoder",
 
     "SpectrogramTFOnlyAutoEncoder",
     "SpectrogramTFAttnAutoEncoder",
