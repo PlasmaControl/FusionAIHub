@@ -129,6 +129,14 @@ def main():
         "--resume", action="store_true", default=False,
         help="Resume training from checkpoint"
     )
+    parser.add_argument(
+        "--shot_min", type=int, default=None,
+        help="Inclusive lower bound on shot number (filters HDF5 files by name)"
+    )
+    parser.add_argument(
+        "--shot_max", type=int, default=None,
+        help="Inclusive upper bound on shot number (filters HDF5 files by name)"
+    )
     args = parser.parse_args()
 
     ### Paths ###
@@ -145,7 +153,21 @@ def main():
 
     ### Dataset Setup ###
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
-    hdf5_files = hdf5_files[:1]
+
+    if args.shot_min is not None or args.shot_max is not None:
+        lo = args.shot_min if args.shot_min is not None else 0
+        hi = args.shot_max if args.shot_max is not None else float("inf")
+
+        def _shot_num(p: Path):
+            try:
+                return int(p.stem.split("_")[0])
+            except ValueError:
+                return None
+
+        hdf5_files = [f for f in hdf5_files if (n := _shot_num(f)) is not None and lo <= n <= hi]
+        logger.info(f"Shot filter [{lo}, {hi}]: {len(hdf5_files)} files retained")
+
+    logger.info(f"Found {len(hdf5_files)} shot files")
     stats = torch.load(statistics_path)
 
     datasets_processed = [
@@ -200,13 +222,13 @@ def main():
         worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
-        prefetch_factor=0,
+        prefetch_factor=2,
         pin_memory=False,
         shuffle=True,
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots)
+    drawer = DefaultDrawer()
     TrainerClass = MAEUnimodalTrainer if model_name == "spectrogram_mae" else UnimodalTrainer
     trainer = TrainerClass(
         epochs=args.epochs,

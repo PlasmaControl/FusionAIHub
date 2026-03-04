@@ -18,7 +18,9 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --signal co2 \
     --model spectrogram_mae \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
-    --stats_path /scratch/gpfs/EKOLEMEN/foundation_model/preprocessing_stats.pt \
+    --stats_path data/preprocessing_stats.pt \
+    --shot_min 200000 \
+    --shot_max 200500 \
     --mask_ratio 0.75 \
     --d_model 256 \
     --n_tokens 0 \
