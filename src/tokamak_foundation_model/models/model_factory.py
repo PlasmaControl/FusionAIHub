@@ -8,7 +8,6 @@ from tokamak_foundation_model.models.modality import (
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
     SpectrogramTFAttnAutoEncoder,
-    SpectrogramResLSTMAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 

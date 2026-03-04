@@ -291,8 +291,7 @@ class WelfordTensor:
 def compute_preprocessing_stats(
         datasets: "list[TokamakH5Dataset]",
         output_path: str | Path = "preprocessing_stats.pt",
-        batch_size: int = 32,
-        num_workers: int = 1,
+        batch_size: int = 1,
 ) -> dict[str, dict[str, np.ndarray]]:
     """
     Compute per-modality preprocessing statistics over a collection of
@@ -312,9 +311,7 @@ def compute_preprocessing_stats(
         Filesystem path for the saved ``.pt`` statistics file.
         Default is ``"preprocessing_stats.pt"``.
     batch_size : int, optional
-        Batch size for the internal DataLoader.  Default is ``32``.
-    num_workers : int, optional
-        Number of DataLoader worker processes.  Default is ``1``.
+        Batch size for the internal DataLoader.  Default is ``1``.
 
     Returns
     -------
@@ -331,13 +328,7 @@ def compute_preprocessing_stats(
         ``'max_val'``
             Per-channel maximum, shape ``(C,)``.
     """
-    from torch.utils.data import ConcatDataset
     from tqdm import tqdm
-
-    combined = ConcatDataset(datasets)
-    dataloader = DataLoader(
-        combined, batch_size=batch_size, collate_fn=collate_fn,
-        num_workers=num_workers)
 
     # Use instance-level configs (deep copies that may have been modified).
     signal_configs = datasets[0].signal_configs
@@ -347,16 +338,28 @@ def compute_preprocessing_stats(
         cfg.name: WelfordTensor()
         for cfg in signal_configs + movie_configs}
 
-    for batch in tqdm(dataloader):
-        for modality_name, tensor in batch.items():
-            if modality_name not in welford_stats:
-                continue
-            # Movies arrive as (B, C, T, H, W); flatten spatial/temporal dims
-            # to (B, C, T*H*W) so WelfordTensor computes per-channel stats.
-            if tensor.ndim == 5:
-                B, C, T, H, W = tensor.shape
-                tensor = tensor.reshape(B, C, T * H * W)
-            welford_stats[modality_name].update(tensor)
+    # Iterate one dataset at a time and close each file handle after use.
+    # Using ConcatDataset + persistent_workers causes all HDF5 file handles
+    # (each with a 16 MB chunk cache) to accumulate in the worker process,
+    # exhausting memory after ~1000 files.
+    for dataset in tqdm(datasets, desc="Files"):
+        dataloader = DataLoader(
+            dataset, batch_size=batch_size, collate_fn=collate_fn,
+            num_workers=0)
+        for batch in dataloader:
+            for modality_name, tensor in batch.items():
+                if modality_name not in welford_stats:
+                    continue
+                # Movies arrive as (B, C, T, H, W); flatten spatial/temporal dims
+                # to (B, C, T*H*W) so WelfordTensor computes per-channel stats.
+                if tensor.ndim == 5:
+                    B, C, T, H, W = tensor.shape
+                    tensor = tensor.reshape(B, C, T * H * W)
+                welford_stats[modality_name].update(tensor)
+        # Explicitly close the HDF5 file handle to free memory before next file.
+        if dataset.h5_file is not None:
+            dataset.h5_file.close()
+            dataset.h5_file = None
 
     # Only include trackers that received data
     final_stats = {
@@ -596,10 +599,6 @@ class TokamakH5Dataset(Dataset):
     duration : float
         Total shot duration from t = 0 in seconds, as inferred from the
         HDF5 time axes.
-    t0_indices : dict
-        Mapping ``{modality_name: {'index': int, 'time_s': float}}``
-        giving the HDF5 array index and exact timestamp (seconds) of
-        t = 0 for each modality.
     length : int
         Number of non-overlapping chunks available (i.e. ``__len__``).
     n_freq_bins : int
@@ -862,12 +861,12 @@ class TokamakH5Dataset(Dataset):
     ]
 
     MOVIE_CONFIGS = [
-        MovieConfig("irtv", ["irtv"], 6, 50, 513, 640),
+        MovieConfig("irtv", ["irtv"], 7, 50, 513, 640),
         MovieConfig("tangtv", ["tangtv"], 7, 50, 240, 720),
     ]
 
     VALUE_CONFIG = ValueConfig(
-        rdcc_nbytes=1024**2 * 256,  # 256 MB chunk cache
+        rdcc_nbytes=1024**2 * 16,  # 16 MB chunk cache
         rdcc_nslots=10000,  # Number of chunk slots
         ms_to_s=1/1000,  # Conversion factor from milliseconds to seconds
     )
@@ -912,8 +911,7 @@ class TokamakH5Dataset(Dataset):
         self.h5_file = None
         try:
             with h5py.File(self.hdf5_path, "r") as f:
-                self.duration, self.t0_indices = \
-                    self._compute_duration_and_t0_indices(f, max_duration_s)
+                self.duration = self._compute_duration(f, max_duration_s)
         except OSError as e:
             print(self.hdf5_path)
             raise e
@@ -930,65 +928,17 @@ class TokamakH5Dataset(Dataset):
         self.n_freq_bins = n_fft // 2 + 1
         self.stft_window = torch.hann_window(n_fft)
 
-    def _find_t0_index(self, xdata_ms: np.ndarray) -> tuple[int, float]:
-        """
-        Find the index and exact time of t=0 in xdata.
-
-        Parameters
-        ----------
-        xdata_ms : np.ndarray
-            Array of timestamps in milliseconds, assumed sorted ascending.
-
-        Returns
-        -------
-        index : int
-            Index closest to t=0, or ``-1`` if all data is before t=0.
-        actual_time_ms : float
-            The actual timestamp at that index, in milliseconds.
-        """
-        if len(xdata_ms) == 0:
-            return -1, 0.0
-
-        if len(xdata_ms) == 1:
-            # Single sample - use it if >= 0, else -1
-            if xdata_ms[0] >= 0:
-                return 0, xdata_ms[0]
-            else:
-                return -1, xdata_ms[0]
-
-        # All data before t=0
-        if xdata_ms[-1] < 0:
-            return -1, xdata_ms[-1]
-
-        # All data after t=0 (first sample is already past t=0)
-        if xdata_ms[0] > 0:
-            return 0, xdata_ms[0]
-
-        # t=0 is within range - find nearest index using binary search
-        idx = np.searchsorted(xdata_ms, 0)
-
-        # searchsorted returns insertion point
-        # Check if previous index is closer to 0
-        if idx > 0 and idx < len(xdata_ms):
-            if abs(xdata_ms[idx - 1]) < abs(xdata_ms[idx]):
-                idx = idx - 1
-        elif idx >= len(xdata_ms):
-            idx = len(xdata_ms) - 1
-
-        return idx, xdata_ms[idx]
-
-    def _compute_duration_and_t0_indices(
+    def _compute_duration(
             self,
             f: h5py.File,
             max_duration_s: float | None = None,
-    ) -> tuple[float, dict]:
+    ) -> float:
         """
-        Compute shot duration from t=0 and locate the t=0 index per signal.
+        Compute shot duration from t=0.
 
         Iterates over all signal and movie configurations, reads the
-        ``xdata`` timestamps from the HDF5 file, finds the first sample at
-        or after t=0, and accumulates the maximum duration across all
-        available diagnostics.
+        ``xdata`` timestamps from the HDF5 file, and accumulates the
+        maximum duration across all available diagnostics.
 
         Parameters
         ----------
@@ -1000,14 +950,8 @@ class TokamakH5Dataset(Dataset):
         max_duration : float
             Duration in seconds from t=0 to the last sample, across all
             signals and movies.  Guaranteed to be at least 1.0 s.
-        t0_indices : dict[str, dict[str, int | float]]
-            Mapping from signal/movie name to a dict with keys:
-
-            - ``'index'``: first HDF5 sample index where ``xdata >= 0``.
-            - ``'time_s'``: actual timestamp at that index, in seconds.
         """
         max_duration = 0.0
-        t0_indices = {}
 
         # Process signals
         for config in self.signal_configs:
@@ -1022,19 +966,6 @@ class TokamakH5Dataset(Dataset):
 
                     if len(xdata_ms) < 2:
                         continue
-
-                    # Find first index where t >= 0
-                    t0_idx = np.searchsorted(xdata_ms, 0, side="left")
-
-                    # If all data is before t=0, skip
-                    if t0_idx >= len(xdata_ms):
-                        continue
-
-                    # Store both index and actual time at that index
-                    t0_indices[config.name] = {
-                        "index": int(t0_idx),
-                        "time_s": float(xdata_ms[t0_idx]) / 1000.0,
-                    }
 
                     # Duration from t=0 to end
                     duration_s = (xdata_ms[-1] - 0.0) / 1000.0
@@ -1061,16 +992,6 @@ class TokamakH5Dataset(Dataset):
                     if len(xdata_ms) < 2:
                         continue
 
-                    t0_idx = np.searchsorted(xdata_ms, 0, side="left")
-
-                    if t0_idx >= len(xdata_ms):
-                        continue
-
-                    t0_indices[movie_config.name] = {
-                        "index": int(t0_idx),
-                        "time_s": float(xdata_ms[t0_idx]) / 1000.0,
-                    }
-
                     duration_s = (xdata_ms[-1] - 0.0) / 1000.0
                     max_duration = max(
                         max_duration, min(max_duration_s, duration_s)
@@ -1081,7 +1002,7 @@ class TokamakH5Dataset(Dataset):
                 except (KeyError, ValueError):
                     continue
 
-        return max(max_duration, 1.0), t0_indices
+        return max(max_duration, 1.0)
 
     def _update_preprocessing_stats(self):
         """

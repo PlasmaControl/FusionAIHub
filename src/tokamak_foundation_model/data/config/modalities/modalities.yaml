@@ -4,7 +4,7 @@
 input_data_path: /scratch/gpfs/EKOLEMEN/big_d3d_data/d3d_time_series_data
 output_data_path: /scratch/gpfs/EKOLEMEN/foundation_model
 
-num_workers: 1
+num_workers: 32
 
 signals:
   filterscopes:

@@ -400,8 +400,9 @@ def resample_signal_groups(loaded_data: dict[str, dict]) -> dict[str, dict]:
 
         # Handle stacked array (channels x time) - all share same time axis
         # Standard 1D signals usually come in as (channels, time)
-        # But we need to be careful not to catch video data here if it happens to match criteria
-        # checking ndim=2 helps distinguish 1D signals from 3D video tensors
+        # But we need to be careful not to catch video data here if it happens
+        # to match criteria checking ndim=2 helps distinguish 1D signals from
+        # 3D video tensors
         if isinstance(data, np.ndarray) and time.ndim == 1 and data.ndim == 2:
             if time.size == 0:
                 print(f"  Skipping - no time axis")
@@ -419,9 +420,10 @@ def resample_signal_groups(loaded_data: dict[str, dict]) -> dict[str, dict]:
                 data_list = list(data)
             else:
                 # For 3D+ data, it's likely (Channels, ...)
-                # or if it's a single video volume, maybe it shouldn't be split yet?
+                # or if it's a single video volume, maybe it shouldn't be split
+                # yet?
                 # But the loop below expects data_list to match num_channels.
-                # If shape is (720, 240, 420), this is ONE signal (one channel).
+                # If shape is (W, H, T), this is ONE signal (one channel).
                 # If data is a list, it's a list of signals.
                 data_list = [data[i] for i in range(data.shape[0])]
         else:
@@ -453,8 +455,9 @@ def resample_signal_groups(loaded_data: dict[str, dict]) -> dict[str, dict]:
         common_time = t_min + np.arange(n_samples) * dt
 
         print(f"  Global time range: {t_min:.3f} to {t_max:.3f} s")
-        print(f"  Common time grid: {len(common_time)} samples @ {target_freq} Hz")
-        common_time = common_time * 1000  # Convert back to ms for interpolation
+        print(f"  Common time grid: {len(common_time)} samples "
+              f"@ {target_freq} Hz")
+        common_time = common_time * 1000  # Back to ms for interpolation
 
         # Step 3: Determine Spatial Shape and Prepare Output Array
         spatial_shape = None
