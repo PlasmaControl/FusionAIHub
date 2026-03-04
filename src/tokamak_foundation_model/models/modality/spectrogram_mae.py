@@ -224,24 +224,31 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
                    compute loss only on masked patches.
         Eval     : returns reconstructed — shape (B, C, F, T) matching input.
         """
-        B, C, F, T = x.shape
+        B, C, F_orig, T_orig = x.shape
         ph, pw = self.patch_h, self.patch_w
 
-        # ── 1. Patch embedding ────────────────────────────────────────────
+        # ── 1. Pad to patch-aligned dimensions ────────────────────────────
+        pad_f = (ph - F_orig % ph) % ph
+        pad_t = (pw - T_orig % pw) % pw
+        if pad_f > 0 or pad_t > 0:
+            x = torch.nn.functional.pad(x, (0, pad_t, 0, pad_f))
+        B, C, F, T = x.shape
+
+        # ── 2. Patch embedding ────────────────────────────────────────────
         tokens, (n_h, n_w) = self.encoder.patch_embed(x)  # (B, N, d_model)
         N = tokens.shape[1]
 
-        # ── 2. Encoder positional embeddings (applied to all N positions) ──
+        # ── 3. Encoder positional embeddings (applied to all N positions) ──
         tokens = tokens + self.encoder.pos_embed[:, :N]
 
-        # ── 3. Mask & encode ─────────────────────────────────────────────
+        # ── 4. Mask & encode ─────────────────────────────────────────────
         if self.training:
             tokens_vis, ids_keep, _, mask_bool = self._mask_tokens(tokens)
             tokens_enc = self.encoder.transformer(tokens_vis)  # (B, N_vis, D)
         else:
             tokens_enc = self.encoder.transformer(tokens)      # (B, N, D)
 
-        # ── 4. Restore full sequence (training only) ──────────────────────
+        # ── 5. Restore full sequence (training only) ──────────────────────
         if self.training:
             D = tokens_enc.shape[-1]
             # Fill all slots with mask_token, then overwrite visible positions
@@ -254,25 +261,25 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         else:
             x_full = tokens_enc  # (B, N, D), all visible
 
-        # ── 5. Decoder positional embeddings ──────────────────────────────
+        # ── 6. Decoder positional embeddings ──────────────────────────────
         x_full = x_full + self.decoder_pos_embed[:, :N]
 
-        # ── 6. Decode ─────────────────────────────────────────────────────
+        # ── 7. Decode ─────────────────────────────────────────────────────
         x_dec = self.decoder_layers(x_full)
 
-        # ── 7. Pixel reconstruction ───────────────────────────────────────
+        # ── 8. Pixel reconstruction ───────────────────────────────────────
         reconstructed = self.patch_unembed(x_dec, n_h, n_w)  # (B, C, n_h*ph, n_w*pw)
-        reconstructed = reconstructed[:, :, :F, :T]
+        reconstructed = reconstructed[:, :, :F_orig, :T_orig]
 
         if not self.training:
             return reconstructed
 
-        # ── 8. Upsample token mask → pixel mask ───────────────────────────
+        # ── 9. Upsample token mask → pixel mask ───────────────────────────
         mask_pixel = (
             mask_bool
             .reshape(B, 1, n_h, n_w)
             .repeat_interleave(ph, dim=2)
             .repeat_interleave(pw, dim=3)
-        )[:, :, :F, :T]
+        )[:, :, :F_orig, :T_orig]
 
         return reconstructed, mask_pixel
