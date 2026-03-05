@@ -7,6 +7,15 @@ field leakage). The decoder restores the full token sequence by inserting a
 shared learnable mask_token at masked positions before the lighter decoder
 transformer.
 
+Patch embedding / unembedding
+------------------------------
+Each channel has its own independent linear projection for embedding
+(PerChannelPatchEmbed2d) and its own independent linear head for decoding
+(PerChannelPatchUnembed2d).  The per-channel embeddings are *summed* into a
+single d_model token so the sequence length stays at N = n_h × n_w regardless
+of the number of channels.  This lets the model specialise to channel-specific
+spectral statistics while keeping the transformer architecture unchanged.
+
 Positional encoding
 -------------------
 Uses 2D factored learned embeddings: separate frequency-axis and time-axis
@@ -26,10 +35,78 @@ import torch
 import torch.nn as nn
 
 from tokamak_foundation_model.models.modality.base import ModalityAutoEncoder
-from tokamak_foundation_model.models.modality.spectrogram_baseline import (
-    PatchEmbed2d,
-    PatchUnembed2d,
-)
+
+
+# ---------------------------------------------------------------------------
+# Per-channel patch embed / unembed
+# ---------------------------------------------------------------------------
+
+class PerChannelPatchEmbed2d(nn.Module):
+    """Patch embedding with independent linear projections per channel.
+
+    Each channel is projected separately from ``patch_h × patch_w`` to
+    ``d_model`` and the results are *summed*, yielding one token per patch.
+    This gives every channel its own kernel while keeping sequence length
+    at N = n_h × n_w.
+
+    Returns ``(tokens, (n_h, n_w))`` — same interface as ``PatchEmbed2d``.
+    """
+
+    def __init__(
+        self, n_channels: int, d_model: int, patch_h: int, patch_w: int
+    ) -> None:
+        super().__init__()
+        self.patch_h = patch_h
+        self.patch_w = patch_w
+        self.n_channels = n_channels
+        self.projs = nn.ModuleList(
+            [nn.Linear(patch_h * patch_w, d_model) for _ in range(n_channels)]
+        )
+
+    def forward(self, x: torch.Tensor):
+        B, C, Fr, T = x.shape
+        ph, pw = self.patch_h, self.patch_w
+        n_h, n_w = Fr // ph, T // pw
+        # (B, C, n_h, ph, n_w, pw) → (B, N, C, ph*pw)
+        patches = (
+            x.reshape(B, C, n_h, ph, n_w, pw)
+            .permute(0, 2, 4, 1, 3, 5)
+            .reshape(B, n_h * n_w, C, ph * pw)
+        )
+        # Sum per-channel projections → (B, N, d_model)
+        tokens = sum(self.projs[c](patches[:, :, c]) for c in range(C))
+        return tokens, (n_h, n_w)
+
+
+class PerChannelPatchUnembed2d(nn.Module):
+    """Patch unembedding with independent linear decode heads per channel.
+
+    Applies a separate ``d_model → patch_h × patch_w`` projection for each
+    channel, then assembles the results into a ``(B, C, Fr, T)`` tensor.
+    """
+
+    def __init__(
+        self, n_channels: int, d_model: int, patch_h: int, patch_w: int
+    ) -> None:
+        super().__init__()
+        self.patch_h = patch_h
+        self.patch_w = patch_w
+        self.n_channels = n_channels
+        self.heads = nn.ModuleList(
+            [nn.Linear(d_model, patch_h * patch_w) for _ in range(n_channels)]
+        )
+
+    def forward(self, x: torch.Tensor, n_h: int, n_w: int) -> torch.Tensor:
+        B = x.shape[0]
+        ph, pw = self.patch_h, self.patch_w
+        # (B, N, C, ph*pw) → (B, C, n_h*ph, n_w*pw)
+        per_ch = torch.stack([h(x) for h in self.heads], dim=2)
+        return (
+            per_ch
+            .reshape(B, n_h, n_w, self.n_channels, ph, pw)
+            .permute(0, 3, 1, 4, 2, 5)
+            .reshape(B, self.n_channels, n_h * ph, n_w * pw)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -47,11 +124,9 @@ def _build_2d_pos_embed(
     Returns
     -------
     Tensor of shape (1, n_h * n_w, d_model) in raster (row-major) order
-    matching the patch layout produced by PatchEmbed2d.
+    matching the patch layout produced by PerChannelPatchEmbed2d.
     """
-    # (1, n_h, 1, d//2) broadcast over time → (1, n_h, n_w, d//2)
     freq = freq_embed[:, :n_h].unsqueeze(2).expand(-1, -1, n_w, -1)
-    # (1, 1, n_w, d//2) broadcast over freq → (1, n_h, n_w, d//2)
     time = time_embed[:, :n_w].unsqueeze(1).expand(-1, n_h, -1, -1)
     return torch.cat([freq, time], dim=-1).reshape(1, n_h * n_w, -1)
 
@@ -61,7 +136,7 @@ def _build_2d_pos_embed(
 # ---------------------------------------------------------------------------
 
 class _ViTEncoder(nn.Module):
-    """ViT encoder with 2D factored positional embeddings.
+    """ViT encoder with per-channel patch embedding and 2D factored pos embeds.
 
     Processes all patch tokens without masking; used as
     ``SpectrogramMAEAutoEncoder.encoder`` so that ``model.encoder(x)``
@@ -89,7 +164,7 @@ class _ViTEncoder(nn.Module):
         max_time_patches: int,
     ) -> None:
         super().__init__()
-        self.patch_embed = PatchEmbed2d(n_channels, d_model, patch_h, patch_w)
+        self.patch_embed = PerChannelPatchEmbed2d(n_channels, d_model, patch_h, patch_w)
 
         # Factored 2D positional embeddings (concatenated along d_model)
         self.freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))
@@ -134,6 +209,10 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
     neighbourhood so masked patches cannot leak positional information through
     a CNN receptive field.  A single learnable ``mask_token`` vector fills
     masked positions before the lightweight decoder transformer.
+
+    Each channel has independent patch embedding kernels and an independent
+    decode head, allowing the model to specialise to per-channel spectral
+    statistics.
 
     Positional embeddings are 2D factored (freq ⊕ time, concatenated) so
     the model receives an unambiguous signal for each spatial axis.
@@ -226,8 +305,8 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
             norm=nn.LayerNorm(d_model),
         )
 
-        # Maps decoded tokens back to pixel patches
-        self.patch_unembed = PatchUnembed2d(n_channels, d_model, patch_h, patch_w)
+        # Per-channel decode heads
+        self.patch_unembed = PerChannelPatchUnembed2d(n_channels, d_model, patch_h, patch_w)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -254,18 +333,15 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         B, N, D = tokens.shape
         N_vis = max(1, int(N * (1 - self.mask_ratio)))
 
-        # Per-sample random shuffle; first N_vis positions are "visible"
         noise = torch.rand(B, N, device=tokens.device)
-        ids_shuffle = noise.argsort(dim=1)        # (B, N)
-        ids_restore = ids_shuffle.argsort(dim=1)  # (B, N), inverse permutation
-        ids_keep = ids_shuffle[:, :N_vis]          # (B, N_vis)
+        ids_shuffle = noise.argsort(dim=1)
+        ids_restore = ids_shuffle.argsort(dim=1)
+        ids_keep = ids_shuffle[:, :N_vis]
 
-        # Gather visible tokens from original order
         tokens_visible = tokens.gather(
             1, ids_keep.unsqueeze(-1).expand(-1, -1, D)
-        )  # (B, N_vis, D)
+        )
 
-        # Boolean mask in original order: True = masked
         mask_bool = torch.ones(B, N, dtype=torch.bool, device=tokens.device)
         mask_bool.scatter_(1, ids_keep, False)
 
@@ -294,7 +370,7 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
             x = torch.nn.functional.pad(x, (0, pad_t, 0, pad_f))
         B, C, F, T = x.shape
 
-        # ── 2. Patch embedding ────────────────────────────────────────────
+        # ── 2. Per-channel patch embedding ────────────────────────────────
         tokens, (n_h, n_w) = self.encoder.patch_embed(x)  # (B, N, d_model)
 
         # ── 3. 2D encoder positional embeddings ───────────────────────────
@@ -310,15 +386,14 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         # ── 5. Restore full sequence (training only) ──────────────────────
         if self.training:
             D = tokens_enc.shape[-1]
-            # Fill all slots with mask_token, then overwrite visible positions
             x_full = self.mask_token.expand(B, tokens.shape[1], D).clone()
             x_full.scatter_(
                 1,
                 ids_keep.unsqueeze(-1).expand(-1, -1, D),
                 tokens_enc,
-            )  # (B, N, D)
+            )
         else:
-            x_full = tokens_enc  # (B, N, D), all visible
+            x_full = tokens_enc
 
         # ── 6. 2D decoder positional embeddings ───────────────────────────
         x_full = x_full + _build_2d_pos_embed(
@@ -328,7 +403,7 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         # ── 7. Decode ─────────────────────────────────────────────────────
         x_dec = self.decoder_layers(x_full)
 
-        # ── 8. Pixel reconstruction ───────────────────────────────────────
+        # ── 8. Per-channel pixel reconstruction ───────────────────────────
         reconstructed = self.patch_unembed(x_dec, n_h, n_w)  # (B, C, n_h*ph, n_w*pw)
         reconstructed = reconstructed[:, :, :F_orig, :T_orig]
 
