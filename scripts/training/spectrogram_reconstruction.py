@@ -235,7 +235,7 @@ def main():
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
-        # scheduler=lr_scheduler,
+        scheduler=lr_scheduler,
         loss_fn=loss_fn,
         drawer=drawer,
         log_interval=args.log_interval,
