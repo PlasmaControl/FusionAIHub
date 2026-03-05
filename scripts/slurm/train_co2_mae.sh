@@ -21,16 +21,16 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --stats_path data/preprocessing_stats.pt \
     --shot_min 200000 \
     --shot_max 200500 \
-    --mask_ratio 0.75 \
+    --mask_ratio 0.5 \
     --d_model 256 \
     --n_tokens 0 \
     --batch_size 16 \
     --num_workers 4 \
     --epochs 500 \
-    --lr 1e-3 \
+    --lr 3e-4 \
     --weight_decay 1e-4 \
     --warmup_epochs 10 \
-    --min_lr 1e-5 \
+    --min_lr 1e-6 \
     --n_fft 256 \
     --hop_length 128 \
     --log_interval 5 \
