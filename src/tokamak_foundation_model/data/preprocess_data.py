@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from pathlib import Path
 from typing import Optional
-from torch.utils.data import DataLoader, SubsetRandomSampler, SequentialSampler
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from .multi_file_dataset import TokamakMultiFileDataset
 from .data_loader import collate_fn, collate_fn_prediction
 
@@ -356,7 +356,7 @@ def compute_preprocessing_stats(
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        sampler=SequentialSampler(indices),
+        sampler=SubsetRandomSampler(indices),
         num_workers=num_workers,
         collate_fn=collate,
         pin_memory=False,

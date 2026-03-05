@@ -1,10 +1,11 @@
 from pathlib import Path
-from tokamak_foundation_model.data.data_loader import (
-    TokamakH5Dataset, compute_preprocessing_stats)
+from tokamak_foundation_model.data.multi_file_dataset import TokamakMultiFileDataset
+from tokamak_foundation_model.data.preprocess_data import compute_preprocessing_stats
+
 
 def main():
     hdf5_files = sorted(
-        Path("/scratch/gpfs/EKOLEMEN/foundation_model/").glob("*_processed.h5")
+        Path("/scratch/gpfs/EKOLEMEN/foundation_model/").glob("20000*_processed.h5")
     )
 
     all_input_signals = [
@@ -22,15 +23,16 @@ def main():
         # "text",  # metadata
     ]
 
-    datasets = [
-        TokamakH5Dataset(
-            hdf5_path=str(f),
-            input_signals=all_input_signals,
-            target_signals=all_input_signals,
-            max_duration_s=10.,
-        ) for f in hdf5_files]
+    dataset = TokamakMultiFileDataset(
+        hdf5_paths=hdf5_files,
+        input_signals=all_input_signals,
+        target_signals=all_input_signals,
+        lengths_cache_path="dataset_lengths.pt",
+        max_open_files=8,
+        max_duration_s=10.,
+    )
 
-    compute_preprocessing_stats(datasets, 'preprocessing_stats.pt')
+    compute_preprocessing_stats(dataset, 'preprocessing_stats_tmp.pt')
 
 
 if __name__ == "__main__":

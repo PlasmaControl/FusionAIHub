@@ -591,7 +591,7 @@ def write_resampled_data(
                 if data.size == 0 or time.size == 0:
                     # Create minimal time axis (single point)
                     time_out = np.array([0.0])
-                    data_out = np.full((num_channels, 1), np.nan, dtype='f8')
+                    data_out = np.full((num_channels, 1), np.nan, dtype='f4')
                     print(f"  ! {group_name}: "
                           f"No data, writing NaN array {data_out.shape}")
                 else:
@@ -604,7 +604,7 @@ def write_resampled_data(
                         nan_channels = np.full(
                             (missing_channels, data.shape[1]),
                             np.nan,
-                            dtype='f8')
+                            dtype='f4')
                         data_out = np.vstack([data, nan_channels])
                         print(f"  ! {group_name}: "
                               f"Padded {missing_channels} NaN channels")
@@ -616,8 +616,8 @@ def write_resampled_data(
                     else:
                         data_out = data
 
-                grp.create_dataset('xdata', data=time_out, dtype='f8')
-                grp.create_dataset('ydata', data=data_out, dtype='f8')
+                grp.create_dataset('xdata', data=time_out, dtype='f4')
+                grp.create_dataset('ydata', data=data_out, dtype='f4')
 
                 print(f"    {group_name}: "
                       f"{data_out.shape} @ {len(time_out)} samples")
@@ -635,7 +635,7 @@ def write_resampled_data(
 
                 # Build full data array with NaN padding
                 data_out = np.full(
-                    (num_channels, max_time_len), np.nan, dtype='f8')
+                    (num_channels, max_time_len), np.nan, dtype='f4')
 
                 for i, channel_data in enumerate(data):
                     if i >= num_channels:
@@ -646,8 +646,8 @@ def write_resampled_data(
                         n_samples = min(len(channel_data), max_time_len)
                         data_out[i, :n_samples] = channel_data[:n_samples]
 
-                grp.create_dataset('xdata', data=reference_time, dtype='f8')
-                grp.create_dataset('ydata', data=data_out, dtype='f8')
+                grp.create_dataset('xdata', data=reference_time, dtype='f4')
+                grp.create_dataset('ydata', data=data_out, dtype='f4')
 
                 print(f"    {group_name}: {data_out.shape} "
                       f"@ {len(reference_time)} samples (from list)")
