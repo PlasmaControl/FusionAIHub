@@ -7,6 +7,15 @@ field leakage). The decoder restores the full token sequence by inserting a
 shared learnable mask_token at masked positions before the lighter decoder
 transformer.
 
+Positional encoding
+-------------------
+Uses 2D factored learned embeddings: separate frequency-axis and time-axis
+embedding tables, each of dimension d_model//2, concatenated to form the full
+d_model position vector for each patch.  This gives the model an explicit
+signal for both axes (critical for spectrograms where the frequency axis is
+typically far shorter than the time axis) and avoids the entanglement that
+summed 1D embeddings produce.  d_model must therefore be even.
+
 Return contract
 ---------------
 Training  : (reconstructed, mask_pixel) — mask_pixel is BoolTensor (B,1,F,T)
@@ -23,22 +32,48 @@ from tokamak_foundation_model.models.modality.spectrogram_baseline import (
 )
 
 
-class _ViTEncoder(nn.Module):
-    """ViT encoder that processes all patch tokens without masking.
+# ---------------------------------------------------------------------------
+# Positional embedding helpers
+# ---------------------------------------------------------------------------
 
-    Used as ``SpectrogramMAEAutoEncoder.encoder`` so that
-    ``model.encoder(x)`` returns a finite token sequence for shape tests.
+def _build_2d_pos_embed(
+    freq_embed: torch.Tensor,   # (1, max_F, d_model//2)
+    time_embed: torch.Tensor,   # (1, max_T, d_model//2)
+    n_h: int,
+    n_w: int,
+) -> torch.Tensor:
+    """Concatenate factored freq/time embeddings into a full 2D pos embedding.
+
+    Returns
+    -------
+    Tensor of shape (1, n_h * n_w, d_model) in raster (row-major) order
+    matching the patch layout produced by PatchEmbed2d.
+    """
+    # (1, n_h, 1, d//2) broadcast over time → (1, n_h, n_w, d//2)
+    freq = freq_embed[:, :n_h].unsqueeze(2).expand(-1, -1, n_w, -1)
+    # (1, 1, n_w, d//2) broadcast over freq → (1, n_h, n_w, d//2)
+    time = time_embed[:, :n_w].unsqueeze(1).expand(-1, n_h, -1, -1)
+    return torch.cat([freq, time], dim=-1).reshape(1, n_h * n_w, -1)
+
+
+# ---------------------------------------------------------------------------
+# Encoder
+# ---------------------------------------------------------------------------
+
+class _ViTEncoder(nn.Module):
+    """ViT encoder with 2D factored positional embeddings.
+
+    Processes all patch tokens without masking; used as
+    ``SpectrogramMAEAutoEncoder.encoder`` so that ``model.encoder(x)``
+    returns a finite token sequence for shape / finiteness tests.
 
     Parameters
     ----------
-    n_channels : int
-    d_model : int
-    patch_h, patch_w : int
-    n_heads : int
-    n_layers : int
-    dropout : float
-    max_patches : int
-        Upper bound on number of patches; sets positional embedding size.
+    n_channels, d_model, patch_h, patch_w, n_heads, n_layers, dropout : —
+    max_freq_patches : int
+        Capacity of the frequency-axis embedding table.
+    max_time_patches : int
+        Capacity of the time-axis embedding table.
     """
 
     def __init__(
@@ -50,12 +85,17 @@ class _ViTEncoder(nn.Module):
         n_heads: int,
         n_layers: int,
         dropout: float,
-        max_patches: int,
+        max_freq_patches: int,
+        max_time_patches: int,
     ) -> None:
         super().__init__()
         self.patch_embed = PatchEmbed2d(n_channels, d_model, patch_h, patch_w)
-        self.pos_embed = nn.Parameter(torch.zeros(1, max_patches, d_model))
-        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
+        # Factored 2D positional embeddings (concatenated along d_model)
+        self.freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))
+        self.time_embed = nn.Parameter(torch.zeros(1, max_time_patches, d_model // 2))
+        nn.init.trunc_normal_(self.freq_embed, std=0.02)
+        nn.init.trunc_normal_(self.time_embed, std=0.02)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -72,32 +112,43 @@ class _ViTEncoder(nn.Module):
             norm=nn.LayerNorm(d_model),
         )
 
+    def build_pos_embed(self, n_h: int, n_w: int) -> torch.Tensor:
+        """Return (1, n_h*n_w, d_model) positional embedding."""
+        return _build_2d_pos_embed(self.freq_embed, self.time_embed, n_h, n_w)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """(B, C, F, T) → (B, N, d_model), all tokens, no masking."""
         tokens, (n_h, n_w) = self.patch_embed(x)
-        N = tokens.shape[1]
-        tokens = tokens + self.pos_embed[:, :N]
+        tokens = tokens + self.build_pos_embed(n_h, n_w)
         return self.transformer(tokens)
 
+
+# ---------------------------------------------------------------------------
+# Full MAE autoencoder
+# ---------------------------------------------------------------------------
 
 class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
     """ViT-based Masked Autoencoder for multichannel spectrogram signals.
 
     The encoder operates on *visible* tokens only — there is no spatial
     neighbourhood so masked patches cannot leak positional information through
-    a CNN receptive field. A single learnable ``mask_token`` vector fills
+    a CNN receptive field.  A single learnable ``mask_token`` vector fills
     masked positions before the lightweight decoder transformer.
+
+    Positional embeddings are 2D factored (freq ⊕ time, concatenated) so
+    the model receives an unambiguous signal for each spatial axis.
 
     Parameters
     ----------
     n_channels : int
         Number of spectrogram channels (e.g. 4 for CO2, 48 for ECE).
     d_model : int
-        Transformer hidden dimension.
+        Transformer hidden dimension.  Must be even (split equally between
+        freq and time embedding halves).
     n_tokens : int
         Unused; kept for interface compatibility with ModalityAutoEncoder.
     mask_ratio : float
-        Fraction of patches to mask during training (default 0.75).
+        Fraction of patches to mask during training (default 0.5).
     patch_h, patch_w : int
         Patch height and width in pixels (default 16 × 16).
     n_enc_layers : int
@@ -108,8 +159,10 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         Attention heads; must divide d_model (default 4).
     dropout : float
         Dropout rate (default 0.1).
-    max_patches : int
-        Maximum patches; sets positional embedding capacity (default 1024).
+    max_freq_patches : int
+        Capacity of the frequency positional embedding table (default 64).
+    max_time_patches : int
+        Capacity of the time positional embedding table (default 512).
     """
 
     def __init__(
@@ -118,15 +171,19 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         d_model: int = 256,
         n_tokens: int = 0,
         *,
-        mask_ratio: float = 0.75,
+        mask_ratio: float = 0.5,
         patch_h: int = 16,
         patch_w: int = 16,
         n_enc_layers: int = 4,
         n_dec_layers: int = 2,
         n_heads: int = 4,
         dropout: float = 0.1,
-        max_patches: int = 1024,
+        max_freq_patches: int = 64,
+        max_time_patches: int = 512,
     ) -> None:
+        assert d_model % 2 == 0, (
+            f"d_model must be even for 2D concat positional embeddings, got {d_model}"
+        )
         super().__init__(n_channels, d_model, n_tokens)
         self.mask_ratio = mask_ratio
         self.patch_h = patch_h
@@ -141,12 +198,15 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
             n_heads=n_heads,
             n_layers=n_enc_layers,
             dropout=dropout,
-            max_patches=max_patches,
+            max_freq_patches=max_freq_patches,
+            max_time_patches=max_time_patches,
         )
 
-        # Decoder positional embeddings (separate from encoder's)
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, max_patches, d_model))
-        nn.init.trunc_normal_(self.decoder_pos_embed, std=0.02)
+        # Decoder 2D factored positional embeddings (separate from encoder's)
+        self.dec_freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))
+        self.dec_time_embed = nn.Parameter(torch.zeros(1, max_time_patches, d_model // 2))
+        nn.init.trunc_normal_(self.dec_freq_embed, std=0.02)
+        nn.init.trunc_normal_(self.dec_time_embed, std=0.02)
 
         # Learnable fill vector for masked positions (full d_model embedding)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, d_model))
@@ -236,12 +296,11 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
 
         # ── 2. Patch embedding ────────────────────────────────────────────
         tokens, (n_h, n_w) = self.encoder.patch_embed(x)  # (B, N, d_model)
-        N = tokens.shape[1]
 
-        # ── 3. Encoder positional embeddings (applied to all N positions) ──
-        tokens = tokens + self.encoder.pos_embed[:, :N]
+        # ── 3. 2D encoder positional embeddings ───────────────────────────
+        tokens = tokens + self.encoder.build_pos_embed(n_h, n_w)
 
-        # ── 4. Mask & encode ─────────────────────────────────────────────
+        # ── 4. Mask & encode ──────────────────────────────────────────────
         if self.training:
             tokens_vis, ids_keep, _, mask_bool = self._mask_tokens(tokens)
             tokens_enc = self.encoder.transformer(tokens_vis)  # (B, N_vis, D)
@@ -252,7 +311,7 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         if self.training:
             D = tokens_enc.shape[-1]
             # Fill all slots with mask_token, then overwrite visible positions
-            x_full = self.mask_token.expand(B, N, D).clone()
+            x_full = self.mask_token.expand(B, tokens.shape[1], D).clone()
             x_full.scatter_(
                 1,
                 ids_keep.unsqueeze(-1).expand(-1, -1, D),
@@ -261,8 +320,10 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         else:
             x_full = tokens_enc  # (B, N, D), all visible
 
-        # ── 6. Decoder positional embeddings ──────────────────────────────
-        x_full = x_full + self.decoder_pos_embed[:, :N]
+        # ── 6. 2D decoder positional embeddings ───────────────────────────
+        x_full = x_full + _build_2d_pos_embed(
+            self.dec_freq_embed, self.dec_time_embed, n_h, n_w
+        )
 
         # ── 7. Decode ─────────────────────────────────────────────────────
         x_dec = self.decoder_layers(x_full)
