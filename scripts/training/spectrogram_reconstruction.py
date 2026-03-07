@@ -168,7 +168,7 @@ def main():
         logger.info(f"Shot filter [{lo}, {hi}]: {len(hdf5_files)} files retained")
 
     logger.info(f"Found {len(hdf5_files)} shot files")
-    stats = torch.load(statistics_path)
+    stats = torch.load(statistics_path, weights_only=False)
 
     datasets_processed = [
         TokamakH5Dataset(

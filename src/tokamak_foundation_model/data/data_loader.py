@@ -1287,7 +1287,7 @@ class TokamakH5Dataset(Dataset):
 
         n_samples = xdata_ds.shape[0]
 
-        if n_samples < 2 or xdata_end_s == xdata_start_s:
+        if n_samples < 2 or xdata_end_s == xdata_start_s or np.isnan(xdata_start_s) or np.isnan(xdata_end_s):
             return torch.zeros(
                 (round(duration_s * config.target_fs), config.num_channels)
             )
