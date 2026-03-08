@@ -9,12 +9,11 @@ transformer.
 
 Patch embedding / unembedding
 ------------------------------
-Each channel has its own independent linear projection for embedding
-(PerChannelPatchEmbed2d) and its own independent linear head for decoding
-(PerChannelPatchUnembed2d).  The per-channel embeddings are *summed* into a
-single d_model token so the sequence length stays at N = n_h × n_w regardless
-of the number of channels.  This lets the model specialise to channel-specific
-spectral statistics while keeping the transformer architecture unchanged.
+Uses a single flat linear projection (FlatPatchEmbed2d) from C×ph×pw pixels
+to d_model, matching He et al. 2022 exactly.  All channels are concatenated
+into one flat vector per patch before projection, so every token carries full
+cross-channel context without a channel information bottleneck.  The inverse
+(FlatPatchUnembed2d) projects d_model → C×ph×pw and reshapes.
 
 Positional encoding
 -------------------
@@ -38,18 +37,16 @@ from tokamak_foundation_model.models.modality.base import ModalityAutoEncoder
 
 
 # ---------------------------------------------------------------------------
-# Per-channel patch embed / unembed
+# Flat patch embed / unembed (He et al. 2022)
 # ---------------------------------------------------------------------------
 
-class PerChannelPatchEmbed2d(nn.Module):
-    """Patch embedding with independent linear projections per channel.
+class FlatPatchEmbed2d(nn.Module):
+    """Standard He et al. flat patch embed: Linear(C*ph*pw → d_model).
 
-    Each channel is projected separately from ``patch_h × patch_w`` to
-    ``d_model`` and the results are *summed*, yielding one token per patch.
-    This gives every channel its own kernel while keeping sequence length
-    at N = n_h × n_w.
+    Concatenates all channels into one flat vector per patch before a single
+    linear projection, giving each token full cross-channel context.
 
-    Returns ``(tokens, (n_h, n_w))`` — same interface as ``PatchEmbed2d``.
+    Returns ``(tokens, (n_h, n_w))`` — tokens shape (B, n_h*n_w, d_model).
     """
 
     def __init__(
@@ -59,30 +56,25 @@ class PerChannelPatchEmbed2d(nn.Module):
         self.patch_h = patch_h
         self.patch_w = patch_w
         self.n_channels = n_channels
-        self.projs = nn.ModuleList(
-            [nn.Linear(patch_h * patch_w, d_model) for _ in range(n_channels)]
-        )
+        self.proj = nn.Linear(n_channels * patch_h * patch_w, d_model)
 
     def forward(self, x: torch.Tensor):
         B, C, Fr, T = x.shape
         ph, pw = self.patch_h, self.patch_w
         n_h, n_w = Fr // ph, T // pw
-        # (B, C, n_h, ph, n_w, pw) → (B, N, C, ph*pw)
+        # (B, C, n_h, ph, n_w, pw) → (B, n_h, n_w, C, ph, pw) → (B, N, C*ph*pw)
         patches = (
             x.reshape(B, C, n_h, ph, n_w, pw)
             .permute(0, 2, 4, 1, 3, 5)
-            .reshape(B, n_h * n_w, C, ph * pw)
+            .reshape(B, n_h * n_w, C * ph * pw)
         )
-        # Sum per-channel projections → (B, N, d_model)
-        tokens = sum(self.projs[c](patches[:, :, c]) for c in range(C))
-        return tokens, (n_h, n_w)
+        return self.proj(patches), (n_h, n_w)
 
 
-class PerChannelPatchUnembed2d(nn.Module):
-    """Patch unembedding with independent linear decode heads per channel.
+class FlatPatchUnembed2d(nn.Module):
+    """Symmetric flat unembed: Linear(d_model → C*ph*pw), then reshape.
 
-    Applies a separate ``d_model → patch_h × patch_w`` projection for each
-    channel, then assembles the results into a ``(B, C, Fr, T)`` tensor.
+    Inverse of FlatPatchEmbed2d.
     """
 
     def __init__(
@@ -92,20 +84,17 @@ class PerChannelPatchUnembed2d(nn.Module):
         self.patch_h = patch_h
         self.patch_w = patch_w
         self.n_channels = n_channels
-        self.heads = nn.ModuleList(
-            [nn.Linear(d_model, patch_h * patch_w) for _ in range(n_channels)]
-        )
+        self.proj = nn.Linear(d_model, n_channels * patch_h * patch_w)
 
     def forward(self, x: torch.Tensor, n_h: int, n_w: int) -> torch.Tensor:
         B = x.shape[0]
-        ph, pw = self.patch_h, self.patch_w
-        # (B, N, C, ph*pw) → (B, C, n_h*ph, n_w*pw)
-        per_ch = torch.stack([h(x) for h in self.heads], dim=2)
+        C, ph, pw = self.n_channels, self.patch_h, self.patch_w
+        out = self.proj(x)  # (B, N, C*ph*pw)
         return (
-            per_ch
-            .reshape(B, n_h, n_w, self.n_channels, ph, pw)
+            out
+            .reshape(B, n_h, n_w, C, ph, pw)
             .permute(0, 3, 1, 4, 2, 5)
-            .reshape(B, self.n_channels, n_h * ph, n_w * pw)
+            .reshape(B, C, n_h * ph, n_w * pw)
         )
 
 
@@ -136,7 +125,7 @@ def _build_2d_pos_embed(
 # ---------------------------------------------------------------------------
 
 class _ViTEncoder(nn.Module):
-    """ViT encoder with per-channel patch embedding and 2D factored pos embeds.
+    """ViT encoder with flat patch embedding and 2D factored pos embeds.
 
     Processes all patch tokens without masking; used as
     ``SpectrogramMAEAutoEncoder.encoder`` so that ``model.encoder(x)``
@@ -164,7 +153,7 @@ class _ViTEncoder(nn.Module):
         max_time_patches: int,
     ) -> None:
         super().__init__()
-        self.patch_embed = PerChannelPatchEmbed2d(n_channels, d_model, patch_h, patch_w)
+        self.patch_embed = FlatPatchEmbed2d(n_channels, d_model, patch_h, patch_w)
 
         # Factored 2D positional embeddings (concatenated along d_model)
         self.freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))
@@ -210,9 +199,8 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
     a CNN receptive field.  A single learnable ``mask_token`` vector fills
     masked positions before the lightweight decoder transformer.
 
-    Each channel has independent patch embedding kernels and an independent
-    decode head, allowing the model to specialise to per-channel spectral
-    statistics.
+    Patch embedding uses a single flat Linear(C*ph*pw → d_model) following
+    He et al. 2022 exactly, giving each token full cross-channel context.
 
     Positional embeddings are 2D factored (freq ⊕ time, concatenated) so
     the model receives an unambiguous signal for each spatial axis.
@@ -227,13 +215,13 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
     n_tokens : int
         Unused; kept for interface compatibility with ModalityAutoEncoder.
     mask_ratio : float
-        Fraction of patches to mask during training (default 0.5).
+        Fraction of patches to mask during training (default 0.75).
     patch_h, patch_w : int
         Patch height and width in pixels (default 16 × 16).
     n_enc_layers : int
         Transformer layers in the encoder (default 4).
     n_dec_layers : int
-        Transformer layers in the decoder (default 2).
+        Transformer layers in the decoder (default 4).
     n_heads : int
         Attention heads; must divide d_model (default 4).
     dropout : float
@@ -250,11 +238,11 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         d_model: int = 256,
         n_tokens: int = 0,
         *,
-        mask_ratio: float = 0.5,
+        mask_ratio: float = 0.75,
         patch_h: int = 16,
         patch_w: int = 16,
         n_enc_layers: int = 4,
-        n_dec_layers: int = 2,
+        n_dec_layers: int = 4,
         n_heads: int = 4,
         dropout: float = 0.1,
         max_freq_patches: int = 64,
@@ -264,6 +252,7 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
             f"d_model must be even for 2D concat positional embeddings, got {d_model}"
         )
         super().__init__(n_channels, d_model, n_tokens)
+        self.n_channels = n_channels
         self.mask_ratio = mask_ratio
         self.patch_h = patch_h
         self.patch_w = patch_w
@@ -305,8 +294,8 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
             norm=nn.LayerNorm(d_model),
         )
 
-        # Per-channel decode heads
-        self.patch_unembed = PerChannelPatchUnembed2d(n_channels, d_model, patch_h, patch_w)
+        # Flat decode head (symmetric to encoder embed)
+        self.patch_unembed = FlatPatchUnembed2d(n_channels, d_model, patch_h, patch_w)
 
     # ------------------------------------------------------------------
     # Internal helpers

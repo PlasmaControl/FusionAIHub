@@ -19,7 +19,7 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --model spectrogram_mae \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path data/preprocessing_stats.pt \
-    --mask_ratio 0.5 \
+    --mask_ratio 0.75 \
     --d_model 256 \
     --n_tokens 0 \
     --batch_size 16 \
@@ -33,5 +33,4 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --hop_length 128 \
     --log_interval 5 \
     --num_plots 4 \
-    --checkpoint_dir runs/co2_mae \
-    --resume
+    --checkpoint_dir runs/co2_mae
