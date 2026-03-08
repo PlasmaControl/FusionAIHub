@@ -25,6 +25,7 @@ from .spectrogram_baseline import (
     SpectrogramTransformerDecoder,
 )
 from .spectrogram_mae import SpectrogramMAEAutoEncoder
+from .spectrogram_fsq_vae import SpectrogramFSQVAEAutoEncoder
 from .spectrogram_tf_only import SpectrogramTFOnlyAutoEncoder
 from .spectrogram_tf_attn import SpectrogramTFAttnAutoEncoder
 from .video_baseline import (
@@ -56,6 +57,7 @@ __all__ = [
     "SpectrogramTransformerDecoder",
 
     "SpectrogramMAEAutoEncoder",
+    "SpectrogramFSQVAEAutoEncoder",
 
     "SpectrogramTFOnlyAutoEncoder",
     "SpectrogramTFAttnAutoEncoder",

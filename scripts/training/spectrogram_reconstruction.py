@@ -16,11 +16,72 @@ from tokamak_foundation_model.models.model_factory import (
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
+class FSQUnimodalTrainer(UnimodalTrainer):
+    """UnimodalTrainer for SpectrogramFSQVAEAutoEncoder.
+
+    Computes per-patch variance-weighted L1 loss over ALL patches (no masking).
+    Also logs codebook utilisation as ``unique_idx / fsq.n_codes``.
+    """
+
+    def _train_step(self, batch: dict):
+        data = batch[self.modality_key].to(self.dm.device)
+        self.optimizer.zero_grad()
+        output = self.model(data)
+        if isinstance(output, tuple):
+            reconstructed, indices = output
+            B, C, F_orig, T_orig = data.shape
+            ph, pw = self.model.patch_h, self.model.patch_w
+
+            # Pad to patch-aligned dims (mirrors model forward)
+            pad_f = (ph - F_orig % ph) % ph
+            pad_t = (pw - T_orig % pw) % pw
+            data_pad = torch.nn.functional.pad(data, (0, pad_t, 0, pad_f))
+            n_h = data_pad.shape[2] // ph
+            n_w = data_pad.shape[3] // pw
+
+            # Patchify data and reconstruction → (B, N, C*ph*pw)
+            def patchify(t):
+                return (
+                    t.reshape(B, C, n_h, ph, n_w, pw)
+                    .permute(0, 2, 4, 1, 3, 5)
+                    .reshape(B, n_h * n_w, C * ph * pw)
+                )
+
+            data_patches = patchify(data_pad)
+            recon_pad = torch.nn.functional.pad(reconstructed, (0, pad_t, 0, pad_f))
+            recon_patches = patchify(recon_pad)
+
+            # Per-patch L1 weighted by inverse patch std over ALL patches
+            patch_std = data_patches.std(dim=-1).clamp(min=1e-6)  # (B, N)
+            weights = (1.0 / patch_std)
+            weights = weights / weights.mean()
+            patch_l1 = (recon_patches - data_patches).abs().mean(dim=-1)  # (B, N)
+            loss = (patch_l1 * weights).mean()
+
+            # Codebook utilisation metric
+            n_codes = self.model.fsq.n_codes
+            utilisation = indices.unique().numel() / n_codes
+        else:
+            loss = self.loss_fn(output, data)
+            utilisation = None
+
+        loss.backward()
+        self.optimizer.step()
+        metrics = {"loss": loss}
+        if utilisation is not None:
+            metrics["codebook_utilization"] = torch.tensor(utilisation)
+        return metrics
+
+
 class MAEUnimodalTrainer(UnimodalTrainer):
     """UnimodalTrainer variant that computes loss only on masked patches.
 
     When the model returns (reconstructed, mask) — i.e. during training with
-    SpectrogramMAEAutoEncoder — the loss is restricted to masked pixels.
+    SpectrogramMAEAutoEncoder — the loss is restricted to masked patches and
+    weighted by the inverse of each patch's standard deviation.  This prevents
+    the easy low-energy background from dominating the gradient signal and
+    forces the model to learn structure in the high-SNR frequency bands.
+
     Validation inherits the base _validate_step which computes full-image loss
     (the model returns only reconstructed in eval mode), giving a consistent
     reconstruction metric.
@@ -31,13 +92,45 @@ class MAEUnimodalTrainer(UnimodalTrainer):
         self.optimizer.zero_grad()
         output = self.model(data)
         if isinstance(output, tuple):
-            reconstructed, mask = output
-            # Expand mask (B,1,F,T) → (B,C,F,T) to index both tensors
-            mask_expanded = mask.expand_as(reconstructed)
-            loss = self.loss_fn(
-                reconstructed[mask_expanded],
-                data[mask_expanded],
+            reconstructed, mask = output  # mask: (B, 1, F_orig, T_orig)
+            B, C, F_orig, T_orig = data.shape
+            ph, pw = self.model.patch_h, self.model.patch_w
+
+            # Pad to patch-aligned dims (mirrors model forward)
+            pad_f = (ph - F_orig % ph) % ph
+            pad_t = (pw - T_orig % pw) % pw
+            data_pad = torch.nn.functional.pad(data, (0, pad_t, 0, pad_f))
+            n_h = data_pad.shape[2] // ph
+            n_w = data_pad.shape[3] // pw
+
+            # Patchify data → (B, N, C*ph*pw)
+            data_patches = (
+                data_pad.reshape(B, C, n_h, ph, n_w, pw)
+                .permute(0, 2, 4, 1, 3, 5)
+                .reshape(B, n_h * n_w, C * ph * pw)
             )
+            patch_std = data_patches.std(dim=-1).clamp(min=1e-6)  # (B, N)
+
+            # Patch-level mask: pad pixel mask then subsample at patch stride
+            # Valid because each ph×pw block is uniformly True or False
+            mask_pad = torch.nn.functional.pad(mask.float(), (0, pad_t, 0, pad_f))
+            mask_patch = mask_pad[:, 0, ::ph, ::pw].bool().reshape(B, n_h * n_w)
+
+            # Patchify reconstruction (cropped to F_orig,T_orig by model; re-pad)
+            recon_pad = torch.nn.functional.pad(reconstructed, (0, pad_t, 0, pad_f))
+            recon_patches = (
+                recon_pad.reshape(B, C, n_h, ph, n_w, pw)
+                .permute(0, 2, 4, 1, 3, 5)
+                .reshape(B, n_h * n_w, C * ph * pw)
+            )
+
+            # Per-patch L1 weighted by inverse patch std; normalize weights so their
+            # mean over masked patches = 1, keeping loss on the same scale as plain L1
+            patch_l1 = (recon_patches - data_patches).abs().mean(dim=-1)  # (B, N)
+            weights = 1.0 / patch_std  # (B, N)
+            masked_weights = weights[mask_patch]
+            masked_weights = masked_weights / masked_weights.mean()
+            loss = (patch_l1[mask_patch] * masked_weights).mean()
         else:
             loss = self.loss_fn(output, data)
         loss.backward()
@@ -83,6 +176,10 @@ def main():
     parser.add_argument(
         "--mask_ratio", type=float, default=0.75,
         help="Fraction of patches to mask (spectrogram_mae only)"
+    )
+    parser.add_argument(
+        "--fsq_levels", type=int, nargs="+", default=[8, 5, 5, 5, 5],
+        help="FSQ quantization levels per dimension (spectrogram_fsq_vae only)"
     )
     parser.add_argument(
         "--d_model", type=int, default=512, help="Model dimension"
@@ -137,6 +234,10 @@ def main():
         "--shot_max", type=int, default=None,
         help="Inclusive upper bound on shot number (filters HDF5 files by name)"
     )
+    parser.add_argument(
+        "--val_split", type=float, default=0.1,
+        help="Fraction of shots to hold out for validation (split by shot, default 0.1)"
+    )
     args = parser.parse_args()
 
     ### Paths ###
@@ -170,23 +271,30 @@ def main():
     logger.info(f"Found {len(hdf5_files)} shot files")
     stats = torch.load(statistics_path, weights_only=False)
 
-    datasets_processed = [
-        TokamakH5Dataset(
-            hdf5_path=str(f),
-            preprocessing_stats=stats,
-            input_signals=[signal_name],
-            target_signals=[signal_name],
-            n_fft=args.n_fft,
-            hop_length=args.hop_length,
-            prediction_mode=False,
-        )
-        for f in hdf5_files
-    ]
+    # Split at shot level to avoid train/val leakage
+    n_val = max(1, int(len(hdf5_files) * args.val_split))
+    train_files = hdf5_files[:-n_val]
+    val_files   = hdf5_files[-n_val:]
+    logger.info(f"Train shots: {len(train_files)}, Val shots: {len(val_files)}")
 
-    concatenated_dataset = ConcatDataset(datasets_processed)
+    def _make_datasets(files):
+        return [
+            TokamakH5Dataset(
+                hdf5_path=str(f),
+                preprocessing_stats=stats,
+                input_signals=[signal_name],
+                target_signals=[signal_name],
+                n_fft=args.n_fft,
+                hop_length=args.hop_length,
+                prediction_mode=False,
+            )
+            for f in files
+        ]
 
-    # Not sure if this is elegant
-    sample_data = next(iter(concatenated_dataset))[signal_name]
+    train_dataset = ConcatDataset(_make_datasets(train_files))
+    val_dataset   = ConcatDataset(_make_datasets(val_files))
+
+    sample_data = next(iter(train_dataset))[signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
@@ -194,6 +302,8 @@ def main():
     extra_kwargs = {}
     if model_name == "spectrogram_mae":
         extra_kwargs["mask_ratio"] = args.mask_ratio
+    if model_name == "spectrogram_fsq_vae":
+        extra_kwargs["fsq_levels"] = args.fsq_levels
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
     ).to(device)
@@ -215,21 +325,35 @@ def main():
     loss_fn = nn.L1Loss()
     # loss_fn = nn.MSELoss()
 
-    dataloader = DataLoader(
-        concatenated_dataset,
-        batch_size=args.batch_size,
+    dataloader_kwargs = dict(
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
         prefetch_factor=2,
         pin_memory=False,
+    )
+    dataloader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
         shuffle=True,
+        **dataloader_kwargs,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        **dataloader_kwargs,
     )
 
     ### Training ###
     drawer = DefaultDrawer()
-    TrainerClass = MAEUnimodalTrainer if model_name == "spectrogram_mae" else UnimodalTrainer
+    if model_name == "spectrogram_mae":
+        TrainerClass = MAEUnimodalTrainer
+    elif model_name == "spectrogram_fsq_vae":
+        TrainerClass = FSQUnimodalTrainer
+    else:
+        TrainerClass = UnimodalTrainer
     trainer = TrainerClass(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
@@ -245,7 +369,7 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.fit(dataloader, modality_key=signal_name)
+    trainer.fit(dataloader, val_dataloader=val_dataloader, modality_key=signal_name)
 
 
 if __name__ == "__main__":
