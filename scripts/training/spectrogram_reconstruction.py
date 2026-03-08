@@ -19,7 +19,8 @@ from tokamak_foundation_model.utils import DefaultDrawer
 class FSQUnimodalTrainer(UnimodalTrainer):
     """UnimodalTrainer for SpectrogramFSQVAEAutoEncoder.
 
-    Computes per-patch variance-weighted L1 loss over ALL patches (no masking).
+    Uses plain L1 loss over all patches — consistent with the val metric so
+    train and val losses are directly comparable.
     Also logs codebook utilisation as ``unique_idx / fsq.n_codes``.
     """
 
@@ -29,34 +30,7 @@ class FSQUnimodalTrainer(UnimodalTrainer):
         output = self.model(data)
         if isinstance(output, tuple):
             reconstructed, indices = output
-            B, C, F_orig, T_orig = data.shape
-            ph, pw = self.model.patch_h, self.model.patch_w
-
-            # Pad to patch-aligned dims (mirrors model forward)
-            pad_f = (ph - F_orig % ph) % ph
-            pad_t = (pw - T_orig % pw) % pw
-            data_pad = torch.nn.functional.pad(data, (0, pad_t, 0, pad_f))
-            n_h = data_pad.shape[2] // ph
-            n_w = data_pad.shape[3] // pw
-
-            # Patchify data and reconstruction → (B, N, C*ph*pw)
-            def patchify(t):
-                return (
-                    t.reshape(B, C, n_h, ph, n_w, pw)
-                    .permute(0, 2, 4, 1, 3, 5)
-                    .reshape(B, n_h * n_w, C * ph * pw)
-                )
-
-            data_patches = patchify(data_pad)
-            recon_pad = torch.nn.functional.pad(reconstructed, (0, pad_t, 0, pad_f))
-            recon_patches = patchify(recon_pad)
-
-            # Per-patch L1 weighted by inverse patch std over ALL patches
-            patch_std = data_patches.std(dim=-1).clamp(min=1e-6)  # (B, N)
-            weights = (1.0 / patch_std)
-            weights = weights / weights.mean()
-            patch_l1 = (recon_patches - data_patches).abs().mean(dim=-1)  # (B, N)
-            loss = (patch_l1 * weights).mean()
+            loss = self.loss_fn(reconstructed, data)
 
             # Codebook utilisation metric
             n_codes = self.model.fsq.n_codes
@@ -177,6 +151,7 @@ def main():
         "--mask_ratio", type=float, default=0.75,
         help="Fraction of patches to mask (spectrogram_mae only)"
     )
+
     parser.add_argument(
         "--fsq_levels", type=int, nargs="+", default=[8, 5, 5, 5, 5],
         help="FSQ quantization levels per dimension (spectrogram_fsq_vae only)"
@@ -304,6 +279,7 @@ def main():
         extra_kwargs["mask_ratio"] = args.mask_ratio
     if model_name == "spectrogram_fsq_vae":
         extra_kwargs["fsq_levels"] = args.fsq_levels
+
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
     ).to(device)
