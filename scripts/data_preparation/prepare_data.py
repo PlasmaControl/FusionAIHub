@@ -75,6 +75,9 @@ class SignalLoader:
             shot_group = self.h5_file[self.shot_number]
 
             if tree not in shot_group:
+                tree = tree.lower()
+
+            if tree not in shot_group:
                 if self.verbose:
                     warnings.warn(
                         f"Tree '{tree}' not found for shot {self.shot_number}")
