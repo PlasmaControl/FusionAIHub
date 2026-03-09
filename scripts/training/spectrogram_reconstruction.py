@@ -46,16 +46,18 @@ class FSQUnimodalTrainer(UnimodalTrainer):
             metrics["codebook_utilization"] = torch.tensor(utilisation)
         return metrics
 
+    def _log_train(self, epoch: int):
+        train_loss = self.tracker.metrics["train"]["mean"]["loss"]()
+        util = self.tracker.metrics["train"]["mean"].get("codebook_utilization")
+        util_str = f", Codebook Util: {util():.3f}" if util is not None else ""
+        logger.info(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_loss:.4f}{util_str}")
+
 
 class MAEUnimodalTrainer(UnimodalTrainer):
     """UnimodalTrainer variant that computes loss only on masked patches.
 
     When the model returns (reconstructed, mask) — i.e. during training with
-    SpectrogramMAEAutoEncoder — the loss is restricted to masked patches and
-    weighted by the inverse of each patch's standard deviation.  This prevents
-    the easy low-energy background from dominating the gradient signal and
-    forces the model to learn structure in the high-SNR frequency bands.
-
+    SpectrogramMAEAutoEncoder — the loss is restricted to masked pixels.
     Validation inherits the base _validate_step which computes full-image loss
     (the model returns only reconstructed in eval mode), giving a consistent
     reconstruction metric.
@@ -66,45 +68,13 @@ class MAEUnimodalTrainer(UnimodalTrainer):
         self.optimizer.zero_grad()
         output = self.model(data)
         if isinstance(output, tuple):
-            reconstructed, mask = output  # mask: (B, 1, F_orig, T_orig)
-            B, C, F_orig, T_orig = data.shape
-            ph, pw = self.model.patch_h, self.model.patch_w
-
-            # Pad to patch-aligned dims (mirrors model forward)
-            pad_f = (ph - F_orig % ph) % ph
-            pad_t = (pw - T_orig % pw) % pw
-            data_pad = torch.nn.functional.pad(data, (0, pad_t, 0, pad_f))
-            n_h = data_pad.shape[2] // ph
-            n_w = data_pad.shape[3] // pw
-
-            # Patchify data → (B, N, C*ph*pw)
-            data_patches = (
-                data_pad.reshape(B, C, n_h, ph, n_w, pw)
-                .permute(0, 2, 4, 1, 3, 5)
-                .reshape(B, n_h * n_w, C * ph * pw)
+            reconstructed, mask = output
+            # Expand mask (B,1,F,T) → (B,C,F,T) to index both tensors
+            mask_expanded = mask.expand_as(reconstructed)
+            loss = self.loss_fn(
+                reconstructed[mask_expanded],
+                data[mask_expanded],
             )
-            patch_std = data_patches.std(dim=-1).clamp(min=1e-6)  # (B, N)
-
-            # Patch-level mask: pad pixel mask then subsample at patch stride
-            # Valid because each ph×pw block is uniformly True or False
-            mask_pad = torch.nn.functional.pad(mask.float(), (0, pad_t, 0, pad_f))
-            mask_patch = mask_pad[:, 0, ::ph, ::pw].bool().reshape(B, n_h * n_w)
-
-            # Patchify reconstruction (cropped to F_orig,T_orig by model; re-pad)
-            recon_pad = torch.nn.functional.pad(reconstructed, (0, pad_t, 0, pad_f))
-            recon_patches = (
-                recon_pad.reshape(B, C, n_h, ph, n_w, pw)
-                .permute(0, 2, 4, 1, 3, 5)
-                .reshape(B, n_h * n_w, C * ph * pw)
-            )
-
-            # Per-patch L1 weighted by inverse patch std; normalize weights so their
-            # mean over masked patches = 1, keeping loss on the same scale as plain L1
-            patch_l1 = (recon_patches - data_patches).abs().mean(dim=-1)  # (B, N)
-            weights = 1.0 / patch_std  # (B, N)
-            masked_weights = weights[mask_patch]
-            masked_weights = masked_weights / masked_weights.mean()
-            loss = (patch_l1[mask_patch] * masked_weights).mean()
         else:
             loss = self.loss_fn(output, data)
         loss.backward()
@@ -292,11 +262,20 @@ def main():
         lr=args.lr,
     )
 
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-        eta_min=args.min_lr
-    )
+    if args.warmup_epochs > 0:
+        warmup = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-3, total_iters=args.warmup_epochs
+        )
+        cosine = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs - args.warmup_epochs, eta_min=args.min_lr
+        )
+        lr_scheduler = optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup, cosine], milestones=[args.warmup_epochs]
+        )
+    else:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs, eta_min=args.min_lr
+        )
 
     loss_fn = nn.L1Loss()
     # loss_fn = nn.MSELoss()
