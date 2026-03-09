@@ -33,17 +33,22 @@ class DefaultDrawer:
         self.drawing_path.mkdir(parents=True, exist_ok=True)
         self.modality_key = modality_key
 
+        # Pick the highest-variance sample from the first 200 candidates
         dataset = dataloader.dataset
-        idx = min(10, len(dataset) - 1)
-        # idx = 30840
-        self.probe_sample = dataset[idx][modality_key]
+        n_candidates = min(200, len(dataset))
+        best_idx, best_var = 0, -1.0
+        for i in range(n_candidates):
+            sample = dataset[i][modality_key]
+            v = sample.var().item()
+            if v > best_var:
+                best_var = v
+                best_idx = i
+        self.probe_sample = dataset[best_idx][modality_key]
 
         if self._plot_channel is not None:
             self.channel = self._plot_channel
         else:
             self.channel = self.probe_sample.shape[0] // 2
-
-        # self.channel = 19
 
         self.train_losses: list[float] = []
         self.val_losses: list[float] = []
