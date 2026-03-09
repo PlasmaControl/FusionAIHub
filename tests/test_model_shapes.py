@@ -61,6 +61,17 @@ MODEL_TEST_CONFIGS = [
         (4, 64, 64),  # (channels, freq, time)
     ),
     (
+        "spectrogram_fsq_vae",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "patch_h": 4, "patch_w": 4,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [4, 3, 3],
+            "per_channel_patch": True,
+        },
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
         (10, 32, 32),  # (time, height, width)

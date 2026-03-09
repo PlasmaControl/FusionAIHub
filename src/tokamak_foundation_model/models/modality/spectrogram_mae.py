@@ -98,6 +98,79 @@ class FlatPatchUnembed2d(nn.Module):
         )
 
 
+class PerChannelPatchEmbed2d(nn.Module):
+    """Per-channel patch embedding: C × Linear(ph*pw → d_model), summed.
+
+    Each channel gets an independent full-rank Linear(ph*pw → d_model)
+    projection.  The C resulting vectors are summed to produce one token
+    per patch.  This avoids the rank-d_model bottleneck of FlatPatchEmbed2d
+    when channels are decorrelated (e.g. 40-channel ECE spectrograms).
+
+    Returns ``(tokens, (n_h, n_w))`` — tokens shape (B, n_h*n_w, d_model).
+    """
+
+    def __init__(
+        self, n_channels: int, d_model: int, patch_h: int, patch_w: int
+    ) -> None:
+        super().__init__()
+        self.patch_h = patch_h
+        self.patch_w = patch_w
+        self.n_channels = n_channels
+        self.channel_projs = nn.ModuleList(
+            [nn.Linear(patch_h * patch_w, d_model) for _ in range(n_channels)]
+        )
+
+    def forward(self, x: torch.Tensor):
+        B, C, Fr, T = x.shape
+        ph, pw = self.patch_h, self.patch_w
+        n_h, n_w = Fr // ph, T // pw
+        N = n_h * n_w
+        # (B, C, n_h, ph, n_w, pw) → (B, C, N, ph*pw)
+        patches = (
+            x.reshape(B, C, n_h, ph, n_w, pw)
+            .permute(0, 1, 2, 4, 3, 5)
+            .reshape(B, C, N, ph * pw)
+        )
+        tokens = self.channel_projs[0](patches[:, 0])  # (B, N, d_model)
+        for c in range(1, C):
+            tokens = tokens + self.channel_projs[c](patches[:, c])
+        return tokens, (n_h, n_w)
+
+
+class PerChannelPatchUnembed2d(nn.Module):
+    """Per-channel patch unembedding: C × Linear(d_model → ph*pw), independent.
+
+    Each channel gets an independent full-rank Linear(d_model → ph*pw) decode
+    head.  This avoids the rank-d_model bottleneck of FlatPatchUnembed2d when
+    reconstructing many decorrelated channels.
+    """
+
+    def __init__(
+        self, n_channels: int, d_model: int, patch_h: int, patch_w: int
+    ) -> None:
+        super().__init__()
+        self.patch_h = patch_h
+        self.patch_w = patch_w
+        self.n_channels = n_channels
+        self.channel_projs = nn.ModuleList(
+            [nn.Linear(d_model, patch_h * patch_w) for _ in range(n_channels)]
+        )
+
+    def forward(self, x: torch.Tensor, n_h: int, n_w: int) -> torch.Tensor:
+        B = x.shape[0]
+        ph, pw = self.patch_h, self.patch_w
+        # Each head: (B, N, d_model) → (B, N, ph*pw)
+        channels = torch.stack(
+            [proj(x) for proj in self.channel_projs], dim=1
+        )  # (B, C, N, ph*pw)
+        return (
+            channels
+            .reshape(B, self.n_channels, n_h, n_w, ph, pw)
+            .permute(0, 1, 2, 4, 3, 5)
+            .reshape(B, self.n_channels, n_h * ph, n_w * pw)
+        )
+
+
 # ---------------------------------------------------------------------------
 # Positional embedding helpers
 # ---------------------------------------------------------------------------
@@ -151,9 +224,13 @@ class _ViTEncoder(nn.Module):
         dropout: float,
         max_freq_patches: int,
         max_time_patches: int,
+        per_channel_patch: bool = False,
     ) -> None:
         super().__init__()
-        self.patch_embed = FlatPatchEmbed2d(n_channels, d_model, patch_h, patch_w)
+        if per_channel_patch:
+            self.patch_embed = PerChannelPatchEmbed2d(n_channels, d_model, patch_h, patch_w)
+        else:
+            self.patch_embed = FlatPatchEmbed2d(n_channels, d_model, patch_h, patch_w)
 
         # Factored 2D positional embeddings (concatenated along d_model)
         self.freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))

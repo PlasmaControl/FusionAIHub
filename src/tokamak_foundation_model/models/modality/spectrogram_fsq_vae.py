@@ -24,6 +24,8 @@ from tokamak_foundation_model.models.modality.base import ModalityAutoEncoder
 from tokamak_foundation_model.models.modality.spectrogram_mae import (
     FlatPatchEmbed2d,
     FlatPatchUnembed2d,
+    PerChannelPatchEmbed2d,
+    PerChannelPatchUnembed2d,
     _build_2d_pos_embed,
     _ViTEncoder,
 )
@@ -183,6 +185,12 @@ class SpectrogramFSQVAEAutoEncoder(ModalityAutoEncoder):
         Dropout rate (default 0.1).
     fsq_levels : list[int] | None
         FSQ quantization levels per dimension (default [8,5,5,5,5]).
+    per_channel_patch : bool
+        Use per-channel patch embed/unembed (C independent Linear heads,
+        summed on embed, independent on unembed) instead of the flat
+        Linear(C*ph*pw ↔ d_model) projection.  Avoids rank-d_model
+        bottleneck for signals with many decorrelated channels (e.g. ECE).
+        Default False.
     max_freq_patches, max_time_patches : int
         Positional embedding table capacity (default 64, 512).
     """
@@ -200,6 +208,7 @@ class SpectrogramFSQVAEAutoEncoder(ModalityAutoEncoder):
         n_heads: int = 4,
         dropout: float = 0.1,
         fsq_levels: list[int] | None = None,
+        per_channel_patch: bool = False,
         max_freq_patches: int = 64,
         max_time_patches: int = 512,
     ) -> None:
@@ -226,6 +235,7 @@ class SpectrogramFSQVAEAutoEncoder(ModalityAutoEncoder):
             dropout=dropout,
             max_freq_patches=max_freq_patches,
             max_time_patches=max_time_patches,
+            per_channel_patch=per_channel_patch,
         )
 
         # FSQ bottleneck
@@ -245,8 +255,15 @@ class SpectrogramFSQVAEAutoEncoder(ModalityAutoEncoder):
             max_time_patches=max_time_patches,
         )
 
-        # Flat decode head (symmetric to encoder embed)
-        self.patch_unembed = FlatPatchUnembed2d(n_channels, d_model, patch_h, patch_w)
+        # Decode head (per-channel or flat, symmetric to encoder embed)
+        if per_channel_patch:
+            self.patch_unembed = PerChannelPatchUnembed2d(
+                n_channels, d_model, patch_h, patch_w
+            )
+        else:
+            self.patch_unembed = FlatPatchUnembed2d(
+                n_channels, d_model, patch_h, patch_w
+            )
 
     # ------------------------------------------------------------------
     # Forward

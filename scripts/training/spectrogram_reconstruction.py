@@ -127,6 +127,11 @@ def main():
         help="FSQ quantization levels per dimension (spectrogram_fsq_vae only)"
     )
     parser.add_argument(
+        "--per_channel_patch", action="store_true", default=False,
+        help="Use per-channel patch embed/unembed instead of flat projection "
+             "(spectrogram_fsq_vae only)"
+    )
+    parser.add_argument(
         "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
@@ -254,6 +259,7 @@ def main():
         extra_kwargs["mask_ratio"] = args.mask_ratio
     if model_name == "spectrogram_fsq_vae":
         extra_kwargs["fsq_levels"] = args.fsq_levels
+        extra_kwargs["per_channel_patch"] = args.per_channel_patch
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
