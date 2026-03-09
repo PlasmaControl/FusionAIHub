@@ -71,7 +71,7 @@ class DefaultDrawer:
             output = output[0]
         output = output[0].cpu()
 
-        ax2.imshow(output[self.channel].numpy(), cmap='viridis', origin='lower', aspect='auto')
+        # ax2.imshow(output[self.channel].numpy(), cmap='viridis', origin='lower', aspect='auto')
         ax2.set_axis_off()
 
         val_str = f" | Val L1={val_loss:.6f}" if val_loss is not None else ""

@@ -5,10 +5,9 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import ConcatDataset, DataLoader
 
-from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
-from tokamak_foundation_model.data.utils import worker_init_fn
+from tokamak_foundation_model.data.multi_file_dataset import (
+    TokamakMultiFileDataset, make_dataloader)
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
@@ -23,12 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-
     ### Settings ###
-    parser = argparse.ArgumentParser(description="Train a unimodal autoencoder")
+    parser = argparse.ArgumentParser(
+        description="Train a unimodal autoencoder"
+    )
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="d_alpha",
+        default="filterscopes",
         help="Signal name to train on"
     )
     parser.add_argument(
@@ -38,17 +38,20 @@ def main():
         "--hop_length", type=int, default=256, help="Hop length for STFT.",
     )
     parser.add_argument(
-        "--model", choices=list(MODEL_REGISTRY.keys()), default="fast_time_series",
+        "--model",
+        choices=list(MODEL_REGISTRY.keys()),
+        default="fast_time_series",
         help="Model type (default: auto-selected from signal)"
     )
     parser.add_argument(
         "--data_dir", type=str,
-        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/",
+        default="/scratch/gpfs/EKOLEMEN/foundation_model/",
         help="Path to HDF5 data directory"
     )
     parser.add_argument(
-        "--stats_path", type=str,
-        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt",
+        "--stats_path",
+        type=str,
+        default="/scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
     )
     parser.add_argument(
@@ -59,12 +62,21 @@ def main():
         help="Number of latent tokens (default: use model default)"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=2,
-        help="Batch size (for spectrograms, each sample's C channels are processed "
-             "independently, so effective batch = batch_size * C)"
+        "--batch_size", type=int, default=32,
+        help="Batch size (for spectrograms, each sample's C channels are "
+             "processed independently, so effective batch = batch_size * C)"
     )
     parser.add_argument(
-        "--num_workers", type=int, default=4, help="Number of data loader workers"
+        "--num_workers",
+        type=int,
+        default=4,
+        help="Number of data loader workers"
+    )
+    parser.add_argument(
+        "--prefetch_factor",
+        type=int,
+        default=4,
+        help="Batches to prefetch per worker"
     )
     parser.add_argument(
         "--epochs", type=int, default=50, help="Number of training epochs"
@@ -80,10 +92,13 @@ def main():
         help="LR warmup epochs (0 to disable scheduler)"
     )
     parser.add_argument(
-        "--min_lr", type=float, default=0.0, help="Minimum LR at end of cosine decay"
+        "--min_lr", type=float, default=0.0,
+        help="Minimum LR at end of cosine decay"
     )
     parser.add_argument(
-        "--checkpoint_dir", type=str, default="runs", help="Directory for checkpoints"
+        "--checkpoint_dir", type=str,
+        default="/scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/runs",
+        help="Directory for checkpoints"
     )
     parser.add_argument(
         "--num_plots", type=int, default=4,
@@ -112,25 +127,21 @@ def main():
 
     ### Dataset Setup ###
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
-    stats = torch.load(statistics_path)
+    stats = torch.load(statistics_path, weights_only=False)
 
-    datasets_processed = [
-        TokamakH5Dataset(
-            hdf5_path=str(f),
-            preprocessing_stats=stats,
-            input_signals=[signal_name],
-            target_signals=[signal_name],
-            n_fft=args.n_fft,
-            hop_length=args.hop_length,
-            prediction_mode=False,
-        )
-        for f in hdf5_files
-    ]
-
-    concatenated_dataset = ConcatDataset(datasets_processed)
+    dataset_processed = TokamakMultiFileDataset(
+        hdf5_paths=hdf5_files,
+        input_signals=[signal_name],
+        target_signals=[signal_name],
+        n_fft=args.n_fft,
+        hop_length=args.hop_length,
+        preprocessing_stats=stats,
+        prediction_mode=False,
+        lengths_cache_path="../slurm/dataset_lengths.pt",
+    )
 
     # Not sure if this is elegant
-    sample_data = next(iter(concatenated_dataset))[signal_name]
+    sample_data = next(iter(dataset_processed))[signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
@@ -154,28 +165,25 @@ def main():
 
     loss_fn = nn.L1Loss()
 
-    dataloader = DataLoader(
-        concatenated_dataset,
+    dataloader = make_dataloader(
+        dataset_processed,
         batch_size=args.batch_size,
-        collate_fn=collate_fn,
-        worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
-        persistent_workers=args.num_workers > 0,
-        pin_memory=True,
         shuffle=True,
+        pin_memory=True,
+        prefetch_factor=args.prefetch_factor,
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots)
+    drawer = DefaultDrawer()
     trainer = UnimodalTrainer(
         epochs=args.epochs,
-        checkpoint_path=checkpoint_path,
         model=model,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
-        device=device,
-        drawer=drawer,
+        optimizer=optimizer,
+        scheduler=lr_scheduler,
+        checkpoint_path=checkpoint_path,
+        drawer=None,  # drawer,
         log_interval=args.log_interval,
     )
 
@@ -183,7 +191,7 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.train(dataloader, modality_key=signal_name)
+    trainer.fit(dataloader, modality_key=signal_name)
 
 
 if __name__ == "__main__":

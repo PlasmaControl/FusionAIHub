@@ -5,7 +5,7 @@ from tokamak_foundation_model.data.preprocess_data import compute_preprocessing_
 
 def main():
     hdf5_files = sorted(
-        Path("/scratch/gpfs/EKOLEMEN/foundation_model/").glob("20000*_processed.h5")
+        Path("/scratch/gpfs/EKOLEMEN/foundation_model/").glob("*_processed.h5")
     )
 
     all_input_signals = [
@@ -32,7 +32,7 @@ def main():
         max_duration_s=10.,
     )
 
-    compute_preprocessing_stats(dataset, 'preprocessing_stats_tmp.pt')
+    compute_preprocessing_stats(dataset, 'preprocessing_stats.pt')
 
 
 if __name__ == "__main__":

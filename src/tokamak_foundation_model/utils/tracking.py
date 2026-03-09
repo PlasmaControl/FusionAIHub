@@ -23,17 +23,18 @@ def default_list():
 class Mean:
     """Keeps track of the running mean, along with the latest value."""
 
-    def __init__(self):
-        self.reset()
+    def __init__(self) -> None:
+        self.count: int = 0
+        self.total: float = 0.
 
     def __call__(self):
         return self.total / max(self.count, 1)
 
-    def reset(self):
+    def reset(self) -> None:
         self.count = 0
-        self.total = 0
+        self.total = 0.
 
-    def update(self, val):
+    def update(self, val: float) -> None:
         if math.isfinite(val):
             self.count += 1
             self.total += val
@@ -74,12 +75,12 @@ class Tracker:
         rank: int = 0,
         step: int = 0,
     ):
-        self.metrics = {}
-        self.history = {}
+        self.metrics: dict = {}
+        self.history: dict = {}
         self.writer = writer
         self.rank = rank
         self.step = step
-        self._progress = {}  # label -> {completed, total}
+        self._progress: dict = {}  # label -> {completed, total}
 
     def _write(self, msg: str):
         print(msg)
@@ -116,13 +117,13 @@ class Tracker:
                     self._write(f"  {k}: {m():.6f}")
 
     def track(
-        self,
-        label: str,
-        length: int,
-        completed: int = 0,
-        log_every: int = 0,
-        op: dist.ReduceOp = dist.ReduceOp.AVG,
-        ddp_active: bool = "LOCAL_RANK" in os.environ,
+            self,
+            label: str,
+            length: int,
+            completed: int = 0,
+            log_every: int = 0,
+            op: dist.ReduceOp.RedOpType = dist.ReduceOp.AVG,
+            ddp_active: bool = "LOCAL_RANK" in os.environ,
     ):
         self._progress[label] = {"completed": completed, "total": length}
         self.metrics[label] = {

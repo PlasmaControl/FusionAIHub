@@ -14,6 +14,7 @@ from tokamak_foundation_model.utils.tracking import Tracker
 
 logger = logging.getLogger(__name__)
 
+
 class MultimodalTrainer:
     def __init__(
             self,
@@ -34,11 +35,16 @@ class MultimodalTrainer:
     def _train_epoch(self, dataloader: DataLoader):
         self.model.train()
         total_loss = 0
+        n_batches = len(dataloader)  # type: ignore[arg-type]
         for batch_idx, batch in enumerate(dataloader):
             inputs = batch['inputs']
             targets = batch['targets']
-            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
-            targets = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in targets.items()}
+            inputs = {
+                k: v.to(self.device) if isinstance(v, torch.Tensor)
+                else v for k, v in inputs.items()}
+            targets = {
+                k: v.to(self.device) if isinstance(v, torch.Tensor)
+                else v for k, v in targets.items()}
 
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
@@ -48,15 +54,15 @@ class MultimodalTrainer:
 
             total_loss += loss.item()
             if batch_idx % 10 == 0:
-                print(f"  Batch {batch_idx}/{len(dataloader)},"
-                      f" Loss: {loss.item():.4f}")
-        return total_loss / len(dataloader)
+                print(f"  Batch {batch_idx}/{n_batches}, Loss: {loss.item():.4f}")
+        return total_loss / n_batches
 
-    def _validate_epoch(self, dataloader: DataLoader):
+    def _validate_epoch(self, dataloader: DataLoader) -> float:
         self.model.eval()
         total_loss = 0
+        n_batches = len(dataloader)  # type: ignore[arg-type]
         with torch.no_grad():
-            for batch_idx, batch in enumerate(dataloader):
+            for batch in dataloader:
                 inputs = batch["inputs"]
                 targets = batch["targets"]
                 inputs = {
@@ -71,12 +77,12 @@ class MultimodalTrainer:
                 outputs = self.model(inputs)
                 loss = self.loss_fn(outputs, targets)
                 total_loss += loss.item()
-        return total_loss / len(dataloader)
+        return total_loss / n_batches
 
     def train(
             self,
             train_dataloader: DataLoader,
-            val_dataloader: DataLoader = None
+            val_dataloader: DataLoader | None = None
     ):
         best_val_loss = float("inf")
         for epoch in range(self.epochs):
@@ -107,19 +113,20 @@ class MultimodalTrainer:
 
 
 class UnimodalTrainer:
-    def __init__(self,
-        epochs: int,
-        model: nn.Module,
-        loss_fn: nn.Module,
-        optimizer: optim.Optimizer,
-        scheduler: optim.lr_scheduler.LRScheduler | None = None,
-        distributed_manager: DistributedManager | None = None,
-        tracker: Tracker | None = None,
-        drawer: DrawerProtocol | None = None,
-        metrics: list[Metric] | None = None,
-        checkpoint_path: str | Path = "checkpoint.pth",
-        log_interval: int = 1,
-        ):
+    def __init__(
+            self,
+            epochs: int,
+            model: nn.Module,
+            loss_fn: nn.Module,
+            optimizer: optim.Optimizer,
+            scheduler: optim.lr_scheduler.LRScheduler | None = None,
+            distributed_manager: DistributedManager | None = None,
+            tracker: Tracker | None = None,
+            drawer: DrawerProtocol | None = None,
+            metrics: list[Metric] | None = None,
+            checkpoint_path: str | Path = "checkpoint.pth",
+            log_interval: int = 1,
+    ):
         self.epochs = epochs
         self.log_interval = log_interval
 
@@ -141,11 +148,14 @@ class UnimodalTrainer:
         self.metrics: list[Metric] = metrics if metrics else []
 
         # Paths
-        self.checkpoint_path = Path(checkpoint_path) if checkpoint_path else None
-        self.best_checkpoint_path = self.checkpoint_path.with_name( # type: ignore
-            self.checkpoint_path.stem + "_best" + self.checkpoint_path.suffix # type: ignore
+        self.checkpoint_path: Path | None = (
+            Path(checkpoint_path) if checkpoint_path else None
         )
-
+        self.best_checkpoint_path: Path | None = (
+            self.checkpoint_path.with_name(
+                self.checkpoint_path.stem + "_best" + self.checkpoint_path.suffix
+            ) if self.checkpoint_path else None
+        )
 
     def _train_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
@@ -187,11 +197,13 @@ class UnimodalTrainer:
 
     def _log_train(self, epoch: int):
         train_mean = self.tracker.metrics["train"]["mean"]["loss"]()
-        logger.info(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_mean:.4f}")
+        logger.info(
+            f"Epoch {epoch + 1}/{self.epochs}, Train Loss: {train_mean:.4f}"
+        )
 
     def _log_validate(self, epoch: int):
         val_mean = self.tracker.metrics["validate"]["mean"]["loss"]()
-        text = [f"Epoch {epoch+1}/{self.epochs}, Val Loss: {val_mean:.4f}"]
+        text = [f"Epoch {epoch + 1}/{self.epochs}, Val Loss: {val_mean:.4f}"]
         for key in self.tracker.metrics["validate"]["value"]:
             if key != "loss":
                 val = self.tracker.metrics["validate"]["mean"][key]()
@@ -199,12 +211,12 @@ class UnimodalTrainer:
         logger.info(", ".join(text))
 
     def _save_checkpoint(self, epoch: int):
-        if not self.dm.is_main:
+        if not self.dm.is_main or self.checkpoint_path is None:
             return
         raw_model = self.dm.unwrap(self.model)
         torch.save(
             {
-                "model_state_dict": raw_model.state_dict(), # type: ignore
+                "model_state_dict": raw_model.state_dict(), # type: ignore[union-attr]
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": (
                     self.scheduler.state_dict() if self.scheduler else None
@@ -212,23 +224,24 @@ class UnimodalTrainer:
                 "tracker_state_dict": self.tracker.state_dict(),
                 "epoch": epoch,
             },
-            self.checkpoint_path, # type: ignore
+            self.checkpoint_path,
         )
 
     def _save_best(self):
-        if not self.dm.is_main:
+        if not self.dm.is_main or self.best_checkpoint_path is None:
             return
         if self.tracker.is_best("validate", "loss"):
             raw_model = self.dm.unwrap(self.model)
-            torch.save(raw_model.state_dict(), self.best_checkpoint_path) # type: ignore
+            torch.save(raw_model.state_dict(), self.best_checkpoint_path)
             logger.info("Best model checkpoint saved!")
 
-    def fit(self,
-        train_dataloader: DataLoader,
-        val_dataloader: DataLoader | None = None,
-        modality_key: str | None = None,
-        train_sampler=None,
-        ):
+    def fit(
+            self,
+            train_dataloader: DataLoader,
+            val_dataloader: DataLoader | None = None,
+            modality_key: str | None = None,
+            train_sampler=None,
+    ):
         if modality_key is None:
             raise ValueError("modality_key is required for unimodal training")
         self.modality_key = modality_key
@@ -240,15 +253,19 @@ class UnimodalTrainer:
         for metric in self.metrics:
             metric.to(self.dm.device)
 
-        n_train = len(train_dataloader)
+        n_train = len(train_dataloader)  # type: ignore[arg-type]
 
         # Set up tracking
-        self._train_step = self.tracker.track("train", n_train)(self._train_step)
-        self._log_train = self.tracker.log("train", "mean")(self._log_train)
+        track_train = self.tracker.track("train", n_train)
+        self._train_step = track_train(self._train_step)  # type: ignore
+        log_train = self.tracker.log("train", "mean")
+        self._log_train = log_train(self._log_train)  # type: ignore
         if val_dataloader is not None:
-            n_val = len(val_dataloader)
-            self._validate_step = self.tracker.track("validate", n_val)(self._validate_step)
-            self._log_validate = self.tracker.log("validate", "mean")(self._log_validate)
+            n_val = len(val_dataloader)  # type: ignore[arg-type]
+            track_val = self.tracker.track("validate", n_val)
+            self._validate_step = track_val(self._validate_step)  # type: ignore
+            log_val = self.tracker.log("validate", "mean")
+            self._log_validate = log_val(self._log_validate)  # type: ignore
 
         drawing_path = self.checkpoint_path.parent / "plots" # type: ignore
         self.drawer.setup(train_dataloader, drawing_path, modality_key)
@@ -270,7 +287,9 @@ class UnimodalTrainer:
                 self.dm.barrier()
 
             if (epoch + 1) % self.log_interval == 0 and self.dm.is_main:
-                val_loss = self.tracker.metrics["validate"]["mean"]["loss"]() if val_dataloader is not None else None
+                val_loss = (
+                    self.tracker.metrics["validate"]["mean"]["loss"]()) \
+                    if val_dataloader is not None else None
                 train_loss = self.tracker.metrics["train"]["mean"]["loss"]()
                 self.drawer(
                     model=self.dm.unwrap(self.model), # type: ignore
@@ -297,12 +316,16 @@ class UnimodalTrainer:
         if path is None or not os.path.exists(path):
             logger.info(f"No checkpoint found at: {path}")
             return
-        checkpoint = torch.load(path, map_location=self.dm.device)
+        checkpoint = torch.load(
+            path, map_location=self.dm.device, weights_only=False
+        )
         raw_model = self.dm.unwrap(self.model)
-        raw_model.load_state_dict(checkpoint["model_state_dict"]) # type: ignore
+        raw_model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if self.scheduler and checkpoint.get("scheduler_state_dict"):
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         if checkpoint.get("tracker_state_dict"):
             self.tracker.load_state_dict(checkpoint["tracker_state_dict"])
-        logger.info(f"Resumed from checkpoint: {path} (epoch {checkpoint.get('epoch', '?')})")
+        logger.info(
+            f"Resumed from checkpoint: {path} "
+            f"(epoch {checkpoint.get('epoch', '?')})")

@@ -26,135 +26,162 @@ fi
 echo "========================================="
 echo "Job started at: $(date)"
 echo "Shot number: ${SHOT_NUMBER}"
-echo "Config file: ${CONFIG_FILE}"
+echo "Config files: ${CONFIG_FILES}"
 echo "Chunk size: ${CHUNK_SIZE}"
 echo "========================================="
 
 OUTPUT_FILE="${OUTPUT_DIR}/${SHOT_NUMBER}.h5"
+TOTAL_FAILED_CHUNKS=0
 
-# Extract server
-SERVER=$(grep "^server:" ${CONFIG_FILE} | cut -d: -f2- | xargs)
-
-# Create flat list: each line is "tree_name|signal_line"
-TMP_FLAT_LIST=$(mktemp)
-
-awk '
-/^  [a-z0-9_]+:$/ {
-    current_tree = $1
-    sub(/:$/, "", current_tree)
-    next
-}
-/^    - / {
-    if (current_tree != "") {
-        print current_tree "|" $0
-    }
-}
-' ${CONFIG_FILE} > ${TMP_FLAT_LIST}
-
-TOTAL_SIGNALS=$(wc -l < ${TMP_FLAT_LIST})
-NUM_CHUNKS=$(( (TOTAL_SIGNALS + CHUNK_SIZE - 1) / CHUNK_SIZE ))
-
-echo "Total signals: ${TOTAL_SIGNALS}"
-echo "Processing in ${NUM_CHUNKS} chunks"
-echo "========================================="
-
-FAILED_CHUNKS=0
-
-for (( chunk=0; chunk<NUM_CHUNKS; chunk++ )); do
-    CHUNK_NUM=$((chunk + 1))
-    START_LINE=$(( chunk * CHUNK_SIZE + 1 ))
-    END_LINE=$(( (chunk + 1) * CHUNK_SIZE ))
-
+# Process each config file sequentially
+for CONFIG_FILE in ${CONFIG_FILES}; do
     echo ""
-    echo "Processing chunk ${CHUNK_NUM}/${NUM_CHUNKS} (signals ${START_LINE}-${END_LINE})..."
+    echo "========================================="
+    echo "Processing config: ${CONFIG_FILE}"
+    echo "========================================="
 
-    # Extract chunk of signals
-    CHUNK_DATA=$(sed -n "${START_LINE},${END_LINE}p" ${TMP_FLAT_LIST})
-
-    if [ -z "${CHUNK_DATA}" ]; then
-        echo "  Chunk is empty, skipping..."
+    if [ ! -f "${CONFIG_FILE}" ]; then
+        echo "ERROR: Config file not found: ${CONFIG_FILE}"
+        TOTAL_FAILED_CHUNKS=$((TOTAL_FAILED_CHUNKS + 1))
         continue
     fi
 
-    # Count signals in chunk
-    CHUNK_SIGNAL_COUNT=$(echo "${CHUNK_DATA}" | wc -l)
-    echo "  Chunk contains ${CHUNK_SIGNAL_COUNT} signals"
+    # Extract server
+    SERVER=$(grep "^server:" ${CONFIG_FILE} | cut -d: -f2- | xargs)
+    echo "Server: ${SERVER}"
 
-    # Create config for this chunk
-    CONFIG_FILE_CHUNK="config_${SHOT_NUMBER}_chunk${CHUNK_NUM}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}.yml"
+    # Create flat list: each line is "tree_name|signal_line"
+    TMP_FLAT_LIST=$(mktemp)
 
-    cat > "${CONFIG_FILE_CHUNK}" << EOF
+    awk '
+    /^  [a-zA-Z0-9_]+:$/ {
+        current_tree = $1
+        sub(/:$/, "", current_tree)
+        next
+    }
+    /^    - / {
+        if (current_tree != "") {
+            print current_tree "|" $0
+        }
+    }
+    ' ${CONFIG_FILE} > ${TMP_FLAT_LIST}
+
+    TOTAL_SIGNALS=$(wc -l < ${TMP_FLAT_LIST})
+    NUM_CHUNKS=$(( (TOTAL_SIGNALS + CHUNK_SIZE - 1) / CHUNK_SIZE ))
+
+    echo "Total signals: ${TOTAL_SIGNALS}"
+    echo "Processing in ${NUM_CHUNKS} chunks"
+    echo "========================================="
+
+    FAILED_CHUNKS=0
+
+    for (( chunk=0; chunk<NUM_CHUNKS; chunk++ )); do
+        CHUNK_NUM=$((chunk + 1))
+        START_LINE=$(( chunk * CHUNK_SIZE + 1 ))
+        END_LINE=$(( (chunk + 1) * CHUNK_SIZE ))
+
+        echo ""
+        echo "Processing chunk ${CHUNK_NUM}/${NUM_CHUNKS} (signals ${START_LINE}-${END_LINE})..."
+
+        # Extract chunk of signals
+        CHUNK_DATA=$(sed -n "${START_LINE},${END_LINE}p" ${TMP_FLAT_LIST})
+
+        if [ -z "${CHUNK_DATA}" ]; then
+            echo "  Chunk is empty, skipping..."
+            continue
+        fi
+
+        # Count signals in chunk
+        CHUNK_SIGNAL_COUNT=$(echo "${CHUNK_DATA}" | wc -l)
+        echo "  Chunk contains ${CHUNK_SIGNAL_COUNT} signals"
+
+        # Create config for this chunk
+        CONFIG_BASE=$(basename ${CONFIG_FILE} .yaml)
+        CONFIG_FILE_CHUNK="config_${CONFIG_BASE}_${SHOT_NUMBER}_chunk${CHUNK_NUM}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}.yml"
+
+        cat > "${CONFIG_FILE_CHUNK}" << EOF
 shot_numbers:
   - ${SHOT_NUMBER}
 
 trees:
 EOF
 
-    # Group signals by tree and add to config
-    echo "${CHUNK_DATA}" | awk -F'|' '
-    {
-        tree = $1
-        signal = $2
-        if (tree != current_tree) {
-            if (current_tree != "") {
-                # Print accumulated signals for previous tree
+        # Group signals by tree and add to config
+        echo "${CHUNK_DATA}" | awk -F'|' '
+        {
+            tree = $1
+            signal = $2
+            if (tree != current_tree) {
+                if (current_tree != "") {
+                    # Print accumulated signals for previous tree
+                    for (i = 0; i < sig_count; i++) {
+                        print signals[i]
+                    }
+                }
+                # Start new tree
+                current_tree = tree
+                print "  " tree ":"
+                sig_count = 0
+            }
+            signals[sig_count++] = signal
+        }
+        END {
+            # Print last tree signals
+            if (sig_count > 0) {
                 for (i = 0; i < sig_count; i++) {
                     print signals[i]
                 }
             }
-            # Start new tree
-            current_tree = tree
-            print "  " tree ":"
-            sig_count = 0
         }
-        signals[sig_count++] = signal
-    }
-    END {
-        # Print last tree signals
-        if (sig_count > 0) {
-            for (i = 0; i < sig_count; i++) {
-                print signals[i]
-            }
-        }
-    }
-    ' >> "${CONFIG_FILE_CHUNK}"
+        ' >> "${CONFIG_FILE_CHUNK}"
 
-    # Add output file and server
-    cat >> "${CONFIG_FILE_CHUNK}" << EOF
+        # Add output file and server
+        cat >> "${CONFIG_FILE_CHUNK}" << EOF
 
 out_filename: ${OUTPUT_FILE}
 server: ${SERVER}
 EOF
 
-    # Run read_mds
-    echo "  Running read_mds..."
-    read_mds -c ${CONFIG_FILE_CHUNK}
-    EXIT_CODE=$?
+        # Run read_mds
+        echo "  Running read_mds..."
+        read_mds -c ${CONFIG_FILE_CHUNK}
+        EXIT_CODE=$?
 
-    if [ ${EXIT_CODE} -eq 0 ]; then
-        echo "  ✓ Chunk ${CHUNK_NUM}/${NUM_CHUNKS} completed successfully"
-        rm -f ${CONFIG_FILE_CHUNK}
-    else
-        echo "  ✗ Chunk ${CHUNK_NUM}/${NUM_CHUNKS} FAILED (exit code: ${EXIT_CODE})"
-        echo "  Config preserved: ${CONFIG_FILE_CHUNK}"
-        FAILED_CHUNKS=$((FAILED_CHUNKS + 1))
-    fi
+        if [ ${EXIT_CODE} -eq 0 ]; then
+            echo "  ✓ Chunk ${CHUNK_NUM}/${NUM_CHUNKS} completed successfully"
+            rm -f ${CONFIG_FILE_CHUNK}
+        else
+            echo "  ✗ Chunk ${CHUNK_NUM}/${NUM_CHUNKS} FAILED (exit code: ${EXIT_CODE})"
+            echo "  Config preserved: ${CONFIG_FILE_CHUNK}"
+            FAILED_CHUNKS=$((FAILED_CHUNKS + 1))
+        fi
+    done
+
+    rm -f ${TMP_FLAT_LIST}
+
+    echo ""
+    echo "========================================="
+    echo "Config ${CONFIG_FILE} summary:"
+    echo "  Total signals: ${TOTAL_SIGNALS}"
+    echo "  Total chunks: ${NUM_CHUNKS}"
+    echo "  Failed chunks: ${FAILED_CHUNKS}"
+    echo "========================================="
+
+    TOTAL_FAILED_CHUNKS=$((TOTAL_FAILED_CHUNKS + FAILED_CHUNKS))
 done
 
-rm -f ${TMP_FLAT_LIST}
-
+# Overall summary
 echo ""
 echo "========================================="
-echo "Processing summary:"
-echo "  Total signals: ${TOTAL_SIGNALS}"
-echo "  Total chunks: ${NUM_CHUNKS}"
-echo "  Failed chunks: ${FAILED_CHUNKS}"
+echo "Overall processing summary for shot ${SHOT_NUMBER}:"
+echo "  Configs processed: ${CONFIG_FILES}"
+echo "  Total failed chunks: ${TOTAL_FAILED_CHUNKS}"
 echo "========================================="
 
 # Check overall success
-if [ ${FAILED_CHUNKS} -eq 0 ]; then
+if [ ${TOTAL_FAILED_CHUNKS} -eq 0 ]; then
     if [ -f "${OUTPUT_FILE}" ] && [ -s "${OUTPUT_FILE}" ]; then
-        echo "SUCCESS: All chunks completed, output file: ${OUTPUT_FILE}"
+        echo "SUCCESS: All configs completed, output file: ${OUTPUT_FILE}"
 
         (
             flock -x 200
@@ -171,15 +198,9 @@ if [ ${FAILED_CHUNKS} -eq 0 ]; then
             echo "========================================="
             echo "Starting Globus transfer..."
 
-            # Get relative path of the output file
             OUTPUT_FILENAME=$(basename "${OUTPUT_FILE}")
-
-            # Strip /cscratch/ from the path for Globus
-            # If OUTPUT_FILE="/cscratch/steinerp/database/data/170659.h5"
-            # Then GLOBUS_SOURCE_PATH="steinerp/database/data/170659.h5"
             GLOBUS_SOURCE_PATH="${OUTPUT_FILE#/cscratch/}"
 
-            # Transfer this file
             echo "Transferring: ${OUTPUT_FILENAME}"
             echo "Source path: ${GLOBUS_SOURCE_PATH}"
             echo "Dest path: ${GLOBUS_DEST_PATH}${OUTPUT_FILENAME}"
@@ -189,7 +210,7 @@ if [ ${FAILED_CHUNKS} -eq 0 ]; then
                 --label "Auto-transfer ${OUTPUT_FILENAME} $(date +%Y%m%d-%H%M%S)" \
                 --jmespath 'task_id' \
                 --format unix \
-	        --notify off \
+                --notify off \
                 "${GLOBUS_SOURCE_ENDPOINT}:${GLOBUS_SOURCE_PATH}" \
                 "${GLOBUS_DEST_ENDPOINT}:${GLOBUS_DEST_PATH}${OUTPUT_FILENAME}")
 
@@ -200,20 +221,17 @@ if [ ${FAILED_CHUNKS} -eq 0 ]; then
                 echo "Transfer submitted: Task ID ${TRANSFER_TASK_ID}"
                 echo "Waiting for transfer to complete..."
 
-                # Wait for transfer (with 2 hour timeout)
                 globus task wait "${TRANSFER_TASK_ID}" --timeout 7200 --polling-interval 30
 
                 if [ $? -eq 0 ]; then
                     echo "✓ Transfer completed successfully!"
                     echo "Deleting local file to free up space..."
 
-                    # Delete the transferred file
                     rm -f "${OUTPUT_FILE}"
 
                     if [ $? -eq 0 ]; then
                         echo "✓ Local file deleted: ${OUTPUT_FILE}"
 
-                        # Log the transfer
                         TRANSFER_LOG="${OUTPUT_DIR}/globus_transfers.log"
                         echo "$(date '+%Y-%m-%d %H:%M:%S') | ${SHOT_NUMBER} | ${OUTPUT_FILENAME} | TRANSFERRED_AND_DELETED" >> ${TRANSFER_LOG}
                     else
@@ -230,12 +248,12 @@ if [ ${FAILED_CHUNKS} -eq 0 ]; then
             echo "========================================="
         else
             echo ""
-	    echo "========================================="
-	    echo "Globus transfer disabled - file retained locally"
-	    echo "File location: ${OUTPUT_FILE}"
-	    echo "========================================="
+            echo "========================================="
+            echo "Globus transfer disabled - file retained locally"
+            echo "File location: ${OUTPUT_FILE}"
+            echo "========================================="
         fi
-	# ============================================
+        # ============================================
         # END GLOBUS TRANSFER SECTION
         # ============================================
 
@@ -243,11 +261,11 @@ if [ ${FAILED_CHUNKS} -eq 0 ]; then
         exit 0
     else
         echo "ERROR: Output file missing or empty: ${OUTPUT_FILE}"
-        FAILED_CHUNKS=1
+        TOTAL_FAILED_CHUNKS=1
     fi
 fi
 
-echo "ERROR: ${FAILED_CHUNKS} chunk(s) failed for shot ${SHOT_NUMBER}"
+echo "ERROR: ${TOTAL_FAILED_CHUNKS} chunk(s) failed for shot ${SHOT_NUMBER}"
 
 (
     flock -x 200

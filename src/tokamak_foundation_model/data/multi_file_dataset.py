@@ -286,6 +286,10 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
     # Dataset interface
     # -------------------------------------------------------------------------
 
+    def _open_hdf5(self) -> None:
+        """No-op: file handles are opened on demand via the LRU cache."""
+        pass
+
     def __len__(self) -> int:
         return int(self._cumulative_lengths[-1])
 
