@@ -301,8 +301,14 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _sample_mask_ratio(self) -> float:
+        """Sample mask ratio uniformly from [0, self.mask_ratio] during training."""
+        if self.training:
+            return float(torch.empty(1).uniform_(0.0, self.mask_ratio).item())
+        return 0.0
+
     def _mask_tokens(
-        self, tokens: torch.Tensor
+        self, tokens: torch.Tensor, mask_ratio: float
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Randomly drop a fraction of patch tokens.
 
@@ -310,6 +316,8 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         ----------
         tokens : Tensor (B, N, d_model)
             Position-encoded patch tokens.
+        mask_ratio : float
+            Fraction of tokens to mask (0 = keep all).
 
         Returns
         -------
@@ -320,7 +328,7 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
                          in the *original* (unshuffled) token order
         """
         B, N, D = tokens.shape
-        N_vis = max(1, int(N * (1 - self.mask_ratio)))
+        N_vis = max(1, int(N * (1 - mask_ratio)))
 
         noise = torch.rand(B, N, device=tokens.device)
         ids_shuffle = noise.argsort(dim=1)
@@ -366,16 +374,20 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
         tokens = tokens + self.encoder.build_pos_embed(n_h, n_w)
 
         # ── 4. Mask & encode ──────────────────────────────────────────────
-        if self.training:
-            tokens_vis, ids_keep, _, mask_bool = self._mask_tokens(tokens)
+        cur_mask_ratio = self._sample_mask_ratio()
+        N = tokens.shape[1]
+        use_masking = self.training and cur_mask_ratio > 0 and int(N * (1 - cur_mask_ratio)) < N
+
+        if use_masking:
+            tokens_vis, ids_keep, _, mask_bool = self._mask_tokens(tokens, cur_mask_ratio)
             tokens_enc = self.encoder.transformer(tokens_vis)  # (B, N_vis, D)
         else:
             tokens_enc = self.encoder.transformer(tokens)      # (B, N, D)
 
-        # ── 5. Restore full sequence (training only) ──────────────────────
-        if self.training:
+        # ── 5. Restore full sequence (masked training only) ───────────────
+        if use_masking:
             D = tokens_enc.shape[-1]
-            x_full = self.mask_token.expand(B, tokens.shape[1], D).clone()
+            x_full = self.mask_token.expand(B, N, D).clone()
             x_full.scatter_(
                 1,
                 ids_keep.unsqueeze(-1).expand(-1, -1, D),
@@ -400,11 +412,16 @@ class SpectrogramMAEAutoEncoder(ModalityAutoEncoder):
             return reconstructed
 
         # ── 9. Upsample token mask → pixel mask ───────────────────────────
-        mask_pixel = (
-            mask_bool
-            .reshape(B, 1, n_h, n_w)
-            .repeat_interleave(ph, dim=2)
-            .repeat_interleave(pw, dim=3)
-        )[:, :, :F_orig, :T_orig]
+        if use_masking:
+            mask_pixel = (
+                mask_bool
+                .reshape(B, 1, n_h, n_w)
+                .repeat_interleave(ph, dim=2)
+                .repeat_interleave(pw, dim=3)
+            )[:, :, :F_orig, :T_orig]
+        else:
+            # No masking — loss over all pixels (standard AE step)
+            mask_pixel = torch.ones(B, 1, F_orig, T_orig, dtype=torch.bool,
+                                    device=x.device)
 
         return reconstructed, mask_pixel

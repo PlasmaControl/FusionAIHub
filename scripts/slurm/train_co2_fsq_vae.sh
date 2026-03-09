@@ -25,10 +25,9 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --batch_size 16 \
     --num_workers 2 \
     --epochs 500 \
-    --lr 3e-4 \
+    --lr 1e-4 \
     --weight_decay 1e-4 \
-    --warmup_epochs 10 \
-    --min_lr 1e-5 \
+    --scheduler none \
     --n_fft 256 \
     --hop_length 128 \
     --log_interval 5 \

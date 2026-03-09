@@ -155,6 +155,11 @@ def main():
         help="LR warmup epochs (0 to disable scheduler)"
     )
     parser.add_argument(
+        "--scheduler", type=str, default="cosine",
+        choices=["cosine", "none"],
+        help="LR scheduler: 'cosine' (warmup + cosine decay) or 'none' (flat LR)"
+    )
+    parser.add_argument(
         "--min_lr", type=float, default=0.0, help="Minimum LR at end of cosine decay"
     )
     parser.add_argument(
@@ -262,7 +267,9 @@ def main():
         lr=args.lr,
     )
 
-    if args.warmup_epochs > 0:
+    if args.scheduler == "none":
+        lr_scheduler = None
+    elif args.warmup_epochs > 0:
         warmup = optim.lr_scheduler.LinearLR(
             optimizer, start_factor=1e-3, total_iters=args.warmup_epochs
         )
