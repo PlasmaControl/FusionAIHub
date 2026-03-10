@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 import logging
 
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -108,7 +109,7 @@ def main():
         "--log_interval", type=int, default=1, help="Plot every N epochs"
     )
     parser.add_argument(
-        "--resume", action="store_true", default=False,
+        "--resume", action="store_true", default=True,
         help="Resume training from checkpoint"
     )
     args = parser.parse_args()
@@ -127,21 +128,45 @@ def main():
 
     ### Dataset Setup ###
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
+    random.seed(42)
+    n = len(hdf5_files)
+    n_val = int(.1 * n)
+    n_test = int(.1 * n)
+
+    train_paths = hdf5_files[n_val + n_test:]
+    val_paths   = hdf5_files[:n_val]
+    test_paths  = hdf5_files[n_val:n_val + n_test]
+
     stats = torch.load(statistics_path, weights_only=False)
 
-    dataset_processed = TokamakMultiFileDataset(
-        hdf5_paths=hdf5_files,
+    shared_kwargs = dict(
+        preprocessing_stats=stats,
         input_signals=[signal_name],
         target_signals=[signal_name],
         n_fft=args.n_fft,
         hop_length=args.hop_length,
-        preprocessing_stats=stats,
         prediction_mode=False,
-        lengths_cache_path="../slurm/dataset_lengths.pt",
     )
 
+    train_dataset = TokamakMultiFileDataset(
+        train_paths,
+        lengths_cache_path="lengths_train.pt",
+        **shared_kwargs
+    )
+    validation_dataset = TokamakMultiFileDataset(
+        val_paths,
+        lengths_cache_path="lengths_validation.pt",
+        **shared_kwargs
+    )
+    test_dataset = TokamakMultiFileDataset(
+        test_paths,
+        lengths_cache_path="lengths_test.pt",
+        **shared_kwargs
+    )
+
+
     # Not sure if this is elegant
-    sample_data = next(iter(dataset_processed))[signal_name]
+    sample_data = next(iter(train_dataset))[signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
@@ -165,8 +190,17 @@ def main():
 
     loss_fn = nn.L1Loss()
 
-    dataloader = make_dataloader(
-        dataset_processed,
+    train_dataloader = make_dataloader(
+        train_dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        shuffle=True,
+        pin_memory=True,
+        prefetch_factor=args.prefetch_factor,
+    )
+
+    validation_dataloader = make_dataloader(
+        validation_dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         shuffle=True,
@@ -183,7 +217,7 @@ def main():
         optimizer=optimizer,
         scheduler=lr_scheduler,
         checkpoint_path=checkpoint_path,
-        drawer=None,  # drawer,
+        drawer=drawer,
         log_interval=args.log_interval,
     )
 
@@ -191,7 +225,10 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.fit(dataloader, modality_key=signal_name)
+    trainer.fit(
+        train_dataloader,
+        validation_dataloader,
+        modality_key=signal_name)
 
 
 if __name__ == "__main__":
