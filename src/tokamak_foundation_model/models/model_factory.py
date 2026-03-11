@@ -7,7 +7,7 @@ from tokamak_foundation_model.models.modality import (
     FastTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
-    SpectrogramResLSTMAutoEncoder,
+    SpectrogramTFAttnAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
@@ -17,7 +17,7 @@ SIGNAL_MODEL_DEFAULTS = {
     "ech": "actuator",
     "pin": "actuator",
     "tin": "actuator",
-    "d_alpha": "fast_time_series",
+    "filterscopes": "fast_time_series",
     "mse": "profile",
     "ts_core_density": "profile",
     "mhr": "spectrogram",
@@ -34,7 +34,7 @@ MODEL_REGISTRY = {
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
-    "spectrogram_res_lstm": SpectrogramResLSTMAutoEncoder,
+    "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
