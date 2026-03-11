@@ -13,6 +13,7 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
+from tokamak_foundation_model.models.loss import MaskedL1Loss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -109,7 +110,7 @@ def main():
         "--log_interval", type=int, default=1, help="Plot every N epochs"
     )
     parser.add_argument(
-        "--resume", action="store_true", default=True,
+        "--resume", action="store_true", default=False,
         help="Resume training from checkpoint"
     )
     args = parser.parse_args()
@@ -180,15 +181,32 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
+        weight_decay=args.weight_decay,
     )
 
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-        eta_min=args.min_lr
-    )
+    if args.warmup_epochs > 0:
+        warmup_scheduler = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-3, end_factor=1.0,
+            total_iters=args.warmup_epochs,
+        )
+        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=args.epochs - args.warmup_epochs,
+            eta_min=args.min_lr,
+        )
+        lr_scheduler = optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[args.warmup_epochs],
+        )
+    else:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=args.epochs,
+            eta_min=args.min_lr,
+        )
 
-    loss_fn = nn.L1Loss()
+    loss_fn = MaskedL1Loss()
 
     train_dataloader = make_dataloader(
         train_dataset,

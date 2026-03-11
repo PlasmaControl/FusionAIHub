@@ -138,6 +138,9 @@ class MovieConfig:
         Output frame height in pixels after spatial resampling.
     width : int
         Output frame width in pixels after spatial resampling.
+    channels_to_use : slice or None, optional
+        Slice selecting a subset of channels from the raw data.
+        ``None`` (default) uses all channels.
     preprocess : PreprocessConfig, optional
         Preprocessing transformation applied to the video tensor.
         Defaults to :class:`PreprocessConfig` with ``method='none'``.
@@ -149,6 +152,7 @@ class MovieConfig:
     target_fps: int  # Target frames per second after resampling
     height: int  # Frame height
     width: int  # Frame width
+    channels_to_use: Optional[slice] = None
     preprocess: PreprocessConfig | None = None
 
     def __post_init__(self):
@@ -357,7 +361,7 @@ class TokamakH5Dataset(Dataset):
             10e3,
             channels_to_use=slice(0, 8),  # Use only the first 8 channels
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "cer_ti",
@@ -650,7 +654,7 @@ class TokamakH5Dataset(Dataset):
     def _apply_preprocessing(
             self,
             tensor: torch.Tensor,
-            config: PreprocessConfig
+            config: SignalConfig
     ) -> torch.Tensor:
         """
         Apply the configured preprocessing transformation to a tensor.
@@ -667,17 +671,20 @@ class TokamakH5Dataset(Dataset):
             - spectrogram ``(C, F, T)``
             - time-series ``(C, T)``
             - video ``(C, T, H, W)``
-        config : PreprocessConfig
-            Preprocessing configuration specifying ``method`` and the
-            optional statistical parameters.
+        config : SignalConfig
+            Signal configuration specifying ``method`` and the optional
+            statistical parameters.
 
         Returns
         -------
         torch.Tensor
             Transformed tensor with the same shape as *tensor*.
         """
-        if config.method == "none":
+        preprocessing_config: PreprocessConfig = config.preprocess
+        if preprocessing_config.method == "none":
             return tensor
+
+        ch = config.channels_to_use
 
         # Reshape per-channel statistics for correct broadcasting.
         # Stats have shape (C,); we add trailing singleton dims to match ndim.
@@ -694,66 +701,77 @@ class TokamakH5Dataset(Dataset):
         else:
             reshape_dims = None
 
-        if config.method == "standardize":
-            if config.mean is None or config.std is None:
+        if preprocessing_config.method == "standardize":
+            if preprocessing_config.mean is None or preprocessing_config.std is None:
                 print("Warning: "
                       "standardize requested but no statistics provided")
                 return tensor
 
-            # Convert to tensor and reshape for broadcasting
             mean = torch.as_tensor(
-                config.mean, dtype=tensor.dtype, device=tensor.device)
+                preprocessing_config.mean, dtype=tensor.dtype, device=tensor.device)
             std = torch.as_tensor(
-                config.std, dtype=tensor.dtype, device=tensor.device)
-
+                preprocessing_config.std, dtype=tensor.dtype, device=tensor.device)
+            if ch is not None:
+                mean = mean[ch]
+                std = std[ch]
             if reshape_dims is not None:
                 mean = mean.reshape(reshape_dims)
                 std = std.reshape(reshape_dims)
 
-            return (tensor - mean) / (std + config.eps)
+            tensor -= mean
+            tensor /= (std + preprocessing_config.eps)
+            return tensor
 
-        elif config.method == "normalize":
-            if config.min_val is None or config.max_val is None:
+        elif preprocessing_config.method == "normalize":
+            if preprocessing_config.min_val is None or preprocessing_config.max_val is None:
                 print("Warning: "
                       "normalize requested but no statistics provided")
                 return tensor
 
-            min_val = torch.tensor(
-                config.min_val, dtype=tensor.dtype, device=tensor.device
-            )
-            max_val = torch.tensor(
-                config.max_val, dtype=tensor.dtype, device=tensor.device
-            )
+            min_val = torch.as_tensor(
+                preprocessing_config.min_val, dtype=tensor.dtype, device=tensor.device)
+            max_val = torch.as_tensor(
+                preprocessing_config.max_val, dtype=tensor.dtype, device=tensor.device)
+            if ch is not None:
+                min_val = min_val[ch]
+                max_val = max_val[ch]
+            if reshape_dims is not None:
+                min_val = min_val.reshape(reshape_dims)
+                max_val = max_val.reshape(reshape_dims)
 
-            # These are scalars, no reshape needed
-            return (tensor - min_val) / (max_val - min_val + config.eps)
+            return (tensor - min_val) / (max_val - min_val + preprocessing_config.eps)
 
-        elif config.method == "log_standardize":
-            # log10(x+1) in-place via numpy (2x faster than torch on CPU).
-            # tensor.numpy() is zero-copy;
-            # modifying arr updates tensor in-place.
+        elif preprocessing_config.method == "log_standardize":
             arr = tensor.numpy()
+            arr = np.clip(arr, a_min=0., a_max=None, out=arr)
             arr += 1
             np.log10(arr, out=arr)
 
-            if config.mean is None or config.std is None:
+            if preprocessing_config.mean is None or preprocessing_config.std is None:
                 print("Warning: "
                       "log_standardize requested but no statistics provided")
                 return tensor
 
-            # Convert to tensor and reshape for broadcasting
             mean = torch.as_tensor(
-                config.mean, dtype=tensor.dtype, device=tensor.device)
+                preprocessing_config.mean, dtype=tensor.dtype, device=tensor.device)
             std = torch.as_tensor(
-                config.std, dtype=tensor.dtype, device=tensor.device)
-
+                preprocessing_config.std, dtype=tensor.dtype, device=tensor.device)
+            if ch is not None:
+                mean = mean[ch]
+                std = std[ch]
             if reshape_dims is not None:
                 mean = mean.reshape(reshape_dims)
                 std = std.reshape(reshape_dims)
 
-            return (tensor - mean) / (std + config.eps)
+            # In-place to avoid allocating temporary tensors in worker
+            # processes. With large batch sizes and many workers, out-of-place
+            # `(tensor - mean) / std` fragments each worker's heap enough to
+            # cause CPU OOM after several epochs.
+            tensor -= mean
+            tensor /= (std + preprocessing_config.eps)
+            return tensor
 
-        elif config.method == "log":
+        elif preprocessing_config.method == "log":
             arr = tensor.numpy()
             arr = np.clip(arr, a_min=0., a_max=None, out=arr)
             arr += 1
@@ -783,7 +801,7 @@ class TokamakH5Dataset(Dataset):
             config: SignalConfig,
             t_start: float,
             t_end: float
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, int]:
         """
         Load raw signal at native sampling rate within time window.
 
@@ -800,10 +818,15 @@ class TokamakH5Dataset(Dataset):
 
         Returns
         -------
-        torch.Tensor
-            Array of shape (channels, time_samples) at native sampling rate
+        tensor : torch.Tensor
+            Array of shape (channels, time_samples) at target sampling rate.
+            Positions beyond the actual signal end are zero-padded.
+        valid_length : int
+            Number of valid (non-padded) samples in the time dimension,
+            expressed in terms of ``config.target_fs``.
         """
         duration_s = t_end - t_start
+        T_target = round(duration_s * config.target_fs)
 
         # Find the signal in HDF5
         data_group = None
@@ -825,9 +848,7 @@ class TokamakH5Dataset(Dataset):
                 )
             else:
                 num_channels = config.num_channels
-            return torch.zeros(
-                (num_channels, round(duration_s * config.target_fs))
-            )
+            return torch.zeros((num_channels, T_target)), 0
 
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
@@ -845,9 +866,7 @@ class TokamakH5Dataset(Dataset):
                 )
             else:
                 num_channels = config.num_channels
-            return torch.zeros(
-                (num_channels, round(duration_s * config.target_fs))
-            )
+            return torch.zeros((num_channels, T_target)), 0
 
         # Compute actual sampling frequency from the data
         actual_fs = (n_samples - 1) / (xdata_end_s - xdata_start_s)
@@ -914,11 +933,16 @@ class TokamakH5Dataset(Dataset):
                 else:
                     output[:chunk.shape[0], output_start:output_end] = chunk
 
+        # Step 5: Compute valid_length — how many target-rate samples correspond
+        # to real data.  The HDF5 data ends at hdf5_end_clamped (native index),
+        # which maps to time xdata_start_s + hdf5_end_clamped / actual_fs.
+        t_data_end = xdata_start_s + hdf5_end_clamped / actual_fs
+        valid_length = min(T_target, max(0, round((t_data_end - t_start) * config.target_fs)))
+
         # Step 6: Convert to tensor and resample to target frequency.
         # tensor is already (C, T), so no permute is needed around interpolate.
         tensor = torch.from_numpy(output)
 
-        T_target = round(duration_s * config.target_fs)
         if tensor.shape[1] != T_target:
             tensor = F.interpolate(
                 tensor.unsqueeze(0),
@@ -927,7 +951,7 @@ class TokamakH5Dataset(Dataset):
                 align_corners=False,
             ).squeeze(0)
 
-        return tensor
+        return tensor, valid_length
 
     def _compute_stft(self, signal: torch.Tensor) -> torch.Tensor:
         """
@@ -1016,8 +1040,9 @@ class TokamakH5Dataset(Dataset):
     def _process_signal(
             self,
             data: torch.Tensor,
-            config: SignalConfig
-    ) -> torch.Tensor:
+            config: SignalConfig,
+            valid_length: int,
+    ) -> tuple[torch.Tensor, int]:
         """
         Transpose, optionally compute STFT, and preprocess a raw signal.
 
@@ -1029,25 +1054,36 @@ class TokamakH5Dataset(Dataset):
         config : SignalConfig
             Configuration for the signal, including ``apply_stft`` and
             ``preprocess`` settings.
+        valid_length : int
+            Number of valid (non-padded) samples in ``data``, as returned by
+            :meth:`_load_signal_raw`.
 
         Returns
         -------
-        torch.Tensor
+        processed : torch.Tensor
             Processed tensor:
 
             - ``(C, n_fft // 2, time_frames)`` when
               ``config.apply_stft`` is ``True``.
             - ``(C, T)`` otherwise.
+        valid_length_out : int
+            Number of valid entries in the time (last) dimension of the
+            processed tensor.  For STFT signals this is expressed in frames;
+            for raw signals it equals ``valid_length``.
         """
-        # Step 2: Process (STFT or nothing)
         if config.apply_stft:
             processed = self._compute_stft(data)
+            # With torch.stft default center=True: n_frames = T // hop_length + 1
+            valid_length_out = min(
+                processed.shape[-1],
+                valid_length // self.hop_length + 1,
+            )
         else:
             processed = data
+            valid_length_out = valid_length
 
-        # Step 3: Apply preprocessing
-        processed = self._apply_preprocessing(processed, config.preprocess)
-        return processed
+        processed = self._apply_preprocessing(processed, config)
+        return processed, valid_length_out
 
     def _load_movie_raw(
             self,
@@ -1258,14 +1294,16 @@ class TokamakH5Dataset(Dataset):
         all_signals = {}
         for config in self.signal_configs:
             if config.name in self.input_signals:
-                raw_data = self._load_signal_raw(
+                raw_data, valid_length = self._load_signal_raw(
                     self.h5_file,
                     config, t_start,
                     t_end
                 )
-                all_signals[config.name] = self._process_signal(
-                    raw_data, config
+                tensor, valid_length_out = self._process_signal(
+                    raw_data, config, valid_length
                 )
+                all_signals[config.name] = tensor
+                all_signals[f"{config.name}_valid"] = valid_length_out
 
         # Load and process movies
         all_movies = {}
@@ -1275,7 +1313,7 @@ class TokamakH5Dataset(Dataset):
                     self.h5_file, movie_config, t_start, t_end
                 )
                 all_movies[movie_config.name] = self._apply_preprocessing(
-                    raw_movie, movie_config.preprocess)
+                    raw_movie, movie_config)
 
         # Load metadata
         if "text" in self.input_signals:
@@ -1319,10 +1357,14 @@ class TokamakH5Dataset(Dataset):
         for config in self.signal_configs:
             if config.name not in signals_to_load:
                 continue
-            raw_data = self._load_signal_raw(
+            raw_data, valid_length = self._load_signal_raw(
                 self.h5_file, config, t_start, t_end
             )
-            all_signals[config.name] = self._process_signal(raw_data, config)
+            tensor, valid_length_out = self._process_signal(
+                raw_data, config, valid_length
+            )
+            all_signals[config.name] = tensor
+            all_signals[f"{config.name}_valid"] = valid_length_out
 
         # Load and process movies
         all_movies = {}
@@ -1333,7 +1375,7 @@ class TokamakH5Dataset(Dataset):
                 self.h5_file, movie_config, t_start, t_end
             )
             all_movies[movie_config.name] = self._apply_preprocessing(
-                raw_movie, movie_config.preprocess
+                raw_movie, movie_config
             )
 
         # Load metadata
@@ -1404,6 +1446,24 @@ class TokamakH5Dataset(Dataset):
                 pass
 
 
+def _collate_dict(samples: list[dict]) -> dict:
+    """Collate a list of sample dicts into a batched dict.
+
+    Keys ending in ``'_valid'`` hold plain Python ints and are stacked into a
+    ``[B]`` long tensor.  ``'text'`` keys are kept as a list.  All other keys
+    are assumed to hold tensors and are stacked normally.
+    """
+    collated = {}
+    for key in samples[0]:
+        if key == "text":
+            collated[key] = [d[key] for d in samples]
+        elif key.endswith("_valid"):
+            collated[key] = torch.tensor([d[key] for d in samples], dtype=torch.long)
+        else:
+            collated[key] = torch.stack([d[key] for d in samples])
+    return collated
+
+
 def collate_fn(batch):
     """Custom collate function for batching."""
     elem = batch[0]
@@ -1412,36 +1472,15 @@ def collate_fn(batch):
     if "inputs" in elem and "targets" in elem:
         return collate_fn_prediction(batch)
 
-    # Standard mode
-    collated = {}
-    for key in elem:
-        if key == "text":
-            collated[key] = [d[key] for d in batch]
-        else:
-            collated[key] = torch.stack([d[key] for d in batch])
-    return collated
+    return _collate_dict(batch)
 
 
 def collate_fn_prediction(batch):
     """Collate function for prediction mode."""
-    inputs_batch = []
-    targets_batch = []
+    inputs_batch = [item["inputs"] for item in batch]
+    targets_batch = [item["targets"] for item in batch]
 
-    for item in batch:
-        inputs_batch.append(item["inputs"])
-        targets_batch.append(item["targets"])
-
-    # Collate inputs
-    inputs_collated = {}
-    for key in inputs_batch[0]:
-        if key == "text":
-            inputs_collated[key] = [d[key] for d in inputs_batch]
-        else:
-            inputs_collated[key] = torch.stack([d[key] for d in inputs_batch])
-
-    # Collate targets
-    targets_collated = {}
-    for key in targets_batch[0]:
-        targets_collated[key] = torch.stack([d[key] for d in targets_batch])
-
-    return {"inputs": inputs_collated, "targets": targets_collated}
+    return {
+        "inputs": _collate_dict(inputs_batch),
+        "targets": _collate_dict(targets_batch),
+    }

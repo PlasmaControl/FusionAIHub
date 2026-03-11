@@ -159,11 +159,14 @@ class UnimodalTrainer:
 
     def _train_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
+        valid_lengths = batch.get(f"{self.modality_key}_valid")
+        if valid_lengths is not None:
+            valid_lengths = valid_lengths.to(self.dm.device)
         self.optimizer.zero_grad()
         output = self.model(data)
         if isinstance(output, tuple):
             output = output[0]
-        loss = self.loss_fn(output, data)
+        loss = self.loss_fn(output, data, valid_lengths)
         loss.backward()
         self.optimizer.step()
         return {"loss": loss}
@@ -171,10 +174,13 @@ class UnimodalTrainer:
     @torch.inference_mode()
     def _validate_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
+        valid_lengths = batch.get(f"{self.modality_key}_valid")
+        if valid_lengths is not None:
+            valid_lengths = valid_lengths.to(self.dm.device)
         output = self.model(data)
         if isinstance(output, tuple):
             output = output[0]
-        loss = self.loss_fn(output, data)
+        loss = self.loss_fn(output, data, valid_lengths)
         for metric in self.metrics:
             metric.update(output, data)
         return {"loss": loss}

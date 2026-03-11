@@ -50,15 +50,20 @@ class FastTimeSeriesBaselineEncoder(ModalityEncoder):
         self.d_model = d_model
         self.n_conv_layers = n_conv_layers
 
-        # Calculate stride from input_length and n_tokens
-        # stride = (input_length / n_tokens)^(1 / n_conv_layers)
+        # Calculate stride from input_length and n_tokens.
+        # Use floor so the conv layers slightly over-compress
+        # (producing > n_tokens), then AdaptiveAvgPool1d downsamples to exactly
+        # n_tokens.  Using ceil would under-compress (< n_tokens), forcing
+        # AdaptiveAvgPool1d to upsample — losing fine detail and reducing the
+        # real bottleneck size.
         total_reduction = input_length / n_tokens
-        self.stride = int(math.ceil(total_reduction ** (1 / n_conv_layers)))
+        self.stride = int(math.floor(total_reduction ** (1 / n_conv_layers)))
         self.stride = max(2, min(self.stride, 5))
 
         # Dynamically build channel progression:
         # start at 64, double each layer, cap at d_model
-        intermediate = [min(64 * (2 ** i), d_model) for i in range(n_conv_layers - 1)]
+        intermediate = [
+            min(64 * (2 ** i), d_model) for i in range(n_conv_layers - 1)]
         self.channels = [n_channels] + intermediate + [d_model]
 
         # Build conv layers
@@ -74,12 +79,12 @@ class FastTimeSeriesBaselineEncoder(ModalityEncoder):
         ])
 
         self.norms = nn.ModuleList([
-            nn.InstanceNorm1d(self.channels[i + 1]) for i in range(n_conv_layers)
+            nn.BatchNorm1d(self.channels[i + 1]) for i in range(n_conv_layers)
         ])
 
         self.adaptive_pool = nn.AdaptiveAvgPool1d(n_tokens)
         self.activation = nn.GELU()
-        self.norm = nn.LayerNorm(d_model)
+        # self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x):
         """
@@ -102,6 +107,7 @@ class FastTimeSeriesBaselineEncoder(ModalityEncoder):
 
         x = self.adaptive_pool(x)                # [B, d_model, n_output_tokens]
         x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
+        # x = self.norm(x)
 
         return x
 

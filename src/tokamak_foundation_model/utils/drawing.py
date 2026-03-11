@@ -136,7 +136,9 @@ class DefaultDrawer:
         dataset = dataloader.dataset
         assert isinstance(dataset, Sized), "Dataset must implement __len__"
         idx = min(10, len(dataset) - 1)
-        self.probe_sample = dataset[idx][modality_key]
+        sample = dataset[idx]
+        self.probe_sample = sample[modality_key]
+        self.probe_valid_length: Optional[int] = sample.get(f"{modality_key}_valid")
 
         if self._plot_channel is not None:
             self.channel = self._plot_channel
@@ -211,6 +213,13 @@ class DefaultDrawer:
 
         input_data = self.probe_sample[self.channel].numpy()
         recon_data = output[self.channel].numpy()
+
+        # Trim to valid (non-padded) length if available
+        vl = self.probe_valid_length
+        if vl is not None and vl > 0:
+            # Last axis is always the time axis for signals and spectrograms
+            input_data = input_data[..., :vl]
+            recon_data = recon_data[..., :vl]
 
         title = f"Epoch {epoch + 1} | Train L1={train_loss:.6f}"
         if val_loss is not None:
