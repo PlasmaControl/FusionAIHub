@@ -7,10 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-# Assuming base classes are available in your project structure
-# from .base import ModalityEncoder, ModalityDecoder
-
-class VideoBaselineEncoder(nn.Module): # Inherit from ModalityEncoder in your repo
+class VideoBaselineEncoder(nn.Module): 
     def __init__(
         self,
         n_channels: int = 1,
@@ -44,8 +41,9 @@ class VideoBaselineEncoder(nn.Module): # Inherit from ModalityEncoder in your re
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Input x: (B, T, H, W)
-        # Add channel dim: (B, 1, T, H, W)
-        x = x.unsqueeze(1)
+        # Add channel dim if needed: (B, 1, T, H, W)
+        if len(x.shape)==4:
+            x = x.unsqueeze(1)
             
         x = F.leaky_relu(self.enc1(x), 0.2)
         x = F.leaky_relu(self.enc2(x), 0.2)
@@ -61,7 +59,7 @@ class VideoBaselineEncoder(nn.Module): # Inherit from ModalityEncoder in your re
         return tokens
 
 
-class VideoBaselineDecoder(nn.Module): # Inherit from ModalityDecoder in your repo
+class VideoBaselineDecoder(nn.Module): 
     def __init__(
         self,
         n_channels: int = 1,
@@ -104,7 +102,7 @@ class VideoBaselineDecoder(nn.Module): # Inherit from ModalityDecoder in your re
         x = torch.sigmoid(self.dec4(x))
         
         # Return as (B, T, H, W) for grayscale as requested in template
-        return x.squeeze(1) 
+        return x
 
 
 class VideoBaselineAutoEncoder(nn.Module):
@@ -113,20 +111,20 @@ class VideoBaselineAutoEncoder(nn.Module):
         n_tokens: int = 256,
         t_chunk: int = 25,
         img_size: int = 128,
-        token_dim: int = 512,
+        d_model: int = 512,
         n_channels: int = 1,
     ):
         super().__init__()
         self.encoder = VideoBaselineEncoder(
             n_channels=n_channels,
-            d_model=token_dim,
+            d_model=d_model,
             n_tokens=n_tokens,
             t_chunk=t_chunk,
             img_size=img_size,
         )
         self.decoder = VideoBaselineDecoder(
             n_channels=n_channels,
-            d_model=token_dim,
+            d_model=d_model,
             n_tokens=n_tokens,
             t_chunk=t_chunk,
             img_size=img_size,

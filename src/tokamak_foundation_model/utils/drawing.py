@@ -249,10 +249,11 @@ class DefaultDrawer:
         fig, axes = plt.subplots(2, n, figsize=(2 * n, 4))
         for col, t in enumerate(indices):
             for row, data in enumerate((input_data, recon_data)):
-                axes[row, col].imshow(
-                    data[t], cmap='viridis', origin='lower', aspect='auto',
+                im = axes[row, col].imshow(
+                    data[t], cmap='viridis', origin='lower', aspect='auto',vmin=0,vmax=1
                 )
                 axes[row, col].set_axis_off()
+                fig.colorbar(im, ax=axes[row, col])
             axes[0, col].set_title(f't={t}', fontsize=8)
 
         fig.text(0.01, 0.75, 'Input', va='center', rotation='vertical', fontsize=9)

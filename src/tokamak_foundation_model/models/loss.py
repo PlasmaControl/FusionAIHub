@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Union, List
 
 class DictMSELoss(nn.Module):
     """MSE loss for dict outputs: averages MSE across all target keys."""
@@ -15,15 +16,15 @@ class DictMSELoss(nn.Module):
 
 class SparseVideoWeightedMSE(nn.Module):
     """
-    Weighted MSE Loss optimized for sparse bright spots in dark movies.
-    Applies a fixed multiplier to errors on pixels exceeding a brightness threshold.
+    Weighted MSE Loss optimized for multi-channel video.
+    Allows for per-channel thresholds and bright weights to handle 
+    mixed modalities (e.g., one sparse channel, one dense channel).
     """
     def __init__(
         self, 
         reduction: str = "mean", 
-        threshold: float = 0.2, 
-        bright_weight: float = 15.0, 
-        eps: float = 1e-12
+        threshold: Union[float, List[float]] = 0.1, 
+        bright_weight: Union[float, List[float]] = 50.0, 
     ):
         super().__init__()
         if reduction not in ("mean", "sum", "none"):
@@ -32,30 +33,40 @@ class SparseVideoWeightedMSE(nn.Module):
         self.reduction = reduction
         self.threshold = threshold
         self.bright_weight = bright_weight
-        self.eps = eps
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        pred, target: (B, T, H, W) or (B, C, T, H, W)
+        pred, target: Expected shape (B, C, T, H, W)
         """
-        # Calculate standard squared error
-        err2 = (pred - target) ** 2
+        # err2 = (pred - target) ** 2
+        err2 = torch.abs(pred - target) # L1 instead of (pred-target)**2
         
-        # Create a weight map: 
-        # 1.0 for dark areas, bright_weight for spots > threshold
-        # This is the logic from my original suggestion
-        weight_map = torch.where(target > self.threshold, self.bright_weight, 1.0)
-        
-        # Ensure weight map is on the correct device and dtype
+        # Scenario 1: Apply the exact same rules globally to all channels
+        if isinstance(self.threshold, float) and isinstance(self.bright_weight, float):
+            weight_map = torch.where(target > self.threshold, self.bright_weight, 1.0)
+            
+        # Scenario 2: Apply specific rules per channel
+        else:
+            C = target.shape[1] # Assumes channel is index 1: (B, C, T, H, W)
+            weight_map = torch.ones_like(target)
+            
+            # Normalize inputs to lists matching the channel count
+            thresh_list = [self.threshold] * C if isinstance(self.threshold, float) else self.threshold
+            weight_list = [self.bright_weight] * C if isinstance(self.bright_weight, float) else self.bright_weight
+            
+            for c in range(C):
+                chan_target = target[:, c:c+1, ...] # Keep dimensions using slice
+                chan_weight = torch.where(chan_target > thresh_list[c], weight_list[c], 1.0)
+                weight_map[:, c:c+1, ...] = chan_weight
+
+        # Ensure weight map matches the device and dtype of the errors
         weight_map = weight_map.to(err2.dtype).to(err2.device)
 
         weighted_err = err2 * weight_map
 
         if self.reduction == "none":
             return weighted_err
-
         if self.reduction == "sum":
             return weighted_err.sum()
         
-        # Default to mean reduction across all elements
         return torch.mean(weighted_err)

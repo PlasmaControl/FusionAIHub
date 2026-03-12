@@ -1,59 +1,34 @@
 #!/usr/bin/env python3
-"""
-Evaluate / visualize reconstructions from a trained video autoencoder.
-
-Typical repo layout:
-  repo/
-    src/tokamak_foundation_model/...
-    script/eval_video_reconstruction.py
-
-Run from repo root (recommended):
-  python script/eval_video_reconstruction.py --data_dir ... --checkpoint_path ...
-
-Or from anywhere:
-  python /abs/path/to/eval_video_reconstruction.py ...
-
-This script:
-- Adds <repo_root>/src to sys.path (like the training script)
-- Builds the same dataloader (TokamakH5Dataset + collate_fn + worker_init_fn)
-- Builds the same model (video_baseline.VideoBaselineAutoEncoder)
-- Loads checkpoint weights
-- Runs a few batches and saves input/recon/error PNGs (and optional GIF)
-"""
 from __future__ import annotations
 
 import argparse
+import logging
+import random
 import sys
 from pathlib import Path
-import logging
-from typing import Optional, Tuple, Any, Dict
-
-import torch
-import torch.nn as nn
-from torch.utils.data import ConcatDataset, DataLoader
+from typing import Any, Tuple
 
 import matplotlib
-matplotlib.use("Agg")  # headless safe
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
+from torch.utils.data import ConcatDataset, DataLoader
 
 try:
-    import imageio.v2 as imageio  # optional for GIFs
+    import imageio.v2 as imageio
 except Exception:
     imageio = None
 
-# -------------------------
-# Path setup: add repo_root/src
-# -------------------------
+
 def add_src_to_path() -> Path:
-    this_file = Path(__file__).resolve()
     repo_root = Path().resolve().parents[1]
     sys.path.append(str(repo_root / "src"))
     return repo_root
 
 
 def build_dataloader(
-    data_dir: Path,
-    file_glob: str,
+    hdf5_files: list[Path],
     signal: str,
     batch_size: int,
     num_workers: int,
@@ -61,10 +36,6 @@ def build_dataloader(
 ) -> DataLoader:
     from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
     from tokamak_foundation_model.data.utils import worker_init_fn
-
-    hdf5_files = sorted(data_dir.glob(file_glob))
-    if len(hdf5_files) == 0:
-        raise FileNotFoundError(f"No HDF5 files matched: {data_dir}/{file_glob}")
 
     datasets = [
         TokamakH5Dataset(
@@ -76,7 +47,6 @@ def build_dataloader(
         for f in hdf5_files
     ]
     dataset = ConcatDataset(datasets)
-
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -89,76 +59,63 @@ def build_dataloader(
     )
 
 
-def build_model(
-    n_tokens: int,
-    token_dim: int,
-    t_clip: int,
-    image_size: int,
-    device: torch.device,
-):
-    from tokamak_foundation_model.models.modality import video_baseline
+def split_files(data_dir: Path, file_glob: str, seed: int = 42) -> tuple[list[Path], list[Path], list[Path]]:
+    hdf5_files = sorted(data_dir.glob(file_glob))
+    if not hdf5_files:
+        raise FileNotFoundError(f"No HDF5 files matched: {data_dir}/{file_glob}")
 
-    model = video_baseline.VideoBaselineAutoEncoder(
-        n_tokens=n_tokens,
-        token_dim=token_dim,
-    ).to(device)
-    return model
+    random.seed(seed)
+    # Keep the exact split logic from the new training script.
+    n = len(hdf5_files)
+    n_val = int(0.1 * n)
+    n_test = int(0.1 * n)
+
+    train_paths = hdf5_files[n_val + n_test:]
+    val_paths = hdf5_files[:n_val]
+    test_paths = hdf5_files[n_val:n_val + n_test]
+    return train_paths, val_paths, test_paths
 
 
-def load_checkpoint_weights(model: nn.Module, checkpoint_path: Path, device: torch.device) -> None:
-    ckpt = torch.load(checkpoint_path, map_location=device)
-    # Common patterns
+def load_checkpoint_weights(model: torch.nn.Module, checkpoint_path: Path, device: torch.device) -> dict[str, Any]:
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
     if isinstance(ckpt, dict):
         for key in ("model_state_dict", "model", "state_dict", "model_state"):
             if key in ckpt and isinstance(ckpt[key], dict):
-                model.load_state_dict(ckpt[key])
-                return
-        # Sometimes it's already a state_dict
-        if all(isinstance(k, str) for k in ckpt.keys()):
-            try:
-                model.load_state_dict(ckpt)
-                return
-            except Exception:
-                pass
+                model.load_state_dict(ckpt[key], strict=True)
+                return ckpt
+
+        try:
+            model.load_state_dict(ckpt, strict=True)
+            return {"state_dict": ckpt}
+        except Exception:
+            pass
 
     raise RuntimeError(
         "Could not find model weights in checkpoint. Expected keys like "
-        "'model_state_dict' / 'state_dict' etc."
+        "'model_state_dict', 'state_dict', 'model', or a raw state_dict."
     )
 
 
 def extract_xy(batch: Any, signal: str) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Tries common batch formats used by collate_fn.
-    Returns x, y tensors shaped like (B, T, H, W).
-    """
     if isinstance(batch, dict):
-        # Case: batch[signal] = tensor
         if signal in batch and torch.is_tensor(batch[signal]):
             x = batch[signal]
             return x, x
 
-        # Case: batch["x"][signal], batch["y"][signal]
         if "x" in batch and isinstance(batch["x"], dict) and signal in batch["x"]:
             x = batch["x"][signal]
-            if "y" in batch and isinstance(batch["y"], dict) and signal in batch["y"]:
-                y = batch["y"][signal]
-            else:
-                y = x
+            y = batch.get("y", {}).get(signal, x) if isinstance(batch.get("y"), dict) else x
             return x, y
 
-        # Case: batch["inputs"][signal], batch["targets"][signal]
         if "inputs" in batch and isinstance(batch["inputs"], dict) and signal in batch["inputs"]:
             x = batch["inputs"][signal]
-            y = x
-            if "targets" in batch and isinstance(batch["targets"], dict) and signal in batch["targets"]:
-                y = batch["targets"][signal]
+            y = batch.get("targets", {}).get(signal, x) if isinstance(batch.get("targets"), dict) else x
             return x, y
 
-        # Fall back: search for any tensor that looks like video
-        for k, v in batch.items():
-            if torch.is_tensor(v) and v.ndim == 4:
-                return v, v
+        for _, value in batch.items():
+            if torch.is_tensor(value) and value.ndim >= 4:
+                return value, value
 
         raise RuntimeError(f"Unrecognized batch dict format. Keys={list(batch.keys())}")
 
@@ -171,28 +128,47 @@ def extract_xy(batch: Any, signal: str) -> Tuple[torch.Tensor, torch.Tensor]:
     raise RuntimeError(f"Unrecognized batch type: {type(batch)}")
 
 
-# -------------------------
-# Visualization helpers
-# -------------------------
-def save_frame_triplet(out_dir: Path, prefix: str, frame_in, frame_rec, vmin=None, vmax=None) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    err = (frame_in - frame_rec).abs()
+def ensure_bcthw(x: torch.Tensor) -> torch.Tensor:
+    if x.ndim != 5:
+        raise ValueError(f"Expected a 5D tensor, got shape={tuple(x.shape)}")
 
-    fig, axes = plt.subplots(1, 3, figsize=(10, 3))
+    # New training script inspects sample_data.shape[1] as channel dimension,
+    # so the expected layout is already (B, C, T, H, W).
+    return x
+
+
+class SparseVideoWeightedMSEFallback(torch.nn.Module):
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        weight = 1.0 + 10.0 * target.abs()
+        return torch.mean(weight * (pred - target) ** 2)
+
+
+def make_loss_fn() -> torch.nn.Module:
+    try:
+        from tokamak_foundation_model.models.loss import SparseVideoWeightedMSE
+        return SparseVideoWeightedMSE()
+    except Exception:
+        return SparseVideoWeightedMSEFallback()
+
+
+def save_frame_triplet(out_dir: Path, prefix: str, frame_in, frame_rec, frame_err, vmin=None, vmax=None) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.5))
     ax0 = axes[0].imshow(frame_in, cmap="hot", vmin=vmin, vmax=vmax)
     axes[0].set_title("input")
     axes[0].axis("off")
-    plt.colorbar(ax0,ax=axes[0])
+    plt.colorbar(ax0, ax=axes[0])
 
     ax1 = axes[1].imshow(frame_rec, cmap="hot", vmin=vmin, vmax=vmax)
     axes[1].set_title("recon")
     axes[1].axis("off")
-    plt.colorbar(ax1,ax=axes[1])
+    plt.colorbar(ax1, ax=axes[1])
 
-    ax2 = axes[2].imshow(err, cmap="hot", vmin=vmin, vmax=vmax)
+    ax2 = axes[2].imshow(frame_err, cmap="hot")
     axes[2].set_title("abs error")
     axes[2].axis("off")
-    plt.colorbar(ax2,ax=axes[2])
+    plt.colorbar(ax2, ax=axes[2])
 
     fig.tight_layout()
     fig.savefig(out_dir / f"{prefix}.png", dpi=150)
@@ -201,140 +177,235 @@ def save_frame_triplet(out_dir: Path, prefix: str, frame_in, frame_rec, vmin=Non
 
 def save_gif(out_path: Path, vid_in, vid_rec, fps: float = 20.0, vmin=None, vmax=None) -> None:
     if imageio is None:
-        raise RuntimeError("imageio is not available; install it to save GIFs (pip install imageio).")
+        raise RuntimeError("imageio is not available; install it to save GIFs.")
 
     frames = []
-    T = vid_in.shape[0]
-    for t in range(T):
-        fig, axes = plt.subplots(1, 2, figsize=(6, 3))
-        axes[0].imshow(vid_in[t], cmap="gray", vmin=vmin, vmax=vmax)
-        axes[0].set_title(f"in t={t}")
+    t_steps = vid_in.shape[0]
+    for t in range(t_steps):
+        fig, axes = plt.subplots(1, 2, figsize=(7, 3))
+        axes[0].imshow(vid_in[t], cmap="hot", vmin=vmin, vmax=vmax)
+        axes[0].set_title(f"input t={t}")
         axes[0].axis("off")
-        axes[1].imshow(vid_rec[t], cmap="gray", vmin=vmin, vmax=vmax)
-        axes[1].set_title(f"rec t={t}")
+        axes[1].imshow(vid_rec[t], cmap="hot", vmin=vmin, vmax=vmax)
+        axes[1].set_title(f"recon t={t}")
         axes[1].axis("off")
         fig.tight_layout()
-
-        # draw to RGB array
         fig.canvas.draw()
-        img = torch.tensor(fig.canvas.buffer_rgba()).numpy()[:, :, :3]
-        frames.append(img)
+        frames.append(torch.tensor(fig.canvas.buffer_rgba()).numpy()[:, :, :3])
         plt.close(fig)
 
-    duration = 1.0 / max(fps, 1e-6)
-    imageio.mimsave(out_path, frames, duration=duration)
+    imageio.mimsave(out_path, frames, duration=1.0 / max(fps, 1e-6))
 
 
-# def main():
-parser = argparse.ArgumentParser(description="Evaluate reconstructions from a trained video autoencoder")
-parser.add_argument("--signal", type=str, default="bolo")
-parser.add_argument("--data_dir", type=str, default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data/")
-parser.add_argument("--file_glob", type=str, default="*_processed.h5")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Validate a trained multi-channel video reconstruction model")
 
-# Model / preprocessing hyperparams (must match training)
-parser.add_argument("--clip_seconds", type=float, default=0.5)
-parser.add_argument("--target_fps", type=float, default=50.0)
-parser.add_argument("--image_size", type=int, default=256)
-parser.add_argument("--n_tokens", type=int, default=32)
-parser.add_argument("--token_dim", type=int, default=512)
+    parser.add_argument("--signal", type=str, default="tangtv")
+    parser.add_argument("--model", type=str, default="video")
+    parser.add_argument("--data_dir", type=str, default="/scratch/gpfs/aj17/datasets/fm_test/")
+    parser.add_argument("--file_glob", type=str, default="*_processed.h5")
+    parser.add_argument("--checkpoint_path", type=str, required=True)
+    parser.add_argument("--split", choices=["train", "val", "test", "all"], default="val")
+    parser.add_argument("--seed", type=int, default=42)
 
-# Eval options
-parser.add_argument("--checkpoint_path", type=str, required=True)
-parser.add_argument("--batch_size", type=int, default=4)
-parser.add_argument("--num_workers", type=int, default=2)
-parser.add_argument("--num_batches", type=int, default=2, help="How many batches to visualize")
-parser.add_argument("--sample_index", type=int, default=0, help="Which sample in batch to visualize")
-parser.add_argument("--out_dir", type=str, default="recon_debug")
-parser.add_argument("--make_gif", action="store_true", help="Save GIF for first visualized sample")
-parser.add_argument("--gif_fps", type=float, default=20.0)
-parser.add_argument("--shuffle", action="store_true")
+    parser.add_argument("--n_tokens", type=int, default=128)
+    parser.add_argument("--d_model", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--num_workers", type=int, default=2)
+    parser.add_argument("--shuffle", action="store_true")
 
-args = parser.parse_args()
+    parser.add_argument("--max_batches", type=int, default=0, help="0 means evaluate the full split")
+    parser.add_argument("--sample_index", type=int, default=0)
+    parser.add_argument("--num_visualizations", type=int, default=2)
+    parser.add_argument("--frames_per_sample", type=int, default=4)
+    parser.add_argument("--out_dir", type=str, default="recon_validation")
+    parser.add_argument("--make_gif", action="store_true")
+    parser.add_argument("--gif_fps", type=float, default=20.0)
 
-repo_root = add_src_to_path()
+    args = parser.parse_args()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("eval_video_reconstruction")
-logger.info("repo_root=%s", repo_root)
+    repo_root = add_src_to_path()
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("eval_video_reconstruction_new")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logger.info("device=%s", device)
+    logger.info("repo_root=%s", repo_root)
+    logger.info("device=%s", device)
 
-data_dir = Path(args.data_dir)
-checkpoint_path = Path(args.checkpoint_path)
-out_dir = Path(args.out_dir)
+    from tokamak_foundation_model.models.model_factory import build_model
 
-t_clip = int(round(args.clip_seconds * args.target_fps))
-logger.info("t_clip=%d", t_clip)
+    data_dir = Path(args.data_dir)
+    checkpoint_path = Path(args.checkpoint_path)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-dl = build_dataloader(
-    data_dir=data_dir,
-    file_glob=args.file_glob,
-    signal=args.signal,
-    batch_size=args.batch_size,
-    num_workers=args.num_workers,
-    shuffle=args.shuffle,
-)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-model = build_model(
-    n_tokens=args.n_tokens,
-    token_dim=args.token_dim,
-    t_clip=t_clip,
-    image_size=args.image_size,
-    device=device,
-)
-logger.info("model params=%d", sum(p.numel() for p in model.parameters()))
+    train_paths, val_paths, test_paths = split_files(data_dir, args.file_glob, seed=args.seed)
+    split_map = {
+        "train": train_paths,
+        "val": val_paths,
+        "test": test_paths,
+        "all": train_paths + val_paths + test_paths,
+    }
+    selected_paths = split_map[args.split]
+    if not selected_paths:
+        raise RuntimeError(
+            f"Selected split '{args.split}' is empty. "
+            f"Dataset has train={len(train_paths)}, val={len(val_paths)}, test={len(test_paths)} files."
+        )
 
-if not checkpoint_path.exists():
-    raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
-load_checkpoint_weights(model, checkpoint_path, device)
-model.eval()
-logger.info("Loaded checkpoint: %s", checkpoint_path)
-
-# Visualize a few batches
-batches_done = 0
-for batch_idx, batch in enumerate(dl):
-    x, y = extract_xy(batch, args.signal)
-    x = x.to(device).float()
-    with torch.no_grad():
-        x_hat = model(x)
-    # bring one sample to cpu for plotting
-    b = max(0, min(args.sample_index, x.shape[0] - 1))
-    vin = x[b].detach().cpu()
-    vrec = x_hat[b].detach().cpu()
-
-    # choose vmin/vmax from input range for consistent appearance
-    vmin = float(vin.min().item())
-    vmax = float(vin.max().item())
-
-    # save a few frame triplets
-    T = vin.shape[0]
-    frame_ids = [0, T // 4, T // 2, (3 * T) // 4]
-    for t in frame_ids:
-        prefix = f"batch{batch_idx:03d}_sample{b}_t{t:03d}"
-        save_frame_triplet(out_dir, prefix, vin[t], vrec[t], vmin=vmin, vmax=vmax)
-
-    # optional gif
-    if args.make_gif and batches_done == 0:
-        gif_path = out_dir / f"batch{batch_idx:03d}_sample{b}.gif"
-        save_gif(gif_path, vin, vrec, fps=args.gif_fps, vmin=vmin, vmax=vmax)
-        logger.info("Saved GIF: %s", gif_path)
-
-    # log quick stats
     logger.info(
-        "batch=%d  x_hat_mean=%.4g x_hat_std=%.4g",#  z_shape=%s",
-        batch_idx,
-        float(x_hat.mean().item()),
-        float(x_hat.std().item()),
+        "Using split=%s with %d files (train=%d, val=%d, test=%d)",
+        args.split, len(selected_paths), len(train_paths), len(val_paths), len(test_paths)
     )
 
-    batches_done += 1
-    if batches_done >= args.num_batches:
-        break
+    dataloader = build_dataloader(
+        hdf5_files=selected_paths,
+        signal=args.signal,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        shuffle=args.shuffle,
+    )
 
-logger.info("Saved outputs to: %s", out_dir.resolve())
+    sample_batch = next(iter(dataloader))
+    sample_x, _ = extract_xy(sample_batch, args.signal)
+    sample_x = ensure_bcthw(sample_x)
+    n_channels = sample_x.shape[1]
+    logger.info("Sample tensor shape=%s -> inferred n_channels=%d", tuple(sample_x.shape), n_channels)
+
+    model = build_model(args.model, d_model=args.d_model, n_tokens=args.n_tokens, n_channels=n_channels).to(device)
+    logger.info("model params=%d", sum(p.numel() for p in model.parameters()))
+
+    checkpoint = load_checkpoint_weights(model, checkpoint_path, device)
+    logger.info("Loaded checkpoint: %s", checkpoint_path)
+    if isinstance(checkpoint, dict):
+        logger.info("Checkpoint keys: %s", sorted(checkpoint.keys()))
+
+    loss_fn = make_loss_fn().to(device)
+    model.eval()
+
+    total_loss = 0.0
+    total_mse = 0.0
+    total_mae = 0.0
+    total_items = 0
+    vis_done = 0
+
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(dataloader):
+            if args.max_batches > 0 and batch_idx >= args.max_batches:
+                break
+
+            x, y = extract_xy(batch, args.signal)
+            x = ensure_bcthw(x).to(device).float()
+            y = ensure_bcthw(y).to(device).float()
+
+            y_hat = model(x)
+
+            batch_size = x.shape[0]
+            batch_loss = loss_fn(y_hat, y)
+            batch_mse = F.mse_loss(y_hat, y)
+            batch_mae = F.l1_loss(y_hat, y)
+
+            total_loss += float(batch_loss.item()) * batch_size
+            total_mse += float(batch_mse.item()) * batch_size
+            total_mae += float(batch_mae.item()) * batch_size
+            total_items += batch_size
+
+            logger.info(
+                "batch=%04d size=%d weighted_loss=%.6f mse=%.6f mae=%.6f recon_mean=%.5f recon_std=%.5f",
+                batch_idx,
+                batch_size,
+                float(batch_loss.item()),
+                float(batch_mse.item()),
+                float(batch_mae.item()),
+                float(y_hat.mean().item()),
+                float(y_hat.std().item()),
+            )
+
+            while vis_done < args.num_visualizations and vis_done < batch_size:
+                b = max(0, min(args.sample_index + vis_done, batch_size - 1))
+                vin = x[b].detach().cpu()
+                vrec = y_hat[b].detach().cpu()
+                verr = (vin - vrec).abs()
+
+                t_steps = vin.shape[1]
+                frame_ids = sorted(set([
+                    0,
+                    t_steps // 4,
+                    t_steps // 2,
+                    (3 * t_steps) // 4,
+                    max(0, t_steps - 1),
+                ]))[: max(1, args.frames_per_sample)]
+
+                sample_dir = out_dir / f"batch{batch_idx:04d}_sample{b:02d}"
+                sample_dir.mkdir(parents=True, exist_ok=True)
+
+                per_channel_mse = ((vrec - vin) ** 2).mean(dim=(1, 2, 3))
+                per_channel_mae = (vrec - vin).abs().mean(dim=(1, 2, 3))
+                with open(sample_dir / "metrics.txt", "w", encoding="utf-8") as f:
+                    f.write(f"batch_index: {batch_idx}\n")
+                    f.write(f"sample_index: {b}\n")
+                    f.write(f"shape_bcthw: {tuple(x.shape)}\n")
+                    f.write(f"sample_shape_cthw: {tuple(vin.shape)}\n")
+                    f.write(f"global_mse: {float(((vrec - vin) ** 2).mean().item()):.8f}\n")
+                    f.write(f"global_mae: {float((vrec - vin).abs().mean().item()):.8f}\n")
+                    for c in range(vin.shape[0]):
+                        f.write(f"channel_{c}_mse: {float(per_channel_mse[c].item()):.8f}\n")
+                        f.write(f"channel_{c}_mae: {float(per_channel_mae[c].item()):.8f}\n")
+
+                for c in range(vin.shape[0]):
+                    vmin = float(vin[c].min().item())
+                    vmax = float(vin[c].max().item())
+                    channel_dir = sample_dir / f"channel_{c}"
+                    channel_dir.mkdir(parents=True, exist_ok=True)
+                    for t in frame_ids:
+                        save_frame_triplet(
+                            channel_dir,
+                            prefix=f"t{t:03d}",
+                            frame_in=vin[c, t],
+                            frame_rec=vrec[c, t],
+                            frame_err=verr[c, t],
+                            vmin=vmin,
+                            vmax=vmax,
+                        )
+                    if args.make_gif and vis_done == 0:
+                        save_gif(
+                            channel_dir / "reconstruction.gif",
+                            vid_in=vin[c],
+                            vid_rec=vrec[c],
+                            fps=args.gif_fps,
+                            vmin=vmin,
+                            vmax=vmax,
+                        )
+
+                vis_done += 1
+                if vis_done >= args.num_visualizations:
+                    break
+
+    if total_items == 0:
+        raise RuntimeError("No samples were evaluated.")
+
+    summary_path = out_dir / f"summary_{args.split}.txt"
+    avg_loss = total_loss / total_items
+    avg_mse = total_mse / total_items
+    avg_mae = total_mae / total_items
+
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(f"split: {args.split}\n")
+        f.write(f"num_files: {len(selected_paths)}\n")
+        f.write(f"num_samples: {total_items}\n")
+        f.write(f"weighted_loss: {avg_loss:.8f}\n")
+        f.write(f"mse: {avg_mse:.8f}\n")
+        f.write(f"mae: {avg_mae:.8f}\n")
+        f.write(f"checkpoint_path: {checkpoint_path}\n")
+
+    logger.info("Validation complete")
+    logger.info("samples=%d weighted_loss=%.8f mse=%.8f mae=%.8f", total_items, avg_loss, avg_mse, avg_mae)
+    logger.info("Wrote summary to %s", summary_path.resolve())
+    logger.info("Saved visualizations to %s", out_dir.resolve())
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

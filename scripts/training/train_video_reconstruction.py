@@ -6,6 +6,8 @@ print(repo_root)
 
 import argparse
 import logging
+import random
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -18,9 +20,11 @@ from tokamak_foundation_model.data.utils import worker_init_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.utils import DefaultDrawer
 from tokamak_foundation_model.models.loss import SparseVideoWeightedMSE
+from tokamak_foundation_model.utils.distributed import DistributedManager
 
+from tokamak_foundation_model.models.model_factory import (
+    build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
-from tokamak_foundation_model.models.modality import video_baseline
 
 # TODO: Add ddp support
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,11 +32,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def build_dataloader(data_dir: Path, file_glob: str, signal: str, batch_size: int,
+def init_weights(m):
+    if isinstance(m, (nn.Conv3d, nn.ConvTranspose3d)):
+        # Kaiming normal is great for Leaky ReLU
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+
+def build_dataloader(hdf5_files: list, signal: str, batch_size: int,
                      num_workers: int, shuffle: bool) -> DataLoader:
-    hdf5_files = sorted(data_dir.glob(file_glob))
-    if len(hdf5_files) == 0:
-        raise FileNotFoundError(f"No HDF5 files matched: {data_dir}/{file_glob}")
 
     datasets = [
         TokamakH5Dataset(
@@ -43,8 +51,8 @@ def build_dataloader(data_dir: Path, file_glob: str, signal: str, batch_size: in
         )
         for f in hdf5_files
     ]
+    print("dataset",type(datasets[0]))
     dataset = ConcatDataset(datasets)
-
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -60,16 +68,33 @@ def main():
     parser = argparse.ArgumentParser(description="Train a video autoencoder (template-aligned)")
 
     # Data / signal
-    parser.add_argument("--signal", type=str, default="bolo",
+    parser.add_argument("--signal", type=str, default="tangtv",
                         help="Key/name of the video signal inside each HDF5 file")
     parser.add_argument("--data_dir", type=str,
-                        default="/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data/",
+                        default="/scratch/gpfs/aj17/datasets/fm_test/", # /scra
                         help="Path to HDF5 data directory")
     parser.add_argument("--file_glob", type=str, default="*_processed.h5",
                         help="Glob pattern for HDF5 files inside data_dir")
     parser.add_argument("--shuffle", action="store_true", default=True,
                         help="Shuffle training dataset")
-
+    parser.add_argument(
+        "--model",
+        choices=list(MODEL_REGISTRY.keys()),
+        default="video",
+        help="Model type (default: auto-selected from signal)"
+    )
+    parser.add_argument(
+        "--stats_path",
+        type=str,
+        default="/scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt",
+        help="Path to preprocessing stats file"
+    )
+    parser.add_argument(
+        "--n_fft", type=int, default=1024, help="FFT size",
+    )
+    parser.add_argument(
+        "--hop_length", type=int, default=256, help="Hop length for STFT.",
+    )
     # Video chunking / target geometry
     parser.add_argument("--clip_seconds", type=float, default=0.5,
                         help="Clip duration in seconds (0.5s -> 25 frames at 50fps)")
@@ -77,11 +102,13 @@ def main():
                         help="Target FPS (used to compute clip length)")
     parser.add_argument("--image_size", type=int, default=256,
                         help="Spatial size (H=W=image_size)")
+    parser.add_argument("--n_channels", type=int, default=1,
+                        help="Number of channels")
 
     # Latent / model
     parser.add_argument("--n_tokens", type=int, default=128,
                         help="Latent tokens N (latent is N x 512)")
-    parser.add_argument("--token_dim", type=int, default=512,
+    parser.add_argument("--d_model", type=int, default=512,
                         help="Token dimension (keep 512 to match the design)")
 
     # Optimization
@@ -104,44 +131,84 @@ def main():
 
     args = parser.parse_args()
 
+    ### Paths ###
     signal_name = args.signal
-    model_name = "video_baseline"
-
-    # Compute clip length from clip_seconds and target_fps
-    t_clip = int(round(args.clip_seconds * args.target_fps))
-    if t_clip <= 0:
-        raise ValueError("clip_seconds * target_fps must be > 0")
-
+    model_name = args.model or SIGNAL_MODEL_DEFAULTS[signal_name]
     data_dir = Path(args.data_dir)
-    checkpoint_path = Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
+    statistics_path = Path(args.stats_path)
+    checkpoint_path = (
+            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
+    )
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Signal: {signal_name}, Model: {model_name}")
-    logger.info(f"Target clip: T={t_clip}, H=W={args.image_size}, latent: N={args.n_tokens} x {args.token_dim}")
 
-    # Dataset
-    dataloader = build_dataloader(
-        data_dir=data_dir,
-        file_glob=args.file_glob,
+    ### Dataset Setup ###
+    hdf5_files = sorted(data_dir.glob("*_processed.h5"))
+    random.seed(42)
+    n = len(hdf5_files)
+    n_val = int(.1 * n)
+    n_test = int(.1 * n)
+
+    train_paths = hdf5_files[n_val + n_test:]
+    val_paths   = hdf5_files[:n_val]
+    test_paths  = hdf5_files[n_val:n_val + n_test]
+
+    stats = torch.load(statistics_path, weights_only=False)
+
+    shared_kwargs = dict(
+        preprocessing_stats=stats,
+        input_signals=[signal_name],
+        target_signals=[signal_name],
+        n_fft=args.n_fft,
+        hop_length=args.hop_length,
+        prediction_mode=False,
+    )
+
+
+    train_dataset = build_dataloader(
+        hdf5_files=train_paths,
         signal=signal_name,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         shuffle=args.shuffle,
     )
 
-    # Model
-    model = video_baseline.VideoBaselineAutoEncoder(
-        n_tokens=args.n_tokens,
-        token_dim=args.token_dim,
-    ).to(device)
+    validation_dataset = build_dataloader(
+        hdf5_files=val_paths,
+        signal=signal_name,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        shuffle=args.shuffle,
+    )
+
+    test_dataset = build_dataloader(
+        hdf5_files=test_paths,
+        signal=signal_name,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        shuffle=args.shuffle,
+    )
+
+    # Not sure if this is elegant
+    sample_data = next(iter(train_dataset))[signal_name]
+    print("sample_data",sample_data.shape)
+    n_channels = sample_data.shape[1]
+ 
+    logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")       
+
+    ### Model Setup ###
+    model = build_model(model_name, d_model=args.d_model, n_tokens=args.n_tokens,
+                        n_channels=n_channels).to(device)
+    model.apply(init_weights)
+    n_params = sum(p.numel() for p in model.parameters())
+    logger.info(f"Model parameters: {n_params:,}")
 
     summary(
         model,
-        input_size=(1, 25, 128, 128),  # batch=1
+        input_size=(1,args.n_channels, 25, 128, 128),  # batch=1
         col_names=("input_size", "output_size", "num_params"),
         )
-    n_params = sum(p.numel() for p in model.parameters())
-    logger.info(f"Model parameters: {n_params:,}")
 
     optimizer = optim.AdamW(
         model.parameters(),
@@ -156,15 +223,16 @@ def main():
         T_max=args.epochs,
         eta_min=args.min_lr
     )
-    drawer = DefaultDrawer(num_plots=args.num_plots) if args.num_plots and args.num_plots > 0 else None
 
+    ### Training ###
+    drawer = DefaultDrawer(plot_channel=0)
     trainer = UnimodalTrainer(
         epochs=args.epochs,
-        checkpoint_path=checkpoint_path,
         model=model,
-        optimizer=optimizer,
         loss_fn=loss_fn,
-        device=device,
+        optimizer=optimizer,
+        scheduler=lr_scheduler,
+        checkpoint_path=checkpoint_path,
         drawer=drawer,
         log_interval=args.log_interval,
     )
@@ -173,7 +241,10 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.train(dataloader, modality_key=signal_name)
+    trainer.fit(
+        train_dataset,
+        validation_dataset,
+        modality_key=signal_name)
 
 
 if __name__ == "__main__":

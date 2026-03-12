@@ -8,7 +8,6 @@ from typing import Optional
 import torch.nn.functional as F
 import copy
 
-
 @dataclass
 class PreprocessConfig:
     """
@@ -138,6 +137,10 @@ class MovieConfig:
         Output frame height in pixels after spatial resampling.
     width : int
         Output frame width in pixels after spatial resampling.
+    channels_to_use : slice or None, optional
+        Slice applied to the HDF5 channel axis before writing to the output
+        buffer.  ``None`` (default) passes all available channels through,
+        truncating or zero-padding to *num_channels* as needed.
     preprocess : PreprocessConfig, optional
         Preprocessing transformation applied to the video tensor.
         Defaults to :class:`PreprocessConfig` with ``method='none'``.
@@ -149,6 +152,7 @@ class MovieConfig:
     target_fps: int  # Target frames per second after resampling
     height: int  # Frame height
     width: int  # Frame width
+    channels_to_use: Optional[slice] = None
     preprocess: PreprocessConfig | None = None
 
     def __post_init__(self):
@@ -490,8 +494,26 @@ class TokamakH5Dataset(Dataset):
     ]
 
     MOVIE_CONFIGS = [
-        MovieConfig("irtv", ["irtv"], 7, 50, 513, 640),
-        MovieConfig("tangtv", ["tangtv"], 7, 50, 240, 720),
+        MovieConfig(
+            "irtv",
+            ["irtv"],
+            7,
+            50,
+            513,
+            640,
+            preprocess=PreprocessConfig(method="normalize",min_val=0,max_val=np.power(2,14)), # check max_val 
+            ),
+
+        MovieConfig(
+            "tangtv",
+            ["tangtv"],
+            7,
+            50,
+            128,
+            128,
+            channels_to_use = [2, 6],
+            preprocess=PreprocessConfig(method="normalize",min_val=0,max_val=128),
+            ), # original dimension 7,50,240,720
     ]
 
     def __init__(
@@ -759,7 +781,6 @@ class TokamakH5Dataset(Dataset):
             arr += 1
             np.log10(arr, out=arr)
             return tensor
-
         return tensor
 
     def _open_hdf5(self):
@@ -1084,7 +1105,6 @@ class TokamakH5Dataset(Dataset):
             config.height, config.width)``.
         """
         duration_s = t_end - t_start
-
         # Find the movie in HDF5
         data_group = None
         for key_path in config.hdf5_keys:
@@ -1106,7 +1126,6 @@ class TokamakH5Dataset(Dataset):
 
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
-
         if ydata_ds.size == 0:
             return torch.zeros(
                 (config.channels, round(duration_s * config.target_fps),
@@ -1117,7 +1136,6 @@ class TokamakH5Dataset(Dataset):
         xdata_start_s = xdata_ds[0]
         xdata_end_s = xdata_ds[-1]
         n_frames = xdata_ds.shape[0]
-
         if n_frames < 2 or xdata_end_s == xdata_start_s:
             return torch.zeros(
                 (config.channels, round(duration_s * config.target_fps),
@@ -1131,12 +1149,15 @@ class TokamakH5Dataset(Dataset):
         raw_channels = ydata_ds.shape[0]
         raw_height = ydata_ds.shape[2]  # H
         raw_width = ydata_ds.shape[3]  # W
-
         # Step 1: Initialize output array with zeros at actual fps
         # (T, C, H, W)
+        if config.channels_to_use:
+            num_channels = len(config.channels_to_use)
+        else:
+            num_channels = raw_channels
         output = np.zeros(
             (
-                raw_channels, round(duration_s * actual_fps),
+                num_channels, round(duration_s * actual_fps),
                 raw_height,
                 raw_width
             ),
@@ -1154,8 +1175,14 @@ class TokamakH5Dataset(Dataset):
         hdf5_end_clamped = max(0, min(hdf5_end, n_frames))
 
         # Step 3: Load data if there's any overlap
+        ch_slice = (
+            config.channels_to_use
+            if config.channels_to_use is not None
+            else slice(None, config.num_channels)
+        )
+        
         if hdf5_start_clamped < hdf5_end_clamped:
-            data = ydata_ds[:, hdf5_start_clamped:hdf5_end_clamped, :, :]
+            data = ydata_ds[ch_slice, hdf5_start_clamped:hdf5_end_clamped, :, :]
             data[np.isnan(data)] = 0
 
             # Step 4: Calculate where to insert in output array
@@ -1200,7 +1227,6 @@ class TokamakH5Dataset(Dataset):
                 mode="trilinear",
                 align_corners=False,
             ).squeeze(0)
-
         return tensor
 
     def __getitem__(self, idx: int) -> dict:
