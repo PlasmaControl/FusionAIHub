@@ -4,7 +4,7 @@ from typing import Optional
 from tokamak_foundation_model.models.modality import (
     ActuatorBaselineAutoEncoder,
     SlowTimeSeriesBaselineAutoEncoder,
-    FastTimeSeriesBaselineAutoEncoder,
+    FilterscopeBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
     SpectrogramTFAttnAutoEncoder,
@@ -30,7 +30,7 @@ SIGNAL_MODEL_DEFAULTS = {
 
 MODEL_REGISTRY = {
     "actuator": ActuatorBaselineAutoEncoder,
-    "fast_time_series": FastTimeSeriesBaselineAutoEncoder,
+    "fast_time_series": FilterscopeBaselineAutoEncoder,
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,

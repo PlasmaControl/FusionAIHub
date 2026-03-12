@@ -743,7 +743,7 @@ class TokamakH5Dataset(Dataset):
 
         elif preprocessing_config.method == "log_standardize":
             arr = tensor.numpy()
-            arr = np.clip(arr, a_min=0., a_max=None, out=arr)
+            arr = np.clip(arr, a_min=-.99, a_max=None, out=arr)
             arr += 1
             np.log10(arr, out=arr)
 
@@ -773,7 +773,7 @@ class TokamakH5Dataset(Dataset):
 
         elif preprocessing_config.method == "log":
             arr = tensor.numpy()
-            arr = np.clip(arr, a_min=0., a_max=None, out=arr)
+            arr = np.clip(arr, a_min=-.99, a_max=None, out=arr)
             arr += 1
             np.log10(arr, out=arr)
             return tensor

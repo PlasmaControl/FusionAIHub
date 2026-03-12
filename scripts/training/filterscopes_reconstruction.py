@@ -4,7 +4,6 @@ import logging
 
 import random
 import torch
-import torch.nn as nn
 import torch.optim as optim
 
 from tokamak_foundation_model.data.multi_file_dataset import (
@@ -13,7 +12,7 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
-from tokamak_foundation_model.models.loss import MaskedL1Loss
+from tokamak_foundation_model.models.loss import MaskedMSELoss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -60,7 +59,7 @@ def main():
         "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
-        "--n_tokens", type=int, default=140,
+        "--n_tokens", type=int, default=220,
         help="Number of latent tokens (default: use model default)"
     )
     parser.add_argument(
@@ -121,7 +120,7 @@ def main():
     data_dir = Path(args.data_dir)
     statistics_path = Path(args.stats_path)
     checkpoint_path = (
-            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
+            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}_trf" / "checkpoint.pth"
     )
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -206,7 +205,7 @@ def main():
             eta_min=args.min_lr,
         )
 
-    loss_fn = MaskedL1Loss()
+    loss_fn = MaskedMSELoss()
 
     train_dataloader = make_dataloader(
         train_dataset,

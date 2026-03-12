@@ -2,21 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .fast_time_series_baseline import (FastTimeSeriesBaselineEncoder,
-                                        FastTimeSeriesBaselineDecoder,
-                                        FastTimeSeriesBaselineAutoEncoder)
+from .filterscope_baseline import (
+    FilterscopeBaselineEncoder,
+    FilterscopeBaselineDecoder,
+    FilterscopeBaselineAutoEncoder
+    )
 
 
-class ActuatorBaselineEncoder(FastTimeSeriesBaselineEncoder):
+class ActuatorBaselineEncoder(FilterscopeBaselineEncoder):
 
-    def __init__(
-            self,
-            n_channels: int,
-            d_model: int = 512,
-            n_tokens: int = 100,
-            input_length: int = 5000,
-            n_conv_layers: int = 4,
-            kernel_size: int = 3,
+    def __init__(self,
+        n_channels: int,
+        d_model: int = 512,
+        n_tokens: int = 100,
+        input_length: int = 5000,
+        n_conv_layers: int = 4,
+        kernel_size: int = 3,
     ):
         super().__init__(
             n_channels,
@@ -28,7 +29,7 @@ class ActuatorBaselineEncoder(FastTimeSeriesBaselineEncoder):
         )
 
 
-class ActuatorBaselineDecoder(FastTimeSeriesBaselineDecoder):
+class ActuatorBaselineDecoder(FilterscopeBaselineDecoder):
 
     def __init__(
             self,
@@ -49,7 +50,7 @@ class ActuatorBaselineDecoder(FastTimeSeriesBaselineDecoder):
         )
 
 
-class ActuatorBaselineAutoEncoder(FastTimeSeriesBaselineAutoEncoder):
+class ActuatorBaselineAutoEncoder(FilterscopeBaselineAutoEncoder):
     def __init__(
         self,
         n_channels: int = 6,

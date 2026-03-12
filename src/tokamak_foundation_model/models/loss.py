@@ -60,6 +60,28 @@ class MaskedL1Loss(nn.Module):
         # expand() returns a view (no copy), so this is memory-efficient.
         return ((output - target).abs() * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
 
+class MaskedMSELoss(nn.Module):
+    """MSE loss that ignores zero-padded time steps. Same interface as MaskedL1Loss."""
+
+    def forward(
+            self,
+            output: torch.Tensor,
+            target: torch.Tensor,
+            valid_lengths: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if valid_lengths is None:
+            return F.mse_loss(output, target)
+
+        T = output.shape[-1]
+        t_idx = torch.arange(T, device=output.device)
+        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+
+        for _ in range(output.dim() - 2):
+            mask = mask.unsqueeze(1)
+
+        return ((output - target) ** 2 * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+
+
 class DictMSELoss(nn.Module):
     """MSE loss for dict outputs: averages MSE across all target keys."""
 

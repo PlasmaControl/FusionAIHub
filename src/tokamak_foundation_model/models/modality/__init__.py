@@ -8,10 +8,10 @@ from .slow_time_series_baseline import (
     SlowTimeSeriesBaselineDecoder,
     SlowTimeSeriesBaselineAutoEncoder,
 )
-from .fast_time_series_baseline import (
-    FastTimeSeriesBaselineEncoder,
-    FastTimeSeriesBaselineDecoder,
-    FastTimeSeriesBaselineAutoEncoder,
+from .filterscope_baseline import (
+    FilterscopeBaselineEncoder,
+    FilterscopeBaselineDecoder,
+    FilterscopeBaselineAutoEncoder,
 )
 from .profile_baseline import (
     SpatialProfileBaselineEncoder,
@@ -37,10 +37,10 @@ __all__ = [
     "SlowTimeSeriesBaselineEncoder",
     "SlowTimeSeriesBaselineDecoder",
     "SlowTimeSeriesBaselineAutoEncoder",
-    
-    "FastTimeSeriesBaselineEncoder",
-    "FastTimeSeriesBaselineDecoder",
-    "FastTimeSeriesBaselineAutoEncoder",
+
+    "FilterscopeBaselineEncoder",
+    "FilterscopeBaselineDecoder",
+    "FilterscopeBaselineAutoEncoder",
     
     "SpatialProfileBaselineEncoder",
     "SpatialProfileBaselineDecoder",

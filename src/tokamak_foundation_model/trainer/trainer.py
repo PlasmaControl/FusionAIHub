@@ -126,9 +126,11 @@ class UnimodalTrainer:
             metrics: list[Metric] | None = None,
             checkpoint_path: str | Path = "checkpoint.pth",
             log_interval: int = 1,
+            grad_clip: float = 1.0,
     ):
         self.epochs = epochs
         self.log_interval = log_interval
+        self.grad_clip = grad_clip
 
         # Key
         self.modality_key = ""
@@ -168,6 +170,8 @@ class UnimodalTrainer:
             output = output[0]
         loss = self.loss_fn(output, data, valid_lengths)
         loss.backward()
+        if self.grad_clip > 0:
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
         return {"loss": loss}
 
@@ -274,7 +278,7 @@ class UnimodalTrainer:
             self._log_validate = log_val(self._log_validate)  # type: ignore
 
         drawing_path = self.checkpoint_path.parent / "plots" # type: ignore
-        self.drawer.setup(train_dataloader, drawing_path, modality_key)
+        self.drawer.setup(train_dataloader, drawing_path, modality_key, val_dataloader)
 
         # Training loop
         for epoch in range(self.epochs):
