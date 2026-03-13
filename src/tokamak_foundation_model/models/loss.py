@@ -82,6 +82,48 @@ class MaskedMSELoss(nn.Module):
         return ((output - target) ** 2 * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
 
 
+class MaskedRelativeMSELoss(nn.Module):
+    """Relative MSE loss that upweights high-amplitude samples.
+
+    Computes ``(recon - target)² / (|target| + eps)²`` so the error is
+    normalised by the local target magnitude.  High-amplitude targets
+    contribute proportionally more to the gradient, counteracting the
+    amplitude compression from BatchNorm in the encoder bottleneck.
+
+    Parameters
+    ----------
+    eps : float
+        Stability constant added to the denominator to avoid division by
+        zero near flat regions.  Default ``1.0`` keeps the loss close to
+        plain MSE for small target values while rescaling large ones.
+    """
+
+    def __init__(self, eps: float = 1.0):
+        super().__init__()
+        self.eps = eps
+
+    def forward(
+            self,
+            output: torch.Tensor,
+            target: torch.Tensor,
+            valid_lengths: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        sq_err = (output - target) ** 2
+        weight = 1.0 / (target.abs() + self.eps) ** 2
+
+        if valid_lengths is None:
+            return (sq_err * weight).mean()
+
+        T = output.shape[-1]
+        t_idx = torch.arange(T, device=output.device)
+        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+
+        for _ in range(output.dim() - 2):
+            mask = mask.unsqueeze(1)
+
+        return (sq_err * weight * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+
+
 class DictMSELoss(nn.Module):
     """MSE loss for dict outputs: averages MSE across all target keys."""
 

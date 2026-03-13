@@ -297,18 +297,25 @@ class DefaultDrawer:
         target = np.concatenate(all_targets)
         recon = np.concatenate(all_recons)
 
-        if target.std() > 0 and recon.std() > 0:
-            r = float(np.corrcoef(target, recon)[0, 1])
+        finite_mask = np.isfinite(target) & np.isfinite(recon)
+        n_nan = (~finite_mask).sum()
+        if n_nan > 0:
+            print(f"WARNING: Correlation plot: {n_nan} non-finite values dropped")
+        target_clean = target[finite_mask]
+        recon_clean = recon[finite_mask]
+
+        if len(target_clean) > 1 and target_clean.std() > 0 and recon_clean.std() > 0:
+            r = float(np.corrcoef(target_clean, recon_clean)[0, 1])
         else:
             r = float('nan')
 
         # Subsample for plot readability
         max_pts = 20_000
-        if len(target) > max_pts:
-            idx = np.random.choice(len(target), max_pts, replace=False)
-            target_plot, recon_plot = target[idx], recon[idx]
+        if len(target_clean) > max_pts:
+            idx = np.random.choice(len(target_clean), max_pts, replace=False)
+            target_plot, recon_plot = target_clean[idx], recon_clean[idx]
         else:
-            target_plot, recon_plot = target, recon
+            target_plot, recon_plot = target_clean, recon_clean
 
         vmin = min(target_plot.min(), recon_plot.min())
         vmax = max(target_plot.max(), recon_plot.max())

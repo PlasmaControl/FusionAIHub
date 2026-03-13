@@ -2,7 +2,6 @@ from torch import nn
 from typing import Optional
 
 from tokamak_foundation_model.models.modality import (
-    ActuatorBaselineAutoEncoder,
     SlowTimeSeriesBaselineAutoEncoder,
     FilterscopeBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
@@ -13,10 +12,10 @@ from tokamak_foundation_model.models.modality import (
 
 
 SIGNAL_MODEL_DEFAULTS = {
-    "gas": "actuator",
-    "ech": "actuator",
-    "pin": "actuator",
-    "tin": "actuator",
+    "gas": "fast_time_series",
+    "ech": "fast_time_series",
+    "pin": "fast_time_series",
+    "tin": "fast_time_series",
     "filterscopes": "fast_time_series",
     "mse": "profile",
     "ts_core_density": "profile",
@@ -29,7 +28,6 @@ SIGNAL_MODEL_DEFAULTS = {
 }
 
 MODEL_REGISTRY = {
-    "actuator": ActuatorBaselineAutoEncoder,
     "fast_time_series": FilterscopeBaselineAutoEncoder,
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,

@@ -1,58 +1,10 @@
 import math
 import torch.nn as nn
 import torch
-from .base import ModalityEncoder, ModalityDecoder, ModalityAutoEncoder
-
-
-class StridedResBlockTranspose1d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
-        super().__init__()
-        # Pre-norm on branch input only; shortcut carries raw amplitude unchanged
-        self.norm = nn.InstanceNorm1d(in_channels, affine=True)
-        self.net = nn.Sequential(
-            nn.ConvTranspose1d(in_channels, out_channels, kernel_size,
-                               stride=stride, padding=kernel_size//2,
-                               output_padding=stride - 1),
-            nn.GELU(),
-            nn.Conv1d(out_channels, out_channels, kernel_size,
-                      stride=1, padding=kernel_size//2),  # refine without expanding
-        )
-
-        if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.ConvTranspose1d(in_channels, out_channels, kernel_size=1,
-                                               stride=stride, output_padding=stride - 1)
-        else:
-            self.shortcut = nn.Identity()
-
-        self.activation = nn.GELU()
-
-    def forward(self, x):
-        return self.activation(self.net(self.norm(x)) + self.shortcut(x))
-
-
-class StridedResBlock1d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
-        super().__init__()
-        # Pre-norm on branch input only; shortcut carries raw amplitude unchanged
-        self.norm = nn.InstanceNorm1d(in_channels, affine=True)
-        self.net = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size,
-                      stride=stride, padding=kernel_size//2),
-            nn.GELU(),
-            nn.Conv1d(out_channels, out_channels, kernel_size,
-                      stride=1, padding=kernel_size//2),  # stride only on first conv
-        )
-
-        # Shortcut must match output shape whenever channels or stride differ
-        if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Conv1d(in_channels, out_channels, kernel_size=1, stride=stride)
-        else:
-            self.shortcut = nn.Identity()
-
-        self.activation = nn.GELU()
-
-    def forward(self, x):
-        return self.activation(self.net(self.norm(x)) + self.shortcut(x))
+from .base import (
+    ModalityEncoder, ModalityDecoder, ModalityAutoEncoder,
+    StridedResBlock1d, StridedResBlockTranspose1d,
+)
 
 
 class FilterscopeBaselineEncoder(ModalityEncoder):

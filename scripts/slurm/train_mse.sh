@@ -12,7 +12,7 @@
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 
-srun pixi run python ../training/profile_reconstruction.py \
+srun pixi run python ../training/mse_profile_reconstruction.py \
     --signal "mse" \
     --d_model 512 \
     --n_tokens 20 \

@@ -1,8 +1,3 @@
-from .actuator_baseline import (
-    ActuatorBaselineEncoder,
-    ActuatorBaselineDecoder,
-    ActuatorBaselineAutoEncoder,
-)
 from .slow_time_series_baseline import (
     SlowTimeSeriesBaselineEncoder,
     SlowTimeSeriesBaselineDecoder,
@@ -30,10 +25,6 @@ from .video_baseline import (
 )
 
 __all__ = [
-    "ActuatorBaselineEncoder",
-    "ActuatorBaselineDecoder",
-    "ActuatorBaselineAutoEncoder",
-
     "SlowTimeSeriesBaselineEncoder",
     "SlowTimeSeriesBaselineDecoder",
     "SlowTimeSeriesBaselineAutoEncoder",

@@ -12,7 +12,7 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
-from tokamak_foundation_model.models.loss import MaskedL1Loss
+from tokamak_foundation_model.models.loss import MaskedMSELoss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -27,7 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a spatial profile autoencoder")
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="mse",
+        default="ts_core_density",
         help="Signal name to train on"
     )
     parser.add_argument(
@@ -102,7 +102,7 @@ def main():
     data_dir = Path(args.data_dir)
     statistics_path = Path(args.stats_path)
     checkpoint_path = (
-        Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
+            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
     )
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -117,6 +117,7 @@ def main():
 
     train_paths = hdf5_files[n_val + n_test:]
     val_paths   = hdf5_files[:n_val]
+    test_paths  = hdf5_files[n_val:n_val + n_test]
 
     stats = torch.load(statistics_path, weights_only=False)
 
@@ -137,6 +138,11 @@ def main():
     validation_dataset = TokamakMultiFileDataset(
         val_paths,
         lengths_cache_path="lengths_validation.pt",
+        **shared_kwargs
+    )
+    test_dataset = TokamakMultiFileDataset(
+        test_paths,
+        lengths_cache_path="lengths_test.pt",
         **shared_kwargs
     )
 
@@ -191,7 +197,7 @@ def main():
             eta_min=args.min_lr,
         )
 
-    loss_fn = MaskedL1Loss()
+    loss_fn = MaskedMSELoss()
 
     train_dataloader = make_dataloader(
         train_dataset,
@@ -206,7 +212,7 @@ def main():
         validation_dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        shuffle=False,
+        shuffle=True,
         pin_memory=True,
         prefetch_factor=args.prefetch_factor,
     )

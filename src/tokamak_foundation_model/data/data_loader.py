@@ -254,14 +254,14 @@ class TokamakH5Dataset(Dataset):
     ``ech``                     12        10 kHz      no     none
     ``pin``                     8         10 kHz      no     standardize
     ``tin``                     8         10 kHz      no     none
-    ``mse``                     69        100 Hz      no     none
-    ``ts_core_density``         44        100 Hz      no     log
+    ``mse``                     69        100 Hz      no     standardize
+    ``ts_core_density``         44        100 Hz      no     log_standardize
     ``filterscopes``            104       10 kHz      yes    log
     ``cer_ti``                  48        100 Hz      no     log
     ``cer_rot``                 48        100 Hz      no     none
     ``sxr``                     320       10 kHz      no     log
     ``neutron_rate``            4         40 kHz      no     log
-    ``ts_tangential_density``   10        100 Hz      no     log
+    ``ts_tangential_density``   10        100 Hz      no     log_standardize
     ``ts_core_temp``            44        100 Hz      no     log
     ``ts_tangential_temp``      10        100 Hz      no     log
     ``vib``                     24        50 Hz       yes    log
@@ -343,7 +343,7 @@ class TokamakH5Dataset(Dataset):
             69,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "ts_core_density",
@@ -351,9 +351,8 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
-        # --- groups below added from modalities.yaml ---
         SignalConfig(
             "filterscopes",
             ["filterscopes"],
@@ -401,7 +400,7 @@ class TokamakH5Dataset(Dataset):
             10,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ts_core_temp",
