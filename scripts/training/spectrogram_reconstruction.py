@@ -1,19 +1,63 @@
 from pathlib import Path
 import argparse
 import logging
+import random
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader
 
-from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
+from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn, SignalConfig
 from tokamak_foundation_model.data.utils import worker_init_fn
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
+from tokamak_foundation_model.models.modality.spectrogram_normalizer import (
+    NormalizedSpectrogramAutoEncoder,
+)
 
 from tokamak_foundation_model.utils import DefaultDrawer
+
+
+class SpecAugment(nn.Module):
+    """Time and frequency masking (Park et al. 2019 / AST).
+
+    Applies n_freq_masks random frequency-band masks and n_time_masks random
+    time-frame masks to the input spectrogram. Each mask width is sampled
+    uniformly in [0, mask_param]. Masked regions are zeroed out.
+    """
+
+    def __init__(
+        self,
+        freq_mask_param: int,
+        time_mask_param: int,
+        n_freq_masks: int = 2,
+        n_time_masks: int = 2,
+    ):
+        super().__init__()
+        self.freq_mask_param = freq_mask_param
+        self.time_mask_param = time_mask_param
+        self.n_freq_masks = n_freq_masks
+        self.n_time_masks = n_time_masks
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C, F, T)
+        B, C, F, T = x.shape
+        out = x.clone()
+        for _ in range(self.n_freq_masks):
+            if self.freq_mask_param > 0:
+                f = torch.randint(0, self.freq_mask_param + 1, (B,))
+                f0 = torch.randint(0, max(1, F - self.freq_mask_param), (B,))
+                for b in range(B):
+                    out[b, :, f0[b]: f0[b] + f[b], :] = 0.0
+        for _ in range(self.n_time_masks):
+            if self.time_mask_param > 0:
+                t = torch.randint(0, self.time_mask_param + 1, (B,))
+                t0 = torch.randint(0, max(1, T - self.time_mask_param), (B,))
+                for b in range(B):
+                    out[b, :, :, t0[b]: t0[b] + t[b]] = 0.0
+        return out
 
 
 class FSQUnimodalTrainer(UnimodalTrainer):
@@ -22,15 +66,35 @@ class FSQUnimodalTrainer(UnimodalTrainer):
     Uses plain L1 loss over all patches — consistent with the val metric so
     train and val losses are directly comparable.
     Also logs codebook utilisation as ``unique_idx / fsq.n_codes``.
+
+    Optional extras:
+    - specaugment: SpecAugment instance applied to inputs during training
+    - loss_weighting: 'none' (plain L1) or 'variance' (weight by per-pixel
+      batch variance to upweight high-variance / fine-detail regions)
+    - grad_clip: max gradient norm (0 = disabled)
     """
+
+    def __init__(self, *args, specaugment=None, loss_weighting="none", grad_clip=0.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.specaugment = specaugment
+        self.loss_weighting = loss_weighting
+        self.grad_clip = grad_clip
 
     def _train_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
         self.optimizer.zero_grad()
-        output = self.model(data)
+
+        model_input = self.specaugment(data) if self.specaugment is not None else data
+        output = self.model(model_input)
+
         if isinstance(output, tuple):
             reconstructed, indices = output
-            loss = self.loss_fn(reconstructed, data)
+            if self.loss_weighting == "variance":
+                w = data.var(dim=0, keepdim=True).clamp(min=1e-6)
+                w = w / w.mean()
+                loss = (w * (reconstructed - data).abs()).mean()
+            else:
+                loss = self.loss_fn(reconstructed, data)
 
             # Codebook utilisation metric
             n_codes = self.model.fsq.n_codes
@@ -40,6 +104,8 @@ class FSQUnimodalTrainer(UnimodalTrainer):
             utilisation = None
 
         loss.backward()
+        if self.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
         metrics = {"loss": loss}
         if utilisation is not None:
@@ -127,6 +193,14 @@ def main():
         help="FSQ quantization levels per dimension (spectrogram_fsq_vae only)"
     )
     parser.add_argument(
+        "--patch_h", type=int, default=16,
+        help="Patch height in pixels (spectrogram_mae / spectrogram_fsq_vae)"
+    )
+    parser.add_argument(
+        "--patch_w", type=int, default=16,
+        help="Patch width in pixels (spectrogram_mae / spectrogram_fsq_vae)"
+    )
+    parser.add_argument(
         "--per_channel_patch", action="store_true", default=False,
         help="Use per-channel patch embed/unembed instead of flat projection "
              "(spectrogram_fsq_vae only)"
@@ -193,6 +267,59 @@ def main():
         "--val_split", type=float, default=0.1,
         help="Fraction of shots to hold out for validation (split by shot, default 0.1)"
     )
+    parser.add_argument(
+        "--freq_mask_param", type=int, default=0,
+        help="SpecAugment: max frequency bins to mask (0 = disabled)"
+    )
+    parser.add_argument(
+        "--time_mask_param", type=int, default=0,
+        help="SpecAugment: max time frames to mask (0 = disabled)"
+    )
+    parser.add_argument(
+        "--n_freq_masks", type=int, default=2,
+        help="SpecAugment: number of frequency masks"
+    )
+    parser.add_argument(
+        "--n_time_masks", type=int, default=2,
+        help="SpecAugment: number of time masks"
+    )
+    parser.add_argument(
+        "--loss_weighting", type=str, default="none", choices=["none", "variance"],
+        help="Loss weighting: 'none' (plain L1) or 'variance' (upweight high-variance pixels)"
+    )
+    parser.add_argument(
+        "--grad_clip", type=float, default=0.0,
+        help="Max gradient norm for clipping (0 = disabled)"
+    )
+    parser.add_argument(
+        "--convnext_dims", type=int, nargs="+", default=None,
+        help="ConvNeXt channel dims per stage (spectrogram_convnext_fsq only)"
+    )
+    parser.add_argument(
+        "--convnext_depths", type=int, nargs="+", default=None,
+        help="ConvNeXt blocks per stage (spectrogram_convnext_fsq only)"
+    )
+    parser.add_argument(
+        "--stem_stride", type=int, default=4,
+        help="Stem conv stride (spectrogram_convnext_fsq only)"
+    )
+    parser.add_argument(
+        "--cnn_dims", type=int, nargs="+", default=None,
+        help="Channel dims per stage (spectrogram_cnn only, default [64, 128])"
+    )
+    parser.add_argument(
+        "--normalize", action="store_true", default=False,
+        help="Wrap model with learned SpectrogramNormalizer"
+    )
+    parser.add_argument(
+        "--preprocessing", type=str, default=None,
+        choices=["log_standardize", "log", "standardize", "normalize", "none"],
+        help="Override preprocessing method for the signal (default: use signal's built-in)"
+    )
+    parser.add_argument(
+        "--smooth_kernel_size", type=int, default=7,
+        help="Normalizer smoothing conv kernel size (--normalize only)"
+    )
     args = parser.parse_args()
 
     ### Paths ###
@@ -226,11 +353,25 @@ def main():
     logger.info(f"Found {len(hdf5_files)} shot files")
     stats = torch.load(statistics_path, weights_only=False)
 
+    # Shuffle shot list before splitting so val is a random draw, not the
+    # last N shots by shot number (which would be a different campaign/config).
+    random.seed(42)
+    random.shuffle(hdf5_files)
+
     # Split at shot level to avoid train/val leakage
     n_val = max(1, int(len(hdf5_files) * args.val_split))
     train_files = hdf5_files[:-n_val]
     val_files   = hdf5_files[-n_val:]
     logger.info(f"Train shots: {len(train_files)}, Val shots: {len(val_files)}")
+
+    # Override preprocessing method if requested (mutates class-level config
+    # before TokamakH5Dataset deep-copies it at __init__ time)
+    if args.preprocessing:
+        for cfg in TokamakH5Dataset.SIGNAL_CONFIGS:
+            if cfg.name == signal_name:
+                cfg.preprocess.method = args.preprocessing
+                logger.info(f"Preprocessing override: {signal_name} → {args.preprocessing}")
+                break
 
     def _make_datasets(files):
         return [
@@ -255,15 +396,38 @@ def main():
 
     ### Model Setup ###
     extra_kwargs = {}
+    if model_name in ("spectrogram_mae", "spectrogram_fsq_vae"):
+        extra_kwargs["patch_h"] = args.patch_h
+        extra_kwargs["patch_w"] = args.patch_w
     if model_name == "spectrogram_mae":
         extra_kwargs["mask_ratio"] = args.mask_ratio
     if model_name == "spectrogram_fsq_vae":
         extra_kwargs["fsq_levels"] = args.fsq_levels
         extra_kwargs["per_channel_patch"] = args.per_channel_patch
+    if model_name == "spectrogram_convnext_fsq":
+        extra_kwargs["fsq_levels"] = args.fsq_levels
+        extra_kwargs["stem_stride"] = args.stem_stride
+        if args.convnext_dims is not None:
+            extra_kwargs["dims"] = args.convnext_dims
+        if args.convnext_depths is not None:
+            extra_kwargs["depths"] = args.convnext_depths
+    if model_name == "spectrogram_cnn":
+        if args.cnn_dims is not None:
+            extra_kwargs["dims"] = args.cnn_dims
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
-    ).to(device)
+    )
+
+    if args.normalize:
+        n_freq = args.n_fft // 2
+        model = NormalizedSpectrogramAutoEncoder(
+            model, n_channels, n_freq,
+            smooth_kernel_size=args.smooth_kernel_size,
+        )
+        logger.info(f"Normalizer enabled: n_freq={n_freq}, kernel_size={args.smooth_kernel_size}")
+
+    model = model.to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -316,13 +480,7 @@ def main():
 
     ### Training ###
     drawer = DefaultDrawer()
-    if model_name == "spectrogram_mae":
-        TrainerClass = MAEUnimodalTrainer
-    elif model_name == "spectrogram_fsq_vae":
-        TrainerClass = FSQUnimodalTrainer
-    else:
-        TrainerClass = UnimodalTrainer
-    trainer = TrainerClass(
+    trainer_kwargs = dict(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
         model=model,
@@ -332,6 +490,29 @@ def main():
         drawer=drawer,
         log_interval=args.log_interval,
     )
+    if model_name == "spectrogram_mae":
+        TrainerClass = MAEUnimodalTrainer
+    elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq"):
+        TrainerClass = FSQUnimodalTrainer
+        specaugment = None
+        if args.freq_mask_param > 0 or args.time_mask_param > 0:
+            specaugment = SpecAugment(
+                freq_mask_param=args.freq_mask_param,
+                time_mask_param=args.time_mask_param,
+                n_freq_masks=args.n_freq_masks,
+                n_time_masks=args.n_time_masks,
+            )
+            logger.info(
+                f"SpecAugment enabled: freq_mask={args.freq_mask_param}, "
+                f"time_mask={args.time_mask_param}, "
+                f"n_freq={args.n_freq_masks}, n_time={args.n_time_masks}"
+            )
+        trainer_kwargs["specaugment"] = specaugment
+        trainer_kwargs["loss_weighting"] = args.loss_weighting
+        trainer_kwargs["grad_clip"] = args.grad_clip
+    else:
+        TrainerClass = UnimodalTrainer
+    trainer = TrainerClass(**trainer_kwargs)
 
     if args.resume and checkpoint_path.exists():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
