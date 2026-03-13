@@ -26,6 +26,12 @@ from .spectrogram_baseline import (
 )
 from .spectrogram_mae import SpectrogramMAEAutoEncoder
 from .spectrogram_fsq_vae import SpectrogramFSQVAEAutoEncoder
+from .spectrogram_convnext_fsq import SpectrogramConvNeXtFSQAutoEncoder
+from .spectrogram_cnn import SpectrogramCNNAutoEncoder
+from .spectrogram_normalizer import (
+    SpectrogramNormalizer,
+    NormalizedSpectrogramAutoEncoder,
+)
 from .spectrogram_tf_only import SpectrogramTFOnlyAutoEncoder
 from .spectrogram_tf_attn import SpectrogramTFAttnAutoEncoder
 from .video_baseline import (
@@ -58,6 +64,11 @@ __all__ = [
 
     "SpectrogramMAEAutoEncoder",
     "SpectrogramFSQVAEAutoEncoder",
+    "SpectrogramConvNeXtFSQAutoEncoder",
+    "SpectrogramCNNAutoEncoder",
+
+    "SpectrogramNormalizer",
+    "NormalizedSpectrogramAutoEncoder",
 
     "SpectrogramTFOnlyAutoEncoder",
     "SpectrogramTFAttnAutoEncoder",
