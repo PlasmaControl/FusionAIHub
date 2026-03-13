@@ -30,8 +30,12 @@ class SparseVideoWeightedMSE(nn.Module):
         super().__init__()
         if reduction not in ("mean", "sum", "none"):
             raise ValueError("reduction must be one of: mean, sum, none")
-        
+
+        if l1l2 not in ("l1", "l2"):
+            raise ValueError("l1l2 must be either 'l1' or 'l2'")
+
         self.reduction = reduction
+        self.l1l2 = l1l2
         self.threshold = threshold
         self.bright_weight = bright_weight
 
@@ -39,11 +43,9 @@ class SparseVideoWeightedMSE(nn.Module):
         """
         pred, target: Expected shape (B, C, T, H, W)
         """
-        if l1l2 == 'l1':
-            print('l1 runs...')
+        if self.l1l2 == 'l1':
             err = torch.abs(pred - target) # L1 instead of (pred-target)**2
         else:
-            print('l2 runs...')
             err = (pred - target) ** 2
         
         err

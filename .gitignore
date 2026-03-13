@@ -220,3 +220,6 @@ __marimo__/
 
 # Wandb
 wandb/
+
+# log files
+scripts/slurm/logs/
