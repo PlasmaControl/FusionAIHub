@@ -617,9 +617,9 @@ class TokamakH5Dataset(Dataset):
     ==========================  ========  ==========  =====  ==================
     Name                        Channels  Target fs   STFT   Preprocessing
     ==========================  ========  ==========  =====  ==================
-    ``mhr``                     6         500 kHz     yes    log
-    ``ece``                     40        500 kHz     yes    log
-    ``co2``                     4         500 kHz     yes    log
+    ``mhr``                     6         500 kHz     yes    log_standardize
+    ``ece``                     40        500 kHz     yes    log_standardize
+    ``co2``                     4         500 kHz     yes    log_standardize
     ``ech``                     12        10 kHz      no     none
     ``pin``                     8         10 kHz      no     standardize
     ``tin``                     8         10 kHz      no     none
@@ -663,7 +663,7 @@ class TokamakH5Dataset(Dataset):
             target_fs=500e3,
             apply_stft=True,
             channels_to_use=slice(2, 8),  # Skip first 2 channels
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ece",
@@ -680,7 +680,7 @@ class TokamakH5Dataset(Dataset):
             4,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ech",

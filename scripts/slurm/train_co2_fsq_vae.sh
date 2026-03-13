@@ -2,7 +2,7 @@
 #SBATCH --job-name=train_co2_fsq_vae
 #SBATCH --output=logs/%j_train_co2_fsq_vae.out
 #SBATCH --error=logs/%j_train_co2_fsq_vae.err
-#SBATCH --time=12:00:00
+#SBATCH --time=72:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
@@ -32,4 +32,5 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --hop_length 128 \
     --log_interval 5 \
     --num_plots 4 \
-    --checkpoint_dir runs/co2_fsq_vae
+    --checkpoint_dir runs/co2_fsq_vae \
+    --resume
