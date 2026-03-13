@@ -8,6 +8,7 @@ import argparse
 import logging
 import random
 import numpy as np
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -51,7 +52,6 @@ def build_dataloader(hdf5_files: list, signal: str, batch_size: int,
         )
         for f in hdf5_files
     ]
-    print("dataset",type(datasets[0]))
     dataset = ConcatDataset(datasets)
     dataloader = DataLoader(
         dataset,
@@ -71,7 +71,7 @@ def main():
     parser.add_argument("--signal", type=str, default="tangtv",
                         help="Key/name of the video signal inside each HDF5 file")
     parser.add_argument("--data_dir", type=str,
-                        default="/scratch/gpfs/aj17/datasets/fm_test/", # /scra
+                        default=None, # /scra
                         help="Path to HDF5 data directory")
     parser.add_argument("--file_glob", type=str, default="*_processed.h5",
                         help="Glob pattern for HDF5 files inside data_dir")
@@ -136,23 +136,31 @@ def main():
     model_name = args.model or SIGNAL_MODEL_DEFAULTS[signal_name]
     data_dir = Path(args.data_dir)
     statistics_path = Path(args.stats_path)
+    datenow = datetime.now().strftime('%Y%m%d%H%M')
+    checkpoint_fld = f"{signal_name}-{model_name}-lr{args.lr}-ntk{args.n_tokens}-ep{args.epochs}-{datenow}"
+    logger.info(f"checkpoint folder: {checkpoint_fld}")
     checkpoint_path = (
-            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
+            Path(args.checkpoint_dir) / f"{checkpoint_fld}" / "checkpoint.pth"
     )
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Signal: {signal_name}, Model: {model_name}")
 
     ### Dataset Setup ###
-    hdf5_files = sorted(data_dir.glob("*_processed.h5"))
+    with open('/scratch/gpfs/aj17/runs/tangtv_flist.txt', 'r') as file:
+        hdf5_files = [line.strip() for line in file]
+    # hdf5_files = sorted(hdf5_files)
+
+    # hdf5_files = sorted(data_dir.glob("*_processed.h5"))
+
     random.seed(42)
     n = len(hdf5_files)
     n_val = int(.1 * n)
     n_test = int(.1 * n)
-
     train_paths = hdf5_files[n_val + n_test:]
     val_paths   = hdf5_files[:n_val]
     test_paths  = hdf5_files[n_val:n_val + n_test]
+    logger.info(f"Train shots: {len(train_paths)}, Valid shots: {len(val_paths)}, Test shots: {len(test_paths)}")       
 
     stats = torch.load(statistics_path, weights_only=False)
 
@@ -192,7 +200,6 @@ def main():
 
     # Not sure if this is elegant
     sample_data = next(iter(train_dataset))[signal_name]
-    print("sample_data",sample_data.shape)
     n_channels = sample_data.shape[1]
  
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")       
@@ -216,7 +223,7 @@ def main():
         weight_decay=args.weight_decay,
     )
     # loss_fn = nn.MSELoss()
-    loss_fn = SparseVideoWeightedMSE()
+    loss_fn = SparseVideoWeightedMSE(l1l2='l2')
 
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,

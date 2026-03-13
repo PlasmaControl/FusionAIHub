@@ -1,0 +1,411 @@
+INFO:__main__:checkpoint folder: tangtv-video-lr0.0001-ntk32-ep200-202603130315
+INFO:__main__:Signal: tangtv, Model: video
+INFO:__main__:Train shots: 245, Valid shots: 30, Test shots: 30
+INFO:__main__:Sample data shape: torch.Size([16, 2, 25, 128, 128]), n_channels: 2
+INFO:__main__:Model parameters: 1,573,442
+INFO:tokamak_foundation_model.trainer.trainer:Training modality: tangtv
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 1/200, Train Loss: 0.1349
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 1/200, Val Loss: 0.0441
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 2/200, Train Loss: 0.0456
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 2/200, Val Loss: 0.0462
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 3/200, Train Loss: 0.0401
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 3/200, Val Loss: 0.0333
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 4/200, Train Loss: 0.0360
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 4/200, Val Loss: 0.0284
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 5/200, Train Loss: 0.0316
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 5/200, Val Loss: 0.0445
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 6/200, Train Loss: 0.0306
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 6/200, Val Loss: 0.0253
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 7/200, Train Loss: 0.0274
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 7/200, Val Loss: 0.0222
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 8/200, Train Loss: 0.0248
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 8/200, Val Loss: 0.0249
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 9/200, Train Loss: 0.0267
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 9/200, Val Loss: 0.0212
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 10/200, Train Loss: 0.0234
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 10/200, Val Loss: 0.0218
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 11/200, Train Loss: 0.0245
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 11/200, Val Loss: 0.0215
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 12/200, Train Loss: 0.0219
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 12/200, Val Loss: 0.0202
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 13/200, Train Loss: 0.0227
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 13/200, Val Loss: 0.0200
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 14/200, Train Loss: 0.0215
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 14/200, Val Loss: 0.0208
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 15/200, Train Loss: 0.0213
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 15/200, Val Loss: 0.0227
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 16/200, Train Loss: 0.0201
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 16/200, Val Loss: 0.0176
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 17/200, Train Loss: 0.0194
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 17/200, Val Loss: 0.0182
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 18/200, Train Loss: 0.0192
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 18/200, Val Loss: 0.0166
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 19/200, Train Loss: 0.0192
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 19/200, Val Loss: 0.0167
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 20/200, Train Loss: 0.0188
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 20/200, Val Loss: 0.0166
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 21/200, Train Loss: 0.0182
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 21/200, Val Loss: 0.0153
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 22/200, Train Loss: 0.0171
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 22/200, Val Loss: 0.0153
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 23/200, Train Loss: 0.0174
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 23/200, Val Loss: 0.0150
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 24/200, Train Loss: 0.0165
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 24/200, Val Loss: 0.0149
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 25/200, Train Loss: 0.0162
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 25/200, Val Loss: 0.0155
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 26/200, Train Loss: 0.0163
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 26/200, Val Loss: 0.0146
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 27/200, Train Loss: 0.0159
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 27/200, Val Loss: 0.0161
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 28/200, Train Loss: 0.0166
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 28/200, Val Loss: 0.0145
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 29/200, Train Loss: 0.0151
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 29/200, Val Loss: 0.0137
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 30/200, Train Loss: 0.0155
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 30/200, Val Loss: 0.0136
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 31/200, Train Loss: 0.0159
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 31/200, Val Loss: 0.0146
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 32/200, Train Loss: 0.0140
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 32/200, Val Loss: 0.0142
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 33/200, Train Loss: 0.0145
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 33/200, Val Loss: 0.0134
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 34/200, Train Loss: 0.0153
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 34/200, Val Loss: 0.0128
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 35/200, Train Loss: 0.0136
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 35/200, Val Loss: 0.0132
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 36/200, Train Loss: 0.0137
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 36/200, Val Loss: 0.0133
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 37/200, Train Loss: 0.0144
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 37/200, Val Loss: 0.0119
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 38/200, Train Loss: 0.0133
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 38/200, Val Loss: 0.0127
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 39/200, Train Loss: 0.0133
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 39/200, Val Loss: 0.0123
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 40/200, Train Loss: 0.0134
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 40/200, Val Loss: 0.0119
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 41/200, Train Loss: 0.0135
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 41/200, Val Loss: 0.0132
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 42/200, Train Loss: 0.0124
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 42/200, Val Loss: 0.0125
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 43/200, Train Loss: 0.0138
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 43/200, Val Loss: 0.0162
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 44/200, Train Loss: 0.0128
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 44/200, Val Loss: 0.0125
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 45/200, Train Loss: 0.0126
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 45/200, Val Loss: 0.0119
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 46/200, Train Loss: 0.0120
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 46/200, Val Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 47/200, Train Loss: 0.0129
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 47/200, Val Loss: 0.0133
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 48/200, Train Loss: 0.0122
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 48/200, Val Loss: 0.0114
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 49/200, Train Loss: 0.0119
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 49/200, Val Loss: 0.0114
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 50/200, Train Loss: 0.0120
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 50/200, Val Loss: 0.0111
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 51/200, Train Loss: 0.0118
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 51/200, Val Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 52/200, Train Loss: 0.0119
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 52/200, Val Loss: 0.0116
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 53/200, Train Loss: 0.0114
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 53/200, Val Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 54/200, Train Loss: 0.0113
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 54/200, Val Loss: 0.0109
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 55/200, Train Loss: 0.0123
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 55/200, Val Loss: 0.0106
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 56/200, Train Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 56/200, Val Loss: 0.0130
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 57/200, Train Loss: 0.0110
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 57/200, Val Loss: 0.0110
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 58/200, Train Loss: 0.0110
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 58/200, Val Loss: 0.0108
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 59/200, Train Loss: 0.0110
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 59/200, Val Loss: 0.0107
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 60/200, Train Loss: 0.0109
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 60/200, Val Loss: 0.0109
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 61/200, Train Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 61/200, Val Loss: 0.0105
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 62/200, Train Loss: 0.0109
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 62/200, Val Loss: 0.0113
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 63/200, Train Loss: 0.0107
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 63/200, Val Loss: 0.0103
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 64/200, Train Loss: 0.0105
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 64/200, Val Loss: 0.0105
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 65/200, Train Loss: 0.0106
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 65/200, Val Loss: 0.0101
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 66/200, Train Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 66/200, Val Loss: 0.0102
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 67/200, Train Loss: 0.0102
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 67/200, Val Loss: 0.0103
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 68/200, Train Loss: 0.0104
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 68/200, Val Loss: 0.0104
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 69/200, Train Loss: 0.0103
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 69/200, Val Loss: 0.0101
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 70/200, Train Loss: 0.0100
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 70/200, Val Loss: 0.0110
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 71/200, Train Loss: 0.0102
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 71/200, Val Loss: 0.0101
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 72/200, Train Loss: 0.0100
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 72/200, Val Loss: 0.0107
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 73/200, Train Loss: 0.0098
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 73/200, Val Loss: 0.0109
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 74/200, Train Loss: 0.0102
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 74/200, Val Loss: 0.0115
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 75/200, Train Loss: 0.0101
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 75/200, Val Loss: 0.0103
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 76/200, Train Loss: 0.0100
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 76/200, Val Loss: 0.0108
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 77/200, Train Loss: 0.0096
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 77/200, Val Loss: 0.0100
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 78/200, Train Loss: 0.0099
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 78/200, Val Loss: 0.0101
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 79/200, Train Loss: 0.0098
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 79/200, Val Loss: 0.0098
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 80/200, Train Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 80/200, Val Loss: 0.0106
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 81/200, Train Loss: 0.0097
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 81/200, Val Loss: 0.0101
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 82/200, Train Loss: 0.0095
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 82/200, Val Loss: 0.0097
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 83/200, Train Loss: 0.0098
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 83/200, Val Loss: 0.0099
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 84/200, Train Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 84/200, Val Loss: 0.0100
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 85/200, Train Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 85/200, Val Loss: 0.0100
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 86/200, Train Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 86/200, Val Loss: 0.0103
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 87/200, Train Loss: 0.0096
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 87/200, Val Loss: 0.0095
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 88/200, Train Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 88/200, Val Loss: 0.0098
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 89/200, Train Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 89/200, Val Loss: 0.0098
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 90/200, Train Loss: 0.0095
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 90/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 91/200, Train Loss: 0.0088
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 91/200, Val Loss: 0.0097
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 92/200, Train Loss: 0.0088
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 92/200, Val Loss: 0.0095
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 93/200, Train Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 93/200, Val Loss: 0.0112
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 94/200, Train Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 94/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 95/200, Train Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 95/200, Val Loss: 0.0097
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 96/200, Train Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 96/200, Val Loss: 0.0097
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 97/200, Train Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 97/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 98/200, Train Loss: 0.0085
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 98/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 99/200, Train Loss: 0.0085
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 99/200, Val Loss: 0.0096
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 100/200, Train Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 100/200, Val Loss: 0.0097
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 101/200, Train Loss: 0.0088
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 101/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 102/200, Train Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 102/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 103/200, Train Loss: 0.0084
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 103/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 104/200, Train Loss: 0.0085
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 104/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 105/200, Train Loss: 0.0086
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 105/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 106/200, Train Loss: 0.0082
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 106/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 107/200, Train Loss: 0.0087
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 107/200, Val Loss: 0.0102
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 108/200, Train Loss: 0.0084
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 108/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 109/200, Train Loss: 0.0083
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 109/200, Val Loss: 0.0096
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 110/200, Train Loss: 0.0084
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 110/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 111/200, Train Loss: 0.0081
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 111/200, Val Loss: 0.0096
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 112/200, Train Loss: 0.0081
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 112/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 113/200, Train Loss: 0.0083
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 113/200, Val Loss: 0.0095
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 114/200, Train Loss: 0.0082
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 114/200, Val Loss: 0.0099
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 115/200, Train Loss: 0.0081
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 115/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 116/200, Train Loss: 0.0082
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 116/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 117/200, Train Loss: 0.0080
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 117/200, Val Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 118/200, Train Loss: 0.0082
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 118/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 119/200, Train Loss: 0.0080
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 119/200, Val Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 120/200, Train Loss: 0.0079
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 120/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 121/200, Train Loss: 0.0079
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 121/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 122/200, Train Loss: 0.0079
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 122/200, Val Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 123/200, Train Loss: 0.0079
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 123/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 124/200, Train Loss: 0.0079
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 124/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 125/200, Train Loss: 0.0078
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 125/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 126/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 126/200, Val Loss: 0.0092
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 127/200, Train Loss: 0.0078
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 127/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 128/200, Train Loss: 0.0081
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 128/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 129/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 129/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 130/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 130/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 131/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 131/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 132/200, Train Loss: 0.0076
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 132/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 133/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 133/200, Val Loss: 0.0093
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 134/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 134/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 135/200, Train Loss: 0.0076
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 135/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 136/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 136/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 137/200, Train Loss: 0.0076
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 137/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 138/200, Train Loss: 0.0075
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 138/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 139/200, Train Loss: 0.0077
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 139/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 140/200, Train Loss: 0.0075
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 140/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 141/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 141/200, Val Loss: 0.0091
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 142/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 142/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 143/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 143/200, Val Loss: 0.0094
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 144/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 144/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 145/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 145/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 146/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 146/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 147/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 147/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 148/200, Train Loss: 0.0074
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 148/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 149/200, Train Loss: 0.0073
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 149/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 150/200, Train Loss: 0.0073
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 150/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 151/200, Train Loss: 0.0073
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 151/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 152/200, Train Loss: 0.0073
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 152/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 153/200, Train Loss: 0.0073
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 153/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 154/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 154/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 155/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 155/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 156/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 156/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 157/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 157/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 158/200, Train Loss: 0.0073
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 158/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Best model checkpoint saved!
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 159/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 159/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 160/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 160/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 161/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 161/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 162/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 162/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 163/200, Train Loss: 0.0072
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 163/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 164/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 164/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 165/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 165/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 166/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 166/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 167/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 167/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 168/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 168/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 169/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 169/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 170/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 170/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 171/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 171/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 172/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 172/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 173/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 173/200, Val Loss: 0.0090
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 174/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 174/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 175/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 175/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 176/200, Train Loss: 0.0071
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 176/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 177/200, Train Loss: 0.0070
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 177/200, Val Loss: 0.0089
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 178/200, Train Loss: 0.0070
+INFO:tokamak_foundation_model.trainer.trainer:Epoch 178/200, Val Loss: 0.0089
+srun: Job step aborted: Waiting up to 47 seconds for job step to finish.
+[2026-03-13T07:20:13.013] error: *** JOB 2661193 ON stellar-m01g2 CANCELLED AT 2026-03-13T07:20:13 DUE TO TIME LIMIT ***
+[2026-03-13T07:20:13.047] error: *** STEP 2661193.0 ON stellar-m01g2 CANCELLED AT 2026-03-13T07:20:13 DUE TO TIME LIMIT ***

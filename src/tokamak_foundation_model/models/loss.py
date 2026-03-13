@@ -23,6 +23,7 @@ class SparseVideoWeightedMSE(nn.Module):
     def __init__(
         self, 
         reduction: str = "mean", 
+        l1l2: str = "l2", 
         threshold: Union[float, List[float]] = 0.1, 
         bright_weight: Union[float, List[float]] = 50.0, 
     ):
@@ -38,9 +39,14 @@ class SparseVideoWeightedMSE(nn.Module):
         """
         pred, target: Expected shape (B, C, T, H, W)
         """
-        # err2 = (pred - target) ** 2
-        err2 = torch.abs(pred - target) # L1 instead of (pred-target)**2
+        if l1l2 == 'l1':
+            print('l1 runs...')
+            err = torch.abs(pred - target) # L1 instead of (pred-target)**2
+        else:
+            print('l2 runs...')
+            err = (pred - target) ** 2
         
+        err
         # Scenario 1: Apply the exact same rules globally to all channels
         if isinstance(self.threshold, float) and isinstance(self.bright_weight, float):
             weight_map = torch.where(target > self.threshold, self.bright_weight, 1.0)
@@ -60,9 +66,9 @@ class SparseVideoWeightedMSE(nn.Module):
                 weight_map[:, c:c+1, ...] = chan_weight
 
         # Ensure weight map matches the device and dtype of the errors
-        weight_map = weight_map.to(err2.dtype).to(err2.device)
+        weight_map = weight_map.to(err.dtype).to(err.device)
 
-        weighted_err = err2 * weight_map
+        weighted_err = err * weight_map
 
         if self.reduction == "none":
             return weighted_err
