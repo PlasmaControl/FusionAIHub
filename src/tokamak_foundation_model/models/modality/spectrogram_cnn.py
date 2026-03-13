@@ -5,17 +5,22 @@ strided downsampling / nearest-neighbour upsampling.  No attention, no
 patching, no quantization — just convolutions.  Designed as a strong
 baseline that can easily overfit small datasets.
 
-Architecture (default dims=[64, 128])
---------------------------------------
+Architecture (default dims=[64, 128], bottleneck_dim=None)
+-----------------------------------------------------------
 Encoder:
   Stem:  Conv2d(C, 64, 3, pad=1) + GN + GELU
   Down1: ResBlock(64→64, stride=2)
   Down2: ResBlock(64→128, stride=2)
+  [optional] Proj: Conv2d(128→bottleneck_dim, 1×1) + GN
 
 Decoder (mirror):
+  [optional] Expand: Conv2d(bottleneck_dim→128, 1×1) + GN + GELU
   Up1:   Upsample(2x) + ResBlock(128→64)
   Up2:   Upsample(2x) + ResBlock(64→64)
   Head:  Conv2d(64, C, 1)
+
+When bottleneck_dim is set, the latent z has shape (B, bottleneck_dim, F/4, T/4)
+instead of (B, 128, F/4, T/4), giving direct control over compression ratio.
 
 Return contract
 ---------------
@@ -144,6 +149,11 @@ class SpectrogramCNNAutoEncoder(ModalityAutoEncoder):
     dims : list[int] | None
         Channel dimensions per downsampling stage (default [64, 128]).
         Each stage halves spatial resolution, so total downsampling = 2^len(dims).
+    bottleneck_dim : int | None
+        If set, project the encoder output from dims[-1] channels down to
+        this many channels via a 1×1 conv, and expand back before decoding.
+        Controls the compression ratio directly.  None = no projection
+        (bottleneck has dims[-1] channels).
     """
 
     def __init__(
@@ -153,19 +163,44 @@ class SpectrogramCNNAutoEncoder(ModalityAutoEncoder):
         n_tokens: int = 0,
         *,
         dims: list[int] | None = None,
+        bottleneck_dim: int | None = None,
     ) -> None:
         super().__init__(n_channels, d_model, n_tokens)
         if dims is None:
             dims = [64, 128]
         self.dims = dims
+        self.bottleneck_dim = bottleneck_dim
 
         self.encoder = _CNNEncoder(n_channels, dims)
         self.decoder = _CNNDecoder(n_channels, dims)
+
+        if bottleneck_dim is not None:
+            self.bottleneck_proj = nn.Sequential(
+                nn.Conv2d(dims[-1], bottleneck_dim, 1),
+                _gn(bottleneck_dim),
+            )
+            self.bottleneck_expand = nn.Sequential(
+                nn.Conv2d(bottleneck_dim, dims[-1], 1),
+                _gn(dims[-1]),
+                nn.GELU(),
+            )
+        else:
+            self.bottleneck_proj = None
+            self.bottleneck_expand = None
 
     def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         B, C, F_orig, T_orig = x.shape
 
         z = self.encoder(x)
+
+        if self.bottleneck_proj is not None:
+            z = self.bottleneck_proj(z)
+
+        z_bottleneck = z  # for monitoring
+
+        if self.bottleneck_expand is not None:
+            z = self.bottleneck_expand(z)
+
         reconstructed = self.decoder(z)
 
         # Crop to original spatial dims (encoder may have padded)
@@ -173,4 +208,4 @@ class SpectrogramCNNAutoEncoder(ModalityAutoEncoder):
 
         if not self.training:
             return reconstructed
-        return reconstructed, z
+        return reconstructed, z_bottleneck

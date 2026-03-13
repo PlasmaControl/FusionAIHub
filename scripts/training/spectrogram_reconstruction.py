@@ -308,6 +308,11 @@ def main():
         help="Channel dims per stage (spectrogram_cnn only, default [64, 128])"
     )
     parser.add_argument(
+        "--bottleneck_dim", type=int, default=None,
+        help="Bottleneck channel dim for 1x1 projection (spectrogram_cnn only, "
+             "default: no projection)"
+    )
+    parser.add_argument(
         "--normalize", action="store_true", default=False,
         help="Wrap model with learned SpectrogramNormalizer"
     )
@@ -414,6 +419,8 @@ def main():
     if model_name == "spectrogram_cnn":
         if args.cnn_dims is not None:
             extra_kwargs["dims"] = args.cnn_dims
+        if args.bottleneck_dim is not None:
+            extra_kwargs["bottleneck_dim"] = args.bottleneck_dim
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs

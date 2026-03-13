@@ -89,6 +89,11 @@ MODEL_TEST_CONFIGS = [
         (4, 64, 64),  # (channels, freq, time)
     ),
     (
+        "spectrogram_cnn",
+        {"n_channels": 4, "d_model": 32, "dims": [32, 64], "bottleneck_dim": 4},
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
         (10, 32, 32),  # (time, height, width)
