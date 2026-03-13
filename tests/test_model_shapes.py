@@ -2,6 +2,9 @@ import pytest
 import torch
 
 from tokamak_foundation_model.models.model_factory import MODEL_REGISTRY
+from tokamak_foundation_model.models.modality.spectrogram_normalizer import (
+    NormalizedSpectrogramAutoEncoder,
+)
 
 
 # Define test configurations per model type
@@ -72,6 +75,20 @@ MODEL_TEST_CONFIGS = [
         (4, 64, 64),  # (channels, freq, time)
     ),
     (
+        "spectrogram_convnext_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "dims": [32, 64], "depths": [2, 2], "stem_stride": 4,
+            "fsq_levels": [4, 3, 3],
+        },
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    (
+        "spectrogram_cnn",
+        {"n_channels": 4, "d_model": 32, "dims": [32, 64]},
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
         (10, 32, 32),  # (time, height, width)
@@ -126,3 +143,37 @@ def test_all_registry_models_covered():
     registered = set(MODEL_REGISTRY.keys())
     missing = registered - tested
     assert not missing, f"Models in registry without test configs: {missing}"
+
+
+@pytest.mark.parametrize("batch_size", [1, 4])
+def test_normalized_spectrogram_autoencoder(batch_size):
+    """NormalizedSpectrogramAutoEncoder should preserve input shape."""
+    n_channels, F, T = 4, 64, 64
+    inner = MODEL_REGISTRY["spectrogram_fsq_vae"](
+        n_channels=n_channels, d_model=32, n_tokens=0,
+        patch_h=4, patch_w=4, n_enc_layers=2, n_dec_layers=2, n_heads=4,
+        fsq_levels=[4, 3, 3],
+    )
+    model = NormalizedSpectrogramAutoEncoder(inner, n_channels, F)
+    model.eval()
+
+    # Use non-negative input (simulating log-preprocessed data)
+    x = torch.rand(batch_size, n_channels, F, T)
+    with torch.no_grad():
+        y = model(x)
+    assert y.shape == x.shape, f"output shape {y.shape} != input shape {x.shape}"
+
+
+def test_normalized_encoder_output_is_finite():
+    """Normalizer wrapper should expose encoder with finite output."""
+    n_channels, F, T = 4, 64, 64
+    inner = MODEL_REGISTRY["spectrogram_cnn"](
+        n_channels=n_channels, d_model=32, dims=[32, 64],
+    )
+    model = NormalizedSpectrogramAutoEncoder(inner, n_channels, F)
+    model.eval()
+
+    x = torch.rand(2, n_channels, F, T)
+    with torch.no_grad():
+        z = model.encoder(x)
+    assert torch.isfinite(z).all(), "encoder output contains NaN/Inf"
