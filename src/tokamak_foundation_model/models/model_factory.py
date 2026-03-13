@@ -13,6 +13,7 @@ from tokamak_foundation_model.models.modality import (
     SpectrogramFSQVAEAutoEncoder,
     SpectrogramConvNeXtFSQAutoEncoder,
     SpectrogramCNNAutoEncoder,
+    SpectrogramCNNPerceiverAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
@@ -45,6 +46,7 @@ MODEL_REGISTRY = {
     "spectrogram_fsq_vae": SpectrogramFSQVAEAutoEncoder,
     "spectrogram_convnext_fsq": SpectrogramConvNeXtFSQAutoEncoder,
     "spectrogram_cnn": SpectrogramCNNAutoEncoder,
+    "spectrogram_cnn_perceiver": SpectrogramCNNPerceiverAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
