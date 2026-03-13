@@ -313,6 +313,27 @@ def main():
              "default: no projection)"
     )
     parser.add_argument(
+        "--n_heads", type=int, default=4,
+        help="Attention heads (spectrogram_cnn_perceiver)"
+    )
+    parser.add_argument(
+        "--n_self_layers", type=int, default=2,
+        help="Self-attn layers on latent tokens (spectrogram_cnn_perceiver)"
+    )
+    parser.add_argument(
+        "--n_dec_self_layers", type=int, default=2,
+        help="Self-attn layers on spatial queries in decoder (spectrogram_cnn_perceiver)"
+    )
+    parser.add_argument(
+        "--dropout", type=float, default=0.1,
+        help="Dropout rate (spectrogram_cnn_perceiver)"
+    )
+    parser.add_argument(
+        "--enable_fsq", action="store_true", default=False,
+        help="Enable FSQ discrete bottleneck (spectrogram_cnn_perceiver); "
+             "uses --fsq_levels to set quantization levels"
+    )
+    parser.add_argument(
         "--normalize", action="store_true", default=False,
         help="Wrap model with learned SpectrogramNormalizer"
     )
@@ -421,6 +442,15 @@ def main():
             extra_kwargs["dims"] = args.cnn_dims
         if args.bottleneck_dim is not None:
             extra_kwargs["bottleneck_dim"] = args.bottleneck_dim
+    if model_name == "spectrogram_cnn_perceiver":
+        if args.cnn_dims is not None:
+            extra_kwargs["dims"] = args.cnn_dims
+        extra_kwargs["n_heads"] = args.n_heads
+        extra_kwargs["n_self_layers"] = args.n_self_layers
+        extra_kwargs["n_dec_self_layers"] = args.n_dec_self_layers
+        extra_kwargs["dropout"] = args.dropout
+        if args.enable_fsq:
+            extra_kwargs["fsq_levels"] = args.fsq_levels
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
@@ -499,7 +529,9 @@ def main():
     )
     if model_name == "spectrogram_mae":
         TrainerClass = MAEUnimodalTrainer
-    elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq"):
+    elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq") or (
+        model_name == "spectrogram_cnn_perceiver" and args.enable_fsq
+    ):
         TrainerClass = FSQUnimodalTrainer
         specaugment = None
         if args.freq_mask_param > 0 or args.time_mask_param > 0:
