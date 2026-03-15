@@ -328,3 +328,127 @@ class UnimodalTrainer:
         logger.info(
             f"Resumed from checkpoint: {path} "
             f"(epoch {checkpoint.get('epoch', '?')})")
+
+
+class Stage3Trainer:
+    """Trainer for Stage 3 multimodal prediction.
+
+    Handles batches with three parts: inputs, targets (token-space),
+    and observations (observation-space).
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        optimizer: optim.Optimizer,
+        loss_fn: nn.Module,
+        device: torch.device,
+        epochs: int,
+        checkpoint_path: str | Path = "checkpoint.pth",
+        scheduler: optim.lr_scheduler.LRScheduler | None = None,
+    ):
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.device = device
+        self.epochs = epochs
+        self.checkpoint_path = Path(checkpoint_path)
+        self.scheduler = scheduler
+
+    def _move_dict(self, d: dict) -> dict:
+        return {
+            k: v.to(self.device) if isinstance(v, torch.Tensor) else v
+            for k, v in d.items()
+        }
+
+    def _train_epoch(self, dataloader: DataLoader):
+        self.model.train()
+        total_loss = 0.0
+        n_batches = len(dataloader)
+        for batch_idx, batch in enumerate(dataloader):
+            inputs = self._move_dict(batch["inputs"])
+            targets = self._move_dict(batch["targets"])
+            observations = self._move_dict(batch["observations"])
+
+            self.optimizer.zero_grad()
+            predicted_tokens = self.model(inputs)
+            loss = self.loss_fn(predicted_tokens, targets, observations)
+            loss.backward()
+            self.optimizer.step()
+
+            total_loss += loss.item()
+            if batch_idx % 10 == 0:
+                logger.info(
+                    f"  Batch {batch_idx}/{n_batches}, Loss: {loss.item():.4f}"
+                )
+        return total_loss / max(n_batches, 1)
+
+    @torch.inference_mode()
+    def _validate_epoch(self, dataloader: DataLoader) -> float:
+        self.model.eval()
+        total_loss = 0.0
+        n_batches = len(dataloader)
+        for batch in dataloader:
+            inputs = self._move_dict(batch["inputs"])
+            targets = self._move_dict(batch["targets"])
+            observations = self._move_dict(batch["observations"])
+
+            predicted_tokens = self.model(inputs)
+            loss = self.loss_fn(predicted_tokens, targets, observations)
+            total_loss += loss.item()
+        return total_loss / max(n_batches, 1)
+
+    def train(
+        self,
+        train_dataloader: DataLoader,
+        val_dataloader: DataLoader | None = None,
+    ):
+        best_val_loss = float("inf")
+        for epoch in range(self.epochs):
+            logger.info(f"Epoch {epoch + 1}/{self.epochs}")
+            train_loss = self._train_epoch(train_dataloader)
+            logger.info(f"  Train Loss: {train_loss:.4f}")
+
+            if val_dataloader is not None:
+                val_loss = self._validate_epoch(val_dataloader)
+                logger.info(f"  Val Loss: {val_loss:.4f}")
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    self._save_checkpoint(epoch, val_loss)
+                    logger.info("  Best checkpoint saved.")
+            else:
+                self._save_checkpoint(epoch, train_loss)
+
+            if self.scheduler is not None:
+                self.scheduler.step()
+
+        logger.info("Stage 3 training complete.")
+
+    def _save_checkpoint(self, epoch: int, loss: float):
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "scheduler_state_dict": (
+                    self.scheduler.state_dict() if self.scheduler else None
+                ),
+                "epoch": epoch,
+                "loss": loss,
+            },
+            self.checkpoint_path,
+        )
+
+    def load_checkpoint(self, checkpoint_path=None):
+        path = checkpoint_path or self.checkpoint_path
+        if not os.path.exists(path):
+            logger.info(f"No checkpoint found at: {path}")
+            return
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(ckpt["model_state_dict"])
+        self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        if self.scheduler and ckpt.get("scheduler_state_dict"):
+            self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        logger.info(
+            f"Resumed from checkpoint: {path} (epoch {ckpt.get('epoch', '?')})"
+        )

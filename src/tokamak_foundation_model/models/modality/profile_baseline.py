@@ -143,12 +143,19 @@ class SpatialProfileBaselineAutoEncoder(ModalityAutoEncoder):
                                                      kernel_size)
 
     def forward(self, x):
+        """
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            ``(reconstructed, tokens)`` where reconstructed has the same
+            shape as the input and tokens is ``(B, n_tokens, d_model)``.
+        """
         n_time = x.shape[-1]
-        z = self.encoder(x)
-        out = self.decoder(z)
+        tokens = self.encoder(x)
+        out = self.decoder(tokens)
         if out.shape[-1] != n_time:
             out = F.adaptive_avg_pool1d(out, n_time)
-        return out
+        return out, tokens
 
 def create_spatial_profile_test_signal(
     batch_size=4, 

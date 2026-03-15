@@ -244,12 +244,13 @@ class FastTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
 
         Returns
         -------
-        torch.Tensor
-            Reconstructed time-series of shape [batch, n_channels, input_length]
+        tuple[torch.Tensor, torch.Tensor]
+            ``(reconstructed, tokens)`` where reconstructed has the same
+            shape as the input and tokens is ``(B, n_tokens, d_model)``.
         """
         tokens = self.encoder(x)
         recon = self.decoder(tokens)
-        return recon
+        return recon, tokens
 
 def create_fast_timeseries_test_signal(
     batch_size: int = 4,

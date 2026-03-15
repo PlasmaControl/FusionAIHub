@@ -1,222 +1,136 @@
-"""Video baseline modality autoencoder.
-
-This module is refactored to follow the same structural template as other modality
-baselines (see :mod:`fast_time_series_baseline.py`) while preserving the exact
-architecture/parameters defined in the original `video_baseline.py`.
-
-Key conventions:
-- Encoder inherits :class:`~tokamak_foundation_model.models.modality.base.ModalityEncoder`
-  and returns tokens shaped (B, n_tokens, d_model).
-- Decoder inherits :class:`~tokamak_foundation_model.models.modality.base.ModalityDecoder`
-  and reconstructs an output shaped (B, T, H, W) for grayscale video.
-- Autoencoder composes encoder/decoder and returns (x_hat, tokens) for training.
-"""
+"""Video baseline modality autoencoder implementation."""
 
 from __future__ import annotations
-
-from typing import Optional, Tuple
-
+from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
-from .base import ModalityEncoder, ModalityDecoder
+# Assuming base classes are available in your project structure
+# from .base import ModalityEncoder, ModalityDecoder
 
-
-class VideoBaselineEncoder(ModalityEncoder):
-    """3D CNN encoder producing (B, n_tokens, d_model) tokens.
-
-    Architecture is preserved from the original implementation:
-    Conv3d(stride=2) stack -> flatten -> Linear -> reshape to (B, n_tokens, d_model).
-
-    Parameters
-    ----------
-    n_channels:
-        Number of input channels. Original model assumes grayscale=1.
-    d_model:
-        Token embedding dimension. Original model uses 512.
-    n_tokens:
-        Number of tokens, returned as the middle dimension of the latent (N x 512).
-    t_chunk:
-        Number of frames in the clip (T).
-    img_size:
-        Spatial size (H=W) used to infer the encoder output shape.
-    """
-
+class VideoBaselineEncoder(nn.Module): # Inherit from ModalityEncoder in your repo
     def __init__(
         self,
-        n_channels: int,
+        n_channels: int = 1,
         d_model: int = 512,
-        n_tokens: int = 8,
+        n_tokens: int = 256,
         t_chunk: int = 25,
-        img_size: int = 256,
+        img_size: int = 128,
     ):
-        super().__init__(n_channels=n_channels, d_model=d_model, n_tokens=n_tokens)
+        super().__init__()
+        self.d_model = d_model
+        self.n_tokens = n_tokens
+        
+        # Calculate a grid for Adaptive pooling to match n_tokens
+        # We try to keep temporal/spatial ratios somewhat balanced
+        t_grid = max(2, int(math.pow(n_tokens, 1/3) * (t_chunk/img_size)))
+        remaining = n_tokens / t_grid
+        hw_grid = int(math.sqrt(remaining))
+        self.token_grid = (t_grid, hw_grid, hw_grid)
 
-        # Preserve original conv stack (stride=2 in all dims).
-        self.enc = nn.Sequential(
-            nn.Conv3d(n_channels, 16, 3, stride=2, padding=1),
-            nn.BatchNorm3d(16),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(16, 32, 3, stride=2, padding=1),
-            nn.BatchNorm3d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(32, 64, 3, stride=2, padding=1),
-            nn.BatchNorm3d(64),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(64, 128, 3, stride=2, padding=1),
-            nn.BatchNorm3d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(128, 256, 3, stride=2, padding=1),
-            nn.BatchNorm3d(256),
-            nn.ReLU(inplace=True),
-        )
-
-        # Infer encoder output shape for decoder reshaping (preserved behavior).
-        with torch.no_grad():
-            dummy = torch.zeros(1, n_channels, t_chunk, img_size, img_size)
-            h = self.enc(dummy)
-            self._enc_shape: Tuple[int, int, int, int, int] = tuple(h.shape)  # (1,C0,T0,H0,W0)
-            flat_dim = h.flatten(1).shape[1]
-
-        self.latent_dim = n_tokens * d_model
-        self.fc = nn.Linear(flat_dim, self.latent_dim)
+        # Architecture (< 2M params total)
+        self.enc1 = nn.Conv3d(n_channels, 32, kernel_size=3, stride=(1,2,2), padding=1)
+        self.enc2 = nn.Conv3d(32, 64, kernel_size=3, stride=(2,2,2), padding=1)
+        self.enc3 = nn.Conv3d(64, 128, kernel_size=3, stride=(2,2,2), padding=1)
+        self.enc4 = nn.Conv3d(128, 128, kernel_size=3, stride=(2,2,2), padding=1)
+        
+        self.adaptive_pool = nn.AdaptiveAvgPool3d(self.token_grid)
+        self.to_latent = nn.Conv3d(128, d_model, kernel_size=1)
+        
+        # Required for the Decoder to initialize properly in the template
+        self._enc_shape = (d_model, *self.token_grid)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Accept (B,T,H,W) or (B,C,T,H,W) like other modalities.
-        if x.ndim == 4:
-            x = x.unsqueeze(1)
-        elif x.ndim != 5:
-            raise ValueError(f"Expected x with 4 or 5 dims, got {tuple(x.shape)}")
-
-        if x.shape[1] != self.n_channels:
-            raise ValueError(f"Expected {self.n_channels} channels, got {x.shape[1]}")
-        h = self.enc(x)
-        z_vec = self.fc(h.flatten(1))  # (B, n_tokens*d_model)
-        tokens = z_vec.view(x.shape[0], self.n_tokens, self.d_model)  # (B, n_tokens, d_model)
+        # Input x: (B, T, H, W)
+        # Add channel dim: (B, 1, T, H, W)
+        x = x.unsqueeze(1)
+            
+        x = F.leaky_relu(self.enc1(x), 0.2)
+        x = F.leaky_relu(self.enc2(x), 0.2)
+        x = F.leaky_relu(self.enc3(x), 0.2)
+        x = F.leaky_relu(self.enc4(x), 0.2)
+        
+        x = self.adaptive_pool(x)
+        tokens = self.to_latent(x) # (B, d_model, T_g, H_g, W_g)
+        
+        # Flatten to (B, n_tokens, d_model)
+        B, C, T, H, W = tokens.shape
+        tokens = tokens.view(B, C, -1).transpose(1, 2)
         return tokens
 
 
-class VideoBaselineDecoder(ModalityDecoder):
-    """3D CNN decoder reconstructing clips from tokens.
-
-    Architecture is preserved from the original implementation:
-    Linear -> reshape to encoder feature volume -> ConvTranspose3d stack -> interpolate -> sigmoid.
-
-    Parameters
-    ----------
-    n_channels:
-        Number of output channels (grayscale=1).
-    d_model:
-        Token embedding dimension (512).
-    n_tokens:
-        Number of tokens in the latent.
-    t_chunk:
-        Target time length (T).
-    img_size:
-        Target spatial size (H=W).
-    enc_shape:
-        Shape tuple from encoder forward on a dummy input (1,C0,T0,H0,W0).
-    """
-
+class VideoBaselineDecoder(nn.Module): # Inherit from ModalityDecoder in your repo
     def __init__(
         self,
-        n_channels: int,
+        n_channels: int = 1,
         d_model: int = 512,
-        n_tokens: int = 8,
+        n_tokens: int = 256,
         t_chunk: int = 25,
-        img_size: int = 256,
-        enc_shape: Tuple[int, int, int, int, int] = (1, 256, 1, 8, 8),
+        img_size: int = 128,
+        enc_shape: Tuple[int, int, int, int, int] = (512, 4, 8, 8),
     ):
-        super().__init__(n_channels=n_channels, d_model=d_model)
+        super().__init__()
         self.n_tokens = n_tokens
         self.t_chunk = t_chunk
         self.img_size = img_size
-        self.latent_dim = n_tokens * d_model
+        self.enc_shape = enc_shape # (d_model, T_grid, H_grid, W_grid)
 
-        _, C0, T0, H0, W0 = enc_shape
-        self.C0, self.T0, self.H0, self.W0 = C0, T0, H0, W0
-
-        self.fc = nn.Linear(self.latent_dim, C0 * T0 * H0 * W0)
-
-        # Preserve original deconv stack.
-        self.dec = nn.Sequential(
-            nn.ConvTranspose3d(C0, 128, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm3d(128),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose3d(128, 64, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm3d(64),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose3d(64, 32, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm3d(32),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose3d(32, 16, 3, stride=2, padding=1, output_padding=1),
-            nn.BatchNorm3d(16),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose3d(16, n_channels, 3, stride=2, padding=1, output_padding=1),
-        )
+        self.from_latent = nn.Conv3d(d_model, 128, kernel_size=1)
+        self.dec1 = nn.Conv3d(128, 128, kernel_size=3, padding=1)
+        self.dec2 = nn.Conv3d(128, 64, kernel_size=3, padding=1)
+        self.dec3 = nn.Conv3d(64, 32, kernel_size=3, padding=1)
+        self.dec4 = nn.Conv3d(32, n_channels, kernel_size=3, padding=1)
 
     def forward(self, z: torch.Tensor, output_shape=None) -> torch.Tensor:
-        # z is expected (B, n_tokens, d_model)
-        if z.ndim != 3:
-            raise ValueError(f"Expected z with shape (B,n_tokens,d_model), got {tuple(z.shape)}")
-
+        # z: (B, n_tokens, d_model)
         B = z.shape[0]
-        z_vec = z.reshape(B, self.latent_dim)  # (B, n_tokens*d_model) — preserves original mapping
-
-        x = self.fc(z_vec).view(B, self.C0, self.T0, self.H0, self.W0)  # (B,C0,T0,H0,W0)
-        x = self.dec(x)  # (B,C,T',H',W')
-
-        # Determine target output size.
-        if output_shape is None:
-            T, H, W = self.t_chunk, self.img_size, self.img_size
-        else:
-            # output_shape can be (T,H,W) or (C,T,H,W)
-            if len(output_shape) == 3:
-                T, H, W = output_shape
-            elif len(output_shape) == 4:
-                _, T, H, W = output_shape
-            else:
-                raise ValueError("output_shape must be (T,H,W) or (C,T,H,W)")
-
-        x = F.interpolate(x, size=(T, H, W), mode="trilinear", align_corners=False)
-        x = torch.sigmoid(x)
-
-        # Repo convention for grayscale: (B,T,H,W)
-        if x.shape[1] == 1:
-            return x.squeeze(1)
-        return x
+        z = z.transpose(1, 2).view(B, *self.enc_shape)
+        
+        x = F.leaky_relu(self.from_latent(z), 0.2)
+        
+        # Hierarchical upsampling to match target t_chunk and img_size
+        x = F.interpolate(x, size=(max(1, self.t_chunk//4), self.img_size//8, self.img_size//8), mode='trilinear')
+        x = F.leaky_relu(self.dec1(x), 0.2)
+        
+        x = F.interpolate(x, size=(max(1, self.t_chunk//2), self.img_size//4, self.img_size//4), mode='trilinear')
+        x = F.leaky_relu(self.dec2(x), 0.2)
+        
+        x = F.interpolate(x, size=(self.t_chunk, self.img_size//2, self.img_size//2), mode='trilinear')
+        x = F.leaky_relu(self.dec3(x), 0.2)
+        
+        x = F.interpolate(x, size=(self.t_chunk, self.img_size, self.img_size), mode='trilinear')
+        x = torch.sigmoid(self.dec4(x))
+        
+        # Return as (B, T, H, W) for grayscale as requested in template
+        return x.squeeze(1) 
 
 
 class VideoBaselineAutoEncoder(nn.Module):
-    """Autoencoder wrapper that returns reconstructions and tokens.
-
-    Forward returns
-    --------------
-    x_hat : torch.Tensor
-        Reconstructed clip (B, T, H, W) for grayscale.
-    tokens : torch.Tensor
-        Latent tokens (B, n_tokens, d_model).
-    """
     def __init__(
         self,
-        n_tokens: int,
+        n_tokens: int = 256,
         t_chunk: int = 25,
-        img_size: int = 256,
+        img_size: int = 128,
         token_dim: int = 512,
+        d_model: int | None = None,
         n_channels: int = 1,
+        **kwargs,
     ):
         super().__init__()
+        # Accept d_model as alias for token_dim (for build_model compatibility)
+        effective_d_model = d_model if d_model is not None else token_dim
         self.encoder = VideoBaselineEncoder(
             n_channels=n_channels,
-            d_model=token_dim,
+            d_model=effective_d_model,
             n_tokens=n_tokens,
             t_chunk=t_chunk,
             img_size=img_size,
         )
         self.decoder = VideoBaselineDecoder(
             n_channels=n_channels,
-            d_model=token_dim,
+            d_model=effective_d_model,
             n_tokens=n_tokens,
             t_chunk=t_chunk,
             img_size=img_size,
@@ -224,7 +138,12 @@ class VideoBaselineAutoEncoder(nn.Module):
         )
 
     def forward(self, x: torch.Tensor):
-        tokens = self.encoder(x)
+        """
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            ``(reconstructed, tokens)`` where tokens is ``(B, n_tokens, d_model)``.
+        """
+        tokens = self.encoder(x)  # x=[B,T,H,W]
         x_hat = self.decoder(tokens)
-        return x_hat
-
+        return x_hat, tokens

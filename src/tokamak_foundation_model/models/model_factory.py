@@ -7,22 +7,38 @@ from tokamak_foundation_model.models.modality import (
     FastTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
-    SpectrogramTFAttnAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
 
 SIGNAL_MODEL_DEFAULTS = {
     "gas": "actuator",
+    "gas_flow": "actuator",
+    "gas_raw": "actuator",
     "ech": "actuator",
     "pin": "actuator",
     "tin": "actuator",
+    "ich": "actuator",
+    "i_coil": "actuator",
     "filterscopes": "fast_time_series",
+    "d_alpha": "fast_time_series",
+    "sxr": "fast_time_series",
+    "neutron_rate": "fast_time_series",
+    "bolo_raw": "fast_time_series",
     "mse": "profile",
     "ts_core_density": "profile",
+    "ts_core_temp": "profile",
+    "ts_tangential_density": "profile",
+    "ts_tangential_temp": "profile",
+    "cer_ti": "profile",
+    "cer_rot": "profile",
+    "vib": "slow_time_series",
     "mhr": "spectrogram",
     "ece": "spectrogram",
     "co2": "spectrogram",
+    "mirnov": "spectrogram",
+    "langmuir": "spectrogram",
+    "bes": "spectrogram",
     "bolo": "video",
     "irtv": "video",
     "tangtv": "video",
@@ -34,15 +50,14 @@ MODEL_REGISTRY = {
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
-    "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
 def build_model(
         model_name,
-        d_model: Optional[int],
-        n_tokens: Optional[int],
-        n_channels: Optional[int],
+        d_model: Optional[int] = None,
+        n_tokens: Optional[int] = None,
+        n_channels: Optional[int] = None,
         **kwargs
 ) -> nn.Module:
     """Build the appropriate autoencoder.
@@ -51,7 +66,7 @@ def build_model(
     """
     cls = MODEL_REGISTRY[model_name]
     if d_model is None and "d_model" not in kwargs:
-        kwargs["d_model"] = 512  # default model dimension
+        kwargs["d_model"] = 64
     else:
         kwargs["d_model"] = d_model
     if n_tokens is None and "n_tokens" not in kwargs:

@@ -18,53 +18,14 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 from tokamak_foundation_model.utils.distributed import DistributedManager
-
-from tokamak_foundation_model.utils import DefaultDrawer
 from tokamak_foundation_model.utils import DefaultDrawer, NullDrawer
-from tokamak_foundation_model.models.modality import (
-    ActuatorBaselineAutoEncoder,
-    SlowTimeSeriesBaselineAutoEncoder,
-    FastTimeSeriesBaselineAutoEncoder,
-    SpatialProfileBaselineAutoEncoder,
-    SpectrogramBaselineAutoEncoder,
-    VideoBaselineAutoEncoder,
-)
 
-# TODO: Add ddp support
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SIGNAL_MODEL_DEFAULTS = {
-    "gas": "actuator",
-    "ech": "actuator",
-    "pin": "actuator",
-    "tin": "actuator",
-    "d_alpha": "fast_time_series",
-    "mse": "profile",
-    "ts_core_density": "profile",
-    "mhr": "spectrogram",
-    "ece": "spectrogram",
-    "co2": "spectrogram",
-    "bolo": "video",
-    "irtv": "video",
-    "tangtv": "video",
-}
 
-MODEL_REGISTRY = {
-    "actuator": ActuatorBaselineAutoEncoder,
-    "fast_time_series": FastTimeSeriesBaselineAutoEncoder,
-    "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
-    "profile": SpatialProfileBaselineAutoEncoder,
-    "spectrogram": SpectrogramBaselineAutoEncoder,
-    "spectrogram_tf_only": SpectrogramTFOnlyAutoEncoder,
-    "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
-    "video": VideoBaselineAutoEncoder,
-}
-
-
-# TODO: Move into src
 class SpectralGate(nn.Module):
     def __init__(self, eps=1e-8):
         super().__init__()
@@ -92,7 +53,6 @@ class SpectralGate(nn.Module):
         return x * (x_gate * self.gate_factor + (1.0 - self.gate_factor))
 
 
-# TODO: Move into src and generalize
 class GatedTargetL1Loss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -103,30 +63,6 @@ class GatedTargetL1Loss(nn.Module):
         target_amp = target - target.amin(dim=(-2, -1), keepdim=True)
         gated_target = self.gate(target_amp)
         return self.l1(pred, gated_target)
-
-
-# TODO: Move into source code
-def build_model(model_name, n_channels, d_model, n_tokens, **kwargs):
-    """Build the appropriate autoencoder."""
-    cls = MODEL_REGISTRY[model_name]
-    kwargs.pop("n_channels", None)
-    kwargs.pop("d_model", None)
-    kw = dict(n_channels=n_channels, d_model=d_model, **kwargs)
-    if n_tokens is not None: kw["n_tokens"] = n_tokens
-    return cls(**kw)
-
-# TODO: Move to data loader
-def worker_init_fn(worker_id):
-    worker_info = torch.utils.data.get_worker_info()
-    if worker_info is not None:
-        dataset = worker_info.dataset
-        if hasattr(dataset, 'datasets'):
-            for ds in dataset.datasets:
-                ds.h5_file = None
-                ds._open_hdf5()
-        else:
-            dataset.h5_file = None
-            dataset._open_hdf5()
 
 
 def main():
@@ -311,7 +247,8 @@ def main():
 
     ### Model Setup ###
     model_kwargs = json.loads(args.model_kwargs)
-    model = build_model(model_name, n_channels, args.d_model, args.n_tokens, **model_kwargs).to(dm.device)
+    model = build_model(model_name, n_channels=n_channels, d_model=args.d_model,
+                        n_tokens=args.n_tokens, **model_kwargs).to(dm.device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -323,8 +260,6 @@ def main():
     )
 
     if args.use_gated_target:
-        if model_name != "spectrogram_tf_only":
-            logger.warning("--use_gated_target is intended for spectrogram_tf_only; continuing anyway")
         loss_fn = GatedTargetL1Loss()
         logger.info("Using gated target L1 loss")
     else:
@@ -417,6 +352,27 @@ def main():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
+    trainer.fit(
+        train_dataloader=dataloader,
+        val_dataloader=val_dataloader,
+        modality_key=signal_name,
+        train_sampler=train_sampler,
+    )
+
+    ### Save config.json alongside checkpoint ###
+    if dm.is_main:
+        config = {
+            "signal_name": signal_name,
+            "model_type": model_name,
+            "d_model": args.d_model,
+            "n_tokens": args.n_tokens,
+            "n_channels": n_channels,
+            "model_kwargs": model_kwargs,
+        }
+        config_path = checkpoint_path.parent / "config.json"
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
+        logger.info(f"Saved config to {config_path}")
 
 
 if __name__ == "__main__":
