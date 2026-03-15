@@ -219,3 +219,6 @@ __marimo__/
 
 # Wandb
 wandb/
+
+# Logs
+logs/

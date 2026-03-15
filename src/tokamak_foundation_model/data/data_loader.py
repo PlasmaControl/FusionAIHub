@@ -647,14 +647,21 @@ class TokamakH5Dataset(Dataset):
         for config in self.signal_configs:
             if config.name in self.preprocessing_stats:
                 stats = self.preprocessing_stats[config.name]
-                if "mean" in stats:
-                    config.preprocess.mean = stats["mean"]
-                if "std" in stats:
-                    config.preprocess.std = stats["std"]
-                if "min_val" in stats:
-                    config.preprocess.min_val = stats["min_val"]
-                if "max_val" in stats:
-                    config.preprocess.max_val = stats["max_val"]
+                # If channels_to_use is set, determine the expected number of
+                # output channels so we can slice stats that were computed on
+                # the full channel set.
+                ch_slice = config.channels_to_use
+                if ch_slice is not None:
+                    n_out = len(
+                        range(*ch_slice.indices(config.num_channels)))
+                else:
+                    n_out = None
+                for key in ("mean", "std", "min_val", "max_val"):
+                    if key in stats:
+                        val = stats[key]
+                        if n_out is not None and len(val) > n_out:
+                            val = val[ch_slice]
+                        setattr(config.preprocess, key, val)
 
     def _apply_preprocessing(
             self,
@@ -1454,3 +1461,43 @@ def collate_fn_prediction(batch):
         targets_collated[key] = torch.stack([d[key] for d in targets_batch])
 
     return {"inputs": inputs_collated, "targets": targets_collated}
+
+
+def worker_init_fn(worker_id):
+    worker_info = torch.utils.data.get_worker_info()
+    if worker_info is not None:
+        worker_dataset = worker_info.dataset
+        if hasattr(worker_dataset, 'datasets'):
+            for ds in worker_dataset.datasets:
+                ds.h5_file = None
+                ds._open_hdf5()
+        else:
+            worker_dataset.h5_file = None
+            worker_dataset._open_hdf5()
+           
+def find_default_shots(
+    data_dir: str | Path = Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data"),
+    data_size: str = "train_debug",
+) -> list[Path]:
+    '''
+    Load a shot list from config and return matching HDF5 file paths.
+
+    data_size: "train_debug", "train_small", "train_medium", "validation", etc.
+    '''
+    import yaml
+
+    config_dir = Path(__file__).parent / "config" / "shot_list"
+    shot_list_path = config_dir / f"{data_size}.yaml"
+
+    with open(shot_list_path, 'r') as f:
+        shot_list = yaml.safe_load(f)
+
+    requested = set(str(s) for s in shot_list['shots'])
+
+    data_dir = Path(data_dir)
+    hdf5_files = sorted(
+        f for f in data_dir.glob("*.h5")
+        if f.stem in requested
+    )
+
+    return hdf5_files
