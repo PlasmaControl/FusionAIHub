@@ -27,8 +27,6 @@ from tokamak_foundation_model.models.modality import (
     FastTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
-    SpectrogramTFAttnAutoEncoder,
-    SpectrogramTFOnlyAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
