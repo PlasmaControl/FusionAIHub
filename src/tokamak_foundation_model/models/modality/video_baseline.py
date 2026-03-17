@@ -1,7 +1,7 @@
 """Video baseline modality autoencoder.
 
 This module is refactored to follow the same structural template as other modality
-baselines (see :mod:`fast_time_series_baseline.py`) while preserving the exact
+baselines (see :mod:`filterscope_baseline.py`) while preserving the exact
 architecture/parameters defined in the original `video_baseline.py`.
 
 Key conventions:

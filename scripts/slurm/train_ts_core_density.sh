@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=filterscopes_reconstruction
-#SBATCH --output=logs/%j_filterscopes_reconstruction.out
-#SBATCH --error=logs/%j_filterscopes_reconstruction.err
-#SBATCH --time=04:00:00
+#SBATCH --job-name=ts_core_density_reconstruction
+#SBATCH --output=logs/%j_ts_core_density_reconstruction.out
+#SBATCH --error=logs/%j_ts_core_density_reconstruction.err
+#SBATCH --time=01:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
@@ -12,14 +12,15 @@
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 
-srun pixi run python ../training/filterscopes_reconstruction.py \
-    --signal "filterscopes" \
+srun pixi run python ../training/ts_core_density_profile_reconstruction.py \
+    --signal "ts_core_density" \
     --d_model 512 \
-    --batch_size 1024 \
+    --n_tokens 20 \
+    --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \
-    --lr 1e-3 \
-    --weight_decay 0.05 \
+    --lr 5e-4 \
+    --weight_decay 0.3 \
     --warmup_epochs 5 \
     --min_lr 0.0 \
     --checkpoint_dir runs \

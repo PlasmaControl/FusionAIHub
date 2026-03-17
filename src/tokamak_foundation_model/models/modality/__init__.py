@@ -1,17 +1,12 @@
-from .actuator_baseline import (
-    ActuatorBaselineEncoder,
-    ActuatorBaselineDecoder,
-    ActuatorBaselineAutoEncoder,
-)
 from .slow_time_series_baseline import (
     SlowTimeSeriesBaselineEncoder,
     SlowTimeSeriesBaselineDecoder,
     SlowTimeSeriesBaselineAutoEncoder,
 )
-from .fast_time_series_baseline import (
-    FastTimeSeriesBaselineEncoder,
-    FastTimeSeriesBaselineDecoder,
-    FastTimeSeriesBaselineAutoEncoder,
+from .filterscope_baseline import (
+    FilterscopeBaselineEncoder,
+    FilterscopeBaselineDecoder,
+    FilterscopeBaselineAutoEncoder,
 )
 from .profile_baseline import (
     SpatialProfileBaselineEncoder,
@@ -30,17 +25,13 @@ from .video_baseline import (
 )
 
 __all__ = [
-    "ActuatorBaselineEncoder",
-    "ActuatorBaselineDecoder",
-    "ActuatorBaselineAutoEncoder",
-
     "SlowTimeSeriesBaselineEncoder",
     "SlowTimeSeriesBaselineDecoder",
     "SlowTimeSeriesBaselineAutoEncoder",
-    
-    "FastTimeSeriesBaselineEncoder",
-    "FastTimeSeriesBaselineDecoder",
-    "FastTimeSeriesBaselineAutoEncoder",
+
+    "FilterscopeBaselineEncoder",
+    "FilterscopeBaselineDecoder",
+    "FilterscopeBaselineAutoEncoder",
     
     "SpatialProfileBaselineEncoder",
     "SpatialProfileBaselineDecoder",

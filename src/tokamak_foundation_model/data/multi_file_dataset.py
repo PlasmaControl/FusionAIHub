@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import collections
 import copy
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
@@ -232,7 +231,7 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
                         (duration - total_window) / self.chunk_duration_s
                     )))
                 else:
-                    length = int(np.ceil(duration / self.chunk_duration_s))
+                    length = int(np.floor(duration / self.chunk_duration_s))
             except OSError as e:
                 print(f"Warning: could not open {path}: {e}")
                 length = 0
@@ -278,7 +277,12 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             _, lru_handle = self._file_handles.popitem(last=False)
             lru_handle.close()
 
-        handle = h5py.File(self.hdf5_paths[file_idx], "r")
+        # rdcc_nbytes=0 disables the per-file HDF5 chunk cache (default 1 MB).
+        # Sequential reads don't benefit from it, and keeping it enabled with
+        # many open files wastes significant CPU RAM.
+        handle = h5py.File(
+            self.hdf5_paths[file_idx], "r", rdcc_nbytes=0, rdcc_nslots=0
+        )
         self._file_handles[file_idx] = handle
         return handle
 

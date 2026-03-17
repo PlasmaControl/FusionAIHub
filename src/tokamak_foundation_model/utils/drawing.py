@@ -23,6 +23,7 @@ class DrawerProtocol(Protocol):
             dataloader: DataLoader,
             drawing_path: Path,
             modality_key: str,
+            val_dataloader: Optional[DataLoader] = None,
     ):
         ...
 
@@ -44,6 +45,7 @@ class NullDrawer:
             dataloader: DataLoader,
             drawing_path: Path,
             modality_key: str,
+            val_dataloader: Optional[DataLoader] = None,
     ):
         pass
 
@@ -111,6 +113,7 @@ class DefaultDrawer:
             dataloader: DataLoader,
             drawing_path: Path,
             modality_key: str,
+            val_dataloader: Optional[DataLoader] = None,
     ):
         """Initialize the drawer with dataset and output directory.
 
@@ -128,15 +131,21 @@ class DefaultDrawer:
         modality_key : str
             Key used to index into each dataset sample dict (e.g.
             ``'spectrogram'``).
+        val_dataloader : DataLoader or None, optional
+            Validation dataloader used for the correlation plot.  Falls back
+            to the probe sample when ``None``.
         """
         self.drawing_path = Path(drawing_path)
         self.drawing_path.mkdir(parents=True, exist_ok=True)
         self.modality_key = modality_key
+        self.val_dataloader = val_dataloader
 
         dataset = dataloader.dataset
         assert isinstance(dataset, Sized), "Dataset must implement __len__"
-        idx = min(10, len(dataset) - 1)
-        self.probe_sample = dataset[idx][modality_key]
+        idx = int(torch.randint(len(dataset), (1,)).item())
+        sample = dataset[idx]
+        self.probe_sample = sample[modality_key]
+        self.probe_valid_length: Optional[int] = sample.get(f"{modality_key}_valid")
 
         if self._plot_channel is not None:
             self.channel = self._plot_channel
@@ -173,7 +182,9 @@ class DefaultDrawer:
             self.val_losses.append(val_loss)
 
         self._save_loss_curve()
-        self._save_reconstruction(model, epoch, train_loss, val_loss)
+        input_data, recon_data = self._compute_reconstruction(model)
+        self._save_reconstruction(input_data, recon_data, epoch, train_loss, val_loss)
+        self._save_correlation(model, epoch)
 
     def _save_loss_curve(self):
         """Write ``loss_curve.png``, overwriting any previous version."""
@@ -189,18 +200,14 @@ class DefaultDrawer:
         fig.savefig(self.drawing_path / "loss_curve.png")
         plt.close(fig)
 
-    def _save_reconstruction(
+    def _compute_reconstruction(
             self,
             model: torch.nn.Module,
-            epoch: int,
-            train_loss: float,
-            val_loss: Optional[float],
     ):
-        """Write ``reconstruction.png``, overwriting any previous version.
+        """Run probe sample through *model* and return ``(input_data, recon_data)``.
 
-        Runs the probe sample through *model* and dispatches to the
-        appropriate helper based on the channel dimensionality (3-D video,
-        2-D spectrogram, or 1-D signal).
+        Both arrays are trimmed to the valid length (if available) and cover
+        all channels: shape ``(C, ...)``.
         """
         model.eval()
         x = self.probe_sample.unsqueeze(0).to(next(model.parameters()).device)
@@ -209,17 +216,121 @@ class DefaultDrawer:
             output = output[0]
         output = output[0].cpu()
 
-        input_data = self.probe_sample[self.channel].numpy()
-        recon_data = output[self.channel].numpy()
+        input_data = self.probe_sample.numpy()   # [C, ...]
+        recon_data = output.numpy()              # [C, ...]
 
-        title = f"Epoch {epoch + 1} | Train L1={train_loss:.6f}"
+        vl = self.probe_valid_length
+        if vl is not None and vl > 0:
+            input_data = input_data[..., :vl]
+            recon_data = recon_data[..., :vl]
+
+        return input_data, recon_data
+
+    def _save_reconstruction(
+            self,
+            input_data: np.ndarray,
+            recon_data: np.ndarray,
+            epoch: int,
+            train_loss: float,
+            val_loss: Optional[float],
+    ):
+        """Write ``reconstruction.png``, overwriting any previous version."""
+        ch_input = input_data[self.channel]
+        ch_recon = recon_data[self.channel]
+
+        title = f"Epoch {epoch + 1} | Train={train_loss:.6f}"
         if val_loss is not None:
-            title += f" | Val L1={val_loss:.6f}"
+            title += f" | Val={val_loss:.6f}"
 
-        if recon_data.ndim == 3:
-            self._plot_video(input_data, recon_data, title)
+        if ch_recon.ndim == 3:
+            self._plot_video(ch_input, ch_recon, title)
         else:
-            self._plot_2d_or_1d(input_data, recon_data, title)
+            self._plot_2d_or_1d(ch_input, ch_recon, title)
+
+    @torch.no_grad()
+    def _save_correlation(
+            self,
+            model: torch.nn.Module,
+            epoch: int,
+            max_batches: int = 50,
+    ):
+        """Write ``correlation.png`` — scatter of target vs. reconstruction.
+
+        Iterates over the validation dataloader (up to *max_batches* batches)
+        when available, otherwise falls back to the probe sample.  All
+        channels are flattened together.  Includes a y=x reference line and
+        Pearson r in the title.
+        """
+        model.eval()
+        device = next(model.parameters()).device
+
+        all_targets: list[np.ndarray] = []
+        all_recons: list[np.ndarray] = []
+
+        if self.val_dataloader is not None:
+            for i, batch in enumerate(self.val_dataloader):
+                if i >= max_batches:
+                    break
+                data = batch[self.modality_key].to(device)
+                valid_lengths = batch.get(f"{self.modality_key}_valid")
+
+                output = model(data)
+                if isinstance(output, tuple):
+                    output = output[0]
+
+                data_np = data.cpu().numpy()    # [B, C, T]
+                recon_np = output.cpu().numpy() # [B, C, T]
+
+                if valid_lengths is not None:
+                    for b, vl in enumerate(valid_lengths.tolist()):
+                        all_targets.append(data_np[b, :, :vl].ravel())
+                        all_recons.append(recon_np[b, :, :vl].ravel())
+                else:
+                    all_targets.append(data_np.ravel())
+                    all_recons.append(recon_np.ravel())
+        else:
+            # Fallback: probe sample only
+            inp, rec = self._compute_reconstruction(model)
+            all_targets.append(inp.ravel())
+            all_recons.append(rec.ravel())
+
+        target = np.concatenate(all_targets)
+        recon = np.concatenate(all_recons)
+
+        finite_mask = np.isfinite(target) & np.isfinite(recon)
+        n_nan = (~finite_mask).sum()
+        if n_nan > 0:
+            print(f"WARNING: Correlation plot: {n_nan} non-finite values dropped")
+        target_clean = target[finite_mask]
+        recon_clean = recon[finite_mask]
+
+        if len(target_clean) > 1 and target_clean.std() > 0 and recon_clean.std() > 0:
+            r = float(np.corrcoef(target_clean, recon_clean)[0, 1])
+        else:
+            r = float('nan')
+
+        # Subsample for plot readability
+        max_pts = 20_000
+        if len(target_clean) > max_pts:
+            idx = np.random.choice(len(target_clean), max_pts, replace=False)
+            target_plot, recon_plot = target_clean[idx], recon_clean[idx]
+        else:
+            target_plot, recon_plot = target_clean, recon_clean
+
+        vmin = min(target_plot.min(), recon_plot.min())
+        vmax = max(target_plot.max(), recon_plot.max())
+
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.scatter(target_plot, recon_plot, s=2, alpha=0.3, color='steelblue')
+        ax.plot([vmin, vmax], [vmin, vmax], color='tomato', lw=1.2, label='y=x')
+        ax.set_xlabel('Target')
+        ax.set_ylabel('Reconstruction')
+        ax.set_title(f"Epoch {epoch + 1} | r = {r:.4f}  (n={len(target):,})")
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(self.drawing_path / "correlation.png")
+        plt.close(fig)
 
     def _plot_video(
             self,
