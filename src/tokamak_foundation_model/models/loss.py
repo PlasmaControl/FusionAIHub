@@ -82,6 +82,39 @@ class MaskedMSELoss(nn.Module):
         return ((output - target) ** 2 * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
 
 
+class MaskedHuberLoss(nn.Module):
+    """Huber loss that ignores zero-padded time steps. Same interface as MaskedMSELoss.
+
+    Parameters
+    ----------
+    delta : float
+        Threshold between quadratic and linear regimes. Default ``1.0``.
+    """
+
+    def __init__(self, delta: float = 1.0):
+        super().__init__()
+        self.delta = delta
+
+    def forward(
+            self,
+            output: torch.Tensor,
+            target: torch.Tensor,
+            valid_lengths: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if valid_lengths is None:
+            return F.huber_loss(output, target, delta=self.delta)
+
+        T = output.shape[-1]
+        t_idx = torch.arange(T, device=output.device)
+        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+
+        for _ in range(output.dim() - 2):
+            mask = mask.unsqueeze(1)
+
+        loss = F.huber_loss(output, target, reduction="none", delta=self.delta)
+        return (loss * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+
+
 class MaskedRelativeMSELoss(nn.Module):
     """Relative MSE loss that upweights high-amplitude samples.
 

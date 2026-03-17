@@ -12,7 +12,7 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
-from tokamak_foundation_model.models.loss import MaskedMSELoss
+from tokamak_foundation_model.models.loss import MaskedHuberLoss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -120,7 +120,7 @@ def main():
     data_dir = Path(args.data_dir)
     statistics_path = Path(args.stats_path)
     checkpoint_path = (
-            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}_trf" / "checkpoint.pth"
+            Path(args.checkpoint_dir) / f"{signal_name}_{model_name}" / "checkpoint.pth"
     )
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -211,7 +211,7 @@ def main():
             eta_min=args.min_lr,
         )
 
-    loss_fn = MaskedMSELoss()
+    loss_fn = MaskedHuberLoss(delta=0.5)
 
     train_dataloader = make_dataloader(
         train_dataset,

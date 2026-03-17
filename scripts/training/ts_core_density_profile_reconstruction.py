@@ -12,7 +12,7 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
-from tokamak_foundation_model.models.loss import MaskedMSELoss
+from tokamak_foundation_model.models.loss import MaskedHuberLoss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -197,7 +197,7 @@ def main():
             eta_min=args.min_lr,
         )
 
-    loss_fn = MaskedMSELoss()
+    loss_fn = MaskedHuberLoss(delta=0.25)
 
     train_dataloader = make_dataloader(
         train_dataset,

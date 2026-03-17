@@ -255,15 +255,15 @@ class TokamakH5Dataset(Dataset):
     ``pin``                     8         10 kHz      no     standardize
     ``tin``                     8         10 kHz      no     none
     ``mse``                     69        100 Hz      no     standardize
-    ``ts_core_density``         44        100 Hz      no     log_standardize
     ``filterscopes``            104       10 kHz      yes    log
     ``cer_ti``                  48        100 Hz      no     log
     ``cer_rot``                 48        100 Hz      no     none
     ``sxr``                     320       10 kHz      no     log
     ``neutron_rate``            4         40 kHz      no     log
+    ``ts_core_density``         44        100 Hz      no     log_standardize
     ``ts_tangential_density``   10        100 Hz      no     log_standardize
-    ``ts_core_temp``            44        100 Hz      no     log
-    ``ts_tangential_temp``      10        100 Hz      no     log
+    ``ts_core_temp``            44        100 Hz      no     log_standardize
+    ``ts_tangential_temp``      10        100 Hz      no     log_standardize
     ``vib``                     24        50 Hz       yes    log
     ``bolo_raw``                48        10 kHz      no     log
     ``gas_flow``                11        10 kHz      no     none
@@ -408,7 +408,7 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ts_tangential_temp",
@@ -416,7 +416,7 @@ class TokamakH5Dataset(Dataset):
             10,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "vib",

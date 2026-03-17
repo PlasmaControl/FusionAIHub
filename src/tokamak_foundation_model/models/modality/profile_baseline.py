@@ -26,17 +26,17 @@ class SpatialProfileBaselineEncoder(ModalityEncoder):
         self.n_tokens = n_tokens
 
         self.adaptive_pool = nn.AdaptiveMaxPool1d(n_tokens)
-        self.activation = nn.GELU()
-        self.norm = nn.BatchNorm1d(d_model)
+        self.activation = nn.SELU()
+        # self.norm = nn.BatchNorm1d(d_model)
 
         # Spatial MLP: encodes each time step's spatial profile
         self.spatial_encoder = nn.Sequential(
             nn.Linear(n_spatial_points, 64),
             self.activation,
-            nn.Dropout(0.2),
+            nn.AlphaDropout(0.2),
             nn.Linear(64, 128),
             self.activation,
-            nn.Dropout(0.2),
+            nn.AlphaDropout(0.2),
             nn.Linear(128, d_model)
         )
 
@@ -47,6 +47,12 @@ class SpatialProfileBaselineEncoder(ModalityEncoder):
             kernel_size=kernel_size,
             stride=max(1, kernel_size // 2),
         )
+
+        # LeCun normal init for SELU self-normalisation
+        for module in self.spatial_encoder.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='linear')
+                nn.init.zeros_(module.bias)
 
     def forward(self, x):
         B, S, T = x.shape
@@ -61,7 +67,7 @@ class SpatialProfileBaselineEncoder(ModalityEncoder):
         x = x.transpose(1, 2)                    # [B, d_model, T]
         x = self.temporal_conv(x)                # [B, d_model, T']
         x = self.adaptive_pool(x)                # [B, d_model, n_output_tokens]
-        x = self.norm(x)                         # BatchNorm1d over d_model dim
+        # x = self.norm(x)                         # BatchNorm1d over d_model dim
 
         x = x.transpose(1, 2)                    # [B, n_output_tokens, d_model]
 
@@ -85,7 +91,7 @@ class SpatialProfileBaselineDecoder(ModalityDecoder):
         self.d_model = d_model
         self.n_tokens = n_tokens
 
-        self.activation = nn.GELU()
+        self.activation = nn.SELU()
         self.adaptive_pool = nn.AdaptiveAvgPool1d(n_time_points)
 
         # Mirror temporal residual block
