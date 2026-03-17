@@ -256,8 +256,8 @@ class TokamakH5Dataset(Dataset):
     ``tin``                     8         10 kHz      no     none
     ``mse``                     69        100 Hz      no     standardize
     ``filterscopes``            104       10 kHz      yes    log
-    ``cer_ti``                  48        100 Hz      no     log
-    ``cer_rot``                 48        100 Hz      no     none
+    ``cer_ti``                  48        100 Hz      no     log_standardize
+    ``cer_rot``                 48        100 Hz      no     standardize
     ``sxr``                     320       10 kHz      no     log
     ``neutron_rate``            4         40 kHz      no     log
     ``ts_core_density``         44        100 Hz      no     log_standardize

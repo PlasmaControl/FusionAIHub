@@ -22,10 +22,12 @@ SIGNAL_MODEL_DEFAULTS = {
     "ts_tangential_density": "profile",
     "ts_core_temp": "profile",
     "ts_tangential_temp": "profile",
+    "cer_ti": "profile",
+    "cer_vtor": "profile",
     "mhr": "spectrogram",
     "ece": "spectrogram",
     "co2": "spectrogram",
-    "bolo": "video",
+    "bolo": "fast_time_series",
     "irtv": "video",
     "tangtv": "video",
 }
