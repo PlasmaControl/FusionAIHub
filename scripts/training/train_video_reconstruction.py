@@ -223,7 +223,7 @@ def main():
         weight_decay=args.weight_decay,
     )
     # loss_fn = nn.MSELoss()
-    loss_fn = SparseVideoWeightedMSE(l1l2='l1')
+    loss_fn = SparseVideoWeightedMSE(l1l2='l2')
 
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
