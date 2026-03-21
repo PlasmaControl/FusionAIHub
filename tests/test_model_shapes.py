@@ -93,25 +93,131 @@ MODEL_TEST_CONFIGS = [
         {"n_channels": 4, "d_model": 32, "dims": [32, 64], "bottleneck_dim": 4},
         (4, 64, 64),  # (channels, freq, time)
     ),
-    # CNN Perceiver — continuous bottleneck
+    # CNN Perceiver (ConvNeXt) — continuous channel bottleneck
     (
         "spectrogram_cnn_perceiver",
         {
-            "n_channels": 4, "d_model": 32, "n_tokens": 8,
-            "dims": [32, 64], "n_heads": 4, "n_self_layers": 1,
-            "n_dec_self_layers": 1,
+            "n_channels": 4, "d_model": 8, "n_tokens": 0,
+            "dims": [32, 64], "depths": [2, 2], "stem_stride": 4,
+            "bottleneck_dim": 8,
         },
         (4, 64, 64),  # (channels, freq, time)
     ),
-    # CNN Perceiver — with FSQ
+    # CNN Perceiver (ConvNeXt) — larger bottleneck
     (
         "spectrogram_cnn_perceiver",
         {
-            "n_channels": 4, "d_model": 32, "n_tokens": 8,
-            "dims": [32, 64], "n_heads": 4, "n_self_layers": 1,
-            "n_dec_self_layers": 1, "fsq_levels": [4, 3, 3],
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "dims": [32, 64], "depths": [2, 2], "stem_stride": 4,
         },
         (4, 64, 64),  # (channels, freq, time)
+    ),
+    # CNN Perceiver (ConvNeXt) — with spatial compression
+    (
+        "spectrogram_cnn_perceiver",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "dims": [32, 64], "depths": [2, 2], "stem_stride": 4,
+            "bottleneck_dim": 16, "compress_stride": 4,
+        },
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    # CNN 1D — hierarchical freq stem, no channel compression
+    (
+        "spectrogram_cnn1d",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2, "dim": 32, "depth": 2,
+            "stem_dims": [16, 32],
+        },
+        (4, 64, 64),
+    ),
+    # CNN 1D — hierarchical freq stem, with channel bottleneck
+    (
+        "spectrogram_cnn1d",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2, "dim": 32, "depth": 2,
+            "stem_dims": [16, 32], "bottleneck_dim": 8,
+        },
+        (4, 64, 64),
+    ),
+    # AST-FSQ frame_width=2
+    (
+        "spectrogram_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [4, 3, 3],
+        },
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    # AST-FSQ frame_width=4
+    (
+        "spectrogram_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 4,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [4, 3, 3],
+        },
+        (4, 64, 64),  # (channels, freq, time)
+    ),
+    # Channel-AST-FSQ frame_width=2
+    (
+        "spectrogram_channel_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [4, 3, 3], "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST-FSQ frame_width=4
+    (
+        "spectrogram_channel_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 4,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [4, 3, 3], "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST no FSQ (continuous)
+    (
+        "spectrogram_channel_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [], "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST with channel_merge, no FSQ, frame_width=4
+    (
+        "spectrogram_channel_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 4,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [], "channel_merge": True, "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST with channel_merge, no FSQ, frame_width=8
+    (
+        "spectrogram_channel_ast_fsq",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 8,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "fsq_levels": [], "channel_merge": True, "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
     ),
     (
         "video",
