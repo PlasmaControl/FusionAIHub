@@ -1,36 +1,35 @@
-"""Visualize CO2 ConvNeXt two-stage bottleneck (bn32 + compress_stride=4).
+"""Visualize CO2 CNN-Perceiver v3 reconstruction (N=128, linear decode).
 
 Produces three figures:
   1. Original / Reconstructed / Error per channel
   2. Training + validation loss curves
-  3. Compressed token grid — (d_model, H'', W'') after spatial compression
+  3. Latent token heatmap — (N, d_model) from the encoder, one sample
 
 Usage:
-    pixi run python scripts/training/visualize_co2_cnn_perceiver.py
+    pixi run python scripts/training/visualize_co2_cnn_perceiver_n128.py
 """
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
-import torch.nn.functional as Fnn
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
 from tokamak_foundation_model.models.model_factory import build_model
 
 # ── Config ────────────────────────────────────────────────────────────────────
-CHECKPOINT = Path("runs/co2_convnext_bn32_s4_compress4/co2_spectrogram_cnn_perceiver/checkpoint.pth")
+CHECKPOINT = Path("runs/co2_cnn_perceiver_v3_n128/co2_spectrogram_cnn_perceiver/checkpoint.pth")
 DATA_DIR   = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 STATS_PATH = Path("data/preprocessing_stats.pt")
 SIGNAL     = "co2"
 N_FFT      = 256
 HOP_LENGTH = 128
-CONVNEXT_DIMS   = [256]
-CONVNEXT_DEPTHS = [6]
-STEM_STRIDE     = 4
-BOTTLENECK_DIM  = 32
-COMPRESS_STRIDE = 4
-D_MODEL         = 256
+CNN_DIMS   = [64, 128]
+D_MODEL    = 256
+N_TOKENS   = 128
+N_HEADS    = 4
+N_SELF_LAYERS     = 2
+N_DEC_SELF_LAYERS = 2
 SAMPLE_IDX = 10
 OUT_DIR    = CHECKPOINT.parent / "plots"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -41,9 +40,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ckpt = torch.load(CHECKPOINT, map_location=device, weights_only=False)
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
+# Filter to shots with full CO2 time-series (shots < 200000 often have only
+# a single time point and produce degenerate STFTs)
 hdf5_files = [
     f for f in sorted(DATA_DIR.glob("*_processed.h5"))
-    if 200000 <= int(f.stem.split("_")[0]) <= 200500
+    if int(f.stem.split("_")[0]) >= 200000
 ]
 stats = torch.load(STATS_PATH, weights_only=False)
 dataset = TokamakH5Dataset(
@@ -60,11 +61,10 @@ n_channels = sample.shape[0]
 
 # ── Build model ───────────────────────────────────────────────────────────────
 model = build_model(
-    "spectrogram_cnn_perceiver", d_model=D_MODEL, n_tokens=0,
+    "spectrogram_cnn_perceiver", d_model=D_MODEL, n_tokens=N_TOKENS,
     n_channels=n_channels,
-    dims=CONVNEXT_DIMS, depths=CONVNEXT_DEPTHS,
-    stem_stride=STEM_STRIDE, bottleneck_dim=BOTTLENECK_DIM,
-    compress_stride=COMPRESS_STRIDE,
+    dims=CNN_DIMS, n_heads=N_HEADS,
+    n_self_layers=N_SELF_LAYERS, n_dec_self_layers=N_DEC_SELF_LAYERS,
 )
 model.load_state_dict(ckpt["model_state_dict"])
 model.to(device).eval()
@@ -73,22 +73,7 @@ model.to(device).eval()
 with torch.no_grad():
     x = sample.unsqueeze(0).to(device)           # (1, C, F, T)
     reconstructed = model(x).cpu().squeeze(0)    # (C, F, T)
-
-    # Get the compressed token representation
-    full_stride = model.total_stride * model.compress_stride
-    _, _, F_orig, T_orig = x.shape
-    pad_f = (full_stride - F_orig % full_stride) % full_stride
-    pad_t = (full_stride - T_orig % full_stride) % full_stride
-    x_pad = Fnn.pad(x, (0, pad_t, 0, pad_f)) if (pad_f or pad_t) else x
-    z_enc = model.convnext_encoder(x_pad)
-    z_bn = model.bottleneck_proj(z_enc)
-    _, _, H_bn, W_bn = z_bn.shape
-    if model.spatial_compressor is not None:
-        z_compressed = model.spatial_compressor(z_bn)
-    else:
-        z_compressed = z_bn
-    _, _, H_c, W_c = z_compressed.shape
-    z_compressed_cpu = z_compressed.squeeze(0).cpu()  # (d_model, H'', W'')
+    latent = model.encoder(x).cpu().squeeze(0)   # (N, d_model)
 
 original = sample.cpu()
 
@@ -128,12 +113,10 @@ axes[0, 0].set_title("Original",      fontsize=11)
 axes[0, 1].set_title("Reconstructed", fontsize=11)
 axes[0, 2].set_title("Error (R − O)", fontsize=11)
 
-n_tokens = H_c * W_c
 C_in, F_in, T_in = sample.shape
-compression = C_in * F_in * T_in / (n_tokens * D_MODEL)
+compression = C_in * F_in * T_in / (N_TOKENS * D_MODEL)
 fig.suptitle(
-    f"CO2 ConvNeXt bn{BOTTLENECK_DIM}+c{COMPRESS_STRIDE} "
-    f"({n_tokens} tokens × d={D_MODEL}, {compression:.0f}× compression) "
+    f"CO2 CNN-Perceiver (continuous, N={N_TOKENS} tokens, {compression:.0f}× compression) "
     f"— epoch {epoch + 1}, train L1={final_loss:.4f}",
     fontsize=11,
 )
@@ -150,7 +133,7 @@ if val_losses:
     ax2.plot(range(1, len(val_losses) + 1), val_losses, label="Val")
 ax2.set_xlabel("Epoch")
 ax2.set_ylabel("L1 Loss")
-ax2.set_title(f"CO2 ConvNeXt bn{BOTTLENECK_DIM}+c{COMPRESS_STRIDE} — Loss Curves")
+ax2.set_title(f"CO2 CNN-Perceiver — Loss Curves (N={N_TOKENS} tokens)")
 ax2.legend()
 ax2.grid(True, alpha=0.3)
 fig2.tight_layout()
@@ -159,29 +142,15 @@ fig2.savefig(out, dpi=150, bbox_inches="tight")
 print(f"Saved → {out}")
 plt.close(fig2)
 
-# ── Figure 3: Compressed token grid (first 16 channels) ──────────────────────
-n_show = min(16, D_MODEL)
-n_rows = 4
-n_cols_fig3 = (n_show + n_rows - 1) // n_rows
-fig3, axes3 = plt.subplots(n_rows, n_cols_fig3,
-                            figsize=(max(10, n_cols_fig3 * 2.5), n_rows * 2))
-axes3 = axes3.flatten()
-for i in range(n_show):
-    im = axes3[i].imshow(z_compressed_cpu[i].numpy(), cmap="RdBu_r",
-                         origin="lower", aspect="auto")
-    axes3[i].set_title(f"d{i}", fontsize=8)
-    axes3[i].set_xticks([])
-    axes3[i].set_yticks([])
-for i in range(n_show, len(axes3)):
-    axes3[i].axis("off")
-fig3.suptitle(
-    f"ConvNeXt bn{BOTTLENECK_DIM}+c{COMPRESS_STRIDE} — "
-    f"Compressed tokens ({H_c}×{W_c}={n_tokens} tokens, "
-    f"showing 16/{D_MODEL} dims)",
-    fontsize=11,
-)
+# ── Figure 3: Latent token heatmap ───────────────────────────────────────────
+fig3, ax3 = plt.subplots(figsize=(12, 6))
+im = ax3.imshow(latent.numpy(), cmap="RdBu_r", origin="upper", aspect="auto")
+ax3.set_xlabel("d_model dimension")
+ax3.set_ylabel("Token index")
+ax3.set_title(f"CO2 CNN-Perceiver — Latent tokens (N={N_TOKENS} × d={D_MODEL})")
+plt.colorbar(im, ax=ax3, shrink=0.8)
 fig3.tight_layout()
-out = OUT_DIR / "compressed_tokens.png"
+out = OUT_DIR / "latent_tokens.png"
 fig3.savefig(out, dpi=150, bbox_inches="tight")
 print(f"Saved → {out}")
 plt.close(fig3)

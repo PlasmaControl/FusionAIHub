@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=co2_cnn_perceiver_fsq
-#SBATCH --output=logs/%j_co2_cnn_perceiver_fsq.out
-#SBATCH --error=logs/%j_co2_cnn_perceiver_fsq.err
+#SBATCH --job-name=co2_cnn_perc_v3_n128
+#SBATCH --output=logs/%j_co2_cnn_perc_v3_n128.out
+#SBATCH --error=logs/%j_co2_cnn_perc_v3_n128.err
 #SBATCH --time=72:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -23,13 +23,11 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --shot_max 200500 \
     --cnn_dims 64 128 \
     --d_model 256 \
-    --n_tokens 16 \
+    --n_tokens 128 \
     --n_heads 4 \
     --n_self_layers 2 \
     --n_dec_self_layers 2 \
     --dropout 0.1 \
-    --enable_fsq \
-    --fsq_levels 8 5 5 5 5 \
     --batch_size 16 \
     --num_workers 2 \
     --epochs 500 \
@@ -43,4 +41,4 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --hop_length 128 \
     --log_interval 5 \
     --num_plots 4 \
-    --checkpoint_dir runs/co2_cnn_perceiver_fsq
+    --checkpoint_dir runs/co2_cnn_perceiver_v3_n128

@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=co2_cnn_perceiver_fsq
-#SBATCH --output=logs/%j_co2_cnn_perceiver_fsq.out
-#SBATCH --error=logs/%j_co2_cnn_perceiver_fsq.err
+#SBATCH --job-name=co2_fsq_vae_p8_matched
+#SBATCH --output=logs/%j_co2_fsq_vae_p8_matched.out
+#SBATCH --error=logs/%j_co2_fsq_vae_p8_matched.err
 #SBATCH --time=72:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -14,33 +14,26 @@ module load pixi
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 
+# Matched to CNN baseline: same 501 shots, same preprocessing (default log_standardize)
 srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --signal co2 \
-    --model spectrogram_cnn_perceiver \
+    --model spectrogram_fsq_vae \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path data/preprocessing_stats.pt \
     --shot_min 200000 \
     --shot_max 200500 \
-    --cnn_dims 64 128 \
-    --d_model 256 \
-    --n_tokens 16 \
-    --n_heads 4 \
-    --n_self_layers 2 \
-    --n_dec_self_layers 2 \
-    --dropout 0.1 \
-    --enable_fsq \
     --fsq_levels 8 5 5 5 5 \
+    --patch_h 8 --patch_w 8 \
+    --d_model 256 \
+    --n_tokens 0 \
     --batch_size 16 \
     --num_workers 2 \
     --epochs 500 \
-    --lr 3e-5 \
+    --lr 1e-4 \
     --weight_decay 1e-4 \
-    --scheduler cosine \
-    --warmup_epochs 10 \
-    --min_lr 1e-6 \
-    --grad_clip 1.0 \
+    --scheduler none \
     --n_fft 256 \
     --hop_length 128 \
     --log_interval 5 \
     --num_plots 4 \
-    --checkpoint_dir runs/co2_cnn_perceiver_fsq
+    --checkpoint_dir runs/co2_fsq_vae_p8_matched

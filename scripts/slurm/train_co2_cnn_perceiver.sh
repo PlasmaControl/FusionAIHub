@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=co2_cnn_perceiver
-#SBATCH --output=logs/%j_co2_cnn_perceiver.out
-#SBATCH --error=logs/%j_co2_cnn_perceiver.err
+#SBATCH --job-name=co2_convnext_bn32_nowd
+#SBATCH --output=logs/%j_co2_convnext_bn32_nowd.out
+#SBATCH --error=logs/%j_co2_convnext_bn32_nowd.err
 #SBATCH --time=72:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -19,23 +19,25 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --model spectrogram_cnn_perceiver \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path data/preprocessing_stats.pt \
-    --cnn_dims 64 128 \
-    --d_model 256 \
-    --n_tokens 16 \
-    --n_heads 4 \
-    --n_self_layers 2 \
-    --n_dec_self_layers 2 \
-    --dropout 0.1 \
+    --shot_min 200000 \
+    --shot_max 200500 \
+    --convnext_dims 64 128 256 \
+    --convnext_depths 2 2 6 \
+    --stem_stride 4 \
+    --bottleneck_dim 32 \
+    --d_model 32 \
+    --n_tokens 0 \
     --batch_size 16 \
     --num_workers 2 \
     --epochs 500 \
     --lr 1e-4 \
-    --weight_decay 1e-4 \
+    --weight_decay 0.0 \
     --scheduler cosine \
     --warmup_epochs 10 \
     --min_lr 1e-6 \
+    --grad_clip 1.0 \
     --n_fft 256 \
     --hop_length 128 \
     --log_interval 5 \
     --num_plots 4 \
-    --checkpoint_dir runs/co2_cnn_perceiver
+    --checkpoint_dir runs/co2_convnext_bn32_nowd

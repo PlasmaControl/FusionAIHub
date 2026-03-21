@@ -44,7 +44,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ckpt = torch.load(CHECKPOINT, map_location=device, weights_only=False)
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
-hdf5_files = sorted(DATA_DIR.glob("*_processed.h5"))
+# Filter to shots with full CO2 time-series (shots < 200000 often have only
+# a single time point and produce degenerate STFTs)
+hdf5_files = [
+    f for f in sorted(DATA_DIR.glob("*_processed.h5"))
+    if int(f.stem.split("_")[0]) >= 200000
+]
 stats = torch.load(STATS_PATH, weights_only=False)
 dataset = TokamakH5Dataset(
     hdf5_path=str(hdf5_files[0]),
