@@ -1,116 +1,79 @@
-"""CNN + Perceiver bottleneck autoencoder for tokamak spectrogram diagnostics.
+"""ConvNeXt autoencoder with two-stage bottleneck for tokamak spectrograms.
 
-Combines a CNN backbone for local feature extraction with a Perceiver-style
-cross-attention bottleneck that compresses the spatial feature map into a small
-set of learned latent tokens.  Optionally quantizes those tokens with FSQ to
-create a discrete bottleneck.
+Uses the ConvNeXt V2 encoder/decoder from spectrogram_convnext_fsq.py.
+Stage 1 (channel bottleneck) compresses channels via 1×1 conv while preserving
+the full spatial grid.  Stage 2 (spatial compressor) further reduces the spatial
+dimensions via strided convolutions to produce a compact token set for the
+fusion transformer.
 
 Architecture
 ------------
 Encoder:
-  _CNNEncoder(C → dims)         → (B, dims[-1], H', W')     local features
-  flatten + Linear(dims[-1], d_model) → (B, H'*W', d_model)  project to token dim
-  + 2D factored pos embed       → (B, H'*W', d_model)        spatial-aware tokens
-  cross-attn: N queries attend to H'*W' spatial tokens        global compression
-  self-attn layers on N tokens  → (B, N, d_model)             refined latent
-  [optional] FSQ                → (B, N, d_model)             discrete bottleneck
+  _ConvNeXtV2Encoder (stem+stages)  → (B, dims[-1], H', W')   deep features
+  Conv2d 1×1 (dims[-1] → bn_dim)   → (B, bn_dim, H', W')     channel bottleneck
+  [if compress_stride > 1]:
+    strided Conv2d(s)               → (B, d_model, H'', W'')   spatial compression
+  flatten + reshape                 → (B, N, d_model)          token output
 
 Decoder:
-  [optional] post-FSQ linear    → (B, N, d_model)
-  H'*W' spatial queries + 2D pos embed cross-attend to N latent tokens
-  self-attn layers on H'*W' tokens → (B, H'*W', d_model)     spatial reconstruction
-  Linear(d_model, dims[-1]) + reshape → (B, dims[-1], H', W')
-  _CNNDecoder(dims → C)         → (B, C, F, T)               pixel reconstruction
+  reshape → (B, d_model, H'', W'')
+  [if compress_stride > 1]:
+    Upsample + Conv2d(s)            → (B, bn_dim, H', W')      spatial decompression
+  Conv2d 1×1 (bn_dim → dims[-1])   → (B, dims[-1], H', W')
+  _ConvNeXtV2Decoder (stages+head)  → (B, C, F, T)
 
 Return contract
 ---------------
-Training, no FSQ  : (reconstructed, latent)  — latent for monitoring compression
-Training, with FSQ: (reconstructed, indices)  — indices for codebook utilisation
-Eval              : reconstructed             — shape (B, C, F, T) matching input
+Training : (reconstructed, z_tokens) — z_tokens (B, N, d_model) for monitoring
+Eval     : reconstructed             — shape (B, C, F, T) matching input
 """
 
 import torch
 import torch.nn as nn
-from torch import Tensor, LongTensor
+import torch.nn.functional as F
+from torch import Tensor
 
 from tokamak_foundation_model.models.modality.base import ModalityAutoEncoder
-from tokamak_foundation_model.models.modality.spectrogram_cnn import (
-    _CNNEncoder,
-    _CNNDecoder,
+from tokamak_foundation_model.models.modality.spectrogram_convnext_fsq import (
+    _ConvNeXtV2Encoder,
+    _ConvNeXtV2Decoder,
 )
-from tokamak_foundation_model.models.modality.spectrogram_fsq_vae import FSQ
-from tokamak_foundation_model.models.modality.spectrogram_mae import _build_2d_pos_embed
 
 
-# ---------------------------------------------------------------------------
-# Cross-attention block
-# ---------------------------------------------------------------------------
-
-class _CrossAttentionBlock(nn.Module):
-    """Pre-norm cross-attention + FFN block."""
-
-    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1) -> None:
-        super().__init__()
-        self.norm_q = nn.LayerNorm(d_model)
-        self.norm_kv = nn.LayerNorm(d_model)
-        self.cross_attn = nn.MultiheadAttention(
-            d_model, n_heads, dropout=dropout, batch_first=True,
-        )
-        self.norm_ffn = nn.LayerNorm(d_model)
-        self.ffn = nn.Sequential(
-            nn.Linear(d_model, d_model * 4),
-            nn.GELU(),
-            nn.Linear(d_model * 4, d_model),
-        )
-
-    def forward(self, q: Tensor, kv: Tensor) -> Tensor:
-        normed_q = self.norm_q(q)
-        normed_kv = self.norm_kv(kv)
-        q = q + self.cross_attn(normed_q, normed_kv, normed_kv)[0]
-        q = q + self.ffn(self.norm_ffn(q))
-        return q
+def _gn(channels: int) -> nn.GroupNorm:
+    """GroupNorm with min(32, channels) groups."""
+    return nn.GroupNorm(min(32, channels), channels)
 
 
 # ---------------------------------------------------------------------------
 # Standalone encoder (for test_encoder_output_is_finite)
 # ---------------------------------------------------------------------------
 
-class _CNNPerceiverEncoder(nn.Module):
-    """CNN encoder + Perceiver cross-attention compression.
+class _ConvNeXtBottleneckEncoder(nn.Module):
+    """ConvNeXt encoder + channel bottleneck + optional spatial compressor.
 
-    Wraps the full encode path so that ``model.encoder(x)`` returns
-    ``(B, n_tokens, d_model)`` latent tokens for shape / finiteness tests.
+    Returns (B, N, d_model) token sequence where N depends on spatial dims
+    and compress_stride.
     """
 
     def __init__(
         self,
-        cnn_encoder: _CNNEncoder,
-        project_in: nn.Linear,
-        freq_embed: nn.Parameter,
-        time_embed: nn.Parameter,
-        latent_tokens: nn.Parameter,
-        enc_cross_attn: _CrossAttentionBlock,
-        enc_self_attn: nn.TransformerEncoder,
+        convnext_encoder: _ConvNeXtV2Encoder,
+        bottleneck_proj: nn.Module,
+        spatial_compressor: nn.Module | None,
     ) -> None:
         super().__init__()
-        self.cnn_encoder = cnn_encoder
-        self.project_in = project_in
-        self.freq_embed = freq_embed
-        self.time_embed = time_embed
-        self.latent_tokens = latent_tokens
-        self.enc_cross_attn = enc_cross_attn
-        self.enc_self_attn = enc_self_attn
+        self.convnext_encoder = convnext_encoder
+        self.bottleneck_proj = bottleneck_proj
+        self.spatial_compressor = spatial_compressor
 
     def forward(self, x: Tensor) -> Tensor:
-        z = self.cnn_encoder(x)  # (B, D, H', W')
-        B, _D, H, W = z.shape
-        tokens = self.project_in(z.flatten(2).transpose(1, 2))  # (B, H'*W', d_model)
-        pos = _build_2d_pos_embed(self.freq_embed, self.time_embed, H, W)
-        tokens = tokens + pos
-        queries = self.latent_tokens.expand(B, -1, -1)  # (B, N, d_model)
-        latent = self.enc_cross_attn(queries, tokens)  # (B, N, d_model)
-        latent = self.enc_self_attn(latent)  # (B, N, d_model)
-        return latent
+        z = self.convnext_encoder(x)        # (B, dims[-1], H', W')
+        z = self.bottleneck_proj(z)         # (B, bn_dim, H', W')
+        if self.spatial_compressor is not None:
+            z = self.spatial_compressor(z)  # (B, d_model, H'', W'')
+        B, C, H, W = z.shape
+        return z.flatten(2).transpose(1, 2) # (B, N, d_model)
 
 
 # ---------------------------------------------------------------------------
@@ -118,41 +81,52 @@ class _CNNPerceiverEncoder(nn.Module):
 # ---------------------------------------------------------------------------
 
 class SpectrogramCNNPerceiverAutoEncoder(ModalityAutoEncoder):
-    """CNN + Perceiver bottleneck autoencoder for spectrogram signals.
+    """ConvNeXt V2 autoencoder with two-stage bottleneck.
 
     Parameters
     ----------
     n_channels : int
         Number of spectrogram channels.
     d_model : int
-        Token / latent dimension.  Must be even (for 2D factored pos embeds).
+        Token dimension after spatial compression.
     n_tokens : int
-        Number of learned latent query tokens (compression factor).
+        Unused; token count is determined by spatial dims and strides.
+        Kept for interface compatibility.
     dims : list[int] | None
-        CNN stage dims (default [64, 128]).  Each stage halves spatial resolution.
-    n_heads : int
-        Attention heads for cross- and self-attention.
-    n_self_layers : int
-        Self-attention layers on latent tokens (encoder side).
-    n_dec_self_layers : int
-        Self-attention layers on spatial queries (decoder side).
-    dropout : float
-        Dropout rate.
+        ConvNeXt channel dims per stage (default [256] for single stage).
+    depths : list[int] | None
+        ConvNeXt blocks per stage (default [6]).
+    stem_stride : int
+        Stride of the patchify stem convolution (default 4).
+    bottleneck_dim : int | None
+        Channel dimension at the first bottleneck.  If None, defaults to d_model.
+    compress_stride : int
+        Additional spatial compression after channel bottleneck.
+        1 = no extra compression (full spatial grid as tokens).
+        4 = 4× spatial reduction via two stride-2 conv layers.
+    kernel_size : int
+        Depthwise conv kernel size (default 7).
+    n_heads, n_self_layers, n_dec_self_layers, dropout : —
+        Unused; kept for CLI compatibility.
     fsq_levels : list[int] | None
-        FSQ quantization levels.  None = continuous bottleneck.
-    max_freq_patches : int
-        Capacity of frequency-axis positional embedding table.
-    max_time_patches : int
-        Capacity of time-axis positional embedding table.
+        Unused; kept for CLI compatibility.
+    max_freq_patches, max_time_patches : int
+        Unused; kept for CLI compatibility.
     """
 
     def __init__(
         self,
         n_channels: int,
         d_model: int = 256,
-        n_tokens: int = 16,
+        n_tokens: int = 0,
         *,
         dims: list[int] | None = None,
+        depths: list[int] | None = None,
+        stem_stride: int = 4,
+        bottleneck_dim: int | None = None,
+        compress_stride: int = 1,
+        kernel_size: int = 7,
+        # Kept for CLI compatibility — unused
         n_heads: int = 4,
         n_self_layers: int = 2,
         n_dec_self_layers: int = 2,
@@ -161,100 +135,95 @@ class SpectrogramCNNPerceiverAutoEncoder(ModalityAutoEncoder):
         max_freq_patches: int = 64,
         max_time_patches: int = 512,
     ) -> None:
-        assert d_model % 2 == 0, (
-            f"d_model must be even for 2D concat positional embeddings, got {d_model}"
-        )
         super().__init__(n_channels, d_model, n_tokens)
+
         if dims is None:
-            dims = [64, 128]
+            dims = [256]
+        if depths is None:
+            depths = [6]
+        if bottleneck_dim is None:
+            bottleneck_dim = d_model
+
+        assert len(dims) == len(depths), "dims and depths must have the same length"
+        assert compress_stride in (1, 2, 4, 8), (
+            f"compress_stride must be 1, 2, 4, or 8, got {compress_stride}"
+        )
+
         self.dims = dims
+        self.depths = depths
+        self.stem_stride = stem_stride
+        self.bottleneck_dim = bottleneck_dim
+        self.compress_stride = compress_stride
+        n_stages = len(dims)
+        self.total_stride = stem_stride * (2 ** (n_stages - 1))
 
-        # --- CNN backbone ---
-        self.cnn_encoder = _CNNEncoder(n_channels, dims)
-        self.cnn_decoder = _CNNDecoder(n_channels, dims)
-
-        # --- Encoder: spatial tokens → latent tokens ---
-        self.project_in = nn.Linear(dims[-1], d_model)
-
-        # 2D factored positional embeddings (encoder)
-        self.freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))
-        self.time_embed = nn.Parameter(torch.zeros(1, max_time_patches, d_model // 2))
-        nn.init.trunc_normal_(self.freq_embed, std=0.02)
-        nn.init.trunc_normal_(self.time_embed, std=0.02)
-
-        # Learned latent query tokens
-        self.latent_tokens = nn.Parameter(torch.zeros(1, n_tokens, d_model))
-        nn.init.trunc_normal_(self.latent_tokens, std=0.02)
-
-        # Cross-attention: N queries attend to H'*W' spatial tokens
-        self.enc_cross_attn = _CrossAttentionBlock(d_model, n_heads, dropout)
-
-        # Self-attention on N latent tokens
-        enc_self_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_model * 4,
-            dropout=dropout,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
-        )
-        self.enc_self_attn = nn.TransformerEncoder(
-            enc_self_layer,
-            num_layers=n_self_layers,
-            norm=nn.LayerNorm(d_model),
+        # --- ConvNeXt Encoder ---
+        self.convnext_encoder = _ConvNeXtV2Encoder(
+            in_channels=n_channels,
+            dims=dims,
+            depths=depths,
+            stem_stride=stem_stride,
+            kernel_size=kernel_size,
         )
 
-        # --- Optional FSQ ---
-        if fsq_levels is not None:
-            fsq_dim = len(fsq_levels)
-            self.pre_fsq = nn.Linear(d_model, fsq_dim)
-            nn.init.normal_(self.pre_fsq.weight, std=0.02)
-            nn.init.zeros_(self.pre_fsq.bias)
-            self.fsq = FSQ(fsq_levels)
-            self.post_fsq = nn.Linear(fsq_dim, d_model)
+        # --- Stage 1: Channel bottleneck (dims[-1] → bottleneck_dim) ---
+        self.bottleneck_proj = nn.Sequential(
+            nn.Conv2d(dims[-1], bottleneck_dim, 1),
+            nn.GELU(),
+        )
+
+        # --- Stage 2: Spatial compressor (strided convs) ---
+        if compress_stride > 1:
+            # Build a chain of stride-2 conv layers
+            n_compress_layers = {2: 1, 4: 2, 8: 3}[compress_stride]
+            compress_layers: list[nn.Module] = []
+            in_ch = bottleneck_dim
+            for i in range(n_compress_layers):
+                out_ch = d_model if i == n_compress_layers - 1 else bottleneck_dim
+                compress_layers.extend([
+                    nn.Conv2d(in_ch, out_ch, 3, stride=2, padding=1),
+                    _gn(out_ch),
+                    nn.GELU(),
+                ])
+                in_ch = out_ch
+            self.spatial_compressor = nn.Sequential(*compress_layers)
+
+            # Mirror: spatial decompressor (upsample + conv)
+            decompress_layers: list[nn.Module] = []
+            in_ch = d_model
+            for i in range(n_compress_layers):
+                out_ch = bottleneck_dim
+                decompress_layers.extend([
+                    nn.Upsample(scale_factor=2, mode="nearest"),
+                    nn.Conv2d(in_ch, out_ch, 3, padding=1),
+                    _gn(out_ch),
+                    nn.GELU(),
+                ])
+                in_ch = out_ch
+            self.spatial_decompressor = nn.Sequential(*decompress_layers)
         else:
-            self.pre_fsq = None
-            self.fsq = None
-            self.post_fsq = None
+            self.spatial_compressor = None
+            self.spatial_decompressor = None
 
-        # --- Decoder: latent tokens → spatial tokens ---
-        # 2D factored positional embeddings (decoder, separate from encoder)
-        self.dec_freq_embed = nn.Parameter(torch.zeros(1, max_freq_patches, d_model // 2))
-        self.dec_time_embed = nn.Parameter(torch.zeros(1, max_time_patches, d_model // 2))
-        nn.init.trunc_normal_(self.dec_freq_embed, std=0.02)
-        nn.init.trunc_normal_(self.dec_time_embed, std=0.02)
-
-        # Cross-attention: H'*W' spatial queries attend to N latent tokens
-        self.dec_cross_attn = _CrossAttentionBlock(d_model, n_heads, dropout)
-
-        # Self-attention on H'*W' decoded spatial tokens
-        dec_self_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_model * 4,
-            dropout=dropout,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
-        )
-        self.dec_self_attn = nn.TransformerEncoder(
-            dec_self_layer,
-            num_layers=n_dec_self_layers,
-            norm=nn.LayerNorm(d_model),
+        # --- Decoder: expand bottleneck + ConvNeXt decode ---
+        self.bottleneck_expand = nn.Sequential(
+            nn.Conv2d(bottleneck_dim, dims[-1], 1),
+            nn.GELU(),
         )
 
-        self.project_out = nn.Linear(d_model, dims[-1])
+        self.convnext_decoder = _ConvNeXtV2Decoder(
+            out_channels=n_channels,
+            dims=list(reversed(dims)),
+            depths=list(reversed(depths)),
+            stem_stride=stem_stride,
+            kernel_size=kernel_size,
+        )
 
         # --- Expose standalone encoder for tests ---
-        self.encoder = _CNNPerceiverEncoder(
-            cnn_encoder=self.cnn_encoder,
-            project_in=self.project_in,
-            freq_embed=self.freq_embed,
-            time_embed=self.time_embed,
-            latent_tokens=self.latent_tokens,
-            enc_cross_attn=self.enc_cross_attn,
-            enc_self_attn=self.enc_self_attn,
+        self.encoder = _ConvNeXtBottleneckEncoder(
+            convnext_encoder=self.convnext_encoder,
+            bottleneck_proj=self.bottleneck_proj,
+            spatial_compressor=self.spatial_compressor,
         )
 
     # ------------------------------------------------------------------
@@ -263,43 +232,44 @@ class SpectrogramCNNPerceiverAutoEncoder(ModalityAutoEncoder):
 
     def forward(
         self, x: Tensor,
-    ) -> Tensor | tuple[Tensor, Tensor] | tuple[Tensor, LongTensor]:
+    ) -> Tensor | tuple[Tensor, Tensor]:
         B, C, F_orig, T_orig = x.shape
 
-        # ── 1. CNN encode ─────────────────────────────────────────────
-        z_cnn = self.cnn_encoder(x)  # (B, dims[-1], H', W')
-        _, _, H, W = z_cnn.shape
+        # ── 1. Pad to align with total_stride * compress_stride ───────
+        full_stride = self.total_stride * self.compress_stride
+        pad_f = (full_stride - F_orig % full_stride) % full_stride
+        pad_t = (full_stride - T_orig % full_stride) % full_stride
+        if pad_f > 0 or pad_t > 0:
+            x = F.pad(x, (0, pad_t, 0, pad_f))
 
-        # ── 2. Flatten + project to token dim ─────────────────────────
-        tokens = self.project_in(z_cnn.flatten(2).transpose(1, 2))  # (B, H'*W', d_model)
-        tokens = tokens + _build_2d_pos_embed(self.freq_embed, self.time_embed, H, W)
+        # ── 2. ConvNeXt encode ────────────────────────────────────────
+        z = self.convnext_encoder(x)       # (B, dims[-1], H', W')
 
-        # ── 3. Cross-attention compression: H'*W' → N ─────────────────
-        queries = self.latent_tokens.expand(B, -1, -1)
-        latent = self.enc_cross_attn(queries, tokens)  # (B, N, d_model)
-        latent = self.enc_self_attn(latent)  # (B, N, d_model)
+        # ── 3. Channel bottleneck ─────────────────────────────────────
+        z_bn = self.bottleneck_proj(z)     # (B, bn_dim, H', W')
 
-        # ── 4. Optional FSQ ───────────────────────────────────────────
-        if self.fsq is not None:
-            z_fsq = self.pre_fsq(latent)  # (B, N, L)
-            z_q, indices = self.fsq(z_fsq)  # (B, N, L), (B, N)
-            latent = self.post_fsq(z_q)  # (B, N, d_model)
+        # ── 4. Spatial compression (if enabled) ───────────────────────
+        if self.spatial_compressor is not None:
+            z_compressed = self.spatial_compressor(z_bn)  # (B, d_model, H'', W'')
+        else:
+            z_compressed = z_bn
 
-        # ── 5. Decode: spatial queries cross-attend to latent tokens ──
-        spatial_queries = torch.zeros(B, H * W, self.d_model, device=x.device)
-        spatial_queries = spatial_queries + _build_2d_pos_embed(
-            self.dec_freq_embed, self.dec_time_embed, H, W,
-        )
-        decoded = self.dec_cross_attn(spatial_queries, latent)  # (B, H'*W', d_model)
-        decoded = self.dec_self_attn(decoded)  # (B, H'*W', d_model)
+        # ── 5. Token representation for monitoring ────────────────────
+        z_tokens = z_compressed.flatten(2).transpose(1, 2)  # (B, N, d_model)
 
-        # ── 6. Reshape back to spatial + CNN decode ───────────────────
-        z_dec = self.project_out(decoded).transpose(1, 2).reshape(B, -1, H, W)
-        reconstructed = self.cnn_decoder(z_dec)
+        # ── 6. Spatial decompression (if enabled) ─────────────────────
+        if self.spatial_decompressor is not None:
+            z_dec = self.spatial_decompressor(z_compressed)  # (B, bn_dim, H', W')
+        else:
+            z_dec = z_bn
+
+        # ── 7. Expand + ConvNeXt decode ───────────────────────────────
+        z_dec = self.bottleneck_expand(z_dec)  # (B, dims[-1], H', W')
+        reconstructed = self.convnext_decoder(z_dec)
+
+        # ── 8. Crop to original spatial dims ──────────────────────────
         reconstructed = reconstructed[:, :, :F_orig, :T_orig]
 
         if not self.training:
             return reconstructed
-        if self.fsq is not None:
-            return reconstructed, indices
-        return reconstructed, latent
+        return reconstructed, z_tokens
