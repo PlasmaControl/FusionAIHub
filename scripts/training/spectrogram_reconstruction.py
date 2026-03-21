@@ -96,9 +96,12 @@ class FSQUnimodalTrainer(UnimodalTrainer):
             else:
                 loss = self.loss_fn(reconstructed, data)
 
-            # Codebook utilisation metric
-            n_codes = self.model.fsq.n_codes
-            utilisation = indices.unique().numel() / n_codes
+            # Codebook utilisation metric (only when FSQ is active)
+            fsq = getattr(self.model, "fsq", None)
+            if fsq is not None:
+                utilisation = indices.unique().numel() / fsq.n_codes
+            else:
+                utilisation = None
         else:
             loss = self.loss_fn(output, data)
             utilisation = None
@@ -189,8 +192,8 @@ def main():
     )
 
     parser.add_argument(
-        "--fsq_levels", type=int, nargs="+", default=[8, 5, 5, 5, 5],
-        help="FSQ quantization levels per dimension (spectrogram_fsq_vae only)"
+        "--fsq_levels", type=int, nargs="*", default=[8, 5, 5, 5, 5],
+        help="FSQ quantization levels per dimension; pass with no values to disable FSQ"
     )
     parser.add_argument(
         "--patch_h", type=int, default=16,
@@ -313,6 +316,11 @@ def main():
              "default: no projection)"
     )
     parser.add_argument(
+        "--compress_stride", type=int, default=1,
+        help="Spatial compression stride after channel bottleneck "
+             "(spectrogram_cnn_perceiver, 1=none, 2/4/8=strided conv)"
+    )
+    parser.add_argument(
         "--n_heads", type=int, default=4,
         help="Attention heads (spectrogram_cnn_perceiver)"
     )
@@ -332,6 +340,24 @@ def main():
         "--enable_fsq", action="store_true", default=False,
         help="Enable FSQ discrete bottleneck (spectrogram_cnn_perceiver); "
              "uses --fsq_levels to set quantization levels"
+    )
+    parser.add_argument(
+        "--frame_width", type=int, default=2,
+        help="Time steps per frame token (spectrogram_ast_fsq / spectrogram_channel_ast_fsq)"
+    )
+    parser.add_argument(
+        "--time_conv_kernel", type=int, default=7,
+        help="Temporal ConvNeXt kernel size (spectrogram_channel_ast_fsq only)"
+    )
+    parser.add_argument(
+        "--channel_merge", action="store_true", default=False,
+        help="Merge C channel tokens into 1 per time frame via cross-attention "
+             "(spectrogram_channel_ast_fsq only)"
+    )
+    parser.add_argument(
+        "--stem_dims", type=int, nargs="+", default=None,
+        help="Channel dims for hierarchical freq-reduction stages "
+             "(spectrogram_cnn1d, default [64, 128])"
     )
     parser.add_argument(
         "--normalize", action="store_true", default=False,
@@ -443,14 +469,39 @@ def main():
         if args.bottleneck_dim is not None:
             extra_kwargs["bottleneck_dim"] = args.bottleneck_dim
     if model_name == "spectrogram_cnn_perceiver":
-        if args.cnn_dims is not None:
-            extra_kwargs["dims"] = args.cnn_dims
+        extra_kwargs["stem_stride"] = args.stem_stride
+        extra_kwargs["compress_stride"] = args.compress_stride
+        if args.convnext_dims is not None:
+            extra_kwargs["dims"] = args.convnext_dims
+        if args.convnext_depths is not None:
+            extra_kwargs["depths"] = args.convnext_depths
+        if args.bottleneck_dim is not None:
+            extra_kwargs["bottleneck_dim"] = args.bottleneck_dim
+    if model_name == "spectrogram_ast_fsq":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        extra_kwargs["fsq_levels"] = args.fsq_levels
         extra_kwargs["n_heads"] = args.n_heads
-        extra_kwargs["n_self_layers"] = args.n_self_layers
-        extra_kwargs["n_dec_self_layers"] = args.n_dec_self_layers
         extra_kwargs["dropout"] = args.dropout
-        if args.enable_fsq:
-            extra_kwargs["fsq_levels"] = args.fsq_levels
+    if model_name == "spectrogram_channel_ast_fsq":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        extra_kwargs["fsq_levels"] = args.fsq_levels
+        extra_kwargs["n_heads"] = args.n_heads
+        extra_kwargs["dropout"] = args.dropout
+        extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
+        extra_kwargs["channel_merge"] = args.channel_merge
+    if model_name == "spectrogram_cnn1d":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        if args.convnext_dims is not None:
+            extra_kwargs["dim"] = args.convnext_dims[0]
+        if args.convnext_depths is not None:
+            extra_kwargs["depth"] = args.convnext_depths[0]
+        if args.stem_dims is not None:
+            extra_kwargs["stem_dims"] = args.stem_dims
+        if args.bottleneck_dim is not None:
+            extra_kwargs["bottleneck_dim"] = args.bottleneck_dim
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
@@ -529,9 +580,9 @@ def main():
     )
     if model_name == "spectrogram_mae":
         TrainerClass = MAEUnimodalTrainer
-    elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq") or (
-        model_name == "spectrogram_cnn_perceiver" and args.enable_fsq
-    ):
+    elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq",
+                        "spectrogram_cnn_perceiver", "spectrogram_ast_fsq",
+                        "spectrogram_channel_ast_fsq", "spectrogram_cnn1d"):
         TrainerClass = FSQUnimodalTrainer
         specaugment = None
         if args.freq_mask_param > 0 or args.time_mask_param > 0:
