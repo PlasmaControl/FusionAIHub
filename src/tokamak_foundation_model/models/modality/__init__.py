@@ -29,6 +29,9 @@ from .spectrogram_fsq_vae import SpectrogramFSQVAEAutoEncoder
 from .spectrogram_convnext_fsq import SpectrogramConvNeXtFSQAutoEncoder
 from .spectrogram_cnn import SpectrogramCNNAutoEncoder
 from .spectrogram_cnn_perceiver import SpectrogramCNNPerceiverAutoEncoder
+from .spectrogram_ast_fsq import SpectrogramASTFSQAutoEncoder
+from .spectrogram_channel_ast_fsq import SpectrogramChannelASTFSQAutoEncoder
+from .spectrogram_cnn1d import SpectrogramCNN1dAutoEncoder
 from .spectrogram_normalizer import (
     SpectrogramNormalizer,
     NormalizedSpectrogramAutoEncoder,
@@ -68,6 +71,9 @@ __all__ = [
     "SpectrogramConvNeXtFSQAutoEncoder",
     "SpectrogramCNNAutoEncoder",
     "SpectrogramCNNPerceiverAutoEncoder",
+    "SpectrogramASTFSQAutoEncoder",
+    "SpectrogramChannelASTFSQAutoEncoder",
+    "SpectrogramCNN1dAutoEncoder",
 
     "SpectrogramNormalizer",
     "NormalizedSpectrogramAutoEncoder",
