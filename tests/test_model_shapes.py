@@ -219,6 +219,51 @@ MODEL_TEST_CONFIGS = [
         },
         (4, 64, 64),
     ),
+    # Channel-AST-Merge k=4 fw=2 (no channel compression, sanity check)
+    (
+        "spectrogram_channel_ast_merge",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "n_merge_queries": 4, "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST-Merge k=4 fw=8
+    (
+        "spectrogram_channel_ast_merge",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 8,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "n_merge_queries": 4, "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST-Merge k=2 fw=4 (actual channel compression: k < C)
+    (
+        "spectrogram_channel_ast_merge",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 4,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "n_merge_queries": 2, "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST-Merge k=4 fw=8, deep pool/expand (3 layers each)
+    (
+        "spectrogram_channel_ast_merge",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 8,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "n_merge_queries": 4, "n_pool_layers": 3, "n_expand_layers": 3,
+            "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
     (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
