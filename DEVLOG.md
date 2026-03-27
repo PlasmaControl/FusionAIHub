@@ -417,3 +417,99 @@ Key CLI args:
   queries rather than the single-query approach that failed)
 - Extend to ECE (C=40+) — the per-channel architecture should scale naturally since channel
   attention is O(C²) per time frame and C enters as sequence length, not embedding dimension
+
+---
+
+## 2026-03-26 — Dataloader Dead Channel Bug & Reconstruction Sharpness
+
+### Dataloader bug: dead channels in MHR and ECE
+
+**Problem:** `num_channels` in `SignalConfig` was set to the raw HDF5 channel count (8 for MHR,
+48 for ECE) instead of the post-`channels_to_use` output count (6 and 40). The output buffer
+was allocated at the raw size, the channel slice produced fewer columns, and the shape mismatch
+fallthrough wrote sliced data into the first N columns — leaving the remaining columns as zeros.
+The models were training on 2 dead channels for MHR (25% waste) and 8 for ECE (17% waste).
+
+The preprocessing stats (`data/preprocessing_stats.pt`) were also computed with the buggy layout,
+so indices 0–5 correspond to live data and the tail entries are zeros. The stats loading now
+slices to `[:num_channels]` to match.
+
+**Fix (commit `0de3605`):**
+- MHR: `num_channels=8 → 6`
+- ECE: `num_channels=48 → 40`
+- Stats sliced to `[:num_channels]` in `_load_preprocessing_stats()`
+
+**Impact:** Existing MHR/ECE checkpoints were trained on dead-channel data and need retraining.
+CO2 was unaffected (all 4 channels live). New training runs submitted to
+`runs/mhr_channel_ast_nofsq_fw16_v2` and `runs/ece_channel_ast_nofsq_fw16_v2`.
+
+Token counts with corrected channels:
+- MHR: 8×123=984 → 6×123=738 tokens (25% reduction)
+- ECE: 48×123=5904 → 40×123=4920 tokens (17% reduction)
+
+### fw=16 vs fw=8 reconstruction comparison (CO2)
+
+Visualized both models on shot 205010 (selected for having dynamic spectral content across
+all three modalities — clear MHD mode activity in MHR, frequency-swept bursts in CO2).
+
+| Variant | Tokens | Compression | Val L1 |
+|---------|--------|-------------|--------|
+| fw=16   | 492    | 8:1         | 0.0240 |
+| fw=8    | 980    | 4:1         | 0.0212 |
+
+fw=8 is noticeably sharper in the high-frequency bins. The per-token bottleneck is
+`Linear(F*fw, d_model)` — at fw=16 that's 2048→256 (8:1), at fw=8 it's 1024→256 (4:1).
+Halving the compression ratio per token preserves more high-frequency detail at the cost of
+2× more tokens.
+
+### High-frequency smearing analysis
+
+The reconstructions show visible smearing/blurring in high-frequency bins. Root causes:
+
+1. **Information bottleneck:** The single `Linear(F*fw, d_model)` frame projection compresses
+   all frequency bins into d_model dimensions. Low-frequency bins carry more energy and dominate
+   the L1 gradient, so the model prioritizes them.
+
+2. **No frequency-aware structure:** The projection treats all frequency bins as a flat vector.
+   There's no learned frequency hierarchy, no multi-scale processing — high-frequency detail
+   must compete for the same d_model capacity as low-frequency content.
+
+3. **L1/L2 loss is inherently blurry:** Pixel-wise losses favor smooth "average" reconstructions.
+   The model is never penalized for being smooth, only for pixel-level error — and smoothness
+   minimizes expected error under uncertainty.
+
+### Ideas for sharper reconstructions
+
+**1. Multi-scale spectral loss (recommended first step)**
+Compute L1 at multiple STFT resolutions (different n_fft/hop_length) of the reconstructed vs
+original spectrogram. This is standard in neural audio codecs (HiFi-GAN, EnCodec, DAC). Forces
+the model to match both fine temporal detail and broad spectral structure. No new networks to
+train, no training instability.
+
+**2. Frequency-weighted L1 loss (easiest, one-line change)**
+Weight the L1 loss by the inverse of per-frequency-bin energy. High-frequency bins (typically
+sparse/low-energy) get upweighted so their errors matter as much as low-frequency errors.
+```python
+freq_weight = 1.0 / (mean_energy_per_freq_bin + eps)
+freq_weight = freq_weight / freq_weight.mean()
+loss = (freq_weight[:, None] * (recon - target).abs()).mean()
+```
+
+**3. Per-frequency-bin standardization (clean, lossless)**
+Compute mean/std per frequency bin across the training set and normalize each bin to zero-mean
+unit-variance. Every bin then has equal weight in L1 by construction. Invertible at inference.
+Requires recomputing preprocessing stats.
+
+**4. Adversarial loss (PatchGAN discriminator)**
+A small convolutional discriminator classifies local spectrogram patches as real/fake. Directly
+penalizes blurriness because discriminators easily distinguish smooth from sharp patches. More
+complex to train (GAN dynamics) but very effective. The combination of L1 + multi-scale +
+adversarial is the standard recipe for modern neural audio codecs.
+
+**5. Focal frequency loss**
+Penalizes errors in the 2D Fourier domain of the spectrogram, upweighting frequency components
+that are hard to reconstruct (high-frequency edges and textures). Specifically designed for
+the blurriness problem in image/spectrogram generation.
+
+**Recommended path:** Start with frequency-weighted L1 (option 2) since it's a one-line change,
+then add multi-scale spectral loss (option 1). If still too blurry, add a lightweight PatchGAN.
