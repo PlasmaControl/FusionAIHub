@@ -355,6 +355,21 @@ def main():
              "(spectrogram_channel_ast_fsq only)"
     )
     parser.add_argument(
+        "--n_merge_queries", type=int, default=4,
+        help="Number of pool queries for channel compression "
+             "(spectrogram_channel_ast_merge only, default 4)"
+    )
+    parser.add_argument(
+        "--n_pool_layers", type=int, default=1,
+        help="Cross-attention depth for channel pool "
+             "(spectrogram_channel_ast_merge only, default 1)"
+    )
+    parser.add_argument(
+        "--n_expand_layers", type=int, default=1,
+        help="Cross-attention depth for channel expand "
+             "(spectrogram_channel_ast_merge only, default 1)"
+    )
+    parser.add_argument(
         "--stem_dims", type=int, nargs="+", default=None,
         help="Channel dims for hierarchical freq-reduction stages "
              "(spectrogram_cnn1d, default [64, 128])"
@@ -491,6 +506,15 @@ def main():
         extra_kwargs["dropout"] = args.dropout
         extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
         extra_kwargs["channel_merge"] = args.channel_merge
+    if model_name == "spectrogram_channel_ast_merge":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        extra_kwargs["n_heads"] = args.n_heads
+        extra_kwargs["dropout"] = args.dropout
+        extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
+        extra_kwargs["n_merge_queries"] = args.n_merge_queries
+        extra_kwargs["n_pool_layers"] = args.n_pool_layers
+        extra_kwargs["n_expand_layers"] = args.n_expand_layers
     if model_name == "spectrogram_cnn1d":
         extra_kwargs["freq_bins"] = sample_data.shape[1]
         extra_kwargs["frame_width"] = args.frame_width
@@ -582,7 +606,8 @@ def main():
         TrainerClass = MAEUnimodalTrainer
     elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq",
                         "spectrogram_cnn_perceiver", "spectrogram_ast_fsq",
-                        "spectrogram_channel_ast_fsq", "spectrogram_cnn1d"):
+                        "spectrogram_channel_ast_fsq", "spectrogram_cnn1d",
+                        "spectrogram_channel_ast_merge"):
         TrainerClass = FSQUnimodalTrainer
         specaugment = None
         if args.freq_mask_param > 0 or args.time_mask_param > 0:

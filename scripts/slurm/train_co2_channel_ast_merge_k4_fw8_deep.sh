@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=co2_chast_nofsq_fw16
-#SBATCH --output=logs/%j_co2_chast_nofsq_fw16.out
-#SBATCH --error=logs/%j_co2_chast_nofsq_fw16.err
+#SBATCH --job-name=co2_chast_merge_k4_fw8_deep
+#SBATCH --output=logs/%j_co2_chast_merge_k4_fw8_deep.out
+#SBATCH --error=logs/%j_co2_chast_merge_k4_fw8_deep.err
 #SBATCH --time=72:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -14,16 +14,18 @@ module load pixi
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 
-# Channel-AST, no FSQ, no merge, frame_width=16 — CO2 (C=4)
-# Token count: 4 × ceil(1954/16) = 4 × 123 = 492 tokens × 256 d_model
-# Per-frame embed: Linear(128*16=2048, 256) = 8:1
+# Channel-AST-Merge: k=4, fw=8, deep pool/expand (3 layers each)
+# Ablation: does deeper cross-attention close the gap vs no-merge (0.0225)?
+# Shallow pool (1 layer): 0.0267; target: ≤0.0225
 srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --signal co2 \
-    --model spectrogram_channel_ast_fsq \
+    --model spectrogram_channel_ast_merge \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path data/preprocessing_stats.pt \
-    --fsq_levels \
-    --frame_width 16 \
+    --frame_width 8 \
+    --n_merge_queries 4 \
+    --n_pool_layers 3 \
+    --n_expand_layers 3 \
     --time_conv_kernel 7 \
     --d_model 256 \
     --n_tokens 0 \
@@ -37,5 +39,5 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --hop_length 128 \
     --log_interval 5 \
     --num_plots 4 \
-    --checkpoint_dir runs/co2_channel_ast_nofsq_fw16 \
+    --checkpoint_dir runs/co2_channel_ast_merge_k4_fw8_deep \
     --resume
