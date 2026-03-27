@@ -659,16 +659,16 @@ class TokamakH5Dataset(Dataset):
         SignalConfig(
             name = "mhr",
             hdf5_keys=["mhr"],
-            num_channels=8,
+            num_channels=6,
             target_fs=500e3,
             apply_stft=True,
-            channels_to_use=slice(2, 8),  # Skip first 2 channels
+            channels_to_use=slice(2, 8),  # Skip first 2 channels → 6 output
             preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ece",
             ["ece"],
-            48,
+            40,
             500e3,
             apply_stft=True,
             channels_to_use=slice(0, 40),  # Use only the first 40 channels
@@ -1100,14 +1100,19 @@ class TokamakH5Dataset(Dataset):
         for config in self.signal_configs:
             if config.name in self.preprocessing_stats:
                 stats = self.preprocessing_stats[config.name]
+                # Slice stats to match num_channels (first N entries).
+                # Note: stats were computed with the old (unsliced) channel
+                # layout, so we take [:num_channels] to match the live
+                # channels that appear in the output buffer.
+                n = config.num_channels
                 if "mean" in stats:
-                    config.preprocess.mean = stats["mean"]
+                    config.preprocess.mean = stats["mean"][:n]
                 if "std" in stats:
-                    config.preprocess.std = stats["std"]
+                    config.preprocess.std = stats["std"][:n]
                 if "min_val" in stats:
-                    config.preprocess.min_val = stats["min_val"]
+                    config.preprocess.min_val = stats["min_val"][:n]
                 if "max_val" in stats:
-                    config.preprocess.max_val = stats["max_val"]
+                    config.preprocess.max_val = stats["max_val"][:n]
 
     def _apply_preprocessing(
             self,
