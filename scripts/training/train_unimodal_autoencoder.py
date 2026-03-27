@@ -14,7 +14,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
 from tokamak_foundation_model.data.utils import worker_init_fn
-from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
+from tokamak_foundation_model.trainer.trainer import UnimodalTrainer, DiffusionUnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 from tokamak_foundation_model.utils.distributed import DistributedManager
@@ -29,6 +29,7 @@ from tokamak_foundation_model.models.modality import (
     SpectrogramBaselineAutoEncoder,
     SpectrogramTFAttnAutoEncoder,
     SpectrogramTFOnlyAutoEncoder,
+    SpectrogramChannelASTDiffusionAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
@@ -62,8 +63,11 @@ MODEL_REGISTRY = {
     "spectrogram": SpectrogramBaselineAutoEncoder,
     "spectrogram_tf_only": SpectrogramTFOnlyAutoEncoder,
     "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
+    "spectrogram_channel_ast_diffusion": SpectrogramChannelASTDiffusionAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
+
+DIFFUSION_MODELS = {"spectrogram_channel_ast_diffusion"}
 
 
 # TODO: Move into src
@@ -402,7 +406,8 @@ def main():
     else:
         drawer = NullDrawer()
 
-    trainer = UnimodalTrainer(
+    TrainerClass = DiffusionUnimodalTrainer if model_name in DIFFUSION_MODELS else UnimodalTrainer
+    trainer = TrainerClass(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
         model=model,

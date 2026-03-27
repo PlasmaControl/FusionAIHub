@@ -10,13 +10,14 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn, SignalConfig
 from tokamak_foundation_model.data.utils import worker_init_fn
-from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
+from tokamak_foundation_model.trainer.trainer import UnimodalTrainer, DiffusionUnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 from tokamak_foundation_model.models.modality.spectrogram_normalizer import (
     NormalizedSpectrogramAutoEncoder,
 )
 
+from tokamak_foundation_model.models.loss import MultiScaleSpectrogramLoss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -92,7 +93,10 @@ class FSQUnimodalTrainer(UnimodalTrainer):
             if self.loss_weighting == "variance":
                 w = data.var(dim=0, keepdim=True).clamp(min=1e-6)
                 w = w / w.mean()
-                loss = (w * (reconstructed - data).abs()).mean()
+                if hasattr(self.loss_fn, "multi_scale_l1"):
+                    loss = self.loss_fn.multi_scale_l1(reconstructed, data, weight=w)
+                else:
+                    loss = (w * (reconstructed - data).abs()).mean()
             else:
                 loss = self.loss_fn(reconstructed, data)
 
@@ -295,6 +299,15 @@ def main():
         help="Max gradient norm for clipping (0 = disabled)"
     )
     parser.add_argument(
+        "--loss_type", type=str, default="l1",
+        choices=["l1", "multi_scale"],
+        help="Loss function: 'l1' (standard) or 'multi_scale' (multi-scale spectral L1)"
+    )
+    parser.add_argument(
+        "--loss_scales", type=float, nargs="+", default=[1.0, 0.5, 0.25],
+        help="Scale factors for multi_scale loss (default: 1.0 0.5 0.25)"
+    )
+    parser.add_argument(
         "--convnext_dims", type=int, nargs="+", default=None,
         help="ConvNeXt channel dims per stage (spectrogram_convnext_fsq only)"
     )
@@ -373,6 +386,11 @@ def main():
         "--stem_dims", type=int, nargs="+", default=None,
         help="Channel dims for hierarchical freq-reduction stages "
              "(spectrogram_cnn1d, default [64, 128])"
+    )
+    parser.add_argument(
+        "--eval_steps", type=int, default=20,
+        help="Euler ODE sampling steps for diffusion decoder eval "
+             "(spectrogram_channel_ast_diffusion only)"
     )
     parser.add_argument(
         "--normalize", action="store_true", default=False,
@@ -526,6 +544,13 @@ def main():
             extra_kwargs["stem_dims"] = args.stem_dims
         if args.bottleneck_dim is not None:
             extra_kwargs["bottleneck_dim"] = args.bottleneck_dim
+    if model_name == "spectrogram_channel_ast_diffusion":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        extra_kwargs["n_heads"] = args.n_heads
+        extra_kwargs["dropout"] = args.dropout
+        extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
+        extra_kwargs["eval_steps"] = args.eval_steps
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
@@ -566,8 +591,12 @@ def main():
             optimizer, T_max=args.epochs, eta_min=args.min_lr
         )
 
-    loss_fn = nn.L1Loss()
-    # loss_fn = nn.MSELoss()
+    if args.loss_type == "multi_scale":
+        loss_fn = MultiScaleSpectrogramLoss(scales=tuple(args.loss_scales))
+        logger.info(f"Loss: MultiScaleSpectrogramLoss, scales={args.loss_scales}")
+    else:
+        loss_fn = nn.L1Loss()
+        logger.info("Loss: L1Loss")
 
     dataloader_kwargs = dict(
         collate_fn=collate_fn,
@@ -602,7 +631,10 @@ def main():
         drawer=drawer,
         log_interval=args.log_interval,
     )
-    if model_name == "spectrogram_mae":
+    if model_name == "spectrogram_channel_ast_diffusion":
+        TrainerClass = DiffusionUnimodalTrainer
+        trainer_kwargs["grad_clip"] = args.grad_clip if args.grad_clip > 0 else 1.0
+    elif model_name == "spectrogram_mae":
         TrainerClass = MAEUnimodalTrainer
     elif model_name in ("spectrogram_fsq_vae", "spectrogram_convnext_fsq",
                         "spectrogram_cnn_perceiver", "spectrogram_ast_fsq",

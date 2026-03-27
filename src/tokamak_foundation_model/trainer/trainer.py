@@ -306,3 +306,41 @@ class UnimodalTrainer:
         if checkpoint.get("tracker_state_dict"):
             self.tracker.load_state_dict(checkpoint["tracker_state_dict"])
         logger.info(f"Resumed from checkpoint: {path} (epoch {checkpoint.get('epoch', '?')})")
+
+
+class DiffusionUnimodalTrainer(UnimodalTrainer):
+    """Trainer for diffusion-decoder autoencoders.
+
+    Training: the model returns ``(reconstruction, diffusion_loss)`` and
+    the loss is backpropagated directly (no external loss_fn).
+    Validation: the model runs multi-step generation in eval mode and
+    the external loss_fn computes reconstruction quality (e.g. L1).
+    """
+
+    def __init__(self, *args, grad_clip: float = 1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.grad_clip = grad_clip
+
+    def _train_step(self, batch: dict):
+        data = batch[self.modality_key].to(self.dm.device)
+        self.optimizer.zero_grad()
+        reconstruction, diffusion_loss = self.model(data)
+        diffusion_loss.backward()
+        if self.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(
+                self.dm.unwrap(self.model).parameters(),
+                max_norm=self.grad_clip,
+            )
+        self.optimizer.step()
+        return {"loss": diffusion_loss}
+
+    @torch.inference_mode()
+    def _validate_step(self, batch: dict):
+        data = batch[self.modality_key].to(self.dm.device)
+        output = self.model(data)  # eval mode → multi-step generation
+        if isinstance(output, tuple):
+            output = output[0]
+        loss = self.loss_fn(output, data)
+        for metric in self.metrics:
+            metric.update(output, data)
+        return {"loss": loss}

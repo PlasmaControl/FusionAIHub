@@ -513,3 +513,111 @@ the blurriness problem in image/spectrogram generation.
 
 **Recommended path:** Start with frequency-weighted L1 (option 2) since it's a one-line change,
 then add multi-scale spectral loss (option 1). If still too blurry, add a lightweight PatchGAN.
+
+---
+
+## 2026-03-26 — Channel-AST-Diffusion: Diffusion Decoder for Sharp Reconstruction
+
+### Motivation
+
+The previous entry identified high-frequency smearing as the reconstruction frontier: L1/L2 losses
+are inherently mean-seeking, producing smooth "average" reconstructions. Option 4 in that analysis
+(adversarial/diffusion decoder) addresses this at the architecture level rather than the loss level.
+
+A **diffusion decoder** models the full conditional distribution ``p(x|z)`` and generates samples
+via iterative denoising. Unlike deterministic decoders that output the conditional mean (blurry),
+diffusion decoders produce sharp, realistic samples because the denoising objective at low noise
+levels specifically trains the model to add fine detail. This is the same motivation behind DiTo
+(Diffusion Autoencoders are Scalable Image Tokenizers, arXiv:2501.18593).
+
+### Architecture: `SpectrogramChannelASTDiffusionAutoEncoder`
+
+Reuses the proven Channel-AST encoder and replaces the deterministic decoder with a diffusion
+denoiser. Three papers informed the design:
+
+- **DiTo**: encoder + diffusion-decoder autoencoder, LayerNorm latent regularisation (no KL, no FSQ)
+- **JiT / BackToBasics**: x-prediction outperforms v/ε-prediction for high-dimensional patches;
+  logit-normal timestep sampling concentrates training signal at informative noise levels
+- **PixelDiT**: AdaLN modulation patterns for timestep conditioning in transformers
+
+```
+Encoder (reuse _ChannelASTEncoder):
+  (B, C, F, T) → per-channel frame embed → ChannelTimeBlocks → LayerNorm → z (B, C, N, d_model)
+
+Diffusion Decoder (new):
+  Input: x_t (noisy spectrogram), z (encoder latent), t (timestep)
+  x_t → frame embed → + pos embeds
+  For each layer:
+    tokens += z_scale[i] * z             (layer-wise additive conditioning)
+    tokens = AdaLN-Zero-ChannelTimeBlock(tokens, t_emb)  (timestep modulation)
+  → LayerNorm → frame unembed → x̂ (predicted clean spectrogram)
+```
+
+### Key design decisions
+
+**1. x-prediction (JiT), not v-prediction (DiTo)**
+
+JiT demonstrates that for high-dimensional patches, x-prediction (directly predict clean x from
+noisy x_t) outperforms v-prediction and ε-prediction. The model's one-step output IS the
+reconstruction — no conversion needed. Loss is simply ``MSE(x̂, x)``.
+
+**2. Rectified flow noise schedule with logit-normal sampling**
+
+``x_t = (1-t)*x + t*ε`` where ``t ∈ (0, 1)``. Timesteps sampled via logit-normal distribution
+``logit(t) ~ N(-0.8, 0.8²)`` (JiT default), concentrating training samples at medium noise
+levels where the denoising signal is richest.
+
+**3. AdaLN-Zero wrapper around existing ChannelTimeBlock**
+
+Rather than rewriting the TransformerEncoderLayer and ConvNeXtV2Block1d internals, we wrap each
+``_ChannelTimeBlock`` with AdaLN-Zero modulation: timestep embedding → Linear → (scale, shift, gate)
+with zero-initialised gate. This means at init the blocks act as identity for timestep conditioning,
+ensuring stable training. No existing code is modified.
+
+**4. Layer-wise additive z conditioning**
+
+The encoder latent z is injected before every decoder block with a learned per-layer scalar scale
+(initialised to 0.1). This is cheaper than cross-attention and provides persistent conditioning
+throughout the decoder, rather than a single injection at the input that gets diluted.
+
+**5. DiTo-style LayerNorm latent regularisation**
+
+The encoder output is regularised with LayerNorm (zero mean, unit std per feature) instead of
+KL divergence or FSQ. This avoids the FSQ bottleneck that caused the 0.029 L1 wall, while
+providing enough regularisation to prevent the latent from collapsing or exploding.
+
+### Training vs inference
+
+| Phase | Encoder passes | Decoder passes | Loss |
+|-------|---------------|----------------|------|
+| Training | 1 | 1 (at random t) | MSE(x̂, x) — x-prediction flow matching |
+| Inference | 1 | N (Euler ODE steps) | N/A — iterative sampling from noise to x̂ |
+
+Training cost is comparable to a standard autoencoder (1 encode + 1 decode per step). Inference
+is N× slower due to multi-step ODE sampling (default N=20). This is acceptable for reconstruction
+quality evaluation; the fusion transformer operates on the encoder's latent tokens z directly.
+
+### Trainer integration
+
+New ``DiffusionUnimodalTrainer(UnimodalTrainer)`` subclass in ``trainer.py``:
+- ``_train_step``: model returns ``(x̂_onestep, loss)``; backprop on the diffusion loss directly
+- ``_validate_step``: model in eval mode runs multi-step generation; L1 on actual reconstruction
+- Gradient clipping (max_norm=1.0) for diffusion training stability
+
+### Files
+
+- **Created:** ``src/tokamak_foundation_model/models/modality/spectrogram_channel_ast_diffusion.py``
+  — ``_TimestepEmbedding``, ``_AdaLNChannelTimeBlock``, ``_DiffusionDecoder``,
+  ``SpectrogramChannelASTDiffusionAutoEncoder``
+- **Modified:** ``modality/__init__.py``, ``model_factory.py`` — import and registry entry
+- **Modified:** ``trainer/trainer.py`` — added ``DiffusionUnimodalTrainer``
+- **Modified:** ``scripts/training/train_unimodal_autoencoder.py`` — diffusion model support
+- **Created:** ``tests/test_diffusion_autoencoder.py`` — dedicated test suite
+
+### Next steps
+
+- Train on CO2 at fw=16 and compare reconstruction sharpness against the deterministic Channel-AST
+- Tune eval_steps (10 vs 20 vs 50) for speed/quality tradeoff
+- Experiment with noise sync (DiTo): probabilistically noise z during training for fusion
+  transformer robustness
+- Explore classifier-free guidance: drop z conditioning with probability p for guided generation

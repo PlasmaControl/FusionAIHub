@@ -264,6 +264,28 @@ MODEL_TEST_CONFIGS = [
         },
         (4, 64, 64),
     ),
+    # Channel-AST-Diffusion fw=2
+    (
+        "spectrogram_channel_ast_diffusion",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "time_conv_kernel": 3, "eval_steps": 2,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST-Diffusion fw=8
+    (
+        "spectrogram_channel_ast_diffusion",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 8,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "time_conv_kernel": 3, "eval_steps": 2,
+        },
+        (4, 64, 64),
+    ),
     (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
