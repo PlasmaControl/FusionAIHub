@@ -32,11 +32,11 @@ __all__ = [
     "FilterscopeBaselineEncoder",
     "FilterscopeBaselineDecoder",
     "FilterscopeBaselineAutoEncoder",
-    
+
     "SpatialProfileBaselineEncoder",
     "SpatialProfileBaselineDecoder",
     "SpatialProfileBaselineAutoEncoder",
-    
+
     "SpectrogramBaselineAutoEncoder",
     "SpectrogramBaselineEncoder",
     "SpectrogramBaselineDecoder",

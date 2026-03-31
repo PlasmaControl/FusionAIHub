@@ -6,7 +6,6 @@ from tokamak_foundation_model.models.modality import (
     FilterscopeBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
-    SpectrogramTFAttnAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
@@ -22,12 +21,10 @@ SIGNAL_MODEL_DEFAULTS = {
     "ts_tangential_density": "profile",
     "ts_core_temp": "profile",
     "ts_tangential_temp": "profile",
-    "cer_ti": "profile",
-    "cer_vtor": "profile",
     "mhr": "spectrogram",
     "ece": "spectrogram",
     "co2": "spectrogram",
-    "bolo": "fast_time_series",
+    "bolo": "video",
     "irtv": "video",
     "tangtv": "video",
 }
@@ -37,7 +34,6 @@ MODEL_REGISTRY = {
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
-    "spectrogram_tf_attn": SpectrogramTFAttnAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
