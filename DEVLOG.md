@@ -621,3 +621,67 @@ New ``DiffusionUnimodalTrainer(UnimodalTrainer)`` subclass in ``trainer.py``:
 - Experiment with noise sync (DiTo): probabilistically noise z during training for fusion
   transformer robustness
 - Explore classifier-free guidance: drop z conditioning with probability p for guided generation
+
+---
+
+## 2026-03-31 — Channel-AST-GAN: PatchGAN Discriminator with R3GAN Stabilization
+
+### Motivation
+
+The diffusion decoder (Channel-AST-Diffusion) provided only marginal improvement over the
+deterministic Channel-AST for high-frequency reconstruction. The core issue is that both L1 and
+MSE losses are mean-seeking — they penalize pixel-level error uniformly, so the model has no
+incentive to produce sharp features when blurry features minimize expected error.
+
+A **PatchGAN discriminator** attacks this directly: it learns to distinguish real from reconstructed
+spectrogram patches, and the generator is penalized for producing any patch that "looks fake"
+(i.e., blurry). This is the same approach used by modern neural audio codecs (HiFi-GAN, EnCodec,
+DAC) and image-to-image translation models (Pix2Pix).
+
+Training stability is provided by **R3GAN** (Back to Basics: Revisiting Regularized Relativistic
+GANs, Tschannen et al., ICLR 2025):
+- RpGAN loss: relativistic paired comparisons prevent mode collapse
+- R1 + R2 gradient penalties: enforce smooth discriminator landscapes
+- No normalization in D: gradient penalties provide sufficient regularization
+- β₁=0 in Adam: prevents negative momentum artifacts in GAN dynamics
+
+### Architecture
+
+**Generator:** Existing Channel-AST autoencoder (no FSQ, continuous mode). Unchanged.
+
+**PatchGAN Discriminator** (per-channel, ~70×70 receptive field):
+```
+Conv2d(1, 64, 4, stride=2) → LeakyReLU(0.2)
+Conv2d(64, 128, 4, stride=2) → LeakyReLU(0.2)
+Conv2d(128, 256, 4, stride=2) → LeakyReLU(0.2)
+Conv2d(256, 512, 4, stride=1) → LeakyReLU(0.2)
+Conv2d(512, 1, 4, stride=1)  → patch logits
+```
+No normalization. Weight init: N(0, 0.02). Operates per-channel: (B,C,F,T) → (B*C,1,F,T).
+
+### Loss
+
+- **Generator:** L1(reconstruction, target) + λ\_adv × softplus(D(real) - D(fake)).mean()
+- **Discriminator:** softplus(D(fake) - D(real)).mean() + (γ/2)‖∇D(real)‖² + (γ/2)‖∇D(fake)‖²
+- λ\_adv = 0.1 (conservative start), γ = 10.0
+- Both R1 and R2 applied every iteration (no lazy regularization)
+
+### Training
+
+- **GANUnimodalTrainer**: alternates D step → G step per batch
+- G optimizer: AdamW(lr=1e-4, weight\_decay=1e-4) — existing Channel-AST tuning
+- D optimizer: Adam(lr=2e-4, β₁=0, β₂=0.9) — R3GAN recommendation, 2× TTUR
+- Validation: L1 on reconstruction only (no discriminator), same as baseline
+
+### Files
+
+- **Created:** `spectrogram_channel_ast_gan.py` — `_PatchDiscriminator`, `SpectrogramChannelASTGANAutoEncoder`
+- **Modified:** `trainer.py` — added `GANUnimodalTrainer`
+- **Modified:** `spectrogram_reconstruction.py` — `--adv_weight`, `--gp_gamma`, `--d_lr` args
+- **Modified:** `model_factory.py`, `modality/__init__.py` — registry
+- **Created:** `tests/test_gan_autoencoder.py`, SLURM + visualization scripts
+
+### References
+
+- Pix2Pix (Isola et al., CVPR 2017) — PatchGAN discriminator
+- R3GAN (Tschannen et al., ICLR 2025) — RpGAN + R1/R2 stabilization

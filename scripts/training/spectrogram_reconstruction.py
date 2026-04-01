@@ -10,7 +10,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn, SignalConfig
 from tokamak_foundation_model.data.utils import worker_init_fn
-from tokamak_foundation_model.trainer.trainer import UnimodalTrainer, DiffusionUnimodalTrainer
+from tokamak_foundation_model.trainer.trainer import UnimodalTrainer, DiffusionUnimodalTrainer, GANUnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 from tokamak_foundation_model.models.modality.spectrogram_normalizer import (
@@ -393,6 +393,18 @@ def main():
              "(spectrogram_channel_ast_diffusion only)"
     )
     parser.add_argument(
+        "--d_lr", type=float, default=2e-4,
+        help="Discriminator learning rate (spectrogram_channel_ast_gan only)"
+    )
+    parser.add_argument(
+        "--adv_weight", type=float, default=0.1,
+        help="Adversarial loss weight for generator (spectrogram_channel_ast_gan only)"
+    )
+    parser.add_argument(
+        "--gp_gamma", type=float, default=10.0,
+        help="R1+R2 gradient penalty coefficient (spectrogram_channel_ast_gan only)"
+    )
+    parser.add_argument(
         "--normalize", action="store_true", default=False,
         help="Wrap model with learned SpectrogramNormalizer"
     )
@@ -551,6 +563,12 @@ def main():
         extra_kwargs["dropout"] = args.dropout
         extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
         extra_kwargs["eval_steps"] = args.eval_steps
+    if model_name == "spectrogram_channel_ast_gan":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        extra_kwargs["n_heads"] = args.n_heads
+        extra_kwargs["dropout"] = args.dropout
+        extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
 
     model = build_model(
         model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
@@ -631,7 +649,22 @@ def main():
         drawer=drawer,
         log_interval=args.log_interval,
     )
-    if model_name == "spectrogram_channel_ast_diffusion":
+    if model_name == "spectrogram_channel_ast_gan":
+        TrainerClass = GANUnimodalTrainer
+        # G optimizer: only autoencoder params
+        optimizer = optim.AdamW(
+            model.autoencoder.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+        )
+        # D optimizer: Adam(β₁=0, β₂=0.9) per R3GAN
+        d_optimizer = optim.Adam(
+            model.discriminator.parameters(), lr=args.d_lr, betas=(0.0, 0.9),
+        )
+        trainer_kwargs["optimizer"] = optimizer
+        trainer_kwargs["d_optimizer"] = d_optimizer
+        trainer_kwargs["adv_weight"] = args.adv_weight
+        trainer_kwargs["gp_gamma"] = args.gp_gamma
+        trainer_kwargs["grad_clip"] = args.grad_clip
+    elif model_name == "spectrogram_channel_ast_diffusion":
         TrainerClass = DiffusionUnimodalTrainer
         trainer_kwargs["grad_clip"] = args.grad_clip if args.grad_clip > 0 else 1.0
     elif model_name == "spectrogram_mae":

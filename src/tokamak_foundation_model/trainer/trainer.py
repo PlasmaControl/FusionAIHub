@@ -344,3 +344,154 @@ class DiffusionUnimodalTrainer(UnimodalTrainer):
         for metric in self.metrics:
             metric.update(output, data)
         return {"loss": loss}
+
+
+class GANUnimodalTrainer(UnimodalTrainer):
+    """Trainer for autoencoder + PatchGAN discriminator with R3GAN stabilization.
+
+    Alternates discriminator and generator steps each batch:
+      D step: RpGAN loss + R1 gradient penalty (real) + R2 gradient penalty (fake)
+      G step: L1 reconstruction + adversarial loss (RpGAN from generator perspective)
+
+    The discriminator operates per-channel: (B, C, F, T) → (B*C, 1, F, T).
+    Validation uses only the reconstruction loss (no discriminator).
+
+    Parameters
+    ----------
+    d_optimizer : torch.optim.Optimizer
+        Discriminator optimizer (recommended: Adam(β₁=0, β₂=0.9)).
+    adv_weight : float
+        Weight for adversarial loss in generator objective (default 0.1).
+    gp_gamma : float
+        R1 + R2 gradient penalty coefficient γ (default 10.0).
+    grad_clip : float
+        Max gradient norm for generator (0 = disabled).
+    """
+
+    def __init__(
+        self,
+        *args,
+        d_optimizer: optim.Optimizer,
+        adv_weight: float = 0.1,
+        gp_gamma: float = 10.0,
+        grad_clip: float = 0.0,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.d_optimizer = d_optimizer
+        self.adv_weight = adv_weight
+        self.gp_gamma = gp_gamma
+        self.grad_clip = grad_clip
+
+    def _train_step(self, batch: dict):
+        data = batch[self.modality_key].to(self.dm.device)
+        raw_model = self.dm.unwrap(self.model)
+        discriminator = raw_model.discriminator
+        B, C, F, T = data.shape
+
+        # ── D step ────────────────────────────────────────────────────────
+        self.d_optimizer.zero_grad()
+
+        with torch.no_grad():
+            fake = self.model(data)
+            if isinstance(fake, tuple):
+                fake = fake[0]
+
+        # Reshape for per-channel discrimination
+        real_for_gp = data.reshape(B * C, 1, F, T).detach().requires_grad_(True)
+        fake_for_gp = fake.reshape(B * C, 1, F, T).detach().requires_grad_(True)
+
+        d_real = discriminator(real_for_gp)
+        d_fake = discriminator(fake_for_gp)
+
+        # RpGAN discriminator loss: D wants D(real) > D(fake)
+        d_rpgan = torch.nn.functional.softplus(d_fake - d_real).mean()
+
+        # R1 gradient penalty (on real data)
+        grad_real, = torch.autograd.grad(
+            d_real.sum(), real_for_gp, create_graph=True,
+        )
+        r1 = (self.gp_gamma / 2) * grad_real.square().sum(dim=[1, 2, 3]).mean()
+
+        # R2 gradient penalty (on fake data)
+        grad_fake, = torch.autograd.grad(
+            d_fake.sum(), fake_for_gp, create_graph=True,
+        )
+        r2 = (self.gp_gamma / 2) * grad_fake.square().sum(dim=[1, 2, 3]).mean()
+
+        d_loss = d_rpgan + r1 + r2
+        d_loss.backward()
+        self.d_optimizer.step()
+
+        # ── G step ────────────────────────────────────────────────────────
+        self.optimizer.zero_grad()
+
+        fake = self.model(data)  # WITH gradients through generator
+        if isinstance(fake, tuple):
+            fake = fake[0]
+
+        # L1 reconstruction loss
+        recon_loss = self.loss_fn(fake, data)
+
+        # RpGAN generator loss: G wants D(fake) > D(real)
+        real_flat = data.reshape(B * C, 1, F, T).detach()
+        fake_flat = fake.reshape(B * C, 1, F, T)
+        d_real_g = discriminator(real_flat)
+        d_fake_g = discriminator(fake_flat)
+        g_adv = torch.nn.functional.softplus(d_real_g - d_fake_g).mean()
+
+        g_total = recon_loss + self.adv_weight * g_adv
+        g_total.backward()
+
+        if self.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(
+                raw_model.autoencoder.parameters(), max_norm=self.grad_clip,
+            )
+        self.optimizer.step()
+
+        return {
+            "loss": g_total,
+            "recon_loss": recon_loss,
+            "g_adv": g_adv,
+            "d_loss": d_loss,
+            "r1": r1,
+            "r2": r2,
+        }
+
+    def _log_train(self, epoch: int):
+        m = self.tracker.metrics["train"]["mean"]
+        parts = [f"Epoch {epoch+1}/{self.epochs}"]
+        parts.append(f"G: {m['loss']():.4f}")
+        if "recon_loss" in m:
+            parts.append(f"recon={m['recon_loss']():.4f}")
+        if "g_adv" in m:
+            parts.append(f"adv={m['g_adv']():.4f}")
+        if "d_loss" in m:
+            parts.append(f"D: {m['d_loss']():.4f}")
+        logger.info(", ".join(parts))
+
+    def _save_checkpoint(self, epoch: int):
+        if not self.dm.is_main:
+            return
+        raw_model = self.dm.unwrap(self.model)
+        torch.save(
+            {
+                "model_state_dict": raw_model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "d_optimizer_state_dict": self.d_optimizer.state_dict(),
+                "scheduler_state_dict": (
+                    self.scheduler.state_dict() if self.scheduler else None
+                ),
+                "tracker_state_dict": self.tracker.state_dict(),
+                "epoch": epoch,
+            },
+            self.checkpoint_path,
+        )
+
+    def load_checkpoint(self, checkpoint_path=None):
+        super().load_checkpoint(checkpoint_path)
+        path = checkpoint_path or self.checkpoint_path
+        if path and os.path.exists(path):
+            ckpt = torch.load(path, map_location=self.dm.device, weights_only=False)
+            if "d_optimizer_state_dict" in ckpt:
+                self.d_optimizer.load_state_dict(ckpt["d_optimizer_state_dict"])
