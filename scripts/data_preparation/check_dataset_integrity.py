@@ -17,8 +17,10 @@ hdf5_files = sorted(
 )
 
 all_input_signals = [
-    "mhr", "ece", "co2", "bes",              # spectrograms
-    "gas", "ech", "pin", "tin",        # actuators
+    "mhr", "ece", "co2", "bes", "mirnov", "langmuir",  # spectrograms
+    "i_coil",                                  # fast time series
+    "gas_flow", "gas_raw", "ech_power", "ech_tor_angle", "ech_pol_angle", "ech_polarization",
+    "pin", "beam_voltage", "tin", "ich", "rmp", # actuators
     "d_alpha", "mse", "ts_core_density",  # diagnostics
     "bolo", "irtv", "tangtv",          # videos
     # "text",                            # metadata

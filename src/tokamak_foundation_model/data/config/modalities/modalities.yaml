@@ -118,7 +118,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: true
+    stft: false
     sampling_rate: 10000
     num_channels: 104
 
@@ -807,7 +807,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: true
+    stft: false
     sampling_rate: 50
     num_channels: 24
 
@@ -1134,7 +1134,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: false
+    stft: true
     sampling_rate: 500000
     num_channels: 8
 
@@ -1173,7 +1173,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: false
+    stft: true
     sampling_rate: 500000
     num_channels: 29
 
@@ -1255,7 +1255,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: false
+    stft: true
     sampling_rate: 500000
     num_channels: 72
 

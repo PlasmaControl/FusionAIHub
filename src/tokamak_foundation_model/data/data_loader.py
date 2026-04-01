@@ -251,8 +251,12 @@ class TokamakH5Dataset(Dataset):
     ``mhr``                     6         500 kHz     yes    log
     ``ece``                     40        500 kHz     yes    log
     ``co2``                     4         500 kHz     yes    log
-    ``ech``                     12        10 kHz      no     none
+    ``ech_power``               12        10 kHz      no     none
+    ``ech_tor_angle``           12        10 kHz      no     none
+    ``ech_pol_angle``           12        10 kHz      no     none
+    ``ech_polarization``        12        10 kHz      no     none
     ``pin``                     8         10 kHz      no     standardize
+    ``beam_voltage``            8         10 kHz      no     none
     ``tin``                     8         10 kHz      no     none
     ``mse``                     69        100 Hz      no     standardize
     ``filterscopes``            104       10 kHz      yes    log
@@ -269,6 +273,7 @@ class TokamakH5Dataset(Dataset):
     ``gas_flow``                11        10 kHz      no     none
     ``gas_raw``                 11        10 kHz      no     none
     ``ich``                     1         10 kHz      no     none
+    ``rmp``                     12        10 kHz      no     none
     ``mirnov``                  29        500 kHz     yes    log
     ``langmuir``                72        500 kHz     yes    log
     ``i_coil``                  18        50 kHz      no     none
@@ -314,8 +319,32 @@ class TokamakH5Dataset(Dataset):
             preprocess=PreprocessConfig(method="log"),
         ),
         SignalConfig(
-            "ech",
-            ["ech"],
+            "ech_power",
+            ["ech_power"],
+            12,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "ech_tor_angle",
+            ["ech_tor_angle"],
+            12,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "ech_pol_angle",
+            ["ech_pol_angle"],
+            12,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "ech_polarization",
+            ["ech_polarization"],
             12,
             10e3,
             apply_stft=False,
@@ -328,6 +357,14 @@ class TokamakH5Dataset(Dataset):
             10e3,
             apply_stft=False,
             preprocess=PreprocessConfig(method="standardize"),
+        ),
+        SignalConfig(
+            "beam_voltage",
+            ["beam_voltage"],
+            8,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
         ),
         SignalConfig(
             "tin",
@@ -454,6 +491,14 @@ class TokamakH5Dataset(Dataset):
             "ich",
             ["ich"],
             1,
+            10e3,
+            apply_stft=False,
+            preprocess=PreprocessConfig(method="none"),
+        ),
+        SignalConfig(
+            "rmp",
+            ["rmp"],
+            12,
             10e3,
             apply_stft=False,
             preprocess=PreprocessConfig(method="none"),

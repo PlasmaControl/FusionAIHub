@@ -12,7 +12,8 @@ def main():
         # STFT spectrograms
         "mhr", "ece", "co2",
         # actuators / gas / heating
-        "ech", "pin", "tin", "gas_flow", "gas_raw", "ich",
+        "ech_power", "ech_tor_angle", "ech_pol_angle", "ech_polarization",
+        "pin", "beam_voltage", "tin", "gas_flow", "gas_raw", "ich", "rmp",
         # diagnostics
         "filterscopes", "vib", "mse", "ts_core_density", "ts_core_temp",
         "ts_tangential_density", "ts_tangential_temp", "cer_ti", "cer_rot",

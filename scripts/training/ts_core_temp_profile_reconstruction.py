@@ -54,7 +54,7 @@ def main():
         "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
-        "--n_tokens", type=int, default=20,
+        "--n_tokens", type=int, default=10,
         help="Number of latent tokens"
     )
     parser.add_argument(
