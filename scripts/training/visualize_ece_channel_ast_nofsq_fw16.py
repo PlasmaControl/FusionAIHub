@@ -14,7 +14,7 @@ from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
 from tokamak_foundation_model.models.model_factory import build_model
 
 # ── Config ────────────────────────────────────────────────────────────────────
-CHECKPOINT = Path("runs/ece_channel_ast_nofsq_fw16/ece_spectrogram_channel_ast_fsq/checkpoint.pth")
+CHECKPOINT = Path("runs/ece_channel_ast_nofsq_fw16_v2/ece_spectrogram_channel_ast_fsq/checkpoint.pth")
 DATA_DIR   = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 STATS_PATH = Path("data/preprocessing_stats.pt")
 SIGNAL     = "ece"
