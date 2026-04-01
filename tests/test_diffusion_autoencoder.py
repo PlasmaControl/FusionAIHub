@@ -7,7 +7,6 @@ from tokamak_foundation_model.models.modality.spectrogram_channel_ast_diffusion 
     SpectrogramChannelASTDiffusionAutoEncoder,
     _TimestepEmbedding,
     _AdaLNChannelTimeBlock,
-    _DiffusionDecoder,
 )
 
 

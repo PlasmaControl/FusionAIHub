@@ -492,7 +492,7 @@ class SpectrogramChannelASTDiffusionAutoEncoder(ModalityAutoEncoder):
     def _sample(
         self,
         z: Tensor,
-        shape: tuple[int, ...],
+        B: int,
         n_steps: int,
         C: int,
         n_frames: int,
@@ -507,6 +507,7 @@ class SpectrogramChannelASTDiffusionAutoEncoder(ModalityAutoEncoder):
             Euler step: x_{t-dt} = x_t - dt * v
         """
         device = z.device
+        shape = (B, C, self.freq_bins, n_frames * self.frame_width)
         x_curr = torch.randn(shape, device=device)
 
         # Time steps from 1.0 → 0.0
@@ -515,7 +516,7 @@ class SpectrogramChannelASTDiffusionAutoEncoder(ModalityAutoEncoder):
         for i in range(n_steps):
             t_val = timesteps[i]
             dt = timesteps[i] - timesteps[i + 1]  # positive
-            t_batch = t_val.expand(shape[0])  # (B,)
+            t_batch = t_val.expand(B)  # (B,)
 
             # Predict clean x
             x_hat = self.decoder(x_curr, z, t_batch, C, n_frames)
@@ -526,7 +527,6 @@ class SpectrogramChannelASTDiffusionAutoEncoder(ModalityAutoEncoder):
             # Euler step: x_{t-dt} = x_t - dt * v
             x_curr = x_curr - dt * v
 
-        # Final prediction at t ≈ 0
         return x_curr
 
     # ------------------------------------------------------------------
@@ -564,7 +564,7 @@ class SpectrogramChannelASTDiffusionAutoEncoder(ModalityAutoEncoder):
             # Multi-step Euler sampling
             x_hat = self._sample(
                 z,
-                shape=(B, C, Fr, T_padded),
+                B=B,
                 n_steps=self.eval_steps,
                 C=C,
                 n_frames=n_frames,
