@@ -299,7 +299,7 @@ class TokamakH5Dataset(Dataset):
             target_fs=500e3,
             apply_stft=True,
             channels_to_use=slice(2, 8),  # Skip first 2 channels
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ece",
@@ -316,7 +316,7 @@ class TokamakH5Dataset(Dataset):
             4,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ech_power",

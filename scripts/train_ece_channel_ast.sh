@@ -22,6 +22,7 @@ srun pixi run python scripts/training/spectrogram_reconstruction.py \
     --model spectrogram_channel_ast \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path data/preprocessing_stats.pt \
+    --preprocessing log_standardize \
     --frame_width 16 \
     --time_conv_kernel 7 \
     --d_model 256 \

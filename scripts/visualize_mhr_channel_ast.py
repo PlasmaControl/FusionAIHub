@@ -70,6 +70,13 @@ if not shot_file.exists():
     print(f"         Using shot {SHOT} ({shot_file.name})")
 
 # -- Dataset ---------------------------------------------------------------
+# The checkpoint was trained with log_standardize preprocessing.  Override
+# the class-level config before TokamakH5Dataset deep-copies it.
+for cfg in TokamakH5Dataset.SIGNAL_CONFIGS:
+    if cfg.name == SIGNAL:
+        cfg.preprocess.method = "log_standardize"
+        break
+
 stats = torch.load(STATS_PATH, weights_only=False)
 dataset = TokamakH5Dataset(
     hdf5_path=str(shot_file),
