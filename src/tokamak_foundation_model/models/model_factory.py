@@ -65,7 +65,7 @@ def build_model(
     else:
         kwargs["d_model"] = d_model
     if n_tokens is None and "n_tokens" not in kwargs:
-        kwargs["n_tokens"] = 20
+        kwargs["n_tokens"] = 16
     else:
         kwargs["n_tokens"] = n_tokens
     if n_channels is None and "n_channels" not in kwargs:

@@ -1,5 +1,4 @@
 from pathlib import Path
-from tokamak_foundation_model.data.multi_file_dataset import TokamakMultiFileDataset
 from tokamak_foundation_model.data.preprocess_data import compute_preprocessing_stats
 
 
@@ -8,7 +7,7 @@ def main():
         Path("/scratch/gpfs/EKOLEMEN/foundation_model/").glob("*_processed.h5")
     )
 
-    all_input_signals = [
+    all_signals = [
         # STFT spectrograms
         "mhr", "ece", "co2",
         # actuators / gas / heating
@@ -21,21 +20,18 @@ def main():
         "bes",
         # cameras
         "irtv", "tangtv",
-        # "text",  # metadata
     ]
 
-    dataset = TokamakMultiFileDataset(
-        hdf5_paths=hdf5_files,
-        input_signals=all_input_signals,
-        target_signals=all_input_signals,
-        lengths_cache_path="dataset_lengths.pt",
-        max_open_files=8,
-        max_duration_s=10.,
-    )
+    stft_signals = {"mhr", "ece", "co2", "mirnov", "langmuir", "bes"}
 
-    compute_preprocessing_stats(dataset, 'preprocessing_stats.pt')
+    compute_preprocessing_stats(
+        hdf5_paths=hdf5_files,
+        signal_names=all_signals,
+        output_path="preprocessing_stats.pt",
+        stft_signals=stft_signals,
+        num_workers=7,
+    )
 
 
 if __name__ == "__main__":
-    # python scripts/data_preparation/make_processing_stats.py
     main()

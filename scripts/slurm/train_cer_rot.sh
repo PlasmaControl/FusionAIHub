@@ -15,7 +15,7 @@ export PYTHONUNBUFFERED=1
 srun pixi run python ../training/cer_vtor_profile_reconstruction.py \
     --signal "cer_rot" \
     --d_model 512 \
-    --n_tokens 20 \
+    --n_tokens 4 \
     --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \

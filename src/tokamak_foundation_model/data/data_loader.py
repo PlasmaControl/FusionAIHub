@@ -299,7 +299,7 @@ class TokamakH5Dataset(Dataset):
             target_fs=500e3,
             apply_stft=True,
             channels_to_use=slice(2, 8),  # Skip first 2 channels
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ece",
@@ -316,7 +316,7 @@ class TokamakH5Dataset(Dataset):
             4,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
             "ech_power",
@@ -397,7 +397,7 @@ class TokamakH5Dataset(Dataset):
             10e3,
             channels_to_use=slice(0, 8),  # Use only the first 8 channels
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "cer_ti",
@@ -674,26 +674,43 @@ class TokamakH5Dataset(Dataset):
         Propagate loaded statistics into each signal's preprocessing config.
 
         Reads ``self.preprocessing_stats`` — a mapping from signal name to
-        a dict of arrays keyed by ``'mean'``, ``'std'``, ``'min_val'``, and
-        ``'max_val'`` — and writes found values into the corresponding
-        :class:`PreprocessConfig` objects in ``self.signal_configs``.
-        Signals not present in ``self.preprocessing_stats`` are unchanged.
+        a dict with ``'raw'`` and ``'log'`` sub-dicts, each containing
+        ``'mean'``, ``'std'``, ``'min_val'``, and ``'max_val'``.
+
+        The appropriate sub-dict is selected based on the preprocessing
+        method: ``log_standardize`` uses ``'log'`` stats, all others use
+        ``'raw'`` stats.
+
+        Also supports the legacy flat format (no ``'raw'``/``'log'`` keys)
+        for backwards compatibility.
 
         Returns
         -------
         None
         """
-        for config in self.signal_configs:
-            if config.name in self.preprocessing_stats:
-                stats = self.preprocessing_stats[config.name]
-                if "mean" in stats:
-                    config.preprocess.mean = stats["mean"]
-                if "std" in stats:
-                    config.preprocess.std = stats["std"]
-                if "min_val" in stats:
-                    config.preprocess.min_val = stats["min_val"]
-                if "max_val" in stats:
-                    config.preprocess.max_val = stats["max_val"]
+        _LOG_METHODS = {"log_standardize"}
+
+        for config in self.signal_configs + self.movie_configs:
+            if config.name not in self.preprocessing_stats:
+                continue
+            entry = self.preprocessing_stats[config.name]
+
+            # New format: entry has 'raw' and/or 'log' sub-dicts
+            if "raw" in entry or "log" in entry:
+                key = "log" if config.preprocess.method in _LOG_METHODS else "raw"
+                stats = entry.get(key, {})
+            else:
+                # Legacy flat format
+                stats = entry
+
+            if "mean" in stats:
+                config.preprocess.mean = stats["mean"]
+            if "std" in stats:
+                config.preprocess.std = stats["std"]
+            if "min_val" in stats:
+                config.preprocess.min_val = stats["min_val"]
+            if "max_val" in stats:
+                config.preprocess.max_val = stats["max_val"]
 
     def _apply_preprocessing(
             self,

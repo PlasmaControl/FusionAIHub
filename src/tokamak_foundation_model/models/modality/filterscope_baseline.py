@@ -44,11 +44,11 @@ class FilterscopeBaselineEncoder(ModalityEncoder):
             self,
             n_channels: int,
             d_model: int = 512,
-            n_tokens: int = 100,
+            n_tokens: int = 16,
             input_length: int = 5000,
             n_conv_layers: int = 4,
             kernel_size: int = 7,
-            n_transformer_layers: int = 2,
+            n_transformer_layers: int = 6,
             n_heads: int = 8,
     ):
         super().__init__(n_channels, d_model, n_tokens)
@@ -233,10 +233,10 @@ class FilterscopeBaselineAutoEncoder(ModalityAutoEncoder):
             n_channels: int = 6,
             input_length: int = 5000,
             d_model: int = 512,
-            n_tokens: int = 100,
+            n_tokens: int = 16,
             n_layers: int = 4,
             kernel_size: int = 7,
-            n_transformer_layers: int = 2,
+            n_transformer_layers: int = 6,
             n_heads: int = 8,
     ):
         super().__init__(n_channels, d_model, n_tokens)

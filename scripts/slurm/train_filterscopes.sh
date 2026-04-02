@@ -15,7 +15,7 @@ export PYTHONUNBUFFERED=1
 srun pixi run python ../training/filterscopes_reconstruction.py \
     --signal "filterscopes" \
     --d_model 512 \
-    --batch_size 1024 \
+    --batch_size 2048 \
     --num_workers 8 \
     --epochs 200 \
     --lr 1e-3 \

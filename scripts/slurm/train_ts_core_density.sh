@@ -15,7 +15,7 @@ export PYTHONUNBUFFERED=1
 srun pixi run python ../training/ts_core_density_profile_reconstruction.py \
     --signal "ts_core_density" \
     --d_model 512 \
-    --n_tokens 20 \
+    --n_tokens 4 \
     --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \
