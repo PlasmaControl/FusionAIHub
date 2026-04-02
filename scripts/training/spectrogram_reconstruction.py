@@ -1,6 +1,7 @@
 from pathlib import Path
 import argparse
 import logging
+import random
 
 import torch
 import torch.nn as nn
@@ -38,30 +39,29 @@ def main():
         "--hop_length", type=int, default=256, help="Hop length for STFT.",
     )
     parser.add_argument(
-        "--model", choices=list(MODEL_REGISTRY.keys()), default="actuator",
+        "--model", choices=list(MODEL_REGISTRY.keys()), default=None,
         help="Model type (default: auto-selected from signal)"
     )
     parser.add_argument(
         "--data_dir", type=str,
-        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/",
+        default="/scratch/gpfs/EKOLEMEN/foundation_model",
         help="Path to HDF5 data directory"
     )
     parser.add_argument(
         "--stats_path", type=str,
-        default="C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt",
+        default="data/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
     )
     parser.add_argument(
         "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
-        "--n_tokens", type=int, default=140,
+        "--n_tokens", type=int, default=0,
         help="Number of latent tokens (default: use model default)"
     )
     parser.add_argument(
         "--batch_size", type=int, default=2,
-        help="Batch size (for spectrograms, each sample's C channels are processed "
-             "independently, so effective batch = batch_size * C)"
+        help="Batch size"
     )
     parser.add_argument(
         "--num_workers", type=int, default=1, help="Number of data loader workers"
@@ -77,7 +77,12 @@ def main():
     )
     parser.add_argument(
         "--warmup_epochs", type=int, default=5,
-        help="LR warmup epochs (0 to disable scheduler)"
+        help="LR warmup epochs (cosine scheduler only)"
+    )
+    parser.add_argument(
+        "--scheduler", type=str, default="cosine",
+        choices=["cosine", "none"],
+        help="LR scheduler: 'cosine' (warmup + cosine decay) or 'none' (flat LR)"
     )
     parser.add_argument(
         "--min_lr", type=float, default=0.0, help="Minimum LR at end of cosine decay"
@@ -86,15 +91,49 @@ def main():
         "--checkpoint_dir", type=str, default="runs", help="Directory for checkpoints"
     )
     parser.add_argument(
-        "--num_plots", type=int, default=4,
-        help="Number of reconstruction plots per epoch"
-    )
-    parser.add_argument(
         "--log_interval", type=int, default=1, help="Plot every N epochs"
     )
     parser.add_argument(
         "--resume", action="store_true", default=False,
         help="Resume training from checkpoint"
+    )
+    parser.add_argument(
+        "--shot_min", type=int, default=None,
+        help="Inclusive lower bound on shot number (filters HDF5 files by name)"
+    )
+    parser.add_argument(
+        "--shot_max", type=int, default=None,
+        help="Inclusive upper bound on shot number (filters HDF5 files by name)"
+    )
+    parser.add_argument(
+        "--val_split", type=float, default=0.1,
+        help="Fraction of shots to hold out for validation (split by shot)"
+    )
+    parser.add_argument(
+        "--grad_clip", type=float, default=1.0,
+        help="Max gradient norm for clipping (0 = disabled)"
+    )
+    parser.add_argument(
+        "--preprocessing", type=str, default=None,
+        choices=["log_standardize", "log", "standardize", "normalize", "none"],
+        help="Override preprocessing method for the signal (default: use signal's built-in)"
+    )
+    # Channel-AST specific
+    parser.add_argument(
+        "--frame_width", type=int, default=2,
+        help="Time steps per frame token (spectrogram_channel_ast)"
+    )
+    parser.add_argument(
+        "--time_conv_kernel", type=int, default=7,
+        help="Temporal ConvNeXt kernel size (spectrogram_channel_ast)"
+    )
+    parser.add_argument(
+        "--n_heads", type=int, default=4,
+        help="Attention heads (spectrogram_channel_ast)"
+    )
+    parser.add_argument(
+        "--dropout", type=float, default=0.1,
+        help="Dropout rate (spectrogram_channel_ast)"
     )
     args = parser.parse_args()
 
@@ -112,30 +151,75 @@ def main():
 
     ### Dataset Setup ###
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
-    stats = torch.load(statistics_path)
 
-    datasets_processed = [
-        TokamakH5Dataset(
-            hdf5_path=str(f),
-            preprocessing_stats=stats,
-            input_signals=[signal_name],
-            target_signals=[signal_name],
-            n_fft=args.n_fft,
-            hop_length=args.hop_length,
-            prediction_mode=False,
-        )
-        for f in hdf5_files
-    ]
+    if args.shot_min is not None or args.shot_max is not None:
+        lo = args.shot_min if args.shot_min is not None else 0
+        hi = args.shot_max if args.shot_max is not None else float("inf")
 
-    concatenated_dataset = ConcatDataset(datasets_processed)
+        def _shot_num(p: Path):
+            try:
+                return int(p.stem.split("_")[0])
+            except ValueError:
+                return None
 
-    # Not sure if this is elegant
-    sample_data = next(iter(concatenated_dataset))[signal_name]
+        hdf5_files = [f for f in hdf5_files if (n := _shot_num(f)) is not None and lo <= n <= hi]
+        logger.info(f"Shot filter [{lo}, {hi}]: {len(hdf5_files)} files retained")
+
+    logger.info(f"Found {len(hdf5_files)} shot files")
+
+    # Override preprocessing method if requested
+    if args.preprocessing:
+        for cfg in TokamakH5Dataset.SIGNAL_CONFIGS:
+            if cfg.name == signal_name:
+                cfg.preprocess.method = args.preprocessing
+                logger.info(f"Preprocessing override: {signal_name} -> {args.preprocessing}")
+                break
+
+    stats = torch.load(statistics_path, weights_only=False)
+
+    # Shuffle shot list before splitting so val is a random draw
+    random.seed(42)
+    random.shuffle(hdf5_files)
+
+    n_val = max(1, int(len(hdf5_files) * args.val_split))
+    train_files = hdf5_files[:-n_val]
+    val_files = hdf5_files[-n_val:]
+    logger.info(f"Train shots: {len(train_files)}, Val shots: {len(val_files)}")
+
+    def _make_datasets(files):
+        return [
+            TokamakH5Dataset(
+                hdf5_path=str(f),
+                preprocessing_stats=stats,
+                input_signals=[signal_name],
+                target_signals=[signal_name],
+                n_fft=args.n_fft,
+                hop_length=args.hop_length,
+                prediction_mode=False,
+            )
+            for f in files
+        ]
+
+    train_dataset = ConcatDataset(_make_datasets(train_files))
+    val_dataset = ConcatDataset(_make_datasets(val_files))
+
+    sample_data = next(iter(train_dataset))[signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
     ### Model Setup ###
-    model = build_model(model_name, n_channels, args.d_model, args.n_tokens).to(device)
+    extra_kwargs = {}
+    if model_name == "spectrogram_channel_ast":
+        extra_kwargs["freq_bins"] = sample_data.shape[1]
+        extra_kwargs["frame_width"] = args.frame_width
+        extra_kwargs["n_heads"] = args.n_heads
+        extra_kwargs["dropout"] = args.dropout
+        extra_kwargs["time_conv_kernel"] = args.time_conv_kernel
+
+    model = build_model(
+        model_name, args.d_model, args.n_tokens, n_channels, **extra_kwargs
+    )
+    model = model.to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -143,47 +227,68 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
+        weight_decay=args.weight_decay,
     )
 
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-        eta_min=args.min_lr
-    )
+    if args.scheduler == "none":
+        lr_scheduler = None
+    elif args.warmup_epochs > 0:
+        warmup = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-3, total_iters=args.warmup_epochs
+        )
+        cosine = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs - args.warmup_epochs, eta_min=args.min_lr
+        )
+        lr_scheduler = optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup, cosine], milestones=[args.warmup_epochs]
+        )
+    else:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs, eta_min=args.min_lr
+        )
 
-    # loss_fn = nn.L1Loss()
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.L1Loss()
 
-    dataloader = DataLoader(
-        concatenated_dataset,
-        batch_size=args.batch_size,
+    dataloader_kwargs = dict(
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn,
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
-        pin_memory=True,
+        prefetch_factor=2,
+        pin_memory=False,
+    )
+    dataloader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
         shuffle=True,
+        **dataloader_kwargs,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        **dataloader_kwargs,
     )
 
     ### Training ###
-    drawer = DefaultDrawer(num_plots=args.num_plots)
+    drawer = DefaultDrawer()
     trainer = UnimodalTrainer(
         epochs=args.epochs,
         checkpoint_path=checkpoint_path,
         model=model,
         optimizer=optimizer,
-        # lr_scheduler=lr_scheduler,
+        scheduler=lr_scheduler,
         loss_fn=loss_fn,
-        device=device,
         drawer=drawer,
         log_interval=args.log_interval,
+        grad_clip=args.grad_clip,
     )
 
     if args.resume and checkpoint_path.exists():
         logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
         trainer.load_checkpoint(checkpoint_path=checkpoint_path)
 
-    trainer.train(dataloader, modality_key=signal_name)
+    trainer.fit(dataloader, val_dataloader=val_dataloader, modality_key=signal_name)
 
 
 if __name__ == "__main__":

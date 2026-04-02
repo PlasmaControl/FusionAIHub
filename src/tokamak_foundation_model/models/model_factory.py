@@ -1,14 +1,16 @@
-from torch import nn
 from typing import Optional
 
+from torch import nn
+
 from tokamak_foundation_model.models.modality import (
-    SlowTimeSeriesBaselineAutoEncoder,
     FilterscopeBaselineAutoEncoder,
+    SlowTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
+    SpectrogramChannelASTAutoEncoder,
+    SpectrogramTFOnlyAutoEncoder,
     VideoBaselineAutoEncoder,
 )
-
 
 SIGNAL_MODEL_DEFAULTS = {
     "gas_flow": "fast_time_series",
@@ -45,15 +47,18 @@ MODEL_REGISTRY = {
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
+    "spectrogram_tf_attn": SpectrogramTFOnlyAutoEncoder,
+    "spectrogram_channel_ast": SpectrogramChannelASTAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
+
 def build_model(
-        model_name,
-        d_model: Optional[int],
-        n_tokens: Optional[int],
-        n_channels: Optional[int],
-        **kwargs
+    model_name,
+    d_model: Optional[int],
+    n_tokens: Optional[int],
+    n_channels: Optional[int],
+    **kwargs,
 ) -> nn.Module:
     """Build the appropriate autoencoder.
 
