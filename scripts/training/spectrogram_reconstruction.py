@@ -6,10 +6,11 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import ConcatDataset, DataLoader
-
-from tokamak_foundation_model.data.data_loader import TokamakH5Dataset, collate_fn
-from tokamak_foundation_model.data.utils import worker_init_fn
+from tokamak_foundation_model.models.loss import MaskedL1Loss
+from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
+from tokamak_foundation_model.data.multi_file_dataset import (
+    TokamakMultiFileDataset, make_dataloader,
+)
 from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
@@ -186,24 +187,27 @@ def main():
     val_files = hdf5_files[-n_val:]
     logger.info(f"Train shots: {len(train_files)}, Val shots: {len(val_files)}")
 
-    def _make_datasets(files):
-        return [
-            TokamakH5Dataset(
-                hdf5_path=str(f),
-                preprocessing_stats=stats,
-                input_signals=[signal_name],
-                target_signals=[signal_name],
-                n_fft=args.n_fft,
-                hop_length=args.hop_length,
-                prediction_mode=False,
-            )
-            for f in files
-        ]
+    dataset_kwargs = dict(
+        preprocessing_stats=stats,
+        input_signals=[signal_name],
+        target_signals=[signal_name],
+        n_fft=args.n_fft,
+        hop_length=args.hop_length,
+        prediction_mode=False,
+    )
+    lengths_dir = checkpoint_path.parent
+    train_dataset = TokamakMultiFileDataset(
+        hdf5_paths=train_files,
+        lengths_cache_path=lengths_dir / "train_lengths.pt",
+        **dataset_kwargs,
+    )
+    val_dataset = TokamakMultiFileDataset(
+        hdf5_paths=val_files,
+        lengths_cache_path=lengths_dir / "val_lengths.pt",
+        **dataset_kwargs,
+    )
 
-    train_dataset = ConcatDataset(_make_datasets(train_files))
-    val_dataset = ConcatDataset(_make_datasets(val_files))
-
-    sample_data = next(iter(train_dataset))[signal_name]
+    sample_data = train_dataset[0][signal_name]
     n_channels = sample_data.shape[0]
     logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
 
@@ -247,27 +251,21 @@ def main():
             optimizer, T_max=args.epochs, eta_min=args.min_lr
         )
 
-    loss_fn = nn.L1Loss()
+    loss_fn = MaskedL1Loss()
 
-    dataloader_kwargs = dict(
-        collate_fn=collate_fn,
-        worker_init_fn=worker_init_fn,
-        num_workers=args.num_workers,
-        persistent_workers=args.num_workers > 0,
-        prefetch_factor=2,
-        pin_memory=False,
-    )
-    dataloader = DataLoader(
+    dataloader = make_dataloader(
         train_dataset,
         batch_size=args.batch_size,
+        num_workers=args.num_workers,
         shuffle=True,
-        **dataloader_kwargs,
+        pin_memory=False,
     )
-    val_dataloader = DataLoader(
+    val_dataloader = make_dataloader(
         val_dataset,
         batch_size=args.batch_size,
+        num_workers=args.num_workers,
         shuffle=False,
-        **dataloader_kwargs,
+        pin_memory=False,
     )
 
     ### Training ###
