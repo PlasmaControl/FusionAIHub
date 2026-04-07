@@ -40,6 +40,28 @@ MODEL_TEST_CONFIGS = [
         {"n_channels": 4, "d_model": 32, "n_output_tokens": 0},
         (4, 64, 64),  # (channels, freq, time)
     ),
+    # Channel-AST frame_width=2
+    (
+        "spectrogram_channel_ast",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 2,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
+    # Channel-AST frame_width=4
+    (
+        "spectrogram_channel_ast",
+        {
+            "n_channels": 4, "d_model": 32, "n_tokens": 0,
+            "freq_bins": 64, "frame_width": 4,
+            "n_enc_layers": 2, "n_dec_layers": 2, "n_heads": 4,
+            "time_conv_kernel": 3,
+        },
+        (4, 64, 64),
+    ),
     (
         "video",
         {"n_channels": 1, "d_model": 32, "n_tokens": 0},
@@ -65,6 +87,8 @@ def test_autoencoder_output_shape(model_name, model_kwargs, input_shape, batch_s
     with torch.no_grad():
         y = model(x)
 
+    if isinstance(y, tuple):
+        y = y[0]
     assert y.shape == x.shape, (
         f"{model_name}: output shape {y.shape} != input shape {x.shape}"
     )

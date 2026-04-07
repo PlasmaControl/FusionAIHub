@@ -34,11 +34,21 @@ def data_loading_demo():
     all_input_signals = [
         "mhr",
         "ece",
-        "co2",  # spectrograms
-        "gas",
-        "ech",
+        "co2",
+        "mirnov",
+        "langmuir",  # spectrograms
+        "i_coil",  # fast time series
+        "gas_flow",
+        "gas_raw",
+        "ech_power",
+        "ech_tor_angle",
+        "ech_pol_angle",
+        "ech_polarization",
         "pin",
-        "tin",  # actuators
+        "beam_voltage",
+        "tin",
+        "ich",
+        "rmp",  # actuators
         "d_alpha",
         "mse",
         "ts_core_density",  # diagnostics

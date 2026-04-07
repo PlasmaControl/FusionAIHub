@@ -2,9 +2,6 @@ import torch
 import numpy as np
 from pathlib import Path
 from typing import Optional
-from torch.utils.data import DataLoader, SubsetRandomSampler, SequentialSampler
-from .multi_file_dataset import TokamakMultiFileDataset
-from .data_loader import collate_fn, collate_fn_prediction
 
 
 class WelfordTensor:
@@ -250,6 +247,37 @@ class WelfordTensor:
         else:
             self.std = torch.zeros_like(self.mean)
 
+    def merge(self, other: "WelfordTensor"):
+        """
+        Merge another WelfordTensor into this one using the parallel
+        Welford algorithm.
+
+        Parameters
+        ----------
+        other : WelfordTensor
+            Tracker to merge in.  Left unchanged.
+        """
+        if not other.initialized:
+            return
+        if not self.initialized:
+            self.mean = other.mean.clone()
+            self.M2 = other.M2.clone()
+            self.min_val = other.min_val.clone()
+            self.max_val = other.max_val.clone()
+            self.n = other.n
+            self.initialized = True
+            return
+
+        n_a, n_b = self.n, other.n
+        n_total = n_a + n_b
+        delta = other.mean - self.mean
+
+        self.mean = (n_a * self.mean + n_b * other.mean) / n_total
+        self.M2 = self.M2 + other.M2 + delta * delta * n_a * n_b / n_total
+        self.n = n_total
+        self.min_val = torch.minimum(self.min_val, other.min_val)
+        self.max_val = torch.maximum(self.max_val, other.max_val)
+
     def compute(self):
         """
         Finalise and return all accumulated statistics as NumPy arrays.
@@ -287,99 +315,230 @@ class WelfordTensor:
         }
 
 
-def compute_preprocessing_stats(
-        dataset: TokamakMultiFileDataset,
-        output_path: str | Path = "preprocessing_stats.pt",
-        batch_size: int = 1,
-        num_workers: int = 0,
-        max_chunks: Optional[int] = 10_000,
-) -> dict[str, dict[str, np.ndarray]]:
-    """
-    Compute per-modality preprocessing statistics over a dataset.
+_shared_counter = None
+_worker_args = {}
 
-    Accumulates running statistics with :class:`WelfordTensor` and saves the
-    result to *output_path* via :func:`torch.save`.  Only modalities that
-    appear in the loaded batches are included in the output.
+
+def _init_worker(counter, args):
+    global _shared_counter, _worker_args
+    _shared_counter = counter
+    _worker_args = args
+
+
+def _worker_fn(chunk):
+    return _process_file_chunk(chunk, **_worker_args, counter=_shared_counter)
+
+
+def _process_file_chunk(
+        paths: list[Path],
+        signal_names: list[str],
+        stft_signals: set[str],
+        n_fft: int,
+        hop_length: int,
+        counter=None,
+) -> dict[str, tuple[WelfordTensor, WelfordTensor]]:
+    """Process a chunk of HDF5 files, returning per-signal Welford trackers."""
+    import h5py
+
+    stft_window = torch.hann_window(n_fft)
+    raw_trackers = {name: WelfordTensor() for name in signal_names}
+    log_trackers = {name: WelfordTensor() for name in signal_names}
+
+    for path in paths:
+        try:
+            f = h5py.File(path, "r")
+        except OSError:
+            continue
+
+        with f:
+            for name in signal_names:
+                if name not in f:
+                    continue
+                group = f[name]
+                if "ydata" not in group:
+                    continue
+
+                ydata = group["ydata"]
+                if ydata.size == 0:
+                    continue
+
+                # For large arrays (videos), subsample via HDF5 slicing
+                if ydata.ndim >= 3:
+                    data = torch.from_numpy(
+                        ydata[::1, ::2, ::2, ::5]).float()
+                    data = data.reshape(1, 1, -1)     # (1, 1, N)
+                else:
+                    data = torch.from_numpy(ydata[:]).float()
+                    if data.ndim == 1:
+                        data = data.unsqueeze(1)      # (T, 1)
+                    data = data.T.unsqueeze(0)        # (1, C, T)
+
+                    # Compute STFT for spectrogram signals
+                    if name in stft_signals:
+                        C, T = data.shape[1], data.shape[2]
+                        if T >= n_fft:
+                            spec = torch.stft(
+                                data.squeeze(0),
+                                n_fft=n_fft,
+                                hop_length=hop_length,
+                                window=stft_window,
+                                return_complex=True,
+                            )
+                            data = torch.abs(spec)[:, 1:, :]
+                            data = data.unsqueeze(0)
+                        else:
+                            continue
+
+                if torch.isnan(data).any():
+                    continue
+
+                raw_trackers[name].update(data)
+                log_data = torch.log10(data.clamp(min=-0.99) + 1)
+                log_trackers[name].update(log_data)
+
+        if counter is not None:
+            with counter.get_lock():
+                counter.value += 1
+
+    return {name: (raw_trackers[name], log_trackers[name])
+            for name in signal_names}
+
+
+def compute_preprocessing_stats(
+        hdf5_paths: list[Path],
+        signal_names: list[str],
+        output_path: str | Path = "preprocessing_stats.pt",
+        max_files: Optional[int] = None,
+        stft_signals: Optional[set[str]] = None,
+        n_fft: int = 1024,
+        hop_length: int = 256,
+        num_workers: int = 1,
+) -> dict[str, dict[str, dict[str, np.ndarray]]]:
+    """
+    Compute per-modality preprocessing statistics directly from HDF5 files.
+
+    Opens each HDF5 file once, reads the raw data for every requested
+    signal, and feeds it to :class:`WelfordTensor` trackers for both raw
+    and log-space statistics.  This bypasses the Dataset/DataLoader
+    pipeline entirely, avoiding chunking, resampling, and multi-process
+    overhead.
+
+    For signals in *stft_signals*, the STFT magnitude spectrogram is
+    computed before collecting statistics, matching what the data loader
+    produces at training time.
 
     Parameters
     ----------
-    dataset : TokamakMultiFileDataset
-        Dataset to compute statistics over.
+    hdf5_paths : list of Path
+        Paths to preprocessed HDF5 shot files.
+    signal_names : list of str
+        Signal names to compute statistics for.
     output_path : str or Path, optional
         Filesystem path for the saved ``.pt`` statistics file.
-        Default is ``"preprocessing_stats.pt"``.
-    batch_size : int, optional
-        Batch size for the internal DataLoader.  Default is ``1``.
+    max_files : int or None, optional
+        Maximum number of files to process.  ``None`` processes all files.
+    stft_signals : set of str or None, optional
+        Signal names that require STFT before stats computation.
+    n_fft : int, optional
+        FFT size for STFT computation.  Default is ``1024``.
+    hop_length : int, optional
+        Hop length for STFT computation.  Default is ``256``.
     num_workers : int, optional
-        Number of DataLoader worker processes.  Default is ``0`` (main
-        process only).  Workers add IPC overhead that outweighs any benefit
-        for this CPU-only, I/O-bound task.
-    max_chunks : int or None, optional
-        Maximum number of chunks to sample from the dataset.  A random
-        subset of this size is drawn without replacement.  ``None`` means
-        use the full dataset.  Default is ``10_000``, which gives accurate
-        statistics in ~1-2 hours instead of hundreds of hours.
+        Number of parallel worker processes.  Default is ``1`` (no
+        parallelism).  Each worker processes a disjoint subset of files.
 
     Returns
     -------
-    dict[str, dict[str, numpy.ndarray]]
-        Nested dictionary ``{modality_name: stats}``, where *stats* is the
-        dictionary returned by :meth:`WelfordTensor.compute`:
-
-        ``'mean'``
-            Per-channel arithmetic mean, shape ``(C,)``.
-        ``'std'``
-            Per-channel sample standard deviation, shape ``(C,)``.
-        ``'min_val'``
-            Per-channel minimum, shape ``(C,)``.
-        ``'max_val'``
-            Per-channel maximum, shape ``(C,)``.
+    dict[str, dict[str, dict[str, numpy.ndarray]]]
+        Nested dictionary ``{signal_name: {"raw": stats, "log": stats}}``,
+        where each *stats* dict contains ``'mean'``, ``'std'``,
+        ``'min_val'``, and ``'max_val'`` arrays of shape ``(C,)``.
     """
     from tqdm import tqdm
 
-    # Use instance-level configs (deep copies that may have been modified).
-    signal_configs = dataset.signal_configs
-    movie_configs = dataset.movie_configs
+    if stft_signals is None:
+        stft_signals = set()
 
-    welford_stats = {
-        cfg.name: WelfordTensor()
-        for cfg in signal_configs + movie_configs}
+    paths = list(hdf5_paths)
+    if max_files is not None and max_files < len(paths):
+        indices = torch.randperm(len(paths))[:max_files].tolist()
+        paths = [paths[i] for i in indices]
+        print(f"Subsampling {max_files:,} / {len(hdf5_paths):,} files.")
 
-    n_total = len(dataset)
-    if max_chunks is not None and max_chunks < n_total:
-        indices = torch.randperm(n_total)[:max_chunks].tolist()
-        print(f"Subsampling {max_chunks:,} / {n_total:,} chunks for statistics.")
+    # Split files into chunks, one per worker
+    num_workers = max(1, num_workers)
+    chunk_size = max(1, len(paths) // num_workers)
+    file_chunks = [
+        paths[i:i + chunk_size]
+        for i in range(0, len(paths), chunk_size)
+    ]
+
+    if num_workers == 1:
+        # Single-process: run with progress bar
+        results = []
+        for path in tqdm(paths, desc="Files"):
+            r = _process_file_chunk(
+                [path], signal_names, stft_signals, n_fft, hop_length)
+            results.append(r)
     else:
-        indices = list(range(n_total))
+        import multiprocessing as mp
+        import time
 
-    collate = collate_fn_prediction if dataset.prediction_mode else collate_fn
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        sampler=SequentialSampler(indices),
-        num_workers=num_workers,
-        collate_fn=collate,
-        pin_memory=False,
-    )
+        _counter = mp.Value("i", 0)
+        worker_args = dict(
+            signal_names=signal_names,
+            stft_signals=stft_signals,
+            n_fft=n_fft,
+            hop_length=hop_length,
+        )
 
-    for batch in tqdm(dataloader, total=len(indices) // batch_size):
-        for modality_name, tensor in batch.items():
-            if modality_name not in welford_stats:
-                continue
-            # Movies arrive as (B, C, T, H, W); flatten spatial/temporal dims
-            # to (B, C, T*H*W) so WelfordTensor computes per-channel stats.
-            if tensor.ndim == 5:
-                B, C, T, H, W = tensor.shape
-                tensor = tensor.reshape(B, C, T * H * W)
-            welford_stats[modality_name].update(tensor)
+        total = len(paths)
+        print(f"Processing {total} files with {len(file_chunks)} workers...")
 
-    # Only include trackers that received data
-    final_stats = {
-        modality: tracker.compute()
-        for modality, tracker in welford_stats.items()
-        if tracker.initialized
-    }
+        pool = mp.Pool(
+            num_workers,
+            initializer=_init_worker,
+            initargs=(_counter, worker_args),
+        )
+        async_results = [pool.apply_async(_worker_fn, (chunk,))
+                         for chunk in file_chunks]
+
+        pbar = tqdm(total=total, desc="Files")
+        while not all(r.ready() for r in async_results):
+            with _counter.get_lock():
+                pbar.n = _counter.value
+            pbar.refresh()
+            time.sleep(1.0)
+        pbar.n = total
+        pbar.refresh()
+        pbar.close()
+
+        results = [r.get() for r in async_results]
+        pool.close()
+        pool.join()
+
+    # Merge all worker results
+    raw_merged = {name: WelfordTensor() for name in signal_names}
+    log_merged = {name: WelfordTensor() for name in signal_names}
+    for partial in results:
+        for name in signal_names:
+            if name in partial:
+                raw_merged[name].merge(partial[name][0])
+                log_merged[name].merge(partial[name][1])
+
+    # Build final stats dict
+    final_stats = {}
+    for name in signal_names:
+        raw_ok = raw_merged[name].initialized
+        log_ok = log_merged[name].initialized
+        if not raw_ok and not log_ok:
+            continue
+        final_stats[name] = {}
+        if raw_ok:
+            final_stats[name]["raw"] = raw_merged[name].compute()
+        if log_ok:
+            final_stats[name]["log"] = log_merged[name].compute()
+
     torch.save(final_stats, output_path)
-
-    print(f"Saved statistics to {output_path}")
+    print(f"Saved statistics for {len(final_stats)} modalities to {output_path}")
     return final_stats

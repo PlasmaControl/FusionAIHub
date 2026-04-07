@@ -18,14 +18,14 @@ dependencies = [
   "scipy",
   "tables>=3.10.2,<4",
   "torch",
-  "torchmetrics>=1.6.0,<2",
+  "torchmetrics>=1.9.0,<2",
   "torchinfo>=1.8.0,<2",
   "torchvision",
   "transformers>=5.1.0,<6",
-  "transformers>=5.1.0,<6",
-  "wandb",
+  "pytest>=9.0.2,<10",
+  "tensorboard>=2.20.0,<3",
+  "wandb>=0.25.1,<0.26",
   "hydra-core",
-  "tensorboard",
 ]
 dynamic = ["version"]
 
@@ -42,8 +42,8 @@ platforms = ["linux-64", "win-64", "osx-arm64"]
 
 [tool.pixi.pypi-dependencies]
 faith = { path = ".", editable = true }
-torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cu128" }
-torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cu128" }
+torch = { version = ">=2.5.1,<2.11", index = "https://download.pytorch.org/whl/cu124" }
+torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.org/whl/cu124" }
 
 [tool.pixi.target.osx.pypi-dependencies]
 # No CUDA support on macOS, use `cpu` wheels.

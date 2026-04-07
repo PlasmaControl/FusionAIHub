@@ -1,10 +1,9 @@
 from pathlib import Path
 import argparse
 import logging
-
 import random
+
 import torch
-import torch.nn as nn
 import torch.optim as optim
 
 from tokamak_foundation_model.data.multi_file_dataset import (
@@ -13,6 +12,7 @@ from tokamak_foundation_model.trainer.trainer import UnimodalTrainer
 from tokamak_foundation_model.models.model_factory import (
     build_model, MODEL_REGISTRY, SIGNAL_MODEL_DEFAULTS)
 
+from tokamak_foundation_model.models.loss import MaskedMSELoss
 from tokamak_foundation_model.utils import DefaultDrawer
 
 
@@ -24,12 +24,10 @@ logger = logging.getLogger(__name__)
 
 def main():
     ### Settings ###
-    parser = argparse.ArgumentParser(
-        description="Train a unimodal autoencoder"
-    )
+    parser = argparse.ArgumentParser(description="Train a spatial profile autoencoder")
     parser.add_argument(
         "--signal", choices=list(SIGNAL_MODEL_DEFAULTS.keys()),
-        default="filterscopes",
+        default="mse",
         help="Signal name to train on"
     )
     parser.add_argument(
@@ -39,10 +37,8 @@ def main():
         "--hop_length", type=int, default=256, help="Hop length for STFT.",
     )
     parser.add_argument(
-        "--model",
-        choices=list(MODEL_REGISTRY.keys()),
-        default="fast_time_series",
-        help="Model type (default: auto-selected from signal)"
+        "--model", choices=list(MODEL_REGISTRY.keys()), default="profile",
+        help="Model type"
     )
     parser.add_argument(
         "--data_dir", type=str,
@@ -50,8 +46,7 @@ def main():
         help="Path to HDF5 data directory"
     )
     parser.add_argument(
-        "--stats_path",
-        type=str,
+        "--stats_path", type=str,
         default="/scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
     )
@@ -59,42 +54,33 @@ def main():
         "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
-        "--n_tokens", type=int, default=140,
-        help="Number of latent tokens (default: use model default)"
+        "--n_tokens", type=int, default=20,
+        help="Number of latent tokens"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=32,
-        help="Batch size (for spectrograms, each sample's C channels are "
-             "processed independently, so effective batch = batch_size * C)"
+        "--batch_size", type=int, default=32, help="Batch size"
     )
     parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=4,
-        help="Number of data loader workers"
+        "--num_workers", type=int, default=4, help="Number of data loader workers"
     )
     parser.add_argument(
-        "--prefetch_factor",
-        type=int,
-        default=4,
-        help="Batches to prefetch per worker"
+        "--prefetch_factor", type=int, default=4, help="Batches to prefetch per worker"
     )
     parser.add_argument(
         "--epochs", type=int, default=50, help="Number of training epochs"
     )
     parser.add_argument(
-        "--lr", type=float, default=5e-3, help="Learning rate"
+        "--lr", type=float, default=1e-3, help="Learning rate"
     )
     parser.add_argument(
         "--weight_decay", type=float, default=0.05, help="AdamW weight decay"
     )
     parser.add_argument(
         "--warmup_epochs", type=int, default=5,
-        help="LR warmup epochs (0 to disable scheduler)"
+        help="LR warmup epochs (0 to disable)"
     )
     parser.add_argument(
-        "--min_lr", type=float, default=0.0,
-        help="Minimum LR at end of cosine decay"
+        "--min_lr", type=float, default=0.0, help="Minimum LR at end of cosine decay"
     )
     parser.add_argument(
         "--checkpoint_dir", type=str,
@@ -102,14 +88,10 @@ def main():
         help="Directory for checkpoints"
     )
     parser.add_argument(
-        "--num_plots", type=int, default=4,
-        help="Number of reconstruction plots per epoch"
-    )
-    parser.add_argument(
         "--log_interval", type=int, default=1, help="Plot every N epochs"
     )
     parser.add_argument(
-        "--resume", action="store_true", default=True,
+        "--resume", action="store_true", default=False,
         help="Resume training from checkpoint"
     )
     args = parser.parse_args()
@@ -130,8 +112,8 @@ def main():
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
     random.seed(42)
     n = len(hdf5_files)
-    n_val = int(.1 * n)
-    n_test = int(.1 * n)
+    n_val = int(0.1 * n)
+    n_test = int(0.1 * n)
 
     train_paths = hdf5_files[n_val + n_test:]
     val_paths   = hdf5_files[:n_val]
@@ -164,15 +146,25 @@ def main():
         **shared_kwargs
     )
 
-
-    # Not sure if this is elegant
+    # Infer spatial and temporal dimensions from first sample
     sample_data = next(iter(train_dataset))[signal_name]
-    n_channels = sample_data.shape[0]
-    logger.info(f"Sample data shape: {sample_data.shape}, n_channels: {n_channels}")
+    n_spatial_points = sample_data.shape[0]
+    n_time_points = sample_data.shape[1]
+    logger.info(
+        f"Sample shape: {sample_data.shape} "
+        f"(n_spatial={n_spatial_points}, n_time={n_time_points})"
+    )
 
     ### Model Setup ###
-    model = build_model(model_name, d_model=args.d_model, n_tokens=args.n_tokens,
-                        n_channels=n_channels, kernel_size=3).to(device)
+    model = build_model(
+        model_name,
+        d_model=args.d_model,
+        n_tokens=args.n_tokens,
+        n_channels=1,
+        n_spatial_points=n_spatial_points,
+        n_time_points=n_time_points,
+        kernel_size=3,
+    ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model parameters: {n_params:,}")
@@ -180,15 +172,32 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
+        weight_decay=args.weight_decay,
     )
 
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-        eta_min=args.min_lr
-    )
+    if args.warmup_epochs > 0:
+        warmup_scheduler = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-3, end_factor=1.0,
+            total_iters=args.warmup_epochs,
+        )
+        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=args.epochs - args.warmup_epochs,
+            eta_min=args.min_lr,
+        )
+        lr_scheduler = optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[args.warmup_epochs],
+        )
+    else:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=args.epochs,
+            eta_min=args.min_lr,
+        )
 
-    loss_fn = nn.L1Loss()
+    loss_fn = MaskedMSELoss()
 
     train_dataloader = make_dataloader(
         train_dataset,
@@ -228,7 +237,8 @@ def main():
     trainer.fit(
         train_dataloader,
         validation_dataloader,
-        modality_key=signal_name)
+        modality_key=signal_name,
+    )
 
 
 if __name__ == "__main__":

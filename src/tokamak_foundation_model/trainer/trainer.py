@@ -126,9 +126,11 @@ class UnimodalTrainer:
             metrics: list[Metric] | None = None,
             checkpoint_path: str | Path = "checkpoint.pth",
             log_interval: int = 1,
+            grad_clip: float = 1.0,
     ):
         self.epochs = epochs
         self.log_interval = log_interval
+        self.grad_clip = grad_clip
 
         # Key
         self.modality_key = ""
@@ -159,20 +161,32 @@ class UnimodalTrainer:
 
     def _train_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
+        valid_lengths = batch.get(f"{self.modality_key}_valid")
+        if valid_lengths is not None:
+            valid_lengths = valid_lengths.to(self.dm.device)
         self.optimizer.zero_grad()
         output = self.model(data)
-        loss = self.loss_fn(output[0], data)
+        if isinstance(output, tuple):
+            output = output[0]
+        loss = self.loss_fn(output, data, valid_lengths)
         loss.backward()
+        if self.grad_clip > 0:
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
         return {"loss": loss}
 
     @torch.inference_mode()
     def _validate_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
+        valid_lengths = batch.get(f"{self.modality_key}_valid")
+        if valid_lengths is not None:
+            valid_lengths = valid_lengths.to(self.dm.device)
         output = self.model(data)
-        loss = self.loss_fn(output[0], data)
+        if isinstance(output, tuple):
+            output = output[0]
+        loss = self.loss_fn(output, data, valid_lengths)
         for metric in self.metrics:
-            metric.update(output[0], data)
+            metric.update(output, data)
         return {"loss": loss}
 
     def _train_epoch(self, dataloader: DataLoader):
@@ -264,7 +278,7 @@ class UnimodalTrainer:
             self._log_validate = log_val(self._log_validate)  # type: ignore
 
         drawing_path = self.checkpoint_path.parent / "plots" # type: ignore
-        self.drawer.setup(train_dataloader, drawing_path, modality_key)
+        self.drawer.setup(train_dataloader, drawing_path, modality_key, val_dataloader)
 
         # Training loop
         for epoch in range(self.epochs):
