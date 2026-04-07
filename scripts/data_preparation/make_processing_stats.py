@@ -24,12 +24,20 @@ def main():
 
     stft_signals = {"mhr", "ece", "co2", "mirnov", "langmuir", "bes"}
 
+    # Signal names that differ from their HDF5 group key
+    hdf5_key_map = {
+        "pin": "pinj",
+        "tin": "tinj",
+        "bolo_raw": "bolo",
+    }
+
     compute_preprocessing_stats(
         hdf5_paths=hdf5_files,
         signal_names=all_signals,
         output_path="preprocessing_stats.pt",
         stft_signals=stft_signals,
-        num_workers=7,
+        hdf5_key_map=hdf5_key_map,
+        num_workers=15,
     )
 
 

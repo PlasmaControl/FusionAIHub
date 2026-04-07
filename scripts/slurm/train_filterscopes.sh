@@ -15,12 +15,12 @@ export PYTHONUNBUFFERED=1
 srun pixi run python ../training/filterscopes_reconstruction.py \
     --signal "filterscopes" \
     --d_model 512 \
-    --batch_size 2048 \
+    --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \
-    --lr 1e-3 \
+    --lr 1e-4 \
     --weight_decay 0.05 \
     --warmup_epochs 5 \
     --min_lr 0.0 \
     --checkpoint_dir runs \
-    --stats_path /scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt
+    --stats_path /projects/EKOLEMEN/foundation_model/preprocessing_stats.pt

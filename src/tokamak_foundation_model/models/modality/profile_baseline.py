@@ -17,7 +17,7 @@ class SpatialProfileBaselineEncoder(ModalityEncoder):
         n_spatial_points: int = 50,
         n_time_points: int = 50,
         kernel_size: int = 5,
-        n_transformer_layers: int = 4,
+        n_transformer_layers: int = 2,
         n_heads: int = 8,
     ):
         super().__init__(n_channels, d_model, n_tokens)
@@ -35,13 +35,7 @@ class SpatialProfileBaselineEncoder(ModalityEncoder):
             nn.Linear(n_spatial_points, 128),
             self.activation,
             nn.AlphaDropout(0.2),
-            nn.Linear(128, 256),
-            self.activation,
-            nn.AlphaDropout(0.2),
-            nn.Linear(256, 512),
-            self.activation,
-            nn.AlphaDropout(0.2),
-            nn.Linear(512, d_model),
+            nn.Linear(128, d_model),
         )
 
         # Temporal residual block: compresses time dimension
@@ -125,11 +119,7 @@ class SpatialProfileBaselineDecoder(ModalityDecoder):
 
         # Mirror spatial MLP (reversed)
         self.spatial_decoder = nn.Sequential(
-            nn.Linear(d_model, 512),
-            self.activation,
-            nn.Linear(512, 256),
-            self.activation,
-            nn.Linear(256, 128),
+            nn.Linear(d_model, 128),
             self.activation,
             nn.Linear(128, n_spatial_points),
         )
@@ -163,7 +153,7 @@ class SpatialProfileBaselineAutoEncoder(ModalityAutoEncoder):
             n_spatial_points: int = 50,
             n_time_points: int = 50,
             kernel_size: int = 3,
-            n_transformer_layers: int = 4,
+            n_transformer_layers: int = 2,
             n_heads: int = 8,
     ):
         super().__init__(n_channels, d_model, n_tokens)

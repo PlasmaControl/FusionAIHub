@@ -294,8 +294,16 @@ class DefaultDrawer:
             all_targets.append(inp.ravel())
             all_recons.append(rec.ravel())
 
+        if not all_targets or all(a.size == 0 for a in all_targets):
+            print("WARNING: Correlation plot skipped — no valid data.")
+            return
+
         target = np.concatenate(all_targets)
         recon = np.concatenate(all_recons)
+
+        if target.size == 0 or recon.size == 0:
+            print("WARNING: Correlation plot skipped — no valid data.")
+            return
 
         finite_mask = np.isfinite(target) & np.isfinite(recon)
         n_nan = (~finite_mask).sum()

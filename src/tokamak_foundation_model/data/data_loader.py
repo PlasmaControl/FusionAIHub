@@ -388,7 +388,7 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="log_normalize"),
         ),
         SignalConfig(
             "filterscopes",
@@ -437,7 +437,7 @@ class TokamakH5Dataset(Dataset):
             10,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="log_normalize"),
         ),
         SignalConfig(
             "ts_core_temp",
@@ -445,7 +445,7 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="log_normalize"),
         ),
         SignalConfig(
             "ts_tangential_temp",
@@ -453,7 +453,7 @@ class TokamakH5Dataset(Dataset):
             10,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_standardize"),
+            preprocess=PreprocessConfig(method="log_normalize"),
         ),
         SignalConfig(
             "vib",
@@ -688,7 +688,7 @@ class TokamakH5Dataset(Dataset):
         -------
         None
         """
-        _LOG_METHODS = {"log_standardize"}
+        _LOG_METHODS = {"log_standardize", "log_normalize"}
 
         for config in self.signal_configs + self.movie_configs:
             if config.name not in self.preprocessing_stats:
@@ -780,7 +780,7 @@ class TokamakH5Dataset(Dataset):
                 std = std.reshape(reshape_dims)
 
             tensor -= mean
-            tensor /= (std + preprocessing_config.eps)
+            tensor /= std.clamp(min=1e-3)
             return tensor
 
         elif preprocessing_config.method == "normalize":
@@ -829,7 +829,33 @@ class TokamakH5Dataset(Dataset):
             # `(tensor - mean) / std` fragments each worker's heap enough to
             # cause CPU OOM after several epochs.
             tensor -= mean
-            tensor /= (std + preprocessing_config.eps)
+            tensor /= std.clamp(min=1e-3)
+            return tensor
+
+        elif preprocessing_config.method == "log_normalize":
+            arr = tensor.numpy()
+            arr = np.clip(arr, a_min=-.99, a_max=None, out=arr)
+            arr += 1
+            np.log10(arr, out=arr)
+
+            if preprocessing_config.min_val is None or preprocessing_config.max_val is None:
+                print("Warning: "
+                      "log_normalize requested but no statistics provided")
+                return tensor
+
+            min_val = torch.as_tensor(
+                preprocessing_config.min_val, dtype=tensor.dtype, device=tensor.device)
+            max_val = torch.as_tensor(
+                preprocessing_config.max_val, dtype=tensor.dtype, device=tensor.device)
+            if ch is not None:
+                min_val = min_val[ch]
+                max_val = max_val[ch]
+            if reshape_dims is not None:
+                min_val = min_val.reshape(reshape_dims)
+                max_val = max_val.reshape(reshape_dims)
+
+            tensor -= min_val
+            tensor /= (max_val - min_val + preprocessing_config.eps)
             return tensor
 
         elif preprocessing_config.method == "log":

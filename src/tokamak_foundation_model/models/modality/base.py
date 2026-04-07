@@ -28,23 +28,29 @@ class StridedResBlock1d(nn.Module):
 
 
 class StridedResBlockTranspose1d(nn.Module):
-    """Pre-norm strided 1D transposed residual block for decoding."""
+    """Pre-norm upsampling residual block for decoding.
+
+    Uses nearest-neighbor interpolation followed by Conv1d instead of
+    ConvTranspose1d to avoid checkerboard / periodic artifacts.
+    """
 
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
         super().__init__()
+        self.stride = stride
         self.norm = nn.InstanceNorm1d(in_channels, affine=True)
         self.net = nn.Sequential(
-            nn.ConvTranspose1d(in_channels, out_channels, kernel_size,
-                               stride=stride, padding=kernel_size // 2,
-                               output_padding=stride - 1),
+            nn.Upsample(scale_factor=stride, mode='nearest'),
+            nn.Conv1d(in_channels, out_channels, kernel_size,
+                      stride=1, padding=kernel_size // 2),
             nn.GELU(),
             nn.Conv1d(out_channels, out_channels, kernel_size,
                       stride=1, padding=kernel_size // 2),
         )
         if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.ConvTranspose1d(in_channels, out_channels,
-                                               kernel_size=1, stride=stride,
-                                               output_padding=stride - 1)
+            self.shortcut = nn.Sequential(
+                nn.Upsample(scale_factor=stride, mode='nearest'),
+                nn.Conv1d(in_channels, out_channels, kernel_size=1),
+            )
         else:
             self.shortcut = nn.Identity()
         self.activation = nn.GELU()

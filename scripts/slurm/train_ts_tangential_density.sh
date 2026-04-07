@@ -24,4 +24,4 @@ srun pixi run python ../training/ts_tangential_density_profile_reconstruction.py
     --warmup_epochs 5 \
     --min_lr 0.0 \
     --checkpoint_dir runs \
-    --stats_path /scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt
+    --stats_path /projects/EKOLEMEN/foundation_model/preprocessing_stats.pt

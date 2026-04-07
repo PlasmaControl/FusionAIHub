@@ -1843,7 +1843,7 @@ packages:
 - pypi: ./
   name: faith
   version: 26.1.dev0
-  sha256: d53f50624171834f8ecd303281ed6d7bc8cde51159afb01ca488944771b04f15
+  sha256: 76289aaaf7f336ea0de97bb255f3e227e0aa8a4e2455d2d647615c2a94e27ade
   requires_dist:
   - einops>=0.8.2,<0.9
   - h5py>=3.15.1,<4

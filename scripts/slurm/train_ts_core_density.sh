@@ -19,9 +19,9 @@ srun pixi run python ../training/ts_core_density_profile_reconstruction.py \
     --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \
-    --lr 5e-4 \
+    --lr 1e-4 \
     --weight_decay 0.3 \
     --warmup_epochs 5 \
     --min_lr 0.0 \
     --checkpoint_dir runs \
-    --stats_path /scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt
+    --stats_path /projects/EKOLEMEN/foundation_model/preprocessing_stats.pt
