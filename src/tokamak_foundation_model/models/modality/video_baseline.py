@@ -1,4 +1,16 @@
-"""Video baseline modality autoencoder implementation."""
+"""Video baseline modality autoencoder.
+
+This module is refactored to follow the same structural template as other modality
+baselines (see :mod:`filterscope_baseline.py`) while preserving the exact
+architecture/parameters defined in the original `video_baseline.py`.
+
+Key conventions:
+- Encoder inherits :class:`~tokamak_foundation_model.models.modality.base.ModalityEncoder`
+  and returns tokens shaped (B, n_tokens, d_model).
+- Decoder inherits :class:`~tokamak_foundation_model.models.modality.base.ModalityDecoder`
+  and reconstructs an output shaped (B, T, H, W) for grayscale video.
+- Autoencoder composes encoder/decoder and returns (x_hat, tokens) for training.
+"""
 
 from __future__ import annotations
 from typing import Tuple

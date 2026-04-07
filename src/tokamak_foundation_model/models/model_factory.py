@@ -1,24 +1,29 @@
-from torch import nn
 from typing import Optional
 
+from torch import nn
+
 from tokamak_foundation_model.models.modality import (
-    ActuatorBaselineAutoEncoder,
+    FilterscopeBaselineAutoEncoder,
     SlowTimeSeriesBaselineAutoEncoder,
-    FastTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
+    SpectrogramChannelASTAutoEncoder,
+    SpectrogramTFOnlyAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
-
 SIGNAL_MODEL_DEFAULTS = {
-    "gas": "actuator",
-    "gas_flow": "actuator",
-    "gas_raw": "actuator",
-    "ech": "actuator",
-    "pin": "actuator",
-    "tin": "actuator",
+    "gas_flow": "fast_time_series",
+    "gas_raw": "fast_time_series",
     "ich": "fast_time_series",
+    "rmp": "fast_time_series",
+    "ech_power": "fast_time_series",
+    "ech_tor_angle": "fast_time_series",
+    "ech_pol_angle": "fast_time_series",
+    "ech_polarization": "fast_time_series",
+    "pin": "fast_time_series",
+    "beam_voltage": "fast_time_series",
+    "tin": "fast_time_series",
     "i_coil": "fast_time_series",
     "filterscopes": "fast_time_series",
     "d_alpha": "fast_time_series",
@@ -45,20 +50,22 @@ SIGNAL_MODEL_DEFAULTS = {
 }
 
 MODEL_REGISTRY = {
-    "actuator": ActuatorBaselineAutoEncoder,
-    "fast_time_series": FastTimeSeriesBaselineAutoEncoder,
+    "fast_time_series": FilterscopeBaselineAutoEncoder,
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
+    "spectrogram_tf_attn": SpectrogramTFOnlyAutoEncoder,
+    "spectrogram_channel_ast": SpectrogramChannelASTAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
 
+
 def build_model(
-        model_name,
-        d_model: Optional[int] = None,
-        n_tokens: Optional[int] = None,
-        n_channels: Optional[int] = None,
-        **kwargs
+    model_name,
+    d_model: Optional[int] = None,
+    n_tokens: Optional[int] = None,
+    n_channels: Optional[int] = None,
+    **kwargs,
 ) -> nn.Module:
     """Build the appropriate autoencoder.
 
@@ -70,7 +77,7 @@ def build_model(
     else:
         kwargs["d_model"] = d_model
     if n_tokens is None and "n_tokens" not in kwargs:
-        kwargs["n_tokens"] = 20
+        kwargs["n_tokens"] = 16
     else:
         kwargs["n_tokens"] = n_tokens
     if n_channels is None and "n_channels" not in kwargs:

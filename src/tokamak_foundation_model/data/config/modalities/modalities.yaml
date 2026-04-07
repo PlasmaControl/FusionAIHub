@@ -118,7 +118,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: true
+    stft: false
     sampling_rate: 10000
     num_channels: 104
 
@@ -807,7 +807,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: true
+    stft: false
     sampling_rate: 50
     num_channels: 24
 
@@ -887,6 +887,24 @@ signals:
     sampling_rate: 10000
     num_channels: 8
 
+  beam_voltage:
+    tree: D3D
+    input_key:
+      - \D3D::TOP.NB.NB15L:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB15R:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB21L:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB21R:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB30L:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB30R:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB33L:VOLTAGE_CAL
+      - \D3D::TOP.NB.NB33R:VOLTAGE_CAL
+    input_xkey: dim0
+    input_ykey: data
+    source: default
+    stft: false
+    sampling_rate: 10000
+    num_channels: 8
+
   tinj:
     tree: D3D
     input_key:
@@ -905,13 +923,13 @@ signals:
     sampling_rate: 10000
     num_channels: 8
 
-  ech:
+  ech_power:
     tree: D3D
     input_key:
       - \D3D::TOP.RF.ECH.BORIS:ECBORFPWRC
       - \D3D::TOP.RF.ECH.CHEWBACCA:ECCHEFPWRC
       - \D3D::TOP.RF.ECH.DOROTHY:ECDORFPWRC
-      - \D3D::TOP.RF.ECH.HAN:ECHANDLPWRC
+      - \D3D::TOP.RF.ECH.HAN:ECHANDLFPWRC
       - \D3D::TOP.RF.ECH.KATYA:ECKATFPWRC
       - \D3D::TOP.RF.ECH.LEIA:ECLEIFPWRC
       - \D3D::TOP.RF.ECH.LION:ECLIOFPWRC
@@ -920,6 +938,72 @@ signals:
       - \D3D::TOP.RF.ECH.NATASHA:ECNATFPWRC
       - \D3D::TOP.RF.ECH.R2D2:ECR2DFPWRC
       - \D3D::TOP.RF.ECH.SCARECROW:ECSCAFPWRC
+    input_xkey: dim0
+    input_ykey: data
+    source: default
+    stft: false
+    sampling_rate: 10000
+    num_channels: 12
+
+  ech_tor_angle:
+    tree: D3D
+    input_key:
+      - \D3D::TOP.RF.ECH.BORIS:ECBORAZIANG
+      - \D3D::TOP.RF.ECH.CHEWBACCA:ECCHEAZIANG
+      - \D3D::TOP.RF.ECH.DOROTHY:ECDORAZIANG
+      - \D3D::TOP.RF.ECH.HAN:ECHANDLAZIANG
+      - \D3D::TOP.RF.ECH.KATYA:ECKATAZIANG
+      - \D3D::TOP.RF.ECH.LEIA:ECLEIAZIANG
+      - \D3D::TOP.RF.ECH.LION:ECLIOAZIANG
+      - \D3D::TOP.RF.ECH.LUKE:ECLUKAZIANG
+      - \D3D::TOP.RF.ECH.NASA:ECNASAZIANG
+      - \D3D::TOP.RF.ECH.NATASHA:ECNATAZIANG
+      - \D3D::TOP.RF.ECH.R2D2:ECR2DAZIANG
+      - \D3D::TOP.RF.ECH.SCARECROW:ECSCAAZIANG
+    input_xkey: dim0
+    input_ykey: data
+    source: default
+    stft: false
+    sampling_rate: 10000
+    num_channels: 12
+
+  ech_pol_angle:
+    tree: D3D
+    input_key:
+      - \D3D::TOP.RF.ECH.BORIS:ECBORPOLANG
+      - \D3D::TOP.RF.ECH.CHEWBACCA:ECCHEPOLANG
+      - \D3D::TOP.RF.ECH.DOROTHY:ECDORPOLANG
+      - \D3D::TOP.RF.ECH.HAN:ECHANDLPOLANG
+      - \D3D::TOP.RF.ECH.KATYA:ECKATPOLANG
+      - \D3D::TOP.RF.ECH.LEIA:ECLEIPOLANG
+      - \D3D::TOP.RF.ECH.LION:ECLIOPOLANG
+      - \D3D::TOP.RF.ECH.LUKE:ECLUKPOLANG
+      - \D3D::TOP.RF.ECH.NASA:ECNASPOLANG
+      - \D3D::TOP.RF.ECH.NATASHA:ECNATPOLANG
+      - \D3D::TOP.RF.ECH.R2D2:ECR2DPOLANG
+      - \D3D::TOP.RF.ECH.SCARECROW:ECSCAPOLANG
+    input_xkey: dim0
+    input_ykey: data
+    source: default
+    stft: false
+    sampling_rate: 10000
+    num_channels: 12
+
+  ech_polarization:
+    tree: D3D
+    input_key:
+      - \D3D::TOP.RF.ECH.BORIS:ECBORXMFRAC
+      - \D3D::TOP.RF.ECH.CHEWBACCA:ECCHEXMFRAC
+      - \D3D::TOP.RF.ECH.DOROTHY:ECDORXMFRAC
+      - \D3D::TOP.RF.ECH.HAN:ECHANDLXMFRAC
+      - \D3D::TOP.RF.ECH.KATYA:ECKATXMFRAC
+      - \D3D::TOP.RF.ECH.LEIA:ECLEIXMFRAC
+      - \D3D::TOP.RF.ECH.LION:ECLIOXMFRAC
+      - \D3D::TOP.RF.ECH.LUKE:ECLUKXMFRAC
+      - \D3D::TOP.RF.ECH.NASA:ECNASXMFRAC
+      - \D3D::TOP.RF.ECH.NATASHA:ECNATXMFRAC
+      - \D3D::TOP.RF.ECH.R2D2:ECR2DXMFRAC
+      - \D3D::TOP.RF.ECH.SCARECROW:ECSCAXMFRAC
     input_xkey: dim0
     input_ykey: data
     source: default
@@ -980,6 +1064,28 @@ signals:
     sampling_rate: 10000
     num_channels: 1
 
+  rmp:
+    tree: PTDATA
+    input_key:
+      - IU30F
+      - IU90F
+      - IU150F
+      - IU210F
+      - IU270F
+      - IU330F
+      - IL30F
+      - IL90F
+      - IL150F
+      - IL210F
+      - IL270F
+      - IL330F
+    input_xkey: dim0
+    input_ykey: data
+    source: default
+    stft: false
+    sampling_rate: 10000
+    num_channels: 12
+
   irtv:
     tree: IRTV
     input_key:
@@ -1028,7 +1134,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: false
+    stft: true
     sampling_rate: 500000
     num_channels: 8
 
@@ -1067,7 +1173,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: false
+    stft: true
     sampling_rate: 500000
     num_channels: 29
 
@@ -1149,7 +1255,7 @@ signals:
     input_xkey: dim0
     input_ykey: data
     source: default
-    stft: false
+    stft: true
     sampling_rate: 500000
     num_channels: 72
 

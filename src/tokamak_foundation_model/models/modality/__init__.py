@@ -1,56 +1,47 @@
-from .actuator_baseline import (
-    ActuatorBaselineEncoder,
-    ActuatorBaselineDecoder,
-    ActuatorBaselineAutoEncoder,
-)
-from .slow_time_series_baseline import (
-    SlowTimeSeriesBaselineEncoder,
-    SlowTimeSeriesBaselineDecoder,
-    SlowTimeSeriesBaselineAutoEncoder,
-)
-from .fast_time_series_baseline import (
-    FastTimeSeriesBaselineEncoder,
-    FastTimeSeriesBaselineDecoder,
-    FastTimeSeriesBaselineAutoEncoder,
+from .filterscope_baseline import (
+    FilterscopeBaselineAutoEncoder,
+    FilterscopeBaselineDecoder,
+    FilterscopeBaselineEncoder,
 )
 from .profile_baseline import (
-    SpatialProfileBaselineEncoder,
-    SpatialProfileBaselineDecoder,
     SpatialProfileBaselineAutoEncoder,
+    SpatialProfileBaselineDecoder,
+    SpatialProfileBaselineEncoder,
+)
+from .slow_time_series_baseline import (
+    SlowTimeSeriesBaselineAutoEncoder,
+    SlowTimeSeriesBaselineDecoder,
+    SlowTimeSeriesBaselineEncoder,
 )
 from .spectrogram_baseline import (
-    SpectrogramBaselineEncoder,
-    SpectrogramBaselineDecoder,
     SpectrogramBaselineAutoEncoder,
+    SpectrogramBaselineDecoder,
+    SpectrogramBaselineEncoder,
 )
+from .spectrogram_channel_ast import SpectrogramChannelASTAutoEncoder
+from .spectrogram_tf_only import SpectrogramTFOnlyAutoEncoder
 from .video_baseline import (
-    VideoBaselineEncoder,
-    VideoBaselineDecoder,
     VideoBaselineAutoEncoder,
+    VideoBaselineDecoder,
+    VideoBaselineEncoder,
 )
 
 __all__ = [
-    "ActuatorBaselineEncoder",
-    "ActuatorBaselineDecoder",
-    "ActuatorBaselineAutoEncoder",
-
     "SlowTimeSeriesBaselineEncoder",
     "SlowTimeSeriesBaselineDecoder",
     "SlowTimeSeriesBaselineAutoEncoder",
-    
-    "FastTimeSeriesBaselineEncoder",
-    "FastTimeSeriesBaselineDecoder",
-    "FastTimeSeriesBaselineAutoEncoder",
-    
+    "FilterscopeBaselineEncoder",
+    "FilterscopeBaselineDecoder",
+    "FilterscopeBaselineAutoEncoder",
     "SpatialProfileBaselineEncoder",
     "SpatialProfileBaselineDecoder",
     "SpatialProfileBaselineAutoEncoder",
-    
     "SpectrogramBaselineAutoEncoder",
     "SpectrogramBaselineEncoder",
     "SpectrogramBaselineDecoder",
-
     "VideoBaselineEncoder",
     "VideoBaselineDecoder",
     "VideoBaselineAutoEncoder",
+    "SpectrogramTFOnlyAutoEncoder",
+    "SpectrogramChannelASTAutoEncoder",
 ]
