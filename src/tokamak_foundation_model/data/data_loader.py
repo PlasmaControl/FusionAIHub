@@ -1476,7 +1476,7 @@ def worker_init_fn(worker_id):
             worker_dataset._open_hdf5()
            
 def find_default_shots(
-    data_dir: str | Path = Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/dummy_foundation_model_data"),
+    data_dir: str | Path = Path("/scratch/gpfs/EKOLEMEN/foundation_model"),
     data_size: str = "train_debug",
 ) -> list[Path]:
     '''
@@ -1497,7 +1497,7 @@ def find_default_shots(
     data_dir = Path(data_dir)
     hdf5_files = sorted(
         f for f in data_dir.glob("*.h5")
-        if f.stem in requested
+        if f.stem.split("_")[0] in requested
     )
 
     return hdf5_files

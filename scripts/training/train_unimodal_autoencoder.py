@@ -26,45 +26,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class SpectralGate(nn.Module):
-    def __init__(self, eps=1e-8):
-        super().__init__()
-        self.threshold = 1.5
-        self.gate_factor = 0.9
-        self.eps = eps
-        self.gaussian = GaussianBlur(kernel_size=3, sigma=2.0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dim() == 3:
-            mean = x.mean(dim=1, keepdim=True)
-            std = x.std(dim=1, keepdim=True)
-        elif x.dim() == 4:
-            mean = x.mean(dim=2, keepdim=True)
-            std = x.std(dim=2, keepdim=True)
-        else:
-            raise ValueError(f"Expected 3D or 4D tensor, got shape {tuple(x.shape)}")
-
-        x_gate = (x > (mean + self.threshold * std)).float()
-        x_gate = self.gaussian(x_gate)
-
-        gmin = x_gate.amin(dim=(-2, -1), keepdim=True)
-        gmax = x_gate.amax(dim=(-2, -1), keepdim=True)
-        x_gate = (x_gate - gmin) / (gmax - gmin + self.eps)
-        return x * (x_gate * self.gate_factor + (1.0 - self.gate_factor))
-
-
-class GatedTargetL1Loss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.l1 = nn.L1Loss()
-        self.gate = SpectralGate()
-
-    def forward(self, pred: torch.Tensor, target: torch.Tensor):
-        target_amp = target - target.amin(dim=(-2, -1), keepdim=True)
-        gated_target = self.gate(target_amp)
-        return self.l1(pred, gated_target)
-
-
 def main():
 
     ### Settings ###
@@ -259,11 +220,7 @@ def main():
         weight_decay=args.weight_decay,
     )
 
-    if args.use_gated_target:
-        loss_fn = GatedTargetL1Loss()
-        logger.info("Using gated target L1 loss")
-    else:
-        loss_fn = nn.L1Loss()
+    loss_fn = nn.L1Loss()
 
     if args.warmup_epochs > 0:
         scheduler = optim.lr_scheduler.CosineAnnealingLR(

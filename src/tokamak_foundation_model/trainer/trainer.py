@@ -112,6 +112,7 @@ class MultimodalTrainer:
 
 
 class UnimodalTrainer:
+
     def __init__(
             self,
             epochs: int,
@@ -160,9 +161,7 @@ class UnimodalTrainer:
         data = batch[self.modality_key].to(self.dm.device)
         self.optimizer.zero_grad()
         output = self.model(data)
-        if isinstance(output, tuple):
-            output = output[0]
-        loss = self.loss_fn(output, data)
+        loss = self.loss_fn(output[0], data)
         loss.backward()
         self.optimizer.step()
         return {"loss": loss}
@@ -171,11 +170,9 @@ class UnimodalTrainer:
     def _validate_step(self, batch: dict):
         data = batch[self.modality_key].to(self.dm.device)
         output = self.model(data)
-        if isinstance(output, tuple):
-            output = output[0]
-        loss = self.loss_fn(output, data)
+        loss = self.loss_fn(output[0], data)
         for metric in self.metrics:
-            metric.update(output, data)
+            metric.update(output[0], data)
         return {"loss": loss}
 
     def _train_epoch(self, dataloader: DataLoader):
@@ -301,12 +298,7 @@ class UnimodalTrainer:
                 self.scheduler.step()
 
             self.tracker.step += 1
-            self.tracker._progress["train"]["completed"] = 0
-            if val_dataloader is not None:
-                self.tracker._progress["validate"]["completed"] = 0
-            for label in self.tracker.metrics:
-                for m in self.tracker.metrics[label]["mean"].values():
-                    m.reset()
+            self.tracker.reset_epoch()
 
         logger.info("Training complete.")
 

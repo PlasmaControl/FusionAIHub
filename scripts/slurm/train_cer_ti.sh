@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=train_filterscopes
-#SBATCH --output=logs/%j_train_filterscopes.out
-#SBATCH --error=logs/%j_train_filterscopes.err
+#SBATCH --job-name=train_cer_ti
+#SBATCH --output=logs/%j_train_cer_ti.out
+#SBATCH --error=logs/%j_train_cer_ti.err
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -15,7 +15,7 @@ export PYTHONUNBUFFERED=1
 cd /scratch/gpfs/nc1514/FusionAIHub
 
 srun pixi run python scripts/training/train_unimodal_autoencoder.py \
-    --signal "filterscopes" \
+    --signal "cer_ti" \
     --d_model 64 \
     --batch_size 4 \
     --num_workers 16 \
@@ -29,4 +29,4 @@ srun pixi run python scripts/training/train_unimodal_autoencoder.py \
     --hop_length 256 \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path data/preprocessing_stats.pt \
-    --checkpoint_dir runs/filterscopes
+    --checkpoint_dir runs/cer_ti

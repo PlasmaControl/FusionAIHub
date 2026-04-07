@@ -195,6 +195,16 @@ class Tracker:
 
         return decorator
 
+    def reset_epoch(self, labels: list[str] | None = None) -> None:
+        """Reset per-epoch progress counters and running means."""
+        labels = labels or list(self.metrics.keys())
+        for label in labels:
+            if label in self._progress:
+                self._progress[label]["completed"] = 0
+            if label in self.metrics:
+                for m in self.metrics[label]["mean"].values():
+                    m.reset()
+
     def is_best(self, label: str, key: str) -> bool:
         values = self.history[label][key]
         if not values:
