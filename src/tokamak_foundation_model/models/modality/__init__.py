@@ -1,7 +1,7 @@
 from .filterscope_baseline import (
-    FilterscopeBaselineAutoEncoder,
-    FilterscopeBaselineDecoder,
-    FilterscopeBaselineEncoder,
+    FastTimeSeriesBaselineAutoEncoder,
+    FastTimeSeriesBaselineDecoder,
+    FastTimeSeriesBaselineEncoder,
 )
 from .profile_baseline import (
     SpatialProfileBaselineAutoEncoder,
@@ -19,7 +19,6 @@ from .spectrogram_baseline import (
     SpectrogramBaselineEncoder,
 )
 from .spectrogram_channel_ast import SpectrogramChannelASTAutoEncoder
-from .spectrogram_tf_only import SpectrogramTFOnlyAutoEncoder
 from .video_baseline import (
     VideoBaselineAutoEncoder,
     VideoBaselineDecoder,
@@ -30,9 +29,9 @@ __all__ = [
     "SlowTimeSeriesBaselineEncoder",
     "SlowTimeSeriesBaselineDecoder",
     "SlowTimeSeriesBaselineAutoEncoder",
-    "FilterscopeBaselineEncoder",
-    "FilterscopeBaselineDecoder",
-    "FilterscopeBaselineAutoEncoder",
+    "FastTimeSeriesBaselineEncoder",
+    "FastTimeSeriesBaselineDecoder",
+    "FastTimeSeriesBaselineAutoEncoder",
     "SpatialProfileBaselineEncoder",
     "SpatialProfileBaselineDecoder",
     "SpatialProfileBaselineAutoEncoder",
@@ -42,6 +41,5 @@ __all__ = [
     "VideoBaselineEncoder",
     "VideoBaselineDecoder",
     "VideoBaselineAutoEncoder",
-    "SpectrogramTFOnlyAutoEncoder",
     "SpectrogramChannelASTAutoEncoder",
 ]

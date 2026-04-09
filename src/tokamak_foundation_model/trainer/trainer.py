@@ -105,7 +105,7 @@ class MultimodalTrainer:
         path = checkpoint_path if checkpoint_path else self.checkpoint_path
         if os.path.exists(path):
             self.model.load_state_dict(torch.load(
-                path, map_location=self.device))
+                path, map_location=self.device, weights_only=False))
             print(f"Model loaded from checkpoint: {path}")
         else:
             print(f"No checkpoint found at: {path}")

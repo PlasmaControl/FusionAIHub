@@ -158,7 +158,7 @@ def main():
     hdf5_files = sorted(data_dir.glob("*.h5"))
     logger.info(f"Found {len(hdf5_files)} Shots")
 
-    stats = torch.load(statistics_path)
+    stats = torch.load(statistics_path, weights_only=False)
 
     ### Train/Val Split (file-level) ###
     val_dataset = None

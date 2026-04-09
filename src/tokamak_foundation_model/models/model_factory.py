@@ -3,12 +3,11 @@ from typing import Optional
 from torch import nn
 
 from tokamak_foundation_model.models.modality import (
-    FilterscopeBaselineAutoEncoder,
+    FastTimeSeriesBaselineAutoEncoder,
     SlowTimeSeriesBaselineAutoEncoder,
     SpatialProfileBaselineAutoEncoder,
     SpectrogramBaselineAutoEncoder,
     SpectrogramChannelASTAutoEncoder,
-    SpectrogramTFOnlyAutoEncoder,
     VideoBaselineAutoEncoder,
 )
 
@@ -50,11 +49,10 @@ SIGNAL_MODEL_DEFAULTS = {
 }
 
 MODEL_REGISTRY = {
-    "fast_time_series": FilterscopeBaselineAutoEncoder,
+    "fast_time_series": FastTimeSeriesBaselineAutoEncoder,
     "slow_time_series": SlowTimeSeriesBaselineAutoEncoder,
     "profile": SpatialProfileBaselineAutoEncoder,
     "spectrogram": SpectrogramBaselineAutoEncoder,
-    "spectrogram_tf_attn": SpectrogramTFOnlyAutoEncoder,
     "spectrogram_channel_ast": SpectrogramChannelASTAutoEncoder,
     "video": VideoBaselineAutoEncoder,
 }
