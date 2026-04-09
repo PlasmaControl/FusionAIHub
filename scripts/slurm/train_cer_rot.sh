@@ -2,7 +2,7 @@
 #SBATCH --job-name=train_cer_rot
 #SBATCH --output=logs/%j_train_cer_rot.out
 #SBATCH --error=logs/%j_train_cer_rot.err
-#SBATCH --time=04:00:00
+#SBATCH --time=00:20:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1

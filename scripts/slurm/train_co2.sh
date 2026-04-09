@@ -2,7 +2,7 @@
 #SBATCH --job-name=train_co2
 #SBATCH --output=logs/%j_train_co2.out
 #SBATCH --error=logs/%j_train_co2.err
-#SBATCH --time=04:00:00
+#SBATCH --time=00:20:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
