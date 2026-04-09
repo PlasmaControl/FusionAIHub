@@ -168,7 +168,10 @@ class UnimodalTrainer:
         output = self.model(data)
         if isinstance(output, tuple):
             output = output[0]
-        loss = self.loss_fn(output, data, valid_lengths)
+        if valid_lengths is not None:
+            loss = self.loss_fn(output, data, valid_lengths)
+        else:
+            loss = self.loss_fn(output, data)
         loss.backward()
         if self.grad_clip > 0:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
@@ -184,7 +187,10 @@ class UnimodalTrainer:
         output = self.model(data)
         if isinstance(output, tuple):
             output = output[0]
-        loss = self.loss_fn(output, data, valid_lengths)
+        if valid_lengths is not None:
+            loss = self.loss_fn(output, data, valid_lengths)
+        else:
+            loss = self.loss_fn(output, data)
         for metric in self.metrics:
             metric.update(output, data)
         return {"loss": loss}

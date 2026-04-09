@@ -2,7 +2,7 @@
 #SBATCH --job-name=train_ece_rocm
 #SBATCH --output=logs/%j_train_ece_rocm.out
 #SBATCH --error=logs/%j_train_ece_rocm.err
-#SBATCH --time=04:00:00
+#SBATCH --time=00:20:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
@@ -15,8 +15,9 @@ export HSA_FORCE_FINE_GRAIN_PCIE=1
 export PYTORCH_ROCM_ARCH=gfx90a
 
 cd /scratch/gpfs/nc1514/FusionAIHub
+source .venv-rocm/bin/activate
 
-srun pixi run -e rocm python scripts/training/train_unimodal_autoencoder.py \
+srun python scripts/training/train_unimodal_autoencoder.py \
     --signal "ece" \
     --d_model 64 \
     --batch_size 8 \

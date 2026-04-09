@@ -2,7 +2,7 @@
 #SBATCH --job-name=train_mhr
 #SBATCH --output=logs/%j_train_mhr.out
 #SBATCH --error=logs/%j_train_mhr.err
-#SBATCH --time=04:00:00
+#SBATCH --time=00:20:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
