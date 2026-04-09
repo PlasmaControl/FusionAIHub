@@ -32,7 +32,8 @@ hdf5_files = sorted(
     Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/").glob("*_processed.h5")
 )
 stats = torch.load(
-    Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt")
+    Path("C:/Users/admin/PycharmProjects/FusionAIHub/scripts/preprocessing_stats.pt"),
+    weights_only=False,
 )
 
 datasets_processed = [

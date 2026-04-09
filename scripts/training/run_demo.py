@@ -29,7 +29,8 @@ def data_loading_demo():
     )
     stats = torch.load(
         "C:/Users/admin/PycharmProjects/nstx/foundation_model_notes/"
-        "tokamak_package/preprocessing_stats.pt"
+        "tokamak_package/preprocessing_stats.pt",
+        weights_only=False
     )
     all_input_signals = [
         "mhr",

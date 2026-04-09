@@ -154,7 +154,7 @@ def main():
 
     ### Dataset Setup ###
     hdf5_files = sorted(data_dir.glob("*_processed.h5"))
-    stats = torch.load(statistics_path)
+    stats = torch.load(statistics_path, weights_only=False)
 
     datasets_processed = [
         TokamakH5Dataset(
