@@ -208,6 +208,13 @@ def main():
 
     ### Model Setup ###
     model_kwargs = json.loads(args.model_kwargs)
+
+    # Profile models treat dim-0 as spatial points, not channels
+    if model_name == "profile":
+        model_kwargs.setdefault("n_spatial_points", sample_data.shape[0])
+        model_kwargs.setdefault("n_time_points", sample_data.shape[1])
+        n_channels = 1
+
     model = build_model(model_name, n_channels=n_channels, d_model=args.d_model,
                         n_tokens=args.n_tokens, **model_kwargs).to(dm.device)
 
@@ -305,18 +312,7 @@ def main():
         metrics=metrics,
     )
 
-    if args.resume and checkpoint_path.exists():
-        logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
-        trainer.load_checkpoint(checkpoint_path=checkpoint_path)
-
-    trainer.fit(
-        train_dataloader=dataloader,
-        val_dataloader=val_dataloader,
-        modality_key=signal_name,
-        train_sampler=train_sampler,
-    )
-
-    ### Save config.json alongside checkpoint ###
+    ### Save config.json before training so it survives job kills ###
     if dm.is_main:
         config = {
             "signal_name": signal_name,
@@ -330,6 +326,17 @@ def main():
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
         logger.info(f"Saved config to {config_path}")
+
+    if args.resume and checkpoint_path.exists():
+        logger.info(f"Resuming training from checkpoint: {checkpoint_path}")
+        trainer.load_checkpoint(checkpoint_path=checkpoint_path)
+
+    trainer.fit(
+        train_dataloader=dataloader,
+        val_dataloader=val_dataloader,
+        modality_key=signal_name,
+        train_sampler=train_sampler,
+    )
 
 
 if __name__ == "__main__":

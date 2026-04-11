@@ -309,6 +309,15 @@ class DefaultDrawer:
         else:
             r = float('nan')
 
+        if len(target_clean) == 0:
+            fig, ax = plt.subplots(figsize=(5, 5))
+            ax.set_title(f"Epoch {epoch + 1} | No finite values (n={len(target):,})")
+            ax.text(0.5, 0.5, "All values non-finite",
+                    ha='center', va='center', transform=ax.transAxes)
+            fig.savefig(self.drawing_path / "correlation.png")
+            plt.close(fig)
+            return
+
         # Subsample for plot readability
         max_pts = 20_000
         if len(target_clean) > max_pts:
