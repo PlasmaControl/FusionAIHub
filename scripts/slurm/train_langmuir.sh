@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=17
+#SBATCH --cpus-per-task=5
 #SBATCH --mem-per-cpu=8G
 
 export OMP_NUM_THREADS=1
@@ -18,7 +18,7 @@ srun pixi run python scripts/training/train_unimodal_autoencoder.py \
     --signal "langmuir" \
     --d_model 64 \
     --batch_size 4 \
-    --num_workers 16 \
+    --num_workers 2 \
     --epochs 50 \
     --lr 1e-3 \
     --weight_decay 0.05 \

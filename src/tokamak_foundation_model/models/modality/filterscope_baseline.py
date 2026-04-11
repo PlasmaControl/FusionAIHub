@@ -198,7 +198,10 @@ class FastTimeSeriesBaselineDecoder(ModalityDecoder):
             if i < len(self.deconv_layers) - 1:
                 z = self.activation(z)
 
-        z = self.adaptive_pool(z)                # [B, n_channels, input_length]
+        if output_shape is not None:
+            z = F.adaptive_avg_pool1d(z, output_shape)
+        else:
+            z = self.adaptive_pool(z)            # [B, n_channels, input_length]
 
         return z
 
@@ -248,8 +251,9 @@ class FastTimeSeriesBaselineAutoEncoder(ModalityAutoEncoder):
             ``(reconstructed, tokens)`` where reconstructed has the same
             shape as the input and tokens is ``(B, n_tokens, d_model)``.
         """
+        output_length = x.shape[-1]
         tokens = self.encoder(x)
-        recon = self.decoder(tokens)
+        recon = self.decoder(tokens, output_shape=output_length)
         return recon, tokens
 
 def create_fast_timeseries_test_signal(
