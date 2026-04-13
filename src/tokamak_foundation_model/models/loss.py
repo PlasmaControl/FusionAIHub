@@ -5,18 +5,12 @@ from typing import Optional
 
 
 class MaskedL1Loss(nn.Module):
-    """L1 loss that ignores zero-padded time steps.
+    """L1 loss that ignores zero-padded time steps and optionally missing elements.
 
     Expects tensors of shape ``(B, C, T)`` (time-series) or
     ``(B, C, F, T)`` (spectrograms).  For each sample in the batch the last
     dimension is masked to ``valid_lengths[b]`` frames; positions beyond that
     are excluded from the mean.
-
-    Parameters
-    ----------
-    valid_lengths : torch.Tensor
-        Long tensor of shape ``[B]`` holding the number of valid time steps
-        per sample.  Passed to :meth:`forward`.
     """
 
     def forward(
@@ -24,62 +18,65 @@ class MaskedL1Loss(nn.Module):
             output: torch.Tensor,
             target: torch.Tensor,
             valid_lengths: Optional[torch.Tensor] = None,
+            element_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        output : torch.Tensor
-            Model predictions, shape ``(B, ..., T)``.
-        target : torch.Tensor
-            Ground truth, same shape as *output*.
-        valid_lengths : torch.Tensor or None
-            Long tensor of shape ``[B]``.  When ``None``, falls back to plain
-            L1 over all positions.
-
-        Returns
-        -------
-        torch.Tensor
-            Scalar loss.
-        """
-        if valid_lengths is None:
+        if valid_lengths is None and element_mask is None:
             return F.l1_loss(output, target)
 
-        T = output.shape[-1]
-        # Build float mask [B, T]: 1.0 where position is valid
-        t_idx = torch.arange(T, device=output.device)                    # [T]
-        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+        mask = torch.ones_like(output)
 
-        # Broadcast mask to full tensor shape (B, ..., T)
-        for _ in range(output.dim() - 2):
-            mask = mask.unsqueeze(1)                                      # [B, 1, ..., T]
+        if valid_lengths is not None:
+            T = output.shape[-1]
+            t_idx = torch.arange(T, device=output.device)
+            time_mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()
+            for _ in range(output.dim() - 2):
+                time_mask = time_mask.unsqueeze(1)
+            mask = mask * time_mask
 
-        # Divide by the total number of valid elements across ALL dimensions
-        # (B, C, ..., T), not just (B, T).  mask is [B, 1, ..., T] so
-        # mask.sum() only counts B×T — without this correction the loss is
-        # inflated by a factor of C (number of channels).
-        # expand() returns a view (no copy), so this is memory-efficient.
-        return ((output - target).abs() * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+        if element_mask is not None:
+            mask = mask * element_mask.float()
+
+        return ((output - target).abs() * mask).sum() / mask.sum().clamp(min=1)
 
 class MaskedMSELoss(nn.Module):
-    """MSE loss that ignores zero-padded time steps. Same interface as MaskedL1Loss."""
+    """MSE loss that ignores zero-padded time steps and optionally missing elements.
+
+    Supports two complementary masking modes that can be used together:
+
+    * **valid_lengths** — ``[B]`` long tensor: masks out padding at the end
+      of the time axis (last dim).
+    * **element_mask** — bool tensor broadcastable to ``(B, C, ..., T)``:
+      ``True`` marks valid elements, ``False`` marks missing data (e.g.
+      zero-valued measurements that should be excluded from the loss).
+    """
 
     def forward(
             self,
             output: torch.Tensor,
             target: torch.Tensor,
             valid_lengths: Optional[torch.Tensor] = None,
+            element_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if valid_lengths is None:
+        if valid_lengths is None and element_mask is None:
             return F.mse_loss(output, target)
 
-        T = output.shape[-1]
-        t_idx = torch.arange(T, device=output.device)
-        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+        # Start with an all-ones mask
+        mask = torch.ones_like(output)
 
-        for _ in range(output.dim() - 2):
-            mask = mask.unsqueeze(1)
+        # Apply time-padding mask from valid_lengths
+        if valid_lengths is not None:
+            T = output.shape[-1]
+            t_idx = torch.arange(T, device=output.device)
+            time_mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+            for _ in range(output.dim() - 2):
+                time_mask = time_mask.unsqueeze(1)
+            mask = mask * time_mask
 
-        return ((output - target) ** 2 * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+        # Apply per-element mask (e.g. zero_is_missing)
+        if element_mask is not None:
+            mask = mask * element_mask.float()
+
+        return ((output - target) ** 2 * mask).sum() / mask.sum().clamp(min=1)
 
 
 class MaskedHuberLoss(nn.Module):
@@ -100,19 +97,26 @@ class MaskedHuberLoss(nn.Module):
             output: torch.Tensor,
             target: torch.Tensor,
             valid_lengths: Optional[torch.Tensor] = None,
+            element_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if valid_lengths is None:
+        if valid_lengths is None and element_mask is None:
             return F.huber_loss(output, target, delta=self.delta)
 
-        T = output.shape[-1]
-        t_idx = torch.arange(T, device=output.device)
-        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+        mask = torch.ones_like(output)
 
-        for _ in range(output.dim() - 2):
-            mask = mask.unsqueeze(1)
+        if valid_lengths is not None:
+            T = output.shape[-1]
+            t_idx = torch.arange(T, device=output.device)
+            time_mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()
+            for _ in range(output.dim() - 2):
+                time_mask = time_mask.unsqueeze(1)
+            mask = mask * time_mask
+
+        if element_mask is not None:
+            mask = mask * element_mask.float()
 
         loss = F.huber_loss(output, target, reduction="none", delta=self.delta)
-        return (loss * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+        return (loss * mask).sum() / mask.sum().clamp(min=1)
 
 
 class MaskedRelativeMSELoss(nn.Module):
@@ -140,21 +144,28 @@ class MaskedRelativeMSELoss(nn.Module):
             output: torch.Tensor,
             target: torch.Tensor,
             valid_lengths: Optional[torch.Tensor] = None,
+            element_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         sq_err = (output - target) ** 2
         weight = 1.0 / (target.abs() + self.eps) ** 2
 
-        if valid_lengths is None:
+        if valid_lengths is None and element_mask is None:
             return (sq_err * weight).mean()
 
-        T = output.shape[-1]
-        t_idx = torch.arange(T, device=output.device)
-        mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()  # [B, T]
+        mask = torch.ones_like(output)
 
-        for _ in range(output.dim() - 2):
-            mask = mask.unsqueeze(1)
+        if valid_lengths is not None:
+            T = output.shape[-1]
+            t_idx = torch.arange(T, device=output.device)
+            time_mask = (t_idx.unsqueeze(0) < valid_lengths.unsqueeze(1)).float()
+            for _ in range(output.dim() - 2):
+                time_mask = time_mask.unsqueeze(1)
+            mask = mask * time_mask
 
-        return (sq_err * weight * mask).sum() / mask.expand_as(output).sum().clamp(min=1)
+        if element_mask is not None:
+            mask = mask * element_mask.float()
+
+        return (sq_err * weight * mask).sum() / mask.sum().clamp(min=1)
 
 
 class DictMSELoss(nn.Module):

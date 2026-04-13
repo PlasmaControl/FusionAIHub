@@ -105,6 +105,7 @@ class SignalConfig:
     apply_stft: bool
     channels_to_use: Optional[slice] = None
     preprocess: PreprocessConfig | None = None
+    zero_is_missing: bool = False
 
     def __post_init__(self):
         if self.preprocess is None:
@@ -260,7 +261,7 @@ class TokamakH5Dataset(Dataset):
     ``tin``                     8         10 kHz      no     none
     ``mse``                     69        100 Hz      no     standardize
     ``filterscopes``            104       10 kHz      yes    log
-    ``cer_ti``                  48        100 Hz      no     log_standardize
+    ``cer_ti``                  48        100 Hz      no     standardize
     ``cer_rot``                 48        100 Hz      no     standardize
     ``sxr``                     320       10 kHz      no     log
     ``neutron_rate``            4         40 kHz      no     log
@@ -388,7 +389,8 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_normalize"),
+            preprocess=PreprocessConfig(method="log_standardize"),
+            zero_is_missing=True,
         ),
         SignalConfig(
             "filterscopes",
@@ -405,7 +407,7 @@ class TokamakH5Dataset(Dataset):
             48,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "cer_rot",
@@ -413,7 +415,7 @@ class TokamakH5Dataset(Dataset):
             48,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "sxr",
@@ -437,7 +439,8 @@ class TokamakH5Dataset(Dataset):
             10,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_normalize"),
+            preprocess=PreprocessConfig(method="log_standardize"),
+            zero_is_missing=True,
         ),
         SignalConfig(
             "ts_core_temp",
@@ -445,7 +448,8 @@ class TokamakH5Dataset(Dataset):
             44,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_normalize"),
+            preprocess=PreprocessConfig(method="log_standardize"),
+            zero_is_missing=True,
         ),
         SignalConfig(
             "ts_tangential_temp",
@@ -453,7 +457,8 @@ class TokamakH5Dataset(Dataset):
             10,
             1e2,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="log_normalize"),
+            preprocess=PreprocessConfig(method="log_standardize"),
+            zero_is_missing=True,
         ),
         SignalConfig(
             "vib",
@@ -704,13 +709,21 @@ class TokamakH5Dataset(Dataset):
                 stats = entry
 
             if "mean" in stats:
-                config.preprocess.mean = stats["mean"]
+                val = np.array(stats["mean"], dtype=np.float64)
+                val[np.isnan(val)] = 0.0
+                config.preprocess.mean = val
             if "std" in stats:
-                config.preprocess.std = stats["std"]
+                val = np.array(stats["std"], dtype=np.float64)
+                val[np.isnan(val)] = 1.0
+                config.preprocess.std = val
             if "min_val" in stats:
-                config.preprocess.min_val = stats["min_val"]
+                val = np.array(stats["min_val"], dtype=np.float64)
+                val[np.isnan(val)] = 0.0
+                config.preprocess.min_val = val
             if "max_val" in stats:
-                config.preprocess.max_val = stats["max_val"]
+                val = np.array(stats["max_val"], dtype=np.float64)
+                val[np.isnan(val)] = 1.0
+                config.preprocess.max_val = val
 
     def _apply_preprocessing(
             self,
@@ -888,7 +901,7 @@ class TokamakH5Dataset(Dataset):
             config: SignalConfig,
             t_start: float,
             t_end: float
-    ) -> tuple[torch.Tensor, int]:
+    ) -> tuple[torch.Tensor, int, torch.Tensor]:
         """
         Load raw signal at native sampling rate within time window.
 
@@ -906,11 +919,16 @@ class TokamakH5Dataset(Dataset):
         Returns
         -------
         tensor : torch.Tensor
-            Array of shape (channels, time_samples) at target sampling rate.
-            Positions beyond the actual signal end are zero-padded.
+            Array of shape ``(C, T)`` at target sampling rate.
+            Positions beyond the actual signal end are zero-padded;
+            positions that were NaN in the raw data are replaced with 0.
         valid_length : int
             Number of valid (non-padded) samples in the time dimension,
             expressed in terms of ``config.target_fs``.
+        nan_mask : torch.Tensor
+            Float tensor of shape ``(C, T)`` where ``1.0`` marks positions
+            that were NaN in the raw HDF5 data and ``0.0`` marks valid
+            positions.
         """
         duration_s = t_end - t_start
         T_target = round(duration_s * config.target_fs)
@@ -935,7 +953,8 @@ class TokamakH5Dataset(Dataset):
                 )
             else:
                 num_channels = config.num_channels
-            return torch.zeros((num_channels, T_target)), 0
+            nan_mask = torch.ones((num_channels, T_target))
+            return torch.zeros((num_channels, T_target)), 0, nan_mask
 
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
@@ -953,7 +972,8 @@ class TokamakH5Dataset(Dataset):
                 )
             else:
                 num_channels = config.num_channels
-            return torch.zeros((num_channels, T_target)), 0
+            nan_mask = torch.ones((num_channels, T_target))
+            return torch.zeros((num_channels, T_target)), 0, nan_mask
 
         # Compute actual sampling frequency from the data
         actual_fs = (n_samples - 1) / (xdata_end_s - xdata_start_s)
@@ -970,6 +990,7 @@ class TokamakH5Dataset(Dataset):
             (num_channels, round(duration_s * actual_fs)),
             dtype=np.float32
         )
+        self._nan_mask_buf = np.zeros_like(output, dtype=bool)
 
         # Step 2: Calculate which HDF5 indices correspond to [t_start, t_end]
         # xdata[i] = xdata_start_s + i / actual_fs
@@ -1013,7 +1034,11 @@ class TokamakH5Dataset(Dataset):
 
             if src_start < src_end and output_start < output_end:
                 chunk = data[:, src_start:src_end]
-                chunk[np.isnan(chunk)] = 0
+                nan_mask = np.isnan(chunk)
+                chunk[nan_mask] = 0
+                self._nan_mask_buf[:chunk.shape[0],
+                                   output_start:output_end] |= \
+                    nan_mask[:, :output_end - output_start]
 
                 if chunk.shape[0] == config.num_channels:
                     output[:, output_start:output_end] = chunk
@@ -1030,6 +1055,10 @@ class TokamakH5Dataset(Dataset):
         # tensor is already (C, T), so no permute is needed around interpolate.
         tensor = torch.from_numpy(output)
 
+        # Build NaN mask before resampling
+        nan_mask = torch.from_numpy(self._nan_mask_buf.copy()).float()
+        del self._nan_mask_buf
+
         if tensor.shape[1] != T_target:
             tensor = F.interpolate(
                 tensor.unsqueeze(0),
@@ -1037,8 +1066,15 @@ class TokamakH5Dataset(Dataset):
                 mode="linear",
                 align_corners=False,
             ).squeeze(0)
+            if nan_mask is not None:
+                # Resample mask: nearest-neighbor to avoid blurring
+                nan_mask = F.interpolate(
+                    nan_mask.unsqueeze(0),
+                    size=T_target,
+                    mode="nearest",
+                ).squeeze(0)
 
-        return tensor, valid_length
+        return tensor, valid_length, nan_mask
 
     def _compute_stft(self, signal: torch.Tensor) -> torch.Tensor:
         """
@@ -1129,7 +1165,7 @@ class TokamakH5Dataset(Dataset):
             data: torch.Tensor,
             config: SignalConfig,
             valid_length: int,
-    ) -> tuple[torch.Tensor, int]:
+    ) -> tuple[torch.Tensor, int, Optional[torch.Tensor]]:
         """
         Transpose, optionally compute STFT, and preprocess a raw signal.
 
@@ -1157,7 +1193,17 @@ class TokamakH5Dataset(Dataset):
             Number of valid entries in the time (last) dimension of the
             processed tensor.  For STFT signals this is expressed in frames;
             for raw signals it equals ``valid_length``.
+        element_mask : torch.Tensor or None
+            Boolean mask of shape matching *processed* where ``True``
+            indicates a valid (non-missing) element.  Only returned when
+            ``config.zero_is_missing`` is ``True``; otherwise ``None``.
         """
+        # Build per-element mask before any transformation
+        if config.zero_is_missing:
+            element_mask = data != 0.0
+        else:
+            element_mask = None
+
         if config.apply_stft:
             processed = self._compute_stft(data)
             # With torch.stft default center=True: n_frames = T // hop_length + 1
@@ -1170,7 +1216,13 @@ class TokamakH5Dataset(Dataset):
             valid_length_out = valid_length
 
         processed = self._apply_preprocessing(processed, config)
-        return processed, valid_length_out
+
+        if element_mask is not None:
+            # Fill missing positions with 0 after preprocessing so they
+            # don't pollute neighbours but remain numerically benign.
+            processed[~element_mask] = 0.0
+
+        return processed, valid_length_out, element_mask
 
     def _load_movie_raw(
             self,
@@ -1374,23 +1426,37 @@ class TokamakH5Dataset(Dataset):
             is in ``self.input_signals``).  Tensor shapes follow the rules
             in :meth:`_process_signal` and :meth:`_load_movie_raw`.
         """
-        t_start = idx * self.chunk_duration_s
+        step = getattr(self, "step_size_s", self.chunk_duration_s)
+        t_start = idx * step
         t_end = t_start + self.chunk_duration_s
 
         # Load and process all signals
         all_signals = {}
         for config in self.signal_configs:
             if config.name in self.input_signals:
-                raw_data, valid_length = self._load_signal_raw(
+                raw_data, valid_length, nan_mask = self._load_signal_raw(
                     self.h5_file,
                     config, t_start,
                     t_end
                 )
-                tensor, valid_length_out = self._process_signal(
+                tensor, valid_length_out, element_mask = self._process_signal(
                     raw_data, config, valid_length
                 )
+                # Combine zero_is_missing and NaN masks
+                valid_mask = nan_mask < 0.5  # True = valid (not NaN)
+                if element_mask is not None:
+                    element_mask = element_mask & valid_mask
+                else:
+                    element_mask = valid_mask
+
+                # Zero out masked positions so the model never sees
+                # bogus values (e.g. standardized NaN-replaced zeros).
+                tensor[~element_mask] = 0.0
+
                 all_signals[config.name] = tensor
                 all_signals[f"{config.name}_valid"] = valid_length_out
+                if element_mask is not None:
+                    all_signals[f"{config.name}_mask"] = element_mask
 
         # Load and process movies
         all_movies = {}
@@ -1434,7 +1500,8 @@ class TokamakH5Dataset(Dataset):
             the processed tensor.
         """
         # Extended window: from t to t + chunk_duration + prediction_horizon
-        t_start = idx * self.chunk_duration_s
+        step = getattr(self, "step_size_s", self.chunk_duration_s)
+        t_start = idx * step
         t_end = t_start + self.chunk_duration_s + self.prediction_horizon_s
 
         signals_to_load = set(self.input_signals) | set(self.target_signals)
@@ -1444,14 +1511,28 @@ class TokamakH5Dataset(Dataset):
         for config in self.signal_configs:
             if config.name not in signals_to_load:
                 continue
-            raw_data, valid_length = self._load_signal_raw(
+            raw_data, valid_length, nan_mask = self._load_signal_raw(
                 self.h5_file, config, t_start, t_end
             )
-            tensor, valid_length_out = self._process_signal(
+            tensor, valid_length_out, element_mask = self._process_signal(
                 raw_data, config, valid_length
             )
+            if nan_mask is not None:
+                valid_mask = nan_mask < 0.5
+                if element_mask is not None:
+                    element_mask = element_mask & valid_mask
+                else:
+                    element_mask = valid_mask
+
+            # Zero out masked positions so the model never sees
+            # bogus values (e.g. standardized NaN-replaced zeros).
+            if element_mask is not None:
+                tensor[~element_mask] = 0.0
+
             all_signals[config.name] = tensor
             all_signals[f"{config.name}_valid"] = valid_length_out
+            if element_mask is not None:
+                all_signals[f"{config.name}_mask"] = element_mask
 
         # Load and process movies
         all_movies = {}

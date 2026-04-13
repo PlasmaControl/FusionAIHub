@@ -1,6 +1,11 @@
-from .modality_tokenizer import ModalityTokenizer, sinusoidal_time_encoding
+from .modality_tokenizer import (
+    ActuatorTokenizer,
+    ModalityTokenizer,
+    sinusoidal_time_encoding,
+)
 from .foundation_model import PerceiverFoundationModel
 from .perceiver_components import (
+    CrossAttentionDynamics,
     PerceiverEncoder,
     LatentProcessor,
     DynamicsModelWithFuture,
@@ -9,9 +14,11 @@ from .perceiver_components import (
 )
 
 __all__ = [
+    "ActuatorTokenizer",
     "ModalityTokenizer",
     "sinusoidal_time_encoding",
     "PerceiverFoundationModel",
+    "CrossAttentionDynamics",
     "PerceiverEncoder",
     "LatentProcessor",
     "DynamicsModelWithFuture",
