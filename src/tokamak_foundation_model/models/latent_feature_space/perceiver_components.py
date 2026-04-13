@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
@@ -46,7 +48,7 @@ class PerceiverCrossAttentionBlock(nn.Module):
         attn_out, _ = self.cross_attn(
             query=queries,
             key=context,
-            value=context
+            value=context,
         )
         queries = self.norm1(queries + attn_out)
 
@@ -409,23 +411,198 @@ class DynamicsModelWithFuture(nn.Module):
         return latent_future
 
 
-class PerceiverDecoder(nn.Module):
+class _DeltaCrossAttentionBlock(nn.Module):
+    """Cross-attention block **without** internal residual connections.
+
+    Used in the dynamics delta network so that the output is computed
+    entirely from the cross-attention to the context (actuators + state).
+    There is no skip connection that would let the input pass through
+    unchanged, forcing the block to use the context.
     """
-    Decodes latent array to output tokens via cross-attention.
+
+    def __init__(self, d_model: int, n_heads: int = 8, dropout: float = 0.1):
+        super().__init__()
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=d_model, num_heads=n_heads,
+            dropout=dropout, batch_first=True,
+        )
+        self.norm1 = nn.LayerNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_model * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model * 4, d_model),
+            nn.Dropout(dropout),
+        )
+        self.norm2 = nn.LayerNorm(d_model)
+
+    def forward(self, queries: torch.Tensor, context: torch.Tensor):
+        x, _ = self.cross_attn(query=queries, key=context, value=context)
+        x = self.norm1(x)
+        x = self.norm2(self.ffn(x))
+        return x
+
+
+class CrossAttentionDynamics(nn.Module):
+    """
+    Predicts future latent state as ``latent_current + delta``.
+
+    The delta is computed by cross-attending to both the current latent
+    and the actuator tokens.  The delta network uses blocks **without**
+    internal residual connections, so there is no free identity path —
+    the model must actively use the actuator context to produce each
+    output element.
 
     Parameters
     ----------
     d_model : int
-        Model dimension
-    output_queries_config : dict
-        Dictionary mapping modality names to number of output tokens
-        e.g., {'ts': 50, 'prof': 10, 'vid': 30, 'spec': 30}
-    n_layers : int
-        Number of cross-attention layers
+        Model dimension.
+    actuator_configs : dict
+        ``{name: {"n_channels": int, "patch_len": int, "target_fs": float}}``.
+        Passed to :class:`ActuatorTokenizer`.
+    n_cross_layers : int
+        Number of cross-attention layers in the delta network.
+    n_self_layers : int
+        Number of self-attention layers after cross-attention.
     n_heads : int
-        Number of attention heads
+        Number of attention heads.
     dropout : float
-        Dropout rate
+        Dropout rate.
+    mode : str
+        Kept for checkpoint compatibility; ignored.
+    """
+
+    def __init__(
+        self,
+        d_model: int = 512,
+        actuator_configs: Optional[dict] = None,
+        n_cross_layers: int = 2,
+        n_self_layers: int = 1,
+        n_heads: int = 8,
+        n_latent: int = 128,
+        dropout: float = 0.1,
+        mode: str = "residual",
+    ):
+        super().__init__()
+        from .modality_tokenizer import ActuatorTokenizer
+
+        if actuator_configs is None:
+            actuator_configs = {}
+
+        self.actuator_tokenizer = ActuatorTokenizer(
+            actuator_configs, d_model,
+        )
+
+        # Delta network: no internal residuals → no free copy path.
+        # Queries cross-attend to (latent_current ⊕ actuator_tokens)
+        # so the delta is informed by both state and control.
+        self.delta_cross_blocks = nn.ModuleList([
+            _DeltaCrossAttentionBlock(d_model, n_heads, dropout)
+            for _ in range(n_cross_layers)
+        ])
+
+        self.delta_self_blocks = nn.ModuleList([
+            PerceiverSelfAttentionBlock(d_model, n_heads, dropout)
+            for _ in range(n_self_layers)
+        ])
+
+        # Learned delta queries — NOT initialized from latent_current,
+        # so the delta network starts from a neutral state and must
+        # extract everything from the context.
+        self.delta_queries = nn.Parameter(
+            torch.randn(1, n_latent, d_model) * 0.02
+        )
+
+        self.output_norm = nn.LayerNorm(d_model)
+
+    def forward(
+        self,
+        latent_current: torch.Tensor,
+        act_curr_signals: dict,
+        act_fut_signals: dict,
+        offset_ms: float = 0.0,
+        dt_ms: float = 50.0,
+    ) -> torch.Tensor:
+        """
+        Predict future latent state via ``latent_current + delta``.
+
+        The delta is computed by learned queries that cross-attend to
+        the concatenation of ``latent_current`` and actuator tokens.
+
+        Parameters
+        ----------
+        latent_current : torch.Tensor
+            Current latent state ``[B, N_L, D]``.
+        act_curr_signals : dict
+            ``{name: [B, C, T_step]}`` — raw actuator signals for the
+            current ``DT_S`` window.
+        act_fut_signals : dict
+            ``{name: [B, C, T_step]}`` — raw actuator signals for the
+            next ``DT_S`` window.
+        offset_ms : float
+            Absolute time offset (for sinusoidal time PE).
+        dt_ms : float
+            Duration of one dynamics step in milliseconds.
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted future latent ``[B, N_L, D]``.
+        """
+        B = latent_current.shape[0]
+
+        # Tokenize current and future actuator windows
+        act_curr_tokens = self.actuator_tokenizer(
+            act_curr_signals, offset_ms=offset_ms,
+        )
+        act_fut_tokens = self.actuator_tokenizer(
+            act_fut_signals, offset_ms=offset_ms + dt_ms,
+        )
+
+        # Context = current latent ⊕ current actuators ⊕ future actuators
+        context = torch.cat(
+            [latent_current, act_curr_tokens, act_fut_tokens], dim=1,
+        )
+
+        # Delta queries cross-attend to context (no residual → must
+        # use context to produce every output element)
+        delta = self.delta_queries.expand(B, -1, -1)
+        for block in self.delta_cross_blocks:
+            delta = block(queries=delta, context=context)
+
+        # Self-attention for inter-query communication
+        for block in self.delta_self_blocks:
+            delta = block(delta)
+
+        return self.output_norm(latent_current + delta)
+
+
+class PerceiverDecoder(nn.Module):
+    """
+    Decodes latent array to output tokens via interleaved cross- and
+    self-attention (Perceiver IO style).
+
+    Each decoder layer consists of a cross-attention block (output queries
+    attend to the latent) followed by a self-attention block (output tokens
+    exchange information).  Interleaving allows iterative refinement: later
+    layers can query the latent with refined, context-aware queries rather
+    than only seeing it once.
+
+    Parameters
+    ----------
+    d_model : int
+        Model dimension.
+    output_queries_config : dict
+        ``{modality_name: n_tokens}`` — learned output queries per modality.
+    n_layers : int
+        Number of interleaved (cross-attn + self-attn) blocks per modality.
+    n_heads : int
+        Number of attention heads.
+    dropout : float
+        Dropout rate.
+    n_self_attn_layers : int
+        Ignored (kept for backward compat).  Each layer always includes
+        one self-attention block after the cross-attention.
     """
 
     def __init__(
@@ -434,7 +611,8 @@ class PerceiverDecoder(nn.Module):
             output_queries_config=None,
             n_layers=2,
             n_heads=8,
-            dropout=0.1
+            dropout=0.1,
+            n_self_attn_layers=0,
     ):
         super().__init__()
 
@@ -447,6 +625,7 @@ class PerceiverDecoder(nn.Module):
             }
 
         self.d_model = d_model
+        self.n_layers = n_layers
 
         # Learned output queries per modality
         self.output_queries = nn.ParameterDict({
@@ -454,7 +633,7 @@ class PerceiverDecoder(nn.Module):
             for modality, n_tokens in output_queries_config.items()
         })
 
-        # Cross-attention blocks per modality
+        # Interleaved (cross-attn, self-attn) blocks per modality
         self.cross_attn_blocks = nn.ModuleDict({
             modality: nn.ModuleList([
                 PerceiverCrossAttentionBlock(d_model, n_heads, dropout)
@@ -462,6 +641,26 @@ class PerceiverDecoder(nn.Module):
             ])
             for modality in output_queries_config.keys()
         })
+        self.self_attn_blocks = nn.ModuleDict({
+            modality: nn.ModuleList([
+                PerceiverSelfAttentionBlock(d_model, n_heads, dropout)
+                for _ in range(n_layers)
+            ])
+            for modality in output_queries_config.keys()
+        })
+
+    def _decode_modality(self, mod: str, latent: torch.Tensor) -> torch.Tensor:
+        batch_size = latent.shape[0]
+        tokens = self.output_queries[mod].unsqueeze(0).expand(
+            batch_size, -1, -1
+        )
+        for cross_blk, self_blk in zip(
+            self.cross_attn_blocks[mod],
+            self.self_attn_blocks[mod],
+        ):
+            tokens = cross_blk(queries=tokens, context=latent)
+            tokens = self_blk(tokens)
+        return tokens
 
     def forward(self, latent, modality=None):
         """
@@ -470,49 +669,25 @@ class PerceiverDecoder(nn.Module):
         Parameters
         ----------
         latent : torch.Tensor
-            Latent array, shape [batch, n_latent, d_model]
+            Latent array, shape ``[batch, n_latent, d_model]``.
         modality : str or None
-            If specified, only decode this modality
-            If None, decode all modalities
+            If specified, only decode this modality.
+            If ``None``, decode all modalities.
 
         Returns
         -------
         dict or torch.Tensor
-            If modality is None: dict mapping modality names to output tokens
-            If modality is specified: output tokens for that modality
-            Each output has shape [batch, n_output_tokens, d_model]
+            If *modality* is ``None``: dict mapping modality names to output
+            tokens.  Otherwise: output tokens for that modality.
+            Each output has shape ``[batch, n_output_tokens, d_model]``.
         """
-        batch_size = latent.shape[0]
-
         if modality is not None:
-            # Decode single modality
-            queries = self.output_queries[modality].unsqueeze(0).expand(
-                batch_size, -1, -1
-            )
+            return self._decode_modality(modality, latent)
 
-            output_tokens = queries
-            for block in self.cross_attn_blocks[modality]:
-                output_tokens = block(queries=output_tokens, context=latent)
-
-            return output_tokens
-
-        else:
-            # Decode all modalities
-            outputs = {}
-            for mod in self.output_queries.keys():
-                queries = self.output_queries[mod].unsqueeze(0).expand(
-                    batch_size, -1, -1
-                )
-
-                output_tokens = queries
-                for block in self.cross_attn_blocks[mod]:
-                    output_tokens = block(
-                        queries=output_tokens, context=latent
-                    )
-
-                outputs[mod] = output_tokens
-
-            return outputs
+        return {
+            mod: self._decode_modality(mod, latent)
+            for mod in self.output_queries.keys()
+        }
 
 
 class PerceiverComponents(nn.Module):

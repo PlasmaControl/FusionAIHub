@@ -37,8 +37,8 @@ def main():
         "--hop_length", type=int, default=256, help="Hop length for STFT.",
     )
     parser.add_argument(
-        "--model", choices=list(MODEL_REGISTRY.keys()), default="profile",
-        help="Model type"
+        "--model", choices=list(MODEL_REGISTRY.keys()), default=None,
+        help="Model type (default: use SIGNAL_MODEL_DEFAULTS for the signal)"
     )
     parser.add_argument(
         "--data_dir", type=str,
@@ -47,14 +47,14 @@ def main():
     )
     parser.add_argument(
         "--stats_path", type=str,
-        default="/scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt",
+        default="/projects/EKOLEMEN/foundation_model/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
     )
     parser.add_argument(
         "--d_model", type=int, default=512, help="Model dimension"
     )
     parser.add_argument(
-        "--n_tokens", type=int, default=20,
+        "--n_tokens", type=int, default=4,
         help="Number of latent tokens"
     )
     parser.add_argument(
@@ -128,6 +128,7 @@ def main():
         n_fft=args.n_fft,
         hop_length=args.hop_length,
         prediction_mode=False,
+        max_open_files=10_000,
     )
 
     train_dataset = TokamakMultiFileDataset(
@@ -146,7 +147,7 @@ def main():
         **shared_kwargs
     )
 
-    # Infer spatial and temporal dimensions from first sample
+    # Infer dimensions from first sample
     sample_data = next(iter(train_dataset))[signal_name]
     n_spatial_points = sample_data.shape[0]
     n_time_points = sample_data.shape[1]
@@ -160,7 +161,7 @@ def main():
         model_name,
         d_model=args.d_model,
         n_tokens=args.n_tokens,
-        n_channels=1,
+        n_channels=n_spatial_points,
         n_spatial_points=n_spatial_points,
         n_time_points=n_time_points,
         kernel_size=3,

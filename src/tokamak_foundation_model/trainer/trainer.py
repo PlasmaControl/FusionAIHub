@@ -164,11 +164,17 @@ class UnimodalTrainer:
         valid_lengths = batch.get(f"{self.modality_key}_valid")
         if valid_lengths is not None:
             valid_lengths = valid_lengths.to(self.dm.device)
+        element_mask = batch.get(f"{self.modality_key}_mask")
+        if element_mask is not None:
+            element_mask = element_mask.to(self.dm.device)
         self.optimizer.zero_grad()
         output = self.model(data)
         if isinstance(output, tuple):
             output = output[0]
-        loss = self.loss_fn(output, data, valid_lengths)
+        loss = self.loss_fn(output, data, valid_lengths, element_mask)
+        if not torch.isfinite(loss):
+            logger.warning("Non-finite loss detected, skipping backward pass")
+            return {"loss": loss}
         loss.backward()
         if self.grad_clip > 0:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
@@ -181,10 +187,13 @@ class UnimodalTrainer:
         valid_lengths = batch.get(f"{self.modality_key}_valid")
         if valid_lengths is not None:
             valid_lengths = valid_lengths.to(self.dm.device)
+        element_mask = batch.get(f"{self.modality_key}_mask")
+        if element_mask is not None:
+            element_mask = element_mask.to(self.dm.device)
         output = self.model(data)
         if isinstance(output, tuple):
             output = output[0]
-        loss = self.loss_fn(output, data, valid_lengths)
+        loss = self.loss_fn(output, data, valid_lengths, element_mask)
         for metric in self.metrics:
             metric.update(output, data)
         return {"loss": loss}

@@ -2,7 +2,7 @@
 #SBATCH --job-name=ts_tangential_temp_reconstruction
 #SBATCH --output=logs/%j_ts_tangential_temp_reconstruction.out
 #SBATCH --error=logs/%j_ts_tangential_temp_reconstruction.err
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
@@ -14,8 +14,8 @@ export PYTHONUNBUFFERED=1
 
 srun pixi run python ../training/ts_core_temp_profile_reconstruction.py \
     --signal "ts_tangential_temp" \
-    --d_model 512 \
-    --n_tokens 4 \
+    --d_model 32 \
+    --n_tokens 16 \
     --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \

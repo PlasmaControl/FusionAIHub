@@ -30,6 +30,8 @@ SIGNAL_MODEL_DEFAULTS = {
     "ts_tangential_density": "slow_time_series",
     "ts_core_temp": "slow_time_series",
     "ts_tangential_temp": "slow_time_series",
+    "cer_ti": "profile",
+    "cer_rot": "profile",
     "mhr": "spectrogram",
     "ece": "spectrogram",
     "co2": "spectrogram",

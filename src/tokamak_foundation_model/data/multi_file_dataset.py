@@ -123,7 +123,8 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             input_signals: Optional[list[str]] = None,
             target_signals: Optional[list[str]] = None,
             lengths_cache_path: Optional[str | Path] = None,
-            max_open_files: int = 10_000,
+            max_open_files: int = 512,
+            step_size_s: Optional[float] = None,
     ):
         # Set up all instance attributes that parent methods rely on.
         # We deliberately skip super().__init__() because it expects a single
@@ -132,6 +133,7 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self.movie_configs = copy.deepcopy(self.MOVIE_CONFIGS)
 
         self.chunk_duration_s = chunk_duration_s
+        self.step_size_s = step_size_s if step_size_s is not None else chunk_duration_s
         self.n_fft = n_fft
         self.hop_length = hop_length
         self.preprocessing_stats = preprocessing_stats or {}
@@ -228,10 +230,15 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
                             self.chunk_duration_s + self.prediction_horizon_s
                     )
                     length = max(0, int(np.floor(
-                        (duration - total_window) / self.chunk_duration_s
-                    )))
+                        (duration - total_window) / self.step_size_s
+                    )) + 1)
                 else:
-                    length = int(np.floor(duration / self.chunk_duration_s))
+                    if duration < self.chunk_duration_s:
+                        length = 0
+                    else:
+                        length = int(np.floor(
+                            (duration - self.chunk_duration_s) / self.step_size_s
+                        )) + 1
             except OSError as e:
                 print(f"Warning: could not open {path}: {e}")
                 length = 0
@@ -425,6 +432,6 @@ def make_dataloader(
         num_workers=num_workers,
         collate_fn=fn,
         pin_memory=pin_memory,
-        persistent_workers=num_workers > 0,
+        persistent_workers=False,  # TODO: validate if this affects the performance.
         prefetch_factor=prefetch_factor if num_workers > 0 else None,
     )

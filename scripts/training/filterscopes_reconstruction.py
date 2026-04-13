@@ -52,7 +52,7 @@ def main():
     parser.add_argument(
         "--stats_path",
         type=str,
-        default="/scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt",
+        default="/projects/EKOLEMEN/foundation_model/preprocessing_stats.pt",
         help="Path to preprocessing stats file"
     )
     parser.add_argument(
@@ -146,6 +146,7 @@ def main():
         n_fft=args.n_fft,
         hop_length=args.hop_length,
         prediction_mode=False,
+        max_open_files=10_000,
     )
 
     train_dataset = TokamakMultiFileDataset(

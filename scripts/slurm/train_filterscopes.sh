@@ -2,7 +2,7 @@
 #SBATCH --job-name=filterscopes_reconstruction
 #SBATCH --output=logs/%j_filterscopes_reconstruction.out
 #SBATCH --error=logs/%j_filterscopes_reconstruction.err
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
@@ -14,7 +14,8 @@ export PYTHONUNBUFFERED=1
 
 srun pixi run python ../training/filterscopes_reconstruction.py \
     --signal "filterscopes" \
-    --d_model 512 \
+    --d_model 256 \
+    --n_tokens 20 \
     --batch_size 512 \
     --num_workers 8 \
     --epochs 200 \
