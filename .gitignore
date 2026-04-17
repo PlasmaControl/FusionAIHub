@@ -151,6 +151,7 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv-rocm
 env/
 venv/
 ENV/
@@ -207,6 +208,9 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Claude
+CLAUDE.md
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
@@ -219,3 +223,7 @@ __marimo__/
 
 # Wandb
 wandb/
+
+# FusionAIHub
+data/
+runs/
