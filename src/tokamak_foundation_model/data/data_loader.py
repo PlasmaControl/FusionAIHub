@@ -543,8 +543,8 @@ class TokamakH5Dataset(Dataset):
     ]
 
     MOVIE_CONFIGS = [
-        MovieConfig("irtv", ["irtv"], 7, 50, 513, 640),
-        MovieConfig("tangtv", ["tangtv"], 7, 50, 240, 720),
+        MovieConfig("irtv", ["irtv"], 7, 100, 513, 640),
+        MovieConfig("tangtv", ["tangtv"], 7, 100, 240, 720),
     ]
 
     def __init__(
