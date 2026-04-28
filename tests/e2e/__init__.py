@@ -1,0 +1,1 @@
+"""End-to-end foundation model tests (ResearchPlan.MD §5)."""

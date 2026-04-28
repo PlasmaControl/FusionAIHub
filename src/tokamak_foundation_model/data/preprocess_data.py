@@ -4,6 +4,26 @@ from pathlib import Path
 from typing import Optional
 
 
+def _safe_sum_f64(x: torch.Tensor) -> torch.Tensor:
+    """Per-channel sum along the last dim, accumulated in float64."""
+    return x.sum(dim=1).to(torch.float64)
+
+
+def _safe_sum_sq_f64(x: torch.Tensor) -> torch.Tensor:
+    """Per-channel sum-of-squares along the last dim, guaranteed finite.
+
+    Tries the cheap float32 path first; if any per-channel result is
+    non-finite (possible when raw values have magnitudes ~1e19, e.g.
+    ts_core_density, whose squares overflow float32), recomputes by
+    upcasting the whole row to float64 before squaring.
+    """
+    out = (x * x).sum(dim=1, dtype=torch.float64)
+    if torch.isfinite(out).all():
+        return out
+    xf = x.to(torch.float64)
+    return (xf * xf).sum(dim=1)
+
+
 class WelfordTensor:
     """
     Online Welford algorithm for per-channel statistics on batched tensors.
@@ -155,80 +175,94 @@ class WelfordTensor:
         -------
         None
         """
-        # Skip if contains NaN
-        if torch.isnan(value).any():
-            return
-
         # Initialize on first call
         if not self.initialized:
             self._initialize(value)
 
-        # Convert to float64 for numerical stability
-        value = value.to(dtype=torch.float64)
-
         # Compute per-channel statistics by flattening batch
-        # and all non-channel dims
+        # and all non-channel dims, ignoring NaNs
         if value.ndim == 4 and value.shape[1] == self.mean.shape[0]:
-            # (batch, channels, freq_bins, time) → flatten batch, freq, time
             # (B, C, F, T) → (C, B*F*T)
             n_channels = value.shape[1]
             value_flat = value.permute(1, 0, 2, 3).reshape(n_channels, -1)
 
-            # Per-channel mean, min, max
-            batch_mean = value_flat.mean(dim=1)
-            batch_min = value_flat.min(dim=1).values
-            batch_max = value_flat.max(dim=1).values
-            n_samples = value_flat.shape[1]
-
-            # For variance, we need sum of squared deviations
-            batch_var = value_flat.var(dim=1, unbiased=False)
-            batch_M2 = batch_var * n_samples
-
         elif value.ndim == 3:
-            # (batch, spatial_points, time) → flatten batch, time
             # (B, S, T) → (S, B*T)
             n_channels = value.shape[1]
             value_flat = value.permute(1, 0, 2).reshape(n_channels, -1)
 
-            batch_mean = value_flat.mean(dim=1)
-            batch_min = value_flat.min(dim=1).values
-            batch_max = value_flat.max(dim=1).values
-            n_samples = value_flat.shape[1]
-
-            batch_var = value_flat.var(dim=1, unbiased=False)
-            batch_M2 = batch_var * n_samples
-
         else:
             # Video (batch, time, height, width) → global statistics
-            value_flat = value.flatten()
+            value_flat = value.flatten().unsqueeze(0)  # (1, N)
 
-            batch_mean = torch.tensor([value_flat.mean()], dtype=torch.float64)
-            batch_min = torch.tensor([value_flat.min()], dtype=torch.float64)
-            batch_max = torch.tensor([value_flat.max()], dtype=torch.float64)
-            n_samples = value_flat.shape[0]
+        # NaN-aware reductions.  The previous implementation made three
+        # full-tensor `.clone()` calls plus a squared temporary, i.e.
+        # ~4× the input size in transient allocations per update() —
+        # dominated by memcpy cost for the GB-scale STFT magnitudes
+        # (e.g. langmuir: 72 × ~3M = 0.87 GB).  We sniff once whether
+        # the batch actually contains any NaN; for the STFT signals
+        # (which never do) this lets us skip the clones, the bool mask,
+        # and the bool `.sum()` entirely.
+        C, N = value_flat.shape
 
-            batch_var = value_flat.var(unbiased=False)
-            batch_M2 = batch_var * n_samples
+        if torch.isnan(value_flat).any().item():
+            # Slow path: some NaNs present.  Use ONE clone and rewrite
+            # it in place for each of the three reductions (sum, min,
+            # max) instead of re-cloning, saving two full-tensor copies.
+            nan_mask = torch.isnan(value_flat)
+            n_valid = (~nan_mask).sum(dim=1)
+
+            if (n_valid == 0).all():
+                return
+
+            safe = value_flat.clone()
+            safe[nan_mask] = 0.0
+            batch_sum = _safe_sum_f64(safe)
+            batch_sum_sq = _safe_sum_sq_f64(safe)
+            # reuse safe buffer for min/max sentinels instead of
+            # re-cloning value_flat twice
+            safe.copy_(value_flat)
+            safe[nan_mask] = float('inf')
+            batch_min = safe.amin(dim=1)
+            safe[nan_mask] = float('-inf')  # +inf positions → -inf
+            batch_max = safe.amax(dim=1)
+        else:
+            # Fast path: no NaNs — work directly on value_flat.
+            n_valid = torch.full((C,), N, dtype=torch.int64)
+            batch_sum = _safe_sum_f64(value_flat)
+            batch_sum_sq = _safe_sum_sq_f64(value_flat)
+            batch_min = value_flat.amin(dim=1)
+            batch_max = value_flat.amax(dim=1)
+
+        safe_n = n_valid.clamp(min=1).to(torch.float64)
+        batch_mean = batch_sum / safe_n
+        batch_mean_sq = batch_sum_sq / safe_n
+        batch_var = (batch_mean_sq - batch_mean * batch_mean).clamp(min=0)
 
         # Parallel Welford's algorithm for combining batches
         # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
-        n_old = self.n
-        n_new = n_samples
+        # Use per-channel valid counts instead of a single n_samples
+        n_old = self.n if isinstance(self.n, torch.Tensor) else torch.full_like(n_valid, self.n)
+        n_new = n_valid
         n_total = n_old + n_new
+        batch_M2 = batch_var * n_new
 
-        # Update mean
+        # Update mean (per-channel, guarded against zero counts)
+        safe_total = n_total.clamp(min=1)
         delta = batch_mean - self.mean
-        self.mean = (n_old * self.mean + n_new * batch_mean) / n_total
+        self.mean = (n_old * self.mean + n_new * batch_mean) / safe_total
 
-        # Update M2 (sum of squared deviations)
-        # M2_total = M2_old + M2_new + delta^2 * n_old * n_new / n_total
-        self.M2 = self.M2 + batch_M2 + delta * delta * n_old * n_new / n_total
+        # Update M2
+        self.M2 = self.M2 + batch_M2 + delta * delta * n_old * n_new / safe_total
 
         self.n = n_total
 
-        # Update min/max
-        self.min_val = torch.minimum(self.min_val, batch_min)
-        self.max_val = torch.maximum(self.max_val, batch_max)
+        # Update min/max (only where we had valid data)
+        has_data = n_valid > 0
+        self.min_val[has_data] = torch.minimum(
+            self.min_val[has_data], batch_min[has_data])
+        self.max_val[has_data] = torch.maximum(
+            self.max_val[has_data], batch_max[has_data])
 
     def _compute_std(self):
         """
@@ -242,7 +276,10 @@ class WelfordTensor:
         -------
         None
         """
-        if self.n > 1:
+        if isinstance(self.n, torch.Tensor):
+            denom = (self.n - 1).clamp(min=1)
+            self.std = torch.sqrt(self.M2 / denom)
+        elif self.n > 1:
             self.std = torch.sqrt(self.M2 / (self.n - 1))
         else:
             self.std = torch.zeros_like(self.mean)
@@ -272,8 +309,12 @@ class WelfordTensor:
         n_total = n_a + n_b
         delta = other.mean - self.mean
 
-        self.mean = (n_a * self.mean + n_b * other.mean) / n_total
-        self.M2 = self.M2 + other.M2 + delta * delta * n_a * n_b / n_total
+        if isinstance(n_total, torch.Tensor):
+            safe_total = n_total.clamp(min=1)
+        else:
+            safe_total = max(n_total, 1)
+        self.mean = (n_a * self.mean + n_b * other.mean) / safe_total
+        self.M2 = self.M2 + other.M2 + delta * delta * n_a * n_b / safe_total
         self.n = n_total
         self.min_val = torch.minimum(self.min_val, other.min_val)
         self.max_val = torch.maximum(self.max_val, other.max_val)
@@ -335,10 +376,17 @@ def _process_file_chunk(
         stft_signals: set[str],
         n_fft: int,
         hop_length: int,
+        hdf5_key_map: Optional[dict[str, str]] = None,
+        zero_is_missing_signals: Optional[set[str]] = None,
         counter=None,
 ) -> dict[str, tuple[WelfordTensor, WelfordTensor]]:
     """Process a chunk of HDF5 files, returning per-signal Welford trackers."""
     import h5py
+
+    if hdf5_key_map is None:
+        hdf5_key_map = {}
+    if zero_is_missing_signals is None:
+        zero_is_missing_signals = set()
 
     stft_window = torch.hann_window(n_fft)
     raw_trackers = {name: WelfordTensor() for name in signal_names}
@@ -352,26 +400,35 @@ def _process_file_chunk(
 
         with f:
             for name in signal_names:
-                if name not in f:
+                hdf5_key = hdf5_key_map.get(name, name)
+                if hdf5_key not in f:
                     continue
-                group = f[name]
+                group = f[hdf5_key]
                 if "ydata" not in group:
                     continue
 
                 ydata = group["ydata"]
-                if ydata.size == 0:
+                if ydata.size == 0 or ydata.shape[-1] <= 1:
                     continue
 
                 # For large arrays (videos), subsample via HDF5 slicing
                 if ydata.ndim >= 3:
                     data = torch.from_numpy(
-                        ydata[::1, ::2, ::2, ::5]).float()
+                        ydata[::1, ::4, ::4, ::10]).float()
                     data = data.reshape(1, 1, -1)     # (1, 1, N)
                 else:
-                    data = torch.from_numpy(ydata[:]).float()
+                    # For STFT signals, read only a 1s window to avoid
+                    # loading hundreds of MB per file.
+                    max_stft_samples = 1_500_000  # ~3s at 500kHz
+                    if name in stft_signals and ydata.shape[-1] > max_stft_samples:
+                        data = torch.from_numpy(
+                            ydata[:, :max_stft_samples]).float()
+                    else:
+                        data = torch.from_numpy(ydata[:]).float()
+                    # HDF5 stores time-series as (C, T) or (T,)
                     if data.ndim == 1:
-                        data = data.unsqueeze(1)      # (T, 1)
-                    data = data.T.unsqueeze(0)        # (1, C, T)
+                        data = data.unsqueeze(0)      # (1, T)
+                    data = data.unsqueeze(0)           # (1, C, T)
 
                     # Compute STFT for spectrogram signals
                     if name in stft_signals:
@@ -389,8 +446,13 @@ def _process_file_chunk(
                         else:
                             continue
 
-                if torch.isnan(data).any():
-                    continue
+                if name in zero_is_missing_signals:
+                    # Mask positions where the raw value is exactly 0 — these
+                    # are "missing data" markers at training time and must
+                    # not contribute to mean/std (otherwise they drag the
+                    # log-mean down and inflate the log-std dramatically).
+                    data = data.clone()
+                    data[data == 0] = float('nan')
 
                 raw_trackers[name].update(data)
                 log_data = torch.log10(data.clamp(min=-0.99) + 1)
@@ -410,6 +472,8 @@ def compute_preprocessing_stats(
         output_path: str | Path = "preprocessing_stats.pt",
         max_files: Optional[int] = None,
         stft_signals: Optional[set[str]] = None,
+        hdf5_key_map: Optional[dict[str, str]] = None,
+        zero_is_missing_signals: Optional[set[str]] = None,
         n_fft: int = 1024,
         hop_length: int = 256,
         num_workers: int = 1,
@@ -458,6 +522,8 @@ def compute_preprocessing_stats(
 
     if stft_signals is None:
         stft_signals = set()
+    if zero_is_missing_signals is None:
+        zero_is_missing_signals = set()
 
     paths = list(hdf5_paths)
     if max_files is not None and max_files < len(paths):
@@ -478,7 +544,9 @@ def compute_preprocessing_stats(
         results = []
         for path in tqdm(paths, desc="Files"):
             r = _process_file_chunk(
-                [path], signal_names, stft_signals, n_fft, hop_length)
+                [path], signal_names, stft_signals, n_fft, hop_length,
+                hdf5_key_map,
+                zero_is_missing_signals=zero_is_missing_signals)
             results.append(r)
     else:
         import multiprocessing as mp
@@ -490,6 +558,8 @@ def compute_preprocessing_stats(
             stft_signals=stft_signals,
             n_fft=n_fft,
             hop_length=hop_length,
+            hdf5_key_map=hdf5_key_map,
+            zero_is_missing_signals=zero_is_missing_signals,
         )
 
         total = len(paths)

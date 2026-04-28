@@ -175,7 +175,7 @@ def main():
     encoders = {}
     for signal_name in input_signals:
         model_name = SIGNAL_MODEL_DEFAULTS[signal_name]
-        ckpt_path = checkpoint_dir / f"{signal_name}_{model_name}" / "checkpoint.pth"
+        ckpt_path = checkpoint_dir / f"{signal_name}_{model_name}" / "checkpoint_best.pth"
 
         if not ckpt_path.exists():
             raise FileNotFoundError(
