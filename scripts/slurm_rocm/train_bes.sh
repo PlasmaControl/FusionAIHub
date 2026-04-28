@@ -24,7 +24,7 @@ source .venv-rocm/bin/activate
 python scripts/training/train_unimodal_autoencoder.py \
     --signal "bes" \
     --d_model 64 \
-    --batch_size 8 \
+    --batch_size 4 \
     --num_workers 16 \
     --epochs 2 \
     --lr 1e-3 \

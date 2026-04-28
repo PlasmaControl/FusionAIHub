@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Local-only directories
+logs/
+.claude/
+
 # C extensions
 *.so
 
