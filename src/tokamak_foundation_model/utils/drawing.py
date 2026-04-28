@@ -146,6 +146,9 @@ class DefaultDrawer:
         sample = dataset[idx]
         self.probe_sample = sample[modality_key]
         self.probe_valid_length: Optional[int] = sample.get(f"{modality_key}_valid")
+        self.probe_element_mask: Optional[torch.Tensor] = sample.get(
+            f"{modality_key}_mask"
+        )
 
         if self._plot_channel is not None:
             self.channel = self._plot_channel
@@ -182,8 +185,9 @@ class DefaultDrawer:
             self.val_losses.append(val_loss)
 
         self._save_loss_curve()
-        input_data, recon_data = self._compute_reconstruction(model)
-        self._save_reconstruction(input_data, recon_data, epoch, train_loss, val_loss)
+        input_data, recon_data, mask = self._compute_reconstruction(model)
+        self._save_reconstruction(
+            input_data, recon_data, epoch, train_loss, val_loss, mask)
         self._save_correlation(model, epoch)
 
     def _save_loss_curve(self):
@@ -204,10 +208,11 @@ class DefaultDrawer:
             self,
             model: torch.nn.Module,
     ):
-        """Run probe sample through *model* and return ``(input_data, recon_data)``.
+        """Run probe sample through *model* and return ``(input_data, recon_data, mask)``.
 
         Both arrays are trimmed to the valid length (if available) and cover
-        all channels: shape ``(C, ...)``.
+        all channels: shape ``(C, ...)``.  *mask* is a boolean array of the
+        same shape (``True`` = valid) or ``None`` when no element mask exists.
         """
         model.eval()
         x = self.probe_sample.unsqueeze(0).to(next(model.parameters()).device)
@@ -218,13 +223,17 @@ class DefaultDrawer:
 
         input_data = self.probe_sample.numpy()   # [C, ...]
         recon_data = output.numpy()              # [C, ...]
+        mask = (self.probe_element_mask.numpy()
+                if self.probe_element_mask is not None else None)
 
         vl = self.probe_valid_length
         if vl is not None and vl > 0:
             input_data = input_data[..., :vl]
             recon_data = recon_data[..., :vl]
+            if mask is not None:
+                mask = mask[..., :vl]
 
-        return input_data, recon_data
+        return input_data, recon_data, mask
 
     def _save_reconstruction(
             self,
@@ -233,10 +242,19 @@ class DefaultDrawer:
             epoch: int,
             train_loss: float,
             val_loss: Optional[float],
+            mask: Optional[np.ndarray] = None,
     ):
         """Write ``reconstruction.png``, overwriting any previous version."""
         ch_input = input_data[self.channel]
         ch_recon = recon_data[self.channel]
+        ch_mask = mask[self.channel] if mask is not None else None
+
+        # Replace missing elements with NaN so they are not plotted
+        if ch_mask is not None:
+            ch_input = ch_input.copy()
+            ch_recon = ch_recon.copy()
+            ch_input[~ch_mask] = np.nan
+            ch_recon[~ch_mask] = np.nan
 
         title = f"Epoch {epoch + 1} | Train={train_loss:.6f}"
         if val_loss is not None:
@@ -273,6 +291,7 @@ class DefaultDrawer:
                     break
                 data = batch[self.modality_key].to(device)
                 valid_lengths = batch.get(f"{self.modality_key}_valid")
+                element_mask = batch.get(f"{self.modality_key}_mask")
 
                 output = model(data)
                 if isinstance(output, tuple):
@@ -280,22 +299,49 @@ class DefaultDrawer:
 
                 data_np = data.cpu().numpy()    # [B, C, T]
                 recon_np = output.cpu().numpy() # [B, C, T]
+                mask_np = (element_mask.cpu().numpy()
+                           if element_mask is not None else None)
 
                 if valid_lengths is not None:
                     for b, vl in enumerate(valid_lengths.tolist()):
-                        all_targets.append(data_np[b, :, :vl].ravel())
-                        all_recons.append(recon_np[b, :, :vl].ravel())
+                        d = data_np[b, :, :vl]
+                        r = recon_np[b, :, :vl]
+                        if mask_np is not None:
+                            m = mask_np[b, :, :vl].ravel()
+                            all_targets.append(d.ravel()[m])
+                            all_recons.append(r.ravel()[m])
+                        else:
+                            all_targets.append(d.ravel())
+                            all_recons.append(r.ravel())
                 else:
-                    all_targets.append(data_np.ravel())
-                    all_recons.append(recon_np.ravel())
+                    if mask_np is not None:
+                        m = mask_np.ravel()
+                        all_targets.append(data_np.ravel()[m])
+                        all_recons.append(recon_np.ravel()[m])
+                    else:
+                        all_targets.append(data_np.ravel())
+                        all_recons.append(recon_np.ravel())
         else:
             # Fallback: probe sample only
-            inp, rec = self._compute_reconstruction(model)
-            all_targets.append(inp.ravel())
-            all_recons.append(rec.ravel())
+            inp, rec, pmask = self._compute_reconstruction(model)
+            if pmask is not None:
+                m = pmask.ravel()
+                all_targets.append(inp.ravel()[m])
+                all_recons.append(rec.ravel()[m])
+            else:
+                all_targets.append(inp.ravel())
+                all_recons.append(rec.ravel())
+
+        if not all_targets or all(a.size == 0 for a in all_targets):
+            print("WARNING: Correlation plot skipped — no valid data.")
+            return
 
         target = np.concatenate(all_targets)
         recon = np.concatenate(all_recons)
+
+        if target.size == 0 or recon.size == 0:
+            print("WARNING: Correlation plot skipped — no valid data.")
+            return
 
         finite_mask = np.isfinite(target) & np.isfinite(recon)
         n_nan = (~finite_mask).sum()
@@ -326,6 +372,9 @@ class DefaultDrawer:
         else:
             target_plot, recon_plot = target_clean, recon_clean
 
+        if len(target_plot) == 0 or len(recon_plot) == 0:
+            print("WARNING: Correlation plot skipped — no valid data after cleaning.")
+            return
         vmin = min(target_plot.min(), recon_plot.min())
         vmax = max(target_plot.max(), recon_plot.max())
 
