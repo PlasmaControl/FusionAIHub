@@ -46,6 +46,12 @@ from torch.utils.data import DataLoader
 
 from tokamak_foundation_model.data.data_loader import collate_fn
 from tokamak_foundation_model.data.multi_file_dataset import TokamakMultiFileDataset
+from tokamak_foundation_model.utils.distributed import DistributedManager
+from torch.nn.parallel import DistributedDataParallel as _DDP
+
+
+def _core(module):
+    return module.module if hasattr(module, "module") else module
 from tokamak_foundation_model.e2e.lora import (
     apply_lora_to_backbone,
     freeze_non_lora_parameters,
@@ -661,17 +667,31 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
+    dm = DistributedManager()
 
-    device = torch.device(
-        args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    logging.basicConfig(
+        level=logging.INFO if dm.is_main else logging.WARNING,
+        format=f"%(asctime)s %(levelname)s [rank{dm.rank}] %(message)s",
     )
-    logger.info(f"Device: {device}")
-    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    # Per-rank seed: replay buffers are independent per rank, so each
+    # should sample different data — otherwise DDP gradient averaging
+    # is pointless.
+    torch.manual_seed(args.seed + dm.rank)
+    random.seed(args.seed + dm.rank)
+
+    if dm.distributed:
+        device = dm.device
+    else:
+        device = torch.device(
+            args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+        )
+    logger.info(
+        f"Device: {device}  distributed={dm.distributed} "
+        f"rank={dm.rank}/{dm.world_size}"
+    )
+    if dm.is_main:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    dm.barrier()
 
     # ── Resolve files + stats ────────────────────────────────────────────
     train_files, val_files = resolve_shot_files(
@@ -865,6 +885,36 @@ def main() -> None:
     def _initial_truth_for(val_batch: BufferBatch) -> Dict[str, torch.Tensor]:
         return _initial_truth_from_pool(val_batch, val_pool)
 
+    # ── DDP wrapper for training forward ────────────────────────────────
+    # Stage 3 training uses pushforward_step(model, ...) which calls
+    # model.diag_heads/.diag_tokenizers/.backbone directly. Wrap the
+    # per-step compute so DDP forward is invoked once per step.
+    class _TrainStepModule(torch.nn.Module):
+        def __init__(self, base):
+            super().__init__()
+            self.model = base
+        def forward(
+            self, batch, K, chunk_duration_s, use_displacement_loss,
+            cos_weight, mag_weight, min_disp_norm, initial_truth,
+        ):
+            return pushforward_step(
+                self.model, batch, K=K,
+                chunk_duration_s=chunk_duration_s,
+                amp_ctx_factory=amp_ctx_factory,
+                use_displacement_loss=use_displacement_loss,
+                cos_weight=cos_weight, mag_weight=mag_weight,
+                min_disp_norm=min_disp_norm, initial_truth=initial_truth,
+            )
+
+    train_step_module: torch.nn.Module = _TrainStepModule(model)
+    if dm.distributed:
+        train_step_module = _DDP(
+            train_step_module,
+            device_ids=[dm.local_rank],
+            broadcast_buffers=False,
+            find_unused_parameters=True,
+        )
+
     # ── Optim + schedule + autocast ─────────────────────────────────────
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(
@@ -936,14 +986,11 @@ def main() -> None:
         # autocast is applied per-iteration *inside* pushforward_step; wrapping
         # it at the outer scope corrupts grad propagation through the
         # nested torch.no_grad() of the push-forward prefix.
-        final_loss, per_step_metrics, new_state = pushforward_step(
-            model, batch, K=K, chunk_duration_s=args.chunk_duration_s,
-            amp_ctx_factory=amp_ctx_factory,
-            use_displacement_loss=args.use_displacement_loss,
-            cos_weight=args.cos_weight,
-            mag_weight=args.mag_weight,
-            min_disp_norm=args.min_disp_norm,
-            initial_truth=train_initial_truth,
+        final_loss, per_step_metrics, new_state = train_step_module(
+            batch, K, args.chunk_duration_s,
+            args.use_displacement_loss,
+            args.cos_weight, args.mag_weight, args.min_disp_norm,
+            train_initial_truth,
         )
         final_loss.backward()
         torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=args.grad_clip)
@@ -1065,47 +1112,51 @@ def main() -> None:
             if is_new_best:
                 best_val_loss = val_loss
                 best_step = step
-            ckpt_state = {
+            if dm.is_main:
+                ckpt_state = {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": opt.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "step": step,
+                    "val_loss": val_loss,
+                    "best_val_loss": best_val_loss,
+                    "best_step": best_step,
+                    "metrics": val_metrics,
+                    "diagnostics": [asdict(c) for c in diagnostics],
+                    "actuators": [asdict(c) for c in actuators],
+                    "args": vars(args),
+                }
+                latest_path = args.checkpoint_dir / "e2e_stage3_latest.pt"
+                torch.save(ckpt_state, latest_path)
+                if is_new_best:
+                    best_path = args.checkpoint_dir / "e2e_stage3_best.pt"
+                    torch.save(ckpt_state, best_path)
+                    logger.info(
+                        f"  ✓ new best val_loss={val_loss:.4f}  saved {best_path.name}"
+                    )
+            dm.barrier()
+
+    if dm.is_main:
+        final_path = args.checkpoint_dir / "e2e_stage3_final.pt"
+        torch.save(
+            {
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": opt.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
                 "step": step,
-                "val_loss": val_loss,
                 "best_val_loss": best_val_loss,
                 "best_step": best_step,
-                "metrics": val_metrics,
                 "diagnostics": [asdict(c) for c in diagnostics],
                 "actuators": [asdict(c) for c in actuators],
                 "args": vars(args),
-            }
-            latest_path = args.checkpoint_dir / "e2e_stage3_latest.pt"
-            torch.save(ckpt_state, latest_path)
-            if is_new_best:
-                best_path = args.checkpoint_dir / "e2e_stage3_best.pt"
-                torch.save(ckpt_state, best_path)
-                logger.info(
-                    f"  ✓ new best val_loss={val_loss:.4f}  saved {best_path.name}"
-                )
-
-    final_path = args.checkpoint_dir / "e2e_stage3_final.pt"
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": opt.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "step": step,
-            "best_val_loss": best_val_loss,
-            "best_step": best_step,
-            "diagnostics": [asdict(c) for c in diagnostics],
-            "actuators": [asdict(c) for c in actuators],
-            "args": vars(args),
-        },
-        final_path,
-    )
-    logger.info(
-        f"Saved final checkpoint: {final_path}. "
-        f"Best val_loss={best_val_loss:.4f} at step {best_step}."
-    )
+            },
+            final_path,
+        )
+        logger.info(
+            f"Saved final checkpoint: {final_path}. "
+            f"Best val_loss={best_val_loss:.4f} at step {best_step}."
+        )
+    dm.barrier()
 
 
 if __name__ == "__main__":

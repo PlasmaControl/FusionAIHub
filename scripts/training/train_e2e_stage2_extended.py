@@ -68,6 +68,13 @@ from tokamak_foundation_model.e2e.model import (
     E2EFoundationModel,
 )
 from tokamak_foundation_model.e2e.rollout import TokenSpaceRollout
+from tokamak_foundation_model.utils.distributed import DistributedManager
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as _DDP
+
+
+def _core(module):
+    return module.module if hasattr(module, "module") else module
 
 logger = logging.getLogger("e2e_stage2_ext")
 
@@ -766,17 +773,28 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    dm = DistributedManager()
+
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+        level=logging.INFO if dm.is_main else logging.WARNING,
+        format=f"%(asctime)s %(levelname)s [rank{dm.rank}] %(message)s",
     )
     torch.manual_seed(args.seed)
     random.seed(args.seed)
 
-    device = torch.device(
-        args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if dm.distributed:
+        device = dm.device
+    else:
+        device = torch.device(
+            args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+        )
+    logger.info(
+        f"Device: {device}  distributed={dm.distributed} "
+        f"rank={dm.rank}/{dm.world_size}"
     )
-    logger.info(f"Device: {device}")
-    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if dm.is_main:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    dm.barrier()
 
     train_files, val_files = resolve_shot_files(
         args.data_dir, args.train_shots_yaml, args.val_shots_yaml,
@@ -835,11 +853,42 @@ def main() -> None:
 
     n_params = sum(p.numel() for p in model.parameters())
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_total_tokens = model.n_total_tokens
     logger.info(
         f"Model — d_model={args.d_model} n_layers={args.n_layers} "
-        f"n_heads={args.n_heads}  tokens={model.n_total_tokens}  "
+        f"n_heads={args.n_heads}  tokens={n_total_tokens}  "
         f"params={n_params / 1e6:.2f}M  trainable={n_train / 1e6:.2f}M"
     )
+
+    # ── DDP wrapper for training forward ────────────────────────────────
+    # Stage 2_extended's training forward calls model.backbone(...) directly,
+    # bypassing the high-level model.__call__. To make DDP all_reduce fire
+    # cleanly, wrap the per-step compute in a tiny Module and DDP that.
+    class _TrainStepModule(torch.nn.Module):
+        def __init__(self, base):
+            super().__init__()
+            self.model = base
+        def forward(
+            self, batch, k_steps, chunk_duration_s, mae_weight, cos_weight,
+            mag_weight, min_disp_norm, use_displacement_loss, grad_checkpoint_every,
+        ):
+            return rollout_forward_loss_extended(
+                self.model, batch, diagnostic_names, actuator_names,
+                k_steps=k_steps, chunk_duration_s=chunk_duration_s,
+                device=device, mae_weight=mae_weight, cos_weight=cos_weight,
+                mag_weight=mag_weight, min_disp_norm=min_disp_norm,
+                use_displacement_loss=use_displacement_loss,
+                grad_checkpoint_every=grad_checkpoint_every,
+            )
+
+    train_step_module: torch.nn.Module = _TrainStepModule(model)
+    if dm.distributed:
+        train_step_module = _DDP(
+            train_step_module,
+            device_ids=[dm.local_rank],
+            broadcast_buffers=False,
+            find_unused_parameters=True,
+        )
     use_disp = not args.no_displacement_loss
     logger.info(
         f"Loss: mae_w={args.mae_weight} cos_w={args.cos_weight} "
@@ -904,7 +953,18 @@ def main() -> None:
         # RandomSampler across 7878 files gave ~1% hit rate and
         # spent ~10% of worker time on HDF5 file opens (observed
         # via py-spy on Stage 1 job 2719669).
-        sampler=TwoLevelSampler(train_ds, shuffle=True),
+        sampler=(
+            DistributedSampler(
+                train_ds,
+                num_replicas=dm.world_size,
+                rank=dm.rank,
+                shuffle=True,
+                seed=args.seed,
+                drop_last=True,
+            )
+            if dm.distributed
+            else TwoLevelSampler(train_ds, shuffle=True)
+        ),
         num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
         pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
@@ -973,11 +1033,18 @@ def main() -> None:
     running = 0.0
     running_count = 0
     prev_K = -1
+    train_sampler = train_loader.sampler
+    epoch_counter = 0
+    if dm.distributed and hasattr(train_sampler, "set_epoch"):
+        train_sampler.set_epoch(epoch_counter)
     train_iter = iter(train_loader)
     while step < args.max_steps:
         try:
             batch = next(train_iter)
         except StopIteration:
+            epoch_counter += 1
+            if dm.distributed and hasattr(train_sampler, "set_epoch"):
+                train_sampler.set_epoch(epoch_counter)
             train_iter = iter(train_loader)
             batch = next(train_iter)
 
@@ -988,16 +1055,10 @@ def main() -> None:
 
         opt.zero_grad()
         with amp_ctx_factory():
-            loss = rollout_forward_loss_extended(
-                model, batch, diagnostic_names, actuator_names,
-                k_steps=K, chunk_duration_s=args.chunk_duration_s,
-                device=device,
-                mae_weight=args.mae_weight,
-                cos_weight=args.cos_weight,
-                mag_weight=args.mag_weight,
-                min_disp_norm=args.min_disp_norm,
-                use_displacement_loss=use_disp,
-                grad_checkpoint_every=args.grad_checkpoint_every,
+            loss = train_step_module(
+                batch, K, args.chunk_duration_s,
+                args.mae_weight, args.cos_weight, args.mag_weight,
+                args.min_disp_norm, use_disp, args.grad_checkpoint_every,
             )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
@@ -1018,6 +1079,7 @@ def main() -> None:
             running_count = 0
 
         if step % args.val_every == 0 or step == args.max_steps:
+            # Pass bare model — validate constructs its own rollout from it.
             metrics = validate(
                 model, val_loader, device,
                 diagnostic_names, actuator_names,
@@ -1115,48 +1177,52 @@ def main() -> None:
             if is_new_best:
                 best_val_loss = val_loss
                 best_step = step
-            ckpt_state = {
+            if dm.is_main:
+                ckpt_state = {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": opt.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "step": step,
+                    "val_loss": val_loss,
+                    "best_val_loss": best_val_loss,
+                    "best_step": best_step,
+                    "mean_dir_cos": mean_dc,
+                    "metrics": metrics,
+                    "diagnostics": [asdict(c) for c in diagnostics],
+                    "actuators": [asdict(c) for c in actuators],
+                    "args": vars(args),
+                }
+                latest_path = args.checkpoint_dir / "e2e_stage2_ext_latest.pt"
+                torch.save(ckpt_state, latest_path)
+                if is_new_best:
+                    best_path = args.checkpoint_dir / "e2e_stage2_ext_best.pt"
+                    torch.save(ckpt_state, best_path)
+                    logger.info(
+                        f"  ✓ new best val_loss={val_loss:.4f}  saved {best_path.name}"
+                    )
+            dm.barrier()
+
+    if dm.is_main:
+        final_path = args.checkpoint_dir / "e2e_stage2_ext_final.pt"
+        torch.save(
+            {
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": opt.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
                 "step": step,
-                "val_loss": val_loss,
                 "best_val_loss": best_val_loss,
                 "best_step": best_step,
-                "mean_dir_cos": mean_dc,
-                "metrics": metrics,
                 "diagnostics": [asdict(c) for c in diagnostics],
                 "actuators": [asdict(c) for c in actuators],
                 "args": vars(args),
-            }
-            latest_path = args.checkpoint_dir / "e2e_stage2_ext_latest.pt"
-            torch.save(ckpt_state, latest_path)
-            if is_new_best:
-                best_path = args.checkpoint_dir / "e2e_stage2_ext_best.pt"
-                torch.save(ckpt_state, best_path)
-                logger.info(
-                    f"  ✓ new best val_loss={val_loss:.4f}  saved {best_path.name}"
-                )
-
-    final_path = args.checkpoint_dir / "e2e_stage2_ext_final.pt"
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": opt.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "step": step,
-            "best_val_loss": best_val_loss,
-            "best_step": best_step,
-            "diagnostics": [asdict(c) for c in diagnostics],
-            "actuators": [asdict(c) for c in actuators],
-            "args": vars(args),
-        },
-        final_path,
-    )
-    logger.info(
-        f"Saved final checkpoint: {final_path}. "
-        f"Best val_loss={best_val_loss:.4f} at step {best_step}."
-    )
+            },
+            final_path,
+        )
+        logger.info(
+            f"Saved final checkpoint: {final_path}. "
+            f"Best val_loss={best_val_loss:.4f} at step {best_step}."
+        )
+    dm.barrier()
 
 
 if __name__ == "__main__":
