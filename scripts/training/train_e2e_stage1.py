@@ -38,6 +38,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from tokamak_foundation_model.data.data_loader import collate_fn
 from tokamak_foundation_model.data.multi_file_dataset import (
@@ -49,8 +50,14 @@ from tokamak_foundation_model.e2e.model import (
     DiagnosticConfig,
     E2EFoundationModel,
 )
+from tokamak_foundation_model.utils.distributed import DistributedManager
 
 logger = logging.getLogger("e2e_stage1")
+
+
+def _core(model: torch.nn.Module) -> torch.nn.Module:
+    """Return underlying module for DDP-wrapped or plain models."""
+    return model.module if hasattr(model, "module") else model
 
 
 # ── Modality inventory ───────────────────────────────────────────────────
@@ -277,12 +284,12 @@ def forward_batch(
 ]:
     """Forward pass with NaN-cleaned inputs; return predictions + tensors needed for metrics."""
     diag_inputs: Dict[str, torch.Tensor] = {}
-    for cfg in model.diagnostics:
+    for cfg in _core(model).diagnostics:
         raw = batch["inputs"][cfg.name].to(device, non_blocking=True).float()
         cleaned, _ = _clean_and_mask(raw, None)
         diag_inputs[cfg.name] = cleaned
     act_inputs: Dict[str, torch.Tensor] = {}
-    for cfg in model.actuators:
+    for cfg in _core(model).actuators:
         raw = batch["targets"][cfg.name].to(device, non_blocking=True).float()
         cleaned, _ = _clean_and_mask(raw, None)
         act_inputs[cfg.name] = cleaned
@@ -295,7 +302,7 @@ def forward_batch(
 
     targets: Dict[str, torch.Tensor] = {}
     masks: Dict[str, Optional[torch.Tensor]] = {}
-    for cfg in model.diagnostics:
+    for cfg in _core(model).diagnostics:
         targets[cfg.name] = batch["targets"][cfg.name].to(device, non_blocking=True).float()
         mask_key = f"{cfg.name}_mask"
         masks[cfg.name] = (
@@ -315,7 +322,7 @@ def compute_step_loss(
     predictions, _, targets, masks = forward_batch(model, batch, device)
     per_modality: Dict[str, float] = {}
     total_loss = torch.zeros((), device=device)
-    for cfg in model.diagnostics:
+    for cfg in _core(model).diagnostics:
         loss = masked_mae(predictions[cfg.name], targets[cfg.name], masks[cfg.name])
         per_modality[cfg.name] = loss.item()
         total_loss = total_loss + loss
@@ -490,20 +497,30 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    dm = DistributedManager()
+
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
+        level=logging.INFO if dm.is_main else logging.WARNING,
+        format=f"%(asctime)s %(levelname)s [rank{dm.rank}] %(message)s",
     )
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
 
-    device = torch.device(
-        args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if dm.distributed:
+        device = dm.device
+    else:
+        device = torch.device(
+            args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+        )
+    logger.info(
+        f"Device: {device}  distributed={dm.distributed} "
+        f"rank={dm.rank}/{dm.world_size}"
     )
-    logger.info(f"Device: {device}")
 
-    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if dm.is_main:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    dm.barrier()
 
     # ── Resolve files + stats ────────────────────────────────────────────
     train_files, val_files = resolve_shot_files(
@@ -540,10 +557,12 @@ def main() -> None:
         dropout=args.dropout,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
+    n_total_tokens = model.n_total_tokens
+    model = dm.wrap(model)
     logger.info(
         f"Model — d_model={args.d_model} n_layers={args.n_layers} "
-        f"n_heads={args.n_heads}  tokens={model.n_total_tokens}  "
-        f"params={n_params / 1e6:.2f}M"
+        f"n_heads={args.n_heads}  tokens={n_total_tokens}  "
+        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}"
     )
 
     # ── Datasets ────────────────────────────────────────────────────────
@@ -562,15 +581,25 @@ def main() -> None:
     )
     logger.info(f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}")
 
+    if dm.distributed:
+        # DistributedSampler shards chunk indices across ranks. Loses the
+        # file-sequential cache locality of TwoLevelSampler — revisit if
+        # HDF5 open() time becomes a bottleneck under DDP.
+        train_sampler = DistributedSampler(
+            train_ds,
+            num_replicas=dm.world_size,
+            rank=dm.rank,
+            shuffle=True,
+            seed=args.seed,
+            drop_last=True,
+        )
+    else:
+        train_sampler = TwoLevelSampler(train_ds, shuffle=True)
+
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
-        # TwoLevelSampler: shuffle file order per epoch but yield chunks
-        # sequentially within each file. Keeps the LRU file-handle cache
-        # (max_open_files=100 per worker) nearly always hitting, vs ~1%
-        # hit rate with RandomSampler across 7878 files. py-spy confirmed
-        # HDF5 file-open was ~10% of worker time under random shuffle.
-        sampler=TwoLevelSampler(train_ds, shuffle=True),
+        sampler=train_sampler,
         num_workers=args.num_workers,
         collate_fn=collate_fn,
         drop_last=True,
@@ -586,10 +615,7 @@ def main() -> None:
         drop_last=True,
         # pin_memory=False for val: each iter() call re-creates the main
         # process's pin_memory thread + internal queues, and those pinned
-        # allocations ratchet host RSS upward across validations (observed
-        # +127 GB on val 1, +27 GB on val 2 with persistent_workers=True,
-        # OOM on val 2 at batch=256). Val is 1–20 batches per call so the
-        # synchronous H2D cost is negligible.
+        # allocations ratchet host RSS upward across validations.
         pin_memory=False,
         persistent_workers=args.num_workers > 0,
     )
@@ -618,7 +644,7 @@ def main() -> None:
         resume_ckpt = torch.load(
             args.resume_checkpoint, weights_only=False, map_location=device
         )
-        model.load_state_dict(resume_ckpt["model_state_dict"])
+        _core(model).load_state_dict(resume_ckpt["model_state_dict"])
         if "optimizer_state_dict" in resume_ckpt:
             opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in resume_ckpt:
@@ -636,11 +662,17 @@ def main() -> None:
     step = resume_start_step
     running_total = 0.0
     running_count = 0
+    epoch_counter = 0
+    if dm.distributed and hasattr(train_sampler, "set_epoch"):
+        train_sampler.set_epoch(epoch_counter)
     train_iter = iter(train_loader)
     while step < args.max_steps:
         try:
             batch = next(train_iter)
         except StopIteration:
+            epoch_counter += 1
+            if dm.distributed and hasattr(train_sampler, "set_epoch"):
+                train_sampler.set_epoch(epoch_counter)
             train_iter = iter(train_loader)
             batch = next(train_iter)
 
@@ -668,6 +700,10 @@ def main() -> None:
             running_count = 0
 
         if step % args.val_every == 0 or step == args.max_steps:
+            # All ranks run validate() in lockstep — DDP forward broadcasts
+            # buffers (broadcast_buffers=True default), so rank-0-only val
+            # would deadlock. Each rank computes the same metrics from the
+            # replicated (non-distributed) val_loader; only rank 0 logs/saves.
             metrics = validate(
                 model,
                 val_loader,
@@ -675,70 +711,72 @@ def main() -> None:
                 diagnostic_names,
                 max_batches=args.val_max_batches,
             )
-            logger.info(
-                "Validation (MAE model vs copy; delta-ratio pred/tgt):"
-            )
-            for n in diagnostic_names:
-                m = metrics[n]
-                delta = m["model_mae"] - m["copy_mae"]
-                marker = "↓" if delta < 0 else "↑"
-                logger.info(
-                    f"  {n:<25s} "
-                    f"model={m['model_mae']:.4f}  copy={m['copy_mae']:.4f}  "
-                    f"{marker} {abs(delta):.4f}  | "
-                    f"pred_d={m['pred_delta']:.4f}  tgt_d={m['tgt_delta']:.4f}  "
-                    f"ratio={m['delta_ratio']:.3f}"
-                )
             val_loss = sum(metrics[n]["model_mae"] for n in diagnostic_names)
-            logger.info(f"  [sum model MAE] {val_loss:.4f}")
-            # Decide best-update first so both `latest` and `best` share the
-            # same final best_val_loss / best_step values — otherwise resume
-            # from `latest` would see a stale best.
             is_new_best = val_loss < best_val_loss
             if is_new_best:
                 best_val_loss = val_loss
                 best_step = step
-            ckpt_state = {
-                "model_state_dict": model.state_dict(),
+
+            if dm.is_main:
+                logger.info(
+                    "Validation (MAE model vs copy; delta-ratio pred/tgt):"
+                )
+                for n in diagnostic_names:
+                    m = metrics[n]
+                    delta = m["model_mae"] - m["copy_mae"]
+                    marker = "↓" if delta < 0 else "↑"
+                    logger.info(
+                        f"  {n:<25s} "
+                        f"model={m['model_mae']:.4f}  copy={m['copy_mae']:.4f}  "
+                        f"{marker} {abs(delta):.4f}  | "
+                        f"pred_d={m['pred_delta']:.4f}  tgt_d={m['tgt_delta']:.4f}  "
+                        f"ratio={m['delta_ratio']:.3f}"
+                    )
+                logger.info(f"  [sum model MAE] {val_loss:.4f}")
+                ckpt_state = {
+                    "model_state_dict": _core(model).state_dict(),
+                    "optimizer_state_dict": opt.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "step": step,
+                    "val_loss": val_loss,
+                    "best_val_loss": best_val_loss,
+                    "best_step": best_step,
+                    "metrics": metrics,
+                    "diagnostics": [asdict(c) for c in diagnostics],
+                    "actuators": [asdict(c) for c in actuators],
+                    "args": vars(args),
+                }
+                latest_path = args.checkpoint_dir / "e2e_stage1_latest.pt"
+                torch.save(ckpt_state, latest_path)
+                if is_new_best:
+                    best_path = args.checkpoint_dir / "e2e_stage1_best.pt"
+                    torch.save(ckpt_state, best_path)
+                    logger.info(
+                        f"  ✓ new best val_loss={val_loss:.4f}  saved {best_path.name}"
+                    )
+            dm.barrier()
+
+    if dm.is_main:
+        ckpt_path = args.checkpoint_dir / "e2e_stage1_final.pt"
+        torch.save(
+            {
+                "model_state_dict": _core(model).state_dict(),
                 "optimizer_state_dict": opt.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
                 "step": step,
-                "val_loss": val_loss,
                 "best_val_loss": best_val_loss,
                 "best_step": best_step,
-                "metrics": metrics,
                 "diagnostics": [asdict(c) for c in diagnostics],
                 "actuators": [asdict(c) for c in actuators],
                 "args": vars(args),
-            }
-            latest_path = args.checkpoint_dir / "e2e_stage1_latest.pt"
-            torch.save(ckpt_state, latest_path)
-            if is_new_best:
-                best_path = args.checkpoint_dir / "e2e_stage1_best.pt"
-                torch.save(ckpt_state, best_path)
-                logger.info(
-                    f"  ✓ new best val_loss={val_loss:.4f}  saved {best_path.name}"
-                )
-
-    ckpt_path = args.checkpoint_dir / "e2e_stage1_final.pt"
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": opt.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "step": step,
-            "best_val_loss": best_val_loss,
-            "best_step": best_step,
-            "diagnostics": [asdict(c) for c in diagnostics],
-            "actuators": [asdict(c) for c in actuators],
-            "args": vars(args),
-        },
-        ckpt_path,
-    )
-    logger.info(
-        f"Saved final checkpoint: {ckpt_path}. "
-        f"Best val_loss={best_val_loss:.4f} at step {best_step}."
-    )
+            },
+            ckpt_path,
+        )
+        logger.info(
+            f"Saved final checkpoint: {ckpt_path}. "
+            f"Best val_loss={best_val_loss:.4f} at step {best_step}."
+        )
+    dm.barrier()
 
 
 if __name__ == "__main__":

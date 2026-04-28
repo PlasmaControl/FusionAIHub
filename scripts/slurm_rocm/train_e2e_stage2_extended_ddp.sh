@@ -1,0 +1,123 @@
+#!/bin/bash
+# 2-GPU DDP launcher for E2E Stage 2_extended on AMD MI210.
+#
+#SBATCH --job-name=e2e_stage2_ext_ddp_rocm
+#SBATCH --output=logs/%j_e2e_stage2_ext_ddp.out
+#SBATCH --error=logs/%j_e2e_stage2_ext_ddp.err
+#SBATCH --time=24:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=16
+#SBATCH --mem-per-cpu=16G
+set -uo pipefail
+
+GPUS="${GPUS:-0,1}"
+NPROC=$(awk -F, '{print NF}' <<<"$GPUS")
+MASTER_PORT="${MASTER_PORT:-29503}"
+
+BATCH_SIZE="${BATCH_SIZE:-4}"
+MAX_STEPS="${MAX_STEPS:-1000}"
+CURRICULUM_KS="${CURRICULUM_KS:-2,3,4}"
+BLOCK_STEPS="${BLOCK_STEPS:-$((MAX_STEPS / 3))}"
+GRAD_CHECKPOINT_EVERY="${GRAD_CHECKPOINT_EVERY:-2}"
+D_MODEL="${D_MODEL:-256}"
+N_LAYERS="${N_LAYERS:-8}"
+N_HEADS="${N_HEADS:-8}"
+NUM_WORKERS="${NUM_WORKERS:-4}"
+LOG_EVERY="${LOG_EVERY:-50}"
+VAL_EVERY="${VAL_EVERY:-200}"
+VAL_MAX_BATCHES="${VAL_MAX_BATCHES:-20}"
+MAE_WEIGHT="${MAE_WEIGHT:-1.0}"
+COS_WEIGHT="${COS_WEIGHT:-0.3}"
+MAG_WEIGHT="${MAG_WEIGHT:-0.1}"
+MIN_DISP_NORM="${MIN_DISP_NORM:-0.01}"
+
+DATA_DIR="${DATA_DIR:-/scratch/gpfs/EKOLEMEN/foundation_model}"
+STATS_PATH="${STATS_PATH:-data/preprocessing_stats.pt}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-runs/e2e_stage2_ext_ddp}"
+INIT_CHECKPOINT="${INIT_CHECKPOINT:-runs/e2e_stage2_delta/e2e_stage2_delta_best.pt}"
+
+export OMP_NUM_THREADS=1
+export PYTHONUNBUFFERED=1
+export HSA_FORCE_FINE_GRAIN_PCIE=1
+export PYTORCH_ROCM_ARCH=gfx90a
+export HIP_VISIBLE_DEVICES="$GPUS"
+export PATH=/opt/rocm-7.2.1/bin:$PATH
+export LD_LIBRARY_PATH=/opt/rocm-7.2.1/lib:${LD_LIBRARY_PATH:-}
+export MASTER_ADDR=127.0.0.1
+export MASTER_PORT
+mkdir -p logs
+
+cd /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub
+source .venv-rocm/bin/activate
+
+INIT_FLAG=""
+if [ -f "$INIT_CHECKPOINT" ]; then
+    INIT_FLAG="--init_checkpoint $INIT_CHECKPOINT"
+fi
+
+LATEST="$CHECKPOINT_DIR/e2e_stage2_ext_latest.pt"
+RESUME_FLAG=""
+if [ -f "$LATEST" ]; then
+    RESUME_FLAG="--resume_checkpoint $LATEST"
+fi
+
+MAX_FILES_FLAG=""
+if [ -n "${MAX_FILES:-}" ]; then
+    MAX_FILES_FLAG="--max_files $MAX_FILES"
+fi
+
+NO_AMP_FLAG=""
+if [ "${NO_AMP:-0}" = "1" ]; then
+    NO_AMP_FLAG="--no_amp"
+fi
+
+NO_DISP_FLAG=""
+if [ "${NO_DISPLACEMENT_LOSS:-0}" = "1" ]; then
+    NO_DISP_FLAG="--no_displacement_loss"
+fi
+
+echo "[ddp_stage2_ext] gpus=$GPUS nproc=$NPROC batch=$BATCH_SIZE steps=$MAX_STEPS Ks=$CURRICULUM_KS"
+
+torchrun \
+    --nnodes=1 \
+    --nproc_per_node="$NPROC" \
+    --rdzv_backend=c10d \
+    --rdzv_endpoint="${MASTER_ADDR}:${MASTER_PORT}" \
+    scripts/training/train_e2e_stage2_extended.py \
+    $INIT_FLAG \
+    $RESUME_FLAG \
+    $MAX_FILES_FLAG \
+    $NO_AMP_FLAG \
+    $NO_DISP_FLAG \
+    --data_dir "$DATA_DIR" \
+    --stats_path "$STATS_PATH" \
+    --checkpoint_dir "$CHECKPOINT_DIR" \
+    --val_fraction 0.1 \
+    --seed 42 \
+    --chunk_duration_s 0.05 \
+    --step_size_s 0.01 \
+    --warmup_s 1.0 \
+    --d_model "$D_MODEL" \
+    --n_layers "$N_LAYERS" \
+    --n_heads "$N_HEADS" \
+    --dropout 0.1 \
+    --curriculum_Ks "$CURRICULUM_KS" \
+    --block_steps "$BLOCK_STEPS" \
+    --mae_weight "$MAE_WEIGHT" \
+    --cos_weight "$COS_WEIGHT" \
+    --mag_weight "$MAG_WEIGHT" \
+    --min_disp_norm "$MIN_DISP_NORM" \
+    --grad_checkpoint_every "$GRAD_CHECKPOINT_EVERY" \
+    --lr 1e-5 \
+    --min_lr 1e-7 \
+    --warmup_steps 500 \
+    --weight_decay 0.01 \
+    --grad_clip 5.0 \
+    --batch_size "$BATCH_SIZE" \
+    --num_workers "$NUM_WORKERS" \
+    --max_steps "$MAX_STEPS" \
+    --log_every "$LOG_EVERY" \
+    --val_every "$VAL_EVERY" \
+    --val_max_batches "$VAL_MAX_BATCHES"
