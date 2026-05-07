@@ -229,5 +229,5 @@ __marimo__/
 wandb/
 
 # FusionAIHub
-data/
-runs/
+/data/
+/runs/
