@@ -13,16 +13,14 @@ module load PrgEnv-gnu/8.7.0
 module load cpe/26.03
 module load rocm/7.1.1
 module load craype-accel-amd-gfx90a
-module load miniforge3/23.11.0-0
 export LD_LIBRARY_PATH="${CRAY_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH:-}"
 
-# Make `conda activate` work in non-interactive batch shells.
-# shellcheck disable=SC1091
-source "$(conda info --base)/etc/profile.d/conda.sh"
-
-# Project conda env (created by setup_frontier_env.sh).
-CONDA_ENV_PATH="${CONDA_ENV_PATH:-/lustre/orion/fus187/scratch/nchen/FusionAIHub/envs/frontier-rocm}"
-export CONDA_ENV_PATH
+# Pixi env activation (replaces the old conda env). One-time setup:
+#   pixi install -e frontier
+# Each SLURM script then sources this file to get the env on PATH.
+export PATH="$HOME/.pixi/bin:$PATH"
+# shellcheck disable=SC1091,SC2046
+eval "$(pixi shell-hook -e frontier --manifest-path /lustre/orion/fus187/scratch/nchen/FusionAIHub/pyproject.toml)"
 
 # Performance / correctness knobs
 export PYTORCH_ROCM_ARCH=gfx90a

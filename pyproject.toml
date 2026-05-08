@@ -42,13 +42,18 @@ platforms = ["linux-64", "win-64", "osx-arm64"]
 
 [tool.pixi.pypi-dependencies]
 faith = { path = ".", editable = true }
-torch = { version = ">=2.5.1,<2.11", index = "https://download.pytorch.org/whl/cu124" }
-torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.org/whl/cu124" }
 
 [tool.pixi.target.osx.pypi-dependencies]
 # No CUDA support on macOS, use `cpu` wheels.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
+
+[tool.pixi.feature.cuda]
+platforms = ["linux-64", "win-64"]
+
+[tool.pixi.feature.cuda.pypi-dependencies]
+torch = { version = ">=2.5.1,<2.11", index = "https://download.pytorch.org/whl/cu124" }
+torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.org/whl/cu124" }
 
 [tool.ruff]
 line-length = 88
@@ -67,5 +72,14 @@ platforms = ["linux-64"]
 toksearch = { channel = "ga-fdp" }
 toksearch_d3d = { channel = "ga-fdp" }
 
+[tool.pixi.feature.frontier]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.frontier.pypi-dependencies]
+torch       = { version = ">=2.5.1,<2.11", index = "https://download.pytorch.org/whl/rocm7.1" }
+torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.org/whl/rocm7.1" }
+
 [tool.pixi.environments]
-fdp = ["fdp"]
+default = ["cuda"]
+fdp = ["fdp", "cuda"]
+frontier = ["frontier"]

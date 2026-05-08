@@ -40,7 +40,6 @@ export MASTER_PORT="${MASTER_PORT:-29503}"
 
 # shellcheck disable=SC1091
 source scripts/slurm_frontier/_frontier_common.sh
-conda activate "$CONDA_ENV_PATH"
 
 # ─── Resource shape (taken from SLURM allocation, never hard-coded) ──────
 NODES="${SLURM_JOB_NUM_NODES:-2}"

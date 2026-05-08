@@ -17,7 +17,6 @@ mkdir -p logs runs/e2e_stage3
 
 export MASTER_PORT=29504
 source scripts/slurm_frontier/_frontier_common.sh
-conda activate "$CONDA_ENV_PATH"
 
 srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --gpus-per-task=1 --gpu-bind=closest \

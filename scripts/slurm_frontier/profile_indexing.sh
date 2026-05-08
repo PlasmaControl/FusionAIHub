@@ -41,7 +41,6 @@ mkdir -p logs
 
 # shellcheck disable=SC1091
 source scripts/slurm_frontier/_frontier_common.sh
-conda activate "$CONDA_ENV_PATH"
 
 DATA_DIR="${DATA_DIR:-/lustre/orion/fus187/proj-shared/foundation_model}"
 CACHE_DIR="${CACHE_DIR:-runs/lengths_cache_e2e_stage1}"
