@@ -9,7 +9,8 @@ import torch.nn as nn
 
 
 class SlowTimeSeriesTokenizer(nn.Module):
-    """Tokenize a 50 ms window of a slow time series, one token per channel.
+    """
+    Tokenize a 50 ms window of a slow time series, one token per channel.
 
     Parameters
     ----------
@@ -43,7 +44,8 @@ class SlowTimeSeriesTokenizer(nn.Module):
         nn.init.normal_(self.modality_embed, std=0.02)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Tokenize a batch.
+        """
+        Tokenize a batch.
 
         Parameters
         ----------

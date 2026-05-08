@@ -2,6 +2,11 @@
 
 Automated framework for fetching large-scale MDSPlus data from DIII-D tokamak servers with optional Globus transfer to remote clusters.
 
+## Preparation
+
+Prepare a fresh Python3 environment and install [mdsh5](https://github.com/anchal-physics/mdsh5) using 
+``pip install mdsh5``.
+
 ## Overview
 
 This framework:

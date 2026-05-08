@@ -57,7 +57,7 @@ srun pixi run python ../training/train_e2e_stage2_delta.py \
     --dropout 0.1 \
     \
     --K_max 10 \
-    --curriculum_steps 190000 \
+    --curriculum_steps 322000 \
     \
     --mae_weight 1.0 \
     --cos_weight 0.3 \
@@ -72,7 +72,7 @@ srun pixi run python ../training/train_e2e_stage2_delta.py \
     \
     --batch_size 128 \
     --num_workers 8 \
-    --max_steps 193000 \
+    --max_steps 322000 \
     --log_every 50 \
     --val_every 500 \
     --val_max_batches 20

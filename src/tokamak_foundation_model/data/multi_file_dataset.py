@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import collections
 import copy
+import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -160,6 +162,17 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self._file_handles: collections.OrderedDict[int, h5py.File] = (
             collections.OrderedDict()
         )
+        # Per-worker profiling counters (reset in __setstate__).
+        self._prof_hits = 0
+        self._prof_opens = 0
+        self._prof_open_s = 0.0
+        self._prof_close_s = 0.0
+        self._prof_getitem_calls = 0
+        self._prof_getitem_s = 0.0
+        self._prof_load_s = 0.0
+        self._prof_process_s = 0.0
+        self._prof_movie_s = 0.0
+        self._prof_log_every = 50
 
         # --- lengths ---------------------------------------------------------
         file_lengths = self._load_or_compute_lengths(
@@ -281,19 +294,25 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         """
         if file_idx in self._file_handles:
             self._file_handles.move_to_end(file_idx)
+            self._prof_hits += 1
             return self._file_handles[file_idx]
 
         # Evict LRU entry when at capacity
         if len(self._file_handles) >= self.max_open_files:
             _, lru_handle = self._file_handles.popitem(last=False)
+            t0 = time.perf_counter()
             lru_handle.close()
+            self._prof_close_s += time.perf_counter() - t0
 
         # rdcc_nbytes=0 disables the per-file HDF5 chunk cache (default 1 MB).
         # Sequential reads don't benefit from it, and keeping it enabled with
         # many open files wastes significant CPU RAM.
+        t0 = time.perf_counter()
         handle = h5py.File(
             self.hdf5_paths[file_idx], "r", rdcc_nbytes=0, rdcc_nslots=0
         )
+        self._prof_open_s += time.perf_counter() - t0
+        self._prof_opens += 1
         self._file_handles[file_idx] = handle
         return handle
 
@@ -316,6 +335,7 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         cumulative length array, retrieves the file handle from the LRU cache,
         and delegates to the parent's standard or prediction loader.
         """
+        t_call_start = time.perf_counter()
         # O(log N) mapping: global idx → position in valid-file list
         pos = int(np.searchsorted(self._cumulative_lengths, idx + 1) - 1)
         file_idx = self._valid_indices[pos]
@@ -327,8 +347,30 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self.h5_file = self._get_file_handle(file_idx)
 
         if self.prediction_mode:
-            return self._getitem_prediction(chunk_idx)
-        return self._getitem_standard(chunk_idx)
+            result = self._getitem_prediction(chunk_idx)
+        else:
+            result = self._getitem_standard(chunk_idx)
+
+        self._prof_getitem_calls += 1
+        self._prof_getitem_s += time.perf_counter() - t_call_start
+        if self._prof_getitem_calls % self._prof_log_every == 0:
+            n = self._prof_getitem_calls
+            total_io = self._prof_open_s + self._prof_close_s
+            print(
+                f"[w-pid{os.getpid()}] prof_worker calls={n} "
+                f"avg_getitem_ms={1000*self._prof_getitem_s/n:.1f} "
+                f"hits={self._prof_hits} cold_opens={self._prof_opens} "
+                f"avg_open_ms={1000*self._prof_open_s/max(self._prof_opens,1):.1f} "
+                f"avg_close_ms={1000*self._prof_close_s/max(self._prof_opens,1):.1f} "
+                f"sum_open_s={self._prof_open_s:.2f} "
+                f"sum_close_s={self._prof_close_s:.2f} "
+                f"sum_load_s={self._prof_load_s:.2f} "
+                f"sum_process_s={self._prof_process_s:.2f} "
+                f"sum_movie_s={self._prof_movie_s:.2f} "
+                f"cache_size={len(self._file_handles)}",
+                flush=True,
+            )
+        return result
 
     # -------------------------------------------------------------------------
     # Pickling (DataLoader worker processes)
@@ -348,6 +390,16 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         Restore state in the worker process (file handles re-opened on demand).
         """
         self.__dict__.update(state)
+        self._prof_hits = 0
+        self._prof_opens = 0
+        self._prof_open_s = 0.0
+        self._prof_close_s = 0.0
+        self._prof_getitem_calls = 0
+        self._prof_getitem_s = 0.0
+        self._prof_load_s = 0.0
+        self._prof_process_s = 0.0
+        self._prof_movie_s = 0.0
+        self._prof_log_every = 50
 
 
 # =============================================================================
@@ -439,3 +491,93 @@ def make_dataloader(
         persistent_workers=False,  # TODO: validate if this affects the performance.
         prefetch_factor=prefetch_factor if num_workers > 0 else None,
     )
+
+
+def filter_video_present_files(
+    paths: list[Path],
+    camera_names: list[str],
+    cache_path: Optional[Path] = None,
+) -> list[Path]:
+    """Return only paths whose HDF5 has non-empty data for any camera.
+
+    Used at trainer startup to drop shots without video data when
+    training with ``--use_video``. The TwoLevelSampler accesses chunks
+    sequentially within each file, so a batch is effectively one
+    file's chunks; if that file has no tangtv, every sample's
+    ``tangtv_valid=0`` and the masked video loss reports 0 with no
+    gradient signal. Filtering up-front guarantees every batch
+    contributes to video learning.
+
+    Parameters
+    ----------
+    paths : list of Path
+        HDF5 shot files to filter.
+    camera_names : list of str
+        Camera names (e.g. ``["tangtv"]``) to check for. A shot is
+        kept if **any** requested camera has non-empty ``ydata`` and
+        a sufficiently long ``xdata`` (>=2 timestamps).
+    cache_path : Path or None, optional
+        If given, the result is keyed by ``(paths, sorted cameras)``
+        and persisted as a sidecar ``.pt`` file. On the next call
+        with the same ``(paths, cameras)``, no HDF5 files are opened.
+
+    Returns
+    -------
+    list of Path
+        The subset of ``paths`` with at least one camera present.
+        Order is preserved.
+    """
+    paths_key = tuple(str(p) for p in paths)
+    cameras_key = tuple(sorted(camera_names))
+
+    if cache_path is not None and cache_path.exists():
+        try:
+            cache = torch.load(cache_path, weights_only=False)
+            if (
+                cache.get("paths_key") == paths_key
+                and cache.get("cameras_key") == cameras_key
+            ):
+                present = set(cache["video_present"])
+                return [p for p in paths if str(p) in present]
+        except Exception:
+            # Corrupt or unreadable cache — fall through to rescan.
+            pass
+
+    print(
+        f"Scanning {len(paths)} files for {cameras_key} video presence "
+        "(cache miss)..."
+    )
+    video_present: list[str] = []
+    for p in tqdm(paths, desc="Video presence scan"):
+        try:
+            with h5py.File(p, "r") as f:
+                for cam in camera_names:
+                    if cam not in f or "ydata" not in f[cam]:
+                        continue
+                    yd = f[cam]["ydata"]
+                    xd = f[cam].get("xdata")
+                    if (
+                        yd.size > 0
+                        and yd.ndim == 4
+                        and xd is not None
+                        and xd.size >= 2
+                    ):
+                        video_present.append(str(p))
+                        break
+        except Exception as e:
+            print(f"  skipping {p.name}: {e}")
+
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "paths_key": paths_key,
+                "cameras_key": cameras_key,
+                "video_present": video_present,
+            },
+            cache_path,
+        )
+        print(f"Saved video-presence cache to {cache_path}")
+
+    present = set(video_present)
+    return [p for p in paths if str(p) in present]

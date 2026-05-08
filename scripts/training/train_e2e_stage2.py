@@ -53,7 +53,6 @@ def _core(module: torch.nn.Module) -> torch.nn.Module:
     """Return underlying module for DDP-wrapped or plain modules."""
     return module.module if hasattr(module, "module") else module
 
-
 # ── Modality inventory (duplicated from stage 1 by design — keeps the two ──
 #    scripts independent so a Stage 2 iteration can't break a running Stage 1).
 
@@ -848,7 +847,7 @@ def main() -> None:
         logger.info(
             f"Saved final checkpoint: {final_path}. "
             f"Best val_loss={best_val_loss:.4f} at step {best_step}."
-    )
+        )
 
 
 if __name__ == "__main__":

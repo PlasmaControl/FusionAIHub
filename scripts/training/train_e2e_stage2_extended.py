@@ -62,6 +62,7 @@ from tokamak_foundation_model.data.multi_file_dataset import (
     TokamakMultiFileDataset,
     TwoLevelSampler,
 )
+from tokamak_foundation_model.e2e.checkpoint import load_state_dict_explicit
 from tokamak_foundation_model.e2e.model import (
     ActuatorConfig,
     DiagnosticConfig,
@@ -331,6 +332,8 @@ def _make_chunk_fn(
     mag_weight: float,
     min_disp_norm: float,
     use_displacement_loss: bool,
+    gt_input_in_group: Optional[List[Dict[str, torch.Tensor]]] = None,
+    tf_in_group: Optional[List[bool]] = None,
 ):
     """Returns a function ``chunk_fn(diag_tokens, *prev_pred_list)`` suitable
     for ``torch.utils.checkpoint.checkpoint`` with ``use_reentrant=False``.
@@ -340,13 +343,44 @@ def _make_chunk_fn(
     ``prev_pred_list`` tensors are expected in the order of
     ``diagnostic_names`` and carry the (ctx-role) predictions entering the
     chunk (diag_initial for group 0, last chunk's predictions otherwise).
+
+    Teacher-forcing scheduled sampling
+    ----------------------------------
+    When ``tf_in_group[i]`` is True for a step ``k = group_start + i``
+    with ``k >= 1``, the input ``diag_tokens`` for that step are
+    replaced by re-tokenized ground-truth from
+    ``gt_input_in_group[i]`` (the GT diagnostic state at step ``k``,
+    which is the rollout target of step ``k-1``). The model still
+    *predicts* via ``model.backbone`` and the predictions are still
+    scored against the same target — TF only affects what flows IN to
+    the backbone, not what's scored. The displacement-loss ``ctx``
+    follows the actual input: GT under TF, previous-prediction under
+    free-rollout. ``gt_input_in_group`` and ``tf_in_group`` are
+    optional; default ``None`` reproduces the prior pure free-rollout
+    behaviour byte-for-byte.
     """
+    use_tf = tf_in_group is not None and gt_input_in_group is not None
 
     def chunk_fn(diag_tokens: torch.Tensor, *prev_pred_tensors: torch.Tensor):
         prev_pred = dict(zip(diagnostic_names, prev_pred_tensors))
         chunk_loss = torch.zeros((), device=diag_tokens.device)
         for i in range(group_end - group_start):
             k = group_start + i
+
+            # Teacher-forcing substitution at the start of step k (k>=1):
+            # replace the rollout's input with re-tokenized GT, and use
+            # that GT as the displacement-loss ctx (the actual input
+            # state that's flowing into the backbone).
+            if use_tf and k > 0 and tf_in_group[i]:
+                tf_input = gt_input_in_group[i]
+                diag_tokens = _tokenize_diag(model, tf_input)
+                ctx_dict = tf_input
+            else:
+                # Free-rollout: ctx is the model's previous prediction
+                # (or diag_initial for k=0 of group 0, passed in via
+                # ``prev_pred_tensors``).
+                ctx_dict = prev_pred
+
             all_tokens = torch.cat([diag_tokens, act_tokens_in_group[i]], dim=1)
             step_idx = batch_rollout_step + (k + 1)
             time_s = batch_rollout_step.float() * dt_s + (k + 1) * dt_s
@@ -359,10 +393,7 @@ def _make_chunk_fn(
                 pred = predictions[cfg.name]
                 target = target_in_group[i][cfg.name]
                 mask = mask_in_group[i][cfg.name]
-                # ctx = model's own previous prediction (detached) at k ≥ 1;
-                # diag_initial at k = 0 is passed in via prev_pred at the
-                # group boundary.
-                ctx = prev_pred[cfg.name].detach()
+                ctx = ctx_dict[cfg.name].detach()
 
                 mae = masked_mae(pred, target, mask)
                 cos_loss, mag_loss, _, _, _ = displacement_terms(
@@ -398,11 +429,19 @@ def rollout_forward_loss_extended(
     min_disp_norm: float,
     use_displacement_loss: bool,
     grad_checkpoint_every: int,
+    p_tf: float = 0.0,
 ) -> torch.Tensor:
     """Full-backprop rollout with gradient checkpointing.
 
     ctx semantics match Stage 2b for k=0 (ground-truth diag_initial) but
     differ at k≥1: here ctx is the *model's* previous prediction, detached.
+
+    Scheduled sampling (teacher-forcing) is enabled when ``p_tf > 0``.
+    For each step ``k >= 1``, with probability ``p_tf`` the input
+    ``diag_tokens`` is replaced by re-tokenized ground-truth (the
+    rollout target of step ``k-1``); displacement-loss ``ctx`` follows
+    the actual input. ``p_tf == 0`` (default) reproduces pure
+    free-rollout byte-for-byte.
     """
     diag_initial: Dict[str, torch.Tensor] = {}
     for name in diagnostic_names:
@@ -465,6 +504,32 @@ def rollout_forward_loss_extended(
         {n: act_splits[n][k] for n in actuator_names} for k in range(k_steps)
     ]
 
+    # Teacher-forcing scheduled sampling. Pre-build the per-step GT
+    # diagnostic INPUTS and pre-draw the TF decisions so the gradient-
+    # checkpoint backward pass replays the same coin flips.
+    #   gt_input_per_step[k] = GT diagnostic state at step k
+    #     k = 0:                diag_initial (already NaN-cleaned)
+    #     k >= 1:               target_per_step[k - 1] (NaN-cleaned here)
+    #   tf_decisions[k] = whether to TF-substitute at step k (ignored at k=0)
+    gt_input_per_step: Optional[List[Dict[str, torch.Tensor]]]
+    tf_decisions: Optional[List[bool]]
+    if p_tf > 0.0:
+        gt_input_per_step = [diag_initial]
+        for k in range(1, k_steps):
+            cleaned_at_k: Dict[str, torch.Tensor] = {}
+            for name in diagnostic_names:
+                cleaned_t, _ = _clean_and_mask(target_per_step[k - 1][name], None)
+                cleaned_at_k[name] = cleaned_t
+            gt_input_per_step.append(cleaned_at_k)
+        tf_decisions = [False]  # k=0 placeholder; never read
+        for _ in range(1, k_steps):
+            tf_decisions.append(
+                bool(torch.rand((), device=device).item() < p_tf)
+            )
+    else:
+        gt_input_per_step = None
+        tf_decisions = None
+
     # Tokenise the step-0 diag outside the checkpointed region.
     diag_tokens = _tokenize_diag(model, diag_initial)
     n_diag_tokens = diag_tokens.shape[1]
@@ -509,6 +574,16 @@ def rollout_forward_loss_extended(
             mag_weight=mag_weight,
             min_disp_norm=min_disp_norm,
             use_displacement_loss=use_displacement_loss,
+            gt_input_in_group=(
+                gt_input_per_step[group_start:group_end]
+                if gt_input_per_step is not None
+                else None
+            ),
+            tf_in_group=(
+                tf_decisions[group_start:group_end]
+                if tf_decisions is not None
+                else None
+            ),
         )
         outputs = torch_ckpt.checkpoint(
             chunk_fn, diag_tokens, *prev_pred_tensors, use_reentrant=False,
@@ -771,6 +846,17 @@ def main() -> None:
         "optimizer + scheduler + step + best_val_loss. Intended for 24 h-wall "
         "SLURM resubmission. Overrides --init_checkpoint.",
     )
+    parser.add_argument(
+        "--tf_anneal_steps", type=int, default=0,
+        help="Scheduled-sampling teacher-forcing schedule. "
+        "If > 0: at training step ``step``, "
+        "p_tf = max(0, 1 - step / tf_anneal_steps); at each rollout "
+        "step k>=1 we replace the input with re-tokenized GT with "
+        "probability p_tf. Default 0 disables TF entirely (pure "
+        "free-rollout, byte-identical to the un-augmented trainer). "
+        "Validation always uses pure free-rollout regardless of this "
+        "flag.",
+    )
     args = parser.parse_args()
 
     dm = DistributedManager()
@@ -830,16 +916,16 @@ def main() -> None:
         ckpt = torch.load(
             args.init_checkpoint, weights_only=False, map_location=device
         )
-        state_dict = ckpt["model_state_dict"]
-        # If the init checkpoint has LoRA keys (unlikely for Stage 2b but
-        # possible), drop them — we're training without LoRA and don't
-        # want stale adapter weights.
-        state_dict = {k: v for k, v in state_dict.items() if ".lora_" not in k}
-        missing, unexpected = model.load_state_dict(state_dict, strict=False)
-        if unexpected:
-            logger.warning(f"Unexpected keys (ignored): {unexpected[:5]}…")
-        if missing:
-            logger.warning(f"Missing keys (left at init): {missing[:5]}…")
+        # Strict load: Extended Stage 2 inherits exactly the Stage 2b
+        # architecture. Zero missing, zero unexpected keys is the
+        # contract; any mismatch is a real bug. The earlier warning-only
+        # logic and ad-hoc LoRA-key filter were placeholders from when
+        # the architecture was still in flux.
+        load_state_dict_explicit(
+            model,
+            ckpt["model_state_dict"],
+            allowed_missing_prefixes=(),
+        )
         logger.info(
             f"Initialized from {args.init_checkpoint.name} "
             f"(val_loss={ckpt.get('val_loss', 'n/a')} "
@@ -871,6 +957,7 @@ def main() -> None:
         def forward(
             self, batch, k_steps, chunk_duration_s, mae_weight, cos_weight,
             mag_weight, min_disp_norm, use_displacement_loss, grad_checkpoint_every,
+            p_tf,
         ):
             return rollout_forward_loss_extended(
                 self.model, batch, diagnostic_names, actuator_names,
@@ -879,6 +966,7 @@ def main() -> None:
                 mag_weight=mag_weight, min_disp_norm=min_disp_norm,
                 use_displacement_loss=use_displacement_loss,
                 grad_checkpoint_every=grad_checkpoint_every,
+                p_tf=p_tf,
             )
 
     train_step_module: torch.nn.Module = _TrainStepModule(model)
@@ -1014,7 +1102,11 @@ def main() -> None:
         resume_ckpt = torch.load(
             args.resume_checkpoint, weights_only=False, map_location=device
         )
-        model.load_state_dict(resume_ckpt["model_state_dict"])
+        load_state_dict_explicit(
+            model,
+            resume_ckpt["model_state_dict"],
+            allowed_missing_prefixes=(),
+        )
         if "optimizer_state_dict" in resume_ckpt:
             opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in resume_ckpt:
@@ -1053,12 +1145,23 @@ def main() -> None:
             logger.info(f"Curriculum: step {step} → K = {K}")
             prev_K = K
 
+        # Scheduled-sampling teacher-forcing probability. Linear ramp
+        # from 1.0 (full TF) at step 0 to 0.0 (pure free-rollout) at
+        # step ``args.tf_anneal_steps``. After anneal, p_tf stays at 0.
+        # ``args.tf_anneal_steps == 0`` disables TF entirely (default
+        # behaviour, byte-identical to the un-augmented trainer).
+        if args.tf_anneal_steps > 0:
+            p_tf = max(0.0, 1.0 - step / args.tf_anneal_steps)
+        else:
+            p_tf = 0.0
+
         opt.zero_grad()
         with amp_ctx_factory():
             loss = train_step_module(
                 batch, K, args.chunk_duration_s,
                 args.mae_weight, args.cos_weight, args.mag_weight,
                 args.min_disp_norm, use_disp, args.grad_checkpoint_every,
+                p_tf,
             )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
@@ -1071,9 +1174,12 @@ def main() -> None:
         if step % args.log_every == 0:
             avg = running / running_count
             lr_now = opt.param_groups[0]["lr"]
+            tf_str = (
+                f"  p_tf={p_tf:.3f}" if args.tf_anneal_steps > 0 else ""
+            )
             logger.info(
                 f"step {step}/{args.max_steps}  K={K}  loss={avg:.4f}  "
-                f"lr={lr_now:.2e}"
+                f"lr={lr_now:.2e}{tf_str}"
             )
             running = 0.0
             running_count = 0
