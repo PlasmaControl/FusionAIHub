@@ -13,20 +13,27 @@ class DistributedManager:
             self.local_rank = int(os.environ.get('LOCAL_RANK', 0))
             self.world_size = int(os.environ['WORLD_SIZE'])
 
+            # On Frontier with --gpus-per-task=1, each rank sees exactly one
+            # GPU (masked by ROCR_VISIBLE_DEVICES); the device index is 0
+            # regardless of LOCAL_RANK. Clamp accordingly.
+            visible = torch.cuda.device_count()
+            self.device_index = self.local_rank if visible > 1 else 0
+
             self.distributed = True
             dist.init_process_group(
                 'nccl',
                 rank=self.rank,
                 world_size=self.world_size,
-                device_id=torch.device("cuda", self.local_rank),
+                device_id=torch.device("cuda", self.device_index),
             )
-            torch.cuda.set_device(self.local_rank)
+            torch.cuda.set_device(self.device_index)
         else:
             # Single-process (plain python)
             self.rank, self.local_rank, self.world_size = 0, 0, 1
+            self.device_index = 0
             self.distributed = False
             if torch.cuda.is_available():
-                torch.cuda.set_device(self.local_rank) # should this be changed to torch.device("cuda", self.local_rank)?
+                torch.cuda.set_device(self.device_index)
         self.barrier()
 
     @property
@@ -36,13 +43,13 @@ class DistributedManager:
     @property
     def device(self) -> torch.device:
         if torch.cuda.is_available():
-            return torch.device("cuda", self.local_rank)
+            return torch.device("cuda", self.device_index)
         return torch.device("cpu")
 
     def wrap(self, model: torch.nn.Module) -> torch.nn.Module:
         """Wrap model with DDP if distributed, otherwise return as-is."""
         if self.distributed:
-            return DistributedDataParallel(model, device_ids=[self.local_rank])
+            return DistributedDataParallel(model, device_ids=[self.device_index])
         return model
 
     def unwrap(self, model: torch.nn.Module):
