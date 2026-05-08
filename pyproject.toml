@@ -76,8 +76,12 @@ toksearch_d3d = { channel = "ga-fdp" }
 platforms = ["linux-64"]
 
 [tool.pixi.feature.frontier.pypi-dependencies]
-torch       = { version = ">=2.5.1,<2.11", index = "https://download.pytorch.org/whl/rocm7.1" }
-torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.org/whl/rocm7.1" }
+# rocm7.1 index ships torch 2.10.0 + torchvision 0.25-0.26 only.
+torch       = { version = ">=2.10,<2.11",   index = "https://download.pytorch.org/whl/rocm7.1" }
+torchvision = { version = ">=0.25,<0.27",   index = "https://download.pytorch.org/whl/rocm7.1" }
+# torch 2.10 declares triton-rocm as a dep; uv won't auto-discover it
+# through the per-package `index = ...` above, so list it explicitly.
+triton-rocm = { version = "*",              index = "https://download.pytorch.org/whl/rocm7.1" }
 
 [tool.pixi.environments]
 default = ["cuda"]
