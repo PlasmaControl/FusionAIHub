@@ -910,7 +910,7 @@ def main() -> None:
     if dm.distributed:
         train_step_module = _DDP(
             train_step_module,
-            device_ids=[dm.local_rank],
+            device_ids=[dm.device_index],
             broadcast_buffers=False,
             find_unused_parameters=True,
         )
