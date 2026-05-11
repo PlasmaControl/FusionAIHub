@@ -1,6 +1,5 @@
 # Research Plan: End-to-End Foundation Model for Multi-Modal Tokamak Plasma Prediction
 
-**PI:** P. Schramowski, E. Kolemen
 **Institution:** Princeton University / Princeton Plasma Physics Laboratory
 **Target system:** DIII-D (extensible to other devices)
 
@@ -28,15 +27,13 @@ This finding motivates the end-to-end approach: the only way to guarantee predic
 
 ## 2. Scientific Contributions
 
-This work makes four contributions:
+This work makes three contributions:
 
 **C1. First multi-modal tokamak foundation model operating on raw heterogeneous signals.** The model simultaneously ingests time series (100 Hz–10 kHz), spectrograms (500 kHz), and video sequences, producing predictions across all modalities conditioned on actuator commands. No prior work handles this heterogeneity in a unified predictive framework.
 
 **C2. Actuator-conditioned prediction for control.** Given a proposed actuator trajectory (beam injection, ECH power, gas fueling, RMP coils), the model predicts the plasma response across all diagnostics. This enables "what-if" scenario evaluation orders of magnitude faster than physics-based simulations, suitable for real-time model-predictive control and between-shot planning.
 
-**C3. Empirical demonstration that reconstruction-trained latent spaces are geometrically incompatible with temporal prediction, and that end-to-end training resolves this.** We provide a diagnostic framework (signal-to-latent cosine similarity correlation) that quantifies the incompatibility, show that it persists across autoencoder architectures and regularization strategies, and demonstrate that end-to-end tokenizers trained under the prediction objective produce representations where the incompatibility is absent. The comparison uses the AE-based Aurora-style architecture (archived codebase) as controlled baseline.
-
-**C4. Comprehensive verification methodology for autoregressive prediction architectures.** We present an impulse-based test suite (~50 tests) that verifies signal propagation through every architectural component before training begins, and diagnostic metrics (delta-ratio, per-step cosine similarity, per-stage signal pathway analysis) that localize failure modes to specific modules during training. This methodology applies beyond the tokamak domain to any autoregressive prediction system operating on heterogeneous inputs.
+**C3. Comprehensive verification methodology for autoregressive prediction architectures.** We present an impulse-based test suite (~50 tests) that verifies signal propagation through every architectural component before training begins, and diagnostic metrics (delta-ratio, per-step cosine similarity, per-stage signal pathway analysis) that localize failure modes to specific modules during training. This methodology applies beyond the tokamak domain to any autoregressive prediction system operating on heterogeneous inputs.
 
 ## 3. Architecture
 
@@ -60,15 +57,15 @@ The 50 ms window is chosen to balance three constraints:
 ### 3.3 Per-Modality Tokenizers
 
 | Modality Type | Example | Sampling | Window (50 ms) | Tokenization | Tokens |
-|---|---|---|---|---|---|
-| Slow time series | Thomson (core + tangential density, temperature), CER (Ti, rotation), MSE | 100 Hz | 5 samples/ch | Linear per channel | ~90 total (6 modalities × ~15 ch) |
-| Fast time series | Filterscopes | 10 kHz | 500 samples/ch | Conv1d patching (stride 50) | ~80 (8 ch × 10 tokens) |
-| Spectrogram | BES, ECE | 500 kHz | ~194 frames × 513 freq bins/ch (STFT n_fft=1024, hop_length=256) | Conv2d (k=64, s=64) patches | ~240 (30 time × 8 freq) |
-| Video | Fast camera | 1–10 kHz | 50–500 frames | Spatial CNN + temporal patching + Perceiver pooling | ~16 |
-| Actuators | NBI, ECH, gas, RMP | varies | 50 ms | Conv1d patching | ~18 (6 groups × 3) |
-| | | | | **Total (full config):** | **~444** |
+|---|---|----------|---|---|---|
+| Slow time series | Thomson (core + tangential density, temperature), CER (Ti, rotation), MSE | 100 Hz   | 5 samples/ch | Linear per channel | ~90 total (6 modalities × ~15 ch) |
+| Fast time series | Filterscopes | 10 kHz   | 500 samples/ch | Conv1d patching (stride 50) | ~80 (8 ch × 10 tokens) |
+| Spectrogram | ECE (32 ch), BES (64 ch), CO2 (1 ch) | up to 1 MHz raw  | ~194 frames × 513 freq bins/ch (STFT n_fft=1024, hop_length=256) | Conv2d patches | ~480 (ECE 192 + BES 192 + CO2 96) |
+| Video | Fast camera (tangtv, 2 active filters) | 100 fps  | 3 frames × 120 × 360 | Tube-patch Conv3d (T_p, H_p, W_p) = (3, 12, 12) | ~300 (10 × 30 patches per camera) |
+| Actuators | NBI, ECH, gas, RMP | varies   | 50 ms | Conv1d patching | ~45 |
+| | |          | | **Total (full config):** | **~1180** |
 
-With ~200–450 total tokens depending on configuration, standard self-attention (O(N²)) is feasible without Perceiver compression. At N=450 with d_model=256 and 8 heads, the per-layer attention cost is ~165M FLOPs — still trivial on a modern GPU. If future modality additions push the count beyond 700, a Perceiver compression stage after tokenization but before the backbone can reduce it.
+Total token count varies with configuration: time series only (~398), TS + video (~700), or the full BC configuration (~1180). Standard self-attention (O(N²)) remains feasible at all of these on a modern GPU. At N≈1180 with d_model=256 and 8 heads, per-layer attention cost is ~1.1 GFLOPs and the realised per-step cost scales as ~2.1× over TS-only because the FFN (linear in N) dominates the per-layer compute at this width. A Perceiver compression stage after tokenization remains an option if further modalities are added.
 
 Each tokenizer adds a learned modality embedding and positional encoding. All tokenizer weights are trained end-to-end with the backbone.
 
@@ -80,7 +77,7 @@ Step conditioning: Fourier features of the rollout step index and absolute time 
 
 ### 3.5 Per-Modality Output Heads
 
-Each modality has an output head that projects backbone tokens back to the raw signal space. These are approximate inverses of the tokenizers (Linear for slow TS, ConvTranspose1d for fast TS, ConvTranspose2d for spectrograms, spatial decoder CNN for video). Output heads fire only for computing the training loss against ground truth raw signals. During rollout, backbone tokens pass directly to the next step without going through the output heads.
+Each modality has an output head that projects backbone tokens back to the raw signal space. These are approximate inverses of the tokenizers (Linear for slow TS, ConvTranspose1d for fast TS, ConvTranspose2d for spectrograms, single ConvTranspose3d with kernel and stride matching the tube-patch shape for video — each video token reconstructs its own (C, T_p, H_p, W_p) region with no global mixing). Output heads fire only for computing the training loss against ground truth raw signals. During rollout, backbone tokens pass directly to the next step without going through the output heads.
 
 ### 3.6 Rollout Architecture
 
@@ -95,36 +92,38 @@ The 80-step rollout (4 seconds at 50 ms resolution) operates entirely in token s
 
 ## 4. Training Procedure
 
+The pipeline has three training stages, applied in turn during Phase A (TS only) and again during Phase BC (TS + spectrograms + video). Phase BC additionally warm-starts from the corresponding Phase A checkpoint via an explicit checkpoint loader that allows missing keys for the new modality modules and rejects unexpected keys.
+
 ### 4.1 Stage 1: Single-Step Pretraining
 
 **Objective:** Learn tokenizers, backbone, and output heads for one-step (50 ms) prediction.
 
-- Loss: MAE in raw signal space, per-modality, all normalized to unit variance (precomputed statistics)
-- Data: All available DIII-D shots, chunked into consecutive 50 ms windows with 10 ms step size
-- Duration: Until validation MAE plateaus (~50–100 epochs)
-- Full weight updates on all parameters
+- Loss: MAE in raw signal space, per-modality, all normalized to unit variance (precomputed statistics). For spectrograms and video the loss is gated by `{name}_channel_mask` (per-channel) and `{name}_valid` (per-batch), so missing modalities and off-channels do not contribute to gradients.
+- Data: All available DIII-D shots, chunked into consecutive 50 ms windows with 10 ms step size.
+- Duration: until validation MAE plateaus.
+- Full weight updates on all parameters by default. In the BC variant, four orthogonal freeze flags (`--freeze_{ts,video,spectro,backbone}_steps`) hold subsets of the model fixed for the first N steps so that freshly-initialised modules can settle without perturbing the warm-started backbone.
 
-### 4.2 Stage 2: Short Rollout Fine-Tuning
+### 4.2 Stage 2 (delta): Teacher-Forced Curriculum to K=10
 
 **Objective:** Teach the model to handle its own outputs as input for short horizons.
 
-- Rollout curriculum: K=1 → K=10 steps (50 ms → 500 ms) over 30 epochs
-- Full backpropagation through all K steps
-- Full weight updates
+- Rollout curriculum: K=1 → K=10 steps (50 ms → 500 ms).
+- Each rollout step receives ground-truth diagnostic tokens as input (teacher-forced); the prediction at step k is compared against the ground-truth at step k.
+- Loss: per-step weighted sum of MAE plus a delta-loss decomposition (cosine similarity of the predicted vs ground-truth displacement, magnitude ratio of the same), computed in token space for TS and in raw signal space for spectrograms and video. The delta decomposition replaces a plain `F.l1_loss(pred-ctx, target-ctx)` formulation, which is algebraically equivalent to the un-decomposed MAE.
+- Full backpropagation through all K steps; full weight updates.
 
-### 4.3 Stage 3: Long Rollout Fine-Tuning (Pushforward + Replay + LoRA)
+### 4.3 Stage 2 Extended: Free Rollout to K=80 with Scheduled-Sampling TF
 
-**Objective:** Stable 80-step (4-second) autoregressive prediction.
+**Objective:** Stable 80-step (4-second) autoregressive prediction without distribution shift between training and inference.
 
-**Pushforward trick (Bodnar et al., 2025):** Run K−1 rollout steps with no gradient. Backpropagate only through the final step. Memory cost equals single-step training regardless of K.
+**Free rollout:** At each rollout step the backbone-output diagnostic tokens are fed directly as input for the next step (no re-tokenization of ground truth). This matches inference behaviour exactly and is what failed catastrophically when attempted naively from a Stage-2b checkpoint — k=1 MAE regressed by 13–69 % because the backbone had been conditioned on `tokenize(GT)`-style prefixes it never sees in pure free-rollout.
 
-**Replay buffer:** In-memory buffer stores ground truth and model-generated states. At each training step: sample from buffer → forward one step → loss → add prediction back to buffer. Periodically refresh with ground truth. This ensures the model trains on the distribution of states it actually produces during inference.
+**Scheduled-sampling teacher-forcing:** A teacher-forcing probability `p_tf = max(0, 1 − step / tf_anneal_steps)` decays linearly from 1.0 to 0.0. With probability `p_tf` at each k ≥ 1, the next-step diagnostic input is re-tokenized GT instead of the previous step's backbone output. This bridges the Stage-2b regime (always teacher-forced) and pure free-rollout (`p_tf = 0`). Default schedule: `tf_anneal_steps = 40 000` — full TF at step 0, pure free-rollout from step 40 k onward. Validation always runs at `p_tf = 0` so cross-run comparisons stay independent of the in-progress TF schedule.
 
-**LoRA (Hu et al., 2022):** Freeze all base weights from Stages 1–2. Attach rank-16 adapters to backbone attention layers. Only LoRA parameters are updated. This preserves the single-step prediction quality while adapting the model for multi-step dynamics.
+**Gradient checkpointing:** All K = 80 forward steps run under `torch.utils.checkpoint` so activations memory scales per-step, not K × per-step. TF coin flips for the K rollout steps are pre-drawn outside the checkpointed region so backward replays the same TF decisions on recompute.
 
-- Rollout curriculum: K=10 → K=80 steps
-- Replay buffer size: 50,000 samples
-- Buffer refresh period: every 50 training steps
+- Rollout: K = 80 steps.
+- Init from Stage 2 (delta) best; all weights trainable.
 
 ## 5. Per-Block Verification Tests
 
@@ -159,13 +158,16 @@ Hard-won design rules encoded in the tests:
 - **Gradient — full chain receives `.grad`.**
 - **Scale — 2× energy scaling → cos_sim < 0.99.** *Failure: energy information discarded.*
 
-### 5.4 Video Tokenizer (5 tests)
+### 5.4 Video Tokenizer (tube-patch, 8 tests)
 
-- **Impulse — spatial selectivity:** Bright square in one corner. cos_sim(bright, black) < 0.9. *Failure: spatial CNN not learning.*
-- **Impulse — temporal localization:** 5 ms flash. Flash patch has highest norm.
-- **Impulse — motion detection:** Static vs moving object. cos_sim < 0.95. *Failure: temporal info lost in spatial compression.*
-- **Gradient — flows from output through temporal patching through spatial CNN to pixels.**
-- **Memory — full-size forward pass completes without OOM.**
+- **Impulse — spatial selectivity:** Bright region against a dark background activates the corresponding tube and not the far-corner tube. cos_sim(bright, black) < 0.9. *Failure: Conv3d patch projection not learning, or modality embedding dominates.*
+- **Impulse — temporal_pe perturbation:** Perturbing only the temporal positional encoding (with frames fixed) changes the output. *Failure: temporal information collapsed inside the patch projection.* (Replaces the original input-vs-input motion test, which was insensitive at random init because a near-uniform softmax averaged keys across frames.)
+- **Patch locality:** Perturbing one 12×12 patch must change the corresponding token but not the far-corner token. *Failure: patches are not disjoint.*
+- **Missing-camera token:** A sample with `valid=False` routes to the learned `missing_token`; output is independent of pixel values.
+- **Modality embedding distinctness:** Two different cameras have distinct modality embeddings.
+- **Reconstruction pipeline:** Patch + ConvTranspose3d round-trip recovers pixel structure (training-loss decreases >50% in 100 steps with frozen backbone).
+- **Gradient — flows from output through ConvTranspose3d, through backbone, through tube-patch Conv3d to pixels.**
+- **Memory — full-size forward pass completes without OOM** (gated as GPU-only).
 
 ### 5.5 Actuator Tokenizer (4 tests)
 
@@ -214,7 +216,7 @@ Hard-won design rules encoded in the tests:
 | Slow TS Tokenizer | 4 | <10s | Before integration |
 | Fast TS Tokenizer | 5 | <10s | Before integration |
 | Spectrogram Tokenizer | 5 | <30s | Before integration |
-| Video Tokenizer | 5 | <60s | Before integration |
+| Video Tokenizer | 8 | <60s | Before integration |
 | Actuator Tokenizer | 4 | <10s | Before integration |
 | Shared Backbone | 7 | <30s | Before integration |
 | Output Heads | 3/type | <10s each | Before integration |
@@ -229,7 +231,7 @@ Hard-won design rules encoded in the tests:
 
 ### 6.0 Baseline Archival
 
-Archive the current AE-based Aurora codebase (autoencoder training scripts, foundation model architecture, training logs, and the latent continuity scatter plots) as the controlled baseline for C3. The comparison between AE-based and end-to-end architectures requires both codebases to be reproducible.
+Archive the prior AE-based Aurora codebase (autoencoder training scripts, foundation model architecture, training logs, and latent-continuity scatter plots) as a reproducibility snapshot of the approach that motivated the end-to-end design. The archive lives at `archive/ae_baseline/`.
 
 ### 6.1 Phase A: Baseline with Time Series Only (Weeks 1–3)
 
@@ -244,31 +246,26 @@ Implement the end-to-end architecture with slow and fast time series only (Thoms
 
 **Phase A cannot be completed in one week.** Realistic pacing: Week 1 for implementation + A1, Week 2 for Stage 1 training + A2, Week 3 for Stages 2–3 + A3–A5. Attempting to compress this timeline risks repeating the cycle of submitting undertested runs and debugging on the cluster.
 
-### 6.2 Phase B: Add Spectrograms (Weeks 3–4)
+### 6.2 Phase BC: Add Spectrograms and Video (Weeks 3–6)
 
-Add spectrogram tokenizer for BES or ECE data. Transfer backbone and time series tokenizers from Phase A checkpoint.
+Joint training of spectrogram (ECE / BES / CO2) and video (tangtv) modalities on top of the Phase A backbone. Implemented as a single combined pipeline rather than two sequential phases: a single Stage 1 run (`train_bc_stage1.sh`), a single Stage 2 (delta) run (`train_bc_stage2.sh`), and a single Extended run carry both modality groups together. The TS modules and shared backbone warm-start from the Phase A checkpoint; spectrogram and video tokenizers and output heads init from scratch under the four-flag freeze schedule (TS + backbone held fixed for the first 5 000 steps, spectro + video train freely from step 0).
 
-**Milestones:**
-- B1: Spectrogram tokenizer passes all Section 5.3 tests
-- B2: Cross-modal coupling verified (NBI → correlated Thomson + BES responses)
-- B3: Time series rollout quality does not degrade
-
-### 6.3 Phase C: Add Video (Weeks 4–5)
-
-Add video tokenizer for fast camera data. Same transfer strategy.
+The combined approach is preferred over two sequential phases because spectrograms and video are independent diagnostic groups and there is no ordering constraint between them. Training jointly halves the warm-start chain length and shares the Phase-A reference checkpoint across both groups.
 
 **Milestones:**
-- C1: Video tokenizer passes all Section 5.4 tests (including memory)
-- C2: Edge instabilities in video correlate with filterscope signals
-- C3: Full multi-modal 80-step rollout stable
+- BC1: Spectrogram and video tokenizers pass §5.3 / §5.4 tests
+- BC2: BC-Stage 1 reaches single-step MAE within 5 % of Phase A on TS modalities; per-modality MAE for spectrograms and video below copy baseline
+- BC3: BC-Stage 2 (delta) curriculum to K = 10 maintains TS rollout quality without degradation; per-step displacement losses converge for spectrograms and video
+- BC4: BC Stage 2 Extended free-rollout to K = 80 stable on all three modality groups
+- BC5: Cross-modal coupling verified (NBI → correlated Thomson, spectrogram, and video responses)
 
-### 6.4 Phase D: Actuator Conditioning Evaluation (Weeks 5–6)
+### 6.3 Phase D: Actuator Conditioning Evaluation (Weeks 5–6)
 
 - Divergent predictions for different actuator trajectories from the same initial condition
 - Comparison against TRANSP for selected scenarios
 - Latency measurement for real-time control feasibility (<50 ms for 80-step rollout)
 
-### 6.5 Phase E: Cross-Machine Transfer (Weeks 6–8, exploratory)
+### 6.4 Phase E: Cross-Machine Transfer (Weeks 6–8, exploratory)
 
 Freeze backbone, train new tokenizers on target device diagnostics (EAST, KSTAR). Evaluate zero-shot and few-shot prediction quality.
 
@@ -283,7 +280,6 @@ Freeze backbone, train new tokenizers on target device diagnostics (EAST, KSTAR)
 | Rollout stability | No explosion or collapse over 80 steps | Norm ratio < 10× |
 | Actuator sensitivity | Predictions change with actuator commands | Verified qualitatively and quantitatively |
 | Inference latency | Wall-clock time for 80-step rollout | <50 ms on single GPU |
-| Latent continuity (C3) | Spearman(signal_cos, token_cos) | >0.5 for end-to-end tokenizers vs ≤−0.1 for AE |
 
 ## 8. Risk Assessment and Mitigations
 
@@ -294,7 +290,7 @@ Mitigation: Pushforward + replay buffer train on self-generated states. LoRA pre
 Mitigation: Linear(5, 256) is an expansion, not compression. Fallback: extend to 100 ms (10 samples) at 2× step count reduction.
 
 **Risk 3: Token count exceeds self-attention budget.**
-Mitigation: Full config produces ~324 tokens — feasible for standard attention. Add Perceiver compression only if >500 tokens from additional modalities.
+Mitigation: Full BC configuration produces ~1180 tokens — still feasible for standard attention at d_model=256 (per-step cost scales ~2.1× over TS-only because the FFN dominates per-layer compute). Add Perceiver compression only if further modalities push the count substantially higher.
 
 **Risk 4: High-dimensional output heads (spectrogram, video) cannot reconstruct.**
 Mitigation: Output heads are for loss only, not rollout. Approximate reconstruction provides gradient signal. Increase tokens or use U-Net decoder if needed.
@@ -310,12 +306,23 @@ Mitigation: ~500 shots → ~500k chunks (50 ms, 10 ms stride). Fallback: pretrai
 
 ## 9. Computational Requirements
 
-- Stage 1 (~100 epochs, ~500k chunks): ~24 hours on 1× A100
-- Stage 2 (~30 epochs): ~12 hours on 1× A100
-- Stage 3 (~50 epochs with replay): ~48 hours on 1× A100
-- Total per experiment: ~3–4 days on 1× A100
-- Estimated experiments to convergence: 5–10
-- Total budget: 15–40 A100-days
+Hardware: 1× A100 40 GB per training run unless noted. Step times are realised numbers from production launchers; `wall` columns assume continuous occupancy and include 24 h-wall SLURM chaining via auto-resume.
+
+| Phase | Stage | Steps | Batch | s/step | Wall |
+|---|---|---|---|---|---|
+| A | Stage 1 (single-step, TS only, 398 tokens) | 336 000 | 256 | 0.97 | ~3.7 days |
+| A | Stage 2 (delta, K = 1…10) | 322 000 | 64 | ~2 | ~7.5 days |
+| A | Stage 2 Extended (free-rollout K = 80) | ~50 000 | 32 | ~15 | ~9 days |
+| BC | Stage 1 (TS + spectro + video, 1180 tokens) | 672 000 | 128 | ~2 (×2.1 over A) | ~16 days |
+| BC | Stage 2 (delta, K = 1…10, multimodal) | 322 000 | 64 | ~4 | ~15 days |
+
+Approximate totals:
+
+- Phase A pipeline (Stage 1 → Stage 2 → Extended): **~20 A100-days**.
+- Phase BC pipeline (Stage 1 → Stage 2 → Extended once wired): **~35–45 A100-days**, dominated by the 1180-token attention cost relative to Phase A's 398.
+- Phase BC step-time scaling is below the 8.8× theoretical attention ceiling at d_model = 256 because the FFN (linear in N) is the per-layer compute bottleneck; the realised slowdown over Phase A is closer to 2× per step.
+- Estimated experiments to convergence: 3–5 per phase including failed runs and hyperparameter sweeps.
+- Total budget: **~80–120 A100-days** for the full Phase A + Phase BC programme through 80-step rollout, plus Phase D / E which inherit the converged Phase BC checkpoint and require evaluation runs only.
 
 ## 10. References
 
