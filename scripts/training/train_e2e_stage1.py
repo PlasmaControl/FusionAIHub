@@ -777,6 +777,15 @@ def main() -> None:
     parser.add_argument("--data_dir", type=Path, required=True)
     parser.add_argument("--stats_path", type=Path, required=True)
     parser.add_argument("--checkpoint_dir", type=Path, required=True)
+    parser.add_argument(
+        "--lengths_cache_dir",
+        type=Path,
+        default=Path("/lustre/orion/fus187/proj-shared/foundation_model_meta"),
+        help="Directory for TokamakMultiFileDataset length-cache sidecar "
+        "files (lengths_e2e_stage1_{train,val}.pt). Defaults to the "
+        "shared foundation_model_meta dir so all ranks/jobs reuse the "
+        "same cache.",
+    )
     parser.add_argument("--train_shots_yaml", type=Path, default=None)
     parser.add_argument("--val_shots_yaml", type=Path, default=None)
     parser.add_argument("--max_files", type=int, default=None)
@@ -906,15 +915,16 @@ def main() -> None:
     if args.use_video:
         n_train_before = len(train_files)
         n_val_before = len(val_files)
+        args.lengths_cache_dir.mkdir(parents=True, exist_ok=True)
         train_files = filter_video_present_files(
             train_files,
             args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_train.pt",
+            cache_path=args.lengths_cache_dir / "video_present_train.pt",
         )
         val_files = filter_video_present_files(
             val_files,
             args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_val.pt",
+            cache_path=args.lengths_cache_dir / "video_present_val.pt",
         )
         logger.info(
             f"Video-presence filter ({args.use_video}): "
@@ -976,7 +986,7 @@ def main() -> None:
         warmup_s=args.warmup_s,
         diagnostic_names=diagnostic_names,
         actuator_names=actuator_names,
-        lengths_cache_dir=args.checkpoint_dir,
+        lengths_cache_dir=args.lengths_cache_dir,
     )
     logger.info(f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}")
 

@@ -11,39 +11,49 @@
 #   # Full pass, persist cache for training jobs to reuse:
 #   sbatch scripts/slurm_frontier/profile_indexing.sh
 #
-#   # Don't allocate a GPU node at all by calling python directly after `conda
-#   # activate $CONDA_ENV_PATH` from a login or compute node:
+#   # Don't allocate a GPU node at all — source _frontier_common.sh (which
+#   # activates the pixi `frontier` env) on a login or compute node and call
+#   # python directly:
 #   python scripts/profile_indexing.py --max_files 100
 #
 # Common env overrides:
 #   MAX_FILES=<int>        # cap on training files (default: unset = all)
 #   DATA_DIR=<path>        # override data root
 #   CACHE_DIR=<path>       # where to write the lengths cache (default:
-#                          #   runs/lengths_cache_e2e_stage1/, persists for
-#                          #   subsequent training jobs)
+#                          #   /lustre/orion/fus187/proj-shared/foundation_model_meta,
+#                          #   matches the train_e2e_stage1.py default so
+#                          #   subsequent training jobs reuse the cache)
 #   NO_CACHE=1             # skip cache write (pure profile)
 #
 #SBATCH -A fus187
 #SBATCH -J e2e_idx_profile
 #SBATCH -o logs/%j_idx_profile.out
 #SBATCH -e logs/%j_idx_profile.err
-#SBATCH -t 01:00:00
-#SBATCH -p batch
+#SBATCH -t 24:00:00
+#SBATCH -p extended
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=0
 #SBATCH --cpus-per-task=8
 set -uo pipefail
 
-PROJECT_DIR=/lustre/orion/fus187/scratch/nchen/FusionAIHub
-cd "$PROJECT_DIR"
+# SLURM stages the submit script under /var/spool/slurmd/... so BASH_SOURCE
+# is useless for locating the repo. Use SLURM_SUBMIT_DIR — submit from the
+# repo root: `cd <repo> && sbatch scripts/slurm_frontier/profile_indexing.sh`.
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_common.sh" ]; then
+    echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
+    echo "       cd into the FusionAIHub repo before sbatch." >&2
+    exit 1
+fi
+cd "${PROJECT_DIR}"
 mkdir -p logs
 
 # shellcheck disable=SC1091
 source scripts/slurm_frontier/_frontier_common.sh
 
 DATA_DIR="${DATA_DIR:-/lustre/orion/fus187/proj-shared/foundation_model}"
-CACHE_DIR="${CACHE_DIR:-runs/lengths_cache_e2e_stage1}"
+CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/foundation_model_meta}"
 
 MAX_FILES_FLAG=""
 [ -n "${MAX_FILES:-}" ] && MAX_FILES_FLAG="--max_files $MAX_FILES"

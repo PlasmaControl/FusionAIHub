@@ -19,8 +19,11 @@ export LD_LIBRARY_PATH="${CRAY_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH:-}"
 #   pixi install -e frontier
 # Each SLURM script then sources this file to get the env on PATH.
 export PATH="$HOME/.pixi/bin:$PATH"
+# Resolve manifest relative to this script so the file works for any clone of the repo.
+_FRONTIER_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_FRONTIER_REPO_ROOT="$(cd "${_FRONTIER_COMMON_DIR}/../.." && pwd)"
 # shellcheck disable=SC1091,SC2046
-eval "$(pixi shell-hook -e frontier --manifest-path /lustre/orion/fus187/scratch/nchen/FusionAIHub/pyproject.toml)"
+eval "$(pixi shell-hook -e frontier --manifest-path "${_FRONTIER_REPO_ROOT}/pyproject.toml")"
 
 # Performance / correctness knobs
 export PYTORCH_ROCM_ARCH=gfx90a
