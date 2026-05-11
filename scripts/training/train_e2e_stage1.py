@@ -594,7 +594,7 @@ def validate(
             predictions, diag_inputs, targets, masks = forward_batch(
                 model, batch, device
             )
-        copy_mod = copy_baseline_mae(batch, model.diagnostics, device)
+        copy_mod = copy_baseline_mae(batch, _core(model).diagnostics, device)
         for name in diagnostic_names:
             pred = predictions[name]
             inp = diag_inputs[name]
@@ -1174,7 +1174,7 @@ def main() -> None:
         for cat in list(active_freezes.keys()):
             if step >= active_freezes[cat]:
                 kwargs = {f"freeze_{c}": (c == cat) for c, _ in freeze_specs}
-                n_unfrozen = _release_module_freeze(model, **kwargs)
+                n_unfrozen = _release_module_freeze(_core(model), **kwargs)
                 logger.info(
                     f"Freeze({cat}) released at step {step}; "
                     f"{n_unfrozen} parameter tensors now trainable."

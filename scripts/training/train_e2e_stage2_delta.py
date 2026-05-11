@@ -220,6 +220,104 @@ def masked_mae(
     return diff.sum() / combined.sum().clamp_min(1.0)
 
 
+def _video_standardize_per_bc(
+    x: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Per-(B, C) z-score over (T, H, W). Returns ``(x_norm, mu, sd)``.
+
+    ``sd.clamp(min=1.0)`` keeps off-channels (zero-filled) finite. Same
+    convention as train_e2e_stage1.py / standalone video AE.
+    """
+    mu = x.mean(dim=(2, 3, 4), keepdim=True)
+    sd = x.std(dim=(2, 3, 4), keepdim=True).clamp(min=1.0)
+    return (x - mu) / sd, mu, sd
+
+
+def _video_loss_gate(
+    name: str, batch: Dict, device: torch.device,
+) -> torch.Tensor:
+    """Per-element loss gate combining camera-validity scalar with the
+    per-channel availability mask. Shape ``(B, C, 1, 1, 1)`` broadcasts
+    cleanly over ``(B, C, T, H, W)``. Per-shot, not per-step."""
+    chan = batch["targets"][f"{name}_channel_mask"].to(
+        device, non_blocking=True
+    ).float()
+    valid = batch["targets"][f"{name}_valid"].to(
+        device, non_blocking=True
+    ).float()
+    return valid[:, None, None, None, None] * chan[:, :, None, None, None]
+
+
+def split_video_target_by_step(
+    target: torch.Tensor, k_steps: int, n_per_step: int,
+) -> List[torch.Tensor]:
+    """Split (B, C, K * n_per_step, H, W) into K windows of (B, C, n_per_step, H, W).
+
+    Pairs with the K-window emission added to ``data_loader._getitem_prediction``.
+    """
+    expected = k_steps * n_per_step
+    if target.shape[2] < expected:
+        raise ValueError(
+            f"video target T={target.shape[2]} < expected K*n={expected}"
+        )
+    return [
+        target[:, :, k * n_per_step : (k + 1) * n_per_step].contiguous()
+        for k in range(k_steps)
+    ]
+
+
+def _spectro_loss_gate(
+    name: str, batch: Dict, device: torch.device,
+) -> torch.Tensor:
+    """Per-sample loss gate from per-modality presence ``<name>_valid``.
+
+    Spectrograms have no per-channel runtime availability mask; the
+    gate is just a per-batch scalar broadcast over ``(B, C, F, T)``.
+    """
+    valid = batch["targets"][f"{name}_valid"].to(
+        device, non_blocking=True
+    ).float()
+    return valid[:, None, None, None]                # (B, 1, 1, 1)
+
+
+def split_spectro_target_by_step(
+    target: torch.Tensor, k_steps: int, trunc_t: int,
+) -> List[torch.Tensor]:
+    """Split (B, C, F, T) into K windows of ``trunc_t`` frames each.
+
+    ``trunc_t`` must equal the spectrogram tokenizer's truncated time
+    length — i.e. ``(DiagnosticConfig.window_samples // T_p) * T_p``,
+    typically 96 for the standard 98-frame, T_p=8 config. The
+    spectrogram head emits exactly ``trunc_t`` frames per step, so the
+    target is sliced to the same length to match shapes for the
+    masked-MAE loss. Frames past ``K * trunc_t`` are discarded — STFT
+    over the full extended (input+prediction) window with
+    ``center=True`` doesn't produce a frame count that divides cleanly
+    by K, so a handful of trailing frames are dropped (typically <2%
+    of the window).
+    """
+    needed = k_steps * trunc_t
+    if target.shape[3] < needed:
+        raise ValueError(
+            f"spectro target T={target.shape[3]} < K * trunc_t = {needed}"
+        )
+    return [
+        target[:, :, :, k * trunc_t : (k + 1) * trunc_t].contiguous()
+        for k in range(k_steps)
+    ]
+
+
+def _spectro_trunc_t(cfg: "DiagnosticConfig") -> int:
+    """Return the per-step time-axis truncation for a spectrogram cfg.
+
+    Mirrors ``SpectrogramTokenizer.trunc_t`` so trainer-side target
+    slicing and the head's ``patch_unembed`` output stay in lockstep.
+    """
+    assert cfg.kind == "spectrogram" and cfg.spectrogram_patch_size is not None
+    _, T_p = cfg.spectrogram_patch_size
+    return (cfg.window_samples // T_p) * T_p
+
+
 def displacement_losses(
     pred: torch.Tensor,
     target: torch.Tensor,

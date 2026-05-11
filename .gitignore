@@ -229,5 +229,11 @@ __marimo__/
 wandb/
 
 # FusionAIHub
-/data/
-/runs/
+data/
+runs/
+
+# Conda env (21GB)
+envs/
+
+# Profile sidecar output
+profile/

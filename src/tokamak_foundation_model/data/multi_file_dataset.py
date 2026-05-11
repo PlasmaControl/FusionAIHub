@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import collections
 import copy
+import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -160,6 +162,17 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self._file_handles: collections.OrderedDict[int, h5py.File] = (
             collections.OrderedDict()
         )
+        # Per-worker profiling counters (reset in __setstate__).
+        self._prof_hits = 0
+        self._prof_opens = 0
+        self._prof_open_s = 0.0
+        self._prof_close_s = 0.0
+        self._prof_getitem_calls = 0
+        self._prof_getitem_s = 0.0
+        self._prof_load_s = 0.0
+        self._prof_process_s = 0.0
+        self._prof_movie_s = 0.0
+        self._prof_log_every = 50
 
         # --- lengths ---------------------------------------------------------
         file_lengths = self._load_or_compute_lengths(
@@ -281,19 +294,25 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         """
         if file_idx in self._file_handles:
             self._file_handles.move_to_end(file_idx)
+            self._prof_hits += 1
             return self._file_handles[file_idx]
 
         # Evict LRU entry when at capacity
         if len(self._file_handles) >= self.max_open_files:
             _, lru_handle = self._file_handles.popitem(last=False)
+            t0 = time.perf_counter()
             lru_handle.close()
+            self._prof_close_s += time.perf_counter() - t0
 
         # rdcc_nbytes=0 disables the per-file HDF5 chunk cache (default 1 MB).
         # Sequential reads don't benefit from it, and keeping it enabled with
         # many open files wastes significant CPU RAM.
+        t0 = time.perf_counter()
         handle = h5py.File(
             self.hdf5_paths[file_idx], "r", rdcc_nbytes=0, rdcc_nslots=0
         )
+        self._prof_open_s += time.perf_counter() - t0
+        self._prof_opens += 1
         self._file_handles[file_idx] = handle
         return handle
 
@@ -316,6 +335,7 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         cumulative length array, retrieves the file handle from the LRU cache,
         and delegates to the parent's standard or prediction loader.
         """
+        t_call_start = time.perf_counter()
         # O(log N) mapping: global idx → position in valid-file list
         pos = int(np.searchsorted(self._cumulative_lengths, idx + 1) - 1)
         file_idx = self._valid_indices[pos]
@@ -327,8 +347,30 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self.h5_file = self._get_file_handle(file_idx)
 
         if self.prediction_mode:
-            return self._getitem_prediction(chunk_idx)
-        return self._getitem_standard(chunk_idx)
+            result = self._getitem_prediction(chunk_idx)
+        else:
+            result = self._getitem_standard(chunk_idx)
+
+        self._prof_getitem_calls += 1
+        self._prof_getitem_s += time.perf_counter() - t_call_start
+        if self._prof_getitem_calls % self._prof_log_every == 0:
+            n = self._prof_getitem_calls
+            total_io = self._prof_open_s + self._prof_close_s
+            print(
+                f"[w-pid{os.getpid()}] prof_worker calls={n} "
+                f"avg_getitem_ms={1000*self._prof_getitem_s/n:.1f} "
+                f"hits={self._prof_hits} cold_opens={self._prof_opens} "
+                f"avg_open_ms={1000*self._prof_open_s/max(self._prof_opens,1):.1f} "
+                f"avg_close_ms={1000*self._prof_close_s/max(self._prof_opens,1):.1f} "
+                f"sum_open_s={self._prof_open_s:.2f} "
+                f"sum_close_s={self._prof_close_s:.2f} "
+                f"sum_load_s={self._prof_load_s:.2f} "
+                f"sum_process_s={self._prof_process_s:.2f} "
+                f"sum_movie_s={self._prof_movie_s:.2f} "
+                f"cache_size={len(self._file_handles)}",
+                flush=True,
+            )
+        return result
 
     # -------------------------------------------------------------------------
     # Pickling (DataLoader worker processes)
@@ -348,6 +390,16 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         Restore state in the worker process (file handles re-opened on demand).
         """
         self.__dict__.update(state)
+        self._prof_hits = 0
+        self._prof_opens = 0
+        self._prof_open_s = 0.0
+        self._prof_close_s = 0.0
+        self._prof_getitem_calls = 0
+        self._prof_getitem_s = 0.0
+        self._prof_load_s = 0.0
+        self._prof_process_s = 0.0
+        self._prof_movie_s = 0.0
+        self._prof_log_every = 50
 
 
 # =============================================================================
