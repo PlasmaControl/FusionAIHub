@@ -207,6 +207,12 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         """
         Return per-file chunk counts, loading from cache when available.
 
+        Under DDP only rank 0 reads/computes/writes the cache; all other
+        ranks receive the result via ``dist.broadcast_object_list``. This
+        avoids 8 ranks hammering the Lustre MDS with redundant scans and
+        prevents concurrent ``torch.save`` calls from corrupting the
+        sidecar zip file.
+
         Parameters
         ----------
         max_duration_s : float
@@ -215,7 +221,8 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             Path to the sidecar cache file.  If the file exists *and* its
             stored path list matches the current ``hdf5_paths``, the cached
             lengths are returned directly without opening any HDF5 file.
-            Otherwise lengths are computed and written to this path.
+            Otherwise lengths are computed and written to this path
+            atomically (``.tmp`` + ``replace``).
 
         Returns
         -------
@@ -223,50 +230,72 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             Number of chunks for each path in ``self.hdf5_paths``.
             Files that could not be opened have length ``0``.
         """
+        import torch.distributed as dist
+        distributed = dist.is_available() and dist.is_initialized()
+        rank = dist.get_rank() if distributed else 0
+
         paths_as_str = [str(p) for p in self.hdf5_paths]
+        lengths: Optional[list[int]] = None
 
-        if lengths_cache_path is not None:
-            cache_path = Path(lengths_cache_path)
-            if cache_path.exists():
-                cache = torch.load(cache_path, weights_only=False)
-                if cache.get("paths") == paths_as_str:
-                    print(f"Loaded file lengths from cache: {cache_path}")
-                    return cache["lengths"]
+        if rank == 0:
+            if lengths_cache_path is not None:
+                cache_path = Path(lengths_cache_path)
+                if cache_path.exists():
+                    try:
+                        cache = torch.load(cache_path, weights_only=False)
+                        if cache.get("paths") == paths_as_str:
+                            print(f"Loaded file lengths from cache: {cache_path}")
+                            lengths = cache["lengths"]
+                    except Exception as e:
+                        print(
+                            f"Warning: lengths cache at {cache_path} is "
+                            f"unreadable ({e}); recomputing."
+                        )
 
-        lengths = []
-        for path in tqdm(self.hdf5_paths, desc="Computing file lengths"):
-            try:
-                with h5py.File(path, "r") as f:
-                    duration = min(self._compute_duration(f), max_duration_s)
-                # Subtract warmup: usable duration starts after warmup_s
-                duration = duration - self.warmup_s
-                if duration <= 0.0:
-                    length = 0
-                elif self.prediction_mode:
-                    total_window = (
-                            self.chunk_duration_s + self.prediction_horizon_s
-                    )
-                    length = max(0, int(np.floor(
-                        (duration - total_window) / self.step_size_s
-                    )) + 1)
-                else:
-                    if duration < self.chunk_duration_s:
+            if lengths is None:
+                lengths = []
+                for path in tqdm(self.hdf5_paths, desc="Computing file lengths"):
+                    try:
+                        with h5py.File(path, "r") as f:
+                            duration = min(self._compute_duration(f), max_duration_s)
+                        # Subtract warmup: usable duration starts after warmup_s
+                        duration = duration - self.warmup_s
+                        if duration <= 0.0:
+                            length = 0
+                        elif self.prediction_mode:
+                            total_window = (
+                                    self.chunk_duration_s + self.prediction_horizon_s
+                            )
+                            length = max(0, int(np.floor(
+                                (duration - total_window) / self.step_size_s
+                            )) + 1)
+                        else:
+                            if duration < self.chunk_duration_s:
+                                length = 0
+                            else:
+                                length = int(np.floor(
+                                    (duration - self.chunk_duration_s) / self.step_size_s
+                                )) + 1
+                    except OSError as e:
+                        print(f"Warning: could not open {path}: {e}")
                         length = 0
-                    else:
-                        length = int(np.floor(
-                            (duration - self.chunk_duration_s) / self.step_size_s
-                        )) + 1
-            except OSError as e:
-                print(f"Warning: could not open {path}: {e}")
-                length = 0
-            lengths.append(length)
+                    lengths.append(length)
 
-        if lengths_cache_path is not None:
-            torch.save(
-                {"paths": paths_as_str, "lengths": lengths},
-                lengths_cache_path
-            )
-            print(f"Saved file lengths to cache: {lengths_cache_path}")
+                if lengths_cache_path is not None:
+                    # Atomic write: write to .tmp then rename, so a crashed
+                    # write never leaves a half-written zip that the next
+                    # torch.load would barf on.
+                    tmp_path = Path(str(lengths_cache_path) + ".tmp")
+                    torch.save(
+                        {"paths": paths_as_str, "lengths": lengths}, tmp_path,
+                    )
+                    tmp_path.replace(Path(lengths_cache_path))
+                    print(f"Saved file lengths to cache: {lengths_cache_path}")
+
+        if distributed:
+            payload = [lengths] if rank == 0 else [None]
+            dist.broadcast_object_list(payload, src=0)
+            lengths = payload[0]
 
         return lengths
 
@@ -669,57 +698,70 @@ def filter_video_present_files(
         The subset of ``paths`` with at least one camera present.
         Order is preserved.
     """
+    import torch.distributed as dist
+    distributed = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+
     paths_key = tuple(str(p) for p in paths)
     cameras_key = tuple(sorted(camera_names))
+    video_present: Optional[list[str]] = None
 
-    if cache_path is not None and cache_path.exists():
-        try:
-            cache = torch.load(cache_path, weights_only=False)
-            if (
-                cache.get("paths_key") == paths_key
-                and cache.get("cameras_key") == cameras_key
-            ):
-                present = set(cache["video_present"])
-                return [p for p in paths if str(p) in present]
-        except Exception:
-            # Corrupt or unreadable cache — fall through to rescan.
-            pass
+    if rank == 0:
+        if cache_path is not None and cache_path.exists():
+            try:
+                cache = torch.load(cache_path, weights_only=False)
+                if (
+                    cache.get("paths_key") == paths_key
+                    and cache.get("cameras_key") == cameras_key
+                ):
+                    video_present = list(cache["video_present"])
+            except Exception:
+                # Corrupt or unreadable cache — fall through to rescan.
+                video_present = None
 
-    print(
-        f"Scanning {len(paths)} files for {cameras_key} video presence "
-        "(cache miss)..."
-    )
-    video_present: list[str] = []
-    for p in tqdm(paths, desc="Video presence scan"):
-        try:
-            with h5py.File(p, "r") as f:
-                for cam in camera_names:
-                    if cam not in f or "ydata" not in f[cam]:
-                        continue
-                    yd = f[cam]["ydata"]
-                    xd = f[cam].get("xdata")
-                    if (
-                        yd.size > 0
-                        and yd.ndim == 4
-                        and xd is not None
-                        and xd.size >= 2
-                    ):
-                        video_present.append(str(p))
-                        break
-        except Exception as e:
-            print(f"  skipping {p.name}: {e}")
+        if video_present is None:
+            print(
+                f"Scanning {len(paths)} files for {cameras_key} video presence "
+                "(cache miss)..."
+            )
+            video_present = []
+            for p in tqdm(paths, desc="Video presence scan"):
+                try:
+                    with h5py.File(p, "r") as f:
+                        for cam in camera_names:
+                            if cam not in f or "ydata" not in f[cam]:
+                                continue
+                            yd = f[cam]["ydata"]
+                            xd = f[cam].get("xdata")
+                            if (
+                                yd.size > 0
+                                and yd.ndim == 4
+                                and xd is not None
+                                and xd.size >= 2
+                            ):
+                                video_present.append(str(p))
+                                break
+                except Exception as e:
+                    print(f"  skipping {p.name}: {e}")
 
-    if cache_path is not None:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {
-                "paths_key": paths_key,
-                "cameras_key": cameras_key,
-                "video_present": video_present,
-            },
-            cache_path,
-        )
-        print(f"Saved video-presence cache to {cache_path}")
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = Path(str(cache_path) + ".tmp")
+                torch.save(
+                    {
+                        "paths_key": paths_key,
+                        "cameras_key": cameras_key,
+                        "video_present": video_present,
+                    },
+                    tmp_path,
+                )
+                tmp_path.replace(Path(cache_path))
+                print(f"Saved video-presence cache to {cache_path}")
+
+    if distributed:
+        payload = [video_present] if rank == 0 else [None]
+        dist.broadcast_object_list(payload, src=0)
+        video_present = payload[0]
 
     present = set(video_present)
     return [p for p in paths if str(p) in present]

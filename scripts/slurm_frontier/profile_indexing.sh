@@ -29,7 +29,7 @@
 #SBATCH -J e2e_idx_profile
 #SBATCH -o logs/%j_idx_profile.out
 #SBATCH -e logs/%j_idx_profile.err
-#SBATCH -t 24:00:00
+#SBATCH -t 8:00:00
 #SBATCH -p extended
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
@@ -54,6 +54,11 @@ source scripts/slurm_frontier/_frontier_common.sh
 
 DATA_DIR="${DATA_DIR:-/lustre/orion/fus187/proj-shared/foundation_model}"
 CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/foundation_model_meta}"
+# Must mirror train_e2e_stage1.sh's --use_video so the produced lengths cache
+# is keyed on the same (post-filter) path list training will see. Set empty
+# to skip the filter — but then the cache won't be reusable by --use_video
+# training runs.
+USE_VIDEO="${USE_VIDEO:-tangtv}"
 
 MAX_FILES_FLAG=""
 [ -n "${MAX_FILES:-}" ] && MAX_FILES_FLAG="--max_files $MAX_FILES"
@@ -61,9 +66,13 @@ MAX_FILES_FLAG=""
 CACHE_FLAG="--cache_dir $CACHE_DIR"
 [ "${NO_CACHE:-0}" = "1" ] && CACHE_FLAG="--no_cache"
 
-echo "[idx_profile] data_dir=$DATA_DIR cache=$CACHE_DIR max_files=${MAX_FILES:-all}"
+VIDEO_FLAG=""
+[ -n "${USE_VIDEO}" ] && VIDEO_FLAG="--use_video $USE_VIDEO"
+
+echo "[idx_profile] data_dir=$DATA_DIR cache=$CACHE_DIR use_video=${USE_VIDEO:-none} max_files=${MAX_FILES:-all}"
 
 python -u scripts/profile_indexing.py \
     --data_dir "$DATA_DIR" \
     $CACHE_FLAG \
+    $VIDEO_FLAG \
     $MAX_FILES_FLAG

@@ -38,7 +38,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # These imports must come after the path tweak. Note: TokamakMultiFileDataset
 # pulls in torch but only uses CPU paths during indexing.
-from tokamak_foundation_model.data.multi_file_dataset import TokamakMultiFileDataset  # noqa: E402
+from tokamak_foundation_model.data.multi_file_dataset import (  # noqa: E402
+    TokamakMultiFileDataset,
+    filter_video_present_files,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logger = logging.getLogger("profile_indexing")
@@ -164,6 +167,17 @@ def main():
                     help="Comma-separated list. Default: stage1 actuators.")
     ap.add_argument("--skip_val", action="store_true",
                     help="Profile train indexing only.")
+    ap.add_argument(
+        "--use_video", nargs="*", default=[],
+        help="Camera names to require present (e.g. 'tangtv'). Must match the "
+        "training run's --use_video so the resulting lengths cache is keyed "
+        "on the same path list. Empty (default) skips the video filter.",
+    )
+    ap.add_argument(
+        "--video_cache_dir", type=Path, default=None,
+        help="Where to write/read the video-presence cache. Defaults to "
+        "--cache_dir so the training run can reuse it.",
+    )
     args = ap.parse_args()
 
     if not args.data_dir.is_dir():
@@ -205,6 +219,36 @@ def main():
     else:
         cache_dir = Path(tempfile.mkdtemp(prefix="profile_indexing_"))
         logger.info(f"Cache dir (tempdir, cold-miss every run): {cache_dir}")
+
+    # Apply video-presence filter BEFORE building the lengths cache so the
+    # stored `paths` key matches what training will see at run time. Without
+    # this, training (with --use_video) builds a smaller filtered list, the
+    # cache's `paths` check fails, and the pre-warm is wasted.
+    if args.use_video:
+        video_cache_dir = args.video_cache_dir or cache_dir
+        n_train_before = len(train_files)
+        n_val_before = len(val_files)
+        train_files = filter_video_present_files(
+            train_files,
+            args.use_video,
+            cache_path=(
+                video_cache_dir / "video_present_train.pt"
+                if video_cache_dir else None
+            ),
+        )
+        val_files = filter_video_present_files(
+            val_files,
+            args.use_video,
+            cache_path=(
+                video_cache_dir / "video_present_val.pt"
+                if video_cache_dir else None
+            ),
+        )
+        logger.info(
+            f"Video-presence filter ({args.use_video}): "
+            f"train {n_train_before} -> {len(train_files)}; "
+            f"val {n_val_before} -> {len(val_files)}"
+        )
 
     train_cache = (cache_dir / "lengths_e2e_stage1_train.pt") if cache_dir else None
     val_cache = (cache_dir / "lengths_e2e_stage1_val.pt") if cache_dir else None

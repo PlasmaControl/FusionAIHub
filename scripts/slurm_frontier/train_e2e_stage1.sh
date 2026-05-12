@@ -5,8 +5,10 @@
 #SBATCH -e logs/%j_e2e_stage1.err
 #SBATCH -t 02:00:00
 #SBATCH -p batch
+#SBATCH -q debug
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=8
+#SBATCH --gres=gpu:8
 #SBATCH --gpus-per-task=1
 #SBATCH --gpu-bind=closest
 #SBATCH --cpus-per-task=7
@@ -55,6 +57,7 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --max_steps 50000 \
      --log_every 50 \
      --val_every 500 \
+     --max_files 8 \
      --val_max_batches 20 \
      --use_video tangtv \
      --use_spectro ece co2 bes
