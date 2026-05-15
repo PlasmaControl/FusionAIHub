@@ -57,8 +57,20 @@ class FastTimeSeriesTokenizer(nn.Module):
         self.patch_size = patch_size
         self.n_patches = window_samples // patch_size
 
+        # Pre-patch convolutional stem at sample resolution. Two small-kernel
+        # convs lift the per-sample representation to ``stem_channels`` before
+        # the patch-stride embedding, so sharp local features (spikes, bursts)
+        # are captured before the lossy 50-sample downsample.
+        stem_channels = 64
+        self.stem = nn.Sequential(
+            nn.Conv1d(1, stem_channels, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(stem_channels, stem_channels, kernel_size=3, padding=1),
+            nn.GELU(),
+        )
+
         self.conv = nn.Conv1d(
-            in_channels=1,
+            in_channels=stem_channels,
             out_channels=d_model,
             kernel_size=patch_size,
             stride=patch_size,
@@ -100,6 +112,7 @@ class FastTimeSeriesTokenizer(nn.Module):
         """
         batch = x.shape[0]
         x_flat = x.reshape(batch * self.n_channels, 1, self.window_samples)
+        x_flat = self.stem(x_flat)  # (B*C, stem_channels, window_samples)
         patches = self.conv(x_flat)  # (B*C, d_model, n_patches)
         patches = patches.transpose(1, 2)  # (B*C, n_patches, d_model)
         patches = patches.reshape(

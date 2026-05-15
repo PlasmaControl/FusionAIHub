@@ -102,7 +102,7 @@ class SpectrogramTokenizer(nn.Module):
         # Pre-backbone per-token MLP refiners (stacked ViT-style residual MLP
         # blocks). Each block is independently applied with a residual at the
         # call site so adding/removing blocks is a single-line change.
-        n_refine_blocks = 2
+        n_refine_blocks = 4
         self.refine = nn.ModuleList([
             nn.Sequential(
                 nn.LayerNorm(d_model),
