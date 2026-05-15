@@ -66,6 +66,20 @@ class FastTimeSeriesTokenizer(nn.Module):
         self.channel_pos = nn.Parameter(torch.empty(n_channels, d_model))
         self.patch_pos = nn.Parameter(torch.empty(self.n_patches, d_model))
         self.modality_embed = nn.Parameter(torch.empty(d_model))
+
+        # Pre-backbone per-token MLP refiners (stacked ViT-style residual
+        # MLP blocks). Two blocks, matching the spectrogram pathway.
+        n_refine_blocks = 2
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
         nn.init.normal_(self.channel_pos, std=0.02)
         nn.init.normal_(self.patch_pos, std=0.02)
         nn.init.normal_(self.modality_embed, std=0.02)
@@ -94,6 +108,9 @@ class FastTimeSeriesTokenizer(nn.Module):
         patches = patches + self.patch_pos
         patches = patches + self.channel_pos.unsqueeze(1)
         patches = patches + self.modality_embed
-        return patches.reshape(
+        tokens = patches.reshape(
             batch, self.n_channels * self.n_patches, self.d_model
         )
+        for block in self.refine:
+            tokens = tokens + block(tokens)
+        return tokens

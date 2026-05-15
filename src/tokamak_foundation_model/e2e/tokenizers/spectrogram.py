@@ -99,6 +99,20 @@ class SpectrogramTokenizer(nn.Module):
         # (per-batch ``mask=False``). Same pattern as VideoTokenizer.
         self.missing_token = nn.Parameter(torch.empty(self.n_tokens, d_model))
 
+        # Pre-backbone per-token MLP refiners (stacked ViT-style residual MLP
+        # blocks). Each block is independently applied with a residual at the
+        # call site so adding/removing blocks is a single-line change.
+        n_refine_blocks = 2
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
         nn.init.normal_(self.spatial_pe, std=0.02)
         nn.init.normal_(self.modality_embed, std=0.02)
         nn.init.normal_(self.missing_token, std=0.02)
@@ -109,7 +123,10 @@ class SpectrogramTokenizer(nn.Module):
         x = x[..., : self.trunc_t]                      # (B, C, F, T_trunc)
         tokens = self.proj(x)                           # (B, d_model, n_f, n_t)
         tokens = tokens.flatten(2).transpose(1, 2)      # (B, n_tokens, d_model)
-        return tokens + self.spatial_pe + self.modality_embed
+        tokens = tokens + self.spatial_pe + self.modality_embed
+        for block in self.refine:
+            tokens = tokens + block(tokens)
+        return tokens
 
     def forward(
         self, x: torch.Tensor, mask: torch.Tensor | None = None

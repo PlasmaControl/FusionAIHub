@@ -73,8 +73,8 @@ SAMPLER_PID=$!
 trap 'kill "$SAMPLER_PID" 2>/dev/null || true' EXIT
 
 # Validation cadence: at 8 nodes × batch_size=8 (global batch 512),
-# 4,831,601 train chunks → ~9436 steps/epoch. val_every=9436 ≈ 1 val
-# per epoch — same "1 val per epoch" pattern Stage 1 settled on.
+# 4,632,251 stage-2 train chunks → 9047 steps/epoch. val_every=9047 ≈ 1
+# val per epoch — same "1 val per epoch" pattern Stage 1 settled on.
 # val_max_batches=30 because Stage 2 val is K_max=10× more expensive
 # per batch than Stage 1's single-step val.
 srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
@@ -94,7 +94,8 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --n_heads 8 \
      --dropout 0.1 \
      --K_max 10 \
-     --curriculum_steps 1000 \
+     --curriculum_steps 180940 \
+     --grad_checkpoint_every 0 \
      --mae_weight 1.0 \
      --cos_weight 0.3 \
      --mag_weight 0.1 \
@@ -106,9 +107,9 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --grad_clip 5.0 \
      --batch_size 8 \
      --num_workers 6 \
-     --max_steps 672000 \
+     --max_steps 180940 \
      --log_every 50 \
-     --val_every 100 \
+     --val_every 9047 \
      --val_max_batches 30 \
      --use_video tangtv \
      --use_spectro ece co2 bes \

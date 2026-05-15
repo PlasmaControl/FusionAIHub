@@ -44,6 +44,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import torch.utils.checkpoint as torch_ckpt
 import yaml
 from torch.utils.data import DataLoader
 
@@ -408,6 +409,7 @@ def rollout_forward_loss_delta(
     video_diag_names: Optional[List[str]] = None,
     video_n_frames: Optional[Dict[str, int]] = None,
     spectro_diag_names: Optional[List[str]] = None,
+    grad_checkpoint_every: int = 0,
 ) -> Tuple[torch.Tensor, List[Dict[str, Dict[str, float]]]]:
     """Tokenise step-0, split targets/actuators, run K-step rollout with full
     backprop, and return (summed loss, per-step per-modality metrics).
@@ -508,14 +510,43 @@ def rollout_forward_loss_delta(
         target_per_step.append(tgt_k)
         mask_per_step.append(mk_k)
 
-    result = rollout(diag_initial, act_per_step)
+    # Gradient checkpointing on the rollout (ported from stage 2 extended).
+    # When grad_checkpoint_every >= k_steps the entire K-step rollout is one
+    # checkpoint group: forward activations are discarded; recomputed during
+    # backward → ~K-fold less activation memory at ~33% step-time penalty.
+    # Per-group chunking (0 < g < k_steps) needs the chunk_fn pattern from
+    # stage 2 extended — not ported here.
+    #
+    # Bypass DDP inside the checkpointed function (use _core(rollout))
+    # to avoid DDP forward hooks firing twice (first forward + recompute
+    # backward), which on MI250X produces "Memory access fault by GPU".
+    # DDP's gradient all_reduce still works correctly because the hooks
+    # are registered on parameters and fire when grads are populated,
+    # independent of which forward path produced the gradient.
+    inner_rollout = _core(rollout)
+
+    def _checkpointed_rollout(diag_init, act):
+        return inner_rollout(diag_init, act).predictions
+
+    if grad_checkpoint_every <= 0:
+        predictions = rollout(diag_initial, act_per_step).predictions
+    elif grad_checkpoint_every >= k_steps:
+        predictions = torch_ckpt.checkpoint(
+            _checkpointed_rollout, diag_initial, act_per_step,
+            use_reentrant=False,
+        )
+    else:
+        raise NotImplementedError(
+            f"grad_checkpoint_every={grad_checkpoint_every} < "
+            f"k_steps={k_steps}: per-group chunking is not ported to "
+            "stage 2 delta. Pass 0 (off) or a value >= k_steps "
+            f"(single group). Current k_steps={k_steps}."
+        )
     # Video heads emit (B, T, C, H, W); permute per step to (B, C, T, H, W)
     # so loss / metric paths see a single shape contract.
     for k in range(k_steps):
         for name in video_diag_names:
-            result.predictions[k][name] = (
-                result.predictions[k][name].permute(0, 2, 1, 3, 4)
-            )
+            predictions[k][name] = predictions[k][name].permute(0, 2, 1, 3, 4)
 
     # Accumulate per-(step, modality) metrics as on-device scalar tensors;
     # transfer them to CPU once at the end of the forward pass instead of
@@ -532,7 +563,7 @@ def rollout_forward_loss_delta(
         mr_row: List[torch.Tensor] = []
         nv_row: List[torch.Tensor] = []
         for name in diagnostic_names:
-            pred = result.predictions[k][name]
+            pred = predictions[k][name]
             target = target_per_step[k][name]
             mask = mask_per_step[k][name]
             if name in video_diag_names or name in spectro_diag_names:
@@ -927,6 +958,17 @@ def main() -> None:
     )
     parser.add_argument("--K_max", type=int, default=10)
     parser.add_argument("--curriculum_steps", type=int, default=25_000)
+    parser.add_argument(
+        "--grad_checkpoint_every", type=int, default=10,
+        help="Gradient checkpointing group size for the K-step rollout. "
+        "0 = disabled (full activation memory). >= k_steps = single "
+        "checkpoint group covering the entire rollout (recommended for "
+        "K_max=10: pass 10). Activations within the group are discarded "
+        "after forward and recomputed during backward (~33%% step-time "
+        "penalty in exchange for ~K-fold less activation memory). "
+        "Values 0 < g < k_steps would need per-group chunking (matching "
+        "stage 2 extended); not yet supported here.",
+    )
 
     # Loss weights — Stage 2b specific.
     parser.add_argument("--mae_weight", type=float, default=1.0)
@@ -1147,6 +1189,12 @@ def main() -> None:
             else TwoLevelSampler(train_ds, shuffle=True)
         ),
         num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
+        # prefetch_factor=3 + val_num_workers=4 is the v9-validated config
+        # at batch=8 (RAM ~68% steady, ~75% val-overlap peak — comfortable
+        # under the 502 GB cap). Larger batch needs revisiting via the
+        # empirical model: variable cost ≈ num_workers × prefetch ×
+        # batch × ~1.3 GB.
+        prefetch_factor=3,
         pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
         worker_init_fn=_worker_init,
@@ -1266,6 +1314,7 @@ def main() -> None:
                 video_diag_names=video_diag_names,
                 video_n_frames=video_n_frames,
                 spectro_diag_names=spectro_diag_names,
+                grad_checkpoint_every=args.grad_checkpoint_every,
             )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)

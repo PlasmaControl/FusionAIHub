@@ -105,6 +105,18 @@ class FastTimeSeriesHead(nn.Module):
             stride=patch_size,
         )
 
+        # Pre-unembed per-token MLP refiners (mirror of the tokenizer's).
+        n_refine_blocks = 2
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         """Reconstruct raw signal.
 
@@ -120,6 +132,8 @@ class FastTimeSeriesHead(nn.Module):
             ``(batch, n_channels, window_samples)`` raw-signal reconstruction.
         """
         batch = tokens.shape[0]
+        for block in self.refine:
+            tokens = tokens + block(tokens)
         t = tokens.reshape(batch, self.n_channels, self.n_patches, self.d_model)
         t = t.reshape(batch * self.n_channels, self.n_patches, self.d_model)
         t = t.transpose(1, 2)  # (B*C, d_model, n_patches)
@@ -266,6 +280,18 @@ class SpectrogramOutputHead(nn.Module):
         self.n_patches_f = n_patches_f
         self.n_patches_t = n_patches_t
 
+        # Pre-unembed per-token MLP refiners (mirror of the tokenizer's).
+        n_refine_blocks = 2
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
         # Inverse of the tokenizer's patch Conv2d.
         self.patch_unembed = nn.ConvTranspose2d(
             d_model,
@@ -278,6 +304,8 @@ class SpectrogramOutputHead(nn.Module):
         """``(B, n_tokens, d_model) -> (B, n_channels, freq_bins,
         n_patches_t * patch_t)``."""
         B = tokens.shape[0]
+        for block in self.refine:
+            tokens = tokens + block(tokens)
         # (B, n_tokens, d_model) -> (B, d_model, n_patches_f, n_patches_t).
         # The flatten order in the tokenizer is (n_patches_f, n_patches_t)
         # row-major (n_patches_f slow, n_patches_t fast), so we reshape
