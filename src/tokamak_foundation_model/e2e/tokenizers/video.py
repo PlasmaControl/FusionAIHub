@@ -134,10 +134,16 @@ class VideoTokenizer(nn.Module):
     def forward(
         self, x: torch.Tensor, mask: torch.Tensor | None = None
     ) -> torch.Tensor:
+        # Always invoke _encode and reference missing_token so the autograd
+        # graph for patch_embed / spatial_pe / modality_emb / missing_token
+        # is data-independent. Lets us run DDP without
+        # `find_unused_parameters` (RCCL bucket rebuilds on a per-batch-
+        # changing unused-set were causing GPU memory faults on Frontier).
+        # Extra cost: a Conv3d on the masked-out rows; minor relative to
+        # the backbone transformer.
         B = x.shape[0]
-        if mask is None or mask.all():
-            return self._encode(x)
-        out = self.missing_token.expand(B, -1, -1).clone()
-        if mask.any():
-            out[mask] = self._encode(x[mask])
-        return out
+        encoded = self._encode(x)
+        missing = self.missing_token.expand(B, -1, -1)
+        if mask is None:
+            return encoded + 0.0 * missing.sum()
+        return torch.where(mask.view(B, 1, 1), encoded, missing)

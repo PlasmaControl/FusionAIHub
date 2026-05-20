@@ -39,10 +39,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 
 from tokamak_foundation_model.data.data_loader import collate_fn
 from tokamak_foundation_model.data.multi_file_dataset import (
+    DistributedTwoLevelSampler,
     TokamakMultiFileDataset,
     TwoLevelSampler,
     filter_video_present_files,
@@ -567,7 +567,16 @@ def validate(
     max_batches: Optional[int] = None,
     use_amp: bool = False,
 ) -> Dict[str, Dict[str, float]]:
-    """Return per-modality validation metrics.
+    """Return per-modality validation metrics, computed in a
+    distribution-aware way.
+
+    The val_loader is assumed to be sharded across ranks (via a
+    ``DistributedTwoLevelSampler`` with ``shuffle=False``). Each rank
+    accumulates partial sums on its shard; the totals are all-reduced
+    once at the end so every rank ends up with the same global metric
+    values. This replaces the previous "every rank validates everything"
+    behaviour, which caused host-memory OOMs at 64+ ranks because each
+    rank held the full val workload in flight independently.
 
     ``out[name]`` has keys ``model_mae``, ``copy_mae``, ``pred_delta``,
     ``tgt_delta``, ``delta_ratio``.
@@ -578,10 +587,25 @@ def validate(
     ``pred_delta ≈ 0``; a model predicting the true dynamics has
     ``delta_ratio = pred_delta / tgt_delta ∈ [0.8, 1.2]``.
     """
+    import torch.distributed as dist
+
     model.eval()
+    # Bypass the DDP wrapper for the val forward pass. DDP's pre-forward
+    # hook (rebuild_buckets logic) was observed to trigger GPU memory
+    # access faults during validation even under no_grad. The inner
+    # module's weights are identical across ranks (DDP keeps them in
+    # sync), so forwarding through it directly produces the same result.
+    inner = _core(model)
+
     keys = ("model_mae", "copy_mae", "pred_delta", "tgt_delta")
-    sums = {k: {n: 0.0 for n in diagnostic_names} for k in keys}
-    n_batches = 0
+    M = len(diagnostic_names)
+    K = len(keys)
+    # fp32 accumulators regardless of autocast — keeps cross-rank
+    # all_reduce in fp32 (bf16 all_reduce on RCCL has stability issues)
+    # and avoids precision loss across many batches.
+    sums_t = torch.zeros(K, M, device=device, dtype=torch.float32)
+    n_batches_t = torch.zeros((), device=device, dtype=torch.float32)
+    name_to_col = {n: j for j, n in enumerate(diagnostic_names)}
 
     amp_ctx = (
         torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
@@ -590,16 +614,19 @@ def validate(
     for i, batch in enumerate(loader):
         if max_batches is not None and i >= max_batches:
             break
+        # Only the forward pass runs inside autocast; metric math
+        # explicitly upcasts to fp32 below.
         with amp_ctx:
             predictions, diag_inputs, targets, masks = forward_batch(
-                model, batch, device
+                inner, batch, device
             )
-        copy_mod = copy_baseline_mae(batch, _core(model).diagnostics, device)
+        copy_mod = copy_baseline_mae(batch, inner.diagnostics, device)
         for name in diagnostic_names:
-            pred = predictions[name]
-            inp = diag_inputs[name]
-            tgt = targets[name]
-            existing = masks[name]
+            j = name_to_col[name]
+            pred = predictions[name].float()
+            inp = diag_inputs[name].float()
+            tgt = targets[name].float()
+            existing = masks[name].float() if masks[name] is not None else None
 
             cleaned_pred, mask_p = _clean_and_mask(pred, None)
             cleaned_tgt, mask_t = _clean_and_mask(tgt, existing)
@@ -616,20 +643,31 @@ def validate(
                 (cleaned_tgt - inp).abs() * combined
             ).sum() / denom
 
-            sums["model_mae"][name] += model_mae_v.item()
-            sums["copy_mae"][name] += copy_mod[name]
-            sums["pred_delta"][name] += pred_delta.item()
-            sums["tgt_delta"][name] += tgt_delta.item()
-        n_batches += 1
+            sums_t[0, j] += model_mae_v
+            sums_t[1, j] += float(copy_mod[name])
+            sums_t[2, j] += pred_delta
+            sums_t[3, j] += tgt_delta
+        n_batches_t += 1.0
 
-    denom = max(n_batches, 1)
+    # Single all-reduce across ranks (sums + batch count combined into
+    # contiguous fp32 tensors above). Empty-shard ranks contribute
+    # zeros and a count of 0, which is the correct behaviour.
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(sums_t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(n_batches_t, op=dist.ReduceOp.SUM)
+
+    denom = float(n_batches_t.item())
+    if denom <= 0.0:
+        denom = 1.0
+    sums = sums_t.detach().cpu().numpy()
     model.train()
     out: Dict[str, Dict[str, float]] = {}
     for name in diagnostic_names:
-        model_mae = sums["model_mae"][name] / denom
-        copy_mae = sums["copy_mae"][name] / denom
-        pred_d = sums["pred_delta"][name] / denom
-        tgt_d = sums["tgt_delta"][name] / denom
+        j = name_to_col[name]
+        model_mae = float(sums[0, j]) / denom
+        copy_mae = float(sums[1, j]) / denom
+        pred_d = float(sums[2, j]) / denom
+        tgt_d = float(sums[3, j]) / denom
         ratio = pred_d / tgt_d if tgt_d > 1e-8 else float("nan")
         out[name] = {
             "model_mae": model_mae,
@@ -777,6 +815,15 @@ def main() -> None:
     parser.add_argument("--data_dir", type=Path, required=True)
     parser.add_argument("--stats_path", type=Path, required=True)
     parser.add_argument("--checkpoint_dir", type=Path, required=True)
+    parser.add_argument(
+        "--lengths_cache_dir",
+        type=Path,
+        default=Path("/lustre/orion/fus187/proj-shared/foundation_model_meta"),
+        help="Directory for TokamakMultiFileDataset length-cache sidecar "
+        "files (lengths_e2e_stage1_{train,val}.pt). Defaults to the "
+        "shared foundation_model_meta dir so all ranks/jobs reuse the "
+        "same cache.",
+    )
     parser.add_argument("--train_shots_yaml", type=Path, default=None)
     parser.add_argument("--val_shots_yaml", type=Path, default=None)
     parser.add_argument("--max_files", type=int, default=None)
@@ -854,6 +901,13 @@ def main() -> None:
         "--no_amp", action="store_true",
         help="Disable bf16 mixed precision (default: AMP on when CUDA).",
     )
+    parser.add_argument(
+        "--no_amp_val", action="store_true",
+        help="Disable bf16 autocast during validation only (training still "
+        "uses AMP if --no_amp not set). Workaround for the GPU memory-"
+        "access faults seen during distributed validation at n_layers=26 "
+        "on Frontier ROCm 7.1.1.",
+    )
     args = parser.parse_args()
 
     dm = DistributedManager()
@@ -906,15 +960,16 @@ def main() -> None:
     if args.use_video:
         n_train_before = len(train_files)
         n_val_before = len(val_files)
+        args.lengths_cache_dir.mkdir(parents=True, exist_ok=True)
         train_files = filter_video_present_files(
             train_files,
             args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_train.pt",
+            cache_path=args.lengths_cache_dir / "video_present_train.pt",
         )
         val_files = filter_video_present_files(
             val_files,
             args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_val.pt",
+            cache_path=args.lengths_cache_dir / "video_present_val.pt",
         )
         logger.info(
             f"Video-presence filter ({args.use_video}): "
@@ -976,7 +1031,7 @@ def main() -> None:
         warmup_s=args.warmup_s,
         diagnostic_names=diagnostic_names,
         actuator_names=actuator_names,
-        lengths_cache_dir=args.checkpoint_dir,
+        lengths_cache_dir=args.lengths_cache_dir,
     )
     logger.info(f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}")
 
@@ -989,10 +1044,14 @@ def main() -> None:
         torch.set_num_threads(n)
 
     if dm.distributed:
-        # DistributedSampler shards chunk indices across ranks. Loses the
-        # file-sequential cache locality of TwoLevelSampler — revisit if
-        # HDF5 open() time becomes a bottleneck under DDP.
-        train_sampler = DistributedSampler(
+        # DDP-aware file-level sharding. Preserves TwoLevelSampler's
+        # per-worker LRU file-handle cache locality (each rank owns a
+        # fixed slice of the file list, iterates its own files
+        # sequentially). PyTorch's DistributedSampler, which shards
+        # chunk indices instead, was observed to make HDF5 open() the
+        # dominant cost (~12 s/step at 2-GPU DDP vs. ~1 s/step
+        # single-GPU at the same batch).
+        train_sampler = DistributedTwoLevelSampler(
             train_ds,
             num_replicas=dm.world_size,
             rank=dm.rank,
@@ -1015,16 +1074,41 @@ def main() -> None:
         persistent_workers=args.num_workers > 0,
         worker_init_fn=_worker_init,
     )
+    # Distributed validation: shard the val set across ranks so each
+    # rank validates ~1/world_size of it. Matching the train sampler's
+    # file-level sharding (preserves LRU file-handle locality and avoids
+    # the host-OOM that hit at 64 ranks when every rank held the full
+    # val workload independently). Metrics are all-reduced inside
+    # validate() so all ranks end up with identical global numbers.
+    if dm.distributed:
+        val_sampler = DistributedTwoLevelSampler(
+            val_ds,
+            num_replicas=dm.world_size,
+            rank=dm.rank,
+            shuffle=False,
+            seed=args.seed,
+            drop_last=True,
+        )
+    else:
+        val_sampler = TwoLevelSampler(val_ds, shuffle=False)
+
+    # Val loader memory budget. Train workers stay alive during val and
+    # hold their prefetched batches (6 workers x 2 prefetch = 12 in flight
+    # per rank). With num_workers=6 prefetch=1 the combined peak (18) hits
+    # ~97% host RAM on 2-node smokes -> OOM territory. Capping val to
+    # 4 workers x 1 prefetch keeps the combined in-flight at 16 batches,
+    # within the 502 GB node budget. Workers are torn down at end-of-val.
+    val_num_workers = min(4, args.num_workers)
     val_loader = DataLoader(
         val_ds,
         batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
+        sampler=val_sampler,
+        num_workers=val_num_workers,
         collate_fn=collate_fn,
         drop_last=True,
-        prefetch_factor=2,
+        prefetch_factor=1,
         pin_memory=False,
-        persistent_workers=args.num_workers > 0,
+        persistent_workers=False,
         worker_init_fn=_worker_init,
     )
 
@@ -1041,6 +1125,10 @@ def main() -> None:
     # bf16 mixed precision. bf16 has the same dynamic range as fp32 so
     # no GradScaler is required; matches train_e2e_stage2_delta.py.
     use_amp = (not args.no_amp) and device.type == "cuda"
+    # Separate flag for validation AMP. Defaults to the training value,
+    # but --no_amp_val turns it off independently as a workaround for
+    # ROCm-side GPU memory-access faults observed during distributed val.
+    use_amp_val = use_amp and not args.no_amp_val
 
     def amp_ctx_factory():
         if use_amp:
@@ -1205,7 +1293,7 @@ def main() -> None:
                 device,
                 diagnostic_names,
                 max_batches=args.val_max_batches,
-                use_amp=use_amp,
+                use_amp=use_amp_val,
             )
             logger.info(
                 "Validation (MAE model vs copy; delta-ratio pred/tgt):"
