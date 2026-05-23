@@ -99,6 +99,20 @@ class SpectrogramTokenizer(nn.Module):
         # (per-batch ``mask=False``). Same pattern as VideoTokenizer.
         self.missing_token = nn.Parameter(torch.empty(self.n_tokens, d_model))
 
+        # Pre-backbone per-token MLP refiners (stacked ViT-style residual MLP
+        # blocks). Each block is independently applied with a residual at the
+        # call site so adding/removing blocks is a single-line change.
+        n_refine_blocks = 4
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
         nn.init.normal_(self.spatial_pe, std=0.02)
         nn.init.normal_(self.modality_embed, std=0.02)
         nn.init.normal_(self.missing_token, std=0.02)
@@ -109,7 +123,10 @@ class SpectrogramTokenizer(nn.Module):
         x = x[..., : self.trunc_t]                      # (B, C, F, T_trunc)
         tokens = self.proj(x)                           # (B, d_model, n_f, n_t)
         tokens = tokens.flatten(2).transpose(1, 2)      # (B, n_tokens, d_model)
-        return tokens + self.spatial_pe + self.modality_embed
+        tokens = tokens + self.spatial_pe + self.modality_embed
+        for block in self.refine:
+            tokens = tokens + block(tokens)
+        return tokens
 
     def forward(
         self, x: torch.Tensor, mask: torch.Tensor | None = None
@@ -130,10 +147,15 @@ class SpectrogramTokenizer(nn.Module):
         torch.Tensor
             Tokens of shape ``(B, n_tokens, d_model)``.
         """
+        # Always invoke _encode and reference missing_token so the autograd
+        # graph for proj / spatial_pe / modality_embed / missing_token is
+        # data-independent. Lets us run DDP without `find_unused_parameters`
+        # (RCCL bucket rebuilds on a per-batch-changing unused-set were
+        # causing GPU memory faults on Frontier). Extra cost: a Conv2d on
+        # the masked-out rows; small relative to the backbone transformer.
         B = x.shape[0]
-        if mask is None or mask.all():
-            return self._encode(x)
-        out = self.missing_token.expand(B, -1, -1).clone()
-        if mask.any():
-            out[mask] = self._encode(x[mask])
-        return out
+        encoded = self._encode(x)
+        missing = self.missing_token.expand(B, -1, -1)
+        if mask is None:
+            return encoded + 0.0 * missing.sum()
+        return torch.where(mask.view(B, 1, 1), encoded, missing)

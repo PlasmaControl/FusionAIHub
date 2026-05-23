@@ -502,6 +502,19 @@ def main() -> None:
     parser.add_argument("--d_model", type=int, default=256)
     parser.add_argument("--n_layers", type=int, default=8)
     parser.add_argument("--n_heads", type=int, default=8)
+    parser.add_argument(
+        "--gradient_checkpoint", action="store_true",
+        help="Recompute backbone-block activations during backward instead "
+             "of storing them. Especially helpful for K-step rollouts since "
+             "activation memory otherwise scales as K x layers. Costs ~30%% "
+             "extra compute.",
+    )
+    parser.add_argument(
+        "--use_sdpa_attn", action="store_true",
+        help="Use F.scaled_dot_product_attention in the backbone. On ROCm 7.x "
+        "this dispatches to AOTriton flash-attn and is 1.4-5x faster with "
+        "substantially less memory than the default nn.MultiheadAttention path.",
+    )
     parser.add_argument("--dropout", type=float, default=0.1)
 
     # Curriculum
@@ -585,6 +598,7 @@ def main() -> None:
         f"Actuators ({len(actuators)}): " + ", ".join(actuator_names)
     )
 
+    attn_impl = "sdpa" if args.use_sdpa_attn else "standard"
     model = E2EFoundationModel(
         diagnostics=diagnostics,
         actuators=actuators,
@@ -592,6 +606,8 @@ def main() -> None:
         n_heads=args.n_heads,
         n_layers=args.n_layers,
         dropout=args.dropout,
+        attn_impl=attn_impl,
+        gradient_checkpoint=args.gradient_checkpoint,
     ).to(device)
 
     if args.init_checkpoint is not None:
@@ -618,7 +634,9 @@ def main() -> None:
     logger.info(
         f"Model — d_model={args.d_model} n_layers={args.n_layers} "
         f"n_heads={args.n_heads}  tokens={n_total_tokens}  "
-        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}"
+        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}  "
+        f"attn_impl={attn_impl}  "
+        f"gradient_checkpoint={args.gradient_checkpoint}"
     )
 
     # ── Datasets ────────────────────────────────────────────────────────

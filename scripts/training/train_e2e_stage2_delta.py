@@ -42,12 +42,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
+import torch.utils.checkpoint as torch_ckpt
 import yaml
 from torch.utils.data import DataLoader
 
 from tokamak_foundation_model.data.data_loader import collate_fn
 from tokamak_foundation_model.data.multi_file_dataset import (
+    DistributedTwoLevelSampler,
     TokamakMultiFileDataset,
     TwoLevelSampler,
     filter_video_present_files,
@@ -60,7 +63,18 @@ from tokamak_foundation_model.e2e.model import (
 )
 from tokamak_foundation_model.e2e.rollout import TokenSpaceRollout
 from tokamak_foundation_model.utils.distributed import DistributedManager
-from torch.utils.data.distributed import DistributedSampler
+
+from tokamak_foundation_model.e2e.multimodal import (
+    SPECTROGRAM_MODALITIES,
+    VIDEO_MODALITIES,
+    append_multimodal_diagnostics,
+    spectro_loss_gate as _spectro_loss_gate,
+    spectro_trunc_t as _spectro_trunc_t,
+    split_spectro_target_by_step,
+    split_video_target_by_step,
+    video_loss_gate as _video_loss_gate,
+    video_standardize_per_bc as _video_standardize_per_bc,
+)
 
 from tokamak_foundation_model.e2e.multimodal import (
     SPECTROGRAM_MODALITIES,
@@ -407,6 +421,7 @@ def rollout_forward_loss_delta(
     video_diag_names: Optional[List[str]] = None,
     video_n_frames: Optional[Dict[str, int]] = None,
     spectro_diag_names: Optional[List[str]] = None,
+    grad_checkpoint_every: int = 0,
 ) -> Tuple[torch.Tensor, List[Dict[str, Dict[str, float]]]]:
     """Tokenise step-0, split targets/actuators, run K-step rollout with full
     backprop, and return (summed loss, per-step per-modality metrics).
@@ -456,7 +471,11 @@ def rollout_forward_loss_delta(
     spectro_target_full: Dict[str, torch.Tensor] = {}
     spectro_gate: Dict[str, torch.Tensor] = {}
     spectro_trunc_t: Dict[str, int] = {}
-    cfg_by_name = {c.name: c for c in rollout.model.diagnostics}
+    # Use _core(rollout) for the metadata read so this works whether the
+    # rollout is DDP-wrapped (training) or already unwrapped (validate()).
+    # DDP only proxies forward(); arbitrary attribute access like .model
+    # raises AttributeError on the DDP wrapper.
+    cfg_by_name = {c.name: c for c in _core(rollout).model.diagnostics}
     for name in spectro_diag_names:
         raw = batch["targets"][name].to(device).float()
         cleaned, _ = _clean_and_mask(raw, None)
@@ -503,14 +522,43 @@ def rollout_forward_loss_delta(
         target_per_step.append(tgt_k)
         mask_per_step.append(mk_k)
 
-    result = rollout(diag_initial, act_per_step)
+    # Gradient checkpointing on the rollout (ported from stage 2 extended).
+    # When grad_checkpoint_every >= k_steps the entire K-step rollout is one
+    # checkpoint group: forward activations are discarded; recomputed during
+    # backward → ~K-fold less activation memory at ~33% step-time penalty.
+    # Per-group chunking (0 < g < k_steps) needs the chunk_fn pattern from
+    # stage 2 extended — not ported here.
+    #
+    # Bypass DDP inside the checkpointed function (use _core(rollout))
+    # to avoid DDP forward hooks firing twice (first forward + recompute
+    # backward), which on MI250X produces "Memory access fault by GPU".
+    # DDP's gradient all_reduce still works correctly because the hooks
+    # are registered on parameters and fire when grads are populated,
+    # independent of which forward path produced the gradient.
+    inner_rollout = _core(rollout)
+
+    def _checkpointed_rollout(diag_init, act):
+        return inner_rollout(diag_init, act).predictions
+
+    if grad_checkpoint_every <= 0:
+        predictions = rollout(diag_initial, act_per_step).predictions
+    elif grad_checkpoint_every >= k_steps:
+        predictions = torch_ckpt.checkpoint(
+            _checkpointed_rollout, diag_initial, act_per_step,
+            use_reentrant=False,
+        )
+    else:
+        raise NotImplementedError(
+            f"grad_checkpoint_every={grad_checkpoint_every} < "
+            f"k_steps={k_steps}: per-group chunking is not ported to "
+            "stage 2 delta. Pass 0 (off) or a value >= k_steps "
+            f"(single group). Current k_steps={k_steps}."
+        )
     # Video heads emit (B, T, C, H, W); permute per step to (B, C, T, H, W)
     # so loss / metric paths see a single shape contract.
     for k in range(k_steps):
         for name in video_diag_names:
-            result.predictions[k][name] = (
-                result.predictions[k][name].permute(0, 2, 1, 3, 4)
-            )
+            predictions[k][name] = predictions[k][name].permute(0, 2, 1, 3, 4)
 
     # Accumulate per-(step, modality) metrics as on-device scalar tensors;
     # transfer them to CPU once at the end of the forward pass instead of
@@ -527,7 +575,7 @@ def rollout_forward_loss_delta(
         mr_row: List[torch.Tensor] = []
         nv_row: List[torch.Tensor] = []
         for name in diagnostic_names:
-            pred = result.predictions[k][name]
+            pred = predictions[k][name]
             target = target_per_step[k][name]
             mask = mask_per_step[k][name]
             if name in video_diag_names or name in spectro_diag_names:
@@ -727,8 +775,22 @@ def validate(
                 mask = mask_per_step[k][name]
                 if name in video_diag_names or name in spectro_diag_names:
                     mae = masked_mae(pred, target, mask).item()
+                    # Spectrogram diag_initial holds the full STFT output
+                    # (e.g. 98 frames at the canonical config) while target
+                    # is sliced to trunc_t (e.g. 96) by
+                    # split_spectro_target_by_step. Truncate the copy
+                    # baseline input to the same time-axis length so
+                    # masked_mae's broadcast doesn't blow up. Video
+                    # diag_initial and per-step target share the same T,
+                    # so no truncation needed there.
+                    if name in spectro_diag_names:
+                        baseline_input = diag_initial[name][
+                            ..., : spectro_trunc_t[name]
+                        ]
+                    else:
+                        baseline_input = diag_initial[name]
                     copy_mae = masked_mae(
-                        diag_initial[name], target, mask
+                        baseline_input, target, mask
                     ).item()
                     sums[k][name]["model_mae"] += mae
                     sums[k][name]["copy_mae"] += copy_mae
@@ -752,6 +814,40 @@ def validate(
                     counts[k][name]["disp"] += 1
 
     rollout.model.train()
+
+    # Aggregate metrics across DDP ranks. With the val loader sharded by
+    # DistributedTwoLevelSampler each rank holds sums/counts for its own
+    # ~1/world_size slice; without all_reduce the rank-0 logger would
+    # print only its slice. Flatten the nested dicts to two fp32 tensors,
+    # all_reduce(SUM), then unflatten.
+    if dist.is_available() and dist.is_initialized():
+        sum_keys = [
+            (k, n, m)
+            for k in range(K_max)
+            for n in diagnostic_names
+            for m in keys
+        ]
+        cnt_keys = [
+            (k, n, m)
+            for k in range(K_max)
+            for n in diagnostic_names
+            for m in ("mae", "disp")
+        ]
+        sum_t = torch.tensor(
+            [sums[k][n][m] for (k, n, m) in sum_keys],
+            device=device, dtype=torch.float32,
+        )
+        cnt_t = torch.tensor(
+            [counts[k][n][m] for (k, n, m) in cnt_keys],
+            device=device, dtype=torch.float32,
+        )
+        dist.all_reduce(sum_t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(cnt_t, op=dist.ReduceOp.SUM)
+        for i, (k, n, m) in enumerate(sum_keys):
+            sums[k][n][m] = float(sum_t[i].item())
+        for i, (k, n, m) in enumerate(cnt_keys):
+            counts[k][n][m] = int(cnt_t[i].item())
+
     out: Dict[int, Dict[str, Dict[str, float]]] = {}
     for k in range(K_max):
         out[k] = {}
@@ -825,6 +921,18 @@ def main() -> None:
     parser.add_argument("--stats_path", type=Path, required=True)
     parser.add_argument("--checkpoint_dir", type=Path, required=True)
     parser.add_argument(
+        "--lengths_cache_dir",
+        type=Path,
+        default=Path("/lustre/orion/fus187/proj-shared/foundation_model_meta"),
+        help="Directory for TokamakMultiFileDataset length-cache sidecar "
+        "files (lengths_e2e_stage2_delta_{train,val}.pt) and the "
+        "video-presence cache (video_present_{train,val}.pt). Defaults "
+        "to the same shared dir Stage 1 uses so the video-presence "
+        "cache is reused — it only depends on (paths, camera_names), "
+        "not the stage. Kept separate from --checkpoint_dir so cache "
+        "files survive checkpoint-dir cleanups.",
+    )
+    parser.add_argument(
         "--init_checkpoint",
         type=Path,
         default=None,
@@ -862,6 +970,17 @@ def main() -> None:
     )
     parser.add_argument("--K_max", type=int, default=10)
     parser.add_argument("--curriculum_steps", type=int, default=25_000)
+    parser.add_argument(
+        "--grad_checkpoint_every", type=int, default=10,
+        help="Gradient checkpointing group size for the K-step rollout. "
+        "0 = disabled (full activation memory). >= k_steps = single "
+        "checkpoint group covering the entire rollout (recommended for "
+        "K_max=10: pass 10). Activations within the group are discarded "
+        "after forward and recomputed during backward (~33%% step-time "
+        "penalty in exchange for ~K-fold less activation memory). "
+        "Values 0 < g < k_steps would need per-group chunking (matching "
+        "stage 2 extended); not yet supported here.",
+    )
 
     # Loss weights — Stage 2b specific.
     parser.add_argument("--mae_weight", type=float, default=1.0)
@@ -920,6 +1039,7 @@ def main() -> None:
     )
     if dm.is_main:
         args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        args.lengths_cache_dir.mkdir(parents=True, exist_ok=True)
     dm.barrier()
 
     train_files, val_files = resolve_shot_files(
@@ -933,11 +1053,11 @@ def main() -> None:
         n_train_pre, n_val_pre = len(train_files), len(val_files)
         train_files = filter_video_present_files(
             train_files, args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_train.pt",
+            cache_path=args.lengths_cache_dir / "video_present_train.pt",
         )
         val_files = filter_video_present_files(
             val_files, args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_val.pt",
+            cache_path=args.lengths_cache_dir / "video_present_val.pt",
         )
         logger.info(
             f"Video-presence filter ({args.use_video}): "
@@ -1030,18 +1150,30 @@ def main() -> None:
     )
     train_ds = TokamakMultiFileDataset(
         train_files,
-        lengths_cache_path=args.checkpoint_dir / "lengths_e2e_stage2_delta_train.pt",
+        lengths_cache_path=args.lengths_cache_dir / "lengths_e2e_stage2_delta_train.pt",
         **shared,
     )
     val_ds = TokamakMultiFileDataset(
         val_files,
-        lengths_cache_path=args.checkpoint_dir / "lengths_e2e_stage2_delta_val.pt",
+        lengths_cache_path=args.lengths_cache_dir / "lengths_e2e_stage2_delta_val.pt",
         **shared,
     )
     logger.info(
         f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}  "
         f"prediction_horizon_s={prediction_horizon_s:.3f} (K_max={args.K_max})"
     )
+
+    # Per-worker OMP_NUM_THREADS enforcement: with --cpus-per-task=7 in
+    # the SLURM script and 6 DataLoader workers per rank, default torch
+    # thread heuristics can oversubscribe (each worker spawning 7 OMP
+    # threads → 42 threads competing for 7 cores). Match the value the
+    # parent process saw via OMP_NUM_THREADS (set to 1 in
+    # _frontier_settings.sh).
+    def _worker_init(_worker_id: int) -> None:
+        import os as _os
+        n = int(_os.environ.get("OMP_NUM_THREADS", "1"))
+        torch.set_num_threads(n)
+
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size,
         # TwoLevelSampler: shuffle file order per epoch, sequential
@@ -1050,8 +1182,14 @@ def main() -> None:
         # RandomSampler across 7878 files gave ~1% hit rate and
         # spent ~10% of worker time on HDF5 file opens (observed
         # via py-spy on Stage 1 job 2719669).
+        # DistributedTwoLevelSampler is the DDP-aware sibling: each
+        # rank owns a fixed slice of the file list and iterates its
+        # own files front-to-back, so the per-worker LRU stays warm
+        # across epochs. PyTorch's DistributedSampler shards chunk
+        # indices instead and was observed to push step time from
+        # ~1 s to ~12 s under 2-GPU DDP on Stage 1.
         sampler=(
-            DistributedSampler(
+            DistributedTwoLevelSampler(
                 train_ds,
                 num_replicas=dm.world_size,
                 rank=dm.rank,
@@ -1063,20 +1201,43 @@ def main() -> None:
             else TwoLevelSampler(train_ds, shuffle=True)
         ),
         num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
+        # prefetch_factor=3 + val_num_workers=4 is the v9-validated config
+        # at batch=8 (RAM ~68% steady, ~75% val-overlap peak — comfortable
+        # under the 502 GB cap). Larger batch needs revisiting via the
+        # empirical model: variable cost ≈ num_workers × prefetch ×
+        # batch × ~1.3 GB.
+        prefetch_factor=3,
         pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
+        worker_init_fn=_worker_init,
     )
+    # Val sampler mirrors the train sampler's DDP pattern: shard files
+    # across ranks so each rank evaluates ~1/world_size of the val set,
+    # then sums + counts are all_reduce'd inside validate() (see below).
+    if dm.distributed:
+        val_sampler = DistributedTwoLevelSampler(
+            val_ds, num_replicas=dm.world_size, rank=dm.rank,
+            shuffle=False, seed=args.seed, drop_last=True,
+        )
+    else:
+        val_sampler = TwoLevelSampler(val_ds, shuffle=False)
+    # Val loader memory budget (ported from Stage 1 OOM testing):
+    # train workers stay alive during val (persistent=True on train) and
+    # hold their prefetched batches. Capping val to
+    # num_workers=min(4, args.num_workers), prefetch_factor=1, and
+    # persistent_workers=False keeps the combined in-flight footprint
+    # under the 502 GB node budget. Without this we OOM'd at 97% host
+    # RAM on 2-node smokes when val workers spun up alongside the train
+    # 6×2 prefetch pool.
+    val_num_workers = min(4, args.num_workers)
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
-        # pin_memory=False for val: each iter() call re-creates the main
-        # process's pin_memory thread + internal queues, and those pinned
-        # allocations ratchet host RSS upward across validations (observed
-        # +127 GB on val 1, +27 GB on val 2 with persistent_workers=True,
-        # OOM on val 2 at batch=256). Val is 1–20 batches per call so the
-        # synchronous H2D cost is negligible.
+        val_ds, batch_size=args.batch_size,
+        sampler=val_sampler,
+        num_workers=val_num_workers, collate_fn=collate_fn, drop_last=True,
+        prefetch_factor=1,
         pin_memory=False,
-        persistent_workers=args.num_workers > 0,
+        persistent_workers=False,
+        worker_init_fn=_worker_init,
     )
 
     opt = torch.optim.AdamW(
@@ -1165,6 +1326,7 @@ def main() -> None:
                 video_diag_names=video_diag_names,
                 video_n_frames=video_n_frames,
                 spectro_diag_names=spectro_diag_names,
+                grad_checkpoint_every=args.grad_checkpoint_every,
             )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)

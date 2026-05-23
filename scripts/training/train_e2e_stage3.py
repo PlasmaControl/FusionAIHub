@@ -582,6 +582,11 @@ def main() -> None:
     parser.add_argument("--d_model", type=int, default=256)
     parser.add_argument("--n_layers", type=int, default=8)
     parser.add_argument("--n_heads", type=int, default=8)
+    parser.add_argument(
+        "--gradient_checkpoint", action="store_true",
+        help="Recompute backbone-block activations during backward. Costs "
+             "~30%% extra compute; needed for deeper / wider rollouts.",
+    )
     parser.add_argument("--dropout", type=float, default=0.1)
 
     # LoRA
@@ -717,6 +722,7 @@ def main() -> None:
         diagnostics=diagnostics, actuators=actuators,
         d_model=args.d_model, n_heads=args.n_heads,
         n_layers=args.n_layers, dropout=args.dropout,
+        gradient_checkpoint=args.gradient_checkpoint,
     ).to(device)
 
     if args.init_checkpoint is not None:

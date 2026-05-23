@@ -98,12 +98,36 @@ class FastTimeSeriesHead(nn.Module):
         self.patch_size = patch_size
         self.n_patches = window_samples // patch_size
 
+        # Post-deconv inverse-stem at sample resolution, mirroring the
+        # tokenizer's pre-patch stem. The deconv first lifts each token back
+        # to ``stem_channels × patch_size`` samples; the inverse stem then
+        # refines the per-sample reconstruction with two small-kernel convs,
+        # giving the head the capacity to recover sharp features (spikes,
+        # bursts) the linear deconv alone smooths over.
+        stem_channels = 64
         self.deconv = nn.ConvTranspose1d(
             in_channels=d_model,
-            out_channels=1,
+            out_channels=stem_channels,
             kernel_size=patch_size,
             stride=patch_size,
         )
+        self.inv_stem = nn.Sequential(
+            nn.Conv1d(stem_channels, stem_channels, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(stem_channels, 1, kernel_size=3, padding=1),
+        )
+
+        # Pre-unembed per-token MLP refiners (mirror of the tokenizer's).
+        n_refine_blocks = 2
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         """Reconstruct raw signal.
@@ -120,10 +144,13 @@ class FastTimeSeriesHead(nn.Module):
             ``(batch, n_channels, window_samples)`` raw-signal reconstruction.
         """
         batch = tokens.shape[0]
+        for block in self.refine:
+            tokens = tokens + block(tokens)
         t = tokens.reshape(batch, self.n_channels, self.n_patches, self.d_model)
         t = t.reshape(batch * self.n_channels, self.n_patches, self.d_model)
         t = t.transpose(1, 2)  # (B*C, d_model, n_patches)
-        out = self.deconv(t)  # (B*C, 1, window_samples)
+        out = self.deconv(t)  # (B*C, stem_channels, window_samples)
+        out = self.inv_stem(out)  # (B*C, 1, window_samples)
         return out.reshape(batch, self.n_channels, self.window_samples)
 
 
@@ -266,6 +293,18 @@ class SpectrogramOutputHead(nn.Module):
         self.n_patches_f = n_patches_f
         self.n_patches_t = n_patches_t
 
+        # Pre-unembed per-token MLP refiners (mirror of the tokenizer's).
+        n_refine_blocks = 4
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
         # Inverse of the tokenizer's patch Conv2d.
         self.patch_unembed = nn.ConvTranspose2d(
             d_model,
@@ -278,6 +317,8 @@ class SpectrogramOutputHead(nn.Module):
         """``(B, n_tokens, d_model) -> (B, n_channels, freq_bins,
         n_patches_t * patch_t)``."""
         B = tokens.shape[0]
+        for block in self.refine:
+            tokens = tokens + block(tokens)
         # (B, n_tokens, d_model) -> (B, d_model, n_patches_f, n_patches_t).
         # The flatten order in the tokenizer is (n_patches_f, n_patches_t)
         # row-major (n_patches_f slow, n_patches_t fast), so we reshape

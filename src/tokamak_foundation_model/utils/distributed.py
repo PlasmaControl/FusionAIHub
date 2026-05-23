@@ -46,10 +46,28 @@ class DistributedManager:
             return torch.device("cuda", self.device_index)
         return torch.device("cpu")
 
-    def wrap(self, model: torch.nn.Module) -> torch.nn.Module:
-        """Wrap model with DDP if distributed, otherwise return as-is."""
+    def wrap(
+        self, model: torch.nn.Module, find_unused_parameters: bool = False,
+    ) -> torch.nn.Module:
+        """Wrap model with DDP if distributed, otherwise return as-is.
+
+        Default ``find_unused_parameters=False`` relies on every parameter
+        being touched in every step. The video / spectrogram tokenizers
+        always run ``_encode`` and reference ``missing_token`` regardless
+        of the per-batch validity mask, so the autograd graph is
+        data-independent and DDP's reducer can use static buckets. This
+        avoids RCCL bucket-rebuild faults observed on Frontier.
+
+        Override to ``True`` only as a debugging escape hatch — it incurs
+        a per-step unused-param scan and was previously observed to
+        trigger GPU memory faults via RCCL on this stack.
+        """
         if self.distributed:
-            return DistributedDataParallel(model, device_ids=[self.device_index])
+            return DistributedDataParallel(
+                model,
+                device_ids=[self.device_index],
+                find_unused_parameters=find_unused_parameters,
+            )
         return model
 
     def unwrap(self, model: torch.nn.Module):

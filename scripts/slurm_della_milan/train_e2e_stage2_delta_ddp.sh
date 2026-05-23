@@ -1,6 +1,6 @@
 #!/bin/bash
 # 2-GPU DDP launcher for E2E Stage 2_delta on AMD MI210.
-# Usage: bash scripts/slurm_rocm/train_e2e_stage2_delta_ddp.sh
+# Usage: bash scripts/slurm_della_milan/train_e2e_stage2_delta_ddp.sh
 #
 #SBATCH --job-name=e2e_stage2_delta_ddp_rocm
 #SBATCH --output=logs/%j_e2e_stage2_delta_ddp.out

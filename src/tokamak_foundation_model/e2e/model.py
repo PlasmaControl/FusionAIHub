@@ -172,6 +172,8 @@ class E2EFoundationModel(nn.Module):
         n_layers: int = 8,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        attn_impl: str = "standard",
+        gradient_checkpoint: bool = False,
     ) -> None:
         super().__init__()
         self.diagnostics = list(diagnostics)
@@ -271,6 +273,8 @@ class E2EFoundationModel(nn.Module):
             n_layers=n_layers,
             mlp_ratio=mlp_ratio,
             dropout=dropout,
+            attn_impl=attn_impl,
+            gradient_checkpoint=gradient_checkpoint,
         )
 
     def tokenize(

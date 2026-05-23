@@ -1,8 +1,20 @@
 #!/bin/bash
+# Production stage-1 run with flash-attention 2 enabled.
+# Mirrors scripts/slurm_frontier/train_e2e_stage1.sh; adds --use_flash_attn
+# and uses a distinct CHECKPOINT_DIR so the flash and non-flash runs don't
+# clobber each other.
+#
+# Usage:
+#   cd <repo-root>
+#   sbatch scripts/slurm_frontier/train_e2e_stage1_flashattn.sh
+#
+# Prerequisite: flash_attn package must be built (one-time):
+#   pixi run -e frontier setup-flash-attn
+#
 #SBATCH -A fus187
-#SBATCH -J e2e_stage1
-#SBATCH -o logs/%j_e2e_stage1.out
-#SBATCH -e logs/%j_e2e_stage1.err
+#SBATCH -J e2e_stage1_flashattn
+#SBATCH -o logs/%j_e2e_stage1_flashattn.out
+#SBATCH -e logs/%j_e2e_stage1_flashattn.err
 #SBATCH -t 24:00:00
 #SBATCH -p extended
 #SBATCH -N 8
@@ -16,7 +28,7 @@ set -e
 
 # SLURM stages the submit script under /var/spool/slurmd/... so BASH_SOURCE
 # is useless for locating the repo. Use SLURM_SUBMIT_DIR — submit from the
-# repo root: `cd <repo> && sbatch scripts/slurm_frontier/train_e2e_stage1.sh`.
+# repo root: `cd <repo> && sbatch scripts/slurm_frontier/train_e2e_stage1_flashattn.sh`.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
     echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
@@ -24,7 +36,7 @@ if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
     exit 1
 fi
 cd "${PROJECT_DIR}"
-CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1"
+CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1_flashattn"
 mkdir -p logs "${CHECKPOINT_DIR}"
 
 export MASTER_PORT=29500
@@ -37,21 +49,11 @@ source scripts/slurm_frontier/_frontier_settings.sh
 RESUME_FLAG=""
 LATEST_CKPT="${CHECKPOINT_DIR}/e2e_stage1_latest.pt"
 if [ -f "${LATEST_CKPT}" ]; then
-    echo "[train_e2e_stage1] resuming from ${LATEST_CKPT}"
+    echo "[train_e2e_stage1_flashattn] resuming from ${LATEST_CKPT}"
     RESUME_FLAG="--resume_checkpoint ${LATEST_CKPT}"
 else
-    echo "[train_e2e_stage1] no latest checkpoint at ${LATEST_CKPT}; starting fresh"
+    echo "[train_e2e_stage1_flashattn] no latest checkpoint at ${LATEST_CKPT}; starting fresh"
 fi
-
-# Per-node sampler: one line per node per minute with mean GPU busy%,
-# host RAM, and mean VRAM%. Launched as a side srun step with --overlap
-# so it shares the allocation without stealing GPUs. Cost ~0.1% of one
-# CPU/node. Killed when this script exits (walltime or normal end).
-SAMPLER_LOG="logs/${SLURM_JOB_ID}_sampler.log"
-srun --overlap -N "$SLURM_JOB_NUM_NODES" --ntasks-per-node=1 -c 1 \
-     scripts/slurm_frontier/_node_sampler.sh > "$SAMPLER_LOG" 2>&1 &
-SAMPLER_PID=$!
-trap 'kill "$SAMPLER_PID" 2>/dev/null || true' EXIT
 
 srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --gpus-per-task=1 --gpu-bind=closest \
@@ -84,4 +86,5 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --use_video tangtv \
      --use_spectro ece co2 bes \
      --no_amp_val \
+     --use_flash_attn \
      ${RESUME_FLAG}
