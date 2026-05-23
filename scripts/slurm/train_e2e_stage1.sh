@@ -2,11 +2,11 @@
 #SBATCH --job-name=e2e_stage1
 #SBATCH --output=logs/%j_e2e_stage1.out
 #SBATCH --error=logs/%j_e2e_stage1.err
-#SBATCH --time=48:00:00
+#SBATCH --time=2:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=9
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=18
 #SBATCH --mem-per-cpu=32G
 
 # Stage 1 single-step pretraining of the end-to-end foundation model.
@@ -21,7 +21,7 @@ export PYTHONUNBUFFERED=1
 # Auto-resume: if a *_latest.pt exists in the checkpoint dir, pass it as
 # --resume_checkpoint. Stage 1 has no --init_checkpoint path; on first
 # submission there's nothing to resume, so the flag is simply omitted.
-LATEST="runs/e2e_stage1/e2e_stage1_latest.pt"
+LATEST="runs/e2e_stage1_ddp/e2e_stage1_latest.pt"
 RESUME_FLAG=""
 if [ -f "$LATEST" ]; then
     RESUME_FLAG="--resume_checkpoint $LATEST"
@@ -30,11 +30,12 @@ else
     echo "Fresh start (no previous $LATEST)."
 fi
 
-srun pixi run python ../training/train_e2e_stage1.py \
+srun pixi run torchrun --standalone --nproc_per_node=2 \
+    ../training/train_e2e_stage1.py \
     $RESUME_FLAG \
     --data_dir /scratch/gpfs/EKOLEMEN/foundation_model \
     --stats_path /scratch/gpfs/ps9551/FusionAIHub/scripts/slurm/preprocessing_stats.pt \
-    --checkpoint_dir runs/e2e_stage1 \
+    --checkpoint_dir runs/e2e_stage1_ddp \
     --val_fraction 0.1 \
     --seed 42 \
     \

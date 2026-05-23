@@ -27,6 +27,7 @@ Open the resulting ``trace_step<N>.json`` in ``chrome://tracing`` (or Perfetto).
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -41,6 +42,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from tokamak_foundation_model.data.data_loader import collate_fn
 from tokamak_foundation_model.e2e.model import E2EFoundationModel
 from train_e2e_stage1 import (  # type: ignore
+    SPECTROGRAM_MODALITIES,
+    VIDEO_MODALITIES,
     build_configs,
     build_datasets,
     compute_step_loss,
@@ -62,16 +65,40 @@ def main() -> None:
     )
     p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--num_workers", type=int, default=8)
+    p.add_argument(
+        "--max_files", type=int, default=15,
+        help="Cap on shot files used for profiling. Default 15 — profiling "
+             "only needs enough chunks to fill the active window, and "
+             "scanning the full ~7878-file train set blows the wallclock.",
+    )
     p.add_argument("--chunk_duration_s", type=float, default=0.05)
     p.add_argument("--prediction_horizon_s", type=float, default=0.05)
     p.add_argument("--step_size_s", type=float, default=0.01)
     p.add_argument("--warmup_s", type=float, default=1.0)
     p.add_argument("--d_model", type=int, default=256)
-    p.add_argument("--n_layers", type=int, default=8)
+    p.add_argument("--n_layers", type=int, default=26)
     p.add_argument("--n_heads", type=int, default=8)
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--val_fraction", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--use_video", nargs="*", default=[],
+        choices=[entry[0] for entry in VIDEO_MODALITIES],
+        help="Camera names to include as video modalities (match canonical run).",
+    )
+    p.add_argument(
+        "--use_spectro", nargs="*", default=[],
+        choices=[entry[0] for entry in SPECTROGRAM_MODALITIES],
+        help="Spectrogram modality names to include (match canonical run).",
+    )
+    p.add_argument(
+        "--no_amp_val", action="store_true",
+        help="Accepted for parity with train_e2e_stage1; unused here (no validation).",
+    )
+    p.add_argument(
+        "--use_flash_attn", action="store_true",
+        help="Use flash-attention 2 in the backbone (requires flash_attn package).",
+    )
     # Profiler schedule: (wait, warmup, active). ``wait`` skips the dataloader
     # spin-up transient; ``warmup`` primes caches so the active window is
     # steady-state; ``active`` is what gets recorded.
@@ -85,7 +112,11 @@ def main() -> None:
     print(f"Device: {device}")
     print(f"num_workers={args.num_workers}  batch_size={args.batch_size}")
 
-    diagnostics, actuators = build_configs(args.chunk_duration_s)
+    diagnostics, actuators = build_configs(
+        args.chunk_duration_s,
+        use_video=args.use_video,
+        use_spectro=args.use_spectro,
+    )
     diag_names = [c.name for c in diagnostics]
     act_names = [c.name for c in actuators]
     print(f"Diagnostics ({len(diag_names)}): {diag_names}")
@@ -94,7 +125,7 @@ def main() -> None:
     train_files, val_files = resolve_shot_files(
         data_dir=args.data_dir,
         train_shots_yaml=None, val_shots_yaml=None,
-        max_files=None, val_fraction=args.val_fraction, seed=args.seed,
+        max_files=args.max_files, val_fraction=args.val_fraction, seed=args.seed,
     )
     print(f"Train files: {len(train_files)}  val: {len(val_files)}")
 
@@ -126,6 +157,7 @@ def main() -> None:
         persistent_workers=args.num_workers > 0,
     )
 
+    attn_impl = "flash" if args.use_flash_attn else "standard"
     model = E2EFoundationModel(
         diagnostics=diagnostics,
         actuators=actuators,
@@ -133,10 +165,11 @@ def main() -> None:
         n_layers=args.n_layers,
         n_heads=args.n_heads,
         dropout=args.dropout,
+        attn_impl=attn_impl,
     ).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.1)
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
-    print(f"Model params: {n_params:.2f}M")
+    print(f"Model params: {n_params:.2f}M  attn_impl={attn_impl}")
 
     total_steps = args.profile_wait + args.profile_warmup + args.profile_active
     print(
@@ -174,12 +207,15 @@ def main() -> None:
 
     model.train()
     step_times: list[float] = []
+    active_start = args.profile_wait + args.profile_warmup
     t_start = time.time()
 
     prof.start()
     for step, batch in enumerate(loader):
         if step >= total_steps:
             break
+        if step == active_start and device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats()
         s = time.perf_counter()
         opt.zero_grad(set_to_none=True)
         loss, _ = compute_step_loss(model, batch, device)
@@ -196,15 +232,46 @@ def main() -> None:
     print(f"Total wall time: {time.time() - t_start:.1f} s")
     print(f"Per-step wall times (s): "
           + " ".join(f"{t:.2f}" for t in step_times))
-    active_slice = step_times[args.profile_wait + args.profile_warmup:]
+    active_slice = step_times[active_start:]
+    active_mean = (sum(active_slice) / len(active_slice)) if active_slice else float("nan")
     if active_slice:
         print(
             f"Active-window mean: "
-            f"{sum(active_slice) / len(active_slice):.2f} s/step  "
+            f"{active_mean:.3f} s/step  "
             f"(over {len(active_slice)} steps)"
         )
+
+    peak_alloc_gb = 0.0
+    peak_reserved_gb = 0.0
+    if device.type == "cuda":
+        peak_alloc_gb = torch.cuda.max_memory_allocated() / 1e9
+        peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
+        print(
+            f"Active-window peak memory: "
+            f"alloc={peak_alloc_gb:.2f} GB  reserved={peak_reserved_gb:.2f} GB"
+        )
+
+    memory_json = {
+        "attn_impl": attn_impl,
+        "n_layers": args.n_layers,
+        "d_model": args.d_model,
+        "n_heads": args.n_heads,
+        "batch_size": args.batch_size,
+        "use_video": list(args.use_video),
+        "use_spectro": list(args.use_spectro),
+        "active_steps": len(active_slice),
+        "active_mean_step_s": active_mean,
+        "throughput_steps_per_s": (1.0 / active_mean) if active_slice and active_mean > 0 else None,
+        "peak_alloc_GB": peak_alloc_gb,
+        "peak_reserved_GB": peak_reserved_gb,
+    }
+    mem_path = args.output_dir / "memory.json"
+    with mem_path.open("w") as f:
+        json.dump(memory_json, f, indent=2)
+
     print(f"Trace : {trace_path}")
     print(f"Summary: {summary_path}")
+    print(f"Memory: {mem_path}")
     print("Open the trace in chrome://tracing or Perfetto.")
 
 

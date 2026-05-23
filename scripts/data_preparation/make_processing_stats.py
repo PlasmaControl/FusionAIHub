@@ -4,7 +4,7 @@ from tokamak_foundation_model.data.preprocess_data import compute_preprocessing_
 
 def main():
     hdf5_files = sorted(
-        Path("/scratch/gpfs/EKOLEMEN/foundation_model/").glob("*_processed.h5")
+        Path("/lustre/orion/fus187/proj-shared/foundation_model").glob("*_processed.h5")
     )
 
     all_signals = [
@@ -45,7 +45,7 @@ def main():
     compute_preprocessing_stats(
         hdf5_paths=hdf5_files,
         signal_names=all_signals,
-        output_path="preprocessing_stats.pt",
+        output_path="/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt",
         stft_signals=stft_signals,
         hdf5_key_map=hdf5_key_map,
         zero_is_missing_signals=zero_is_missing_signals,

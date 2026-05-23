@@ -11,7 +11,7 @@
 
 # Extended Stage 2 — full-backprop K={10,20,40,80} displacement-loss
 # fine-tuning, initialised from Stage 2b best. No LoRA, nothing frozen;
-# gradient checkpointing every 10 rollout steps keeps K=80 tractable on
+# gradient checkpointing every 1 rollout step keeps K=80 tractable on
 # a 40 GB A100 with bf16 autocast.
 
 export OMP_NUM_THREADS=1
@@ -56,14 +56,14 @@ srun pixi run python ../training/train_e2e_stage2_extended.py \
     --dropout 0.1 \
     \
     --curriculum_Ks 10,20,40,80 \
-    --block_steps 48000 \
+    --block_steps 80500 \
     \
     --mae_weight 1.0 \
     --cos_weight 0.3 \
     --mag_weight 0.1 \
     --min_disp_norm 0.01 \
     \
-    --grad_checkpoint_every 10 \
+    --grad_checkpoint_every 1 \
     \
     --lr 1e-5 \
     --min_lr 1e-7 \
@@ -73,7 +73,8 @@ srun pixi run python ../training/train_e2e_stage2_extended.py \
     \
     --batch_size 128 \
     --num_workers 8 \
-    --max_steps 193000 \
+    --max_steps 322000 \
     --log_every 50 \
-    --val_every 500 \
-    --val_max_batches 20
+    --val_every 5000 \
+    --val_max_batches 20 \
+    --tf_anneal_steps 40000

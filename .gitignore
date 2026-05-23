@@ -156,6 +156,7 @@ activemq-data/
 .envrc
 .venv
 .venv-rocm
+.build/
 env/
 venv/
 ENV/
@@ -231,3 +232,9 @@ wandb/
 # FusionAIHub
 data/
 runs/
+
+# Conda env (21GB)
+envs/
+
+# Profile sidecar output
+profile/

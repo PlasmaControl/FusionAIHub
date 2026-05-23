@@ -69,7 +69,20 @@ class TokenSpaceRollout(nn.Module):
     ) -> torch.Tensor:
         pieces: List[torch.Tensor] = []
         for cfg in self.model.diagnostics:
-            pieces.append(self.model.diag_tokenizers[cfg.name](diag_inputs[cfg.name]))
+            x = diag_inputs[cfg.name]
+            if cfg.kind == "video":
+                # Video tokenizers honour a per-row camera-validity mask
+                # (False rows are replaced with the learned missing_token).
+                # Mirrors E2EFoundationModel.tokenize so missing-camera
+                # samples don't get encoded as if a real camera frame
+                # were present during step-0 init or TF re-tokenisation.
+                valid = diag_inputs.get(f"{cfg.name}_valid")
+                mask = valid.bool() if valid is not None else None
+                pieces.append(
+                    self.model.diag_tokenizers[cfg.name](x, mask=mask)
+                )
+            else:
+                pieces.append(self.model.diag_tokenizers[cfg.name](x))
         return torch.cat(pieces, dim=1)
 
     def _tokenize_actuators(
@@ -100,6 +113,10 @@ class TokenSpaceRollout(nn.Module):
         *,
         start_time_s: Optional[torch.Tensor] = None,
         collect_history: bool = True,
+        gt_target_per_step: Optional[
+            List[Dict[str, torch.Tensor]]
+        ] = None,
+        p_tf: float = 0.0,
     ) -> RolloutResult:
         """Run a ``K``-step rollout.
 
@@ -117,6 +134,20 @@ class TokenSpaceRollout(nn.Module):
             ``backbone_outputs`` (returned lists are empty). Saves ~4 GB of
             GPU memory at K=80, batch=128. Default ``True`` preserves prior
             §5.9 test behaviour.
+        gt_target_per_step
+            Optional length-``K`` list of ground-truth diagnostic dicts;
+            ``gt_target_per_step[k]`` is the GT state at ``t = (k+1)*dt_s``
+            (i.e. the rollout target of step ``k``). Required when
+            ``p_tf > 0``; ignored otherwise. Predictions and history are
+            unaffected — they always reflect the model's actual outputs.
+        p_tf
+            Teacher-forcing probability at each step ``k >= 1``. With
+            probability ``p_tf`` the next-step diagnostic input is the
+            re-tokenized GT state; otherwise it is the backbone's
+            previous output (the default free-rollout behaviour). The
+            coin is flipped per ``(rollout-step, training-step)`` and
+            applies uniformly across the batch. Default ``0.0`` (pure
+            free-rollout, byte-identical to prior behaviour).
 
         Returns
         -------
@@ -127,6 +158,17 @@ class TokenSpaceRollout(nn.Module):
         n_steps = len(act_inputs_per_step)
         if start_time_s is None:
             start_time_s = torch.zeros(batch, device=device)
+
+        # Teacher-forcing setup. ``use_tf`` is gated on both inputs being
+        # supplied AND p_tf being non-zero, so the TF code path is fully
+        # dormant when the trainer doesn't ask for it (preserves
+        # byte-identity for existing tests / Aurora trainer / impulse
+        # tests, none of which pass these args).
+        use_tf = (
+            p_tf > 0.0
+            and gt_target_per_step is not None
+            and len(gt_target_per_step) >= n_steps
+        )
 
         diag_tokens = self._tokenize_diagnostics(initial_diag_inputs)
         diagnostic_tokens_history: List[torch.Tensor] = (
@@ -146,10 +188,30 @@ class TokenSpaceRollout(nn.Module):
             if collect_history:
                 backbone_outputs.append(out_tokens)
 
-            diag_tokens = out_tokens[:, : self.n_diag_tokens]
+            # Predictions are always the model's real backbone output —
+            # the TF decision below only affects what flows into the
+            # *next* iteration's backbone, not what's scored.
+            pred_diag_tokens = out_tokens[:, : self.n_diag_tokens]
+            predictions.append(self._decode_diagnostics(pred_diag_tokens))
+
+            # Decide what to feed into iteration k+1. On the last
+            # iteration there's no next step; fall through to recording
+            # ``pred_diag_tokens`` in history.
+            if (
+                k + 1 < n_steps
+                and use_tf
+                and torch.rand((), device=device).item() < p_tf
+            ):
+                # Teacher-force: re-tokenize the GT state at
+                # ``t = (k+1) * dt_s`` (= rollout target of step k).
+                diag_tokens = self._tokenize_diagnostics(
+                    gt_target_per_step[k]
+                )
+            else:
+                diag_tokens = pred_diag_tokens
+
             if collect_history:
                 diagnostic_tokens_history.append(diag_tokens)
-            predictions.append(self._decode_diagnostics(diag_tokens))
 
         return RolloutResult(
             predictions=predictions,

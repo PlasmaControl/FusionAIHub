@@ -27,6 +27,7 @@ Debug smoke test::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import random
 from dataclasses import asdict
@@ -42,9 +43,12 @@ from torch.utils.data.distributed import DistributedSampler
 
 from tokamak_foundation_model.data.data_loader import collate_fn
 from tokamak_foundation_model.data.multi_file_dataset import (
+    DistributedTwoLevelSampler,
     TokamakMultiFileDataset,
     TwoLevelSampler,
+    filter_video_present_files,
 )
+from tokamak_foundation_model.e2e.checkpoint import load_state_dict_explicit
 from tokamak_foundation_model.e2e.model import (
     ActuatorConfig,
     DiagnosticConfig,
@@ -96,8 +100,33 @@ SLOW_FS = 100.0
 FAST_FS = 10_000.0
 
 
+# Per-camera video modality registry. Each entry is
+# ``(name, n_channels, n_frames, (height, width), (T_p, H_p, W_p))``.
+# Only included when the user passes ``--use_video <name> [<name> ...]``;
+# otherwise behaviour is byte-identical to Phase A pre-Step-5 (G2/G3).
+VIDEO_MODALITIES: List[Tuple[str, int, int, Tuple[int, int], Tuple[int, int, int]]] = [
+    ("tangtv", 2, 3, (120, 360), (3, 12, 12)),
+]
+
+# Per-modality spectrogram registry. Each entry is
+# ``(name, n_channels, (F_p, T_p))``. STFT shape is fixed by the data
+# loader (n_fft=1024, hop=256, fs=500 kHz) so freq_bins=512, time_frames=98
+# for the canonical 50 ms window. Only included when the user passes
+# ``--use_spectro <name> [<name> ...]``; empty default keeps Phase A
+# byte-identical (G2/G3).
+SPECTRO_FREQ_BINS = 512
+SPECTRO_TIME_FRAMES = 98
+SPECTROGRAM_MODALITIES: List[Tuple[str, int, Tuple[int, int]]] = [
+    ("ece", 40, (32, 8)),
+    ("co2", 4, (64, 8)),
+    ("bes", 16, (32, 8)),
+]
+
+
 def build_configs(
     chunk_duration_s: float,
+    use_video: Optional[List[str]] = None,
+    use_spectro: Optional[List[str]] = None,
 ) -> Tuple[List[DiagnosticConfig], List[ActuatorConfig]]:
     slow_samples = round(chunk_duration_s * SLOW_FS)
     fast_samples = round(chunk_duration_s * FAST_FS)
@@ -110,6 +139,52 @@ def build_configs(
         diagnostics.append(
             DiagnosticConfig(name, "fast_ts", n_channels, fast_samples, patch)
         )
+    # Token ordering inside the diagnostic prefix:
+    #   [slow_ts | fast_ts | spectrogram | video | actuators]
+    # Spectrograms go before video so adding either does not perturb the
+    # other's layout in the backbone token sequence.
+    if use_spectro:
+        registry = {entry[0]: entry for entry in SPECTROGRAM_MODALITIES}
+        for spec_name in use_spectro:
+            if spec_name not in registry:
+                raise SystemExit(
+                    f"--use_spectro {spec_name!r}: unknown modality; known: "
+                    f"{sorted(registry.keys())}"
+                )
+            (_, n_channels, patch_size) = registry[spec_name]
+            diagnostics.append(
+                DiagnosticConfig(
+                    name=spec_name,
+                    kind="spectrogram",
+                    n_channels=n_channels,
+                    window_samples=SPECTRO_TIME_FRAMES,
+                    freq_bins=SPECTRO_FREQ_BINS,
+                    spectrogram_patch_size=patch_size,
+                )
+            )
+    # Video diagnostics go in the diagnostic prefix AFTER all TS configs and
+    # spectrograms, BEFORE the actuators, so the ``rollout.py`` slice
+    # ``[:, :n_diag_tokens]`` keeps propagating diagnostic tokens contiguously.
+    if use_video:
+        registry = {entry[0]: entry for entry in VIDEO_MODALITIES}
+        for cam_name in use_video:
+            if cam_name not in registry:
+                raise SystemExit(
+                    f"--use_video {cam_name!r}: unknown camera; known: "
+                    f"{sorted(registry.keys())}"
+                )
+            (_, n_channels, n_frames, (height, width), patch_size) = registry[cam_name]
+            diagnostics.append(
+                DiagnosticConfig(
+                    name=cam_name,
+                    kind="video",
+                    n_channels=n_channels,
+                    window_samples=n_frames,
+                    height=height,
+                    width=width,
+                    video_patch_size=patch_size,
+                )
+            )
     # n_tokens=5 at 10 kHz × 50 ms → patch_size=100 (= 10 ms of history per
     # token). n_tokens=3 from the plan table doesn't divide 500; 5 is the
     # nearest divisor ≥ 3 that covers the window cleanly.
@@ -222,6 +297,7 @@ def build_datasets(
         preprocessing_stats=preprocessing_stats,
         input_signals=input_signals,
         target_signals=target_signals,
+        max_open_files=1024,
     )
     train_ds = TokamakMultiFileDataset(
         train_files,
@@ -272,6 +348,73 @@ def masked_mae(
     return diff.sum() / combined.sum().clamp_min(1.0)
 
 
+def _video_standardize_per_bc(
+    x: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Per-(B, C) z-score over (T, H, W) for a video tensor.
+
+    Returns ``(x_norm, mu, sd)`` so the same statistics can be applied
+    to the target half-window without re-computing.
+
+    Why this is needed: tangtv targets are raw pixel values
+    (mean ~50, std ~17, range 0..235). With AdamW at ``lr=1e-4`` the
+    output head's last-layer bias would need ~5×10⁵ steps to learn a
+    constant offset of 50; the whole training is 3.36×10⁵. Without
+    standardization the video loss simply does not move and TS losses
+    drift only because of batch-content variability. The standalone AE
+    (``train_video_ae.py``) hit exactly this and was rescued with the
+    identical operation; until precomputed per-channel stats land in
+    ``preprocessing_stats.pt`` we apply the same fix in-line here.
+
+    ``sd.clamp(min=1.0)`` keeps off-channels (NaN-filled to zeros, std
+    exactly 0) finite — they remain at zero post-standardize, and the
+    channel-mask gate excludes them from the loss anyway.
+    """
+    mu = x.mean(dim=(2, 3, 4), keepdim=True)
+    sd = x.std(dim=(2, 3, 4), keepdim=True).clamp(min=1.0)
+    return (x - mu) / sd, mu, sd
+
+
+def _video_loss_gate(
+    cfg: DiagnosticConfig, batch: Dict, device: torch.device
+) -> torch.Tensor:
+    """Per-element loss gate for a video modality.
+
+    Combines the per-batch camera-availability scalar
+    ``f"{name}_valid"`` with the per-channel availability mask
+    ``f"{name}_channel_mask"``. Returned shape ``(B, C, 1, 1, 1)``
+    broadcasts cleanly to ``(B, C, T, H, W)`` — matches both target
+    and (post-permute) prediction shapes for video.
+    """
+    name = cfg.name
+    chan_mask = batch["targets"][f"{name}_channel_mask"].to(
+        device, non_blocking=True
+    ).float()                                        # (B, C)
+    valid = batch["targets"][f"{name}_valid"].to(
+        device, non_blocking=True
+    ).float()                                        # (B,)
+    return (
+        valid[:, None, None, None, None]
+        * chan_mask[:, :, None, None, None]
+    )                                                # (B, C, 1, 1, 1)
+
+
+def _spectro_loss_gate(
+    cfg: DiagnosticConfig, batch: Dict, device: torch.device
+) -> torch.Tensor:
+    """Per-element loss gate for a spectrogram modality.
+
+    Spectrograms have no per-channel runtime availability mask
+    (campaign-dependent dead channels are tolerated; ``log_standardize``
+    flattens amplitude differences). The gate is just the per-batch
+    presence scalar broadcast over ``(B, C, F, T)``.
+    """
+    valid = batch["targets"][f"{cfg.name}_valid"].to(
+        device, non_blocking=True
+    ).float()                                        # (B,)
+    return valid[:, None, None, None]                # (B, 1, 1, 1)
+
+
 def forward_batch(
     model: E2EFoundationModel,
     batch: Dict,
@@ -284,10 +427,29 @@ def forward_batch(
 ]:
     """Forward pass with NaN-cleaned inputs; return predictions + tensors needed for metrics."""
     diag_inputs: Dict[str, torch.Tensor] = {}
+    # Per-(B, C) z-score statistics for video and spectrogram modalities.
+    # Computed from the *input* window and reused for the corresponding
+    # target so prediction and ground truth live in the same normalized
+    # frame. Empty when no such diagnostics are configured.
+    norm_stats: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
     for cfg in _core(model).diagnostics:
         raw = batch["inputs"][cfg.name].to(device, non_blocking=True).float()
         cleaned, _ = _clean_and_mask(raw, None)
+        if cfg.kind == "video":
+            cleaned, mu, sd = _video_standardize_per_bc(cleaned)
+            norm_stats[cfg.name] = (mu, sd)
+        elif cfg.kind == "spectrogram":
+            assert cfg.spectrogram_patch_size is not None
+            _, T_p = cfg.spectrogram_patch_size
+            trunc_t = (cfg.window_samples // T_p) * T_p
+            cleaned = cleaned[..., :trunc_t]
         diag_inputs[cfg.name] = cleaned
+        if cfg.kind in ("video", "spectrogram"):
+            valid_key = f"{cfg.name}_valid"
+            if valid_key in batch["inputs"]:
+                diag_inputs[valid_key] = batch["inputs"][valid_key].to(
+                    device, non_blocking=True
+                )
     act_inputs: Dict[str, torch.Tensor] = {}
     for cfg in _core(model).actuators:
         raw = batch["targets"][cfg.name].to(device, non_blocking=True).float()
@@ -300,16 +462,36 @@ def forward_batch(
 
     predictions = model(diag_inputs, act_inputs, step_idx, time_offset)
 
+    # Normalise video predictions to (B, C, T, H, W) — VideoOutputHead
+    # emits (B, T, C, H, W) but the data loader produces video targets
+    # in (B, C, T, H, W) order (matching the (B, C, T) TS convention).
+    # Doing the permute here means downstream loss / metric code can
+    # treat all modalities under a single shape contract.
+    for cfg in _core(model).diagnostics:
+        if cfg.kind == "video":
+            predictions[cfg.name] = predictions[cfg.name].permute(0, 2, 1, 3, 4)
+
     targets: Dict[str, torch.Tensor] = {}
     masks: Dict[str, Optional[torch.Tensor]] = {}
     for cfg in _core(model).diagnostics:
         targets[cfg.name] = batch["targets"][cfg.name].to(device, non_blocking=True).float()
-        mask_key = f"{cfg.name}_mask"
-        masks[cfg.name] = (
-            batch["targets"][mask_key].to(device, non_blocking=True).float()
-            if mask_key in batch["targets"]
-            else None
-        )
+        if cfg.kind == "video":
+            mu, sd = norm_stats[cfg.name]
+            targets[cfg.name] = (targets[cfg.name] - mu) / sd
+            masks[cfg.name] = _video_loss_gate(cfg, batch, device)
+        elif cfg.kind == "spectrogram":
+            assert cfg.spectrogram_patch_size is not None
+            _, T_p = cfg.spectrogram_patch_size
+            trunc_t = (cfg.window_samples // T_p) * T_p
+            targets[cfg.name] = targets[cfg.name][..., :trunc_t]
+            masks[cfg.name] = _spectro_loss_gate(cfg, batch, device)
+        else:
+            mask_key = f"{cfg.name}_mask"
+            masks[cfg.name] = (
+                batch["targets"][mask_key].to(device, non_blocking=True).float()
+                if mask_key in batch["targets"]
+                else None
+            )
     return predictions, diag_inputs, targets, masks
 
 
@@ -332,20 +514,44 @@ def compute_step_loss(
 @torch.no_grad()
 def copy_baseline_mae(
     batch: Dict,
-    diagnostic_names: List[str],
+    diagnostics: List[DiagnosticConfig],
     device: torch.device,
 ) -> Dict[str, float]:
-    """MAE of the trivial ``prediction = input`` baseline (target-sized)."""
+    """MAE of the trivial ``prediction = input`` baseline (target-sized).
+
+    For video and spectrogram modalities the same per-(B, C) z-score
+    applied during training is applied here too, so the copy-baseline
+    number is in the same normalized space as the model's training
+    MAE and they can be compared directly.
+    """
     out: Dict[str, float] = {}
-    for name in diagnostic_names:
+    for cfg in diagnostics:
+        name = cfg.name
         pred = batch["inputs"][name].to(device).float()
         target = batch["targets"][name].to(device).float()
-        mask_key = f"{name}_mask"
-        mask = (
-            batch["targets"][mask_key].to(device).float()
-            if mask_key in batch["targets"]
-            else None
-        )
+        if cfg.kind == "video":
+            pred, mu, sd = _video_standardize_per_bc(pred)
+            target = (target - mu) / sd
+            mask = _video_loss_gate(cfg, batch, device)
+        elif cfg.kind == "spectrogram":
+            # No per-batch z-score; data loader's log_standardize is
+            # the only normalization (see forward_batch comment).
+            # Match the time-axis truncation applied in forward_batch
+            # so the copy baseline lives in the same shape as the
+            # model's predictions.
+            assert cfg.spectrogram_patch_size is not None
+            _, T_p = cfg.spectrogram_patch_size
+            trunc_t = (cfg.window_samples // T_p) * T_p
+            pred = pred[..., :trunc_t]
+            target = target[..., :trunc_t]
+            mask = _spectro_loss_gate(cfg, batch, device)
+        else:
+            mask_key = f"{name}_mask"
+            mask = (
+                batch["targets"][mask_key].to(device).float()
+                if mask_key in batch["targets"]
+                else None
+            )
         out[name] = masked_mae(pred, target, mask).item()
     return out
 
@@ -360,8 +566,18 @@ def validate(
     device: torch.device,
     diagnostic_names: List[str],
     max_batches: Optional[int] = None,
+    use_amp: bool = False,
 ) -> Dict[str, Dict[str, float]]:
-    """Return per-modality validation metrics.
+    """Return per-modality validation metrics, computed in a
+    distribution-aware way.
+
+    The val_loader is assumed to be sharded across ranks (via a
+    ``DistributedTwoLevelSampler`` with ``shuffle=False``). Each rank
+    accumulates partial sums on its shard; the totals are all-reduced
+    once at the end so every rank ends up with the same global metric
+    values. This replaces the previous "every rank validates everything"
+    behaviour, which caused host-memory OOMs at 64+ ranks because each
+    rank held the full val workload in flight independently.
 
     ``out[name]`` has keys ``model_mae``, ``copy_mae``, ``pred_delta``,
     ``tgt_delta``, ``delta_ratio``.
@@ -372,21 +588,46 @@ def validate(
     ``pred_delta ≈ 0``; a model predicting the true dynamics has
     ``delta_ratio = pred_delta / tgt_delta ∈ [0.8, 1.2]``.
     """
-    model.eval()
-    keys = ("model_mae", "copy_mae", "pred_delta", "tgt_delta")
-    sums = {k: {n: 0.0 for n in diagnostic_names} for k in keys}
-    n_batches = 0
+    import torch.distributed as dist
 
+    model.eval()
+    # Bypass the DDP wrapper for the val forward pass. DDP's pre-forward
+    # hook (rebuild_buckets logic) was observed to trigger GPU memory
+    # access faults during validation even under no_grad. The inner
+    # module's weights are identical across ranks (DDP keeps them in
+    # sync), so forwarding through it directly produces the same result.
+    inner = _core(model)
+
+    keys = ("model_mae", "copy_mae", "pred_delta", "tgt_delta")
+    M = len(diagnostic_names)
+    K = len(keys)
+    # fp32 accumulators regardless of autocast — keeps cross-rank
+    # all_reduce in fp32 (bf16 all_reduce on RCCL has stability issues)
+    # and avoids precision loss across many batches.
+    sums_t = torch.zeros(K, M, device=device, dtype=torch.float32)
+    n_batches_t = torch.zeros((), device=device, dtype=torch.float32)
+    name_to_col = {n: j for j, n in enumerate(diagnostic_names)}
+
+    amp_ctx = (
+        torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+        if use_amp else contextlib.nullcontext()
+    )
     for i, batch in enumerate(loader):
         if max_batches is not None and i >= max_batches:
             break
-        predictions, diag_inputs, targets, masks = forward_batch(model, batch, device)
-        copy_mod = copy_baseline_mae(batch, diagnostic_names, device)
+        # Only the forward pass runs inside autocast; metric math
+        # explicitly upcasts to fp32 below.
+        with amp_ctx:
+            predictions, diag_inputs, targets, masks = forward_batch(
+                inner, batch, device
+            )
+        copy_mod = copy_baseline_mae(batch, inner.diagnostics, device)
         for name in diagnostic_names:
-            pred = predictions[name]
-            inp = diag_inputs[name]
-            tgt = targets[name]
-            existing = masks[name]
+            j = name_to_col[name]
+            pred = predictions[name].float()
+            inp = diag_inputs[name].float()
+            tgt = targets[name].float()
+            existing = masks[name].float() if masks[name] is not None else None
 
             cleaned_pred, mask_p = _clean_and_mask(pred, None)
             cleaned_tgt, mask_t = _clean_and_mask(tgt, existing)
@@ -403,20 +644,31 @@ def validate(
                 (cleaned_tgt - inp).abs() * combined
             ).sum() / denom
 
-            sums["model_mae"][name] += model_mae_v.item()
-            sums["copy_mae"][name] += copy_mod[name]
-            sums["pred_delta"][name] += pred_delta.item()
-            sums["tgt_delta"][name] += tgt_delta.item()
-        n_batches += 1
+            sums_t[0, j] += model_mae_v
+            sums_t[1, j] += float(copy_mod[name])
+            sums_t[2, j] += pred_delta
+            sums_t[3, j] += tgt_delta
+        n_batches_t += 1.0
 
-    denom = max(n_batches, 1)
+    # Single all-reduce across ranks (sums + batch count combined into
+    # contiguous fp32 tensors above). Empty-shard ranks contribute
+    # zeros and a count of 0, which is the correct behaviour.
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(sums_t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(n_batches_t, op=dist.ReduceOp.SUM)
+
+    denom = float(n_batches_t.item())
+    if denom <= 0.0:
+        denom = 1.0
+    sums = sums_t.detach().cpu().numpy()
     model.train()
     out: Dict[str, Dict[str, float]] = {}
     for name in diagnostic_names:
-        model_mae = sums["model_mae"][name] / denom
-        copy_mae = sums["copy_mae"][name] / denom
-        pred_d = sums["pred_delta"][name] / denom
-        tgt_d = sums["tgt_delta"][name] / denom
+        j = name_to_col[name]
+        model_mae = float(sums[0, j]) / denom
+        copy_mae = float(sums[1, j]) / denom
+        pred_d = float(sums[2, j]) / denom
+        tgt_d = float(sums[3, j]) / denom
         ratio = pred_d / tgt_d if tgt_d > 1e-8 else float("nan")
         out[name] = {
             "model_mae": model_mae,
@@ -449,6 +701,113 @@ def _build_scheduler(
     )
 
 
+# ── Warm-start module freeze ─────────────────────────────────────────────
+
+
+_TS_KINDS = ("slow_ts", "fast_ts")
+
+
+def _module_param_iter(
+    model: E2EFoundationModel,
+    *,
+    freeze_ts: bool,
+    freeze_video: bool,
+    freeze_spectro: bool,
+    freeze_backbone: bool,
+) -> List[Tuple[str, torch.nn.Parameter]]:
+    """Return ``[(label, param), ...]`` for every parameter the caller
+    asked to freeze. ``label`` is a short string identifying the source
+    (e.g. ``"ts:ts_core_density"``, ``"backbone"``) for log output.
+
+    No-op categories return no params, so passing ``freeze_video=True``
+    on a model without video modules is harmless.
+    """
+    out: List[Tuple[str, torch.nn.Parameter]] = []
+    for cfg in model.diagnostics:
+        is_ts = cfg.kind in _TS_KINDS
+        if is_ts and freeze_ts:
+            label = f"ts:{cfg.name}"
+        elif cfg.kind == "video" and freeze_video:
+            label = f"video:{cfg.name}"
+        elif cfg.kind == "spectrogram" and freeze_spectro:
+            label = f"spectro:{cfg.name}"
+        else:
+            continue
+        for p in model.diag_tokenizers[cfg.name].parameters():
+            out.append((label, p))
+        for p in model.diag_heads[cfg.name].parameters():
+            out.append((label, p))
+    if freeze_backbone:
+        for p in model.backbone.parameters():
+            out.append(("backbone", p))
+    return out
+
+
+def _apply_module_freeze(
+    model: E2EFoundationModel,
+    *,
+    freeze_ts: bool,
+    freeze_video: bool,
+    freeze_spectro: bool,
+    freeze_backbone: bool,
+) -> List[str]:
+    """Freeze the per-module parameters indicated by the four flags.
+
+    Each flag is independent; pass ``True`` for any subset. Actuator
+    tokenizers stay trainable in all cases (they are tiny and
+    inseparable from the dynamics the model learns).
+
+    Returns the deduplicated list of frozen labels (for log output).
+    """
+    pairs = _module_param_iter(
+        model,
+        freeze_ts=freeze_ts,
+        freeze_video=freeze_video,
+        freeze_spectro=freeze_spectro,
+        freeze_backbone=freeze_backbone,
+    )
+    seen_labels: List[str] = []
+    seen_params: set[int] = set()
+    for label, p in pairs:
+        if id(p) in seen_params:
+            continue
+        seen_params.add(id(p))
+        p.requires_grad = False
+        if label not in seen_labels:
+            seen_labels.append(label)
+    return seen_labels
+
+
+def _release_module_freeze(
+    model: E2EFoundationModel,
+    *,
+    freeze_ts: bool,
+    freeze_video: bool,
+    freeze_spectro: bool,
+    freeze_backbone: bool,
+) -> int:
+    """Release the freeze applied by :func:`_apply_module_freeze` with
+    the same flags; return the number of parameter tensors unfrozen
+    (for log output)."""
+    pairs = _module_param_iter(
+        model,
+        freeze_ts=freeze_ts,
+        freeze_video=freeze_video,
+        freeze_spectro=freeze_spectro,
+        freeze_backbone=freeze_backbone,
+    )
+    seen_params: set[int] = set()
+    n_unfrozen = 0
+    for _, p in pairs:
+        if id(p) in seen_params:
+            continue
+        seen_params.add(id(p))
+        if not p.requires_grad:
+            n_unfrozen += 1
+        p.requires_grad = True
+    return n_unfrozen
+
+
 # ── Training driver ──────────────────────────────────────────────────────
 
 
@@ -457,6 +816,15 @@ def main() -> None:
     parser.add_argument("--data_dir", type=Path, required=True)
     parser.add_argument("--stats_path", type=Path, required=True)
     parser.add_argument("--checkpoint_dir", type=Path, required=True)
+    parser.add_argument(
+        "--lengths_cache_dir",
+        type=Path,
+        default=Path("/lustre/orion/fus187/proj-shared/foundation_model_meta"),
+        help="Directory for TokamakMultiFileDataset length-cache sidecar "
+        "files (lengths_e2e_stage1_{train,val}.pt). Defaults to the "
+        "shared foundation_model_meta dir so all ranks/jobs reuse the "
+        "same cache.",
+    )
     parser.add_argument("--train_shots_yaml", type=Path, default=None)
     parser.add_argument("--val_shots_yaml", type=Path, default=None)
     parser.add_argument("--max_files", type=int, default=None)
@@ -473,6 +841,13 @@ def main() -> None:
     parser.add_argument("--d_model", type=int, default=64)
     parser.add_argument("--n_layers", type=int, default=4)
     parser.add_argument("--n_heads", type=int, default=4)
+    parser.add_argument(
+        "--gradient_checkpoint", action="store_true",
+        help="Recompute backbone-block activations during backward instead "
+             "of storing them. Trades ~30%% extra compute for typically "
+             "5-10x less activation memory; required to scale n_layers / "
+             "d_model on a single GCD.",
+    )
     parser.add_argument("--dropout", type=float, default=0.0)
 
     # Optim
@@ -495,7 +870,70 @@ def main() -> None:
         "optimizer + scheduler + step + best_val_loss. Overrides the "
         "fresh-init path. Intended for SLURM resubmission after the 24 h wall.",
     )
+    parser.add_argument(
+        "--init_checkpoint", type=Path, default=None,
+        help="Load model weights from a checkpoint at the start of "
+        "training, but do NOT restore optimizer / scheduler / step. "
+        "Used by Phase C Stage 1 to warm-start from Phase A Stage 1 "
+        "best (TS+actuator weights) while leaving any video modules "
+        "freshly initialised. Ignored when --resume_checkpoint is "
+        "provided AND the resume file exists.",
+    )
+    parser.add_argument(
+        "--use_video", nargs="*", default=[],
+        choices=[entry[0] for entry in VIDEO_MODALITIES],
+        help="Camera names to include as video modalities.",
+    )
+    parser.add_argument(
+        "--use_spectro", nargs="*", default=[],
+        choices=[entry[0] for entry in SPECTROGRAM_MODALITIES],
+        help="Spectrogram modality names to include.",
+    )
+    parser.add_argument(
+        "--freeze_ts_steps", type=int, default=0,
+        help="Warm-start: freeze TS tokenizers + heads for N steps.",
+    )
+    parser.add_argument(
+        "--freeze_video_steps", type=int, default=0,
+        help="Warm-start: freeze video tokenizers + heads for N steps.",
+    )
+    parser.add_argument(
+        "--freeze_spectro_steps", type=int, default=0,
+        help="Warm-start: freeze spectrogram tokenizers + heads for N steps.",
+    )
+    parser.add_argument(
+        "--freeze_backbone_steps", type=int, default=0,
+        help="Warm-start: freeze the shared backbone for N steps.",
+    )
+    parser.add_argument(
+        "--no_amp", action="store_true",
+        help="Disable bf16 mixed precision (default: AMP on when CUDA).",
+    )
+    parser.add_argument(
+        "--no_amp_val", action="store_true",
+        help="Disable bf16 autocast during validation only (training still "
+        "uses AMP if --no_amp not set). Workaround for the GPU memory-"
+        "access faults seen during distributed validation at n_layers=26 "
+        "on Frontier ROCm 7.1.1.",
+    )
+    parser.add_argument(
+        "--use_flash_attn", action="store_true",
+        help="Use flash-attention 2 (external pkg) in the backbone. Requires "
+        "the flash_attn package (install via `pixi run -e frontier "
+        "setup-flash-attn`). On MI250X this is slower than --use_sdpa_attn; "
+        "prefer that flag instead.",
+    )
+    parser.add_argument(
+        "--use_sdpa_attn", action="store_true",
+        help="Use F.scaled_dot_product_attention in the backbone. On ROCm 7.x "
+        "this dispatches to AOTriton flash-attn and is 1.4-5x faster than the "
+        "default nn.MultiheadAttention path with substantially less memory.",
+    )
     args = parser.parse_args()
+    if args.use_flash_attn and args.use_sdpa_attn:
+        parser.error("--use_flash_attn and --use_sdpa_attn are mutually exclusive")
+
+    dm = DistributedManager()
 
     dm = DistributedManager()
 
@@ -535,10 +973,51 @@ def main() -> None:
     if not train_files or not val_files:
         raise SystemExit("No train or val files resolved; aborting.")
 
+    # Phase C: when training with video, filter the file lists to shots
+    # whose HDF5 actually contains non-empty data for the requested
+    # camera(s). Without this, TwoLevelSampler's "one-batch-per-file"
+    # property combined with ~45% of shots lacking tangtv (Step 0) means
+    # roughly half of all batches give zero gradient signal for the
+    # video path. Per-modality validity masking still works at the
+    # sample level for batches that mix tangtv-present with
+    # tangtv-absent samples — but TwoLevelSampler doesn't mix.
+    # No-op when args.use_video is empty (G2/G3 stay byte-identical).
+    if args.use_video:
+        n_train_before = len(train_files)
+        n_val_before = len(val_files)
+        args.lengths_cache_dir.mkdir(parents=True, exist_ok=True)
+        train_files = filter_video_present_files(
+            train_files,
+            args.use_video,
+            cache_path=args.lengths_cache_dir / "video_present_train.pt",
+        )
+        val_files = filter_video_present_files(
+            val_files,
+            args.use_video,
+            cache_path=args.lengths_cache_dir / "video_present_val.pt",
+        )
+        logger.info(
+            f"Video-presence filter ({args.use_video}): "
+            f"train {n_train_before} -> {len(train_files)} "
+            f"({100 * len(train_files) / max(n_train_before, 1):.1f}%); "
+            f"val {n_val_before} -> {len(val_files)} "
+            f"({100 * len(val_files) / max(n_val_before, 1):.1f}%)"
+        )
+        if not train_files or not val_files:
+            raise SystemExit(
+                "Video-presence filter dropped every file. "
+                f"Check that {args.use_video} HDF5 groups exist + are "
+                "non-empty in the data dir."
+            )
+
     stats = torch.load(args.stats_path, weights_only=False)
 
     # ── Model + configs ─────────────────────────────────────────────────
-    diagnostics, actuators = build_configs(args.chunk_duration_s)
+    diagnostics, actuators = build_configs(
+        args.chunk_duration_s,
+        use_video=args.use_video,
+        use_spectro=args.use_spectro,
+    )
     diagnostic_names = [c.name for c in diagnostics]
     actuator_names = [c.name for c in actuators]
     logger.info(
@@ -548,6 +1027,12 @@ def main() -> None:
         f"Actuators ({len(actuators)}): " + ", ".join(actuator_names)
     )
 
+    if args.use_flash_attn:
+        attn_impl = "flash"
+    elif args.use_sdpa_attn:
+        attn_impl = "sdpa"
+    else:
+        attn_impl = "standard"
     model = E2EFoundationModel(
         diagnostics=diagnostics,
         actuators=actuators,
@@ -555,6 +1040,8 @@ def main() -> None:
         n_heads=args.n_heads,
         n_layers=args.n_layers,
         dropout=args.dropout,
+        attn_impl=attn_impl,
+        gradient_checkpoint=args.gradient_checkpoint,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     n_total_tokens = model.n_total_tokens
@@ -562,7 +1049,9 @@ def main() -> None:
     logger.info(
         f"Model — d_model={args.d_model} n_layers={args.n_layers} "
         f"n_heads={args.n_heads}  tokens={n_total_tokens}  "
-        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}"
+        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}  "
+        f"attn_impl={attn_impl}  "
+        f"gradient_checkpoint={args.gradient_checkpoint}"
     )
 
     # ── Datasets ────────────────────────────────────────────────────────
@@ -577,15 +1066,27 @@ def main() -> None:
         warmup_s=args.warmup_s,
         diagnostic_names=diagnostic_names,
         actuator_names=actuator_names,
-        lengths_cache_dir=args.checkpoint_dir,
+        lengths_cache_dir=args.lengths_cache_dir,
     )
     logger.info(f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}")
 
+    # PyTorch's _worker_loop pins each DataLoader worker to a single
+    # torch thread regardless of OMP_NUM_THREADS, so we override here to
+    # let CPU-side STFT actually use the threads OMP_NUM_THREADS exposes.
+    def _worker_init(_worker_id: int) -> None:
+        import os as _os
+        n = int(_os.environ.get("OMP_NUM_THREADS", "1"))
+        torch.set_num_threads(n)
+
     if dm.distributed:
-        # DistributedSampler shards chunk indices across ranks. Loses the
-        # file-sequential cache locality of TwoLevelSampler — revisit if
-        # HDF5 open() time becomes a bottleneck under DDP.
-        train_sampler = DistributedSampler(
+        # DDP-aware file-level sharding. Preserves TwoLevelSampler's
+        # per-worker LRU file-handle cache locality (each rank owns a
+        # fixed slice of the file list, iterates its own files
+        # sequentially). PyTorch's DistributedSampler, which shards
+        # chunk indices instead, was observed to make HDF5 open() the
+        # dominant cost (~12 s/step at 2-GPU DDP vs. ~1 s/step
+        # single-GPU at the same batch).
+        train_sampler = DistributedTwoLevelSampler(
             train_ds,
             num_replicas=dm.world_size,
             rank=dm.rank,
@@ -603,21 +1104,50 @@ def main() -> None:
         num_workers=args.num_workers,
         collate_fn=collate_fn,
         drop_last=True,
+        prefetch_factor=2,
         pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
+        worker_init_fn=_worker_init,
     )
+    # Distributed validation: shard the val set across ranks so each
+    # rank validates ~1/world_size of it. Matching the train sampler's
+    # file-level sharding (preserves LRU file-handle locality and avoids
+    # the host-OOM that hit at 64 ranks when every rank held the full
+    # val workload independently). Metrics are all-reduced inside
+    # validate() so all ranks end up with identical global numbers.
+    if dm.distributed:
+        val_sampler = DistributedTwoLevelSampler(
+            val_ds,
+            num_replicas=dm.world_size,
+            rank=dm.rank,
+            shuffle=False,
+            seed=args.seed,
+            drop_last=True,
+        )
+    else:
+        val_sampler = TwoLevelSampler(val_ds, shuffle=False)
+
+    # Val loader memory budget. Train workers stay alive during val and
+    # hold their prefetched batches (6 workers x 2 prefetch = 12 in flight
+    # per rank). With num_workers=6 prefetch=1 the combined peak (18) hits
+    # ~97% host RAM on 2-node smokes -> OOM territory. Capping val to
+    # 4 workers x 1 prefetch keeps the combined in-flight at 16 batches,
+    # within the 502 GB node budget. Workers are torn down at end-of-val.
+    val_num_workers = min(4, args.num_workers)
     val_loader = DataLoader(
         val_ds,
         batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
+        sampler=val_sampler,
+        num_workers=val_num_workers,
         collate_fn=collate_fn,
         drop_last=True,
         # pin_memory=False for val: each iter() call re-creates the main
         # process's pin_memory thread + internal queues, and those pinned
         # allocations ratchet host RSS upward across validations.
+        prefetch_factor=1,
         pin_memory=False,
-        persistent_workers=args.num_workers > 0,
+        persistent_workers=False,
+        worker_init_fn=_worker_init,
     )
 
     # ── Optim + schedule ───────────────────────────────────────────────
@@ -630,10 +1160,24 @@ def main() -> None:
         opt, args.max_steps, args.warmup_steps, args.min_lr
     )
 
+    # bf16 mixed precision. bf16 has the same dynamic range as fp32 so
+    # no GradScaler is required; matches train_e2e_stage2_delta.py.
+    use_amp = (not args.no_amp) and device.type == "cuda"
+    # Separate flag for validation AMP. Defaults to the training value,
+    # but --no_amp_val turns it off independently as a workaround for
+    # ROCm-side GPU memory-access faults observed during distributed val.
+    use_amp_val = use_amp and not args.no_amp_val
+
+    def amp_ctx_factory():
+        if use_amp:
+            return torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+        return contextlib.nullcontext()
+
     # ── Train ──────────────────────────────────────────────────────────
     logger.info(
         f"Starting training — lr schedule: linear warmup "
-        f"{args.warmup_steps} steps → cosine → min_lr {args.min_lr}."
+        f"{args.warmup_steps} steps → cosine → min_lr {args.min_lr}; "
+        f"amp={'bf16' if use_amp else 'off'}."
     )
     best_val_loss = float("inf")
     best_step = 0
@@ -644,7 +1188,19 @@ def main() -> None:
         resume_ckpt = torch.load(
             args.resume_checkpoint, weights_only=False, map_location=device
         )
-        _core(model).load_state_dict(resume_ckpt["model_state_dict"])
+        # Allow video/spectro keys to be missing from older TS-only checkpoints
+        # (e.g. resuming a Phase A Stage 1 checkpoint into a TS+tangtv model).
+        allowed_missing = tuple(
+            f"{prefix}{name}." for prefix in (
+                "diag_tokenizers.", "diag_heads."
+            )
+            for name in (*args.use_video, *args.use_spectro)
+        )
+        load_state_dict_explicit(
+            _core(model),
+            resume_ckpt["model_state_dict"],
+            allowed_missing_prefixes=allowed_missing,
+        )
         if "optimizer_state_dict" in resume_ckpt:
             opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in resume_ckpt:
@@ -659,7 +1215,58 @@ def main() -> None:
             f"{resume_start_step}; best_val_loss={best_val_loss:.4f} at step "
             f"{best_step}"
         )
+    elif args.init_checkpoint is not None:
+        # Cold start with weights warm-loaded from another checkpoint.
+        init_ckpt = torch.load(
+            args.init_checkpoint, weights_only=False, map_location=device
+        )
+        allowed_missing = tuple(
+            f"{prefix}{name}." for prefix in (
+                "diag_tokenizers.", "diag_heads."
+            )
+            for name in (*args.use_video, *args.use_spectro)
+        )
+        load_state_dict_explicit(
+            _core(model),
+            init_ckpt["model_state_dict"],
+            allowed_missing_prefixes=allowed_missing,
+        )
+        logger.info(
+            f"INIT from {args.init_checkpoint.name} "
+            f"(val_loss={init_ckpt.get('val_loss', 'n/a')} "
+            f"step={init_ckpt.get('step', 'n/a')}); "
+            "optimizer/scheduler/step start fresh."
+        )
     step = resume_start_step
+
+    # ── Per-category warm-start freezes ──────────────────────────────
+    freeze_specs = [
+        ("ts", args.freeze_ts_steps),
+        ("video", args.freeze_video_steps),
+        ("spectro", args.freeze_spectro_steps),
+        ("backbone", args.freeze_backbone_steps),
+    ]
+    active_freezes: Dict[str, int] = {}
+    for cat, n_steps in freeze_specs:
+        if n_steps > 0 and step < n_steps:
+            kwargs = {f"freeze_{c}": (c == cat) for c, _ in freeze_specs}
+            labels = _apply_module_freeze(_core(model), **kwargs)
+            if labels:
+                active_freezes[cat] = n_steps
+                logger.info(
+                    f"Freeze({cat}) active until step {n_steps}; "
+                    f"frozen labels = {labels}. Currently at step {step}."
+                )
+            else:
+                logger.info(
+                    f"Freeze({cat}) requested for {n_steps} steps but no "
+                    f"matching modules — skipped."
+                )
+        elif n_steps > 0:
+            logger.info(
+                f"Freeze({cat}) past its release step {n_steps} "
+                f"(currently {step}); category fully trainable."
+            )
     running_total = 0.0
     running_count = 0
     epoch_counter = 0
@@ -677,7 +1284,8 @@ def main() -> None:
             batch = next(train_iter)
 
         opt.zero_grad()
-        loss, per_mod = compute_step_loss(model, batch, device)
+        with amp_ctx_factory():
+            loss, per_mod = compute_step_loss(model, batch, device)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
         opt.step()
@@ -685,6 +1293,19 @@ def main() -> None:
         running_total += loss.item()
         running_count += 1
         step += 1
+
+        # Release each warm-start freeze when its step budget elapses.
+        # Categories act independently so two can release at different
+        # times if their step counts differ.
+        for cat in list(active_freezes.keys()):
+            if step >= active_freezes[cat]:
+                kwargs = {f"freeze_{c}": (c == cat) for c, _ in freeze_specs}
+                n_unfrozen = _release_module_freeze(_core(model), **kwargs)
+                logger.info(
+                    f"Freeze({cat}) released at step {step}; "
+                    f"{n_unfrozen} parameter tensors now trainable."
+                )
+                del active_freezes[cat]
 
         if step % args.log_every == 0:
             avg = running_total / running_count
@@ -710,6 +1331,7 @@ def main() -> None:
                 device,
                 diagnostic_names,
                 max_batches=args.val_max_batches,
+                use_amp=use_amp_val,
             )
             val_loss = sum(metrics[n]["model_mae"] for n in diagnostic_names)
             is_new_best = val_loss < best_val_loss
