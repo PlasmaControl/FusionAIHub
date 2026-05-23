@@ -23,6 +23,7 @@
 #SBATCH -e logs/%j_e2e_s1_1x8.err
 #SBATCH -t 02:00:00
 #SBATCH -p batch
+#SBATCH -q debug
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-task=1

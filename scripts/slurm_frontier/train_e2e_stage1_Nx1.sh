@@ -23,6 +23,7 @@
 #SBATCH -e logs/%j_e2e_s1_Nx1.err
 #SBATCH -t 01:00:00
 #SBATCH -p batch
+#SBATCH -q debug
 #SBATCH -N 2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
@@ -68,14 +69,23 @@ MAX_FILES_FLAG=""
 [ -n "${MAX_FILES:-}" ] && MAX_FILES_FLAG="--max_files $MAX_FILES"
 
 # ─── Stage-specific defaults & init/resume flags ─────────────────────────
+# Defaults mirror canonical scripts/slurm_frontier/train_e2e_stage1.sh so this
+# Nx1 launcher exercises the same model + modality mix at single-GCD-per-node scale.
 BATCH_SIZE="${BATCH_SIZE:-16}"
 D_MODEL="${D_MODEL:-256}"
-N_LAYERS="${N_LAYERS:-8}"
+N_LAYERS="${N_LAYERS:-26}"
 N_HEADS="${N_HEADS:-8}"
+LR="${LR:-5e-4}"
+WARMUP_STEPS="${WARMUP_STEPS:-4000}"
 DATA_DIR="${DATA_DIR:-/lustre/orion/fus187/proj-shared/foundation_model}"
-STATS_PATH="${STATS_PATH:-data/preprocessing_stats.pt}"
-CHECKPOINT_DIR="${CHECKPOINT_DIR:-runs/e2e_stage1_frontier}"
+STATS_PATH="${STATS_PATH:-/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-/lustre/orion/fus187/proj-shared/models/e2e_stage1_Nx1}"
 mkdir -p "$CHECKPOINT_DIR"
+
+# Flash-attention 2 opt-in (USE_FLASH_ATTN=1). Requires the flash_attn package
+# to be built first: `pixi run -e frontier setup-flash-attn`.
+FLASH_FLAG=""
+[ "${USE_FLASH_ATTN:-0}" = "1" ] && FLASH_FLAG="--use_flash_attn"
 
 # Auto-resume from latest checkpoint if it exists.
 LATEST="$CHECKPOINT_DIR/e2e_stage1_latest.pt"
@@ -95,7 +105,7 @@ srun -N "$NODES" -n "$TOTAL_RANKS" -c "$CPUS_PER_TASK" \
      --gpus-per-task=1 --gpu-bind=closest \
      scripts/slurm_frontier/_srun_rank_wrapper.sh \
      scripts/training/train_e2e_stage1.py \
-     $RESUME_FLAG $MAX_FILES_FLAG $TRAIN_SHOTS_FLAG \
+     $RESUME_FLAG $MAX_FILES_FLAG $TRAIN_SHOTS_FLAG $FLASH_FLAG \
 --data_dir "$DATA_DIR" \
 --stats_path "$STATS_PATH" \
 --checkpoint_dir "$CHECKPOINT_DIR" \
@@ -109,9 +119,9 @@ srun -N "$NODES" -n "$TOTAL_RANKS" -c "$CPUS_PER_TASK" \
 --n_layers "$N_LAYERS" \
 --n_heads "$N_HEADS" \
 --dropout 0.1 \
---lr 1e-4 \
+--lr "$LR" \
 --min_lr 1e-6 \
---warmup_steps 2000 \
+--warmup_steps "$WARMUP_STEPS" \
 --weight_decay 0.1 \
 --grad_clip 5.0 \
 --batch_size "$BATCH_SIZE" \
@@ -119,4 +129,7 @@ srun -N "$NODES" -n "$TOTAL_RANKS" -c "$CPUS_PER_TASK" \
 --max_steps "$MAX_STEPS" \
 --log_every "$LOG_EVERY" \
 --val_every "$VAL_EVERY" \
---val_max_batches "$VAL_MAX_BATCHES"
+--val_max_batches "$VAL_MAX_BATCHES" \
+--use_video tangtv \
+--use_spectro ece co2 bes \
+--no_amp_val

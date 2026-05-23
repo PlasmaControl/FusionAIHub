@@ -840,6 +840,13 @@ def main() -> None:
     parser.add_argument("--d_model", type=int, default=64)
     parser.add_argument("--n_layers", type=int, default=4)
     parser.add_argument("--n_heads", type=int, default=4)
+    parser.add_argument(
+        "--gradient_checkpoint", action="store_true",
+        help="Recompute backbone-block activations during backward instead "
+             "of storing them. Trades ~30%% extra compute for typically "
+             "5-10x less activation memory; required to scale n_layers / "
+             "d_model on a single GCD.",
+    )
     parser.add_argument("--dropout", type=float, default=0.0)
 
     # Optim
@@ -908,7 +915,22 @@ def main() -> None:
         "access faults seen during distributed validation at n_layers=26 "
         "on Frontier ROCm 7.1.1.",
     )
+    parser.add_argument(
+        "--use_flash_attn", action="store_true",
+        help="Use flash-attention 2 (external pkg) in the backbone. Requires "
+        "the flash_attn package (install via `pixi run -e frontier "
+        "setup-flash-attn`). On MI250X this is slower than --use_sdpa_attn; "
+        "prefer that flag instead.",
+    )
+    parser.add_argument(
+        "--use_sdpa_attn", action="store_true",
+        help="Use F.scaled_dot_product_attention in the backbone. On ROCm 7.x "
+        "this dispatches to AOTriton flash-attn and is 1.4-5x faster than the "
+        "default nn.MultiheadAttention path with substantially less memory.",
+    )
     args = parser.parse_args()
+    if args.use_flash_attn and args.use_sdpa_attn:
+        parser.error("--use_flash_attn and --use_sdpa_attn are mutually exclusive")
 
     dm = DistributedManager()
 
@@ -1002,6 +1024,12 @@ def main() -> None:
         f"Actuators ({len(actuators)}): " + ", ".join(actuator_names)
     )
 
+    if args.use_flash_attn:
+        attn_impl = "flash"
+    elif args.use_sdpa_attn:
+        attn_impl = "sdpa"
+    else:
+        attn_impl = "standard"
     model = E2EFoundationModel(
         diagnostics=diagnostics,
         actuators=actuators,
@@ -1009,6 +1037,8 @@ def main() -> None:
         n_heads=args.n_heads,
         n_layers=args.n_layers,
         dropout=args.dropout,
+        attn_impl=attn_impl,
+        gradient_checkpoint=args.gradient_checkpoint,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     n_total_tokens = model.n_total_tokens
@@ -1016,7 +1046,9 @@ def main() -> None:
     logger.info(
         f"Model — d_model={args.d_model} n_layers={args.n_layers} "
         f"n_heads={args.n_heads}  tokens={n_total_tokens}  "
-        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}"
+        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}  "
+        f"attn_impl={attn_impl}  "
+        f"gradient_checkpoint={args.gradient_checkpoint}"
     )
 
     # ── Datasets ────────────────────────────────────────────────────────
