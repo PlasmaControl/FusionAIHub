@@ -7,10 +7,17 @@ See ``ResearchPlan.MD`` §3.4 and §5.6.
 """
 
 import math
-from typing import List, Optional, Union, cast
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
+
+try:
+    from flash_attn.modules.mha import MHA as _FlashMHA
+except ImportError:
+    _FlashMHA = None
 
 
 def _fourier_features(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
@@ -63,6 +70,89 @@ class StepConditioning(nn.Module):
         return self.mlp(torch.cat([step_feats, time_feats], dim=-1))
 
 
+class FlashSelfAttention(nn.Module):
+    """flash_attn MHA wrapped to match nn.MultiheadAttention's self-attn call.
+
+    BackboneBlock calls ``self.attn(h, h, h, need_weights=False)`` and
+    unpacks ``attn_out, _``. We mimic that signature; only self-attention
+    (q is k is v) is supported. Requires fp16/bf16 inputs at runtime —
+    the training script's bf16 autocast satisfies this.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        if _FlashMHA is None:
+            raise ImportError(
+                "flash_attn not installed; build it via "
+                "`pixi run -e frontier setup-flash-attn`"
+            )
+        self.mha = _FlashMHA(
+            embed_dim=d_model,
+            num_heads=n_heads,
+            dropout=dropout,
+            causal=False,
+        )
+
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        *,
+        need_weights: bool = False,
+    ) -> Tuple[torch.Tensor, None]:
+        del k, v, need_weights
+        return self.mha(q), None
+
+
+class SDPASelfAttention(nn.Module):
+    """Self-attention via ``F.scaled_dot_product_attention``.
+
+    Drop-in for ``nn.MultiheadAttention(h, h, h, need_weights=False)`` but
+    routes through PyTorch's SDPA, which on ROCm 7.x dispatches to AOTriton
+    flash-attention. Empirical wins over ``nn.MultiheadAttention`` on MI250X:
+    1.4-5× attention speedup, 2-3× lower attention memory.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        assert d_model % n_heads == 0, (
+            f"d_model={d_model} must be divisible by n_heads={n_heads}"
+        )
+        self.n_heads = n_heads
+        self.head_dim = d_model // n_heads
+        # Fused QKV projection — single matmul, matches what nn.MultiheadAttention
+        # does internally but keeps the weight name distinct so a switch
+        # between attn_impls never silently loads a wrong-shaped checkpoint.
+        self.qkv = nn.Linear(d_model, 3 * d_model, bias=True)
+        self.out_proj = nn.Linear(d_model, d_model, bias=True)
+        self.dropout_p = dropout
+
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        *,
+        need_weights: bool = False,
+    ) -> Tuple[torch.Tensor, None]:
+        # Self-attention path: BackboneBlock calls self.attn(h, h, h, ...)
+        del k, v, need_weights
+        B, S, D = q.shape
+        # (B, S, 3*D) -> (B, S, 3, H, D_head) -> (3, B, H, S, D_head)
+        qkv = self.qkv(q).reshape(B, S, 3, self.n_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4)
+        q_, k_, v_ = qkv[0], qkv[1], qkv[2]
+        out = F.scaled_dot_product_attention(
+            q_, k_, v_,
+            dropout_p=self.dropout_p if self.training else 0.0,
+            is_causal=False,
+        )
+        # (B, H, S, D_head) -> (B, S, D)
+        out = out.transpose(1, 2).reshape(B, S, D)
+        return self.out_proj(out), None
+
+
 class BackboneBlock(nn.Module):
     """Pre-norm Transformer encoder block: norm→attn→residual, norm→MLP→residual."""
 
@@ -72,12 +162,23 @@ class BackboneBlock(nn.Module):
         n_heads: int,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        attn_impl: str = "standard",
     ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model)
-        self.attn = nn.MultiheadAttention(
-            d_model, n_heads, dropout=dropout, batch_first=True
-        )
+        if attn_impl == "flash":
+            self.attn = FlashSelfAttention(d_model, n_heads, dropout=dropout)
+        elif attn_impl == "sdpa":
+            self.attn = SDPASelfAttention(d_model, n_heads, dropout=dropout)
+        elif attn_impl == "standard":
+            self.attn = nn.MultiheadAttention(
+                d_model, n_heads, dropout=dropout, batch_first=True
+            )
+        else:
+            raise ValueError(
+                f"attn_impl must be 'standard', 'sdpa', or 'flash', got "
+                f"{attn_impl!r}"
+            )
         self.norm2 = nn.LayerNorm(d_model)
         hidden = int(d_model * mlp_ratio)
         self.mlp = nn.Sequential(
@@ -121,14 +222,17 @@ class SharedBackbone(nn.Module):
         n_layers: int = 8,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        attn_impl: str = "standard",
+        gradient_checkpoint: bool = False,
     ) -> None:
         super().__init__()
         self.d_model = d_model
         self.n_layers = n_layers
+        self.gradient_checkpoint = gradient_checkpoint
         self.step_cond = StepConditioning(d_model)
         self.blocks = nn.ModuleList(
             [
-                BackboneBlock(d_model, n_heads, mlp_ratio, dropout)
+                BackboneBlock(d_model, n_heads, mlp_ratio, dropout, attn_impl=attn_impl)
                 for _ in range(n_layers)
             ]
         )
@@ -160,12 +264,21 @@ class SharedBackbone(nn.Module):
         step_embed = self.step_cond(step_index, time_offset_s).unsqueeze(1)
         x = tokens + step_embed
         if return_intermediates:
+            # Intermediates path keeps every block's output anyway, so
+            # checkpointing would defeat its purpose — disable here.
             intermediates: List[torch.Tensor] = [x]
             for block in self.blocks:
                 x = block(x)
                 intermediates.append(x)
             intermediates.append(self.final_norm(x))
             return intermediates
+        # Gradient checkpointing recomputes each block's activations during
+        # backward instead of storing them. Only active during training
+        # (no-op under inference / no_grad) so eval cost is unchanged.
+        use_ckpt = self.gradient_checkpoint and self.training and torch.is_grad_enabled()
         for block in self.blocks:
-            x = block(x)
+            if use_ckpt:
+                x = checkpoint(block, x, use_reentrant=False)
+            else:
+                x = block(x)
         return self.final_norm(x)

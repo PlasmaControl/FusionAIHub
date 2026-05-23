@@ -1,5 +1,6 @@
 #!/bin/bash
 # Run this once on della-milan to create a ROCm venv for MI210 (gfx90a).
+# For OLCF Frontier (MI250X), use scripts/slurm_rocm/setup_frontier_env.sh instead.
 # Usage: bash scripts/slurm_rocm/setup_rocm_env.sh
 set -euo pipefail
 

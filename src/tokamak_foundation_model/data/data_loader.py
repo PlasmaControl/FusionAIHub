@@ -3,8 +3,9 @@ from torch.utils.data import Dataset
 import numpy as np
 import h5py  # type: ignore
 from pathlib import Path
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 import torch.nn.functional as F
 import copy
 
@@ -139,9 +140,12 @@ class MovieConfig:
         Output frame height in pixels after spatial resampling.
     width : int
         Output frame width in pixels after spatial resampling.
-    channels_to_use : slice or None, optional
-        Slice selecting a subset of channels from the raw data.
-        ``None`` (default) uses all channels.
+    channels_to_use : slice, sequence of int, or None, optional
+        Selection applied to the raw HDF5 channel axis. May be a slice
+        for contiguous selection (``slice(0, 4)``) or a sequence of
+        integer indices for non-contiguous picks (``[4, 6]``).
+        ``None`` (default) uses all channels. After this selection,
+        the tensor's first dimension matches ``channels``.
     preprocess : PreprocessConfig, optional
         Preprocessing transformation applied to the video tensor.
         Defaults to :class:`PreprocessConfig` with ``method='none'``.
@@ -149,12 +153,18 @@ class MovieConfig:
 
     name: str  # Key in output dict
     hdf5_keys: list[str]  # Possible HDF5 paths to search
-    channels: int  # Color channels (e.g., 3 for RGB)
+    channels: int  # Output channel count, after channels_to_use selection
     target_fps: int  # Target frames per second after resampling
     height: int  # Frame height
     width: int  # Frame width
-    channels_to_use: Optional[slice] = None
+    channels_to_use: Optional[Union[slice, Sequence[int]]] = None
     preprocess: PreprocessConfig | None = None
+    # If set, the time axis of each split chunk (input or target) is
+    # subsampled to this many evenly-spaced indices via
+    # ``torch.linspace(0, n - 1, n_output_frames).round().long()``.
+    # Used by the E2E video tokenizer (5 → 3 frames at t=0, 20, 40 ms).
+    # ``None`` disables subsampling.
+    n_output_frames: Optional[int] = None
 
     def __post_init__(self):
         if self.preprocess is None:
@@ -538,13 +548,18 @@ class TokamakH5Dataset(Dataset):
             64,
             500e3,
             apply_stft=True,
-            preprocess=PreprocessConfig(method="log"),
+            channels_to_use=slice(48, 64),  # 16 ch (1-idx 49-64): 2 poloidal rows
+            preprocess=PreprocessConfig(method="log_standardize"),
         ),
     ]
 
     MOVIE_CONFIGS = [
         MovieConfig("irtv", ["irtv"], 7, 100, 513, 640),
-        MovieConfig("tangtv", ["tangtv"], 7, 100, 240, 720),
+        MovieConfig(
+            "tangtv", ["tangtv"], 2, 100, 120, 360,
+            channels_to_use=[4, 6],
+            n_output_frames=3,
+        ),
     ]
 
     def __init__(
@@ -1076,6 +1091,38 @@ class TokamakH5Dataset(Dataset):
 
         return tensor, valid_length, nan_mask
 
+    def _raw_to_frame_mask(self, raw_valid: torch.Tensor) -> torch.Tensor:
+        """Project a raw-time validity mask to STFT-frame coordinates.
+
+        The STFT used by :meth:`_compute_stft` has ``center=True`` (default
+        for ``torch.stft``), so each frame ``i`` covers raw samples
+        ``[i*hop_length - n_fft/2, i*hop_length + n_fft/2)`` after the
+        implicit symmetric padding. We mirror that with ``F.max_pool1d``
+        on the *invalid* mask (kernel=n_fft, stride=hop_length,
+        padding=n_fft//2): a frame is invalid if any of its source
+        samples were invalid.
+
+        Parameters
+        ----------
+        raw_valid : torch.Tensor
+            Boolean tensor of shape ``(C, T)`` where ``True`` marks a
+            valid raw sample.
+
+        Returns
+        -------
+        torch.Tensor
+            Boolean tensor of shape ``(C, T_frames)`` where ``True``
+            marks a frame whose source samples are all valid.
+        """
+        invalid = (~raw_valid).float().unsqueeze(0)   # (1, C, T)
+        invalid = F.max_pool1d(
+            invalid,
+            kernel_size=self.n_fft,
+            stride=self.hop_length,
+            padding=self.n_fft // 2,
+        )
+        return invalid.squeeze(0) < 0.5
+
     def _compute_stft(self, signal: torch.Tensor) -> torch.Tensor:
         """
         Compute the STFT magnitude spectrogram of a multi-channel signal.
@@ -1205,12 +1252,25 @@ class TokamakH5Dataset(Dataset):
             element_mask = None
 
         if config.apply_stft:
-            processed = self._compute_stft(data)
+            # NaNs in the raw signal would propagate through torch.stft and
+            # produce all-NaN frames. Replace them with 0 here; downstream
+            # callers project the raw NaN mask to frame coords separately.
+            data_finite = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+            processed = self._compute_stft(data_finite)
             # With torch.stft default center=True: n_frames = T // hop_length + 1
-            valid_length_out = min(
-                processed.shape[-1],
-                valid_length // self.hop_length + 1,
-            )
+            # for T > 0; for T == 0 the modality isn't present so 0 frames.
+            if valid_length == 0:
+                valid_length_out = 0
+            else:
+                valid_length_out = min(
+                    processed.shape[-1],
+                    valid_length // self.hop_length + 1,
+                )
+            # Project element_mask (if any) from raw-time coords to STFT
+            # frame coords so it matches ``processed`` shape (C, F, T_frames).
+            if element_mask is not None:
+                element_mask = self._raw_to_frame_mask(element_mask)
+                element_mask = element_mask.unsqueeze(1).expand_as(processed)
         else:
             processed = data
             valid_length_out = valid_length
@@ -1230,14 +1290,22 @@ class TokamakH5Dataset(Dataset):
             config: MovieConfig,
             t_start: float,
             t_end: float
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Load, window, and resample a raw movie to the target resolution.
 
-        Reads frame data from the HDF5 file (stored as ``(C, W, H, T)``),
-        clips to the requested time window, collapses channels via
-        ``nanmean``, and resamples with trilinear interpolation to the
-        target frame rate and spatial dimensions defined in *config*.
+        Reads frame data from the HDF5 file, clips to the requested time
+        window, NaN-fills, and resamples with trilinear interpolation to
+        the target frame rate and spatial dimensions defined in *config*.
+
+        A per-channel availability mask is also returned. Each tangtv
+        "channel" corresponds to a separate optical filter; per shot
+        only a subset is recording, with the others stored as fully-NaN
+        slabs. The mask reports which filters carry any non-NaN value
+        in the requested time window. Use it as a per-channel weighting
+        in the reconstruction loss; ``data`` itself has had all NaNs
+        replaced with zeros so it is always safe to forward through the
+        model.
 
         Parameters
         ----------
@@ -1252,13 +1320,24 @@ class TokamakH5Dataset(Dataset):
 
         Returns
         -------
-        torch.Tensor
-            Resampled movie of shape
-            ``(config.channels,
+        data : torch.Tensor
+            Resampled movie of shape ``(config.channels,
             round((t_end - t_start) * config.target_fps),
-            config.height, config.width)``.
+            config.height, config.width)``. NaN-filled with zeros.
+        channel_valid : torch.Tensor
+            Boolean mask of shape ``(config.channels,)``; ``True`` if
+            the channel had at least one non-NaN value in the loaded
+            window, ``False`` if it was fully NaN (filter not recording
+            for this shot or no overlap with the HDF5 data).
         """
         duration_s = t_end - t_start
+        target_t = round(duration_s * config.target_fps)
+        target_hw = (config.height, config.width)
+
+        def _empty_return() -> tuple[torch.Tensor, torch.Tensor]:
+            data = torch.zeros((config.channels, target_t, *target_hw))
+            mask = torch.zeros(config.channels, dtype=torch.bool)
+            return data, mask
 
         # Find the movie in HDF5
         data_group = None
@@ -1274,19 +1353,19 @@ class TokamakH5Dataset(Dataset):
                 continue
 
         if data_group is None:
-            return torch.zeros(
-                (config.channels, round(duration_s * config.target_fps),
-                 config.height, config.width)
-            )
+            return _empty_return()
+
+        # Some shots have the camera group but no ``ydata`` / ``xdata``
+        # children (e.g. tangtv group present but the camera was not
+        # recording). Treat as a missing camera rather than crashing.
+        if "ydata" not in data_group or "xdata" not in data_group:
+            return _empty_return()
 
         ydata_ds = data_group["ydata"]
         xdata_ds = data_group["xdata"]
 
         if ydata_ds.size == 0:
-            return torch.zeros(
-                (config.channels, round(duration_s * config.target_fps),
-                 config.height, config.width)
-            )
+            return _empty_return()
 
         # Get time range and frame count
         xdata_start_s = xdata_ds[0]
@@ -1294,18 +1373,15 @@ class TokamakH5Dataset(Dataset):
         n_frames = xdata_ds.shape[0]
 
         if n_frames < 2 or xdata_end_s == xdata_start_s:
-            return torch.zeros(
-                (config.channels, round(duration_s * config.target_fps),
-                 config.height, config.width)
-            )
+            return _empty_return()
 
         # Compute actual frame rate from the data
         actual_fps = (n_frames - 1) / (xdata_end_s - xdata_start_s)
 
-        # ydata layout: (C, W, H, T) — time is the last axis
+        # ydata layout: (C, T, H, W) — time is axis 1.
         raw_channels = ydata_ds.shape[0]
-        raw_height = ydata_ds.shape[2]  # H
-        raw_width = ydata_ds.shape[3]  # W
+        raw_height = ydata_ds.shape[2]
+        raw_width = ydata_ds.shape[3]
 
         # Step 1: Initialize output array with zeros at actual fps
         # (T, C, H, W)
@@ -1317,6 +1393,12 @@ class TokamakH5Dataset(Dataset):
             ),
             dtype=np.float32
         )
+
+        # Per-channel availability mask. ``True`` once the loaded window
+        # contains at least one non-NaN value for that channel.
+        # Defaults to all-False so an early no-overlap branch yields a
+        # cleanly inactive camera.
+        channel_valid_np = np.zeros(raw_channels, dtype=bool)
 
         # Step 2: Calculate which HDF5 indices correspond to [t_start, t_end]
         # xdata[i] = xdata_start_s + i / actual_fps
@@ -1331,6 +1413,12 @@ class TokamakH5Dataset(Dataset):
         # Step 3: Load data if there's any overlap
         if hdf5_start_clamped < hdf5_end_clamped:
             data = ydata_ds[:, hdf5_start_clamped:hdf5_end_clamped, :, :]
+
+            # Compute per-channel availability BEFORE the NaN->0 fill.
+            # tangtv stores off-filters as fully-NaN slabs, so a channel
+            # is "recording" iff it has any non-NaN value in this window.
+            channel_valid_np = ~np.isnan(data).all(axis=(1, 2, 3))
+
             data[np.isnan(data)] = 0
 
             # Step 4: Calculate where to insert in output array
@@ -1363,11 +1451,7 @@ class TokamakH5Dataset(Dataset):
         # F.interpolate treats dim-1 as channels (not interpolated across);
         # the 3D kernel blends only within each channel's (T, H, W) volume.
         # (C, T, H, W) → (1, C, T, H, W) → trilinear → (C, T', H', W')
-        target_size = (
-            round(duration_s * config.target_fps),
-            config.height,
-            config.width
-        )
+        target_size = (target_t, *target_hw)
         if tensor.shape[1:] != torch.Size(target_size):
             tensor = F.interpolate(
                 tensor.unsqueeze(0),
@@ -1376,7 +1460,22 @@ class TokamakH5Dataset(Dataset):
                 align_corners=False,
             ).squeeze(0)
 
-        return tensor
+        # Per-channel availability mask is purely a count of non-NaN
+        # values per channel, so it does not depend on spatial resampling.
+        channel_valid = torch.from_numpy(channel_valid_np)
+
+        # Apply channels_to_use after the load+resample so the selection
+        # works for both contiguous slices and arbitrary index sequences
+        # (e.g. tangtv keeps only channels [4, 6]).
+        if config.channels_to_use is not None:
+            if isinstance(config.channels_to_use, slice):
+                idx: Union[slice, list[int]] = config.channels_to_use
+            else:
+                idx = list(config.channels_to_use)
+            tensor = tensor[idx]
+            channel_valid = channel_valid[idx]
+
+        return tensor, channel_valid
 
     def __getitem__(self, idx: int) -> dict:
         """
@@ -1443,8 +1542,15 @@ class TokamakH5Dataset(Dataset):
                 tensor, valid_length_out, element_mask = self._process_signal(
                     raw_data, config, valid_length
                 )
-                # Combine zero_is_missing and NaN masks
-                valid_mask = nan_mask < 0.5  # True = valid (not NaN)
+                # NaN positions from the raw signal must be projected to
+                # STFT-frame coords for STFT modalities; for others the
+                # raw-time coords already match ``tensor``.
+                raw_valid = nan_mask < 0.5  # True = valid (not NaN)
+                if config.apply_stft:
+                    frame_valid = self._raw_to_frame_mask(raw_valid)
+                    valid_mask = frame_valid.unsqueeze(1).expand_as(tensor)
+                else:
+                    valid_mask = raw_valid
                 if element_mask is not None:
                     element_mask = element_mask & valid_mask
                 else:
@@ -1463,11 +1569,15 @@ class TokamakH5Dataset(Dataset):
         all_movies = {}
         for movie_config in self.movie_configs:
             if movie_config.name in self.input_signals:
-                raw_movie = self._load_movie_raw(
+                raw_movie, channel_valid = self._load_movie_raw(
                     self.h5_file, movie_config, t_start, t_end
                 )
                 all_movies[movie_config.name] = self._apply_preprocessing(
                     raw_movie, movie_config)
+                all_movies[f"{movie_config.name}_channel_mask"] = channel_valid
+                all_movies[f"{movie_config.name}_valid"] = int(
+                    bool(channel_valid.any().item())
+                )
 
         # Load metadata
         if "text" in self.input_signals:
@@ -1520,7 +1630,12 @@ class TokamakH5Dataset(Dataset):
                 raw_data, config, valid_length
             )
             if nan_mask is not None:
-                valid_mask = nan_mask < 0.5
+                raw_valid = nan_mask < 0.5
+                if config.apply_stft:
+                    frame_valid = self._raw_to_frame_mask(raw_valid)
+                    valid_mask = frame_valid.unsqueeze(1).expand_as(tensor)
+                else:
+                    valid_mask = raw_valid
                 if element_mask is not None:
                     element_mask = element_mask & valid_mask
                 else:
@@ -1537,15 +1652,23 @@ class TokamakH5Dataset(Dataset):
                 all_signals[f"{config.name}_mask"] = element_mask
 
         # Load and process movies
-        all_movies = {}
+        all_movies: dict[str, torch.Tensor] = {}
+        all_movie_channel_masks: dict[str, torch.Tensor] = {}
+        all_movie_valid: dict[str, int] = {}
         for movie_config in self.movie_configs:
             if movie_config.name not in signals_to_load:
                 continue
-            raw_movie = self._load_movie_raw(
+            raw_movie, channel_valid = self._load_movie_raw(
                 self.h5_file, movie_config, t_start, t_end
             )
             all_movies[movie_config.name] = self._apply_preprocessing(
                 raw_movie, movie_config
+            )
+            all_movie_channel_masks[movie_config.name] = channel_valid
+            # Camera-level validity scalar: True iff at least one
+            # channel had a non-NaN value in the loaded window.
+            all_movie_valid[movie_config.name] = int(
+                bool(channel_valid.any().item())
             )
 
         # Load metadata
@@ -1570,11 +1693,16 @@ class TokamakH5Dataset(Dataset):
                     self.chunk_duration_s * config.target_fs
                 )
 
+            valid_key = f"{config.name}_valid"
+            valid_val = all_signals.get(valid_key, 0)
+
             if config.name in self.input_signals:
                 inputs[config.name] = signal[..., :n_training_frames]
+                inputs[valid_key] = valid_val
 
             if config.name in self.target_signals:
                 targets[config.name] = signal[..., n_training_frames:]
+                targets[valid_key] = valid_val
 
         # Movies: split along the time dimension (dim 1 of (C, T, H, W))
         for movie_config in self.movie_configs:
@@ -1582,15 +1710,63 @@ class TokamakH5Dataset(Dataset):
                 continue
             movie_name = movie_config.name
             movie_data = all_movies[movie_name]
+            channel_mask = all_movie_channel_masks[movie_name]
+            valid_scalar = all_movie_valid[movie_name]
             n_training_frames = round(
                 self.chunk_duration_s * movie_config.target_fps
             )
             # movie_data shape: (C, extended_movie_frames, height, width)
+            in_chunk = movie_data[:, :n_training_frames]
+            out_chunk = movie_data[:, n_training_frames:]
+
+            # Optional temporal subsample: pick ``n_output_frames`` evenly
+            # spaced indices (e.g. 5 → [0, 2, 4]) to give the E2E video
+            # tokenizer 3 native frames per 50 ms half-window.
+            #
+            # When ``prediction_horizon_s > chunk_duration_s`` (Stage 2
+            # K-step rollouts), split ``out_chunk`` into K equal sub-windows
+            # FIRST and subsample each to ``n_output_frames`` so the trainer
+            # can later split the target back into K windows of n frames
+            # each. K=1 falls through to the original single-window path
+            # for byte-identical Stage 1 behaviour.
+            if movie_config.n_output_frames is not None:
+                n = movie_config.n_output_frames
+                if in_chunk.shape[1] > 0:
+                    idx_in = torch.linspace(
+                        0, in_chunk.shape[1] - 1, n
+                    ).round().long()
+                    in_chunk = in_chunk[:, idx_in]
+                if out_chunk.shape[1] > 0:
+                    K = max(
+                        1,
+                        round(self.prediction_horizon_s / self.chunk_duration_s),
+                    )
+                    if K > 1 and out_chunk.shape[1] >= K * n_training_frames:
+                        sub_windows = []
+                        for k in range(K):
+                            sub = out_chunk[
+                                :, k * n_training_frames : (k + 1) * n_training_frames
+                            ]
+                            idx_k = torch.linspace(
+                                0, sub.shape[1] - 1, n
+                            ).round().long()
+                            sub_windows.append(sub[:, idx_k])
+                        out_chunk = torch.cat(sub_windows, dim=1)
+                    else:
+                        idx_out = torch.linspace(
+                            0, out_chunk.shape[1] - 1, n
+                        ).round().long()
+                        out_chunk = out_chunk[:, idx_out]
+
             if movie_name in self.input_signals:
-                inputs[movie_name] = movie_data[:, :n_training_frames]
+                inputs[movie_name] = in_chunk
+                inputs[f"{movie_name}_channel_mask"] = channel_mask
+                inputs[f"{movie_name}_valid"] = valid_scalar
 
             if movie_name in self.target_signals:
-                targets[movie_name] = movie_data[:, n_training_frames:]
+                targets[movie_name] = out_chunk
+                targets[f"{movie_name}_channel_mask"] = channel_mask
+                targets[f"{movie_name}_valid"] = valid_scalar
 
         # Metadata (text) only goes to inputs
         if "text" in self.input_signals:
