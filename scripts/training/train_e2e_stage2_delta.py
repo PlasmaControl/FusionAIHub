@@ -1168,7 +1168,7 @@ def main() -> None:
     # thread heuristics can oversubscribe (each worker spawning 7 OMP
     # threads → 42 threads competing for 7 cores). Match the value the
     # parent process saw via OMP_NUM_THREADS (set to 1 in
-    # _frontier_common.sh).
+    # _frontier_settings.sh).
     def _worker_init(_worker_id: int) -> None:
         import os as _os
         n = int(_os.environ.get("OMP_NUM_THREADS", "1"))

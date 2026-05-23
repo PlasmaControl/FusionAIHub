@@ -16,7 +16,7 @@
 # Prerequisite: `pixi install -e frontier` has been run once.
 set -euo pipefail
 
-PROJECT_DIR=/lustre/orion/fus187/scratch/nchen/FusionAIHub
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 FLASH_ATTN_SHA=5301a359f59ef8fa10f211618d9f7a69716a8898
 FLASH_ATTN_URL="https://github.com/ROCm/flash-attention.git"
 FLASH_ATTN_LOCAL="${PROJECT_DIR}/.build/flash-attention"

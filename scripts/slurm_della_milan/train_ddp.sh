@@ -1,7 +1,7 @@
 #!/bin/bash
 # 2-GPU DDP launcher for ROCm on della-milan.
 # Usage:
-#   SIGNAL=ece bash scripts/slurm_rocm/train_ddp.sh
+#   SIGNAL=ece bash scripts/slurm_della_milan/train_ddp.sh
 # Env:
 #   SIGNAL          required signal name (matches MODEL_REGISTRY entry)
 #   BATCH_SIZE      per-GPU batch size (default: 4)

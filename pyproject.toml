@@ -99,8 +99,8 @@ triton-rocm = { version = "*",              index = "https://download.pytorch.or
 # multi-hour CK template/hipcc compile and builds in ~10-15 min.
 
 [tool.pixi.feature.frontier.tasks]
-setup-flash-attn = { cmd = "bash scripts/slurm_rocm/setup_frontier_env.sh", description = "Build & install flash-attn 2 into the frontier pixi env on a Frontier compute node (gfx90a). Auto-salloc's if run from a login node." }
-verify-flash-attn = { cmd = "python scripts/slurm_rocm/verify_flash_attn.py", description = "Smoke-test flash_attn on the local MI250X." }
+setup-flash-attn = { cmd = "bash scripts/slurm_frontier/setup_frontier_env.sh", description = "Build & install flash-attn 2 into the frontier pixi env on a Frontier compute node (gfx90a). Auto-salloc's if run from a login node." }
+verify-flash-attn = { cmd = "python scripts/slurm_frontier/verify_flash_attn.py", description = "Smoke-test flash_attn on the local MI250X." }
 
 [tool.pixi.environments]
 default = ["cuda"]

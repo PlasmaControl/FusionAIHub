@@ -27,7 +27,7 @@ set -e
 # Resolve repo from SLURM_SUBMIT_DIR. SLURM stages the script under
 # /var/spool/slurmd/... so BASH_SOURCE is useless. Submit from repo root.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
-if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_common.sh" ]; then
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
     echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
     echo "       cd into the FusionAIHub repo before sbatch." >&2
     exit 1
@@ -42,7 +42,7 @@ mkdir -p logs "${CHECKPOINT_DIR}"
 # Per-stage MASTER_PORT (different from Stage 1's 29500 so concurrent
 # jobs don't collide on the rendezvous port).
 export MASTER_PORT=29502
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
 # Auto-resume from previous chained submission. If a `_latest.pt` exists
 # we resume (chained-job continuation). Otherwise initialise from

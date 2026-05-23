@@ -77,6 +77,61 @@ def make_synthetic_inputs(
     return diag_in, act_in
 
 
+class BF16AdamW(torch.optim.AdamW):
+    """AdamW that allocates ``exp_avg`` / ``exp_avg_sq`` state in bf16.
+
+    Default AdamW allocates state with ``torch.zeros_like(p)`` which inherits
+    the param's dtype (fp32 under our bf16-autocast setup). That doubles the
+    optimizer-state footprint relative to bf16. This subclass intercepts state
+    init and forces bf16, halving Adam's m+v from ~16 to ~8 bytes/param.
+
+    Note: this is a memory-probe approximation. Real bf16 Adam needs
+    stochastic rounding on the m, v updates to avoid quantization bias —
+    libraries like bitsandbytes (AdamW8bit) and DeepSpeed (bf16 optimizer)
+    handle that. We don't, because we only care about memory here, not the
+    optimizer's numerical behavior.
+
+    CURRENTLY BROKEN. The naive approach (allocate state in bf16, let the
+    parent step() handle the rest) hits dtype mismatches in both paths:
+      - foreach=True (default): "Tensors of the same index must be on the
+        same device and the same dtype..."
+      - foreach=False: `exp_avg.lerp_(grad, ...)` strictly requires matching
+        dtypes — bf16 state + fp32 grad fails.
+    A correct implementation would either (a) cast grads to bf16 just before
+    step, (b) upcast m,v to fp32 transiently inside a custom step, or
+    (c) bring in bitsandbytes / DeepSpeed. None of those is worth the
+    iteration cost right now — use fp32 AdamW and account for bf16 savings
+    analytically (saves ~8 bytes/param).
+    """
+
+    def __init__(self, params, *args, **kwargs) -> None:
+        kwargs.setdefault("foreach", False)
+        kwargs.setdefault("fused", False)
+        super().__init__(params, *args, **kwargs)
+
+    @torch.no_grad()
+    def step(self, closure=None):  # type: ignore[override]
+        for group in self.param_groups:
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                state = self.state[p]
+                if len(state) == 0:
+                    state["step"] = torch.tensor(0.0)
+                    state["exp_avg"] = torch.zeros_like(
+                        p, dtype=torch.bfloat16, memory_format=torch.preserve_format,
+                    )
+                    state["exp_avg_sq"] = torch.zeros_like(
+                        p, dtype=torch.bfloat16, memory_format=torch.preserve_format,
+                    )
+                    if group.get("amsgrad", False):
+                        state["max_exp_avg_sq"] = torch.zeros_like(
+                            p, dtype=torch.bfloat16,
+                            memory_format=torch.preserve_format,
+                        )
+        return super().step(closure)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--d_model", type=int, default=1024)
@@ -107,6 +162,13 @@ def main() -> None:
     )
     p.add_argument("--no_amp", action="store_true",
                    help="Disable bf16 autocast (debug only).")
+    p.add_argument(
+        "--bf16_optim_state", action="store_true",
+        help="Store Adam's m, v moments in bf16 instead of fp32. Halves the "
+             "optimizer-state memory (saves ~8 bytes/param). Memory-probe "
+             "approximation: real training would want stochastic rounding to "
+             "avoid divergence — see bitsandbytes/AdamW8bit or DeepSpeed bf16.",
+    )
     args = p.parse_args()
 
     assert torch.cuda.is_available(), "No CUDA/HIP device visible"
@@ -147,7 +209,12 @@ def main() -> None:
     print(f"weight mem   : {mem_after_model - mem_pre_model:.2f} GB "
           f"(should be ~{n_params * 4 / 1e9:.2f} GB at fp32)")
 
-    optim = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.1)
+    if args.bf16_optim_state:
+        # WARNING: this path is currently broken — see BF16AdamW docstring.
+        # Use bitsandbytes / DeepSpeed in real training for bf16 Adam state.
+        optim = BF16AdamW(model.parameters(), lr=1e-4, weight_decay=0.1)
+    else:
+        optim = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.1)
 
     diag_in, act_in = make_synthetic_inputs(
         diagnostics, actuators, args.batch_size, device, dtype,
@@ -180,15 +247,19 @@ def main() -> None:
                 for v in outputs.values():
                     loss = loss + (v.float() ** 2).mean()
         loss.backward()
+        # optim.step() materializes Adam's m, v state tensors (~8 bytes/param
+        # in fp32) on first call. Including it gives a realistic training-step
+        # memory peak — otherwise we under-count by ~8 GB at the 1B scale.
+        optim.step()
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - t0
         peak = torch.cuda.max_memory_allocated() / 1e9
         reserved = torch.cuda.max_memory_reserved() / 1e9
         print()
-        print(f"forward+backward time: {elapsed:.2f} s")
-        print(f"peak alloc           : {peak:.2f} GB")
-        print(f"peak reserved        : {reserved:.2f} GB")
-        print(f"loss                 : {loss.item():.4f}  (sanity)")
+        print(f"forward+backward+step time: {elapsed:.2f} s")
+        print(f"peak alloc                : {peak:.2f} GB")
+        print(f"peak reserved             : {reserved:.2f} GB")
+        print(f"loss                      : {loss.item():.4f}  (sanity)")
         print()
         print("SUCCESS — model + step fit on this GCD.")
     except torch.cuda.OutOfMemoryError as e:

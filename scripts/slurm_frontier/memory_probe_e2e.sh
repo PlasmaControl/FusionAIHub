@@ -1,19 +1,9 @@
 #!/bin/bash
-# Memory-ceiling probe: build E2E model at 300M params and try one
-# forward+backward on a single MI250X GCD. Runs the same probe under four
-# configurations to find what actually fits:
-#   1) standard attention,            no grad checkpoint
-#   2) sdpa attention,                no grad checkpoint
-#   3) sdpa attention,                gradient checkpoint
-#   4) sdpa attention + grad ckpt + K=10 rollout (stage 2 pattern)
-#
-# Usage: sbatch scripts/slurm_frontier/memory_probe_e2e.sh
-#
 #SBATCH -A fus187
 #SBATCH -J mem_probe
 #SBATCH -o logs/%j_mem_probe.out
 #SBATCH -e logs/%j_mem_probe.err
-#SBATCH -t 00:30:00
+#SBATCH -t 01:30:00
 #SBATCH -p batch
 #SBATCH -q debug
 #SBATCH -N 1
@@ -23,39 +13,42 @@
 #SBATCH --cpus-per-task=7
 set -uo pipefail
 
-PROJECT_DIR=/lustre/orion/fus187/scratch/nchen/FusionAIHub
-cd "$PROJECT_DIR"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
+    echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
+    echo "       cd into the FusionAIHub repo before sbatch." >&2
+    exit 1
+fi
+cd "${PROJECT_DIR}"
 mkdir -p logs
 
 # shellcheck disable=SC1091
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
-D_MODEL="${D_MODEL:-1024}"
-N_LAYERS="${N_LAYERS:-24}"
-N_HEADS="${N_HEADS:-16}"
-BATCH="${BATCH:-4}"
+BATCH="${BATCH:-1}"
 
 run_probe() {
-    local label="$1"; shift
+    local label="$1"; local d_model="$2"; local n_layers="$3"
+    local n_heads="$4"; local k="$5"; shift 5
     echo ""
     echo "================================================================"
-    echo "=== $label ==="
+    echo "=== $label  (d_model=$d_model n_layers=$n_layers n_heads=$n_heads K=$k batch=$BATCH) ==="
     echo "================================================================"
     srun -N 1 -n 1 -c "$SLURM_CPUS_PER_TASK" \
          --gpus-per-task=1 --gpu-bind=closest \
          scripts/slurm_frontier/_srun_rank_wrapper.sh \
          scripts/training/memory_probe_e2e.py \
-         --d_model "$D_MODEL" --n_layers "$N_LAYERS" --n_heads "$N_HEADS" \
-         --batch_size "$BATCH" \
+         --d_model "$d_model" --n_layers "$n_layers" --n_heads "$n_heads" \
+         --batch_size "$BATCH" --K_rollout "$k" \
          "$@" || echo "[$label] non-zero exit (likely OOM — see above)"
 }
 
-run_probe "(1) standard attn, no ckpt"           --attn_impl standard
-run_probe "(2) sdpa attn, no ckpt"               --attn_impl sdpa
-run_probe "(3) sdpa attn, grad ckpt"             --attn_impl sdpa --gradient_checkpoint
-run_probe "(4) sdpa attn, grad ckpt, K=10 rollout" \
-                                                 --attn_impl sdpa --gradient_checkpoint \
-                                                 --K_rollout 10
+COMMON_FLAGS=(--attn_impl sdpa --gradient_checkpoint)
+
+# Single-shot probe: does 2.68B fit at K=50?
+# Prior at this exact shape: K=25 → 53.73 GB peak (optim.step-bound).
+# K=50 doubles rollout activations; predicted borderline (60-65 GB peak).
+run_probe "2.68B @ K=50 (d=2048 L=32)"  2048 32 32  50 "${COMMON_FLAGS[@]}"
 
 echo ""
 echo "=== Done. ==="
