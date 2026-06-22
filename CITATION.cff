@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Fusion AI Toolkit & Hub (FAITH)"
+abstract: "A centralized platform for fusion-related machine learning workflows."
+type: software
+authors:
+  - given-names: Azarakhsh
+    family-names: Jalalvand
+    affiliation: "Princeton University"
+    orcid: "https://orcid.org/0000-0001-8739-1793"
+  - given-names: Peter
+    family-names: Steiner
+    affiliation: "Princeton University"
+    orcid: "https://orcid.org/0000-0002-8149-2275"
+  - given-names: Nathaniel
+    family-names: Chen
+    affiliation: "Princeton University"
+    orcid: "https://orcid.org/0000-0001-8362-414X"
+  - given-names: Kouroche
+    family-names: Bouchiat
+    affiliation: "Princeton University"
+    orcid: "https://orcid.org/0000-0002-6096-5942"
+  - given-names: Egemen
+    family-names: Kolemen
+    affiliation: "Princeton University; Princeton Plasma Physics Laboratory"
+    orcid: "https://orcid.org/0000-0003-4212-3247"
+repository-code: "https://github.com/PlasmaControl/FusionAIHub"
+url: "https://control.princeton.edu/"
+license: MIT
+keywords:
+  - machine-learning
+  - fusion
+  - tokamak
+  - diii-d
+  - pytorch
+  - pppl
+  - princeton
