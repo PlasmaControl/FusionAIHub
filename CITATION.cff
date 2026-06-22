@@ -3,6 +3,8 @@ message: "If you use this software, please cite it as below."
 title: "Fusion AI Toolkit & Hub (FAITH)"
 abstract: "A centralized platform for fusion-related machine learning workflows."
 type: software
+version: 0.0.1
+date-released: 2026-06-21
 authors:
   - given-names: Azarakhsh
     family-names: Jalalvand
@@ -26,6 +28,7 @@ authors:
     orcid: "https://orcid.org/0000-0003-4212-3247"
 repository-code: "https://github.com/PlasmaControl/FusionAIHub"
 url: "https://control.princeton.edu/"
+doi: "10.5281/zenodo.20791258"
 license: MIT
 keywords:
   - machine-learning
