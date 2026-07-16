@@ -6,14 +6,17 @@
 
 module load mdsplus
 
-# Configuration
-CHUNK_SIZE=100
+# Python environment providing read_mds (mdsh5)
+source "${MDSH5_VENV:-$HOME/venvs/mdsh5}/bin/activate"
+
+# Configuration (all overridable from the submitting environment via --export=ALL)
+CHUNK_SIZE=${CHUNK_SIZE:-100}
 
 # Globus configuration
-ENABLE_GLOBUS=true  # Set to false to disable Globus transfer
-GLOBUS_SOURCE_ENDPOINT="20749357-d221-43c6-bbc4-79691e6776b8"
-GLOBUS_DEST_ENDPOINT="544b12dc-cb3d-11e9-939b-02ff96a5aa76"
-GLOBUS_DEST_PATH="/scratch/gpfs/EKOLEMEN/big_d3d_data/d3d_time_series_data/"
+ENABLE_GLOBUS=${ENABLE_GLOBUS:-true}  # Set to false to disable Globus transfer
+GLOBUS_SOURCE_ENDPOINT="${GLOBUS_SOURCE_ENDPOINT:-20749357-d221-43c6-bbc4-79691e6776b8}"  # DIII-D cscratch
+GLOBUS_DEST_ENDPOINT="${GLOBUS_DEST_ENDPOINT:-544b12dc-cb3d-11e9-939b-02ff96a5aa76}"      # Princeton Stellar
+GLOBUS_DEST_PATH="${GLOBUS_DEST_PATH:-/scratch/gpfs/EKOLEMEN/big_d3d_data/d3d_time_series_data/}"
 
 # Get shot number
 SHOT_NUMBER=$(sed -n "${SLURM_ARRAY_TASK_ID}p" ${BATCH_FILE})

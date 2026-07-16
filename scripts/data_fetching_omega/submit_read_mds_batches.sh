@@ -3,24 +3,27 @@
 # ============================================
 # Configuration
 # ============================================
+# All settings can be overridden from the environment, e.g.:
+#   CONFIG_FILES="config_ece.yaml" SHOT_LIST_FILE="shots_ece.txt" ./submit_read_mds_batches.sh
+
 # Choose mode: "range" or "list"
-MODE="list"  # or "list"
+MODE="${MODE:-list}"
 
 # For range mode:
-SHOT_START=200700
-SHOT_END=200800
+SHOT_START=${SHOT_START:-200700}
+SHOT_END=${SHOT_END:-200800}
 
 # For list mode (one shot number per line):
-SHOT_LIST_FILE="shots_to_process.txt"
+SHOT_LIST_FILE="${SHOT_LIST_FILE:-shots_to_process.txt}"
 
 # Common configuration
-CONFIG_FILES="config_atlas.yaml config_chiron.yaml"  # Process both servers
-OUTPUT_DIR="/cscratch/steinerp/database/data"
-NODE_PATHS_DIR="/cscratch/steinerp/database/node_paths"  # Deprecated but kept for compatibility
+CONFIG_FILES="${CONFIG_FILES:-config_atlas.yaml config_chiron.yaml}"  # Process both servers
+OUTPUT_DIR="${OUTPUT_DIR:-/cscratch/chenn/database/data}"
+NODE_PATHS_DIR="${NODE_PATHS_DIR:-/cscratch/chenn/database/node_paths}"  # Deprecated but kept for compatibility
 
 # Batch settings
-BATCH_SIZE=1000
-MAX_SUBMIT_LIMIT=25
+BATCH_SIZE=${BATCH_SIZE:-1000}
+MAX_SUBMIT_LIMIT=${MAX_SUBMIT_LIMIT:-25}
 
 # State files
 STATE_FILE=".submission_state"

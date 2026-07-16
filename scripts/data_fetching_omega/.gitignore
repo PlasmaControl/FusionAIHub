@@ -1,0 +1,9 @@
+# Auto-generated run state
+.completed_shots
+.failed_shots
+*.lock
+.submission_state
+batch_*.txt
+jobs/
+config_*chunk*.yml
+*.log
