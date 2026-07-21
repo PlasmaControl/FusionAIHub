@@ -237,3 +237,21 @@ envs/
 
 # Profile sidecar output
 profile/
+
+# --- Large local outputs / caches / crash artifacts (not for version control) ---
+# smoke-test checkpoints (~166 GB), scratch (~41 GB), core dump (~7.5 GB)
+.smoke_rollout_native/
+.smoke_*/
+scratch/
+core
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.mp4
+*.npy
+*.npz
+.tmp_*_cache/
+# eval_runs (~53 GB of renders/exports): exclude bulk, keep only paper_facts docs
+eval_runs/*
+!eval_runs/paper_facts/

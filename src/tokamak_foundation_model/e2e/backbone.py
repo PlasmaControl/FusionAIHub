@@ -89,12 +89,106 @@ class BackboneBlock(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, gamma: torch.Tensor = None,
+                beta: torch.Tensor = None) -> torch.Tensor:
         h = self.norm1(x)
         attn_out, _ = self.attn(h, h, h, need_weights=False)
         x = x + attn_out
         x = x + self.mlp(self.norm2(x))
+        if gamma is not None:   # FiLM: actuator-conditioned per-channel modulation of the block output
+            x = x * (1.0 + gamma.unsqueeze(1)) + beta.unsqueeze(1)   # gamma/beta (B,d) broadcast over tokens
         return x
+
+
+class TemporalAttention(nn.Module):
+    """CAUSAL self-attention across the K-window (history) axis, applied
+    independently at each of the N token positions.
+
+    Input/return ``(B, K, N, d)``. Window ``k`` may attend only to windows
+    ``<= k`` (causal), so the most-recent window integrates the full past — this
+    is what lets the model observe mode VELOCITY (how a mode drifts/grows across
+    windows), the thing a single-window/Markov backbone structurally cannot see.
+    Pre-norm + residual, mirroring :class:`BackboneBlock`.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.norm = nn.LayerNorm(d_model)
+        self.attn = nn.MultiheadAttention(
+            d_model, n_heads, dropout=dropout, batch_first=True
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, K, N, d = x.shape
+        h = self.norm(x).permute(0, 2, 1, 3).reshape(B * N, K, d)  # (B*N, K, d)
+        causal = torch.triu(
+            torch.ones(K, K, device=x.device, dtype=torch.bool), diagonal=1
+        )
+        out, _ = self.attn(h, h, h, attn_mask=causal, need_weights=False)
+        out = out.reshape(B, N, K, d).permute(0, 2, 1, 3)          # (B, K, N, d)
+        return x + out
+
+
+class MultiWindowBackbone(nn.Module):
+    """Spatiotemporal backbone over ``(B, K, N, d)`` — K past 50 ms windows,
+    N tokens each. Each layer = SPATIAL attention (within a window, over N,
+    reusing :class:`BackboneBlock`) + CAUSAL TEMPORAL attention (across the K
+    windows). Returns the LAST window's tokens ``(B, N, d)`` — which have
+    attended over the whole history — so the existing per-modality heads decode
+    the next-window prediction unchanged. K=1 reduces to the single-window
+    backbone (temporal attention is a no-op over one window).
+    """
+
+    def __init__(
+        self,
+        d_model: int = 256,
+        n_heads: int = 8,
+        n_layers: int = 8,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.0,
+        grad_checkpoint: bool = False,
+        max_windows: int = 16,
+    ) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.n_layers = n_layers
+        self.grad_checkpoint = grad_checkpoint
+        self.step_cond = StepConditioning(d_model)
+        # Learned per-window (temporal) position embedding, std matched to the
+        # post-tokenizer token scale so window order is visible at init.
+        self.window_pe = nn.Parameter(torch.randn(max_windows, d_model) * 0.02)
+        self.spatial = nn.ModuleList(
+            [BackboneBlock(d_model, n_heads, mlp_ratio, dropout) for _ in range(n_layers)]
+        )
+        self.temporal = nn.ModuleList(
+            [TemporalAttention(d_model, n_heads, dropout) for _ in range(n_layers)]
+        )
+        self.final_norm = nn.LayerNorm(d_model)
+
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        step_index: torch.Tensor,
+        time_offset_s: torch.Tensor,
+    ) -> torch.Tensor:
+        """``tokens`` ``(B, K, N, d)`` → last-window output ``(B, N, d)``."""
+        B, K, N, d = tokens.shape
+        step_embed = self.step_cond(step_index, time_offset_s)[:, None, None, :]
+        x = tokens + step_embed + self.window_pe[:K][None, :, None, :]
+        use_ckpt = self.grad_checkpoint and self.training
+        for sp, tp in zip(self.spatial, self.temporal):
+            xs = x.reshape(B * K, N, d)
+            if use_ckpt:
+                xs = torch_ckpt.checkpoint(sp, xs, use_reentrant=False)
+            else:
+                xs = sp(xs)
+            x = xs.reshape(B, K, N, d)
+            if use_ckpt:
+                x = torch_ckpt.checkpoint(tp, x, use_reentrant=False)
+            else:
+                x = tp(x)
+        x = self.final_norm(x)
+        return x[:, -1]                                           # last window (B, N, d)
 
 
 class SharedBackbone(nn.Module):
@@ -144,6 +238,7 @@ class SharedBackbone(nn.Module):
         time_offset_s: torch.Tensor,
         *,
         return_intermediates: bool = False,
+        film_params: torch.Tensor = None,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Run tokens through the stack.
 
@@ -168,16 +263,21 @@ class SharedBackbone(nn.Module):
         # without sharding. Skipped when return_intermediates (debug path)
         # or when not training (no grad needed anyway).
         use_ckpt = self.grad_checkpoint and self.training and not return_intermediates
+        # FiLM: per-block (gamma, beta) from the actuator embedding, (B, n_layers, 2, d). None => byte-identical.
+        def _film(i):
+            return (None, None) if film_params is None else (film_params[:, i, 0], film_params[:, i, 1])
         if return_intermediates:
             intermediates: List[torch.Tensor] = [x]
-            for block in self.blocks:
-                x = block(x)
+            for i, block in enumerate(self.blocks):
+                g, b = _film(i)
+                x = block(x, g, b)
                 intermediates.append(x)
             intermediates.append(self.final_norm(x))
             return intermediates
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
+            g, b = _film(i)
             if use_ckpt:
-                x = torch_ckpt.checkpoint(block, x, use_reentrant=False)
+                x = torch_ckpt.checkpoint(block, x, g, b, use_reentrant=False)
             else:
-                x = block(x)
+                x = block(x, g, b)
         return self.final_norm(x)

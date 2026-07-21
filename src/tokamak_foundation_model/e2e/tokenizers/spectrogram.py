@@ -159,9 +159,46 @@ class SpectrogramTokenizer(nn.Module):
             x = x + h.transpose(2, 3)                   # (B, C, F, T_trunc)
         tokens = self.proj(x)                           # (B, d_model, n_f, n_t)
         tokens = tokens.flatten(2).transpose(1, 2)      # (B, n_tokens, d_model)
+        import os as _os
+        _dbg = _os.environ.get("ROLLOUT_STATS_DEBUG") == "1"
+        _proj_am = float(tokens.abs().max()) if _dbg else 0.0
         tokens = tokens + self.spatial_pe + self.modality_embed
+        _add_am = float(tokens.abs().max()) if _dbg else 0.0
+        _refine_ams = []
         for block in self.refine:
             tokens = tokens + block(tokens)
+            if _dbg:
+                _refine_ams.append(round(float(tokens.abs().max()), 1))
+        # PROJ-RESONANCE GUARD (2026-07-16). The ece feedback normally tokenizes
+        # to out-absmax ~50-210 (natural band). The patch ``proj`` Conv2d has ONE
+        # fixed near-DC / low-freq corner filter that SATURATES on the near-DC
+        # broadband floor present in every mode-active window. Real INPUT windows
+        # already reach out-absmax ~2101 (tolerated — single-step training ran
+        # fine there); a codec-DECODED feedback window pushes that broadband floor
+        # to ~2216 and tips proj over → bf16 NaN. It is the DC broadband floor,
+        # NOT mode energy (per-window mode-ridge deviation ~24 << 2000) and NOT
+        # realization-specific. Hottest in teacher-forcing (GT-code decode). The
+        # option-2 feedback_normalize fix scales the whole feedback token slice
+        # per-sample back to the step-0 input band. >600 (~3x the natural band) is
+        # well clear of natural inputs, so this WARNs if the floor climbs into the
+        # danger zone. Rate-limited.
+        _out_am = float(tokens.detach().abs().max())
+        if _dbg:
+            print(
+                f"[stage] in_absmax={float(x.abs().max()):.3f} "
+                f"proj={_proj_am:.3f} post_add={_add_am:.3f} "
+                f"refine_absmax_per_block={_refine_ams} out={_out_am:.3f}",
+                flush=True,
+            )
+        elif _out_am > 600.0 and not getattr(self, "_resonance_warned", False):
+            print(
+                f"[PROJ-RESONANCE WARN] ece tokenizer out_absmax={_out_am:.1f} > 600 "
+                f"(natural ~50-210) — the fixed near-DC proj filter is saturating "
+                f"on the broadband floor of a codec-decoded window; the option-2 "
+                f"feedback-token renorm (--feedback_normalize) caps this. (warned once)",
+                flush=True,
+            )
+            self._resonance_warned = True
         return tokens
 
     def forward(

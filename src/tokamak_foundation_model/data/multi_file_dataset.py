@@ -130,6 +130,7 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             step_size_s: Optional[float] = None,
             warmup_s: float = 0.0,
             video_channels_override: Optional[dict] = None,
+            history_windows: int = 1,
     ):
         # Set up all instance attributes that parent methods rely on.
         # We deliberately skip super().__init__() because it expects a single
@@ -157,6 +158,9 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self.preprocessing_stats = preprocessing_stats or {}
         self.prediction_mode = prediction_mode
         self.prediction_horizon_s = prediction_horizon_s
+        # K>1: return K consecutive input windows + next-window target (multi-
+        # window temporal backbone). The inherited _getitem_prediction reads it.
+        self.history_windows = int(history_windows)
         self.input_signals = input_signals or ["ece", "co2", "mhr"]
         self.target_signals = target_signals or ["mse", "ts_core_density"]
         self.n_freq_bins = n_fft // 2 + 1
@@ -340,7 +344,8 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
                     length = 0
                 elif self.prediction_mode:
                     total_window = (
-                            self.chunk_duration_s + self.prediction_horizon_s
+                            self.history_windows * self.chunk_duration_s
+                            + self.prediction_horizon_s
                     )
                     length = max(0, int(np.floor(
                         (duration - total_window) / self.step_size_s

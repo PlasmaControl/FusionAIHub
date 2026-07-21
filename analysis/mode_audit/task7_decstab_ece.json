@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "modality": "ece",
+  "n_active": 374,
+  "decoded_stability_bandcorr": 0.9329563665003349,
+  "code_stability": 0.2582465410232544,
+  "recon_bandcorr": 0.6216684668913645,
+  "verdict": "DECODE STABLE -> codes redundant -> fix=decoded/perceptual LOSS"
+}

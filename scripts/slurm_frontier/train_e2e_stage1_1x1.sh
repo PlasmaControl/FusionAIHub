@@ -30,7 +30,7 @@
 #SBATCH --cpus-per-task=7
 set -uo pipefail
 
-PROJECT_DIR=/lustre/orion/fus187/scratch/nchen/FusionAIHub
+PROJECT_DIR="${PROJECT_DIR:-/lustre/orion/fus187/scratch/nchen/FusionAIHub}"
 cd "$PROJECT_DIR"
 mkdir -p logs
 
@@ -76,6 +76,29 @@ DATA_DIR="${DATA_DIR:-/lustre/orion/fus187/proj-shared/foundation_model}"
 STATS_PATH="${STATS_PATH:-data/preprocessing_stats.pt}"
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-runs/e2e_stage1_frontier}"
 mkdir -p "$CHECKPOINT_DIR"
+# ISOLATE the lengths cache per-run (default = this run's own checkpoint dir).
+# CRITICAL: the trainer's default --lengths_cache_dir is the SHARED
+# foundation_model_meta dir, and the cache filename (lengths_e2e_stage1_train.pt)
+# is fixed. A small-file-list 1x1 run (overfit/smoke) writing there OVERWRITES
+# the ALL-shots production cache → production jobs then cold-scan 7878 files at
+# 64 ranks → NCCL-watchdog crash (happened 2026-07-10). Keep 1x1 caches local.
+LENGTHS_CACHE_DIR="${LENGTHS_CACHE_DIR:-$CHECKPOINT_DIR}"
+mkdir -p "$LENGTHS_CACHE_DIR"
+
+# ─── Opt-in spectrogram / FSQ code-head flags (all default OFF → the plain
+#     TS-only smoke behaves exactly as before; only set these for an FSQ run) ──
+SPECTRO_FLAGS=""
+[ -n "${USE_SPECTRO:-}" ]      && SPECTRO_FLAGS="$SPECTRO_FLAGS --use_spectro ${USE_SPECTRO}"
+[ -n "${USE_VIDEO:-}" ]        && SPECTRO_FLAGS="$SPECTRO_FLAGS --use_video ${USE_VIDEO}"
+[ -n "${SPECTRO_PATCH_F:-}" ]  && SPECTRO_FLAGS="$SPECTRO_FLAGS --spectro_patch_f ${SPECTRO_PATCH_F}"
+[ -n "${SPECTRO_PATCH_T:-}" ]  && SPECTRO_FLAGS="$SPECTRO_FLAGS --spectro_patch_t ${SPECTRO_PATCH_T}"
+if [ "${SPEC_FSQ:-0}" = "1" ]; then
+    : "${SPEC_FSQ_CODEC_DIR:?SPEC_FSQ=1 requires SPEC_FSQ_CODEC_DIR}"
+    SPECTRO_FLAGS="$SPECTRO_FLAGS --spec_fsq --spec_fsq_codec_dir ${SPEC_FSQ_CODEC_DIR}"
+    [ -n "${SPEC_CODE_CLASS_WEIGHT:-}" ]   && SPECTRO_FLAGS="$SPECTRO_FLAGS --spec_code_class_weight ${SPEC_CODE_CLASS_WEIGHT}"
+    [ -n "${SPEC_CODE_WEIGHT_BATCHES:-}" ] && SPECTRO_FLAGS="$SPECTRO_FLAGS --spec_code_weight_batches ${SPEC_CODE_WEIGHT_BATCHES}"
+fi
+[ -n "${EXTRA_FLAGS:-}" ]      && SPECTRO_FLAGS="$SPECTRO_FLAGS ${EXTRA_FLAGS}"
 
 # Auto-resume from latest checkpoint if it exists.
 LATEST="$CHECKPOINT_DIR/e2e_stage1_latest.pt"
@@ -113,19 +136,20 @@ srun --overlap -N "$NODES" -n "$TOTAL_RANKS" -c "$CPUS_PER_TASK" \
 --data_dir "$DATA_DIR" \
 --stats_path "$STATS_PATH" \
 --checkpoint_dir "$CHECKPOINT_DIR" \
+--lengths_cache_dir "$LENGTHS_CACHE_DIR" \
 --val_fraction 0.1 \
 --seed 42 \
 --chunk_duration_s 0.05 \
---prediction_horizon_s 0.05 \
+--prediction_horizon_s "${PRED_HORIZON:-0.05}" \
 --step_size_s 0.01 \
 --warmup_s 1.0 \
 --d_model "$D_MODEL" \
 --n_layers "$N_LAYERS" \
 --n_heads "$N_HEADS" \
 --dropout 0.1 \
---lr 1e-4 \
+--lr "${LR:-1e-4}" \
 --min_lr 1e-6 \
---warmup_steps 2000 \
+--warmup_steps "${WARMUP_STEPS:-2000}" \
 --weight_decay 0.1 \
 --grad_clip 5.0 \
 --batch_size "$BATCH_SIZE" \
@@ -133,4 +157,5 @@ srun --overlap -N "$NODES" -n "$TOTAL_RANKS" -c "$CPUS_PER_TASK" \
 --max_steps "$MAX_STEPS" \
 --log_every "$LOG_EVERY" \
 --val_every "$VAL_EVERY" \
---val_max_batches "$VAL_MAX_BATCHES"
+--val_max_batches "$VAL_MAX_BATCHES" \
+$SPECTRO_FLAGS

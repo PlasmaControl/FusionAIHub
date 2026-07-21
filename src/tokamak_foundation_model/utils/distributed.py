@@ -22,18 +22,20 @@ class DistributedManager:
             self.device_index = self.local_rank if visible > 1 else 0
 
             self.distributed = True
-            # 30-min collective timeout (default is 10 min) — the
-            # extended Stage 2 K=80 val phase can have rank-skew
-            # exceeding the default watchdog, especially at the
-            # post-val dm.barrier() where rank 0 finishes its
-            # Tier 4 metric polling + checkpoint save. See
-            # smoke 4793237 (val timeout at step 40, K=80).
+            # 90-min collective timeout (default is 10 min). Raised from 30 →
+            # 90 (2026-06-27): on a COLD lengths-cache rebuild, rank 0 scans all
+            # video-present files (~4430) in _load_or_compute_lengths while ranks
+            # 1..N wait at the dist.broadcast_object_list — a ~55-min single-rank
+            # HDF5 metadata scan that blew past the 30-min watchdog (job 4909383
+            # crash). 90 min covers the one-time rebuild; steady-state collectives
+            # are sub-second so this only matters during startup scans. (Also
+            # covers the extended Stage 2 K=80 post-val rank-skew, smoke 4793237.)
             dist.init_process_group(
                 'nccl',
                 rank=self.rank,
                 world_size=self.world_size,
                 device_id=torch.device("cuda", self.device_index),
-                timeout=timedelta(minutes=30),
+                timeout=timedelta(minutes=90),
             )
             torch.cuda.set_device(self.device_index)
         else:
