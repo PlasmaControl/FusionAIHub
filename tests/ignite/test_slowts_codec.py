@@ -447,6 +447,174 @@ def test_slowts_dataset_nan_missing_mask(cer_shots):
     assert seen_missing, "the synthetic CER shots inject NaN-missing blocks; expected some"
 
 
+# --------------------------------------------------------------------------------------- #
+# SCALE FIX — per-signal standardization of the codec input (log_standardize / standardize).
+# The dataset must feed the codec the O(1) input the FM model consumes (each signal's
+# SignalConfig.preprocess.method applied) instead of the unstandardized raw that collapses the
+# ~1e19-scale Thomson density signals. Mirrors data_loader._apply_preprocessing EXACTLY.
+# --------------------------------------------------------------------------------------- #
+def _standardize_via_ds(raw, *, signal, method, mean, std, channels):
+    """Run SlowTSCodecPairDataset._standardize on ``raw`` (C,T) via a cfg with the given stats.
+
+    Builds the cfg + a dataset instance WITHOUT touching HDF5 (we only call the pure transform
+    method) so this is a fast unit test of the exact standardize math.
+    """
+    cfg = SlowTSCodecConfig(signal=signal, channels=channels, time_steps=raw.shape[1],
+                            patch_c=channels, patch_t=raw.shape[1])
+    cfg.preprocess_method = method
+    cfg.channel_mean = mean
+    cfg.channel_std = std
+    ds = tc.SlowTSCodecPairDataset.__new__(tc.SlowTSCodecPairDataset)  # no __init__ / no HDF5
+    ds.h5_file = None  # so the parent __del__ (which touches self.h5_file) is a no-op
+    ds.codec_cfg = cfg
+    return ds._standardize(raw)
+
+
+def test_standardize_1e19_signal_becomes_O1_log_standardize():
+    """A synthetic ~1e19-scale (Thomson density) signal is O(1) after the log_standardize path."""
+    C, T = 4, 5
+    torch.manual_seed(0)
+    # electron density ~1e19 m^-3 scale, strictly positive.
+    raw = (torch.rand(C, T) * 4.0 + 1.0) * 1e19
+    assert raw.std() > 1e18  # confirm the pre-fix scale is huge
+    # log-space stats (the loader reads the 'log' sub-dict for log_standardize): log10(1e19)~19.
+    log_raw = torch.log10(raw.clamp(min=-0.99) + 1.0)
+    mean = log_raw.mean(dim=1).tolist()
+    std = log_raw.std(dim=1).clamp(min=1e-3).tolist()
+    out = _standardize_via_ds(raw, signal="ts_core_density", method="log_standardize",
+                              mean=mean, std=std, channels=C)
+    assert torch.isfinite(out).all()
+    # O(1): overall std ~1 and no 1e19-scale values survive.
+    assert out.abs().max() < 20.0
+    assert 0.3 < out.std().item() < 3.0
+    # EXACT: matches data_loader's log10(clip(x,-0.99)+1) then (arr-mean)/std.clamp(1e-3).
+    m = torch.tensor(mean).reshape(C, 1)
+    s = torch.tensor(std).reshape(C, 1).clamp(min=1e-3)
+    expected = (log_raw - m) / s
+    assert torch.allclose(out, expected, atol=1e-5)
+
+
+def test_standardize_path_is_x_minus_mean_over_std():
+    """The 'standardize' (CER/MSE) path is EXACTLY (x - mean) / std.clamp(min=1e-3), RAW-space."""
+    C, T = 3, 5
+    torch.manual_seed(1)
+    raw = torch.randn(C, T) * 400.0 + 100.0  # cer_ti-like raw scale (~hundreds)
+    mean = raw.mean(dim=1).tolist()
+    std = raw.std(dim=1).tolist()
+    out = _standardize_via_ds(raw, signal="cer_ti", method="standardize",
+                              mean=mean, std=std, channels=C)
+    m = torch.tensor(mean).reshape(C, 1)
+    s = torch.tensor(std).reshape(C, 1).clamp(min=1e-3)
+    assert torch.allclose(out, (raw - m) / s, atol=1e-5)
+    # per-channel ~ zero-mean unit-std (it was standardized by its own window stats here).
+    assert out.mean().abs() < 1e-4
+
+
+def test_standardize_std_clamp_matches_loader():
+    """A tiny per-channel std is clamped at 1e-3 exactly like data_loader (no divide-by-~0 blowup)."""
+    C, T = 2, 5
+    raw = torch.zeros(C, T)
+    raw[0] = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0])   # ch0 constant -> std ~0
+    raw[1] = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0])
+    mean = [1.0, 2.0]
+    std = [0.0, 1.0]  # ch0 std 0 -> must clamp to 1e-3, not divide by 0
+    out = _standardize_via_ds(raw, signal="cer_ti", method="standardize",
+                              mean=mean, std=std, channels=C)
+    assert torch.isfinite(out).all()
+    # ch0: (1 - 1)/clamp(0,1e-3) = 0/1e-3 = 0
+    assert torch.allclose(out[0], torch.zeros(T), atol=1e-6)
+
+
+def test_none_stats_is_byte_identical_to_prefix():
+    """None stats / method None => IDENTITY (byte-identical to the pre-fix raw path)."""
+    C, T = 4, 5
+    raw = torch.randn(C, T) * 1e18
+    # no method, no stats -> identity
+    out0 = _standardize_via_ds(raw, signal="ts_core_density", method=None,
+                               mean=None, std=None, channels=C)
+    assert torch.equal(out0, raw)
+    # method set but stats None -> still identity
+    out1 = _standardize_via_ds(raw, signal="ts_core_density", method="log_standardize",
+                               mean=None, std=None, channels=C)
+    assert torch.equal(out1, raw)
+    # method "none" with stats present -> identity
+    out2 = _standardize_via_ds(raw, signal="ts_core_density", method="none",
+                               mean=[0.0] * C, std=[1.0] * C, channels=C)
+    assert torch.equal(out2, raw)
+
+
+def test_standardize_wrong_shape_stats_rejected():
+    """Stats of length != C are rejected loud (a mis-pointed stats file must fail, not skip)."""
+    C, T = 4, 5
+    raw = torch.randn(C, T)
+    with pytest.raises(ValueError):
+        _standardize_via_ds(raw, signal="cer_ti", method="standardize",
+                            mean=[0.0] * (C - 1), std=[1.0] * (C - 1), channels=C)
+    with pytest.raises(ValueError):
+        _standardize_via_ds(raw, signal="ts_core_density", method="bogus_method",
+                            mean=[0.0] * C, std=[1.0] * C, channels=C)
+
+
+def test_slowts_dataset_zero_is_missing_mask_preserved_after_standardize(slowts_shots):
+    """With stats injected, the zero_is_missing mask still matches the RAW zeros (mask semantics
+    intact); the codec input is standardized (values move OFF the raw zero/scale)."""
+    channels = slowts_shots["channels"]
+    # build the pre-fix (identity) dataset to read the RAW windows + masks.
+    cfg_raw = _tiny_slowts_cfg(channels=channels)
+    ds_raw = tc.SlowTSCodecPairDataset(
+        slowts_shots["signal"], slowts_shots["shots"], cfg_raw,
+        data_dir=slowts_shots["dir"], seed=0,
+    )
+    # build the FIXED dataset with log_standardize stats (matched to the synthetic channel count).
+    cfg_fix = _tiny_slowts_cfg(channels=channels)
+    cfg_fix.preprocess_method = "log_standardize"
+    cfg_fix.channel_mean = [1.0] * channels
+    cfg_fix.channel_std = [0.5] * channels
+    ds_fix = tc.SlowTSCodecPairDataset(
+        slowts_shots["signal"], slowts_shots["shots"], cfg_fix,
+        data_dir=slowts_shots["dir"], seed=0,
+    )
+    seen_missing = False
+    for i in range(len(ds_raw)):
+        raw_sig, raw_mask = ds_raw[i]
+        fix_sig, fix_mask = ds_fix[i]
+        # 1. mask is IDENTICAL (built from raw before standardization).
+        assert torch.equal(raw_mask, fix_mask)
+        # 2. masked-invalid positions were raw-zero (the missing fill) — the loss ignores them.
+        inv = fix_mask < 0.5
+        if inv.any():
+            seen_missing = True
+            assert torch.all(raw_sig[inv] == 0.0)
+        # 3. the standardized input differs from raw wherever raw != 0 (input actually rescaled).
+        present = fix_mask > 0.5
+        if present.any():
+            assert not torch.allclose(fix_sig[present], raw_sig[present])
+    assert seen_missing, "synthetic shots inject zero-missing blocks; expected some"
+
+
+def test_load_slowts_channel_stats_method_and_length():
+    """load_slowts_channel_stats returns the FM's per-signal method + a C-length mean/std, reading
+    the 'log' sub-dict for log_standardize signals and 'raw' for standardize signals."""
+    stats_path = "/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt"
+    if not Path(stats_path).exists():
+        pytest.skip("canonical preprocessing_stats.pt not present")
+    expect_method = {
+        "ts_core_density": "log_standardize", "ts_core_temp": "log_standardize",
+        "ts_tangential_density": "log_standardize", "ts_tangential_temp": "log_standardize",
+        "cer_ti": "standardize", "cer_rot": "standardize", "mse": "standardize",
+    }
+    for sig, method in expect_method.items():
+        m, mean, std = tc.load_slowts_channel_stats(sig, stats_path)
+        assert m == method
+        C = tc.modality_channels(sig)
+        assert len(mean) == C and len(std) == C
+        # NaN / inf handling: every returned stat is finite (loader maps bad stats to 0/1).
+        assert all(math.isfinite(v) for v in mean)
+        assert all(math.isfinite(v) for v in std)
+    with pytest.raises(ValueError):
+        tc.load_slowts_channel_stats("not_a_slowts_signal", stats_path)
+
+
 def test_slowts_loader_num_workers_0_and_2(slowts_shots):
     cfg = _tiny_slowts_cfg()
     ds = tc.SlowTSCodecPairDataset(
@@ -608,12 +776,63 @@ def test_train_slowts_codec_cli_main(slowts_shots, tmp_path, monkeypatch):
         "--eval_frames", "3",
         "--out_dir", str(out_dir),
         "--data_dir", str(slowts_shots["dir"]),
+        # --stats_path='' DISABLES the standardization SCALE FIX (raw path) so this synthetic-shot
+        # smoke test does not depend on the real preprocessing_stats.pt being on disk (the fix's
+        # own math is unit-tested above; a dedicated CLI test below exercises the ON path).
+        "--stats_path", "",
         "--seed", "0",
     ]
     gate_dict = tc.main(argv)
     assert gate_dict["steps"] == 2
     assert (out_dir / "summary.json").exists()
     assert sorted(out_dir.glob("gate_*.json"))
+
+
+def test_slowts_cli_main_standardization_on_injects_stats(slowts_shots, tmp_path, monkeypatch):
+    """The ON dispatch path: main() loads the per-signal method + stats and INJECTS them onto the
+    cfg the trainer builds (so the codec input is standardized). Uses synthetic stats matched to
+    the tiny shot channel count via a monkeypatched loader — no dependency on the real stats file."""
+    monkeypatch.delenv("WORLD_SIZE", raising=False)
+    out_dir = tmp_path / "scli_on"
+    # the codec operates on the LOADER's channel count (44 for ts_core_density; the synthetic shot
+    # is zero-padded up to it), so the injected stats must be that length.
+    channels = tc.modality_channels(slowts_shots["signal"])
+
+    captured = {}
+    orig = tc.slowts_codec_cfg
+
+    def _small(signal, chans):
+        cfg = orig(signal, chans)
+        cfg.d_model, cfg.enc_depth, cfg.dec_depth, cfg.heads = 32, 1, 1, 2
+        cfg.fsq_levels = [4, 4, 3]
+        captured["cfg"] = cfg
+        return cfg
+
+    def _fake_stats(signal, stats_path=None):
+        # synthetic log_standardize stats matched to the loader's channel count.
+        return "log_standardize", [1.0] * channels, [0.5] * channels
+
+    monkeypatch.setattr(tc, "slowts_codec_cfg", _small)
+    monkeypatch.setattr(tc, "load_slowts_channel_stats", _fake_stats)
+
+    argv = [
+        "--modality", slowts_shots["signal"],
+        "--shots", ",".join(slowts_shots["shots"]),
+        "--eval_n_shots", "1", "--n_shots", "3",
+        "--steps", "1", "--eval_every", "1",
+        "--batch_size", "2", "--num_workers", "0",
+        "--eval_batches", "2", "--eval_batch_size", "2", "--eval_frames", "3",
+        "--out_dir", str(out_dir), "--data_dir", str(slowts_shots["dir"]),
+        "--stats_path", "/does/not/need/to/exist.pt",  # loader is monkeypatched
+        "--seed", "0",
+    ]
+    gate_dict = tc.main(argv)
+    assert gate_dict["steps"] == 1
+    # the fix was injected onto the cfg the trainer actually used.
+    cfg = captured["cfg"]
+    assert cfg.preprocess_method == "log_standardize"
+    assert cfg.channel_mean == [1.0] * channels
+    assert cfg.channel_std == [0.5] * channels
 
 
 def test_slowts_rejects_consistency_weight_cli(slowts_shots, tmp_path, monkeypatch):

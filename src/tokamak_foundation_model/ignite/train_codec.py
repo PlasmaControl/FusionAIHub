@@ -58,6 +58,7 @@ from .codec import SpectroCodec
 from .config import (
     CHUNK_S,
     SLOWTS_FS,
+    SLOWTS_PREPROCESS_METHOD,
     SLOWTS_SIGNALS as _SLOWTS_SIGNALS,
     SlowTSCodecConfig,
     SpectroCodecConfig,
@@ -896,6 +897,60 @@ def slowts_codec_cfg(signal: str, channels: int) -> SlowTSCodecConfig:
     )
 
 
+def load_slowts_channel_stats(
+    signal: str,
+    stats_path: Optional[Union[str, Path]] = None,
+) -> Tuple[str, List[float], List[float]]:
+    """Per-signal preprocessing method + per-channel mean/std for ``signal`` (the SCALE FIX).
+
+    The slow-TS analogue of :func:`fastts_train.load_fastts_channel_stats`. Reads the SAME
+    ``preprocessing_stats.pt`` the data_loader consumes and returns
+    ``(method, mean_list, std_list)`` where:
+
+      * ``method`` is the FM model's preprocessing for this signal
+        (:data:`config.SLOWTS_PREPROCESS_METHOD` — a READ of the loader's
+        ``SignalConfig.preprocess.method``: ``"log_standardize"`` for the 4 Thomson signals,
+        ``"standardize"`` for cer_ti/cer_rot/mse).
+      * ``mean`` / ``std`` are the per-channel stats from the sub-dict the loader would use for
+        that method — the ``'log'`` sub-dict for ``log_standardize``, the ``'raw'`` sub-dict for
+        ``standardize`` — mirroring ``data_loader._update_preprocessing_stats``. NaNs are mapped to
+        mean 0 / std 1 exactly like the loader; length == the signal's ``C`` channels (none of the
+        7 slow-TS signals use ``channels_to_use``, so no slicing is needed — asserted here).
+
+    DATA-pipeline reuse (stats + the loader's standardize MECHANISM); no FAITH model code is
+    imported. Raises if the signal / stats are absent so a mis-pointed ``--stats_path`` fails loud
+    instead of silently skipping the fix. ``stats_path=None`` => the canonical
+    ``fastts_train.DEFAULT_STATS_PATH``.
+    """
+    import numpy as np
+
+    from .fastts_train import DEFAULT_STATS_PATH
+
+    if signal not in SLOWTS_MODALITIES:
+        raise ValueError(f"signal {signal!r} not in {SLOWTS_MODALITIES}")
+    method = SLOWTS_PREPROCESS_METHOD[signal]
+    _LOG_METHODS = {"log_standardize", "log_normalize"}
+    sub_key = "log" if method in _LOG_METHODS else "raw"
+
+    path = DEFAULT_STATS_PATH if stats_path is None else stats_path
+    stats = torch.load(str(path), map_location="cpu", weights_only=False)
+    if signal not in stats:
+        raise KeyError(f"{signal!r} not in preprocessing_stats at {path}")
+    entry = stats[signal]
+    if "raw" in entry or "log" in entry:
+        sub = entry.get(sub_key, {})
+    else:
+        sub = entry  # legacy flat format
+    if "mean" not in sub or "std" not in sub:
+        raise KeyError(f"{signal!r} {sub_key!r} stats missing mean/std at {path}")
+
+    mean = np.asarray(sub["mean"], dtype=np.float64)
+    std = np.asarray(sub["std"], dtype=np.float64)
+    mean[~np.isfinite(mean)] = 0.0   # mirror _update_preprocessing_stats NaN handling (+ inf guard)
+    std[~np.isfinite(std)] = 1.0
+    return method, mean.astype(np.float32).tolist(), std.astype(np.float32).tolist()
+
+
 class SlowTSCodecPairDataset(TokamakMultiFileDataset):
     """slow-TS windows ``(signal (C,T), mask (C,T))`` for ONE signal (Thomson / CER / MSE).
 
@@ -1091,10 +1146,60 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
                 nan_mask = torch.cat([nan_mask, torch.ones_like(pad)], dim=0)
 
         # validity mask: 1 = real sample. Mirror _process_signal's missingness policy.
+        # BUILT FROM THE RAW WINDOW (before standardization) so the missingness semantics are
+        # identical to the FM's — `nan_mask` is the loader's raw-NaN mask and `raw != 0` is the
+        # zero_is_missing policy on the RAW value (standardizing would move a real 0 off zero and
+        # a missing 0 to a nonzero standardized value, so the mask MUST come from raw first).
         valid = nan_mask < 0.5                       # NaN mask 1.0 == NaN -> invalid
         if cfg.zero_is_missing:                      # Thomson: a 0 is a missing sample.
             valid = valid & (raw != 0.0)
-        return raw, valid.to(torch.float32)
+
+        # SCALE FIX — standardize the codec input the SAME way the FM model does (see
+        # SlowTSCodecConfig.channel_mean/std + SLOWTS_PREPROCESS_METHOD). Applied AFTER the mask
+        # is built (mask semantics unchanged) and to the WHOLE window (missing positions are
+        # standardized too, but they are masked out of the loss, exactly like the FM). No-op /
+        # byte-identical when the cfg carries no stats (default) or method is "none"/None.
+        signal = self._standardize(raw)
+        return signal, valid.to(torch.float32)
+
+    def _standardize(self, raw: torch.Tensor) -> torch.Tensor:
+        """Per-channel standardize ``raw`` (C,T) EXACTLY as ``data_loader._apply_preprocessing``.
+
+        Mirrors the loader's ``method="standardize"`` / ``method="log_standardize"`` branches for
+        this signal — same clip/log/(x-mean)/std math, same ``std.clamp(min=1e-3)``, same LOG-space
+        vs RAW-space stats selection — so the codec sees the O(1) input the FM model consumes. The
+        SCALE FIX for the ~1e19 Thomson density signals. GLOBAL / per-channel (broadcast over time),
+        NOT per-window, so the relative profile LEVEL is preserved.
+
+        ``cfg.channel_mean``/``cfg.channel_std`` being ``None`` OR ``preprocess_method`` in
+        ``(None, "none")`` is the IDENTITY (no-op, byte-identical to the pre-fix path). Stats of
+        length != ``C`` are rejected loud (a mis-pointed stats file must fail, not silently skip).
+        """
+        cfg = self.codec_cfg
+        method = getattr(cfg, "preprocess_method", None)
+        if method in (None, "none") or cfg.channel_mean is None or cfg.channel_std is None:
+            return raw
+        if method not in ("standardize", "log_standardize"):
+            raise ValueError(
+                f"SlowTSCodecPairDataset._standardize: unsupported preprocess_method "
+                f"{method!r} (expected 'standardize' / 'log_standardize' / 'none' / None)"
+            )
+        C = raw.shape[0]
+        mean = torch.as_tensor(cfg.channel_mean, dtype=raw.dtype)
+        std = torch.as_tensor(cfg.channel_std, dtype=raw.dtype)
+        if mean.numel() != C or std.numel() != C:
+            raise ValueError(
+                f"SlowTSCodecPairDataset._standardize: channel stats length "
+                f"{mean.numel()}/{std.numel()} != C={C} for signal {cfg.signal!r}"
+            )
+        x = raw
+        if method == "log_standardize":
+            # data_loader: arr = clip(x, min=-0.99); arr += 1; log10(arr, out=arr). Then standardize
+            # with the LOG-space per-channel mean/std ('log' sub-dict of preprocessing_stats.pt).
+            x = torch.log10(x.clamp(min=-0.99) + 1.0)
+        mean = mean.reshape(C, 1)
+        std = std.reshape(C, 1).clamp(min=1e-3)      # matches data_loader std.clamp(min=1e-3)
+        return (x - mean) / std
 
     def _cumulative_lengths_span(self) -> int:
         """Best-effort chunk count for the re-draw bound (total dataset length; safe bound)."""
@@ -2432,10 +2537,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--data_dir", type=str, default=DEFAULT_DATA_DIR,
                    help="Directory of {shot}_processed.h5 files.")
     p.add_argument("--stats_path", type=str, default=None,
-                   help="preprocessing_stats.pt for the fast-TS (filterscopes) envelope SCALE "
-                        "FIX (per-channel raw mean/std used to standardize the envelope input). "
-                        "None => fastts_train.DEFAULT_STATS_PATH; '' => DISABLE (raw path, "
-                        "envelope will saturate; debugging only). Ignored for other modalities.")
+                   help="preprocessing_stats.pt for the fast-TS (filterscopes) envelope + slow-TS "
+                        "(Thomson/CER/MSE) input SCALE FIX (per-channel mean/std used to "
+                        "standardize the codec input the SAME way the FM model does; slow-TS also "
+                        "picks log_standardize vs standardize per signal). None => "
+                        "fastts_train.DEFAULT_STATS_PATH; '' => DISABLE (raw path, input will "
+                        "collapse; debugging only). Ignored for spectro / video modalities.")
     p.add_argument("--lengths_cache_dir", type=str, default=None,
                    help="Directory for the per-file chunk-length sidecar cache "
                         "(codec_<modality>_lengths.pt); reuses the parent dataset's cache to "
@@ -2508,6 +2615,33 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         elif ddp.is_main:
             print("[train_codec] WARNING: --stats_path='' -> fast-TS envelope standardization "
                   "OFF (raw path; envelope will saturate). Debugging only.", flush=True)
+
+    # slow-TS SCALE FIX — inject the per-signal preprocessing (log_standardize / standardize) +
+    # per-channel mean/std so the codec input is standardized to ~O(1) (like the FM model sees)
+    # instead of the unstandardized raw that collapses the high-magnitude Thomson density signals
+    # (ts_core_density ~1e19 -> 1 code, env_corr=NaN). --stats_path='' disables (raw path,
+    # debugging only); None => the canonical DEFAULT_STATS_PATH. No-op for every other codec.
+    if is_slowts:
+        stats_path = None if args.stats_path == "" else args.stats_path
+        if args.stats_path != "":
+            method, mean, std = load_slowts_channel_stats(args.modality, stats_path)
+            cfg.preprocess_method = method
+            cfg.channel_mean = mean
+            cfg.channel_std = std
+            if ddp.is_main:
+                from .fastts_train import DEFAULT_STATS_PATH as _DSP
+                print(
+                    f"[train_codec] slow-TS input standardization ON ({method}): per-channel "
+                    f"{'log' if method == 'log_standardize' else 'raw'}-space stats from "
+                    f"{stats_path or _DSP} (C={len(mean)}, mean range "
+                    f"[{min(mean):.3e}, {max(mean):.3e}], std range "
+                    f"[{min(std):.3e}, {max(std):.3e}])",
+                    flush=True,
+                )
+        elif ddp.is_main:
+            print("[train_codec] WARNING: --stats_path='' -> slow-TS input standardization OFF "
+                  "(raw path; high-magnitude density signals will collapse). Debugging only.",
+                  flush=True)
 
     # resolve the train + disjoint eval shot lists (rank 0 discovers; the list is
     # deterministic from data_dir + sort so every rank derives the same split).

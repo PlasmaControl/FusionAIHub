@@ -594,6 +594,19 @@ SLOWTS_ZERO_IS_MISSING: Dict[str, bool] = {
     "ts_tangential_density": True, "ts_tangential_temp": True,
     "cer_ti": False, "cer_rot": False, "mse": False,
 }
+# Per-signal preprocessing METHOD the FM model applies to each slow-TS signal — a READ of
+# data_loader.TokamakH5Dataset.SIGNAL_CONFIGS[*].preprocess.method (NOT a new policy). The codec
+# must standardize its input the SAME way the FM does (the SCALE FIX; see the module note on
+# SlowTSCodecConfig.channel_mean/std): the 4 Thomson signals are "log_standardize"
+# (log10(clip(x,-0.99)+1) then per-channel (x-mean)/std, LOG-space stats) and cer_ti/cer_rot/mse
+# are "standardize" (per-channel (x-mean)/std, RAW-space stats). Selects which stats sub-dict of
+# preprocessing_stats.pt is read ('log' for log_standardize, 'raw' for standardize) exactly like
+# data_loader._update_preprocessing_stats.
+SLOWTS_PREPROCESS_METHOD: Dict[str, str] = {
+    "ts_core_density": "log_standardize", "ts_core_temp": "log_standardize",
+    "ts_tangential_density": "log_standardize", "ts_tangential_temp": "log_standardize",
+    "cer_ti": "standardize", "cer_rot": "standardize", "mse": "standardize",
+}
 
 
 @dataclass
@@ -625,6 +638,28 @@ class SlowTSCodecConfig:
     time_steps: int = 5           # T; a 50 ms window at SLOWTS_FS=100 Hz = round(0.05*100) = 5.
     patch_c: int = 44             # positions per patch (default: whole profile = 1 position-patch).
     patch_t: int = 5              # time samples per patch (default: whole window = 1 time-patch).
+
+    # PER-CHANNEL RAW STANDARDIZATION (the SCALE FIX; see SlowTSCodecPairDataset._standardize).
+    # The raw slow-TS signal is UNSTANDARDIZED, and the high-magnitude Thomson DENSITY signals
+    # carry ~1e19-scale samples (electron density ~1e19 m^-3): fed straight into the codec encoder
+    # they collapse (ts_core_density -> 1 code, env_corr=NaN). The FM model consumes STANDARDIZED
+    # slow-TS — each signal's SignalConfig.preprocess.method applied: "log_standardize" for the 4
+    # Thomson signals, "standardize" for cer_ti/cer_rot/mse — so the codec must standardize the
+    # SAME way BEFORE the encoder, putting every signal on the ~O(1) scale the FM sees. This is
+    # GLOBAL / per-channel (NOT per-window) so the relative PROFILE LEVEL (which positions carry
+    # more, quiet vs active windows) is preserved. Length == channels.
+    #
+    # `preprocess_method` selects the transform (mirrors data_loader._apply_preprocessing EXACTLY):
+    #   "standardize"     -> (x - mean) / std.clamp(min=1e-3)                         [RAW-space stats]
+    #   "log_standardize" -> arr = log10(clip(x, min=-0.99) + 1); (arr - mean)/std.clamp(min=1e-3)
+    #                        [LOG-space stats; the loader reads the 'log' sub-dict for this method]
+    #   "none" / None     -> IDENTITY (byte-identical to the pre-fix path; the default).
+    # channel_mean / channel_std being None is ALSO the identity (no-op) regardless of method, so
+    # synthetic tests / stat-less callers are unaffected. The trainer loads + injects the real
+    # per-channel stats from preprocessing_stats.pt (see train_codec.load_slowts_channel_stats).
+    preprocess_method: Optional[str] = None
+    channel_mean: Optional[Sequence[float]] = None
+    channel_std: Optional[Sequence[float]] = None
 
     # bottleneck (vector-quantize-pytorch FSQ) — right-sized like the spectro/video fix:
     # [8, 5, 5, 5] = prod = 1000 codes, 4 dims. A smooth low-D profile needs even fewer codes
