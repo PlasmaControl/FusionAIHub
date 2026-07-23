@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import prod
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # --- STFT / windowing (matches the existing spectro pipeline; see data_loader.py) ---
 STFT_FS: float = 500_000.0   # Hz, spectro modality target sampling
@@ -413,6 +413,22 @@ class FastTSCodecConfig:
     baseline_win: int = 20                 # moving-mean baseline window (samples) = 2 ms; 0 disables detrend
     env_eps: float = 1e-3                  # log1p reference: log1p(env / env_eps); guards flat/zero windows
 
+    # PER-CHANNEL RAW STANDARDIZATION (the SCALE FIX; see ignite.data.elm_envelope).
+    # The raw filterscopes signal is UNSTANDARDIZED with magnitudes ~1e13-1e15 (per-channel std
+    # ~1e16), so feeding it straight into detrend->rectify->RMS->log1p(rms/env_eps) drives log1p
+    # to its clamp ceiling for ~100% of windows -> a CONSTANT envelope -> codec collapses to 1
+    # code (env_corr~0). The data_loader consumes STANDARDIZED filterscopes (SignalConfig
+    # preprocess=method="standardize", per-channel raw mean/std from preprocessing_stats.pt), so
+    # the codec must standardize the SAME way BEFORE the envelope: x <- (x - mean) / std. This is
+    # GLOBAL / per-channel (NOT per-window) so it PRESERVES the relative ELM activity LEVEL
+    # (quiet vs active windows stay distinguishable — the physics signal) while putting the input
+    # on the ~O(1) scale the envelope pipeline (and env_eps) is sized for. Length == channels.
+    # None (the default) => NO standardization => byte-identical to the pre-fix behaviour, so
+    # existing synthetic tests / callers are unaffected; the trainer loads + injects the real
+    # per-channel stats (see fastts_train.load_fastts_channel_stats).
+    channel_mean: Optional[Sequence[float]] = None
+    channel_std: Optional[Sequence[float]] = None
+
     # bottleneck (vector-quantize-pytorch FSQ) — right-sized like the spectro/video fix:
     # [8, 5, 5, 5] = prod = 1000 codes, 4 dims. The envelope carries O(10) distinct "activity
     # levels/patterns", so 1000 codes is ample; 4 dims avoids the spare-dim death seen at
@@ -469,13 +485,18 @@ class FastTSCodecConfig:
     entropy_weight: float = 1.0
     diversity_weight: float = 1.0
 
-    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
-    # Same lever as SpectroCodecConfig (activity = the ELM-envelope window's std here). The
-    # filterscopes ELM envelope is degeneracy-dominated in the diagnostic: ~76% of built windows
-    # saturate the log1p ceiling to a CONSTANT envelope (std 0), while the minority ~21% carry
-    # strong structure (env std >= 2.4). Biasing toward env std >= min_activity pulls the batch
-    # onto that learnable minority instead of the flat mass. Both DEFAULT 0 (OFF); the trainer
-    # turns them ON for filterscopes (see fastts_train.main / train_codec._activity_overrides).
+    # --- activity-stratified sampling (bias toward the more-active windows) ------------ #
+    # Same lever as SpectroCodecConfig (activity = the ELM-envelope window's std here). NOTE the
+    # OLD diagnostic ("~76%/~100% of windows saturate the log1p ceiling to a CONSTANT envelope,
+    # std 0") described the PRE-FIX raw path: the envelope input was the UNSTANDARDIZED ~1e15 raw
+    # filterscopes, which pinned log1p at its ceiling. That SCALE bug is now fixed — the codec
+    # standardizes per-channel with the same raw mean/std the FM model uses (channel_mean/std
+    # above), so envelopes now spread across a useful O(1) range (real-data per-window env std
+    # p10/p50/p90 ~ 0.41/0.45/0.92, 0% saturated). Stratification is now a MILD lever: with
+    # min_activity=0.5 ~1/3 of windows are "active", so biasing toward env std >= min_activity
+    # still pulls the batch toward the higher-ELM windows (the physics), not the flat mass. Both
+    # DEFAULT 0 (OFF); the trainer turns them ON for filterscopes (see fastts_train.main /
+    # train_codec._activity_overrides).
     min_activity: float = 0.0       # per-window activity threshold (envelope std); 0 = OFF
     active_bias: float = 0.0        # P(re-draw a below-threshold envelope toward active); 0 = OFF
 

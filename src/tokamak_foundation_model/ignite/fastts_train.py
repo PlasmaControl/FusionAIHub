@@ -41,6 +41,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -62,9 +63,58 @@ from .train_codec import (
 
 DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
 
+# Canonical per-channel raw mean/std the data_loader uses to STANDARDIZE filterscopes (the
+# same file every eval/train script points --stats_path at). The fast-TS codec reads the
+# filterscopes 'raw' mean/std from here to standardize the envelope input (the SCALE FIX).
+DEFAULT_STATS_PATH = "/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt"
+
 # The single fast-TS modality (a non-STFT SignalConfig in TokamakH5Dataset.SIGNAL_CONFIGS,
 # target_fs=10 kHz, channels_to_use=slice(0,8), apply_stft=False). Named exactly as the loader.
 FASTTS_MODALITY = "filterscopes"
+
+
+def load_fastts_channel_stats(
+    stats_path: Union[str, Path] = DEFAULT_STATS_PATH,
+    modality: str = FASTTS_MODALITY,
+) -> Tuple[List[float], List[float]]:
+    """Per-channel RAW mean/std for ``modality``, sliced by its ``channels_to_use`` (the FIX).
+
+    Reads the SAME ``preprocessing_stats.pt`` the data_loader consumes and returns the ``raw``
+    per-channel ``mean`` / ``std`` for ``modality`` (filterscopes uses method="standardize", which
+    the loader maps to the ``raw`` sub-dict), sliced by the modality's ``channels_to_use`` so the
+    length matches the codec's ``C`` channels. NaNs are mapped to mean 0 / std 1 exactly like
+    ``data_loader._update_preprocessing_stats``. This is DATA-pipeline reuse (stats + the loader's
+    standardize MECHANISM) — no FAITH model code is imported.
+
+    Returns ``(mean_list, std_list)`` (each length ``C``). Raises if the modality / stats are
+    absent so a mis-pointed ``--stats_path`` fails loud instead of silently skipping the fix.
+    """
+    from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
+
+    cfg_sig = next(
+        (c for c in TokamakH5Dataset.SIGNAL_CONFIGS if c.name == modality), None
+    )
+    if cfg_sig is None:
+        raise ValueError(f"modality {modality!r} not in SIGNAL_CONFIGS")
+
+    stats = torch.load(str(stats_path), map_location="cpu", weights_only=False)
+    if modality not in stats:
+        raise KeyError(f"{modality!r} not in preprocessing_stats at {stats_path}")
+    entry = stats[modality]
+    # filterscopes: method="standardize" -> the loader selects the 'raw' sub-dict (not 'log').
+    sub = entry.get("raw", entry) if ("raw" in entry or "log" in entry) else entry
+    if "mean" not in sub or "std" not in sub:
+        raise KeyError(f"{modality!r} raw stats missing mean/std at {stats_path}")
+
+    mean = np.asarray(sub["mean"], dtype=np.float64)
+    std = np.asarray(sub["std"], dtype=np.float64)
+    mean[np.isnan(mean)] = 0.0   # mirror _update_preprocessing_stats NaN handling
+    std[np.isnan(std)] = 1.0
+    ch = cfg_sig.channels_to_use
+    if ch is not None:
+        mean = mean[ch]
+        std = std[ch]
+    return mean.astype(np.float32).tolist(), std.astype(np.float32).tolist()
 
 
 # ------------------------------------------------------------------------------------- #
@@ -763,6 +813,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="Output dir for gate_<step>.json / codec_{last,best,ema}.pt / summary.")
     p.add_argument("--data_dir", type=str, default=DEFAULT_DATA_DIR,
                    help="Directory of {shot}_processed.h5 files.")
+    p.add_argument("--stats_path", type=str, default=DEFAULT_STATS_PATH,
+                   help="preprocessing_stats.pt with per-channel raw filterscopes mean/std used "
+                        "to STANDARDIZE the envelope input (the SCALE FIX; same file the "
+                        "data_loader / eval scripts use). Set to '' to DISABLE standardization "
+                        "(raw path — envelope will saturate; for debugging only).")
     p.add_argument("--lengths_cache_dir", type=str, default=None,
                    help="Directory for the per-file chunk-length sidecar cache "
                         "(codec_filterscopes_lengths.pt); reuses the parent dataset's cache.")
@@ -792,6 +847,25 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     # with train_codec.main so `--modality filterscopes` gets the same treatment either entry point.
     from .train_codec import apply_activity_overrides
     apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
+
+    # SCALE FIX — inject per-channel raw mean/std so the envelope input is standardized to ~O(1)
+    # (like the FM model sees) BEFORE detrend/rectify/RMS/log1p, instead of the unstandardized
+    # ~1e15 raw that pins log1p at its ceiling and collapses the codec to one code. --stats_path=''
+    # disables (raw path — for debugging only).
+    if args.stats_path:
+        mean, std = load_fastts_channel_stats(args.stats_path, args.modality)
+        cfg.channel_mean = mean
+        cfg.channel_std = std
+        if ddp.is_main:
+            print(
+                f"[fastts_train] envelope standardization ON: per-channel raw stats from "
+                f"{args.stats_path} (C={len(mean)}, std range "
+                f"[{min(std):.3e}, {max(std):.3e}])",
+                flush=True,
+            )
+    elif ddp.is_main:
+        print("[fastts_train] WARNING: --stats_path='' -> envelope standardization OFF "
+              "(raw path; envelope will saturate). Debugging only.", flush=True)
 
     if args.shots is not None:
         all_shots = [s.strip() for s in args.shots.split(",") if s.strip()]

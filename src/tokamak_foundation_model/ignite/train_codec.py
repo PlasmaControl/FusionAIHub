@@ -2431,6 +2431,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="Output dir for gate_<step>.json / codec_{last,best,ema}.pt / summary.")
     p.add_argument("--data_dir", type=str, default=DEFAULT_DATA_DIR,
                    help="Directory of {shot}_processed.h5 files.")
+    p.add_argument("--stats_path", type=str, default=None,
+                   help="preprocessing_stats.pt for the fast-TS (filterscopes) envelope SCALE "
+                        "FIX (per-channel raw mean/std used to standardize the envelope input). "
+                        "None => fastts_train.DEFAULT_STATS_PATH; '' => DISABLE (raw path, "
+                        "envelope will saturate; debugging only). Ignored for other modalities.")
     p.add_argument("--lengths_cache_dir", type=str, default=None,
                    help="Directory for the per-file chunk-length sidecar cache "
                         "(codec_<modality>_lengths.pt); reuses the parent dataset's cache to "
@@ -2481,6 +2486,28 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     # anti-collapse overrides for the 4 collapsing codecs (co2 / tangtv_lower / ts_core_density /
     # filterscopes). No-op for every other (already-working) modality — see _activity_overrides.
     apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
+
+    # fast-TS SCALE FIX — inject per-channel raw mean/std so the ELM envelope input is standardized
+    # to ~O(1) (like the FM model sees) instead of the unstandardized ~1e15 raw that pins the
+    # log1p envelope at its ceiling and collapses the codec to one code. --stats_path='' disables
+    # (raw path, debugging only); None => the canonical DEFAULT_STATS_PATH. No-op for other codecs.
+    if is_fastts:
+        from .fastts_train import DEFAULT_STATS_PATH, load_fastts_channel_stats
+        stats_path = DEFAULT_STATS_PATH if args.stats_path is None else args.stats_path
+        if stats_path:
+            mean, std = load_fastts_channel_stats(stats_path, args.modality)
+            cfg.channel_mean = mean
+            cfg.channel_std = std
+            if ddp.is_main:
+                print(
+                    f"[train_codec] fast-TS envelope standardization ON: per-channel raw stats "
+                    f"from {stats_path} (C={len(mean)}, std range "
+                    f"[{min(std):.3e}, {max(std):.3e}])",
+                    flush=True,
+                )
+        elif ddp.is_main:
+            print("[train_codec] WARNING: --stats_path='' -> fast-TS envelope standardization "
+                  "OFF (raw path; envelope will saturate). Debugging only.", flush=True)
 
     # resolve the train + disjoint eval shot lists (rank 0 discovers; the list is
     # deterministic from data_dir + sort so every rank derives the same split).

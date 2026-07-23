@@ -193,6 +193,123 @@ def test_elm_envelope_rejects_bad_ndim():
 
 
 # --------------------------------------------------------------------------------------- #
+# ELM-envelope SCALE FIX — per-channel standardization of the UNSTANDARDIZED raw filterscopes.
+#
+# The raw filterscopes signal has magnitudes ~1e13-1e15 (per-channel std ~1e16). Fed straight
+# into detrend->rectify->RMS->log1p(rms/env_eps) it drives log1p to its clamp ceiling for ~all
+# windows -> a CONSTANT envelope -> codec collapse. The data_loader consumes STANDARDIZED
+# filterscopes ((x-mean)/std, per-channel raw stats). The codec must standardize the SAME way,
+# GLOBALLY/per-channel (NOT per-window, which would erase the ELM activity LEVEL).
+# --------------------------------------------------------------------------------------- #
+def _highmag_cfg(std_scale: float, channels: int = 8) -> FastTSCodecConfig:
+    """Small envelope grid + per-channel std ~ std_scale (mimics the ~1e15 raw magnitude)."""
+    return FastTSCodecConfig(
+        channels=channels,
+        env_bins=20, patch_e=5, pool=10, baseline_win=8,
+        d_model=32, enc_depth=1, dec_depth=1, heads=2, fsq_levels=[4, 4, 3],
+        channel_mean=[0.0] * channels,
+        channel_std=[std_scale] * channels,
+    )
+
+
+def test_elm_envelope_highmag_raw_saturates_without_fix():
+    """1e14-scale spiky raw with NO standardization pins the envelope at the clamp ceiling."""
+    cfg = _small_cfg()  # channel_mean/std None -> no standardization (pre-fix path)
+    W = cfg.env_bins * cfg.pool
+    raw = 1e14 * _elm_raw(cfg.channels, W, [3, 12], cfg.pool, seed=7).unsqueeze(0)
+    env = idata.elm_envelope(raw, cfg)
+    ceil = 30.0  # _FASTTS_ENV_CEIL
+    at_ceiling = (env > ceil - 1e-3).float().mean()
+    assert float(at_ceiling) > 0.9, (
+        "unstandardized ~1e14 raw must saturate the log1p envelope ceiling (the bug)"
+    )
+    # the whole envelope collapses to a near-constant (std ~ 0) -> nothing to encode.
+    assert float(env.std()) < 1e-3
+
+
+def test_elm_envelope_highmag_raw_does_not_saturate_with_fix():
+    """SAME 1e14-scale spiky raw, standardized per-channel, no longer saturates."""
+    C = 8
+    cfg_raw = _small_cfg(C)
+    W = cfg_raw.env_bins * cfg_raw.pool
+    raw = 1e14 * _elm_raw(C, W, [3, 12], cfg_raw.pool, seed=7).unsqueeze(0)
+    # measure per-channel std of THIS signal and standardize by it (as the loader stats would).
+    std = raw[0].reshape(C, -1).std(dim=-1)          # (C,)
+    cfg_fix = _highmag_cfg(std_scale=1.0, channels=C)
+    cfg_fix.channel_std = std.tolist()               # real per-channel std
+    cfg_fix.channel_mean = raw[0].reshape(C, -1).mean(dim=-1).tolist()
+    env = idata.elm_envelope(raw, cfg_fix)
+    ceil = 30.0
+    at_ceiling = (env > ceil - 1e-3).float().mean()
+    assert float(at_ceiling) < 0.1, f"standardized envelope must not saturate; {float(at_ceiling)}"
+    assert float(env.std()) > 0.1, "standardized envelope must carry spread (not a constant)"
+    # burst bins still the peaks (the statistic survives standardization).
+    mean_over_ch = env[0].mean(dim=0)
+    topk = set(torch.topk(mean_over_ch, k=2).indices.tolist())
+    assert {3, 12}.issubset(topk)
+
+
+def test_elm_envelope_standardization_preserves_activity_level():
+    """A high-activity window yields a LARGER envelope than a low-activity one (level kept).
+
+    Critical: standardization must be GLOBAL/per-channel, NOT per-window — a per-window norm
+    would erase the ELM activity level (quiet ~= active). Both windows share the SAME channel
+    std used to standardize, so their relative amplitudes are preserved.
+    """
+    C = 8
+    cfg = _highmag_cfg(std_scale=1e14, channels=C)
+    W = cfg.env_bins * cfg.pool
+    # quiet window: small bursts; active window: large bursts, at the 1e14 raw scale.
+    quiet = 1e14 * (0.05 * _elm_raw(C, W, [5], cfg.pool, seed=1))
+    active = 1e14 * (1.0 * _elm_raw(C, W, [5, 8, 11], cfg.pool, seed=1))
+    env_q = idata.elm_envelope(quiet.unsqueeze(0), cfg)
+    env_a = idata.elm_envelope(active.unsqueeze(0), cfg)
+    assert float(env_a.mean()) > float(env_q.mean()), (
+        "active window envelope must exceed the quiet one (activity LEVEL preserved)"
+    )
+    # both finite + on a sane O(1)-ish envelope scale (not pinned at the ceiling).
+    assert torch.isfinite(env_q).all() and torch.isfinite(env_a).all()
+    assert float(env_a.max()) < 30.0 - 1e-3
+
+
+def test_elm_envelope_standardization_still_sanitizes_nonfinite():
+    """NaN/inf/absurd samples are still mapped to a finite envelope WITH standardization on."""
+    C = 8
+    cfg = _highmag_cfg(std_scale=1e14, channels=C)
+    W = cfg.env_bins * cfg.pool
+    raw = 1e14 * _elm_raw(C, W, [5], cfg.pool, seed=2)
+    raw[0, 10] = float("nan")
+    raw[1, 20] = float("inf")
+    raw[2, 30] = -float("inf")
+    raw[3, 40] = 3.0e38
+    env = idata.elm_envelope(raw.unsqueeze(0), cfg)
+    assert torch.isfinite(env).all()
+    assert (env <= 30.0 + 1e-4).all()
+
+
+def test_elm_envelope_standardization_preserves_shape_and_none_is_noop():
+    """Standardization keeps (B, C, env_bins); channel_mean/std None == the pre-fix envelope."""
+    C = 8
+    W = 20 * 10
+    raw = _elm_raw(C, W, [3, 12], 10, seed=4).unsqueeze(0)
+    cfg_none = _small_cfg(C)                                     # None stats -> no-op
+    cfg_id = _highmag_cfg(std_scale=1.0, channels=C)            # mean 0 / std 1 -> identity
+    env_none = idata.elm_envelope(raw, cfg_none)
+    env_id = idata.elm_envelope(raw, cfg_id)
+    assert env_none.shape == (1, C, 20)
+    assert env_id.shape == (1, C, 20)
+    # standardizing by mean 0 / std 1 is the identity -> byte-identical to the None path.
+    assert torch.allclose(env_none, env_id, atol=1e-5)
+
+
+def test_elm_envelope_rejects_wrong_length_channel_stats():
+    cfg = _highmag_cfg(std_scale=1.0, channels=8)
+    cfg.channel_std = [1.0] * 4  # wrong length (!= C=8)
+    with pytest.raises(ValueError):
+        idata.elm_envelope(torch.randn(1, 8, 200), cfg)
+
+
+# --------------------------------------------------------------------------------------- #
 # δ-shift pair — same statistic, different realization
 # --------------------------------------------------------------------------------------- #
 @pytest.mark.parametrize("delta_ms", [0.2, 1.0, 3.0, 5.0])
@@ -399,6 +516,50 @@ def test_fastts_channels():
     assert ft.fastts_channels("filterscopes") == 8
     with pytest.raises(ValueError):
         ft.fastts_channels("ece")
+
+
+def test_load_fastts_channel_stats_slices_raw_stats(tmp_path):
+    """load_fastts_channel_stats reads the RAW per-channel mean/std, sliced by channels_to_use.
+
+    Mirrors what the data_loader does for method="standardize" (uses the 'raw' sub-dict), and
+    returns exactly C=8 values (filterscopes channels_to_use=slice(0,8)) so the codec's per-
+    channel standardization length matches its channels.
+    """
+    C_full = 104  # filterscopes SignalConfig num_channels
+    raw_mean = np.arange(C_full, dtype=np.float64) * 1e13
+    raw_std = (np.arange(C_full, dtype=np.float64) + 1.0) * 1e15
+    stats = {"filterscopes": {
+        "raw": {"mean": raw_mean, "std": raw_std},
+        "log": {"mean": np.zeros(C_full), "std": np.ones(C_full)},  # must be IGNORED
+    }}
+    p = tmp_path / "preprocessing_stats.pt"
+    torch.save(stats, p)
+
+    mean, std = ft.load_fastts_channel_stats(p, "filterscopes")
+    assert len(mean) == 8 and len(std) == 8   # sliced to channels_to_use=slice(0,8)
+    # raw (NOT log) stats, first 8 channels.
+    assert np.allclose(mean, raw_mean[:8].astype(np.float32))
+    assert np.allclose(std, raw_std[:8].astype(np.float32))
+
+
+def test_load_fastts_channel_stats_nan_handling(tmp_path):
+    C_full = 104
+    raw_mean = np.full(C_full, np.nan)
+    raw_std = np.full(C_full, np.nan)
+    stats = {"filterscopes": {"raw": {"mean": raw_mean, "std": raw_std}}}
+    p = tmp_path / "preprocessing_stats.pt"
+    torch.save(stats, p)
+    mean, std = ft.load_fastts_channel_stats(p, "filterscopes")
+    # NaN mean -> 0, NaN std -> 1 (matches _update_preprocessing_stats).
+    assert all(m == 0.0 for m in mean)
+    assert all(s == 1.0 for s in std)
+
+
+def test_load_fastts_channel_stats_missing_modality_raises(tmp_path):
+    p = tmp_path / "preprocessing_stats.pt"
+    torch.save({"ece": {"raw": {"mean": [0.0], "std": [1.0]}}}, p)
+    with pytest.raises(KeyError):
+        ft.load_fastts_channel_stats(p, "filterscopes")
 
 
 def test_fastts_dataset_reuses_parent_index_machinery(filterscopes_shots):

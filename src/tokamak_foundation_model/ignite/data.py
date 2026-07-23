@@ -316,6 +316,31 @@ def _moving_mean(x: torch.Tensor, win: int) -> torch.Tensor:
     return out.reshape(*lead, W)
 
 
+def _standardize_channels(x: torch.Tensor, cfg: FastTSCodecConfig) -> torch.Tensor:
+    """Per-channel standardize a (B, C, W) raw window using ``cfg.channel_mean/std``.
+
+    The SCALE FIX for the fast-TS ELM envelope. Mirrors ``data_loader._apply_preprocessing``'s
+    ``method="standardize"`` branch EXACTLY: ``(x - mean) / std.clamp(min=1e-3)`` with the SAME
+    per-channel raw mean/std the FM model consumes for the ``filterscopes`` modality. GLOBAL /
+    per-channel (broadcast over the sample axis) — NOT per-window — so the relative ELM activity
+    LEVEL is preserved (quiet windows stay small, active windows stay large). ``cfg.channel_mean``
+    or ``cfg.channel_std`` being ``None`` is the identity (no-op, byte-identical to the pre-fix
+    path). ``channel_std`` / ``channel_mean`` must have length ``C``.
+    """
+    if cfg.channel_mean is None or cfg.channel_std is None:
+        return x
+    C = x.shape[-2]
+    mean = torch.as_tensor(cfg.channel_mean, dtype=x.dtype, device=x.device)
+    std = torch.as_tensor(cfg.channel_std, dtype=x.dtype, device=x.device)
+    if mean.numel() != C or std.numel() != C:
+        raise ValueError(
+            f"elm_envelope channel stats length {mean.numel()}/{std.numel()} != C={C}"
+        )
+    mean = mean.reshape(1, C, 1)
+    std = std.reshape(1, C, 1).clamp(min=1e-3)  # matches data_loader std.clamp(min=1e-3)
+    return (x - mean) / std
+
+
 def elm_envelope(raw: ArrayLike, cfg: FastTSCodecConfig) -> torch.Tensor:
     """ELM activity envelope of raw filterscope windows — the codec input/target (§4.3).
 
@@ -340,8 +365,19 @@ def elm_envelope(raw: ArrayLike, cfg: FastTSCodecConfig) -> torch.Tensor:
     if x.dim() != 3:
         raise ValueError(f"elm_envelope expects (B, C, W); got shape {tuple(x.shape)}")
     # Sanitize raw (mirror log_power_stft): map non-finite / absurd-magnitude samples to 0 so
-    # a sentinel/garbage window becomes a quiet envelope instead of inf/nan.
+    # a sentinel/garbage window becomes a quiet envelope instead of inf/nan. Done BEFORE
+    # standardization so absurd sentinels can't poison the standardized signal.
     x = torch.where(torch.isfinite(x) & (x.abs() < 1e20), x, torch.zeros_like(x))
+
+    # 0. SCALE FIX — per-channel standardization (see FastTSCodecConfig.channel_mean/std).
+    # The raw filterscopes signal is UNSTANDARDIZED (per-channel std ~1e16); without this the
+    # log1p(rms/env_eps) compression pins EVERY window at the clamp ceiling -> a constant
+    # envelope -> codec collapse. Mirror the data_loader's method="standardize" exactly:
+    # x <- (x - mean) / std, per channel, with the SAME per-channel raw mean/std the FM model
+    # consumes (std clamped at 1e-3 like data_loader._apply_preprocessing). GLOBAL/per-channel,
+    # NOT per-window, so the relative ELM activity LEVEL is preserved. None => no-op (identity),
+    # byte-identical to the pre-fix path (synthetic tests / stat-less callers unaffected).
+    x = _standardize_channels(x, cfg)
 
     # 1. detrend: subtract the slow moving-mean baseline.
     if cfg.baseline_win and cfg.baseline_win > 1:
