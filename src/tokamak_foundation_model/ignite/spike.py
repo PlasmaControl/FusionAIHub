@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import torch
+import torch.distributed as dist
 
 from . import data, gate
 from .codec import SpectroCodec
@@ -749,6 +750,70 @@ def _fmt_gate(step: int, g: Dict[str, object]) -> str:
 
 
 # ------------------------------------------------------------------------------------- #
+# DDP-safe divergence guard (shared by every adversarial codec train step)
+# ------------------------------------------------------------------------------------- #
+# Running count of skipped optimizer steps (across ALL codecs in this process). Rank-0 logs
+# it so a firing guard is visible in the .err trace. Reset with :func:`reset_skipped_steps`.
+_SKIPPED_STEPS: int = 0
+
+
+def reset_skipped_steps() -> None:
+    """Zero the process-wide skipped-optimizer-step counter (call once at trainer start)."""
+    global _SKIPPED_STEPS
+    _SKIPPED_STEPS = 0
+
+
+def skipped_steps() -> int:
+    """Return the process-wide count of optimizer steps skipped by the divergence guard."""
+    return _SKIPPED_STEPS
+
+
+def is_step_diverged(*losses: torch.Tensor) -> bool:
+    """Collective-safe test: should EVERY rank skip this optimizer step?
+
+    A codec that collapses (co2 / video, 2026-07) drives the adaptive adversarial weight and
+    the generator loss to Inf/NaN on ONE rank; if that rank silently corrupts its params while
+    the others step cleanly, the ranks desync and the next collective hits the NCCL watchdog ->
+    SIGTERM (exit 143). This guard makes the skip decision IDENTICAL on all ranks:
+
+    * local bad-flag = 1.0 if ANY of ``losses`` is non-finite on THIS rank, else 0.0;
+    * under DDP (``dist.is_initialized()`` and ``world_size > 1``): ``all_reduce(MAX)`` the flag
+      so every rank sees the SAME value — if ANY rank is bad, ALL ranks return True and skip;
+    * non-distributed (``world_size == 1``): just the local flag.
+
+    IMPORTANT: this only gates ``optimizer.step()``. The caller must still run ``backward()``
+    (and thus the gradient all-reduce) UNIFORMLY on every rank before calling this; only the
+    parameter update is conditionally + uniformly skipped, so the collective stays symmetric.
+
+    When True, the caller also bumps the skipped-step counter via :func:`note_skipped_step`.
+    """
+    local_bad = 0.0
+    for loss in losses:
+        if loss is None:
+            continue
+        if not torch.isfinite(loss).all():
+            local_bad = 1.0
+            break
+
+    if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+        flag = torch.tensor(
+            [local_bad],
+            device=losses[0].device if losses and losses[0] is not None else "cpu",
+            dtype=torch.float32,
+        )
+        dist.all_reduce(flag, op=dist.ReduceOp.MAX)
+        return bool(flag.item() > 0.0)
+
+    return local_bad > 0.0
+
+
+def note_skipped_step() -> None:
+    """Increment the process-wide skipped-optimizer-step counter (called on a skip)."""
+    global _SKIPPED_STEPS
+    _SKIPPED_STEPS += 1
+
+
+# ------------------------------------------------------------------------------------- #
 # shared per-step generator/discriminator alternation (reused by run_spike AND the
 # streaming DDP trainer in train_codec.py)
 # ------------------------------------------------------------------------------------- #
@@ -801,7 +866,12 @@ def codec_train_step(
     opt_g.zero_grad(set_to_none=True)
     g_terms = codec.generator_losses(spec_a, spec_b, disc, cfg, step=step)
     g_terms["total"].backward()
-    opt_g.step()
+    # DDP-safe divergence guard: backward (+ its grad all-reduce) already ran uniformly; only
+    # opt_g.step() is conditionally + UNIFORMLY skipped so a collapsing codec can't desync DDP.
+    if is_step_diverged(g_terms["total"]):
+        note_skipped_step()
+    else:
+        opt_g.step()
 
     # ---- discriminator step (fresh recon, detached from the codec graph) ----
     opt_d.zero_grad(set_to_none=True)
@@ -809,7 +879,10 @@ def codec_train_step(
         recon = codec.forward(spec_a)["recon"]
     d_loss = discriminator_loss(disc, spec_a, recon, cfg)
     d_loss.backward()
-    opt_d.step()
+    if is_step_diverged(d_loss):
+        note_skipped_step()
+    else:
+        opt_d.step()
 
     return g_terms, d_loss
 

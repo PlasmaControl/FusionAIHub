@@ -111,7 +111,11 @@ class SpectroCodecConfig:
     # the decoder's last layer, so neither overpowers the other. Only this lever is added
     # (no LeCAM / EMA / spectral-norm; everything else stays hinge-only).
     adaptive_adv_weight: bool = True    # auto-scale the adversarial term (VQGAN adaptive weight)
-    adaptive_adv_clamp: float = 1e4     # upper clamp on lam (lower clamp is 0)
+    # upper clamp on lam (lower clamp is 0). In STABLE training lam sits ~0.01-1; the old 1e4
+    # let a collapsing codec's lam run away to ~729 (co2/video crash 2026-07), so the adversarial
+    # term dominated + diverged -> one DDP rank desynced -> NCCL watchdog SIGTERM (exit 143). 50
+    # is generous headroom over the ~1 stable value while making run-away domination impossible.
+    adaptive_adv_clamp: float = 50.0
     adv_warmup_steps: int = 0           # steps with adv_coeff forced to 0 (adv term off during warmup)
 
     # anti-collapse (codebook-utilization) regularizer — Genie-style entropy term.
@@ -254,7 +258,9 @@ class VideoCodecConfig:
     # VQGAN/MagViT adaptive adversarial weight ("Taming Transformers" §3.3) — reused verbatim
     # from the spectro codec (auto-scale adv coeff by grad-norm ratio at decoder.last_layer).
     adaptive_adv_weight: bool = True
-    adaptive_adv_clamp: float = 1e4
+    # upper clamp on lam (lower clamp is 0) — see SpectroCodecConfig: 50 stops a collapsing
+    # codec's lam from running away (old 1e4 -> ~729 -> diverge -> DDP desync -> exit 143).
+    adaptive_adv_clamp: float = 50.0
     adv_warmup_steps: int = 0
 
     # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, reused
@@ -421,7 +427,9 @@ class FastTSCodecConfig:
     # VQGAN/MagViT adaptive adversarial weight ("Taming Transformers" §3.3) — reused verbatim
     # from the spectro/video codec (auto-scale adv coeff by grad-norm ratio at decoder.last_layer).
     adaptive_adv_weight: bool = True
-    adaptive_adv_clamp: float = 1e4
+    # upper clamp on lam (lower clamp is 0) — see SpectroCodecConfig: 50 stops a collapsing
+    # codec's lam from running away (old 1e4 -> ~729 -> diverge -> DDP desync -> exit 143).
+    adaptive_adv_clamp: float = 50.0
     adv_warmup_steps: int = 0
 
     # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, reused from

@@ -344,14 +344,21 @@ def fastts_codec_train_step(
     opt_g.zero_grad(set_to_none=True)
     g_terms = codec.generator_losses(env_a, env_b, disc, cfg, step=step)
     g_terms["total"].backward()
-    opt_g.step()
+    # Divergence guard (single-process path here; DDP-collective when world_size>1).
+    if spike.is_step_diverged(g_terms["total"]):
+        spike.note_skipped_step()
+    else:
+        opt_g.step()
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
         recon = codec.forward(env_a)["recon"]
     d_loss = _fastts_discriminator_loss(disc, env_a, recon)
     d_loss.backward()
-    opt_d.step()
+    if spike.is_step_diverged(d_loss):
+        spike.note_skipped_step()
+    else:
+        opt_d.step()
 
     return g_terms, d_loss
 
@@ -399,14 +406,22 @@ def _ddp_fastts_train_step(
     opt_g.zero_grad(set_to_none=True)
     g_terms = gen_module(env_a, env_b, disc_raw, cfg, step)
     g_terms["total"].backward()
-    opt_g.step()
+    # DDP-safe divergence guard: uniform backward, then skip opt_g.step() identically on all ranks
+    # if any rank's loss is non-finite.
+    if spike.is_step_diverged(g_terms["total"]):
+        spike.note_skipped_step()
+    else:
+        opt_g.step()
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
         recon = codec.forward(env_a)["recon"]
     d_loss = _fastts_discriminator_loss(disc, env_a, recon)
     d_loss.backward()
-    opt_d.step()
+    if spike.is_step_diverged(d_loss):
+        spike.note_skipped_step()
+    else:
+        opt_d.step()
 
     return g_terms, d_loss
 
@@ -634,6 +649,7 @@ def train_fastts_codec(
     best_score = float("-inf")
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
+    spike.reset_skipped_steps()  # divergence-guard skip counter for this trainer run
 
     for local_step in range(steps):
         step = start_step + local_step
@@ -663,12 +679,14 @@ def train_fastts_codec(
                 best_score = score
                 best_step = step
 
+            g["skipped_steps"] = spike.skipped_steps()
             if ddp.is_main:
                 if log_fn is not None:
                     log_fn(
                         spike._fmt_gate(step, g)
                         + f" g_total={g['g_total']:+.4f} d_loss={g['d_loss']:.4f}"
                         + f" adv_lam={g['adaptive_weight']:.4g} score={score:+.4f}"
+                        + f" skipped={g['skipped_steps']}"
                     )
                 if out_path is not None:
                     spike._write_gate_json(out_path, step, g)

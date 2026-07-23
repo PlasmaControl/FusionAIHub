@@ -328,3 +328,52 @@ def test_fixed_weight_default_arg_is_backward_compatible():
     out = codec.generator_losses(x, x_shift, disc, cfg)  # no step kwarg
     assert "total" in out and torch.isfinite(out["total"]).all()
     assert "adaptive_weight" in out
+
+
+# --------------------------------------------------------------------------- #
+# STABILIZATION FIX 1: clamp lam to cfg.adaptive_adv_clamp (default 50, not 1e4)
+# --------------------------------------------------------------------------- #
+def test_default_clamp_is_fifty():
+    """The stabilized default clamp is 50.0 across all three adversarial codecs."""
+    from tokamak_foundation_model.ignite.config import (
+        FastTSCodecConfig,
+        SpectroCodecConfig,
+        VideoCodecConfig,
+    )
+
+    assert SpectroCodecConfig().adaptive_adv_clamp == 50.0
+    assert VideoCodecConfig().adaptive_adv_clamp == 50.0
+    assert FastTSCodecConfig().adaptive_adv_clamp == 50.0
+
+
+def test_lam_clamps_to_fifty_when_ratio_would_explode():
+    """A collapsing codec drives ‖∇adv‖ -> ~0 so the raw ratio would run away (the crash
+    was lam -> ~729). With the default clamp=50, lam must saturate at EXACTLY 50, not 729."""
+    cfg = _small_cfg()  # default adaptive_adv_clamp == 50.0
+    assert cfg.adaptive_adv_clamp == 50.0
+    codec = SpectroCodec(cfg)
+
+    quant = torch.randn(2, cfg.n_tok, cfg.d_model)
+    recon = codec.decoder(quant)                 # depends on last_layer
+    # HUGE ref grad, NEGLIGIBLE adv grad at last_layer -> raw ratio >> 50 (would be ~1e6+).
+    ref = 1.0e6 * recon.pow(2).mean()
+    adv = 1.0e-9 * recon.mean()
+
+    lam = codec._adaptive_adv_weight(ref, adv, cfg)
+    assert float(lam) == 50.0, float(lam)
+
+
+def test_lam_clamp_tracks_cfg_value():
+    """The clamp is READ FROM cfg (not hardcoded): shrinking cfg.adaptive_adv_clamp shrinks
+    the saturated lam identically for the same exploding ratio."""
+    cfg = _small_cfg()
+    codec = SpectroCodec(cfg)
+    quant = torch.randn(2, cfg.n_tok, cfg.d_model)
+    recon = codec.decoder(quant)
+    ref = 1.0e6 * recon.pow(2).mean()
+    adv = 1.0e-9 * recon.mean()
+
+    for clamp in (5.0, 50.0, 123.0):
+        cfg.adaptive_adv_clamp = clamp
+        lam = codec._adaptive_adv_weight(ref, adv, cfg)
+        assert float(lam) == clamp, (clamp, float(lam))
