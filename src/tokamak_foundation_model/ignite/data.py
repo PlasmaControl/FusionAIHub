@@ -50,6 +50,8 @@ ArrayLike = Union[torch.Tensor, np.ndarray]
 # Floor added inside the log to keep log-power finite where the STFT magnitude is ~0
 # (silent bins / padded tail). log10(0 + eps) is finite and large-negative.
 _LOG_EPS: float = 1e-10
+_LOG_FLOOR: float = float(np.log10(_LOG_EPS))  # -10.0: log-power of silence
+_LOG_CEIL: float = 20.0  # sane upper bound (real log-power maxes ~8); guards pathological bins
 
 
 # --------------------------------------------------------------------------- #
@@ -113,6 +115,10 @@ def _stft_log_power(sig: torch.Tensor, window: torch.Tensor) -> torch.Tensor:
     )  # (N, n_fft//2+1, n_frames)
     mag = torch.abs(spec)[:, 1:, :]  # drop DC -> (N, n_fft//2, n_frames)
     log_power = torch.log10(mag.pow(2) + _LOG_EPS)
+    # Safety net: kill any residual non-finite + clamp to a sane band so a
+    # pathological window can never inject inf/nan into the codec loss.
+    log_power = torch.nan_to_num(log_power, nan=_LOG_FLOOR, posinf=_LOG_CEIL, neginf=_LOG_FLOOR)
+    log_power = log_power.clamp(_LOG_FLOOR, _LOG_CEIL)
     F, n_frames = log_power.shape[-2], log_power.shape[-1]
     return log_power.reshape(*lead, F, n_frames)
 
@@ -141,6 +147,13 @@ def log_power_stft(raw: ArrayLike, cfg: SpectroCodecConfig) -> torch.Tensor:
     x = _as_tensor(raw)
     if x.dim() != 3:
         raise ValueError(f"log_power_stft expects (B, C, W); got shape {tuple(x.shape)}")
+    # Sanitize raw: some modalities (notably the CO2 interferometer, present in older
+    # shots via a PTDATA fallback) carry sentinel/garbage samples — non-finite or
+    # ~float32-max (3.4e38) — that overflow the STFT to inf and collapse the codec to
+    # one code (co2 gate env_corr=NaN). Real physical raw is bounded (<<1e20); map
+    # non-finite / absurd-magnitude samples to 0 (→ log-eps floor after STFT). No-op
+    # for the clean modalities (ece/bes/mhr are all finite, |raw|<<1e20).
+    x = torch.where(torch.isfinite(x) & (x.abs() < 1e20), x, torch.zeros_like(x))
     window = torch.hann_window(STFT_N_FFT, dtype=x.dtype, device=x.device)
     spec = _stft_log_power(x, window)  # (B, C, n_fft//2, n_frames)
     return _crop_pad_freq_time(spec, cfg.freq_bins, cfg.time_frames)

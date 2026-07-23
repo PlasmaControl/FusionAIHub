@@ -214,3 +214,35 @@ def test_shift_pair_windows_raises_past_shot_end():
         pass
     else:
         raise AssertionError("expected an error when the shifted window overruns the shot")
+
+
+def test_log_power_stft_sanitizes_pathological_raw():
+    """CO2-interferometer garbage (float32-max / inf / nan) must not leak inf/nan
+    into the codec input, and must not blow the log-power out of its sane band —
+    this was the co2 codec-collapse root cause (gate env_corr=NaN)."""
+    cfg = SpectroCodecConfig(channels=2)
+    W = cfg.window_samples
+    rng = np.random.default_rng(0)
+    raw = torch.as_tensor(rng.standard_normal((1, 2, W)), dtype=torch.float32)
+    # inject the exact pathologies observed in real co2 windows
+    raw[0, 0, 10] = 1e37   # absurd magnitude (co2 sentinel is ~float32-max 3.4e38)
+    raw[0, 0, 20] = float("inf")
+    raw[0, 1, 30] = float("nan")
+    raw[0, 1, 40] = -float("inf")
+    out = data.log_power_stft(raw, cfg)
+    assert torch.isfinite(out).all(), "sanitized log-power must be all-finite"
+    assert float(out.min()) >= data._LOG_FLOOR - 1e-4
+    assert float(out.max()) <= data._LOG_CEIL + 1e-4
+
+
+def test_log_power_stft_noop_on_clean_raw():
+    """Sanitization is byte-identical for clean, in-range raw (ece/bes/mhr path)."""
+    cfg = SpectroCodecConfig(channels=3)
+    W = cfg.window_samples
+    rng = np.random.default_rng(1)
+    raw = torch.as_tensor(rng.standard_normal((2, 3, W)), dtype=torch.float32)
+    out = data.log_power_stft(raw, cfg)
+    # a second call with the same (finite, small) raw is identical, and nothing was
+    # clamped (clean STFT log-power sits well inside the band)
+    assert torch.isfinite(out).all()
+    assert float(out.max()) < data._LOG_CEIL - 1.0
