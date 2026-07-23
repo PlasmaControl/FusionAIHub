@@ -1272,11 +1272,28 @@ def compute_step_loss(
         _desc_full_tgt = targets.get(cfg.name)
         if (n_subwindows > 1 and torch.is_tensor(_desc_full_tgt)
                 and torch.is_tensor(predictions.get(cfg.name))):
-            _pw = predictions[cfg.name].shape[-1]
-            if _desc_full_tgt.shape[-1] > _pw:
-                targets[cfg.name] = _desc_full_tgt[..., :_pw]
-                if torch.is_tensor(masks.get(cfg.name)):
-                    masks[cfg.name] = masks[cfg.name][..., :_pw]
+            _pred_t = predictions[cfg.name]
+            # Trim the multi-horizon target (+mask) to the PREDICTION's shape on
+            # EVERY dim where the target is longer, taking the first pred-worth =
+            # sub-window-0 (t+1). Spectro/TS carry the horizon on the LAST (time)
+            # dim; VIDEO (B,C,T,H,W) carries it on dim 2 (frames), which the old
+            # ``[..., :_pw]`` last-dim-only slice missed → the K-rollout t+K crash
+            # (masked_mae pred T=3 vs target T=15). Byte-identical to the old
+            # last-dim slice whenever only the last dim differs (spectro/TS).
+            if (_desc_full_tgt.dim() == _pred_t.dim()
+                    and _desc_full_tgt.shape != _pred_t.shape):
+                _sl = tuple(
+                    slice(0, ps) if ts > ps else slice(None)
+                    for ps, ts in zip(_pred_t.shape, _desc_full_tgt.shape)
+                )
+                targets[cfg.name] = _desc_full_tgt[_sl]
+                _m = masks.get(cfg.name)
+                if torch.is_tensor(_m) and _m.dim() == _pred_t.dim():
+                    _msl = tuple(
+                        slice(0, ps) if ms > ps else slice(None)
+                        for ps, ms in zip(_pred_t.shape, _m.shape)
+                    )
+                    masks[cfg.name] = _m[_msl]
         use_pb = (
             spec_pb_weights is not None
             and cfg.kind == "spectrogram"
