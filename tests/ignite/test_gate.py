@@ -466,11 +466,14 @@ def test_utilization_accepts_torch_input():
 
 
 def test_utilization_large_codebook_small_eval_not_flagged():
-    """REGRESSION: a healthy codec on a SMALL eval set against the REAL large codebook
-    (32768) must NOT be flagged collapsed. The absolute frac_codes_used is confounded here
-    (distinct / 32768 is tiny even if every eval token is distinct), so the collapse
-    decision must use frac_of_observable + min_dim_entropy, not an absolute frac threshold."""
-    cfg = SpectroCodecConfig()  # real default: fsq_levels [8,8,8,8,8] => codebook 32768
+    """REGRESSION: a healthy codec on a SMALL eval set against a LARGE codebook (>> n_tok)
+    must NOT be flagged collapsed. The absolute frac_codes_used is confounded here
+    (distinct / codebook_size is tiny even if every eval token is distinct), so the collapse
+    decision must use frac_of_observable + min_dim_entropy, not an absolute frac threshold.
+
+    Uses the historical 32768 (=8^5) codebook explicitly (the pre-right-size default) as the
+    large-codebook scenario, so the confound is present regardless of the current default."""
+    cfg = SpectroCodecConfig(fsq_levels=[8, 8, 8, 8, 8])  # large codebook = 32768
     n_tok = 64
     rng = np.random.default_rng(0)
     codes = np.stack(

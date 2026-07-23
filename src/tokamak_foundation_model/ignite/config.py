@@ -61,7 +61,11 @@ class SpectroCodecConfig:
     patch_t: int = 32             # -> 3 time patches   => n_tok = 24
 
     # bottleneck (vector-quantize-pytorch FSQ)
-    fsq_levels: List[int] = field(default_factory=lambda: [8, 8, 8, 8, 8])  # codebook = prod = 32768
+    # Right-sized to the FSQ-paper-recommended ~1024-code config: [8, 5, 5, 5] = prod = 1000.
+    # The previous [8, 8, 8, 8, 8] = 32768 was ~30x over-provisioned for a codec that only
+    # ever uses O(10-30) codes; the spare 5th dim always died (min_dim_entropy=0). Four dims
+    # at 1000 codes removes that dead dim while keeping ample capacity.
+    fsq_levels: List[int] = field(default_factory=lambda: [8, 5, 5, 5])  # codebook = prod = 1000
 
     # transformer (x-transformers)
     d_model: int = 256
@@ -78,6 +82,24 @@ class SpectroCodecConfig:
     # decoder / reconstruction objective
     adversarial_weight: float = 1.0
     pixel_anchor_weight: float = 0.05   # lambda_pix; STABILITY-GATED (raise only while stability >= 0.80)
+    # Discriminator FEATURE-MATCHING weight (HiFi-GAN/MelGAN vocoder-GAN perceptual term;
+    # the spectrogram-adapted stand-in for Genie's VGG perceptual loss, which does NOT
+    # transfer to spectrograms). Folded INTO the reconstruction reference alongside the
+    # pixel anchor, so it enlarges `recon_ref` -> the VQGAN adaptive weight `lam` rises ->
+    # the balanced adversarial term regains sharpening strength. Realization-SAFE: it matches
+    # the discriminator's INTERNAL features, not raw STFT phase/realization pixels.
+    fm_weight: float = 1.0
+
+    # VQGAN/MagViT-style adaptive adversarial weight ("Taming Transformers" §3.3).
+    # The hinge GAN's adversarial term can oscillate against the diversity terms
+    # (entropy + shift-consistency). When enabled, the adversarial coefficient is
+    # auto-scaled every generator step by lam = ||∇ref|| / (||∇adv|| + 1e-4), the ratio
+    # of gradient norms of the non-adversarial ("ref") total and the adversarial term at
+    # the decoder's last layer, so neither overpowers the other. Only this lever is added
+    # (no LeCAM / EMA / spectral-norm; everything else stays hinge-only).
+    adaptive_adv_weight: bool = True    # auto-scale the adversarial term (VQGAN adaptive weight)
+    adaptive_adv_clamp: float = 1e4     # upper clamp on lam (lower clamp is 0)
+    adv_warmup_steps: int = 0           # steps with adv_coeff forced to 0 (adv term off during warmup)
 
     # anti-collapse (codebook-utilization) regularizer — Genie-style entropy term.
     # The shift-consistency loss has a trivial minimum at encoder ≡ constant (all inputs
@@ -90,9 +112,17 @@ class SpectroCodecConfig:
     gate_stability: float = 0.80
     gate_persistence: float = 0.50
     # collapse detection (§4.4 anti-posterior-collapse): a codec fails the gate if it uses
-    # too little of the codebook or has too-low per-dim code entropy.
+    # too little of the codebook or has too-low per-dim code entropy. NOTE (2026-07): this
+    # `collapsed` flag is now INFORMATIONAL ONLY for best-ckpt selection — it no longer forces
+    # gate_score = -inf. See `gate_recon_floor` below and `spike.gate_score`.
     gate_min_utilization: float = 0.02   # min fraction of the codebook used to pass
     gate_min_code_entropy: float = 0.3   # min per-dim normalized code entropy to pass
+    # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score).
+    # A codec is disqualified (gate_score = -inf) ONLY when reconstruction genuinely fails:
+    # decode envelope_corr is NaN or < gate_recon_floor. Utilization is folded in as a SOFT
+    # reward term instead of a hard gate, so a well-reconstructing codec with one dead FSQ dim
+    # is no longer wrongly rejected (it just scores slightly lower on the utilization reward).
+    gate_recon_floor: float = 0.2
 
     @property
     def n_freq_patch(self) -> int:

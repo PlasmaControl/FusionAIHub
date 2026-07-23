@@ -85,6 +85,17 @@ class SpectroDecoder(nn.Module):
         )
         self.to_pixels = nn.Linear(cfg.d_model, patch_dim)
 
+    @property
+    def last_layer(self) -> nn.Parameter:
+        """The weight ``Parameter`` of the final layer producing the (B,C,F,T) output.
+
+        This is ``to_pixels.weight`` — the last conv/linear before the (parameter-free)
+        unpatchify rearrange. The VQGAN adaptive adversarial weight balances the
+        reconstruction and adversarial gradients at this tensor (see
+        ``codec.SpectroCodec.generator_losses`` and "Taming Transformers" §3.3).
+        """
+        return self.to_pixels.weight
+
     def forward(self, quant: torch.Tensor) -> torch.Tensor:
         cfg = self.cfg
         h = self.transformer(quant + self.pos_emb())

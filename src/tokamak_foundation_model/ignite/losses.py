@@ -53,6 +53,40 @@ def _mean_over_maps(maps: List[torch.Tensor]) -> torch.Tensor:
 
 
 # --------------------------------------------------------------------------- #
+# discriminator feature-matching (HiFi-GAN / MelGAN vocoder-GAN perceptual term)
+# --------------------------------------------------------------------------- #
+def feature_matching_loss(
+    feats_real: List[torch.Tensor],
+    feats_fake: List[torch.Tensor],
+) -> torch.Tensor:
+    """Mean L1 distance between matched discriminator feature activations.
+
+    This is the vocoder-GAN feature-matching term (HiFi-GAN §2.2 / MelGAN): it plays the
+    Genie perceptual-loss role but adapted to spectrograms, where VGG features do not
+    transfer. The generator is pushed to make the discriminator's *internal representation*
+    of the reconstruction match that of the real input.
+
+    ``feats_real`` is treated as a DETACHED target (generator matches fake -> real; gradient
+    flows only through ``feats_fake``). List lengths are handled defensively via ``zip`` (the
+    shorter list bounds the sum), so a mismatch never raises. Returns a scalar:
+    - 0 when every matched pair is elementwise equal,
+    - > 0 otherwise,
+    - differentiable w.r.t. the tensors in ``feats_fake``.
+
+    An empty pairing (either list empty) returns a 0 scalar (no NaN).
+    """
+    pairs = list(zip(feats_real, feats_fake))
+    if not pairs:
+        # no features to match -> zero. Anchor dtype/device to a fake tensor if present.
+        ref = feats_fake[0] if feats_fake else (feats_real[0] if feats_real else None)
+        if ref is None:
+            return torch.zeros(())
+        return torch.zeros((), device=ref.device, dtype=ref.dtype)
+    terms = [torch.mean(torch.abs(fk - rl.detach())) for rl, fk in pairs]
+    return torch.stack(terms).mean()
+
+
+# --------------------------------------------------------------------------- #
 # generator-side reconstruction objective
 # --------------------------------------------------------------------------- #
 def recon_objective(

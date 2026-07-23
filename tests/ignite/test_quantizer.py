@@ -57,6 +57,34 @@ def test_codebook_size() -> None:
     assert q.codebook_size == cfg.codebook_size == 4 * 4 * 3
 
 
+def test_default_fsq_config_is_right_sized() -> None:
+    """FIX 1: the default codec is right-sized to [8, 5, 5, 5] = 1000 codes over 4 FSQ dims.
+
+    The previous default was [8, 8, 8, 8, 8] = 32768 with a spare 5th dim that always died.
+    """
+    cfg = SpectroCodecConfig()  # real default
+    assert cfg.fsq_levels == [8, 5, 5, 5]
+    assert cfg.fsq_dim == 4
+    assert cfg.codebook_size == 1000
+
+
+def test_quantizer_roundtrip_at_default_size() -> None:
+    """The FSQ quantizer round-trips at the new default size: codes are per-dim in range,
+    shape (B, n_tok, fsq_dim=4), and the STE gradient reaches the encoder features."""
+    cfg = SpectroCodecConfig(d_model=32)  # default fsq_levels [8, 5, 5, 5]
+    q = SpectroQuantizer(cfg)
+    assert q.codebook_size == 1000
+    feats = torch.randn(4, cfg.n_tok, cfg.d_model, requires_grad=True)
+    quant, codes = q.quantize(feats)
+    assert quant.shape == (4, cfg.n_tok, cfg.d_model)
+    assert codes.shape == (4, cfg.n_tok, cfg.fsq_dim) == (4, cfg.n_tok, 4)
+    levels = torch.tensor(cfg.fsq_levels)
+    assert (codes >= 0).all()
+    assert (codes < levels).all()  # per-dim upper bound honoured at the new size
+    quant.sum().backward()
+    assert feats.grad is not None and feats.grad.abs().sum() > 0
+
+
 def test_straight_through_gradient() -> None:
     cfg = _small_cfg()
     q = SpectroQuantizer(cfg)

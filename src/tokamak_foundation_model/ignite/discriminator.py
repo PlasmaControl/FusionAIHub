@@ -15,7 +15,7 @@ Design (see docs/IGNITE_DESIGN.md §4.2):
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
@@ -66,12 +66,35 @@ class _PatchGANBody(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
+    def forward_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        """Run the body, capturing the intermediate conv activations before the final score conv.
+
+        Returns ``(score, feats)`` where ``score`` is byte-identical to :meth:`forward`
+        (the final-conv output) and ``feats`` is the list of activations emitted right after
+        each LeakyReLU (i.e. every conv-block output that feeds forward), EXCLUDING the raw
+        input and the final score map. These are the tensors matched by the generator's
+        feature-matching loss (HiFi-GAN/MelGAN-style vocoder feature matching).
+        """
+        feats: List[torch.Tensor] = []
+        h = x
+        n = len(self.net)
+        for i, layer in enumerate(self.net):
+            h = layer(h)
+            # collect after each activation (LeakyReLU), but never the final score conv output
+            if isinstance(layer, nn.LeakyReLU) and i < n - 1:
+                feats.append(h)
+        return h, feats
+
 
 class FreqAwarePatchGAN(nn.Module):
     """Multi-scale, frequency-aware PatchGAN discriminator.
 
     Forward: ``(B, C, F, T) -> list[Tensor]`` of raw patch-score maps (one per scale),
     each ``(B, 1, h, w)``. Hinge-ready (no final sigmoid).
+
+    ``forward(x, return_features=True) -> (list[score], list[feat])`` additionally returns a
+    flat list of intermediate conv activations (both scales' bodies), for the generator's
+    feature-matching loss. The default ``forward(x)`` path is byte-identical to before.
     """
 
     def __init__(self, cfg: SpectroCodecConfig, base: int = 32, n_pe_channels: int = 4,
@@ -102,12 +125,34 @@ class FreqAwarePatchGAN(nn.Module):
         xin = torch.cat([x, pe], dim=1)
         return body(xin)
 
-    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+    def _apply_body_features(
+        self, body: _PatchGANBody, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        pe = self.freq_pe(x)
+        xin = torch.cat([x, pe], dim=1)
+        return body.forward_features(xin)
+
+    def forward(self, x: torch.Tensor, return_features: bool = False):
+        """``(B, C, F, T) -> list[score]``, or ``(list[score], list[feat])`` if requested.
+
+        With ``return_features=False`` (default) the behavior is byte-identical to the prior
+        implementation. With ``return_features=True`` the second element is a FLAT list of the
+        intermediate conv activations across BOTH scales' bodies (each scale contributes the
+        activations before its final score conv), which the feature-matching loss consumes.
+        """
         maps: List[torch.Tensor] = []
+        feats: List[torch.Tensor] = []
         cur = x
         for si, body in enumerate(self.bodies):
             if si > 0:
                 # downsample the RAW input, then re-attach a freq-PE at the new resolution
                 cur = F.avg_pool2d(cur, kernel_size=2, ceil_mode=True)
-            maps.append(self._apply_body(body, cur))
+            if return_features:
+                score, body_feats = self._apply_body_features(body, cur)
+                maps.append(score)
+                feats.extend(body_feats)
+            else:
+                maps.append(self._apply_body(body, cur))
+        if return_features:
+            return maps, feats
         return maps

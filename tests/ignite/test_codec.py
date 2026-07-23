@@ -79,6 +79,26 @@ def test_codec_codes_in_range():
     assert codec.codebook_size == cfg.codebook_size
 
 
+def test_codec_roundtrip_at_default_fsq_size():
+    """The full encode -> quantize -> decode chain works at the right-sized default FSQ
+    config ([8, 5, 5, 5] = 1000 codes, 4 dims). The nets project via d_model; the quantizer
+    handles d_model <-> fsq_dim, so this proves the whole chain is config-driven at 4 dims."""
+    cfg = SpectroCodecConfig(
+        channels=1, freq_bins=64, time_frames=32, patch_f=32, patch_t=16,
+        d_model=32, enc_depth=1, dec_depth=1, heads=2,
+    )  # default fsq_levels [8, 5, 5, 5]
+    assert cfg.fsq_dim == 4 and cfg.codebook_size == 1000
+    codec = SpectroCodec(cfg)
+    x = torch.randn(2, cfg.channels, cfg.freq_bins, cfg.time_frames) * 5.0
+    out = codec(x)
+    assert out["recon"].shape == x.shape
+    assert out["codes"].shape == (2, cfg.n_tok, 4)
+    levels = torch.tensor(cfg.fsq_levels)
+    assert (out["codes"] >= 0).all() and (out["codes"] < levels).all()
+    assert codec.codebook_size == 1000
+    assert torch.isfinite(out["recon"]).all()
+
+
 # --------------------------------------------------------------------------- #
 # generator_losses: one step reduces the total generator loss
 # --------------------------------------------------------------------------- #

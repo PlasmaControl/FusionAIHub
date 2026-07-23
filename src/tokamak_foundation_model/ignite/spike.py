@@ -528,6 +528,122 @@ def _close_dataset(ds) -> None:
 
 
 # ------------------------------------------------------------------------------------- #
+# best-checkpoint selection (composite gate score) + optional EMA of codec params
+# ------------------------------------------------------------------------------------- #
+# Default reconstruction floor for gate-score disqualification. Mirrors
+# ``SpectroCodecConfig.gate_recon_floor``; used when ``gate_score`` is called without an
+# explicit floor (e.g. minimal unit-test gate dicts). Callers with a cfg in scope pass
+# ``cfg.gate_recon_floor`` so the config remains the single source of truth.
+DEFAULT_RECON_FLOOR: float = 0.2
+
+
+def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_FLOOR) -> float:
+    """Composite selection score for a gate eval; higher is better.
+
+    The score judges **reconstruction + forecastability + utilization** — NOT raw per-dim
+    codebook entropy. A well-reconstructing codec that happens to have one dead FSQ dim (the
+    classic large-codebook artifact: ``min_dim_entropy = 0``) is a GOOD codec and must be
+    selectable; only a codec that genuinely fails to reconstruct is disqualified.
+
+    HARD DISQUALIFICATION (``score = -inf``) applies ONLY when reconstruction genuinely
+    fails — ``decode["envelope_corr"]`` is NaN (e.g. co2's dead 1-code codec, whose flat
+    envelope makes the correlation undefined) or below ``recon_floor``. The dim-entropy /
+    ``collapsed`` flag is NO LONGER a hard gate (that wrongly rejected ece/bes at
+    env_corr≈0.84); it survives only as a soft utilization reward below.
+
+    For codecs above the recon floor the finite score is a documented weighted sum of
+    clamped, [0, 1]-normalized sub-metrics::
+
+        recon   = clamp(envelope_corr, 0, 1)                     # reconstruction quality
+        f1      = clamp(peak_f1, 0, 1)                           # mode-overlap quality
+        fcast   = clamp(margin_transition / MARGIN_SCALE, 0, 1)  # forecastability (skill)
+        util    = 0.5 * clamp(min_dim_entropy, 0, 1)
+                + 0.5 * clamp(frac_of_observable, 0, 1)          # SOFT utilization reward
+
+        score   = W_RECON * recon + W_F1 * f1 + W_FCAST * fcast + W_UTIL * util
+
+    with weights ``(W_RECON, W_F1, W_FCAST, W_UTIL) = (1.0, 1.0, 1.0, 0.5)`` and
+    ``MARGIN_SCALE = 0.1`` (a per-position mean log-lik margin of ~0.1 is a strong probe
+    win, so it maps to a full point of forecast reward). All four terms are in a comparable
+    [0, ~1] range so the weighted sum is a reasonable single-number proxy. Among
+    reconstructing codecs, the best-utilized + most-forecastable wins — so after
+    right-sizing the codebook the well-utilized codec is preferred. Revisit the weighting if
+    one term starts to dominate selection in practice.
+
+    Args:
+        gate_dict:   a gate dict as produced by :func:`compute_gate` (keys ``forecastability``,
+                     ``decode``, ``utilization``).
+        recon_floor: envelope_corr disqualification floor. Defaults to
+                     :data:`DEFAULT_RECON_FLOOR`; callers with a cfg pass
+                     ``cfg.gate_recon_floor``.
+    """
+    fc = gate_dict["forecastability"]  # type: ignore[index]
+    dec = gate_dict["decode"]  # type: ignore[index]
+    ut = gate_dict["utilization"]  # type: ignore[index]
+
+    # --- hard disqualification: reconstruction genuinely failed --------------------------
+    env_corr = float(dec["envelope_corr"])  # type: ignore[index]
+    if math.isnan(env_corr) or env_corr < recon_floor:
+        return float("-inf")
+
+    # --- soft, clamped/normalized sub-metrics (all in ~[0, 1]) ---------------------------
+    def _clamp01(v: float) -> float:
+        if math.isnan(v):
+            return 0.0
+        return 0.0 if v < 0.0 else (1.0 if v > 1.0 else v)
+
+    MARGIN_SCALE = 0.1  # margin_transition ~0.1 => a full point of forecast reward
+    W_RECON, W_F1, W_FCAST, W_UTIL = 1.0, 1.0, 1.0, 0.5
+
+    recon = _clamp01(env_corr)
+    f1 = _clamp01(float(dec["peak_f1"]))  # type: ignore[index]
+    fcast = _clamp01(float(fc["margin_transition"]) / MARGIN_SCALE)  # type: ignore[index]
+    # utilization is a SOFT reward (never a hard gate): mean of per-dim entropy + the
+    # eval-size-relative observable fraction. Missing keys default to 0 (no reward).
+    min_dim_entropy = _clamp01(float(ut.get("min_dim_entropy", 0.0)))  # type: ignore[union-attr]
+    frac_obs = _clamp01(float(ut.get("frac_of_observable", 0.0)))  # type: ignore[union-attr]
+    util = 0.5 * min_dim_entropy + 0.5 * frac_obs
+
+    return W_RECON * recon + W_F1 * f1 + W_FCAST * fcast + W_UTIL * util
+
+
+class _EMA:
+    """Cheap exponential-moving-average shadow of a module's parameters.
+
+    Maintains a detached CPU/-device shadow ``dict[name -> tensor]`` of the codec's params
+    (float tensors EMA'd; non-float buffers/params copied as-is). ``update`` is O(#params)
+    per step; ``state_dict`` returns the shadow merged over the live state so it is a
+    drop-in weight set for :meth:`SpectroCodec.load_state_dict`.
+    """
+
+    def __init__(self, module: torch.nn.Module, decay: float) -> None:
+        if not (0.0 <= decay < 1.0):
+            raise ValueError(f"_EMA: decay must be in [0, 1); got {decay}")
+        self.decay = float(decay)
+        self.shadow: Dict[str, torch.Tensor] = {}
+        for name, p in module.state_dict().items():
+            self.shadow[name] = p.detach().clone()
+
+    @torch.no_grad()
+    def update(self, module: torch.nn.Module) -> None:
+        d = self.decay
+        for name, p in module.state_dict().items():
+            s = self.shadow.get(name)
+            if s is None:
+                self.shadow[name] = p.detach().clone()
+                continue
+            if p.is_floating_point():
+                # shadow = d * shadow + (1 - d) * live
+                s.mul_(d).add_(p.detach(), alpha=1.0 - d)
+            else:
+                # int buffers (e.g. num_batches_tracked): track the live value directly.
+                s.copy_(p.detach())
+
+    def state_dict(self) -> Dict[str, torch.Tensor]:
+        return {name: t.detach().clone() for name, t in self.shadow.items()}
+
+
+# ------------------------------------------------------------------------------------- #
 # gate evaluation
 # ------------------------------------------------------------------------------------- #
 @torch.no_grad()
@@ -633,6 +749,72 @@ def _fmt_gate(step: int, g: Dict[str, object]) -> str:
 
 
 # ------------------------------------------------------------------------------------- #
+# shared per-step generator/discriminator alternation (reused by run_spike AND the
+# streaming DDP trainer in train_codec.py)
+# ------------------------------------------------------------------------------------- #
+def codec_train_step(
+    codec: "SpectroCodec",
+    disc: "FreqAwarePatchGAN",
+    opt_g: torch.optim.Optimizer,
+    opt_d: torch.optim.Optimizer,
+    spec_a: torch.Tensor,
+    spec_b: torch.Tensor,
+    cfg: SpectroCodecConfig,
+    step: int,
+) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
+    """ONE generator+discriminator alternation step on a δ-shift pair.
+
+    This is the SINGLE source of truth for the per-step training math shared by
+    :func:`run_spike` (fixed pre-built pool, 1-GPU) and the streaming DDP trainer
+    (:mod:`train_codec`). It performs, in order:
+
+      1. **generator (codec) step** — ``codec.generator_losses(spec_a, spec_b, disc, cfg,
+         step)``; backprop ``total`` into the codec; ``opt_g.step()``;
+      2. **discriminator step** — a fresh, *detached* recon of ``spec_a``, scored against
+         the real ``spec_a`` via :func:`losses.discriminator_loss`; ``opt_d.step()``.
+
+    ``codec`` / ``disc`` may be raw modules OR DDP-wrapped: ``generator_losses`` is a method
+    on ``SpectroCodec``, so under DDP pass the *unwrapped* codec here for the generator loss
+    but the *wrapped* module for the forward that DDP must hook. The DDP trainer handles that
+    by calling ``codec(spec_a)`` through the wrapper inside ``generator_losses`` — see
+    :mod:`train_codec` for how it composes this. For the 1-GPU path both are raw modules.
+
+    Parameters
+    ----------
+    codec, disc : the codec (generator) and external discriminator (raw or DDP-wrapped).
+    opt_g, opt_d : their Adam optimizers.
+    spec_a, spec_b : (B, C, F, T) δ-shift pair already on the target device.
+    cfg : SpectroCodecConfig.
+    step : int — global step (drives ``cfg.adv_warmup_steps``).
+
+    Returns
+    -------
+    (g_terms, d_loss)
+        ``g_terms`` is the dict from :meth:`SpectroCodec.generator_losses` (keys include
+        ``total`` / ``adversarial`` / ``pixel`` / ``consistency`` / ``entropy`` /
+        ``adaptive_weight`` / ``recon`` / ``codes``); ``d_loss`` is the scalar discriminator
+        loss tensor. Both are LIVE tensors for the caller to ``.detach()`` when logging.
+    """
+    codec.train()
+
+    # ---- generator (codec) step ----
+    opt_g.zero_grad(set_to_none=True)
+    g_terms = codec.generator_losses(spec_a, spec_b, disc, cfg, step=step)
+    g_terms["total"].backward()
+    opt_g.step()
+
+    # ---- discriminator step (fresh recon, detached from the codec graph) ----
+    opt_d.zero_grad(set_to_none=True)
+    with torch.no_grad():
+        recon = codec.forward(spec_a)["recon"]
+    d_loss = discriminator_loss(disc, spec_a, recon, cfg)
+    d_loss.backward()
+    opt_d.step()
+
+    return g_terms, d_loss
+
+
+# ------------------------------------------------------------------------------------- #
 # the spike
 # ------------------------------------------------------------------------------------- #
 def run_spike(
@@ -654,6 +836,12 @@ def run_spike(
     on_eval: Optional[Callable[[int, "SpectroCodec", torch.optim.Optimizer,
                                  torch.optim.Optimizer, "FreqAwarePatchGAN",
                                  Dict[str, object]], None]] = None,
+    ema: bool = False,
+    ema_decay: float = 0.999,
+    on_best: Optional[Callable[[int, "SpectroCodec", "FreqAwarePatchGAN",
+                                 Dict[str, object]], None]] = None,
+    on_ema: Optional[Callable[[int, Dict[str, torch.Tensor],
+                               Dict[str, object]], None]] = None,
 ) -> Dict[str, object]:
     """Train the codec with GAN alternation on ``batches``; gate every ``eval_every`` steps.
 
@@ -687,6 +875,21 @@ def run_spike(
     on_eval : callable(step, codec, opt_g, opt_d, disc, gate_dict) or None
         Called at every gate evaluation (and after the last step) so the CLI can persist a
         ``gate_<step>.json`` and a ``codec_last.pt`` checkpoint. ``step`` is the global step.
+        The ``gate_dict`` handed in additionally carries a ``score`` key (the composite
+        :func:`gate_score`, ``-inf`` only when reconstruction fails) and an ``is_best`` flag.
+    ema : bool
+        If True, maintain an exponential-moving-average shadow of the CODEC parameters
+        (updated every training step) and expose it to ``on_ema`` at each eval. Cheap: a
+        detached shadow param dict. Default off.
+    ema_decay : float
+        EMA decay in [0, 1); default 0.999.
+    on_best : callable(step, codec, disc, gate_dict) or None
+        Called ONLY when the composite :func:`gate_score` strictly improves on the best seen
+        so far (a recon-failed eval, score ``-inf``, never becomes best). Lets the CLI persist
+        a ``codec_best.pt`` frozen at the best eval. ``gate_dict`` carries ``score``/``is_best``.
+    on_ema : callable(step, ema_state_dict, gate_dict) or None
+        Called at each eval when ``ema`` is True, with the current EMA weight state_dict, so
+        the CLI can persist ``codec_ema.pt``.
 
     Returns
     -------
@@ -694,7 +897,8 @@ def run_spike(
     ``forecastability``, ``decode``, ``utilization``, ``pass_stability``,
     ``pass_persistence``, ``pass_utilization``), with an extra ``steps`` key recording how
     many steps were run and a ``global_step`` key giving the last global step number
-    (== ``start_step + steps``).
+    (== ``start_step + steps``). Also carries ``best_score`` / ``best_step`` (the composite
+    score and global step of the best eval, ``None``/``-inf`` if every eval failed recon).
     """
     if steps < 1:
         raise ValueError("run_spike: steps must be >= 1")
@@ -722,6 +926,13 @@ def run_spike(
             opt_d.load_state_dict(resume_state["opt_d"])
         start_step = int(resume_state.get("step", 0))
 
+    # optional EMA shadow of the codec params (built AFTER any warm-start load).
+    ema_shadow: Optional[_EMA] = _EMA(codec, ema_decay) if ema else None
+
+    # best-checkpoint tracking (composite gate score; higher is better).
+    best_score = float("-inf")
+    best_step: Optional[int] = None
+
     # held-out eval data (never trained on) — moved to device to keep run_spike device-correct
     if eval_pairs is None:
         eval_pairs = synthetic_batches(
@@ -744,38 +955,54 @@ def run_spike(
         spec_a = spec_a.to(device)
         spec_b = spec_b.to(device)
 
-        # ---- generator (codec) step ----
-        codec.train()
-        opt_g.zero_grad(set_to_none=True)
-        g_terms = codec.generator_losses(spec_a, spec_b, disc, cfg)
-        g_terms["total"].backward()
-        opt_g.step()
+        # ---- one generator+discriminator alternation step (shared per-step math) ----
+        g_terms, d_loss = codec_train_step(
+            codec, disc, opt_g, opt_d, spec_a, spec_b, cfg, step=step
+        )
 
-        # ---- discriminator step (fresh recon, detached from the codec graph) ----
-        opt_d.zero_grad(set_to_none=True)
-        with torch.no_grad():
-            recon = codec.forward(spec_a)["recon"]
-        d_loss = discriminator_loss(disc, spec_a, recon, cfg)
-        d_loss.backward()
-        opt_d.step()
+        # ---- EMA shadow update (every step; cheap) ----
+        if ema_shadow is not None:
+            ema_shadow.update(codec)
 
         is_last = local_step == steps - 1
         if (step % eval_every == 0) or is_last:
             g = compute_gate(codec, eval_pairs, frame_seq, cfg)
             g["g_total"] = float(g_terms["total"].detach())
             g["d_loss"] = float(d_loss.detach())
+            g["adaptive_weight"] = float(g_terms["adaptive_weight"])
             g["step"] = step
+
+            # composite selection score (-inf ONLY if reconstruction fails; utilization is
+            # a soft reward, not a hard gate — see gate_score docstring).
+            score = gate_score(g, recon_floor=cfg.gate_recon_floor)
+            g["score"] = score
+            is_best = score > best_score
+            g["is_best"] = bool(is_best)
+            if is_best:
+                best_score = score
+                best_step = step
+
             if log_fn is not None:
                 log_fn(
                     _fmt_gate(step, g)
                     + f" g_total={g['g_total']:+.4f} d_loss={g['d_loss']:.4f}"
+                    + f" adv_lam={g['adaptive_weight']:.4g}"
+                    + f" score={score:+.4f}"
                 )
             if on_eval is not None:
                 on_eval(step, codec, opt_g, opt_d, disc, g)
+            if is_best and on_best is not None:
+                on_best(step, codec, disc, g)
+                if log_fn is not None:
+                    log_fn(f"[spike] new BEST score={score:+.4f} @ step {step}")
+            if ema_shadow is not None and on_ema is not None:
+                on_ema(step, ema_shadow.state_dict(), g)
             final_gate = g
 
     final_gate["steps"] = steps
     final_gate["global_step"] = start_step + steps
+    final_gate["best_score"] = best_score
+    final_gate["best_step"] = best_step
     return final_gate
 
 
@@ -836,6 +1063,55 @@ def _save_checkpoint(
     return path
 
 
+def _save_best_checkpoint(
+    out_dir: Path,
+    step: int,
+    score: float,
+    codec: SpectroCodec,
+    disc: FreqAwarePatchGAN,
+    cfg: SpectroCodecConfig,
+    gate_dict: Dict[str, object],
+) -> Path:
+    """Write ``codec_best.pt`` — the codec frozen at the best composite-gate eval.
+
+    Records the codec + disc state, the ``step`` (COUNT of completed steps, matching
+    :func:`_save_checkpoint`), the composite ``score``, and the full ``gate`` dict so the
+    frozen checkpoint is self-describing. Written atomically (tmp + replace).
+    """
+    path = out_dir / "codec_best.pt"
+    tmp = out_dir / "codec_best.pt.tmp"
+    torch.save(
+        {
+            "codec": codec.state_dict(),
+            "disc": disc.state_dict(),
+            "step": int(step) + 1,
+            "score": float(score),
+            "gate": _jsonable(gate_dict),
+            "cfg": cfg,
+        },
+        tmp,
+    )
+    tmp.replace(path)
+    return path
+
+
+def _save_ema_checkpoint(
+    out_dir: Path,
+    step: int,
+    ema_state: Dict[str, torch.Tensor],
+    cfg: SpectroCodecConfig,
+) -> Path:
+    """Write ``codec_ema.pt`` — the EMA-averaged codec weights (drop-in state_dict)."""
+    path = out_dir / "codec_ema.pt"
+    tmp = out_dir / "codec_ema.pt.tmp"
+    torch.save(
+        {"codec": ema_state, "step": int(step) + 1, "cfg": cfg},
+        tmp,
+    )
+    tmp.replace(path)
+    return path
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m tokamak_foundation_model.ignite.spike",
@@ -874,6 +1150,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="Override cfg.entropy_weight (anti-collapse regularizer strength).")
     p.add_argument("--consistency_weight", type=float, default=None,
                    help="Override cfg.consistency_weight (shift-invariance strength).")
+    p.add_argument("--ema", action="store_true",
+                   help="Maintain an EMA shadow of the codec params; write codec_ema.pt "
+                        "at every eval. Default off.")
+    p.add_argument("--ema_decay", type=float, default=0.999,
+                   help="EMA decay in [0, 1) when --ema is set (default 0.999).")
     return p
 
 
@@ -950,6 +1231,19 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cp = _save_checkpoint(out_dir, step, codec, opt_g, opt_d, disc, cfg)
         print(f"[spike-cli] step {step}: wrote {gp.name} + {cp.name}", flush=True)
 
+    # ---- best-by-gate callback: freeze codec_best.pt when the composite score improves ----
+    def on_best(step, codec, disc, gate_dict):
+        bp = _save_best_checkpoint(
+            out_dir, step, float(gate_dict["score"]), codec, disc, cfg, gate_dict
+        )
+        print(f"[spike-cli] step {step}: NEW BEST score={gate_dict['score']:+.4f} "
+              f"-> wrote {bp.name}", flush=True)
+
+    # ---- optional EMA callback: write codec_ema.pt (EMA weights) at every eval ----
+    def on_ema(step, ema_state, gate_dict):
+        ep = _save_ema_checkpoint(out_dir, step, ema_state, cfg)
+        print(f"[spike-cli] step {step}: wrote {ep.name} (EMA)", flush=True)
+
     disc_lr = args.disc_lr
     t_run = time.time()
     final_gate = run_spike(
@@ -965,6 +1259,10 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         seed=args.seed,
         resume_state=resume_state,
         on_eval=on_eval,
+        ema=args.ema,
+        ema_decay=args.ema_decay,
+        on_best=on_best,
+        on_ema=on_ema if args.ema else None,
     )
     final_gate["wall_s"] = time.time() - t_run
 
@@ -985,6 +1283,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         "synthetic": args.synthetic,
         "resumed_from": args.resume,
         "channels": cfg.channels,
+        "ema": args.ema,
+        "ema_decay": args.ema_decay,
     }
     with open(out_dir / "summary.json", "w") as fh:
         json.dump(_jsonable(summary), fh, indent=2, sort_keys=True)
@@ -992,6 +1292,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
           f"global_step={final_gate.get('global_step')} "
           f"stability={final_gate.get('stability'):.3f} "
           f"persistence={final_gate.get('persistence'):.3f} "
+          f"best_score={final_gate.get('best_score')} "
+          f"best_step={final_gate.get('best_step')} "
           f"-> {out_dir}/summary.json", flush=True)
     return final_gate
 
