@@ -66,6 +66,26 @@ def _small_cfg(channels: int = 8) -> FastTSCodecConfig:
     )
 
 
+def _coarse_cfg(channels: int = 8) -> FastTSCodecConfig:
+    """Small transformer at the PRODUCTION COARSE geometry: 10 ms pool bins (pool=100).
+
+    Used for the shift-invariance test — the whole point of the coarsening is that a δ up to
+    ~5 ms (half a 10 ms bin) stays within a single bin, so it must be exercised at pool=100.
+    """
+    return FastTSCodecConfig(
+        channels=channels,
+        env_bins=8,          # 8 bins * 100 samples = 800 samples = 80 ms
+        patch_e=1,           # -> n_tok = 8
+        pool=100,            # 10 ms bins (production coarse pool)
+        baseline_win=8,
+        d_model=32,
+        enc_depth=1,
+        dec_depth=1,
+        heads=2,
+        fsq_levels=[4, 4, 3],
+    )
+
+
 # --------------------------------------------------------------------------------------- #
 # config geometry
 # --------------------------------------------------------------------------------------- #
@@ -75,20 +95,26 @@ def test_config_geometry_and_tokens():
     assert cfg.n_tok == 4
     assert cfg.fsq_dim == 3 and cfg.codebook_size == 4 * 4 * 3
 
-    # production default: 50 env bins (1 ms each over a 50 ms window), 10 tokens, 1000-code FSQ.
+    # production default: COARSE 5 env bins (10 ms each over a 50 ms window), 5 tokens
+    # (patch_e=1), 1000-code FSQ. Coarsened from the old 1 ms / 50-bin grid (detector-free
+    # coarse RMS envelope; ELM bursts recur ~1.6 ms so a 10 ms bin averages several bursts).
     prod = FastTSCodecConfig()
-    assert prod.env_bins == FASTTS_ENV_BINS == 50
+    assert prod.env_bins == FASTTS_ENV_BINS == 5
+    assert prod.pool == round(0.010 * FASTTS_FS) == 100  # 10 ms bins
     assert prod.channels == 8
-    assert prod.n_tok == 10
+    assert prod.patch_e == 1
+    assert prod.n_tok == 5
     assert prod.codebook_size == 1000 and prod.fsq_dim == 4
     # window_samples matches the filterscopes 50 ms window at 10 kHz.
     assert prod.window_samples == FASTTS_WINDOW == round(0.05 * FASTTS_FS) == 500
     assert prod.env_bins * prod.pool == prod.window_samples
+    # δ cap raised to (0.1, 5.0) ms — a δ up to ~5 ms (half a 10 ms bin) stays within a bin.
+    assert prod.consistency_delta_ms == (0.1, 5.0)
 
 
 def test_config_rejects_indivisible_patch():
     with pytest.raises(AssertionError):
-        FastTSCodecConfig(env_bins=50, patch_e=7)  # 50 % 7 != 0
+        FastTSCodecConfig(env_bins=5, patch_e=2)  # 5 % 2 != 0
 
 
 # --------------------------------------------------------------------------------------- #
@@ -169,32 +195,39 @@ def test_elm_envelope_rejects_bad_ndim():
 # --------------------------------------------------------------------------------------- #
 # δ-shift pair — same statistic, different realization
 # --------------------------------------------------------------------------------------- #
-def test_fastts_shift_pair_shapes_and_similarity():
-    cfg = _small_cfg()
+@pytest.mark.parametrize("delta_ms", [0.2, 1.0, 3.0, 5.0])
+def test_fastts_shift_pair_shapes_and_similarity(delta_ms):
+    # COARSE 10 ms bins (pool=100): with the coarsening, a δ up to ~5 ms (half a bin) stays
+    # WITHIN a bin, so the per-bin RMS activity statistic is preserved and the two envelope
+    # curves stay strongly correlated — that is the restored shift-invariance the raised δ cap
+    # relies on. (At the OLD 1 ms bin a 5 ms shift was 5 whole bins and would have collapsed
+    # the correlation; here it does not.)
+    cfg = _coarse_cfg()
     # a raw shot long enough to slice [t0, t0+CHUNK_S+δ]. Use several windows worth.
     W_full = cfg.window_samples * 4
     burst_bins = [b for b in range(0, cfg.env_bins, 3)]
     shot = _elm_raw(cfg.channels, W_full, burst_bins, cfg.pool, seed=3)
-    t0 = 0.05  # start 1 window in
-    # A SUB-BIN shift (0.2 ms = 2 samples < the 10-sample / 1 ms pool bin) is exactly the
-    # realization nuisance the envelope discards: the raw waveform moves but the per-bin RMS
-    # activity is preserved, so the two envelope curves stay strongly correlated.
-    env_a, env_b = idata.fastts_shift_pair_windows(shot, t0=t0, cfg=cfg, delta_ms=0.2)
+    t0 = 0.08  # start 1 window (env_bins*pool = 800 samples = 80 ms) in
+    env_a, env_b = idata.fastts_shift_pair_windows(shot, t0=t0, cfg=cfg, delta_ms=delta_ms)
     assert env_a.shape == (cfg.channels, cfg.env_bins)
     assert env_b.shape == (cfg.channels, cfg.env_bins)
     assert torch.isfinite(env_a).all() and torch.isfinite(env_b).all()
     a = env_a.flatten() - env_a.mean()
     b = env_b.flatten() - env_b.mean()
     corr = float((a * b).sum() / (a.norm() * b.norm() + 1e-9))
-    assert corr > 0.5, f"sub-bin δ-shift pair should share the envelope statistic (corr={corr:.3f})"
+    assert corr > 0.5, (
+        f"δ={delta_ms} ms (≤ half a 10 ms bin) should keep the envelope statistic "
+        f"(corr={corr:.3f})"
+    )
     assert not torch.allclose(env_a, env_b), "a δ-shift must move the realization"
 
 
 def test_fastts_shift_pair_overrun_raises():
-    cfg = _small_cfg()
+    cfg = _coarse_cfg()
     shot = torch.randn(cfg.channels, cfg.window_samples + 10)  # barely one window
     with pytest.raises(ValueError):
-        idata.fastts_shift_pair_windows(shot, t0=0.049, cfg=cfg, delta_ms=2.0)
+        # a full-window overrun still raises regardless of the (now larger) δ cap.
+        idata.fastts_shift_pair_windows(shot, t0=0.079, cfg=cfg, delta_ms=5.0)
 
 
 # --------------------------------------------------------------------------------------- #
@@ -352,9 +385,11 @@ def filterscopes_shots(tmp_path):
 
 
 def _tiny_fastts_cfg() -> FastTSCodecConfig:
+    # production COARSE geometry (5 bins * 100-sample / 10 ms pool = 500-sample / 50 ms window),
+    # tiny transformer. patch_e=1 -> n_tok=5.
     return FastTSCodecConfig(
         channels=ft.fastts_channels(),
-        env_bins=50, patch_e=5, pool=10, baseline_win=8,
+        env_bins=5, patch_e=1, pool=100, baseline_win=8,
         d_model=32, enc_depth=1, dec_depth=1, heads=2, fsq_levels=[4, 4, 3],
     )
 

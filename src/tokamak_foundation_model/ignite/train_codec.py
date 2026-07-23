@@ -87,6 +87,14 @@ VIDEO_MODALITIES = ("tangtv_lower", "tangtv_upper")
 # codec per signal, each frozen independently (§4.3 "lightest touch").
 SLOWTS_MODALITIES = tuple(_SLOWTS_SIGNALS)
 
+# fast-TS (filterscopes) modality — the ELM ACTIVITY ENVELOPE codec. Trained by the separate
+# ``fastts_train`` module (kept separate earlier to avoid a parallel-edit collision with the
+# slow-TS work); ``main()`` folds its launch into this dispatch so ``--modality filterscopes``
+# routes here like every other modality. The value MUST equal ``fastts_train.FASTTS_MODALITY``
+# (defined here too, not imported, because fastts_train imports FROM this module — a top-level
+# import back would be circular).
+FASTTS_MODALITY = "filterscopes"
+
 DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
 
 
@@ -134,6 +142,13 @@ def modality_channels(modality: str) -> int:
     class-level + read-only. Mirrors ``spike._num_ece_channels`` but for any codec modality.
     """
     from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
+
+    if modality == FASTTS_MODALITY:
+        # fast-TS (filterscopes) is a non-STFT signal; reuse the fast-TS trainer's helper so the
+        # channel logic lives in exactly one place (lazy import: fastts_train imports FROM this
+        # module, so a top-level import here would be circular).
+        from .fastts_train import fastts_channels
+        return fastts_channels(modality)
 
     if modality in VIDEO_MODALITIES:
         mv = next(
@@ -1185,26 +1200,28 @@ def _stream_slowts_eval_data(
 # ------------------------------------------------------------------------------------- #
 # video stability nuisance + gate (mirrors spike.compute_gate for video)
 # ------------------------------------------------------------------------------------- #
-def video_nuisance(clip: torch.Tensor, *, shift: int = 1, bright: float = 0.02,
+def video_nuisance(clip: torch.Tensor, *, bright: float = 0.02, offset: float = 0.02,
                    seed: int = 0) -> torch.Tensor:
     """A realization-level nuisance transform of a video clip for the STABILITY gate.
 
     Video has no STFT-phase pair (unlike spectro), so the statistics-first "stability"
     property — codes unchanged under a realization-only perturbation — is probed with a
-    small, structure-preserving augmentation: a 1-pixel spatial roll (sub-structure jitter,
-    like the sub-window δ-shift for spectro) + a few-% brightness jitter. The plasma
-    *structure* (where the light sits, its intensity envelope) is preserved; only the
-    pixel-level realization moves — so a statistics-first codec should map ``clip`` and
-    ``video_nuisance(clip)`` to (nearly) the same codes.
+    small, structure-preserving augmentation. The divertor camera is FIXED, so a spatial
+    shift is NOT a physical nuisance; the real realization noise is a camera brightness /
+    gain fluctuation. So the nuisance is a per-clip **brightness/gain** jitter only: a
+    multiplicative gain plus a small additive offset on the (already standardized) frames.
+    The plasma *structure* (where the light sits, its relative intensity envelope) is
+    preserved; only the overall level moves — so a statistics-first codec should map
+    ``clip`` and ``video_nuisance(clip)`` to (nearly) the same codes.
 
     ``clip`` is ``(B, C, T, H, W)``; returns the same shape.
     """
     gen = torch.Generator(device="cpu").manual_seed(seed)
-    # 1-pixel spatial roll in H and W (structure-preserving realization jitter).
-    out = torch.roll(clip, shifts=(shift, shift), dims=(-2, -1))
-    # small multiplicative brightness jitter (per-clip scalar).
-    jitter = 1.0 + bright * (2.0 * torch.rand((), generator=gen).item() - 1.0)
-    return out * jitter
+    # multiplicative gain jitter (per-clip scalar) — camera-gain realization.
+    gain = 1.0 + bright * (2.0 * torch.rand((), generator=gen).item() - 1.0)
+    # small additive offset (per-clip scalar) on the standardized frames — brightness bias.
+    bias = offset * (2.0 * torch.rand((), generator=gen).item() - 1.0)
+    return clip * gain + bias
 
 
 @torch.no_grad()
@@ -2176,11 +2193,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--modality", type=str, default="ece",
                    choices=list(SPECTRO_MODALITIES) + list(VIDEO_MODALITIES)
-                           + list(SLOWTS_MODALITIES),
+                           + list(SLOWTS_MODALITIES) + [FASTTS_MODALITY],
                    help="Codec modality: a spectro signal (ece/co2/bes/mhr), a tangtv "
-                        "divertor video (tangtv_lower/tangtv_upper), or a slow-TS signal "
+                        "divertor video (tangtv_lower/tangtv_upper), a slow-TS signal "
                         "(ts_core_density/ts_core_temp/ts_tangential_density/"
-                        "ts_tangential_temp/cer_ti/cer_rot/mse).")
+                        "ts_tangential_temp/cer_ti/cer_rot/mse), or the fast-TS ELM-envelope "
+                        "codec (filterscopes).")
     p.add_argument("--shots", type=str, default=None,
                    help="Explicit comma-separated train shot list (overrides --n_shots).")
     p.add_argument("--n_shots", type=int, default=1000,
@@ -2226,6 +2244,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
 
     is_video = args.modality in VIDEO_MODALITIES
     is_slowts = args.modality in SLOWTS_MODALITIES
+    is_fastts = args.modality == FASTTS_MODALITY
 
     # cfg with the modality's real channel count baked in (all ranks agree).
     channels = modality_channels(args.modality)
@@ -2233,6 +2252,11 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cfg = VideoCodecConfig(channels=channels, divertor=video_divertor(args.modality))
     elif is_slowts:
         cfg = slowts_codec_cfg(args.modality, channels)
+    elif is_fastts:
+        # fast-TS (filterscopes) ELM-envelope codec — built + trained by the fastts_train
+        # module (lazy import: it imports FROM this module, so a top-level import is circular).
+        from .config import FastTSCodecConfig
+        cfg = FastTSCodecConfig(channels=channels)
     else:
         cfg = SpectroCodecConfig(channels=channels)
     if args.entropy_weight is not None:
@@ -2273,38 +2297,67 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             flush=True,
         )
 
-    if is_video:
-        trainer = train_video_codec
-    elif is_slowts:
-        trainer = train_slowts_codec
-    else:
-        trainer = train_codec
     t0 = time.time()
-    final_gate = trainer(
-        cfg,
-        args.modality,
-        train_shots,
-        eval_shots,
-        steps=args.steps,
-        eval_every=args.eval_every,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        data_dir=args.data_dir,
-        lr=args.lr,
-        disc_lr=args.disc_lr,
-        ema=args.ema,
-        ema_decay=args.ema_decay,
-        eval_batches=args.eval_batches,
-        eval_batch_size=args.eval_batch_size,
-        eval_frames=args.eval_frames,
-        out_dir=args.out_dir,
-        seed=args.seed,
-        ddp=ddp,
-        resume_state=resume_state,
-        lengths_cache_path=args.lengths_cache_dir and (
-            Path(args.lengths_cache_dir) / f"codec_{args.modality}_lengths.pt"
-        ),
+    lengths_cache_path = args.lengths_cache_dir and (
+        Path(args.lengths_cache_dir) / f"codec_{args.modality}_lengths.pt"
     )
+    if is_fastts:
+        # fast-TS trainer has a distinct signature (modality is keyword-only; no positional
+        # modality). Reuse its train function verbatim — do NOT duplicate the training logic.
+        from .fastts_train import train_fastts_codec
+        final_gate = train_fastts_codec(
+            cfg,
+            train_shots,
+            eval_shots,
+            steps=args.steps,
+            eval_every=args.eval_every,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            modality=args.modality,
+            data_dir=args.data_dir,
+            lr=args.lr,
+            disc_lr=args.disc_lr,
+            ema=args.ema,
+            ema_decay=args.ema_decay,
+            eval_batches=args.eval_batches,
+            eval_batch_size=args.eval_batch_size,
+            eval_frames=args.eval_frames,
+            out_dir=args.out_dir,
+            seed=args.seed,
+            ddp=ddp,
+            resume_state=resume_state,
+            lengths_cache_path=lengths_cache_path,
+        )
+    else:
+        if is_video:
+            trainer = train_video_codec
+        elif is_slowts:
+            trainer = train_slowts_codec
+        else:
+            trainer = train_codec
+        final_gate = trainer(
+            cfg,
+            args.modality,
+            train_shots,
+            eval_shots,
+            steps=args.steps,
+            eval_every=args.eval_every,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            data_dir=args.data_dir,
+            lr=args.lr,
+            disc_lr=args.disc_lr,
+            ema=args.ema,
+            ema_decay=args.ema_decay,
+            eval_batches=args.eval_batches,
+            eval_batch_size=args.eval_batch_size,
+            eval_frames=args.eval_frames,
+            out_dir=args.out_dir,
+            seed=args.seed,
+            ddp=ddp,
+            resume_state=resume_state,
+            lengths_cache_path=lengths_cache_path,
+        )
     final_gate["wall_s"] = time.time() - t0
 
     if ddp.is_main and args.out_dir is not None:

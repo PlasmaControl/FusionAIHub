@@ -446,13 +446,46 @@ def test_video_gate_score_minus_inf_on_nan_recon():
     assert spike.gate_score(g, recon_floor=0.2) == float("-inf")
 
 
-def test_video_nuisance_preserves_structure_but_differs():
-    """The stability nuisance (spatial roll + brightness jitter) keeps structure but moves pixels."""
+def test_video_nuisance_is_brightness_gain_only():
+    """The stability nuisance is a BRIGHTNESS/GAIN jitter only — no spatial roll.
+
+    The divertor camera is FIXED, so a spatial shift is not a physical nuisance; the only
+    realization noise is a camera gain fluctuation. So ``video_nuisance`` must be an affine
+    per-clip level change (multiplicative gain + small additive offset) and must NOT roll the
+    spatial axes — i.e. it must equal ``x * gain + bias`` for scalar ``gain``/``bias``.
+    """
     cfg = _small_cfg()
     x = torch.randn(1, cfg.channels, cfg.frames, cfg.height, cfg.width)
     y = tc.video_nuisance(x, seed=0)
     assert y.shape == x.shape
-    assert not torch.allclose(x, y)  # realization moved
+    assert not torch.allclose(x, y)  # the level moved (realization changed)
+
+    # It must be exactly an affine level change (gain*x + bias) — recover the scalars by
+    # least squares and confirm the residual is ~0 (no per-pixel spatial roll would survive).
+    xf = x.flatten()
+    yf = y.flatten()
+    var = float(((xf - xf.mean()) ** 2).mean())
+    gain = float(((xf - xf.mean()) * (yf - yf.mean())).mean() / (var + 1e-12))
+    bias = float(yf.mean() - gain * xf.mean())
+    assert torch.allclose(y, x * gain + bias, atol=1e-5), (
+        "video_nuisance must be a pure brightness/gain affine transform (no spatial roll)"
+    )
+
+    # A pure spatial roll (the DROPPED nuisance) is NOT affine in x, so its residual would be
+    # large — sanity-check the discriminating power of the assertion above.
+    rolled = torch.roll(x, shifts=(1, 1), dims=(-2, -1))
+    rvar = float(((xf - xf.mean()) ** 2).mean())
+    rg = float(((xf - xf.mean()) * (rolled.flatten() - rolled.mean())).mean() / (rvar + 1e-12))
+    rb = float(rolled.mean() - rg * xf.mean())
+    assert not torch.allclose(rolled, x * rg + rb, atol=1e-5)
+
+
+def test_video_nuisance_no_spatial_roll_signature():
+    """``video_nuisance`` no longer exposes a ``shift`` (spatial-roll) parameter."""
+    import inspect
+    params = inspect.signature(tc.video_nuisance).parameters
+    assert "shift" not in params, "the spatial-roll 'shift' param must be gone"
+    assert "bright" in params and "offset" in params  # brightness/gain only
 
 
 # --------------------------------------------------------------------------------------- #

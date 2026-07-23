@@ -369,3 +369,74 @@ def test_train_codec_cli_main_end_to_end(synthetic_shots, tmp_path, monkeypatch)
     assert gate["steps"] == 2
     assert (out_dir / "summary.json").exists()
     assert sorted(out_dir.glob("gate_*.json"))
+
+
+# --------------------------------------------------------------------------------------- #
+# fast-TS (filterscopes) is now folded into the standard train_codec dispatch
+# --------------------------------------------------------------------------------------- #
+def test_train_codec_parser_accepts_filterscopes():
+    """The train_codec CLI parser accepts ``--modality filterscopes``."""
+    args = tc.build_arg_parser().parse_args(
+        ["--modality", "filterscopes", "--out_dir", "/tmp/ignite_fastts_parse"]
+    )
+    assert args.modality == "filterscopes" == tc.FASTTS_MODALITY
+
+
+def test_modality_channels_filterscopes_is_8():
+    """``modality_channels('filterscopes') == 8`` (channels_to_use=slice(0,8))."""
+    assert tc.modality_channels("filterscopes") == 8
+
+
+def test_main_dispatches_filterscopes_to_fastts_trainer(tmp_path, monkeypatch):
+    """``main(--modality filterscopes)`` builds a FastTSCodecConfig and calls the fast-TS
+    trainer (``fastts_train.train_fastts_codec``) with the fast-TS keyword signature — reusing
+    that train function rather than duplicating the training logic. No real run: the trainer is
+    stubbed and we assert on the dispatch + the args it was handed."""
+    monkeypatch.delenv("WORLD_SIZE", raising=False)
+    from tokamak_foundation_model.ignite import fastts_train as ft
+    from tokamak_foundation_model.ignite.config import FastTSCodecConfig
+
+    captured = {}
+
+    def _stub_train_fastts_codec(cfg, train_shots, eval_shots, **kw):
+        # fast-TS signature: modality is a keyword, NOT a positional after cfg.
+        captured["cfg"] = cfg
+        captured["train_shots"] = list(train_shots)
+        captured["eval_shots"] = list(eval_shots)
+        captured["kw"] = kw
+        return {"steps": kw["steps"], "global_step": kw["steps"], "best_score": 0.0,
+                "best_step": 0}
+
+    monkeypatch.setattr(ft, "train_fastts_codec", _stub_train_fastts_codec)
+
+    # main() writes summary.json into out_dir (the real trainer creates it); the stub does not,
+    # so pre-create it here — this test only asserts the DISPATCH, not the trainer's own I/O.
+    out_dir = tmp_path / "fastts_dispatch"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # avoid a real shot scan: pass explicit --shots so discover_shots is never called.
+    argv = [
+        "--modality", "filterscopes",
+        "--shots", "900000,900001,900002,900003",
+        "--eval_n_shots", "1",
+        "--n_shots", "3",
+        "--steps", "2",
+        "--eval_every", "1",
+        "--batch_size", "2",
+        "--num_workers", "0",
+        "--out_dir", str(out_dir),
+        "--data_dir", str(tmp_path),
+        "--seed", "0",
+    ]
+    gate = tc.main(argv)
+    assert gate["steps"] == 2
+    # built the fast-TS config (not a spectro/video/slowts one) with the real channel count.
+    assert isinstance(captured["cfg"], FastTSCodecConfig)
+    assert captured["cfg"].channels == 8
+    # dispatched with the fast-TS keyword signature.
+    assert captured["kw"]["modality"] == "filterscopes"
+    assert captured["kw"]["steps"] == 2
+    assert captured["kw"]["batch_size"] == 2
+    # train/eval split derived from the shot list (eval = last 1; train = first 3).
+    assert captured["eval_shots"] == ["900003"]
+    assert captured["train_shots"] == ["900000", "900001", "900002"]

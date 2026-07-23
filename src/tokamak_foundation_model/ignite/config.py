@@ -325,11 +325,13 @@ class VideoCodecConfig:
 #     -> average within non-overlapping pooling bins of `pool` samples (RMS) [mean-pool]
 #     -> sqrt                                                                [-> RMS amplitude]
 #     -> log1p(env / eps_ref)                                                [compress dynamic range]
-#   giving an ENVELOPE (C, env_bins) with env_bins = W // pool. At pool=10 (1 ms bins),
-#   env_bins = 50: a coarse "how much ELM activity, and when" curve per channel. A spike's
-#   exact position WITHIN a 1 ms bin is discarded (the nuisance); the burst amplitude + timing
-#   at bin resolution is kept (the physics). This is directly analogous to the spectro
-#   codec's per-frequency log-power (which discards STFT phase, the spectro realization).
+#   giving an ENVELOPE (C, env_bins) with env_bins = W // pool. At pool=100 (10 ms bins),
+#   env_bins = 5: a coarse "how much ELM activity, and when" curve per channel. A spike's
+#   exact position WITHIN a 10 ms bin is discarded (the nuisance); the burst amplitude + timing
+#   at bin resolution is kept (the physics). ELM bursts recur every ~1.6 ms so a 10 ms bin
+#   averages over several bursts — a detector-free coarse RMS activity level, not a burst rate.
+#   This is directly analogous to the spectro codec's per-frequency log-power (which discards
+#   STFT phase, the spectro realization).
 #
 # The codec tokenizes the (C, env_bins) envelope like a 1-D "image": patch over the TIME
 # (envelope-bin) axis (channels are a feature dim carried into the patch, as freq/space are
@@ -339,8 +341,13 @@ class VideoCodecConfig:
 # fast-TS geometry (matches the filterscopes SignalConfig + a 50 ms window at FASTTS_FS).
 FASTTS_CHANNELS: int = 8         # channels_to_use=slice(0,8) on the filterscopes SignalConfig
 FASTTS_WINDOW: int = round(CHUNK_S * FASTTS_FS)   # 500 raw samples / channel in a 50 ms window
-FASTTS_POOL: int = 10            # envelope pooling bin = 10 samples = 1 ms at 10 kHz
-FASTTS_ENV_BINS: int = FASTTS_WINDOW // FASTTS_POOL  # 50 envelope bins (1 ms each)
+# COARSE RMS envelope: a 3000-shot survey showed filterscope ELM bursts recur every ~1.6 ms and
+# a burst-RATE detector is param-fragile (rate swings 3× with threshold; interval just tracks
+# the min-distance floor), so we commit to a DETECTOR-FREE COARSE RMS envelope and coarsen the
+# bins from 1 ms to 10 ms — several inter-burst intervals per bin averages out burst-timing
+# realization noise while still resolving the shot-scale ELM activity level.
+FASTTS_POOL: int = round(0.010 * FASTTS_FS)       # envelope pooling bin = 100 samples = 10 ms at 10 kHz
+FASTTS_ENV_BINS: int = FASTTS_WINDOW // FASTTS_POOL  # 5 envelope bins (10 ms each)
 
 
 @dataclass
@@ -361,12 +368,12 @@ class FastTSCodecConfig:
 
     # data / shape
     channels: int = FASTTS_CHANNELS       # 8 filterscope channels
-    env_bins: int = FASTTS_ENV_BINS       # E = 50 (1 ms per bin over a 50 ms window)
-    patch_e: int = 5                       # -> 10 time patches (5 ms each)  => n_tok = 10
+    env_bins: int = FASTTS_ENV_BINS       # E = 5 (10 ms per bin over a 50 ms window)
+    patch_e: int = 1                       # -> 5 time patches (10 ms each)  => n_tok = 5
 
     # envelope transform params (see ignite.data.elm_envelope). Right-sized to FASTTS_* so the
-    # loader's 500-sample / 10 kHz filterscope window maps to a 50-bin envelope.
-    pool: int = FASTTS_POOL                # RMS pooling bin (samples) = 10 = 1 ms
+    # loader's 500-sample / 10 kHz filterscope window maps to a 5-bin (10 ms) envelope.
+    pool: int = FASTTS_POOL                # RMS pooling bin (samples) = 100 = 10 ms
     baseline_win: int = 20                 # moving-mean baseline window (samples) = 2 ms; 0 disables detrend
     env_eps: float = 1e-3                  # log1p reference: log1p(env / env_eps); guards flat/zero windows
 
@@ -389,15 +396,15 @@ class FastTSCodecConfig:
     # realization. The consistency loss ‖enc(env) − enc(env_shifted)‖² on the PRE-FSQ features
     # projects that nuisance out (statistics-first).
     #
-    # δ RANGE — DESIGN CHOICE (to confirm): capped at the pool-bin duration (pool=10 samples =
-    # 1 ms at 10 kHz), i.e. δ ~ U[0.1, 1.0] ms. Empirically (test_fastts_codec) the RAW
-    # envelope curve is invariant to a SUB-bin shift (δ<pool: corr≈0.83 at 0.2 ms) but a shift
-    # of a WHOLE bin or more translates the envelope by whole bins (corr collapses at δ≥1 ms).
-    # Keeping δ_max ≤ 1 pool bin keeps the nuisance a genuine sub-/one-bin realization jitter
-    # rather than a bin-scale content translation. (Spectro uses [0.1, 2] ms against its 0.512 ms
-    # STFT hop — several hops — because its FSQ time-patch is 16 ms, huge vs δ; fast-TS's
-    # envelope bin is only 1 ms, so its δ_max must be smaller in absolute terms.)
-    consistency_delta_ms: Tuple[float, float] = (0.1, 1.0)
+    # δ RANGE — capped at the pool-bin duration (pool=100 samples = 10 ms at 10 kHz), i.e.
+    # δ ~ U[0.1, 5.0] ms. With the COARSE 10 ms envelope bin a δ up to ~5 ms (half a bin) stays
+    # WITHIN a single bin, so the per-bin RMS activity statistic is preserved and the envelope
+    # curve is invariant (that is the whole reason the cap was pinned at < 1 bin — at the old
+    # 1 ms bin that meant < 1 ms; at the new 10 ms bin it can be up to ~5 ms). A shift of a WHOLE
+    # bin (≥10 ms) would translate the envelope by whole bins and break the statistic, so the cap
+    # stays sub-bin. (Spectro uses [0.1, 2] ms against its 0.512 ms STFT hop because its FSQ
+    # time-patch is 16 ms, huge vs δ.)
+    consistency_delta_ms: Tuple[float, float] = (0.1, 5.0)
     consistency_weight: float = 1.0
 
     # decoder / reconstruction objective (generative decoder, LOW envelope anchor).
