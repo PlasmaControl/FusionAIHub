@@ -128,6 +128,21 @@ class SpectroCodecConfig:
     entropy_weight: float = 1.0     # multiplies entropy_loss into the generator total
     diversity_weight: float = 1.0   # weight on the batch-diversity (spread) reward
 
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Some modalities are mostly quiet / floored (co2 is ~48% present / 52% floored at ~-10,
+    # so the built log-power windows have a median std of only ~0.02 vs ~0.85 for ece/bes/mhr).
+    # A codec trained on such a batch is swamped by near-constant windows and collapses to the
+    # dominant degenerate value, never learning the minority active signal. `active_bias` biases
+    # the per-item draw toward ACTIVE windows (activity = the built log-power window's std here):
+    # with probability `active_bias`, if a window's activity < `min_activity` the dataset re-draws
+    # from nearby chunks looking for an active one (falling back to the drawn window if none is
+    # found, so QUIET windows are NOT dropped — the codec still gets a "quiet" code for Phase-B
+    # generalization). Both DEFAULT to 0 (OFF): the already-working modalities (ece/bes/mhr) are
+    # byte-identical to before; the trainer turns them ON per-modality only for co2 (see
+    # train_codec._activity_overrides). min_activity is a log-power std threshold when > 0.
+    min_activity: float = 0.0       # per-window activity threshold (log-power std); 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
+
     # oracle-gate acceptance thresholds
     gate_stability: float = 0.80
     gate_persistence: float = 0.50
@@ -272,6 +287,16 @@ class VideoCodecConfig:
     # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
     entropy_weight: float = 1.0
     diversity_weight: float = 1.0
+
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Same lever as SpectroCodecConfig (activity = the clip's frame std here). tangtv frames
+    # are NOT degeneracy-dominated in the diagnostic (all built clips have std >= ~3.8, like the
+    # working spectro modalities) — the video collapse is an ADVERSARIAL-instability failure, not
+    # a quiet-window one — so the trainer leaves `active_bias = 0` (OFF) for tangtv and instead
+    # applies an adversarial warmup + lower adversarial_weight (see train_codec._activity_overrides).
+    # The lever is still exposed here for symmetry / future divertors. Both DEFAULT 0 (OFF).
+    min_activity: float = 0.0       # per-window activity threshold (clip frame std); 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold clip toward active); 0 = OFF
 
     # oracle-gate acceptance thresholds (§4.4) — video analogues.
     gate_stability: float = 0.80        # frame-to-frame code stickiness proxy (see gate note)
@@ -444,6 +469,16 @@ class FastTSCodecConfig:
     entropy_weight: float = 1.0
     diversity_weight: float = 1.0
 
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Same lever as SpectroCodecConfig (activity = the ELM-envelope window's std here). The
+    # filterscopes ELM envelope is degeneracy-dominated in the diagnostic: ~76% of built windows
+    # saturate the log1p ceiling to a CONSTANT envelope (std 0), while the minority ~21% carry
+    # strong structure (env std >= 2.4). Biasing toward env std >= min_activity pulls the batch
+    # onto that learnable minority instead of the flat mass. Both DEFAULT 0 (OFF); the trainer
+    # turns them ON for filterscopes (see fastts_train.main / train_codec._activity_overrides).
+    min_activity: float = 0.0       # per-window activity threshold (envelope std); 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold envelope toward active); 0 = OFF
+
     # oracle-gate acceptance thresholds (§4.4) — fast-TS analogues (same numeric mandates).
     gate_stability: float = 0.80
     gate_persistence: float = 0.50
@@ -597,6 +632,17 @@ class SlowTSCodecConfig:
     # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
     entropy_weight: float = 1.0
     diversity_weight: float = 1.0
+
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Same lever as SpectroCodecConfig, but slow-TS is a MASKED modality, so ACTIVITY here is the
+    # window's PRESENT-FRACTION (mask.mean()), NOT a std. ts_core_density is strongly bimodal in
+    # the diagnostic: median present-fraction ~0.07 (mostly-missing) but ~34% of windows are >=75%
+    # present — so ~2/3 of windows are near-empty. Biasing toward present-fraction >= min_activity
+    # pulls the batch onto the well-observed windows. Both DEFAULT 0 (OFF); the trainer turns them
+    # ON for ts_core_density (see train_codec._activity_overrides). min_activity is a present-
+    # fraction in [0, 1] here (interpretation differs from the std-based codecs by design).
+    min_activity: float = 0.0       # per-window present-fraction threshold in [0,1]; 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
 
     # oracle-gate acceptance thresholds (§4.4) — slow-TS analogues (same fields the shared
     # spike.gate_score / gate.utilization read).

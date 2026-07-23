@@ -57,6 +57,7 @@ from .train_codec import (
     _channels_after_selection,
     _epoch_cycler,
     _shot_paths,
+    _stratified_draw,
 )
 
 DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
@@ -148,6 +149,9 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
         self.min_std = float(min_std)
         self.pair_seed = int(seed)
         self.max_tries = int(max_tries)
+        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
+        self.min_activity = float(getattr(cfg, "min_activity", 0.0))
+        self.active_bias = float(getattr(cfg, "active_bias", 0.0))
 
         # δ-extended span: A covers [t0, t0+CHUNK_S]; B is shifted by up to δ_max. Reserve room
         # for the WHOLE span via chunk_duration_s; step_size_s stays CHUNK_S (50 ms windows).
@@ -181,7 +185,22 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
         Called by the parent's ``__getitem__`` AFTER it has (a) binary-search-mapped the global
         index to ``(file_idx, chunk_idx)`` and (b) set ``self.h5_file`` to this shot's per-worker
         LRU handle. Here ``idx`` is the within-shot ``chunk_idx``.
+
+        With ``cfg.active_bias > 0`` an activity-stratified re-draw
+        (:func:`ignite.train_codec._stratified_draw`) biases toward ELM-envelope windows with std
+        ``>= cfg.min_activity`` (most filterscope windows saturate the envelope ceiling to a
+        constant, std 0; the minority carry the ELM structure). With ``active_bias == 0`` (default)
+        this is byte-identical to the plain build+degenerate-redraw below.
         """
+        return _stratified_draw(
+            idx, self._draw_valid_pair, lambda p: float(p[0].std()),
+            lambda: self._chunks_in_current_shot(idx),
+            min_activity=self.min_activity, active_bias=self.active_bias,
+            max_tries=self.max_tries, seed=self.pair_seed,
+        )
+
+    def _draw_valid_pair(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Build the δ-pair for window ``idx``, re-drawing DEGENERATE windows (the prior path)."""
         pair = self._build_pair(idx)
         if pair is not None:
             return pair
@@ -769,6 +788,10 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cfg.entropy_weight = float(args.entropy_weight)
     if args.consistency_weight is not None:
         cfg.consistency_weight = float(args.consistency_weight)
+    # anti-collapse overrides for filterscopes (envelope activity bias). No-op otherwise; shared
+    # with train_codec.main so `--modality filterscopes` gets the same treatment either entry point.
+    from .train_codec import apply_activity_overrides
+    apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
 
     if args.shots is not None:
         all_shots = [s.strip() for s in args.shots.split(",") if s.strip()]

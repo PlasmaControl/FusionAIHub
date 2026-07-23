@@ -98,6 +98,74 @@ FASTTS_MODALITY = "filterscopes"
 DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
 
 
+# ------------------------------------------------------------------------------------- #
+# per-modality anti-collapse overrides (turned ON only for the 4 collapsing codecs; every
+# OTHER modality keeps its config default, so their byte-identical behavior is preserved).
+# ------------------------------------------------------------------------------------- #
+# Applied to the cfg in ``main()`` after channel-count sizing (like ``modality_channels``). The
+# already-working codecs (ece/bes/mhr/cer_ti/cer_rot/mse/ts_core_temp/ts_tangential_*) are ABSENT
+# here → active_bias stays 0 (stratification OFF, byte-identical) and adv_warmup/adversarial_weight
+# stay at their config defaults. The four failing codecs collapsed to 1 code from step 0 in the
+# real 20k-step runs (frac_codes_used=0.001, minH≈0, env_corr≈0/nan).
+#
+# The thresholds are read off the CPU activity diagnostic (fraction of ACTIVE windows on a spread
+# of real shots):
+#   * co2 (spectro): only ~33% of windows have co2 data at all, and the built log-power windows
+#     have a MEDIAN std of ~0.024 (5-95 pct 0.009-0.318) vs ~0.85 for ece/bes/mhr — i.e. co2 is
+#     degeneracy-dominated (mostly floored at ~-10). min_activity=0.10 selects roughly the top
+#     ~10-20% most-structured windows. co2 ALSO showed adversarial sharpness spikes (13-509 in the
+#     real runs), so it additionally gets the adversarial warmup + lower adversarial_weight below.
+#   * filterscopes (fast-TS): ~76% of built ELM-envelope windows saturate the log1p ceiling to a
+#     CONSTANT (std 0); the minority ~21% are strongly structured (env std >= 2.4). min_activity=0.5
+#     cleanly separates the two (every structured window is >= 2.4). See the REPORT caveat: the
+#     saturation itself is a scale artifact (raw filterscope counts ~1e13-1e15 crush log1p to the
+#     ceiling), so stratification biases onto the learnable minority but does NOT rescale the
+#     envelope — flagged as a residual concern.
+#   * ts_core_density (slow-TS, MASKED): strongly bimodal present-fraction — median ~0.07 but ~34%
+#     of windows are >= 0.75 present. min_activity=0.5 (present-fraction) biases onto the ~38% of
+#     well-observed windows.
+#   * tangtv_lower (video): NOT degeneracy-dominated (every built clip has frame std >= ~3.8, like
+#     the working spectro modalities). Its 20k-step run briefly reached env_corr 0.15 then FELL BACK
+#     with adversarial sharpness spikes (13-509) — an adversarial-instability collapse. So it gets
+#     NO activity stratification (active_bias stays 0) and ONLY the adversarial warmup + lower
+#     adversarial_weight.
+#
+# adv_warmup_steps + adversarial_weight are already cfg-driven inside generator_losses (spectro +
+# video); setting them here changes ONLY the two adversarially-unstable codecs (co2, tangtv_lower).
+_activity_overrides: Dict[str, Dict[str, float]] = {
+    # spectro
+    "co2": {"min_activity": 0.10, "active_bias": 0.5,
+            "adv_warmup_steps": 1500, "adversarial_weight": 0.5},
+    # video (adversarial instability only; NO activity bias)
+    "tangtv_lower": {"adv_warmup_steps": 1500, "adversarial_weight": 0.5},
+    # slow-TS (masked; activity = present-fraction). No discriminator -> no adv knobs.
+    "ts_core_density": {"min_activity": 0.5, "active_bias": 0.5},
+    # fast-TS (envelope std). Envelope saturation dominates; adversarial has been stable here, so
+    # no adv-warmup change — just the activity bias onto the structured minority.
+    "filterscopes": {"min_activity": 0.5, "active_bias": 0.5},
+}
+
+
+def apply_activity_overrides(cfg, modality: str, log_fn=None) -> None:
+    """Set the per-modality anti-collapse overrides on ``cfg`` IN PLACE (no-op if not listed).
+
+    Only the four collapsing codecs appear in :data:`_activity_overrides`; every other modality
+    is left at its config default, so this is a no-op for the already-working codecs. Each field
+    is set only if ``cfg`` actually has it (video / slow-TS lack some adversarial knobs), so a
+    stray field never crashes a codec family that doesn't use it.
+    """
+    ov = _activity_overrides.get(modality)
+    if not ov:
+        return
+    applied = {}
+    for k, v in ov.items():
+        if hasattr(cfg, k):
+            setattr(cfg, k, v)
+            applied[k] = v
+    if log_fn is not None and applied:
+        log_fn(f"[train_codec] anti-collapse overrides for {modality}: {applied}")
+
+
 def _import_multifile():
     """Lazily import the production multi-file dataset + samplers.
 
@@ -199,6 +267,53 @@ def _shot_paths(shots: Sequence[Union[str, int]], data_dir: Union[str, Path]) ->
     return paths
 
 
+# ------------------------------------------------------------------------------------- #
+# activity-stratified re-draw — shared by ALL FOUR codec datasets (anti degenerate-window
+# domination). Wraps a per-item "draw one valid item" callable with a biased re-draw toward
+# ACTIVE windows so the batch is ~50 % active instead of the natural 35-48 %, WITHOUT dropping
+# quiet windows (a below-threshold draw is still ACCEPTED as the fallback, so the codec keeps
+# learning a "quiet" code for Phase-B generalization).
+# ------------------------------------------------------------------------------------- #
+def _stratified_draw(
+    idx: int,
+    draw_valid,          # callable(chunk_idx) -> item  (already re-draws degenerate windows)
+    activity_of,         # callable(item) -> float      (per-modality activity score)
+    n_chunks,            # callable() -> int            (re-draw bound, best-effort)
+    *,
+    min_activity: float,
+    active_bias: float,
+    max_tries: int,
+    seed: int,
+):
+    """Draw one item for global-window ``idx`` with an activity-stratified re-draw.
+
+    Contract (BYTE-IDENTICAL when ``active_bias <= 0``): returns exactly ``draw_valid(idx)`` and
+    performs NO extra RNG / re-draw. This preserves the already-working modalities verbatim.
+
+    When ``active_bias > 0``: draw the base item; if it is already active
+    (``activity_of(item) >= min_activity``) keep it. Otherwise, with probability ``active_bias``,
+    re-draw from up to ``max_tries`` nearby chunks and take the FIRST active one found. If none of
+    the re-draws is active (or the biased coin came up tails), ACCEPT the base item — quiet windows
+    are down-weighted, never dropped. All RNG is seeded from ``idx`` so it is deterministic per
+    item (reproducible across workers / resumes), matching the degenerate-redraw convention.
+    """
+    base = draw_valid(idx)
+    if active_bias <= 0.0:
+        return base                                   # OFF: byte-identical, no extra RNG
+    if float(activity_of(base)) >= min_activity:
+        return base                                   # already active
+    gen = torch.Generator().manual_seed(int(seed) + 90_001 * int(idx) + 13)
+    if float(torch.rand((), generator=gen)) >= active_bias:
+        return base                                   # biased coin tails -> keep quiet window
+    n = max(1, int(n_chunks()))
+    for _ in range(int(max_tries)):
+        alt = int(torch.randint(0, n, (1,), generator=gen).item())
+        cand = draw_valid(alt)
+        if float(activity_of(cand)) >= min_activity:
+            return cand                               # found an active window
+    return base                                       # no active re-draw found -> keep base
+
+
 class CodecPairDataset(TokamakMultiFileDataset):
     """``(spec_a, spec_b)`` δ-shift log-power pairs for ONE spectro modality.
 
@@ -298,6 +413,9 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         self.min_std = float(min_std)
         self.pair_seed = int(seed)
         self.max_tries = int(max_tries)
+        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
+        self.min_activity = float(getattr(cfg, "min_activity", 0.0))
+        self.active_bias = float(getattr(cfg, "active_bias", 0.0))
 
         # δ-extended span the STFT pair needs: A covers [t0, t0+CHUNK_S]; B is shifted by up
         # to δ_max, ending at t0 + CHUNK_S + δ_max. Make the parent reserve room for the WHOLE
@@ -342,7 +460,21 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         Reuses the parent's windowing formula (``t_start = warmup_s + idx * step_size_s``)
         and the parent's :meth:`_load_signal_raw` to pull the RAW δ-extended window, then
         builds the pair via :func:`ignite.data.shift_pair_windows`.
+
+        With ``cfg.active_bias > 0`` an activity-stratified re-draw (:func:`_stratified_draw`)
+        biases the draw toward log-power windows with std ``>= cfg.min_activity`` (co2 is mostly
+        floored). With ``active_bias == 0`` (ece/bes/mhr default) this is byte-identical to the
+        plain build+degenerate-redraw below.
         """
+        return _stratified_draw(
+            idx, self._draw_valid_pair, lambda p: float(p[0].std()),
+            lambda: self._chunks_in_current_shot(idx),
+            min_activity=self.min_activity, active_bias=self.active_bias,
+            max_tries=self.max_tries, seed=self.pair_seed,
+        )
+
+    def _draw_valid_pair(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Build the δ-pair for window ``idx``, re-drawing DEGENERATE windows (the prior path)."""
         pair = self._build_pair(idx)
         if pair is not None:
             return pair
@@ -563,6 +695,9 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         self.min_std = float(min_std)
         self.pair_seed = int(seed)
         self.max_tries = int(max_tries)
+        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
+        self.min_activity = float(getattr(cfg, "min_activity", 0.0))
+        self.active_bias = float(getattr(cfg, "active_bias", 0.0))
 
         paths = _shot_paths(shots, data_dir)
         if not paths:
@@ -596,7 +731,21 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         Called by the parent's ``__getitem__`` AFTER it mapped the global index to
         ``(file_idx, chunk_idx)`` and set ``self.h5_file``. ``idx`` here is the within-shot
         ``chunk_idx``. Reuses the parent's windowing formula + :meth:`_load_movie_raw`.
+
+        With ``cfg.active_bias > 0`` an activity-stratified re-draw biases toward clips with
+        frame std ``>= cfg.min_activity``. In production the trainer leaves ``active_bias == 0``
+        for tangtv (its collapse is adversarial, not degenerate-window — see the config note), so
+        this is byte-identical to the plain build+degenerate-redraw below.
         """
+        return _stratified_draw(
+            idx, self._draw_valid_clip, lambda c: float(c[0].std()),
+            lambda: max(1, self._cumulative_lengths_span()),
+            min_activity=self.min_activity, active_bias=self.active_bias,
+            max_tries=self.max_tries, seed=self.pair_seed,
+        )
+
+    def _draw_valid_clip(self, idx: int):
+        """Build the clip for window ``idx``, re-drawing DEGENERATE windows (the prior path)."""
         clip = self._build_clip(idx)
         if clip is not None:
             return clip
@@ -812,6 +961,10 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         self.codec_cfg = cfg
         self.item_seed = int(seed)
         self.max_tries = int(max_tries)
+        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
+        # For slow-TS (a MASKED modality) "activity" is the window's PRESENT-FRACTION.
+        self.min_activity = float(getattr(cfg, "min_activity", 0.0))
+        self.active_bias = float(getattr(cfg, "active_bias", 0.0))
 
         paths = _shot_paths(shots, data_dir)
         if not paths:
@@ -845,7 +998,21 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         Called by the parent's ``__getitem__`` AFTER it mapped the global index to
         ``(file_idx, chunk_idx)`` and set ``self.h5_file``. ``idx`` here is the within-shot
         ``chunk_idx``. Reuses the parent's windowing formula + :meth:`_load_signal_raw`.
+
+        With ``cfg.active_bias > 0`` an activity-stratified re-draw biases toward windows whose
+        PRESENT-FRACTION (``mask.mean()``) is ``>= cfg.min_activity`` (ts_core_density is mostly
+        near-empty). With ``active_bias == 0`` (default) this is byte-identical to the plain
+        build+degenerate-redraw below.
         """
+        return _stratified_draw(
+            idx, self._draw_valid_window, lambda it: float(it[1].mean()),
+            lambda: max(1, self._cumulative_lengths_span()),
+            min_activity=self.min_activity, active_bias=self.active_bias,
+            max_tries=self.max_tries, seed=self.item_seed,
+        )
+
+    def _draw_valid_window(self, idx: int):
+        """Build the window for ``idx``, re-drawing DEGENERATE windows (the prior path)."""
         item = self._build_window(idx)
         if item is not None:
             return item
@@ -2310,6 +2477,10 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 "(those codecs have no shift-consistency term; see IGNITE_DESIGN §4.3)."
             )
         cfg.consistency_weight = float(args.consistency_weight)
+
+    # anti-collapse overrides for the 4 collapsing codecs (co2 / tangtv_lower / ts_core_density /
+    # filterscopes). No-op for every other (already-working) modality — see _activity_overrides.
+    apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
 
     # resolve the train + disjoint eval shot lists (rank 0 discovers; the list is
     # deterministic from data_dir + sort so every rank derives the same split).
