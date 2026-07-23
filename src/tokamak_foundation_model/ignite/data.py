@@ -39,9 +39,11 @@ import torch
 
 from .config import (
     CHUNK_S,
+    FASTTS_FS,
     STFT_FS,
     STFT_HOP,
     STFT_N_FFT,
+    FastTSCodecConfig,
     SpectroCodecConfig,
 )
 
@@ -266,6 +268,188 @@ def shift_pair_windows(
     if return_delta:
         return spec_a, spec_b, delta_ms
     return spec_a, spec_b
+
+
+# =========================================================================== #
+# Fast-TS (filterscopes) — ELM ACTIVITY ENVELOPE transform + δ-shift pair.
+# =========================================================================== #
+# Design (docs/IGNITE_DESIGN.md §4.3): the fast-TS codec's statistic is the ELM ACTIVITY
+# ENVELOPE (rate / amplitude), NOT the raw spike waveform. `elm_envelope` maps a raw
+# filterscope window (C, W) -> a coarse (C, E) envelope by:
+#   1. detrend      — subtract a slow moving-mean baseline (removes DC / slow drift),
+#   2. rectify      — square the detrended signal (energy),
+#   3. RMS-pool     — mean over non-overlapping `pool`-sample bins, then sqrt (per-bin RMS),
+#   4. compress     — log1p(env / eps) so the dynamic range of ELM bursts is bounded.
+# The sub-bin spike TIMING (which sample within a `pool`-bin a spike lands on) is discarded —
+# that is the realization nuisance, the fast-TS analogue of STFT phase. The per-bin burst
+# amplitude and the WHEN of a burst at bin resolution are kept — that is the statistic.
+#
+# Sanitation mirrors `log_power_stft`: filterscopes can carry non-finite / absurd sentinel
+# samples; they are mapped to 0 (→ a quiet envelope) so a pathological window can never inject
+# inf/nan into the codec loss.
+_FASTTS_ENV_FLOOR: float = 0.0        # log1p(0) = 0: a silent (no-activity) envelope
+_FASTTS_ENV_CEIL: float = 30.0        # sane upper bound on log1p(env/eps); guards pathological bins
+
+
+def _moving_mean(x: torch.Tensor, win: int) -> torch.Tensor:
+    """Centered moving-mean along the last axis via a length-`win` box filter (reflect-pad).
+
+    ``x`` is (..., W); returns the same shape. ``win <= 1`` is the identity. Used to estimate
+    the slow baseline that is subtracted before rectification (the detrend step). Reflect
+    padding keeps the ends from being pulled toward zero.
+    """
+    if win <= 1:
+        return x
+    *lead, W = x.shape
+    flat = x.reshape(-1, 1, W)                                   # (N, 1, W)
+    pad = win // 2
+    # reflect padding requires pad < W; clamp for tiny test windows.
+    pad = min(pad, max(0, W - 1))
+    if pad > 0:
+        flat = torch.nn.functional.pad(flat, (pad, pad), mode="reflect")
+    kernel = torch.ones(1, 1, win, dtype=flat.dtype, device=flat.device) / float(win)
+    out = torch.nn.functional.conv1d(flat, kernel)              # 'valid' conv over padded input
+    # conv1d over the reflect-padded signal returns W - win + 1 + 2*pad; crop/pad to W.
+    out = out[..., :W] if out.shape[-1] >= W else torch.nn.functional.pad(
+        out, (0, W - out.shape[-1]), mode="replicate"
+    )
+    return out.reshape(*lead, W)
+
+
+def elm_envelope(raw: ArrayLike, cfg: FastTSCodecConfig) -> torch.Tensor:
+    """ELM activity envelope of raw filterscope windows — the codec input/target (§4.3).
+
+    Parameters
+    ----------
+    raw : (B, C, W) tensor or ndarray
+        Raw multi-channel filterscope windows at ``FASTTS_FS``. ``W`` need not equal
+        ``cfg.env_bins * cfg.pool`` — the pooling crops the trailing remainder so any ``W``
+        that is at least ``cfg.pool`` samples is accepted, and the result is cropped / zero
+        (silence-floor) padded in the envelope-bin axis to exactly ``cfg.env_bins``.
+    cfg : FastTSCodecConfig
+        Provides ``pool`` (RMS bin size), ``baseline_win`` (detrend window), ``env_eps``
+        (log1p reference) and ``env_bins`` (output length).
+
+    Returns
+    -------
+    (B, C, cfg.env_bins) float32 tensor
+        The log1p-compressed per-bin RMS envelope, non-finite-sanitized and clamped to a
+        sane band.
+    """
+    x = _as_tensor(raw)
+    if x.dim() != 3:
+        raise ValueError(f"elm_envelope expects (B, C, W); got shape {tuple(x.shape)}")
+    # Sanitize raw (mirror log_power_stft): map non-finite / absurd-magnitude samples to 0 so
+    # a sentinel/garbage window becomes a quiet envelope instead of inf/nan.
+    x = torch.where(torch.isfinite(x) & (x.abs() < 1e20), x, torch.zeros_like(x))
+
+    # 1. detrend: subtract the slow moving-mean baseline.
+    if cfg.baseline_win and cfg.baseline_win > 1:
+        x = x - _moving_mean(x, int(cfg.baseline_win))
+
+    # 2. rectify (energy).
+    energy = x.pow(2)
+
+    # 3. RMS-pool over non-overlapping `pool`-sample bins (crop the trailing remainder).
+    pool = int(cfg.pool)
+    B, C, W = energy.shape
+    n_bins = W // pool
+    if n_bins < 1:
+        raise ValueError(f"elm_envelope: window W={W} shorter than pool={pool}")
+    energy = energy[..., : n_bins * pool].reshape(B, C, n_bins, pool)
+    rms = energy.mean(dim=-1).clamp_min(0.0).sqrt()             # (B, C, n_bins) per-bin RMS
+
+    # 4. compress: log1p(rms / eps).
+    env = torch.log1p(rms / float(cfg.env_eps))
+
+    # sanitize + clamp, then crop / silence-floor-pad to cfg.env_bins.
+    env = torch.nan_to_num(env, nan=_FASTTS_ENV_FLOOR,
+                           posinf=_FASTTS_ENV_CEIL, neginf=_FASTTS_ENV_FLOOR)
+    env = env.clamp(_FASTTS_ENV_FLOOR, _FASTTS_ENV_CEIL)
+    return _crop_pad_env(env, cfg.env_bins)
+
+
+def _crop_pad_env(env: torch.Tensor, env_bins: int) -> torch.Tensor:
+    """Crop or right-pad the (..., E) envelope to (..., env_bins) with the silence floor."""
+    E = env.shape[-1]
+    if E == env_bins:
+        return env
+    if E > env_bins:
+        return env[..., :env_bins]
+    pad = env.new_full((*env.shape[:-1], env_bins - E), _FASTTS_ENV_FLOOR)
+    return torch.cat([env, pad], dim=-1)
+
+
+def fastts_raw_pair_windows(
+    raw_shot: ArrayLike,
+    t0: float,
+    cfg: FastTSCodecConfig,
+    delta_ms: float,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Extract the two RAW filterscope windows of a δ-shift consistency pair (no envelope).
+
+    The fast-TS analogue of :func:`raw_pair_windows`: window A = ``[t0, t0 + CHUNK_S]``;
+    window B = ``[t0 + δ, t0 + CHUNK_S + δ]`` where ``δ = round(delta_ms · FASTTS_FS / 1000)``
+    samples (at the filterscope rate, NOT the spectro STFT rate). Both windows are
+    ``cfg.window_samples`` long.
+    """
+    if delta_ms < 0.0:
+        raise ValueError(f"delta_ms must be >= 0, got {delta_ms}")
+    x = _as_tensor(raw_shot)
+    if x.dim() != 2:
+        raise ValueError(f"raw_shot must be (C, W_full); got shape {tuple(x.shape)}")
+
+    W = cfg.window_samples
+    start_a = round(t0 * FASTTS_FS)
+    shift = round(delta_ms * FASTTS_FS / 1000.0)
+    start_b = start_a + shift
+
+    total = x.shape[-1]
+    if start_a < 0:
+        raise ValueError(f"t0={t0}s maps to negative sample index {start_a}")
+    if start_b + W > total:
+        raise ValueError(
+            f"shifted window [start={start_b}, end={start_b + W}) overruns shot of "
+            f"{total} samples (t0={t0}s, delta_ms={delta_ms}, W={W})"
+        )
+    return x[..., start_a : start_a + W], x[..., start_b : start_b + W]
+
+
+def fastts_shift_pair_windows(
+    raw_shot: ArrayLike,
+    t0: float,
+    cfg: FastTSCodecConfig,
+    delta_ms: Union[float, None] = None,
+    *,
+    return_delta: bool = False,
+    seed: Union[int, None] = None,
+):
+    """Build a δ-shift consistency PAIR of ELM envelopes from a raw filterscope shot.
+
+    The fast-TS analogue of :func:`shift_pair_windows`. The two windows share ~all ELM
+    activity (the envelope statistic) but differ in sub-bin spike TIMING (the realization),
+    so ``‖enc(env_a) − enc(env_b)‖²`` on the PRE-FSQ features trains timing-invariant
+    (statistics-first) features. δ ~ ``U`` over ``cfg.consistency_delta_ms`` when not given.
+
+    Returns
+    -------
+    (env_a, env_b)               if ``return_delta`` is False
+    (env_a, env_b, delta_ms)     if ``return_delta`` is True
+        ``env_*`` are ``(C, cfg.env_bins)`` envelope tensors. (Channel count follows
+        ``raw_shot``'s leading dim.)
+    """
+    if delta_ms is None:
+        lo, hi = cfg.consistency_delta_ms
+        gen = np.random.default_rng(seed)
+        delta_ms = float(gen.uniform(lo, hi))
+
+    win_a, win_b = fastts_raw_pair_windows(raw_shot, t0=t0, cfg=cfg, delta_ms=delta_ms)
+    env_a = elm_envelope(win_a.unsqueeze(0), cfg)[0]  # (C, E)
+    env_b = elm_envelope(win_b.unsqueeze(0), cfg)[0]  # (C, E)
+
+    if return_delta:
+        return env_a, env_b, delta_ms
+    return env_a, env_b
 
 
 # --------------------------------------------------------------------------- #

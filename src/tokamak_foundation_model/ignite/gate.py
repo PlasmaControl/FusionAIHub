@@ -33,7 +33,16 @@ from typing import Dict, Optional
 
 import numpy as np
 
-__all__ = ["stability", "persistence", "forecastability", "decode_fidelity", "utilization"]
+__all__ = [
+    "stability",
+    "persistence",
+    "forecastability",
+    "decode_fidelity",
+    "video_decode_fidelity",
+    "slowts_decode_fidelity",
+    "fastts_decode_fidelity",
+    "utilization",
+]
 
 
 # --------------------------------------------------------------------------------------
@@ -408,6 +417,282 @@ def decode_fidelity(recon, target, peak_k: float = 1.0) -> Dict[str, float]:
     peak_f1 = _peak_overlap_f1(r, t, k=peak_k)
     hf_r = _hf_gradient_energy(r)
     hf_t = _hf_gradient_energy(t)
+    sharpness = float(hf_r / hf_t) if hf_t > 1e-12 else float("nan")
+
+    return {
+        "envelope_corr": env_corr,
+        "peak_f1": peak_f1,
+        "sharpness": sharpness,
+        "hf_energy_recon": hf_r,
+        "hf_energy_target": hf_t,
+    }
+
+
+# --------------------------------------------------------------------------------------
+# 4b. video_decode_fidelity — mode-structure match + sharpness for VIDEO reconstructions
+# --------------------------------------------------------------------------------------
+def _video_pixel_profile(vid: np.ndarray) -> np.ndarray:
+    """Per-pixel time-averaged intensity: mean over the time axis, per (batch, channel, H, W).
+
+    Input is a video ``(B, C, T, H, W)``. Averaging over time gives the ``(B, C, H, W)``
+    spatial *intensity map* — "where the divertor light sits" — the persistent spatial
+    statistic the video codec is supposed to preserve (the divertor-video analogue of the
+    spectrogram's per-frequency power envelope in :func:`decode_fidelity`).
+    """
+    return vid.mean(axis=2)  # (B, C, H, W)
+
+
+def _flatten_profile(prof: np.ndarray) -> np.ndarray:
+    """(B, C, H, W) intensity map -> (B*C, H*W) rows for per-row correlation / peak stats."""
+    B, C, H, W = prof.shape
+    return prof.reshape(B * C, H * W)
+
+
+def _profile_correlation(recon: np.ndarray, target: np.ndarray) -> float:
+    """Mean Pearson correlation of the per-pixel time-averaged intensity map over (B, C)."""
+    er = _flatten_profile(_video_pixel_profile(recon))
+    et = _flatten_profile(_video_pixel_profile(target))
+    corrs = []
+    for i in range(er.shape[0]):
+        a = er[i] - er[i].mean()
+        b = et[i] - et[i].mean()
+        denom = np.sqrt((a * a).sum() * (b * b).sum())
+        corrs.append(0.0 if denom <= 1e-12 else float((a * b).sum() / denom))
+    return float(np.mean(corrs))
+
+
+def _profile_peak_f1(recon: np.ndarray, target: np.ndarray, k: float = 1.0) -> float:
+    """F1 of bright-region (peak) overlap between recon and target intensity maps."""
+    er = _flatten_profile(_video_pixel_profile(recon))
+    et = _flatten_profile(_video_pixel_profile(target))
+    pr = _peak_mask(er, k)  # reuse the spectro peak detector: > row-mean + k*row-std
+    pt = _peak_mask(et, k)
+    tp = np.logical_and(pr, pt).sum(axis=1).astype(np.float64)
+    fp = np.logical_and(pr, ~pt).sum(axis=1).astype(np.float64)
+    fn = np.logical_and(~pr, pt).sum(axis=1).astype(np.float64)
+    denom = 2 * tp + fp + fn
+    f1_rows = np.where(denom > 0, 2 * tp / np.maximum(denom, 1e-12), 1.0)
+    return float(f1_rows.mean())
+
+
+def _video_hf_gradient_energy(vid: np.ndarray) -> float:
+    """Total spatial+temporal high-frequency gradient energy (sum of squared diffs).
+
+    Sharpness proxy for video: first differences along the two spatial axes AND the time
+    axis. A blurred / mean-collapsed reconstruction (the failure a strong pixel-MSE would
+    cause) has far less gradient energy than the sharp, structure-bearing target.
+    """
+    dh = np.diff(vid, axis=-2)   # height
+    dw = np.diff(vid, axis=-1)   # width
+    dt = np.diff(vid, axis=2)    # time
+    return float((dh ** 2).sum() + (dw ** 2).sum() + (dt ** 2).sum())
+
+
+def video_decode_fidelity(recon, target, peak_k: float = 1.0) -> Dict[str, float]:
+    """Video analogue of :func:`decode_fidelity` — spatial-structure match + sharpness.
+
+    Operates on ``(B, C, T, H, W)`` frames. Returns the SAME keys as :func:`decode_fidelity`
+    (``envelope_corr`` / ``peak_f1`` / ``sharpness`` / raw ``hf_energy_*``) so the composite
+    :func:`~ignite.spike.gate_score` and the gate plumbing consume it unchanged, but the
+    "envelope" here is the per-pixel time-averaged intensity map (the persistent spatial
+    statistic) rather than the per-frequency power envelope:
+
+      * ``envelope_corr`` — mean Pearson correlation of the time-averaged intensity map
+        (where the light sits). ≈ 1 when spatial structure is preserved.
+      * ``peak_f1``       — F1 of bright-region overlap between recon and target maps.
+      * ``sharpness``     — ratio of spatial+temporal HF gradient energy (recon / target).
+        ≈ 1 = not blurred; < 1 = mean-collapsed; > 1 = noisier/sharper than the target.
+    """
+    r = _to_numpy(recon).astype(np.float64)
+    t = _to_numpy(target).astype(np.float64)
+    if r.shape != t.shape:
+        raise ValueError(f"video_decode_fidelity: shape mismatch {r.shape} vs {t.shape}")
+    if r.ndim != 5:
+        raise ValueError(f"video_decode_fidelity expects (B, C, T, H, W); got {r.shape}")
+
+    env_corr = _profile_correlation(r, t)
+    peak_f1 = _profile_peak_f1(r, t, k=peak_k)
+    hf_r = _video_hf_gradient_energy(r)
+    hf_t = _video_hf_gradient_energy(t)
+    sharpness = float(hf_r / hf_t) if hf_t > 1e-12 else float("nan")
+
+    return {
+        "envelope_corr": env_corr,
+        "peak_f1": peak_f1,
+        "sharpness": sharpness,
+        "hf_energy_recon": hf_r,
+        "hf_energy_target": hf_t,
+    }
+
+
+# --------------------------------------------------------------------------------------
+# 4c. slowts_decode_fidelity — profile-structure match + sharpness for slow-TS recons
+# --------------------------------------------------------------------------------------
+def _slowts_profile(sig: np.ndarray) -> np.ndarray:
+    """Per-position time-averaged value: mean over the time axis, per (batch, position).
+
+    Input is a slow-TS window ``(B, C, T)`` — ``C`` profile positions × ``T`` time samples.
+    Averaging over time gives the ``(B, C)`` *profile shape* — "the value at each position" —
+    the persistent statistic the slow-TS codec is supposed to preserve (the smooth-profile
+    analogue of the spectrogram's per-frequency power envelope in :func:`decode_fidelity` and
+    the video's per-pixel intensity map in :func:`video_decode_fidelity`).
+    """
+    return sig.mean(axis=-1)  # (B, C)
+
+
+def _slowts_profile_masked(sig: np.ndarray, mask: Optional[np.ndarray]) -> np.ndarray:
+    """Per-position time-average over VALID samples only; falls back to the plain mean.
+
+    ``mask`` is a (B, C, T) validity mask (1 = valid). A position with no valid samples in
+    the window gets its plain time-mean (which is the zero/NaN-fill value) — harmless, since
+    the correlation is over positions and a fully-missing position is a constant either way.
+    """
+    if mask is None:
+        return _slowts_profile(sig)
+    m = mask.astype(np.float64)
+    denom = m.sum(axis=-1)                       # (B, C)
+    num = (sig * m).sum(axis=-1)                 # (B, C)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        prof = np.where(denom > 0, num / np.maximum(denom, 1e-12), sig.mean(axis=-1))
+    return prof
+
+
+def slowts_decode_fidelity(recon, target, mask=None, peak_k: float = 1.0) -> Dict[str, float]:
+    """Slow-TS analogue of :func:`decode_fidelity` — profile-structure match + sharpness.
+
+    Operates on ``(B, C, T)`` slow-TS windows. Returns the SAME keys as
+    :func:`decode_fidelity` (``envelope_corr`` / ``peak_f1`` / ``sharpness`` / raw
+    ``hf_energy_*``) so the composite :func:`~ignite.spike.gate_score` and the gate plumbing
+    consume it unchanged, but the "envelope" here is the per-position time-averaged profile
+    (the smooth statistic) rather than a per-frequency power envelope:
+
+      * ``envelope_corr`` — mean Pearson correlation of the per-position time-averaged profile
+        (the profile shape). ≈ 1 when profile structure is preserved.
+      * ``peak_f1``       — F1 of high-value-position overlap between recon and target profiles.
+      * ``sharpness``     — ratio of position+time HF gradient energy (recon / target).
+        ≈ 1 = profile detail preserved; < 1 = over-smoothed / mean-collapsed.
+
+    ``mask`` (optional, (B, C, T) validity, 1 = valid) makes the per-position profile average
+    over VALID samples only, so beam-off / not-firing missing samples do not corrupt the
+    statistic. The HF-gradient sharpness is computed on the raw (zero/NaN-filled) window: it is
+    a relative recon/target ratio, so the shared fill cancels.
+    """
+    r = _to_numpy(recon).astype(np.float64)
+    t = _to_numpy(target).astype(np.float64)
+    if r.shape != t.shape:
+        raise ValueError(f"slowts_decode_fidelity: shape mismatch {r.shape} vs {t.shape}")
+    if r.ndim != 3:
+        raise ValueError(f"slowts_decode_fidelity expects (B, C, T); got {r.shape}")
+    m = _to_numpy(mask) if mask is not None else None
+    if m is not None and m.shape != r.shape:
+        raise ValueError(
+            f"slowts_decode_fidelity: mask shape {m.shape} != signal shape {r.shape}"
+        )
+
+    er = _slowts_profile_masked(r, m)   # (B, C)
+    et = _slowts_profile_masked(t, m)
+    # per-row (per-sample) Pearson correlation of the (C,) profile vectors.
+    corrs = []
+    for i in range(er.shape[0]):
+        a = er[i] - er[i].mean()
+        b = et[i] - et[i].mean()
+        denom = np.sqrt((a * a).sum() * (b * b).sum())
+        corrs.append(0.0 if denom <= 1e-12 else float((a * b).sum() / denom))
+    env_corr = float(np.mean(corrs))
+
+    # peak/high-value-position overlap F1 (reuse the shared threshold detector on the profiles).
+    pr = _peak_mask(er, peak_k)
+    pt = _peak_mask(et, peak_k)
+    tp = np.logical_and(pr, pt).sum(axis=1).astype(np.float64)
+    fp = np.logical_and(pr, ~pt).sum(axis=1).astype(np.float64)
+    fn = np.logical_and(~pr, pt).sum(axis=1).astype(np.float64)
+    denom = 2 * tp + fp + fn
+    f1_rows = np.where(denom > 0, 2 * tp / np.maximum(denom, 1e-12), 1.0)
+    peak_f1 = float(f1_rows.mean())
+
+    # sharpness: position + time HF gradient energy ratio (recon / target).
+    def _hf(v: np.ndarray) -> float:
+        dc = np.diff(v, axis=1)   # along position
+        dt = np.diff(v, axis=2)   # along time
+        return float((dc ** 2).sum() + (dt ** 2).sum())
+
+    hf_r = _hf(r)
+    hf_t = _hf(t)
+    sharpness = float(hf_r / hf_t) if hf_t > 1e-12 else float("nan")
+
+    return {
+        "envelope_corr": env_corr,
+        "peak_f1": peak_f1,
+        "sharpness": sharpness,
+        "hf_energy_recon": hf_r,
+        "hf_energy_target": hf_t,
+    }
+
+
+# --------------------------------------------------------------------------------------
+# 4d. fastts_decode_fidelity — ELM-envelope-structure match + sharpness for fast-TS recons
+# --------------------------------------------------------------------------------------
+def fastts_decode_fidelity(recon, target, peak_k: float = 1.0) -> Dict[str, float]:
+    """Fast-TS analogue of :func:`decode_fidelity` — ELM-envelope match + sharpness.
+
+    Operates on the ELM ACTIVITY ENVELOPE ``(B, C, E)`` (E = envelope-time bins), NOT the raw
+    spike waveform (docs/IGNITE_DESIGN.md §4.3). Returns the SAME keys as
+    :func:`decode_fidelity` (``envelope_corr`` / ``peak_f1`` / ``sharpness`` / raw
+    ``hf_energy_*``) so the composite :func:`~ignite.spike.gate_score` and the gate plumbing
+    consume it unchanged. Unlike :func:`slowts_decode_fidelity` — which time-averages to a
+    per-position profile — fast-TS's whole statistic IS the WHEN-and-how-much of ELM activity
+    over time, so the metrics operate on the full per-channel envelope-time CURVE:
+
+      * ``envelope_corr`` — mean Pearson correlation of the per-channel envelope curve over the
+        envelope-time axis (does the recon put activity at the same bins, with the same
+        relative amplitude?). ≈ 1 when the ELM activity timing/amplitude is preserved.
+      * ``peak_f1``       — F1 of high-activity-bin (burst) overlap between recon and target
+        envelope curves (the ELM-burst-detection analogue of spectro mode-peak overlap).
+      * ``sharpness``     — ratio of time-axis HF gradient energy (recon / target). ≈ 1 =
+        burst edges preserved; < 1 = over-smoothed / mean-collapsed envelope.
+
+    A mode-bearing (burst-detection) metric is natural here (``peak_f1`` over the envelope's
+    high-activity bins), satisfying §4.4's "a burst/ELM-relevant metric if natural".
+    """
+    r = _to_numpy(recon).astype(np.float64)
+    t = _to_numpy(target).astype(np.float64)
+    if r.shape != t.shape:
+        raise ValueError(f"fastts_decode_fidelity: shape mismatch {r.shape} vs {t.shape}")
+    if r.ndim != 3:
+        raise ValueError(f"fastts_decode_fidelity expects (B, C, E); got {r.shape}")
+
+    B, C, E = r.shape
+    rr = r.reshape(B * C, E)
+    tt = t.reshape(B * C, E)
+
+    # per-channel Pearson correlation of the envelope-time CURVE (not time-averaged).
+    corrs = []
+    for i in range(B * C):
+        a = rr[i] - rr[i].mean()
+        b = tt[i] - tt[i].mean()
+        denom = np.sqrt((a * a).sum() * (b * b).sum())
+        # A flat envelope curve (no activity) has no structure to correlate; treat as 0.
+        corrs.append(0.0 if denom <= 1e-12 else float((a * b).sum() / denom))
+    env_corr = float(np.mean(corrs))
+
+    # burst-overlap F1: a bin is a "burst" if its activity is > row-mean + k*row-std
+    # (reuse the shared threshold detector on the envelope curves).
+    pr = _peak_mask(rr, peak_k)
+    pt = _peak_mask(tt, peak_k)
+    tp = np.logical_and(pr, pt).sum(axis=1).astype(np.float64)
+    fp = np.logical_and(pr, ~pt).sum(axis=1).astype(np.float64)
+    fn = np.logical_and(~pr, pt).sum(axis=1).astype(np.float64)
+    denom = 2 * tp + fp + fn
+    f1_rows = np.where(denom > 0, 2 * tp / np.maximum(denom, 1e-12), 1.0)
+    peak_f1 = float(f1_rows.mean())
+
+    # sharpness: time-axis HF gradient energy ratio (recon / target) — burst-edge preservation.
+    def _hf(v: np.ndarray) -> float:
+        dt = np.diff(v, axis=-1)   # along the envelope-time axis
+        return float((dt ** 2).sum())
+
+    hf_r = _hf(r)
+    hf_t = _hf(t)
     sharpness = float(hf_r / hf_t) if hf_t > 1e-12 else float("nan")
 
     return {

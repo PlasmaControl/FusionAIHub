@@ -1,0 +1,517 @@
+"""CPU TDD spec for the IGNITE Phase-A fast-TS (filterscopes) ELM-envelope codec family.
+
+Mirrors the spectro / video codec tests but for the fast-TS pieces (docs/IGNITE_DESIGN.md
+§4.3 — "hardest; statistic = ELM ACTIVITY ENVELOPE, NOT spike timing"):
+
+    data.elm_envelope(raw (B,C,W), cfg) -> envelope (B, C, E)        [the codec target]
+    data.fastts_shift_pair_windows(raw_shot, t0, cfg, δ) -> (env_a, env_b)  [δ-shift pair]
+    fastts_nets.FastTSEncoder(cfg)(x (B,C,E)) -> feats (B, n_tok, d_model)
+    fastts_nets.FastTSDecoder(cfg)(quant (B,n_tok,d_model)) -> recon (B, C, E)
+    fastts_codec.FastTSCodec(cfg).forward(x) -> dict(recon, feats, quant, codes)
+    fastts_codec.FastTSCodec.generator_losses(x, x_shift, disc, cfg, step) -> dict(total,...)
+    fastts_discriminator.Env1DPatchGAN(cfg)(x) -> list of 1-D patch-score maps
+    gate.fastts_decode_fidelity(recon, target) -> dict(envelope_corr, peak_f1, sharpness)
+
+    fastts_train.FastTSCodecPairDataset  (subclass of TokamakMultiFileDataset)
+    fastts_train.fastts_compute_gate / fastts_train.train_fastts_codec
+
+Small synthetic tensors + tiny SYNTHETIC filterscopes HDF5 shots (spiky ELM-like signals)
+only. CPU. No SLURM / GPU / real data.
+
+Run:
+    .pixi/envs/default/bin/python -m pytest tests/ignite/test_fastts_codec.py -q
+"""
+from __future__ import annotations
+
+import inspect
+import math
+from pathlib import Path
+
+import h5py
+import numpy as np
+import pytest
+import torch
+
+from tokamak_foundation_model.data.multi_file_dataset import TokamakMultiFileDataset
+from tokamak_foundation_model.ignite import data as idata
+from tokamak_foundation_model.ignite import fastts_train as ft
+from tokamak_foundation_model.ignite import gate, spike
+from tokamak_foundation_model.ignite.config import (
+    FASTTS_ENV_BINS,
+    FASTTS_FS,
+    FASTTS_WINDOW,
+    FastTSCodecConfig,
+)
+from tokamak_foundation_model.ignite.fastts_codec import FastTSCodec
+from tokamak_foundation_model.ignite.fastts_discriminator import Env1DPatchGAN
+from tokamak_foundation_model.ignite.fastts_nets import FastTSDecoder, FastTSEncoder
+
+
+# --------------------------------------------------------------------------------------- #
+# tiny configs
+# --------------------------------------------------------------------------------------- #
+def _small_cfg(channels: int = 8) -> FastTSCodecConfig:
+    """Small transformer + small envelope grid (divisible patching)."""
+    return FastTSCodecConfig(
+        channels=channels,
+        env_bins=20,
+        patch_e=5,          # -> 4 env patches => n_tok = 4
+        pool=10,
+        baseline_win=8,
+        d_model=32,
+        enc_depth=1,
+        dec_depth=1,
+        heads=2,
+        fsq_levels=[4, 4, 3],
+    )
+
+
+# --------------------------------------------------------------------------------------- #
+# config geometry
+# --------------------------------------------------------------------------------------- #
+def test_config_geometry_and_tokens():
+    cfg = _small_cfg()
+    assert cfg.n_env_patch == 4
+    assert cfg.n_tok == 4
+    assert cfg.fsq_dim == 3 and cfg.codebook_size == 4 * 4 * 3
+
+    # production default: 50 env bins (1 ms each over a 50 ms window), 10 tokens, 1000-code FSQ.
+    prod = FastTSCodecConfig()
+    assert prod.env_bins == FASTTS_ENV_BINS == 50
+    assert prod.channels == 8
+    assert prod.n_tok == 10
+    assert prod.codebook_size == 1000 and prod.fsq_dim == 4
+    # window_samples matches the filterscopes 50 ms window at 10 kHz.
+    assert prod.window_samples == FASTTS_WINDOW == round(0.05 * FASTTS_FS) == 500
+    assert prod.env_bins * prod.pool == prod.window_samples
+
+
+def test_config_rejects_indivisible_patch():
+    with pytest.raises(AssertionError):
+        FastTSCodecConfig(env_bins=50, patch_e=7)  # 50 % 7 != 0
+
+
+# --------------------------------------------------------------------------------------- #
+# ELM-envelope transform — correctness + sanitization
+# --------------------------------------------------------------------------------------- #
+def _elm_raw(n_ch: int, W: int, burst_bins, pool: int, seed: int = 0) -> torch.Tensor:
+    """Synthetic ELM-like raw signal: quiet baseline + high-frequency spike BURSTS in bins.
+
+    ``burst_bins`` is an iterable of (pool-bin index) locations that get an ELM burst — a
+    dense, high-amplitude oscillation filling a ~2-bin span around the bin (mimicking a real
+    ELM: many fast spikes over a short time, not a single delta). The burst amplitude ENVELOPE
+    is therefore stable under a sub-bin (few-sample) time shift — the statistic — while the
+    exact sample-level waveform is a realization that a δ-shift moves. Returns (n_ch, W).
+    """
+    gen = torch.Generator().manual_seed(seed)
+    x = 0.02 * torch.randn(n_ch, W, generator=gen)
+    t = torch.arange(W, dtype=torch.float32)
+    for bin_idx in burst_bins:
+        center = (bin_idx + 0.5) * pool
+        # Gaussian activity window ~2 bins wide, filled with a fast oscillation (dense spikes).
+        win = torch.exp(-0.5 * ((t - center) / pool) ** 2)          # (W,) burst envelope
+        carrier = torch.sin(2.0 * math.pi * (t / 2.5) + float(torch.rand((), generator=gen)))
+        burst = 5.0 * win * carrier
+        x = x + burst.unsqueeze(0)  # same burst timing across channels; noise differs
+    return x
+
+
+def test_elm_envelope_shape_and_burst_localization():
+    cfg = _small_cfg()
+    W = cfg.env_bins * cfg.pool  # 200
+    burst_bins = [3, 12]
+    raw = _elm_raw(cfg.channels, W, burst_bins, cfg.pool, seed=1).unsqueeze(0)  # (1,C,W)
+    env = idata.elm_envelope(raw, cfg)
+    assert env.shape == (1, cfg.channels, cfg.env_bins)
+    assert torch.isfinite(env).all()
+    assert (env >= 0).all()  # log1p of a non-negative RMS is non-negative
+    # the burst bins must carry the largest activity envelope (spikes localized there).
+    mean_over_ch = env[0].mean(dim=0)  # (E,)
+    topk = set(torch.topk(mean_over_ch, k=len(burst_bins)).indices.tolist())
+    assert set(burst_bins).issubset(topk), (
+        f"burst bins {burst_bins} should be the peaks; got top {topk}"
+    )
+
+
+def test_elm_envelope_sanitizes_nonfinite_and_absurd():
+    cfg = _small_cfg()
+    W = cfg.env_bins * cfg.pool
+    raw = _elm_raw(cfg.channels, W, [5], cfg.pool, seed=2)
+    # inject NaN / inf / float32-max sentinel garbage
+    raw[0, 10] = float("nan")
+    raw[1, 20] = float("inf")
+    raw[2, 30] = -float("inf")
+    raw[3, 40] = 3.0e38
+    env = idata.elm_envelope(raw.unsqueeze(0), cfg)
+    assert torch.isfinite(env).all(), "garbage samples must be sanitized to finite envelope"
+    assert (env <= 30.0 + 1e-4).all()  # clamped to the sane ceiling
+
+
+def test_elm_envelope_crops_pads_to_env_bins():
+    cfg = _small_cfg()
+    pool = cfg.pool
+    # a window LONGER than env_bins*pool -> cropped; SHORTER -> silence-floor padded.
+    long_raw = torch.randn(1, cfg.channels, (cfg.env_bins + 5) * pool)
+    short_raw = torch.randn(1, cfg.channels, (cfg.env_bins - 4) * pool)
+    assert idata.elm_envelope(long_raw, cfg).shape[-1] == cfg.env_bins
+    env_short = idata.elm_envelope(short_raw, cfg)
+    assert env_short.shape[-1] == cfg.env_bins
+    # the padded tail is the silence floor (0.0).
+    assert torch.allclose(env_short[..., -4:], torch.zeros_like(env_short[..., -4:]))
+
+
+def test_elm_envelope_rejects_bad_ndim():
+    cfg = _small_cfg()
+    with pytest.raises(ValueError):
+        idata.elm_envelope(torch.randn(cfg.channels, 200), cfg)  # (C,W) not (B,C,W)
+
+
+# --------------------------------------------------------------------------------------- #
+# δ-shift pair — same statistic, different realization
+# --------------------------------------------------------------------------------------- #
+def test_fastts_shift_pair_shapes_and_similarity():
+    cfg = _small_cfg()
+    # a raw shot long enough to slice [t0, t0+CHUNK_S+δ]. Use several windows worth.
+    W_full = cfg.window_samples * 4
+    burst_bins = [b for b in range(0, cfg.env_bins, 3)]
+    shot = _elm_raw(cfg.channels, W_full, burst_bins, cfg.pool, seed=3)
+    t0 = 0.05  # start 1 window in
+    # A SUB-BIN shift (0.2 ms = 2 samples < the 10-sample / 1 ms pool bin) is exactly the
+    # realization nuisance the envelope discards: the raw waveform moves but the per-bin RMS
+    # activity is preserved, so the two envelope curves stay strongly correlated.
+    env_a, env_b = idata.fastts_shift_pair_windows(shot, t0=t0, cfg=cfg, delta_ms=0.2)
+    assert env_a.shape == (cfg.channels, cfg.env_bins)
+    assert env_b.shape == (cfg.channels, cfg.env_bins)
+    assert torch.isfinite(env_a).all() and torch.isfinite(env_b).all()
+    a = env_a.flatten() - env_a.mean()
+    b = env_b.flatten() - env_b.mean()
+    corr = float((a * b).sum() / (a.norm() * b.norm() + 1e-9))
+    assert corr > 0.5, f"sub-bin δ-shift pair should share the envelope statistic (corr={corr:.3f})"
+    assert not torch.allclose(env_a, env_b), "a δ-shift must move the realization"
+
+
+def test_fastts_shift_pair_overrun_raises():
+    cfg = _small_cfg()
+    shot = torch.randn(cfg.channels, cfg.window_samples + 10)  # barely one window
+    with pytest.raises(ValueError):
+        idata.fastts_shift_pair_windows(shot, t0=0.049, cfg=cfg, delta_ms=2.0)
+
+
+# --------------------------------------------------------------------------------------- #
+# nets round-trip
+# --------------------------------------------------------------------------------------- #
+def test_encoder_decoder_shapes():
+    cfg = _small_cfg()
+    enc, dec = FastTSEncoder(cfg), FastTSDecoder(cfg)
+    B = 3
+    x = torch.randn(B, cfg.channels, cfg.env_bins)
+    feats = enc(x)
+    assert feats.shape == (B, cfg.n_tok, cfg.d_model)
+    recon = dec(feats)
+    assert recon.shape == x.shape
+    assert torch.isfinite(recon).all()
+
+
+def test_nets_gradient_flows_end_to_end():
+    cfg = _small_cfg()
+    enc, dec = FastTSEncoder(cfg), FastTSDecoder(cfg)
+    x = torch.randn(2, cfg.channels, cfg.env_bins, requires_grad=True)
+    dec(enc(x)).sum().backward()
+    assert x.grad is not None and torch.isfinite(x.grad).all() and x.grad.abs().sum() > 0
+
+
+def test_decoder_last_layer_exposed_for_adaptive_weight():
+    cfg = _small_cfg()
+    dec = FastTSDecoder(cfg)
+    assert dec.last_layer is dec.to_pixels.weight
+    assert isinstance(dec.last_layer, torch.nn.Parameter)
+
+
+# --------------------------------------------------------------------------------------- #
+# FastTSCodec forward + codes at the DEFAULT FSQ size
+# --------------------------------------------------------------------------------------- #
+def test_codec_forward_shapes_and_codes_in_range():
+    cfg = FastTSCodecConfig()  # production default (1000-code FSQ, 50 env bins)
+    codec = FastTSCodec(cfg)
+    B = 2
+    x = torch.randn(B, cfg.channels, cfg.env_bins)
+    out = codec.forward(x)
+    assert out["recon"].shape == x.shape
+    assert out["feats"].shape == (B, cfg.n_tok, cfg.d_model)
+    assert out["quant"].shape == (B, cfg.n_tok, cfg.d_model)
+    assert out["codes"].shape == (B, cfg.n_tok, cfg.fsq_dim)
+    assert out["codes"].dtype == torch.long
+    # each per-dim code within its FSQ level range.
+    for i, lvl in enumerate(cfg.fsq_levels):
+        assert int(out["codes"][..., i].min()) >= 0
+        assert int(out["codes"][..., i].max()) < lvl
+    assert codec.codebook_size == cfg.codebook_size == 1000
+
+
+def test_codec_generator_losses_finite_and_has_consistency():
+    cfg = _small_cfg()
+    codec = FastTSCodec(cfg)
+    disc = Env1DPatchGAN(cfg)
+    x = torch.randn(2, cfg.channels, cfg.env_bins)
+    x_shift = x + 0.01 * torch.randn_like(x)
+    g = codec.generator_losses(x, x_shift, disc, cfg, step=0)
+    for k in ("total", "adversarial", "pixel", "feature_matching", "consistency", "entropy"):
+        assert torch.isfinite(g[k]).all(), f"{k} must be finite"
+    # fast-TS KEEPS the consistency term (unlike video): identical inputs -> ~0 consistency.
+    g_same = codec.generator_losses(x, x.clone(), disc, cfg, step=0)
+    assert float(g_same["consistency"]) < 1e-6
+    assert g["recon"].shape == x.shape
+    assert g["codes"].shape == (2, cfg.n_tok, cfg.fsq_dim)
+    # backward runs.
+    codec.generator_losses(x, x_shift, disc, cfg, step=0)["total"].backward()
+
+
+# --------------------------------------------------------------------------------------- #
+# discriminator
+# --------------------------------------------------------------------------------------- #
+def test_discriminator_multiscale_score_maps_and_features():
+    cfg = _small_cfg()
+    disc = Env1DPatchGAN(cfg, scales=2)
+    x = torch.randn(2, cfg.channels, cfg.env_bins)
+    maps = disc(x)
+    assert isinstance(maps, list) and len(maps) == 2
+    for m in maps:
+        assert m.dim() == 3 and m.shape[0] == 2 and m.shape[1] == 1  # (B, 1, e)
+    scores, feats = disc(x, return_features=True)
+    assert len(scores) == 2 and len(feats) > 0
+    for f in feats:
+        assert torch.isfinite(f).all()
+
+
+def test_discriminator_rejects_wrong_ndim():
+    cfg = _small_cfg()
+    disc = Env1DPatchGAN(cfg)
+    with pytest.raises(ValueError):
+        disc(torch.randn(2, cfg.channels, cfg.env_bins, 3))  # 4-D, not (B,C,E)
+
+
+# --------------------------------------------------------------------------------------- #
+# gate.fastts_decode_fidelity
+# --------------------------------------------------------------------------------------- #
+def test_fastts_decode_fidelity_perfect_recon():
+    # recon == target -> perfect envelope_corr + peak_f1, sharpness ~1.
+    env = torch.rand(2, 4, 20)
+    dm = gate.fastts_decode_fidelity(env, env)
+    assert dm["envelope_corr"] > 0.999
+    assert dm["peak_f1"] > 0.999
+    assert abs(dm["sharpness"] - 1.0) < 1e-6
+
+
+def test_fastts_decode_fidelity_mean_collapse_low_sharpness():
+    target = torch.rand(2, 4, 20)
+    recon = target.mean(dim=-1, keepdim=True).expand_as(target).contiguous()  # flat envelope
+    dm = gate.fastts_decode_fidelity(recon, target)
+    assert dm["sharpness"] < 1.0, "a mean-collapsed envelope must have less HF gradient energy"
+
+
+def test_fastts_decode_fidelity_rejects_wrong_ndim():
+    with pytest.raises(ValueError):
+        gate.fastts_decode_fidelity(torch.randn(2, 4, 8, 10), torch.randn(2, 4, 8, 10))
+
+
+# --------------------------------------------------------------------------------------- #
+# synthetic filterscopes HDF5 shots + FastTSCodecPairDataset
+# --------------------------------------------------------------------------------------- #
+def _write_filterscopes_shot(path: Path, duration_s: float, seed: int) -> None:
+    """Write a tiny filterscopes/{xdata,ydata} HDF5 shot in the loader's format.
+
+    ydata is (104, T) raw filterscope samples with sharp ELM-like bursts so windows are
+    non-degenerate; only the first 8 channels are used by the SignalConfig. xdata is seconds.
+    """
+    rng = np.random.default_rng(seed)
+    C = 104
+    native_fs = 20_000.0  # native rate; loader resamples to target_fs=10 kHz
+    T = int(round(duration_s * native_fs))
+    t = np.linspace(0.0, duration_s, T).astype(np.float32)
+    y = (0.02 * rng.standard_normal((C, T))).astype(np.float32)
+    # sprinkle sharp bursts (ELM-like) across time so the envelope has structure.
+    n_bursts = max(4, T // 400)
+    for _ in range(n_bursts):
+        pos = int(rng.integers(0, T))
+        y[:, pos] += (5.0 * rng.standard_normal((C,))).astype(np.float32)
+    with h5py.File(path, "w") as f:
+        g = f.create_group("filterscopes")
+        g.create_dataset("xdata", data=t)
+        g.create_dataset("ydata", data=y)
+
+
+@pytest.fixture
+def filterscopes_shots(tmp_path):
+    shots = []
+    duration_s = 1.0 + 8 * 0.05 + 0.1  # room for several 50 ms windows past t0_start=1.0
+    for i in range(4):
+        sid = f"90000{i}"
+        _write_filterscopes_shot(tmp_path / f"{sid}_processed.h5", duration_s, seed=i)
+        shots.append(sid)
+    return {"dir": tmp_path, "shots": shots}
+
+
+def _tiny_fastts_cfg() -> FastTSCodecConfig:
+    return FastTSCodecConfig(
+        channels=ft.fastts_channels(),
+        env_bins=50, patch_e=5, pool=10, baseline_win=8,
+        d_model=32, enc_depth=1, dec_depth=1, heads=2, fsq_levels=[4, 4, 3],
+    )
+
+
+def test_fastts_channels():
+    assert ft.fastts_channels() == 8  # channels_to_use=slice(0,8) on filterscopes
+    assert ft.fastts_channels("filterscopes") == 8
+    with pytest.raises(ValueError):
+        ft.fastts_channels("ece")
+
+
+def test_fastts_dataset_reuses_parent_index_machinery(filterscopes_shots):
+    cfg = _tiny_fastts_cfg()
+    ds = ft.FastTSCodecPairDataset(
+        filterscopes_shots["shots"], cfg, data_dir=filterscopes_shots["dir"], seed=0
+    )
+    # IS a TokamakMultiFileDataset (reuses idx-map + LRU handles + length cache + pickling).
+    assert isinstance(ds, TokamakMultiFileDataset)
+    assert len(ds) > 1
+    # overrides ONLY the transform hook — NOT __getitem__ / the searchsorted index map.
+    assert "_getitem_standard" in vars(ft.FastTSCodecPairDataset)
+    assert "__getitem__" not in vars(ft.FastTSCodecPairDataset)
+    src = inspect.getsource(ft.FastTSCodecPairDataset)
+    assert "searchsorted" not in src, "must reuse the parent's binary-search index map"
+    assert int(ds._cumulative_lengths[-1]) == len(ds)
+
+
+def test_fastts_dataset_yields_pair_shapes(filterscopes_shots):
+    cfg = _tiny_fastts_cfg()
+    ds = ft.FastTSCodecPairDataset(
+        filterscopes_shots["shots"], cfg, data_dir=filterscopes_shots["dir"], seed=0
+    )
+    for i in range(min(6, len(ds))):
+        env_a, env_b = ds[i]
+        assert env_a.shape == (cfg.channels, cfg.env_bins)
+        assert env_b.shape == (cfg.channels, cfg.env_bins)
+        assert torch.isfinite(env_a).all() and torch.isfinite(env_b).all()
+
+
+def test_fastts_loader_num_workers_0_and_2(filterscopes_shots):
+    cfg = _tiny_fastts_cfg()
+    ds = ft.FastTSCodecPairDataset(
+        filterscopes_shots["shots"], cfg, data_dir=filterscopes_shots["dir"], seed=1
+    )
+    loader0 = ft.make_fastts_loader(ds, batch_size=2, num_workers=0, seed=1)
+    a, b = next(iter(loader0))
+    assert a.shape == (2, cfg.channels, cfg.env_bins)
+    assert b.shape == (2, cfg.channels, cfg.env_bins)
+
+    loader2 = ft.make_fastts_loader(ds, batch_size=2, num_workers=2, seed=2)
+    seen = 0
+    for a, b in loader2:
+        assert a.shape[1:] == (cfg.channels, cfg.env_bins)
+        assert torch.isfinite(a).all()
+        seen += 1
+        if seen >= 2:
+            break
+    assert seen >= 1
+
+
+def test_fastts_loader_ddp_sampler_shards(filterscopes_shots):
+    cfg = _tiny_fastts_cfg()
+    ds = ft.FastTSCodecPairDataset(
+        filterscopes_shots["shots"], cfg, data_dir=filterscopes_shots["dir"], seed=0
+    )
+    l0 = ft.make_fastts_loader(ds, batch_size=1, num_workers=0, rank=0, world_size=2, seed=0)
+    l1 = ft.make_fastts_loader(ds, batch_size=1, num_workers=0, rank=1, world_size=2, seed=0)
+    assert isinstance(l0.sampler, ft.DistributedTwoLevelSampler)
+    assert set(iter(l0.sampler)).isdisjoint(set(iter(l1.sampler)))
+
+
+# --------------------------------------------------------------------------------------- #
+# fastts_compute_gate — finite for a reconstructing input, -inf score on NaN
+# --------------------------------------------------------------------------------------- #
+def test_fastts_compute_gate_finite_for_reconstructing_input():
+    cfg = _small_cfg()
+    cfg.gate_recon_floor = -1.0  # never disqualify: prove finiteness of the plumbing
+    codec = FastTSCodec(cfg)
+    B, n_win = 2, 4
+    pairs = [
+        (torch.randn(B, cfg.channels, cfg.env_bins),
+         torch.randn(B, cfg.channels, cfg.env_bins))
+        for _ in range(2)
+    ]
+    frame_seq = torch.randn(B, n_win, cfg.channels, cfg.env_bins)
+    g = ft.fastts_compute_gate(codec, pairs, frame_seq, cfg)
+    assert 0.0 <= g["stability"] <= 1.0
+    assert 0.0 <= g["persistence"] <= 1.0
+    assert isinstance(g["pass_stability"], bool) and isinstance(g["pass_persistence"], bool)
+    for k in ("envelope_corr", "peak_f1", "sharpness"):
+        assert math.isfinite(g["decode"][k])
+    score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor)
+    assert math.isfinite(score)
+
+
+def test_fastts_gate_score_minus_inf_on_nan_recon():
+    g = {
+        "forecastability": {"margin_transition": 0.0},
+        "decode": {"envelope_corr": float("nan"), "peak_f1": 0.0, "sharpness": 1.0},
+        "utilization": {"min_dim_entropy": 0.0, "frac_of_observable": 0.0},
+    }
+    assert spike.gate_score(g, recon_floor=0.2) == float("-inf")
+
+
+# --------------------------------------------------------------------------------------- #
+# per-step + full train_fastts_codec loop (single-process CPU)
+# --------------------------------------------------------------------------------------- #
+def test_fastts_train_step_runs_and_returns_terms():
+    torch.manual_seed(0)
+    cfg = _small_cfg()
+    codec = FastTSCodec(cfg)
+    disc = Env1DPatchGAN(cfg)
+    opt_g = torch.optim.Adam(codec.parameters(), lr=1e-3)
+    opt_d = torch.optim.Adam(disc.parameters(), lr=1e-3)
+    env_a = torch.randn(3, cfg.channels, cfg.env_bins)
+    env_b = env_a + 0.01 * torch.randn_like(env_a)
+    g_terms, d_loss = ft.fastts_codec_train_step(
+        codec, disc, opt_g, opt_d, env_a, env_b, cfg, step=0
+    )
+    assert torch.isfinite(g_terms["total"]).all()
+    assert torch.isfinite(d_loss).all()
+
+
+def test_train_fastts_codec_full_loop_cpu(filterscopes_shots):
+    torch.manual_seed(0)
+    cfg = _tiny_fastts_cfg()
+    train = filterscopes_shots["shots"][:2]
+    ev = filterscopes_shots["shots"][2:]
+    out = ft.train_fastts_codec(
+        cfg, train, ev,
+        steps=3, eval_every=2, batch_size=2, num_workers=0,
+        data_dir=filterscopes_shots["dir"],
+        eval_batches=1, eval_batch_size=2, eval_frames=3,
+        seed=0, log_fn=None,
+    )
+    assert out["steps"] == 3
+    assert out["global_step"] == 3
+    # gate ran + produced a (finite or -inf) score and the mandate booleans exist.
+    assert "stability" in out and "persistence" in out
+    assert "best_score" in out
+
+
+def test_train_fastts_codec_writes_checkpoints(tmp_path, filterscopes_shots):
+    torch.manual_seed(0)
+    cfg = _tiny_fastts_cfg()
+    cfg.gate_recon_floor = -1.0  # ensure a best-ckpt gets written (finite score)
+    out_dir = tmp_path / "fastts_out"
+    train = filterscopes_shots["shots"][:2]
+    ev = filterscopes_shots["shots"][2:]
+    ft.train_fastts_codec(
+        cfg, train, ev,
+        steps=2, eval_every=1, batch_size=2, num_workers=0,
+        data_dir=filterscopes_shots["dir"],
+        eval_batches=1, eval_batch_size=2, eval_frames=3,
+        out_dir=out_dir, seed=0, log_fn=None,
+    )
+    assert (out_dir / "codec_last.pt").exists()
+    assert (out_dir / "codec_best.pt").exists()
+    # gate json written for at least one step.
+    assert any(p.name.startswith("gate_") for p in out_dir.iterdir())
