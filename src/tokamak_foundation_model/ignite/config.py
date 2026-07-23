@@ -122,7 +122,10 @@ class SpectroCodecConfig:
     # The shift-consistency loss has a trivial minimum at encoder ≡ constant (all inputs
     # map to ONE code); these terms pressure the encoder toward diverse codebook usage.
     # entropy_loss = per_sample_entropy_mean - diversity_weight * entropy_of_batch_mean.
-    entropy_weight: float = 0.1     # multiplies entropy_loss into the generator total
+    # entropy_weight=1.0 is the value that achieved healthy diversity (min_dim_entropy≈0.65)
+    # in the diversity spike; the old 0.1 is the known-collapsing value (dead FSQ dim,
+    # min_dim_entropy≈0). Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0     # multiplies entropy_loss into the generator total
     diversity_weight: float = 1.0   # weight on the batch-diversity (spread) reward
 
     # oracle-gate acceptance thresholds
@@ -265,7 +268,9 @@ class VideoCodecConfig:
 
     # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, reused
     # from the spectro quantizer's entropy_loss (per-sample entropy - diversity * batch-mean).
-    entropy_weight: float = 0.1
+    # entropy_weight=1.0 (the diversity-spike value, min_dim_entropy≈0.65); 0.1 was the
+    # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0
     diversity_weight: float = 1.0
 
     # oracle-gate acceptance thresholds (§4.4) — video analogues.
@@ -434,7 +439,9 @@ class FastTSCodecConfig:
 
     # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, reused from
     # the shared SpectroQuantizer.entropy_loss (per-sample entropy - diversity * batch-mean).
-    entropy_weight: float = 0.1
+    # entropy_weight=1.0 (the diversity-spike value, min_dim_entropy≈0.65); 0.1 was the
+    # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0
     diversity_weight: float = 1.0
 
     # oracle-gate acceptance thresholds (§4.4) — fast-TS analogues (same numeric mandates).
@@ -586,7 +593,9 @@ class SlowTSCodecConfig:
     # verbatim from the spectro quantizer's entropy_loss (per-sample entropy - diversity *
     # batch-mean). The masked-recon objective alone does not pressure codebook diversity, so
     # this keeps the encoder from posterior-collapsing to a single code.
-    entropy_weight: float = 0.1
+    # entropy_weight=1.0 (the diversity-spike value, min_dim_entropy≈0.65); 0.1 was the
+    # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0
     diversity_weight: float = 1.0
 
     # oracle-gate acceptance thresholds (§4.4) — slow-TS analogues (same fields the shared

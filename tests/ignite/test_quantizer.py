@@ -11,9 +11,17 @@ Small synthetic CPU-only tensors. Contract (config.py):
 """
 from __future__ import annotations
 
+from unittest import mock
+
 import torch
 
-from tokamak_foundation_model.ignite.config import SpectroCodecConfig
+from tokamak_foundation_model.ignite import quantizer as quantizer_mod
+from tokamak_foundation_model.ignite.config import (
+    FastTSCodecConfig,
+    SlowTSCodecConfig,
+    SpectroCodecConfig,
+    VideoCodecConfig,
+)
 from tokamak_foundation_model.ignite.quantizer import SpectroQuantizer
 
 
@@ -165,3 +173,191 @@ def test_entropy_loss_is_differentiable() -> None:
     assert feats.grad is not None
     assert torch.isfinite(feats.grad).all()
     assert feats.grad.abs().sum() > 0
+
+
+# --------------------------------------------------------------------------- #
+# FIX 2: entropy_weight default is 1.0 on EVERY codec config
+# --------------------------------------------------------------------------- #
+def test_entropy_weight_default_is_one_on_all_codec_configs() -> None:
+    """The diversity spike that reached healthy min_dim_entropy≈0.65 used entropy_weight=1.0;
+    0.1 was the known-collapsing value. Every codec config must now default to 1.0."""
+    assert SpectroCodecConfig().entropy_weight == 1.0
+    assert VideoCodecConfig().entropy_weight == 1.0
+    assert FastTSCodecConfig().entropy_weight == 1.0
+    assert SlowTSCodecConfig().entropy_weight == 1.0  # slow-TS uses entropy too — covered
+    # diversity_weight stays 1.0 (the spread reward weight is unchanged).
+    assert SpectroCodecConfig().diversity_weight == 1.0
+    assert VideoCodecConfig().diversity_weight == 1.0
+    assert FastTSCodecConfig().diversity_weight == 1.0
+    assert SlowTSCodecConfig().diversity_weight == 1.0
+
+
+# --------------------------------------------------------------------------- #
+# FIX 1: all-reduce the batch-diversity statistic across DDP ranks
+# --------------------------------------------------------------------------- #
+def test_entropy_loss_single_process_is_identical_to_local_computation() -> None:
+    """REGRESSION GUARD: with world_size==1 / dist not initialized, entropy_loss must be
+    NUMERICALLY IDENTICAL to the previous purely-local computation (p_mean = p.mean(dim=0)).
+
+    We re-derive the old formula by hand from pre_quant_levels and assert bit-for-bit equality
+    with the (unmocked, single-process) entropy_loss — the single-process path must not change.
+    """
+    torch.manual_seed(1)
+    cfg = _small_cfg()
+    q = SpectroQuantizer(cfg)
+    feats = torch.randn(16, cfg.n_tok, cfg.d_model) * 3.0
+
+    # ---- reference: the ORIGINAL local computation, replicated verbatim ----
+    levels = list(cfg.fsq_levels)
+    max_levels = max(levels)
+    x = q.pre_quant_levels(feats).reshape(-1, len(levels))
+    grid = torch.arange(max_levels, dtype=x.dtype)
+    dist2 = (x[..., None] - grid[None, None, :]) ** 2
+    logits = -10.0 * dist2  # beta default = 10.0
+    lvl_t = torch.tensor(levels)
+    valid = grid[None, :] < lvl_t[:, None]
+    logits = logits.masked_fill(~valid[None, :, :], float("-inf"))
+    p = torch.softmax(logits, dim=-1)
+    eps = 1e-9
+    per_sample_entropy = -(p * torch.log(p + eps)).sum(dim=-1)
+    per_sample_entropy_mean = per_sample_entropy.mean()
+    p_mean_local = p.mean(dim=0)  # the ORIGINAL local batch-mean
+    batch_entropy = -(p_mean_local * torch.log(p_mean_local + eps)).sum(dim=-1)
+    entropy_of_batch_mean = batch_entropy.mean()
+    reference = per_sample_entropy_mean - cfg.diversity_weight * entropy_of_batch_mean
+
+    got = q.entropy_loss(feats)
+    assert torch.equal(got, reference), (float(got), float(reference))
+
+
+def _mock_dist_accumulating(world_size: int, sum_calls: list):
+    """Patch quantizer.dist to look distributed with ``world_size``. Each all_reduce(SUM)
+    ADDS the previous call's tensor into the current one (simulating summing across the two
+    ranks fed sequentially), recording every reduced tensor's value in ``sum_calls`` so the
+    test can assert the op and inspect what was reduced.
+
+    The accumulator is keyed by tensor shape so the (fsq_dim, max_levels) prob-sum and the
+    (1,) count scalar are reduced independently — exactly two distinct collectives per rank.
+    """
+    m = mock.MagicMock()
+    m.is_available.return_value = True
+    m.is_initialized.return_value = True
+    m.get_world_size.return_value = world_size
+
+    class _Op:
+        SUM = "SUM"
+
+    m.ReduceOp = _Op
+    prev: dict = {}
+
+    def _all_reduce(tensor, op=None):
+        assert op == _Op.SUM, "batch-diversity reduction must use ReduceOp.SUM"
+        key = tuple(tensor.shape)
+        if key in prev:
+            tensor.add_(prev[key])       # accumulate the earlier rank's contribution
+        prev[key] = tensor.detach().clone()
+        sum_calls.append((key, op))
+
+    m.all_reduce.side_effect = _all_reduce
+    return m
+
+
+def _batch_entropy_only(q: SpectroQuantizer, feats: torch.Tensor) -> float:
+    """The batch-diversity term (entropy of the per-dim batch-mean assignment), isolated.
+
+    entropy_loss = per_sample_entropy_mean - diversity_weight*batch_entropy, and the
+    per-sample term is LOCAL/unchanged, so subtracting a same-feats per_sample term is not
+    needed for the local-vs-global comparison below — we recompute the batch_entropy directly
+    the same way entropy_loss does, so the numbers are the exact quantity the fix strengthens.
+    """
+    cfg = q.cfg
+    levels = list(cfg.fsq_levels)
+    max_levels = max(levels)
+    x = q.pre_quant_levels(feats).reshape(-1, len(levels))
+    grid = torch.arange(max_levels, dtype=x.dtype)
+    dist2 = (x[..., None] - grid[None, None, :]) ** 2
+    logits = -10.0 * dist2
+    lvl_t = torch.tensor(levels)
+    valid = grid[None, :] < lvl_t[:, None]
+    logits = logits.masked_fill(~valid[None, :, :], float("-inf"))
+    p = torch.softmax(logits, dim=-1)
+    p_mean = p.mean(dim=0)
+    eps = 1e-9
+    return float((-(p_mean * torch.log(p_mean + eps)).sum(dim=-1)).mean())
+
+
+def test_entropy_loss_batch_diversity_is_global_under_ddp() -> None:
+    """FIX 1: under DDP the batch-diversity term uses the GLOBAL (all-reduced) p_mean.
+
+    Two 'ranks' with DISJOINT code usage: rank A's feats land on the LOW-index FSQ grid points,
+    rank B's on the HIGH-index grid points. Each rank's LOCAL batch-mean is concentrated on its
+    own half (low batch-entropy); the GLOBAL batch-mean spreads over BOTH halves (higher
+    batch-entropy). We assert the all-reduced batch-entropy is HIGHER than either rank's local
+    batch-entropy — proving the global reduction strengthens the spread signal.
+
+    Also asserts: all_reduce is called with SUM, and the per-sample entropy term (local) is
+    untouched by the reduction.
+    """
+    torch.manual_seed(7)
+    cfg = _small_cfg()
+    q = SpectroQuantizer(cfg)
+
+    # Drive the pre-quant level positions toward opposite ends of the grid by pushing the
+    # FSQ project_in pre-activations very negative (rank A -> code 0 side) / very positive
+    # (rank B -> top-level side). Big-magnitude feats saturate tanh to the grid extremes.
+    B = 16
+    feats_low = -torch.abs(torch.randn(B, cfg.n_tok, cfg.d_model)) * 20.0
+    feats_high = torch.abs(torch.randn(B, cfg.n_tok, cfg.d_model)) * 20.0
+
+    # sanity: the two ranks really do use DISJOINT codes (low half vs high half).
+    _, codes_low = q.quantize(feats_low)
+    _, codes_high = q.quantize(feats_high)
+    assert codes_low.float().mean() < codes_high.float().mean(), "ranks must be disjoint"
+
+    # LOCAL batch-entropy for each rank (single-process, no mock).
+    local_be_low = _batch_entropy_only(q, feats_low)
+    local_be_high = _batch_entropy_only(q, feats_high)
+
+    # GLOBAL batch-entropy: feed both ranks through entropy_loss under the accumulating mock.
+    # The per-sample term is local, so isolate the global batch-entropy by subtracting each
+    # rank's per_sample_entropy_mean from its entropy_loss return, then negating/dividing.
+    def _per_sample_mean(feats: torch.Tensor) -> float:
+        levels = list(cfg.fsq_levels)
+        max_levels = max(levels)
+        x = q.pre_quant_levels(feats).reshape(-1, len(levels))
+        grid = torch.arange(max_levels, dtype=x.dtype)
+        logits = -10.0 * (x[..., None] - grid[None, None, :]) ** 2
+        lvl_t = torch.tensor(levels)
+        valid = grid[None, :] < lvl_t[:, None]
+        logits = logits.masked_fill(~valid[None, :, :], float("-inf"))
+        p = torch.softmax(logits, dim=-1)
+        return float((-(p * torch.log(p + 1e-9)).sum(dim=-1)).mean())
+
+    sum_calls: list = []
+    with mock.patch.object(quantizer_mod, "dist", _mock_dist_accumulating(2, sum_calls)):
+        loss_a = q.entropy_loss(feats_low)   # rank A: contributes its p_sum, count
+        loss_b = q.entropy_loss(feats_high)  # rank B: accumulates A -> sees the GLOBAL p_mean
+
+    # rank B's entropy_loss now reflects the GLOBAL batch-mean; recover its batch-entropy.
+    # entropy_loss = per_sample_mean - diversity_weight * batch_entropy_global.
+    global_be = (_per_sample_mean(feats_high) - float(loss_b)) / cfg.diversity_weight
+
+    # The global spread must exceed BOTH ranks' local spreads (disjoint halves -> more diverse).
+    assert global_be > local_be_low, (global_be, local_be_low)
+    assert global_be > local_be_high, (global_be, local_be_high)
+
+    # all_reduce used SUM, and was called for BOTH the prob-sum tensor and the count scalar,
+    # per rank (2 ranks x 2 tensors = 4 calls).
+    assert all(op == "SUM" for _, op in sum_calls)
+    assert len(sum_calls) == 4
+
+    # The per-sample entropy term is LOCAL — the reduction must NOT touch it. Feed a SINGLE
+    # rank's feats through the mock (no prior accumulation): the reduced p_sum equals the local
+    # p_sum, so p_mean == the local batch-mean and entropy_loss must equal the single-process
+    # value. If the reduction had wrongly folded the per-sample term in, this would differ.
+    single_process = float(q.entropy_loss(feats_high))
+    with mock.patch.object(quantizer_mod, "dist", _mock_dist_accumulating(2, [])):
+        under_mock_no_peer = float(q.entropy_loss(feats_high))
+    assert abs(under_mock_no_peer - single_process) < 1e-6, (
+        under_mock_no_peer, single_process,
+    )

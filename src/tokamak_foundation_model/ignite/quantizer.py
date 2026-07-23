@@ -13,6 +13,7 @@ FAITH model code is imported.
 from __future__ import annotations
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from vector_quantize_pytorch import FSQ
 
@@ -107,6 +108,12 @@ class SpectroQuantizer(nn.Module):
           * ``entropy_of_batch_mean_prob`` — the entropy of the batch-averaged assignment
             distribution (per dim, then averaged over dims). HIGH when the batch as a whole
             spreads across many grid points (diverse); LOW when the batch collapses to one.
+            Under DDP this batch-mean is GLOBAL: the local assignment sum is all-reduced
+            across ranks (SUM) and normalized by the global sample count, so the diversity
+            reward measures spread across the WHOLE global batch rather than each rank's 8
+            local samples — 8 samples cannot represent codebook-wide usage, so a purely-local
+            batch-mean gives a far-too-weak spread signal and the codec collapses (dead FSQ
+            dim, min_dim_entropy≈0). See FIX 1.
 
         Returned combined term::
 
@@ -150,7 +157,23 @@ class SpectroQuantizer(nn.Module):
         per_sample_entropy_mean = per_sample_entropy.mean()
 
         # batch-mean distribution per dim, then its entropy, averaged over dims.
-        p_mean = p.mean(dim=0)                                               # (fsq_dim, max_levels)
+        # p_mean = p.sum(dim=0) / N. Under DDP each rank sees only its ~8 local samples, far
+        # too few to represent codebook-wide usage, so a purely-local batch-mean gives a weak
+        # spread signal and the codec collapses. FIX 1: make p_mean GLOBAL — all-reduce the
+        # local assignment sum (SUM, autograd-compatible so gradients flow) and normalize by
+        # the GLOBAL sample count. The count is a plain int (NOT a grad tensor); gradients
+        # flow only through the summed probabilities. World_size==1 / uninitialized falls back
+        # to the exact local p.sum(dim=0) / N — numerically identical to the previous code.
+        p_sum = p.sum(dim=0)                                                 # (fsq_dim, max_levels)
+        n_total = N
+        if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+            # SUM-reduce the DIFFERENTIABLE probability sum (dist.all_reduce SUM is autograd-safe).
+            dist.all_reduce(p_sum, op=dist.ReduceOp.SUM)
+            # Reduce the (integer) local count separately as a plain scalar — NOT a grad tensor.
+            n_tensor = torch.tensor([float(N)], device=p_sum.device)
+            dist.all_reduce(n_tensor, op=dist.ReduceOp.SUM)
+            n_total = float(n_tensor.item())
+        p_mean = p_sum / n_total                                            # (fsq_dim, max_levels)
         batch_entropy = -(p_mean * torch.log(p_mean + eps)).sum(dim=-1)      # (fsq_dim,)
         entropy_of_batch_mean = batch_entropy.mean()
 
