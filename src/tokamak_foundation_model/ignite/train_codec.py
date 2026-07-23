@@ -1156,11 +1156,39 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
 
         # SCALE FIX — standardize the codec input the SAME way the FM model does (see
         # SlowTSCodecConfig.channel_mean/std + SLOWTS_PREPROCESS_METHOD). Applied AFTER the mask
-        # is built (mask semantics unchanged) and to the WHOLE window (missing positions are
-        # standardized too, but they are masked out of the loss, exactly like the FM). No-op /
-        # byte-identical when the cfg carries no stats (default) or method is "none"/None.
+        # is built (mask semantics unchanged). No-op / byte-identical when the cfg carries no
+        # stats (default) or method is "none"/None.
         signal = self._standardize(raw)
-        return signal, valid.to(torch.float32)
+        valid = valid.to(torch.float32)
+
+        # INPUT-MASK FIX (Bug B) — after standardization a MISSING position (raw 0) maps to
+        # (pp(0) - mean)/std, a LARGE-NEGATIVE artifact (~-25 for ts_core_density). The loss is
+        # already masked (missing excluded via `valid`), but the ENCODER still processes the input
+        # — and with a ⅔-missing signal like ts_core_density the input is dominated by that -25,
+        # which collapses the codec. So zero the missing positions in the INPUT the encoder sees
+        # (0 == the standardized neutral/mean value, NOT a large artifact). The recon loss still
+        # excludes them via `valid`, so missing stays out of the loss. No-op when everything is
+        # present (valid all 1) — byte-identical for fully-present windows.
+        if self._standardize_active():
+            signal = signal * valid
+        return signal, valid
+
+    def _standardize_active(self) -> bool:
+        """True iff :meth:`_standardize` actually rescales (stats present + a real method).
+
+        Gates the INPUT-mask zeroing to the standardized path ONLY: without standardization the
+        raw missing fill is already 0 (Thomson zeros) or the pre-fix path we must not perturb, so
+        multiplying by the mask would be a behaviour change for stat-less callers. With
+        standardization, missing zeros have been moved to a large-negative artifact, so re-zeroing
+        them is the fix. Byte-identical to the pre-fix path when this is False.
+        """
+        cfg = self.codec_cfg
+        method = getattr(cfg, "preprocess_method", None)
+        return (
+            method not in (None, "none")
+            and cfg.channel_mean is not None
+            and cfg.channel_std is not None
+        )
 
     def _standardize(self, raw: torch.Tensor) -> torch.Tensor:
         """Per-channel standardize ``raw`` (C,T) EXACTLY as ``data_loader._apply_preprocessing``.
@@ -1543,7 +1571,9 @@ def video_compute_gate(
         nuis = video_nuisance(clip, seed=len(stab_vals))
         _, codes_n = codec.quantize(codec.encode(nuis))
         stab_vals.append(gate.stability(out["codes"], codes_n))
-        dm = gate.video_decode_fidelity(out["recon"], clip)
+        # recon lives in the STANDARDIZED frame space (see VideoCodec.standardize_input); compare
+        # decode fidelity against the standardized input (out["x_std"]), not the raw clip.
+        dm = gate.video_decode_fidelity(out["recon"], out["x_std"])
         dec_corr.append(dm["envelope_corr"])
         dec_f1.append(dm["peak_f1"])
         dec_sharp.append(dm["sharpness"])
@@ -1719,8 +1749,9 @@ def video_codec_train_step(
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
-        recon = codec.forward(frames)["recon"]
-    d_loss = _video_discriminator_loss(disc, frames, recon, cfg)
+        out = codec.forward(frames)
+        recon, real = out["recon"], out["x_std"]     # both in the STANDARDIZED frame space
+    d_loss = _video_discriminator_loss(disc, real, recon, cfg)
     d_loss.backward()
     if spike.is_step_diverged(d_loss):
         spike.note_skipped_step()
@@ -1758,8 +1789,9 @@ def _ddp_video_train_step(
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
-        recon = codec.forward(frames)["recon"]
-    d_loss = _video_discriminator_loss(disc, frames, recon, cfg)
+        out = codec.forward(frames)
+        recon, real = out["recon"], out["x_std"]     # both in the STANDARDIZED frame space
+    d_loss = _video_discriminator_loss(disc, real, recon, cfg)
     d_loss.backward()
     if spike.is_step_diverged(d_loss):
         spike.note_skipped_step()

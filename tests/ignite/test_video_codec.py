@@ -123,8 +123,11 @@ def test_codec_forward_shapes_and_codes_in_range():
     B = 2
     x = torch.randn(B, cfg.channels, cfg.frames, cfg.height, cfg.width) * 3.0
     out = codec(x)
-    assert set(out) == {"recon", "feats", "quant", "codes"}
+    # `x_std` (the standardized input) is part of the contract so the generator loss can use the
+    # SAME standardized frames as the reconstruction target (the SCALE FIX; see standardize_input).
+    assert set(out) == {"recon", "feats", "quant", "codes", "x_std"}
     assert out["recon"].shape == x.shape
+    assert out["x_std"].shape == x.shape
     assert out["feats"].shape == (B, cfg.n_tok, cfg.d_model)
     assert out["quant"].shape == (B, cfg.n_tok, cfg.d_model)
     assert out["codes"].shape == (B, cfg.n_tok, cfg.fsq_dim)
@@ -150,6 +153,86 @@ def test_codec_roundtrip_at_default_fsq_size():
     levels = torch.tensor(cfg.fsq_levels)
     assert (out["codes"] >= 0).all() and (out["codes"] < levels).all()
     assert torch.isfinite(out["recon"]).all()
+
+
+# --------------------------------------------------------------------------------------- #
+# SCALE FIX (Bug A) — the encoder input is standardized per-(B, C), mirroring the FM model.
+# The tangtv frames arrive as RAW camera pixels (std ~5.2, range ~[16, 240] — NOT O(1)); the
+# codec must standardize them to O(1) BEFORE the patchify encoder (the same per-(B,C) z-score
+# the FM applies), and the reconstruction target must be the SAME standardized frames.
+# --------------------------------------------------------------------------------------- #
+def _raw_pixel_clip(B: int, cfg: VideoCodecConfig) -> torch.Tensor:
+    """A synthetic RAW-pixel-scale clip (like tangtv: ~uint8 range, std ~5-50, NOT O(1))."""
+    torch.manual_seed(0)
+    # per-(B,C) mean ~130, std ~40 — the raw camera-pixel regime the FM standardizes away.
+    base = torch.rand(B, cfg.channels, 1, 1, 1) * 100.0 + 80.0
+    return base + torch.randn(B, cfg.channels, cfg.frames, cfg.height, cfg.width) * 40.0
+
+
+def test_standardize_input_makes_encoder_input_O1():
+    """Raw-pixel frames (std ~40, mean ~130) become per-(B,C) zero-mean, unit-ish-std."""
+    cfg = _small_cfg()
+    codec = VideoCodec(cfg)
+    x = _raw_pixel_clip(2, cfg)
+    assert float(x.std()) > 10.0 and float(x.abs().max()) > 50.0  # confirm raw-scale input
+    x_std = codec.standardize_input(x)
+    assert torch.isfinite(x_std).all()
+    # per-(B, C) zero-mean, ~unit-std over (T, H, W).
+    per_bc_mean = x_std.mean(dim=(2, 3, 4))
+    per_bc_std = x_std.std(dim=(2, 3, 4))
+    assert per_bc_mean.abs().max() < 1e-4
+    assert (per_bc_std > 0.5).all() and (per_bc_std < 2.0).all()
+    # whole-clip O(1): abs-max well under the regression-guard ceiling.
+    assert float(x_std.abs().max()) < 50.0
+    assert 0.1 < float(x_std.std()) < 5.0
+
+
+def test_standardize_input_matches_fm_video_standardize_per_bc():
+    """The codec standardization is EXACTLY the FM's e2e.multimodal.video_standardize_per_bc."""
+    from tokamak_foundation_model.e2e.multimodal import video_standardize_per_bc
+
+    cfg = _small_cfg()
+    x = _raw_pixel_clip(3, cfg)
+    fm_norm, _mu, _sd = video_standardize_per_bc(x)
+    assert torch.allclose(VideoCodec.standardize_input(x), fm_norm, atol=1e-6)
+
+
+def test_standardize_input_dead_camera_is_finite_and_neutral():
+    """A zero-filled (off) camera channel maps to ~0 (neutral), not a NaN/inf artifact."""
+    cfg = _small_cfg()
+    x = _raw_pixel_clip(2, cfg)
+    x[:, 0] = 0.0  # channel 0 off (dead camera) -> std 0, clamped to 1.0
+    x_std = VideoCodec.standardize_input(x)
+    assert torch.isfinite(x_std).all()
+    assert torch.allclose(x_std[:, 0], torch.zeros_like(x_std[:, 0]))
+
+
+def test_encode_standardizes_and_forward_returns_x_std():
+    """encode() standardizes before the transformer; forward() exposes x_std for the loss target."""
+    cfg = _small_cfg()
+    codec = VideoCodec(cfg)
+    x = _raw_pixel_clip(2, cfg)
+    out = codec.forward(x)
+    # x_std is the standardized input, and encode(x) runs on the SAME standardized frames.
+    assert torch.allclose(out["x_std"], codec.standardize_input(x))
+    feats_via_encode = codec.encode(x)
+    assert torch.allclose(feats_via_encode, out["feats"], atol=1e-5)
+
+
+def test_generator_losses_recon_target_is_standardized():
+    """The pixel anchor compares recon to the STANDARDIZED input, not the raw clip.
+
+    With a raw-pixel-scale clip, comparing recon (standardized-scale) to raw x would make the
+    pixel anchor ~O(raw-scale). Fixed: it is O(1). We assert the pixel term is bounded to the
+    standardized regime (a raw-scale leak would make it >> 1)."""
+    cfg = _small_cfg()
+    codec = VideoCodec(cfg)
+    disc = FramePatchGAN(cfg)
+    x = _raw_pixel_clip(2, cfg)
+    out = codec.generator_losses(x, disc, cfg, step=0)
+    assert torch.isfinite(out["total"]).all()
+    # recon is standardized (O(1)); the masked pixel-MAE against x_std is O(1), NOT O(40).
+    assert float(out["pixel"]) < 20.0
 
 
 # --------------------------------------------------------------------------------------- #

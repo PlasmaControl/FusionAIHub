@@ -61,11 +61,50 @@ class VideoCodec(nn.Module):
         self.decoder = VideoDecoder(cfg)
 
     # ------------------------------------------------------------------ #
+    # input standardization (the SCALE FIX — mirrors the FM model)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def standardize_input(x: torch.Tensor) -> torch.Tensor:
+        """Per-(B, C) z-score of a video window over (T, H, W) — the codec-input SCALE FIX.
+
+        The tangtv frames arrive as RAW camera pixels (measured std ~5.2, range ~[16, 240] —
+        NOT O(1)); feeding those straight into the patchify→Linear encoder is a scale leak that
+        the FM model never sees. The FM standardizes video PER-(B, C) over (T, H, W) with
+        ``sd.clamp(min=1.0)`` (``e2e.multimodal.video_standardize_per_bc`` /
+        ``train_e2e_stage1.py``), so the codec mirrors that EXACTLY here. Applied inside
+        ``encode`` / ``forward`` / ``generator_losses`` so EVERY path (training, gate stability
+        nuisance, gate forecast sequence) sees the SAME O(1) input and the reconstruction target
+        is the SAME standardized frames as the reconstruction (a consistent loss).
+
+        ``sd.clamp(min=1.0)`` keeps an off / dead camera (a zero-filled channel) finite and maps
+        it to ~0 (standardized-mean / neutral), never a large artifact. Reuses NO FAITH model
+        code — this is the same arithmetic, re-implemented from the data-pipeline mechanism.
+
+        Parameters
+        ----------
+        x : (B, C, T, H, W)
+
+        Returns
+        -------
+        (B, C, T, H, W) standardized frames (per-(B, C) zero-mean, unit-ish-std).
+        """
+        if x.dim() != 5:
+            raise ValueError(f"video input must be (B, C, T, H, W); got {tuple(x.shape)}")
+        mu = x.mean(dim=(2, 3, 4), keepdim=True)
+        sd = x.std(dim=(2, 3, 4), keepdim=True).clamp(min=1.0)
+        return (x - mu) / sd
+
+    # ------------------------------------------------------------------ #
     # forward paths
     # ------------------------------------------------------------------ #
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, T, H, W) -> PRE-FSQ continuous features (B, n_tok, d_model)."""
-        return self.encoder(x)
+        """(B, C, T, H, W) -> PRE-FSQ continuous features (B, n_tok, d_model).
+
+        Standardizes the raw frames per-(B, C) (see :meth:`standardize_input`) BEFORE the
+        patchify encoder so the encoder input is O(1) (the SCALE FIX). Callers that pre-encode
+        a nuisance (the gate) go through here too, so they are standardized identically.
+        """
+        return self.encoder(self.standardize_input(x))
 
     def quantize(self, feats: torch.Tensor):
         """Features -> (quant (B,n_tok,d_model) float, codes (B,n_tok,fsq_dim) long)."""
@@ -76,10 +115,18 @@ class VideoCodec(nn.Module):
         return self.decoder(quant)
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        feats = self.encode(x)
+        """Run the codec; ``recon`` is in the STANDARDIZED frame space (see :meth:`encode`).
+
+        Also returns ``x_std`` — the standardized input — so the generator loss compares
+        ``recon`` against the SAME standardized frames it was trained to produce (a consistent
+        reconstruction target; without this the target would be raw-scale and the recon
+        standardized-scale).
+        """
+        x_std = self.standardize_input(x)
+        feats = self.encoder(x_std)
         quant, codes = self.quantize(feats)
         recon = self.decode(quant)
-        return {"recon": recon, "feats": feats, "quant": quant, "codes": codes}
+        return {"recon": recon, "feats": feats, "quant": quant, "codes": codes, "x_std": x_std}
 
     @property
     def codebook_size(self) -> int:
@@ -154,17 +201,22 @@ class VideoCodec(nn.Module):
         """
         out = self.forward(x)
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
+        # The reconstruction target is the STANDARDIZED input (see forward / standardize_input):
+        # recon lives in standardized frame space, so the pixel anchor + the discriminator's
+        # "real" frames MUST be the same standardized frames — comparing to the raw-scale x would
+        # make the loss (and the adaptive-adv gradient balance) inconsistent.
+        x_std = out["x_std"]
 
         # ONE discriminator pass: patch scores (adversarial) + intermediate features (FM).
         fake_scores, fake_feats = disc(recon, return_features=True)
         fake_scores = _as_score_list(fake_scores)
         adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
 
-        pixel = self._masked_pixel_mae(recon, x, frame_mask)
+        pixel = self._masked_pixel_mae(recon, x_std, frame_mask)
 
         # DETACHED real features: generator matches fake -> real (grad only via fake feats).
         with torch.no_grad():
-            _, real_feats = disc(x, return_features=True)
+            _, real_feats = disc(x_std, return_features=True)
         fm = feature_matching_loss(real_feats, fake_feats)
 
         entropy = self.quantizer.entropy_loss(feats_x)

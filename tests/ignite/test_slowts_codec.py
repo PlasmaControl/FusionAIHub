@@ -592,6 +592,109 @@ def test_slowts_dataset_zero_is_missing_mask_preserved_after_standardize(slowts_
     assert seen_missing, "synthetic shots inject zero-missing blocks; expected some"
 
 
+# --------------------------------------------------------------------------------------- #
+# INPUT-MASK FIX (Bug B) — after standardization a MISSING position (raw 0) maps to a
+# LARGE-NEGATIVE artifact (~-25 for ts_core_density); the encoder sees it (the loss is masked,
+# the INPUT is not) and with a ⅔-missing signal the input is dominated by -25 -> collapse.
+# The dataset must ZERO the missing positions in the codec INPUT (0 == standardized neutral),
+# while keeping the loss masking (missing still excluded from the recon loss).
+# --------------------------------------------------------------------------------------- #
+def _fit_window_via_ds(raw, nan_mask, *, signal, method, mean, std, channels, zero_is_missing_ok):
+    """Run SlowTSCodecPairDataset._fit_window on a synthetic (raw, nan_mask) WITHOUT HDF5."""
+    T = raw.shape[1]
+    cfg = SlowTSCodecConfig(signal=signal, channels=channels, time_steps=T,
+                            patch_c=channels, patch_t=T)
+    cfg.preprocess_method = method
+    cfg.channel_mean = mean
+    cfg.channel_std = std
+    ds = tc.SlowTSCodecPairDataset.__new__(tc.SlowTSCodecPairDataset)  # no __init__ / no HDF5
+    ds.h5_file = None
+    ds.codec_cfg = cfg
+    return ds._fit_window(raw, nan_mask)
+
+
+def test_slowts_input_missing_positions_zeroed_after_standardize():
+    """A ⅔-missing (raw-0) Thomson-density window: present values O(1), MISSING positions == 0.
+
+    Before the fix, missing positions standardized to ~-25 (pp(0)-mean)/std and dominated the
+    encoder input (std ~7.4). After the fix they are 0 (neutral) and the whole-window std is O(1).
+    """
+    C, T = 6, 5
+    torch.manual_seed(0)
+    # ts_core_density-like: strictly-positive ~1e19 present values; a raw 0 == missing.
+    raw = (torch.rand(C, T) * 4.0 + 1.0) * 1e19
+    raw[: (2 * C) // 3] = 0.0                     # ⅔ of the positions missing (raw 0)
+    nan_mask = torch.zeros(C, T)                  # no NaNs; zero_is_missing carries the missingness
+    log_raw = torch.log10(raw.clamp(min=-0.99) + 1.0)
+    # GLOBAL per-channel stats (as preprocessing_stats.pt carries — computed across the whole
+    # dataset where a channel IS mostly present, NOT per-window): every channel's log-mean ~19.4
+    # for a ~1e19 density. This is the regime that turns a missing raw-0 into the -25 artifact:
+    # pp(0)=log10(1)=0 -> (0 - 19.4)/0.7 ~ -27. (A per-WINDOW fallback would hide it.)
+    mean = [19.4] * C
+    std = [0.7] * C
+    signal, valid = _fit_window_via_ds(
+        raw, nan_mask, signal="ts_core_density", method="log_standardize",
+        mean=mean, std=std, channels=C, zero_is_missing_ok=True,
+    )
+    inv = valid < 0.5
+    pres = valid > 0.5
+    assert inv.any() and pres.any()
+    # MISSING positions are EXACTLY 0 (not the ~-25 large-negative artifact).
+    assert torch.all(signal[inv] == 0.0)
+    # if we had NOT masked the input, those positions would be pp(0)-mean/std ~ large-negative.
+    m = torch.tensor(mean).reshape(C, 1); s = torch.tensor(std).reshape(C, 1).clamp(min=1e-3)
+    unmasked = (log_raw - m) / s
+    assert float(unmasked[inv].min()) < -5.0, "sanity: unmasked missing IS a large-negative artifact"
+    # PRESENT values are O(1) (standardized), not the 1e19 raw scale.
+    assert torch.isfinite(signal).all()
+    assert float(signal[pres].abs().max()) < 20.0
+    # whole-window input std is O(1) now (was ~7.4 dominated by the -25 mass).
+    assert float(signal.std()) < 5.0
+
+
+def test_slowts_input_mask_semantics_preserved_and_loss_still_masks_missing():
+    """Zeroing the input does NOT change the validity mask, and the recon loss still ignores
+    missing (a codec whose recon is 0 at missing but exact at present has ~0 masked recon)."""
+    C, T = 6, 5
+    torch.manual_seed(1)
+    raw = (torch.rand(C, T) * 4.0 + 1.0) * 1e19
+    raw[:2] = 0.0                                  # first 2 positions missing
+    nan_mask = torch.zeros(C, T)
+    log_raw = torch.log10(raw.clamp(min=-0.99) + 1.0)
+    mean = [float(log_raw[c][raw[c] != 0].mean()) if (raw[c] != 0).any() else 0.0 for c in range(C)]
+    std = [float(log_raw[c][raw[c] != 0].std().clamp(min=1e-3)) if (raw[c] != 0).any() else 1.0
+           for c in range(C)]
+    signal, valid = _fit_window_via_ds(
+        raw, nan_mask, signal="ts_core_density", method="log_standardize",
+        mean=mean, std=std, channels=C, zero_is_missing_ok=True,
+    )
+    # validity mask matches the RAW zero_is_missing policy (raw != 0), unchanged by input-zeroing.
+    assert torch.equal(valid, (raw != 0.0).to(torch.float32))
+    # the loss (masked recon MAE) ignores missing: recon == signal everywhere except missing,
+    # where recon is arbitrary -> masked MAE is 0 regardless of the missing recon value.
+    cfg = SlowTSCodecConfig(signal="ts_core_density", channels=C, time_steps=T,
+                            patch_c=C, patch_t=T)
+    recon = signal.clone().unsqueeze(0)
+    recon[:, valid < 0.5] = 999.0                  # garbage at missing positions
+    mae = SlowTSCodec._masked_recon_mae(recon, signal.unsqueeze(0), valid.unsqueeze(0))
+    assert float(mae) < 1e-6, "masked recon must ignore the garbage at missing positions"
+
+
+def test_slowts_input_masking_noop_when_stats_absent():
+    """Without stats (pre-fix / stat-less path) the input is NOT re-zeroed (byte-identical)."""
+    C, T = 6, 5
+    torch.manual_seed(2)
+    raw = torch.randn(C, T) * 1e18
+    raw[:2] = 0.0
+    nan_mask = torch.zeros(C, T)
+    signal, valid = _fit_window_via_ds(
+        raw, nan_mask, signal="ts_core_density", method=None,
+        mean=None, std=None, channels=C, zero_is_missing_ok=True,
+    )
+    # identity standardization + no input-zeroing -> exactly the raw window.
+    assert torch.equal(signal, raw)
+
+
 def test_load_slowts_channel_stats_method_and_length():
     """load_slowts_channel_stats returns the FM's per-signal method + a C-length mean/std, reading
     the 'log' sub-dict for log_standardize signals and 'raw' for standardize signals."""
