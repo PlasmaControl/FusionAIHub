@@ -51,7 +51,8 @@ def _small_cfg(signal: str = "ts_core_density", channels: int = 12) -> SlowTSCod
         signal=signal,
         channels=channels,
         time_steps=5,
-        patch_c=6,      # -> 2 position patches
+        n_zones=2,      # -> 2 radial-zone position patches
+        patch_c=6,      # ceil(12 / 2) = 6 positions per zone
         patch_t=5,      # -> 1 time patch  => n_tok = 2
         d_model=32,
         enc_depth=1,
@@ -71,16 +72,37 @@ def test_config_geometry_and_tokens():
     assert cfg.fsq_dim == 3 and cfg.codebook_size == 4 * 4 * 3
     assert cfg.window_samples == 5  # 50 ms @ 100 Hz
 
-    # production default (single token per window @ [8,5,5,5]=1000).
+    # production default (DESIGNED per-frame budget: 4 radial-zone tokens per window @
+    # [8,5,5,5]=1000). C=44 is divisible by 4 so patch_c=11 and no padding.
     prod = tc.slowts_codec_cfg("ts_core_density", 44)
-    assert prod.n_tok == 1
+    assert prod.n_tok == 4
+    assert prod.n_zones == 4 and prod.n_pos_patch == 4 and prod.n_time_patch == 1
+    assert prod.patch_c == 11 and prod.padded_channels == 44  # 44 = 4*11, no padding
     assert prod.codebook_size == 1000 and prod.fsq_dim == 4
     assert prod.channels == 44 and prod.time_steps == 5
 
 
-def test_config_rejects_indivisible_patch():
+@pytest.mark.parametrize(
+    "channels,patch_c,padded",
+    [(44, 11, 44), (10, 3, 12), (48, 12, 48), (69, 18, 72)],
+)
+def test_slowts_always_4_tokens_incl_nondivisible(channels, patch_c, padded):
+    """Every slow-TS signal yields EXACTLY 4 tokens; non-÷4 counts pad + mask the tail."""
+    cfg = tc.slowts_codec_cfg("ts_core_density", channels)
+    assert cfg.n_tok == 4 and cfg.n_zones == 4
+    assert cfg.patch_c == patch_c, "patch_c must be ceil(channels/4)"
+    assert cfg.padded_channels == padded
+    assert cfg.padded_channels >= cfg.channels
+    assert cfg.padded_channels == 4 * cfg.patch_c
+
+
+def test_config_rejects_impossible_zone_split():
+    # patch_c too SMALL to hold the profile in n_zones zones (channels > padded_channels).
     with pytest.raises(AssertionError):
-        SlowTSCodecConfig(channels=10, patch_c=4)  # 10 % 4 != 0
+        SlowTSCodecConfig(channels=10, n_zones=4, patch_c=2)  # padded 8 < 10
+    # patch_c so LARGE a whole zone is empty (channels <= (n_zones-1)*patch_c).
+    with pytest.raises(AssertionError):
+        SlowTSCodecConfig(channels=10, n_zones=4, patch_c=4)  # (4-1)*4 = 12 >= 10 -> empty zone
     with pytest.raises(AssertionError):
         SlowTSCodecConfig(time_steps=5, patch_t=2)  # 5 % 2 != 0
 
@@ -91,13 +113,12 @@ def test_zero_is_missing_matches_loader_policy():
 
     for sig in SLOWTS_SIGNALS:
         loader_cfg = next(c for c in TokamakH5Dataset.SIGNAL_CONFIGS if c.name == sig)
-        codec_cfg = SlowTSCodecConfig(signal=sig, channels=loader_cfg.num_channels,
-                                      patch_c=loader_cfg.num_channels)
+        codec_cfg = tc.slowts_codec_cfg(sig, loader_cfg.num_channels)
         assert codec_cfg.zero_is_missing == loader_cfg.zero_is_missing, sig
-    # concretely: Thomson zero_is_missing, CER/MSE not (patch_c=channels for divisibility).
-    assert SlowTSCodecConfig(signal="ts_core_temp", channels=44, patch_c=44).zero_is_missing is True
-    assert SlowTSCodecConfig(signal="cer_ti", channels=48, patch_c=48).zero_is_missing is False
-    assert SlowTSCodecConfig(signal="mse", channels=69, patch_c=69).zero_is_missing is False
+    # concretely: Thomson zero_is_missing, CER/MSE not (built via the 4-zone helper).
+    assert tc.slowts_codec_cfg("ts_core_temp", 44).zero_is_missing is True
+    assert tc.slowts_codec_cfg("cer_ti", 48).zero_is_missing is False
+    assert tc.slowts_codec_cfg("mse", 69).zero_is_missing is False
 
 
 # --------------------------------------------------------------------------------------- #
@@ -156,18 +177,22 @@ def test_codec_forward_shapes_and_codes_in_range():
     [("ts_tangential_density", 10), ("ts_core_density", 44), ("cer_ti", 48), ("mse", 69)],
 )
 def test_codec_roundtrip_at_default_fsq_size(signal, channels):
-    """encode -> quantize -> decode at the right-sized default FSQ ([8,5,5,5]=1000, 4 dims)."""
-    patch_c, patch_t = slowts_patch_for(channels)
-    cfg = SlowTSCodecConfig(
-        signal=signal, channels=channels, patch_c=patch_c, patch_t=patch_t,
-        d_model=32, enc_depth=1, dec_depth=1, heads=2,
-    )  # default fsq_levels [8,5,5,5]
+    """encode -> quantize -> decode at the right-sized default FSQ ([8,5,5,5]=1000, 4 dims).
+
+    EXACTLY 4 tokens per window for every signal (incl. the non-÷4 counts 10 and 69, which pad
+    up to padded_channels 12 and 72). The codec patchifies over ``padded_channels``.
+    """
+    cfg = tc.slowts_codec_cfg(signal, channels)
+    # keep the tiny transformer for a fast test.
+    cfg.d_model, cfg.enc_depth, cfg.dec_depth, cfg.heads = 32, 1, 1, 2
     assert cfg.fsq_dim == 4 and cfg.codebook_size == 1000
+    assert cfg.n_tok == 4
     codec = SlowTSCodec(cfg)
-    x = torch.randn(2, cfg.channels, cfg.time_steps) * 5.0
+    # the encoder sees padded_channels positions (the dataset pads + masks the zone tail).
+    x = torch.randn(2, cfg.padded_channels, cfg.time_steps) * 5.0
     out = codec(x)
-    assert out["recon"].shape == x.shape
-    assert out["codes"].shape == (2, cfg.n_tok, 4)
+    assert out["recon"].shape == x.shape == (2, cfg.padded_channels, cfg.time_steps)
+    assert out["codes"].shape == (2, 4, 4)
     levels = torch.tensor(cfg.fsq_levels)
     assert (out["codes"] >= 0).all() and (out["codes"] < levels).all()
     assert torch.isfinite(out["recon"]).all()
@@ -360,7 +385,7 @@ def cer_shots(tmp_path):
 
 def _tiny_slowts_cfg(signal="ts_core_density", channels=12) -> SlowTSCodecConfig:
     return SlowTSCodecConfig(
-        signal=signal, channels=channels, time_steps=5, patch_c=6, patch_t=5,
+        signal=signal, channels=channels, time_steps=5, n_zones=2, patch_c=6, patch_t=5,
         d_model=32, enc_depth=1, dec_depth=1, heads=2, fsq_levels=[4, 4, 3],
     )
 
@@ -459,8 +484,10 @@ def _standardize_via_ds(raw, *, signal, method, mean, std, channels):
     Builds the cfg + a dataset instance WITHOUT touching HDF5 (we only call the pure transform
     method) so this is a fast unit test of the exact standardize math.
     """
+    # n_zones=1 (whole profile is one zone) — this test exercises the pure standardize math on a
+    # raw (C,T), not the zone patchify, so a single-zone cfg keeps it valid for any C.
     cfg = SlowTSCodecConfig(signal=signal, channels=channels, time_steps=raw.shape[1],
-                            patch_c=channels, patch_t=raw.shape[1])
+                            n_zones=1, patch_c=channels, patch_t=raw.shape[1])
     cfg.preprocess_method = method
     cfg.channel_mean = mean
     cfg.channel_std = std
@@ -599,11 +626,19 @@ def test_slowts_dataset_zero_is_missing_mask_preserved_after_standardize(slowts_
 # The dataset must ZERO the missing positions in the codec INPUT (0 == standardized neutral),
 # while keeping the loss masking (missing still excluded from the recon loss).
 # --------------------------------------------------------------------------------------- #
-def _fit_window_via_ds(raw, nan_mask, *, signal, method, mean, std, channels, zero_is_missing_ok):
-    """Run SlowTSCodecPairDataset._fit_window on a synthetic (raw, nan_mask) WITHOUT HDF5."""
+def _fit_window_via_ds(raw, nan_mask, *, signal, method, mean, std, channels,
+                       zero_is_missing_ok, n_zones=1):
+    """Run SlowTSCodecPairDataset._fit_window on a synthetic (raw, nan_mask) WITHOUT HDF5.
+
+    ``n_zones=1`` (whole profile is one zone; padded_channels == channels) isolates the
+    standardize + input-masking behaviour these tests check. The zone-padding + mask behaviour
+    for the 4-zone production layout is covered separately in
+    ``test_slowts_zone_padding_masked_and_4_tokens``.
+    """
     T = raw.shape[1]
+    patch_c = -(-channels // n_zones)               # ceil(channels / n_zones)
     cfg = SlowTSCodecConfig(signal=signal, channels=channels, time_steps=T,
-                            patch_c=channels, patch_t=T)
+                            n_zones=n_zones, patch_c=patch_c, patch_t=T)
     cfg.preprocess_method = method
     cfg.channel_mean = mean
     cfg.channel_std = std
@@ -673,7 +708,7 @@ def test_slowts_input_mask_semantics_preserved_and_loss_still_masks_missing():
     # the loss (masked recon MAE) ignores missing: recon == signal everywhere except missing,
     # where recon is arbitrary -> masked MAE is 0 regardless of the missing recon value.
     cfg = SlowTSCodecConfig(signal="ts_core_density", channels=C, time_steps=T,
-                            patch_c=C, patch_t=T)
+                            n_zones=1, patch_c=C, patch_t=T)
     recon = signal.clone().unsqueeze(0)
     recon[:, valid < 0.5] = 999.0                  # garbage at missing positions
     mae = SlowTSCodec._masked_recon_mae(recon, signal.unsqueeze(0), valid.unsqueeze(0))
@@ -693,6 +728,43 @@ def test_slowts_input_masking_noop_when_stats_absent():
     )
     # identity standardization + no input-zeroing -> exactly the raw window.
     assert torch.equal(signal, raw)
+
+
+# --------------------------------------------------------------------------------------- #
+# RADIAL-ZONE PADDING (the 4-token layout) — a non-÷4 channel count is padded up to
+# padded_channels and the pad tail is MASKED missing + input-zeroed (never in loss/encoder).
+# --------------------------------------------------------------------------------------- #
+@pytest.mark.parametrize("channels,padded", [(10, 12), (69, 72), (44, 44), (48, 48)])
+def test_slowts_zone_padding_masked_and_4_tokens(channels, padded):
+    """_fit_window pads C up to padded_channels; the pad tail is input-0 + mask-invalid."""
+    T = 5
+    torch.manual_seed(channels)
+    raw = (torch.rand(channels, T) * 4.0 + 1.0) * 1e19   # all present (positive) Thomson density
+    nan_mask = torch.zeros(channels, T)
+    log_raw = torch.log10(raw + 1.0)
+    mean = log_raw.mean(dim=1).tolist()
+    std = log_raw.std(dim=1).clamp(min=1e-3).tolist()
+    signal, valid = _fit_window_via_ds(
+        raw, nan_mask, signal="ts_core_density", method="log_standardize",
+        mean=mean, std=std, channels=channels, zero_is_missing_ok=True, n_zones=4,
+    )
+    # padded to padded_channels = 4 * ceil(C/4); patches into EXACTLY 4 radial-zone tokens.
+    assert signal.shape == (padded, T) and valid.shape == (padded, T)
+    n_pad = padded - channels
+    if n_pad > 0:
+        # pad tail: input-zeroed (neutral -> absent to the encoder) AND mask-invalid (out of loss).
+        assert torch.all(signal[channels:] == 0.0)
+        assert torch.all(valid[channels:] == 0.0)
+    # the REAL profile rows are present + standardized to O(1) (unaffected by padding).
+    assert torch.all(valid[:channels] == 1.0)
+    assert float(signal[:channels].abs().max()) < 20.0
+    # feed the padded window through the production-sized codec -> exactly 4 tokens.
+    cfg = tc.slowts_codec_cfg("ts_core_density", channels)
+    cfg.d_model, cfg.enc_depth, cfg.dec_depth, cfg.heads = 32, 1, 1, 2
+    assert cfg.padded_channels == padded and cfg.n_tok == 4
+    out = SlowTSCodec(cfg)(signal.unsqueeze(0))
+    assert out["codes"].shape == (1, 4, 4)
+    assert out["recon"].shape == (1, padded, T)
 
 
 def test_load_slowts_channel_stats_method_and_length():

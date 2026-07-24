@@ -887,13 +887,13 @@ def slowts_codec_cfg(signal: str, channels: int) -> SlowTSCodecConfig:
     """Build a :class:`SlowTSCodecConfig` for ``signal`` with the loader's real channel count.
 
     ``channels`` is the number of profile positions actually loaded (from
-    :func:`modality_channels`). The patch sizes come from :func:`slowts_patch_for` (one token
-    per window by default). Kept as a helper so the trainer + CLI + tests build the cfg the
-    same way.
+    :func:`modality_channels`). The patch sizes come from :func:`slowts_patch_for` (4 radial-zone
+    tokens per window by default; ``patch_c = ceil(channels / 4)``). Kept as a helper so the
+    trainer + CLI + tests build the cfg the same way.
     """
     patch_c, patch_t = slowts_patch_for(channels)
     return SlowTSCodecConfig(
-        signal=signal, channels=channels, patch_c=patch_c, patch_t=patch_t
+        signal=signal, channels=channels, patch_c=patch_c, patch_t=patch_t, n_zones=4
     )
 
 
@@ -1080,9 +1080,10 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
             if item is not None:
                 return item
         # Last resort: a finite all-zero window + all-INVALID mask (rare; whole shot missing).
+        # Shaped to padded_channels (the tensor the encoder patchifies) so collation is uniform.
         cfg = self.codec_cfg
-        z = torch.zeros((cfg.channels, cfg.time_steps))
-        m = torch.zeros((cfg.channels, cfg.time_steps), dtype=torch.float32)
+        z = torch.zeros((cfg.padded_channels, cfg.time_steps))
+        m = torch.zeros((cfg.padded_channels, cfg.time_steps), dtype=torch.float32)
         return z, m
 
     # -- helpers (reuse parent state; no re-implementation of the index map) ------------ #
@@ -1115,12 +1116,15 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         return signal, mask
 
     def _fit_window(self, raw: torch.Tensor, nan_mask: torch.Tensor):
-        """Crop/pad ``raw`` to ``(cfg.channels, cfg.time_steps)`` + build the validity mask.
+        """Crop/pad ``raw`` to ``(cfg.padded_channels, cfg.time_steps)`` + build the validity mask.
 
         ``_load_signal_raw`` returns ``(C, T)`` at ``target_fs`` (T == cfg.time_steps for a
         50 ms window at 100 Hz); this guard makes the codec ``cfg`` authoritative for the whole
-        ``(C, T)`` shape (T can drift a sample from rounding). The validity mask is built from
-        the loader's missingness policy for this signal (see the class docstring).
+        shape. The REAL ``cfg.channels`` profile positions are standardized + missingness-masked
+        first (so the mask + per-channel stats stay aligned to the real profile), THEN the profile
+        is padded up to ``cfg.padded_channels = n_zones * patch_c`` radial-zone-aligned positions
+        with the pad tail MASKED as missing. The validity mask is built from the loader's
+        missingness policy for this signal (see the class docstring).
         """
         cfg = self.codec_cfg
         C, T = raw.shape
@@ -1130,13 +1134,15 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
             nan_mask = nan_mask[:, : cfg.time_steps]
         elif T < cfg.time_steps:
             if T == 0:
-                z = torch.zeros((cfg.channels, cfg.time_steps))
+                z = torch.zeros((cfg.padded_channels, cfg.time_steps))
                 return z, torch.zeros_like(z)
             pad_r = raw[:, -1:].expand(C, cfg.time_steps - T)
             pad_m = nan_mask[:, -1:].expand(C, cfg.time_steps - T)
             raw = torch.cat([raw, pad_r], dim=1)
             nan_mask = torch.cat([nan_mask, pad_m], dim=1)
-        # channel fit (defensive; loader already yields cfg.channels positions).
+        # channel fit to the REAL profile count (defensive; loader already yields cfg.channels).
+        # The radial-zone padding to cfg.padded_channels happens AFTER standardization below, so
+        # the standardize stats + missingness mask stay aligned to the real cfg.channels profile.
         if C != cfg.channels:
             raw = raw[: cfg.channels]
             nan_mask = nan_mask[: cfg.channels]
@@ -1156,8 +1162,9 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
 
         # SCALE FIX — standardize the codec input the SAME way the FM model does (see
         # SlowTSCodecConfig.channel_mean/std + SLOWTS_PREPROCESS_METHOD). Applied AFTER the mask
-        # is built (mask semantics unchanged). No-op / byte-identical when the cfg carries no
-        # stats (default) or method is "none"/None.
+        # is built (mask semantics unchanged) and BEFORE the zone padding (stats are length
+        # cfg.channels). No-op / byte-identical when the cfg carries no stats (default) or method
+        # is "none"/None.
         signal = self._standardize(raw)
         valid = valid.to(torch.float32)
 
@@ -1171,6 +1178,32 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         # present (valid all 1) — byte-identical for fully-present windows.
         if self._standardize_active():
             signal = signal * valid
+
+        # RADIAL-ZONE PADDING — pad the real profile up to cfg.padded_channels = n_zones*patch_c
+        # so it splits into EXACTLY n_zones contiguous zones (=> n_zones tokens). The pad tail is
+        # MASKED as missing (valid=0) so it never contributes to the loss, and zero-filled in the
+        # input (0 == the standardized neutral value) so it never contributes to the encoder —
+        # the SAME treatment as a genuine missing position. No-op when channels == padded_channels.
+        signal, valid = self._pad_zone_tail(signal, valid)
+        return signal, valid
+
+    def _pad_zone_tail(self, signal: torch.Tensor, valid: torch.Tensor):
+        """Pad ``(C, T) -> (padded_channels, T)`` with a missing (valid=0), zero-input tail.
+
+        ``signal`` / ``valid`` are the real ``cfg.channels`` profile (already standardized +
+        missingness-masked). Appends ``padded_channels - channels`` radial-zone padding rows that
+        are input-zeroed (neutral, seen by the encoder as absent) and mask-invalid (excluded from
+        the loss) — identical to a genuine missing position. No-op when no padding is needed.
+        """
+        cfg = self.codec_cfg
+        pad_rows = cfg.padded_channels - signal.shape[0]
+        if pad_rows <= 0:
+            return signal, valid
+        T = signal.shape[1]
+        sig_pad = signal.new_zeros((pad_rows, T))
+        val_pad = valid.new_zeros((pad_rows, T))
+        signal = torch.cat([signal, sig_pad], dim=0)
+        valid = torch.cat([valid, val_pad], dim=0)
         return signal, valid
 
     def _standardize_active(self) -> bool:

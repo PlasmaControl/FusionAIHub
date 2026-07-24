@@ -68,7 +68,9 @@ class SlowTSEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         cfg = self.cfg
         # patchify: position outer, time inner -> n_tok = n_c * n_t. Each patch is a flat
-        # (patch_c * patch_t) vector of the smooth profile slice.
+        # (patch_c * patch_t) vector of the smooth profile slice. `x` carries `padded_channels`
+        # positions (== n_pos_patch * patch_c) — the loader pads the real profile up to the
+        # zone-aligned count and masks the pad tail (see SlowTSCodecPairDataset._fit_window).
         patches = rearrange(
             x,
             "b (nc pc) (nt pt) -> b (nc nt) (pc pt)",

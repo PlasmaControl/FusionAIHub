@@ -87,3 +87,29 @@ def test_n_tok_matches_config() -> None:
     cfg = _small_cfg()
     # sanity: the contract's n_tok derivation is what the nets produce.
     assert cfg.n_tok == (cfg.freq_bins // cfg.patch_f) * (cfg.time_frames // cfg.patch_t)
+
+
+def test_spectro_default_is_192_tokens_and_pe_sized_32x6() -> None:
+    """DESIGNED per-frame budget: the production spectro default is 192 tokens/modality.
+
+    patch_f=16 -> 512/16 = 32 freq-patches; patch_t=16 -> 96/16 = 6 time-patches; n_tok = 192.
+    The freq/time positional-embedding tables must be config-driven (sized 32 / 6), NOT the old
+    8 / 3.
+    """
+    cfg = SpectroCodecConfig()  # real production default
+    assert cfg.patch_f == 16 and cfg.patch_t == 16
+    assert cfg.n_freq_patch == 32 and cfg.n_time_patch == 6
+    assert cfg.n_tok == 192
+    # PE tables span the new grid (config-driven, not hard-coded 8/3).
+    enc = SpectroEncoder(cfg)
+    dec = SpectroDecoder(cfg)
+    assert tuple(enc.pos_emb.freq_pe.shape) == (32, cfg.d_model)
+    assert tuple(enc.pos_emb.time_pe.shape) == (6, cfg.d_model)
+    assert tuple(dec.pos_emb.freq_pe.shape) == (32, cfg.d_model)
+    assert tuple(dec.pos_emb.time_pe.shape) == (6, cfg.d_model)
+    # encoder round-trips at the real default grid -> 192 tokens.
+    x = torch.randn(1, cfg.channels, cfg.freq_bins, cfg.time_frames)
+    feats = enc(x)
+    assert feats.shape == (1, 192, cfg.d_model)
+    recon = dec(feats)
+    assert recon.shape == x.shape and torch.isfinite(recon).all()

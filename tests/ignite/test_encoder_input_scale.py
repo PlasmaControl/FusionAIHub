@@ -120,7 +120,7 @@ def _slowts_input() -> Tuple[torch.Tensor, torch.Tensor]:
         mean.append(float(v.mean()) if v.numel() else 0.0)
         std.append(float(v.std().clamp(min=1e-3)) if v.numel() else 1.0)
     cfg = SlowTSCodecConfig(signal="ts_core_density", channels=C, time_steps=T,
-                            patch_c=C, patch_t=T)
+                            n_zones=1, patch_c=C, patch_t=T)
     cfg.preprocess_method = "log_standardize"
     cfg.channel_mean = mean
     cfg.channel_std = std

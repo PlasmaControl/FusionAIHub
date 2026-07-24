@@ -70,8 +70,12 @@ class SpectroCodecConfig:
     channels: int = 1
     freq_bins: int = 512          # cropped from n_fft//2+1 = 513
     time_frames: int = 96         # ~98 STFT frames / 50 ms, cropped to a multiple of patch_t
-    patch_f: int = 64             # -> 8 freq patches
-    patch_t: int = 32             # -> 3 time patches   => n_tok = 24
+    # DESIGNED per-frame budget (Phase-B frame layout): 192 tokens / spectro modality.
+    # patch_f=16 -> 512/16 = 32 freq-patches (~8 kHz each, freq-FINE to resolve the coherent
+    # modes — vs the old 31 kHz at patch_f=64); patch_t=16 -> 96/16 = 6 time-patches.
+    #   n_tok = 32 * 6 = 192  (was 8 * 3 = 24 at patch_f=64/patch_t=32).
+    patch_f: int = 16             # -> 32 freq patches
+    patch_t: int = 16             # -> 6 time patches    => n_tok = 192
 
     # bottleneck (vector-quantize-pytorch FSQ)
     # Right-sized to the FSQ-paper-recommended ~1024-code config: [8, 5, 5, 5] = prod = 1000.
@@ -634,9 +638,19 @@ class SlowTSCodecConfig:
     signal: str = "ts_core_density"
 
     # data / shape
-    channels: int = 44            # C = profile positions (read from the loader at runtime).
+    channels: int = 44            # C = REAL profile positions (read from the loader at runtime).
     time_steps: int = 5           # T; a 50 ms window at SLOWTS_FS=100 Hz = round(0.05*100) = 5.
-    patch_c: int = 44             # positions per patch (default: whole profile = 1 position-patch).
+    # DESIGNED per-frame budget (Phase-B frame layout): EXACTLY 4 tokens / slow-TS signal =
+    # 4 radial-zone patches × 1 time-patch. The C profile positions are split into 4 contiguous
+    # radial zones of `patch_c = ceil(C / 4)` positions each; when C is not divisible by 4 the
+    # profile is PADDED up to `padded_channels = 4 * patch_c` and the padded tail positions are
+    # MASKED as missing (they never contribute to the encoder input or the loss — see
+    # SlowTSCodecPairDataset._fit_window). `patch_c` here is the per-ZONE position count; the
+    # encoder/decoder patchify over `padded_channels` (NOT `channels`).
+    #   n_pos_patch = 4  (the zone count);  n_tok = 4 * 1 = 4.
+    # The `slowts_patch_for` helper computes patch_c = ceil(channels / n_zones) for you.
+    n_zones: int = 4              # radial-zone patches (position-patches) -> n_pos_patch
+    patch_c: int = 11             # positions per radial zone = ceil(44 / 4) = 11 for the default C.
     patch_t: int = 5              # time samples per patch (default: whole window = 1 time-patch).
 
     # PER-CHANNEL RAW STANDARDIZATION (the SCALE FIX; see SlowTSCodecPairDataset._standardize).
@@ -721,8 +735,20 @@ class SlowTSCodecConfig:
         return SLOWTS_ZERO_IS_MISSING.get(self.signal, False)
 
     @property
+    def padded_channels(self) -> int:
+        """Position count the encoder/decoder actually patchify over (``n_zones * patch_c``).
+
+        ``>= channels``; the extra ``padded_channels - channels`` tail positions are the
+        radial-zone padding, MASKED as missing by :meth:`SlowTSCodecPairDataset._fit_window` so
+        they never contribute to the encoder input or the reconstruction loss. Equals
+        ``channels`` exactly when ``channels`` is divisible by ``n_zones`` (no padding needed).
+        """
+        return self.n_zones * self.patch_c
+
+    @property
     def n_pos_patch(self) -> int:
-        return self.channels // self.patch_c
+        # The radial-zone count IS n_zones (padded_channels // patch_c == n_zones by construction).
+        return self.n_zones
 
     @property
     def n_time_patch(self) -> int:
@@ -745,19 +771,47 @@ class SlowTSCodecConfig:
         return round(CHUNK_S * SLOWTS_FS)
 
     def __post_init__(self) -> None:
-        assert self.channels % self.patch_c == 0, "channels must be divisible by patch_c"
+        # `patch_c` is the per-ZONE position count; the encoder/decoder patchify over
+        # `padded_channels = n_zones * patch_c` (divisible by patch_c BY CONSTRUCTION). The real
+        # `channels` need NOT be divisible by patch_c — the profile is padded up to
+        # `padded_channels` and the pad tail is masked missing. We only require that `patch_c` is
+        # big enough to hold the real profile in `n_zones` zones (channels <= padded_channels) and
+        # not so big it leaves a WHOLE zone empty (channels > (n_zones-1)*patch_c), i.e. the split
+        # is contiguous + near-equal (patch_c == ceil(channels / n_zones)).
+        assert self.n_zones >= 1, "n_zones must be >= 1"
+        assert self.patch_c >= 1, "patch_c must be >= 1"
+        assert self.channels <= self.padded_channels, (
+            f"channels {self.channels} > padded_channels {self.padded_channels} "
+            f"(patch_c={self.patch_c} too small for {self.n_zones} zones)"
+        )
+        assert self.channels > (self.n_zones - 1) * self.patch_c, (
+            f"channels {self.channels} leaves a whole empty zone at patch_c={self.patch_c}, "
+            f"n_zones={self.n_zones}; patch_c must be ceil(channels / n_zones)"
+        )
         assert self.time_steps % self.patch_t == 0, "time_steps must be divisible by patch_t"
 
 
-def slowts_patch_for(channels: int, *, time_steps: int = 5) -> Tuple[int, int]:
-    """Pick a sensible ``(patch_c, patch_t)`` for a slow-TS signal with ``channels`` positions.
+def slowts_patch_for(
+    channels: int, *, time_steps: int = 5, n_zones: int = 4
+) -> Tuple[int, int]:
+    """Pick ``(patch_c, patch_t)`` so a slow-TS signal yields EXACTLY ``n_zones`` tokens.
 
-    The default codec uses ONE token per window (whole profile × whole time-window), which is
-    the "lightest touch" (a single 4-dim code per 50 ms frame per signal → a tiny per-frame
-    token budget for Phase B). ``patch_t = time_steps`` (whole window is one time-patch) and
-    ``patch_c = channels`` (whole profile is one position-patch). Kept as a helper so the
-    trainer can size the codec from the loader's real channel count without the caller
-    hand-picking divisible patch sizes. Callers wanting finer position resolution can override
-    ``patch_c`` on the returned cfg.
+    DESIGNED per-frame budget (Phase-B frame layout): every slow-TS signal produces
+    ``n_zones`` tokens = ``n_zones`` radial-zone position-patches × 1 time-patch. The C profile
+    positions are split into ``n_zones`` contiguous, near-equal radial zones of
+    ``patch_c = ceil(channels / n_zones)`` positions each; ``patch_t = time_steps`` keeps the
+    whole 50 ms window in a single time-patch (T stays 1 patch).
+
+    ``channels`` is NOT required to be divisible by ``n_zones`` (the real counts 44/10/48/69 are
+    not): the profile is PADDED up to ``padded_channels = n_zones * patch_c`` and the padded tail
+    positions are MASKED as missing (see :meth:`SlowTSCodecPairDataset._fit_window`), so they
+    never enter the encoder input or the loss. With ``n_zones = 4``:
+        C=44 -> patch_c=11 (44 = 4*11, no padding)         -> 4 tokens
+        C=10 -> patch_c=3  (padded_channels 12, pad 2)     -> 4 tokens
+        C=48 -> patch_c=12 (48 = 4*12, no padding)         -> 4 tokens
+        C=69 -> patch_c=18 (padded_channels 72, pad 3)     -> 4 tokens
+    Kept as a helper so the trainer sizes the codec from the loader's real channel count without
+    the caller hand-picking patch sizes.
     """
-    return channels, time_steps
+    patch_c = -(-int(channels) // int(n_zones))   # ceil(channels / n_zones)
+    return patch_c, time_steps

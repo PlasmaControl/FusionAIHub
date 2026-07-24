@@ -164,7 +164,7 @@ def test_overrides_on_for_the_four_failing_codecs():
     assert vid.active_bias == 0.0 and vid.min_activity == 0.0
     assert vid.adv_warmup_steps > 0 and vid.adversarial_weight < 1.0
 
-    ts = SlowTSCodecConfig(signal="ts_core_density", channels=44, patch_c=44)
+    ts = tc.slowts_codec_cfg("ts_core_density", 44)
     tc.apply_activity_overrides(ts, "ts_core_density")
     assert ts.active_bias > 0 and 0.0 < ts.min_activity <= 1.0  # present-fraction threshold
 
@@ -182,12 +182,11 @@ def test_overrides_on_for_the_four_failing_codecs():
         ("bes", lambda: SpectroCodecConfig(channels=16)),
         ("mhr", lambda: SpectroCodecConfig(channels=6)),
         ("tangtv_upper", lambda: VideoCodecConfig(channels=2, divertor="upper")),
-        ("ts_core_temp", lambda: SlowTSCodecConfig(signal="ts_core_temp", channels=44, patch_c=44)),
-        ("cer_ti", lambda: SlowTSCodecConfig(signal="cer_ti", channels=48, patch_c=48)),
-        ("cer_rot", lambda: SlowTSCodecConfig(signal="cer_rot", channels=48, patch_c=48)),
-        ("mse", lambda: SlowTSCodecConfig(signal="mse", channels=69, patch_c=69)),
-        ("ts_tangential_density", lambda: SlowTSCodecConfig(
-            signal="ts_tangential_density", channels=10, patch_c=10)),
+        ("ts_core_temp", lambda: tc.slowts_codec_cfg("ts_core_temp", 44)),
+        ("cer_ti", lambda: tc.slowts_codec_cfg("cer_ti", 48)),
+        ("cer_rot", lambda: tc.slowts_codec_cfg("cer_rot", 48)),
+        ("mse", lambda: tc.slowts_codec_cfg("mse", 69)),
+        ("ts_tangential_density", lambda: tc.slowts_codec_cfg("ts_tangential_density", 10)),
     ],
 )
 def test_overrides_are_noop_for_working_modalities(modality, ctor):
@@ -207,7 +206,7 @@ def test_overrides_are_noop_for_working_modalities(modality, ctor):
 
 def test_overrides_do_not_touch_adv_knobs_absent_on_slowts():
     """Slow-TS has no adversarial knobs; the override must not crash / inject them."""
-    ts = SlowTSCodecConfig(signal="ts_core_density", channels=44, patch_c=44)
+    ts = tc.slowts_codec_cfg("ts_core_density", 44)
     tc.apply_activity_overrides(ts, "ts_core_density")
     assert not hasattr(ts, "adv_warmup_steps")
     assert not hasattr(ts, "adversarial_weight")
@@ -391,7 +390,7 @@ def test_slowts_dataset_active_bias_zero_byte_identical(tmp_path):
         _write_slowts_shot(tmp_path / f"{sid}_processed.h5", signal, channels,
                           duration_s, seed=i, zero_is_missing=True)
         shots.append(sid)
-    base = dict(signal=signal, channels=channels, time_steps=5, patch_c=6, patch_t=5,
+    base = dict(signal=signal, channels=channels, time_steps=5, n_zones=2, patch_c=6, patch_t=5,
                 d_model=32, enc_depth=1, dec_depth=1, heads=2, fsq_levels=[4, 4, 3])
     cfg0 = SlowTSCodecConfig(**base)                                    # default 0
     cfg1 = SlowTSCodecConfig(**base, min_activity=0.5, active_bias=0.0)  # threshold set, bias OFF
