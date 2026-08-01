@@ -102,6 +102,9 @@ torchvision = { version = ">=0.25,<0.27",   index = "https://download.pytorch.or
 # torch 2.10 declares triton-rocm as a dep; uv won't auto-discover it
 # through the per-package `index = ...` above, so list it explicitly.
 triton-rocm = { version = "*",              index = "https://download.pytorch.org/whl/rocm7.1" }
+# Evaluation suite (scripts/evaluation/): latent-space analyses + probes.
+scikit-learn = ">=1.5,<2"
+umap-learn   = ">=0.5.7,<0.6"
 # Flash-Attention 2 (gfx90a / MI250X) is NOT listed here intentionally:
 # the build needs `module load rocm/7.1.1` + `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`,
 # which pixi/uv can't set. Install via the `setup-flash-attn` task below; we use
