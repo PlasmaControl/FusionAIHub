@@ -16,6 +16,7 @@ from .backbone import SharedBackbone
 from .output_heads import (
     FastTimeSeriesHead,
     SlowTimeSeriesHead,
+    SpectrogramFlowHead,
     SpectrogramOutputHead,
     VideoOutputHead,
 )
@@ -173,7 +174,22 @@ class E2EFoundationModel(nn.Module):
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         attn_impl: str = "standard",
-        gradient_checkpoint: bool = False,
+        backbone_grad_checkpoint: bool = False,
+        video_seam_refine: bool = False,
+        spectro_seam_refine: bool = False,
+        seam_refine_hidden_ch: int = 16,
+        spectro_refine_kernel: int = 3,
+        video_refine_kernel: tuple = (1, 3, 3),
+        spectro_inv_stem: bool = False,
+        spectro_inv_stem_ch: int = 64,
+        spectro_freq_stem: bool = False,
+        spectro_freq_stem_hidden: int = 128,
+        video_resize_conv: bool = False,
+        video_resize_conv_hidden: int = 64,
+        spectro_generative: bool = False,
+        spectro_flow_base_ch: int = 64,
+        spectro_flow_sample_steps: int = 6,
+        spectro_flow_lambda: float = 1.0,
     ) -> None:
         super().__init__()
         self.diagnostics = list(diagnostics)
@@ -219,6 +235,11 @@ class E2EFoundationModel(nn.Module):
                     patch_size=d_cfg.video_patch_size,
                     d_model=d_model,
                     spatial_size=(d_cfg.height, d_cfg.width),
+                    enable_seam_refine=video_seam_refine,
+                    seam_refine_hidden_ch=seam_refine_hidden_ch,
+                    seam_refine_kernel=tuple(video_refine_kernel),
+                    decoder="resize_conv" if video_resize_conv else "deconv",
+                    resize_conv_hidden_ch=video_resize_conv_hidden,
                 )
             elif d_cfg.kind == "spectrogram":
                 assert d_cfg.freq_bins is not None
@@ -232,15 +253,33 @@ class E2EFoundationModel(nn.Module):
                     patch_t=T_p,
                     freq_bins=d_cfg.freq_bins,
                     time_frames=d_cfg.window_samples,
+                    enable_freq_stem=spectro_freq_stem,
+                    freq_stem_hidden=spectro_freq_stem_hidden,
                 )
-                self.diag_heads[d_cfg.name] = SpectrogramOutputHead(
+                spec_head_kwargs = dict(
                     n_channels=d_cfg.n_channels,
                     d_model=d_model,
                     patch_f=F_p,
                     patch_t=T_p,
                     n_patches_f=d_cfg.freq_bins // F_p,
                     n_patches_t=trunc_t // T_p,
+                    enable_seam_refine=spectro_seam_refine,
+                    seam_refine_hidden_ch=seam_refine_hidden_ch,
+                    seam_refine_kernel=spectro_refine_kernel,
+                    enable_inv_stem=spectro_inv_stem,
+                    inv_stem_ch=spectro_inv_stem_ch,
                 )
+                if spectro_generative:
+                    self.diag_heads[d_cfg.name] = SpectrogramFlowHead(
+                        flow_base_ch=spectro_flow_base_ch,
+                        flow_sample_steps=spectro_flow_sample_steps,
+                        flow_lambda=spectro_flow_lambda,
+                        **spec_head_kwargs,
+                    )
+                else:
+                    self.diag_heads[d_cfg.name] = SpectrogramOutputHead(
+                        **spec_head_kwargs
+                    )
             else:
                 raise ValueError(f"Unknown diagnostic kind: {d_cfg.kind}")
             self.token_layout.append(
@@ -274,7 +313,7 @@ class E2EFoundationModel(nn.Module):
             mlp_ratio=mlp_ratio,
             dropout=dropout,
             attn_impl=attn_impl,
-            gradient_checkpoint=gradient_checkpoint,
+            grad_checkpoint=backbone_grad_checkpoint,
         )
 
     def tokenize(
@@ -329,12 +368,26 @@ class E2EFoundationModel(nn.Module):
         act_inputs: Dict[str, torch.Tensor],
         step_index: torch.Tensor,
         time_offset_s: torch.Tensor,
+        return_tokens: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """Full tokenize → backbone → per-modality-decode pipeline.
 
         Returns a dict of reconstructed raw signals, one per diagnostic
-        modality, keyed by ``DiagnosticConfig.name``.
+        modality, keyed by ``DiagnosticConfig.name``. When ``return_tokens``
+        is set, returns ``(predictions, diag_token_slices)`` where
+        ``diag_token_slices[name]`` is the backbone output slice fed to that
+        modality's head — needed by generative heads (e.g.
+        :class:`SpectrogramFlowHead`) to compute their conditioning-dependent
+        loss against the targets (which the head's forward never sees).
         """
         tokens = self.tokenize(diag_inputs, act_inputs)
         out_tokens = self.backbone(tokens, step_index, time_offset_s)
-        return self.decode(out_tokens)
+        predictions = self.decode(out_tokens)
+        if return_tokens:
+            diag_token_slices = {
+                layout.name: out_tokens[:, layout.slice_]
+                for layout in self.token_layout
+                if layout.is_diagnostic
+            }
+            return predictions, diag_token_slices
+        return predictions

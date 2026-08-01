@@ -5,7 +5,7 @@ import logging
 from multiprocessing import Pool
 from functools import partial
 from omegaconf import DictConfig, OmegaConf
-from typing import Union
+from typing import Optional, Union
 from pathlib import Path
 from tqdm.auto import tqdm
 from scipy.interpolate import interp1d
@@ -122,7 +122,11 @@ class SignalLoader:
             tree: str,
             signal_paths: list[str],
             data_key: str = 'data',
-            time_key: str = 'dim0'
+            time_key: str = 'dim0',
+            fallback_tree: Optional[str] = None,
+            fallback_paths: Optional[list[str]] = None,
+            fallback_data_key: str = 'data',
+            fallback_time_key: str = 'dim0',
     ) -> dict[str, Union[np.ndarray, list[np.ndarray]]]:
         """
         Load multiple signals from the same tree.
@@ -137,6 +141,20 @@ class SignalLoader:
             HDF5 dataset name for signal data
         time_key : str
            HDF5 dataset name for time axis
+        fallback_tree : str, optional
+            Alternative tree to try when the primary ``tree`` lookup
+            fails for a given channel. Typically ``PTDATA`` for D3D
+            signals whose MDSplus path is empty for a particular shot
+            (e.g. CO2 BCI: primary ``\\D3D::TOP.ELECTRONS.BCI.DPD.*``,
+            fallback ``PTDATA`` point names ``DENR0UF`` etc.).
+        fallback_paths : list of str, optional
+            Per-channel signal names under ``fallback_tree``. Must have
+            the same length as ``signal_paths`` so channel indices stay
+            aligned. Channel ``i`` is filled from ``fallback_paths[i]``
+            only when ``signal_paths[i]`` returned no data.
+        fallback_data_key, fallback_time_key : str
+            HDF5 dataset names under the fallback tree. Defaults match
+            the primary defaults (``data`` / ``dim0``).
 
         Returns
         -------
@@ -145,10 +163,24 @@ class SignalLoader:
           - 'time': Time array or list of time arrays
           - 'valid_indices': List of indices where data was successfully loaded
           - 'num_valid': Number of valid signals
+          - 'fallback_indices': Subset of ``valid_indices`` that came from
+            the fallback tree rather than the primary tree. Empty list
+            when no fallback is configured or no channels needed it.
         """
+        use_fallback = (
+            fallback_tree is not None and fallback_paths is not None
+        )
+        if use_fallback and len(fallback_paths) != len(signal_paths):
+            raise ValueError(
+                f"fallback_paths has length {len(fallback_paths)} but "
+                f"signal_paths has length {len(signal_paths)}; "
+                "per-channel fallback requires matching lengths."
+            )
+
         data_list = []
         time_list = []
         valid_indices = []
+        fallback_indices: list[int] = []
 
         for idx, path in enumerate(signal_paths):
             signal_data = self.load_signal_data(tree, path, data_key, time_key)
@@ -157,9 +189,23 @@ class SignalLoader:
                 data_list.append(signal_data['data'])
                 time_list.append(signal_data.get('time', np.array([])))
                 valid_indices.append(idx)
-            else:
-                data_list.append(np.array([]))
-                time_list.append(np.array([]))
+                continue
+
+            # Primary failed for this channel — try fallback if configured.
+            if use_fallback:
+                alt = self.load_signal_data(
+                    fallback_tree, fallback_paths[idx],
+                    fallback_data_key, fallback_time_key,
+                )
+                if alt and len(alt.get('data', [])) > 0:
+                    data_list.append(alt['data'])
+                    time_list.append(alt.get('time', np.array([])))
+                    valid_indices.append(idx)
+                    fallback_indices.append(idx)
+                    continue
+
+            data_list.append(np.array([]))
+            time_list.append(np.array([]))
 
         if not data_list:
             warnings.warn(f"No valid signals loaded from {len(signal_paths)} "
@@ -168,7 +214,8 @@ class SignalLoader:
                 'data': np.array([]),
                 'time': np.array([]),
                 'valid_indices': [],
-                'num_valid': 0
+                'num_valid': 0,
+                'fallback_indices': [],
             }
 
         # Check if we can stack the data
@@ -177,7 +224,8 @@ class SignalLoader:
 
         result = {
             'valid_indices': valid_indices,
-            'num_valid': len(valid_indices)
+            'num_valid': len(valid_indices),
+            'fallback_indices': fallback_indices,
         }
 
         if all_same_shape:
@@ -233,12 +281,37 @@ class SignalLoader:
             data_key = group_config.get('input_ykey', 'data')  # ykey is data
             time_key = group_config.get('input_xkey', 'dim0')  # xkey is time
 
+            # Optional per-channel fallback to a different tree (e.g. CO2
+            # BCI's PTDATA alternative point names when the MDSplus path is
+            # empty). The fallback list must match the primary list length.
+            fb_cfg = group_config.get('fallback')
+            if fb_cfg is not None:
+                fb_tree = fb_cfg['tree']
+                fb_paths = fb_cfg['input_key']
+                fb_data_key = fb_cfg.get('input_ykey', 'data')
+                fb_time_key = fb_cfg.get('input_xkey', 'dim0')
+                if len(fb_paths) != len(signal_paths):
+                    raise ValueError(
+                        f"{group_name}: fallback.input_key length "
+                        f"({len(fb_paths)}) does not match input_key "
+                        f"length ({len(signal_paths)})."
+                    )
+            else:
+                fb_tree = None
+                fb_paths = None
+                fb_data_key = 'data'
+                fb_time_key = 'dim0'
+
             # Load signals
             loaded = self.load_signal_group(
                 tree=tree,
                 signal_paths=signal_paths,
                 data_key=data_key,
-                time_key=time_key
+                time_key=time_key,
+                fallback_tree=fb_tree,
+                fallback_paths=fb_paths,
+                fallback_data_key=fb_data_key,
+                fallback_time_key=fb_time_key,
             )
 
             # Add config metadata
@@ -248,10 +321,12 @@ class SignalLoader:
             results[group_name] = loaded
 
             # Print summary
+            n_fb = len(loaded.get('fallback_indices', []))
+            fb_suffix = f" ({n_fb} via fallback {fb_tree})" if n_fb > 0 else ""
             if (isinstance(loaded['data'], np.ndarray)
                     and loaded['data'].size > 0):
                 print(f"Loaded {loaded['num_valid']}/"
-                      f"{len(signal_paths)} channels")
+                      f"{len(signal_paths)} channels{fb_suffix}")
                 print(f"    Data shape: {loaded['data'].shape}")
                 if (isinstance(loaded['time'], np.ndarray)
                         and len(loaded['time']) > 0):

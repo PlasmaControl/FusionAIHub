@@ -223,12 +223,12 @@ class SharedBackbone(nn.Module):
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         attn_impl: str = "standard",
-        gradient_checkpoint: bool = False,
+        grad_checkpoint: bool = False,
     ) -> None:
         super().__init__()
         self.d_model = d_model
         self.n_layers = n_layers
-        self.gradient_checkpoint = gradient_checkpoint
+        self.grad_checkpoint = grad_checkpoint
         self.step_cond = StepConditioning(d_model)
         self.blocks = nn.ModuleList(
             [
@@ -263,6 +263,11 @@ class SharedBackbone(nn.Module):
         """
         step_embed = self.step_cond(step_index, time_offset_s).unsqueeze(1)
         x = tokens + step_embed
+        # Per-block gradient checkpointing: trades ~30% step-time for
+        # ~sqrt(n_layers) reduction in activation memory. Required at
+        # d_model=1024+ where activations no longer fit per-GCD VRAM
+        # without sharding. Skipped when return_intermediates (debug path)
+        # or when not training (no grad needed anyway).
         if return_intermediates:
             # Intermediates path keeps every block's output anyway, so
             # checkpointing would defeat its purpose — disable here.
@@ -275,7 +280,7 @@ class SharedBackbone(nn.Module):
         # Gradient checkpointing recomputes each block's activations during
         # backward instead of storing them. Only active during training
         # (no-op under inference / no_grad) so eval cost is unchanged.
-        use_ckpt = self.gradient_checkpoint and self.training and torch.is_grad_enabled()
+        use_ckpt = self.grad_checkpoint and self.training and torch.is_grad_enabled()
         for block in self.blocks:
             if use_ckpt:
                 x = checkpoint(block, x, use_reentrant=False)

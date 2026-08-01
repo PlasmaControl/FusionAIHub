@@ -23,7 +23,7 @@ from tokamak_foundation_model.e2e.model import DiagnosticConfig
 VIDEO_MODALITIES: List[
     Tuple[str, int, int, Tuple[int, int], Tuple[int, int, int]]
 ] = [
-    ("tangtv", 2, 3, (120, 360), (3, 12, 12)),
+    ("tangtv", 7, 3, (120, 360), (3, 12, 12)),
 ]
 
 # Spectrogram modality registry. STFT shape fixed by the data loader
@@ -31,10 +31,17 @@ VIDEO_MODALITIES: List[
 # 50 ms window.
 SPECTRO_FREQ_BINS = 512
 SPECTRO_TIME_FRAMES = 98
+# Patch sizes — original (kept after considering the (4F, T/4) variant).
+# Aspect-ratio shifts alone don't change the per-patch compression
+# bottleneck (~40× for ECE). To improve fine-pattern reconstruction
+# (harmonics + transients), we instead bumped the spectrogram refine-block
+# stack depth from 4 → 12 in spectrogram.py / output_heads.py — see
+# memory/project-session-pause-20260519.md.
 SPECTROGRAM_MODALITIES: List[Tuple[str, int, Tuple[int, int]]] = [
     ("ece", 40, (32, 8)),
-    ("co2", 4, (64, 8)),
+    ("co2",  4, (64, 8)),
     ("bes", 16, (32, 8)),
+    ("mhr",  6, (32, 8)),
 ]
 
 
@@ -45,6 +52,8 @@ def append_multimodal_diagnostics(
     diagnostics: List[DiagnosticConfig],
     use_video: Optional[List[str]],
     use_spectro: Optional[List[str]],
+    spectro_patch_f: Optional[int] = None,
+    spectro_patch_t: Optional[int] = None,
 ) -> List[DiagnosticConfig]:
     """Append spectrogram then video DiagnosticConfigs to ``diagnostics``.
 
@@ -52,6 +61,12 @@ def append_multimodal_diagnostics(
     ``[slow_ts | fast_ts | spectrogram | video | actuators]`` so the
     rollout's diagnostic-prefix slice (``rollout.py``) stays contiguous
     (Guard G1). Returns a new list; callers append actuators afterwards.
+
+    ``spectro_patch_f`` / ``spectro_patch_t`` override the registry patch
+    shape for ALL spectro modalities when given (else the per-modality
+    registry default is used). Set ``spectro_patch_f=SPECTRO_FREQ_BINS`` for a
+    full-frequency patch (one token spans the whole spectrum); this changes the
+    encoder/decoder kernel shape and so is a from-scratch architecture change.
     """
     out = list(diagnostics)
     if use_spectro:
@@ -63,6 +78,9 @@ def append_multimodal_diagnostics(
                     f"{sorted(registry.keys())}"
                 )
             (_, n_ch, patch_size) = registry[spec_name]
+            if spectro_patch_f is not None or spectro_patch_t is not None:
+                pf, pt = patch_size
+                patch_size = (spectro_patch_f or pf, spectro_patch_t or pt)
             out.append(
                 DiagnosticConfig(
                     name=spec_name, kind="spectrogram",

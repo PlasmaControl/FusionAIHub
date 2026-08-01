@@ -1,4 +1,6 @@
 import os
+from datetime import timedelta
+
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
@@ -20,11 +22,18 @@ class DistributedManager:
             self.device_index = self.local_rank if visible > 1 else 0
 
             self.distributed = True
+            # 30-min collective timeout (default is 10 min) — the
+            # extended Stage 2 K=80 val phase can have rank-skew
+            # exceeding the default watchdog, especially at the
+            # post-val dm.barrier() where rank 0 finishes its
+            # Tier 4 metric polling + checkpoint save. See
+            # smoke 4793237 (val timeout at step 40, K=80).
             dist.init_process_group(
                 'nccl',
                 rank=self.rank,
                 world_size=self.world_size,
                 device_id=torch.device("cuda", self.device_index),
+                timeout=timedelta(minutes=30),
             )
             torch.cuda.set_device(self.device_index)
         else:

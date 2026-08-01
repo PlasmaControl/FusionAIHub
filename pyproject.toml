@@ -10,10 +10,21 @@ authors = [
 dependencies = [
   "einops>=0.8.2,<0.9",
   "h5py>=3.15.1,<4",
+  # imageio + imageio-ffmpeg used by scripts/training/eval_e2e_stage1_phase3_1_video.py
+  # to write video stitched plots as mp4. imageio-ffmpeg ships a static
+  # ffmpeg binary, so the encoder works on Frontier without an OS-level
+  # ffmpeg package. Listed in [project] (shared across default / fdp /
+  # frontier features) so every env carries the same encoder.
+  "imageio>=2.30,<3",
+  "imageio-ffmpeg>=0.4.9,<1",
   "ipykernel>=7.2.0,<8",
   "ipywidgets>=8.1.8,<9",
   "matplotlib>=3.10.8,<4",
   "numpy>=1.26.4,<3",
+  # Image-processing libs for tokamak-animation cam ↔ PNG alignment
+  # (cv2.findTransformECC + skimage.registration).
+  "opencv-python-headless>=4.10,<5",
+  "scikit-image>=0.24,<0.26",
   "pandas>=3.0.0,<4",
   "scipy",
   "tables>=3.10.2,<4",

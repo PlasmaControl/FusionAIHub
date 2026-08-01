@@ -8,13 +8,14 @@ against raw ground truth — their output is never fed back (``ResearchPlan.MD``
 §3.6, §5.9).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
 
 from .model import E2EFoundationModel
+from .output_heads import SpectrogramFlowHead
 
 
 @dataclass
@@ -39,6 +40,11 @@ class RolloutResult:
     predictions: List[Dict[str, torch.Tensor]]
     diagnostic_tokens: List[torch.Tensor]
     backbone_outputs: List[torch.Tensor]
+    # Length-``K`` list; entry ``k`` maps ``modality_name -> (batch, n_tokens,
+    # d_model)`` backbone token slice fed to that modality's head at step
+    # ``k`` — the conditioning a generative head (SpectrogramFlowHead) needs
+    # to compute its per-step flow loss. Empty unless ``collect_token_slices``.
+    diag_token_slices: List[Dict[str, torch.Tensor]] = field(default_factory=list)
 
 
 class TokenSpaceRollout(nn.Module):
@@ -94,16 +100,37 @@ class TokenSpaceRollout(nn.Module):
         return torch.cat(pieces, dim=1)
 
     def _decode_diagnostics(
-        self, diag_tokens: torch.Tensor
-    ) -> Dict[str, torch.Tensor]:
+        self,
+        diag_tokens: torch.Tensor,
+        *,
+        flow_noise: Optional[Dict[str, torch.Tensor]] = None,
+        return_slices: bool = False,
+    ):
+        """Decode per-modality predictions from the diagnostic token slice.
+
+        ``flow_noise`` (eval only): a per-modality noise tensor passed to a
+        generative head's sampler so the SAME draw can be reused across all
+        K rollout steps → temporally coherent block-mode frames (no per-step
+        flicker). ``return_slices``: also return the per-modality token slice
+        (the conditioning the per-step flow loss needs). Both default off →
+        byte-identical to the original predictions-only path.
+        """
         out: Dict[str, torch.Tensor] = {}
+        slices: Dict[str, torch.Tensor] = {}
         offset = 0
         for cfg in self.model.diagnostics:
             n = cfg.n_tokens()
-            out[cfg.name] = self.model.diag_heads[cfg.name](
-                diag_tokens[:, offset : offset + n]
-            )
+            sl = diag_tokens[:, offset : offset + n]
+            head = self.model.diag_heads[cfg.name]
+            if flow_noise is not None and isinstance(head, SpectrogramFlowHead):
+                out[cfg.name] = head(sl, noise=flow_noise.get(cfg.name))
+            else:
+                out[cfg.name] = head(sl)
+            if return_slices:
+                slices[cfg.name] = sl
             offset += n
+        if return_slices:
+            return out, slices
         return out
 
     def forward(
@@ -117,6 +144,8 @@ class TokenSpaceRollout(nn.Module):
             List[Dict[str, torch.Tensor]]
         ] = None,
         p_tf: float = 0.0,
+        collect_token_slices: bool = False,
+        flow_noise: Optional[Dict[str, torch.Tensor]] = None,
     ) -> RolloutResult:
         """Run a ``K``-step rollout.
 
@@ -176,6 +205,7 @@ class TokenSpaceRollout(nn.Module):
         )
         predictions: List[Dict[str, torch.Tensor]] = []
         backbone_outputs: List[torch.Tensor] = []
+        diag_token_slices_history: List[Dict[str, torch.Tensor]] = []
 
         for k in range(n_steps):
             act_tokens = self._tokenize_actuators(act_inputs_per_step[k])
@@ -192,7 +222,18 @@ class TokenSpaceRollout(nn.Module):
             # the TF decision below only affects what flows into the
             # *next* iteration's backbone, not what's scored.
             pred_diag_tokens = out_tokens[:, : self.n_diag_tokens]
-            predictions.append(self._decode_diagnostics(pred_diag_tokens))
+            if collect_token_slices:
+                preds_k, slices_k = self._decode_diagnostics(
+                    pred_diag_tokens, flow_noise=flow_noise, return_slices=True,
+                )
+                predictions.append(preds_k)
+                diag_token_slices_history.append(slices_k)
+            else:
+                predictions.append(
+                    self._decode_diagnostics(
+                        pred_diag_tokens, flow_noise=flow_noise,
+                    )
+                )
 
             # Decide what to feed into iteration k+1. On the last
             # iteration there's no next step; fall through to recording
@@ -217,4 +258,5 @@ class TokenSpaceRollout(nn.Module):
             predictions=predictions,
             diagnostic_tokens=diagnostic_tokens_history,
             backbone_outputs=backbone_outputs,
+            diag_token_slices=diag_token_slices_history,
         )

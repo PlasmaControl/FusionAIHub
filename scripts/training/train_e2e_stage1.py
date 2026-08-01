@@ -29,11 +29,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import math
 import random
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import psutil
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -47,12 +49,16 @@ from tokamak_foundation_model.data.multi_file_dataset import (
     TwoLevelSampler,
     filter_video_present_files,
 )
-from tokamak_foundation_model.e2e.checkpoint import load_state_dict_explicit
+from tokamak_foundation_model.e2e.checkpoint import (
+    load_state_dict_explicit,
+    warm_start_extend_backbone,
+)
 from tokamak_foundation_model.e2e.model import (
     ActuatorConfig,
     DiagnosticConfig,
     E2EFoundationModel,
 )
+from tokamak_foundation_model.e2e.output_heads import SpectrogramFlowHead
 from tokamak_foundation_model.utils.distributed import DistributedManager
 
 logger = logging.getLogger("e2e_stage1")
@@ -86,6 +92,7 @@ FAST_TS_MODALITIES: List[Tuple[str, int, int]] = [
 ACTUATOR_MODALITIES: List[Tuple[str, int]] = [
     ("pin", 8),
     ("beam_voltage", 8),
+    ("tin", 8),
     ("ech_power", 12),
     ("ech_tor_angle", 12),
     ("ech_pol_angle", 12),
@@ -104,7 +111,7 @@ FAST_FS = 10_000.0
 # Only included when the user passes ``--use_video <name> [<name> ...]``;
 # otherwise behaviour is byte-identical to Phase A pre-Step-5 (G2/G3).
 VIDEO_MODALITIES: List[Tuple[str, int, int, Tuple[int, int], Tuple[int, int, int]]] = [
-    ("tangtv", 2, 3, (120, 360), (3, 12, 12)),
+    ("tangtv", 7, 3, (120, 360), (3, 12, 12)),
 ]
 
 # Per-modality spectrogram registry. Each entry is
@@ -119,6 +126,7 @@ SPECTROGRAM_MODALITIES: List[Tuple[str, int, Tuple[int, int]]] = [
     ("ece", 40, (32, 8)),
     ("co2", 4, (64, 8)),
     ("bes", 16, (32, 8)),
+    ("mhr", 6, (32, 8)),
 ]
 
 
@@ -126,6 +134,8 @@ def build_configs(
     chunk_duration_s: float,
     use_video: Optional[List[str]] = None,
     use_spectro: Optional[List[str]] = None,
+    spectro_patch_f: Optional[int] = None,
+    spectro_patch_t: Optional[int] = None,
 ) -> Tuple[List[DiagnosticConfig], List[ActuatorConfig]]:
     slow_samples = round(chunk_duration_s * SLOW_FS)
     fast_samples = round(chunk_duration_s * FAST_FS)
@@ -151,6 +161,9 @@ def build_configs(
                     f"{sorted(registry.keys())}"
                 )
             (_, n_channels, patch_size) = registry[spec_name]
+            if spectro_patch_f is not None or spectro_patch_t is not None:
+                pf, pt = patch_size
+                patch_size = (spectro_patch_f or pf, spectro_patch_t or pt)
             diagnostics.append(
                 DiagnosticConfig(
                     name=spec_name,
@@ -347,6 +360,114 @@ def masked_mae(
     return diff.sum() / combined.sum().clamp_min(1.0)
 
 
+def weighted_masked_mae(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    weight: torch.Tensor,
+) -> torch.Tensor:
+    """Masked MAE with a per-(channel, freq-bin) weight tensor.
+
+    For spectrogram modalities, ``weight[c, f] = sigma_channel[c] /
+    sigma_per_bin[c, f]`` makes this equivalent to MAE in per-bin
+    standardized space — every freq bin contributes equally to the loss
+    instead of loud (low-freq, broadband) bins dominating. Goal: counter
+    spec mean-collapse by giving quiet, mode-carrying bins the same
+    loss-budget pressure as loud background bins.
+
+    The weight is broadcast as (1, C, F, 1) against (B, C, F, T)
+    pred/target tensors. Plain MAE is recovered when ``weight ≡ 1``.
+    """
+    cleaned_pred, pred_mask = _clean_and_mask(pred, None)
+    cleaned_target, target_mask = _clean_and_mask(target, mask)
+    combined = pred_mask * target_mask
+    w = weight.view(1, weight.shape[0], weight.shape[1], 1)
+    diff = (cleaned_pred - cleaned_target).abs() * combined * w
+    return diff.sum() / combined.sum().clamp_min(1.0)
+
+
+def build_spec_per_bin_weights(
+    stats: Dict,
+    diagnostics: List[DiagnosticConfig],
+    signal_configs: List,
+    device: torch.device,
+    clamp_min: float = 1.0,
+    clamp_max: float = 10.0,
+    power: float = 1.0,
+) -> Dict[str, torch.Tensor]:
+    """Per-modality (C_sliced, F) weight tensors for the per-bin MAE.
+
+    ``w[c, f] = sigma_channel[c] / sigma_per_bin[c, f]`` (clamped). Quiet
+    bins (small ``sigma_per_bin``) get larger weight so the model can't
+    cheaply mean-collapse them. ``sigma_channel`` is the standard
+    log-standardize std stored under ``stats[name]["log"]["std"]``;
+    ``sigma_per_bin`` comes from the new ``stats[name]["log_per_bin"]
+    ["std"]`` sub-key (computed by
+    ``scripts/data_preparation/make_processing_stats.py`` with
+    ``compute_per_bin_for_stft=True``).
+
+    Returns ``{}`` (and the caller falls back to plain MAE) if ANY
+    spectrogram modality lacks ``log_per_bin`` stats. Channel slicing
+    matches each ``SignalConfig.channels_to_use`` so the weight shape
+    aligns with the model's actual input channel count.
+    """
+    cfg_by_name = {c.name: c for c in signal_configs}
+    out: Dict[str, torch.Tensor] = {}
+    for cfg in diagnostics:
+        if cfg.kind != "spectrogram":
+            continue
+        entry = stats.get(cfg.name, {})
+        if "log" not in entry or "log_per_bin" not in entry:
+            return {}
+        sigma_c = torch.as_tensor(entry["log"]["std"]).to(torch.float32)
+        sigma_pb = torch.as_tensor(entry["log_per_bin"]["std"]).to(torch.float32)
+        sigma_c = torch.where(torch.isnan(sigma_c), torch.ones_like(sigma_c), sigma_c)
+        sigma_pb = torch.where(torch.isnan(sigma_pb), torch.ones_like(sigma_pb), sigma_pb)
+        sig_cfg = cfg_by_name.get(cfg.name)
+        sl = sig_cfg.channels_to_use if sig_cfg is not None else None
+        if sl is not None:
+            sigma_c = sigma_c[sl]
+            sigma_pb = sigma_pb[sl]
+        w = sigma_c[:, None] / sigma_pb.clamp(min=1e-6)
+        if power != 1.0:
+            w = w ** power
+        w = w.clamp(min=clamp_min, max=clamp_max).to(device)
+        out[cfg.name] = w
+    return out
+
+
+def build_spec_per_bin_sigma(
+    stats: Dict,
+    diagnostics: List[DiagnosticConfig],
+    signal_configs: List,
+) -> Dict[str, torch.Tensor]:
+    """Per-modality ``(C_sliced, F)`` per-bin std tensors for the generative
+    head's residual standardisation. Reads ``stats[name]["log_per_bin"]
+    ["std"]`` (same source as :func:`build_spec_per_bin_weights`), sliced to
+    the model's channels. Returns ``{}`` if any spectro modality lacks the
+    ``log_per_bin`` stats → the flow head keeps its default ones (no
+    standardisation). NaNs and tiny values are floored to 1.0 / 1e-3.
+    """
+    cfg_by_name = {c.name: c for c in signal_configs}
+    out: Dict[str, torch.Tensor] = {}
+    for cfg in diagnostics:
+        if cfg.kind != "spectrogram":
+            continue
+        entry = stats.get(cfg.name, {})
+        if "log_per_bin" not in entry:
+            return {}
+        sigma_pb = torch.as_tensor(entry["log_per_bin"]["std"]).to(torch.float32)
+        sigma_pb = torch.where(
+            torch.isnan(sigma_pb), torch.ones_like(sigma_pb), sigma_pb
+        )
+        sig_cfg = cfg_by_name.get(cfg.name)
+        sl = sig_cfg.channels_to_use if sig_cfg is not None else None
+        if sl is not None:
+            sigma_pb = sigma_pb[sl]
+        out[cfg.name] = sigma_pb.clamp(min=1e-3)
+    return out
+
+
 def _video_standardize_per_bc(
     x: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -423,8 +544,14 @@ def forward_batch(
     Dict[str, torch.Tensor],  # diag_inputs (cleaned)
     Dict[str, torch.Tensor],  # targets (raw; loss/metrics handle NaN)
     Dict[str, Optional[torch.Tensor]],  # existing per-modality target masks
+    Dict[str, torch.Tensor],  # per-modality backbone token slices (conditioning)
 ]:
-    """Forward pass with NaN-cleaned inputs; return predictions + tensors needed for metrics."""
+    """Forward pass with NaN-cleaned inputs; return predictions + tensors needed for metrics.
+
+    The 5th return value maps each diagnostic name to its backbone output
+    token slice (the conditioning a generative head needs to compute its
+    loss against the target, which the head's own forward never sees).
+    """
     diag_inputs: Dict[str, torch.Tensor] = {}
     # Per-(B, C) z-score statistics for video and spectrogram modalities.
     # Computed from the *input* window and reused for the corresponding
@@ -459,7 +586,9 @@ def forward_batch(
     step_idx = torch.zeros(batch_size, dtype=torch.long, device=device)
     time_offset = torch.zeros(batch_size, device=device)
 
-    predictions = model(diag_inputs, act_inputs, step_idx, time_offset)
+    predictions, diag_token_slices = model(
+        diag_inputs, act_inputs, step_idx, time_offset, return_tokens=True
+    )
 
     # Normalise video predictions to (B, C, T, H, W) — VideoOutputHead
     # emits (B, T, C, H, W) but the data loader produces video targets
@@ -491,21 +620,61 @@ def forward_batch(
                 if mask_key in batch["targets"]
                 else None
             )
-    return predictions, diag_inputs, targets, masks
+    return predictions, diag_inputs, targets, masks, diag_token_slices
 
 
 def compute_step_loss(
     model: E2EFoundationModel,
     batch: Dict,
     device: torch.device,
+    spec_pb_weights: Optional[Dict[str, torch.Tensor]] = None,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
-    """Run one forward pass and return ``(total_loss, per-modality MAE dict)``."""
-    predictions, _, targets, masks = forward_batch(model, batch, device)
+    """Run one forward pass and return ``(total_loss, per-modality MAE dict)``.
+
+    ``spec_pb_weights`` (default ``None``) enables the per-bin weighted
+    MAE for spectrogram modalities. When ``None`` (the historical
+    default), every modality uses plain ``masked_mae`` — identical to
+    pre-2026-06-12 behavior. When a dict ``{name: weight_tensor(C, F)}``,
+    each named spectrogram is scored via ``weighted_masked_mae`` to
+    counter spec mean-collapse.
+    """
+    predictions, _, targets, masks, token_slices = forward_batch(
+        model, batch, device
+    )
     per_modality: Dict[str, float] = {}
     total_loss = torch.zeros((), device=device)
-    for cfg in _core(model).diagnostics:
-        loss = masked_mae(predictions[cfg.name], targets[cfg.name], masks[cfg.name])
-        per_modality[cfg.name] = loss.item()
+    core = _core(model)
+    for cfg in core.diagnostics:
+        head = core.diag_heads[cfg.name]
+        use_pb = (
+            spec_pb_weights is not None
+            and cfg.kind == "spectrogram"
+            and cfg.name in spec_pb_weights
+        )
+        if use_pb:
+            mae = weighted_masked_mae(
+                predictions[cfg.name], targets[cfg.name],
+                masks[cfg.name], spec_pb_weights[cfg.name],
+            )
+        else:
+            mae = masked_mae(
+                predictions[cfg.name], targets[cfg.name], masks[cfg.name]
+            )
+        if isinstance(head, SpectrogramFlowHead):
+            # predictions[name] == μ in train mode (head.forward returns the
+            # deterministic mean); add the rectified-flow velocity loss on the
+            # residual. The velocity net runs every step here → all its params
+            # get grads (DDP-safe, no unused parameters).
+            flow = head.flow_loss(
+                token_slices[cfg.name], predictions[cfg.name],
+                targets[cfg.name], masks[cfg.name],
+            )
+            loss = mae + head.flow_lambda * flow
+            per_modality[cfg.name] = mae.item()
+            per_modality[f"{cfg.name}_flow"] = flow.item()
+        else:
+            loss = mae
+            per_modality[cfg.name] = loss.item()
         total_loss = total_loss + loss
     return total_loss, per_modality
 
@@ -597,9 +766,11 @@ def validate(
     # sync), so forwarding through it directly produces the same result.
     inner = _core(model)
 
-    keys = ("model_mae", "copy_mae", "pred_delta", "tgt_delta")
+    keys = ("model_mae", "copy_mae", "pred_delta", "tgt_delta",
+            "pred_var", "gt_var")
     M = len(diagnostic_names)
     K = len(keys)
+    name_to_kind = {c.name: c.kind for c in inner.diagnostics}
     # fp32 accumulators regardless of autocast — keeps cross-rank
     # all_reduce in fp32 (bf16 all_reduce on RCCL has stability issues)
     # and avoids precision loss across many batches.
@@ -617,7 +788,7 @@ def validate(
         # Only the forward pass runs inside autocast; metric math
         # explicitly upcasts to fp32 below.
         with amp_ctx:
-            predictions, diag_inputs, targets, masks = forward_batch(
+            predictions, diag_inputs, targets, masks, _ = forward_batch(
                 inner, batch, device
             )
         copy_mod = copy_baseline_mae(batch, inner.diagnostics, device)
@@ -647,6 +818,13 @@ def validate(
             sums_t[1, j] += float(copy_mod[name])
             sums_t[2, j] += pred_delta
             sums_t[3, j] += tgt_delta
+            # Temporal-variance ratio (TVR) for spectrograms: variance over
+            # the time axis per (B,C,F), summed over valid bins. Collapse →
+            # tiny pred variance vs GT (ratio ~0.15); recovered modes → ~1.
+            if name_to_kind.get(name) == "spectrogram" and cleaned_pred.dim() == 4:
+                mvalid = (combined.amax(dim=-1) > 0).float()       # (B,C,F)
+                sums_t[4, j] += (cleaned_pred.var(dim=-1) * mvalid).sum()
+                sums_t[5, j] += (cleaned_tgt.var(dim=-1) * mvalid).sum()
         n_batches_t += 1.0
 
     # Single all-reduce across ranks (sums + batch count combined into
@@ -669,12 +847,16 @@ def validate(
         pred_d = float(sums[2, j]) / denom
         tgt_d = float(sums[3, j]) / denom
         ratio = pred_d / tgt_d if tgt_d > 1e-8 else float("nan")
+        pred_var = float(sums[4, j])
+        gt_var = float(sums[5, j])
+        tvr = pred_var / gt_var if gt_var > 1e-8 else float("nan")
         out[name] = {
             "model_mae": model_mae,
             "copy_mae": copy_mae,
             "pred_delta": pred_d,
             "tgt_delta": tgt_d,
             "delta_ratio": ratio,
+            "tvr": tvr,
         }
     return out
 
@@ -709,23 +891,29 @@ _TS_KINDS = ("slow_ts", "fast_ts")
 def _module_param_iter(
     model: E2EFoundationModel,
     *,
-    freeze_ts: bool,
+    freeze_slow_ts: bool,
+    freeze_fast_ts: bool,
     freeze_video: bool,
     freeze_spectro: bool,
     freeze_backbone: bool,
 ) -> List[Tuple[str, torch.nn.Parameter]]:
     """Return ``[(label, param), ...]`` for every parameter the caller
     asked to freeze. ``label`` is a short string identifying the source
-    (e.g. ``"ts:ts_core_density"``, ``"backbone"``) for log output.
+    (e.g. ``"slow_ts:ts_core_density"``, ``"backbone"``) for log output.
+
+    slow_ts and fast_ts have separate freeze flags (2026-05-19) so the
+    auto-injected refine-stack-extension freeze can keep slow_ts pinned
+    while letting fast_ts (which got new refine blocks) train.
 
     No-op categories return no params, so passing ``freeze_video=True``
     on a model without video modules is harmless.
     """
     out: List[Tuple[str, torch.nn.Parameter]] = []
     for cfg in model.diagnostics:
-        is_ts = cfg.kind in _TS_KINDS
-        if is_ts and freeze_ts:
-            label = f"ts:{cfg.name}"
+        if cfg.kind == "slow_ts" and freeze_slow_ts:
+            label = f"slow_ts:{cfg.name}"
+        elif cfg.kind == "fast_ts" and freeze_fast_ts:
+            label = f"fast_ts:{cfg.name}"
         elif cfg.kind == "video" and freeze_video:
             label = f"video:{cfg.name}"
         elif cfg.kind == "spectrogram" and freeze_spectro:
@@ -745,12 +933,13 @@ def _module_param_iter(
 def _apply_module_freeze(
     model: E2EFoundationModel,
     *,
-    freeze_ts: bool,
+    freeze_slow_ts: bool,
+    freeze_fast_ts: bool,
     freeze_video: bool,
     freeze_spectro: bool,
     freeze_backbone: bool,
 ) -> List[str]:
-    """Freeze the per-module parameters indicated by the four flags.
+    """Freeze the per-module parameters indicated by the flags.
 
     Each flag is independent; pass ``True`` for any subset. Actuator
     tokenizers stay trainable in all cases (they are tiny and
@@ -760,7 +949,8 @@ def _apply_module_freeze(
     """
     pairs = _module_param_iter(
         model,
-        freeze_ts=freeze_ts,
+        freeze_slow_ts=freeze_slow_ts,
+        freeze_fast_ts=freeze_fast_ts,
         freeze_video=freeze_video,
         freeze_spectro=freeze_spectro,
         freeze_backbone=freeze_backbone,
@@ -780,7 +970,8 @@ def _apply_module_freeze(
 def _release_module_freeze(
     model: E2EFoundationModel,
     *,
-    freeze_ts: bool,
+    freeze_slow_ts: bool,
+    freeze_fast_ts: bool,
     freeze_video: bool,
     freeze_spectro: bool,
     freeze_backbone: bool,
@@ -790,7 +981,8 @@ def _release_module_freeze(
     (for log output)."""
     pairs = _module_param_iter(
         model,
-        freeze_ts=freeze_ts,
+        freeze_slow_ts=freeze_slow_ts,
+        freeze_fast_ts=freeze_fast_ts,
         freeze_video=freeze_video,
         freeze_spectro=freeze_spectro,
         freeze_backbone=freeze_backbone,
@@ -839,14 +1031,13 @@ def main() -> None:
     # Model (debug-scale defaults per user)
     parser.add_argument("--d_model", type=int, default=64)
     parser.add_argument("--n_layers", type=int, default=4)
-    parser.add_argument("--n_heads", type=int, default=4)
     parser.add_argument(
-        "--gradient_checkpoint", action="store_true",
-        help="Recompute backbone-block activations during backward instead "
-             "of storing them. Trades ~30%% extra compute for typically "
-             "5-10x less activation memory; required to scale n_layers / "
-             "d_model on a single GCD.",
+        "--backbone_grad_checkpoint", action="store_true",
+        help="Per-block gradient checkpointing on the backbone. Trades "
+        "~30%% step-time for ~sqrt(n_layers) reduction in activation "
+        "memory. Required when d_model >= ~1024 to fit on 64 GB GCDs.",
     )
+    parser.add_argument("--n_heads", type=int, default=4)
     parser.add_argument("--dropout", type=float, default=0.0)
 
     # Optim
@@ -856,6 +1047,14 @@ def main() -> None:
     parser.add_argument("--weight_decay", type=float, default=0.1)
     parser.add_argument("--grad_clip", type=float, default=5.0)
     parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument(
+        "--val_batch_size", type=int, default=None,
+        help="Per-rank batch size for validation (default: --batch_size). "
+             "Set smaller than --batch_size when validation OOMs while "
+             "training fits — e.g. the generative spectro head's fp32 "
+             "(--no_amp_val) Euler sampling spikes well above the training "
+             "footprint at d=1024.",
+    )
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--max_steps", type=int, default=1000)
     parser.add_argument("--log_every", type=int, default=10)
@@ -889,8 +1088,32 @@ def main() -> None:
         help="Spectrogram modality names to include.",
     )
     parser.add_argument(
+        "--spectro_patch_f", type=int, default=None,
+        help="Override the spectrogram freq-patch size for ALL spectro "
+             "modalities (default: per-modality registry value). Set to "
+             "SPECTRO_FREQ_BINS (512) for a full-frequency patch — one token "
+             "spans the whole spectrum. Changes encoder/decoder kernel shape "
+             "→ from-scratch (checkpoints with a different patch won't load).",
+    )
+    parser.add_argument(
+        "--spectro_patch_t", type=int, default=None,
+        help="Override the spectrogram time-patch size for ALL spectro "
+             "modalities (default: registry value 8). Smaller → more "
+             "full-spectrum time tokens per window.",
+    )
+    parser.add_argument(
         "--freeze_ts_steps", type=int, default=0,
-        help="Warm-start: freeze TS tokenizers + heads for N steps.",
+        help="DEPRECATED alias: set both --freeze_slow_ts_steps and "
+             "--freeze_fast_ts_steps to N. If either of those is also "
+             "set explicitly, the explicit one wins for that category.",
+    )
+    parser.add_argument(
+        "--freeze_slow_ts_steps", type=int, default=0,
+        help="Warm-start: freeze slow_ts tokenizers + heads for N steps.",
+    )
+    parser.add_argument(
+        "--freeze_fast_ts_steps", type=int, default=0,
+        help="Warm-start: freeze fast_ts tokenizers + heads for N steps.",
     )
     parser.add_argument(
         "--freeze_video_steps", type=int, default=0,
@@ -905,6 +1128,122 @@ def main() -> None:
         help="Warm-start: freeze the shared backbone for N steps.",
     )
     parser.add_argument(
+        "--spectro_seam_refine", action="store_true",
+        help="Enable the zero-init seam-refine block on spectrogram "
+             "output heads (default off — matches historical Stage 1).",
+    )
+    parser.add_argument(
+        "--video_seam_refine", action="store_true",
+        help="Enable the zero-init seam-refine block on the video "
+             "output head (default off).",
+    )
+    parser.add_argument(
+        "--seam_refine_hidden_ch", type=int, default=16,
+        help="Hidden channels of the seam-refine blocks (default 16 = "
+             "original architecture; the spec-fix fine-tune uses 64).",
+    )
+    parser.add_argument(
+        "--spectro_refine_kernel", type=int, default=3,
+        help="Square kernel size of the spectrogram seam-refine convs.",
+    )
+    parser.add_argument(
+        "--video_refine_kernel", type=int, nargs=3, default=[1, 3, 3],
+        help="(T, H, W) kernel of the video seam-refine convs.",
+    )
+    parser.add_argument(
+        "--spec_inv_stem", action="store_true",
+        help="Enable the inv_stem feature-space decode branch on "
+             "spectrogram heads (fast-TS deconv→inv_stem pattern; "
+             "zero-init residual, warm-start safe).",
+    )
+    parser.add_argument(
+        "--spec_inv_stem_ch", type=int, default=64,
+        help="Feature channels of the spectrogram inv_stem branch.",
+    )
+    parser.add_argument(
+        "--spec_freq_stem", action="store_true",
+        help="Enable the full-frequency encoder stem on spectrogram "
+             "tokenizers: a zero-init residual freq->freq Linear mixing "
+             "(matmul, MIOpen-free) applied BEFORE patching so each "
+             "token encodes whole-spectrum context. Warm-start safe.",
+    )
+    parser.add_argument(
+        "--spec_freq_stem_hidden", type=int, default=128,
+        help="Hidden width of the freq stem's low-rank freq mixing.",
+    )
+    parser.add_argument(
+        "--freeze_whole_run", action="store_true",
+        help="Apply all --freeze_*_steps freezes BEFORE the DDP wrap and "
+             "never release them. Avoids the post-wrap requires_grad flip "
+             "that breaks DDP's reducer (see 2026-05-19 emergency patch). "
+             "Use for fine-tunes where categories stay frozen for the "
+             "entire run; the numeric step values then only act as "
+             "on/off switches (any value > 0 = frozen).",
+    )
+    parser.add_argument(
+        "--spec_per_bin_loss", action="store_true",
+        help="Spectrogram modalities use per-(channel, freq-bin) weighted MAE "
+             "(weight = sigma_channel / sigma_per_bin, clamped). Counters "
+             "spec mean-collapse by rebalancing loss across freq bins. "
+             "Requires 'log_per_bin' sub-entries in preprocessing_stats. "
+             "Default off → identical to historical plain MAE.",
+    )
+    parser.add_argument(
+        "--spec_per_bin_weight_clamp", type=float, default=10.0,
+        help="Upper clamp on per-bin weight (lower clamp fixed at 1.0). "
+             "Default 10.0. Only used when --spec_per_bin_loss is set.",
+    )
+    parser.add_argument(
+        "--spec_per_bin_weight_power", type=float, default=1.0,
+        help="Exponent applied to (sigma_c/sigma_pb) before clamping. "
+             "1.0 = linear (mild; real weights peak ~3.6x). 2.0 = "
+             "squared (ECE quiet bins ~13x) — stronger mode pressure; "
+             "raise --spec_per_bin_weight_clamp to ~20 so squared "
+             "values aren't clipped.",
+    )
+    # ── Generative-head / checkerboard-fix POC flags (2026-06-21) ──
+    parser.add_argument(
+        "--video_resize_conv", action="store_true",
+        help="Use a resize-conv (trilinear upsample → Conv3d block) video "
+             "decoder instead of the per-patch ConvTranspose3d. Overlapping "
+             "receptive fields across patch seams remove the checkerboard. "
+             "Supersedes --video_seam_refine. NOT warm-start safe (changes "
+             "the head architecture) — for from-scratch runs.",
+    )
+    parser.add_argument(
+        "--video_resize_conv_hidden", type=int, default=64,
+        help="Hidden channels of the resize-conv video decoder block.",
+    )
+    parser.add_argument(
+        "--spec_generative", action="store_true",
+        help="Use the generative SpectrogramFlowHead (rectified flow matching "
+             "over a deterministic mean) instead of the deterministic "
+             "spectrogram head. Samples sharp modes instead of regressing to "
+             "the blurry conditional mean. NOT warm-start safe — from scratch.",
+    )
+    parser.add_argument(
+        "--spec_flow_base_ch", type=int, default=64,
+        help="Base channel width of the flow head's velocity U-Net.",
+    )
+    parser.add_argument(
+        "--spec_flow_steps", type=int, default=6,
+        help="Euler ODE steps used to sample the flow head at eval time.",
+    )
+    parser.add_argument(
+        "--spec_flow_lambda", type=float, default=1.0,
+        help="Weight of the flow-matching loss relative to the mean MAE.",
+    )
+    parser.add_argument(
+        "--collapse_aware_best", action="store_true",
+        help="Add a temporal-variance-ratio penalty (sum of max(0, 1 - tvr) "
+             "over spectro modalities) to the best.pt selection scalar so a "
+             "low-MAE mean-collapse cannot win. Default off → plain sum(MAE).",
+    )
+    parser.add_argument(
+        "--collapse_aware_lambda", type=float, default=1.0,
+        help="Weight of the TVR penalty in --collapse_aware_best selection.",
+    )
+    parser.add_argument(
         "--no_amp", action="store_true",
         help="Disable bf16 mixed precision (default: AMP on when CUDA).",
     )
@@ -915,22 +1254,7 @@ def main() -> None:
         "access faults seen during distributed validation at n_layers=26 "
         "on Frontier ROCm 7.1.1.",
     )
-    parser.add_argument(
-        "--use_flash_attn", action="store_true",
-        help="Use flash-attention 2 (external pkg) in the backbone. Requires "
-        "the flash_attn package (install via `pixi run -e frontier "
-        "setup-flash-attn`). On MI250X this is slower than --use_sdpa_attn; "
-        "prefer that flag instead.",
-    )
-    parser.add_argument(
-        "--use_sdpa_attn", action="store_true",
-        help="Use F.scaled_dot_product_attention in the backbone. On ROCm 7.x "
-        "this dispatches to AOTriton flash-attn and is 1.4-5x faster than the "
-        "default nn.MultiheadAttention path with substantially less memory.",
-    )
     args = parser.parse_args()
-    if args.use_flash_attn and args.use_sdpa_attn:
-        parser.error("--use_flash_attn and --use_sdpa_attn are mutually exclusive")
 
     dm = DistributedManager()
 
@@ -938,6 +1262,18 @@ def main() -> None:
         level=logging.INFO if dm.is_main else logging.WARNING,
         format=f"%(asctime)s %(levelname)s [rank{dm.rank}] %(message)s",
     )
+
+    # OOM mitigation. Chained production jobs 4581026/27/28 OOM'd at
+    # exactly ~9h45m / ~5850 steps with num_workers=6 (passed by the
+    # queued SLURM scripts before this fix landed). Clamp here so
+    # already-queued jobs that read this Python source at start-time
+    # inherit the cap without needing re-submission.
+    if args.num_workers > 4:
+        logger.warning(
+            f"Capping --num_workers {args.num_workers} → 4 (OOM mitigation; "
+            "see persistent_workers comment in this file)."
+        )
+        args.num_workers = 4
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -1014,6 +1350,8 @@ def main() -> None:
         args.chunk_duration_s,
         use_video=args.use_video,
         use_spectro=args.use_spectro,
+        spectro_patch_f=args.spectro_patch_f,
+        spectro_patch_t=args.spectro_patch_t,
     )
     diagnostic_names = [c.name for c in diagnostics]
     actuator_names = [c.name for c in actuators]
@@ -1024,12 +1362,6 @@ def main() -> None:
         f"Actuators ({len(actuators)}): " + ", ".join(actuator_names)
     )
 
-    if args.use_flash_attn:
-        attn_impl = "flash"
-    elif args.use_sdpa_attn:
-        attn_impl = "sdpa"
-    else:
-        attn_impl = "standard"
     model = E2EFoundationModel(
         diagnostics=diagnostics,
         actuators=actuators,
@@ -1037,18 +1369,59 @@ def main() -> None:
         n_heads=args.n_heads,
         n_layers=args.n_layers,
         dropout=args.dropout,
-        attn_impl=attn_impl,
-        gradient_checkpoint=args.gradient_checkpoint,
+        backbone_grad_checkpoint=args.backbone_grad_checkpoint,
+        video_seam_refine=args.video_seam_refine,
+        spectro_seam_refine=args.spectro_seam_refine,
+        seam_refine_hidden_ch=args.seam_refine_hidden_ch,
+        spectro_refine_kernel=args.spectro_refine_kernel,
+        video_refine_kernel=tuple(args.video_refine_kernel),
+        spectro_inv_stem=args.spec_inv_stem,
+        spectro_inv_stem_ch=args.spec_inv_stem_ch,
+        spectro_freq_stem=args.spec_freq_stem,
+        spectro_freq_stem_hidden=args.spec_freq_stem_hidden,
+        video_resize_conv=args.video_resize_conv,
+        video_resize_conv_hidden=args.video_resize_conv_hidden,
+        spectro_generative=args.spec_generative,
+        spectro_flow_base_ch=args.spec_flow_base_ch,
+        spectro_flow_sample_steps=args.spec_flow_steps,
+        spectro_flow_lambda=args.spec_flow_lambda,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     n_total_tokens = model.n_total_tokens
+
+    # --freeze_whole_run: freeze BEFORE the DDP wrap so the reducer is
+    # built without the frozen parameters. The post-wrap freeze block
+    # (below, near the training loop) is skipped for these categories —
+    # flipping requires_grad after wrap either crashes DDP
+    # (find_unused_parameters=False expects grads for registered
+    # params) or, on release, silently diverges ranks (params train
+    # locally but are never all-reduced). Whole-run freezes have no
+    # release, so neither failure mode applies.
+    if args.freeze_whole_run:
+        _wr_slow = max(args.freeze_slow_ts_steps, args.freeze_ts_steps) > 0
+        _wr_fast = max(args.freeze_fast_ts_steps, args.freeze_ts_steps) > 0
+        labels = _apply_module_freeze(
+            model,
+            freeze_slow_ts=_wr_slow,
+            freeze_fast_ts=_wr_fast,
+            freeze_video=args.freeze_video_steps > 0,
+            freeze_spectro=args.freeze_spectro_steps > 0,
+            freeze_backbone=args.freeze_backbone_steps > 0,
+        )
+        n_trainable = sum(
+            p.numel() for p in model.parameters() if p.requires_grad
+        )
+        logger.info(
+            f"freeze_whole_run: frozen for the entire run = {labels}; "
+            f"trainable params {n_trainable / 1e6:.2f}M / "
+            f"{n_params / 1e6:.2f}M"
+        )
+
     model = dm.wrap(model)
     logger.info(
         f"Model — d_model={args.d_model} n_layers={args.n_layers} "
         f"n_heads={args.n_heads}  tokens={n_total_tokens}  "
-        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}  "
-        f"attn_impl={attn_impl}  "
-        f"gradient_checkpoint={args.gradient_checkpoint}"
+        f"params={n_params / 1e6:.2f}M  ddp={dm.distributed}"
     )
 
     # ── Datasets ────────────────────────────────────────────────────────
@@ -1066,6 +1439,56 @@ def main() -> None:
         lengths_cache_dir=args.lengths_cache_dir,
     )
     logger.info(f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}")
+
+    # Per-bin spec loss weights — built once at init from
+    # preprocessing_stats. ``None`` here = plain MAE (original behavior).
+    # Set via --spec_per_bin_loss flag.
+    spec_pb_weights: Optional[Dict[str, torch.Tensor]] = None
+    if args.spec_per_bin_loss:
+        spec_pb_weights = build_spec_per_bin_weights(
+            stats, _core(model).diagnostics, train_ds.signal_configs,
+            device=device, clamp_max=args.spec_per_bin_weight_clamp,
+            power=args.spec_per_bin_weight_power,
+        )
+        if not spec_pb_weights:
+            logger.warning(
+                "--spec_per_bin_loss requested but preprocessing_stats is "
+                "missing 'log_per_bin' for one or more spectrogram modalities "
+                "— falling back to plain MAE."
+            )
+            spec_pb_weights = None
+        else:
+            for n, w in spec_pb_weights.items():
+                logger.info(
+                    f"Per-bin spec loss [{n}]: weight shape {tuple(w.shape)}, "
+                    f"range [{float(w.min()):.2f}, {float(w.max()):.2f}], "
+                    f"mean {float(w.mean()):.2f}  "
+                    f"(clamp_max={args.spec_per_bin_weight_clamp})"
+                )
+
+    # Generative spectrogram heads: set the per-(channel, freq) residual-std
+    # buffer once from the per-bin stats so the flow's velocity targets are
+    # unit-scale per bin (quiet, mode-carrying bins aren't drowned out).
+    # Persisted in the checkpoint → eval reconstructs it. Falls back to ones
+    # (no standardisation) if log_per_bin stats are unavailable.
+    if args.spec_generative:
+        sigma_pb_map = build_spec_per_bin_sigma(
+            stats, _core(model).diagnostics, train_ds.signal_configs,
+        )
+        if not sigma_pb_map:
+            logger.warning(
+                "--spec_generative: preprocessing_stats missing 'log_per_bin' "
+                "— flow heads use unit residual std (no per-bin scaling)."
+            )
+        core_m = _core(model)
+        for cfg in core_m.diagnostics:
+            head = core_m.diag_heads[cfg.name]
+            if isinstance(head, SpectrogramFlowHead) and cfg.name in sigma_pb_map:
+                head.set_sigma_pb(sigma_pb_map[cfg.name].to(device))
+                logger.info(
+                    f"Flow head [{cfg.name}]: per-bin residual std set, "
+                    f"shape {tuple(sigma_pb_map[cfg.name].shape)}"
+                )
 
     # PyTorch's _worker_loop pins each DataLoader worker to a single
     # torch thread regardless of OMP_NUM_THREADS, so we override here to
@@ -1103,7 +1526,13 @@ def main() -> None:
         drop_last=True,
         prefetch_factor=2,
         pin_memory=device.type == "cuda",
-        persistent_workers=args.num_workers > 0,
+        # persistent_workers=False: chained jobs 4581026/27/28 OOM'd at
+        # exactly ~9h45m / ~5850 steps with persistent workers — a slow
+        # leak (h5py metadata or PyTorch tensor cache) fills 502 GB per
+        # node over time. Tearing workers down at end-of-epoch releases
+        # the state; spin-up cost (~5-10 s) is negligible vs the ~2 h
+        # epoch wall time.
+        persistent_workers=False,
         worker_init_fn=_worker_init,
     )
     # Distributed validation: shard the val set across ranks so each
@@ -1133,7 +1562,7 @@ def main() -> None:
     val_num_workers = min(4, args.num_workers)
     val_loader = DataLoader(
         val_ds,
-        batch_size=args.batch_size,
+        batch_size=(args.val_batch_size or args.batch_size),
         sampler=val_sampler,
         num_workers=val_num_workers,
         collate_fn=collate_fn,
@@ -1178,6 +1607,10 @@ def main() -> None:
 
     # ── Optional resume (restores step / optimizer / scheduler / best_val_loss) ──
     resume_start_step = 0
+    # Auto-surgery flags populated by the resume block — empty on cold start.
+    # Used downstream to inject auto-freeze into the freeze_specs.
+    reinit_spectro_modalities: List[str] = []
+    spectro_refine_extra_modalities: List[str] = []
     if args.resume_checkpoint is not None and args.resume_checkpoint.exists():
         resume_ckpt = torch.load(
             args.resume_checkpoint, weights_only=False, map_location=device
@@ -1190,15 +1623,188 @@ def main() -> None:
             )
             for name in (*args.use_video, *args.use_spectro)
         )
+        # Detect spectrogram-tokenizer patch-size changes by comparing the
+        # checkpoint's `proj.weight` shape against the current model's. If
+        # the patch shape was changed in SPECTROGRAM_MODALITIES, the kernel
+        # shape no longer matches, so we cannot load those weights. Strip
+        # the four patch-shape-dependent tensors per affected modality
+        # (proj.{weight,bias} keeps bias; spatial_pe + missing_token are
+        # nominally same-shape but semantically tied to the patch raster
+        # order, so we reinit them too) and let the model keep its
+        # fresh-init parameters. Auto-trigger a 2-epoch (2360-step) freeze
+        # on backbone/ts/video so the new spectro Conv2ds adapt to a
+        # stationary target first. See memory: project-session-pause-20260519.
+        loaded_sd = resume_ckpt["model_state_dict"]
+        for d_cfg in _core(model).diagnostics:
+            if d_cfg.kind != "spectrogram":
+                continue
+            ckpt_w_key = f"diag_tokenizers.{d_cfg.name}.proj.weight"
+            if ckpt_w_key not in loaded_sd:
+                continue
+            ckpt_shape = tuple(loaded_sd[ckpt_w_key].shape)
+            model_shape = tuple(
+                _core(model).diag_tokenizers[d_cfg.name].proj.weight.shape
+            )
+            if ckpt_shape != model_shape:
+                reinit_spectro_modalities.append(d_cfg.name)
+        if reinit_spectro_modalities:
+            stale_prefixes: List[str] = []
+            for name in reinit_spectro_modalities:
+                stale_prefixes += [
+                    f"diag_tokenizers.{name}.proj.weight",
+                    f"diag_tokenizers.{name}.proj.bias",
+                    f"diag_tokenizers.{name}.spatial_pe",
+                    f"diag_tokenizers.{name}.missing_token",
+                    f"diag_heads.{name}.patch_unembed.weight",
+                    f"diag_heads.{name}.patch_unembed.bias",
+                ]
+            for sd_key in list(loaded_sd.keys()):
+                if sd_key in stale_prefixes:
+                    del loaded_sd[sd_key]
+            allowed_missing = allowed_missing + tuple(stale_prefixes)
+            logger.info(
+                f"Spectrogram patch-size mismatch in modalities "
+                f"{reinit_spectro_modalities}: reinitialising "
+                f"tokenizer.{{proj,spatial_pe,missing_token}} + "
+                f"head.patch_unembed; freezing backbone/slow_ts/video for "
+                f"2 epochs (2360 steps) after this resume."
+            )
+
+        # Detect refine-stack extension: the model has more
+        # `refine.<i>.*` modules than the checkpoint (e.g., we bumped
+        # n_refine_blocks 4 → 12 in SpectrogramTokenizer/Head and 2 → 4
+        # in FastTimeSeriesTokenizer/Head). Allow the extra blocks to
+        # be missing-from-checkpoint so they keep their fresh-init
+        # state. Trigger a 1-epoch (1180-step) freeze on backbone/
+        # slow_ts/video while the new blocks settle (fast_ts itself is
+        # NOT auto-frozen since it owns new refine blocks). Skips
+        # opt-state restore (the optimizer's param list grew, so the
+        # saved state-dict indices no longer align). Independent of
+        # the patch-size reinit above — only one fires for any given
+        # resume.
+        for d_cfg in _core(model).diagnostics:
+            if d_cfg.kind not in ("spectrogram", "fast_ts"):
+                continue
+            for mod_path in (
+                f"diag_tokenizers.{d_cfg.name}",
+                f"diag_heads.{d_cfg.name}",
+            ):
+                try:
+                    mod = _core(model).get_submodule(mod_path)
+                except AttributeError:
+                    continue
+                if not hasattr(mod, "refine"):
+                    continue
+                n_model = len(mod.refine)
+                prefix = f"{mod_path}.refine."
+                ckpt_indices = set()
+                for k in loaded_sd:
+                    if k.startswith(prefix):
+                        head, _, _ = k[len(prefix):].partition(".")
+                        if head.isdigit():
+                            ckpt_indices.add(int(head))
+                n_ckpt = (max(ckpt_indices) + 1) if ckpt_indices else 0
+                if n_model > n_ckpt:
+                    spectro_refine_extra_modalities.append(d_cfg.name)
+                    for i in range(n_ckpt, n_model):
+                        allowed_missing = allowed_missing + (
+                            f"{mod_path}.refine.{i}.",
+                        )
+        spectro_refine_extra_modalities = sorted(
+            set(spectro_refine_extra_modalities)
+        )
+        if spectro_refine_extra_modalities and not reinit_spectro_modalities:
+            logger.info(
+                f"Refine-stack extended in modalities "
+                f"{spectro_refine_extra_modalities}: existing refine blocks "
+                f"load from checkpoint, new blocks remain fresh-init; "
+                f"freezing backbone/slow_ts/video for 1 epoch (1180 steps) "
+                f"after this resume — fast_ts and spectro train alongside."
+            )
         load_state_dict_explicit(
             _core(model),
-            resume_ckpt["model_state_dict"],
+            loaded_sd,
             allowed_missing_prefixes=allowed_missing,
         )
         if "optimizer_state_dict" in resume_ckpt:
-            opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
+            if reinit_spectro_modalities or spectro_refine_extra_modalities:
+                # Skip opt-state restore on either spectro surgery path:
+                # (a) patch-size reinit — checkpoint's Adam buffers for
+                # proj/patch_unembed have the OLD kernel shape; load
+                # would raise on shape mismatch;
+                # (b) refine-stack extension — the optimizer's param
+                # list grew with the new refine.<i> blocks, so the saved
+                # state-dict indices no longer align with current params.
+                # In either case, AdamW resets for all params — the
+                # auto-freeze keeps the non-spectro modules at their
+                # checkpoint weights until Adam re-accumulates momentum.
+                logger.info(
+                    "Skipping optimizer state restore due to spectro "
+                    f"model surgery — "
+                    f"patch_reinit={bool(reinit_spectro_modalities)}, "
+                    f"refine_extra={bool(spectro_refine_extra_modalities)}."
+                )
+            else:
+                # Generic param-count guard: ANY model surgery that
+                # adds/removes params (e.g. VideoOutputHead.refine_block
+                # was added 2026-06-08) makes the saved optimizer state
+                # incompatible. Compare param counts before load —
+                # mismatch ⇒ fresh AdamW. Avoids the unrecoverable
+                # `ValueError: loaded state dict contains a parameter
+                # group that doesn't match the size of optimizer's
+                # group` that crashed the chain 2026-06-08.
+                saved_n = sum(
+                    len(g["params"])
+                    for g in resume_ckpt["optimizer_state_dict"]["param_groups"]
+                )
+                cur_n = sum(len(g["params"]) for g in opt.param_groups)
+                if saved_n != cur_n:
+                    logger.warning(
+                        f"Skipping optimizer state restore: saved had "
+                        f"{saved_n} params, model has {cur_n}. "
+                        f"AdamW will start fresh — first few hundred "
+                        f"steps may be slightly noisy until momentum "
+                        f"re-accumulates."
+                    )
+                else:
+                    opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in resume_ckpt:
             scheduler.load_state_dict(resume_ckpt["scheduler_state_dict"])
+            # Re-target the cosine `T_max` from the *current* --max_steps so
+            # that changing --max_steps between chained restarts actually
+            # retargets the LR schedule. Without this, load_state_dict
+            # restores the OLD T_max baked into the checkpoint and edits to
+            # --max_steps have no effect on the cosine decay length.
+            fresh_cosine_T_max = max(args.max_steps - args.warmup_steps, 1)
+            for sub in scheduler._schedulers:
+                if isinstance(sub, torch.optim.lr_scheduler.CosineAnnealingLR) \
+                        and sub.T_max != fresh_cosine_T_max:
+                    logger.info(
+                        f"Cosine T_max retargeted: {sub.T_max} → "
+                        f"{fresh_cosine_T_max} (from --max_steps={args.max_steps})"
+                    )
+                    sub.T_max = fresh_cosine_T_max
+                    sub.eta_min = args.min_lr
+
+            # CRITICAL (2026-05-19): PyTorch's CosineAnnealingLR uses a
+            # recurrence formula that reads opt.param_groups[*]['lr']
+            # when computing the next step's lr. After load_state_dict,
+            # the scheduler's INTERNAL _last_lr is correctly restored,
+            # but the optimizer's lr is whatever SequentialLR.__init__
+            # set it to (= LinearLR warmup-iter-0 ≈ 5e-7 = base_lr ×
+            # start_factor). When we skip opt-state restore on spectro
+            # surgery, this stale lr in opt stays. The next
+            # scheduler.step() then computes new lr via the recurrence
+            # off that 5e-7, perpetuating the stuck-at-warmup-zero
+            # value. Symptom: 4581033/34/35 trained at LR≈5e-7 for
+            # hours — useless. Fix: sync opt's lr to scheduler's
+            # restored _last_lr immediately after load.
+            for pg, lr in zip(opt.param_groups, scheduler.get_last_lr()):
+                pg["lr"] = lr
+            logger.info(
+                f"Synced optimizer lr from scheduler.get_last_lr(): "
+                f"{[f'{lr:.2e}' for lr in scheduler.get_last_lr()]}"
+            )
         resume_start_step = int(resume_ckpt.get("step", 0))
         best_val_loss = float(resume_ckpt.get(
             "best_val_loss", resume_ckpt.get("val_loss", float("inf"))
@@ -1220,6 +1826,17 @@ def main() -> None:
             )
             for name in (*args.use_video, *args.use_spectro)
         )
+        old_n_layers, backbone_extra_allowed = warm_start_extend_backbone(
+            _core(model), init_ckpt["model_state_dict"], args.n_layers,
+        )
+        if backbone_extra_allowed:
+            logger.info(
+                f"Warm-start: extending backbone from {old_n_layers} to "
+                f"{args.n_layers} layers; new blocks "
+                f"[{old_n_layers}, {args.n_layers}) initialised as "
+                "near-identity (zero attn.out_proj + mlp final linear)."
+            )
+            allowed_missing = allowed_missing + backbone_extra_allowed
         load_state_dict_explicit(
             _core(model),
             init_ckpt["model_state_dict"],
@@ -1234,12 +1851,57 @@ def main() -> None:
     step = resume_start_step
 
     # ── Per-category warm-start freezes ──────────────────────────────
-    freeze_specs = [
-        ("ts", args.freeze_ts_steps),
-        ("video", args.freeze_video_steps),
-        ("spectro", args.freeze_spectro_steps),
-        ("backbone", args.freeze_backbone_steps),
-    ]
+    # Auto-inject a freeze on backbone/slow_ts/video when the resume path
+    # detected spectro model surgery.
+    #
+    # 2026-05-19 EMERGENCY DISABLE: 4581033 crashed with
+    #   RuntimeError: Expected to have finished reduction in the prior
+    #   iteration before starting a new one. Parameters that were not
+    #   used in producing loss.
+    # because DDP's reducer is built at `dm.wrap(model)` time (~line 1048)
+    # BEFORE this freeze block runs. When we then flip requires_grad=False
+    # on backbone/slow_ts/video, the reducer still expects gradients for
+    # them — DDP errors on the first backward.
+    #
+    # The proper fix is to apply the freeze BEFORE dm.wrap() (requires
+    # peeking the checkpoint to detect surgery early). For now we disable
+    # the auto-freeze so production keeps running. The new refine blocks
+    # train from fresh init alongside the existing trained backbone —
+    # loss may spike briefly but should recover.
+    #
+    # TODO: refactor to detect surgery + apply freeze before DDP wrap,
+    # then re-enable this block.
+    auto_freeze_release_step = 0
+    _ = (reinit_spectro_modalities, spectro_refine_extra_modalities)  # keep refs
+    if reinit_spectro_modalities or spectro_refine_extra_modalities:
+        logger.info(
+            "Auto-freeze DISABLED (2026-05-19 emergency patch): "
+            f"detected reinit_spectro={reinit_spectro_modalities}, "
+            f"refine_extra={spectro_refine_extra_modalities}, but "
+            "applying the freeze post-wrap triggers a DDP "
+            "unused-parameters error. New refine blocks train from "
+            "fresh init alongside the existing trained backbone."
+        )
+    # Back-compat: --freeze_ts_steps applies to both slow_ts and fast_ts
+    # unless their per-kind flags are set explicitly.
+    args_freeze_slow_ts = max(args.freeze_slow_ts_steps, args.freeze_ts_steps)
+    args_freeze_fast_ts = max(args.freeze_fast_ts_steps, args.freeze_ts_steps)
+    if args.freeze_whole_run:
+        # Freezes were applied pre-wrap (see model construction) and are
+        # permanent — no step-based application or release here.
+        logger.info(
+            "freeze_whole_run: skipping step-based freeze/release logic."
+        )
+        freeze_specs = []
+    else:
+        freeze_specs = [
+            ("slow_ts", max(args_freeze_slow_ts, auto_freeze_release_step)),
+            # fast_ts NOT auto-frozen — has its own fresh-init refine blocks 2-3
+            ("fast_ts", args_freeze_fast_ts),
+            ("video", max(args.freeze_video_steps, auto_freeze_release_step)),
+            ("spectro", args.freeze_spectro_steps),
+            ("backbone", max(args.freeze_backbone_steps, auto_freeze_release_step)),
+        ]
     active_freezes: Dict[str, int] = {}
     for cat, n_steps in freeze_specs:
         if n_steps > 0 and step < n_steps:
@@ -1279,7 +1941,9 @@ def main() -> None:
 
         opt.zero_grad()
         with amp_ctx_factory():
-            loss, per_mod = compute_step_loss(model, batch, device)
+            loss, per_mod = compute_step_loss(
+                model, batch, device, spec_pb_weights=spec_pb_weights,
+            )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
         opt.step()
@@ -1311,6 +1975,17 @@ def main() -> None:
                 f"step {step}/{args.max_steps}  loss={avg:.4f}  "
                 f"lr={lr_now:.2e}  | {per_mod_str}"
             )
+            # Host-RAM trajectory: chained jobs OOM'd reproducibly at
+            # ~9h45m with no sampler logs. Inline psutil reading gives
+            # us per-step RAM% directly in the .err file so we can
+            # diagnose without re-submitting (and without losing the
+            # priority boost). Cheap: one syscall per log_every steps.
+            vm = psutil.virtual_memory()
+            logger.info(
+                f"  host_ram used={vm.used/1e9:.1f}GB "
+                f"available={vm.available/1e9:.1f}GB "
+                f"percent={vm.percent:.1f}%"
+            )
             running_total = 0.0
             running_count = 0
 
@@ -1334,21 +2009,39 @@ def main() -> None:
                 m = metrics[n]
                 delta = m["model_mae"] - m["copy_mae"]
                 marker = "↓" if delta < 0 else "↑"
+                tvr = m.get("tvr", float("nan"))
+                tvr_str = f"  tvr={tvr:.3f}" if not math.isnan(tvr) else ""
                 logger.info(
                     f"  {n:<25s} "
                     f"model={m['model_mae']:.4f}  copy={m['copy_mae']:.4f}  "
                     f"{marker} {abs(delta):.4f}  | "
                     f"pred_d={m['pred_delta']:.4f}  tgt_d={m['tgt_delta']:.4f}  "
-                    f"ratio={m['delta_ratio']:.3f}"
+                    f"ratio={m['delta_ratio']:.3f}{tvr_str}"
                 )
             val_loss = sum(metrics[n]["model_mae"] for n in diagnostic_names)
             logger.info(f"  [sum model MAE] {val_loss:.4f}")
+            # Checkpoint-selection scalar. With --collapse_aware_best, penalise
+            # spectro modalities whose temporal-variance ratio is below 1
+            # (i.e. mean-collapsed) so a low-MAE collapse can't win best.pt.
+            sel_loss = val_loss
+            if args.collapse_aware_best:
+                tvr_penalty = sum(
+                    max(0.0, 1.0 - metrics[n]["tvr"])
+                    for n in diagnostic_names
+                    if not math.isnan(metrics[n].get("tvr", float("nan")))
+                )
+                sel_loss = val_loss + args.collapse_aware_lambda * tvr_penalty
+                logger.info(
+                    f"  [collapse-aware] sel_loss={sel_loss:.4f} "
+                    f"(tvr_penalty={tvr_penalty:.4f}, "
+                    f"lambda={args.collapse_aware_lambda})"
+                )
             # Decide best-update first so both `latest` and `best` share the
             # same final best_val_loss / best_step values — otherwise resume
             # from `latest` would see a stale best.
-            is_new_best = val_loss < best_val_loss
+            is_new_best = sel_loss < best_val_loss
             if is_new_best:
-                best_val_loss = val_loss
+                best_val_loss = sel_loss
                 best_step = step
 
             if dm.is_main:

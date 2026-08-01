@@ -722,7 +722,7 @@ def main() -> None:
         diagnostics=diagnostics, actuators=actuators,
         d_model=args.d_model, n_heads=args.n_heads,
         n_layers=args.n_layers, dropout=args.dropout,
-        gradient_checkpoint=args.gradient_checkpoint,
+        backbone_grad_checkpoint=args.gradient_checkpoint,
     ).to(device)
 
     if args.init_checkpoint is not None:

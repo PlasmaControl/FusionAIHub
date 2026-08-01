@@ -196,7 +196,7 @@ def main() -> None:
         d_model=args.d_model, n_heads=args.n_heads, n_layers=args.n_layers,
         mlp_ratio=args.mlp_ratio, dropout=args.dropout,
         attn_impl=args.attn_impl,
-        gradient_checkpoint=args.gradient_checkpoint,
+        backbone_grad_checkpoint=args.gradient_checkpoint,
     ).to(device)
     model.train()
     n_params = sum(p.numel() for p in model.parameters())

@@ -383,7 +383,7 @@ class TokamakH5Dataset(Dataset):
             8,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="standardize"),
         ),
         SignalConfig(
             "mse",
@@ -556,8 +556,7 @@ class TokamakH5Dataset(Dataset):
     MOVIE_CONFIGS = [
         MovieConfig("irtv", ["irtv"], 7, 100, 513, 640),
         MovieConfig(
-            "tangtv", ["tangtv"], 2, 100, 120, 360,
-            channels_to_use=[4, 6],
+            "tangtv", ["tangtv"], 7, 100, 120, 360,
             n_output_frames=3,
         ),
     ]

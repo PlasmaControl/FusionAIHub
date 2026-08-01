@@ -34,8 +34,14 @@ if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
 fi
 cd "${PROJECT_DIR}"
 
-CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage2_delta"
-STAGE1_CKPT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1"
+# 48L production chain (2026-05-20). Stage 2 follows Stage 1's 48L move:
+# n_layers=48 + full-rollout GC required (Stage 2 smoke at 48L hit 88%
+# VRAM with GC enabled; without GC projects to ~108% / OOM). Uses new
+# checkpoint dirs to keep 26L state intact as rollback. STAGE1_CKPT_DIR
+# points at the new 48L Stage 1 dir so the bootstrap reads the matching
+# architecture.
+CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage2_delta_48L"
+STAGE1_CKPT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1_48L"
 STAGE1_BEST="${STAGE1_CKPT_DIR}/e2e_stage1_best.pt"
 mkdir -p logs "${CHECKPOINT_DIR}"
 
@@ -77,6 +83,11 @@ trap 'kill "$SAMPLER_PID" 2>/dev/null || true' EXIT
 # val per epoch — same "1 val per epoch" pattern Stage 1 settled on.
 # val_max_batches=30 because Stage 2 val is K_max=10× more expensive
 # per batch than Stage 1's single-step val.
+#
+# Override via env vars on sbatch line, e.g. for 10× more frequent val:
+#   VAL_EVERY=905 sbatch scripts/slurm_frontier/train_e2e_stage2_delta.sh
+VAL_EVERY="${VAL_EVERY:-9047}"
+VAL_MAX_BATCHES="${VAL_MAX_BATCHES:-30}"
 srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --gpus-per-task=1 --gpu-bind=closest \
      scripts/slurm_frontier/_srun_rank_wrapper.sh \
@@ -90,12 +101,12 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --step_size_s 0.01 \
      --warmup_s 1.0 \
      --d_model 256 \
-     --n_layers 26 \
+     --n_layers 48 \
      --n_heads 8 \
      --dropout 0.1 \
      --K_max 10 \
      --curriculum_steps 180940 \
-     --grad_checkpoint_every 0 \
+     --grad_checkpoint_every 10 \
      --mae_weight 1.0 \
      --cos_weight 0.3 \
      --mag_weight 0.1 \
@@ -109,8 +120,8 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --num_workers 6 \
      --max_steps 180940 \
      --log_every 50 \
-     --val_every 9047 \
-     --val_max_batches 30 \
+     --val_every "${VAL_EVERY}" \
+     --val_max_batches "${VAL_MAX_BATCHES}" \
      --use_video tangtv \
      --use_spectro ece co2 bes \
      ${INIT_FLAG} \

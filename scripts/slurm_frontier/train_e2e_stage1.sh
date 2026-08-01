@@ -24,24 +24,42 @@ if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
     exit 1
 fi
 cd "${PROJECT_DIR}"
-CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1"
+# 48L production chain (2026-05-20). Uses a NEW checkpoint dir to keep the
+# 26L production state (in e2e_stage1/) intact as a rollback target. First
+# job in the new chain warm-starts from the 26L production's _latest.pt
+# via the init path → trainer auto-detects 26→48 layer extension via
+# warm_start_extend_backbone and applies near-identity init to new blocks.
+# Successor jobs resume from the new dir's own _latest.pt (48L → 48L,
+# normal resume path).
+CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1_48L"
+STAGE1_26L_LATEST="/lustre/orion/fus187/proj-shared/models/e2e_stage1/e2e_stage1_latest.pt"
 mkdir -p logs "${CHECKPOINT_DIR}"
 
 export MASTER_PORT=29500
 source scripts/slurm_frontier/_frontier_settings.sh
 
-# Auto-resume from previous chained submission. Pass --resume_checkpoint
-# only when a `_latest.pt` is on disk; the Python script's flag guard
-# would otherwise fall through to fresh init anyway, but being explicit
-# makes the log line show whether we resumed or started cold.
+# First-job-in-chain → warm-start via --init_checkpoint from 26L.
+# Successor → normal --resume_checkpoint from the new dir's _latest.pt.
 RESUME_FLAG=""
+INIT_FLAG=""
 LATEST_CKPT="${CHECKPOINT_DIR}/e2e_stage1_latest.pt"
 if [ -f "${LATEST_CKPT}" ]; then
     echo "[train_e2e_stage1] resuming from ${LATEST_CKPT}"
     RESUME_FLAG="--resume_checkpoint ${LATEST_CKPT}"
+elif [ -f "${STAGE1_26L_LATEST}" ]; then
+    echo "[train_e2e_stage1] 26→48L warm-start from ${STAGE1_26L_LATEST}"
+    INIT_FLAG="--init_checkpoint ${STAGE1_26L_LATEST}"
 else
-    echo "[train_e2e_stage1] no latest checkpoint at ${LATEST_CKPT}; starting fresh"
+    echo "ERROR: neither ${LATEST_CKPT} nor ${STAGE1_26L_LATEST} found." >&2
+    echo "       The 48L chain needs a 26L production _latest.pt to warm-start." >&2
+    exit 1
 fi
+
+# max_steps = 118_000 = 100 epochs × 1180 steps/epoch (val_every=1180 ≈
+# 1 epoch at 8N batch=64). The cosine schedule decays from --lr 5e-4
+# down to --min_lr 1e-6 across this window. Changing --max_steps here
+# retargets the LR schedule even mid-chain — train_e2e_stage1.py:1188
+# re-applies T_max from args after scheduler.load_state_dict().
 
 # Per-node sampler: one line per node per minute with mean GPU busy%,
 # host RAM, and mean VRAM%. Launched as a side srun step with --overlap
@@ -67,7 +85,7 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --step_size_s 0.01 \
      --warmup_s 1.0 \
      --d_model 256 \
-     --n_layers 26 \
+     --n_layers 48 \
      --n_heads 8 \
      --dropout 0.1 \
      --lr 5e-4 \
@@ -77,11 +95,12 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --grad_clip 5.0 \
      --batch_size 64 \
      --num_workers 6 \
-     --max_steps 672000 \
+     --max_steps 118000 \
      --log_every 50 \
      --val_every 1180 \
      --val_max_batches 100 \
      --use_video tangtv \
      --use_spectro ece co2 bes \
      --no_amp_val \
+     ${INIT_FLAG} \
      ${RESUME_FLAG}

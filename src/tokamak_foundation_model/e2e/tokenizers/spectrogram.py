@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SpectrogramTokenizer(nn.Module):
@@ -65,6 +66,8 @@ class SpectrogramTokenizer(nn.Module):
         patch_t: int,
         freq_bins: int,
         time_frames: int,
+        enable_freq_stem: bool = False,
+        freq_stem_hidden: int = 128,
     ) -> None:
         super().__init__()
         if freq_bins % patch_f != 0:
@@ -102,7 +105,12 @@ class SpectrogramTokenizer(nn.Module):
         # Pre-backbone per-token MLP refiners (stacked ViT-style residual MLP
         # blocks). Each block is independently applied with a residual at the
         # call site so adding/removing blocks is a single-line change.
-        n_refine_blocks = 4
+        # 2026-05-19: bumped 4 → 12 to add capacity around the d_model=256
+        # bottleneck for fine-pattern reconstruction (harmonics + transients).
+        # train_e2e_stage1.py's resume path auto-detects the extra refine
+        # blocks as missing keys and auto-applies a 1-epoch (1180-step)
+        # freeze on backbone/ts/video while the new blocks 4..11 settle.
+        n_refine_blocks = 12
         self.refine = nn.ModuleList([
             nn.Sequential(
                 nn.LayerNorm(d_model),
@@ -117,10 +125,38 @@ class SpectrogramTokenizer(nn.Module):
         nn.init.normal_(self.modality_embed, std=0.02)
         nn.init.normal_(self.missing_token, std=0.02)
 
+        # OPT-IN full-frequency encoder stem (2026-06-13). The patch
+        # Conv2d below has a receptive field of only patch_f (32) freq
+        # bins, so a token cannot encode where a mode peak sits relative
+        # to the WHOLE spectrum — information lost before the bottleneck.
+        # This stem mixes across all `freq_bins` bins BEFORE patching, as
+        # a zero-init residual so the encoder is bit-identical at load
+        # (exact warm-start) and only diverges as it trains. Expressed as
+        # a Linear over the frequency axis (a full-freq filter == a dense
+        # freq->freq map) rather than a (freq_bins, 1) Conv2d: matmuls run
+        # on rocBLAS with no per-shape MIOpen tuning, sidestepping the
+        # kernel-tuning/fallback pathology that novel conv shapes hit at
+        # batch 32 (jobs 4802391/4803320). Weights shared across channels
+        # and time (folded into the matmul batch dim).
+        self.enable_freq_stem = bool(enable_freq_stem)
+        if self.enable_freq_stem:
+            self.fs_lin1 = nn.Linear(freq_bins, freq_stem_hidden)
+            self.fs_lin2 = nn.Linear(freq_stem_hidden, freq_bins)
+            nn.init.zeros_(self.fs_lin2.weight)
+            nn.init.zeros_(self.fs_lin2.bias)
+
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode a batch of present-modality spectrograms to
         ``(B, n_tokens, d_model)``."""
         x = x[..., : self.trunc_t]                      # (B, C, F, T_trunc)
+        if self.enable_freq_stem:
+            # Full-frequency residual mixing before patching. Operate
+            # with frequency as the last (feature) dim so the Linears
+            # mix across all freq bins; zero-init fs_lin2 → no-op at
+            # construction → exact warm-start.
+            h = x.transpose(2, 3)                       # (B, C, T, F)
+            h = self.fs_lin2(F.gelu(self.fs_lin1(h)))   # (B, C, T, F)
+            x = x + h.transpose(2, 3)                   # (B, C, F, T_trunc)
         tokens = self.proj(x)                           # (B, d_model, n_f, n_t)
         tokens = tokens.flatten(2).transpose(1, 2)      # (B, n_tokens, d_model)
         tokens = tokens + self.spatial_pe + self.modality_embed
