@@ -663,3 +663,37 @@ def test_train_video_codec_cli_main(tangtv_shots, tmp_path, monkeypatch):
     assert gate_dict["steps"] == 2
     assert (out_dir / "summary.json").exists()
     assert sorted(out_dir.glob("gate_*.json"))
+
+
+def test_video_generator_losses_pure_recipe_gan_free():
+    """v6-recipe validation (2026-08-05): with adversarial_weight=0 AND fm_weight=0 the
+    video generator objective must be fully discriminator-free — finite, backprop-able,
+    and INVARIANT to the discriminator's parameters (the v5 lesson: fm at its 1.0
+    default kept coupling G to a saturated D even at adv 0)."""
+    import torch
+
+    from tokamak_foundation_model.ignite.config import VideoCodecConfig
+    from tokamak_foundation_model.ignite.video_codec import VideoCodec
+    from tokamak_foundation_model.ignite.video_discriminator import FramePatchGAN
+
+    torch.manual_seed(0)
+    cfg = VideoCodecConfig(d_model=32, enc_depth=1, dec_depth=1, heads=2,
+                           frames=5, height=40, width=40, patch_t=5, patch_h=20, patch_w=20)
+    cfg.adversarial_weight = 0.0
+    cfg.fm_weight = 0.0
+    cfg.pixel_anchor_weight = 1.0
+    codec = VideoCodec(cfg)
+    disc = FramePatchGAN(cfg)
+    x = torch.randn(2, cfg.channels, cfg.frames, cfg.height, cfg.width)
+
+    out1 = codec.generator_losses(x, disc, cfg, step=0)
+    assert torch.isfinite(out1["total"])
+    out1["total"].backward()
+
+    # perturb the discriminator hard; the pure objective must not change.
+    with torch.no_grad():
+        for p in disc.parameters():
+            p.add_(torch.randn_like(p))
+    out2 = codec.generator_losses(x, disc, cfg, step=0)
+    assert torch.allclose(out1["total"], out2["total"], atol=1e-5), (
+        float(out1["total"]), float(out2["total"]))

@@ -137,14 +137,99 @@ _activity_overrides: Dict[str, Dict[str, float]] = {
     # spectro
     "co2": {"min_activity": 0.10, "active_bias": 0.5,
             "adv_warmup_steps": 1500, "adversarial_weight": 0.5},
+    # mhr (spectro): adversarial-instability anti-collapse ONLY (like co2's adv knobs), no
+    # activity bias needed (mhr is rich / naturally O(1), not degeneracy-dominated).
+    "mhr": {"adv_warmup_steps": 1500, "adversarial_weight": 0.5},
     # video (adversarial instability only; NO activity bias)
     "tangtv_lower": {"adv_warmup_steps": 1500, "adversarial_weight": 0.5},
     # slow-TS (masked; activity = present-fraction). No discriminator -> no adv knobs.
     "ts_core_density": {"min_activity": 0.5, "active_bias": 0.5},
-    # fast-TS (envelope std). Envelope saturation dominates; adversarial has been stable here, so
-    # no adv-warmup change — just the activity bias onto the structured minority.
-    "filterscopes": {"min_activity": 0.5, "active_bias": 0.5},
+    # mse (Motional Stark Effect, slow-TS) is neutral-beam-dependent: ~75% of windows are <10%
+    # present (NBI off), median present-fraction 0.000. Without stratification the codec drowns in
+    # mostly-missing windows -> 1-code collapse + decode-corr oscillation (confirmed 2026-07-27).
+    # Same present-fraction stratification that rescued ts_core_density (biases onto the ~25% of
+    # well-observed windows). Pairs with the non-finite-channel masking fix in _fit_window.
+    "mse": {"min_activity": 0.5, "active_bias": 0.5},
+    # fast-TS (envelope std). The scale-fix de-saturates the envelope (median within-window std
+    # 0.648, 91% of windows structured, strong across-window profile variation) — the DATA is rich,
+    # NOT low-info. Yet the codec pinned to 1 code (frac 0.001) even under entropy_weight=5.0
+    # (2026-07-27). Root cause: filterscopes was the ONLY collapse-prone codec (vs co2 / tangtv_lower)
+    # running full adversarial_weight=1.0 with ZERO adv warmup, so the discriminator hammered a
+    # from-scratch encoder from step 0 -> adversarial-driven 1-code collapse. Fix = the SAME
+    # adv-warmup + halved adversarial_weight its siblings already get (adv_coeff=0 for the first
+    # 1500 steps lets the encoder learn a spread codebook before the GAN engages).
+    "filterscopes": {"min_activity": 0.5, "active_bias": 0.5,
+                     "adv_warmup_steps": 1500, "adversarial_weight": 0.5},
 }
+
+# Modalities that need WHOLE-SHOT presence filtering (fix (a) for co2 collapse). A diagnostic
+# recorded on only a subset of shots stores a length-1 (C, 1) placeholder on the shots that
+# lack it; that placeholder floors to silence and swamps the codec batch, collapsing the FSQ
+# to one code. Within-shot activity stratification cannot rescue a shot with zero signal (no
+# active window to re-draw to), so these shots are dropped up front via
+# filter_signal_present_files. Only co2 qualifies today: it is absent on the older shot range
+# (placeholder shape (4, 1)) and present on the newer one (shape (4, ~4.5M)). ece/bes/mhr are
+# present broadly and are NOT filtered (byte-identical). Slow-TS neutral-beam gaps (cer/mse)
+# are handled by masking, not shot-dropping, so they are not listed here.
+_PRESENCE_FILTER_SIGNALS: frozenset = frozenset({"co2"})
+
+# Per-modality spectro INPUT-STANDARDIZATION (global per-freq z-score of the log-power input).
+# For THIN modalities the log-power window is a large near-constant plate (co2 ~20 per freq,
+# across-window std ~0.005 for most bins) with real signal in only a few bins. Pure MAE on that
+# plate is minimized by a constant -> the FSQ collapses to one code regardless of token count
+# (confirmed: both 192-tok and coarse-16 collapsed). Subtracting the dataset per-freq mean and
+# dividing by the per-freq std (clamped to a FLOOR so near-constant "noise" bins are not blown
+# up) lifts the informative bins to O(1), so a constant can no longer minimize the loss and the
+# few real bins become codeable. Stats are computed in the CODEC's OWN log_power_stft space
+# (the FM's log_per_bin stats are in different log units -> misaligned), keyed on the modality.
+# co2 keeps the FINE 192-token resolution (user 2026-07-24: coarse arch did NOT help; the lever
+# is the input scale, not token count). No-op for ece/bes/mhr (rich, naturally O(1)).
+_SPECTRO_STANDARDIZE_SIGNALS: frozenset = frozenset({"co2"})
+
+
+def apply_spectro_standardization(cfg, modality: str, stats_path=None, log_fn=None) -> None:
+    """Enable RAW per-channel input standardization on ``cfg`` IN PLACE for non-O(1)-raw spectros.
+
+    No-op for any modality not in :data:`_SPECTRO_STANDARDIZE_SIGNALS`. Loads the FM's
+    ``preprocessing_stats[modality]['raw']`` per-channel (C,) mean/std (raw is raw — no log-unit
+    mismatch, unlike a log-power stat) and sets ``cfg.input_standardize`` + ``cfg.raw_mean`` /
+    ``cfg.raw_std`` (ckpt-serializable). ``log_power_stft`` z-scores the raw per channel BEFORE the
+    STFT, shifting co2's log-power out of the _LOG_CEIL clip. Must run BEFORE the codec/dataset are
+    built. Missing/degenerate stats -> standardization stays OFF (warn), never crash.
+    """
+    if modality not in _SPECTRO_STANDARDIZE_SIGNALS:
+        return
+    import numpy as _np
+    from .fastts_train import DEFAULT_STATS_PATH
+    path = stats_path or DEFAULT_STATS_PATH
+    if not path or not Path(path).exists():
+        if log_fn is not None:
+            log_fn(f"[train_codec] WARN {modality}: stats {path!r} missing; RAW standardization OFF")
+        return
+    st = torch.load(path, map_location="cpu", weights_only=False)
+    raw = st.get(modality, {}).get("raw") if isinstance(st, dict) else None
+    if raw is None:
+        if log_fn is not None:
+            log_fn(f"[train_codec] WARN {modality}: no ['raw'] stats; RAW standardization OFF")
+        return
+    mean = _np.asarray(raw["mean"], dtype=_np.float32)   # (C,)
+    std = _np.asarray(raw["std"], dtype=_np.float32)
+    # sanitize: a non-finite / zero-std channel would poison the z-score -> center 0, scale 1.
+    mean = _np.where(_np.isfinite(mean), mean, 0.0)
+    std = _np.where(_np.isfinite(std) & (std > 0), std, 1.0)
+    if mean.shape[0] != cfg.channels:
+        raise ValueError(
+            f"{modality} raw stats C={mean.shape[0]} != cfg.channels={cfg.channels}; stale {path}"
+        )
+    cfg.input_standardize = True
+    cfg.raw_mean = mean.tolist()
+    cfg.raw_std = std.tolist()
+    if log_fn is not None:
+        log_fn(
+            f"[train_codec] RAW input standardization ON for {modality}: per-channel z-score "
+            f"(raw mean~{float(mean.mean()):.2e}, std~{float(std.mean()):.2e}) "
+            f"-> log-power lands un-clipped in [-10, 20]"
+        )
 
 
 def apply_activity_overrides(cfg, modality: str, log_fn=None) -> None:
@@ -165,6 +250,91 @@ def apply_activity_overrides(cfg, modality: str, log_fn=None) -> None:
             applied[k] = v
     if log_fn is not None and applied:
         log_fn(f"[train_codec] anti-collapse overrides for {modality}: {applied}")
+
+
+def compute_logpow_stats(
+    modality: str,
+    shots: Sequence[Union[str, int]],
+    out_path: Union[str, Path],
+    data_dir: Union[str, Path] = None,
+    windows_per_shot: int = 4,
+    seed: int = 0,
+    log_fn=None,
+) -> dict:
+    """Dataset-level per-(channel,freq) log-power mean/std for ``--logpow_stats_path``.
+
+    COMPOSE convention (2026-07-31): stats are computed in the space the codec actually
+    SEES — i.e. AFTER ``apply_spectro_standardization``'s raw z-score for the modalities
+    in ``_SPECTRO_STANDARDIZE_SIGNALS`` (co2). Without raw-z, co2's log-power is 100%
+    clipped at the +20 ceiling and the stats degenerate (mean 20, std 0) — the pre-fix
+    ``codec_co2_perfreq_stats.pt`` on foundation_model_meta is exactly that; REGENERATE
+    it with this function, never reuse it.
+
+    WITHIN-SHOT std convention (2026-07-31 v2, measured in gate job 5131926): the
+    POOLED-across-shots std is dominated by across-shot regime variance (~5x the
+    within-shot signal scale for ece/mhr) and dividing by it crushes any one shot's
+    structure below loss visibility — ece/mhr reverted to 1-code decoder-only recon.
+    So: ``mean`` = pooled over all sampled windows (dataset-level plate removal, which
+    transfers), ``std`` = sqrt(average over shots of the per-shot variance around the
+    per-shot mean) — the within-shot scale the gate campaign validated. Samples
+    ``windows_per_shot`` windows spread within each shot (deterministic; no cache files
+    are read or written). Writes ``{mean, std, std_kind, n_windows, n_shots, modality,
+    space}`` to ``out_path`` (existing file is backed up to ``.bak`` first).
+    """
+    cfg = SpectroCodecConfig()
+    cfg.channels = modality_channels(modality)
+    apply_spectro_standardization(cfg, modality, log_fn=log_fn)
+    ddir = data_dir if data_dir is not None else DEFAULT_DATA_DIR
+
+    s1 = torch.zeros(cfg.channels, cfg.freq_bins, dtype=torch.float64)
+    s2 = torch.zeros_like(s1)
+    within_var = torch.zeros_like(s1)
+    frames = 0
+    n_windows_used = 0
+    n_shots_used = 0
+    for shot in shots:
+        try:
+            ds = CodecPairDataset(modality, [shot], cfg, data_dir=ddir, seed=seed)
+        except ValueError:
+            continue                                    # missing file -> skip
+        n = len(ds)
+        if n == 0:
+            continue
+        k = min(int(windows_per_shot), n)
+        idxs = sorted({round(i * (n - 1) / max(1, k - 1)) for i in range(k)})
+        x = torch.cat([ds[i][0].to(torch.float64) for i in idxs], dim=-1)  # (C, F, k*T)
+        s1 += x.sum(dim=-1)
+        s2 += (x ** 2).sum(dim=-1)
+        frames += x.shape[-1]
+        n_windows_used += len(idxs)
+        within_var += x.var(dim=-1, unbiased=False)     # per-shot variance, own mean
+        n_shots_used += 1
+    if n_shots_used == 0:
+        raise RuntimeError(f"compute_logpow_stats: no usable shots for {modality}")
+    mean = s1 / frames
+    std = (within_var / n_shots_used).clamp_min(0.0).sqrt()
+    out = {
+        "mean": mean.float().tolist(),
+        "std": std.float().tolist(),
+        "std_kind": "within_shot",
+        "n_windows": n_windows_used,
+        "n_shots": n_shots_used,
+        "modality": modality,
+        "space": ("codec_log_power_stft__post_raw_std"
+                  if cfg.input_standardize else "codec_log_power_stft"),
+    }
+    out_p = Path(out_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    if out_p.exists():
+        out_p.replace(out_p.with_suffix(out_p.suffix + ".bak"))
+    torch.save(out, out_p)
+    if log_fn is not None:
+        log_fn(
+            f"[compute_logpow_stats] {modality}: {n_windows_used} windows over "
+            f"{n_shots_used} shots -> {out_p} (space={out['space']}, std_kind=within_shot, "
+            f"mean med={float(mean.median()):.3f}, std med={float(std.median()):.4f})"
+        )
+    return out
 
 
 def _import_multifile():
@@ -1159,6 +1329,12 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         valid = nan_mask < 0.5                       # NaN mask 1.0 == NaN -> invalid
         if cfg.zero_is_missing:                      # Thomson: a 0 is a missing sample.
             valid = valid & (raw != 0.0)
+        # Non-finite raw is masked INVALID, exactly like a missing position: excluded from the
+        # loss (valid=0) and zeroed in the input below. mse has ~2 of 69 always-garbage channels
+        # (inf/nan raw -> inf/nan stats); previously ANY non-finite position made _getitem_standard
+        # REJECT the whole window, so mse windows touching those channels were dropped and the few
+        # that leaked through poisoned the recon -> the +0.55/-0.52 decode-corr oscillation.
+        valid = valid & torch.isfinite(raw)
 
         # SCALE FIX — standardize the codec input the SAME way the FM model does (see
         # SlowTSCodecConfig.channel_mean/std + SLOWTS_PREPROCESS_METHOD). Applied AFTER the mask
@@ -1166,6 +1342,11 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         # cfg.channels). No-op / byte-identical when the cfg carries no stats (default) or method
         # is "none"/None.
         signal = self._standardize(raw)
+        # Standardizing an inf/nan raw position yields inf/nan; neutralize to 0 (== the
+        # standardized mean) so the input-zeroing `signal * valid` below can't produce inf*0 = NaN
+        # (which would trip the finite-check in _getitem_standard and drop the window). The
+        # position is already masked invalid above, so 0 is the correct neutral input + loss-excluded.
+        signal = torch.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
         valid = valid.to(torch.float32)
 
         # INPUT-MASK FIX (Bug B) — after standardization a MISSING position (raw 0) maps to
@@ -2182,7 +2363,9 @@ def train_codec(
     # it so the trainer's fixed ``steps`` budget cycles through epochs transparently.
     stream = _epoch_cycler(loader)
 
-    best_score = float("-inf")
+    # CHAIN-RESUME FIX (2026-08-05): seed best-tracking from an existing codec_best.pt
+    # so a resume leg cannot clobber the global best with a worse leg-local one.
+    best_score = spike.resume_best_score(out_path)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
     spike.reset_skipped_steps()  # divergence-guard skip counter for this trainer run
@@ -2207,7 +2390,7 @@ def train_codec(
             g["d_loss"] = float(d_loss.detach())
             g["adaptive_weight"] = float(g_terms["adaptive_weight"])
             g["step"] = step
-            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor)
+            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor, hard_min_codes=getattr(cfg, "gate_hard_min_codes", 8))
             g["score"] = score
             is_best = score > best_score
             g["is_best"] = bool(is_best)
@@ -2333,7 +2516,9 @@ def train_video_codec(
     )
     stream = _epoch_cycler(loader)
 
-    best_score = float("-inf")
+    # CHAIN-RESUME FIX (2026-08-05): seed best-tracking from an existing codec_best.pt
+    # so a resume leg cannot clobber the global best with a worse leg-local one.
+    best_score = spike.resume_best_score(out_path)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
     spike.reset_skipped_steps()  # divergence-guard skip counter for this trainer run
@@ -2358,7 +2543,7 @@ def train_video_codec(
             g["d_loss"] = float(d_loss.detach())
             g["adaptive_weight"] = float(g_terms["adaptive_weight"])
             g["step"] = step
-            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor)
+            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor, hard_min_codes=getattr(cfg, "gate_hard_min_codes", 8))
             g["score"] = score
             is_best = score > best_score
             g["is_best"] = bool(is_best)
@@ -2485,7 +2670,9 @@ def train_slowts_codec(
     )
     stream = _epoch_cycler(loader)
 
-    best_score = float("-inf")
+    # CHAIN-RESUME FIX (2026-08-05): seed best-tracking from an existing codec_best.pt
+    # so a resume leg cannot clobber the global best with a worse leg-local one.
+    best_score = spike.resume_best_score(out_path)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
     spike.reset_skipped_steps()  # divergence-guard skip counter for this trainer run
@@ -2509,7 +2696,7 @@ def train_slowts_codec(
             g["d_loss"] = 0.0  # no discriminator
             g["adaptive_weight"] = float(g_terms["adaptive_weight"])
             g["step"] = step
-            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor)
+            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor, hard_min_codes=getattr(cfg, "gate_hard_min_codes", 8))
             g["score"] = score
             is_best = score > best_score
             g["is_best"] = bool(is_best)
@@ -2617,8 +2804,76 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="Optional codec_last.pt to warm-start codec/disc/opt/step from.")
     p.add_argument("--entropy_weight", type=float, default=None,
                    help="Override cfg.entropy_weight (anti-collapse strength).")
+    p.add_argument("--pixel_anchor_weight", type=float, default=None,
+                   help="Override cfg.pixel_anchor_weight (L1 RECONSTRUCTION strength). Default 0.05 "
+                        "was an anchor meant to work WITH the adversarial; raise it (~1-5) when "
+                        "adversarial is off so the decode actually reconstructs the spectrogram.")
+    p.add_argument("--multiscale_recon_weight", type=float, default=None,
+                   help="Override cfg.multiscale_recon_weight — multi-resolution L1 (NeMo-style) that "
+                        "sharpens turbulent detail plain pixel-L1 blurs. ~1-5 recommended.")
+    p.add_argument("--freq_grad_weight", type=float, default=None,
+                   help="Override cfg.freq_grad_weight — L1 on the frequency-derivative; directly "
+                        "penalizes a smooth envelope. ~1-5 recommended.")
+    p.add_argument("--gate_hard_min_codes", type=int, default=None,
+                   help="Override cfg.gate_hard_min_codes (hard best-ckpt floor on ABSOLUTE "
+                        "distinct codes; below it gate_score=-inf). Default 8 was calibrated on "
+                        "SPECTRO (192-768 tok/window); the low-token families (slow-TS 4 tok, "
+                        "fast-TS 5 tok) have no historical n_distinct_codes record — calibrate "
+                        "at launch rather than trusting the spectro default.")
+    p.add_argument("--fm_weight", type=float, default=None,
+                   help="Override cfg.fm_weight (disc feature-matching folded into the "
+                        "generator's recon reference on the adaptive path). 0 = fully "
+                        "GAN-free — v5 lesson (2026-08-04): fm at its 1.0 default kept "
+                        "dragging the generator toward a SATURATED discriminator's "
+                        "speckle features even with adversarial_weight 0.")
     p.add_argument("--consistency_weight", type=float, default=None,
                    help="Override cfg.consistency_weight (shift-invariance strength).")
+    p.add_argument("--patch_f", type=int, default=None,
+                   help="override SpectroCodecConfig patch_f/patch_t (24-tok = 64/32; "
+                        "192-tok = 16/16).")
+    p.add_argument("--patch_t", type=int, default=None,
+                   help="override SpectroCodecConfig patch_f/patch_t (24-tok = 64/32; "
+                        "192-tok = 16/16).")
+    p.add_argument("--decoder", type=str, default=None, choices=["linear", "conv"],
+                   help="Spectro decoder family: 'linear' (default; transformer + nn.Linear "
+                        "to_pixels, SMOOTH patches) or 'conv' (HiFi-GAN/VQGAN 2D transposed-conv "
+                        "upsampler, SpectroConvDecoder — synthesizes turbulent texture). "
+                        "Spectro modalities only.")
+    # ---- prod-recipe knobs (the ONLY spectro recipe that survives the multi-shot collapse
+    # test: prod_ece = fsq_levels [8,8,8,8,8]/cb=32768, entropy 0.1, adv_clamp 10000,
+    # adv_warmup 0, adversarial_weight 1.0). The current SpectroCodecConfig defaults drifted to
+    # the collapsing d2 values (cb=1000, entropy 1.0, clamp 50); these let a launch reproduce the
+    # prod recipe WITHOUT editing the defaults. Applied AFTER apply_activity_overrides so the CLI
+    # always wins (co2/mhr _activity_overrides would otherwise force warm=1500/advw=0.5). ----
+    p.add_argument("--fsq_levels", type=str, default=None,
+                   help="Comma-separated FSQ levels, e.g. '8,8,8,8,8' (cb=32768, prod recipe) "
+                        "vs the collapsing d2 default '8,5,5,5' (cb=1000). Applied before codec build.")
+    p.add_argument("--adaptive_adv_clamp", type=float, default=None,
+                   help="Override cfg.adaptive_adv_clamp (prod=10000; drifted default=50).")
+    p.add_argument("--adv_warmup_steps", type=int, default=None,
+                   help="Override cfg.adv_warmup_steps (prod=0).")
+    p.add_argument("--adversarial_weight", type=float, default=None,
+                   help="Override cfg.adversarial_weight (prod=1.0).")
+    p.add_argument("--skip_activity_override", action="store_true",
+                   help="Skip the per-modality _activity_overrides entirely (needed to reproduce "
+                        "the clean prod recipe for co2/mhr, whose overrides force warm/advw/bias).")
+    p.add_argument("--compute_logpow_stats", type=str, default=None,
+                   help="Compute dataset-level per-freq log-power stats (COMPOSE space, i.e. "
+                        "after the raw z-score for co2) over the resolved train shots, write "
+                        "them to this path, and exit without training. Spectro only.")
+    p.add_argument("--logpow_stats_path", type=str, default=None,
+                   help="Path to codec_<mod>_perfreq_stats.pt; enables per-freq log-power "
+                        "z-standardization (the thin-modality mean-collapse fix) and DISABLES "
+                        "raw-std since the stats are in raw-clipped space.")
+    p.add_argument("--instance_norm_quantize", type=float, default=None,
+                   help="Shift-robust instance norm: quantization step for the window "
+                        "stats (sd on a log2 grid, mu in units of q*sd). 0.5 recommended; "
+                        "unset keeps plain instance norm. Only active with "
+                        "--input_instance_norm.")
+    p.add_argument("--input_instance_norm", action="store_true",
+                   help="Per-window instance z-score (mean~0/std~1) on the log-power encoder input. "
+                        "ROOT-CAUSE fix for the co2 encoder death: strips the large DC offset that "
+                        "saturates the FSQ tanh bound. Composes with raw-std (which un-clips first).")
     return p
 
 
@@ -2645,8 +2900,41 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cfg = FastTSCodecConfig(channels=channels)
     else:
         cfg = SpectroCodecConfig(channels=channels)
+        # Optional patch-size override (spectro only). 24-tok = patch_f 64 / patch_t 32 (survives
+        # the 192-tok mean-collapse); 192-tok = 16/16 (the collapsing default). Applied BEFORE the
+        # standardization / activity overrides / codec are built so n_tok is fixed up front.
+        if args.patch_f is not None:
+            cfg.patch_f = args.patch_f
+        if args.patch_t is not None:
+            cfg.patch_t = args.patch_t
+        # DECODER family override (spectro only): 'conv' swaps the linear to_pixels unpatchify for
+        # the HiFi-GAN/VQGAN 2D transposed-conv upsampler (SpectroConvDecoder). Default 'linear'
+        # is byte-identical. Applied before the codec is built so the right decoder is constructed.
+        if args.decoder is not None:
+            cfg.decoder = args.decoder
+            if ddp.is_main:
+                print(f"[train_codec] decoder={cfg.decoder} "
+                      f"(base_ch={cfg.conv_dec_base_ch}, res_blocks={cfg.conv_dec_res_blocks})"
+                      if cfg.decoder == "conv" else f"[train_codec] decoder={cfg.decoder}")
+        # global per-freq input standardization for THIN spectro modalities (co2); lifts the
+        # sparse activity out of the large near-constant log-power mean so the codec stops
+        # collapsing to one code. No-op for ece/bes/mhr (rich, naturally O(1)).
+        apply_spectro_standardization(cfg, args.modality, args.stats_path,
+                                      log_fn=(print if ddp.is_main else None))
     if args.entropy_weight is not None:
         cfg.entropy_weight = float(args.entropy_weight)
+    if getattr(args, "pixel_anchor_weight", None) is not None and hasattr(cfg, "pixel_anchor_weight"):
+        cfg.pixel_anchor_weight = float(args.pixel_anchor_weight)
+    for _w in ("multiscale_recon_weight", "freq_grad_weight", "fm_weight"):
+        if getattr(args, _w, None) is not None and hasattr(cfg, _w):
+            setattr(cfg, _w, float(getattr(args, _w)))
+    if getattr(args, "gate_hard_min_codes", None) is not None and hasattr(cfg, "gate_hard_min_codes"):
+        cfg.gate_hard_min_codes = int(args.gate_hard_min_codes)
+    if args.decoder is not None and (is_video or is_slowts or is_fastts):
+        raise SystemExit(
+            "--decoder {linear,conv} is a SPECTRO-only override (the conv decoder is "
+            "nets.SpectroConvDecoder); it is not valid for a video / slow-TS / fast-TS modality."
+        )
     if args.consistency_weight is not None:
         if is_video or is_slowts:
             raise SystemExit(
@@ -2657,7 +2945,66 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
 
     # anti-collapse overrides for the 4 collapsing codecs (co2 / tangtv_lower / ts_core_density /
     # filterscopes). No-op for every other (already-working) modality — see _activity_overrides.
-    apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
+    # --skip_activity_override bypasses them entirely so the clean prod recipe can be reproduced
+    # for co2/mhr (whose overrides otherwise force adv_warmup=1500 / adversarial_weight=0.5 / bias
+    # that FIGHT the prod recipe — the multi-shot survivor uses warm=0 / advw=1.0 / no bias).
+    if args.skip_activity_override:
+        if ddp.is_main:
+            print(f"[train_codec] _activity_overrides SKIPPED for {args.modality} "
+                  f"(--skip_activity_override)")
+    else:
+        apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
+
+    # prod-recipe CLI overrides — applied LAST so they win over both the config defaults AND
+    # _activity_overrides. fsq_levels changes the codebook, so it must land before the codec is
+    # built (it is: construction happens after this block). No-op if the flag is None / cfg lacks
+    # the field (video / slow-TS families).
+    if getattr(args, "fsq_levels", None) is not None and hasattr(cfg, "fsq_levels"):
+        lv = [int(x) for x in str(args.fsq_levels).split(",") if x.strip() != ""]
+        cfg.fsq_levels = lv
+        if ddp.is_main:
+            import math as _m
+            print(f"[train_codec] fsq_levels override -> {lv} (cb={_m.prod(lv)})")
+    for _knob in ("adaptive_adv_clamp", "adv_warmup_steps", "adversarial_weight"):
+        _v = getattr(args, _knob, None)
+        if _v is not None and hasattr(cfg, _knob):
+            setattr(cfg, _knob, _v)
+            if ddp.is_main:
+                print(f"[train_codec] {_knob} override -> {_v}")
+
+    # per-freq LOG-POWER z-standardization (the THIN-modality mean-collapse fix; spectro ONLY).
+    # Applied AFTER apply_spectro_standardization + the fsq/prod-recipe overrides. The per-freq z
+    # COMPOSES with the raw z-score (raw-std stays as apply_spectro_standardization set it): the
+    # stats MUST be computed in the space the codec actually SEES, i.e. AFTER raw-std for the
+    # modalities in _SPECTRO_STANDARDIZE_SIGNALS (co2). The old REPLACE convention (disable
+    # raw-std, stats in raw-clipped space) is BROKEN for co2 — measured 2026-07-31: without
+    # raw-z, co2 log-power is 100% clipped at data._LOG_CEIL=20 (mean 20.00, per-freq std med
+    # 0.0000), so replace-convention stats are degenerate and zero the signal. No-op unless
+    # --logpow_stats_path is given. Guarded to the spectro branch (video/slow-TS/fast-TS lack
+    # the log-power fields).
+    if (not (is_video or is_slowts or is_fastts)) and getattr(args, "logpow_stats_path", None):
+        import torch as _t
+        _st = _t.load(args.logpow_stats_path, map_location="cpu", weights_only=False)
+        cfg.logpow_freq_mean = _t.as_tensor(_st["mean"], dtype=_t.float32).tolist()
+        cfg.logpow_freq_std = _t.as_tensor(_st["std"], dtype=_t.float32).tolist()
+        cfg.logpow_standardize = True
+        if ddp.is_main:
+            print(f"[train_codec] per-freq log-z ON from {args.logpow_stats_path} "
+                  f"(C={len(cfg.logpow_freq_mean)}, F={len(cfg.logpow_freq_mean[0])}); "
+                  f"COMPOSED with raw-std (raw z {'ON' if cfg.input_standardize else 'off'})",
+                  flush=True)
+
+    # Per-window instance z-score (root-cause fix for the co2 DC-offset -> FSQ-saturation collapse).
+    # Applied LAST in log_power_stft (after raw-std un-clips), so it centers + unit-scales every
+    # window to ece-like stats (mean~0/std~1) and the encoder no longer saturates the tanh bound.
+    if (not (is_video or is_slowts or is_fastts)) and getattr(args, "input_instance_norm", False):
+        cfg.input_instance_norm = True
+        if getattr(args, "instance_norm_quantize", None) is not None:
+            cfg.instance_norm_quantize = float(args.instance_norm_quantize)
+        if ddp.is_main:
+            print("[train_codec] per-window instance z-score ON (mean~0/std~1) — "
+                  f"DC-offset / FSQ-saturation fix; quantize={cfg.instance_norm_quantize} "
+                  "(>0 = shift-robust piecewise-constant stats)", flush=True)
 
     # fast-TS SCALE FIX — inject per-channel raw mean/std so the ELM envelope input is standardized
     # to ~O(1) (like the FM model sees) instead of the unstandardized ~1e15 raw that pins the
@@ -2714,6 +3061,39 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         all_shots = [s.strip() for s in args.shots.split(",") if s.strip()]
     else:
         all_shots = spike.discover_shots(args.data_dir)
+
+    # Fix (a): drop whole shots that carry no data for this modality (co2 only; no-op for
+    # every other modality — see _PRESENCE_FILTER_SIGNALS). Runs BEFORE the eval/train split
+    # so both draw from present shots. rank-0 scans + caches + broadcasts (DDP-safe); the
+    # cache is keyed by (paths, signal) so a pre-warmed sidecar avoids any job-time scan.
+    if args.modality in _PRESENCE_FILTER_SIGNALS:
+        from ..data.multi_file_dataset import filter_signal_present_files
+
+        presence_cache = (
+            Path(args.lengths_cache_dir) / f"codec_{args.modality}_present.pt"
+            if args.lengths_cache_dir
+            else None
+        )
+        paths = _shot_paths(all_shots, args.data_dir)
+        kept = {
+            p.name.split("_")[0]
+            for p in filter_signal_present_files(
+                paths, args.modality, cache_path=presence_cache
+            )
+        }
+        before = len(all_shots)
+        all_shots = [s for s in all_shots if str(s) in kept]
+        if ddp.is_main:
+            print(
+                f"[train_codec] {args.modality} presence filter: kept {len(all_shots)}/{before} "
+                f"shots that contain {args.modality} data",
+                flush=True,
+            )
+        if not all_shots:
+            raise RuntimeError(
+                f"presence filter left 0 shots for {args.modality} under {args.data_dir}"
+            )
+
     # eval = last eval_n_shots; train = the rest, capped to n_shots.
     eval_shots = all_shots[-args.eval_n_shots:]
     train_pool = all_shots[: -args.eval_n_shots] if args.eval_n_shots > 0 else all_shots
@@ -2722,6 +3102,19 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         raise RuntimeError(
             f"no train shots (discovered {len(all_shots)}, eval_n_shots={args.eval_n_shots})"
         )
+
+    # STATS-GENERATION mode (per-freq log-z promotion prep): compute dataset-level stats
+    # in the COMPOSE space over the resolved train shots (presence-filtered for co2),
+    # write, and exit — no training, no DDP collectives (run single-process).
+    if getattr(args, "compute_logpow_stats", None):
+        if is_video or is_slowts or is_fastts:
+            raise SystemExit("--compute_logpow_stats is spectro-only")
+        compute_logpow_stats(
+            args.modality, train_shots, args.compute_logpow_stats,
+            data_dir=args.data_dir, log_fn=(print if ddp.is_main else None),
+        )
+        ddp.shutdown()
+        return
 
     resume_state = None
     if args.resume is not None:

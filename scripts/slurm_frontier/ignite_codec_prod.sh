@@ -67,7 +67,11 @@ LR="${LR:-1e-3}"
 # Shared length-cache dir for the production dataset's per-file chunk-count sidecar. Points
 # at foundation_model_meta (same convention as the video-presence cache) so we do NOT cold-
 # scan thousands of shot lengths at every job start. Override with LENGTHS_CACHE_DIR="".
-LENGTHS_CACHE_DIR="${LENGTHS_CACHE_DIR:-/lustre/orion/fus187/proj-shared/foundation_model_meta}"
+# NOTE: use ${VAR-default} (no colon) so an EXPLICIT empty string ("") DISABLES the cache instead of
+# falling through to the shared dir. The ":-" form treats "" as unset -> shared dir -> overfit runs
+# with --shots would overwrite the real caches with a tiny shot list (cost several crashed full runs
+# 2026-07-30). Unset => shared foundation_model_meta (normal); ""=> disabled; else the given dir.
+LENGTHS_CACHE_DIR="${LENGTHS_CACHE_DIR-/lustre/orion/fus187/proj-shared/foundation_model_meta}"
 OUT_DIR="${OUT_DIR:-eval_runs/ignite_codec_${MODALITY}_${SLURM_JOB_ID:-local}}"
 mkdir -p logs "${OUT_DIR}"
 

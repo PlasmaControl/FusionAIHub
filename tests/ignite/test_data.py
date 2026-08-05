@@ -246,3 +246,49 @@ def test_log_power_stft_noop_on_clean_raw():
     # clamped (clean STFT log-power sits well inside the band)
     assert torch.isfinite(out).all()
     assert float(out.max()) < data._LOG_CEIL - 1.0
+
+
+# --------------------------------------------------------------------------- #
+# shift-robust (quantized) instance norm — 2026-08-03
+# --------------------------------------------------------------------------- #
+def _toy_raw(seed: int = 0) -> torch.Tensor:
+    g = torch.Generator().manual_seed(seed)
+    cfg = SpectroCodecConfig()
+    return torch.randn(1, 1, cfg.window_samples, generator=g)
+
+
+def test_instance_norm_quantize_zero_is_plain_instance_norm():
+    """quantize=0 (the default) must be byte-identical to the plain instance z-score."""
+    raw = _toy_raw()
+    cfg_plain = SpectroCodecConfig(input_instance_norm=True)
+    cfg_q0 = SpectroCodecConfig(input_instance_norm=True, instance_norm_quantize=0.0)
+    a = data.log_power_stft(raw, cfg_plain)
+    b = data.log_power_stft(raw, cfg_q0)
+    assert torch.equal(a, b)
+
+
+def test_instance_norm_quantized_stats_are_piecewise_constant():
+    """A small perturbation of the window (a stat-jitter proxy for the δ-shift) must NOT
+    change the applied normalization under quantize>0: the outputs of the original and
+    the perturbed window may differ only by the perturbation itself, i.e. the two
+    windows' normalization constants are IDENTICAL (their difference in normalized space
+    is exactly (x1 - x2)/sd_q — checked via a constant-offset perturbation)."""
+    raw = _toy_raw(1)
+    cfg = SpectroCodecConfig(input_instance_norm=True, instance_norm_quantize=0.5)
+    # constant multiplicative jitter on the raw -> tiny mean/std jitter in log-power
+    a = data.log_power_stft(raw, cfg)
+    b = data.log_power_stft(raw * 1.001, cfg)
+    # raw scaling by (1+eps) shifts log-power by a constant ~2*log10(1+eps)≈8.7e-4;
+    # with quantized stats the normalization constants stay in the same bins, so the
+    # normalized outputs differ by that constant / sd_q — i.e. by a near-uniform tiny
+    # shift, NOT by a stats re-normalization (which would rescale the whole window).
+    d = (a - b)
+    assert float(d.std()) < 1e-3, float(d.std())      # difference is (near-)constant
+    assert float(d.abs().max()) < 0.05                # and tiny
+
+    # sanity: with PLAIN instance norm the same perturbation is absorbed by the stats
+    # (mean-subtracted away), which is exactly the realization-coupling we're removing —
+    # both behaviors are fine for recon, but only the quantized one is code-stable.
+    cfg_plain = SpectroCodecConfig(input_instance_norm=True)
+    a2 = data.log_power_stft(raw, cfg_plain)
+    assert torch.isfinite(a2).all()

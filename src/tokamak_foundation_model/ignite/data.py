@@ -156,9 +156,53 @@ def log_power_stft(raw: ArrayLike, cfg: SpectroCodecConfig) -> torch.Tensor:
     # non-finite / absurd-magnitude samples to 0 (→ log-eps floor after STFT). No-op
     # for the clean modalities (ece/bes/mhr are all finite, |raw|<<1e20).
     x = torch.where(torch.isfinite(x) & (x.abs() < 1e20), x, torch.zeros_like(x))
+    # RAW per-channel standardization for modalities whose raw is NOT O(1) (co2 ~1e13). This MUST
+    # happen BEFORE the STFT: it is a per-channel linear rescale, so log10(mag^2) shifts by the
+    # per-channel constant -2*log10(raw_std) — moving co2's log-power from ~24 (100% clipped at the
+    # _LOG_CEIL=20 ceiling -> flat plate) down into the un-clipped [-10, 20] band, while preserving
+    # ALL spectral structure (a constant offset changes neither per-freq nor per-time variation).
+    # raw_mean/std are (C,) from the FM's preprocessing_stats[modality]['raw']. No-op when unset
+    # (ece/bes/mhr are O(1) raw -> byte-identical).
+    if getattr(cfg, "input_standardize", False) and getattr(cfg, "raw_mean", None) is not None:
+        rm = torch.as_tensor(cfg.raw_mean, dtype=x.dtype, device=x.device)  # (C,)
+        rs = torch.as_tensor(cfg.raw_std, dtype=x.dtype, device=x.device)   # (C,)
+        x = (x - rm[None, :, None]) / rs[None, :, None]
     window = torch.hann_window(STFT_N_FFT, dtype=x.dtype, device=x.device)
     spec = _stft_log_power(x, window)  # (B, C, n_fft//2, n_frames)
-    return _crop_pad_freq_time(spec, cfg.freq_bins, cfg.time_frames)
+    spec = _crop_pad_freq_time(spec, cfg.freq_bins, cfg.time_frames)  # (B, C, F, T)
+    # Per-freq log-power z-standardization for THIN modalities (co2): subtract the per-(channel,
+    # freq) mean and divide by the per-freq std (clamped to a floor so near-constant "noise" bins
+    # are not blown up) so a constant can no longer minimize recon-MAE (the mean-collapse fix).
+    # Stats live in the codec's OWN log_power_stft space (C, F). No-op when unset (byte-identical).
+    if getattr(cfg, "logpow_standardize", False) and getattr(cfg, "logpow_freq_mean", None) is not None:
+        fm = torch.as_tensor(cfg.logpow_freq_mean, dtype=spec.dtype, device=spec.device)  # (C, F)
+        fs = torch.as_tensor(cfg.logpow_freq_std, dtype=spec.dtype, device=spec.device)   # (C, F)
+        fs = fs.clamp_min(float(getattr(cfg, "logpow_std_floor", 0.25)))
+        spec = (spec - fm[..., None]) / fs[..., None]  # (C,F,1) broadcasts over (..., C, F, T)
+    # Per-window instance z-score (mean~0, std~1 PER (window, channel)) on the log-power input.
+    # ROOT-CAUSE FIX for co2 encoder death: co2's log-power carries a large DC offset (window mean
+    # ~-9.9 vs ece's ~-1.2); the linear/token layers amplify that offset until the FSQ tanh bound
+    # SATURATES (100% of dims pinned to the grid corners -> zero gradient -> encoder outputs a
+    # constant -> 1 code). Centering + unit-scaling each (window, channel) removes the offset so the
+    # pre-tanh values stay O(1) like ece's (which is why ece never saturated). No-op when unset
+    # (ece/bes/mhr byte-identical). Applied LAST so it also neutralizes any residual offset the
+    # raw-std / per-freq paths leave behind.
+    if getattr(cfg, "input_instance_norm", False):
+        mu = spec.mean(dim=(-2, -1), keepdim=True)               # per (..., C): over (F, T)
+        sd = spec.std(dim=(-2, -1), keepdim=True)
+        q = float(getattr(cfg, "instance_norm_quantize", 0.0))
+        if q > 0.0:
+            # SHIFT-ROBUST variant: piecewise-constant stats. sd is snapped to a log2
+            # grid (multiplicative bins of 2^q) and mu to a grid of (q * snapped sd), so
+            # the δ-shift realization jitter in the window stats almost never changes
+            # the applied normalization — codes stop flipping with the stats (the
+            # measured instance-norm stability tax, retrain v3 2026-08-02).
+            sd = torch.exp2(torch.round(torch.log2(sd + 1e-5) / q) * q)
+            mu = torch.round(mu / (q * sd)) * (q * sd)
+            spec = (spec - mu) / sd
+        else:
+            spec = (spec - mu) / (sd + 1e-5)
+    return spec
 
 
 def raw_pair_windows(

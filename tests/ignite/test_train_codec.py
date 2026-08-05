@@ -347,6 +347,10 @@ def test_train_codec_cli_main_end_to_end(synthetic_shots, tmp_path, monkeypatch)
         return orig(**kw)
 
     monkeypatch.setattr(tc, "SpectroCodecConfig", _small)
+    # This end-to-end test shrinks the codec to tiny dims; co2's production per-freq
+    # standardization stats are full-size (C, 512) and would mismatch the shrunk config, so
+    # opt out of the co2 standardization path here (dispatch is what's under test).
+    monkeypatch.setattr(tc, "_SPECTRO_STANDARDIZE_SIGNALS", frozenset())
 
     shots_csv = ",".join(synthetic_shots["shots"])
     argv = [
@@ -380,6 +384,112 @@ def test_train_codec_parser_accepts_filterscopes():
         ["--modality", "filterscopes", "--out_dir", "/tmp/ignite_fastts_parse"]
     )
     assert args.modality == "filterscopes" == tc.FASTTS_MODALITY
+
+
+def test_parser_accepts_prod_recipe_overrides():
+    """The CLI exposes the prod-recipe knobs (the only spectro recipe that survives the
+    multi-shot collapse test): fsq_levels / adaptive_adv_clamp / adv_warmup_steps /
+    adversarial_weight / skip_activity_override. Guards the wiring so a launch can reproduce
+    prod_ece (cb=32768, entropy 0.1, clamp 10000) without editing the drifted config defaults."""
+    args = tc.build_arg_parser().parse_args(
+        ["--modality", "bes", "--out_dir", "/tmp/ignite_prod_parse",
+         "--fsq_levels", "8,8,8,8,8", "--adaptive_adv_clamp", "10000",
+         "--adv_warmup_steps", "0", "--adversarial_weight", "1.0",
+         "--entropy_weight", "0.1", "--skip_activity_override"]
+    )
+    assert args.fsq_levels == "8,8,8,8,8"
+    assert args.adaptive_adv_clamp == 10000.0
+    assert args.adv_warmup_steps == 0
+    assert args.adversarial_weight == 1.0
+    assert args.entropy_weight == 0.1
+    assert args.skip_activity_override is True
+    # the parsed comma-string maps to the cb=32768 prod codebook
+    import math
+    assert math.prod(int(x) for x in args.fsq_levels.split(",")) == 32768
+
+
+def test_prod_recipe_overrides_win_over_activity_and_defaults():
+    """The prod-recipe CLI overrides are applied AFTER apply_activity_overrides, so they win
+    over both the drifted d2 defaults AND the co2/mhr _activity_overrides (which force
+    adv_warmup=1500 / adversarial_weight=0.5 and would otherwise fight the prod recipe).
+    Replicates main()'s override block against a real config so the precedence is guarded."""
+    from tokamak_foundation_model.ignite.config import SpectroCodecConfig
+    cfg = SpectroCodecConfig(channels=4)
+    # co2's activity overrides would set these (the collapse-inducing values):
+    tc.apply_activity_overrides(cfg, "co2")
+    assert cfg.adv_warmup_steps == 1500 and cfg.adversarial_weight == 0.5
+    # now the prod-recipe CLI block (mirrors main()): CLI wins.
+    args = tc.build_arg_parser().parse_args(
+        ["--modality", "co2", "--out_dir", "/tmp/x", "--fsq_levels", "8,8,8,8,8",
+         "--adaptive_adv_clamp", "10000", "--adv_warmup_steps", "0",
+         "--adversarial_weight", "1.0", "--entropy_weight", "0.1"]
+    )
+    cfg.fsq_levels = [int(x) for x in args.fsq_levels.split(",")]
+    for knob in ("adaptive_adv_clamp", "adv_warmup_steps", "adversarial_weight"):
+        setattr(cfg, knob, getattr(args, knob))
+    cfg.entropy_weight = args.entropy_weight
+    import math
+    assert math.prod(cfg.fsq_levels) == 32768
+    assert cfg.adv_warmup_steps == 0            # prod overrode the activity 1500
+    assert cfg.adversarial_weight == 1.0        # prod overrode the activity 0.5
+    assert cfg.adaptive_adv_clamp == 10000.0
+    assert cfg.entropy_weight == 0.1
+
+
+def test_logpow_standardization_default_off_and_on():
+    """Per-freq log-power z-standardization (the THIN-modality mean-collapse fix):
+    (a) DEFAULTS OFF and leaves ``log_power_stft`` byte-identical to the raw baseline;
+    (b) when ON with hand-made (C,F) mean/std the output spec is shifted/scaled as
+        ``(spec - mean) / std.clamp_min(floor)`` (a constant can no longer minimize recon-MAE)."""
+    from tokamak_foundation_model.ignite.config import SpectroCodecConfig
+    from tokamak_foundation_model.ignite.data import log_power_stft
+
+    torch.manual_seed(0)
+    C = 2
+    cfg = SpectroCodecConfig(channels=C, freq_bins=8, time_frames=4, patch_f=4, patch_t=2)
+    # (a) default must be OFF and the output must equal the raw baseline (byte-identical).
+    assert cfg.logpow_standardize is False
+    assert cfg.logpow_freq_mean is None and cfg.logpow_freq_std is None
+    W = cfg.window_samples
+    raw = torch.randn(1, C, W)
+    base = log_power_stft(raw, cfg)  # (1, C, F, T)
+    assert base.shape == (1, C, cfg.freq_bins, cfg.time_frames)
+
+    cfg_off2 = SpectroCodecConfig(channels=C, freq_bins=8, time_frames=4, patch_f=4, patch_t=2)
+    assert torch.equal(log_power_stft(raw, cfg_off2), base), "OFF must be byte-identical"
+
+    # (b) turn it ON with a small hand-made (C, F) mean/std; std well above the floor so it
+    # scales rather than clamps. Expect the exact affine transform of the raw baseline.
+    F = cfg.freq_bins
+    fmean = (torch.arange(C * F, dtype=torch.float32).reshape(C, F) * 0.1 + 1.0)
+    fstd = torch.full((C, F), 2.0)
+    cfg.logpow_standardize = True
+    cfg.logpow_freq_mean = fmean.tolist()
+    cfg.logpow_freq_std = fstd.tolist()
+    cfg.logpow_std_floor = 0.25  # 2.0 > floor -> no clamp
+    out = log_power_stft(raw, cfg)
+    expected = (base - fmean[None, :, :, None]) / fstd[None, :, :, None]
+    assert torch.allclose(out, expected, atol=1e-5), "ON must be (spec - mean) / std per (C,F)"
+    # the mean-subtraction actually changed the output (not a no-op).
+    assert not torch.allclose(out, base)
+
+    # floor: a below-floor std must be clamped up to the floor before dividing.
+    cfg.logpow_freq_std = torch.full((C, F), 0.05).tolist()  # < floor 0.25
+    out_floor = log_power_stft(raw, cfg)
+    expected_floor = (base - fmean[None, :, :, None]) / 0.25
+    assert torch.allclose(out_floor, expected_floor, atol=1e-5), "std below floor must clamp to floor"
+
+
+def test_parser_accepts_logpow_stats_path():
+    """The CLI exposes ``--logpow_stats_path`` (enables per-freq log-z, COMPOSED with raw-std)."""
+    args = tc.build_arg_parser().parse_args(
+        ["--modality", "co2", "--out_dir", "/tmp/ignite_logz_parse",
+         "--logpow_stats_path", "/some/codec_co2_perfreq_stats.pt"]
+    )
+    assert args.logpow_stats_path == "/some/codec_co2_perfreq_stats.pt"
+    # default is None (feature OFF) when the flag is absent.
+    args2 = tc.build_arg_parser().parse_args(["--modality", "co2", "--out_dir", "/tmp/x"])
+    assert args2.logpow_stats_path is None
 
 
 def test_modality_channels_filterscopes_is_8():

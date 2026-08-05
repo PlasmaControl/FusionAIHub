@@ -139,11 +139,21 @@ downstream pull toward predictability, so Phase-A design quality matters up fron
 
 ### 5.1 Frame token layout
 
-One frame = all modalities' Phase-A codes concatenated: spectro 24 tokens each × 4 = 96,
-plus the video (up/lower) and TS codec tokens. Each token carries **modality-type** +
-**within-modality position** (freq-patch, time-patch) + **frame index** (temporal). This
-whole multi-modal token set *is* the plasma state at that step. **Per-modality vocab heads**
-(each over its own FSQ codebook).
+One frame = all modalities' Phase-A codes concatenated (frozen codec set, all 4 families):
+
+| family | codecs | tokens each | subtotal |
+|---|---|---|---|
+| spectro | ece, bes, mhr, co2 | 192 | 768 |
+| video   | tangtv_lower, tangtv_upper | 108 | 216 |
+| slow-TS | ts_core_density/temp, ts_tangential_density/temp, cer_ti, cer_rot, mse | 4 | 28 |
+| fast-TS | filterscopes (ELM activity envelope) | 5 | 5 |
+
+→ **1017 tokens / frame** (192×4 + 108×2 + 4×7 + 5×1). Each token carries **modality-type** +
+**within-modality position** + **frame index** (temporal). This whole multi-modal token set *is*
+the plasma state at that step. **Per-modality vocab heads** (each over its own FSQ codebook).
+NOTE: fast-TS (filterscopes) was ERRONEOUSLY omitted from the first layout draft (2026-07-27);
+its codec is still PENDING a gate-clearing fix (collapsed, like co2/mse were), but the state — and
+thus the layout — includes it.
 
 ### 5.2 Backbone — factorized ST-transformer over the frozen codes
 

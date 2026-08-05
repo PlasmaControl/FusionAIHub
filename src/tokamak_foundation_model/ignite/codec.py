@@ -30,9 +30,11 @@ from .losses import (
     _as_score_list,
     _mean_over_maps,
     feature_matching_loss,
+    freq_gradient_loss,
+    multiscale_recon_loss,
     shift_consistency,
 )
-from .nets import SpectroDecoder, SpectroEncoder
+from .nets import SpectroConvDecoder, SpectroDecoder, SpectroEncoder
 from .quantizer import SpectroQuantizer
 
 
@@ -62,7 +64,13 @@ class SpectroCodec(nn.Module):
         self.cfg = cfg
         self.encoder = SpectroEncoder(cfg)
         self.quantizer = SpectroQuantizer(cfg)
-        self.decoder = SpectroDecoder(cfg)
+        # DECODER family (gated drop-in; cfg.decoder defaults to "linear" -> byte-identical).
+        # Both expose the SAME forward(quant)->(B,C,F,T) and `last_layer` property, so the
+        # generative loss / adaptive-adv machinery below is unchanged for either.
+        self.decoder = (
+            SpectroConvDecoder(cfg) if getattr(cfg, "decoder", "linear") == "conv"
+            else SpectroDecoder(cfg)
+        )
 
     # ------------------------------------------------------------------ #
     # forward paths
@@ -186,6 +194,12 @@ class SpectroCodec(nn.Module):
         adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
 
         pixel = torch.mean(torch.abs(recon - x))
+        # Multi-resolution + freq-gradient reconstruction (NeMo-style; sharpens turbulent detail
+        # that plain pixel-L1 blurs). No-op when the weights are 0 (byte-identical).
+        multiscale = (multiscale_recon_loss(recon, x)
+                      if cfg.multiscale_recon_weight > 0 else recon.new_zeros(()))
+        freq_grad = (freq_gradient_loss(recon, x)
+                     if cfg.freq_grad_weight > 0 else recon.new_zeros(()))
 
         # DETACHED real features: generator matches fake -> real (grad only via fake feats).
         with torch.no_grad():
@@ -207,7 +221,9 @@ class SpectroCodec(nn.Module):
         # (HiFi-GAN/MelGAN, the spectrogram-adapted Genie perceptual loss). Because fm is a
         # substantial, realization-safe perceptual reference, recon_ref grows -> lam rises ->
         # the balanced adversarial term regains sharpening strength.
-        recon_ref = cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
+        recon_ref = (cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
+                     + cfg.multiscale_recon_weight * multiscale
+                     + cfg.freq_grad_weight * freq_grad)
         non_adv_total = (
             recon_ref
             + cfg.consistency_weight * consistency
@@ -231,6 +247,8 @@ class SpectroCodec(nn.Module):
             total = (
                 cfg.adversarial_weight * adversarial
                 + cfg.pixel_anchor_weight * pixel
+                + cfg.multiscale_recon_weight * multiscale
+                + cfg.freq_grad_weight * freq_grad
                 + cfg.consistency_weight * consistency
                 + cfg.entropy_weight * entropy
             )
@@ -240,6 +258,8 @@ class SpectroCodec(nn.Module):
             "total": total,
             "adversarial": adversarial,
             "pixel": pixel,
+            "multiscale": multiscale,
+            "freq_grad": freq_grad,
             "feature_matching": fm,
             "consistency": consistency,
             "entropy": entropy,

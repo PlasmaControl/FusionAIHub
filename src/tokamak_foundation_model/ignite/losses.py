@@ -113,6 +113,28 @@ def recon_objective(
     return {"total": total, "adversarial": adversarial, "pixel": pixel}
 
 
+def multiscale_recon_loss(recon: torch.Tensor, target: torch.Tensor,
+                          scales=(2, 4)) -> torch.Tensor:
+    """Multi-resolution L1 — the spectrogram-image analogue of the NeMo/audio-codec multi-resolution
+    STFT/mel loss (Spectral Codecs, arXiv 2406.05298). Plain full-res pixel-L1 is minimized by the
+    smooth conditional mean (a per-freq envelope) → turbulent modalities reconstruct as a blur.
+    Adding L1 at coarser avg-pooled resolutions scores band contrast at multiple scales. (B,C,F,T)."""
+    import torch.nn.functional as _F
+    loss = recon.new_zeros(())
+    for s in scales:
+        loss = loss + torch.mean(torch.abs(_F.avg_pool2d(recon, s) - _F.avg_pool2d(target, s)))
+    return loss / max(1, len(scales))
+
+
+def freq_gradient_loss(recon: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """L1 on the FREQUENCY-derivative — directly penalizes a smooth envelope. A mean reconstruction
+    has ~0 freq-gradient where GT has sharp band structure, so matching ∂_F rewards exactly the
+    fine band detail pixel-L1 discards. (B,C,F,T) — finite difference along F (axis -2)."""
+    dr = recon[..., 1:, :] - recon[..., :-1, :]
+    dt = target[..., 1:, :] - target[..., :-1, :]
+    return torch.mean(torch.abs(dr - dt))
+
+
 # --------------------------------------------------------------------------- #
 # discriminator hinge loss
 # --------------------------------------------------------------------------- #

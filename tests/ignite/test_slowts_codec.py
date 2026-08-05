@@ -121,6 +121,30 @@ def test_zero_is_missing_matches_loader_policy():
     assert tc.slowts_codec_cfg("mse", 69).zero_is_missing is False
 
 
+def test_fit_window_masks_nonfinite_channels_instead_of_rejecting():
+    """inf/nan raw channels (e.g. mse's ~2 garbage channels) are masked invalid + zeroed, NOT
+    rejected wholesale. Regression for the mse +0.55/-0.52 oscillation (windows touching the bad
+    channels were dropped; leaked ones poisoned the recon)."""
+    cfg = tc.slowts_codec_cfg("mse", 69)
+    ds = tc.SlowTSCodecPairDataset.__new__(tc.SlowTSCodecPairDataset)
+    ds.codec_cfg = cfg
+    T = cfg.time_steps
+    torch.manual_seed(0)
+    raw = torch.randn(69, T)
+    raw[3] = float("inf")           # bad channel (inf)
+    raw[7] = float("nan")           # bad channel (nan)
+    nan_mask = torch.zeros(69, T)   # loader did NOT flag them (the failure mode)
+
+    signal, valid = ds._fit_window(raw, nan_mask)
+
+    assert torch.isfinite(signal).all()                       # no inf/nan leaks (was the reject trigger)
+    assert float(valid[3].sum()) == 0.0                        # bad channels excluded from loss
+    assert float(valid[7].sum()) == 0.0
+    assert float(signal[3].abs().sum()) == 0.0                 # bad channels zeroed in the input
+    assert float(signal[7].abs().sum()) == 0.0
+    assert float(valid[0].sum()) > 0.0                         # good channels retained
+
+
 # --------------------------------------------------------------------------------------- #
 # nets round-trip
 # --------------------------------------------------------------------------------------- #

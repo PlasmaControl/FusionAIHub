@@ -829,3 +829,104 @@ def filter_video_present_files(
 
     present = set(video_present)
     return [p for p in paths if str(p) in present]
+
+
+def filter_signal_present_files(
+    paths: list[Path],
+    signal_name: str,
+    cache_path: Optional[Path] = None,
+    min_len: int = 2,
+) -> list[Path]:
+    """Return only paths whose HDF5 carries a REAL recording for ``signal_name``.
+
+    Some diagnostics are recorded on only a subset of shots (e.g. the CO2 interferometer).
+    When a signal is absent, preprocessing writes a length-1 ``(C, 1)`` placeholder
+    ``ydata`` rather than omitting the group — and that placeholder floors to silence in
+    the codec's log-power window. Whole absent shots then swamp the codec batch with
+    constant floor, collapsing the FSQ to one code. Within-shot activity stratification
+    cannot fix this (there is no active window in the shot to re-draw to), so we drop the
+    absent shots up front here.
+
+    A shot is kept iff ``signal_name/ydata`` exists with ``shape[-1] >= min_len`` (more
+    than the placeholder single sample). This is a pure metadata check — no array is read —
+    so scanning thousands of shots is cheap.
+
+    Mirrors :func:`filter_video_present_files`: rank-0 scans, the result is
+    ``(paths, signal_name)``-keyed and persisted to a sidecar ``.pt`` cache, then
+    broadcast to all ranks under DDP. Order is preserved.
+
+    Parameters
+    ----------
+    paths : list of Path
+        HDF5 shot files to filter.
+    signal_name : str
+        The HDF5 group name to check (e.g. ``"co2"``).
+    cache_path : Path or None, optional
+        If given, the result is keyed by ``(paths, signal_name)`` and persisted. On the
+        next call with the same key, no HDF5 files are opened.
+    min_len : int
+        Minimum ``ydata`` last-axis length to count as present (default 2; the absent
+        placeholder is length 1).
+
+    Returns
+    -------
+    list of Path
+        The subset of ``paths`` that carry ``signal_name`` data, order preserved.
+    """
+    import torch.distributed as dist
+
+    distributed = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+
+    paths_key = tuple(str(p) for p in paths)
+    present: Optional[list[str]] = None
+
+    if rank == 0:
+        if cache_path is not None and cache_path.exists():
+            try:
+                cache = torch.load(cache_path, weights_only=False)
+                if (
+                    cache.get("paths_key") == paths_key
+                    and cache.get("signal_name") == signal_name
+                ):
+                    present = list(cache["present"])
+            except Exception:
+                # Corrupt or unreadable cache — fall through to rescan.
+                present = None
+
+        if present is None:
+            print(
+                f"Scanning {len(paths)} files for {signal_name!r} presence (cache miss)..."
+            )
+            present = []
+            for p in tqdm(paths, desc=f"{signal_name} presence scan"):
+                try:
+                    with h5py.File(p, "r") as f:
+                        if signal_name in f and "ydata" in f[signal_name]:
+                            yd = f[signal_name]["ydata"]
+                            if yd.ndim >= 1 and yd.shape[-1] >= min_len:
+                                present.append(str(p))
+                except Exception as e:
+                    print(f"  skipping {p.name}: {e}")
+
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = Path(str(cache_path) + ".tmp")
+                torch.save(
+                    {
+                        "paths_key": paths_key,
+                        "signal_name": signal_name,
+                        "present": present,
+                    },
+                    tmp_path,
+                )
+                tmp_path.replace(Path(cache_path))
+                print(f"Saved {signal_name}-presence cache to {cache_path}")
+
+    if distributed:
+        payload = [present] if rank == 0 else [None]
+        dist.broadcast_object_list(payload, src=0)
+        present = payload[0]
+
+    present_set = set(present)
+    return [p for p in paths if str(p) in present_set]

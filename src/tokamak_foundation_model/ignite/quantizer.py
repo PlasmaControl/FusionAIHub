@@ -166,8 +166,12 @@ class SpectroQuantizer(nn.Module):
         # to the exact local p.sum(dim=0) / N — numerically identical to the previous code.
         p_sum = p.sum(dim=0)                                                 # (fsq_dim, max_levels)
         n_total = N
+        world_size = 1
         if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
-            # SUM-reduce the DIFFERENTIABLE probability sum (dist.all_reduce SUM is autograd-safe).
+            world_size = dist.get_world_size()
+            # SUM-reduce the probability sum so p_mean is GLOBAL. NOTE: dist.all_reduce
+            # is NOT autograd-aware — the collective injects the other ranks' VALUES but
+            # backward carries only this rank's contribution to p_sum (see FIX 2 below).
             dist.all_reduce(p_sum, op=dist.ReduceOp.SUM)
             # Reduce the (integer) local count separately as a plain scalar — NOT a grad tensor.
             n_tensor = torch.tensor([float(N)], device=p_sum.device)
@@ -176,5 +180,19 @@ class SpectroQuantizer(nn.Module):
         p_mean = p_sum / n_total                                            # (fsq_dim, max_levels)
         batch_entropy = -(p_mean * torch.log(p_mean + eps)).sum(dim=-1)      # (fsq_dim,)
         entropy_of_batch_mean = batch_entropy.mean()
+
+        # FIX 2 (2026-08-02): restore the diversity GRADIENT scale under DDP. Because the
+        # all_reduce above is not autograd-aware, each rank's backward holds only
+        # ∂H(p̄_global)/∂p_local, and DDP then AVERAGES gradients across ranks — so the
+        # effective diversity gradient is 1/world_size of the single-process global-batch
+        # equivalent, while the per-sample confidence term keeps full strength (measured
+        # consequence: the spread reward was 8x weaker than configured at world_size 8).
+        # The identity w*H - (w-1)*H.detach() preserves the VALUE (logs stay comparable)
+        # while scaling dH/dθ by w, exactly cancelling DDP's 1/w averaging.
+        if world_size > 1:
+            w = float(world_size)
+            entropy_of_batch_mean = (
+                w * entropy_of_batch_mean - (w - 1.0) * entropy_of_batch_mean.detach()
+            )
 
         return per_sample_entropy_mean - cfg.diversity_weight * entropy_of_batch_mean

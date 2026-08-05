@@ -15,7 +15,7 @@ Coverage (all CPU; NO SLURM / GPU / production HDF5):
   * The 4 dataset classes expose the knobs and, with active_bias=0, are byte-identical to before
     on real-format synthetic shots.
   * ``apply_activity_overrides`` turns the knobs ON only for the 4 failing modalities and leaves
-    every working modality (ece/bes/mhr/cer*/mse/ts_core_temp/ts_tangential*) byte-identical; the
+    every working modality (ece/bes/mhr/cer*/ts_core_temp/ts_tangential*) byte-identical; the
     adv-warmup / adversarial-weight change touches ONLY the two adversarially-unstable codecs.
   * On a synthetic co2 shot engineered to be mostly-flat with a structured minority, turning the
     bias ON raises the fraction of active windows in a batch vs OFF.
@@ -158,6 +158,13 @@ def test_overrides_on_for_the_four_failing_codecs():
     assert co2.active_bias > 0 and co2.min_activity > 0
     assert co2.adv_warmup_steps > 0 and co2.adversarial_weight < 1.0  # adversarial co-cause
 
+    # mhr (spectro): adversarial-instability anti-collapse ONLY (like co2's adv knobs), NO
+    # activity bias — mhr is rich / naturally O(1), not degeneracy-dominated.
+    mhr = SpectroCodecConfig(channels=6)
+    tc.apply_activity_overrides(mhr, "mhr")
+    assert mhr.active_bias == 0.0 and mhr.min_activity == 0.0
+    assert mhr.adv_warmup_steps > 0 and mhr.adversarial_weight < 1.0
+
     vid = VideoCodecConfig(channels=2)
     tc.apply_activity_overrides(vid, "tangtv_lower")
     # video is NOT degeneracy-dominated -> NO activity bias, only the adversarial fix.
@@ -168,11 +175,19 @@ def test_overrides_on_for_the_four_failing_codecs():
     tc.apply_activity_overrides(ts, "ts_core_density")
     assert ts.active_bias > 0 and 0.0 < ts.min_activity <= 1.0  # present-fraction threshold
 
+    # mse: neutral-beam-dependent (~75% of windows <10% present) -> same present-fraction
+    # stratification as ts_core_density (added 2026-07-27 after the missingness-collapse verdict).
+    mse = tc.slowts_codec_cfg("mse", 69)
+    tc.apply_activity_overrides(mse, "mse")
+    assert mse.active_bias > 0 and 0.0 < mse.min_activity <= 1.0
+
     fts = FastTSCodecConfig(channels=8)
     tc.apply_activity_overrides(fts, "filterscopes")
     assert fts.active_bias > 0 and fts.min_activity > 0
-    # fast-TS adversarial was stable -> no adv-warmup change.
-    assert fts.adv_warmup_steps == 0 and fts.adversarial_weight == 1.0
+    # fast-TS adversarial-driven collapse (2026-07-27): rich data (91% structured) still pinned to
+    # 1 code under full adversarial_weight=1.0 + zero warmup -> gets the SAME adv-warmup + halved
+    # adversarial_weight its collapse-prone siblings (co2 / tangtv_lower) already have.
+    assert fts.adv_warmup_steps > 0 and fts.adversarial_weight < 1.0
 
 
 @pytest.mark.parametrize(
@@ -180,12 +195,14 @@ def test_overrides_on_for_the_four_failing_codecs():
     [
         ("ece", lambda: SpectroCodecConfig(channels=40)),
         ("bes", lambda: SpectroCodecConfig(channels=16)),
-        ("mhr", lambda: SpectroCodecConfig(channels=6)),
+        # NOTE: mhr moved OUT of this no-op list — it now gets the adversarial-instability
+        # anti-collapse knobs (adv warmup + halved adversarial_weight); asserted ON above.
         ("tangtv_upper", lambda: VideoCodecConfig(channels=2, divertor="upper")),
         ("ts_core_temp", lambda: tc.slowts_codec_cfg("ts_core_temp", 44)),
         ("cer_ti", lambda: tc.slowts_codec_cfg("cer_ti", 48)),
         ("cer_rot", lambda: tc.slowts_codec_cfg("cer_rot", 48)),
-        ("mse", lambda: tc.slowts_codec_cfg("mse", 69)),
+        # NOTE: mse moved OUT of this no-op list 2026-07-27 — it now gets present-fraction
+        # activity-stratification (neutral-beam missingness); asserted ON in the test above.
         ("ts_tangential_density", lambda: tc.slowts_codec_cfg("ts_tangential_density", 10)),
     ],
 )

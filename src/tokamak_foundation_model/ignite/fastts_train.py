@@ -715,7 +715,7 @@ def train_fastts_codec(
     )
     stream = _epoch_cycler(loader)
 
-    best_score = float("-inf")
+    best_score = spike.resume_best_score(out_path)  # chain-resume fix (2026-08-05)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
     spike.reset_skipped_steps()  # divergence-guard skip counter for this trainer run
@@ -740,7 +740,7 @@ def train_fastts_codec(
             g["d_loss"] = float(d_loss.detach())
             g["adaptive_weight"] = float(g_terms["adaptive_weight"])
             g["step"] = step
-            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor)
+            score = spike.gate_score(g, recon_floor=cfg.gate_recon_floor, hard_min_codes=getattr(cfg, "gate_hard_min_codes", 8))
             g["score"] = score
             is_best = score > best_score
             g["is_best"] = bool(is_best)

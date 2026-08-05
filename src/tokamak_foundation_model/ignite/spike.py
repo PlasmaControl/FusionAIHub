@@ -538,7 +538,8 @@ def _close_dataset(ds) -> None:
 DEFAULT_RECON_FLOOR: float = 0.2
 
 
-def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_FLOOR) -> float:
+def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_FLOOR,
+               hard_min_codes: int = 8) -> float:
     """Composite selection score for a gate eval; higher is better.
 
     The score judges **reconstruction + forecastability + utilization** — NOT raw per-dim
@@ -585,6 +586,19 @@ def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_
     # --- hard disqualification: reconstruction genuinely failed --------------------------
     env_corr = float(dec["envelope_corr"])  # type: ignore[index]
     if math.isnan(env_corr) or env_corr < recon_floor:
+        return float("-inf")
+
+    # --- hard disqualification: TERMINAL code collapse (2026-08-03) ----------------------
+    # A collapsing codec can keep reconstructing through decoder pos-emb alone (measured:
+    # co2 v5 at ~25 codes and falling still decoded at corr 0.78, job 5147855), so the
+    # recon floor never fires and best.pt tracks the collapse. The floor is on the
+    # ABSOLUTE distinct-code count — the 0.02 frac flag is miscalibrated for 64k
+    # codebooks (2% = 1280 codes would disqualify every healthy fsq6 checkpoint). The
+    # default 8 sits below every healthy observation (mhr's gate-overfit used 10) and
+    # above the terminal 1-code state. Applied only when the utilization dict carries
+    # ``n_distinct_codes`` (older/foreign gate dicts are unaffected).
+    n_codes = ut.get("n_distinct_codes") if isinstance(ut, dict) else None  # type: ignore[union-attr]
+    if n_codes is not None and int(n_codes) < int(hard_min_codes):
         return float("-inf")
 
     # --- soft, clamped/normalized sub-metrics (all in ~[0, 1]) ---------------------------
@@ -1047,7 +1061,7 @@ def run_spike(
 
             # composite selection score (-inf ONLY if reconstruction fails; utilization is
             # a soft reward, not a hard gate — see gate_score docstring).
-            score = gate_score(g, recon_floor=cfg.gate_recon_floor)
+            score = gate_score(g, recon_floor=cfg.gate_recon_floor, hard_min_codes=getattr(cfg, "gate_hard_min_codes", 8))
             g["score"] = score
             is_best = score > best_score
             g["is_best"] = bool(is_best)
@@ -1134,6 +1148,29 @@ def _save_checkpoint(
     )
     tmp.replace(path)  # atomic-ish: avoid torn reads on resume
     return path
+
+
+def resume_best_score(out_path) -> float:
+    """Initial ``best_score`` for a trainer loop: the score of an existing
+    ``codec_best.pt`` in ``out_path``, else ``-inf``.
+
+    CHAIN-RESUME FIX (2026-08-05): every trainer loop initialized
+    ``best_score = -inf`` unconditionally, so each resume leg of a chained run
+    restarted best-tracking from scratch and OVERWROTE ``codec_best.pt`` with its
+    leg-local best even when globally worse (observed: ece v6 best 2.2065 @88k
+    clobbered by 2.1709 @101k in the next leg). Reading the score back from the
+    best file itself needs no checkpoint-format change and heals existing dirs.
+    """
+    if out_path is None:
+        return float("-inf")
+    p = Path(out_path) / "codec_best.pt"
+    if not p.exists():
+        return float("-inf")
+    try:
+        ck = torch.load(p, map_location="cpu", weights_only=False)
+        return float(ck.get("score", float("-inf")))
+    except Exception:
+        return float("-inf")
 
 
 def _save_best_checkpoint(

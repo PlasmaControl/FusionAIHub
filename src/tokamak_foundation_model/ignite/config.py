@@ -76,6 +76,14 @@ class SpectroCodecConfig:
     #   n_tok = 32 * 6 = 192  (was 8 * 3 = 24 at patch_f=64/patch_t=32).
     patch_f: int = 16             # -> 32 freq patches
     patch_t: int = 16             # -> 6 time patches    => n_tok = 192
+    # CHANNEL-FACTORIZED tokens (ece capacity lever, 2026-07-31): with channel_groups=G,
+    # each token's patch spans only channels/G channels (a channel-group axis is added to
+    # the token grid, group-outer order), so n_tok = G * n_freq_patch * n_time_patch and
+    # a code no longer has to describe all C channels at once (ece: 40 ch through one
+    # token was the diagnosed entanglement). Default 1 = all-channel tokens, BYTE-
+    # IDENTICAL to the prior behavior (no group PE parameter is even created).
+    # channels % channel_groups must be 0 (asserted in the encoder).
+    channel_groups: int = 1
 
     # bottleneck (vector-quantize-pytorch FSQ)
     # Right-sized to the FSQ-paper-recommended ~1024-code config: [8, 5, 5, 5] = prod = 1000.
@@ -84,11 +92,60 @@ class SpectroCodecConfig:
     # at 1000 codes removes that dead dim while keeping ample capacity.
     fsq_levels: List[int] = field(default_factory=lambda: [8, 5, 5, 5])  # codebook = prod = 1000
 
+    # RAW input standardization (modalities whose raw is NOT O(1); OFF by default -> rich spectros
+    # byte-identical). co2's raw is ~1e13 (unnormalized interferometer counts) -> log10(mag^2) ~ 24,
+    # which the log_power ceiling (_LOG_CEIL=20) clips to a flat plate (100% clipped), destroying
+    # the signal (true std ~1.08). When on, log_power_stft z-scores the RAW per channel BEFORE the
+    # STFT (raw_mean / raw_std, shape (C,)), a per-channel linear rescale that shifts log-power into
+    # the un-clipped [-10, 20] band while preserving all spectral structure. Set at runtime from the
+    # FM's preprocessing_stats[modality]['raw'] by train_codec.apply_spectro_standardization (co2).
+    input_standardize: bool = False
+    raw_mean: Optional[List[float]] = None   # (C,) per-channel raw mean
+    raw_std: Optional[List[float]] = None     # (C,) per-channel raw std
+
+    # PER-FREQ LOG-POWER Z-STANDARDIZATION (the THIN-modality mean-collapse fix; see
+    # data.log_power_stft + train_codec --logpow_stats_path). For thin spectros (co2), the
+    # log-power STFT window is a large near-constant plate (~20/freq, clipped at _LOG_CEIL=20)
+    # with real signal in only a few freq bins, so pure recon-MAE is minimized by predicting that
+    # constant -> the FSQ collapses to ONE code. The fix subtracts the per-(channel,freq) mean and
+    # divides by the per-freq std (clamped to a floor so near-constant "noise" bins are not blown
+    # up), so informative bins become O(1) and a constant can no longer minimize MAE. The stats
+    # live in the codec's OWN raw-clipped log_power_stft space (NO raw-std applied), so this
+    # REPLACES raw-standardization (input_standardize is turned OFF when this is on). Shapes are
+    # (C, F) nested lists (ckpt-serializable). All default to the no-op (byte-identical when off).
+    logpow_standardize: bool = False
+    logpow_freq_mean: Optional[list] = None   # (C, F) per-(channel,freq) log-power mean
+    logpow_freq_std: Optional[list] = None    # (C, F) per-(channel,freq) log-power std
+    logpow_std_floor: float = 0.25            # per-freq std clamp floor (guards flat/noise bins)
+    # Per-window instance z-score on the log-power input (mean~0/std~1 per window,channel). ROOT-CAUSE
+    # fix for the co2 encoder death: strips co2's large DC offset (window mean ~-9.9) that saturates
+    # the FSQ tanh bound. No-op when off (byte-identical). Composes with / supersedes the offset the
+    # raw-std + per-freq paths leave.
+    input_instance_norm: bool = False
+    # SHIFT-ROBUST instance norm (2026-08-03): quantize the per-(window,channel) stats —
+    # sd onto a log2 grid with step `q`, mu onto a grid of (q * quantized sd) — so a small
+    # realization perturbation (δ-shift ≤ 2 ms) almost never changes the APPLIED
+    # normalization. Fixes the measured instance-norm stability tax (codes inherited
+    # window-stat jitter: bes-no-norm stab 0.70 vs instance-normed trio 0.31-0.51,
+    # retrain v3 2026-08-02). 0.0 = OFF (plain instance norm, byte-identical).
+    instance_norm_quantize: float = 0.0
+
     # transformer (x-transformers)
     d_model: int = 256
     enc_depth: int = 6
     dec_depth: int = 6
     heads: int = 8
+
+    # DECODER family (gated drop-in). "linear" = the original transformer + single nn.Linear
+    # `to_pixels` unpatchify (byte-identical DEFAULT). "conv" = HiFi-GAN/VQGAN-style 2D transposed-
+    # conv upsampling decoder (nets.SpectroConvDecoder): places each FSQ token on a coarse
+    # (n_freq_patch, n_time_patch) grid and SYNTHESIZES fine turbulent texture via a stack of
+    # ConvTranspose2d upsample + residual-conv blocks. The linear `to_pixels` can only produce
+    # SMOOTH patches (a linear map per token), capping recon of broadband bes/mhr/ece at
+    # GT↔recon corr ~0.5; the conv decoder is the one architectural lever left to break that.
+    decoder: str = "linear"           # {"linear", "conv"}
+    conv_dec_base_ch: int = 128       # SpectroConvDecoder proj_in channel width (halved on upsample)
+    conv_dec_res_blocks: int = 2      # residual conv blocks per upsample stage
 
     # invariance (Phase-A consistency-loss-only; raw d-shift + re-STFT)
     consistency_delta_ms: Tuple[float, float] = (0.1, 2.0)  # sub-window shift range (< 16 ms codec patch)
@@ -99,6 +156,11 @@ class SpectroCodecConfig:
     # decoder / reconstruction objective
     adversarial_weight: float = 1.0
     pixel_anchor_weight: float = 0.05   # lambda_pix; STABILITY-GATED (raise only while stability >= 0.80)
+    # Multi-resolution + freq-gradient reconstruction loss (NeMo/audio-codec-style; the fix for the
+    # smooth-envelope reconstruction of TURBULENT modalities that plain pixel-L1 can't sharpen).
+    # Both default 0.0 = OFF (byte-identical). Folded into recon_ref so the adaptive adv balances it.
+    multiscale_recon_weight: float = 0.0
+    freq_grad_weight: float = 0.0
     # Discriminator FEATURE-MATCHING weight (HiFi-GAN/MelGAN vocoder-GAN perceptual term;
     # the spectrogram-adapted stand-in for Genie's VGG perceptual loss, which does NOT
     # transfer to spectrograms). Folded INTO the reconstruction reference alongside the
@@ -156,6 +218,10 @@ class SpectroCodecConfig:
     # gate_score = -inf. See `gate_recon_floor` below and `spike.gate_score`.
     gate_min_utilization: float = 0.02   # min fraction of the codebook used to pass
     gate_min_code_entropy: float = 0.3   # min per-dim normalized code entropy to pass
+    # HARD best-ckpt floor on ABSOLUTE distinct codes (2026-08-03): below this the gate
+    # score is -inf — best.pt must never track a terminally collapsing codec (which can
+    # keep reconstructing via decoder pos-emb, so the recon floor alone misses it).
+    gate_hard_min_codes: int = 8
     # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score).
     # A codec is disqualified (gate_score = -inf) ONLY when reconstruction genuinely fails:
     # decode envelope_corr is NaN or < gate_recon_floor. Utilization is folded in as a SOFT
@@ -173,7 +239,7 @@ class SpectroCodecConfig:
 
     @property
     def n_tok(self) -> int:
-        return self.n_freq_patch * self.n_time_patch
+        return self.channel_groups * self.n_freq_patch * self.n_time_patch
 
     @property
     def fsq_dim(self) -> int:
@@ -306,6 +372,7 @@ class VideoCodecConfig:
     gate_stability: float = 0.80        # frame-to-frame code stickiness proxy (see gate note)
     gate_persistence: float = 0.50
     gate_min_utilization: float = 0.02
+    gate_hard_min_codes: int = 8         # hard best-ckpt floor on ABSOLUTE distinct codes (see SpectroCodecConfig)
     gate_min_code_entropy: float = 0.3
     # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score):
     # a video codec is disqualified (gate_score = -inf) when frame reconstruction genuinely
@@ -508,6 +575,7 @@ class FastTSCodecConfig:
     gate_stability: float = 0.80
     gate_persistence: float = 0.50
     gate_min_utilization: float = 0.02
+    gate_hard_min_codes: int = 8         # hard best-ckpt floor on ABSOLUTE distinct codes (see SpectroCodecConfig)
     gate_min_code_entropy: float = 0.3
     # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score):
     # disqualified (gate_score = -inf) when envelope reconstruction genuinely fails
@@ -719,6 +787,7 @@ class SlowTSCodecConfig:
     gate_stability: float = 0.80
     gate_persistence: float = 0.50
     gate_min_utilization: float = 0.02
+    gate_hard_min_codes: int = 8         # hard best-ckpt floor on ABSOLUTE distinct codes (see SpectroCodecConfig)
     gate_min_code_entropy: float = 0.3
     # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score):
     # a slow-TS codec is disqualified (gate_score = -inf) when profile reconstruction genuinely

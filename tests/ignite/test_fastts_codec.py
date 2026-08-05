@@ -697,6 +697,7 @@ def test_train_fastts_codec_writes_checkpoints(tmp_path, filterscopes_shots):
     torch.manual_seed(0)
     cfg = _tiny_fastts_cfg()
     cfg.gate_recon_floor = -1.0  # ensure a best-ckpt gets written (finite score)
+    cfg.gate_hard_min_codes = 0  # 2-step synthetic smoke uses few codes; floor tested in test_spike_best_ema
     out_dir = tmp_path / "fastts_out"
     train = filterscopes_shots["shots"][:2]
     ev = filterscopes_shots["shots"][2:]
@@ -711,3 +712,34 @@ def test_train_fastts_codec_writes_checkpoints(tmp_path, filterscopes_shots):
     assert (out_dir / "codec_best.pt").exists()
     # gate json written for at least one step.
     assert any(p.name.startswith("gate_") for p in out_dir.iterdir())
+
+
+def test_fastts_generator_losses_pure_recipe_gan_free():
+    """v6-recipe validation (2026-08-05): adv 0 + fm 0 => the fast-TS generator
+    objective is discriminator-free (finite, backprop-able, invariant to D params)."""
+    import torch
+
+    from tokamak_foundation_model.ignite.config import FastTSCodecConfig
+    from tokamak_foundation_model.ignite.fastts_codec import FastTSCodec
+    from tokamak_foundation_model.ignite.fastts_discriminator import Env1DPatchGAN
+
+    torch.manual_seed(0)
+    cfg = FastTSCodecConfig(d_model=32, enc_depth=1, dec_depth=1, heads=2)
+    cfg.adversarial_weight = 0.0
+    cfg.fm_weight = 0.0
+    cfg.pixel_anchor_weight = 1.0
+    codec = FastTSCodec(cfg)
+    disc = Env1DPatchGAN(cfg)
+    env = torch.randn(2, cfg.channels, cfg.env_bins)
+    env_b = env + 0.01 * torch.randn_like(env)
+
+    out1 = codec.generator_losses(env, env_b, disc, cfg, step=0)
+    assert torch.isfinite(out1["total"])
+    out1["total"].backward()
+
+    with torch.no_grad():
+        for p in disc.parameters():
+            p.add_(torch.randn_like(p))
+    out2 = codec.generator_losses(env, env_b, disc, cfg, step=0)
+    assert torch.allclose(out1["total"], out2["total"], atol=1e-5), (
+        float(out1["total"]), float(out2["total"]))

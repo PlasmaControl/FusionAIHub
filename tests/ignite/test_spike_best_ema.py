@@ -449,3 +449,41 @@ def test_cli_no_ema_checkpoint_by_default(tmp_path, monkeypatch):
     out_dir = tmp_path / "run_noema"
     spike.main(_cli_args(out_dir, steps=2))
     assert not (out_dir / "codec_ema.pt").exists()
+
+
+def test_gate_score_hard_min_codes_disqualifies_terminal_collapse():
+    """(b) 2026-08-03: a collapsing codec that still reconstructs (decoder pos-emb carries
+    it — measured co2 v5: corr 0.78 at ~25 codes and falling) must NOT be selectable.
+    n_distinct_codes below the hard floor forces -inf; at/above the floor, or with the
+    key absent (older/foreign gate dicts), the score stays finite."""
+    import math as _m
+
+    from tokamak_foundation_model.ignite import spike
+
+    base = {
+        "forecastability": {"margin_transition": 0.15},
+        "decode": {"envelope_corr": 0.78, "peak_f1": 0.6, "sharpness": 0.5},
+        "utilization": {"min_dim_entropy": 0.9, "frac_of_observable": 0.4,
+                        "n_distinct_codes": 3},
+    }
+    assert spike.gate_score(base, recon_floor=0.2, hard_min_codes=8) == float("-inf")
+    base["utilization"]["n_distinct_codes"] = 8
+    assert _m.isfinite(spike.gate_score(base, recon_floor=0.2, hard_min_codes=8))
+    del base["utilization"]["n_distinct_codes"]
+    assert _m.isfinite(spike.gate_score(base, recon_floor=0.2, hard_min_codes=8))
+
+
+def test_resume_best_score_reads_existing_best(tmp_path):
+    """CHAIN-RESUME FIX: trainer loops seed best-tracking from an existing codec_best.pt
+    so a resume leg cannot overwrite the global best with a worse leg-local one
+    (observed: ece v6 best 2.2065 @88k clobbered by 2.1709 @101k in the next leg)."""
+    import torch
+
+    from tokamak_foundation_model.ignite import spike
+
+    assert spike.resume_best_score(None) == float("-inf")
+    assert spike.resume_best_score(tmp_path) == float("-inf")      # no file yet
+    torch.save({"score": 2.2065, "step": 88000}, tmp_path / "codec_best.pt")
+    assert abs(spike.resume_best_score(tmp_path) - 2.2065) < 1e-9
+    (tmp_path / "codec_best.pt").write_bytes(b"corrupt")           # unreadable -> -inf
+    assert spike.resume_best_score(tmp_path) == float("-inf")

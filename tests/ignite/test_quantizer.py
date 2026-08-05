@@ -361,3 +361,60 @@ def test_entropy_loss_batch_diversity_is_global_under_ddp() -> None:
     assert abs(under_mock_no_peer - single_process) < 1e-6, (
         under_mock_no_peer, single_process,
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIX 2: the diversity GRADIENT is scaled by world_size under DDP (value preserved)
+# --------------------------------------------------------------------------- #
+def test_entropy_loss_diversity_gradient_scaled_by_world_size() -> None:
+    """dist.all_reduce is not autograd-aware, so each rank's backward carries only its
+    local contribution and DDP's gradient averaging attenuates the diversity term by
+    1/world_size. FIX 2 scales the term's gradient by world_size (value-preserving via
+    w*H - (w-1)*H.detach()). With a single mocked rank (no peer accumulation) the VALUE
+    must equal the unmocked loss, while the GRADIENT must equal
+    grad(per_sample) + world_size * grad(diversity)."""
+    torch.manual_seed(3)
+    cfg = _small_cfg()
+    q = SpectroQuantizer(cfg)
+    W = 4
+
+    def _grad(loss_fn) -> torch.Tensor:
+        feats = torch.randn(8, cfg.n_tok, cfg.d_model)
+        feats = feats.clone().requires_grad_(True)
+        loss_fn(feats).backward()
+        return feats.grad.clone()
+
+    # deterministic feats across calls: fix the seed inside each grad computation
+    def _feats() -> torch.Tensor:
+        g = torch.Generator().manual_seed(11)
+        return torch.randn(8, cfg.n_tok, cfg.d_model, generator=g).requires_grad_(True)
+
+    # unmocked full gradient and per-sample-only gradient (diversity_weight = 0)
+    f1 = _feats()
+    q.entropy_loss(f1).backward()
+    grad_full = f1.grad.clone()
+
+    cfg0 = _small_cfg()
+    cfg0.diversity_weight = 0.0
+    q.cfg = cfg0
+    f2 = _feats()
+    q.entropy_loss(f2).backward()
+    grad_per_sample = f2.grad.clone()
+    q.cfg = cfg  # restore
+
+    grad_diversity = grad_full - grad_per_sample
+
+    # mocked single rank at world_size W: value preserved, diversity gradient x W
+    f3 = _feats()
+    with mock.patch.object(quantizer_mod, "dist", _mock_dist_accumulating(W, [])):
+        loss_mock = q.entropy_loss(f3)
+        loss_mock.backward()
+    grad_mock = f3.grad.clone()
+
+    f4 = _feats()
+    loss_plain = q.entropy_loss(f4)
+    assert torch.allclose(loss_mock, loss_plain, atol=1e-6)              # value preserved
+    expected = grad_per_sample + W * grad_diversity
+    assert torch.allclose(grad_mock, expected, atol=1e-5), (
+        float((grad_mock - expected).abs().max())
+    )
