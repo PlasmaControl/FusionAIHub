@@ -115,6 +115,80 @@ def test_decoder_last_layer_exposed_for_adaptive_weight():
 
 
 # --------------------------------------------------------------------------------------- #
+# decoder conv refinement head (patch-seam / checkerboard fix)
+# --------------------------------------------------------------------------------------- #
+def test_decoder_refine_off_is_byte_identical():
+    # refine_depth defaults to 0 and builds NOTHING: the state_dict key set must match the
+    # pre-refine decoder exactly (old checkpoints keep loading strict).
+    cfg = _small_cfg()
+    assert cfg.refine_depth == 0
+    dec = VideoDecoder(cfg)
+    assert dec.refine is None
+    assert all(not k.startswith("refine") for k in dec.state_dict())
+    assert dec.last_layer is dec.to_pixels.weight
+
+
+def test_decoder_refine_zero_init_is_exact_identity():
+    # the final refinement conv is zero-init, so at init the residual head contributes
+    # EXACTLY zero: enabling it must not change the decoder output at all.
+    cfg = _small_cfg()
+    cfg.refine_depth = 4
+    dec = VideoDecoder(cfg)
+    assert dec.refine is not None
+    q = torch.randn(2, cfg.n_tok, cfg.d_model)
+    with torch.no_grad():
+        out_on = dec(q)
+        refine, dec.refine = dec.refine, None  # same transformer/to_pixels weights, head off
+        out_off = dec(q)
+        dec.refine = refine
+    torch.testing.assert_close(out_on, out_off)
+
+
+def test_decoder_refine_grads_flow_and_last_layer_moves():
+    # last_layer must point at the final refinement conv (the last parameterized layer on the
+    # output path), and that conv must receive nonzero grad even at the zero-init point (its
+    # grad is the incoming hidden activations, not its own zero weights).
+    cfg = _small_cfg()
+    cfg.refine_depth = 3
+    dec = VideoDecoder(cfg)
+    assert dec.last_layer is dec.refine[-1].weight
+    q = torch.randn(2, cfg.n_tok, cfg.d_model)
+    dec(q).square().mean().backward()
+    assert dec.refine[-1].weight.grad is not None
+    assert dec.refine[-1].weight.grad.abs().sum() > 0
+    assert dec.to_pixels.weight.grad is not None
+    assert dec.to_pixels.weight.grad.abs().sum() > 0
+
+
+def test_decoder_refine_depth_one_is_single_zero_conv():
+    cfg = _small_cfg()
+    cfg.refine_depth = 1
+    dec = VideoDecoder(cfg)
+    assert len(dec.refine) == 1
+    q = torch.randn(1, cfg.n_tok, cfg.d_model)
+    with torch.no_grad():
+        out_on = dec(q)
+        refine, dec.refine = dec.refine, None
+        out_off = dec(q)
+        dec.refine = refine
+    torch.testing.assert_close(out_on, out_off)
+
+
+def test_decoder_refine_absent_on_old_pickled_cfgs():
+    # old checkpoints pickle the cfg INSTANCE from before the refine fields existed; its
+    # __dict__ lacks them and VideoDecoder must fall back to refine_depth=0 (no head, no
+    # new state_dict keys) so those checkpoints keep loading strict.
+    cfg = _small_cfg()
+    old = VideoCodecConfig.__new__(VideoCodecConfig)  # skip __init__/__post_init__ (unpickle path)
+    old.__dict__.update(
+        {k: v for k, v in vars(cfg).items() if k not in ("refine_depth", "refine_hidden")}
+    )
+    dec = VideoDecoder(old)
+    assert dec.refine is None
+    assert all(not k.startswith("refine") for k in dec.state_dict())
+
+
+# --------------------------------------------------------------------------------------- #
 # VideoCodec forward + codes at the DEFAULT FSQ size
 # --------------------------------------------------------------------------------------- #
 def test_codec_forward_shapes_and_codes_in_range():

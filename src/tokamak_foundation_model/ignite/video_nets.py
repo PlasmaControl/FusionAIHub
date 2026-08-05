@@ -100,17 +100,41 @@ class VideoDecoder(nn.Module):
             heads=cfg.heads,
         )
         self.to_pixels = nn.Linear(cfg.d_model, patch_dim)
+        # Optional RESIDUAL per-frame conv refinement head (cfg.refine_depth > 0): stride-1
+        # kernel-3 2D convs that blend the linear head's independently-rendered patches across
+        # their 20x20 seams (the v6 GAN-free checkerboard fix — see the config note). The final
+        # conv is ZERO-INIT so the head starts as an exact identity; depth 0 (and old pickled
+        # configs, which lack the field entirely — hence the getattr) builds NOTHING, keeping
+        # the state_dict byte-identical to pre-refine checkpoints.
+        depth = int(getattr(cfg, "refine_depth", 0))
+        self.refine: nn.Sequential | None = None
+        if depth > 0:
+            hidden = int(getattr(cfg, "refine_hidden", 64))
+            layers: list[nn.Module] = []
+            for i in range(depth - 1):
+                layers += [
+                    nn.Conv2d(cfg.channels if i == 0 else hidden, hidden, 3, padding=1),
+                    nn.GELU(),
+                ]
+            last = nn.Conv2d(hidden if depth > 1 else cfg.channels, cfg.channels, 3, padding=1)
+            nn.init.zeros_(last.weight)
+            nn.init.zeros_(last.bias)
+            layers.append(last)
+            self.refine = nn.Sequential(*layers)
 
     @property
     def last_layer(self) -> nn.Parameter:
         """The weight ``Parameter`` of the final layer producing the (B,C,T,H,W) output.
 
-        This is ``to_pixels.weight`` — the last linear before the (parameter-free)
-        unpatchify rearrange. The VQGAN adaptive adversarial weight balances the
-        reconstruction and adversarial gradients at this tensor (see
-        ``video_codec.VideoCodec.generator_losses`` and "Taming Transformers" §3.3), exactly
-        as ``nets.SpectroDecoder.last_layer`` does for the spectro codec.
+        Without the refinement head this is ``to_pixels.weight`` — the last linear before the
+        (parameter-free) unpatchify rearrange; with ``cfg.refine_depth > 0`` it is the final
+        refinement conv's weight (the last parameterized layer on the output path). The VQGAN
+        adaptive adversarial weight balances the reconstruction and adversarial gradients at
+        this tensor (see ``video_codec.VideoCodec.generator_losses`` and "Taming Transformers"
+        §3.3), exactly as ``nets.SpectroDecoder.last_layer`` does for the spectro codec.
         """
+        if self.refine is not None:
+            return self.refine[-1].weight
         return self.to_pixels.weight
 
     def forward(self, quant: torch.Tensor) -> torch.Tensor:
@@ -118,7 +142,7 @@ class VideoDecoder(nn.Module):
         h = self.transformer(quant + self.pos_emb())
         patches = self.to_pixels(h)
         # unpatchify: inverse of the encoder rearrange.
-        return rearrange(
+        x = rearrange(
             patches,
             "b (nt nh nw) (c pt ph pw) -> b c (nt pt) (nh ph) (nw pw)",
             nt=cfg.n_time_patch,
@@ -129,3 +153,8 @@ class VideoDecoder(nn.Module):
             ph=cfg.patch_h,
             pw=cfg.patch_w,
         )
+        if self.refine is not None:
+            frames = rearrange(x, "b c t h w -> (b t) c h w")
+            frames = frames + self.refine(frames)
+            x = rearrange(frames, "(b t) c h w -> b c t h w", b=x.shape[0])
+        return x

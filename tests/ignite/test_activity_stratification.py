@@ -181,6 +181,14 @@ def test_overrides_on_for_the_four_failing_codecs():
     tc.apply_activity_overrides(mse, "mse")
     assert mse.active_bias > 0 and 0.0 < mse.min_activity <= 1.0
 
+    # ts_tangential_{density,temp}: same bimodal present-fraction as ts_core_density (measured
+    # 2026-08-05: median 0.067, 59% of windows <= 0.1 present; density degraded to 5 codes /
+    # corr 0.03 over its unstratified 80k v6 run) -> same present-fraction stratification.
+    for sig in ("ts_tangential_density", "ts_tangential_temp"):
+        tt = tc.slowts_codec_cfg(sig, 10)
+        tc.apply_activity_overrides(tt, sig)
+        assert tt.active_bias > 0 and 0.0 < tt.min_activity <= 1.0, sig
+
     fts = FastTSCodecConfig(channels=8)
     tc.apply_activity_overrides(fts, "filterscopes")
     assert fts.active_bias > 0 and fts.min_activity > 0
@@ -203,7 +211,9 @@ def test_overrides_on_for_the_four_failing_codecs():
         ("cer_rot", lambda: tc.slowts_codec_cfg("cer_rot", 48)),
         # NOTE: mse moved OUT of this no-op list 2026-07-27 — it now gets present-fraction
         # activity-stratification (neutral-beam missingness); asserted ON in the test above.
-        ("ts_tangential_density", lambda: tc.slowts_codec_cfg("ts_tangential_density", 10)),
+        # NOTE: ts_tangential_{density,temp} moved OUT 2026-08-05 — same bimodal present-
+        # fraction as ts_core_density (median 0.067, 59% of windows <= 0.1 present); density
+        # degraded to 5 codes / corr 0.03 over the 80k v6 run. Asserted ON below.
     ],
 )
 def test_overrides_are_noop_for_working_modalities(modality, ctor):

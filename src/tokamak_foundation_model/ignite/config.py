@@ -358,6 +358,20 @@ class VideoCodecConfig:
     entropy_weight: float = 1.0
     diversity_weight: float = 1.0
 
+    # --- decoder conv refinement head (patch-seam / checkerboard fix) ------------------ #
+    # The linear per-token unpatchify renders every 20x20(x5) patch independently, which leaves
+    # a visible 6x18 patch-seam checkerboard under the v6 GAN-free recipe (pixel+entropy only;
+    # the config note above `pixel_anchor_weight` predicted exactly this: the linear head relied
+    # on the adversarial+FM signal for plausible frames, and v6 removed both — confirmed on the
+    # 2026-08-05 renders). ``refine_depth > 0`` appends a small RESIDUAL per-frame stride-1 2D
+    # conv stack (kernel 3, ``refine_hidden`` channels, final conv ZERO-INIT so the head starts
+    # as an exact identity) after the unpatchify, letting the loss blend across patch borders.
+    # Deliberately NOT a ConvTranspose(kernel=stride) upsampler — that family is the documented
+    # FAITH checkerboard bug; this head is stride-1 smoothing at full resolution. 0 = OFF
+    # (byte-identical; old checkpoints unpickle without these fields and load unchanged).
+    refine_depth: int = 0
+    refine_hidden: int = 64
+
     # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
     # Same lever as SpectroCodecConfig (activity = the clip's frame std here). tangtv frames
     # are NOT degeneracy-dominated in the diagnostic (all built clips have std >= ~3.8, like the

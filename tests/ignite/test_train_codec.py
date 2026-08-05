@@ -408,6 +408,34 @@ def test_parser_accepts_prod_recipe_overrides():
     assert math.prod(int(x) for x in args.fsq_levels.split(",")) == 32768
 
 
+def test_tangential_thomson_gets_present_fraction_stratification():
+    """ts_tangential_{density,temp} carry the same missing-dominated bimodal present-fraction
+    as ts_core_density (measured 2026-08-05: median 0.067, 59% of windows <= 0.1 present) but
+    were left unstratified in the v6 fleet — ts_tangential_density degraded to 5 codes /
+    corr 0.03 over 80k steps. Both must now get the ts_core_density present-fraction override."""
+    for modality in ("ts_tangential_density", "ts_tangential_temp"):
+        cfg = tc.slowts_codec_cfg(modality, tc.modality_channels(modality))
+        assert cfg.min_activity == 0.0 and cfg.active_bias == 0.0
+        tc.apply_activity_overrides(cfg, modality)
+        assert cfg.min_activity == 0.5, modality
+        assert cfg.active_bias == 0.5, modality
+
+
+def test_refine_depth_is_video_only_cli_override():
+    """--refine_depth parses, lands on VideoCodecConfig (which has the field), and must be
+    rejected for families whose configs lack it (mirrors main()'s guard)."""
+    from tokamak_foundation_model.ignite.config import SpectroCodecConfig, VideoCodecConfig
+    args = tc.build_arg_parser().parse_args(
+        ["--modality", "tangtv_lower", "--out_dir", "/tmp/x", "--refine_depth", "4"]
+    )
+    assert args.refine_depth == 4
+    vcfg = VideoCodecConfig()
+    assert vcfg.refine_depth == 0          # default OFF (byte-identical decoder)
+    vcfg.refine_depth = int(args.refine_depth)
+    assert vcfg.refine_depth == 4
+    assert not hasattr(SpectroCodecConfig(channels=4), "refine_depth")
+
+
 def test_prod_recipe_overrides_win_over_activity_and_defaults():
     """The prod-recipe CLI overrides are applied AFTER apply_activity_overrides, so they win
     over both the drifted d2 defaults AND the co2/mhr _activity_overrides (which force

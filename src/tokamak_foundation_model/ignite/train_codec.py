@@ -104,10 +104,11 @@ DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
 # OTHER modality keeps its config default, so their byte-identical behavior is preserved).
 # ------------------------------------------------------------------------------------- #
 # Applied to the cfg in ``main()`` after channel-count sizing (like ``modality_channels``). The
-# already-working codecs (ece/bes/mhr/cer_ti/cer_rot/mse/ts_core_temp/ts_tangential_*) are ABSENT
-# here → active_bias stays 0 (stratification OFF, byte-identical) and adv_warmup/adversarial_weight
-# stay at their config defaults. The four failing codecs collapsed to 1 code from step 0 in the
-# real 20k-step runs (frac_codes_used=0.001, minH≈0, env_corr≈0/nan).
+# already-working codecs (ece/bes/cer_ti/cer_rot/ts_core_temp) are ABSENT here → active_bias
+# stays 0 (stratification OFF, byte-identical) and adv_warmup/adversarial_weight stay at their
+# config defaults. The original four failing codecs collapsed to 1 code from step 0 in the
+# real 20k-step runs (frac_codes_used=0.001, minH≈0, env_corr≈0/nan); mse and ts_tangential_*
+# joined later with the same missing-dominated slow-TS signature.
 #
 # The thresholds are read off the CPU activity diagnostic (fraction of ACTIVE windows on a spread
 # of real shots):
@@ -150,6 +151,14 @@ _activity_overrides: Dict[str, Dict[str, float]] = {
     # Same present-fraction stratification that rescued ts_core_density (biases onto the ~25% of
     # well-observed windows). Pairs with the non-finite-channel masking fix in _fit_window.
     "mse": {"min_activity": 0.5, "active_bias": 0.5},
+    # ts_tangential_* (slow-TS): same missing-dominated bimodal present-fraction as
+    # ts_core_density (measured 2026-08-05 over 12 spread shots: median 0.067, 59% of windows
+    # <= 0.1 present, 34.75% >= 0.5 — density and temp share the identical mask, same laser),
+    # but both were left unstratified in the v6 fleet. ts_tangential_density DEGRADED over its
+    # 80k v6 run (decode corr 0.30@20k -> 0.03@80k, distinct codes 11 -> 5) as the mostly-
+    # missing windows swamped the batches. Same present-fraction fix as the core/mse rescues.
+    "ts_tangential_density": {"min_activity": 0.5, "active_bias": 0.5},
+    "ts_tangential_temp": {"min_activity": 0.5, "active_bias": 0.5},
     # fast-TS (envelope std). The scale-fix de-saturates the envelope (median within-window std
     # 0.648, 91% of windows structured, strong across-window profile variation) — the DATA is rich,
     # NOT low-info. Yet the codec pinned to 1 code (frac 0.001) even under entropy_weight=5.0
@@ -2839,6 +2848,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "to_pixels, SMOOTH patches) or 'conv' (HiFi-GAN/VQGAN 2D transposed-conv "
                         "upsampler, SpectroConvDecoder — synthesizes turbulent texture). "
                         "Spectro modalities only.")
+    p.add_argument("--refine_depth", type=int, default=None,
+                   help="VIDEO-only: depth of the VideoDecoder's residual per-frame conv "
+                        "refinement head (stride-1 kernel-3, zero-init final conv). Blends the "
+                        "linear unpatchify's independently-rendered 20x20 patches across their "
+                        "seams (the v6 GAN-free checkerboard fix). 0/unset = off "
+                        "(byte-identical decoder).")
     # ---- prod-recipe knobs (the ONLY spectro recipe that survives the multi-shot collapse
     # test: prod_ece = fsq_levels [8,8,8,8,8]/cb=32768, entropy 0.1, adv_clamp 10000,
     # adv_warmup 0, adversarial_weight 1.0). The current SpectroCodecConfig defaults drifted to
@@ -2935,6 +2950,17 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             "--decoder {linear,conv} is a SPECTRO-only override (the conv decoder is "
             "nets.SpectroConvDecoder); it is not valid for a video / slow-TS / fast-TS modality."
         )
+    if getattr(args, "refine_depth", None) is not None:
+        # VIDEO-only: only VideoCodecConfig carries the refinement-head fields.
+        if not hasattr(cfg, "refine_depth"):
+            raise SystemExit(
+                "--refine_depth is a VIDEO-only override (the VideoDecoder residual conv "
+                "refinement head); it is not valid for a spectro / slow-TS / fast-TS modality."
+            )
+        cfg.refine_depth = int(args.refine_depth)
+        if ddp.is_main:
+            print(f"[train_codec] video decoder refine_depth={cfg.refine_depth} "
+                  f"(hidden={cfg.refine_hidden}, residual zero-init conv head)")
     if args.consistency_weight is not None:
         if is_video or is_slowts:
             raise SystemExit(
