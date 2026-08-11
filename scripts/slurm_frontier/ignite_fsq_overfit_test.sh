@@ -20,9 +20,10 @@
 #   rung 2: whole-shot overfit + FULL stitched-spectrogram reconstruction
 #           + GT|recon|diff comparison figure + metrics json per modality
 #           (rungs 1+2: tests/ignite/test_fsq_overfit_realshot.py)
-#   rung 3 (E2E=1): FULL-IGNITE overfit — ALL-family codecs (spectro from the _v5 ckpts,
-#           video + slow-TS from the frozen manifest) fine-tuned on the shot + MaskGIT
-#           ST-backbone trained over their codes + rollout + GT-vs-pred figure
+#   rung 3 (E2E=1): FULL-IGNITE overfit — ALL-family codecs (every modality incl.
+#           filterscopes from the current production template, default v6, with
+#           v5/frozen-manifest fallbacks) fine-tuned on the shot + MaskGIT ST-backbone
+#           trained over their codes + rollout + physical-units GT-vs-pred figure
 #           (tests/ignite/test_e2e_overfit_realshot.py)
 # Figures/metrics land in ${OUT_DIR}.
 #
