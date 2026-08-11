@@ -137,14 +137,90 @@ def load_shot_cache(cache_dir: Path, shot: str) -> Dict:
     return torch.load(p, map_location="cpu", weights_only=False)
 
 
+# --------------------------------------------------------------------------------------------- #
+# actuator counterfactuals
+# --------------------------------------------------------------------------------------------- #
+# The cache stores actuators ALREADY z-scored per shot over the cached window (train_dynamics.
+# actuator_frames), so an edit here is POST-normalization: editing the predicted region cannot
+# feed back into the seed frames. (The seed/predict coupling only exists if you re-derive
+# actuators from the H5 with edited raw signals — a different, harder experiment.)
+#
+# Because the per-shot z-score already removed level and scale, a counterfactual that MULTIPLIES
+# or OFFSETS a channel is a NO-OP by construction. Only trajectory SHAPE is expressible, which is
+# why the modes below are structural (zero / freeze / shuffle / donor / per-group) rather than
+# gain-based.
+ACTUATOR_MODES = ("real", "zero", "freeze", "shuffle", "donor:<shot>", "group_zero:<group>")
+
+
+def apply_actuator_mode(act: torch.Tensor, mode: str, K0: int, cache_dir=None,
+                        F: int = None) -> torch.Tensor:
+    """(F, 70) cached actuators -> counterfactual (F, 70). ``act`` is not modified in place.
+
+    real                 unchanged (baseline)
+    zero                 all actuators zeroed over the PREDICTED region [K0, F) — the seed
+                         region is left real so the model gets the same context and only the
+                         control input differs.
+    freeze               hold the last seed frame's actuators across [K0, F): "control stopped".
+    shuffle              randomly permute the predicted region's frames (destroys the temporal
+                         trajectory, preserves the marginal distribution).
+    donor:<shot>         splice another shot's actuators over [K0, F) — the in-distribution
+                         counterfactual (a real control trajectory, just not this shot's).
+    group_zero:<g>       zero ONE actuator group over [K0, F) (g in _ACT_SPEC: ech_power, pinj,
+                         beam_voltage, tinj, gas_flow, gas_raw, rmp) — per-actuator attribution.
+    """
+    from .train_dynamics import _ACT_SPEC
+    F = int(act.shape[0]) if F is None else F
+    out = act.clone()
+    if mode == "real":
+        return out
+    if mode == "zero":
+        out[K0:F] = 0.0
+        return out
+    if mode == "freeze":
+        out[K0:F] = act[K0 - 1:K0]
+        return out
+    if mode == "shuffle":
+        # deterministic permutation (seeded by F) so a run is reproducible
+        g = torch.Generator().manual_seed(1234 + F)
+        idx = torch.randperm(F - K0, generator=g) + K0
+        out[K0:F] = act[idx]
+        return out
+    if mode.startswith("donor:"):
+        donor = mode.split(":", 1)[1]
+        if cache_dir is None:
+            raise ValueError("donor mode needs cache_dir")
+        d = load_shot_cache(Path(cache_dir), donor)
+        da = d["actuators"].float()
+        if da.shape[0] < F:
+            raise RuntimeError(f"donor {donor} has {da.shape[0]} frames < F={F}")
+        out[K0:F] = da[K0:F]
+        return out
+    if mode.startswith("group_zero:"):
+        g = mode.split(":", 1)[1]
+        off = 0
+        for key, nch in _ACT_SPEC:
+            if key == g:
+                out[K0:F, off:off + nch] = 0.0
+                return out
+            off += nch
+        raise ValueError(f"unknown actuator group {g!r}; known: {[k for k, _ in _ACT_SPEC]}")
+    raise ValueError(f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}")
+
+
 @torch.no_grad()
 def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: int,
-                 temperature: float, generator: torch.Generator, device
+                 temperature: float, generator: torch.Generator, device,
+                 actuator_mode: str = "real", cache_dir=None
                  ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], int, int]:
     """Seed K0 real frames, roll out, return (gt_codes, pred_codes, K0, F) as cpu long tensors.
 
     gt_codes[name] / pred_codes[name]: (F, n_tok) over the FULL window [0, F). F = min(cfg.max_frames,
     n_frames). Both are compared over the PREDICTED region [K0, F) downstream.
+
+    ``actuator_mode`` applies a counterfactual to the actuators over [K0, F) — see
+    :func:`apply_actuator_mode`. The rollout consumes an IDENTICAL number of RNG draws whichever
+    mode is used (the decode loop is a fixed number of multinomial calls), so two runs with the
+    same seed differ ONLY through the actuator conditioning — the comparison is exactly paired.
     """
     F = min(cfg.max_frames, int(cache["n_frames"]))
     if F <= K0:
@@ -154,7 +230,9 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
 
     codes = cache["codes"]
     seed_codes = {n: codes[n][:K0].long().unsqueeze(0).to(device) for n in names}   # (1, K0, n_tok)
-    actuators = cache["actuators"][:F].float().unsqueeze(0).to(device)              # (1, F, 70)
+    act = cache["actuators"][:F].float()                                            # (F, 70)
+    act = apply_actuator_mode(act, actuator_mode, K0, cache_dir=cache_dir, F=F)
+    actuators = act.unsqueeze(0).to(device)                                         # (1, F, 70)
 
     traj = model.rollout(seed_codes, actuators, n_predict=n_predict,
                          temperature=temperature, generator=generator)
@@ -660,7 +738,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
 def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         temperature: float = 1.0, seed: int = 0, k0: int = 0, codec_tmpl: str = None,
         render_all: bool = False, val_tail: int = 0, val_n: int = 0,
-        split_seed: int = 0, log=print) -> Dict:
+        split_seed: int = 0, actuator_mode: str = "real", log=print) -> Dict:
     """Evaluate a trained dynamics ckpt on one or more shots (comma-separated ``shot``).
 
     Per shot: rollout from K0 real frames, per-modality TOKEN ACCURACY over the predicted
@@ -672,7 +750,7 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
     """
     import json
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log(f"[eval] device={device} ckpt={ckpt}", flush=True)
+    log(f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode}", flush=True)
 
     if val_tail:
         # Resolve the held-out shots from the SAME split the trainer used. PREFER the
@@ -735,7 +813,20 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                             enabled=(device.type == "cuda"
                                      and _os.environ.get("IGNITE_EVAL_BF16") == "1")):
             gt_codes, pred_codes, K0, F = rollout_shot(model, cfg, cache, K0_req,
-                                                       temperature, gen, device)
+                                                       temperature, gen, device,
+                                                       actuator_mode=actuator_mode,
+                                                       cache_dir=cache_dir)
+            # ACTUATOR COUNTERFACTUAL: the effect size is the divergence from the SAME rollout
+            # under real actuators, not the divergence from GT. Re-seed so the two runs share an
+            # identical RNG stream — the rollout draws the same number of samples either way, so
+            # any difference is attributable to the conditioning alone.
+            base_codes = None
+            if actuator_mode != "real":
+                gen_b = torch.Generator(device=device).manual_seed(int(seed))
+                _gt, base_codes, _K, _F = rollout_shot(model, cfg, cache, K0_req,
+                                                       temperature, gen_b, device,
+                                                       actuator_mode="real",
+                                                       cache_dir=cache_dir)
         tok_acc = {n: float((pred_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
                    for n in gt_codes}
         # persistence baseline in CODE space: fraction of tokens that simply do not change
@@ -754,6 +845,17 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                  "nrmse_persistence": {n: d["nrmse_persistence"] for n, d in decoded.items()},
                  "nrmse_skill": {n: d["nrmse_skill"] for n, d in decoded.items()},
                  "K0": K0, "F": F}
+        if base_codes is not None:
+            # per-modality fraction of predicted-region tokens that CHANGED when the actuators
+            # changed. 0.0 = the conditioning had literally no effect (the paired RNG makes that
+            # an exact statement, not an approximation).
+            entry["actuator_mode"] = actuator_mode
+            entry["divergence_vs_real"] = {
+                n: float((pred_codes[n][K0:F] != base_codes[n][K0:F]).float().mean())
+                for n in pred_codes}
+            entry["token_accuracy_real_actuators"] = {
+                n: float((base_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
+                for n in pred_codes}
         if si == 0 or render_all:
             png, pdf = render_figure(decoded, sh, step, temperature, K0, F, Path(out_dir))
             fig_paths.append(str(png))
@@ -921,6 +1023,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "the eval core cannot accidentally contain training shots")
     p.add_argument("--curate_partition", default="val", choices=("train", "val", "test"),
                    help="which partition of --curate_split to screen (default val)")
+    p.add_argument("--actuator_mode", default="real",
+                   help="ACTUATOR COUNTERFACTUAL applied over the predicted region "
+                        "[K0,F): real | zero | freeze | shuffle | donor:<shot> | "
+                        "group_zero:<ech_power|pinj|beam_voltage|tinj|gas_flow|gas_raw|rmp>. "
+                        "Anything but 'real' ALSO runs the real-actuator rollout with the "
+                        "same seed and reports divergence_vs_real (the effect size). NOTE: "
+                        "cached actuators are already per-shot z-scored, so gain/offset "
+                        "edits would be no-ops — these modes are structural.")
     p.add_argument("--split_seed", type=int, default=0,
                    help="split seed — must match the training run's --split_seed")
     return p
@@ -946,7 +1056,8 @@ def main(argv=None):
     return run(args.ckpt, args.shot, args.cache_dir, args.out_dir,
                temperature=args.temperature, seed=args.seed, k0=args.k0,
                codec_tmpl=args.codec_tmpl, render_all=args.render_all,
-               val_tail=args.val_tail, val_n=args.val_n, split_seed=args.split_seed)
+               val_tail=args.val_tail, val_n=args.val_n, split_seed=args.split_seed,
+               actuator_mode=args.actuator_mode)
 
 
 if __name__ == "__main__":
