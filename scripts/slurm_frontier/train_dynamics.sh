@@ -63,6 +63,7 @@ EXTRA=()
 [ -n "${TEST_N:-}" ] && EXTRA+=(--test_n "${TEST_N}")
 [ -n "${TEST_FRAC:-}" ] && EXTRA+=(--test_frac "${TEST_FRAC}")
 [ -n "${PIN_VAL:-}" ] && EXTRA+=(--pin_val "${PIN_VAL}")
+[ -n "${ACCUM_STEPS:-}" ] && EXTRA+=(--accum_steps "${ACCUM_STEPS}")
 [ "${MASK_ABSENT:-0}" = "1" ] && EXTRA+=(--mask_absent)
 [ -n "${PRESENCE_PATH:-}" ] && EXTRA+=(--presence_path "${PRESENCE_PATH}")
 

@@ -846,7 +846,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           split_seed: int = 0, warmup_steps: int = 0, min_lr_ratio: float = 0.01,
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
           test_n: int = 0, test_frac: float = 0.0, pin_val=(),
-          mask_absent: bool = False, presence_path: str = None, log=print):
+          mask_absent: bool = False, presence_path: str = None,
+          accum_steps: int = 1, log=print):
     """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
 
     Reuses the codec trainer's DDP wrapper; streams FrameCodeDataset windows; MaskGIT loss with the
@@ -905,6 +906,18 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             f"(train {len(train_shots)}/val {len(val_shots)}/test {len(test_shots)} HELD OUT) "
             f"windows={len(ds)} d_model={d_model} depth={depth} heads={cfg.n_heads} "
             f"frame_tokens={cfg.tokens_per_frame} win={cfg.max_frames}")
+    if ddp.is_main:
+        log(f"[dynamics] batch: micro={batch_size} x ranks={ddp.world_size} "
+            f"x accum={accum_steps} -> EFFECTIVE {batch_size * ddp.world_size * accum_steps}"
+            + (f"  ({accum_steps} fwd/bwd per optimizer step)" if accum_steps > 1 else ""))
+        # Report the allocator config AS SEEN BY THE RANK PROCESS. The launcher's echo runs in
+        # the batch step, NOT inside the srun tasks, so it cannot prove the ranks got it —
+        # and job 5233441 OOM'd with 19.26 GiB reserved-but-unallocated (fragmentation) while
+        # the submitting shell had expandable_segments set.
+        import os as _o
+        log(f"[dynamics] RANK-SEEN PYTORCH_ALLOC_CONF="
+            f"{_o.environ.get('PYTORCH_ALLOC_CONF', '<UNSET>')} "
+            f"(HIP={_o.environ.get('PYTORCH_HIP_ALLOC_CONF', '<unset>')})")
     sampler = DistributedSampler(ds, num_replicas=ddp.world_size, rank=ddp.rank, shuffle=True) \
         if ddp.world_size > 1 else None
     loader = DataLoader(ds, batch_size=batch_size, sampler=sampler, shuffle=(sampler is None),
@@ -1028,6 +1041,9 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             log(f"[dynamics] could not read {_bp} ({type(e).__name__}); best tracking restarts")
     gen = torch.Generator(device="cpu")
     step = start_step
+    # Accumulation state. `step` counts OPTIMIZER steps, never micro-batches, so the LR
+    # schedule, ckpt_every, val cadence and resume are all unaffected by accum_steps.
+    micro, accum_loss = 0, 0.0
     model.train()
     while step < steps:
         if sampler is not None:
@@ -1036,23 +1052,43 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             codes = {k: v.to(device) for k, v in codes.items()}
             act = act.to(device)
             present = present.to(device) if use_presence else None
-            opt.zero_grad()
+            if micro == 0:
+                opt.zero_grad()                         # only at the START of an accumulation group
             ssf = model.ss_fraction(step)               # 0 for the whole run if ss_final_frac=0
             # bf16 autocast: ~2-3x faster + ~2x less activation memory on MI250X; bf16 has fp32
             # dynamic range so no GradScaler needed (unlike fp16). Frozen codes are int (unaffected).
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 loss = model.training_loss(codes, act, generator=None, ss_frac=ssf,
                                            present=present)
-            loss.backward()
+            # GRADIENT ACCUMULATION: effective batch = batch_size x world_size x accum_steps.
+            # Scaling by 1/accum makes the summed grads equal the mean over the whole effective
+            # batch, so the update is IDENTICAL to running the large batch in one go. Memory
+            # stays at the micro-batch level: measured bs1 30.0 GiB allocated vs bs2 49.0 GiB,
+            # and bs2 sat at 62.7/64 GiB reserved — unsurvivable (job 5233441).
+            (loss / accum_steps).backward()
+            accum_loss += float(loss.item())
+            micro += 1
+            if micro < accum_steps:
+                continue                                # keep accumulating; no sync, no step
+            micro = 0
             _sync_grads()                               # manual all-reduce (replaces DDP)
             opt.step(); sched.step()
             step += 1
             # validation runs on ALL ranks (identical fixed batches -> ranks stay in lockstep)
             vl = _val_loss() if step % ckpt_every == 0 else None
+            lv = accum_loss / max(1, accum_steps)       # mean over the accumulation group
+            accum_loss = 0.0
             if ddp.is_main and step % 50 == 0:
-                lv = float(loss.item())
+                # Memory telemetry: the RESERVED-minus-ALLOCATED gap is the fragmentation that
+                # killed 5233441 (40.85 alloc / 19.26 reserved-unallocated of 64 GiB). With
+                # expandable_segments working, reserved should track allocated closely.
+                mem = ""
+                if device.type == "cuda":
+                    ga = torch.cuda.max_memory_allocated() / 2**30
+                    gr = torch.cuda.max_memory_reserved() / 2**30
+                    mem = f" mem_alloc={ga:.1f}G mem_resv={gr:.1f}G frag={gr - ga:.1f}G"
                 log(f"[dynamics] step {step}/{steps} loss={lv:.4f} "
-                    f"ss={ssf:.3f} lr={sched.get_last_lr()[0]:.2e}")
+                    f"ss={ssf:.3f} lr={sched.get_last_lr()[0]:.2e}{mem}")
                 with open(hist_path, "a") as f:
                     f.write(json.dumps({"step": step, "loss": lv, "ss": ssf,
                                         "lr": sched.get_last_lr()[0]}) + "\n")
@@ -1158,6 +1194,13 @@ def build_arg_parser():
                         "ramp-up second so a K0=20 seed spans [0,1) s and PREDICTION STARTS "
                         "AT t=1.0 s (the standing convention). NOTE: the frozen codecs never "
                         "trained on ramp-up windows.")
+    p.add_argument("--accum_steps", type=int, default=1,
+                   help="gradient-accumulation micro-steps per optimizer step. Effective batch "
+                        "= batch_size x world_size x accum_steps, at the MEMORY cost of "
+                        "batch_size alone (measured: bs1 30.0 GiB vs bs2 49.0 GiB allocated; "
+                        "bs2 reserved 62.7/64 GiB, which killed job 5233441). Throughput is "
+                        "~unchanged: step time scales linearly with batch at this sequence "
+                        "length (200 steps: bs1 13:57 vs bs2 26:42).")
     p.add_argument("--mask_absent", action="store_true",
                    help="exclude ABSENT diagnostics from the masked-CE (they encode to a "
                         "constant null codeword; ~38% of loss TERMS on the production cache, "
@@ -1218,7 +1261,8 @@ def main(argv=None):
                  beta2=args.beta2, weight_decay=args.weight_decay,
                  patience=args.patience, test_n=args.test_n, test_frac=args.test_frac,
                  pin_val=tuple(s.strip() for s in args.pin_val.split(",") if s.strip()),
-                 mask_absent=args.mask_absent, presence_path=args.presence_path)
+                 mask_absent=args.mask_absent, presence_path=args.presence_path,
+                 accum_steps=args.accum_steps)
 
 
 if __name__ == "__main__":
