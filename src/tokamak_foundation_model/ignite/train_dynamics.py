@@ -847,7 +847,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
           test_n: int = 0, test_frac: float = 0.0, pin_val=(),
           mask_absent: bool = False, presence_path: str = None,
-          accum_steps: int = 1, log=print):
+          accum_steps: int = 1, val_windows: int = 32, log=print):
     """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
 
     Reuses the codec trainer's DDP wrapper; streams FrameCodeDataset windows; MaskGIT loss with the
@@ -1004,8 +1004,13 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     val_ds = FrameCodeDataset(cache_dir, val_shots, cfg, presence=presence)
     val_batches = []
     if len(val_ds):
-        vi = [int(i) for i in torch.linspace(0, len(val_ds) - 1,
-                                             steps=min(4 * batch_size, len(val_ds))).tolist()]
+        # VAL SIZE IS INDEPENDENT OF BATCH SIZE. It used to be 4 * batch_size, which tied the
+        # statistical power of the val estimate to a MEMORY parameter: moving to batch_size=1
+        # for gradient accumulation would have silently cut val from 8 windows to 4. The val
+        # series drives best-checkpoint selection and early stopping, and at 8 windows a
+        # +0.016 move was already inside the noise (capacity arm, step 1400).
+        n_val_win = min(val_windows, len(val_ds))
+        vi = [int(i) for i in torch.linspace(0, len(val_ds) - 1, steps=n_val_win).tolist()]
         items = [val_ds[i] for i in vi]
         for s in range(0, len(items), batch_size):
             val_batches.append(_collate_frames(items[s:s + batch_size]))
@@ -1194,6 +1199,11 @@ def build_arg_parser():
                         "ramp-up second so a K0=20 seed spans [0,1) s and PREDICTION STARTS "
                         "AT t=1.0 s (the standing convention). NOTE: the frozen codecs never "
                         "trained on ramp-up windows.")
+    p.add_argument("--val_windows", type=int, default=32,
+                   help="fixed validation windows, INDEPENDENT of batch_size. Was "
+                        "4*batch_size, which tied val's statistical power to a memory "
+                        "knob — bs1 would have given only 4 windows while val drives "
+                        "best-checkpoint selection and early stopping.")
     p.add_argument("--accum_steps", type=int, default=1,
                    help="gradient-accumulation micro-steps per optimizer step. Effective batch "
                         "= batch_size x world_size x accum_steps, at the MEMORY cost of "
@@ -1262,7 +1272,7 @@ def main(argv=None):
                  patience=args.patience, test_n=args.test_n, test_frac=args.test_frac,
                  pin_val=tuple(s.strip() for s in args.pin_val.split(",") if s.strip()),
                  mask_absent=args.mask_absent, presence_path=args.presence_path,
-                 accum_steps=args.accum_steps)
+                 accum_steps=args.accum_steps, val_windows=args.val_windows)
 
 
 if __name__ == "__main__":

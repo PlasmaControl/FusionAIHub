@@ -3,11 +3,11 @@
 #SBATCH -J ignite_dynamics
 #SBATCH -o /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/logs/%x_%j.out
 #SBATCH -e /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/logs/%x_%j.err
-#SBATCH -t 02:00:00
+#SBATCH -t 12:00:00
 #SBATCH -p extended
-#SBATCH -N 8
-#SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
+#SBATCH -N 16
+#SBATCH --ntasks-per-node=8
+#SBATCH --gres=gpu:8
 #SBATCH --gpus-per-task=1
 #SBATCH --gpu-bind=closest
 #SBATCH --cpus-per-task=7
@@ -37,17 +37,27 @@ DEPTH="${DEPTH:-8}"; D_MODEL="${D_MODEL:-512}"; STEPS="${STEPS:-55399}"
 # costs nothing — step time scales linearly with batch at this sequence length.
 BATCH_SIZE="${BATCH_SIZE:-1}"; ACCUM_STEPS="${ACCUM_STEPS:-2}"
 LR="${LR:-3e-4}"; NUM_WORKERS="${NUM_WORKERS:-4}"
-CKPT_EVERY="${CKPT_EVERY:-500}"   # < steps-per-job (~700 at 2h/g1) so the chain checkpoints + resumes
+CKPT_EVERY="${CKPT_EVERY:-500}"   # in OPTIMIZER steps (accumulation-independent); must be
+                                  # < steps-per-leg so a 12 h leg checkpoints before its wall
 PRECOMPUTE="${PRECOMPUTE:-0}"     # 1 = build the frame-code cache (each rank a shot-shard) then exit
 MAX_SHOTS="${MAX_SHOTS:-0}"       # cap total shots for a --precompute sanity run (0 = full dataset)
 CODEC_TMPL="${CODEC_TMPL:-}"      # precompute codec override, e.g. 'path/codecs/{m}/codec_best.pt'
 # probe / architecture overrides (empty = production defaults)
 N_HEADS="${N_HEADS:-}"; K0="${K0:-}"; N_PREDICT="${N_PREDICT:-}"
 TRAIN_CAP="${TRAIN_CAP:-0}"       # N-shots generalization probe: train on first N shots only
-VAL_N="${VAL_N:-0}"               # fixed validation-tail size (shots); 0 = 5% fraction
+VAL_N="${VAL_N:-0}"               # fixed validation size (shots); 0 = 5% fraction
+# Held-out TEST partition, untouched until the end (user convention 0.90/0.05/0.05).
+# Without this the split is 0.95/0.05/0 and there is NO test set at all.
+TEST_FRAC="${TEST_FRAC:-0.05}"
+PIN_VAL="${PIN_VAL:-200729}"      # standing example shot: pinned to val, never trained
+VAL_WINDOWS="${VAL_WINDOWS:-32}"  # independent of BATCH_SIZE (see --val_windows)
 mkdir -p logs "${CACHE_DIR}"
 
-SPLIT_SEED="${SPLIT_SEED:-0}"     # >0: seeded-random train/val split (0 = sorted tail)
+# SPLIT_SEED must be NON-ZERO for production: 0 selects the legacy SORTED-TAIL split,
+# which puts the highest shot numbers (one whole campaign) in val. Probe v1 showed
+# exactly that arrangement collapses cross-campaign — diversity is what flipped the
+# sign. 42 is the seed the frozen production split was drawn with.
+SPLIT_SEED="${SPLIT_SEED:-42}"
 SHOT_SAMPLE="${SHOT_SAMPLE:-0}"   # precompute: random-sample this many shots from ALL data
 SHOT_SEED="${SHOT_SEED:-0}"       # seed for SHOT_SAMPLE
 
@@ -78,6 +88,7 @@ EXTRA=()
 [ -n "${TEST_N:-}" ] && EXTRA+=(--test_n "${TEST_N}")
 [ -n "${TEST_FRAC:-}" ] && EXTRA+=(--test_frac "${TEST_FRAC}")
 [ -n "${PIN_VAL:-}" ] && EXTRA+=(--pin_val "${PIN_VAL}")
+[ -n "${VAL_WINDOWS:-}" ] && EXTRA+=(--val_windows "${VAL_WINDOWS}")
 [ -n "${ACCUM_STEPS:-}" ] && EXTRA+=(--accum_steps "${ACCUM_STEPS}")
 [ "${MASK_ABSENT:-0}" = "1" ] && EXTRA+=(--mask_absent)
 [ -n "${PRESENCE_PATH:-}" ] && EXTRA+=(--presence_path "${PRESENCE_PATH}")
