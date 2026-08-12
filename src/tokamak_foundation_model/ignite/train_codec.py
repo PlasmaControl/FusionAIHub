@@ -156,7 +156,11 @@ _activity_overrides: Dict[str, Dict[str, float]] = {
     # <= 0.1 present, 34.75% >= 0.5 — density and temp share the identical mask, same laser),
     # but both were left unstratified in the v6 fleet. ts_tangential_density DEGRADED over its
     # 80k v6 run (decode corr 0.30@20k -> 0.03@80k, distinct codes 11 -> 5) as the mostly-
-    # missing windows swamped the batches. Same present-fraction fix as the core/mse rescues.
+    # missing windows swamped the batches. NOTE (2026-08-05): slow-TS stratification was a
+    # SILENT NO-OP at production scale until the _chunks_in_current_file re-draw-bound fix —
+    # the ts_core_density/mse entries above never actually stratified their production runs
+    # (their improvements came from standardization/masking); these tangential runs are the
+    # first slow-TS runs where the mechanism is live.
     "ts_tangential_density": {"min_activity": 0.5, "active_bias": 0.5},
     "ts_tangential_temp": {"min_activity": 0.5, "active_bias": 0.5},
     # fast-TS (envelope std). The scale-fix de-saturates the envelope (median within-window std
@@ -492,6 +496,25 @@ def _stratified_draw(
         if float(activity_of(cand)) >= min_activity:
             return cand                               # found an active window
     return base                                       # no active re-draw found -> keep base
+
+
+def _chunks_in_current_file(ds, chunk_idx: int) -> int:
+    """Re-draw bound for hooks whose ``alt`` index is a WITHIN-SHOT chunk index.
+
+    ``_build_window`` / ``_build_clip`` consume the re-draw's ``alt`` as an index into the
+    shot currently pinned on ``ds.h5_file`` (``t_start = warmup + alt * step``), so the bound
+    MUST be THIS file's chunk count — the parent ``__getitem__`` records it as
+    ``_cur_file_n_chunks``. The previous bound (`_cumulative_lengths_span()`, the GLOBAL
+    window total) made P(alt lands inside the current shot) ≈ 1e-4 at the 9000-shot
+    production scale, so every re-draw candidate was out-of-range → None → the stratified
+    AND degenerate re-draws silently no-oped (proven 2026-08-05: the ts_tangential_*
+    "stratified" retrains reproduced their unstratified predecessors bit-for-bit, and a
+    direct probe measured 0/200 valid candidates). The spectro / fast-TS datasets were
+    never affected — they already bound via ``_chunks_in_current_shot`` (xdata-derived).
+    Falls back to ``chunk_idx + 1`` (never smaller than the requested chunk).
+    """
+    n = int(getattr(ds, "_cur_file_n_chunks", 0))
+    return n if n > 0 else int(chunk_idx) + 1
 
 
 class CodecPairDataset(TokamakMultiFileDataset):
@@ -919,7 +942,7 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         """
         return _stratified_draw(
             idx, self._draw_valid_clip, lambda c: float(c[0].std()),
-            lambda: max(1, self._cumulative_lengths_span()),
+            lambda: _chunks_in_current_file(self, idx),
             min_activity=self.min_activity, active_bias=self.active_bias,
             max_tries=self.max_tries, seed=self.pair_seed,
         )
@@ -929,8 +952,9 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         clip = self._build_clip(idx)
         if clip is not None:
             return clip
-        # Degenerate window (dead camera / all-flat): re-draw from nearby chunks.
-        n_chunks = max(1, self._cumulative_lengths_span())
+        # Degenerate window (dead camera / all-flat): re-draw from nearby chunks WITHIN this
+        # shot (alt is a within-shot index — see _chunks_in_current_file).
+        n_chunks = max(1, _chunks_in_current_file(self, idx))
         gen = torch.Generator().manual_seed(self.pair_seed + 100_003 * int(idx) + 7)
         for _ in range(self.max_tries):
             alt = int(torch.randint(0, n_chunks, (1,), generator=gen).item())
@@ -1006,13 +1030,6 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
             pad = frames[:, -1:].expand(C, cfg.frames - T, cfg.height, cfg.width)
             frames = torch.cat([frames, pad], dim=1)
         return frames
-
-    def _cumulative_lengths_span(self) -> int:
-        """Best-effort chunk count for the re-draw bound (total dataset length; safe upper bound)."""
-        try:
-            return int(self._cumulative_lengths[-1])
-        except Exception:
-            return 1
 
 
 def _video_collate(batch):
@@ -1240,7 +1257,7 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         """
         return _stratified_draw(
             idx, self._draw_valid_window, lambda it: float(it[1].mean()),
-            lambda: max(1, self._cumulative_lengths_span()),
+            lambda: _chunks_in_current_file(self, idx),
             min_activity=self.min_activity, active_bias=self.active_bias,
             max_tries=self.max_tries, seed=self.item_seed,
         )
@@ -1250,8 +1267,9 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         item = self._build_window(idx)
         if item is not None:
             return item
-        # Degenerate window (all-missing / padded tail): re-draw from nearby chunks.
-        n_chunks = max(1, self._cumulative_lengths_span())
+        # Degenerate window (all-missing / padded tail): re-draw from nearby chunks WITHIN
+        # this shot (alt is a within-shot index — see _chunks_in_current_file).
+        n_chunks = max(1, _chunks_in_current_file(self, idx))
         gen = torch.Generator().manual_seed(self.item_seed + 100_003 * int(idx) + 7)
         for _ in range(self.max_tries):
             alt = int(torch.randint(0, n_chunks, (1,), generator=gen).item())
@@ -1451,13 +1469,6 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         mean = mean.reshape(C, 1)
         std = std.reshape(C, 1).clamp(min=1e-3)      # matches data_loader std.clamp(min=1e-3)
         return (x - mean) / std
-
-    def _cumulative_lengths_span(self) -> int:
-        """Best-effort chunk count for the re-draw bound (total dataset length; safe bound)."""
-        try:
-            return int(self._cumulative_lengths[-1])
-        except Exception:
-            return 1
 
 
 def _slowts_collate(batch):

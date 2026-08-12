@@ -430,6 +430,44 @@ def test_slowts_dataset_active_bias_zero_byte_identical(tmp_path):
         assert torch.equal(s0, s1) and torch.equal(m0, m1), i
 
 
+def test_redraw_bound_is_current_file_not_global_span(tmp_path):
+    """REGRESSION (2026-08-05): the stratified/degenerate re-draw's alt index is consumed by
+    _build_window/_build_clip as a WITHIN-SHOT chunk index, but video+slow-TS bounded alt by
+    the GLOBAL window total. At the 9000-shot production scale P(alt inside the current shot)
+    ~ 1e-4, so every candidate was out-of-range -> None -> the re-draw silently no-oped: the
+    ts_tangential_* "stratified" retrains reproduced their unstratified predecessors
+    BIT-FOR-BIT (identical gate scores/steps across all 4 legs), and a direct probe measured
+    0/200 valid candidates. The bound must be the CURRENT file's chunk count (recorded by the
+    parent __getitem__ as _cur_file_n_chunks), matching spectro/fast-TS's existing
+    _chunks_in_current_shot semantics."""
+    signal, channels = "ts_core_density", 12
+    duration_s = 1.0 + 8 * CHUNK_S + 0.1
+    shots = []
+    for i in range(4):
+        sid = f"74000{i}"
+        _write_slowts_shot(tmp_path / f"{sid}_processed.h5", signal, channels,
+                          duration_s, seed=i, zero_is_missing=True)
+        shots.append(sid)
+    base = dict(signal=signal, channels=channels, time_steps=5, n_zones=2, patch_c=6, patch_t=5,
+                d_model=32, enc_depth=1, dec_depth=1, heads=2, fsq_levels=[4, 4, 3])
+    ds = tc.SlowTSCodecPairDataset(signal, shots, SlowTSCodecConfig(**base),
+                                   data_dir=tmp_path, seed=0)
+    n_total = len(ds)
+    per_file = int(ds._cumulative_lengths[1] - ds._cumulative_lengths[0])
+    assert n_total > per_file > 0, "fixture must span multiple files"
+    _ = ds[0]  # parent __getitem__ pins file 0 + records its chunk count
+    bound = tc._chunks_in_current_file(ds, 0)
+    assert bound == per_file, f"bound must be the CURRENT file's count, got {bound}"
+    assert bound < n_total, "bound must NOT be the global span"
+    # every alt the re-draw can now propose builds a valid (non-None) window
+    for alt in range(bound):
+        assert ds._build_window(alt) is not None, alt
+    # fallback: before any __getitem__ (no pinned file), never smaller than chunk_idx+1
+    ds2 = tc.SlowTSCodecPairDataset(signal, shots, SlowTSCodecConfig(**base),
+                                    data_dir=tmp_path, seed=0)
+    assert tc._chunks_in_current_file(ds2, 7) >= 8
+
+
 def _write_fastts_shot(path, channels, duration_s, seed):
     """filterscopes-format shot: O(1)-scaled raw so the envelope is NOT ceiling-saturated (the
     byte-identical test only needs a real-format shot; scale realism is exercised separately)."""

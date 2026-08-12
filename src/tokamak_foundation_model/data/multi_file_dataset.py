@@ -438,6 +438,11 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         # _getitem_prediction, _load_signal_raw, …) can find it.
         # Safe: each DataLoader worker owns its own copy of this object.
         self.h5_file = self._get_file_handle(file_idx)
+        # Chunk count of THIS file, for subclass re-draw hooks whose alt indices are
+        # consumed as WITHIN-SHOT chunk indices (ignite codec datasets). State only.
+        self._cur_file_n_chunks = int(
+            self._cumulative_lengths[pos + 1] - self._cumulative_lengths[pos]
+        )
 
         if self.prediction_mode:
             result = self._getitem_prediction(chunk_idx)
