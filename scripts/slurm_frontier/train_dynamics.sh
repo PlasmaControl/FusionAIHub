@@ -51,6 +51,15 @@ VAL_N="${VAL_N:-0}"               # fixed validation size (shots); 0 = 5% fracti
 TEST_FRAC="${TEST_FRAC:-0.05}"
 PIN_VAL="${PIN_VAL:-200729}"      # standing example shot: pinned to val, never trained
 VAL_WINDOWS="${VAL_WINDOWS:-32}"  # independent of BATCH_SIZE (see --val_windows)
+# MASK_ABSENT: drop ABSENT diagnostics from the CE. ON for production (user 2026-08-12).
+# An absent diagnostic feeds its frozen codec a constant, so it encodes to the same null
+# codeword in every shot — ~38% of the loss TERMS, because the loss weights every modality
+# equally regardless of token count. Their tokens still enter the model as INPUT.
+# REQUIRES <cache>/_presence.json to exist ALREADY: train() builds it on rank 0 behind a
+# dist.barrier(), so on a 128-rank job the other 127 would wait out a full 8753-shot scan
+# and trip the 600 s NCCL watchdog. Build it first with BUILD_PRESENCE=1 — and REBUILD it
+# after ANY cache change, since a stale map silently mislabels the shots that changed.
+MASK_ABSENT="${MASK_ABSENT:-1}"
 mkdir -p logs "${CACHE_DIR}"
 
 # SPLIT_SEED must be NON-ZERO for production: 0 selects the legacy SORTED-TAIL split,
@@ -61,12 +70,22 @@ SPLIT_SEED="${SPLIT_SEED:-42}"
 SHOT_SAMPLE="${SHOT_SAMPLE:-0}"   # precompute: random-sample this many shots from ALL data
 SHOT_SEED="${SHOT_SEED:-0}"       # seed for SHOT_SAMPLE
 
-# Allocator config must reach the RANKS, not just the submitting shell. Job 5233441 OOM'd at
-# step ~650 with 19.26 GiB "reserved but unallocated" — textbook fragmentation, which
-# expandable_segments fixes. Re-export explicitly and ECHO it so a log proves whether the
-# ranks actually saw it (the stage-1 launcher carries the same line).
+# Allocator config must reach the RANKS, not just the submitting shell, so re-export it here
+# and ECHO it (the trainer logs the RANK-SEEN value too — the launcher's echo runs in the batch
+# step and cannot prove what the srun tasks got).
+#
+# DO NOT read this as the fix for job 5233441's fragmentation OOM (19.26 GiB "reserved but
+# unallocated" at step ~650). MEASURED 2026-08-12, job 5247144 stderr, this ROCm build:
+#     UserWarning: expandable_segments not supported on this platform
+#     (Triggered internally at c10/hip/HIPAllocatorConfig.h:40)
+# The option is accepted and echoed back as if it were active, but the allocator IGNORES it —
+# so the log line below is evidence of INTENT, not of effect. What actually keeps the footprint
+# survivable is the batch config: BATCH_SIZE 1 + ACCUM_STEPS (measured bs1 30.0 GiB allocated
+# vs bs2 49.0 GiB, bs2 reserving 62.7/64) plus the smaller d512xL8 backbone. Left exported so a
+# future ROCm that does support it picks the behaviour up for free.
 export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
-echo "[ignite_dynamics] PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF}"
+echo "[ignite_dynamics] PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF} \
+(NOTE: expandable_segments is a NO-OP on this ROCm build)"
 
 EXTRA=()
 # DATA_DIR: read shots from an OVERLAY instead of the canonical foundation_model
@@ -90,10 +109,23 @@ EXTRA=()
 [ -n "${PIN_VAL:-}" ] && EXTRA+=(--pin_val "${PIN_VAL}")
 [ -n "${VAL_WINDOWS:-}" ] && EXTRA+=(--val_windows "${VAL_WINDOWS}")
 [ -n "${ACCUM_STEPS:-}" ] && EXTRA+=(--accum_steps "${ACCUM_STEPS}")
-[ "${MASK_ABSENT:-0}" = "1" ] && EXTRA+=(--mask_absent)
+[ "${MASK_ABSENT}" = "1" ] && EXTRA+=(--mask_absent)
 [ -n "${PRESENCE_PATH:-}" ] && EXTRA+=(--presence_path "${PRESENCE_PATH}")
 
-if [ "${PATCH_ACTUATORS:-0}" = "1" ]; then
+if [ "${BUILD_PRESENCE:-0}" = "1" ]; then
+  # Rebuild <cache>/_presence.json — the absent-diagnostic mask --mask_absent scores against.
+  # SINGLE RANK on purpose: build_presence is a serial CPU pass over every cached shot writing
+  # ONE file, so extra ranks would each redo the whole scan and race on the output.
+  # MUST be re-run whenever the cache changes. train() only builds the map `if not exists`, so a
+  # stale one is reused silently: the 2026-08-12 co2 re-tokenize made co2 PRESENT on 190735/190736
+  # while the Aug-11 map still recorded it absent — masking away the very data that was added.
+  echo "[ignite_dynamics] BUILD_PRESENCE host=$(hostname) cache=${CACHE_DIR} \
+out=${PRESENCE_PATH:-${CACHE_DIR}/_presence.json}"
+  srun -N 1 -n 1 -c "$SLURM_CPUS_PER_TASK" \
+       scripts/slurm_frontier/_srun_rank_wrapper.sh \
+       -m tokamak_foundation_model.ignite.train_dynamics \
+       --cache_dir "${CACHE_DIR}" --build_presence "${EXTRA[@]}"
+elif [ "${PATCH_ACTUATORS:-0}" = "1" ]; then
   # One-off cache repair: rewrite ONLY the actuators with the 2026-08-11 time-base fix.
   # Codes are untouched (diagnostics were always on the correct absolute-time base), so this
   # is an I/O pass, NOT a re-precompute. DRY_RUN=1 verifies without writing.
