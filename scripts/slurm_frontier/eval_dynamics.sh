@@ -21,11 +21,11 @@ PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
 source scripts/slurm_frontier/_frontier_common.sh
 
-CKPT="${CKPT:-/lustre/orion/fus187/proj-shared/models/ignite_dynamics_d1024/dynamics_latest.pt}"
+CKPT="${CKPT:-/lustre/orion/fus187/proj-shared/models/ignite_production/runs/prod_d512L8/dynamics_latest.pt}"
 OUT_DIR="${OUT_DIR:-eval_runs/ignite_dynamics_eval}"
 SHOT="${SHOT:-200729}"            # comma-separated list evaluates many shots (metrics json)
 TEMPERATURE="${TEMPERATURE:-1.0}"
-CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_frame_codes}"
+CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_production/frame_codes}"
 CODEC_TMPL="${CODEC_TMPL:-}"      # must match the cache's _codec_manifest.json codecs
 mkdir -p logs "${OUT_DIR}"
 

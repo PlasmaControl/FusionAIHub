@@ -13,8 +13,10 @@
 #SBATCH --cpus-per-task=7
 #SBATCH --mem=0
 # IGNITE Phase-B (MaskGIT dynamics) trainer — DDP over the pre-encoded frame-code cache.
-# 8-node / 1-GCD / global-128 layout (same as the decisive chain + codec runs). Env overrides:
-# CACHE_DIR, OUT_DIR, DEPTH (depth study), D_MODEL, STEPS, BATCH_SIZE, LR, NUM_WORKERS.
+# PRODUCTION layout: 16 nodes x 8 GCDs, BATCH_SIZE=1 x ACCUM_STEPS=2 -> effective batch 256.
+#   sbatch -N 16 --ntasks-per-node=8 --gres=gpu:8 -t 12:00:00 -p extended
+# Env overrides: CACHE_DIR, OUT_DIR, DEPTH, D_MODEL, STEPS, BATCH_SIZE, ACCUM_STEPS, LR,
+# NUM_WORKERS, MASK_ABSENT, TEST_FRAC, PIN_VAL, SPLIT_SEED, DATA_DIR, PRECOMPUTE.
 # Resumes from OUT_DIR/dynamics_latest.pt. Chain with --dependency=afterany:<prev>; multi-partition
 # each job (scontrol update Partition=extended,batch,g1), keep -t <=2h for g1 eligibility.
 set -euo pipefail
@@ -22,11 +24,20 @@ PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
 source scripts/slurm_frontier/_frontier_common.sh
 
-CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_frame_codes}"
-OUT_DIR="${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_dynamics_d1024}"
-DEPTH="${DEPTH:-24}"; D_MODEL="${D_MODEL:-1024}"; STEPS="${STEPS:-200000}"
-BATCH_SIZE="${BATCH_SIZE:-2}"; LR="${LR:-3e-4}"; NUM_WORKERS="${NUM_WORKERS:-4}"
-CKPT_EVERY="${CKPT_EVERY:-200}"   # < steps-per-job (~700 at 2h/g1) so the chain checkpoints + resumes
+# PRODUCTION cache (8753 shots, actuator time-base fixed, t0_start=0). The old
+# ignite_frame_codes (7264 shots, pre-fix) is superseded — a run that silently
+# fell back to it would train on the wrong data without erroring.
+CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_production/frame_codes}"
+OUT_DIR="${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_production/runs/prod_d512L8}"
+# Production config: d512xL8 (the capacity arm showed 815 M gave no rollout gain),
+# 55399 steps = 10 epochs over 1.42 M windows at effective batch 256.
+DEPTH="${DEPTH:-8}"; D_MODEL="${D_MODEL:-512}"; STEPS="${STEPS:-55399}"
+# BATCH_SIZE 1 + ACCUM_STEPS 2 = effective 256 on 16 nodes. bs2 is NOT usable at
+# d1024xL16 (62.7/64 GiB reserved; killed jobs 5233441 and 5234381) and accumulation
+# costs nothing — step time scales linearly with batch at this sequence length.
+BATCH_SIZE="${BATCH_SIZE:-1}"; ACCUM_STEPS="${ACCUM_STEPS:-2}"
+LR="${LR:-3e-4}"; NUM_WORKERS="${NUM_WORKERS:-4}"
+CKPT_EVERY="${CKPT_EVERY:-500}"   # < steps-per-job (~700 at 2h/g1) so the chain checkpoints + resumes
 PRECOMPUTE="${PRECOMPUTE:-0}"     # 1 = build the frame-code cache (each rank a shot-shard) then exit
 MAX_SHOTS="${MAX_SHOTS:-0}"       # cap total shots for a --precompute sanity run (0 = full dataset)
 CODEC_TMPL="${CODEC_TMPL:-}"      # precompute codec override, e.g. 'path/codecs/{m}/codec_best.pt'

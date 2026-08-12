@@ -11,7 +11,7 @@ model's error from the codec's reconstruction error. No denormalization is appli
 Usage (under the pixi frontier env)::
 
     python -m tokamak_foundation_model.ignite.eval_dynamics \
-        --ckpt /lustre/orion/fus187/proj-shared/models/ignite_dynamics_d1024/dynamics_latest.pt \
+        --ckpt /lustre/orion/fus187/proj-shared/models/ignite_production/runs/prod_d512L8/dynamics_latest.pt \
         --shot 200729 --out_dir eval_runs/ignite_dynamics_eval
 
 See docs/IGNITE_DESIGN.md §5 for the frame layout / rollout contract.
@@ -77,7 +77,7 @@ CMAP_VIDEO = _os.environ.get("IGNITE_CMAP_VIDEO", "gray")
 CMAP_DIFF = _os.environ.get("IGNITE_CMAP_DIFF", "RdBu_r")
 FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
 
-_DEFAULT_CACHE = "/lustre/orion/fus187/proj-shared/models/ignite_frame_codes"
+_DEFAULT_CACHE = "/lustre/orion/fus187/proj-shared/models/ignite_production/frame_codes"
 # chunk the decode along the time (frame) axis so a codec never sees the whole rollout at once
 _DECODE_CHUNK = 16
 FRAME_S = 0.05           # one frame = one 50 ms chunk (the shared codec windowing)
