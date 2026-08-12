@@ -48,6 +48,10 @@ export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 echo "[ignite_dynamics] PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF}"
 
 EXTRA=()
+# DATA_DIR: read shots from an OVERLAY instead of the canonical foundation_model
+# (which is not group-writable). discover_shots() over the overlay also RESTRICTS
+# a re-tokenize to exactly the shots it contains.
+[ -n "${DATA_DIR:-}" ] && EXTRA+=(--data_dir "${DATA_DIR}")
 [ -n "${CODEC_TMPL}" ] && EXTRA+=(--codec_tmpl "${CODEC_TMPL}")
 [ -n "${N_HEADS}" ] && EXTRA+=(--n_heads "${N_HEADS}")
 [ -n "${K0}" ] && EXTRA+=(--k0_seed "${K0}")
