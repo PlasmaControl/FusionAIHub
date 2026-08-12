@@ -69,6 +69,12 @@ FIG_SLOWTS = _fig_sel("IGNITE_FIG_SLOWTS",
 import os as _os
 FIG_W_IN = float(_os.environ.get("IGNITE_FIG_WIDTH_IN", "6.5"))
 FIG_PT = float(_os.environ.get("IGNITE_FIG_FONT_PT", "12"))
+# Colour maps (user 2026-08-12): spectrograms in a colourblind-safe sequential scheme,
+# video in greyscale (raw camera counts read naturally as luminance), differences on a
+# diverging map centred at zero. Overridable per-run via env.
+CMAP_SPECTRO = _os.environ.get("IGNITE_CMAP_SPECTRO", "Blues")
+CMAP_VIDEO = _os.environ.get("IGNITE_CMAP_VIDEO", "gray")
+CMAP_DIFF = _os.environ.get("IGNITE_CMAP_DIFF", "RdBu_r")
 FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
 
 _DEFAULT_CACHE = "/lustre/orion/fus187/proj-shared/models/ignite_frame_codes"
@@ -261,8 +267,83 @@ def _nrmse(pred: np.ndarray, gt: np.ndarray) -> float:
 
 
 @torch.no_grad()
+def raw_to_output_space(fam: str, raw, denorm_fn=None, mask=None) -> np.ndarray:
+    """Map a codec's RAW INPUT window into the SAME space as the denormalized decode.
+
+    The families do NOT agree on what their dataset hands back, so a single rule silently
+    corrupts two of them (measured on shot 200729, per-family pre-denorm ranges):
+
+      video   : raw is ALREADY physical camera counts (16 … 235, std 48) while the decode is
+                standardized (std ~1). Applying the decode's denorm to raw inflated it to
+                65 … 17 400 — a ~60x error that blew out the shared colour limits and made
+                the correctly-scaled prediction render as SOLID BLACK.
+      slow-TS : raw is standardized, same space as the decode -> denorm applies. But raw also
+                carries MISSING-DATA sentinels the codec smooths away (min -5.66 vs decoded
+                -4.47); left in, a fully-missing channel plots as a flat line and can win the
+                "most variable channel" pick.
+      spectro : raw is instance-normalized and denorm maps it correctly (denormed raw vs
+                decode: mean -1.217 vs -1.212, std 1.03 vs 1.15).
+
+    ``mask`` (True = valid) is applied as NaN so missing samples are neither plotted nor
+    scored; the renderer and _nrmse both treat NaN as absent.
+    """
+    a = np.asarray(raw, dtype=np.float32)
+    if mask is not None:
+        m = np.asarray(mask)
+        if m.shape == a.shape:
+            a = np.where(m.astype(bool), a, np.nan)
+        elif m.shape == a.shape[:m.ndim]:                 # per-frame / per-channel mask
+            a = np.where(m.astype(bool).reshape(m.shape + (1,) * (a.ndim - m.ndim)), a, np.nan)
+    if fam == "video":
+        return a                                          # already raw camera counts
+    return np.asarray(denorm_fn(a), dtype=np.float32) if denorm_fn else a
+
+
+@torch.no_grad()
+def load_raw_gt(shot: str, codecs: Dict, F: int, data_dir, t0_start: float = 1.0,
+                denorm: Dict = None, log=print) -> Dict[str, np.ndarray]:
+    """The MEASURED input signal per modality, (F, ...) — NOT the codec round-trip.
+
+    The figure's reference should be the diagnostic as recorded, so the panels show what the
+    model predicts against REALITY rather than against a reconstruction (user 2026-08-12).
+    This is the same tensor the precompute encodes, taken straight from the codec's input
+    dataset and never passed through encode/decode, so the GT-vs-pred difference now contains
+    the codec's reconstruction error as well as the dynamics error — the honest end-to-end
+    quantity.
+
+    ``t0_start`` MUST match the cache's ``_codec_manifest.json``: it sets the window origin,
+    and a mismatch silently shifts the raw frames against the codes (the probe and production
+    caches differ by exactly 20 frames for this reason).
+    """
+    from .train_dynamics import _single_shot_dataset
+    out = {}
+    for name, (_codec, cfg, fam) in codecs.items():
+        try:
+            ds = _single_shot_dataset(name, fam, cfg, shot, data_dir, t0_start=t0_start)
+            if len(ds) < F:
+                log(f"[eval] raw GT {name}@{shot}: only {len(ds)} frames < {F}; skipping")
+                continue
+            frames, masks = [], []
+            for t in range(F):
+                item = ds[t]
+                x = item[0] if isinstance(item, tuple) else item
+                frames.append(np.asarray(x, dtype=np.float32))
+                if isinstance(item, tuple) and len(item) > 1 and fam in ("video", "slowts"):
+                    masks.append(np.asarray(item[1]))
+            arr = np.stack(frames, 0)
+            msk = np.stack(masks, 0) if masks else None
+            # Family-specific mapping into the decode's output space (see raw_to_output_space):
+            # video raw is already physical, the others need the denorm, and missing samples
+            # become NaN so they are neither plotted nor scored.
+            out[name] = raw_to_output_space(fam, arr, denorm_fn=(denorm or {}).get(name),
+                                            mask=msk)
+        except Exception as e:                       # a missing diagnostic must not kill the eval
+            log(f"[eval] raw GT {name}@{shot} unavailable ({type(e).__name__}: {e})")
+    return out
+
+
 def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, device,
-               denorm: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
+               denorm: Dict = None, raw_gt: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
     """Decode BOTH gt + pred codes for every EVAL modality over the FULL window [0, F).
 
     The seed region [0, K0) is included (pred codes == real codes there) so the figure can show
@@ -291,12 +372,47 @@ def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, 
         # stats treatment the prediction gets (fair comparison; see decode_all docstring).
         pers1 = decode_flat_chunked(codec, gt_codes[name][K0 - 1:K0], device)
         pers = np.repeat(pers1, F, axis=0)
+        # GROUND TRUTH = the MEASURED input when available (user 2026-08-12), falling back to
+        # the codec round-trip. Both live in the same normalized space (the codec is an
+        # autoencoder), so the shared denorm below applies unchanged. Swapping the reference
+        # also moves the metrics: nrmse/persistence/skill are now measured against reality,
+        # so they include codec reconstruction error and are NOT comparable to numbers from
+        # runs that scored against the decoded GT.
+        # raw_gt entries arrive ALREADY in the output space (see raw_to_output_space) — the
+        # per-family conversion cannot live here because it needs the mask and the family's
+        # own denorm. So denorm applies to the decode path only.
+        gt_src = "decoded"
         space = "normalized"
         if denorm and name in denorm:
             gt, pred, pers = denorm[name](gt), denorm[name](pred), denorm[name](pers)
             space = "physical"
+        # Shapes must be compared AFTER denorm: the slow-TS inverse DROPS the padded
+        # radial-zone tail, so the decoded array narrows (12 -> 10 channels) partway through.
+        # Comparing before denorm padded the raw window to the pre-denorm width and produced a
+        # 12-vs-10 mismatch at the nRMSE.
+        if raw_gt and name in raw_gt and raw_gt[name].shape != gt.shape:
+            r = np.asarray(raw_gt[name], dtype=np.float32)
+            if (r.ndim == gt.ndim and r.shape[0] == gt.shape[0]
+                    and r.shape[2:] == gt.shape[2:] and r.shape[1] < gt.shape[1]):
+                # measured signal narrower than the decode -> NaN-pad; NaN already reads as
+                # "absent" to the renderer and _nrmse, so the pad is ignored, not scored.
+                pad = np.full((r.shape[0], gt.shape[1] - r.shape[1]) + r.shape[2:],
+                              np.nan, dtype=np.float32)
+                raw_gt = {**raw_gt, name: np.concatenate([r, pad], axis=1)}
+            elif r.shape[1] > gt.shape[1] and r.shape[0] == gt.shape[0] \
+                    and r.shape[2:] == gt.shape[2:]:
+                raw_gt = {**raw_gt, name: r[:, :gt.shape[1]]}      # drop the same tail
+        use_raw = bool(raw_gt) and name in raw_gt and raw_gt[name].shape == gt.shape
+        if raw_gt and name in raw_gt and not use_raw:
+            # a shape disagreement we cannot reconcile means the raw window and the codes are
+            # not aligned; using it would silently compare different things.
+            print(f"[eval] raw GT {name}: shape {raw_gt[name].shape} != decoded {gt.shape}"
+                  " — falling back to the decoded round-trip", flush=True)
+        if use_raw:
+            gt, gt_src = np.asarray(raw_gt[name], dtype=np.float32), "measured"
         nr, nr_p = _nrmse(pred[K0:], gt[K0:]), _nrmse(pers[K0:], gt[K0:])
-        out[name] = {"gt": gt, "pred": pred, "nrmse": nr, "nrmse_persistence": nr_p,
+        out[name] = {"gt": gt, "pred": pred, "gt_source": gt_src,
+                     "nrmse": nr, "nrmse_persistence": nr_p,
                      # skill > 0 => better than freezing; 1.0 => perfect; < 0 => worse
                      "nrmse_skill": (1.0 - nr / nr_p) if nr_p > 0 else float("nan"),
                      "family": fam, "space": space}
@@ -304,19 +420,46 @@ def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, 
 
 
 def self_check(decoded: Dict[str, Dict[str, np.ndarray]]) -> None:
-    """Guard a broken decode path: GT must be finite + non-constant for spectro + slowts modalities."""
-    checked = 0
+    """Guard a broken DECODE path: decoded GT must be finite + non-constant (spectro/slowts).
+
+    The non-constant invariant holds for the codec ROUND-TRIP only. With measured ground truth
+    (``gt_source == "measured"``) a constant is LEGITIMATE — it is exactly what an absent
+    diagnostic looks like, and ~37% of (shot, modality) pairs are absent in this dataset. So a
+    constant measured signal is reported, not asserted on; the static screening downstream
+    (see curate_core / the presence map) is what handles those. Asserting here killed eval
+    5245138 on the first val shot, where ece simply was not recorded.
+    """
+    checked, constant_measured = 0, []
     for name, d in decoded.items():
         if d["family"] not in ("spectro", "slowts"):
             continue
         gt = d["gt"]
-        assert np.isfinite(gt).any(), f"[self-check] {name}: decoded GT has NO finite values"
+        measured = d.get("gt_source") == "measured"
         finite = gt[np.isfinite(gt)]
-        assert finite.size and float(finite.std()) > 0.0, \
-            f"[self-check] {name}: decoded GT is constant (std=0) — broken decode path"
-        checked += 1
-    assert checked > 0, "[self-check] no spectro/slowts modalities decoded — nothing to validate"
-    print(f"[self-check] OK: {checked} spectro/slowts GT decodes are finite + non-constant", flush=True)
+        if not finite.size:
+            # ALL-NaN measured GT = the diagnostic recorded nothing in this shot (missing
+            # samples are masked to NaN by raw_to_output_space). Legitimate, and downstream
+            # already treats it as absent: _nrmse returns NaN and the curve/figure filter it.
+            # An all-NaN DECODED array is still a genuine fault.
+            if measured:
+                constant_measured.append(f"{name}(all-missing)")
+                continue
+            raise AssertionError(f"[self-check] {name}: DECODED GT has NO finite values")
+        if float(finite.std()) > 0.0:
+            checked += 1
+            continue
+        if d.get("gt_source") == "measured":
+            constant_measured.append(name)          # absent diagnostic — expected, not a fault
+            continue
+        raise AssertionError(
+            f"[self-check] {name}: DECODED GT is constant (std=0) — broken decode path")
+    assert checked > 0 or constant_measured, \
+        "[self-check] no spectro/slowts modalities decoded — nothing to validate"
+    msg = f"[self-check] OK: {checked} spectro/slowts GT are finite + non-constant"
+    if constant_measured:
+        msg += (f"; {len(constant_measured)} constant because the diagnostic is ABSENT in this "
+                f"shot ({', '.join(sorted(constant_measured))})")
+    print(msg, flush=True)
 
 
 # --------------------------------------------------------------------------------------------- #
@@ -581,7 +724,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         if not _spec_ref:
             _spec_ref.append(ax_g)
         for ax, img in ((ax_g, g_img), (ax_p, p_img)):
-            ax.imshow(img, aspect="auto", origin="lower", cmap="viridis", vmin=vmin,
+            ax.imshow(img, aspect="auto", origin="lower", cmap=CMAP_SPECTRO, vmin=vmin,
                       vmax=vmax, extent=ext, interpolation="none")
             ax.axvline(t_roll, color="w", ls="--", lw=0.9)
             ax.set_xlim(t0, t1)
@@ -654,9 +797,9 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         cax_p = fig.add_subplot(inner[2])
         ax_d = fig.add_subplot(inner[3])
         cax_d = fig.add_subplot(inner[4])
-        ax_g.imshow(img_g, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
-        im_p = ax_p.imshow(img_p, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
-        im_d = ax_d.imshow(diff, cmap="RdBu_r", vmin=-dmax, vmax=dmax, aspect="auto")
+        ax_g.imshow(img_g, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
+        im_p = ax_p.imshow(img_p, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
+        im_d = ax_d.imshow(diff, cmap=CMAP_DIFF, vmin=-dmax, vmax=dmax, aspect="auto")
         _fg = img_g[np.isfinite(img_g)]
         _rel = float(np.nanmax(np.abs(diff))) / (float(np.std(_fg)) + 1e-12) if _fg.size else float("nan")
         ax_d.text(0.02, 0.04, f"max |diff| = {_rel:.2f}" + r"$\,\sigma_{GT}$",
@@ -775,6 +918,27 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         shot = ",".join(val[-val_tail:])
         log(f"[eval] val_tail={val_tail} -> shots: {shot}", flush=True)
 
+    # RAW-GT reference (user 2026-08-12). t0_start MUST come from the cache manifest: it fixes
+    # the window origin, and reading raw frames on a different origin would shift them against
+    # the codes (probe vs production caches differ by exactly 20 frames). If the manifest does
+    # not record it, fall back to the historical 1.0 default.
+    import os as _o2
+    from . import spike as _spike
+    use_raw_gt = _o2.environ.get("IGNITE_EVAL_RAW_GT", "1") != "0"
+    data_dir = _o2.environ.get("IGNITE_DATA_DIR") or _spike.DEFAULT_DATA_DIR
+    cache_t0 = 1.0
+    _man = Path(cache_dir) / "_codec_manifest.json"
+    if _man.exists():
+        try:
+            cache_t0 = float(json.loads(_man.read_text()).get("t0_start", 1.0))
+        except Exception:
+            pass
+    if use_raw_gt:
+        log(f"[eval] GROUND TRUTH = measured input (t0_start={cache_t0} from the cache "
+            f"manifest); metrics therefore include codec reconstruction error and are NOT "
+            f"comparable to decoded-GT runs. Set IGNITE_EVAL_RAW_GT=0 for the old behaviour.",
+            flush=True)
+
     repo = Path.cwd()
     model, cfg, step = load_model(Path(ckpt), device)
     K0_req = int(k0) if k0 else cfg.k0_seed
@@ -835,7 +999,9 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         # scores ~0.58 slow-TS on held-out shots) — report the SKILL, not the raw number.
         pers_acc = {n: float((gt_codes[n][K0:F] == gt_codes[n][K0 - 1:K0]).float().mean())
                     for n in gt_codes}
-        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device)
+        raw = load_raw_gt(sh, codecs, F, data_dir, t0_start=cache_t0, log=log) \
+            if use_raw_gt else None
+        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw)
         if si == 0:
             self_check(decoded)
         entry = {"token_accuracy": tok_acc,
@@ -893,9 +1059,24 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
 
     # aggregate means across shots (per modality)
     def _mean(field):
+        # NAN-AWARE: with measured GT an ABSENT diagnostic yields NaN for that (shot, modality)
+        # — a plain mean then poisons the whole modality (measured: 5/11 mean_nrmse came back
+        # NaN because each was missing in at least one of 16 shots). Average the shots where
+        # the modality was actually recorded; NaN only if it was recorded nowhere.
         keys = set().union(*(per_shot[s][field] for s in per_shot))
-        return {k: float(np.mean([per_shot[s][field][k] for s in per_shot
-                                  if k in per_shot[s][field]])) for k in sorted(keys)}
+        out = {}
+        for k in sorted(keys):
+            vals = [per_shot[s][field][k] for s in per_shot if k in per_shot[s][field]]
+            fin = [v for v in vals if v == v]                  # drop NaN
+            out[k] = float(np.mean(fin)) if fin else float("nan")
+        return out
+
+    def _n_scored(field):
+        """How many shots actually contributed to each modality's mean (provenance for _mean)."""
+        keys = set().union(*(per_shot[s][field] for s in per_shot))
+        return {k: int(sum(1 for s in per_shot
+                           if k in per_shot[s][field] and per_shot[s][field][k] == per_shot[s][field][k]))
+                for k in sorted(keys)}
     metrics = {"ckpt": str(ckpt), "step": step, "temperature": temperature,
                "seed": int(seed), "codec_tmpl": codec_tmpl, "n_shots": len(per_shot),
                "shots": sorted(per_shot), "mean_token_accuracy": _mean("token_accuracy"),
@@ -905,6 +1086,9 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                "mean_token_accuracy_skill": _mean("token_accuracy_skill"),
                "mean_nrmse_persistence": _mean("nrmse_persistence"),
                "mean_nrmse_skill": _mean("nrmse_skill"),
+               # shots contributing to each nRMSE mean — a modality present in only a few
+               # shots has a far noisier mean, and that must be visible in the record.
+               "n_shots_scored_nrmse": _n_scored("nrmse"),
                "per_shot": per_shot}
     with open(out / "eval_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
