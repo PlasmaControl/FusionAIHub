@@ -572,10 +572,21 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
     video = [n for n in VIDEO if n in decoded]
     slowts = [n for n in FIG_SLOWTS if n in decoded]
     static = {n: _is_static(decoded[n]["gt"]) for n in decoded}
-    dyn_slow = [n for n in slowts if not static[n]]
-    dyn_spec = [n for n in spectro if not static[n]]
-    dyn_vid = [n for n in video if not static[n]]
-    statics = [n for n in EVAL_MODALITIES if n in decoded and static[n]]
+    # FIXED LAYOUT (2026-08-12). The row set is a property of the FIGURE, not of the shot.
+    # Static modalities used to be pulled out of their row into a compact 3-across block at the
+    # bottom, so the row count, row order and page height all changed with whichever diagnostics
+    # happened to be flat in that shot — measured on the production eval list: 8 distinct
+    # availability patterns across 10 shots, i.e. 8 structurally different figures. Comparing
+    # panels ACROSS shots is the point of this figure (seen vs unseen discharges), and that
+    # requires panel k to be the same modality in every render. Every selected modality now
+    # keeps its own row in a fixed order; a static one still draws (a flat trace / constant
+    # image is the honest picture) and is marked STATIC in its ylabel by _static_ylab.
+    dyn_slow, dyn_spec, dyn_vid = slowts, spectro, video
+    statics: list = []                            # compact static block retired by the above
+
+    def _static_ylab(name: str, lab: str) -> str:
+        """Keep the collapsed-modality signal that the retired static block used to carry."""
+        return f"{lab}  [STATIC]" if static.get(name) else lab
     any_phys = any(d.get("space") == "physical" for d in decoded.values())
     unit = "phys" if any_phys else "norm"
 
@@ -687,7 +698,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
             legend_host = ax
         # single-line ylabel (two-line labels bleed into neighbor rows on the one-page
         # canvas); the channel tag rides with the nRMSE corner annotation instead.
-        ax.set_ylabel(ylab)
+        ax.set_ylabel(_static_ylab(name, ylab))
         sk = d.get("nrmse_skill")
         corner = (f"{tag} ch{bc:02d} · nRMSE {d['nrmse']:.3f}"
                   + (f" · skill {sk:+.2f}" if sk is not None and np.isfinite(sk) else "")).lstrip()
@@ -735,7 +746,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         from matplotlib.ticker import MaxNLocator
         ax_g.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))  # no "1.00.0"
         ax_p.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
-        ax_g.set_ylabel(f"{name}\nFreq (kHz)")
+        ax_g.set_ylabel(_static_ylab(name, f"{name}\nFreq (kHz)"))
         _r, _sk = _corr(d["pred"][K0:], d["gt"][K0:]), d.get("nrmse_skill")
         ax_p.text(0.98, 0.94, f"r {_r:.3f} · nRMSE {d['nrmse']:.3f}"
                   + (f" · skill {_sk:+.2f}" if _sk is not None and np.isfinite(_sk) else ""),
@@ -807,7 +818,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
                   color="0.2")
         for a in (ax_g, ax_p, ax_d):
             a.set_xticks([]); a.set_yticks([])
-        ax_g.set_ylabel(name.replace("tangtv_", "tangtv\n") + " divertor")
+        ax_g.set_ylabel(_static_ylab(name, name.replace("tangtv_", "tangtv\n") + " divertor"))
         _rv, _skv = _corr(pr[K0:], gt[K0:]), d.get("nrmse_skill")
         ax_p.text(0.99, 0.04, f"r {_rv:.3f} · nRMSE {d['nrmse']:.3f}"
                   + (f" · skill {_skv:+.2f}" if _skv is not None and np.isfinite(_skv) else ""),
@@ -999,6 +1010,22 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         # scores ~0.58 slow-TS on held-out shots) — report the SKILL, not the raw number.
         pers_acc = {n: float((gt_codes[n][K0:F] == gt_codes[n][K0 - 1:K0]).float().mean())
                     for n in gt_codes}
+        # RE-RENDER WITHOUT RE-ROLLING-OUT (2026-08-12). The figure design is still in flux, and a
+        # render iteration must not cost a fresh rollout — 80 generated frames x 10 MaskGIT decode
+        # steps per shot, and by then dynamics_latest.pt has advanced several chain legs, so the
+        # "new" figure would show a DIFFERENT model than the one it is being compared with.
+        # Codes are the compact, decoder-independent state (~640 KB per shot per side), so archive
+        # them beside the metrics: any later render decodes from these in seconds, pinned to
+        # exactly this checkpoint. Ranks never collide — the filename carries shot and step.
+        try:
+            np.savez_compressed(
+                Path(out_dir) / f"codes_{sh}_step{step}.npz",
+                K0=np.int32(K0), F=np.int32(F), step=np.int32(step), shot=str(sh),
+                temperature=np.float32(temperature),
+                **{f"gt__{n}": v.cpu().numpy().astype(np.int32) for n, v in gt_codes.items()},
+                **{f"pred__{n}": v.cpu().numpy().astype(np.int32) for n, v in pred_codes.items()})
+        except Exception as e:                   # archiving must never take an eval down with it
+            log(f"[eval] WARNING: could not archive codes for {sh}: {type(e).__name__}: {e}")
         raw = load_raw_gt(sh, codecs, F, data_dir, t0_start=cache_t0, log=log) \
             if use_raw_gt else None
         decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw)
