@@ -23,7 +23,10 @@ from tokamak_foundation_model.e2e.model import DiagnosticConfig
 VIDEO_MODALITIES: List[
     Tuple[str, int, int, Tuple[int, int], Tuple[int, int, int]]
 ] = [
-    ("tangtv", 7, 3, (120, 360), (3, 12, 12)),
+    # tangtv split into two divertor views, each its own tokenizer+head.
+    # Live channels only (ch1/3/5 dead): lower={ch0,ch2}, upper={ch4,ch6}.
+    ("tangtv_lower", 2, 3, (120, 360), (3, 12, 12)),
+    ("tangtv_upper", 2, 3, (120, 360), (3, 12, 12)),
 ]
 
 # Spectrogram modality registry. STFT shape fixed by the data loader

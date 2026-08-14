@@ -36,7 +36,7 @@ dependencies = [
   "pytest>=9.0.2,<10",
   "tensorboard>=2.20.0,<3",
   "wandb>=0.25.1,<0.26",
-  "hydra-core",
+  "hydra-core", "vector-quantize-pytorch>=1.31.0,<2", "x-transformers>=2.23.5,<3",
 ]
 dynamic = ["version"]
 

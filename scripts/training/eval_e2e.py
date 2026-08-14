@@ -272,6 +272,38 @@ def make_rollout_if_needed(
     return TokenSpaceRollout(model, dt_s=chunk_duration_s)
 
 
+_EVAL_BG_FN = None
+
+
+def _eval_bg_residual_fn():
+    global _EVAL_BG_FN
+    if _EVAL_BG_FN is None:
+        import os
+        import sys
+        d = os.path.dirname(os.path.abspath(__file__))
+        if d not in sys.path:
+            sys.path.insert(0, d)
+        from spectro_bg import baseline_residual_torch
+        _EVAL_BG_FN = baseline_residual_torch
+    return _EVAL_BG_FN
+
+
+def _eval_spectro_bg_split(model, name, x):
+    """Residual split R = x - B for a residual-codec spectro modality, else x.
+
+    Mirrors ``train_e2e_stage1.forward_batch`` so eval feeds the residual model
+    the SAME R-space it trained in. Residual behavior is self-declared by the
+    frozen codec (``SpectrogramCodeHead.bg_subtract``); raw codecs → no-op, so
+    non-residual renders stay byte-identical."""
+    core = getattr(model, "module", model)
+    heads = getattr(core, "diag_heads", {})
+    head = heads[name] if name in heads else None
+    if not getattr(head, "bg_subtract", False):
+        return x
+    _, R = _eval_bg_residual_fn()(x, float(getattr(head, "bg_sigma", 8.0)))
+    return R
+
+
 @torch.no_grad()
 def rollout_forward_one_batch(
     model: E2EFoundationModel,
@@ -280,6 +312,11 @@ def rollout_forward_one_batch(
     device: torch.device,
     K: int,
     chunk_duration_s: float,
+    act_perturb: Optional[Dict[str, float]] = None,
+    collect_token_slices: bool = False,
+    return_result: bool = False,
+    feedback_mode: str = "continuous",
+    feedback_temperature: float = 1.0,
 ) -> Tuple[
     List[Dict[str, torch.Tensor]],            # predictions_per_k (length K)
     Dict[str, torch.Tensor],                   # diag_initial (step-0 inputs)
@@ -310,6 +347,8 @@ def rollout_forward_one_batch(
         if cfg.kind == "video":
             cleaned, mu, sd = _video_standardize_per_bc(cleaned)
             video_stats[name] = (mu, sd)
+        elif cfg.kind == "spectrogram":
+            cleaned = _eval_spectro_bg_split(model, name, cleaned)
         diag_initial[name] = cleaned
         if cfg.kind in ("video", "spectrogram"):
             valid_key = f"{name}_valid"
@@ -333,7 +372,7 @@ def rollout_forward_one_batch(
     for name in spectro_diags:
         raw = batch["targets"][name].to(device, non_blocking=True).float()
         cleaned, _ = _clean_and_mask(raw, None)
-        spectro_target_full[name] = cleaned
+        spectro_target_full[name] = _eval_spectro_bg_split(model, name, cleaned)
         spectro_gate[name] = _spectro_loss_gate(name, batch, device)
         spectro_trunc[name] = _spectro_trunc_t(cfg_by_name[name])
 
@@ -347,6 +386,10 @@ def rollout_forward_one_batch(
             raw = batch["targets"][name].to(device, non_blocking=True).float()
             slc = split_target_by_step(raw, name, K, chunk_duration_s)[k]
             cleaned, _ = _clean_and_mask(slc, None)
+            if act_perturb and name in act_perturb:
+                # GATE-4 counterfactual: sustained +Δ (raw units, pre-tokenizer) each rollout step,
+                # matching the ACT_CF single-step convention. Default None → byte-identical rollout.
+                cleaned = cleaned + float(act_perturb[name])
             act_k[name] = cleaned
         act_per_step.append(act_k)
 
@@ -382,9 +425,13 @@ def rollout_forward_one_batch(
         mask_per_step.append(mk_k)
 
     # Forward.
+    _result = None
     if rollout is not None and K > 1:
-        result = rollout(diag_initial, act_per_step, collect_history=False)
+        result = rollout(diag_initial, act_per_step, collect_history=False,
+                         collect_token_slices=collect_token_slices,
+                         feedback_mode=feedback_mode, feedback_temperature=feedback_temperature)
         predictions_per_k = result.predictions
+        _result = result
     else:
         batch_size = next(iter(diag_initial.values())).shape[0]
         step_idx = torch.zeros(batch_size, dtype=torch.long, device=device)
@@ -402,6 +449,8 @@ def rollout_forward_one_batch(
                     predictions_per_k[k][name].permute(0, 2, 1, 3, 4)
                 )
 
+    if return_result:
+        return predictions_per_k, diag_initial, target_per_step, mask_per_step, _result
     return predictions_per_k, diag_initial, target_per_step, mask_per_step
 
 
@@ -425,6 +474,8 @@ def forward_one_batch(
         if cfg.kind == "video":
             cleaned, mu, sd = _video_standardize_per_bc(cleaned)
             video_stats[cfg.name] = (mu, sd)
+        elif cfg.kind == "spectrogram":
+            cleaned = _eval_spectro_bg_split(model, cfg.name, cleaned)
         diag_inputs[cfg.name] = cleaned
         if cfg.kind == "video":
             valid_key = f"{cfg.name}_valid"

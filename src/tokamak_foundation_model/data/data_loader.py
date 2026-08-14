@@ -335,7 +335,7 @@ class TokamakH5Dataset(Dataset):
             12,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="log_standardize"),  # GATE3-FIX 2026-07-14: was "none"; raw ~1e5 all-positive power = DEAD actuator (Gate 3); log stats sparsity-correct.
         ),
         SignalConfig(
             "ech_tor_angle",
@@ -516,7 +516,7 @@ class TokamakH5Dataset(Dataset):
             12,
             10e3,
             apply_stft=False,
-            preprocess=PreprocessConfig(method="none"),
+            preprocess=PreprocessConfig(method="none"),  # GATE3-FIX 2026-07-14: LEFT RAW. rmp raw scale is shot-dependent (578 vs ~1e5 — DIII-D coil-current unit/convention mix across eras); stored stats unit-mismatch the H5 so a single global standardize does NOT give clean O(1). Proper fix = per-era unit reconciliation at extraction (data-pipeline item, deferred). Excluded from causal claims this run. CAUTION: raw ~1e5 in some shots = numerically-loud input; if training instability / regression shifts, rmp saturation is first suspect (opposite of ech_power's deadness).
         ),
         SignalConfig(
             "mirnov",
@@ -555,9 +555,26 @@ class TokamakH5Dataset(Dataset):
 
     MOVIE_CONFIGS = [
         MovieConfig("irtv", ["irtv"], 7, 100, 513, 640),
+        # Original single 7-channel tangtv — KEPT for backward compatibility
+        # with models trained before the divertor split (e.g. the digital-twin's
+        # old Stage-2 d1024/48L model, which expects a "tangtv" diagnostic and
+        # slices channels via video_channels_override). The dataset only emits
+        # the movies a run requests (input_signals), so keeping this alongside
+        # the split adds no cost to runs that don't ask for it.
+        MovieConfig("tangtv", ["tangtv"], 7, 100, 120, 360, n_output_frames=3),
+        # tangtv split into the two physically-distinct divertor views (each
+        # gets its OWN encoder/decoder downstream). Only the channels that are
+        # ever LIVE are kept — a full-dataset scan (video_channel_liveness.pt)
+        # showed ch1/ch3/ch5 are NaN (off) in ALL 8753 shots. Live cameras:
+        # LOWER = ch0 (LODIV PAR-int) + ch2 (LODIV PERP); UPPER = ch4 (UPDIV0
+        # PERP) + ch6 (UPDIV0 PAR). Both read the same "tangtv" HDF5 group.
         MovieConfig(
-            "tangtv", ["tangtv"], 7, 100, 120, 360,
-            n_output_frames=3,
+            "tangtv_lower", ["tangtv"], 2, 100, 120, 360,
+            channels_to_use=[0, 2], n_output_frames=3,
+        ),
+        MovieConfig(
+            "tangtv_upper", ["tangtv"], 2, 100, 120, 360,
+            channels_to_use=[4, 6], n_output_frames=3,
         ),
     ]
 
@@ -573,6 +590,7 @@ class TokamakH5Dataset(Dataset):
             prediction_horizon_s: float = 0.2,
             input_signals: Optional[list[str]] = None,
             target_signals: Optional[list[str]] = None,
+            history_windows: int = 1,
     ):
         # Make instance-level copies to avoid class-level mutation
         self.signal_configs = copy.deepcopy(self.SIGNAL_CONFIGS)
@@ -590,6 +608,10 @@ class TokamakH5Dataset(Dataset):
         # Prediction settings
         self.prediction_mode = prediction_mode
         self.prediction_horizon_s = prediction_horizon_s
+        # history_windows K>1: return K consecutive input windows (each
+        # chunk_duration_s) + the next-window target, for the multi-window
+        # temporal backbone. Default 1 = single input window (unchanged).
+        self.history_windows = int(history_windows)
         self.input_signals = input_signals or ["ece", "co2", "mhr"]
         self.target_signals = (
                 target_signals or ["mse", "ts_core_density"])
@@ -608,7 +630,8 @@ class TokamakH5Dataset(Dataset):
         self.duration = min(duration, max_duration_s)
         # In prediction mode, reduce length to ensure extended window fits
         if self.prediction_mode:
-            total_window = self.chunk_duration_s + self.prediction_horizon_s
+            total_window = (self.history_windows * self.chunk_duration_s
+                            + self.prediction_horizon_s)
             max_time = self.duration - total_window
             self.length = max(
                 1, int(np.floor(max_time / self.chunk_duration_s)))
@@ -1206,6 +1229,39 @@ class TokamakH5Dataset(Dataset):
         """Restore state after unpickling."""
         self.__dict__.update(state)
 
+    # Thomson (ts_*) has spontaneous SINGLE-SAMPLE zero outliers (a lone time
+    # sample drops to ~0 with valid neighbors either side). These are glitches,
+    # not physics — repaired by temporal interpolation. ONLY ts_* (NOT cer/mse,
+    # whose zeros are genuine sparsity, and NOT the whole-profile pre/post-plasma
+    # gaps, which are left as-is).
+    _TS_ZERO_SPIKE_MODALITIES = frozenset({
+        "ts_core_density", "ts_core_temp",
+        "ts_tangential_density", "ts_tangential_temp",
+    })
+
+    def _interp_ts_zero_spikes(self, data: torch.Tensor, zero_frac: float = 1e-3
+                               ) -> torch.Tensor:
+        """Repair ISOLATED single-sample ZEROS (or essentially-zero values) on RAW
+        (C, T) ts_* data, before standardization.
+
+        A sample is a ZERO iff ``|value| < zero_frac x`` the channel's positive
+        median — i.e. essentially zero *in its own right* (real TS values are orders
+        of magnitude larger; this is NOT a comparison to the neighbours). If such a
+        zero is ISOLATED — both temporal neighbours are themselves non-zero — it is
+        replaced by the mean of the neighbours. Nothing else is touched: a genuinely
+        low-but-real value is NOT a zero and is left alone; multi-sample zero runs,
+        whole-profile gaps, and physical edge zeros are untouched."""
+        if data.ndim != 2 or data.shape[-1] < 3:
+            return data
+        x = data.clone()
+        pos = torch.where(x > 0, x, torch.nan)
+        med = torch.nanmedian(pos, dim=1, keepdim=True).values          # (C,1) channel scale
+        floor = zero_frac * torch.nan_to_num(med, nan=0.0)              # (C,1) "essentially zero"
+        is_zero = x.abs() < floor                                       # (C,T)
+        iso = is_zero[:, 1:-1] & (~is_zero[:, :-2]) & (~is_zero[:, 2:])  # lone zero, valid neighbours
+        x[:, 1:-1] = torch.where(iso, 0.5 * (x[:, :-2] + x[:, 2:]), x[:, 1:-1])
+        return x
+
     def _process_signal(
             self,
             data: torch.Tensor,
@@ -1273,6 +1329,11 @@ class TokamakH5Dataset(Dataset):
         else:
             processed = data
             valid_length_out = valid_length
+
+        # ts_* only: repair isolated single-sample zero glitches by temporal
+        # interpolation, in raw space before standardization.
+        if not config.apply_stft and config.name in self._TS_ZERO_SPIKE_MODALITIES:
+            processed = self._interp_ts_zero_spikes(processed)
 
         processed = self._apply_preprocessing(processed, config)
 
@@ -1613,7 +1674,9 @@ class TokamakH5Dataset(Dataset):
         step = getattr(self, "step_size_s", self.chunk_duration_s)
         warmup = getattr(self, "warmup_s", 0.0)
         t_start = warmup + idx * step
-        t_end = t_start + self.chunk_duration_s + self.prediction_horizon_s
+        # history_windows K: load K input windows + the horizon target.
+        t_end = (t_start + self.history_windows * self.chunk_duration_s
+                 + self.prediction_horizon_s)
 
         signals_to_load = set(self.input_signals) | set(self.target_signals)
 
@@ -1694,13 +1757,22 @@ class TokamakH5Dataset(Dataset):
 
             valid_key = f"{config.name}_valid"
             valid_val = all_signals.get(valid_key, 0)
+            K = self.history_windows
 
             if config.name in self.input_signals:
-                inputs[config.name] = signal[..., :n_training_frames]
+                if K > 1:
+                    # First K windows → stack on a new leading window axis
+                    # (K, C, ..., n_frames); collate makes it (B, K, C, ...).
+                    inputs[config.name] = torch.stack(
+                        [signal[..., k * n_training_frames:(k + 1) * n_training_frames]
+                         for k in range(K)], dim=0)
+                else:
+                    inputs[config.name] = signal[..., :n_training_frames]
                 inputs[valid_key] = valid_val
 
             if config.name in self.target_signals:
-                targets[config.name] = signal[..., n_training_frames:]
+                # Target = the window immediately AFTER the K input windows.
+                targets[config.name] = signal[..., K * n_training_frames:]
                 targets[valid_key] = valid_val
 
         # Movies: split along the time dimension (dim 1 of (C, T, H, W))

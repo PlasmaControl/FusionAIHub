@@ -1,0 +1,282 @@
+{
+  "ece": {
+    "task0": {
+      "task": 0,
+      "modality": "ece",
+      "n_mode_free": 20,
+      "false_positives": 0,
+      "fp_rate": 0.0,
+      "fp_peak_bins": [],
+      "patch_f": 8,
+      "fp_near_patch_grid": 0,
+      "verdict": "clean"
+    },
+    "task1": {
+      "task": 1,
+      "modality": "ece",
+      "dim": 48,
+      "L": 16,
+      "n_windows": 4074,
+      "n_mode_pos": 1019,
+      "n_mode_neg": 1019,
+      "per_dim_mean_top1_level": 0.1067918475648421,
+      "per_dim_max_top1_level": 0.12364230486008837,
+      "joint_all": {
+        "tokens": 1564416,
+        "unique": 1535110,
+        "top1": 0.015460082228767796,
+        "top10": 0.01627444362624775,
+        "top100": 0.018144790132547866
+      },
+      "joint_mode_pos": {
+        "tokens": 391296,
+        "unique": 385183,
+        "top1": 0.015625,
+        "top10": 0.015648000490677133,
+        "top100": 0.015878005397448477
+      },
+      "joint_mode_neg": {
+        "tokens": 391296,
+        "unique": 380248,
+        "top1": 0.01532854923127249,
+        "top10": 0.018584396467124634,
+        "top100": 0.026062111547268563
+      },
+      "mode_pixel_tokens": 11628,
+      "background_tokens": 65172,
+      "mode_token_fraction": 0.15140625,
+      "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+      "inv_freq_weight_max": 10.492752584813186,
+      "inv_freq_weight_mean": 1.0,
+      "eff_num_weight_max": 3.9651178121579655,
+      "eff_num_weight_mean": 1.0
+    },
+    "task2": {
+      "task": 2,
+      "modality": "ece",
+      "n_pairs": 10,
+      "forward_pass_rate": 0.0,
+      "inverse_pass_rate": 1.0,
+      "fire_threshold_P75": 3.4860629439353943,
+      "P25": 1.176076591014862,
+      "detector_band_khz": [
+        5,
+        40
+      ],
+      "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+      "verdict": "UNFAITHFUL (<80%)"
+    },
+    "n_windows": 4074,
+    "bg_subtract": true
+  },
+  "co2": {
+    "task0": {
+      "task": 0,
+      "modality": "co2",
+      "n_mode_free": 20,
+      "false_positives": 0,
+      "fp_rate": 0.0,
+      "fp_peak_bins": [],
+      "patch_f": 8,
+      "fp_near_patch_grid": 0,
+      "verdict": "clean"
+    },
+    "task1": {
+      "task": 1,
+      "modality": "co2",
+      "dim": 48,
+      "L": 16,
+      "n_windows": 5455,
+      "n_mode_pos": 1364,
+      "n_mode_neg": 1605,
+      "per_dim_mean_top1_level": 0.2961679345369946,
+      "per_dim_max_top1_level": 0.29656660556064773,
+      "joint_all": {
+        "tokens": 2094720,
+        "unique": 1474827,
+        "top1": 0.2959278567063856,
+        "top10": 0.29593597234952645,
+        "top100": 0.29597893751909565
+      },
+      "joint_mode_pos": {
+        "tokens": 523776,
+        "unique": 523776,
+        "top1": 1.9092130987292278e-06,
+        "top10": 1.9092130987292278e-05,
+        "top100": 0.00019092130987292277
+      },
+      "joint_mode_neg": {
+        "tokens": 616320,
+        "unique": 1,
+        "top1": 1.0,
+        "top10": 1.0,
+        "top100": 1.0
+      },
+      "mode_pixel_tokens": 11896,
+      "background_tokens": 64904,
+      "mode_token_fraction": 0.15489583333333334,
+      "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+      "inv_freq_weight_max": 15.663868048740317,
+      "inv_freq_weight_mean": 1.0,
+      "eff_num_weight_max": 14.784004184914307,
+      "eff_num_weight_mean": 1.0
+    },
+    "task2": {
+      "task": 2,
+      "modality": "co2",
+      "n_pairs": 10,
+      "forward_pass_rate": 0.5,
+      "inverse_pass_rate": 1.0,
+      "fire_threshold_P75": 0.405278742313385,
+      "P25": 0.0,
+      "detector_band_khz": [
+        5,
+        40
+      ],
+      "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+      "verdict": "UNFAITHFUL (<80%)"
+    },
+    "n_windows": 5455,
+    "bg_subtract": true
+  },
+  "bes": {
+    "task0": {
+      "task": 0,
+      "modality": "bes",
+      "n_mode_free": 20,
+      "false_positives": 0,
+      "fp_rate": 0.0,
+      "fp_peak_bins": [],
+      "patch_f": 8,
+      "fp_near_patch_grid": 0,
+      "verdict": "clean"
+    },
+    "task1": {
+      "task": 1,
+      "modality": "bes",
+      "dim": 48,
+      "L": 16,
+      "n_windows": 1610,
+      "n_mode_pos": 403,
+      "n_mode_neg": 403,
+      "per_dim_mean_top1_level": 0.12706543979684265,
+      "per_dim_max_top1_level": 0.13292572463768115,
+      "joint_all": {
+        "tokens": 618240,
+        "unique": 618240,
+        "top1": 1.6174948240165631e-06,
+        "top10": 1.6174948240165633e-05,
+        "top100": 0.0001617494824016563
+      },
+      "joint_mode_pos": {
+        "tokens": 154752,
+        "unique": 154752,
+        "top1": 6.4619520264681555e-06,
+        "top10": 6.461952026468155e-05,
+        "top100": 0.0006461952026468156
+      },
+      "joint_mode_neg": {
+        "tokens": 154752,
+        "unique": 154752,
+        "top1": 6.4619520264681555e-06,
+        "top10": 6.461952026468155e-05,
+        "top100": 0.0006461952026468156
+      },
+      "mode_pixel_tokens": 11356,
+      "background_tokens": 65444,
+      "mode_token_fraction": 0.14786458333333333,
+      "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+      "inv_freq_weight_max": 14.694332276757706,
+      "inv_freq_weight_mean": 1.0,
+      "eff_num_weight_max": 14.390087617070545,
+      "eff_num_weight_mean": 1.0
+    },
+    "task2": {
+      "task": 2,
+      "modality": "bes",
+      "n_pairs": 10,
+      "forward_pass_rate": 1.0,
+      "inverse_pass_rate": 1.0,
+      "fire_threshold_P75": 0.49445436894893646,
+      "P25": 0.2505236491560936,
+      "detector_band_khz": [
+        5,
+        40
+      ],
+      "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+      "verdict": "FAITHFUL"
+    },
+    "n_windows": 1610,
+    "bg_subtract": true
+  },
+  "mhr": {
+    "task0": {
+      "task": 0,
+      "modality": "mhr",
+      "n_mode_free": 20,
+      "false_positives": 0,
+      "fp_rate": 0.0,
+      "fp_peak_bins": [],
+      "patch_f": 8,
+      "fp_near_patch_grid": 0,
+      "verdict": "clean"
+    },
+    "task1": {
+      "task": 1,
+      "modality": "mhr",
+      "dim": 48,
+      "L": 16,
+      "n_windows": 8728,
+      "n_mode_pos": 2182,
+      "n_mode_neg": 5674,
+      "per_dim_mean_top1_level": 0.6538848146570108,
+      "per_dim_max_top1_level": 0.6549744715284143,
+      "joint_all": {
+        "tokens": 3351552,
+        "unique": 1161377,
+        "top1": 0.6534757628704553,
+        "top10": 0.6534838188397495,
+        "top100": 0.6535106720707302
+      },
+      "joint_mode_pos": {
+        "tokens": 837888,
+        "unique": 834924,
+        "top1": 0.003529111289337,
+        "top10": 0.003549400397189123,
+        "top100": 0.0036568133211121296
+      },
+      "joint_mode_neg": {
+        "tokens": 2178816,
+        "unique": 1,
+        "top1": 1.0,
+        "top10": 1.0,
+        "top100": 1.0
+      },
+      "mode_pixel_tokens": 10897,
+      "background_tokens": 65903,
+      "mode_token_fraction": 0.14188802083333332,
+      "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+      "inv_freq_weight_max": 13.79427075164945,
+      "inv_freq_weight_mean": 1.0,
+      "eff_num_weight_max": 9.44893022403066,
+      "eff_num_weight_mean": 1.0
+    },
+    "task2": {
+      "task": 2,
+      "modality": "mhr",
+      "n_pairs": 10,
+      "forward_pass_rate": 1.0,
+      "inverse_pass_rate": 1.0,
+      "fire_threshold_P75": 0.8608256280422211,
+      "P25": 0.0,
+      "detector_band_khz": [
+        5,
+        40
+      ],
+      "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+      "verdict": "FAITHFUL"
+    },
+    "n_windows": 8728,
+    "bg_subtract": true
+  }
+}

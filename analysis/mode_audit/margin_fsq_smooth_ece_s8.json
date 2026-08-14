@@ -1,0 +1,19 @@
+{
+  "codec": "fsq_smooth_ece_s8",
+  "smooth_frames": 8,
+  "L": 16,
+  "dim": 48,
+  "stability_active_exact": 0.4910845458507538,
+  "stability_active_tol1": 0.8796191811561584,
+  "stability_quiescent_exact": 0.5104430317878723,
+  "stability_quiescent_tol1": 0.8923262357711792,
+  "margin_active_median": 0.25667476654052734,
+  "margin_active_frac_lt_0.1": 0.19495144846132897,
+  "margin_quiescent_median": 0.2529870271682739,
+  "margin_quiescent_frac_lt_0.1": 0.19863642939814816,
+  "entropy_bits_mean_all": 3.9042671385724166,
+  "entropy_bits_max": 3.97167430649519,
+  "entropy_bits_mean_active": 3.931660131339443,
+  "entropy_bits_mean_quiescent": 3.8325461661968814,
+  "max_entropy_bits(log2 L)": 4.0
+}
