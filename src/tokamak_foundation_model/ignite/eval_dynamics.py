@@ -639,7 +639,10 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
                "gap": 0.42 * _k,
                "static": 0.6 * _k * ((len(statics) + 2) // 3 or 1)}
     # section gap must clear a section's x-label AND the next section's titles
-    heights["gap"] = 0.20
+    # 0.20 in was too tight: a section's x-label ("Time (s)") collided with the NEXT
+    # section's panel titles ("Ground truth (t = ... s)") — visible on every overfit figure.
+    # A section gap must clear one x-label plus one title line.
+    heights["gap"] = 0.46
     hr = [heights[k] for k, _n in rows]
     # EXACT delivered size: the canvas IS the figure (no bbox_inches="tight", which grows
     # past the target and is why the PDF came out ~75 pt too wide for \includegraphics).
@@ -793,30 +796,24 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         # colorbars get their OWN columns NEXT TO their panel: attaching them with
         # ax=... steals width from the image axes and knocks this row out of alignment
         # with the spectro/trace rows (measured 2026-08-10: right edge 0.970 vs 0.985).
-        inner = GridSpecFromSubplotSpec(1, 5, subplot_spec=outer[i], wspace=0.30,
-                                        width_ratios=[1.0, 1.0, 0.05, 1.0, 0.05])
+        # DIFFERENCE PANEL REMOVED (2026-08-14, user): pred − GT on a single mid-rollout frame
+        # reads as a spatial error map, but the prediction is a SAMPLE of a stochastic field —
+        # the difference is dominated by which realization was drawn, not by where the model is
+        # wrong. It made a collapsed prediction look like a structured error. GT | PRED only.
+        inner = GridSpecFromSubplotSpec(1, 3, subplot_spec=outer[i], wspace=0.30,
+                                        width_ratios=[1.0, 1.0, 0.05])
         gt, pr = d["gt"], d["pred"]
         mid_t = gt.shape[2] // 2
         img_g, img_p = gt[mid, 0, mid_t], pr[mid, 0, mid_t]
-        diff = img_p - img_g
         fin = img_g[np.isfinite(img_g)]
         vmin, vmax = (float(np.percentile(fin, 1.0)), float(np.percentile(fin, 99.0))) \
             if fin.size else (0.0, 1.0)
-        dmax = float(np.nanpercentile(np.abs(diff), 99.0)) or 1.0
         ax_g = fig.add_subplot(inner[0])
         ax_p = fig.add_subplot(inner[1])
         cax_p = fig.add_subplot(inner[2])
-        ax_d = fig.add_subplot(inner[3])
-        cax_d = fig.add_subplot(inner[4])
         ax_g.imshow(img_g, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
         im_p = ax_p.imshow(img_p, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
-        im_d = ax_d.imshow(diff, cmap=CMAP_DIFF, vmin=-dmax, vmax=dmax, aspect="auto")
-        _fg = img_g[np.isfinite(img_g)]
-        _rel = float(np.nanmax(np.abs(diff))) / (float(np.std(_fg)) + 1e-12) if _fg.size else float("nan")
-        ax_d.text(0.02, 0.04, f"max |diff| = {_rel:.2f}" + r"$\,\sigma_{GT}$",
-                  transform=ax_d.transAxes, ha="left", va="bottom", fontsize=_p - 3,
-                  color="0.2")
-        for a in (ax_g, ax_p, ax_d):
+        for a in (ax_g, ax_p):
             a.set_xticks([]); a.set_yticks([])
         ax_g.set_ylabel(_static_ylab(name, name.replace("tangtv_", "tangtv\n") + " divertor"))
         _rv, _skv = _corr(pr[K0:], gt[K0:]), d.get("nrmse_skill")
@@ -828,8 +825,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         if i == first_vid:
             ax_g.set_title(f"Ground truth (t = {t_origin + mid * FRAME_S:.2f} s)")
             ax_p.set_title("Prediction")
-            ax_d.set_title("Difference (pred − GT)")
-        for cb, im in ((cax_p, im_p), (cax_d, im_d)):
+        for cb, im in ((cax_p, im_p),):
             fig.colorbar(im, cax=cb)
             cb.tick_params(labelsize=5.5, length=2, pad=1)
         _letter(ax_g)

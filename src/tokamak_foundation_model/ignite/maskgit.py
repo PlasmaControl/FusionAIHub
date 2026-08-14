@@ -15,6 +15,7 @@ deterministic and resume is reproducible (main scripts pass one; Date/rand globa
 from __future__ import annotations
 
 import math
+import os as _os
 from typing import Dict, Optional
 
 import torch
@@ -31,6 +32,11 @@ def _cosine_keep_fractions(n_steps: int) -> list:
     Starts fully masked (1.0 before step 0), ends fully revealed (0.0 after the last step).
     """
     return [math.cos(math.pi / 2 * (i + 1) / n_steps) for i in range(n_steps)]
+
+
+# Reveal-order noise scale for generate_frame (0 = the historical greedy reveal, so every
+# existing run and queued job is byte-identical unless this is set). See generate_frame.
+_GUMBEL_SCALE = float(_os.environ.get("IGNITE_MASKGIT_GUMBEL", "0"))
 
 
 class MaskGITDynamics(nn.Module):
@@ -173,6 +179,20 @@ class MaskGITDynamics(nn.Module):
                 samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
                                          generator=generator).reshape(B, m.n_tok)
                 conf = prob.gather(-1, samp.unsqueeze(-1)).squeeze(-1)  # (B, n_tok)
+                # ANNEALED-GUMBEL REVEAL (canonical MaskGIT; opt-in via IGNITE_MASKGIT_GUMBEL).
+                # Ranking purely on p(sampled) is deterministic-greedy: the tokens revealed first
+                # are those whose sample happened to land on the MARGINAL MODE, and the remaining
+                # steps then condition on that seed. Measured 2026-08-13 on the production ckpt at
+                # step 12500: p_max is only 0.15-0.21 for the turbulent spectros (perplexity 27-57
+                # against a 64000 vocab), so the ranking carries no real confidence signal and the
+                # decode cascades into one code -- co2 emitted a SINGLE code for 95% of tokens and
+                # the rendered spectrograms/cameras were flat. The Gumbel term is what makes the
+                # reveal order stochastic rather than a deterministic function of probability;
+                # it anneals to 0 so late steps still prefer genuinely confident tokens.
+                if _GUMBEL_SCALE > 0.0:
+                    u = torch.rand(conf.shape, generator=generator, device=dev).clamp_(1e-9, 1 - 1e-9)
+                    ann = _GUMBEL_SCALE * (1.0 - step / max(1, len(keep_masked)))
+                    conf = conf.clamp_min(1e-12).log() + ann * (-torch.log(-torch.log(u)))
                 conf = conf.masked_fill(revealed[m.name], float("inf"))  # keep already-revealed
                 n_reveal = m.n_tok - int(round(frac * m.n_tok))
                 # reveal the n_reveal most-confident still-masked tokens

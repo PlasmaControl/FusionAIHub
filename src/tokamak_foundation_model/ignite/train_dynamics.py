@@ -847,7 +847,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
           test_n: int = 0, test_frac: float = 0.0, pin_val=(),
           mask_absent: bool = False, presence_path: str = None,
-          accum_steps: int = 1, val_windows: int = 32, log=print):
+          accum_steps: int = 1, val_windows: int = 32, dropout: float = 0.0, log=print):
     """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
 
     Reuses the codec trainer's DDP wrapper; streams FrameCodeDataset windows; MaskGIT loss with the
@@ -869,6 +869,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     if n_predict:
         cfg_kw["n_predict"] = n_predict
     cfg = DynamicsConfig(**cfg_kw)
+    if dropout:
+        # REGULARISATION (2026-08-14). dropout has been wired into both attentions and the FFN
+        # since the build but defaulted to 0.0 and was unreachable, so no IGNITE run has ever
+        # used it. The band-power run opened a memorisation gap at step 2750 (train 0.69 vs
+        # val 1.01) on 500 shots; dropout is the standard lever for exactly that.
+        cfg.dropout = float(dropout)
     if ss_final_frac is not None:
         # scheduled sampling's own-code sampling calls backbone.forward = FULL (B,F,1017,vocab)
         # logits (~400 GB at F=100) — infeasible until that path is made memory-efficient. Set 0 to
@@ -1199,6 +1205,9 @@ def build_arg_parser():
                         "ramp-up second so a K0=20 seed spans [0,1) s and PREDICTION STARTS "
                         "AT t=1.0 s (the standing convention). NOTE: the frozen codecs never "
                         "trained on ramp-up windows.")
+    p.add_argument("--dropout", type=float, default=0.0,
+                   help="attention + FFN dropout (DynamicsConfig.dropout). 0 = the historical "
+                        "behaviour every run so far used; >0 regularises against memorisation.")
     p.add_argument("--val_windows", type=int, default=32,
                    help="fixed validation windows, INDEPENDENT of batch_size. Was "
                         "4*batch_size, which tied val's statistical power to a memory "
@@ -1272,7 +1281,8 @@ def main(argv=None):
                  patience=args.patience, test_n=args.test_n, test_frac=args.test_frac,
                  pin_val=tuple(s.strip() for s in args.pin_val.split(",") if s.strip()),
                  mask_absent=args.mask_absent, presence_path=args.presence_path,
-                 accum_steps=args.accum_steps, val_windows=args.val_windows)
+                 accum_steps=args.accum_steps, val_windows=args.val_windows,
+                 dropout=args.dropout)
 
 
 if __name__ == "__main__":
