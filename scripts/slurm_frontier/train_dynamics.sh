@@ -165,6 +165,8 @@ cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} steps=${STEP
        --num_workers "${NUM_WORKERS}" \
        --ckpt_every "${CKPT_EVERY}" \
        --ss_final_frac "${SS_FINAL_FRAC:-0}" \
+       --ss_ramp_steps "${SS_RAMP_STEPS:-${STEPS}}" \
+       --gen_mask_p "${GEN_MASK_P:-0}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" "${EXTRA[@]}"
 fi

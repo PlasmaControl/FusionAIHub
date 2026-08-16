@@ -97,6 +97,16 @@ class DynamicsConfig:
     ss_ramp_final_frac: float = 0.15       # final own-sampled-code substitution fraction
     ss_ramp_steps: int = 40_000            # linear ramp 0 -> final over this many steps
 
+    # --- generation-mode masking (train the task rollout actually performs) ------------------
+    # Fraction of SAMPLES whose mask is built like rollout(): frames before a split point t
+    # (drawn in [k0_seed, F)) stay fully visible and unscored, frames from t on ride the reveal
+    # ladder including a full cold start. 0.0 = the historical cosine-prior-on-every-frame
+    # scheme, bit-for-bit. Motivation (measured 2026-08-15, bp128_big best): under the true
+    # rollout condition the model scores 1.5804 vs a model-free bigram's ~1.70, while its
+    # tracked val CE is 0.9228 — it interpolates inside a half-given frame instead of predicting
+    # the next one. 20% of val weight sits at mask ratio > 0.95 and carries a third of the loss.
+    gen_mask_p: float = 0.0
+
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
 

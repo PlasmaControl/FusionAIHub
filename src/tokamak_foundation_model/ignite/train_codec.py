@@ -74,7 +74,11 @@ from .video_discriminator import FramePatchGAN
 # (== STFT_FS) in TokamakH5Dataset.SIGNAL_CONFIGS, so their raw windows STFT to the same
 # grid data.log_power_stft expects. Channel counts (after channels_to_use) are read from
 # the loader's SignalConfig at runtime — NOT hard-coded here.
-SPECTRO_MODALITIES = ("ece", "co2", "bes", "mhr")
+# "mirnov" has NO trained FSQ codec and is not part of the Phase-A codec family — it is here
+# because CodecPairDataset is also the STFT front end the band-power tokeniser reads through
+# (29 magnetic channels, added 2026-08-15). Loading/STFT parameters come from its SIGNAL_CONFIGS
+# entry; a caller wanting codec-side fields must borrow another modality's cfg.
+SPECTRO_MODALITIES = ("ece", "co2", "bes", "mhr", "mirnov")
 
 # video (tangtv) modalities — the two divertor codecs. Each is a MovieConfig in
 # TokamakH5Dataset.MOVIE_CONFIGS: tangtv_lower keeps raw camera channels [0, 2]

@@ -46,23 +46,86 @@ class MaskGITDynamics(nn.Module):
         self.backbone = DynamicsBackbone(cfg)
 
     # ---------------------------------------------------------------------------- training ---
-    def _random_mask(self, codes: Dict[str, torch.Tensor], gen: Optional[torch.Generator]):
+    def _random_mask(self, codes: Dict[str, torch.Tensor], gen: Optional[torch.Generator],
+                     ratio_override: Optional[float] = None, history_frames: int = 0,
+                     gen_mask_p: Optional[float] = None):
         """Mask a per-frame random fraction of tokens. Returns (masked_codes, mask) with the same
-        keys; masked positions in masked_codes hold the modality's MASK id, mask[.]=True there."""
+        keys; masked positions in masked_codes hold the modality's MASK id, mask[.]=True there.
+
+        ``ratio_override`` pins the mask ratio instead of drawing it, for DIAGNOSIS only: the
+        training loss averages over the cosine prior, but a rollout builds every frame starting
+        from ratio 1.0 (nothing in the frame known). Scoring at a fixed ratio separates
+        "infills well" from "generates well" — they are not the same task and only the second
+        one is what a 4 s prediction actually performs.
+        """
         cfg = self.cfg
         ref = codes[cfg.modalities[0].name]
         B, Fr, _ = ref.shape
         dev = ref.device
+        protect_gen = None          # set by generation mode below; frames it must not mask
         # one mask ratio per (B, frame), in [0, 1] via a cosine of a uniform (MaskGIT prior)
-        u = torch.rand((B, Fr), generator=gen, device=dev)
-        ratio = torch.cos(math.pi / 2 * (1.0 - u)).clamp(1e-3, 1.0)   # bias toward higher masking
+        if ratio_override is not None:
+            ratio = torch.full((B, Fr), float(ratio_override), device=dev).clamp(1e-3, 1.0)
+        else:
+            u = torch.rand((B, Fr), generator=gen, device=dev)
+            ratio = torch.cos(math.pi / 2 * (1.0 - u)).clamp(1e-3, 1.0)  # bias toward high masking
+            # ---- GENERATION MODE (cfg.gen_mask_p) --------------------------------------------
+            # MEASURED 2026-08-15 on bp128_big best: under the TRUE rollout condition (history
+            # visible, target frame empty) this model scores 1.5804 vs a model-free bigram's
+            # ~1.70 — 0.12 nats better — while the tracked val CE is 0.9228. It learned to
+            # INTERPOLATE inside a half-given frame, not to predict the next one, because the
+            # cosine prior almost never presents the generation task: ~9% of frames land near
+            # ratio 1.0 and even those come with a masked history.
+            # Here, for a fraction gen_mask_p of SAMPLES, the batch element is turned into
+            # exactly what rollout() does: everything before a split point t is real and
+            # unscored, everything from t on is masked along the reveal ladder.
+            # VALIDATION MUST NOT INHERIT THIS. _val_loss passes gen_mask_p=0.0 so the val metric
+            # stays a FIXED protocol across arms — otherwise an arm trained with generation mode
+            # would also be *scored* on a harder mask distribution, inflating its val CE and
+            # making it incomparable to every run that came before it.
+            p = float(cfg.gen_mask_p if gen_mask_p is None else gen_mask_p)
+            if p > 0.0:
+                k0 = int(min(max(cfg.k0_seed, 0), Fr - 1))
+                use = torch.rand((B, 1), generator=gen, device=dev) < p          # (B,1) samples
+                # split point per sample, never before the seed: [k0, Fr)
+                span = max(Fr - k0, 1)
+                t = k0 + (torch.rand((B, 1), generator=gen, device=dev) * span).long().clamp_(
+                    0, span - 1)                                                 # (B,1)
+                idx = torch.arange(Fr, device=dev).view(1, Fr)
+                before = idx < t                                                 # (B,Fr) history
+                # target frames ride the reveal ladder, biased hard toward a cold start
+                v = torch.rand((B, Fr), generator=gen, device=dev)
+                ladder = (1.0 - v.pow(3.0)).clamp(1e-3, 1.0)     # ~50% of draws above 0.8
+                gen_ratio = torch.where(before, torch.zeros_like(ratio), ladder)
+                ratio = torch.where(use, gen_ratio, ratio)
+                protect_gen = use & before        # (B,Fr) real, unscored history per sample
+        # PROTECTED HISTORY. rollout() hands frames [0, k0_seed) to the model as real codes and
+        # only ever predicts [k0_seed, F). Training masks and scores all 100 frames, so ~20% of
+        # every gradient is spent on frames that are free at inference — and they are the EASY
+        # ones (little history, no accumulated drift). Pinning ratio 0 here makes the scored
+        # region match what rollout actually predicts.
+        hf = int(max(0, min(history_frames, Fr)))
+        if hf:
+            ratio = ratio.clone()
+            ratio[:, :hf] = 0.0
+        # every frame that must stay FULLY VISIBLE: the diagnostic history_frames prefix, plus
+        # each generation-mode sample's own pre-split history. The >=1-masked-token guarantee
+        # below would otherwise punch a mask into them and reintroduce the very mismatch this
+        # mode exists to remove.
+        protect = torch.zeros((B, Fr), dtype=torch.bool, device=dev)
+        if hf:
+            protect[:, :hf] = True
+        if protect_gen is not None:
+            protect = protect | protect_gen
         masked, mask = {}, {}
         for m in cfg.modalities:
             c = codes[m.name]
             r = torch.rand(c.shape, generator=gen, device=dev)
             mk = r < ratio.unsqueeze(-1)                              # (B, F, n_tok) bool
-            # guarantee >=1 masked token per frame so CE always has a target
+            # guarantee >=1 masked token per frame so CE always has a target — but NEVER in the
+            # protected history, which must stay fully visible to mirror rollout()
             none = ~mk.any(dim=-1, keepdim=True)
+            none = none & ~protect.unsqueeze(-1)
             if none.any():
                 mk = mk | (F.one_hot(torch.zeros(1, dtype=torch.long, device=dev), c.shape[-1])
                            .bool().view(1, 1, -1) & none)
@@ -79,25 +142,62 @@ class MaskGITDynamics(nn.Module):
     def _scheduled_sample_context(self, codes, actuators, ss_frac, gen):
         """Return a copy of ``codes`` with a ``ss_frac`` fraction of (B, frame) cells replaced by
         the model's OWN one-pass sampled codes — so the model learns to consume its own outputs
-        (drift mitigation). Substitution is on the CONTEXT only; the CE target stays the real code."""
+        (drift mitigation). Substitution is on the CONTEXT only; the CE target stays the real code.
+
+        Two defects kept ``ss_final_frac=0`` on every run since the build; both are fixed:
+
+        * FULL logits. ``self.backbone(codes, actuators)`` projected EVERY position to vocab —
+          the (B, F, tokens_per_frame, vocab) tensor that :meth:`FrameTokenizer.masked_logits`
+          exists to avoid (~B*400 GB at F=100), and it crashed outright with
+          ``mat1 and mat2 shapes cannot be multiplied (128000x512 and 1x128000)``, killing all
+          four SS legs in 43 s. Only the substituted frames are ever read, so gather them
+          through ``masked_logits`` exactly as the CE path does.
+        * AUTOCAST CACHE. This method is ``@torch.no_grad()`` and the caller runs under
+          autocast, so its forward filled the bf16 weight cache with DETACHED copies which the
+          real forward below then reused — gradients never reached the fp32 parameters.
+          Measured: grad-norm 0.926 -> 0.087 with the cache on, 0.911 with it off, at an
+          IDENTICAL loss. Silent, and invisible in the loss curve. Hence ``cache_enabled=False``.
+        """
         if ss_frac <= 0.0:
             return codes
-        logits = self.backbone(codes, actuators)
         ref = codes[self.cfg.modalities[0].name]
         B, Fr, _ = ref.shape
         sub = torch.rand((B, Fr), generator=gen, device=ref.device) < ss_frac   # (B, F) frames
+        if not bool(sub.any()):
+            return codes
+        sel = {m.name: sub.unsqueeze(-1).expand_as(codes[m.name]).contiguous()
+               for m in self.cfg.modalities}
+        # cache_enabled=False is LOAD-BEARING (see the docstring) — do not "simplify" it away.
+        with torch.no_grad(), torch.autocast(device_type=ref.device.type, dtype=torch.bfloat16,
+                                             enabled=torch.is_autocast_enabled(),
+                                             cache_enabled=False):
+            h = self.backbone.encode(codes, actuators)
+            slog = self.backbone.tok.masked_logits(h, sel)       # {name: (n_sel_m, vocab_m)}
         out = {}
         for m in self.cfg.modalities:
-            prob = logits[m.name].softmax(-1)                       # (B, F, n_tok, vocab)
-            samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
-                                     generator=gen).reshape(codes[m.name].shape)
-            out[m.name] = torch.where(sub.unsqueeze(-1), samp, codes[m.name])
+            lg = slog[m.name]
+            if lg.numel() == 0:
+                out[m.name] = codes[m.name]
+                continue
+            # chunk the categorical draw: vocab reaches 64000, so a one-shot softmax over every
+            # selected position is hundreds of MB in fp32 for no benefit.
+            samp = torch.empty(lg.shape[0], dtype=torch.long, device=lg.device)
+            for i in range(0, lg.shape[0], 4096):
+                p = lg[i:i + 4096].float().softmax(-1)
+                samp[i:i + 4096] = torch.multinomial(p, 1, generator=gen).squeeze(-1)
+            c = codes[m.name].clone()
+            c[sel[m.name]] = samp.to(c.dtype)
+            out[m.name] = c
         return out
 
     def training_loss(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                       generator: Optional[torch.Generator] = None,
                       ss_frac: float = 0.0,
-                      present: Optional[torch.Tensor] = None) -> torch.Tensor:
+                      present: Optional[torch.Tensor] = None,
+                      per_modality: Optional[Dict[str, float]] = None,
+                      mask_ratio: Optional[float] = None,
+                      history_frames: int = 0,
+                      gen_mask_p: Optional[float] = None) -> torch.Tensor:
         """Masked-token cross-entropy over the masked positions, summed per modality, mean-reduced.
 
         ``ss_frac`` > 0 applies scheduled sampling: a fraction of context frames are replaced by
@@ -115,7 +215,8 @@ class MaskGITDynamics(nn.Module):
         zero-weighted term keeps every parameter in the graph with a zero gradient.
         """
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
-        masked, mask = self._random_mask(context, generator)
+        masked, mask = self._random_mask(context, generator, ratio_override=mask_ratio,
+                                         history_frames=history_frames, gen_mask_p=gen_mask_p)
         # Memory-critical: encode to hidden states, then project ONLY masked positions to vocab.
         # Materializing full (B, F, tokens_per_frame, vocab) logits is ~B*400 GB at F=100 (OOM);
         # masked_logits gathers first -> ~B*200 MB. See FrameTokenizer.masked_logits.
@@ -129,8 +230,11 @@ class MaskGITDynamics(nn.Module):
             lg = mlogits[m.name]                                      # (n_masked, vocab)
             tg = codes[m.name][mk]                                    # (n_masked,)
             if present is None:
-                total = total + F.cross_entropy(lg, tg)
+                term = F.cross_entropy(lg, tg)
+                total = total + term
                 count += 1
+                if per_modality is not None:
+                    per_modality[m.name] = float(term.detach())
                 continue
             # Per-SAMPLE presence: a batch mixes shots, so weight each masked token by
             # whether its own shot recorded this diagnostic. Broadcast (B,) over (B, F, n_tok)
@@ -143,8 +247,11 @@ class MaskGITDynamics(nn.Module):
                 total = total + 0.0 * lg.sum()        # keep the head in the autograd graph
                 continue
             ce = F.cross_entropy(lg, tg, reduction="none")            # (n_masked,)
-            total = total + (ce * w).sum() / denom
+            term = (ce * w).sum() / denom
+            total = total + term
             count += 1
+            if per_modality is not None:
+                per_modality[m.name] = float(term.detach())
         return total / max(count, 1)
 
     # ---------------------------------------------------------------------------- inference ---
