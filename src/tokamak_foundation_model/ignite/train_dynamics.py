@@ -59,8 +59,14 @@ _PLACEHOLDER_CODE = 0
 
 # (H5 group key, n_channels) for the 7 actuator signals -> 70 ch. Keys are the ACTUAL hdf5_keys
 # (SignalConfig name 'pin'->'pinj', 'tin'->'tinj'); the rest match. Some shots miss some -> zeros.
+# CHANGING THIS CHANGES THE ACTUATOR WIDTH, which is baked into every cached shot AND into
+# act_embed = Linear(actuator_dim, d_model). Caches built before a change keep their old width,
+# so `actuator_dim` is derived from the cache at train time (see train()) rather than trusted
+# from the config default — otherwise an old cache meets a new spec and the Linear mismatches.
+# i_coil added 2026-08-15 (18 ch): error-field/RMP coil currents, present and varying in 100% of
+# production shots, previously unused. 70 -> 88.
 _ACT_SPEC = (("ech_power", 12), ("pinj", 8), ("beam_voltage", 8), ("tinj", 8),
-             ("gas_flow", 11), ("gas_raw", 11), ("rmp", 12))
+             ("gas_flow", 11), ("gas_raw", 11), ("rmp", 12), ("i_coil", 18))
 
 
 def _load_codec(family: str, path: Path):
@@ -166,7 +172,8 @@ def build_frame_codes(shot: str, codecs: Dict, n_frames: int, data_dir) -> Dict[
     return out
 
 
-def actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0) -> torch.Tensor:
+def actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0,
+                    return_stats: bool = False):
     """(n_frames, 70): the 7 actuator signals averaged over each frame's 50 ms window.
 
     Uses the ACTUAL H5 group keys (SignalConfig hdf5_keys) and zero-fills any signal a shot lacks,
@@ -218,7 +225,13 @@ def actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0) -
                 col = np.zeros((n_frames, nch))                       # missing actuator -> zeros
             cols.append(col)
     act = np.concatenate(cols, axis=1)                                # (n_frames, 70)
-    act = (act - act.mean(0, keepdims=True)) / (act.std(0, keepdims=True) + 1e-6)
+    mu, sd = act.mean(0, keepdims=True), act.std(0, keepdims=True)
+    act = (act - mu) / (sd + 1e-6)
+    if return_stats:
+        # the per-shot, per-channel z-scoring is the ONLY thing between the cache and physical
+        # units: raw = z * (sd + 1e-6) + mu. Returned so plots and counterfactual amplitudes can
+        # be expressed in MW / physical gas units instead of shot-relative sigmas.
+        return torch.tensor(act, dtype=torch.float32), mu[0].copy(), sd[0].copy()
     return torch.tensor(act, dtype=torch.float32)
 
 
@@ -841,7 +854,8 @@ def cache_modality_specs(cache_dir):
 
 def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: float = 3e-4,
           depth: int = 24, d_model: int = 1024, val_frac: float = 0.05, num_workers: int = 4,
-          ckpt_every: int = 1000, ss_final_frac: float = None, n_heads: int = None,
+          ckpt_every: int = 1000, ss_final_frac: float = None, ss_ramp_steps: int = None,
+          gen_mask_p: float = None, n_heads: int = None,
           k0_seed: int = None, n_predict: int = None, train_cap: int = 0, val_n: int = 0,
           split_seed: int = 0, warmup_steps: int = 0, min_lr_ratio: float = 0.01,
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
@@ -862,6 +876,18 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     # layout DERIVED from the cache (v6 codecs change n_tok/vocab vs the static table)
     specs = cache_modality_specs(cache_dir)
     cfg_kw = dict(modalities=specs, d_model=d_model, depth=depth)
+    # ACTUATOR WIDTH IS DERIVED FROM THE CACHE, never assumed. _ACT_SPEC grew 70 -> 88 (i_coil)
+    # on 2026-08-15; caches built before that still store 70 columns, and act_embed is
+    # Linear(actuator_dim, d_model), so trusting the config default would mismatch the Linear
+    # against an older cache (and silently break every resume of an in-flight arm).
+    _probe = next(Path(cache_dir).glob("*.pt"), None)
+    if _probe is not None:
+        _aw = int(torch.load(_probe, map_location="cpu", weights_only=False)["actuators"].shape[-1])
+        cfg_kw["actuator_dim"] = _aw
+        if ddp.is_main and _aw != sum(n for _k, n in _ACT_SPEC):
+            log(f"[dynamics] cache actuator width {_aw} != current _ACT_SPEC "
+                f"{sum(n for _k, n in _ACT_SPEC)} — using the CACHE width (rebuild the cache "
+                f"to pick up new actuator channels)")
     if n_heads:
         cfg_kw["n_heads"] = n_heads
     if k0_seed:
@@ -876,10 +902,18 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         # val 1.01) on 500 shots; dropout is the standard lever for exactly that.
         cfg.dropout = float(dropout)
     if ss_final_frac is not None:
-        # scheduled sampling's own-code sampling calls backbone.forward = FULL (B,F,1017,vocab)
-        # logits (~400 GB at F=100) — infeasible until that path is made memory-efficient. Set 0 to
-        # disable for the base run (ss is rollout-drift mitigation; re-enable once the path is fixed).
+        # Scheduled sampling = rollout-drift mitigation: the model trains on its OWN codes so it
+        # is not purely teacher-forced while being evaluated purely autoregressively. The old
+        # full-logits path (~400 GB at F=100) is fixed as of 2026-08-15, as is the autocast
+        # weight-cache bug that silently cut grad-norm 10x underneath it — see
+        # MaskGITDynamics._scheduled_sample_context.
         cfg.ss_ramp_final_frac = float(ss_final_frac)
+    if ss_ramp_steps is not None:
+        # MUST be set relative to the run length: the 40k default on a 20k-step run only ever
+        # reaches HALF the requested fraction, so the arm silently tests a weaker schedule.
+        cfg.ss_ramp_steps = int(ss_ramp_steps)
+    if gen_mask_p is not None:
+        cfg.gen_mask_p = float(gen_mask_p)
     n_all = len(list(Path(cache_dir).glob("*.pt")))
     n_val = val_n if val_n else max(1, int(n_all * val_frac))
     n_test = test_n if test_n else (max(1, int(n_all * test_frac)) if test_frac else 0)
@@ -912,6 +946,14 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             f"(train {len(train_shots)}/val {len(val_shots)}/test {len(test_shots)} HELD OUT) "
             f"windows={len(ds)} d_model={d_model} depth={depth} heads={cfg.n_heads} "
             f"frame_tokens={cfg.tokens_per_frame} win={cfg.max_frames}")
+        # OBJECTIVE-SHAPING KNOBS, logged explicitly. Without this line the only way to tell
+        # whether an arm actually ran with generation-mode masking or scheduled sampling is to
+        # reconstruct the launcher/env from sacct and compare file mtimes against the submit
+        # time — which is exactly the ambiguity that arose for bp128_gm on 2026-08-15.
+        log(f"[dynamics] objective: gen_mask_p={cfg.gen_mask_p} "
+            f"ss_final_frac={cfg.ss_ramp_final_frac} ss_ramp_steps={cfg.ss_ramp_steps} "
+            f"dropout={cfg.dropout} mask_absent={int(use_presence)} "
+            f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)")
     if ddp.is_main:
         log(f"[dynamics] batch: micro={batch_size} x ranks={ddp.world_size} "
             f"x accum={accum_steps} -> EFFECTIVE {batch_size * ddp.world_size * accum_steps}"
@@ -1036,8 +1078,13 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                             enabled=(device.type == "cuda")):
             for cv, av, pv in val_batches:
                 cd = {k: v.to(device) for k, v in cv.items()}
+                # gen_mask_p=0.0 PINS the validation masking to the historical cosine prior on
+                # every frame. Without it an arm trained with generation mode would be scored on
+                # a different (harder) distribution than every earlier run, and val CE — the
+                # metric arms are ranked by — would stop being comparable.
                 tot += float(model.training_loss(cd, av.to(device), generator=g, ss_frac=0.0,
-                                                 present=pv.to(device) if use_presence else None))
+                                                 present=pv.to(device) if use_presence else None,
+                                                 gen_mask_p=0.0))
         model.train()
         return tot / len(val_batches)
     best_val, best_step, since_improve, stop_now = float("inf"), -1, 0, False
@@ -1111,6 +1158,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             if ddp.is_main and step % ckpt_every == 0:
                 payload = {"model": model.state_dict(), "opt": opt.state_dict(),
                            "sched": sched.state_dict(), "step": step,
+                           # objective-shaping knobs travel WITH the weights: a checkpoint whose
+                           # training objective cannot be recovered is not reproducible
+                           "cfg_gen_mask_p": float(cfg.gen_mask_p),
+                           "cfg_ss_final_frac": float(cfg.ss_ramp_final_frac),
+                           "cfg_ss_ramp_steps": int(cfg.ss_ramp_steps),
+                           "cfg_dropout": float(cfg.dropout),
                            "cfg_depth": depth, "cfg_d_model": d_model,
                            "cfg_n_heads": cfg.n_heads, "cfg_k0": cfg.k0_seed,
                            "cfg_n_predict": cfg.n_predict,
@@ -1164,8 +1217,16 @@ def build_arg_parser():
                    help="checkpoint cadence (steps). MUST be < steps-per-job (~700 at 2h/g1) or a "
                         "chained run never checkpoints and every resume restarts from step 0.")
     p.add_argument("--ss_final_frac", type=float, default=None,
-                   help="override DynamicsConfig.ss_ramp_final_frac; set 0 to DISABLE scheduled "
-                        "sampling (its full-logits sampling OOMs at F=100 until made memory-efficient).")
+                   help="override DynamicsConfig.ss_ramp_final_frac; 0 DISABLES scheduled "
+                        "sampling. The memory-efficient sampling path landed 2026-08-15.")
+    p.add_argument("--gen_mask_p", type=float, default=None,
+                   help="fraction of samples masked like rollout() does: history before a split "
+                        "point stays visible and unscored, target frames ride the reveal ladder "
+                        "including a full cold start. 0 = historical scheme (bit-identical).")
+    p.add_argument("--ss_ramp_steps", type=int, default=None,
+                   help="override DynamicsConfig.ss_ramp_steps (default 40000). Set this to the "
+                        "run length: the default on a 20000-step run reaches only HALF of "
+                        "--ss_final_frac.")
     p.add_argument("--precompute", action="store_true",
                    help="run the distributed frame-code precompute (build the cache) then exit")
     p.add_argument("--data_dir", default=None,
@@ -1222,7 +1283,7 @@ def build_arg_parser():
                         "length (200 steps: bs1 13:57 vs bs2 26:42).")
     p.add_argument("--mask_absent", action="store_true",
                    help="exclude ABSENT diagnostics from the masked-CE (they encode to a "
-                        "constant null codeword; ~38% of loss TERMS on the production cache, "
+                        "constant null codeword; ~38%% of loss TERMS on the production cache, "
                         "since the loss weights every modality equally). Their tokens still "
                         "enter the model as input. Builds/loads <cache>/_presence.json.")
     p.add_argument("--presence_path", default=None,
@@ -1274,6 +1335,7 @@ def main(argv=None):
     return train(args.cache_dir, args.out_dir, steps=args.steps, batch_size=args.batch_size,
                  lr=args.lr, depth=args.depth, d_model=args.d_model, num_workers=args.num_workers,
                  ckpt_every=args.ckpt_every, ss_final_frac=args.ss_final_frac,
+                 ss_ramp_steps=args.ss_ramp_steps, gen_mask_p=args.gen_mask_p,
                  n_heads=args.n_heads, k0_seed=args.k0_seed, n_predict=args.n_predict,
                  train_cap=args.train_cap, val_n=args.val_n, split_seed=args.split_seed,
                  warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio,

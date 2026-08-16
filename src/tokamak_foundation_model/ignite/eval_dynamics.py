@@ -342,8 +342,38 @@ def load_raw_gt(shot: str, codecs: Dict, F: int, data_dir, t0_start: float = 1.0
     return out
 
 
+def bandpower_levels(edges: np.ndarray) -> np.ndarray:
+    """(N_LEV-1, D) interior quantile edges -> (N_LEV, D) representative value per level.
+
+    Band-power tokens are quantile bin INDICES, not FSQ codes — there is no learned decoder.
+    Interior levels take the bin midpoint; the two open-ended outer bins extrapolate by half
+    the adjacent bin width, which is the only choice that keeps the reconstruction monotone
+    in the level index.
+    """
+    q = np.asarray(edges, dtype=np.float64)
+    mid = 0.5 * (q[:-1] + q[1:])                                  # levels 1 .. N_LEV-2
+    first = q[0] - 0.5 * (q[1] - q[0])
+    last = q[-1] + 0.5 * (q[-1] - q[-2])
+    return np.concatenate([first[None, :], mid, last[None, :]], axis=0)
+
+
+def decode_bandpower(spec: Tuple[np.ndarray, int, int], codes: torch.Tensor) -> np.ndarray:
+    """Band-power token levels -> (F, C, n_band, 1) mean log-power.
+
+    The trailing length-1 axis is the intra-frame time axis the spectro renderer stitches
+    along, so a band-power frame contributes ONE column and ``_stitch`` yields a
+    (n_band, F) image — identical downstream handling to a real spectrogram decode.
+    """
+    values, C, n_band = spec
+    tk = np.asarray(codes.detach().cpu(), dtype=np.int64)          # (F, D)
+    D = tk.shape[1]
+    v = values[np.clip(tk, 0, values.shape[0] - 1), np.arange(D)[None, :]]
+    return v.reshape(tk.shape[0], C, n_band)[..., None].astype(np.float32)
+
+
 def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, device,
-               denorm: Dict = None, raw_gt: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
+               denorm: Dict = None, raw_gt: Dict = None,
+               bandpower: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
     """Decode BOTH gt + pred codes for every EVAL modality over the FULL window [0, F).
 
     The seed region [0, K0) is included (pred codes == real codes there) so the figure can show
@@ -360,6 +390,20 @@ def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, 
     """
     out = {}
     for name in EVAL_MODALITIES:
+        # BAND-POWER modalities carry quantile-bin levels, not FSQ codes, so they bypass the
+        # codec path entirely (there is no learned decoder to run). Everything downstream —
+        # persistence, nRMSE, skill, panel layout — is identical.
+        bp = (bandpower or {}).get(name)
+        if bp is not None:
+            gt = decode_bandpower(bp, gt_codes[name][:F])
+            pred = decode_bandpower(bp, pred_codes[name][:F])
+            pers = np.repeat(decode_bandpower(bp, gt_codes[name][K0 - 1:K0]), F, axis=0)
+            nr, nr_p = _nrmse(pred[K0:], gt[K0:]), _nrmse(pers[K0:], gt[K0:])
+            out[name] = {"gt": gt, "pred": pred, "gt_source": "decoded",
+                         "nrmse": nr, "nrmse_persistence": nr_p,
+                         "nrmse_skill": (1.0 - nr / nr_p) if nr_p > 0 else float("nan"),
+                         "family": "spectro", "space": "band power"}
+            continue
         if name not in codecs:
             continue
         codec, _cfg, fam = codecs[name]
@@ -960,6 +1004,31 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
     log(f"[eval] loaded {len(codecs)} frozen codecs "
         f"(tmpl={codec_tmpl or 'manifest'}): {sorted(codecs)}", flush=True)
 
+    # BAND-POWER modalities carry quantile-bin levels instead of FSQ codes, so no learned
+    # decoder exists for them. Detected from a bin_edges*.npz shipped beside the cache; the
+    # codec is still loaded (its cfg supplies the channel count) but is never run on them.
+    bandpower: Dict = {}
+    _edp = next((f for f in (Path(cache_dir) / "bin_edges_128.npz",
+                             Path(cache_dir).parent / "bin_edges_128.npz",
+                             Path(cache_dir) / "bin_edges.npz",
+                             Path(cache_dir).parent / "bin_edges.npz") if f.exists()), None)
+    if _edp is not None:
+        _ez = np.load(_edp)
+        for _n in _ez.files:
+            if _n not in EVAL_MODALITIES or _n not in codecs:
+                continue
+            _q = _ez[_n]
+            _C = int(getattr(codecs[_n][1], "channels", 0) or 0)
+            if _C <= 0 or _q.ndim != 2 or _q.shape[1] % _C:
+                log(f"[eval] band-power {_n}: edges {_q.shape} not divisible by C={_C}"
+                    " — falling back to the FSQ codec", flush=True)
+                continue
+            bandpower[_n] = (bandpower_levels(_q), _C, _q.shape[1] // _C)
+        if bandpower:
+            log(f"[eval] band-power decode from {_edp.name} for "
+                + ", ".join(f"{k} (C={v[1]}, {v[2]} bands)" for k, v in sorted(bandpower.items())),
+                flush=True)
+
     shots_all = [s.strip() for s in str(shot).split(",") if s.strip()]
     # (a) multi-GCD parallel eval (user go 2026-08-09): under the srun rank wrapper each
     # rank evaluates shots_all[RANK::WORLD_SIZE]; rank 0 merges via part files (no process
@@ -1024,7 +1093,8 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
             log(f"[eval] WARNING: could not archive codes for {sh}: {type(e).__name__}: {e}")
         raw = load_raw_gt(sh, codecs, F, data_dir, t0_start=cache_t0, log=log) \
             if use_raw_gt else None
-        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw)
+        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw,
+                             bandpower=bandpower)
         if si == 0:
             self_check(decoded)
         entry = {"token_accuracy": tok_acc,
