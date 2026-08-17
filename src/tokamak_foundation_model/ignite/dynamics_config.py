@@ -46,6 +46,11 @@ FROZEN_MODALITIES: Tuple[ModalitySpec, ...] = (
     ModalitySpec("bes", "spectro", 192, 1000),
     ModalitySpec("mhr", "spectro", 192, 1000),
     ModalitySpec("co2", "spectro", 192, 1000),
+    # mirnov joined with the band-power codecs. cache_modality_specs() iterates THIS tuple and
+    # skips any name the cache lacks, so a modality missing here is dropped SILENTLY: the
+    # all-spectrogram union cache (4000 tok/frame) built a 3072-token frame and trained on 4 of
+    # its 5 modalities with no warning. Caches without mirnov are unaffected by this entry.
+    ModalitySpec("mirnov", "spectro", 192, 1000),
     # video — 108 tokens each divertor
     ModalitySpec("tangtv_lower", "video", 108, 1000),
     ModalitySpec("tangtv_upper", "video", 108, 1000),
@@ -106,6 +111,14 @@ class DynamicsConfig:
     # tracked val CE is 0.9228 — it interpolates inside a half-given frame instead of predicting
     # the next one. 20% of val weight sits at mask ratio > 0.95 and carries a third of the loss.
     gen_mask_p: float = 0.0
+
+    # Lag-k own-column code embeddings added in FrameTokenizer.embed (0 = off, no new params).
+    # At the generation condition a per-column count table over a column's own last 3 codes beats
+    # the 270M model (1.5539 vs 1.6090), and the per-modality deficit tracks own-history value
+    # (co2 gains 0.188 nats from it and the model loses by 0.143; mhr gains 0.064 and the model
+    # already wins). k=3 hands the head that exact context so the table is representable rather
+    # than something optimization has to rediscover through 16 shared-parameter layers.
+    lag_embed_k: int = 0
 
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels

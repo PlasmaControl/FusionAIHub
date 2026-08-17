@@ -111,6 +111,7 @@ EXTRA=()
 [ -n "${DROPOUT:-}" ] && EXTRA+=(--dropout "${DROPOUT}")
 [ -n "${ACCUM_STEPS:-}" ] && EXTRA+=(--accum_steps "${ACCUM_STEPS}")
 [ "${MASK_ABSENT}" = "1" ] && EXTRA+=(--mask_absent)
+[ "${BALANCE_PRESENCE:-0}" = "1" ] && EXTRA+=(--balance_presence)
 [ -n "${PRESENCE_PATH:-}" ] && EXTRA+=(--presence_path "${PRESENCE_PATH}")
 
 if [ "${BUILD_PRESENCE:-0}" = "1" ]; then
@@ -167,6 +168,9 @@ cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} steps=${STEP
        --ss_final_frac "${SS_FINAL_FRAC:-0}" \
        --ss_ramp_steps "${SS_RAMP_STEPS:-${STEPS}}" \
        --gen_mask_p "${GEN_MASK_P:-0}" \
+       --best_metric "${BEST_METRIC:-masked}" \
+       --lag_embed_k "${LAG_EMBED_K:-0}" \
+       --window_stride "${WINDOW_STRIDE:-1}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" "${EXTRA[@]}"
 fi
