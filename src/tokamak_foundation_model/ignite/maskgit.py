@@ -197,6 +197,7 @@ class MaskGITDynamics(nn.Module):
                       per_modality: Optional[Dict[str, float]] = None,
                       mask_ratio: Optional[float] = None,
                       history_frames: int = 0,
+                      mod_weights: Optional[Dict[str, float]] = None,
                       gen_mask_p: Optional[float] = None) -> torch.Tensor:
         """Masked-token cross-entropy over the masked positions, summed per modality, mean-reduced.
 
@@ -222,7 +223,7 @@ class MaskGITDynamics(nn.Module):
         # masked_logits gathers first -> ~B*200 MB. See FrameTokenizer.masked_logits.
         h = self.backbone.encode(masked, actuators)                   # (B, F, N, d)
         mlogits = self.backbone.tok.masked_logits(h, mask)            # {name: (n_masked, vocab)}
-        total, count = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32), 0
+        total, count = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32), 0.0
         for mi, m in enumerate(self.cfg.modalities):
             mk = mask[m.name]
             if not bool(mk.any()):
@@ -231,8 +232,9 @@ class MaskGITDynamics(nn.Module):
             tg = codes[m.name][mk]                                    # (n_masked,)
             if present is None:
                 term = F.cross_entropy(lg, tg)
-                total = total + term
-                count += 1
+                wt = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
+                total = total + wt * term
+                count += wt
                 if per_modality is not None:
                     per_modality[m.name] = float(term.detach())
                 continue
@@ -248,11 +250,12 @@ class MaskGITDynamics(nn.Module):
                 continue
             ce = F.cross_entropy(lg, tg, reduction="none")            # (n_masked,)
             term = (ce * w).sum() / denom
-            total = total + term
-            count += 1
+            wt = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
+            total = total + wt * term
+            count += wt
             if per_modality is not None:
                 per_modality[m.name] = float(term.detach())
-        return total / max(count, 1)
+        return total / max(count, 1e-8)
 
     # ---------------------------------------------------------------------------- inference ---
     @torch.no_grad()
