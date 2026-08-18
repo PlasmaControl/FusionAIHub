@@ -158,13 +158,20 @@ class MaskGITDynamics(nn.Module):
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
         n_sf = int(getattr(self.cfg, "sf_frames", 0))
         if n_sf > 0:
+            # Draw on the CONTEXT's device, same convention as the CTF gate below: a device-typed
+            # generator (as _val_loss passes on GPU) only accepts draws on its own device, so an
+            # unqualified draw raises there. On CPU the explicit device leaves the stream
+            # bit-identical. Both draws stay .item()-converted so the control flow below is
+            # plain Python scalars.
+            sdev = context[self.cfg.modalities[0].name].device
             use_sf = (self.cfg.sf_prob >= 1.0
-                      or bool(torch.rand((), generator=generator).item() < self.cfg.sf_prob))
+                      or bool(torch.rand((), generator=generator, device=sdev).item()
+                              < self.cfg.sf_prob))
             if use_sf:
                 Fr = context[self.cfg.modalities[0].name].shape[1]
                 lo = min(self.cfg.k0_seed, max(1, Fr - n_sf - 1))
                 b = int(torch.randint(lo, max(lo + 1, Fr - n_sf), (1,),
-                                      generator=generator).item())
+                                      generator=generator, device=sdev).item())
                 context = rollout_context(self, context, actuators, boundary=b,
                                           n_roll=n_sf, generator=generator)
         use_ctf = False
