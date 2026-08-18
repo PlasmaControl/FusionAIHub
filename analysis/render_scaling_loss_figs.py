@@ -363,7 +363,10 @@ def render_runs(specs, out: Path, marginal: float = None) -> None:
     """
     out.mkdir(parents=True, exist_ok=True)
     n = len(specs)
-    fig, axes = plt.subplots(1, n, figsize=(3.4 * n, 3.1), squeeze=False)
+    # SHARED y-axis: with independent axes a deeper train-loss spike in one arm rescales
+    # that panel and the two curves cannot be compared by eye -- which is the entire point
+    # of putting them side by side.
+    fig, axes = plt.subplots(1, n, figsize=(3.4 * n, 3.1), squeeze=False, sharey=True)
     for ax, (lab, run) in zip(axes[0], specs):
         p = (MODELS / run / "loss_history.jsonl") if not Path(run).is_absolute() \
             else Path(run) / "loss_history.jsonl"
@@ -392,6 +395,12 @@ def render_runs(specs, out: Path, marginal: float = None) -> None:
         if marginal:
             ax.axhline(marginal, color=INK2, ls=":", lw=0.9)
         ax.set_yscale("log"); ax.set_xlabel("optimizer step"); ax.set_ylabel("CE (nats)")
+        # clamp to the VAL range (+ headroom): train spikes are mask-draw noise, not signal, and
+        # letting them set the limits compresses every curve that matters into a thin band.
+        if va:
+            lo = min(min(vm), min([c for _, c in g] or vm)) * 0.75
+            hi = max(max(vm), max([c for _, c in g] or vm), marginal or 0) * 1.15
+            ax.set_ylim(lo, hi)
         ax.set_title(lab, loc="left"); ax.legend(frameon=False, fontsize=6.5)
     fig.tight_layout()
     for ext in ("pdf", "png"):
