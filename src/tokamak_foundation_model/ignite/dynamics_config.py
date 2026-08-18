@@ -112,6 +112,12 @@ class DynamicsConfig:
     # n_tok, "sqrt_tokens" by sqrt(n_tok) (a compromise that still protects small modalities).
     modality_loss_weight: str = "uniform"
 
+    # --- actuator conditioning dropout (enables classifier-free guidance at rollout) ----------
+    # Probability of zeroing the actuator embedding for a training sample. Without it the model
+    # has no unconditional branch, so guidance cannot be applied at inference. Adds NO parameters.
+    # 0.0 = off (original behaviour, bit-identical).
+    actuator_dropout_p: float = 0.0
+
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
 

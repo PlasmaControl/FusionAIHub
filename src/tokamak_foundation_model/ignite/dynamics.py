@@ -105,8 +105,13 @@ class DynamicsBackbone(nn.Module):
         self.blocks = nn.ModuleList([FactorizedSTBlock(cfg) for _ in range(cfg.depth)])
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
-    def encode(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor) -> torch.Tensor:
-        """→ hidden states (B, F, tokens_per_frame, d_model)."""
+    def encode(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
+               drop_actuators: bool = False) -> torch.Tensor:
+        """→ hidden states (B, F, tokens_per_frame, d_model).
+
+        ``drop_actuators`` zeroes the actuator contribution for the whole batch — the
+        unconditional branch used by classifier-free guidance at inference.
+        """
         x = self.tok.embed(codes)                              # (B, F, N, d)
         B, Fr, N, d = x.shape
         if actuators.shape != (B, Fr, self.cfg.actuator_dim):
@@ -114,7 +119,17 @@ class DynamicsBackbone(nn.Module):
                 f"actuators expected {(B, Fr, self.cfg.actuator_dim)}; got {tuple(actuators.shape)}"
             )
         # additive, causal (actuator_f added to frame f; temporal attn is causal)
-        x = x + self.act_embed(actuators).unsqueeze(2)         # (B, F, 1, d) broadcast over tokens
+        a = self.act_embed(actuators)                          # (B, F, d)
+        if drop_actuators:
+            a = torch.zeros_like(a)
+        else:
+            p = getattr(self.cfg, "actuator_dropout_p", 0.0)
+            if self.training and p > 0.0:
+                # per-SAMPLE dropout: a whole trajectory is conditional or unconditional,
+                # matching how guidance is applied at inference.
+                keep = (torch.rand((B, 1, 1), device=a.device) >= p).to(a.dtype)
+                a = a * keep
+        x = x + a.unsqueeze(2)                                 # (B, F, 1, d) broadcast over tokens
         use_ckpt = self.training and getattr(self.cfg, "grad_checkpointing", False) and x.requires_grad
         for blk in self.blocks:
             if use_ckpt:

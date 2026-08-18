@@ -198,6 +198,21 @@ class MaskGITDynamics(nn.Module):
         return total / max(count, 1e-8)
 
     # ---------------------------------------------------------------------------- inference ---
+    def _decode_logits(self, seq, actuators, sampler):
+        """Per-modality last-frame logits, with optional classifier-free guidance.
+
+        cfg_scale == 1.0 short-circuits to ONE forward pass, so guidance costs nothing
+        when it is off (and the default path stays bit-identical).
+        """
+        h = self.backbone.encode(seq, actuators)
+        cond = self.backbone.tok.logits_last(h)
+        if sampler.cfg_scale == 1.0:
+            return cond
+        hu = self.backbone.encode(seq, actuators, drop_actuators=True)
+        uncond = self.backbone.tok.logits_last(hu)
+        s = float(sampler.cfg_scale)
+        return {n: uncond[n] + s * (cond[n] - uncond[n]) for n in cond}
+
     @torch.no_grad()
     def generate_frame(self, past_codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                        temperature: float = 1.0,
@@ -221,8 +236,7 @@ class MaskGITDynamics(nn.Module):
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, frac in enumerate(keep_masked):
             seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            h = self.backbone.encode(seq, actuators)                  # (B, P+1, N, d)
-            logits = self.backbone.tok.logits_last(h)                 # {name:(B, n_tok, vocab)}
+            logits = self._decode_logits(seq, actuators, sampler)     # {name:(B, n_tok, vocab)}
             # Three passes — sample all / decide reveals / commit. Splitting the old
             # single-pass loop lets the reveal POLICY see every modality's confidence at once
             # while leaving the sampling RNG order untouched (same multinomial calls, same
@@ -253,8 +267,7 @@ class MaskGITDynamics(nn.Module):
         # and re-decode it against the tokens that survived.
         for _ in range(int(sampler.revision_rounds)):
             seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            h = self.backbone.encode(seq, actuators)
-            logits = self.backbone.tok.logits_last(h)
+            logits = self._decode_logits(seq, actuators, sampler)
             samp, conf = {}, {}
             for m in cfg.modalities:
                 lg = logits[m.name].float() / max(sampler.temp_for(m.name), 1e-6)
