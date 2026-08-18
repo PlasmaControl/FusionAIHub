@@ -1,0 +1,60 @@
+"""Decode-policy configuration and helpers for the MaskGIT sampler.
+
+Pure policy: these functions take logits/probabilities and return filtered or
+reordered ones. They hold no model state, so they are cheap to unit-test and can be
+swapped per eval arm. ``SamplerConfig()`` with no arguments reproduces the original
+sampler exactly (see tests/ignite/test_phaseb_compat.py).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, Optional, Union
+
+import torch
+
+
+@dataclass
+class SamplerConfig:
+    """How a frame is decoded. Defaults == the original behaviour, bit for bit.
+
+    temperature      : scalar, or {modality_name: float}. Spectro modalities carry a
+                       64k vocab and 768 tokens; slow-TS carries 1k and 4. One global
+                       temperature over-disperses the former.
+    top_p            : nucleus filter applied per token before sampling. None = off.
+    global_pool      : rank reveal-confidence across ALL of a frame's tokens instead of
+                       per modality, so an uncertain modality can defer while confident
+                       ones commit and anchor it (cross-modal coherence).
+    revision_rounds  : after the schedule completes, re-mask the least-confident
+                       ``revision_frac`` of the frame and re-decode, this many times.
+    cfg_scale        : classifier-free guidance on the actuator conditioning.
+                       1.0 = off (single forward pass, no cost).
+    """
+
+    temperature: Union[float, Dict[str, float]] = 1.0
+    top_p: Optional[float] = None
+    global_pool: bool = False
+    revision_rounds: int = 0
+    revision_frac: float = 0.25
+    cfg_scale: float = 1.0
+
+    def temp_for(self, name: str) -> float:
+        if isinstance(self.temperature, dict):
+            return float(self.temperature.get(name, 1.0))
+        return float(self.temperature)
+
+
+def apply_top_p(probs: torch.Tensor, top_p: Optional[float]) -> torch.Tensor:
+    """Nucleus filter over the last dim, renormalized. Identity when ``top_p`` is None.
+
+    The highest-probability token is always kept, so a top_p below the max prob still
+    yields a valid distribution rather than an all-zero row.
+    """
+    if top_p is None:
+        return probs
+    srt, idx = probs.sort(dim=-1, descending=True)
+    cum = srt.cumsum(dim=-1)
+    keep = cum - srt < top_p                       # keep while the mass BEFORE this token < p
+    keep[..., 0] = True                            # always keep the argmax
+    filt = torch.zeros_like(probs).scatter_(-1, idx, srt * keep)
+    return filt / filt.sum(dim=-1, keepdim=True).clamp_min(1e-12)

@@ -23,6 +23,7 @@ import torch.nn.functional as F
 
 from .dynamics import DynamicsBackbone
 from .dynamics_config import DynamicsConfig
+from .sampling import SamplerConfig, apply_top_p
 
 
 def _cosine_keep_fractions(n_steps: int) -> list:
@@ -145,13 +146,15 @@ class MaskGITDynamics(nn.Module):
     @torch.no_grad()
     def generate_frame(self, past_codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                        temperature: float = 1.0,
-                       generator: Optional[torch.Generator] = None) -> Dict[str, torch.Tensor]:
+                       generator: Optional[torch.Generator] = None,
+                       sampler: Optional[SamplerConfig] = None) -> Dict[str, torch.Tensor]:
         """Generate ONE next frame's committed codes given committed past frames.
 
         past_codes[.]: (B, P, n_tok) real codes for P past frames. actuators: (B, P+1, actuator_dim)
         (through the frame being generated — causal). Returns {name: (B, n_tok)} committed codes.
         """
         cfg = self.cfg
+        sampler = SamplerConfig(temperature=temperature) if sampler is None else sampler
         ref = past_codes[cfg.modalities[0].name]
         B, P, _ = ref.shape
         dev = ref.device
@@ -169,8 +172,8 @@ class MaskGITDynamics(nn.Module):
                 # .float(): the backbone may run under bf16 autocast (eval speed, matches
                 # training numerics) but softmax/multinomial sample in fp32 — multinomial
                 # does not support bf16 and low-precision probs would skew sampling.
-                lg = logits[m.name].float() / max(temperature, 1e-6)
-                prob = lg.softmax(-1)
+                lg = logits[m.name].float() / max(sampler.temp_for(m.name), 1e-6)
+                prob = apply_top_p(lg.softmax(-1), sampler.top_p)
                 samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
                                          generator=generator).reshape(B, m.n_tok)
                 conf = prob.gather(-1, samp.unsqueeze(-1)).squeeze(-1)  # (B, n_tok)
@@ -197,7 +200,8 @@ class MaskGITDynamics(nn.Module):
     @torch.no_grad()
     def rollout(self, seed_codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                 n_predict: Optional[int] = None, temperature: float = 1.0,
-                generator: Optional[torch.Generator] = None) -> Dict[str, torch.Tensor]:
+                generator: Optional[torch.Generator] = None,
+                sampler: Optional[SamplerConfig] = None) -> Dict[str, torch.Tensor]:
         """Seed K₀ real frames -> generate + COMMIT n_predict frames. Closed code space, no
         decode/re-tokenize round-trip.
 
@@ -214,7 +218,8 @@ class MaskGITDynamics(nn.Module):
             )
         for t in range(n_predict):
             nxt = self.generate_frame(
-                traj, actuators[:, : K0 + t + 1], temperature=temperature, generator=generator
+                traj, actuators[:, : K0 + t + 1], temperature=temperature,
+                generator=generator, sampler=sampler
             )
             traj = {n: torch.cat([traj[n], nxt[n].unsqueeze(1)], dim=1) for n in traj}
         return traj
