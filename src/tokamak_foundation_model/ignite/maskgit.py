@@ -66,17 +66,24 @@ class MaskGITDynamics(nn.Module):
             masked[m.name], mask[m.name] = mc, mk
         return masked, mask
 
-    def _boundary_mask(self, codes: Dict[str, torch.Tensor], gen: Optional[torch.Generator]):
+    def _boundary_mask(self, codes: Dict[str, torch.Tensor], gen: Optional[torch.Generator],
+                       min_boundary: int = 1):
         """CTF layout: frames < c are COMPLETE context; frames >= c are heavily masked targets.
 
         This is the conditional rollout actually uses (see docs/IGNITE_ROLLOUT_QUALITY_PLAN.md
         §1A). The boundary c is per-sample so one batch spans many context lengths.
+
+        ``min_boundary`` floors that draw, so a caller can protect a prefix that MUST stay fully
+        visible: self-forcing passes the end of its self-rolled window, keeping those frames as
+        complete context instead of letting the mask overwrite the model's own output. The default
+        1 reproduces the original bounds exactly (>=1 complete context frame).
         """
         cfg = self.cfg
         ref = codes[cfg.modalities[0].name]
         B, Fr, _ = ref.shape
         dev = ref.device
-        c = torch.randint(1, max(2, Fr), (B,), generator=gen, device=dev)      # >=1 context frame
+        c = torch.randint(min_boundary, max(min_boundary + 1, Fr), (B,),
+                          generator=gen, device=dev)                          # >=1 context frame
         idx = torch.arange(Fr, device=dev).view(1, Fr)
         is_target = idx >= c.view(B, 1)                                        # (B, F)
         lo = float(cfg.ctf_min_target_ratio)
@@ -157,23 +164,34 @@ class MaskGITDynamics(nn.Module):
         """
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
         n_sf = int(getattr(self.cfg, "sf_frames", 0))
+        sf_at = None                  # end of the self-rolled window, once one has been built
         if n_sf > 0:
-            # Draw on the CONTEXT's device, same convention as the CTF gate below: a device-typed
-            # generator (as _val_loss passes on GPU) only accepts draws on its own device, so an
-            # unqualified draw raises there. On CPU the explicit device leaves the stream
-            # bit-identical. Both draws stay .item()-converted so the control flow below is
-            # plain Python scalars.
-            sdev = context[self.cfg.modalities[0].name].device
-            use_sf = (self.cfg.sf_prob >= 1.0
-                      or bool(torch.rand((), generator=generator, device=sdev).item()
-                              < self.cfg.sf_prob))
-            if use_sf:
-                Fr = context[self.cfg.modalities[0].name].shape[1]
-                lo = min(self.cfg.k0_seed, max(1, Fr - n_sf - 1))
-                b = int(torch.randint(lo, max(lo + 1, Fr - n_sf), (1,),
-                                      generator=generator, device=sdev).item())
-                context = rollout_context(self, context, actuators, boundary=b,
-                                          n_roll=n_sf, generator=generator)
+            ref_ctx = context[self.cfg.modalities[0].name]
+            Fr = ref_ctx.shape[1]
+            # A usable window needs >=1 real seed frame, n_sf rolled frames, and >=1 frame after
+            # them. Anything shorter could only draw and then no-op, so bail before touching the
+            # RNG rather than perturbing the stream for nothing.
+            if Fr >= n_sf + 2:
+                # Draw on the CONTEXT's device, same convention as the CTF gate below: a
+                # device-typed generator (as _val_loss passes on GPU) only accepts draws on its
+                # own device, so an unqualified draw raises there. On CPU the explicit device
+                # leaves the stream bit-identical. Both draws stay .item()-converted so the
+                # control flow below is plain Python scalars.
+                sdev = ref_ctx.device
+                use_sf = (self.cfg.sf_prob >= 1.0
+                          or bool(torch.rand((), generator=generator, device=sdev).item()
+                                  < self.cfg.sf_prob))
+                if use_sf:
+                    lo = max(1, min(self.cfg.k0_seed, max(1, Fr - n_sf - 1)))
+                    b = int(torch.randint(lo, max(lo + 1, Fr - n_sf), (1,),
+                                          generator=generator, device=sdev).item())
+                    context = rollout_context(self, context, actuators, boundary=b,
+                                              n_roll=n_sf, generator=generator)
+                    # The CTF mask must not overwrite what we just rolled — those frames ARE the
+                    # on-policy context this arm exists to train on. Floor the CTF boundary at the
+                    # window's end so the rolled frames stay complete context and the supervised
+                    # suffix follows them: the Self-Forcing conditional, structurally.
+                    sf_at = min(b + n_sf, Fr - 1)
         use_ctf = False
         if self.cfg.ctf_frac > 0.0:
             # Draw on the CODES' device: a device-typed generator (as _val_loss passes on GPU)
@@ -182,8 +200,11 @@ class MaskGITDynamics(nn.Module):
             cdev = codes[self.cfg.modalities[0].name].device
             use_ctf = bool(torch.rand((), generator=generator, device=cdev).item()
                            < self.cfg.ctf_frac)
-        masked, mask = (self._boundary_mask(context, generator) if use_ctf
-                        else self._random_mask(context, generator))
+        if use_ctf:
+            masked, mask = (self._boundary_mask(context, generator, min_boundary=sf_at)
+                            if sf_at is not None else self._boundary_mask(context, generator))
+        else:
+            masked, mask = self._random_mask(context, generator)
         # Memory-critical: encode to hidden states, then project ONLY masked positions to vocab.
         # Materializing full (B, F, tokens_per_frame, vocab) logits is ~B*400 GB at F=100 (OOM);
         # masked_logits gathers first -> ~B*200 MB. See FrameTokenizer.masked_logits.

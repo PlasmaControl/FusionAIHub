@@ -98,3 +98,39 @@ def test_loss_weighting_modes_change_the_loss_but_stay_finite():
 
 def test_default_loss_weight_is_uniform():
     assert _tiny().modality_loss_weight == "uniform"
+
+
+def test_boundary_mask_respects_min_boundary():
+    """``min_boundary`` floors the per-sample boundary: frames below it stay COMPLETE context.
+
+    Self-forcing passes the end of its self-rolled window here, so the mask cannot overwrite the
+    model's own frames — the on-policy context is the whole point of that arm. Same per-sample,
+    per-modality rigour as the default-boundary test above.
+    """
+    cfg = _tiny()
+    mg = MaskGITDynamics(cfg)
+    B, Fr, k = 6, 6, 4
+    codes = _codes(cfg, B=B, F=Fr)
+    masked, mask = mg._boundary_mask(codes, gen=torch.Generator().manual_seed(0), min_boundary=k)
+    for m in cfg.modalities:
+        mk = mask[m.name]
+        assert not mk[:, :k].any(), f"{m.name}: frames below min_boundary must stay unmasked"
+        # a floored boundary must still leave something to supervise, in EVERY sample
+        assert mk.any(dim=-1).any(dim=-1).all(), f"{m.name}: a sample has no supervised frame"
+        keep = ~mk
+        assert torch.equal(masked[m.name][keep], codes[m.name][keep])    # kept -> true code
+        assert (masked[m.name][mk] == m.codebook_size).all()             # masked -> MASK id
+
+
+def test_boundary_mask_default_min_boundary_is_unchanged():
+    """min_boundary=1 must be bit-identical to omitting it — that is what keeps CTF-only runs
+    (and the golden fixture) untouched by the self-forcing work."""
+    cfg = _tiny()
+    mg = MaskGITDynamics(cfg)
+    codes = _codes(cfg, B=4, F=6)
+    a_masked, a_mask = mg._boundary_mask(codes, gen=torch.Generator().manual_seed(11))
+    b_masked, b_mask = mg._boundary_mask(codes, gen=torch.Generator().manual_seed(11),
+                                         min_boundary=1)
+    for m in cfg.modalities:
+        assert torch.equal(a_mask[m.name], b_mask[m.name])
+        assert torch.equal(a_masked[m.name], b_masked[m.name])

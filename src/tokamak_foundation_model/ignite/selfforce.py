@@ -34,14 +34,22 @@ def rollout_context(model, codes: Dict[str, torch.Tensor], actuators: torch.Tens
     cfg = model.cfg
     ref = codes[cfg.modalities[0].name]
     Fr = ref.shape[1]
+    if boundary < 0:
+        # A negative boundary would not error: `v[:, :-1]` is a legal slice, so the window would
+        # silently be built on a truncated prefix and DUPLICATE real frames into the output.
+        raise ValueError(f"boundary must be >= 0; got {boundary}")
     n_roll = max(0, min(n_roll, Fr - boundary))
     if n_roll == 0:
         return {k: v.detach() for k, v in codes.items()}
 
     was_training = model.training
-    model.eval()                                   # no dropout inside the rollout
     prev_steps = cfg.maskgit_decode_steps
-    cfg.maskgit_decode_steps = max(1, int(getattr(cfg, "sf_decode_steps", 4)))
+    # Resolve the cheap-decode override BEFORE flipping the mode: the try/finally below only
+    # covers what follows it, so a bad sf_decode_steps raising here would otherwise strand a
+    # training model in eval().
+    steps = max(1, int(getattr(cfg, "sf_decode_steps", 4)))
+    model.eval()                                   # no dropout inside the rollout
+    cfg.maskgit_decode_steps = steps
     try:
         ctx = {n: v[:, :boundary].clone() for n, v in codes.items()}
         for t in range(n_roll):
