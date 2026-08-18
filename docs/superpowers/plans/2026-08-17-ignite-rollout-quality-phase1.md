@@ -21,6 +21,26 @@
 - **Judge every claim in decoded, band-restricted space**, with the majority-token guard. `divergence_vs_real` is not an effect size (measured 2026-08-15: token churn anti-correlates with decoded change).
 - Commit after every task. Branch: `nathan_fm`.
 
+## Pre-flight validation (2026-08-17)
+
+Every novel function in this plan was **executed against the real `MaskGITDynamics` /
+`FrameTokenizer` classes** before the plan was committed, under a torch-only venv. 15
+checks passed:
+
+| component | task | what was verified |
+|---|---|---|
+| `apply_top_p`, `rank_normalize`, `SamplerConfig.temp_for` | 3, 4 | nucleus filter renormalizes and always keeps the argmax; rank normalization is order-preserving and scale-free across a 64k-vs-1k vocab gap; holds at a realistic `(4, 192)` shape |
+| three-pass `generate_frame` refactor | 4 | **bit-identical to the stock sampler** across 3 seeds × 3 modalities (vocabs 5/7/11, token counts 6/4/5) — the compatibility guarantee this whole plan rests on |
+| `_global_reveal` | 4 | genuinely reallocates reveal counts vs the fixed per-modality quota (not a no-op) |
+| `logits_last` | 2 | exactly equals `logits(h)[:, -1]` |
+| `_boundary_mask` | 7 | clean prefix, every post-boundary frame supervised, ≥1 context frame kept, unmasked positions preserve true codes, boundary varies across a batch |
+| `rollout_context` | 10 | replaces only the rolled window, never leaks the MASK id, returns detached tensors, and restores **both** `maskgit_decode_steps` and train/eval mode via `try/finally` |
+| `masked_pseudo_likelihood` | 6 | finite and seed-reproducible; separates own-rollout (0.907) from random codes (1.773), margin **+0.87 on an untrained model** |
+
+This does not replace the plan's own TDD steps — write each test and watch it fail
+first. It means the *design* is sound, so a failure at execution time points at the
+transcription, not the approach.
+
 ---
 
 ## File Structure
