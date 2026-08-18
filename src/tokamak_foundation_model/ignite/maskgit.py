@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 from .dynamics import DynamicsBackbone
 from .dynamics_config import DynamicsConfig
-from .sampling import SamplerConfig, apply_top_p, rank_normalize
+from .sampling import SamplerConfig, apply_top_p, norm_log_confidence
 
 
 def _cosine_keep_fractions(n_steps: int) -> list:
@@ -217,13 +217,18 @@ class MaskGITDynamics(nn.Module):
         return take
 
     def _global_reveal(self, conf, revealed, frac):
-        """Pooled policy: rank confidence across the WHOLE frame, reveal the global top-K.
+        """Pooled policy: score the WHOLE frame on one comparable scale, reveal the global top-K.
 
         Lets an uncertain modality defer while confident ones commit first and anchor it
         through the next step's spatial attention — the cross-modal-coherence lever.
+
+        Scoring is ``norm_log_confidence`` (1 + log c / log V), NOT a within-modality rank:
+        ranks put every modality on the same {0..1} grid, which makes the allocation
+        token-count-proportional — identical to the fixed quota — for ANY confidences. The
+        log-vocab form removes the vocab-size scale while keeping the between-modality signal.
         """
-        names = [m.name for m in self.cfg.modalities]
-        parts = [rank_normalize(conf[n]).masked_fill(revealed[n], float("inf")) for n in names]
+        parts = [norm_log_confidence(conf[m.name], m.codebook_size)
+                 .masked_fill(revealed[m.name], float("inf")) for m in self.cfg.modalities]
         flat = torch.cat(parts, dim=1)                       # (B, tokens_per_frame)
         total = flat.shape[1]
         n_reveal = total - int(round(frac * total))

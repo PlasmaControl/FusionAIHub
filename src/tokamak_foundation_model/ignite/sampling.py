@@ -8,6 +8,7 @@ sampler exactly (see tests/ignite/test_phaseb_compat.py).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
@@ -22,9 +23,10 @@ class SamplerConfig:
                        64k vocab and 768 tokens; slow-TS carries 1k and 4. One global
                        temperature over-disperses the former.
     top_p            : nucleus filter applied per token before sampling. None = off.
-    global_pool      : rank reveal-confidence across ALL of a frame's tokens instead of
-                       per modality, so an uncertain modality can defer while confident
-                       ones commit and anchor it (cross-modal coherence).
+    global_pool      : budget each decode step's reveals over ALL of a frame's tokens instead
+                       of per modality, scoring them by VOCAB-NORMALIZED log-confidence
+                       (``norm_log_confidence``), so an uncertain modality can defer while
+                       confident ones commit and anchor it (cross-modal coherence).
     revision_rounds  : after the schedule completes, re-mask the least-confident
                        ``revision_frac`` of the frame and re-decode, this many times.
     cfg_scale        : classifier-free guidance on the actuator conditioning.
@@ -73,6 +75,11 @@ def rank_normalize(conf: torch.Tensor) -> torch.Tensor:
     revealed later by a descending-confidence policy). Equal confidences are reachable in
     practice — a near-uniform head, or a ``top_p`` nucleus of equal-mass tokens — so without
     ``stable=True`` reveal order would not be reproducible across devices.
+
+    NOT used by the global pool: mapping every modality onto the same {0..1} rank grid also
+    erases the BETWEEN-modality confidence signal, which makes a pooled allocation provably
+    token-count-proportional (i.e. the fixed quota again). The pool scores with
+    ``norm_log_confidence`` instead; this stays as a scale-free within-modality ranking.
     """
     n = conf.shape[-1]
     if n == 1:
@@ -82,3 +89,17 @@ def rank_normalize(conf: torch.Tensor) -> torch.Tensor:
     ar = torch.arange(n, device=conf.device).expand_as(order)
     ranks.scatter_(-1, order, ar)
     return ranks.to(conf.dtype) / (n - 1)
+
+
+def norm_log_confidence(conf: torch.Tensor, vocab_size: int) -> torch.Tensor:
+    """Vocab-adjusted confidence in (-inf, 1]: ``1 + log(c) / log(V)``.
+
+    0 = uniform (c == 1/V), 1 = certain. Comparable ACROSS modalities because the
+    log-vocab denominator removes the structural smallness of a large-vocab softmax's
+    probabilities, while — unlike pure within-modality rank normalization — it
+    PRESERVES the between-modality confidence signal the global pool exists to use:
+    pure ranks map every modality onto the same {0..1} grid, which makes the pooled
+    allocation provably confidence-independent (token-count-proportional, i.e. the
+    fixed quota again).
+    """
+    return 1.0 + conf.clamp_min(1e-12).log() / math.log(max(2, vocab_size))

@@ -87,12 +87,12 @@ def test_rank_normalize_breaks_ties_in_index_order():
     assert (r4[0, 1:] > r4[0, :-1]).all()
 
 
-def _tiny_pool_model(n_a=6, n_b=4, steps=4):
+def _tiny_pool_model(n_a=6, n_b=4, steps=4, v_a=5, v_b=7):
     """Two-modality toy dynamics model, deterministically initialised."""
     from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
     from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
     cfg = DynamicsConfig(
-        modalities=(ModalitySpec("a", "spectro", n_a, 5), ModalitySpec("b", "slowts", n_b, 7)),
+        modalities=(ModalitySpec("a", "spectro", n_a, v_a), ModalitySpec("b", "slowts", n_b, v_b)),
         d_model=16, depth=2, n_heads=2, ffn_mult=2, k0_seed=2, n_predict=2,
         maskgit_decode_steps=steps, actuator_dim=6)
     torch.manual_seed(0)
@@ -125,35 +125,89 @@ def test_global_pool_changes_the_decoded_frame_and_stays_valid():
             "pooled decode left [MASK] ids behind — the schedule did not fully reveal"
 
 
-def test_global_pool_can_move_a_reveal_slot_between_modalities():
-    """The pool budgets over the WHOLE frame, so it can shift a reveal slot BETWEEN modalities —
-    something per-modality quotas structurally cannot do.
+def test_norm_log_confidence_levels_and_cross_vocab_comparability():
+    """``1 + log(c)/log(V)``: 0 at uniform, 1 at certainty, and equal across vocab sizes.
 
-    Uses the production frame ratio (a 192-token spectro modality beside a 4-token slow-TS one)
-    at decode step 0 of the real 10-step cosine schedule: the fixed quota gives both slots to
-    spectro and starves slow-TS ([2, 0]), while the pool splits them ([1, 1]).
+    This is the property the global pool needs and pure rank normalization cannot give: a
+    64k-vocab token and a 1k-vocab token that are equally confident RELATIVE to their own
+    uniform baseline must score the same, even though their raw probabilities differ 8x.
+    """
+    from tokamak_foundation_model.ignite.sampling import norm_log_confidence
+    for V in (1000, 65536):
+        assert torch.allclose(norm_log_confidence(torch.tensor([1.0 / V]), V),
+                              torch.tensor([0.0]), atol=1e-6)          # uniform -> 0
+        assert float(norm_log_confidence(torch.tensor([0.999]), V)) > 0.999   # certain -> ~1
+        assert float(norm_log_confidence(torch.tensor([1.0]), V)) == 1.0
+    # same normalized level (halfway: c = V**-0.5) -> same score despite 8x raw-prob gap
+    small_vocab = norm_log_confidence(torch.tensor([1000 ** -0.5]), 1000)
+    large_vocab = norm_log_confidence(torch.tensor([65536 ** -0.5]), 65536)
+    assert torch.allclose(small_vocab, large_vocab, atol=1e-6)
+    assert torch.allclose(small_vocab, torch.tensor([0.5]), atol=1e-6)
+    # monotone in c, and a zeroed probability stays finite rather than -inf
+    c = torch.tensor([[0.0, 1e-9, 0.01, 0.5, 1.0]])
+    out = norm_log_confidence(c, 1000)
+    assert torch.isfinite(out).all()
+    assert (out[0, 1:] > out[0, :-1]).all()
 
-    Seed-free and exact — confidences are hand-built and no model forward runs. Verified
-    invariant to confidence MAGNITUDE and to within-modality ordering.
 
-    NOTE: this pins a *budgeting* difference, NOT confidence-based deferral. ``rank_normalize``
-    maps every modality onto the same rank set, so the pooled allocation is currently
-    independent of confidence magnitude; see the task-4 report. Kept deliberately narrow so it
-    does not lock in that limitation.
+def test_global_pool_allocation_follows_modality_confidence():
+    """The R1 lever: reveals follow WHICH MODALITY is confident, which quotas cannot do.
+
+    Two 8-token modalities sharing a vocab. One is confident (c ~ 0.9), the other near its
+    uniform baseline (c ~ 0.001 at V=1000). At this step the frame's budget is 5 reveals: the
+    pool spends all 5 on the confident modality and lets the uncertain one defer entirely, and
+    the allocation FLIPS when the confidences are swapped. The fixed quota is [2, 2] in both
+    cases — blind to confidence by construction.
+
+    Deterministic: hand-built confidences fed straight to the two policies, no model forward
+    and no RNG.
     """
     from tokamak_foundation_model.ignite.maskgit import _cosine_keep_fractions
-    cfg, mg = _tiny_pool_model(n_a=192, n_b=4, steps=10)
+    cfg, mg = _tiny_pool_model(n_a=8, n_b=8, steps=4, v_a=1000, v_b=1000)
     names = [m.name for m in cfg.modalities]
-    conf = {"a": torch.linspace(0.90, 0.99, 192).unsqueeze(0),     # confident modality
-            "b": torch.linspace(0.001, 0.002, 4).unsqueeze(0)}     # uncertain modality
     revealed = {m.name: torch.zeros(1, m.n_tok, dtype=torch.bool) for m in cfg.modalities}
-    frac = _cosine_keep_fractions(cfg.maskgit_decode_steps)[0]
-    quota = mg._per_modality_reveal(conf, revealed, frac)
-    pool = mg._global_reveal(conf, revealed, frac)
-    assert [int(quota[n].sum()) for n in names] == [2, 0]
-    assert [int(pool[n].sum()) for n in names] == [1, 1]
-    # each policy honours its own budget definition: summed per-modality vs one frame-wide round
-    assert sum(int(quota[n].sum()) for n in names) == sum(
-        m.n_tok - int(round(frac * m.n_tok)) for m in cfg.modalities)
+    frac = _cosine_keep_fractions(cfg.maskgit_decode_steps)[1]
     total = cfg.tokens_per_frame
-    assert sum(int(pool[n].sum()) for n in names) == total - int(round(frac * total))
+    budget = total - int(round(frac * total))
+    assert budget == 5                                    # guards the fixture, not the policy
+
+    confident = torch.linspace(0.85, 0.95, 8).unsqueeze(0)
+    uncertain = torch.linspace(0.001, 0.002, 8).unsqueeze(0)   # ~1/V, i.e. no information
+    a_hot = {"a": confident, "b": uncertain}
+    b_hot = {"a": uncertain, "b": confident}
+
+    def counts(take):
+        return [int(take[n].sum()) for n in names]
+
+    pool_a = counts(mg._global_reveal(a_hot, revealed, frac))
+    pool_b = counts(mg._global_reveal(b_hot, revealed, frac))
+    assert pool_a == [5, 0], f"confident modality should take the whole budget, got {pool_a}"
+    assert pool_b == [0, 5], f"allocation must flip with the confidences, got {pool_b}"
+    assert pool_a != pool_b                               # responsive, not fixed
+    assert sum(pool_a) == sum(pool_b) == budget           # budget still honoured
+
+    for conf in (a_hot, b_hot):                           # the quota ignores all of this
+        q = mg._per_modality_reveal(conf, revealed, frac)
+        assert [int(q[n].sum()) for n in names] == [2, 2]
+
+
+def test_global_pool_scores_vocab_normalized_not_raw_probability():
+    """A large-vocab modality must not be starved for having structurally smaller probabilities.
+
+    Modality "a" has a 64k vocab and c = 0.01; "b" has a 1k vocab and c = 0.05 — five times the
+    RAW probability. Relative to their own uniform baselines "a" is the more confident one
+    (0.585 vs 0.566), so it must win the budget. Scoring raw probability would invert this.
+    """
+    from tokamak_foundation_model.ignite.maskgit import _cosine_keep_fractions
+    from tokamak_foundation_model.ignite.sampling import norm_log_confidence
+    cfg, mg = _tiny_pool_model(n_a=8, n_b=8, steps=4, v_a=65536, v_b=1000)
+    names = [m.name for m in cfg.modalities]
+    conf = {"a": torch.full((1, 8), 0.01), "b": torch.full((1, 8), 0.05)}
+    assert conf["b"][0, 0] > conf["a"][0, 0]                        # b wins on raw probability
+    assert float(norm_log_confidence(conf["a"][0, 0], 65536)) > \
+        float(norm_log_confidence(conf["b"][0, 0], 1000))           # a wins once normalized
+    revealed = {m.name: torch.zeros(1, m.n_tok, dtype=torch.bool) for m in cfg.modalities}
+    frac = _cosine_keep_fractions(cfg.maskgit_decode_steps)[1]
+    pool = mg._global_reveal(conf, revealed, frac)
+    assert [int(pool[n].sum()) for n in names] == [5, 0], \
+        "pool followed raw probability instead of vocab-normalized confidence"
