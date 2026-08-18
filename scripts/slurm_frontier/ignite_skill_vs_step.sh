@@ -18,9 +18,9 @@
 # against step; the documented bp128 pathology is that this curve INVERTS with more
 # training, and a CTF / self-forcing arm must stop it inverting.
 #
-# READ THE HARNESS DOCSTRING FIRST: token skill was MEASURED blind to that inversion on
-# bp128 (flat +0.249 -> +0.259 where the decoded mhr TM band went +0.153 -> -0.862), so a
-# flat curve from this job is NOT on its own evidence that an arm stopped inverting.
+# GATE ON THE DECODED PER-BAND ROWS, not the token rows: token skill was MEASURED blind to
+# the inversion on bp128 (flat +0.249 -> +0.259 where the decoded mhr TM band went
+# +0.153 -> -0.862). A flat TOKEN curve is not evidence that an arm stopped inverting.
 #
 # SINGLE GCD on purpose: this is eval, one shot at a time, and the harness holds one
 # model at a time. Keep -t <= 02:00:00 — longer walltimes are rejected here.
@@ -31,6 +31,8 @@
 #   SHOTS     comma-separated shot list
 #   OUT_DIR   destination for skill_vs_step.json + skill_vs_step.png
 #   FLAGS     extra harness flags, e.g. "--global_pool --top_p 0.9 --best_of_n 4"
+#             (decoded metrics need --bp_root/--codec_root/--data_dir; the harness defaults
+#              already point at the bp128 edges, the current codecs and additional_data)
 #
 # Submit from the repo root:
 #   sbatch scripts/slurm_frontier/ignite_skill_vs_step.sh
@@ -44,10 +46,13 @@ source scripts/slurm_frontier/_frontier_settings.sh
 BP_ROOT="/lustre/orion/fus187/proj-shared/models/ignite_bp128"
 RUN_DIRS="${RUN_DIRS:-${BP_ROOT}/runs/bp128_d512L8}"
 # NOTE the default cache is the EXTENDED bp128 cache, not ${BP_ROOT}/frame_codes: the
-# canonical cache was built before 199597 was encoded and does NOT contain it (the shot
-# the documented +0.153 -> -0.862 inversion was measured on). See
+# canonical cache was built before 199597 was encoded and does NOT contain it (the shot the
+# documented +0.153 -> -0.862 inversion was measured on). This is the DURABLE proj-shared
+# copy -- the original lives in data/outputs/, which is purge-by-atime scratch, and the
+# headline regression test must not depend on that. Rebuild recipe + bin-edges
+# compatibility record: PROVENANCE.txt in that directory, and
 # scripts/evaluation/ignite_build_bp_cache.py.
-CACHE_DIR="${CACHE_DIR:-data/outputs/ignite_bp_cache_ext}"
+CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/nchen/ignite_bp128_frame_codes_ext}"
 SHOTS="${SHOTS:-199597}"
 OUT_DIR="${OUT_DIR:-data/outputs/ignite_skill_vs_step/baseline}"
 FLAGS="${FLAGS:-}"
