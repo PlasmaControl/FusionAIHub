@@ -106,6 +106,16 @@ class DynamicsConfig:
     ctf_frac: float = 0.0
     ctf_min_target_ratio: float = 0.8      # min mask ratio applied at/after the boundary
 
+    # --- self-forcing Stage A: rollout-context fine-tune ---------------------------------------
+    # Number of frames the model rolls out FROM ITS OWN OUTPUT before the supervised frame.
+    # Training otherwise conditions only on (masked) ground-truth context, while rollout
+    # conditions on complete self-generated context; Self-Forcing (arXiv 2506.08009) shows that
+    # gap — not the loss function — is what costs rollout quality. The rollout runs under
+    # no_grad and is detached, so there is no BPTT. 0 = off.
+    sf_frames: int = 0
+    sf_decode_steps: int = 4     # cheaper few-step decode for training rollouts (inference uses 10)
+    sf_prob: float = 1.0         # probability a window uses the self-rollout context when sf_frames>0
+
     # --- per-modality loss weighting ----------------------------------------------------------
     # "uniform" (default, original): every modality's masked CE counts the same, so a 4-token
     # slow-TS modality gets ~192x the per-token gradient of 768-token ece. "tokens" weights by

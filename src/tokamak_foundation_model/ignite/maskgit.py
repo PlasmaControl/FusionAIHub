@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from .dynamics import DynamicsBackbone
 from .dynamics_config import DynamicsConfig
 from .sampling import SamplerConfig, apply_top_p, norm_log_confidence
+from .selfforce import rollout_context
 
 
 def _cosine_keep_fractions(n_steps: int) -> list:
@@ -155,6 +156,17 @@ class MaskGITDynamics(nn.Module):
         zero-weighted term keeps every parameter in the graph with a zero gradient.
         """
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
+        n_sf = int(getattr(self.cfg, "sf_frames", 0))
+        if n_sf > 0:
+            use_sf = (self.cfg.sf_prob >= 1.0
+                      or bool(torch.rand((), generator=generator).item() < self.cfg.sf_prob))
+            if use_sf:
+                Fr = context[self.cfg.modalities[0].name].shape[1]
+                lo = min(self.cfg.k0_seed, max(1, Fr - n_sf - 1))
+                b = int(torch.randint(lo, max(lo + 1, Fr - n_sf), (1,),
+                                      generator=generator).item())
+                context = rollout_context(self, context, actuators, boundary=b,
+                                          n_roll=n_sf, generator=generator)
         use_ctf = False
         if self.cfg.ctf_frac > 0.0:
             # Draw on the CODES' device: a device-typed generator (as _val_loss passes on GPU)
