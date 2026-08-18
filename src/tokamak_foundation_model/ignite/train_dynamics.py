@@ -841,7 +841,8 @@ def cache_modality_specs(cache_dir):
 
 def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: float = 3e-4,
           depth: int = 24, d_model: int = 1024, val_frac: float = 0.05, num_workers: int = 4,
-          ckpt_every: int = 1000, ss_final_frac: float = None, n_heads: int = None,
+          ckpt_every: int = 1000, snapshot_every: int = 0,
+          ss_final_frac: float = None, n_heads: int = None,
           k0_seed: int = None, n_predict: int = None, train_cap: int = 0, val_n: int = 0,
           split_seed: int = 0, warmup_steps: int = 0, min_lr_ratio: float = 0.01,
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
@@ -1136,6 +1137,14 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                 tmp = Path(out_dir) / "dynamics_latest.pt.tmp"
                 torch.save(payload, tmp)
                 tmp.replace(latest)
+                # STEP SNAPSHOTS (skill-vs-step curves). Non-rolling, so the harness can
+                # plot skill against training step; fires only on ckpt steps, so the
+                # effective cadence is snapshot_every rounded up to a ckpt_every multiple.
+                if snapshot_every and step % snapshot_every == 0:
+                    snap = Path(out_dir) / f"dynamics_step{step:06d}.pt"
+                    stmp = Path(out_dir) / (snap.name + ".tmp")
+                    torch.save(payload, stmp)
+                    stmp.replace(snap)
                 # BEST-CHECKPOINT RETENTION. dynamics_latest.pt is a ROLLING file, so a run
                 # that overfits destroys its own best weights (measured: the ngen2 N=100 arm
                 # bottomed at val CE 1.77 @ step 4.6k and was at 2.63 by 8k — those weights
@@ -1180,6 +1189,10 @@ def build_arg_parser():
     p.add_argument("--ckpt_every", type=int, default=200,
                    help="checkpoint cadence (steps). MUST be < steps-per-job (~700 at 2h/g1) or a "
                         "chained run never checkpoints and every resume restarts from step 0.")
+    p.add_argument("--snapshot_every", type=int, default=0,
+                   help="ALSO keep a non-rolling dynamics_step{N}.pt every N steps (0 = off). "
+                        "Fires only on ckpt steps, so use a multiple of --ckpt_every. Feeds the "
+                        "skill-vs-step harness, which needs more than best/latest.")
     p.add_argument("--ss_final_frac", type=float, default=None,
                    help="override DynamicsConfig.ss_ramp_final_frac; set 0 to DISABLE scheduled "
                         "sampling (its full-logits sampling OOMs at F=100 until made memory-efficient).")
@@ -1300,7 +1313,8 @@ def main(argv=None):
         raise SystemExit("--out_dir is required for training (omit only with --precompute)")
     return train(args.cache_dir, args.out_dir, steps=args.steps, batch_size=args.batch_size,
                  lr=args.lr, depth=args.depth, d_model=args.d_model, num_workers=args.num_workers,
-                 ckpt_every=args.ckpt_every, ss_final_frac=args.ss_final_frac,
+                 ckpt_every=args.ckpt_every, snapshot_every=args.snapshot_every,
+                 ss_final_frac=args.ss_final_frac,
                  n_heads=args.n_heads, k0_seed=args.k0_seed, n_predict=args.n_predict,
                  train_cap=args.train_cap, val_n=args.val_n, split_seed=args.split_seed,
                  warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio,

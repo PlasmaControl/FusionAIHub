@@ -45,6 +45,8 @@ BATCH_SIZE="${BATCH_SIZE:-1}"; ACCUM_STEPS="${ACCUM_STEPS:-2}"
 LR="${LR:-3e-4}"; NUM_WORKERS="${NUM_WORKERS:-4}"
 CKPT_EVERY="${CKPT_EVERY:-500}"   # in OPTIMIZER steps (accumulation-independent); must be
                                   # < steps-per-leg so a 12 h leg checkpoints before its wall
+SNAPSHOT_EVERY="${SNAPSHOT_EVERY:-2000}"  # keep dynamics_step{N}.pt for the skill-vs-step
+                                  # harness (0 = off); multiple of CKPT_EVERY or it never fires
 PRECOMPUTE="${PRECOMPUTE:-0}"     # 1 = build the frame-code cache (each rank a shot-shard) then exit
 MAX_SHOTS="${MAX_SHOTS:-0}"       # cap total shots for a --precompute sanity run (0 = full dataset)
 CODEC_TMPL="${CODEC_TMPL:-}"      # precompute codec override, e.g. 'path/codecs/{m}/codec_best.pt'
@@ -169,6 +171,7 @@ cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} steps=${STEP
        --lr "${LR}" \
        --num_workers "${NUM_WORKERS}" \
        --ckpt_every "${CKPT_EVERY}" \
+       --snapshot_every "${SNAPSHOT_EVERY}" \
        --ss_final_frac "${SS_FINAL_FRAC:-0}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" \
