@@ -16,6 +16,7 @@
 - **Zero new parameters in Phase 1.** No new `nn.Module`, no changed tensor shapes in `state_dict`. Head factorization, state tokens, and the inverse-dynamics head are deliberately out of scope (they change parameter counts — see Follow-on Plans).
 - **Config additions are dataclass fields with defaults.** `DynamicsConfig` is constructed from checkpoints that predate the new fields, so every new field must have a default that means "off".
 - **Tests run on CPU** with tiny configs, following the existing idiom in `tests/ignite/test_phaseb_maskgit.py` (`_tiny()` / `_codes()` helpers, `torch.Generator().manual_seed(...)`). No test may require a GPU or the production cache.
+- **Interpreter.** Every `pytest` command below is written for `.pixi/envs/frontier/bin/python`. That env is currently broken (Task 0). **The Phase-B modules import with torch alone** — no `x-transformers`, no `vector-quantize-pytorch` — so a torch-only venv runs the whole unit-test suite. Verified 2026-08-17: all 23 existing Phase-B tests pass under `/lustre/orion/fus187/scratch/nchen/tokeye/.venv/bin/python` (torch 2.10 ROCm, py3.13). Substitute that interpreter and Tasks 1–10 are unblocked even before the pixi rebuild; only Tasks 11–13 (real cache, SLURM) need the rebuilt env.
 - **Frame = 50 ms**; production layout is **cache-derived, not the static table** (1593 tokens/frame, four 64k-vocab modalities). Never hard-code 1017 or 1012.
 - **Judge every claim in decoded, band-restricted space**, with the majority-token guard. `divergence_vs_real` is not an effect size (measured 2026-08-15: token churn anti-correlates with decoded change).
 - Commit after every task. Branch: `nathan_fm`.
@@ -53,7 +54,8 @@
 
 ## Task 0: Recover the toolchain and back up the branch
 
-**This task is blocking and was discovered while writing this plan — do it first, verify, and do not skip it.** Frontier's `/lustre/orion/.../scratch` purges files by access time. The pixi env (built 2026-03-05) has lost stdlib files — `os.py`, `site.py`, `codecs.py` are gone and `encodings/` retains 9 of ~120 files — so `.pixi/envs/frontier/bin/python` cannot start at all. `git fsck` also reports missing blobs in old history. Measured on 2026-08-17: the working tree is intact, HEAD's history walks, and **the 34 unpushed commits on `nathan_fm` are a complete object graph** (`git rev-list --objects origin/nathan_fm..nathan_fm` succeeds), so they can still be pushed — but they exist only on the damaged filesystem until they are.
+**Do this first — but note it only *fully* blocks Tasks 11–13.** Tasks 1–10 are unit-test-driven and run under any torch-only interpreter (see Global Constraints), so if the pixi rebuild stalls, development continues; training and eval on the real cache do not. Frontier's `/lustre/orion/.../scratch` purges files by access time.
+ The pixi env (built 2026-03-05) has lost stdlib files — `os.py`, `site.py`, `codecs.py` are gone and `encodings/` retains 9 of ~120 files — so `.pixi/envs/frontier/bin/python` cannot start at all. `git fsck` also reports missing blobs in old history. Measured on 2026-08-17: the working tree is intact, HEAD's history walks, and **the 34 unpushed commits on `nathan_fm` are a complete object graph** (`git rev-list --objects origin/nathan_fm..nathan_fm` succeeds), so they can still be pushed — but they exist only on the damaged filesystem until they are.
 
 **Files:**
 - Modify: none (environment + git state)
