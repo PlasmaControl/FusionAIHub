@@ -1236,7 +1236,7 @@ def build_arg_parser():
                         "length (200 steps: bs1 13:57 vs bs2 26:42).")
     p.add_argument("--mask_absent", action="store_true",
                    help="exclude ABSENT diagnostics from the masked-CE (they encode to a "
-                        "constant null codeword; ~38% of loss TERMS on the production cache, "
+                        "constant null codeword; ~38%% of loss TERMS on the production cache, "
                         "since the loss weights every modality equally). Their tokens still "
                         "enter the model as input. Builds/loads <cache>/_presence.json.")
     p.add_argument("--presence_path", default=None,
