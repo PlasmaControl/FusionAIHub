@@ -67,11 +67,17 @@ def rank_normalize(conf: torch.Tensor) -> torch.Tensor:
     softmax puts far less mass on its argmax than a 1 000-way one, so a global argsort
     over raw confidence would let low-vocab modalities monopolize every reveal step.
     Rank normalization removes the scale while preserving order within each modality.
+
+    The sort is STABLE, so ties resolve by index rather than by whatever the sort backend
+    happens to do: among equal values the lower index takes the lower rank (and is therefore
+    revealed later by a descending-confidence policy). Equal confidences are reachable in
+    practice — a near-uniform head, or a ``top_p`` nucleus of equal-mass tokens — so without
+    ``stable=True`` reveal order would not be reproducible across devices.
     """
     n = conf.shape[-1]
     if n == 1:
         return torch.ones_like(conf)
-    order = conf.argsort(dim=-1)
+    order = conf.argsort(dim=-1, stable=True)
     ranks = torch.empty_like(order)
     ar = torch.arange(n, device=conf.device).expand_as(order)
     ranks.scatter_(-1, order, ar)
