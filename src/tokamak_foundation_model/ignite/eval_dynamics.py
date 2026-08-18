@@ -29,6 +29,8 @@ import torch
 from .train_dynamics import load_frozen_codecs
 from .dynamics_config import DynamicsConfig, FROZEN_MODALITIES  # noqa: F401 (FROZEN_MODALITIES: API contract)
 from .maskgit import MaskGITDynamics
+from .sampling import SamplerConfig
+from .scoring import best_of_n as _best_of_n
 
 # The exactly-11 modalities to render, and their family grouping for panel layout.
 EVAL_MODALITIES: Tuple[str, ...] = (
@@ -216,7 +218,8 @@ def apply_actuator_mode(act: torch.Tensor, mode: str, K0: int, cache_dir=None,
 @torch.no_grad()
 def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: int,
                  temperature: float, generator: torch.Generator, device,
-                 actuator_mode: str = "real", cache_dir=None
+                 actuator_mode: str = "real", cache_dir=None,
+                 sampler=None, best_of: int = 1
                  ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], int, int]:
     """Seed K0 real frames, roll out, return (gt_codes, pred_codes, K0, F) as cpu long tensors.
 
@@ -227,6 +230,13 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
     :func:`apply_actuator_mode`. The rollout consumes an IDENTICAL number of RNG draws whichever
     mode is used (the decode loop is a fixed number of multinomial calls), so two runs with the
     same seed differ ONLY through the actuator conditioning — the comparison is exactly paired.
+
+    ``sampler`` (:class:`SamplerConfig`) selects the decode policy; None reproduces the original
+    sampler exactly. ``top_p`` / ``global_pool`` / ``revision_rounds`` / ``cfg_scale`` all draw a
+    FIXED number of samples per frame, so the paired guarantee above survives them. ``best_of``
+    > 1 does NOT: it rolls out that many independent trajectories and keeps the most
+    self-consistent one, which consumes a different RNG stream — never combine it with an
+    actuator counterfactual arm.
     """
     F = min(cfg.max_frames, int(cache["n_frames"]))
     if F <= K0:
@@ -240,8 +250,16 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
     act = apply_actuator_mode(act, actuator_mode, K0, cache_dir=cache_dir, F=F)
     actuators = act.unsqueeze(0).to(device)                                         # (1, F, 70)
 
-    traj = model.rollout(seed_codes, actuators, n_predict=n_predict,
-                         temperature=temperature, generator=generator)
+    sampler = SamplerConfig(temperature=temperature) if sampler is None else sampler
+    if best_of > 1:
+        # NOT RNG-PAIRED (see the docstring): N trajectories == N different RNG streams.
+        traj, scores = _best_of_n(model, seed_codes, actuators, n=best_of,
+                                  n_predict=n_predict, sampler=sampler, generator=generator)
+        print(f"[eval] best-of-{best_of} pseudo-likelihood "
+              f"{[round(s, 4) for s in scores]} -> kept {round(min(scores), 4)}")
+    else:
+        traj = model.rollout(seed_codes, actuators, n_predict=n_predict,
+                             temperature=temperature, generator=generator, sampler=sampler)
     gt_codes = {n: codes[n][:F].long().cpu() for n in names}
     pred_codes = {n: traj[n][0, :F].long().cpu() for n in names}
     return gt_codes, pred_codes, K0, F
@@ -943,7 +961,8 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
 def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         temperature: float = 1.0, seed: int = 0, k0: int = 0, codec_tmpl: str = None,
         render_all: bool = False, val_tail: int = 0, val_n: int = 0,
-        split_seed: int = 0, actuator_mode: str = "real", log=print) -> Dict:
+        split_seed: int = 0, actuator_mode: str = "real",
+        sampler=None, best_of: int = 1, log=print) -> Dict:
     """Evaluate a trained dynamics ckpt on one or more shots (comma-separated ``shot``).
 
     Per shot: rollout from K0 real frames, per-modality TOKEN ACCURACY over the predicted
@@ -956,6 +975,17 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
     import json
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log(f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode}", flush=True)
+    if sampler is not None:
+        log(f"[eval] decode policy: top_p={sampler.top_p} global_pool={sampler.global_pool} "
+            f"revision_rounds={sampler.revision_rounds} cfg_scale={sampler.cfg_scale} "
+            f"best_of={best_of}", flush=True)
+    if best_of > 1 and actuator_mode != "real":
+        # See rollout_shot's docstring: best-of-N breaks the identical-RNG-stream property the
+        # counterfactual effect size is measured against, so divergence_vs_real would mix the
+        # conditioning effect with sampling noise.
+        log(f"[eval] WARNING: --best_of_n {best_of} with actuator_mode={actuator_mode} is NOT "
+            f"an RNG-paired comparison — divergence_vs_real is not a clean effect size.",
+            flush=True)
 
     if val_tail:
         # Resolve the held-out shots from the SAME split the trainer used. PREFER the
@@ -1041,7 +1071,8 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
             gt_codes, pred_codes, K0, F = rollout_shot(model, cfg, cache, K0_req,
                                                        temperature, gen, device,
                                                        actuator_mode=actuator_mode,
-                                                       cache_dir=cache_dir)
+                                                       cache_dir=cache_dir,
+                                                       sampler=sampler, best_of=best_of)
             # ACTUATOR COUNTERFACTUAL: the effect size is the divergence from the SAME rollout
             # under real actuators, not the divergence from GT. Re-seed so the two runs share an
             # identical RNG stream — the rollout draws the same number of samples either way, so
@@ -1049,10 +1080,13 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
             base_codes = None
             if actuator_mode != "real":
                 gen_b = torch.Generator(device=device).manual_seed(int(seed))
+                # SAME sampler as the counterfactual arm — a different decode policy on the
+                # two arms would make the divergence a policy artefact, not an actuator effect.
                 _gt, base_codes, _K, _F = rollout_shot(model, cfg, cache, K0_req,
                                                        temperature, gen_b, device,
                                                        actuator_mode="real",
-                                                       cache_dir=cache_dir)
+                                                       cache_dir=cache_dir,
+                                                       sampler=sampler, best_of=best_of)
         tok_acc = {n: float((pred_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
                    for n in gt_codes}
         # persistence baseline in CODE space: fraction of tokens that simply do not change
@@ -1301,6 +1335,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "edits would be no-ops — these modes are structural.")
     p.add_argument("--split_seed", type=int, default=0,
                    help="split seed — must match the training run's --split_seed")
+    # ---- DECODE POLICY (SamplerConfig). All defaults reproduce the original sampler. ----
+    p.add_argument("--global_pool", action="store_true",
+                   help="rank reveal-confidence across all modalities jointly")
+    p.add_argument("--top_p", type=float, default=None)
+    p.add_argument("--revision_rounds", type=int, default=0)
+    p.add_argument("--cfg_scale", type=float, default=1.0)
+    # PAIRING CAVEAT: rollout_shot guarantees that actuator counterfactual arms consume an
+    # IDENTICAL number of RNG draws, so the comparison is exactly paired. --revision_rounds
+    # and --cfg_scale preserve that (fixed extra draws per frame); --best_of_n does NOT, since
+    # it draws N independent trajectories. Never combine --best_of_n > 1 with an actuator
+    # counterfactual arm in the same comparison.
+    p.add_argument("--best_of_n", type=int, default=1,
+                   help="roll out N candidates and keep the most self-consistent one "
+                        "(masked pseudo-likelihood). NOT RNG-paired: do not combine with "
+                        "--actuator_mode other than 'real'.")
     return p
 
 
@@ -1321,11 +1370,16 @@ def main(argv=None):
         return 0 if curated else 1
     if not args.ckpt:
         raise SystemExit("--ckpt is required (omit only with --curate)")
+    sampler = SamplerConfig(temperature=args.temperature, top_p=args.top_p,
+                            global_pool=args.global_pool,
+                            revision_rounds=args.revision_rounds,
+                            cfg_scale=args.cfg_scale)
     return run(args.ckpt, args.shot, args.cache_dir, args.out_dir,
                temperature=args.temperature, seed=args.seed, k0=args.k0,
                codec_tmpl=args.codec_tmpl, render_all=args.render_all,
                val_tail=args.val_tail, val_n=args.val_n, split_seed=args.split_seed,
-               actuator_mode=args.actuator_mode)
+               actuator_mode=args.actuator_mode,
+               sampler=sampler, best_of=args.best_of_n)
 
 
 if __name__ == "__main__":

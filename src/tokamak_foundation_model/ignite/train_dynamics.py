@@ -847,7 +847,11 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
           test_n: int = 0, test_frac: float = 0.0, pin_val=(),
           mask_absent: bool = False, presence_path: str = None,
-          accum_steps: int = 1, val_windows: int = 32, log=print):
+          accum_steps: int = 1, val_windows: int = 32,
+          ctf_frac: float = 0.0, ctf_min_target_ratio: float = 0.8,
+          modality_loss_weight: str = "uniform", actuator_dropout_p: float = 0.0,
+          sf_frames: int = 0, sf_decode_steps: int = 4, sf_prob: float = 1.0,
+          log=print):
     """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
 
     Reuses the codec trainer's DDP wrapper; streams FrameCodeDataset windows; MaskGIT loss with the
@@ -874,6 +878,19 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         # logits (~400 GB at F=100) — infeasible until that path is made memory-efficient. Set 0 to
         # disable for the base run (ss is rollout-drift mitigation; re-enable once the path is fixed).
         cfg.ss_ramp_final_frac = float(ss_final_frac)
+    # ROLLOUT-QUALITY knobs (Phase-1). Every default reproduces the production behaviour
+    # exactly, so re-running Peter's configuration stays a no-flag invocation.
+    cfg.ctf_frac = float(ctf_frac)
+    cfg.ctf_min_target_ratio = float(ctf_min_target_ratio)
+    cfg.modality_loss_weight = str(modality_loss_weight)
+    cfg.actuator_dropout_p = float(actuator_dropout_p)
+    cfg.sf_frames = int(sf_frames)
+    cfg.sf_decode_steps = int(sf_decode_steps)
+    cfg.sf_prob = float(sf_prob)
+    if ddp.is_main:
+        log(f"[dynamics] rollout-quality flags: ctf={cfg.ctf_frac} "
+            f"loss_w={cfg.modality_loss_weight} act_drop={cfg.actuator_dropout_p} "
+            f"sf_frames={cfg.sf_frames}")
     n_all = len(list(Path(cache_dir).glob("*.pt")))
     n_val = val_n if val_n else max(1, int(n_all * val_frac))
     n_test = test_n if test_n else (max(1, int(n_all * test_frac)) if test_frac else 0)
@@ -1108,6 +1125,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                            "cfg_depth": depth, "cfg_d_model": d_model,
                            "cfg_n_heads": cfg.n_heads, "cfg_k0": cfg.k0_seed,
                            "cfg_n_predict": cfg.n_predict,
+                           # how this arm was TRAINED — an eval reading a bare state_dict
+                           # otherwise cannot tell a CTF/self-forcing run from the baseline
+                           "cfg_ctf_frac": cfg.ctf_frac,
+                           "cfg_modality_loss_weight": cfg.modality_loss_weight,
+                           "cfg_actuator_dropout_p": cfg.actuator_dropout_p,
+                           "cfg_sf_frames": cfg.sf_frames,
                            "modalities": [(s.name, s.family, s.n_tok, s.codebook_size)
                                           for s in specs]}
                 tmp = Path(out_dir) / "dynamics_latest.pt.tmp"
@@ -1243,6 +1266,19 @@ def build_arg_parser():
                         "is logged and skipped so a full sweep cannot stall. Raise it for a "
                         "RECOVERY pass over shots the first sweep timed out on (precompute "
                         "skips shots already in the cache, so a re-run only retries the gaps).")
+    # ---- rollout-quality knobs (Phase-1). Defaults = the production behaviour. ---------
+    p.add_argument("--ctf_frac", type=float, default=0.0,
+                   help="fraction of windows trained with complete-context (CTF) masking")
+    p.add_argument("--ctf_min_target_ratio", type=float, default=0.8)
+    p.add_argument("--modality_loss_weight", default="uniform",
+                   choices=("uniform", "tokens", "sqrt_tokens"))
+    p.add_argument("--actuator_dropout_p", type=float, default=0.0,
+                   help="per-sample actuator dropout; enables CFG at eval")
+    p.add_argument("--sf_frames", type=int, default=0,
+                   help="self-forcing: frames rolled from the model's own output before the "
+                        "supervised frame (0 = off)")
+    p.add_argument("--sf_decode_steps", type=int, default=4)
+    p.add_argument("--sf_prob", type=float, default=1.0)
     return p
 
 
@@ -1272,7 +1308,12 @@ def main(argv=None):
                  patience=args.patience, test_n=args.test_n, test_frac=args.test_frac,
                  pin_val=tuple(s.strip() for s in args.pin_val.split(",") if s.strip()),
                  mask_absent=args.mask_absent, presence_path=args.presence_path,
-                 accum_steps=args.accum_steps, val_windows=args.val_windows)
+                 accum_steps=args.accum_steps, val_windows=args.val_windows,
+                 ctf_frac=args.ctf_frac, ctf_min_target_ratio=args.ctf_min_target_ratio,
+                 modality_loss_weight=args.modality_loss_weight,
+                 actuator_dropout_p=args.actuator_dropout_p,
+                 sf_frames=args.sf_frames, sf_decode_steps=args.sf_decode_steps,
+                 sf_prob=args.sf_prob)
 
 
 if __name__ == "__main__":
