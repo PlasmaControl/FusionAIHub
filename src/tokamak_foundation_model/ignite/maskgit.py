@@ -65,6 +65,37 @@ class MaskGITDynamics(nn.Module):
             masked[m.name], mask[m.name] = mc, mk
         return masked, mask
 
+    def _boundary_mask(self, codes: Dict[str, torch.Tensor], gen: Optional[torch.Generator]):
+        """CTF layout: frames < c are COMPLETE context; frames >= c are heavily masked targets.
+
+        This is the conditional rollout actually uses (see docs/IGNITE_ROLLOUT_QUALITY_PLAN.md
+        §1A). The boundary c is per-sample so one batch spans many context lengths.
+        """
+        cfg = self.cfg
+        ref = codes[cfg.modalities[0].name]
+        B, Fr, _ = ref.shape
+        dev = ref.device
+        c = torch.randint(1, max(2, Fr), (B,), generator=gen, device=dev)      # >=1 context frame
+        idx = torch.arange(Fr, device=dev).view(1, Fr)
+        is_target = idx >= c.view(B, 1)                                        # (B, F)
+        lo = float(cfg.ctf_min_target_ratio)
+        u = torch.rand((B, Fr), generator=gen, device=dev)
+        ratio = lo + (1.0 - lo) * u                                            # in [lo, 1]
+        masked, mask = {}, {}
+        for m in cfg.modalities:
+            cd = codes[m.name]
+            r = torch.rand(cd.shape, generator=gen, device=dev)
+            mk = (r < ratio.unsqueeze(-1)) & is_target.unsqueeze(-1)
+            none = (~mk.any(dim=-1, keepdim=True)) & is_target.unsqueeze(-1)   # keep >=1 target
+            if none.any():
+                first = torch.zeros_like(mk)
+                first[:, :, 0] = True
+                mk = mk | (first & none)
+            masked[m.name] = torch.where(
+                mk, torch.full_like(cd, self.backbone.tok.mask_ids[m.name]), cd)
+            mask[m.name] = mk
+        return masked, mask
+
     def ss_fraction(self, step: int) -> float:
         """Scheduled-sampling own-code fraction: linear ramp 0 -> ss_ramp_final_frac."""
         cfg = self.cfg
@@ -98,6 +129,10 @@ class MaskGITDynamics(nn.Module):
         ``ss_frac`` > 0 applies scheduled sampling: a fraction of context frames are replaced by
         the model's own codes before masking; the CE target remains the REAL codes.
 
+        ``cfg.ctf_frac`` > 0 makes that fraction of windows use the complete-context (CTF) layout
+        (:meth:`_boundary_mask`) instead of the random per-frame mask, i.e. the clean-prefix /
+        masked-suffix conditional that rollout actually samples from.
+
         ``present`` (B, n_modalities), 1.0 = the diagnostic recorded in that sample. Absent
         diagnostics encode to a constant null codeword; scoring them teaches the model to
         reproduce a constant and, since this loss weights every modality EQUALLY regardless of
@@ -110,7 +145,16 @@ class MaskGITDynamics(nn.Module):
         zero-weighted term keeps every parameter in the graph with a zero gradient.
         """
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
-        masked, mask = self._random_mask(context, generator)
+        use_ctf = False
+        if self.cfg.ctf_frac > 0.0:
+            # Draw on the CODES' device: a device-typed generator (as _val_loss passes on GPU)
+            # only accepts draws on its own device. Same convention as _random_mask; on CPU the
+            # explicit device leaves the RNG stream bit-identical.
+            cdev = codes[self.cfg.modalities[0].name].device
+            use_ctf = bool(torch.rand((), generator=generator, device=cdev).item()
+                           < self.cfg.ctf_frac)
+        masked, mask = (self._boundary_mask(context, generator) if use_ctf
+                        else self._random_mask(context, generator))
         # Memory-critical: encode to hidden states, then project ONLY masked positions to vocab.
         # Materializing full (B, F, tokens_per_frame, vocab) logits is ~B*400 GB at F=100 (OOM);
         # masked_logits gathers first -> ~B*200 MB. See FrameTokenizer.masked_logits.

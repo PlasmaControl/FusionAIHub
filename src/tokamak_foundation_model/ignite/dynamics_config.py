@@ -97,6 +97,15 @@ class DynamicsConfig:
     ss_ramp_final_frac: float = 0.15       # final own-sampled-code substitution fraction
     ss_ramp_steps: int = 40_000            # linear ramp 0 -> final over this many steps
 
+    # --- complete-context training (CTF; MAGI arXiv 2501.12389) -------------------------------
+    # Fraction of training windows that use the ROLLOUT's conditional structure: a clean
+    # (fully visible) prefix and a heavily-masked suffix, loss on the suffix only. The default
+    # random-mask objective masks ~64% of EVERY frame, so the model never trains on the
+    # "complete context -> fully masked next frame" conditional that rollout actually uses.
+    # 0.0 = off (original behaviour, bit-identical).
+    ctf_frac: float = 0.0
+    ctf_min_target_ratio: float = 0.8      # min mask ratio applied at/after the boundary
+
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
 
