@@ -58,3 +58,21 @@ def apply_top_p(probs: torch.Tensor, top_p: Optional[float]) -> torch.Tensor:
     keep[..., 0] = True                            # always keep the argmax
     filt = torch.zeros_like(probs).scatter_(-1, idx, srt * keep)
     return filt / filt.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+
+
+def rank_normalize(conf: torch.Tensor) -> torch.Tensor:
+    """Map each row's values to their quantile rank in [0, 1] along the last dim.
+
+    Raw sampled-token probabilities are NOT comparable across modalities: a 64 000-way
+    softmax puts far less mass on its argmax than a 1 000-way one, so a global argsort
+    over raw confidence would let low-vocab modalities monopolize every reveal step.
+    Rank normalization removes the scale while preserving order within each modality.
+    """
+    n = conf.shape[-1]
+    if n == 1:
+        return torch.ones_like(conf)
+    order = conf.argsort(dim=-1)
+    ranks = torch.empty_like(order)
+    ar = torch.arange(n, device=conf.device).expand_as(order)
+    ranks.scatter_(-1, order, ar)
+    return ranks.to(conf.dtype) / (n - 1)

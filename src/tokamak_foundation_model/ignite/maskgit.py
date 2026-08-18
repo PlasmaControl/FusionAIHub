@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 from .dynamics import DynamicsBackbone
 from .dynamics_config import DynamicsConfig
-from .sampling import SamplerConfig, apply_top_p
+from .sampling import SamplerConfig, apply_top_p, rank_normalize
 
 
 def _cosine_keep_fractions(n_steps: int) -> list:
@@ -168,25 +168,31 @@ class MaskGITDynamics(nn.Module):
             seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
             h = self.backbone.encode(seq, actuators)                  # (B, P+1, N, d)
             logits = self.backbone.tok.logits_last(h)                 # {name:(B, n_tok, vocab)}
+            # Three passes — sample all / decide reveals / commit. Splitting the old
+            # single-pass loop lets the reveal POLICY see every modality's confidence at once
+            # while leaving the sampling RNG order untouched (same multinomial calls, same
+            # modality order), which is what keeps the default path bit-identical.
+            # PASS 1 — sample every modality
+            samp, conf = {}, {}
             for m in cfg.modalities:
                 # .float(): the backbone may run under bf16 autocast (eval speed, matches
                 # training numerics) but softmax/multinomial sample in fp32 — multinomial
                 # does not support bf16 and low-precision probs would skew sampling.
                 lg = logits[m.name].float() / max(sampler.temp_for(m.name), 1e-6)
                 prob = apply_top_p(lg.softmax(-1), sampler.top_p)
-                samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
-                                         generator=generator).reshape(B, m.n_tok)
-                conf = prob.gather(-1, samp.unsqueeze(-1)).squeeze(-1)  # (B, n_tok)
-                conf = conf.masked_fill(revealed[m.name], float("inf"))  # keep already-revealed
-                n_reveal = m.n_tok - int(round(frac * m.n_tok))
-                # reveal the n_reveal most-confident still-masked tokens
-                order = conf.argsort(dim=-1, descending=True)
-                reveal_idx = order[:, :n_reveal]
-                new_rev = torch.zeros_like(revealed[m.name])
-                new_rev.scatter_(1, reveal_idx, True)
-                take = new_rev & ~revealed[m.name]
-                cur[m.name] = torch.where(take, samp, cur[m.name])
-                revealed[m.name] = revealed[m.name] | new_rev
+                s = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
+                                      generator=generator).reshape(B, m.n_tok)
+                samp[m.name] = s
+                conf[m.name] = prob.gather(-1, s.unsqueeze(-1)).squeeze(-1)   # (B, n_tok)
+            # PASS 2 — choose what to reveal
+            if sampler.global_pool:
+                take = self._global_reveal(conf, revealed, frac)
+            else:
+                take = self._per_modality_reveal(conf, revealed, frac)
+            # PASS 3 — commit
+            for m in cfg.modalities:
+                cur[m.name] = torch.where(take[m.name], samp[m.name], cur[m.name])
+                revealed[m.name] = revealed[m.name] | take[m.name]
         # any still-masked (numeric edge) -> final argmax
         for m in cfg.modalities:
             still = ~revealed[m.name]
@@ -196,6 +202,39 @@ class MaskGITDynamics(nn.Module):
                 lg = self.backbone.tok.logits_last(h)[m.name]
                 cur[m.name] = torch.where(still, lg.argmax(-1), cur[m.name])
         return cur
+
+    # ---- reveal policies: given this step's confidences, which tokens to commit ---------
+    def _per_modality_reveal(self, conf, revealed, frac):
+        """Original policy: each modality reveals the same FRACTION of its own tokens."""
+        take = {}
+        for m in self.cfg.modalities:
+            c = conf[m.name].masked_fill(revealed[m.name], float("inf"))
+            n_reveal = m.n_tok - int(round(frac * m.n_tok))
+            order = c.argsort(dim=-1, descending=True)
+            new_rev = torch.zeros_like(revealed[m.name])
+            new_rev.scatter_(1, order[:, :n_reveal], True)
+            take[m.name] = new_rev & ~revealed[m.name]
+        return take
+
+    def _global_reveal(self, conf, revealed, frac):
+        """Pooled policy: rank confidence across the WHOLE frame, reveal the global top-K.
+
+        Lets an uncertain modality defer while confident ones commit first and anchor it
+        through the next step's spatial attention — the cross-modal-coherence lever.
+        """
+        names = [m.name for m in self.cfg.modalities]
+        parts = [rank_normalize(conf[n]).masked_fill(revealed[n], float("inf")) for n in names]
+        flat = torch.cat(parts, dim=1)                       # (B, tokens_per_frame)
+        total = flat.shape[1]
+        n_reveal = total - int(round(frac * total))
+        order = flat.argsort(dim=-1, descending=True)
+        sel = torch.zeros_like(flat, dtype=torch.bool)
+        sel.scatter_(1, order[:, :n_reveal], True)
+        take, off = {}, 0
+        for m in self.cfg.modalities:
+            take[m.name] = sel[:, off:off + m.n_tok] & ~revealed[m.name]
+            off += m.n_tok
+        return take
 
     @torch.no_grad()
     def rollout(self, seed_codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
