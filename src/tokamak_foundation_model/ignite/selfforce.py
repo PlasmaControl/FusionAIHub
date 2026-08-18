@@ -51,11 +51,25 @@ def rollout_context(model, codes: Dict[str, torch.Tensor], actuators: torch.Tens
     model.eval()                                   # no dropout inside the rollout
     cfg.maskgit_decode_steps = steps
     try:
-        ctx = {n: v[:, :boundary].clone() for n, v in codes.items()}
-        for t in range(n_roll):
-            nxt = model.generate_frame(ctx, actuators[:, : boundary + t + 1],
-                                       generator=generator, sampler=sampler)
-            ctx = {n: torch.cat([ctx[n], nxt[n].unsqueeze(1)], dim=1) for n in ctx}
+        # cache_enabled=False is load-bearing, and the reason is invisible from here: autocast's
+        # weight cache x this no_grad rollout x gradient checkpointing break each other. Casts made
+        # inside no_grad land in the ambient autocast region's cache DETACHED from the autograd
+        # graph; the checkpointed supervised forward then recomputes against those stale casts and
+        # the addmm grad path dies ("mat1 and mat2 shapes cannot be multiplied (NxD and 1xN)"), or,
+        # with checkpointing off, SILENTLY drops the gradient of every parameter the rollout
+        # touched. All three ingredients are required, so only the trainer's configuration hits it.
+        # The nested context mirrors the ambient one so numerics are unchanged — it disables the
+        # cache and nothing else, and the supervised pass outside keeps its cache.
+        dev_type = ref.device.type
+        ac_enabled = torch.is_autocast_enabled(dev_type)
+        ac_dtype = torch.get_autocast_dtype(dev_type) if ac_enabled else None
+        with torch.autocast(device_type=dev_type, enabled=ac_enabled,
+                            dtype=ac_dtype, cache_enabled=False):
+            ctx = {n: v[:, :boundary].clone() for n, v in codes.items()}
+            for t in range(n_roll):
+                nxt = model.generate_frame(ctx, actuators[:, : boundary + t + 1],
+                                           generator=generator, sampler=sampler)
+                ctx = {n: torch.cat([ctx[n], nxt[n].unsqueeze(1)], dim=1) for n in ctx}
     finally:
         cfg.maskgit_decode_steps = prev_steps
         if was_training:

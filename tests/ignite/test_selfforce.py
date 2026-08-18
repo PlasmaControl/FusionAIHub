@@ -171,3 +171,30 @@ def test_ctf_boundary_never_masks_the_self_rolled_window(monkeypatch):
     for m in cfg.modalities:
         assert not seen["mask"][m.name][:, b:b + n].any(), \
             f"{m.name}: the CTF mask overwrote the self-rolled window [{b}, {b + n})"
+
+
+def test_sf_backprops_under_autocast_with_checkpointing():
+    """The no-grad rollout must not leak grad-untracked casts into the autocast weight cache.
+
+    Needs all three ingredients together, which is why the plain-CPU tests above never caught it:
+    an ambient autocast region with its cast cache live (what the trainer runs), the ``no_grad``
+    self-forcing rollout inside it, and gradient checkpointing on the supervised forward. The
+    rollout's weight casts land in the cache detached from the autograd graph; the checkpointed
+    recompute then reuses them and the ``addmm`` grad path dies with "mat1 and mat2 shapes cannot
+    be multiplied (NxD and 1xN)". With checkpointing OFF the same stale casts fail SILENTLY
+    instead — the backbone parameters get no gradient at all — so both are asserted here.
+
+    Reproduced on GPU first (Task 11, bf16 autocast at d512); this is the CPU-autocast equivalent.
+    """
+    for gc in (True, False):
+        cfg = _tiny(sf_frames=2, ctf_frac=1.0, grad_checkpointing=gc)
+        torch.manual_seed(0)
+        mg = MaskGITDynamics(cfg).train()
+        codes = _codes(cfg, B=2, F=6)
+        act = torch.randn(2, 6, cfg.actuator_dim)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            loss = mg.training_loss(codes, act, generator=torch.Generator().manual_seed(2))
+        loss.backward()
+        g = mg.backbone.blocks[0].spatial.qkv.weight.grad
+        assert g is not None, f"grad_checkpointing={gc}: no gradient reached the backbone"
+        assert g.abs().sum() > 0, f"grad_checkpointing={gc}: gradient is all zero"
