@@ -106,6 +106,12 @@ class DynamicsConfig:
     ctf_frac: float = 0.0
     ctf_min_target_ratio: float = 0.8      # min mask ratio applied at/after the boundary
 
+    # --- per-modality loss weighting ----------------------------------------------------------
+    # "uniform" (default, original): every modality's masked CE counts the same, so a 4-token
+    # slow-TS modality gets ~192x the per-token gradient of 768-token ece. "tokens" weights by
+    # n_tok, "sqrt_tokens" by sqrt(n_tok) (a compromise that still protects small modalities).
+    modality_loss_weight: str = "uniform"
+
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
 

@@ -78,3 +78,23 @@ def test_default_path_draws_no_extra_rng():
     g2 = torch.Generator().manual_seed(5)
     mg._random_mask(codes, g2)                     # the ONLY draws the default path may make
     assert torch.equal(g1.get_state(), g2.get_state()), "default path consumed extra RNG"
+
+
+def test_loss_weighting_modes_change_the_loss_but_stay_finite():
+    import math
+    cfg_u = _tiny()
+    cfg_t = _tiny(modality_loss_weight="tokens")
+    torch.manual_seed(0)
+    mg_u = MaskGITDynamics(cfg_u).train()
+    torch.manual_seed(0)
+    mg_t = MaskGITDynamics(cfg_t).train()
+    codes = _codes(cfg_u, B=2, F=5)
+    act = torch.randn(2, 5, cfg_u.actuator_dim)
+    lu = mg_u.training_loss(codes, act, generator=torch.Generator().manual_seed(2))
+    lt = mg_t.training_loss(codes, act, generator=torch.Generator().manual_seed(2))
+    assert torch.isfinite(lu) and torch.isfinite(lt)
+    assert not math.isclose(float(lu), float(lt), rel_tol=1e-9)
+
+
+def test_default_loss_weight_is_uniform():
+    assert _tiny().modality_loss_weight == "uniform"

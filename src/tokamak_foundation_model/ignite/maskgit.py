@@ -120,6 +120,16 @@ class MaskGITDynamics(nn.Module):
             out[m.name] = torch.where(sub.unsqueeze(-1), samp, codes[m.name])
         return out
 
+    def _modality_weight(self, m) -> float:
+        mode = getattr(self.cfg, "modality_loss_weight", "uniform")
+        if mode == "uniform":
+            return 1.0
+        if mode == "tokens":
+            return float(m.n_tok)
+        if mode == "sqrt_tokens":
+            return float(m.n_tok) ** 0.5
+        raise ValueError(f"unknown modality_loss_weight {mode!r}")
+
     def training_loss(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                       generator: Optional[torch.Generator] = None,
                       ss_frac: float = 0.0,
@@ -160,16 +170,17 @@ class MaskGITDynamics(nn.Module):
         # masked_logits gathers first -> ~B*200 MB. See FrameTokenizer.masked_logits.
         h = self.backbone.encode(masked, actuators)                   # (B, F, N, d)
         mlogits = self.backbone.tok.masked_logits(h, mask)            # {name: (n_masked, vocab)}
-        total, count = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32), 0
+        total, count = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32), 0.0
         for mi, m in enumerate(self.cfg.modalities):
             mk = mask[m.name]
             if not bool(mk.any()):
                 continue
             lg = mlogits[m.name]                                      # (n_masked, vocab)
             tg = codes[m.name][mk]                                    # (n_masked,)
+            w_m = self._modality_weight(m)
             if present is None:
-                total = total + F.cross_entropy(lg, tg)
-                count += 1
+                total = total + w_m * F.cross_entropy(lg, tg)
+                count += w_m
                 continue
             # Per-SAMPLE presence: a batch mixes shots, so weight each masked token by
             # whether its own shot recorded this diagnostic. Broadcast (B,) over (B, F, n_tok)
@@ -182,9 +193,9 @@ class MaskGITDynamics(nn.Module):
                 total = total + 0.0 * lg.sum()        # keep the head in the autograd graph
                 continue
             ce = F.cross_entropy(lg, tg, reduction="none")            # (n_masked,)
-            total = total + (ce * w).sum() / denom
-            count += 1
-        return total / max(count, 1)
+            total = total + w_m * (ce * w).sum() / denom
+            count += w_m
+        return total / max(count, 1e-8)
 
     # ---------------------------------------------------------------------------- inference ---
     @torch.no_grad()
