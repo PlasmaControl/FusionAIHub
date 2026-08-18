@@ -47,9 +47,13 @@ def test_rank_normalize_equalizes_scales_across_modalities():
 
 
 def test_global_pool_defers_low_confidence_modality():
-    """With a global pool, the confident modality reveals more tokens at step 1 than the
-    uncertain one — impossible under per-modality fixed quotas."""
-    import torch
+    """Validity smoke test: a pooled decode still produces a complete, in-vocab frame.
+
+    Despite the name (kept from the plan), this asserts shape and code range only — it exercises
+    the ``global_pool=True`` path end-to-end without crashing. The deferral BEHAVIOUR is covered
+    by the direct ``_global_reveal`` tests below, which compare allocations against the fixed
+    quota on hand-built confidences.
+    """
     from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
     from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
     from tokamak_foundation_model.ignite.sampling import SamplerConfig
@@ -148,6 +152,10 @@ def test_norm_log_confidence_levels_and_cross_vocab_comparability():
     out = norm_log_confidence(c, 1000)
     assert torch.isfinite(out).all()
     assert (out[0, 1:] > out[0, :-1]).all()
+    # float16: the 1e-12 floor underflows to 0 in fp16, so the clamp must happen in fp32 or
+    # log() returns -inf and the token sorts to the bottom of every pool forever.
+    assert torch.isfinite(norm_log_confidence(torch.zeros(1, dtype=torch.float16), 1000)).all()
+    assert torch.isfinite(norm_log_confidence(torch.zeros(1, dtype=torch.bfloat16), 65536)).all()
 
 
 def test_global_pool_allocation_follows_modality_confidence():

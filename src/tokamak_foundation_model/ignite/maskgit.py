@@ -226,13 +226,21 @@ class MaskGITDynamics(nn.Module):
         ranks put every modality on the same {0..1} grid, which makes the allocation
         token-count-proportional — identical to the fixed quota — for ANY confidences. The
         log-vocab form removes the vocab-size scale while keeping the between-modality signal.
+
+        The vocab term only bites on MIXED-vocab layouts (the cache-derived production set: four
+        64k-vocab spectro modalities beside 1k-vocab slow-TS). Under a uniform vocab — the static
+        ``FROZEN_MODALITIES`` table and the bp pilot line — ``log V`` is a common divisor, so the
+        pool reduces to raw-probability top-K over the frame; still cross-modal and
+        confidence-driven, just with no vocab skew left to correct.
         """
         parts = [norm_log_confidence(conf[m.name], m.codebook_size)
                  .masked_fill(revealed[m.name], float("inf")) for m in self.cfg.modalities]
         flat = torch.cat(parts, dim=1)                       # (B, tokens_per_frame)
         total = flat.shape[1]
         n_reveal = total - int(round(frac * total))
-        order = flat.argsort(dim=-1, descending=True)
+        # stable: exact score ties (equal vocab AND equal confidence) must not resolve by
+        # sort-backend luck, or pooled reveal order stops being reproducible across devices.
+        order = flat.argsort(dim=-1, descending=True, stable=True)
         sel = torch.zeros_like(flat, dtype=torch.bool)
         sel.scatter_(1, order[:, :n_reveal], True)
         take, off = {}, 0

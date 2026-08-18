@@ -101,5 +101,15 @@ def norm_log_confidence(conf: torch.Tensor, vocab_size: int) -> torch.Tensor:
     pure ranks map every modality onto the same {0..1} grid, which makes the pooled
     allocation provably confidence-independent (token-count-proportional, i.e. the
     fixed quota again).
+
+    Scope: the vocab term is load-bearing only for MIXED-vocab layouts — the cache-derived
+    production set, where four 64k-vocab spectro modalities sit beside 1k-vocab slow-TS. When
+    every modality shares one V (the static ``FROZEN_MODALITIES`` table, and the bp pilot line)
+    ``log V`` is a common divisor, so this is a shared monotone transform of ``c`` and the pool
+    degenerates to raw-probability top-K — still confidence-driven across modalities, just with
+    nothing for the normalization to correct.
+
+    Computed in float32: ``1e-12`` underflows to 0 in float16, which would make ``log`` return
+    -inf. Policy scores only ever feed an argsort, so forcing fp32 costs nothing.
     """
-    return 1.0 + conf.clamp_min(1e-12).log() / math.log(max(2, vocab_size))
+    return 1.0 + conf.float().clamp_min(1e-12).log() / math.log(max(2, vocab_size))
