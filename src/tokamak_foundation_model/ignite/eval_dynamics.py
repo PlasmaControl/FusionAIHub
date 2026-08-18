@@ -515,6 +515,14 @@ _GT_C, _PR_C = "#1a1a19", "#eb6834"            # ground truth ink / prediction o
 _VID_C = {"tangtv_lower": "#2a78d6", "tangtv_upper": "#eb6834"}
 # slow-TS display units: (scale, label) — the H5 stores eV / m^-3; temperatures display as
 # keV (x1e-3), matching eval_e2e_animation_tokamak._TRACE_SCALES / _TRACE_LABELS.
+# Compact symbols for the normalized case. The raw modality name is longer than a row is
+# tall once rotated, so it overlaps the rows above and below whatever the font size.
+_SLOWTS_SYMBOL = {
+    "ts_core_density": r"$n_e$ core", "ts_core_temp": r"$T_e$ core",
+    "ts_tangential_density": r"$n_e$ tang.", "ts_tangential_temp": r"$T_e$ tang.",
+    "cer_ti": r"$T_i$", "cer_rot": "rot.", "mse": "MSE",
+}
+
 _SLOWTS_UNITS = {  # (display scale, SHORT ylabel, region tag for the corner annotation)
     "ts_core_density": (1.0, r"$n_e$ (m$^{-3}$)", "core"),
     "ts_core_temp": (1e-3, r"$T_e$ (keV)", "core"),
@@ -647,7 +655,9 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
     _mar_l = 0.10 + 0.075 * _p                        # inches (ylabel + tick labels)
     _mar_r = 0.10 + 0.030 * _p                        # colorbar tick labels live here
     _mar_b, _mar_t = 0.06 + 0.046 * _p, 0.06 + 0.015 * _p
-    _hsp = 0.28                                   # fraction of MEAN row height
+    _hsp = 0.46                                   # fraction of MEAN row height
+    # 0.28 packed the blocks tight enough that the spectro row's x-label ran into
+    # the video row's titles; the extra page height is worth the legibility.
     n_rows = max(len(rows), 1)
     fig_h = (sum(hr) * (1.0 + _hsp * (n_rows - 1) / n_rows)) + _mar_b + _mar_t
     fig = plt.figure(figsize=(FIG_W_IN, fig_h))
@@ -691,14 +701,17 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
             scale, ylab, tag = _SLOWTS_UNITS[name]
             tr_gt, tr_pr = tr_gt * scale, tr_pr * scale   # e.g. eV -> keV (display only)
         else:
-            ylab = f"{name} ({unit})"
+            # unit is figure-global, so it goes in the corner annotation, not every y-label
+            ylab = _SLOWTS_SYMBOL.get(name, name)
         ax.plot(ts, tr_gt, color=_GT_C, lw=1.7, solid_capstyle="round", zorder=2)
         ax.plot(ts, tr_pr, color=_PR_C, lw=0.9, ls=(0, (2.5, 1.6)), zorder=3)
         if legend_host is None:
             legend_host = ax
         # single-line ylabel (two-line labels bleed into neighbor rows on the one-page
         # canvas); the channel tag rides with the nRMSE corner annotation instead.
-        ax.set_ylabel(_static_ylab(name, ylab))
+        # Rotated 12 pt on a ~0.7 in tall row is taller than the row, so full-size y-labels
+        # collide with the panels above and below. Shrink them to fit their own panel.
+        ax.set_ylabel(_static_ylab(name, ylab), fontsize=_p - 4)
         sk = d.get("nrmse_skill")
         corner = (f"{tag} ch{bc:02d} · nRMSE {d['nrmse']:.3f}"
                   + (f" · skill {sk:+.2f}" if sk is not None and np.isfinite(sk) else "")).lstrip()
@@ -735,8 +748,13 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         if not _spec_ref:
             _spec_ref.append(ax_g)
         for ax, img in ((ax_g, g_img), (ax_p, p_img)):
+            # The stitched spectrogram is ~512 x (F*n_time) -- far more pixels than the
+            # panel gets on the page -- so "none" nearest-neighbours it and drops most
+            # columns, which is what makes the image look blocky/aliased. "antialiased"
+            # applies a proper downsampling filter and preserves the fine structure that
+            # this panel exists to show.
             ax.imshow(img, aspect="auto", origin="lower", cmap=CMAP_SPECTRO, vmin=vmin,
-                      vmax=vmax, extent=ext, interpolation="none")
+                      vmax=vmax, extent=ext, interpolation="antialiased")
             ax.axvline(t_roll, color="w", ls="--", lw=0.9)
             ax.set_xlim(t0, t1)
             ax.tick_params(labelbottom=(i == last_spec))
@@ -746,7 +764,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         from matplotlib.ticker import MaxNLocator
         ax_g.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))  # no "1.00.0"
         ax_p.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
-        ax_g.set_ylabel(_static_ylab(name, f"{name}\nFreq (kHz)"))
+        ax_g.set_ylabel(_static_ylab(name, f"{name}\nFreq (kHz)"), fontsize=_p - 4)
         _r, _sk = _corr(d["pred"][K0:], d["gt"][K0:]), d.get("nrmse_skill")
         ax_p.text(0.98, 0.94, f"r {_r:.3f} · nRMSE {d['nrmse']:.3f}"
                   + (f" · skill {_sk:+.2f}" if _sk is not None and np.isfinite(_sk) else ""),
@@ -798,6 +816,32 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         gt, pr = d["gt"], d["pred"]
         mid_t = gt.shape[2] // 2
         img_g, img_p = gt[mid, 0, mid_t], pr[mid, 0, mid_t]
+        # SCALE GUARD. With measured ground truth (the default since 2026-08-12) video GT is
+        # raw camera counts (std ~48) while the decode is standardized (std ~1), because
+        # decode_all is called without `denorm`. Painting the prediction with limits taken
+        # from GT then drives every pixel to the bottom of the colormap -- the prediction
+        # renders SOLID BLACK and its nRMSE compares std-1 against std-48. When the two sides
+        # are that far apart they are not in the same space, so compare SHAPE: z-score each
+        # side by its own statistics and say so. Matched spaces keep the old shared limits.
+        _zg, _zp = img_g[np.isfinite(img_g)], img_p[np.isfinite(img_p)]
+        _sg = float(np.std(_zg)) if _zg.size else 0.0
+        _sp = float(np.std(_zp)) if _zp.size else 0.0
+        _mg = float(np.mean(_zg)) if _zg.size else 0.0
+        _mp = float(np.mean(_zp)) if _zp.size else 0.0
+        # Two independent signatures of "different spaces": a scale ratio, and an OFFSET.
+        # Counts-vs-standardized shows up mostly as offset (mean ~35 vs ~0) with a scale ratio
+        # near 5, so a ratio-only test at >5x missed it and the prediction still rendered black.
+        # Key off the SAME flag that stamps [STATIC] on the row label. A per-frame std test is
+        # not equivalent: after z-scoring, a collapsed diagnostic still shows speckle, so the
+        # local std is non-zero while the whole-array nRMSE has already blown up to 4.7e3 and
+        # the skill to -8.9e7 by dividing through a variance that is essentially zero.
+        gt_static = bool(static.get(name)) or _sg <= 1e-9 * max(1.0, abs(_mg))
+        mismatched = (_sg > 0 and _sp > 0
+                      and (max(_sg, _sp) / min(_sg, _sp) > 3.0
+                           or abs(_mg - _mp) > 2.0 * max(_sg, _sp)))
+        if mismatched:
+            img_g = (img_g - float(np.mean(_zg))) / (_sg + 1e-12)
+            img_p = (img_p - float(np.mean(_zp))) / (_sp + 1e-12)
         diff = img_p - img_g
         fin = img_g[np.isfinite(img_g)]
         vmin, vmax = (float(np.percentile(fin, 1.0)), float(np.percentile(fin, 99.0))) \
@@ -813,15 +857,20 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         im_d = ax_d.imshow(diff, cmap=CMAP_DIFF, vmin=-dmax, vmax=dmax, aspect="auto")
         _fg = img_g[np.isfinite(img_g)]
         _rel = float(np.nanmax(np.abs(diff))) / (float(np.std(_fg)) + 1e-12) if _fg.size else float("nan")
-        ax_d.text(0.02, 0.04, f"max |diff| = {_rel:.2f}" + r"$\,\sigma_{GT}$",
-                  transform=ax_d.transAxes, ha="left", va="bottom", fontsize=_p - 3,
-                  color="0.2")
+        _dtxt = ("ground truth is constant — not scored" if gt_static
+                 else f"max |diff| = {_rel:.2f}" + r"$\,\sigma_{GT}$")
+        ax_d.text(0.02, 0.04, _dtxt, transform=ax_d.transAxes, ha="left", va="bottom",
+                  fontsize=_p - 3, color="0.2")
         for a in (ax_g, ax_p, ax_d):
             a.set_xticks([]); a.set_yticks([])
-        ax_g.set_ylabel(_static_ylab(name, name.replace("tangtv_", "tangtv\n") + " divertor"))
+        ax_g.set_ylabel(_static_ylab(name, name.replace("tangtv_", "tangtv\n")
+                                     + ("\n(z-scored)" if mismatched else "")),
+                        fontsize=_p - 4)
         _rv, _skv = _corr(pr[K0:], gt[K0:]), d.get("nrmse_skill")
-        ax_p.text(0.99, 0.04, f"r {_rv:.3f} · nRMSE {d['nrmse']:.3f}"
-                  + (f" · skill {_skv:+.2f}" if _skv is not None and np.isfinite(_skv) else ""),
+        _ptxt = ("not scored (static GT)" if gt_static else
+                 f"r {_rv:.3f} · nRMSE {d['nrmse']:.3f}"
+                 + (f" · skill {_skv:+.2f}" if _skv is not None and np.isfinite(_skv) else ""))
+        ax_p.text(0.99, 0.04, _ptxt,
                   transform=ax_p.transAxes, ha="right", va="bottom", fontsize=_p - 3,
                   color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
                                           ec="none", alpha=0.78))
@@ -880,7 +929,9 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
     out_dir.mkdir(parents=True, exist_ok=True)
     png = out_dir / f"dynamics_eval_{shot}_step{step}.png"
     pdf = out_dir / f"dynamics_eval_{shot}_step{step}.pdf"
-    fig.savefig(png, dpi=200)          # NO bbox_inches: delivered size == FIG_W_IN exactly
+    # NO bbox_inches: the PDF must stay exactly FIG_W_IN wide for \includegraphics.
+    # The PNG is for screen reading, so give it enough pixels to be legible.
+    fig.savefig(png, dpi=int(_os.environ.get("IGNITE_FIG_PNG_DPI", "400")))
     fig.savefig(pdf)
     plt.close(fig)
     return png, pdf
@@ -1050,7 +1101,13 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                 n: float((base_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
                 for n in pred_codes}
         if si == 0 or render_all:
-            png, pdf = render_figure(decoded, sh, step, temperature, K0, F, Path(out_dir))
+            # t_origin MUST be the cache's window origin, not the WARMUP_S default: this cache
+            # was built with t0_start=0.0, so defaulting to 1.0 shifted every absolute
+            # shot-time label by +1 s (data correct, axis mislabelled) -- which silently
+            # misaligns the figure against known shot physics. cache_t0 is already resolved
+            # from _codec_manifest.json above and used for load_raw_gt; forward it here too.
+            png, pdf = render_figure(decoded, sh, step, temperature, K0, F, Path(out_dir),
+                                     t_origin=cache_t0)
             fig_paths.append(str(png))
             entry["figure"] = str(png)
         per_shot[sh] = entry

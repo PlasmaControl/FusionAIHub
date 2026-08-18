@@ -69,6 +69,19 @@ def load_ckpt(path: str = DEFAULT_CKPT, drop_optimizer: bool = True) -> Dict[str
     return ckpt
 
 
+def configs_from_ckpt(
+    ckpt: Dict[str, Any],
+) -> Tuple[list, list]:
+    """``(diagnostics, actuators)`` dataclass lists from checkpoint dicts.
+
+    Cheap — lets data-only drivers get the modality spec without
+    instantiating the 1.33B model.
+    """
+    diagnostics = [DiagnosticConfig(**d) for d in ckpt["diagnostics"]]
+    actuators = [ActuatorConfig(**a) for a in ckpt["actuators"]]
+    return diagnostics, actuators
+
+
 def build_model_from_ckpt(
     ckpt: Dict[str, Any],
     dropout: float = 0.0,
@@ -80,8 +93,7 @@ def build_model_from_ckpt(
     pinned to ``"standard"`` — SDPA/flash variants use different parameter
     names and can never load a standard-attention checkpoint.
     """
-    diagnostics = [DiagnosticConfig(**d) for d in ckpt["diagnostics"]]
-    actuators = [ActuatorConfig(**a) for a in ckpt["actuators"]]
+    diagnostics, actuators = configs_from_ckpt(ckpt)
     args = ckpt.get("args", {}) or {}
 
     kwargs: Dict[str, Any] = {}
