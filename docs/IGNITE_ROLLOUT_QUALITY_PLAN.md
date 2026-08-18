@@ -476,3 +476,11 @@ R5 + R9/R10 + the §5 protocol is a NeurIPS-shaped story if it works.
   `/lustre/orion/fus187/scratch/nchen/tokeye/` (README documents schema + sweep)
 - Concurrent long-horizon work: LongLive arXiv 2509.22622, Rolling Forcing arXiv
   2509.25161, Causal-rCM arXiv 2606.25473, OPSD-V arXiv 2607.08766
+
+## Ops
+
+- Frontier's `/lustre/orion/.../scratch` **purges files by access time**: after long idle
+  periods the pixi env loses stdlib files and `.pixi/envs/frontier/bin/python` will not start —
+  rebuild with `pixi install` then
+  `.pixi/envs/frontier/bin/pip install --no-deps x-transformers vector-quantize-pytorch loguru einops einx torch-einops-utils`,
+  and keep `nathan_fm` pushed (unpushed git objects live on the same purging filesystem).
