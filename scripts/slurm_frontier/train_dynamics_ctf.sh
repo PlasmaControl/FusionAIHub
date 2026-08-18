@@ -22,7 +22,7 @@
 set -euo pipefail
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
 # PRODUCTION cache (8753 shots, actuator time-base fixed, t0_start=0). The old
 # ignite_frame_codes (7264 shots, pre-fix) is superseded — a run that silently
