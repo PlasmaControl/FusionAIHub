@@ -634,7 +634,11 @@ Expected: 2 passed.
 
 - [ ] **Step 5: Implement the global pool in `generate_frame`**
 
-The loop currently samples and reveals per modality in one pass. Split it into **sample all modalities → decide reveals → commit**, so the sampling RNG order is unchanged (this is what keeps the default bit-identical). Replace the body of the `for step, frac in enumerate(keep_masked):` loop with:
+The loop currently samples and reveals per modality in one pass. Split it into **sample all modalities → decide reveals → commit**, so the sampling RNG order is unchanged (this is what keeps the default bit-identical).
+
+*Pre-verified 2026-08-17:* this exact refactor was executed against the real `MaskGITDynamics` (3 seeds × 3 modalities with vocabs 5/7/11 and token counts 6/4/5) and reproduced the stock sampler bit-for-bit, and `_global_reveal` was confirmed to reallocate reveal counts differently from the fixed quota. So if the golden test fails at Step 6, suspect your transcription — not the design.
+
+Replace the body of the `for step, frac in enumerate(keep_masked):` loop with:
 
 ```python
         for step, frac in enumerate(keep_masked):
