@@ -299,7 +299,7 @@ def _mean(dicts, key):
     return sum(vals) / len(vals) if vals else float("nan")
 
 
-def summarize(per_shot_tok, per_shot_dec, shots):
+def summarize(per_shot_tok, per_shot_dec):
     """Collapse per-shot metrics to one record, keeping the per-shot values visible."""
     tok = {n: {k: (_mean(v, k) if isinstance(v[0][k], float) else all(d[k] for d in v))
                for k in v[0]}
@@ -311,8 +311,8 @@ def summarize(per_shot_tok, per_shot_dec, shots):
             "skill": _mean(v, "skill"),
             "nrmse": _mean(v, "nrmse"),
             "nrmse_persistence": _mean(v, "nrmse_persistence"),
-            "per_shot": {s: d["skill"] for s, d in zip(shots, v)},
-            "k_valid": {s: d["k_valid"] for s, d in zip(shots, v)},
+            "per_shot": {d["shot"]: d["skill"] for d in v},
+            "k_valid": {d["shot"]: d["k_valid"] for d in v},
             "horizons": {h: {"skill": _mean([d["horizons"][h] for d in v], "skill"),
                              "truncated": any(d["horizons"][h]["truncated"] for d in v)}
                          for h in hs},
@@ -375,6 +375,7 @@ def run_from_traces(args, out_dir, horizons):
         z = np.load(d / "bp_cases_traces.npz", allow_pickle=True)
         meta = json.loads((d / "bp_cases_meta.json").read_text())
         step, K0, F = int(meta["step"]), int(z["K0"]), int(z["F"])
+        shot_id = str(meta.get("shot", d.name))
         mods = [m for m in meta["data_valid_frames"]]
         geom = bp_geometry(mods, {m: z[f"codes_gt__{m}"].shape[1] for m in mods},
                            args.codec_root)
@@ -386,6 +387,7 @@ def run_from_traces(args, out_dir, horizons):
             kv = int(meta["data_valid_frames"][m])
             for band, rec in decoded_metrics(edges, geom, m, gt_c, pr_c, K0, F, kv,
                                              horizons).items():
+                rec["shot"] = shot_id
                 per_dec[f"{m}|{band}"].append(rec)
                 # cross-check against the trace the ORIGINAL script archived
                 tkey = f"trace_gt__{m}__{band}"
@@ -398,9 +400,8 @@ def run_from_traces(args, out_dir, horizons):
                           f"  delta {abs(rec['skill'] - s_arch):.2e}")
             per_tok[m].append(token_metrics(torch.from_numpy(gt_c.astype(np.int64)),
                                             torch.from_numpy(pr_c.astype(np.int64)), K0, F))
-        results[meta.get("shot", d.name)][step] = summarize(per_tok, per_dec,
-                                                           [meta.get("shot", d.name)])
-        print_record(f"{d.name} step {step}", results[meta.get('shot', d.name)][step])
+        results[shot_id][step] = summarize(per_tok, per_dec)
+        print_record(f"{d.name} step {step}", results[shot_id][step])
     (out_dir / "skill_vs_step_from_traces.json").write_text(json.dumps(results, indent=2))
     print("wrote", out_dir / "skill_vs_step_from_traces.json")
 
@@ -514,8 +515,9 @@ def main() -> None:
                     for band, rec in decoded_metrics(
                             edges, geom, name, gt[name].numpy(), pred[name].numpy(),
                             K0, F, kv, horizons).items():
+                        rec["shot"] = shot
                         per_dec[f"{name}|{band}"].append(rec)
-            results[arm][step] = summarize(per_tok, per_dec, shots)
+            results[arm][step] = summarize(per_tok, per_dec)
             print_record(f"{arm} step {step}", results[arm][step])
             del model
             if device.type == "cuda":
