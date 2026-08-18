@@ -163,12 +163,13 @@ class MaskGITDynamics(nn.Module):
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, frac in enumerate(keep_masked):
             seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            logits = self.backbone(seq, actuators)                    # {name:(B,P+1,n_tok,vocab)}
+            h = self.backbone.encode(seq, actuators)                  # (B, P+1, N, d)
+            logits = self.backbone.tok.logits_last(h)                 # {name:(B, n_tok, vocab)}
             for m in cfg.modalities:
                 # .float(): the backbone may run under bf16 autocast (eval speed, matches
                 # training numerics) but softmax/multinomial sample in fp32 — multinomial
                 # does not support bf16 and low-precision probs would skew sampling.
-                lg = logits[m.name][:, -1].float() / max(temperature, 1e-6)
+                lg = logits[m.name].float() / max(temperature, 1e-6)
                 prob = lg.softmax(-1)
                 samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
                                          generator=generator).reshape(B, m.n_tok)
@@ -188,7 +189,8 @@ class MaskGITDynamics(nn.Module):
             still = ~revealed[m.name]
             if bool(still.any()):
                 seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-                lg = self.backbone(seq, actuators)[m.name][:, -1]
+                h = self.backbone.encode(seq, actuators)
+                lg = self.backbone.tok.logits_last(h)[m.name]
                 cur[m.name] = torch.where(still, lg.argmax(-1), cur[m.name])
         return cur
 

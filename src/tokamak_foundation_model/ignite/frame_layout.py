@@ -113,3 +113,21 @@ class FrameTokenizer(nn.Module):
             h_masked = h[:, :, s:e, :][mk]                      # (n_masked_m, d) gathered
             out[m.name] = self.heads[m.name](h_masked)          # (n_masked_m, codebook_m)
         return out
+
+    def logits_last(self, h: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """Project ONLY the last frame to vocab -> {name: (B, n_tok_m, codebook_m)}.
+
+        Rollout generates one frame at a time and reads only ``logits[:, -1]``, but
+        :meth:`logits` projects every frame: ~15 GB of transient fp32 per decode step at
+        the production layout (1593 tokens, four 64k vocabs), x10 steps x80 frames.
+        Slicing the hidden states first drops that to ~150 MB. Numerically identical.
+        """
+        if h.shape[2] != self.cfg.tokens_per_frame:
+            raise ValueError(
+                f"logits_last: expected {self.cfg.tokens_per_frame} tokens, got {h.shape[2]}"
+            )
+        hl = h[:, -1]                                            # (B, tokens_per_frame, d)
+        out: Dict[str, torch.Tensor] = {}
+        for (s, e), m in zip(self.cfg.modality_token_slices(), self.cfg.modalities):
+            out[m.name] = self.heads[m.name](hl[:, s:e, :])
+        return out

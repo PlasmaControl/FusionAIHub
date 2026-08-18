@@ -99,3 +99,21 @@ def test_all_four_codec_families_present():
     assert len([m for m in FROZEN_MODALITIES if m.family == "video"]) == 2
     assert len([m for m in FROZEN_MODALITIES if m.family == "slowts"]) == 7
     assert len([m for m in FROZEN_MODALITIES if m.family == "fastts"]) == 1   # the missed 4th family
+
+
+def test_logits_last_matches_full_logits_last_frame():
+    from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
+    from tokamak_foundation_model.ignite.frame_layout import FrameTokenizer
+    import torch
+
+    cfg = DynamicsConfig(modalities=(ModalitySpec("a", "spectro", 3, 5),
+                                     ModalitySpec("b", "slowts", 2, 4)),
+                         d_model=16, depth=2, n_heads=2, k0_seed=2, n_predict=3)
+    torch.manual_seed(0)
+    tok = FrameTokenizer(cfg).eval()
+    h = torch.randn(2, 4, cfg.tokens_per_frame, cfg.d_model)
+    full = tok.logits(h)
+    last = tok.logits_last(h)
+    for m in cfg.modalities:
+        assert last[m.name].shape == (2, m.n_tok, m.codebook_size)
+        assert torch.allclose(last[m.name], full[m.name][:, -1], atol=0, rtol=0)
