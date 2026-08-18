@@ -219,3 +219,48 @@ def test_global_pool_scores_vocab_normalized_not_raw_probability():
     pool = mg._global_reveal(conf, revealed, frac)
     assert [int(pool[n].sum()) for n in names] == [5, 0], \
         "pool followed raw probability instead of vocab-normalized confidence"
+
+
+def _tiny_rev():
+    from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
+    return DynamicsConfig(
+        modalities=(ModalitySpec("a", "spectro", 6, 5), ModalitySpec("b", "slowts", 4, 5)),
+        d_model=16, depth=2, n_heads=2, ffn_mult=2, k0_seed=2, n_predict=2,
+        maskgit_decode_steps=4, actuator_dim=6)
+
+
+def test_revision_rounds_produce_a_valid_complete_frame():
+    import torch
+    from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
+    from tokamak_foundation_model.ignite.sampling import SamplerConfig
+
+    cfg = _tiny_rev()
+    torch.manual_seed(0)
+    mg = MaskGITDynamics(cfg).eval()
+    past = {m.name: torch.randint(0, m.codebook_size, (1, cfg.k0_seed, m.n_tok))
+            for m in cfg.modalities}
+    act = torch.randn(1, cfg.k0_seed + 1, cfg.actuator_dim)
+    out = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(3),
+                            sampler=SamplerConfig(revision_rounds=2, revision_frac=0.5))
+    for m in cfg.modalities:
+        assert out[m.name].shape == (1, m.n_tok)
+        assert (out[m.name] >= 0).all() and (out[m.name] < m.codebook_size).all()
+
+
+def test_revision_can_change_committed_tokens():
+    """A revision round must actually be able to revise — otherwise it is a no-op."""
+    import torch
+    from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
+    from tokamak_foundation_model.ignite.sampling import SamplerConfig
+
+    cfg = _tiny_rev()
+    torch.manual_seed(0)
+    mg = MaskGITDynamics(cfg).eval()
+    past = {m.name: torch.randint(0, m.codebook_size, (1, cfg.k0_seed, m.n_tok))
+            for m in cfg.modalities}
+    act = torch.randn(1, cfg.k0_seed + 1, cfg.actuator_dim)
+    base = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(3),
+                             sampler=SamplerConfig())
+    rev = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(3),
+                            sampler=SamplerConfig(revision_rounds=3, revision_frac=0.9))
+    assert any(not torch.equal(base[m.name], rev[m.name]) for m in cfg.modalities)

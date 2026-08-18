@@ -193,6 +193,31 @@ class MaskGITDynamics(nn.Module):
             for m in cfg.modalities:
                 cur[m.name] = torch.where(take[m.name], samp[m.name], cur[m.name])
                 revealed[m.name] = revealed[m.name] | take[m.name]
+        # REVISION (draft-and-revise): the schedule above never revisits a committed token,
+        # so an incoherent early commit is permanent. Re-mask the least-confident fraction
+        # and re-decode it against the tokens that survived.
+        for _ in range(int(sampler.revision_rounds)):
+            seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
+            h = self.backbone.encode(seq, actuators)
+            logits = self.backbone.tok.logits_last(h)
+            samp, conf = {}, {}
+            for m in cfg.modalities:
+                lg = logits[m.name].float() / max(sampler.temp_for(m.name), 1e-6)
+                prob = apply_top_p(lg.softmax(-1), sampler.top_p)
+                s = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
+                                      generator=generator).reshape(B, m.n_tok)
+                samp[m.name] = s
+                # confidence of the CURRENTLY COMMITTED code, not of the fresh draw:
+                # that is what decides which commits look weakest in context.
+                conf[m.name] = prob.gather(-1, cur[m.name].unsqueeze(-1)).squeeze(-1)
+            for m in cfg.modalities:
+                k = int(round(sampler.revision_frac * m.n_tok))
+                if k <= 0:
+                    continue
+                weakest = conf[m.name].argsort(dim=-1)[:, :k]          # lowest confidence
+                redo = torch.zeros_like(revealed[m.name])
+                redo.scatter_(1, weakest, True)
+                cur[m.name] = torch.where(redo, samp[m.name], cur[m.name])
         # any still-masked (numeric edge) -> final argmax
         for m in cfg.modalities:
             still = ~revealed[m.name]
