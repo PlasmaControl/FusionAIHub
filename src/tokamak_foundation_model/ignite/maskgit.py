@@ -87,10 +87,45 @@ class MaskGITDynamics(nn.Module):
             if p > 0.0:
                 k0 = int(min(max(cfg.k0_seed, 0), Fr - 1))
                 use = torch.rand((B, 1), generator=gen, device=dev) < p          # (B,1) samples
-                # split point per sample, never before the seed: [k0, Fr)
                 span = max(Fr - k0, 1)
-                t = k0 + (torch.rand((B, 1), generator=gen, device=dev) * span).long().clamp_(
-                    0, span - 1)                                                 # (B,1)
+                # ---- HORIZON SAMPLING (cfg.gen_horizon_alpha) --------------------------------
+                # rollout() calls the model as a ONE-STEP predictor, 80 times:
+                #     for k in 1..n_predict: x[K0+k] <- generate(x[0 .. K0+k-1])
+                # so the function it needs is p(x_f | x_0..x_{f-1}). A UNIFORM split point
+                # t ~ U{k0..Fr-1} instead trains a ~21-frame-ahead predictor:
+                #     scored frame f has horizon h = f - t + 1, mean (Fr-t+1)/2,
+                #     E[h] = (101 - 59.5)/2 ~ 21 frames ~ 1.05 s at Fr=100, k0=20.
+                # At 21 frames ahead the MARGINAL is near-optimal, so the model correctly learns a
+                # marginal-like map -- MEASURED 2026-08-17 on shot 200144 given 20 real frames:
+                # GT band2 0.277, persistence 0.277, model 0.007; one-step token acc 0.533 vs
+                # persistence 0.652. The rollout then steps off the seed and flatlines, while
+                # gen_ce (which scores this same uniform mixture) keeps improving -- 0.29 nats
+                # across three arms with no change in the figure.
+                # alpha > 0 samples the HORIZON h ~ h^-alpha and sets t = Fr - h, concentrating
+                # gradient on the one-step conditional while keeping a heavy tail so the model
+                # still learns to recover from a drifted history. alpha = 0 -> the old uniform
+                # split, byte-identical.
+                # gen_horizon_max: horizon UNIFORM in [1, hmax]. MEASURED 2026-08-17: alpha=2
+                # puts 61% of draws at h=1, and h=1 scores ONE frame of 100 -- ~20x fewer scored
+                # tokens per step than the uniform split, so the arm trained the right objective
+                # on a fraction of the signal and lost 0.067 one-step accuracy. A bounded uniform
+                # keeps the horizon short (mean (hmax+1)/2) while scoring hmax/2 frames per
+                # sample, trading far less gradient for the same train/inference match.
+                hmax = int(getattr(cfg, "gen_horizon_max", 0) or 0)
+                alpha = float(getattr(cfg, "gen_horizon_alpha", 0.0) or 0.0)
+                if hmax > 0:
+                    hi = max(1, min(hmax, span))
+                    h = (torch.randint(1, hi + 1, (B, 1), generator=gen, device=dev))
+                    t = (Fr - h).clamp_(k0, Fr - 1)
+                elif alpha > 0.0:
+                    hs = torch.arange(1, span + 1, device=dev, dtype=torch.float32)
+                    w = hs.pow(-alpha)
+                    h = torch.multinomial(w / w.sum(), B, replacement=True,
+                                          generator=gen).view(B, 1) + 1          # h in [1, span]
+                    t = (Fr - h).clamp_(k0, Fr - 1)                              # (B,1)
+                else:
+                    t = k0 + (torch.rand((B, 1), generator=gen, device=dev) * span).long().clamp_(
+                        0, span - 1)                                             # (B,1)
                 idx = torch.arange(Fr, device=dev).view(1, Fr)
                 before = idx < t                                                 # (B,Fr) history
                 # target frames ride the reveal ladder, biased hard toward a cold start

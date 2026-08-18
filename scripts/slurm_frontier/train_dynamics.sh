@@ -169,6 +169,8 @@ cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} steps=${STEP
        --ss_ramp_steps "${SS_RAMP_STEPS:-${STEPS}}" \
        --gen_mask_p "${GEN_MASK_P:-0}" \
        --best_metric "${BEST_METRIC:-masked}" \
+       --gen_horizon_alpha "${GEN_HORIZON_ALPHA:-0}" \
+       --gen_horizon_max "${GEN_HORIZON_MAX:-0}" \
        --lag_embed_k "${LAG_EMBED_K:-0}" \
        --window_stride "${WINDOW_STRIDE:-1}" \
        --train_cap "${TRAIN_CAP}" \

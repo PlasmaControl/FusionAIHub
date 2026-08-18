@@ -30,7 +30,17 @@ _FRONTIER_REPO_ROOT="$(cd "${_FRONTIER_COMMON_DIR}/../.." && pwd)"
 # already installed on disk under .pixi/envs/frontier/, so the refresh
 # adds no value at job-runtime.
 # shellcheck disable=SC1091,SC2046
-eval "$(pixi shell-hook -e frontier --frozen --manifest-path "${_FRONTIER_REPO_ROOT}/pyproject.toml")"
+# SERIALIZE the shell-hook across concurrently-starting jobs. 2026-08-17: launching 5-7 jobs
+# within seconds of each other had each of them run `pixi shell-hook` against the same
+# Lustre-backed env; they raced and STRIPPED FILES FROM 62 PACKAGES (torch/bin emptied ->
+# `import torch` died with "Unable to find torch_shm_manager", every job failed). --frozen alone
+# is not enough. flock makes the hook mutually exclusive; it is read-only in the normal case so
+# the lock is held only briefly.
+_PIXI_LOCK="${_FRONTIER_REPO_ROOT}/.pixi/.shell-hook.lock"
+mkdir -p "$(dirname "${_PIXI_LOCK}")"
+_hook_out="$(flock -w 300 "${_PIXI_LOCK}" \
+    pixi shell-hook -e frontier --frozen --manifest-path "${_FRONTIER_REPO_ROOT}/pyproject.toml")"
+eval "${_hook_out}"
 
 # AWS-OFI-NCCL plugin (built at ~/aws-ofi-nccl/install; sources from
 # github.com/aws/aws-ofi-nccl). Routes NCCL/RCCL collectives through
