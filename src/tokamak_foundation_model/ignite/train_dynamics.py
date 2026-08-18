@@ -879,7 +879,9 @@ def cache_modality_specs(cache_dir):
 def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: float = 3e-4,
           depth: int = 24, d_model: int = 1024, val_frac: float = 0.05, num_workers: int = 4,
           ckpt_every: int = 1000, ss_final_frac: float = None, ss_ramp_steps: int = None,
-          gen_mask_p: float = None, n_heads: int = None,
+          gen_mask_p: float = None, gen_horizon_alpha: float = None,
+          gen_horizon_max: int = None,
+          n_heads: int = None,
           k0_seed: int = None, n_predict: int = None, train_cap: int = 0, val_n: int = 0,
           split_seed: int = 0, warmup_steps: int = 0, min_lr_ratio: float = 0.01,
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
@@ -940,6 +942,10 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         cfg.ss_ramp_steps = int(ss_ramp_steps)
     if gen_mask_p is not None:
         cfg.gen_mask_p = float(gen_mask_p)
+    if gen_horizon_alpha is not None:
+        cfg.gen_horizon_alpha = float(gen_horizon_alpha)
+    if gen_horizon_max is not None:
+        cfg.gen_horizon_max = int(gen_horizon_max)
     if lag_embed_k is not None:
         # Changes the PARAMETER SET (adds per-modality lag tables), so a run cannot switch this
         # mid-chain: a checkpoint saved with k=0 has no lag_embed keys to load into k=3.
@@ -1005,6 +1011,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         # reconstruct the launcher/env from sacct and compare file mtimes against the submit
         # time — which is exactly the ambiguity that arose for bp128_gm on 2026-08-15.
         log(f"[dynamics] objective: gen_mask_p={cfg.gen_mask_p} "
+            f"gen_horizon_alpha={cfg.gen_horizon_alpha} "
+            f"gen_horizon_max={cfg.gen_horizon_max} "
             f"ss_final_frac={cfg.ss_ramp_final_frac} ss_ramp_steps={cfg.ss_ramp_steps} "
             f"dropout={cfg.dropout} mask_absent={int(use_presence)} "
             f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)")
@@ -1293,6 +1301,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                            # objective-shaping knobs travel WITH the weights: a checkpoint whose
                            # training objective cannot be recovered is not reproducible
                            "cfg_gen_mask_p": float(cfg.gen_mask_p),
+                           "cfg_gen_horizon_alpha": float(cfg.gen_horizon_alpha),
+                           "cfg_gen_horizon_max": int(cfg.gen_horizon_max),
                            "cfg_ss_final_frac": float(cfg.ss_ramp_final_frac),
                            "cfg_ss_ramp_steps": int(cfg.ss_ramp_steps),
                            "cfg_dropout": float(cfg.dropout),
@@ -1376,6 +1386,12 @@ def build_arg_parser():
                         "gradient. Requires --mask_absent. Measured motivation: bes is the only "
                         "diagnostic that loses to its own bigram, despite the LOWEST table floor "
                         "of the five. Weights normalise to mean 1 so the loss scale is unchanged.")
+    p.add_argument("--gen_horizon_max", type=int, default=None,
+                   help="horizon UNIFORM in [1,N]; keeps horizons short without collapsing the scored-frame count")
+    p.add_argument("--gen_horizon_alpha", type=float, default=None,
+                   help="generation-mode horizon exponent: h ~ h^-alpha, t = F-h. "
+                        "0 = uniform split (historical). ~2 concentrates on the "
+                        "one-step task rollout() performs.")
     p.add_argument("--lag_embed_k", type=int, default=None,
                    help="add k per-column OWN-HISTORY code embeddings in FrameTokenizer.embed, "
                         "so token n at frame f directly sees token n at frames f-1..f-k. 0/None "
@@ -1509,6 +1525,8 @@ def main(argv=None):
                  mask_absent=args.mask_absent, presence_path=args.presence_path,
                  accum_steps=args.accum_steps, val_windows=args.val_windows,
                  dropout=args.dropout, best_metric=args.best_metric,
+                 gen_horizon_alpha=args.gen_horizon_alpha,
+                 gen_horizon_max=args.gen_horizon_max,
                  lag_embed_k=args.lag_embed_k,
                  balance_presence=args.balance_presence,
                  window_stride=args.window_stride)

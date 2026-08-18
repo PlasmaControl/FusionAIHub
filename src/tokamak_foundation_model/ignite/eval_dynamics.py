@@ -20,6 +20,8 @@ See docs/IGNITE_DESIGN.md §5 for the frame layout / rollout contract.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -31,10 +33,16 @@ from .dynamics_config import DynamicsConfig, FROZEN_MODALITIES  # noqa: F401 (FR
 from .maskgit import MaskGITDynamics
 
 # The exactly-11 modalities to render, and their family grouping for panel layout.
-EVAL_MODALITIES: Tuple[str, ...] = (
-    "ece", "bes", "mhr", "co2",
-    "ts_core_density", "ts_core_temp", "ts_tangential_density", "ts_tangential_temp", "cer_ti",
-    "tangtv_lower", "tangtv_upper",
+# IGNITE_EVAL_MODALITIES restricts the set (comma-separated). Needed because a single broken
+# decoder aborts the WHOLE eval before any modality is scored: `ece` is channel-factorized
+# (channel_groups=4 -> 4x192=768 tokens) and decode_flat feeds the flat 768 straight into a
+# decoder whose pos_emb is 192, so it raises and takes every other modality down with it.
+# Restricting the set is the workaround; fixing decode_flat's group reshape is the real repair.
+EVAL_MODALITIES: Tuple[str, ...] = tuple(
+    m for m in os.environ.get(
+        "IGNITE_EVAL_MODALITIES",
+        "ece,bes,mhr,co2,ts_core_density,ts_core_temp,ts_tangential_density,"
+        "ts_tangential_temp,cer_ti,tangtv_lower,tangtv_upper").split(",") if m.strip()
 )
 SPECTRO = ("ece", "bes", "mhr", "co2")
 VIDEO = ("tangtv_lower", "tangtv_upper")
@@ -998,6 +1006,20 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         f"frame_tokens={cfg.tokens_per_frame}", flush=True)
 
     from .train_dynamics import load_frozen_codecs as _lfc
+    # DEFAULT THE TEMPLATE FROM THE CACHE'S OWN MANIFEST. Without it resolve_codec_path prefers a
+    # repo-local path and can silently load a DIFFERENT codec than the one that encoded the cache:
+    # 2026-08-17 it picked eval_runs/ignite_d5_ece (192 tok, channel_groups=1) for a cache written
+    # by the 768-token g=4 ece codec, so decode raised a shape error that aborted the ENTIRE eval
+    # before any modality was scored. The cache records the right template -- use it.
+    if codec_tmpl is None:
+        _man = Path(cache_dir) / "_codec_manifest.json"
+        if _man.exists():
+            try:
+                codec_tmpl = json.loads(_man.read_text()).get("codec_tmpl") or None
+                if codec_tmpl:
+                    log(f"[eval] codec_tmpl from cache manifest: {codec_tmpl}", flush=True)
+            except Exception as _e:                     # noqa: BLE001 - manifest is advisory
+                log(f"[eval] WARNING unreadable _codec_manifest.json ({_e})", flush=True)
     codecs = _lfc(list(EVAL_MODALITIES), repo=repo, tmpl=codec_tmpl)
     for _n, (c, _c2, _f) in codecs.items():
         c.to(device)

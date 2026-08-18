@@ -119,6 +119,13 @@ class DynamicsConfig:
     # already wins). k=3 hands the head that exact context so the table is representable rather
     # than something optimization has to rediscover through 16 shared-parameter layers.
     lag_embed_k: int = 0
+    # Horizon sampling for generation mode (see maskgit._mask). 0.0 = uniform split point (the
+    # historical behaviour, byte-identical). alpha > 0 draws horizon h ~ h^-alpha and sets
+    # t = Fr - h, so training matches the ONE-STEP task rollout() actually performs.
+    gen_horizon_alpha: float = 0.0
+    # Horizon UNIFORM in [1, gen_horizon_max] (0 = off). Preferred over alpha: keeps the
+    # horizon short WITHOUT collapsing the scored-frame count to 1 (see maskgit._random_mask).
+    gen_horizon_max: int = 0
 
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
