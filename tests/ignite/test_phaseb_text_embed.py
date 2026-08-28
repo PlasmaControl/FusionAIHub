@@ -111,7 +111,11 @@ def test_text_conditioning_effective():
 def test_null_consistency():
     """``drop_text`` must fully ignore the text value passed in (like drop_actuators does),
     and ``text_dropout_p == 1.0`` in train mode must do the same regardless of RNG stream —
-    every keep-mask draw comes out False, so which text was passed cannot matter."""
+    every keep-mask draw comes out False, so which text was passed cannot matter.
+
+    ``text_embed`` is bias=False (controller ruling), so all three null paths coincide
+    EXACTLY at t=0: a zeros-INPUT encode, a drop_text=True encode, and a real-text encode
+    under text_dropout_p==1.0 must all be bit-identical to each other."""
     B, Fr = 2, 5
     cfg, model = _build_text_model(seed=7, text_embed_dim=8)
     codes = {m.name: torch.randint(0, m.codebook_size, (B, Fr, m.n_tok),
@@ -124,8 +128,12 @@ def test_null_consistency():
     model.eval()
     h_drop1 = model.backbone.encode(codes, act, text=t1, drop_text=True)
     h_drop2 = model.backbone.encode(codes, act, text=t2, drop_text=True)
+    h_zero_input = model.backbone.encode(codes, act, text=torch.zeros(B, 8))
     assert torch.equal(h_drop1, h_drop2), "dropped text must not influence the hidden states"
     assert not torch.equal(model.backbone.encode(codes, act, text=t1), h_drop1)
+    # bias=False: a zeros-INPUT encode (what the dataset feeds for undocumented shots) must
+    # be bit-identical to the trained null (drop_text=True) — no bias term to distinguish them.
+    assert torch.equal(h_zero_input, h_drop1)
 
     # text_dropout_p == 1.0 in train mode zeroes text for EVERY sample regardless of which
     # text was passed: seed the generator identically before each call so the keep-mask draw
@@ -142,7 +150,8 @@ def test_null_consistency():
 def test_cfg_uncond_drops_text():
     """The CFG unconditional branch (drop_actuators=True) must ALSO drop text: fully dropping
     both must be invariant to the text value, and must differ from the conditional pass and
-    from an actuators-only-dropped pass (which still lets text through)."""
+    from an actuators-only-dropped pass (which still lets text through). With bias=False the
+    fully-unconditional branch must also coincide exactly with a zeros-text-INPUT encode."""
     B, Fr = 2, 5
     cfg, model = _build_text_model(seed=3, text_embed_dim=8)
     model.eval()
@@ -157,10 +166,12 @@ def test_cfg_uncond_drops_text():
     fully_uncond2 = model.backbone.encode(codes, act, drop_actuators=True, text=t2, drop_text=True)
     cond = model.backbone.encode(codes, act, text=t1)
     actuators_only_dropped = model.backbone.encode(codes, act, drop_actuators=True, text=t1)
+    uncond_zero_input = model.backbone.encode(codes, act, drop_actuators=True, text=torch.zeros(B, 8))
 
     assert torch.equal(fully_uncond1, fully_uncond2), "text value must not leak through drop_text"
     assert not torch.equal(fully_uncond1, cond)
     assert not torch.equal(fully_uncond1, actuators_only_dropped)
+    assert torch.equal(fully_uncond1, uncond_zero_input)
 
 
 def test_checkpoint_roundtrip():

@@ -103,7 +103,9 @@ class DynamicsBackbone(nn.Module):
         self.tok = FrameTokenizer(cfg)
         self.act_embed = nn.Linear(cfg.actuator_dim, cfg.d_model)
         if getattr(cfg, "text_embed_dim", 0) > 0:
-            self.text_embed = nn.Linear(cfg.text_embed_dim, cfg.d_model)
+            # bias=False: makes zeros-text input, drop_text, and text_dropout_p==1.0 coincide
+            # exactly at t=0 — missing text is indistinguishable from the trained null.
+            self.text_embed = nn.Linear(cfg.text_embed_dim, cfg.d_model, bias=False)
         self.blocks = nn.ModuleList([FactorizedSTBlock(cfg) for _ in range(cfg.depth)])
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
