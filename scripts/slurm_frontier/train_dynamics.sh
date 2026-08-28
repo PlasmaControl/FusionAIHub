@@ -16,7 +16,9 @@
 # PRODUCTION layout: 16 nodes x 8 GCDs, BATCH_SIZE=1 x ACCUM_STEPS=2 -> effective batch 256.
 #   sbatch -N 16 --ntasks-per-node=8 --gres=gpu:8 -t 12:00:00 -p extended
 # Env overrides: CACHE_DIR, OUT_DIR, DEPTH, D_MODEL, STEPS, BATCH_SIZE, ACCUM_STEPS, LR,
-# NUM_WORKERS, MASK_ABSENT, TEST_FRAC, PIN_VAL, SPLIT_SEED, DATA_DIR, PRECOMPUTE.
+# NUM_WORKERS, MASK_ABSENT, TEST_FRAC, PIN_VAL, SPLIT_SEED, DATA_DIR, PRECOMPUTE,
+# TEXT_EMBED_PATH, TEXT_EMBED_DIM, TEXT_DROPOUT_P, TEXT_KEY (TEXT_EMBED_DIM 0/empty
+# = no text conditioning at all, the default).
 # Resumes from OUT_DIR/dynamics_latest.pt. Chain with --dependency=afterany:<prev>; multi-partition
 # each job (scontrol update Partition=extended,batch,g1), keep -t <=2h for g1 eligibility.
 set -euo pipefail
@@ -60,6 +62,13 @@ VAL_WINDOWS="${VAL_WINDOWS:-32}"  # independent of BATCH_SIZE (see --val_windows
 # and trip the 600 s NCCL watchdog. Build it first with BUILD_PRESENCE=1 — and REBUILD it
 # after ANY cache change, since a stale map silently mislabels the shots that changed.
 MASK_ABSENT="${MASK_ABSENT:-1}"
+# Per-shot text conditioning (optional). TEXT_EMBED_DIM 0/empty = no text flags at
+# all (byte-identical command line to before this feature existed). Path and dim
+# must be set TOGETHER -- see EXTRA assembly below.
+TEXT_EMBED_PATH="${TEXT_EMBED_PATH:-}"
+TEXT_EMBED_DIM="${TEXT_EMBED_DIM:-0}"
+TEXT_DROPOUT_P="${TEXT_DROPOUT_P:-0.1}"
+TEXT_KEY="${TEXT_KEY:-input}"
 mkdir -p logs "${CACHE_DIR}"
 
 # SPLIT_SEED must be NON-ZERO for production: 0 selects the legacy SORTED-TAIL split,
@@ -111,6 +120,10 @@ EXTRA=()
 [ -n "${ACCUM_STEPS:-}" ] && EXTRA+=(--accum_steps "${ACCUM_STEPS}")
 [ "${MASK_ABSENT}" = "1" ] && EXTRA+=(--mask_absent)
 [ -n "${PRESENCE_PATH:-}" ] && EXTRA+=(--presence_path "${PRESENCE_PATH}")
+[ "${TEXT_EMBED_DIM}" != "0" ] && [ -n "${TEXT_EMBED_DIM}" ] && EXTRA+=(
+  --text_embed_path "${TEXT_EMBED_PATH}" --text_embed_dim "${TEXT_EMBED_DIM}"
+  --text_dropout_p "${TEXT_DROPOUT_P}" --text_key "${TEXT_KEY}"
+)
 
 if [ "${BUILD_PRESENCE:-0}" = "1" ]; then
   # Rebuild <cache>/_presence.json — the absent-diagnostic mask --mask_absent scores against.
