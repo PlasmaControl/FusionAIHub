@@ -89,7 +89,13 @@ def test_inject_creates_group_with_data_and_attrs(env):
     args = inject_text_embeds._parse_args(["--embeds", str(embeds_path), "--shot_dir", str(shot_dir)])
     counts = inject_text_embeds.run_inject(args)
 
-    assert counts == {"injected": 2, "skipped_existing": 0, "no_shot_file": 1, "error": 0}
+    assert counts == {
+        "injected": 2,
+        "skipped_existing": 0,
+        "no_shot_file": 1,
+        "error": 0,
+        "repaired_partial": 0,
+    }
 
     with h5py.File(embeds_path, "r") as ef:
         expected_input = ef["input"][0]
@@ -122,6 +128,7 @@ def test_inject_creates_group_with_data_and_attrs(env):
         assert grp.attrs["source"] == str(embeds_path.resolve())
         assert grp.attrs["source_created_utc"] == "2026-08-28T00:00:00+00:00"
         assert "injected_utc" in grp.attrs
+        assert bool(grp.attrs["complete"]) is True
 
 
 def test_missing_shot_file_counted_and_exit_zero(env, monkeypatch):
@@ -145,7 +152,13 @@ def test_rerun_without_overwrite_skips_and_leaves_data_unchanged(env):
     mtime_before = shot_path.stat().st_mtime_ns
 
     counts = inject_text_embeds.run_inject(args)
-    assert counts == {"injected": 0, "skipped_existing": 2, "no_shot_file": 1, "error": 0}
+    assert counts == {
+        "injected": 0,
+        "skipped_existing": 2,
+        "no_shot_file": 1,
+        "error": 0,
+        "repaired_partial": 0,
+    }
 
     with h5py.File(shot_path, "r") as sf:
         np.testing.assert_array_equal(sf["text_embed/input"][:], data_before)
@@ -167,7 +180,13 @@ def test_overwrite_updates_data_after_source_mutation(env):
         ["--embeds", str(embeds_path), "--shot_dir", str(shot_dir), "--overwrite"]
     )
     counts = inject_text_embeds.run_inject(overwrite_args)
-    assert counts == {"injected": 2, "skipped_existing": 0, "no_shot_file": 1, "error": 0}
+    assert counts == {
+        "injected": 2,
+        "skipped_existing": 0,
+        "no_shot_file": 1,
+        "error": 0,
+        "repaired_partial": 0,
+    }
 
     shot_path = shot_dir / f"{SHOTS[0]}_processed.h5"
     with h5py.File(shot_path, "r") as sf:
@@ -212,6 +231,22 @@ def test_verify_passes_after_injection(env):
     assert ok is True
 
 
+def test_verify_fails_on_missing_complete_sentinel(env):
+    embeds_path, shot_dir = env
+    args = inject_text_embeds._parse_args(["--embeds", str(embeds_path), "--shot_dir", str(shot_dir)])
+    inject_text_embeds.run_inject(args)
+
+    shot_path = shot_dir / f"{SHOTS[0]}_processed.h5"
+    with h5py.File(shot_path, "r+") as sf:
+        del sf["text_embed"].attrs["complete"]
+
+    verify_args = inject_text_embeds._parse_args(
+        ["--embeds", str(embeds_path), "--shot_dir", str(shot_dir), "--verify"]
+    )
+    ok = inject_text_embeds.run_verify(verify_args)
+    assert ok is False
+
+
 def test_limit_restricts_shots_processed(env):
     embeds_path, shot_dir = env
     args = inject_text_embeds._parse_args(
@@ -219,4 +254,40 @@ def test_limit_restricts_shots_processed(env):
     )
     counts = inject_text_embeds.run_inject(args)
     # only SHOTS[0] considered
-    assert counts == {"injected": 1, "skipped_existing": 0, "no_shot_file": 0, "error": 0}
+    assert counts == {
+        "injected": 1,
+        "skipped_existing": 0,
+        "no_shot_file": 0,
+        "error": 0,
+        "repaired_partial": 0,
+    }
+
+
+def test_torn_write_is_repaired(env):
+    embeds_path, shot_dir = env
+    shot_path = shot_dir / f"{SHOTS[0]}_processed.h5"
+
+    # Fabricate a torn write: the group exists with only the `input` dataset and no
+    # `complete` sentinel, as if the process died mid-injection.
+    with h5py.File(shot_path, "r+") as sf:
+        grp = sf.create_group("text_embed")
+        grp.create_dataset("input", data=np.zeros(DIM, dtype=np.float16))
+
+    args = inject_text_embeds._parse_args(["--embeds", str(embeds_path), "--shot_dir", str(shot_dir)])
+    counts = inject_text_embeds.run_inject(args)
+    assert counts == {
+        "injected": 2,
+        "skipped_existing": 0,
+        "no_shot_file": 1,
+        "error": 0,
+        "repaired_partial": 1,
+    }
+
+    with h5py.File(embeds_path, "r") as ef:
+        expected_input = ef["input"][0]
+
+    with h5py.File(shot_path, "r") as sf:
+        grp = sf["text_embed"]
+        assert "total" in grp  # fully repaired, not left partial
+        np.testing.assert_array_equal(grp["input"][:], expected_input)
+        assert bool(grp.attrs["complete"]) is True

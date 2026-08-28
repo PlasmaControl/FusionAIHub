@@ -89,7 +89,13 @@ def run_inject(args):
         source_created_utc = ef.attrs.get("created_utc", "")
         injected_utc = datetime.now(timezone.utc).isoformat()
 
-        counts = {"injected": 0, "skipped_existing": 0, "no_shot_file": 0, "error": 0}
+        counts = {
+            "injected": 0,
+            "skipped_existing": 0,
+            "no_shot_file": 0,
+            "error": 0,
+            "repaired_partial": 0,
+        }
         planned_samples = []
 
         for i in range(n):
@@ -103,8 +109,8 @@ def run_inject(args):
             try:
                 if args.dry_run:
                     with h5py.File(shot_path, "r") as sf:
-                        exists = args.group in sf
-                    if exists and not args.overwrite:
+                        complete = args.group in sf and bool(sf[args.group].attrs.get("complete", False))
+                    if complete and not args.overwrite:
                         counts["skipped_existing"] += 1
                     else:
                         counts["injected"] += 1
@@ -115,17 +121,23 @@ def run_inject(args):
                 if not args.overwrite:
                     with h5py.File(shot_path, "r") as sf:
                         exists = args.group in sf
-                    if exists:
+                        complete = exists and bool(sf[args.group].attrs.get("complete", False))
+                    if complete:
                         counts["skipped_existing"] += 1
                         continue
+                    if exists:
+                        # torn write from a prior interrupted run: the group exists but its
+                        # `complete` sentinel was never written. Repair by deleting and
+                        # re-injecting rather than trusting the partial data.
+                        counts["repaired_partial"] += 1
 
                 with h5py.File(shot_path, "r+") as sf:
                     if args.group in sf:
                         del sf[args.group]
 
                     grp = sf.create_group(args.group)
-                    grp.create_dataset("input", data=ef["input"][i].astype(np.float16))
-                    grp.create_dataset("total", data=ef["total"][i].astype(np.float16))
+                    grp.create_dataset("input", data=ef["input"][i], dtype=ef["input"].dtype)
+                    grp.create_dataset("total", data=ef["total"][i], dtype=ef["total"].dtype)
                     for k, v in root_attrs.items():
                         grp.attrs[k] = v
                     for attr in _ROW_ATTRS:
@@ -133,6 +145,9 @@ def run_inject(args):
                     grp.attrs["source"] = str(embeds_path)
                     grp.attrs["source_created_utc"] = source_created_utc
                     grp.attrs["injected_utc"] = injected_utc
+                    # sentinel written LAST: its presence is what marks the group as
+                    # trustworthy (see the torn-write repair check above and --verify).
+                    grp.attrs["complete"] = True
 
                 counts["injected"] += 1
             except Exception as e:  # noqa: BLE001 - one bad file must not abort the run
@@ -147,7 +162,8 @@ def run_inject(args):
     else:
         print(
             f"injected {counts['injected']}, skipped_existing {counts['skipped_existing']}, "
-            f"no_shot_file {counts['no_shot_file']}, errors {counts['error']} of {n} shots"
+            f"no_shot_file {counts['no_shot_file']}, errors {counts['error']}, "
+            f"repaired_partial {counts['repaired_partial']} of {n} shots"
         )
 
     return counts
@@ -175,6 +191,10 @@ def run_verify(args):
                         continue
                     grp = sf[args.group]
                     n_checked += 1
+
+                    if not bool(grp.attrs.get("complete", False)):
+                        print(f"FAIL: shot {shot} missing complete=True sentinel (torn write?)")
+                        ok = False
 
                     if not np.array_equal(grp["input"][:], ef["input"][i]):
                         print(f"FAIL: shot {shot} input mismatch")
