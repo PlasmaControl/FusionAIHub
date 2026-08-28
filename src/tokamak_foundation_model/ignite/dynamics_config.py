@@ -131,6 +131,11 @@ class DynamicsConfig:
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
 
+    # --- per-shot text conditioning (precomputed embedding; additive like actuators) ---
+    # 0 = off (original behaviour, bit-identical: no module constructed, no RNG draws).
+    text_embed_dim: int = 0
+    text_dropout_p: float = 0.0  # per-SAMPLE zeroing; trains a null embedding (missing text / CFG)
+
     # --------------------------------------------------------------------------------------- #
     @property
     def n_modalities(self) -> int:

@@ -15,7 +15,7 @@ fresh-model-code rule.
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 import torch.utils.checkpoint
@@ -102,15 +102,22 @@ class DynamicsBackbone(nn.Module):
         self.cfg = cfg
         self.tok = FrameTokenizer(cfg)
         self.act_embed = nn.Linear(cfg.actuator_dim, cfg.d_model)
+        if getattr(cfg, "text_embed_dim", 0) > 0:
+            self.text_embed = nn.Linear(cfg.text_embed_dim, cfg.d_model)
         self.blocks = nn.ModuleList([FactorizedSTBlock(cfg) for _ in range(cfg.depth)])
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
     def encode(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
-               drop_actuators: bool = False) -> torch.Tensor:
+               drop_actuators: bool = False, text: Optional[torch.Tensor] = None,
+               drop_text: bool = False) -> torch.Tensor:
         """→ hidden states (B, F, tokens_per_frame, d_model).
 
         ``drop_actuators`` zeroes the actuator contribution for the whole batch — the
         unconditional branch used by classifier-free guidance at inference.
+
+        ``text`` is a per-shot embedding (B, text_embed_dim), added to every token of every
+        frame (time-invariant conditioning) when ``cfg.text_embed_dim > 0``. ``drop_text``
+        zeroes it (the CFG unconditional branch).
         """
         x = self.tok.embed(codes)                              # (B, F, N, d)
         B, Fr, N, d = x.shape
@@ -130,6 +137,23 @@ class DynamicsBackbone(nn.Module):
                 keep = (torch.rand((B, 1, 1), device=a.device) >= p).to(a.dtype)
                 a = a * keep
         x = x + a.unsqueeze(2)                                 # (B, F, 1, d) broadcast over tokens
+        tdim = getattr(self.cfg, "text_embed_dim", 0)
+        if tdim > 0:
+            if text is None:
+                raise ValueError("cfg.text_embed_dim > 0 but no text embedding passed")
+            if text.shape != (B, tdim):
+                raise ValueError(f"text expected {(B, tdim)}; got {tuple(text.shape)}")
+            t = self.text_embed(text)                                  # (B, d)
+            if drop_text:
+                t = torch.zeros_like(t)
+            else:
+                p = getattr(self.cfg, "text_dropout_p", 0.0)
+                if self.training and p > 0.0:
+                    keep = (torch.rand((B, 1), device=t.device) >= p).to(t.dtype)
+                    t = t * keep
+            x = x + t.view(B, 1, 1, d)                                 # broadcast over frames and tokens
+        elif text is not None:
+            raise ValueError("text passed but cfg.text_embed_dim == 0")
         use_ckpt = self.training and getattr(self.cfg, "grad_checkpointing", False) and x.requires_grad
         for blk in self.blocks:
             if use_ckpt:
@@ -145,5 +169,6 @@ class DynamicsBackbone(nn.Module):
                 x = blk(x)
         return self.out_norm(x)
 
-    def forward(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor):
-        return self.tok.logits(self.encode(codes, actuators))
+    def forward(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
+                text: Optional[torch.Tensor] = None):
+        return self.tok.logits(self.encode(codes, actuators, text=text))

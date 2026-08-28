@@ -25,7 +25,8 @@ from .sampling import SamplerConfig
 def rollout_context(model, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                     boundary: int, n_roll: int,
                     sampler: Optional[SamplerConfig] = None,
-                    generator: Optional[torch.Generator] = None) -> Dict[str, torch.Tensor]:
+                    generator: Optional[torch.Generator] = None,
+                    text: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
     """Replace frames ``[boundary, boundary+n_roll)`` with the model's own committed codes.
 
     Frames before ``boundary`` stay ground truth (the real seed); frames after the rolled
@@ -68,7 +69,7 @@ def rollout_context(model, codes: Dict[str, torch.Tensor], actuators: torch.Tens
             ctx = {n: v[:, :boundary].clone() for n, v in codes.items()}
             for t in range(n_roll):
                 nxt = model.generate_frame(ctx, actuators[:, : boundary + t + 1],
-                                           generator=generator, sampler=sampler)
+                                           generator=generator, sampler=sampler, text=text)
                 ctx = {n: torch.cat([ctx[n], nxt[n].unsqueeze(1)], dim=1) for n in ctx}
     finally:
         cfg.maskgit_decode_steps = prev_steps

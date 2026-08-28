@@ -110,13 +110,13 @@ class MaskGITDynamics(nn.Module):
         return min(1.0, step / max(1, cfg.ss_ramp_steps)) * cfg.ss_ramp_final_frac
 
     @torch.no_grad()
-    def _scheduled_sample_context(self, codes, actuators, ss_frac, gen):
+    def _scheduled_sample_context(self, codes, actuators, ss_frac, gen, text=None):
         """Return a copy of ``codes`` with a ``ss_frac`` fraction of (B, frame) cells replaced by
         the model's OWN one-pass sampled codes — so the model learns to consume its own outputs
         (drift mitigation). Substitution is on the CONTEXT only; the CE target stays the real code."""
         if ss_frac <= 0.0:
             return codes
-        logits = self.backbone(codes, actuators)
+        logits = self.backbone(codes, actuators, text=text)
         ref = codes[self.cfg.modalities[0].name]
         B, Fr, _ = ref.shape
         sub = torch.rand((B, Fr), generator=gen, device=ref.device) < ss_frac   # (B, F) frames
@@ -141,7 +141,8 @@ class MaskGITDynamics(nn.Module):
     def training_loss(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                       generator: Optional[torch.Generator] = None,
                       ss_frac: float = 0.0,
-                      present: Optional[torch.Tensor] = None) -> torch.Tensor:
+                      present: Optional[torch.Tensor] = None,
+                      text: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Masked-token cross-entropy over the masked positions, summed per modality, mean-reduced.
 
         ``ss_frac`` > 0 applies scheduled sampling: a fraction of context frames are replaced by
@@ -162,7 +163,7 @@ class MaskGITDynamics(nn.Module):
         head would receive no gradient, which trips DDP's unused-parameter detection. A
         zero-weighted term keeps every parameter in the graph with a zero gradient.
         """
-        context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
+        context = self._scheduled_sample_context(codes, actuators, ss_frac, generator, text=text)
         n_sf = int(getattr(self.cfg, "sf_frames", 0))
         sf_at = None                  # end of the self-rolled window, once one has been built
         if n_sf > 0:
@@ -186,7 +187,7 @@ class MaskGITDynamics(nn.Module):
                     b = int(torch.randint(lo, max(lo + 1, Fr - n_sf), (1,),
                                           generator=generator, device=sdev).item())
                     context = rollout_context(self, context, actuators, boundary=b,
-                                              n_roll=n_sf, generator=generator)
+                                              n_roll=n_sf, generator=generator, text=text)
                     # The CTF mask must not overwrite what we just rolled — those frames ARE the
                     # on-policy context this arm exists to train on. Floor the CTF boundary at the
                     # window's end so the rolled frames stay complete context and the supervised
@@ -208,7 +209,7 @@ class MaskGITDynamics(nn.Module):
         # Memory-critical: encode to hidden states, then project ONLY masked positions to vocab.
         # Materializing full (B, F, tokens_per_frame, vocab) logits is ~B*400 GB at F=100 (OOM);
         # masked_logits gathers first -> ~B*200 MB. See FrameTokenizer.masked_logits.
-        h = self.backbone.encode(masked, actuators)                   # (B, F, N, d)
+        h = self.backbone.encode(masked, actuators, text=text)         # (B, F, N, d)
         mlogits = self.backbone.tok.masked_logits(h, mask)            # {name: (n_masked, vocab)}
         total, count = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32), 0.0
         for mi, m in enumerate(self.cfg.modalities):
@@ -238,17 +239,18 @@ class MaskGITDynamics(nn.Module):
         return total / max(count, 1e-8)
 
     # ---------------------------------------------------------------------------- inference ---
-    def _decode_logits(self, seq, actuators, sampler):
+    def _decode_logits(self, seq, actuators, sampler, text=None):
         """Per-modality last-frame logits, with optional classifier-free guidance.
 
         cfg_scale == 1.0 short-circuits to ONE forward pass, so guidance costs nothing
         when it is off (and the default path stays bit-identical).
         """
-        h = self.backbone.encode(seq, actuators)
+        h = self.backbone.encode(seq, actuators, text=text)
         cond = self.backbone.tok.logits_last(h)
         if sampler.cfg_scale == 1.0:
             return cond
-        hu = self.backbone.encode(seq, actuators, drop_actuators=True)
+        # fully unconditional: the guidance baseline drops BOTH actuators and text.
+        hu = self.backbone.encode(seq, actuators, drop_actuators=True, text=text, drop_text=True)
         uncond = self.backbone.tok.logits_last(hu)
         s = float(sampler.cfg_scale)
         return {n: uncond[n] + s * (cond[n] - uncond[n]) for n in cond}
@@ -257,7 +259,8 @@ class MaskGITDynamics(nn.Module):
     def generate_frame(self, past_codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                        temperature: float = 1.0,
                        generator: Optional[torch.Generator] = None,
-                       sampler: Optional[SamplerConfig] = None) -> Dict[str, torch.Tensor]:
+                       sampler: Optional[SamplerConfig] = None,
+                       text: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         """Generate ONE next frame's committed codes given committed past frames.
 
         past_codes[.]: (B, P, n_tok) real codes for P past frames. actuators: (B, P+1, actuator_dim)
@@ -276,7 +279,7 @@ class MaskGITDynamics(nn.Module):
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, frac in enumerate(keep_masked):
             seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            logits = self._decode_logits(seq, actuators, sampler)     # {name:(B, n_tok, vocab)}
+            logits = self._decode_logits(seq, actuators, sampler, text=text)  # {name:(B, n_tok, vocab)}
             # Three passes — sample all / decide reveals / commit. Splitting the old
             # single-pass loop lets the reveal POLICY see every modality's confidence at once
             # while leaving the sampling RNG order untouched (same multinomial calls, same
@@ -307,7 +310,7 @@ class MaskGITDynamics(nn.Module):
         # and re-decode it against the tokens that survived.
         for _ in range(int(sampler.revision_rounds)):
             seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            logits = self._decode_logits(seq, actuators, sampler)
+            logits = self._decode_logits(seq, actuators, sampler, text=text)
             samp, conf = {}, {}
             for m in cfg.modalities:
                 lg = logits[m.name].float() / max(sampler.temp_for(m.name), 1e-6)
@@ -331,7 +334,7 @@ class MaskGITDynamics(nn.Module):
             still = ~revealed[m.name]
             if bool(still.any()):
                 seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-                h = self.backbone.encode(seq, actuators)
+                h = self.backbone.encode(seq, actuators, text=text)
                 lg = self.backbone.tok.logits_last(h)[m.name]
                 cur[m.name] = torch.where(still, lg.argmax(-1), cur[m.name])
         return cur
@@ -386,7 +389,8 @@ class MaskGITDynamics(nn.Module):
     def rollout(self, seed_codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                 n_predict: Optional[int] = None, temperature: float = 1.0,
                 generator: Optional[torch.Generator] = None,
-                sampler: Optional[SamplerConfig] = None) -> Dict[str, torch.Tensor]:
+                sampler: Optional[SamplerConfig] = None,
+                text: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         """Seed K₀ real frames -> generate + COMMIT n_predict frames. Closed code space, no
         decode/re-tokenize round-trip.
 
@@ -404,7 +408,7 @@ class MaskGITDynamics(nn.Module):
         for t in range(n_predict):
             nxt = self.generate_frame(
                 traj, actuators[:, : K0 + t + 1], temperature=temperature,
-                generator=generator, sampler=sampler
+                generator=generator, sampler=sampler, text=text
             )
             traj = {n: torch.cat([traj[n], nxt[n].unsqueeze(1)], dim=1) for n in traj}
         return traj

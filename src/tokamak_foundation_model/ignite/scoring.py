@@ -23,7 +23,8 @@ from .sampling import SamplerConfig
 def masked_pseudo_likelihood(model, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                              frames: Optional[slice] = None, mask_frac: float = 0.3,
                              n_draws: int = 4,
-                             generator: Optional[torch.Generator] = None) -> float:
+                             generator: Optional[torch.Generator] = None,
+                             text: Optional[torch.Tensor] = None) -> float:
     """Mean masked cross-entropy of ``codes`` under ``model``. Lower = more self-consistent.
 
     ``frames`` restricts scoring to a window (e.g. the predicted region only); the whole
@@ -44,7 +45,7 @@ def masked_pseudo_likelihood(model, codes: Dict[str, torch.Tensor], actuators: t
             mk[:, :, 0] |= ~mk.any(dim=-1) & sel.view(1, Fr)   # >=1 target per scored frame
             masked[m.name] = torch.where(mk, torch.full_like(c, model.backbone.tok.mask_ids[m.name]), c)
             mask[m.name] = mk
-        h = model.backbone.encode(masked, actuators)
+        h = model.backbone.encode(masked, actuators, text=text)
         mlog = model.backbone.tok.masked_logits(h, mask)
         ce, n = 0.0, 0
         for m in cfg.modalities:
@@ -60,7 +61,8 @@ def masked_pseudo_likelihood(model, codes: Dict[str, torch.Tensor], actuators: t
 def best_of_n(model, seed_codes: Dict[str, torch.Tensor], actuators: torch.Tensor, n: int,
               n_predict: Optional[int] = None, sampler: Optional[SamplerConfig] = None,
               generator: Optional[torch.Generator] = None,
-              score_frames: Optional[slice] = None
+              score_frames: Optional[slice] = None,
+              text: Optional[torch.Tensor] = None
               ) -> Tuple[Dict[str, torch.Tensor], List[float]]:
     """Roll out ``n`` candidates and return the most self-consistent one plus all scores."""
     cfg = model.cfg
@@ -70,9 +72,9 @@ def best_of_n(model, seed_codes: Dict[str, torch.Tensor], actuators: torch.Tenso
     best, best_score, scores = None, float("inf"), []
     for _ in range(n):
         traj = model.rollout(seed_codes, actuators, n_predict=n_predict,
-                             generator=generator, sampler=sampler)
+                             generator=generator, sampler=sampler, text=text)
         s = masked_pseudo_likelihood(model, traj, actuators[:, : K0 + n_predict],
-                                     frames=win, generator=generator)
+                                     frames=win, generator=generator, text=text)
         scores.append(s)
         if s < best_score:
             best, best_score = traj, s
