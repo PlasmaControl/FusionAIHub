@@ -75,19 +75,16 @@ def _parse_args():
     return args
 
 
-def _parse_run_id(raw) -> int:
-    """Most run_ids are plain digit strings (e.g. "20240401"); a handful carry a trailing
-    letter suffix for same-day re-runs (e.g. "20260303A"). Strip any non-digit suffix so the
-    date-based id still round-trips to an int; fall back to 0 if nothing numeric remains."""
-    s = str(raw)
-    digits = "".join(ch for ch in s if ch.isdigit())
-    return int(digits) if digits else 0
-
-
 def _load_shot_texts(jsonl_dir):
-    """Return {int(shot): (int(run_id), text)} deterministically, skipping shot 0 and
-    duplicate shots (first occurrence wins). Also returns the duplicate count."""
-    shots: dict[int, tuple[int, str]] = {}
+    """Return {int(shot): (run_id, text)} deterministically, skipping shot 0 and
+    duplicate shots (first occurrence wins). Also returns the duplicate count.
+
+    run_id is kept as the EXACT string from the JSONL record: most are plain digit strings
+    (e.g. "20240401"), but a handful carry a trailing letter suffix for same-day re-runs
+    (e.g. "20260303A") -- collapsing those to a shared int would silently merge two distinct
+    experiments, so run_id is never coerced to int anywhere in this script.
+    """
+    shots: dict[int, tuple[str, str]] = {}
     n_dupes = 0
     for path in sorted(glob.glob(os.path.join(jsonl_dir, "*.jsonl"))):
         with open(path) as f:
@@ -102,7 +99,7 @@ def _load_shot_texts(jsonl_dir):
                 if shot in shots:
                     n_dupes += 1
                     continue
-                shots[shot] = (_parse_run_id(rec["run_id"]), rec["text"])
+                shots[shot] = (str(rec["run_id"]), rec["text"])
     return shots, n_dupes
 
 
@@ -135,10 +132,22 @@ def _embed_texts(tok, mdl, device, texts, max_length):
     n_tok = [len(tok(t).input_ids) for t in texts]
     truncated = [n > max_length for n in n_tok]
 
-    # documents get NO instruction prefix (instructions are for queries only); append EOS
-    # so the pooled (last, with left padding) position is always the true EOS token.
-    texts_with_eos = [t + tok.eos_token for t in texts]
-    batch = tok(texts_with_eos, padding=True, truncation=True, max_length=max_length, return_tensors="pt")
+    # documents get NO instruction prefix (instructions are for queries only). Truncate to
+    # max_length-1 FIRST, then append EOS -- appending EOS before truncation risks right-side
+    # truncation cutting it off for over-length rows, which would silently pool a non-EOS
+    # position. Pad left ourselves (post-EOS) so the LAST token is always EOS for every row.
+    enc = tok(texts, truncation=True, max_length=max_length - 1)
+    eos_id = tok.eos_token_id
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else eos_id
+    ids_with_eos = [ids + [eos_id] for ids in enc["input_ids"]]
+    mask_with_eos = [am + [1] for am in enc["attention_mask"]]
+    batch_len = max(len(ids) for ids in ids_with_eos)
+    input_ids = [[pad_id] * (batch_len - len(ids)) + ids for ids in ids_with_eos]
+    attention_mask = [[0] * (batch_len - len(am)) + am for am in mask_with_eos]
+    batch = {
+        "input_ids": torch.tensor(input_ids, dtype=torch.long),
+        "attention_mask": torch.tensor(attention_mask, dtype=torch.long),
+    }
 
     with torch.no_grad():
         out = mdl(**{k: v.to(device) for k, v in batch.items()})
@@ -225,7 +234,7 @@ def run_merge(args):
                 if shot in rows:
                     raise AssertionError(f"duplicate shot {shot} found across shard files (last seen in {sp})")
                 rows[shot] = {
-                    "run_id": int(grp.attrs["run_id"]),
+                    "run_id": str(grp.attrs["run_id"]),
                     "input": grp["input"][:],
                     "total": grp["total"][:],
                     "n_tok_input": int(grp.attrs["n_tok_input"]),
@@ -246,7 +255,11 @@ def run_merge(args):
     os.makedirs(out_path.parent, exist_ok=True)
     with h5py.File(tmp_path, "w") as f:
         f.create_dataset("shots", data=np.array(shots_sorted, dtype=np.int64))
-        f.create_dataset("run_id", data=np.array([rows[s]["run_id"] for s in shots_sorted], dtype=np.int64))
+        f.create_dataset(
+            "run_id",
+            data=np.array([rows[s]["run_id"] for s in shots_sorted], dtype=object),
+            dtype=h5py.string_dtype(encoding="utf-8"),
+        )
         f.create_dataset("input", data=np.stack([rows[s]["input"] for s in shots_sorted]).astype(np.float16))
         f.create_dataset("total", data=np.stack([rows[s]["total"] for s in shots_sorted]).astype(np.float16))
         f.create_dataset(
@@ -288,7 +301,7 @@ def run_verify(args):
     with h5py.File(args.out, "r") as f:
         expected_datasets = {
             "shots": np.int64,
-            "run_id": np.int64,
+            "run_id": "string",
             "input": np.float16,
             "total": np.float16,
             "n_tok_input": np.int32,
@@ -306,7 +319,11 @@ def run_verify(args):
             if ds.shape[0] != n:
                 print(f"FAIL: /{name} has {ds.shape[0]} rows, expected {n}")
                 ok = False
-            if not np.issubdtype(ds.dtype, dtype) and ds.dtype != np.dtype(dtype):
+            if dtype == "string":
+                if h5py.check_string_dtype(ds.dtype) is None:
+                    print(f"FAIL: /{name} dtype {ds.dtype}, expected a variable-length string dtype")
+                    ok = False
+            elif not np.issubdtype(ds.dtype, dtype) and ds.dtype != np.dtype(dtype):
                 print(f"FAIL: /{name} dtype {ds.dtype}, expected {dtype}")
                 ok = False
         for name in ("input", "total"):
@@ -340,7 +357,9 @@ def run_verify(args):
                 ok = False
 
         shots = f["shots"][:]
-        run_ids = f["run_id"][:]
+        run_ids = [
+            rid.decode("utf-8") if isinstance(rid, bytes) else str(rid) for rid in f["run_id"][:]
+        ]
 
         cache_stems = set()
         for p in Path(args.cache_dir).glob("*.pt"):
@@ -356,9 +375,10 @@ def run_verify(args):
               f"({len(cache_stems)} cache stems)")
 
         rng = np.random.default_rng(0)
-        by_run: dict[int, list[int]] = {}
-        for idx, rid in enumerate(run_ids.tolist()):
+        by_run: dict[str, list[int]] = {}
+        for idx, rid in enumerate(run_ids):
             by_run.setdefault(rid, []).append(idx)
+        n_distinct_runs = len(by_run)
         multi_shot_runs = [idxs for idxs in by_run.values() if len(idxs) >= 2]
         rng.shuffle(multi_shot_runs)
         multi_shot_runs = multi_shot_runs[:30]
@@ -372,23 +392,33 @@ def run_verify(args):
             i, j = rng.choice(len(idxs), size=2, replace=False)
             within_pairs.append((idxs[i], idxs[j]))
 
-        n_pairs = len(within_pairs)
-        cross_pairs = []
-        all_idx = np.arange(n)
-        while len(cross_pairs) < n_pairs and n >= 2:
-            i, j = rng.choice(all_idx, size=2, replace=False)
-            if run_ids[i] != run_ids[j]:
-                cross_pairs.append((i, j))
-
-        if within_pairs and cross_pairs:
-            within_mean = float(np.mean([_cos(input_data[i], input_data[j]) for i, j in within_pairs]))
-            cross_mean = float(np.mean([_cos(input_data[i], input_data[j]) for i, j in cross_pairs]))
-            cosine_pass = within_mean > cross_mean
-            print(f"cosine sanity: within-run mean={within_mean:.4f} cross-run mean={cross_mean:.4f} "
-                  f"({'PASS' if cosine_pass else 'FAIL'})")
-            ok = ok and cosine_pass
-        else:
+        # cross-run pairs need >=2 distinct run_ids, else "run_ids[i] != run_ids[j]" can never
+        # be satisfied and the sampling loop below would spin forever.
+        if n_distinct_runs < 2:
+            print("cosine sanity: SKIPPED (fewer than 2 distinct run_ids)")
+        elif not within_pairs:
             print("cosine sanity: SKIPPED (not enough multi-shot runs)")
+        else:
+            n_pairs = len(within_pairs)
+            cross_pairs = []
+            all_idx = np.arange(n)
+            max_attempts = max(1000, n_pairs * 200)  # belt-and-braces bound
+            attempts = 0
+            while len(cross_pairs) < n_pairs and attempts < max_attempts:
+                attempts += 1
+                i, j = rng.choice(all_idx, size=2, replace=False)
+                if run_ids[i] != run_ids[j]:
+                    cross_pairs.append((i, j))
+
+            if cross_pairs:
+                within_mean = float(np.mean([_cos(input_data[i], input_data[j]) for i, j in within_pairs]))
+                cross_mean = float(np.mean([_cos(input_data[i], input_data[j]) for i, j in cross_pairs]))
+                cosine_pass = within_mean > cross_mean
+                print(f"cosine sanity: within-run mean={within_mean:.4f} cross-run mean={cross_mean:.4f} "
+                      f"({'PASS' if cosine_pass else 'FAIL'})")
+                ok = ok and cosine_pass
+            else:
+                print("cosine sanity: SKIPPED (could not sample cross-run pairs)")
 
     print("VERIFY " + ("PASSED" if ok else "FAILED"))
     return ok

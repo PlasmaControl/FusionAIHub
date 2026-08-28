@@ -53,7 +53,12 @@ def split_bundle(text: str) -> tuple[str, str]:
 
     header = "".join(lines[:idx_general])
 
-    general_end = idx_summaries if idx_summaries is not None else idx_planned
+    # general slice ends at the first PRESENT anchor after it (summaries, planned, or
+    # shot-specific, whichever comes first) -- else EOF. Using only "summaries else planned"
+    # here would let the general slice silently swallow shot-specific content (and run to
+    # EOF) whenever BOTH summaries and planned are missing.
+    later_anchors = [i for i in (idx_summaries, idx_planned, idx_shot_specific) if i is not None]
+    general_end = min(later_anchors) if later_anchors else None
     general_slice = "".join(lines[idx_general:general_end])
 
     if idx_planned is None:

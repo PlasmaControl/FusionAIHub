@@ -94,6 +94,38 @@ def test_missing_general_anchor_yields_empty_input():
     assert total_text == text
 
 
+def test_missing_summaries_and_planned_excludes_shot_specific():
+    # compound-missing case: BOTH ANCHOR_SESSION_SUMMARIES and ANCHOR_PLANNED are absent, but
+    # ANCHOR_SHOT_SPECIFIC is present. The general slice must stop at shot-specific, not
+    # silently swallow it (and everything after) by running unbounded to EOF.
+    text = (
+        HEADER
+        + ANCHOR_GENERAL
+        + "\n"
+        + GENERAL_INFO
+        + ANCHOR_SHOT_SPECIFIC
+        + "\n"
+        + SHOT_SPECIFIC
+    )
+
+    input_text, total_text = split_bundle(text)
+
+    assert total_text == text
+    assert "GENERAL_INFO_SENTINEL" in input_text
+    assert "SHOT_SPECIFIC_SENTINEL" not in input_text
+
+
+def test_all_three_later_anchors_missing_yields_header_plus_general_to_eof():
+    # only the general-section anchor is present; header + general slice run to EOF (no
+    # planned/summaries/shot-specific anchors exist to bound anything further).
+    text = HEADER + ANCHOR_GENERAL + "\n" + GENERAL_INFO
+
+    input_text, total_text = split_bundle(text)
+
+    assert total_text == text
+    assert input_text == text  # nothing to exclude: the whole doc is pre-experiment content
+
+
 def test_duplicate_session_summaries_anchor_uses_first_occurrence_without_crashing():
     # two SESSION-WIDE SUMMARIES lines; the general slice must end at the FIRST one, so
     # content between the two occurrences (and after) stays excluded from input_text.
