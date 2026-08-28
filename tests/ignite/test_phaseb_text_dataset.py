@@ -1,6 +1,8 @@
 # dataset-integration tests for FrameCodeDataset are appended by a later task.
 """Consolidated text-embedding H5 loader: load_text_embeddings + lookup."""
 
+from pathlib import Path
+
 import h5py
 import numpy as np
 import pytest
@@ -173,3 +175,101 @@ def test_train_and_val_style_constructions_both_accept_text_embeds_kwarg(tmp_pat
     train_ds0 = FrameCodeDataset(tmp_path, ["158103"], cfg, presence=None, text_embeds=None)
     val_ds0 = FrameCodeDataset(tmp_path, ["158104"], cfg, presence=None, text_embeds=None)
     assert len(train_ds0) > 0 and len(val_ds0) > 0
+
+
+# --------------------------------------------------------------------------------------------- #
+# train()'s --text_embed_path / --text_embed_dim both-or-neither validation: a real 4-case
+# truth table calling the actual train() entry point (not a local reimplementation of the
+# condition — that is exactly the class of bug a unit test on the boolean alone would miss:
+# the original `(text_embed_path is None) != (text_embed_dim > 0)` was inverted in ALL FOUR
+# cases and no test caught it because nothing exercised train() itself).
+# --------------------------------------------------------------------------------------------- #
+from tokamak_foundation_model.ignite.train_dynamics import train as _td_train  # noqa: E402
+
+_TRUTH_TABLE_SHOTS = [190001, 190002, 190003]
+
+
+def _write_truth_table_cache(cache_dir, shots=_TRUTH_TABLE_SHOTS, n_frames=5,
+                             actuator_dim=70):
+    """A cache readable by cache_modality_specs (train() calls it BEFORE the flag validation,
+    so even the bad-combo cases need a real, loadable cache): one FROZEN_MODALITIES name
+    ('mse') is enough — cache_modality_specs derives n_tok/vocab from whatever is present."""
+    for s in shots:
+        codes = {"mse": torch.randint(0, 50, (n_frames, 4), dtype=torch.int16)}
+        act = torch.randn(n_frames, actuator_dim, dtype=torch.float16)
+        torch.save({"codes": codes, "actuators": act, "n_frames": n_frames},
+                   Path(cache_dir) / f"{s}.pt")
+
+
+def _write_truth_table_text_h5(path, shots=_TRUTH_TABLE_SHOTS, dim=4):
+    rng = np.random.default_rng(1)
+    vecs = rng.standard_normal((len(shots), dim)).astype(np.float16)
+    with h5py.File(path, "w") as f:
+        f.attrs["embed_dim"] = dim
+        f.create_dataset("shots", data=np.array(shots, dtype=np.int64))
+        f.create_dataset("input", data=vecs)
+        f.create_dataset("total", data=vecs)
+
+
+def _train_kwargs(cache_dir, out_dir, **text_kw):
+    """The smallest train() invocation that reaches the validation (and, for the good
+    combos, actually completes): tiny model, 1 optimizer step, no worker processes."""
+    kw = dict(cache_dir=str(cache_dir), out_dir=str(out_dir), steps=1, batch_size=1,
+             d_model=32, depth=1, n_heads=2, k0_seed=2, n_predict=2, num_workers=0,
+             val_n=1, ckpt_every=1, val_windows=1, log=lambda *a, **k: None)
+    kw.update(text_kw)
+    return kw
+
+
+def test_text_flags_bad_combo_path_only_raises_together(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _write_truth_table_cache(cache_dir)
+    kw = _train_kwargs(cache_dir, tmp_path / "out",
+                       text_embed_path=str(tmp_path / "unused.h5"), text_embed_dim=0)
+    with pytest.raises(SystemExit) as exc:
+        _td_train(**kw)
+    assert "TOGETHER" in str(exc.value)
+
+
+def test_text_flags_bad_combo_dim_only_raises_together(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _write_truth_table_cache(cache_dir)
+    kw = _train_kwargs(cache_dir, tmp_path / "out", text_embed_path=None, text_embed_dim=4)
+    with pytest.raises(SystemExit) as exc:
+        _td_train(**kw)
+    assert "TOGETHER" in str(exc.value)
+
+
+def test_text_flags_neither_given_does_not_raise_and_trains(tmp_path):
+    """The production default (no text flags): must NOT hit the TOGETHER guard, and a plain
+    no-flag training run must actually run to completion."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _write_truth_table_cache(cache_dir)
+    kw = _train_kwargs(cache_dir, tmp_path / "out", text_embed_path=None, text_embed_dim=0)
+    try:
+        step = _td_train(**kw)
+    except SystemExit as e:
+        assert "TOGETHER" not in str(e), f"no-flag training run hit the TOGETHER guard: {e}"
+        raise
+    assert step == 1
+
+
+def test_text_flags_both_given_does_not_raise_and_trains(tmp_path):
+    """The valid enabled case: a real embeddings H5 + matching dim must NOT hit the TOGETHER
+    guard, and training with text conditioning enabled must actually run to completion."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _write_truth_table_cache(cache_dir)
+    h5 = tmp_path / "text_embeddings.h5"
+    _write_truth_table_text_h5(h5, dim=4)
+    kw = _train_kwargs(cache_dir, tmp_path / "out",
+                       text_embed_path=str(h5), text_embed_dim=4, text_dropout_p=0.1)
+    try:
+        step = _td_train(**kw)
+    except SystemExit as e:
+        assert "TOGETHER" not in str(e), f"both-given training run hit the TOGETHER guard: {e}"
+        raise
+    assert step == 1

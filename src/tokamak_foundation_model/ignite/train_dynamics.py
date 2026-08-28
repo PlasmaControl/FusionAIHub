@@ -913,7 +913,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             f"sf_frames={cfg.sf_frames}")
     # TEXT EMBEDDING conditioning (Phase-B, opt-in). Both-or-neither so a half-specified flag
     # pair fails loudly instead of silently training with the wrong (or no) conditioning.
-    if (text_embed_path is None) != (text_embed_dim > 0):
+    if (text_embed_path is not None) != (text_embed_dim > 0):
         raise SystemExit(
             "--text_embed_path and --text_embed_dim must be given TOGETHER or not at all "
             f"(got text_embed_path={text_embed_path!r}, text_embed_dim={text_embed_dim})")
