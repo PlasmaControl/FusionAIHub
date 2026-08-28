@@ -40,15 +40,19 @@ def test_item_and_collate_shapes(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 1, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    codes, act = ds[0]
+    codes, act, presence, text = ds[0]
     for m in cfg.modalities:
         assert codes[m.name].shape == (cfg.max_frames, m.n_tok)
         assert codes[m.name].dtype == torch.long           # decompressed from int16 cache
     assert act.shape == (cfg.max_frames, cfg.actuator_dim)
-    cb, ab = _collate_frames([ds[0], ds[1]])
+    assert presence.shape == (len(cfg.modalities),)
+    assert text.shape == (0,)                              # no text_embeds -> zero-width
+    cb, ab, pb, tb = _collate_frames([ds[0], ds[1]])
     for m in cfg.modalities:
         assert cb[m.name].shape == (2, cfg.max_frames, m.n_tok)
     assert ab.shape == (2, cfg.max_frames, cfg.actuator_dim)
+    assert pb.shape == (2, len(cfg.modalities))
+    assert tb.shape == (2, 0)                              # collated zero-width text
 
 
 def test_incomplete_cache_skipped(tmp_path):
@@ -64,8 +68,8 @@ def test_sliding_windows_are_offset(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 2, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    c0, _ = ds[0]
-    c1, _ = ds[1]
+    c0, _, _, _ = ds[0]
+    c1, _, _, _ = ds[1]
     # window 1 is window 0 shifted by one frame -> frame1 of w0 == frame0 of w1
     assert torch.equal(c0["a"][1], c1["a"][0])
 
@@ -87,18 +91,27 @@ def test_precompute_emits_constant_placeholder(tmp_path, monkeypatch):
         def __len__(self): return N
         def __getitem__(self, t): return torch.zeros(1, 3)
 
-    monkeypatch.setattr(td, "_single_shot_dataset", lambda *a, **k: _FakeDS())
-    monkeypatch.setattr(td, "encode_flat", lambda codec, x: torch.arange(4).view(1, 4))  # (1, n_tok=4)
-    monkeypatch.setattr(td, "actuator_frames", lambda shot, n, dd: torch.zeros(n, 70))
+    class _FakeFSQ:
+        codebook_size = 1000
 
-    codecs = {"real": (object(), object(), "spectro")}
+    class _FakeQuantizer:
+        fsq = _FakeFSQ()
+
+    class _FakeCodec:                        # precompute reads codec.quantizer.fsq.codebook_size
+        quantizer = _FakeQuantizer()
+
+    monkeypatch.setattr(td, "_single_shot_dataset", lambda *a, t0_start=1.0, **k: _FakeDS())
+    monkeypatch.setattr(td, "encode_flat", lambda codec, x: torch.arange(4).view(1, 4))  # (1, n_tok=4)
+    monkeypatch.setattr(td, "actuator_frames", lambda shot, n, dd, t0_start=1.0: torch.zeros(n, 70))
+
+    codecs = {"real": (_FakeCodec(), object(), "spectro")}
     n = precompute_frame_codes(["77"], codecs, tmp_path, data_dir="/x",
                                placeholder_specs={"filterscopes": 5})
     assert n == 1
     d = torch.load(tmp_path / "77.pt", weights_only=False)
     assert d["codes"]["real"].shape == (N, 4)                 # real modality encoded
     ph = d["codes"]["filterscopes"]
-    assert ph.shape == (N, 5) and ph.dtype == torch.int16     # reserved slot, full width
+    assert ph.shape == (N, 5) and ph.dtype == torch.int32     # reserved slot, full width
     assert int(ph.min()) == 0 and int(ph.max()) == 0          # constant placeholder code
 
 
