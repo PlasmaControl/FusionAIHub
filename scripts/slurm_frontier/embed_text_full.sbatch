@@ -4,6 +4,7 @@
 #SBATCH -o logs/%x_%j.out
 #SBATCH -e logs/%x_%j.err
 #SBATCH -t 02:00:00
+#SBATCH -p batch
 #SBATCH -N 4
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-task=1
