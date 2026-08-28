@@ -25,6 +25,7 @@ from . import spike
 from . import train_codec as tc
 from .dynamics_config import DynamicsConfig
 from .maskgit import MaskGITDynamics
+from .text_embed import load_text_embeddings, lookup
 
 _M = Path("/lustre/orion/fus187/proj-shared/models")
 # best-ckpt manifest for the FROZEN codec set (2026-07-27). family drives the loader + dataset.
@@ -675,13 +676,19 @@ class FrameCodeDataset(torch.utils.data.Dataset):
     is a cheap slice — no codec forward, no HDF5 read in the training loop.
     """
 
-    def __init__(self, cache_dir, shots, cfg: DynamicsConfig, presence=None):
+    def __init__(self, cache_dir, shots, cfg: DynamicsConfig, presence=None, text_embeds=None):
         self.cfg = cfg
         self.win = cfg.max_frames
         self.shots = []
         self.index = []                                     # (shot_i, start_frame)
         self.presence = []                                  # per shot: (n_modalities,) float mask
+        self.text = []                                       # per shot: (text_embed_dim,) or (0,)
         names = {m.name for m in cfg.modalities}
+        text_dim = None
+        if text_embeds is not None:
+            text_dim = next(iter(text_embeds.values())).shape[0]
+        n_covered = 0
+        n_kept = 0
         for s in shots:
             p = Path(cache_dir) / f"{s}.pt"
             if not p.exists():
@@ -695,9 +702,18 @@ class FrameCodeDataset(torch.utils.data.Dataset):
             pr = (presence or {}).get(str(s), {})
             self.presence.append(torch.tensor(
                 [1.0 if pr.get(m.name, True) else 0.0 for m in cfg.modalities]))
+            n_kept += 1
+            if text_embeds is not None:
+                vec, found = lookup(text_embeds, s, text_dim)
+                self.text.append(vec)
+                n_covered += int(found)
+            else:
+                self.text.append(torch.zeros(0))
             si = len(self.shots) - 1
             for st in range(0, d["n_frames"] - self.win + 1):
                 self.index.append((si, st))
+        if text_embeds is not None:
+            print(f"text embeddings: {n_covered}/{n_kept} shots covered, misses get zeros")
 
     def __len__(self):
         return len(self.index)
@@ -707,14 +723,15 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         d = self.shots[si]
         codes = {m.name: d["codes"][m.name][st: st + self.win].long() for m in self.cfg.modalities}
         act = d["actuators"][st: st + self.win].float()
-        return codes, act, self.presence[si]
+        return codes, act, self.presence[si], self.text[si]
 
 
 def _collate_frames(batch):
     codes = {n: torch.stack([b[0][n] for b in batch], 0) for n in batch[0][0]}
     act = torch.stack([b[1] for b in batch], 0)
     present = torch.stack([b[2] for b in batch], 0)          # (B, n_modalities)
-    return codes, act, present
+    text = torch.stack([b[3] for b in batch], 0)              # (B, text_embed_dim) or (B, 0)
+    return codes, act, present, text
 
 
 def smoke(n_shots: int = 2, n_steps: int = 30, depth: int = 4, d_model: int = 128, seed: int = 0):
@@ -852,6 +869,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           ctf_frac: float = 0.0, ctf_min_target_ratio: float = 0.8,
           modality_loss_weight: str = "uniform", actuator_dropout_p: float = 0.0,
           sf_frames: int = 0, sf_decode_steps: int = 4, sf_prob: float = 1.0,
+          text_embed_path: str = None, text_embed_dim: int = 0, text_dropout_p: float = 0.0,
+          text_key: str = "input",
           log=print):
     """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
 
@@ -892,6 +911,28 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         log(f"[dynamics] rollout-quality flags: ctf={cfg.ctf_frac} "
             f"loss_w={cfg.modality_loss_weight} act_drop={cfg.actuator_dropout_p} "
             f"sf_frames={cfg.sf_frames}")
+    # TEXT EMBEDDING conditioning (Phase-B, opt-in). Both-or-neither so a half-specified flag
+    # pair fails loudly instead of silently training with the wrong (or no) conditioning.
+    if (text_embed_path is None) != (text_embed_dim > 0):
+        raise SystemExit(
+            "--text_embed_path and --text_embed_dim must be given TOGETHER or not at all "
+            f"(got text_embed_path={text_embed_path!r}, text_embed_dim={text_embed_dim})")
+    text_embeds = None
+    if text_embed_dim > 0:
+        cfg.text_embed_dim = int(text_embed_dim)
+        cfg.text_dropout_p = float(text_dropout_p)
+        if ddp.is_main:
+            log(f"[dynamics] text embedding conditioning: path={text_embed_path} "
+                f"dim={cfg.text_embed_dim} dropout_p={cfg.text_dropout_p} key={text_key}")
+        if text_key == "total":
+            log("[dynamics] WARNING WARNING WARNING")
+            log("[dynamics] text_key='total' includes POST-SHOT documentation (session")
+            log("[dynamics] summaries, shot-specific results) written AFTER the shot ran.")
+            log("[dynamics] Conditioning on it is CAUSALLY DIRTY for anything but a probe:")
+            log("[dynamics] the model can see the outcome before it predicts it. Use 'input'")
+            log("[dynamics] for any run whose numbers will be reported as forecasting skill.")
+            log("[dynamics] WARNING WARNING WARNING")
+        text_embeds = load_text_embeddings(text_embed_path, cfg.text_embed_dim, key=text_key)
     n_all = len(list(Path(cache_dir).glob("*.pt")))
     n_val = val_n if val_n else max(1, int(n_all * val_frac))
     n_test = test_n if test_n else (max(1, int(n_all * test_frac)) if test_frac else 0)
@@ -905,6 +946,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     # Presence mask (absent diagnostics excluded from the CE; see build_presence /
     # MaskGITDynamics.training_loss). Built once next to the cache and reused; mask_absent=0
     # keeps the historical behaviour so old runs stay reproducible.
+    use_text = getattr(cfg, "text_embed_dim", 0) > 0
     presence, use_presence = None, bool(mask_absent)
     if use_presence:
         import json as _json
@@ -918,7 +960,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         presence = _json.loads(pth.read_text())["presence"]
         if ddp.is_main:
             log(f"[dynamics] MASK_ABSENT on: presence map {pth} ({len(presence)} shots)")
-    ds = FrameCodeDataset(cache_dir, train_shots, cfg, presence=presence)
+    ds = FrameCodeDataset(cache_dir, train_shots, cfg, presence=presence, text_embeds=text_embeds)
     if ddp.is_main:
         log(f"[dynamics] cache={cache_dir} shots={n_all} split_seed={split_seed} "
             f"(train {len(train_shots)}/val {len(val_shots)}/test {len(test_shots)} HELD OUT) "
@@ -1019,7 +1061,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         hist_path.write_text("\n".join(kept) + ("\n" if kept else ""))
     # fixed validation batches: identical windows on every rank and every eval, masked with a
     # freshly re-seeded generator each time -> the val series is comparable across the run.
-    val_ds = FrameCodeDataset(cache_dir, val_shots, cfg, presence=presence)
+    val_ds = FrameCodeDataset(cache_dir, val_shots, cfg, presence=presence, text_embeds=text_embeds)
     val_batches = []
     if len(val_ds):
         # VAL SIZE IS INDEPENDENT OF BATCH SIZE. It used to be 4 * batch_size, which tied the
@@ -1046,10 +1088,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         tot = 0.0
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                             enabled=(device.type == "cuda")):
-            for cv, av, pv in val_batches:
+            for cv, av, pv, tv in val_batches:
                 cd = {k: v.to(device) for k, v in cv.items()}
-                tot += float(model.training_loss(cd, av.to(device), generator=g, ss_frac=0.0,
-                                                 present=pv.to(device) if use_presence else None))
+                tot += float(model.training_loss(
+                    cd, av.to(device), generator=g, ss_frac=0.0,
+                    present=pv.to(device) if use_presence else None,
+                    **({"text": tv.to(device)} if use_text else {})))
         model.train()
         return tot / len(val_batches)
     best_val, best_step, since_improve, stop_now = float("inf"), -1, 0, False
@@ -1071,10 +1115,11 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     while step < steps:
         if sampler is not None:
             sampler.set_epoch(step)
-        for codes, act, present in loader:
+        for codes, act, present, txt in loader:
             codes = {k: v.to(device) for k, v in codes.items()}
             act = act.to(device)
             present = present.to(device) if use_presence else None
+            text = txt.to(device) if use_text else None
             if micro == 0:
                 opt.zero_grad()                         # only at the START of an accumulation group
             ssf = model.ss_fraction(step)               # 0 for the whole run if ss_final_frac=0
@@ -1082,7 +1127,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             # dynamic range so no GradScaler needed (unlike fp16). Frozen codes are int (unaffected).
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 loss = model.training_loss(codes, act, generator=None, ss_frac=ssf,
-                                           present=present)
+                                           present=present,
+                                           **({"text": text} if use_text else {}))
             # GRADIENT ACCUMULATION: effective batch = batch_size x world_size x accum_steps.
             # Scaling by 1/accum makes the summed grads equal the mean over the whole effective
             # batch, so the update is IDENTICAL to running the large batch in one go. Memory
@@ -1132,6 +1178,10 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                            "cfg_modality_loss_weight": cfg.modality_loss_weight,
                            "cfg_actuator_dropout_p": cfg.actuator_dropout_p,
                            "cfg_sf_frames": cfg.sf_frames,
+                           "cfg_text_embed_dim": int(getattr(cfg, "text_embed_dim", 0)),
+                           "cfg_text_dropout_p": float(getattr(cfg, "text_dropout_p", 0.0)),
+                           "text_embed_path": str(text_embed_path or ""),
+                           "text_key": text_key,
                            "modalities": [(s.name, s.family, s.n_tok, s.codebook_size)
                                           for s in specs]}
                 tmp = Path(out_dir) / "dynamics_latest.pt.tmp"
@@ -1292,6 +1342,19 @@ def build_arg_parser():
                         "supervised frame (0 = off)")
     p.add_argument("--sf_decode_steps", type=int, default=4)
     p.add_argument("--sf_prob", type=float, default=1.0)
+    p.add_argument("--text_embed_path", default=None,
+                   help="consolidated per-shot text-embedding H5 (see ignite/text_embed.py). "
+                        "Must be given TOGETHER with --text_embed_dim (both or neither).")
+    p.add_argument("--text_embed_dim", type=int, default=0,
+                   help="Matryoshka prefix width to read from --text_embed_path (0 = off, the "
+                        "production default; must be given TOGETHER with --text_embed_path).")
+    p.add_argument("--text_dropout_p", type=float, default=0.0,
+                   help="per-sample text-embedding dropout (trains a null embedding for "
+                        "missing text / CFG); no effect when text conditioning is off.")
+    p.add_argument("--text_key", default="input", choices=("input", "total"),
+                   help="'input' = strictly pre-experiment text (the default, causally clean); "
+                        "'total' = the whole bundle INCLUDING post-shot documentation — probe "
+                        "use only, never for reported forecasting-skill numbers.")
     return p
 
 
@@ -1327,7 +1390,9 @@ def main(argv=None):
                  modality_loss_weight=args.modality_loss_weight,
                  actuator_dropout_p=args.actuator_dropout_p,
                  sf_frames=args.sf_frames, sf_decode_steps=args.sf_decode_steps,
-                 sf_prob=args.sf_prob)
+                 sf_prob=args.sf_prob,
+                 text_embed_path=args.text_embed_path, text_embed_dim=args.text_embed_dim,
+                 text_dropout_p=args.text_dropout_p, text_key=args.text_key)
 
 
 if __name__ == "__main__":

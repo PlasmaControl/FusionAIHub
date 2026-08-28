@@ -130,6 +130,10 @@ def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig
                      ("cfg_n_predict", "n_predict")):
         if src in ck:
             kw[dst] = int(ck[src])
+    if "cfg_text_embed_dim" in ck:
+        kw["text_embed_dim"] = int(ck["cfg_text_embed_dim"])
+    if "cfg_text_dropout_p" in ck:
+        kw["text_dropout_p"] = float(ck["cfg_text_dropout_p"])
     cfg = DynamicsConfig(**kw)
     cfg.grad_checkpointing = False                        # inference: no recompute
     model = MaskGITDynamics(cfg).to(device).eval()
@@ -219,7 +223,7 @@ def apply_actuator_mode(act: torch.Tensor, mode: str, K0: int, cache_dir=None,
 def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: int,
                  temperature: float, generator: torch.Generator, device,
                  actuator_mode: str = "real", cache_dir=None,
-                 sampler=None, best_of: int = 1
+                 sampler=None, best_of: int = 1, text_vec: torch.Tensor = None
                  ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], int, int]:
     """Seed K0 real frames, roll out, return (gt_codes, pred_codes, K0, F) as cpu long tensors.
 
@@ -251,15 +255,21 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
     actuators = act.unsqueeze(0).to(device)                                         # (1, F, 70)
 
     sampler = SamplerConfig(temperature=temperature) if sampler is None else sampler
+    text_kw = {}
+    if getattr(cfg, "text_embed_dim", 0) > 0:
+        text = (text_vec if text_vec is not None else torch.zeros(cfg.text_embed_dim))
+        text_kw = {"text": text.view(1, -1).to(device)}
     if best_of > 1:
         # NOT RNG-PAIRED (see the docstring): N trajectories == N different RNG streams.
         traj, scores = _best_of_n(model, seed_codes, actuators, n=best_of,
-                                  n_predict=n_predict, sampler=sampler, generator=generator)
+                                  n_predict=n_predict, sampler=sampler, generator=generator,
+                                  **text_kw)
         print(f"[eval] best-of-{best_of} pseudo-likelihood "
               f"{[round(s, 4) for s in scores]} -> kept {round(min(scores), 4)}")
     else:
         traj = model.rollout(seed_codes, actuators, n_predict=n_predict,
-                             temperature=temperature, generator=generator, sampler=sampler)
+                             temperature=temperature, generator=generator, sampler=sampler,
+                             **text_kw)
     gt_codes = {n: codes[n][:F].long().cpu() for n in names}
     pred_codes = {n: traj[n][0, :F].long().cpu() for n in names}
     return gt_codes, pred_codes, K0, F
@@ -962,7 +972,8 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         temperature: float = 1.0, seed: int = 0, k0: int = 0, codec_tmpl: str = None,
         render_all: bool = False, val_tail: int = 0, val_n: int = 0,
         split_seed: int = 0, actuator_mode: str = "real",
-        sampler=None, best_of: int = 1, log=print) -> Dict:
+        sampler=None, best_of: int = 1, text_embed_path: str = None,
+        text_key: str = "input", log=print) -> Dict:
     """Evaluate a trained dynamics ckpt on one or more shots (comma-separated ``shot``).
 
     Per shot: rollout from K0 real frames, per-modality TOKEN ACCURACY over the predicted
@@ -1033,6 +1044,29 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
 
     repo = Path.cwd()
     model, cfg, step = load_model(Path(ckpt), device)
+    # TEXT EMBEDDING conditioning: only when the LOADED checkpoint was trained with it. An old
+    # checkpoint (cfg.text_embed_dim == 0) never looks at --text_embed_path / --text_key.
+    text_vecs: Dict[str, torch.Tensor] = {}
+    warned_missing = set()
+    if getattr(cfg, "text_embed_dim", 0) > 0:
+        from .text_embed import load_text_embeddings as _lte, lookup as _lookup
+        if not text_embed_path or not Path(text_embed_path).exists():
+            raise SystemExit(
+                f"model requires text_embed_dim={cfg.text_embed_dim} but the text-embedding "
+                f"H5 was not found (--text_embed_path={text_embed_path!r}); pass a valid path")
+        _text_embeds = _lte(text_embed_path, cfg.text_embed_dim, key=text_key)
+        log(f"[eval] text embedding conditioning: dim={cfg.text_embed_dim} key={text_key} "
+            f"path={text_embed_path} ({len(_text_embeds)} shots in the H5)", flush=True)
+        for sh in str(shot).split(","):
+            sh = sh.strip()
+            if not sh:
+                continue
+            vec, found = _lookup(_text_embeds, sh, cfg.text_embed_dim)
+            text_vecs[sh] = vec
+            if not found and sh not in warned_missing:
+                warned_missing.add(sh)
+                log(f"[eval] WARNING: shot {sh} missing from text embeddings; using zeros",
+                    flush=True)
     K0_req = int(k0) if k0 else cfg.k0_seed
     log(f"[eval] model loaded: d_model={cfg.d_model} depth={cfg.depth} heads={cfg.n_heads} "
         f"step={step} K0={K0_req} max_frames={cfg.max_frames} "
@@ -1072,7 +1106,8 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                                                        temperature, gen, device,
                                                        actuator_mode=actuator_mode,
                                                        cache_dir=cache_dir,
-                                                       sampler=sampler, best_of=best_of)
+                                                       sampler=sampler, best_of=best_of,
+                                                       text_vec=text_vecs.get(sh))
             # ACTUATOR COUNTERFACTUAL: the effect size is the divergence from the SAME rollout
             # under real actuators, not the divergence from GT. Re-seed so the two runs share an
             # identical RNG stream — the rollout draws the same number of samples either way, so
@@ -1086,7 +1121,8 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                                                        temperature, gen_b, device,
                                                        actuator_mode="real",
                                                        cache_dir=cache_dir,
-                                                       sampler=sampler, best_of=best_of)
+                                                       sampler=sampler, best_of=best_of,
+                                                       text_vec=text_vecs.get(sh))
         tok_acc = {n: float((pred_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
                    for n in gt_codes}
         # persistence baseline in CODE space: fraction of tokens that simply do not change
@@ -1350,6 +1386,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="roll out N candidates and keep the most self-consistent one "
                         "(masked pseudo-likelihood). NOT RNG-paired: do not combine with "
                         "--actuator_mode other than 'real'.")
+    p.add_argument("--text_embed_path",
+                   default="/lustre/orion/fus187/proj-shared/foundation_model/text_embeddings.h5",
+                   help="consolidated per-shot text-embedding H5. Only read when the loaded "
+                        "checkpoint's cfg.text_embed_dim > 0 (old checkpoints ignore this).")
+    p.add_argument("--text_key", default="input", choices=("input", "total"),
+                   help="'input' (default) = strictly pre-experiment text; 'total' = whole "
+                        "bundle including post-shot documentation — probe use only.")
     return p
 
 
@@ -1379,7 +1422,8 @@ def main(argv=None):
                codec_tmpl=args.codec_tmpl, render_all=args.render_all,
                val_tail=args.val_tail, val_n=args.val_n, split_seed=args.split_seed,
                actuator_mode=args.actuator_mode,
-               sampler=sampler, best_of=args.best_of_n)
+               sampler=sampler, best_of=args.best_of_n,
+               text_embed_path=args.text_embed_path, text_key=args.text_key)
 
 
 if __name__ == "__main__":

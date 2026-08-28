@@ -81,3 +81,95 @@ def test_lookup_hit_and_miss(tmp_path):
     vec, hit = lookup(embeds, 999999, dim=4)
     assert hit is False
     assert torch.equal(vec, torch.zeros(4))
+
+
+# --------------------------------------------------------------------------------------------- #
+# FrameCodeDataset integration: the dataset's 4th tuple element is the per-shot text embedding.
+# --------------------------------------------------------------------------------------------- #
+from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec  # noqa: E402
+from tokamak_foundation_model.ignite.train_dynamics import FrameCodeDataset, _collate_frames  # noqa: E402
+
+DS_DIM = 4
+
+
+def _tiny_cfg():
+    return DynamicsConfig(
+        modalities=(ModalitySpec("a", "spectro", 3, 5), ModalitySpec("b", "slowts", 2, 4)),
+        d_model=16, depth=1, n_heads=2, k0_seed=2, n_predict=2, actuator_dim=6,  # max_frames=4
+    )
+
+
+def _write_ds_cache(dirpath, shot, n_frames, cfg):
+    codes = {m.name: torch.randint(0, m.codebook_size, (n_frames, m.n_tok), dtype=torch.int16)
+             for m in cfg.modalities}
+    act = torch.randn(n_frames, cfg.actuator_dim, dtype=torch.float16)
+    torch.save({"codes": codes, "actuators": act, "n_frames": n_frames}, dirpath / f"{shot}.pt")
+
+
+def _text_embeds():
+    """Covers shot '158103'; '158104' is deliberately left out (a miss)."""
+    g = torch.Generator().manual_seed(0)
+    return {"158103": torch.randn(DS_DIM, generator=g)}
+
+
+def test_getitem_is_4tuple_covered_shot_gets_its_embedding(tmp_path):
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
+    embeds = _text_embeds()
+    ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=embeds)
+    item = ds[0]
+    assert len(item) == 4
+    codes, act, presence, text = item
+    assert text.shape == (DS_DIM,)
+    assert torch.equal(text, embeds["158103"])
+
+
+def test_getitem_missing_shot_gets_zeros(tmp_path):
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158104", cfg.max_frames + 1, cfg)
+    embeds = _text_embeds()             # covers "158103", not "158104"
+    ds = FrameCodeDataset(tmp_path, ["158104"], cfg, text_embeds=embeds)
+    _, _, _, text = ds[0]
+    assert text.shape == (DS_DIM,)
+    assert torch.equal(text, torch.zeros(DS_DIM))
+
+
+def test_getitem_no_text_embeds_gives_zero_length_text(tmp_path):
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
+    ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=None)
+    _, _, _, text = ds[0]
+    assert text.shape == (0,)
+
+
+def test_collate_stacks_text_to_batch_dim(tmp_path):
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
+    embeds = _text_embeds()
+    ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=embeds)
+    codes, act, present, text = _collate_frames([ds[0], ds[1]])
+    assert text.shape == (2, DS_DIM)
+    assert torch.equal(text[0], text[1])            # same shot, same window -> same embedding
+
+
+def test_collate_stacks_text_zero_width_with_no_embeds(tmp_path):
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
+    ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=None)
+    codes, act, present, text = _collate_frames([ds[0], ds[1]])
+    assert text.shape == (2, 0)
+
+
+def test_train_and_val_style_constructions_both_accept_text_embeds_kwarg(tmp_path):
+    """Mirrors train()'s two FrameCodeDataset constructions (train split, val split)."""
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
+    _write_ds_cache(tmp_path, "158104", cfg.max_frames + 1, cfg)
+    embeds = _text_embeds()
+    train_ds = FrameCodeDataset(tmp_path, ["158103"], cfg, presence=None, text_embeds=embeds)
+    val_ds = FrameCodeDataset(tmp_path, ["158104"], cfg, presence=None, text_embeds=embeds)
+    assert len(train_ds) > 0 and len(val_ds) > 0
+    # both also work with text_embeds=None (the no-flag default path)
+    train_ds0 = FrameCodeDataset(tmp_path, ["158103"], cfg, presence=None, text_embeds=None)
+    val_ds0 = FrameCodeDataset(tmp_path, ["158104"], cfg, presence=None, text_embeds=None)
+    assert len(train_ds0) > 0 and len(val_ds0) > 0

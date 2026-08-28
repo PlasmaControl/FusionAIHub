@@ -174,8 +174,30 @@ def test_cfg_uncond_drops_text():
     assert torch.equal(fully_uncond1, uncond_zero_input)
 
 
+def _eval_loadable_model(seed=0, **cfg_overrides):
+    """A model whose config uses ONLY the fields eval_dynamics.load_model actually
+    reconstructs from a checkpoint (depth/d_model/n_heads/k0_seed/n_predict/modalities
+    [+ text_embed_dim/text_dropout_p]) — everything else at DynamicsConfig's own default,
+    so a real load_model() roundtrip does not hit an unrelated shape mismatch."""
+    kw = dict(d_model=16, depth=2, n_heads=2, k0_seed=2, n_predict=3)
+    kw.update(cfg_overrides)
+    cfg = DynamicsConfig(modalities=MODS, **kw)
+    torch.manual_seed(seed)
+    model = MaskGITDynamics(cfg)
+    return cfg, model
+
+
 def test_checkpoint_roundtrip():
-    cfg, model = _build_text_model(seed=1, text_embed_dim=8, text_dropout_p=0.1)
+    """Real ``eval_dynamics.load_model`` roundtrip — not a local config rebuild.
+
+    A checkpoint payload shaped exactly like train_dynamics.train()'s (same keys) must load
+    through the actual eval entry point: with the text keys present, the reconstructed model
+    has a ``backbone.text_embed`` of the right width and the state dict loads strictly; without
+    them (an old checkpoint), the reconstructed model has no such module and still loads.
+    """
+    from tokamak_foundation_model.ignite import eval_dynamics
+
+    cfg, model = _eval_loadable_model(seed=1, text_embed_dim=8, text_dropout_p=0.1)
     payload = {
         "model": model.state_dict(),
         "cfg_depth": cfg.depth,
@@ -183,40 +205,37 @@ def test_checkpoint_roundtrip():
         "cfg_n_heads": cfg.n_heads,
         "cfg_k0": cfg.k0_seed,
         "cfg_n_predict": cfg.n_predict,
-        "modalities": cfg.modalities,
+        "modalities": [(m.name, m.family, m.n_tok, m.codebook_size) for m in cfg.modalities],
         "cfg_text_embed_dim": 8,
         "cfg_text_dropout_p": 0.1,
+        "step": 0,
     }
-    rebuilt_cfg = DynamicsConfig(
-        modalities=payload["modalities"],
-        depth=payload["cfg_depth"], d_model=payload["cfg_d_model"],
-        n_heads=payload["cfg_n_heads"], k0_seed=payload["cfg_k0"],
-        n_predict=payload["cfg_n_predict"],
-        actuator_dim=cfg.actuator_dim, ffn_mult=cfg.ffn_mult,
-        maskgit_decode_steps=cfg.maskgit_decode_steps,
-        text_embed_dim=payload["cfg_text_embed_dim"],
-        text_dropout_p=payload["cfg_text_dropout_p"],
-    )
-    rebuilt = MaskGITDynamics(rebuilt_cfg)
-    rebuilt.load_state_dict(payload["model"], strict=True)
+    ckpt_path = Path(__file__).parent / "_tmp_text_ckpt_with_text.pt"
+    torch.save(payload, ckpt_path)
+    try:
+        loaded, loaded_cfg, _step = eval_dynamics.load_model(ckpt_path, device="cpu")
+    finally:
+        ckpt_path.unlink(missing_ok=True)
+    assert loaded_cfg.text_embed_dim == 8
+    assert hasattr(loaded.backbone, "text_embed")
+    assert loaded.backbone.text_embed.in_features == 8
 
-    # a payload WITHOUT text keys builds a dim=0 model whose strict load still succeeds
-    cfg0, model0 = build()
+    # a payload WITHOUT text keys builds a dim=0 model whose strict load still succeeds and
+    # has no text_embed attribute at all (old-checkpoint compatibility).
+    cfg0, model0 = _eval_loadable_model(seed=2)
     payload0 = {
         "model": model0.state_dict(),
         "cfg_depth": cfg0.depth, "cfg_d_model": cfg0.d_model,
         "cfg_n_heads": cfg0.n_heads, "cfg_k0": cfg0.k0_seed,
-        "cfg_n_predict": cfg0.n_predict, "modalities": cfg0.modalities,
+        "cfg_n_predict": cfg0.n_predict,
+        "modalities": [(m.name, m.family, m.n_tok, m.codebook_size) for m in cfg0.modalities],
+        "step": 0,
     }
-    rebuilt_cfg0 = DynamicsConfig(
-        modalities=payload0["modalities"],
-        depth=payload0["cfg_depth"], d_model=payload0["cfg_d_model"],
-        n_heads=payload0["cfg_n_heads"], k0_seed=payload0["cfg_k0"],
-        n_predict=payload0["cfg_n_predict"],
-        actuator_dim=cfg0.actuator_dim, ffn_mult=cfg0.ffn_mult,
-        maskgit_decode_steps=cfg0.maskgit_decode_steps,
-        text_embed_dim=payload0.get("cfg_text_embed_dim", 0),
-        text_dropout_p=payload0.get("cfg_text_dropout_p", 0.0),
-    )
-    rebuilt0 = MaskGITDynamics(rebuilt_cfg0)
-    rebuilt0.load_state_dict(payload0["model"], strict=True)
+    ckpt_path0 = Path(__file__).parent / "_tmp_text_ckpt_no_text.pt"
+    torch.save(payload0, ckpt_path0)
+    try:
+        loaded0, loaded_cfg0, _step0 = eval_dynamics.load_model(ckpt_path0, device="cpu")
+    finally:
+        ckpt_path0.unlink(missing_ok=True)
+    assert loaded_cfg0.text_embed_dim == 0
+    assert not hasattr(loaded0.backbone, "text_embed")
