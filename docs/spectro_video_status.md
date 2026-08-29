@@ -147,7 +147,62 @@ attention scales as ~8.8× per layer; FFN as ~2.96×.
 
 Stage 2b is configured identically but at smaller batch.
 
-### 4.2 Stage 1 video-only memory benchmark (job 2725293, A100-PCIE 40 GB)
+### 4.2 Model size and per-rank GPU memory at the production scale
+
+The Frontier production configuration (`scripts/slurm_frontier/train_e2e_stage1.sh`)
+is **`d_model=256, n_layers=26, n_heads=8, mlp_ratio=4`**, plus
+modality-specific refinement layers added on 2026-05-15 (commits
+`56c2b98` + `d6207c4`): 4 per-token MLP refiner blocks in each
+spectrogram tokenizer and head, 2 in each fast-TS tokenizer and head,
+plus a 2-layer Conv1d stem (and mirror inverse-stem) wrapping the
+fast-TS patch projection. Parameter count by component:
+
+| Component | At L=8 (no refinement) | At L=26 (no refinement) | At L=26 + refinement (**today's production**) |
+|---|---|---|---|
+| SharedBackbone (Transformer stack) | 6.65 M | 20.5 M | **20.5 M** |
+| Slow TS toks + heads | 0.09 M | 0.09 M | 0.09 M |
+| Fast TS toks + heads | 0.03 M | 0.03 M | **~3.8 M** |
+| Step-cond + actuator toks | ~2.5 M | ~2.5 M | ~2.5 M |
+| **Phase A subtotal (TS only)** | **~9.3 M** | **~23.1 M** | **~26.9 M** |
+| Video tokenizer + head | +1.70 M | +1.70 M | +1.70 M |
+| Spectrogram toks + heads (ECE + CO2 + BES) | +~8.6 M | +~8.6 M | **+~21.2 M** |
+| **Full BC total** | **~19.6 M** | **~33.4 M** | **~49.8 M** |
+| **Backbone share of full-BC total** | 34 % | 61 % | **41 %** |
+
+The refinement layers ~1.5× the model relative to the bare-backbone
+L=26 build (33 M → 50 M), with the entire growth landing in the
+modality-specific I/O surface. Backbone share drops from 61 % to 41 %.
+This is a deliberate inversion of Aurora's ~85 %-backbone profile —
+Aurora has uniform gridded inputs and amortises everything through one
+Perceiver-IO encoder; our heterogeneous diagnostics warrant heavier
+per-modality processing.
+
+Per-rank GPU memory at the production size (`d_model=256, n_layers=26`
+plus refinement, bf16 autocast, AdamW, single forward step, no
+grad-checkpointing):
+
+| Config | N tokens | Per-rank batch | Predicted peak | Notes |
+|---|---|---|---|---|
+| TS only | 398 | 64 | ~11 GB | Phase A baseline at L=26 + fast-TS refinement |
+| Full BC (TS + video + spectro) | 1178 | 64 | ~34 GB | Frontier Stage 1, 8 nodes × 8 GCDs |
+| Full BC Stage 2 delta (K=10, gck=0) | 1178 | 8 | ~11–12 GB | refinement decoders fire K times (~+15 % vs bare backbone) |
+
+MI250X GCDs have 64 GB HBM each → ~34 GB at full BC Stage 1 leaves
+~45 % headroom for activation spikes during validation. A100-40 GB
+cannot fit this configuration at batch 64 even without the refinement
+layers; that, plus the FFN-dominated activation cost at L=26, is why
+the production training moved to Frontier. Stage 2 delta is well
+within budget; if the next scaling step pushes total per-rank memory
+higher, the `--grad_checkpoint_every K_steps` knob landed in commit
+`56c2b98` is the lever (currently set to 0 / off).
+
+### 4.3 L=8 measured benchmark (Stellar, job 2725293, A100-PCIE 40 GB)
+
+Historical microbenchmark from when the model ran at `n_layers=8`. Kept
+for the scaling derivation in §4.2 and because it's the only measured
+data point for the smaller backbone. At L=26 every memory number below
+should be multiplied by ~3.25 (linear in `n_layers` for both activations
+and per-layer compute).
 
 | Config | Batch | Params | Peak | Step time |
 |---|---|---|---|---|
@@ -156,17 +211,9 @@ Stage 2b is configured identically but at smaller batch.
 | TS-only (Phase A) | 256 | 9.29 M | 14.04 GB | 0.458 s |
 | TS + tangtv | 256 | 11.00 M | 28.78 GB | 0.970 s |
 
-Step-time scaling is 2.10×–2.12×, better than the 3.1× theoretical
-attention ceiling because FFN is the dominant per-layer cost at
-`d_model=256`. No grad checkpointing needed at TS+video / batch 256.
-
-### 4.3 Full BC-Stage 1 (TS + spectro + video) sizing
-
-The 1178-token configuration has not been microbenchmarked yet. The
-launcher comment in `train_bc_stage1.sh` flags this and runs at
-`--batch_size 128` (rather than 256) for headroom on Stellar A100 40 GB.
-Stage 2b uses `--batch_size 64` because of the K=1…10 rollout
-multiplier on top.
+Step-time scaling 1178 → 398 tokens was 2.10×–2.12× at L=8, better than
+the 3.1× theoretical attention ceiling because FFN (linear in N) is the
+dominant per-layer cost at `d_model=256`.
 
 ---
 

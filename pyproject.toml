@@ -10,10 +10,21 @@ authors = [
 dependencies = [
   "einops>=0.8.2,<0.9",
   "h5py>=3.15.1,<4",
+  # imageio + imageio-ffmpeg used by scripts/training/eval_e2e_stage1_phase3_1_video.py
+  # to write video stitched plots as mp4. imageio-ffmpeg ships a static
+  # ffmpeg binary, so the encoder works on Frontier without an OS-level
+  # ffmpeg package. Listed in [project] (shared across default / fdp /
+  # frontier features) so every env carries the same encoder.
+  "imageio>=2.30,<3",
+  "imageio-ffmpeg>=0.4.9,<1",
   "ipykernel>=7.2.0,<8",
   "ipywidgets>=8.1.8,<9",
   "matplotlib>=3.10.8,<4",
   "numpy>=1.26.4,<3",
+  # Image-processing libs for tokamak-animation cam ↔ PNG alignment
+  # (cv2.findTransformECC + skimage.registration).
+  "opencv-python-headless>=4.10,<5",
+  "scikit-image>=0.24,<0.26",
   "pandas>=3.0.0,<4",
   "scipy",
   "tables>=3.10.2,<4",
@@ -25,7 +36,7 @@ dependencies = [
   "pytest>=9.0.2,<10",
   "tensorboard>=2.20.0,<3",
   "wandb>=0.25.1,<0.26",
-  "hydra-core",
+  "hydra-core", "vector-quantize-pytorch>=1.31.0,<2", "x-transformers>=2.23.5,<3",
 ]
 dynamic = ["version"]
 
@@ -75,6 +86,15 @@ toksearch_d3d = { channel = "ga-fdp" }
 [tool.pixi.feature.frontier]
 platforms = ["linux-64"]
 
+[tool.pixi.feature.frontier.dependencies]
+# pip is needed for the `setup-flash-attn` task below to install flash-attn
+# from a git URL with --no-build-isolation. The PyTorch wheels we pull from
+# the rocm7.1 index don't drag pip in transitively.
+pip = "*"
+# ninja: aiter (a transitive dep of flash_attn on ROCm) JIT-compiles a small
+# C++ extension at first `import flash_attn`. It calls `ninja` from PATH.
+ninja = "*"
+
 [tool.pixi.feature.frontier.pypi-dependencies]
 # rocm7.1 index ships torch 2.10.0 + torchvision 0.25-0.26 only.
 torch       = { version = ">=2.10,<2.11",   index = "https://download.pytorch.org/whl/rocm7.1" }
@@ -82,6 +102,19 @@ torchvision = { version = ">=0.25,<0.27",   index = "https://download.pytorch.or
 # torch 2.10 declares triton-rocm as a dep; uv won't auto-discover it
 # through the per-package `index = ...` above, so list it explicitly.
 triton-rocm = { version = "*",              index = "https://download.pytorch.org/whl/rocm7.1" }
+# Evaluation suite (scripts/evaluation/): latent-space analyses + probes.
+scikit-learn = ">=1.5,<2"
+umap-learn   = ">=0.5.7,<0.6"
+# Flash-Attention 2 (gfx90a / MI250X) is NOT listed here intentionally:
+# the build needs `module load rocm/7.1.1` + `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`,
+# which pixi/uv can't set. Install via the `setup-flash-attn` task below; we use
+# the AMD Triton backend (not Composable Kernel) per the AMD docs at
+# rocm.docs.amd.com/.../model-acceleration-libraries.html — Triton skips the
+# multi-hour CK template/hipcc compile and builds in ~10-15 min.
+
+[tool.pixi.feature.frontier.tasks]
+setup-flash-attn = { cmd = "bash scripts/slurm_frontier/setup_frontier_env.sh", description = "Build & install flash-attn 2 into the frontier pixi env on a Frontier compute node (gfx90a). Auto-salloc's if run from a login node." }
+verify-flash-attn = { cmd = "python scripts/slurm_frontier/verify_flash_attn.py", description = "Smoke-test flash_attn on the local MI250X." }
 
 [tool.pixi.environments]
 default = ["cuda"]

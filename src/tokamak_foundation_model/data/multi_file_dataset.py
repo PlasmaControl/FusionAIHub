@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import collections
 import copy
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -128,12 +129,26 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             max_open_files: int = 512,
             step_size_s: Optional[float] = None,
             warmup_s: float = 0.0,
+            video_channels_override: Optional[dict] = None,
+            history_windows: int = 1,
     ):
         # Set up all instance attributes that parent methods rely on.
         # We deliberately skip super().__init__() because it expects a single
         # hdf5_path and opens that file — neither applies here.
         self.signal_configs = copy.deepcopy(self.SIGNAL_CONFIGS)
         self.movie_configs = copy.deepcopy(self.MOVIE_CONFIGS)
+        # Backward-compat: per-movie raw-channel reselection. Maps
+        # {movie_name: [raw_idx, ...]}. Used to evaluate an OLD checkpoint whose
+        # video tokenizer has fewer channels than the current MovieConfig
+        # default (e.g. a 2-channel tangtv model needs raw [4, 6] from the
+        # now-7-channel default). Mutates the per-instance copy only, so the
+        # global MOVIE_CONFIGS and other datasets are unaffected.
+        if video_channels_override:
+            for mc in self.movie_configs:
+                sel = video_channels_override.get(mc.name)
+                if sel is not None:
+                    mc.channels_to_use = list(sel)
+                    mc.channels = len(sel)
 
         self.chunk_duration_s = chunk_duration_s
         self.step_size_s = step_size_s if step_size_s is not None else chunk_duration_s
@@ -143,6 +158,9 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         self.preprocessing_stats = preprocessing_stats or {}
         self.prediction_mode = prediction_mode
         self.prediction_horizon_s = prediction_horizon_s
+        # K>1: return K consecutive input windows + next-window target (multi-
+        # window temporal backbone). The inherited _getitem_prediction reads it.
+        self.history_windows = int(history_windows)
         self.input_signals = input_signals or ["ece", "co2", "mhr"]
         self.target_signals = target_signals or ["mse", "ts_core_density"]
         self.n_freq_bins = n_fft // 2 + 1
@@ -207,15 +225,35 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         """
         Return per-file chunk counts, loading from cache when available.
 
+        Under DDP **with identical hdf5_paths on every rank** (the
+        training-style usage where the full file list lives on every rank
+        and a ``DistributedSampler`` selects each rank's slice), only
+        rank 0 reads/computes/writes the cache; all other ranks receive
+        the result via ``dist.broadcast_object_list``. This avoids 8 ranks
+        hammering the Lustre MDS with redundant scans and prevents
+        concurrent ``torch.save`` calls from corrupting the sidecar zip
+        file.
+
+        Under DDP **with per-rank file shards** (the eval-style usage
+        where files are pre-sharded as ``files[rank::world_size]``), each
+        rank computes its own lengths locally — broadcasting rank 0's
+        lengths would poison other ranks with a list whose length /
+        contents don't match their ``hdf5_paths``, leading to
+        ``_valid_indices`` values past the end of ``hdf5_paths`` and
+        ``IndexError`` on tail-of-shard chunks. The cache is skipped in
+        this mode (a single sidecar can't represent per-rank shards).
+
         Parameters
         ----------
         max_duration_s : float
             Cap on shot duration used when computing chunk counts.
         lengths_cache_path : Path or None
-            Path to the sidecar cache file.  If the file exists *and* its
-            stored path list matches the current ``hdf5_paths``, the cached
-            lengths are returned directly without opening any HDF5 file.
-            Otherwise lengths are computed and written to this path.
+            Path to the sidecar cache file.  Honored only when ranks
+            share identical ``hdf5_paths``. If the file exists *and* its
+            stored path list matches the current ``hdf5_paths``, the
+            cached lengths are returned directly without opening any
+            HDF5 file. Otherwise lengths are computed and written to
+            this path atomically (``.tmp`` + ``replace``).
 
         Returns
         -------
@@ -223,17 +261,79 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
             Number of chunks for each path in ``self.hdf5_paths``.
             Files that could not be opened have length ``0``.
         """
+        import torch.distributed as dist
+        distributed = dist.is_available() and dist.is_initialized()
+        rank = dist.get_rank() if distributed else 0
+        world_size = dist.get_world_size() if distributed else 1
+
         paths_as_str = [str(p) for p in self.hdf5_paths]
 
-        if lengths_cache_path is not None:
-            cache_path = Path(lengths_cache_path)
-            if cache_path.exists():
-                cache = torch.load(cache_path, weights_only=False)
-                if cache.get("paths") == paths_as_str:
-                    print(f"Loaded file lengths from cache: {cache_path}")
-                    return cache["lengths"]
+        # Detect identical vs sharded usage by hashing the local paths
+        # list and all-gathering the hashes. If any rank's hash differs,
+        # we're in sharded mode and the rank-0-broadcast optimization
+        # would corrupt other ranks' state.
+        paths_consistent = True
+        if distributed and world_size > 1:
+            local_sig = hashlib.sha256(
+                "\n".join(paths_as_str).encode()
+            ).hexdigest()
+            sigs: list[Optional[str]] = [None] * world_size
+            dist.all_gather_object(sigs, local_sig)
+            paths_consistent = all(s == local_sig for s in sigs)
 
-        lengths = []
+        if distributed and not paths_consistent:
+            # Per-rank shard: every rank scans its own files locally.
+            # No cache — its single-file form can't represent per-rank
+            # shards (would need per-shard sidecars).
+            return self._scan_lengths_local(max_duration_s)
+
+        # Identical paths (or single-process): use rank-0 + broadcast
+        # path with sidecar cache.
+        lengths: Optional[list[int]] = None
+
+        if rank == 0:
+            if lengths_cache_path is not None:
+                cache_path = Path(lengths_cache_path)
+                if cache_path.exists():
+                    try:
+                        cache = torch.load(cache_path, weights_only=False)
+                        if cache.get("paths") == paths_as_str:
+                            print(f"Loaded file lengths from cache: {cache_path}")
+                            lengths = cache["lengths"]
+                    except Exception as e:
+                        print(
+                            f"Warning: lengths cache at {cache_path} is "
+                            f"unreadable ({e}); recomputing."
+                        )
+
+            if lengths is None:
+                lengths = self._scan_lengths_local(max_duration_s)
+
+                if lengths_cache_path is not None:
+                    # Atomic write: write to .tmp then rename, so a crashed
+                    # write never leaves a half-written zip that the next
+                    # torch.load would barf on.
+                    tmp_path = Path(str(lengths_cache_path) + ".tmp")
+                    torch.save(
+                        {"paths": paths_as_str, "lengths": lengths}, tmp_path,
+                    )
+                    tmp_path.replace(Path(lengths_cache_path))
+                    print(f"Saved file lengths to cache: {lengths_cache_path}")
+
+        if distributed:
+            payload = [lengths] if rank == 0 else [None]
+            dist.broadcast_object_list(payload, src=0)
+            lengths = payload[0]
+
+        return lengths
+
+    def _scan_lengths_local(self, max_duration_s: float) -> list[int]:
+        """Compute per-file chunk counts by opening each HDF5 directly.
+
+        Used both by the cache-miss path on rank 0 (with identical paths
+        across ranks) and by every rank in the per-rank-shard case.
+        """
+        lengths: list[int] = []
         for path in tqdm(self.hdf5_paths, desc="Computing file lengths"):
             try:
                 with h5py.File(path, "r") as f:
@@ -244,7 +344,8 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
                     length = 0
                 elif self.prediction_mode:
                     total_window = (
-                            self.chunk_duration_s + self.prediction_horizon_s
+                            self.history_windows * self.chunk_duration_s
+                            + self.prediction_horizon_s
                     )
                     length = max(0, int(np.floor(
                         (duration - total_window) / self.step_size_s
@@ -260,14 +361,6 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
                 print(f"Warning: could not open {path}: {e}")
                 length = 0
             lengths.append(length)
-
-        if lengths_cache_path is not None:
-            torch.save(
-                {"paths": paths_as_str, "lengths": lengths},
-                lengths_cache_path
-            )
-            print(f"Saved file lengths to cache: {lengths_cache_path}")
-
         return lengths
 
     # -------------------------------------------------------------------------
@@ -345,6 +438,11 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
         # _getitem_prediction, _load_signal_raw, …) can find it.
         # Safe: each DataLoader worker owns its own copy of this object.
         self.h5_file = self._get_file_handle(file_idx)
+        # Chunk count of THIS file, for subclass re-draw hooks whose alt indices are
+        # consumed as WITHIN-SHOT chunk indices (ignite codec datasets). State only.
+        self._cur_file_n_chunks = int(
+            self._cumulative_lengths[pos + 1] - self._cumulative_lengths[pos]
+        )
 
         if self.prediction_mode:
             result = self._getitem_prediction(chunk_idx)
@@ -445,6 +543,148 @@ class TwoLevelSampler(Sampler):
 
 
 # =============================================================================
+# DDP-aware two-level sampler (file-level sharding)
+# =============================================================================
+
+
+class DistributedTwoLevelSampler(Sampler):
+    """
+    DDP-aware file-level sharding with sequential intra-file iteration.
+
+    Combines :class:`TwoLevelSampler`'s file-sequential locality with
+    DDP-aware sharding. The file list is partitioned across ranks **once**
+    at construction (round-robin: rank ``r`` owns positions
+    ``r, r + N, r + 2N, …``). Each rank then iterates **its own** files,
+    front-to-back within each file, with per-epoch shuffling of the
+    rank's own file order via :meth:`set_epoch`.
+
+    Why this matters
+    ----------------
+    PyTorch's :class:`~torch.utils.data.distributed.DistributedSampler`
+    shards *chunk indices* across ranks, which scatters each rank's
+    accesses across the entire file pool and defeats the per-worker LRU
+    file-handle cache in :class:`TokamakMultiFileDataset`. On the live
+    DIII-D dataset (~7900 shots, LRU=100) this collapses cache hit rate
+    to ~1 % and makes HDF5 ``open()`` the dominant per-step cost under
+    DDP (observed ~12 s/step on a 2-GPU DDP run vs. ~1 s/step single-GPU
+    at the same batch size).
+
+    Static (vs. rotated) sharding
+    -----------------------------
+    The file-to-rank assignment is fixed for the lifetime of the
+    sampler. Each rank only ever sees its own subset of files. This
+    keeps the LRU file-handle cache warm across epochs (especially with
+    ``persistent_workers=True``). For many-epoch training the cross-rank
+    data diversity that rotated sharding would buy is dominated by
+    within-rank re-exposure; use PyTorch's ``DistributedSampler`` if
+    you'd rather have every rank eventually see every file at the cost
+    of cache locality.
+
+    Length parity across ranks
+    --------------------------
+    File sizes vary; per-rank totals may differ. Every rank truncates to
+    the minimum per-rank chunk count so DDP all-reduce stays in
+    lockstep. Padding (``drop_last=False``) is not supported.
+
+    Parameters
+    ----------
+    dataset : TokamakMultiFileDataset
+        Dataset with ``_valid_lengths`` and ``_cumulative_lengths``.
+    num_replicas : int
+        World size.
+    rank : int
+        This rank's index in ``[0, num_replicas)``.
+    shuffle : bool, optional
+        Per-epoch shuffle of the rank's own file order. Default
+        ``True``.
+    seed : int, optional
+        RNG seed. The per-epoch RNG uses ``seed + epoch``. Default ``0``.
+    drop_last : bool, optional
+        Must be ``True``. Present for API compatibility with
+        ``DistributedSampler``. Default ``True``.
+    """
+
+    def __init__(
+        self,
+        dataset: "TokamakMultiFileDataset",
+        num_replicas: int,
+        rank: int,
+        shuffle: bool = True,
+        seed: int = 0,
+        drop_last: bool = True,
+    ) -> None:
+        if num_replicas < 1:
+            raise ValueError(f"num_replicas must be >= 1, got {num_replicas}")
+        if not (0 <= rank < num_replicas):
+            raise ValueError(
+                f"rank {rank} not in [0, num_replicas={num_replicas})"
+            )
+        n_files = len(dataset._valid_lengths)
+        if num_replicas > n_files:
+            raise ValueError(
+                f"num_replicas={num_replicas} exceeds n_files={n_files}; "
+                f"cannot shard."
+            )
+        if not drop_last:
+            raise NotImplementedError(
+                "drop_last=False (padded sampling) is not supported. "
+                "Pass drop_last=True so every rank sees the same number "
+                "of samples per epoch."
+            )
+
+        self.dataset = dataset
+        self.num_replicas = int(num_replicas)
+        self.rank = int(rank)
+        self.shuffle = bool(shuffle)
+        self.seed = int(seed)
+        self.drop_last = True
+        self.epoch = 0
+
+        # Static round-robin partition of the *valid* file list.
+        self._rank_file_positions: list[int] = list(
+            range(self.rank, n_files, self.num_replicas)
+        )
+
+        # Pre-compute equal per-rank chunk count = min over ranks.
+        per_rank_totals = [
+            sum(int(dataset._valid_lengths[p])
+                for p in range(r, n_files, self.num_replicas))
+            for r in range(self.num_replicas)
+        ]
+        self._num_samples = min(per_rank_totals)
+
+    def set_epoch(self, epoch: int) -> None:
+        """Set the epoch used to seed per-epoch shuffles. Mirrors
+        :meth:`torch.utils.data.distributed.DistributedSampler.set_epoch`.
+        Call once per training epoch before iterating."""
+        self.epoch = int(epoch)
+
+    def __len__(self) -> int:
+        return self._num_samples
+
+    def __iter__(self):
+        if self.shuffle:
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch)
+            perm = torch.randperm(
+                len(self._rank_file_positions), generator=g,
+            ).tolist()
+            file_order = [self._rank_file_positions[i] for i in perm]
+        else:
+            file_order = list(self._rank_file_positions)
+
+        yielded = 0
+        for pos in file_order:
+            start = int(self.dataset._cumulative_lengths[pos])
+            end = int(self.dataset._cumulative_lengths[pos + 1])
+            for chunk_idx in range(start, end):
+                if yielded >= self._num_samples:
+                    return
+                yield chunk_idx
+                yielded += 1
+
+
+# =============================================================================
 # Convenience factory
 # =============================================================================
 
@@ -527,57 +767,171 @@ def filter_video_present_files(
         The subset of ``paths`` with at least one camera present.
         Order is preserved.
     """
+    import torch.distributed as dist
+    distributed = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+
     paths_key = tuple(str(p) for p in paths)
     cameras_key = tuple(sorted(camera_names))
+    video_present: Optional[list[str]] = None
 
-    if cache_path is not None and cache_path.exists():
-        try:
-            cache = torch.load(cache_path, weights_only=False)
-            if (
-                cache.get("paths_key") == paths_key
-                and cache.get("cameras_key") == cameras_key
-            ):
-                present = set(cache["video_present"])
-                return [p for p in paths if str(p) in present]
-        except Exception:
-            # Corrupt or unreadable cache — fall through to rescan.
-            pass
+    if rank == 0:
+        if cache_path is not None and cache_path.exists():
+            try:
+                cache = torch.load(cache_path, weights_only=False)
+                if (
+                    cache.get("paths_key") == paths_key
+                    and cache.get("cameras_key") == cameras_key
+                ):
+                    video_present = list(cache["video_present"])
+            except Exception:
+                # Corrupt or unreadable cache — fall through to rescan.
+                video_present = None
 
-    print(
-        f"Scanning {len(paths)} files for {cameras_key} video presence "
-        "(cache miss)..."
-    )
-    video_present: list[str] = []
-    for p in tqdm(paths, desc="Video presence scan"):
-        try:
-            with h5py.File(p, "r") as f:
-                for cam in camera_names:
-                    if cam not in f or "ydata" not in f[cam]:
-                        continue
-                    yd = f[cam]["ydata"]
-                    xd = f[cam].get("xdata")
-                    if (
-                        yd.size > 0
-                        and yd.ndim == 4
-                        and xd is not None
-                        and xd.size >= 2
-                    ):
-                        video_present.append(str(p))
-                        break
-        except Exception as e:
-            print(f"  skipping {p.name}: {e}")
+        if video_present is None:
+            print(
+                f"Scanning {len(paths)} files for {cameras_key} video presence "
+                "(cache miss)..."
+            )
+            video_present = []
+            for p in tqdm(paths, desc="Video presence scan"):
+                try:
+                    with h5py.File(p, "r") as f:
+                        for cam in camera_names:
+                            if cam not in f or "ydata" not in f[cam]:
+                                continue
+                            yd = f[cam]["ydata"]
+                            xd = f[cam].get("xdata")
+                            if (
+                                yd.size > 0
+                                and yd.ndim == 4
+                                and xd is not None
+                                and xd.size >= 2
+                            ):
+                                video_present.append(str(p))
+                                break
+                except Exception as e:
+                    print(f"  skipping {p.name}: {e}")
 
-    if cache_path is not None:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {
-                "paths_key": paths_key,
-                "cameras_key": cameras_key,
-                "video_present": video_present,
-            },
-            cache_path,
-        )
-        print(f"Saved video-presence cache to {cache_path}")
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = Path(str(cache_path) + ".tmp")
+                torch.save(
+                    {
+                        "paths_key": paths_key,
+                        "cameras_key": cameras_key,
+                        "video_present": video_present,
+                    },
+                    tmp_path,
+                )
+                tmp_path.replace(Path(cache_path))
+                print(f"Saved video-presence cache to {cache_path}")
+
+    if distributed:
+        payload = [video_present] if rank == 0 else [None]
+        dist.broadcast_object_list(payload, src=0)
+        video_present = payload[0]
 
     present = set(video_present)
     return [p for p in paths if str(p) in present]
+
+
+def filter_signal_present_files(
+    paths: list[Path],
+    signal_name: str,
+    cache_path: Optional[Path] = None,
+    min_len: int = 2,
+) -> list[Path]:
+    """Return only paths whose HDF5 carries a REAL recording for ``signal_name``.
+
+    Some diagnostics are recorded on only a subset of shots (e.g. the CO2 interferometer).
+    When a signal is absent, preprocessing writes a length-1 ``(C, 1)`` placeholder
+    ``ydata`` rather than omitting the group — and that placeholder floors to silence in
+    the codec's log-power window. Whole absent shots then swamp the codec batch with
+    constant floor, collapsing the FSQ to one code. Within-shot activity stratification
+    cannot fix this (there is no active window in the shot to re-draw to), so we drop the
+    absent shots up front here.
+
+    A shot is kept iff ``signal_name/ydata`` exists with ``shape[-1] >= min_len`` (more
+    than the placeholder single sample). This is a pure metadata check — no array is read —
+    so scanning thousands of shots is cheap.
+
+    Mirrors :func:`filter_video_present_files`: rank-0 scans, the result is
+    ``(paths, signal_name)``-keyed and persisted to a sidecar ``.pt`` cache, then
+    broadcast to all ranks under DDP. Order is preserved.
+
+    Parameters
+    ----------
+    paths : list of Path
+        HDF5 shot files to filter.
+    signal_name : str
+        The HDF5 group name to check (e.g. ``"co2"``).
+    cache_path : Path or None, optional
+        If given, the result is keyed by ``(paths, signal_name)`` and persisted. On the
+        next call with the same key, no HDF5 files are opened.
+    min_len : int
+        Minimum ``ydata`` last-axis length to count as present (default 2; the absent
+        placeholder is length 1).
+
+    Returns
+    -------
+    list of Path
+        The subset of ``paths`` that carry ``signal_name`` data, order preserved.
+    """
+    import torch.distributed as dist
+
+    distributed = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+
+    paths_key = tuple(str(p) for p in paths)
+    present: Optional[list[str]] = None
+
+    if rank == 0:
+        if cache_path is not None and cache_path.exists():
+            try:
+                cache = torch.load(cache_path, weights_only=False)
+                if (
+                    cache.get("paths_key") == paths_key
+                    and cache.get("signal_name") == signal_name
+                ):
+                    present = list(cache["present"])
+            except Exception:
+                # Corrupt or unreadable cache — fall through to rescan.
+                present = None
+
+        if present is None:
+            print(
+                f"Scanning {len(paths)} files for {signal_name!r} presence (cache miss)..."
+            )
+            present = []
+            for p in tqdm(paths, desc=f"{signal_name} presence scan"):
+                try:
+                    with h5py.File(p, "r") as f:
+                        if signal_name in f and "ydata" in f[signal_name]:
+                            yd = f[signal_name]["ydata"]
+                            if yd.ndim >= 1 and yd.shape[-1] >= min_len:
+                                present.append(str(p))
+                except Exception as e:
+                    print(f"  skipping {p.name}: {e}")
+
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = Path(str(cache_path) + ".tmp")
+                torch.save(
+                    {
+                        "paths_key": paths_key,
+                        "signal_name": signal_name,
+                        "present": present,
+                    },
+                    tmp_path,
+                )
+                tmp_path.replace(Path(cache_path))
+                print(f"Saved {signal_name}-presence cache to {cache_path}")
+
+    if distributed:
+        payload = [present] if rank == 0 else [None]
+        dist.broadcast_object_list(payload, src=0)
+        present = payload[0]
+
+    present_set = set(present)
+    return [p for p in paths if str(p) in present_set]

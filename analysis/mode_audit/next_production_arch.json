@@ -1,0 +1,238 @@
+{
+  "note": "INITIALIZED model architecture (built via build_configs + E2EFoundationModel), not from memory",
+  "backbone": {
+    "class": "SharedBackbone",
+    "d_model": 1024,
+    "n_layers": 48,
+    "n_heads": 8,
+    "mlp_ratio": 4.0,
+    "dropout": 0.1,
+    "params_M": 609.08
+  },
+  "spectro_codec_dir": "/lustre/orion/fus187/proj-shared/models/fsq_resid_p8_all",
+  "spectro_patch": [
+    8,
+    16
+  ],
+  "spectro_fsq": true,
+  "total_params_M": 1152.31,
+  "seq_len_tokens": 2539,
+  "params_by_component_M": {
+    "backbone": 609.08,
+    "diag_tokenizers": 455.03,
+    "diag_heads": 77.27,
+    "act_tokenizers": 10.93
+  },
+  "params_diag_tokenizers_M": {
+    "ece": 106.78,
+    "bes": 103.63,
+    "mhr": 102.32,
+    "co2": 102.06,
+    "filterscopes": 36.89,
+    "tangtv_lower": 1.5,
+    "tangtv_upper": 1.5,
+    "mse": 0.08,
+    "cer_ti": 0.06,
+    "cer_rot": 0.06,
+    "ts_core_density": 0.05,
+    "ts_core_temp": 0.05,
+    "ts_tangential_density": 0.02,
+    "ts_tangential_temp": 0.02
+  },
+  "params_diag_heads_M": {
+    "ece": 16.78,
+    "bes": 15.21,
+    "mhr": 14.55,
+    "co2": 14.42,
+    "filterscopes": 6.78,
+    "tangtv_lower": 1.83,
+    "tangtv_upper": 1.83,
+    "mse": 0.85,
+    "cer_ti": 0.84,
+    "cer_rot": 0.84,
+    "ts_core_density": 0.84,
+    "ts_core_temp": 0.84,
+    "ts_tangential_density": 0.83,
+    "ts_tangential_temp": 0.83
+  },
+  "token_layout": [
+    {
+      "name": "ts_core_density",
+      "tokens": 44,
+      "is_diagnostic": true
+    },
+    {
+      "name": "ts_core_temp",
+      "tokens": 44,
+      "is_diagnostic": true
+    },
+    {
+      "name": "ts_tangential_density",
+      "tokens": 10,
+      "is_diagnostic": true
+    },
+    {
+      "name": "ts_tangential_temp",
+      "tokens": 10,
+      "is_diagnostic": true
+    },
+    {
+      "name": "cer_ti",
+      "tokens": 48,
+      "is_diagnostic": true
+    },
+    {
+      "name": "cer_rot",
+      "tokens": 48,
+      "is_diagnostic": true
+    },
+    {
+      "name": "mse",
+      "tokens": 69,
+      "is_diagnostic": true
+    },
+    {
+      "name": "filterscopes",
+      "tokens": 80,
+      "is_diagnostic": true
+    },
+    {
+      "name": "ece",
+      "tokens": 384,
+      "is_diagnostic": true
+    },
+    {
+      "name": "co2",
+      "tokens": 384,
+      "is_diagnostic": true
+    },
+    {
+      "name": "bes",
+      "tokens": 384,
+      "is_diagnostic": true
+    },
+    {
+      "name": "mhr",
+      "tokens": 384,
+      "is_diagnostic": true
+    },
+    {
+      "name": "tangtv_lower",
+      "tokens": 300,
+      "is_diagnostic": true
+    },
+    {
+      "name": "tangtv_upper",
+      "tokens": 300,
+      "is_diagnostic": true
+    },
+    {
+      "name": "pin",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "beam_voltage",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "tin",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "ech_power",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "ech_tor_angle",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "ech_pol_angle",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "ech_polarization",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "gas_flow",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "gas_raw",
+      "tokens": 5,
+      "is_diagnostic": false
+    },
+    {
+      "name": "rmp",
+      "tokens": 5,
+      "is_diagnostic": false
+    }
+  ],
+  "module_types": {
+    "ts_core_density": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "ts_core_temp": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "ts_tangential_density": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "ts_tangential_temp": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "cer_ti": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "cer_rot": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "mse": {
+      "tokenizer": "SlowTimeSeriesTokenizer",
+      "head": "SlowTimeSeriesCodeHead"
+    },
+    "filterscopes": {
+      "tokenizer": "FastTimeSeriesTokenizer",
+      "head": "FastTimeSeriesCodeHead"
+    },
+    "ece": {
+      "tokenizer": "SpectrogramTokenizer",
+      "head": "SpectrogramCodeHead"
+    },
+    "co2": {
+      "tokenizer": "SpectrogramTokenizer",
+      "head": "SpectrogramCodeHead"
+    },
+    "bes": {
+      "tokenizer": "SpectrogramTokenizer",
+      "head": "SpectrogramCodeHead"
+    },
+    "mhr": {
+      "tokenizer": "SpectrogramTokenizer",
+      "head": "SpectrogramCodeHead"
+    },
+    "tangtv_lower": {
+      "tokenizer": "VideoTokenizer",
+      "head": "VideoCodeHead"
+    },
+    "tangtv_upper": {
+      "tokenizer": "VideoTokenizer",
+      "head": "VideoCodeHead"
+    }
+  }
+}

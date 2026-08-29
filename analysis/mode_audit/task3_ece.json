@@ -1,0 +1,36 @@
+{
+  "task": 3,
+  "modality": "ece",
+  "ckpt": "/lustre/orion/fus187/proj-shared/models/e2e_step2_fsq_finer/e2e_stage1_latest.pt",
+  "n_windows": 3273,
+  "n_sel_mode": 20,
+  "strong_channel": 39,
+  "renders": [
+    {
+      "render": "argmax",
+      "mode_capture": 0.0012225223472341895,
+      "peak_match": 0.2,
+      "profile_corr": 0.5915505067192932,
+      "tvr": 0.2443675994873047
+    },
+    {
+      "render": "sample",
+      "mode_capture": -0.04388386569917202,
+      "peak_match": 0.2,
+      "profile_corr": 0.4120776287843766,
+      "tvr": 0.3507673144340515
+    },
+    {
+      "render": "gt_codes",
+      "mode_capture": 0.6946799457073212,
+      "peak_match": 0.95,
+      "profile_corr": 0.9221892264757225,
+      "tvr": 0.4133622348308563
+    }
+  ],
+  "codeacc_mode_patch": 0.09739218975280549,
+  "codeacc_background": 0.12677861135475785,
+  "n_mode_tokens": 1144,
+  "n_bg_tokens": 6536,
+  "interpretation": "IMBALANCE/distribution (argmax deletes modes + sample FLAT)"
+}

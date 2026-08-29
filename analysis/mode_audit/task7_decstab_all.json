@@ -1,0 +1,20 @@
+{
+  "ece": {
+    "task": 7,
+    "modality": "ece",
+    "n_active": 374,
+    "decoded_stability_bandcorr": 0.9329563665003349,
+    "code_stability": 0.2582465410232544,
+    "recon_bandcorr": 0.6216684668913645,
+    "verdict": "DECODE STABLE -> codes redundant -> fix=decoded/perceptual LOSS"
+  },
+  "co2": {
+    "task": 7,
+    "modality": "co2",
+    "n_active": 410,
+    "decoded_stability_bandcorr": 0.7061460481043148,
+    "code_stability": 0.1781955286860466,
+    "recon_bandcorr": 0.40645391672281145,
+    "verdict": "DECODE MODERATE"
+  }
+}

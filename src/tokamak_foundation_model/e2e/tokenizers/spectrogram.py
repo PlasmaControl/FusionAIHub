@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SpectrogramTokenizer(nn.Module):
@@ -65,6 +66,8 @@ class SpectrogramTokenizer(nn.Module):
         patch_t: int,
         freq_bins: int,
         time_frames: int,
+        enable_freq_stem: bool = False,
+        freq_stem_hidden: int = 128,
     ) -> None:
         super().__init__()
         if freq_bins % patch_f != 0:
@@ -99,17 +102,104 @@ class SpectrogramTokenizer(nn.Module):
         # (per-batch ``mask=False``). Same pattern as VideoTokenizer.
         self.missing_token = nn.Parameter(torch.empty(self.n_tokens, d_model))
 
+        # Pre-backbone per-token MLP refiners (stacked ViT-style residual MLP
+        # blocks). Each block is independently applied with a residual at the
+        # call site so adding/removing blocks is a single-line change.
+        # 2026-05-19: bumped 4 → 12 to add capacity around the d_model=256
+        # bottleneck for fine-pattern reconstruction (harmonics + transients).
+        # train_e2e_stage1.py's resume path auto-detects the extra refine
+        # blocks as missing keys and auto-applies a 1-epoch (1180-step)
+        # freeze on backbone/ts/video while the new blocks 4..11 settle.
+        n_refine_blocks = 12
+        self.refine = nn.ModuleList([
+            nn.Sequential(
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model * 4),
+                nn.GELU(),
+                nn.Linear(d_model * 4, d_model),
+            )
+            for _ in range(n_refine_blocks)
+        ])
+
         nn.init.normal_(self.spatial_pe, std=0.02)
         nn.init.normal_(self.modality_embed, std=0.02)
         nn.init.normal_(self.missing_token, std=0.02)
+
+        # OPT-IN full-frequency encoder stem (2026-06-13). The patch
+        # Conv2d below has a receptive field of only patch_f (32) freq
+        # bins, so a token cannot encode where a mode peak sits relative
+        # to the WHOLE spectrum — information lost before the bottleneck.
+        # This stem mixes across all `freq_bins` bins BEFORE patching, as
+        # a zero-init residual so the encoder is bit-identical at load
+        # (exact warm-start) and only diverges as it trains. Expressed as
+        # a Linear over the frequency axis (a full-freq filter == a dense
+        # freq->freq map) rather than a (freq_bins, 1) Conv2d: matmuls run
+        # on rocBLAS with no per-shape MIOpen tuning, sidestepping the
+        # kernel-tuning/fallback pathology that novel conv shapes hit at
+        # batch 32 (jobs 4802391/4803320). Weights shared across channels
+        # and time (folded into the matmul batch dim).
+        self.enable_freq_stem = bool(enable_freq_stem)
+        if self.enable_freq_stem:
+            self.fs_lin1 = nn.Linear(freq_bins, freq_stem_hidden)
+            self.fs_lin2 = nn.Linear(freq_stem_hidden, freq_bins)
+            nn.init.zeros_(self.fs_lin2.weight)
+            nn.init.zeros_(self.fs_lin2.bias)
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode a batch of present-modality spectrograms to
         ``(B, n_tokens, d_model)``."""
         x = x[..., : self.trunc_t]                      # (B, C, F, T_trunc)
+        if self.enable_freq_stem:
+            # Full-frequency residual mixing before patching. Operate
+            # with frequency as the last (feature) dim so the Linears
+            # mix across all freq bins; zero-init fs_lin2 → no-op at
+            # construction → exact warm-start.
+            h = x.transpose(2, 3)                       # (B, C, T, F)
+            h = self.fs_lin2(F.gelu(self.fs_lin1(h)))   # (B, C, T, F)
+            x = x + h.transpose(2, 3)                   # (B, C, F, T_trunc)
         tokens = self.proj(x)                           # (B, d_model, n_f, n_t)
         tokens = tokens.flatten(2).transpose(1, 2)      # (B, n_tokens, d_model)
-        return tokens + self.spatial_pe + self.modality_embed
+        import os as _os
+        _dbg = _os.environ.get("ROLLOUT_STATS_DEBUG") == "1"
+        _proj_am = float(tokens.abs().max()) if _dbg else 0.0
+        tokens = tokens + self.spatial_pe + self.modality_embed
+        _add_am = float(tokens.abs().max()) if _dbg else 0.0
+        _refine_ams = []
+        for block in self.refine:
+            tokens = tokens + block(tokens)
+            if _dbg:
+                _refine_ams.append(round(float(tokens.abs().max()), 1))
+        # PROJ-RESONANCE GUARD (2026-07-16). The ece feedback normally tokenizes
+        # to out-absmax ~50-210 (natural band). The patch ``proj`` Conv2d has ONE
+        # fixed near-DC / low-freq corner filter that SATURATES on the near-DC
+        # broadband floor present in every mode-active window. Real INPUT windows
+        # already reach out-absmax ~2101 (tolerated — single-step training ran
+        # fine there); a codec-DECODED feedback window pushes that broadband floor
+        # to ~2216 and tips proj over → bf16 NaN. It is the DC broadband floor,
+        # NOT mode energy (per-window mode-ridge deviation ~24 << 2000) and NOT
+        # realization-specific. Hottest in teacher-forcing (GT-code decode). The
+        # option-2 feedback_normalize fix scales the whole feedback token slice
+        # per-sample back to the step-0 input band. >600 (~3x the natural band) is
+        # well clear of natural inputs, so this WARNs if the floor climbs into the
+        # danger zone. Rate-limited.
+        _out_am = float(tokens.detach().abs().max())
+        if _dbg:
+            print(
+                f"[stage] in_absmax={float(x.abs().max()):.3f} "
+                f"proj={_proj_am:.3f} post_add={_add_am:.3f} "
+                f"refine_absmax_per_block={_refine_ams} out={_out_am:.3f}",
+                flush=True,
+            )
+        elif _out_am > 600.0 and not getattr(self, "_resonance_warned", False):
+            print(
+                f"[PROJ-RESONANCE WARN] ece tokenizer out_absmax={_out_am:.1f} > 600 "
+                f"(natural ~50-210) — the fixed near-DC proj filter is saturating "
+                f"on the broadband floor of a codec-decoded window; the option-2 "
+                f"feedback-token renorm (--feedback_normalize) caps this. (warned once)",
+                flush=True,
+            )
+            self._resonance_warned = True
+        return tokens
 
     def forward(
         self, x: torch.Tensor, mask: torch.Tensor | None = None
@@ -130,10 +220,15 @@ class SpectrogramTokenizer(nn.Module):
         torch.Tensor
             Tokens of shape ``(B, n_tokens, d_model)``.
         """
+        # Always invoke _encode and reference missing_token so the autograd
+        # graph for proj / spatial_pe / modality_embed / missing_token is
+        # data-independent. Lets us run DDP without `find_unused_parameters`
+        # (RCCL bucket rebuilds on a per-batch-changing unused-set were
+        # causing GPU memory faults on Frontier). Extra cost: a Conv2d on
+        # the masked-out rows; small relative to the backbone transformer.
         B = x.shape[0]
-        if mask is None or mask.all():
-            return self._encode(x)
-        out = self.missing_token.expand(B, -1, -1).clone()
-        if mask.any():
-            out[mask] = self._encode(x[mask])
-        return out
+        encoded = self._encode(x)
+        missing = self.missing_token.expand(B, -1, -1)
+        if mask is None:
+            return encoded + 0.0 * missing.sum()
+        return torch.where(mask.view(B, 1, 1), encoded, missing)

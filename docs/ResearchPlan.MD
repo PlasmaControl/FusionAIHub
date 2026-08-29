@@ -71,7 +71,7 @@ Each tokenizer adds a learned modality embedding and positional encoding. All to
 
 ### 3.4 Shared Backbone
 
-Standard Transformer encoder with pre-norm (LayerNorm before attention, not after). Eight self-attention layers, d_model=256, 8 heads, MLP ratio 4. All diagnostic and actuator tokens attend to each other — cross-diagnostic coupling is learned implicitly through self-attention.
+Standard Transformer encoder with pre-norm (LayerNorm before attention, not after). The production configuration on Frontier (`scripts/slurm_frontier/train_e2e_stage1.sh`) is **26 self-attention layers, d_model = 256, 8 heads, MLP ratio 4** — about 20.5 M backbone parameters. With the modality-specific refinement layers added on 2026-05-15 (per-token MLP blocks in the spectrogram and fast time-series tokenizers and heads, plus a Conv1d stem / inverse-stem around the fast-TS patch projection), total model size is **~27 M for Phase A (TS only)** and **~50 M for the full BC configuration (TS + video + spectrograms)**. The backbone is ~41 % of the full-BC total — the rest sits in modality-specific encoders and decoders, a deliberate inversion of Aurora's ~85 %-backbone profile that reflects our richer, heterogeneous per-modality I/O surface. Earlier Stellar runs used 8 layers without refinement (~6.6 M backbone, ~9.3 M Phase A); benchmarks tagged "L=8" in subsequent docs refer to that earlier size. All diagnostic and actuator tokens attend to each other in the shared backbone — cross-diagnostic coupling is learned implicitly through self-attention.
 
 Step conditioning: Fourier features of the rollout step index and absolute time offset, projected through a 2-layer MLP, added to all tokens. This allows the backbone to modulate predictions based on rollout depth.
 
@@ -306,23 +306,36 @@ Mitigation: ~500 shots → ~500k chunks (50 ms, 10 ms stride). Fallback: pretrai
 
 ## 9. Computational Requirements
 
-Hardware: 1× A100 40 GB per training run unless noted. Step times are realised numbers from production launchers; `wall` columns assume continuous occupancy and include 24 h-wall SLURM chaining via auto-resume.
+Two hardware regimes are in use:
+
+* **Stellar (Princeton)** — A100-PCIE-40GB per rank, used for the original Phase A pipeline at the smaller `n_layers=8` (~9.3 M Phase A) backbone.
+* **Frontier (OLCF)** — MI250X (64 GB HBM per GCD), used for the current production `n_layers=26` build (~27 M Phase A, ~50 M full BC including modality-refinement layers added 2026-05-15; the bare-backbone L=26 build was ~23 M / ~33 M before that). Stage 1 runs on **8 nodes × 8 GCDs = 64 ranks** (`scripts/slurm_frontier/train_e2e_stage1.sh`), per-rank batch 64 → effective batch 4096.
+
+### Stellar pipeline (smaller backbone, archived as the L=8 reference)
 
 | Phase | Stage | Steps | Batch | s/step | Wall |
 |---|---|---|---|---|---|
-| A | Stage 1 (single-step, TS only, 398 tokens) | 336 000 | 256 | 0.97 | ~3.7 days |
-| A | Stage 2 (delta, K = 1…10) | 322 000 | 64 | ~2 | ~7.5 days |
-| A | Stage 2 Extended (free-rollout K = 80) | ~50 000 | 32 | ~15 | ~9 days |
-| BC | Stage 1 (TS + spectro + video, 1180 tokens) | 672 000 | 128 | ~2 (×2.1 over A) | ~16 days |
-| BC | Stage 2 (delta, K = 1…10, multimodal) | 322 000 | 64 | ~4 | ~15 days |
+| A | Stage 1 (TS only, 398 tokens) | 336 000 | 256 (single-GPU) | 0.97 | ~3.7 days |
+| A | Stage 1 DDP (2× A100) | 336 000 | 256/rank | 0.40 | ~1.6 days |
+| A | Stage 2 (delta, K = 1…10) | 322 000 | 128 | ~2 | ~7.5 days |
+| A | Stage 2 Extended (free-rollout K = 80) | ~50 000 | 128 | ~15 | ~9 days |
+
+### Frontier pipeline (production, `n_layers=26`)
+
+| Phase | Stage | Steps | Per-rank batch | Effective batch | Wall (8 nodes) |
+|---|---|---|---|---|---|
+| BC | Stage 1 (TS + spectro + video, 1178 tokens) | 672 000 | 64 | 4096 | ~12 days |
+| BC | Stage 2 (delta, K = 1…10, multimodal) | 322 000 | 8 | 512 | ~10 days |
+| BC | Stage 2 Extended (free-rollout K = 80) | TBD | 4 | 256 | TBD |
+
+Step-time at L=26 is ~3.25× the L=8 cost at fixed N (backbone activation memory and FFN compute are linear in `n_layers`); the realised per-rank step time on Frontier is similar to the L=8 Stellar number because MI250X compute and Slingshot 11 collectives roughly compensate for the deeper backbone. The 64-rank effective batch is what compresses Stage 1 wall from a single-GPU-equivalent ~70 days to ~12 days.
 
 Approximate totals:
 
-- Phase A pipeline (Stage 1 → Stage 2 → Extended): **~20 A100-days**.
-- Phase BC pipeline (Stage 1 → Stage 2 → Extended once wired): **~35–45 A100-days**, dominated by the 1180-token attention cost relative to Phase A's 398.
-- Phase BC step-time scaling is below the 8.8× theoretical attention ceiling at d_model = 256 because the FFN (linear in N) is the per-layer compute bottleneck; the realised slowdown over Phase A is closer to 2× per step.
-- Estimated experiments to convergence: 3–5 per phase including failed runs and hyperparameter sweeps.
-- Total budget: **~80–120 A100-days** for the full Phase A + Phase BC programme through 80-step rollout, plus Phase D / E which inherit the converged Phase BC checkpoint and require evaluation runs only.
+- **Stellar Phase A pipeline** (Stage 1 → Stage 2 → Extended at L=8): ~20 A100-days. Already complete for the 9.3 M backbone.
+- **Frontier BC pipeline** (Stage 1 → Stage 2 delta → Extended at L=26): ~500–700 MI250X-GCD-days dominated by the 64-rank Stage 1. Wall-time ~25 days at 8 nodes if all three stages run end-to-end.
+- **Estimated experiments to convergence**: 2–3 production runs per stage on Frontier including failed runs.
+- **Phase D / E** inherit the converged BC checkpoint and require evaluation runs only.
 
 ## 10. References
 
