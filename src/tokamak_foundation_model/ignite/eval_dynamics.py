@@ -1390,9 +1390,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    default="/lustre/orion/fus187/proj-shared/foundation_model/text_embeddings.h5",
                    help="consolidated per-shot text-embedding H5. Only read when the loaded "
                         "checkpoint's cfg.text_embed_dim > 0 (old checkpoints ignore this).")
-    p.add_argument("--text_key", default="input", choices=("input", "total"),
-                   help="'input' (default) = strictly pre-experiment text; 'total' = whole "
-                        "bundle including post-shot documentation — probe use only.")
+    p.add_argument("--text_key", default=None, choices=("input", "total"),
+                   help="'input' = strictly pre-experiment text; 'total' = whole bundle "
+                        "including post-shot documentation — probe use only. Default: use the "
+                        "text_key STAMPED into the checkpoint at train time (falls back to "
+                        "'input' for checkpoints predating the stamp).")
     return p
 
 
@@ -1417,13 +1419,34 @@ def main(argv=None):
                             global_pool=args.global_pool,
                             revision_rounds=args.revision_rounds,
                             cfg_scale=args.cfg_scale)
+    # Cross-check the CLI's --text_key / --text_embed_path against what the checkpoint was
+    # TRAINED with (train_dynamics stamps both into the payload) — silently evaluating with a
+    # different conditioning text than training would be a confusing, undetected mismatch.
+    _ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    stamped_key = _ck.get("text_key")
+    stamped_path = _ck.get("text_embed_path") or None
+    del _ck
+    text_key = args.text_key
+    if text_key is None:
+        text_key = stamped_key or "input"
+        if stamped_key:
+            print(f"[eval] text_key {stamped_key!r} from checkpoint", flush=True)
+    elif stamped_key and text_key != stamped_key:
+        print(f"[eval] WARNING: evaluating with DIFFERENT conditioning text than training.\n"
+              f"[eval] WARNING: checkpoint was trained with text_key={stamped_key!r}; CLI "
+              f"passed --text_key={text_key!r}.\n"
+              f"[eval] WARNING: honoring the CLI value ({text_key!r}).", flush=True)
+    if stamped_path and stamped_path != args.text_embed_path:
+        print(f"[eval] text_embed_path differs from the checkpoint's stamped path "
+              f"(stamped={stamped_path!r}, using={args.text_embed_path!r}) — path moves are "
+              f"legitimate", flush=True)
     return run(args.ckpt, args.shot, args.cache_dir, args.out_dir,
                temperature=args.temperature, seed=args.seed, k0=args.k0,
                codec_tmpl=args.codec_tmpl, render_all=args.render_all,
                val_tail=args.val_tail, val_n=args.val_n, split_seed=args.split_seed,
                actuator_mode=args.actuator_mode,
                sampler=sampler, best_of=args.best_of_n,
-               text_embed_path=args.text_embed_path, text_key=args.text_key)
+               text_embed_path=args.text_embed_path, text_key=text_key)
 
 
 if __name__ == "__main__":

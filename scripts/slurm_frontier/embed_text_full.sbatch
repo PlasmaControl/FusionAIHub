@@ -16,6 +16,10 @@
 # RESUMABLE: each rank's shard file is skip-on-complete (a shard already fully
 # written is left alone on resubmission), so a re-`sbatch` after a timeout just
 # continues the unfinished shards. `--merge` is idempotent -- safe to rerun.
+# IMPORTANT: resubmission MUST use the SAME node/task count (-N / --ntasks-per-node)
+# as the original submission. The shard layout is shots[rank::world_size], so a
+# DIFFERENT world size reshuffles which rank owns which shot and --merge will abort
+# with a duplicate-shot assertion.
 #
 # Compute nodes are OFFLINE. Weights must already be cached under HF_HOME below;
 # pre-download from a LOGIN node first, e.g.:

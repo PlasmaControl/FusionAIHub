@@ -57,7 +57,6 @@ def _parse_args():
     p.add_argument("--shard_dir", default=None, help="default: <out's parent>/text_embeddings_shards")
     p.add_argument("--model_id", default="Qwen/Qwen3-Embedding-8B")
     p.add_argument("--max_length", type=int, default=32768)
-    p.add_argument("--batch_size", type=int, default=1)
     p.add_argument("--shard", type=int, default=int(os.environ.get("SLURM_PROCID", 0)))
     p.add_argument("--n_shards", type=int, default=int(os.environ.get("SLURM_NTASKS", 1)))
     p.add_argument("--limit", type=int, default=0, help="0 = all; pilot uses a small N")
@@ -130,7 +129,9 @@ def _embed_texts(tok, mdl, device, texts, max_length):
     import torch
 
     n_tok = [len(tok(t).input_ids) for t in texts]
-    truncated = [n > max_length for n in n_tok]
+    # truncation actually happens at max_length - 1 (the EOS slot below is reserved), so a row
+    # with EXACTLY max_length tokens still loses one -- the flag must track the real cutoff.
+    truncated = [n > max_length - 1 for n in n_tok]
 
     # documents get NO instruction prefix (instructions are for queries only). Truncate to
     # max_length-1 FIRST, then append EOS -- appending EOS before truncation risks right-side
@@ -178,7 +179,15 @@ def run_embed(args):
     n_skipped_empty = 0
     n_errors = 0
     n_done = 0
+    # shared across every bundle this shard processes -- see text_embed.split_bundle: a
+    # missing anchor silently changes the causality-critical INPUT slice, so we tally how
+    # often each fallback fires instead of letting it pass unnoticed.
+    anchor_counters: dict = {}
     with h5py.File(shard_path, "a") as f:
+        # shard-level provenance (Minor 5): the EMBED-time model_id/max_length, stamped once
+        # so --merge can assert every shard actually used the same settings.
+        f.attrs["model_id"] = args.model_id
+        f.attrs["max_length"] = args.max_length
         for i, shot in enumerate(my_shots):
             key = str(shot)
             if key in f and f[key].attrs.get("complete"):
@@ -187,7 +196,7 @@ def run_embed(args):
                 del f[key]
             run_id, text = shots[shot]
             try:
-                input_text, total_text = split_bundle(text)
+                input_text, total_text = split_bundle(text, counters=anchor_counters)
                 if not input_text.strip() or not total_text.strip():
                     n_skipped_empty += 1
                     continue
@@ -215,7 +224,13 @@ def run_embed(args):
                 print(f"[shard {args.shard}] {i + 1}/{len(my_shots)} "
                       f"(done={n_done} skipped_empty={n_skipped_empty} errors={n_errors})")
 
-    print(f"[shard {args.shard}] finished: done={n_done} skipped_empty={n_skipped_empty} errors={n_errors}")
+        for k, v in anchor_counters.items():
+            f.attrs[f"anchor_{k}"] = v
+
+    anchor_summary = (" " + " ".join(f"{k}={v}" for k, v in sorted(anchor_counters.items()))
+                       if anchor_counters else "")
+    print(f"[shard {args.shard}] finished: done={n_done} skipped_empty={n_skipped_empty} "
+          f"errors={n_errors}{anchor_summary}")
 
 
 def run_merge(args):
@@ -224,15 +239,50 @@ def run_merge(args):
         raise SystemExit(f"no shard files found in {args.shard_dir}")
 
     rows = {}
+    anchor_totals: dict = {}
+    # provenance (Minor 5): every shard must agree on the EMBED-time model_id/max_length.
+    # Shards from before this fix carry neither attr -- fall back to the merge CLI values for
+    # those, same as today.
+    shard_model_id = None
+    shard_max_length = None
     for sp in shard_paths:
         with h5py.File(sp, "r") as f:
+            m_id = f.attrs.get("model_id")
+            m_len = f.attrs.get("max_length")
+            if m_id is not None:
+                m_id = str(m_id)
+                if shard_model_id is None:
+                    shard_model_id = m_id
+                elif m_id != shard_model_id:
+                    raise SystemExit(
+                        f"model_id mismatch in shard {sp}: {m_id!r} != {shard_model_id!r} "
+                        f"(from an earlier shard)"
+                    )
+            if m_len is not None:
+                m_len = int(m_len)
+                if shard_max_length is None:
+                    shard_max_length = m_len
+                elif m_len != shard_max_length:
+                    raise SystemExit(
+                        f"max_length mismatch in shard {sp}: {m_len} != {shard_max_length} "
+                        f"(from an earlier shard)"
+                    )
+            for k in f.attrs.keys():
+                if k.startswith("anchor_"):
+                    anchor_totals[k] = anchor_totals.get(k, 0) + int(f.attrs[k])
             for key in f.keys():
                 grp = f[key]
                 if not grp.attrs.get("complete"):
                     continue
                 shot = int(key)
                 if shot in rows:
-                    raise AssertionError(f"duplicate shot {shot} found across shard files (last seen in {sp})")
+                    # likely cause: resumed with a different -N / world size -- the shard
+                    # layout is shots[rank::world_size], so a DIFFERENT node count reshuffles
+                    # which rank owns which shot and duplicates appear across shard files.
+                    raise AssertionError(
+                        f"duplicate shot {shot} found across shard files (last seen in {sp}); "
+                        f"likely cause: resumed with a different -N / world size"
+                    )
                 rows[shot] = {
                     "run_id": str(grp.attrs["run_id"]),
                     "input": grp["input"][:],
@@ -260,7 +310,8 @@ def run_merge(args):
             data=np.array([rows[s]["run_id"] for s in shots_sorted], dtype=object),
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-        f.create_dataset("input", data=np.stack([rows[s]["input"] for s in shots_sorted]).astype(np.float16))
+        input_arr = np.stack([rows[s]["input"] for s in shots_sorted]).astype(np.float16)
+        f.create_dataset("input", data=input_arr)
         f.create_dataset("total", data=np.stack([rows[s]["total"] for s in shots_sorted]).astype(np.float16))
         f.create_dataset(
             "n_tok_input", data=np.array([rows[s]["n_tok_input"] for s in shots_sorted], dtype=np.int32)
@@ -274,13 +325,13 @@ def run_merge(args):
         f.create_dataset(
             "truncated_total", data=np.array([rows[s]["truncated_total"] for s in shots_sorted], dtype=bool)
         )
-        f.attrs["model_id"] = args.model_id
+        f.attrs["model_id"] = shard_model_id if shard_model_id is not None else args.model_id
         f.attrs["hf_revision"] = ""
-        f.attrs["max_length"] = args.max_length
+        f.attrs["max_length"] = shard_max_length if shard_max_length is not None else args.max_length
         f.attrs["pooling"] = "last_token"
         f.attrs["instruction"] = ""
         f.attrs["normalized"] = True
-        f.attrs["embed_dim"] = EMBED_DIM
+        f.attrs["embed_dim"] = input_arr.shape[1]
         f.attrs["input_rule"] = (
             "header + general-session-info/metadata + planned(mini-proposal); "
             "excludes session summaries and shot-specific results"
@@ -291,6 +342,10 @@ def run_merge(args):
         f.attrs["n_shots"] = n
         f.attrs["n_skipped"] = n_skipped
         f.attrs["complete"] = True
+        # anchor-fallback totals summed across shards (0 for shards predating the counters,
+        # or when no shard produced any -- see text_embed.split_bundle).
+        for k, v in anchor_totals.items():
+            f.attrs[k] = v
 
     os.replace(tmp_path, out_path)
     print(f"wrote {out_path} ({n} shots)")

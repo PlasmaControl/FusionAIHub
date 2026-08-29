@@ -30,7 +30,7 @@ def _find_anchor_line(lines: list[str], anchor: str) -> int | None:
     return None
 
 
-def split_bundle(text: str) -> tuple[str, str]:
+def split_bundle(text: str, counters: dict | None = None) -> tuple[str, str]:
     """Split a per-shot text bundle into (input_text, total_text).
 
     total_text is the whole bundle unchanged. input_text is the strictly pre-experiment
@@ -38,18 +38,33 @@ def split_bundle(text: str) -> tuple[str, str]:
     before the shot ran), and the whole planned/mini-proposal section. Session summaries
     (operator/diagnostics logs written during/after the run day) and shot-specific results
     are always excluded. See the module docstring and the anchor constants above.
+
+    ``counters`` (optional): when given, incremented in place (``counters[key] += 1``, key
+    created at 0 first) for every ANCHOR-MISSING fallback branch actually taken on this call —
+    a missing anchor silently changes the causality-critical INPUT slice, so callers processing
+    many bundles can tally how often each fallback fired. No behavior change to the returned
+    slices either way.
     """
+    def _bump(key: str) -> None:
+        if counters is not None:
+            counters[key] = counters.get(key, 0) + 1
+
     total_text = text
     lines = text.splitlines(keepends=True)
 
     idx_general = _find_anchor_line(lines, ANCHOR_GENERAL)
     if idx_general is None:
         # header can't be delimited safely without the general-section anchor
+        _bump("missing_general_anchor")
         return "", total_text
 
     idx_summaries = _find_anchor_line(lines, ANCHOR_SESSION_SUMMARIES)
+    if idx_summaries is None:
+        _bump("missing_summaries_anchor")
     idx_planned = _find_anchor_line(lines, ANCHOR_PLANNED)
     idx_shot_specific = _find_anchor_line(lines, ANCHOR_SHOT_SPECIFIC)
+    if idx_shot_specific is None:
+        _bump("missing_shot_anchor")
 
     header = "".join(lines[:idx_general])
 
@@ -62,6 +77,7 @@ def split_bundle(text: str) -> tuple[str, str]:
     general_slice = "".join(lines[idx_general:general_end])
 
     if idx_planned is None:
+        _bump("missing_planned_anchor")
         return header + general_slice, total_text
 
     planned_end = idx_shot_specific if idx_shot_specific is not None else len(lines)

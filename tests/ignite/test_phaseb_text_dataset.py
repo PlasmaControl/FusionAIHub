@@ -1,5 +1,5 @@
-# dataset-integration tests for FrameCodeDataset are appended by a later task.
-"""Consolidated text-embedding H5 loader: load_text_embeddings + lookup."""
+"""Consolidated text-embedding H5 loader: load_text_embeddings + lookup, plus
+FrameCodeDataset dataset-integration tests below."""
 
 from pathlib import Path
 
@@ -134,6 +134,16 @@ def test_getitem_missing_shot_gets_zeros(tmp_path):
     _, _, _, text = ds[0]
     assert text.shape == (DS_DIM,)
     assert torch.equal(text, torch.zeros(DS_DIM))
+
+
+def test_empty_text_embeds_dict_raises_clear_error(tmp_path):
+    """An empty (non-None) text_embeds dict means the H5 covered zero shots -- a real
+    misconfiguration (bad path/key), not the no-flag path. Must not raise a bare
+    StopIteration from `next(iter({}.values()))`."""
+    cfg = _tiny_cfg()
+    _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
+    with pytest.raises(SystemExit, match="zero shots"):
+        FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds={})
 
 
 def test_getitem_no_text_embeds_gives_zero_length_text(tmp_path):

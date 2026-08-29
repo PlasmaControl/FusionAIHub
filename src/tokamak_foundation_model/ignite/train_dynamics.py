@@ -686,6 +686,9 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         names = {m.name for m in cfg.modalities}
         text_dim = None
         if text_embeds is not None:
+            if not text_embeds:
+                raise SystemExit(
+                    "text embeddings H5 covered zero shots (path/key correct?)")
             text_dim = next(iter(text_embeds.values())).shape[0]
         n_covered = 0
         n_kept = 0

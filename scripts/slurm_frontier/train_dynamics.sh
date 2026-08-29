@@ -96,6 +96,16 @@ export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 echo "[ignite_dynamics] PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF} \
 (NOTE: expandable_segments is a NO-OP on this ROCm build)"
 
+# TEXT_EMBED_PATH and TEXT_EMBED_DIM must be set TOGETHER or not at all: dim-without-path
+# would pass --text_embed_path "" and die inside the trainer's TOGETHER guard with a
+# confusing h5py error, and path-without-dim would silently launch an UNCONDITIONED
+# baseline (the gate below keys on TEXT_EMBED_DIM alone).
+if { [ -n "${TEXT_EMBED_PATH}" ] && [ "${TEXT_EMBED_DIM}" = "0" ]; } || \
+   { [ -z "${TEXT_EMBED_PATH}" ] && [ "${TEXT_EMBED_DIM}" != "0" ]; }; then
+  echo "ERROR: TEXT_EMBED_PATH and TEXT_EMBED_DIM must be set together (path='${TEXT_EMBED_PATH}', dim='${TEXT_EMBED_DIM}')" >&2
+  exit 1
+fi
+
 EXTRA=()
 # DATA_DIR: read shots from an OVERLAY instead of the canonical foundation_model
 # (which is not group-writable). discover_shots() over the overlay also RESTRICTS

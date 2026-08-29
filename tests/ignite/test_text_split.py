@@ -153,3 +153,27 @@ def test_duplicate_session_summaries_anchor_uses_first_occurrence_without_crashi
     assert "PLANNED_SENTINEL" in input_text
     assert "FIRST_SUMMARIES_TAIL_SENTINEL" not in input_text
     assert "SECOND_SUMMARIES_TAIL_SENTINEL" not in input_text
+
+
+def test_counters_increment_on_missing_anchor():
+    # a missing anchor silently changes the causality-critical INPUT slice, so a caller
+    # processing many bundles must be able to tally how often each fallback fired.
+    text = _bundle(summaries=False)
+    counters = {}
+    split_bundle(text, counters=counters)
+    assert counters == {"missing_summaries_anchor": 1}
+
+
+def test_counters_untouched_on_complete_bundle():
+    text = _bundle()
+    counters = {}
+    split_bundle(text, counters=counters)
+    assert counters == {}
+
+
+def test_counters_param_optional():
+    # omitting counters entirely must stay valid (no behavior change to the returned slices)
+    text = _bundle(general=False)
+    input_text, total_text = split_bundle(text)
+    assert input_text == ""
+    assert total_text == text
