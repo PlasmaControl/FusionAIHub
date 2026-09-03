@@ -47,6 +47,12 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 path = "src/faith/__init__.py"
 
+[tool.hatch.build.targets.wheel]
+# Three top-level packages live under src/. Without this list hatchling
+# autodiscovers only the one matching the project name (faith), so
+# `import labelmaker` fails in every pixi env.
+packages = ["src/faith", "src/tokamak_foundation_model", "src/labelmaker"]
+
 [tool.pixi.workspace]
 channels = ["conda-forge", "ga-fdp"]
 platforms = ["linux-64", "win-64", "osx-arm64"]
@@ -82,6 +88,47 @@ platforms = ["linux-64"]
 [tool.pixi.feature.fdp.dependencies]
 toksearch = { channel = "ga-fdp" }
 toksearch_d3d = { channel = "ga-fdp" }
+
+[tool.pixi.feature.labelmaker]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.labelmaker.dependencies]
+# labels_index.parquet. pandas 3 can write parquet only through pyarrow,
+# and the default env does not have it.
+pyarrow = ">=17,<22"
+# Solving `labelmaker` (labelmaker + fdp + the implicit default feature)
+# against live conda-forge picks up protobuf 7.35.1, published to
+# conda-forge sometime after pixi.lock's other environments were last
+# solved (2026-07-31, per `git log -- pixi.lock`). The shared
+# [project.dependencies] pin `wandb>=0.25.1,<0.26` needs
+# protobuf>4.21.0,!=5.28.0,!=5.29.0,<7, so the two are unsatisfiable
+# together:
+#
+#   Because wandb==0.25.1 depends on one of:
+#       protobuf>4.21.0,<5.28.0 / >5.28.0,<5.29.0 / >5.29.0,<7
+#   and protobuf==7.35.1, we can conclude that wandb==0.25.1 cannot be used.
+#   help: protobuf==7.35.1 has been pinned by the conda solve.
+#
+# This is channel drift, not a toksearch/torch conflict (the brief's
+# anticipated failure mode and documented CPU-wheel-drop fallback, tried
+# first, did not change this error). It reproduced identically with and
+# without the two pypi-dependencies lines below and with pyarrow removed
+# entirely, isolating the cause to protobuf's rolling conda-forge version
+# rather than to either of those. The already-locked `fdp`/`default`
+# environments are unaffected since they stay pinned to their 2026-07-31
+# solve (libprotobuf/protobuf 6.31.1) until someone reruns `pixi update`.
+# Pinning protobuf here, scoped to this feature only, keeps the new
+# environment on the same already-known-good major version, the same way
+# `feature.cuda` pins torch's index rather than editing [project].
+protobuf = "<7"
+
+[tool.pixi.feature.labelmaker.pypi-dependencies]
+# The workspace installs `faith` editable into every environment, which
+# drags torch in. Labelmaker never uses a GPU (its heaviest model is 12k
+# parameters evaluated in numpy), so take the CPU wheels and save ~3 GB
+# in an environment that would otherwise duplicate cu124.
+torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
+torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
 
 [tool.pixi.feature.frontier]
 platforms = ["linux-64"]
@@ -120,3 +167,4 @@ verify-flash-attn = { cmd = "python scripts/slurm_frontier/verify_flash_attn.py"
 default = ["cuda"]
 fdp = ["fdp", "cuda"]
 frontier = ["frontier"]
+labelmaker = ["labelmaker", "fdp"]
