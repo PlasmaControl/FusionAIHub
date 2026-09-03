@@ -80,8 +80,9 @@ class FastTimeSeriesTokenizer(nn.Module):
         self.modality_embed = nn.Parameter(torch.empty(d_model))
 
         # Pre-backbone per-token MLP refiners (stacked ViT-style residual
-        # MLP blocks). Two blocks, matching the spectrogram pathway.
-        n_refine_blocks = 2
+        # MLP blocks). 2026-05-19: bumped 2 → 4 alongside the spectrogram
+        # refine bump for added capacity around the d_model=256 bottleneck.
+        n_refine_blocks = 4
         self.refine = nn.ModuleList([
             nn.Sequential(
                 nn.LayerNorm(d_model),

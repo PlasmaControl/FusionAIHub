@@ -1,0 +1,36 @@
+{
+  "ece": {
+    "task": 4,
+    "modality": "ece",
+    "N_pairs": 4074,
+    "dim": 48,
+    "L": 16,
+    "random_floor": 0.0625,
+    "oracle_all": 0.11514896154403687,
+    "oracle_active": 0.11671720445156097,
+    "oracle_quiescent": 0.11894703656435013,
+    "oracle_active_mode_patch": 0.14944599568843842,
+    "oracle_active_background": 0.11083577573299408,
+    "n_active": 1019,
+    "n_quiescent": 1019,
+    "n_active_mode_tokens": 59605,
+    "n_active_bg_tokens": 331691
+  },
+  "co2": {
+    "task": 4,
+    "modality": "co2",
+    "N_pairs": 5455,
+    "dim": 48,
+    "L": 16,
+    "random_floor": 0.0625,
+    "oracle_all": 0.36105087399482727,
+    "oracle_active": 0.09906364977359772,
+    "oracle_quiescent": 0.990212082862854,
+    "oracle_active_mode_patch": 0.10663043707609177,
+    "oracle_active_background": 0.09767600893974304,
+    "n_active": 1364,
+    "n_quiescent": 1605,
+    "n_active_mode_tokens": 81164,
+    "n_active_bg_tokens": 442612
+  }
+}

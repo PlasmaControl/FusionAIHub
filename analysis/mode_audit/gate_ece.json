@@ -1,0 +1,18 @@
+{
+  "modality": "ece",
+  "codec_dir": "/lustre/orion/fus187/proj-shared/models/fsq_smooth_ece_s32",
+  "bg_subtract": true,
+  "smooth_frames": 32,
+  "stability_active_in": 0.6004774570465088,
+  "stability_active_out": 0.6243489384651184,
+  "persistence_active": 0.134548619389534,
+  "persistence_quiescent": 0.1282009333372116,
+  "capture_active": 0.7553187608718872,
+  "inverse_splice_pass": 1.0,
+  "checks": {
+    "stability>=0.90": false,
+    "persist_active>=0.40": false,
+    "capture>=0.69": true
+  },
+  "PASS": false
+}

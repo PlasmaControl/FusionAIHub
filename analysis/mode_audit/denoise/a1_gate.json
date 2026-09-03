@@ -1,0 +1,63 @@
+{
+  "ece": {
+    "modality": "ece",
+    "C": 40,
+    "n_windows": 89,
+    "n_active": 23,
+    "n_quiescent": 23,
+    "retention_median_active": 0.40164586901664734,
+    "retention_median_highSNR": 0.3714451789855957,
+    "freq_within_tol": 1.0,
+    "noninvention_fire_rate_quiescent": 0.0,
+    "amplitude_linearity_pearson_r": 0.9768720775636481,
+    "amplitude_linearity_slope": 0.3463882619280336,
+    "k_chan": 2,
+    "A1_pass": false
+  },
+  "co2": {
+    "modality": "co2",
+    "C": 4,
+    "n_windows": 59,
+    "n_active": 15,
+    "n_quiescent": 15,
+    "retention_median_active": 0.5891416668891907,
+    "retention_median_highSNR": 0.27716103196144104,
+    "freq_within_tol": 1.0,
+    "noninvention_fire_rate_quiescent": 0.0,
+    "amplitude_linearity_pearson_r": 0.9771318792370867,
+    "amplitude_linearity_slope": 0.24241566284427615,
+    "k_chan": 2,
+    "A1_pass": false
+  },
+  "bes": {
+    "modality": "bes",
+    "C": 16,
+    "n_windows": 89,
+    "n_active": 23,
+    "n_quiescent": 23,
+    "retention_median_active": 0.9583478569984436,
+    "retention_median_highSNR": 0.7510750889778137,
+    "freq_within_tol": 1.0,
+    "noninvention_fire_rate_quiescent": 0.0,
+    "amplitude_linearity_pearson_r": 0.8565872017854104,
+    "amplitude_linearity_slope": 0.8505350549145558,
+    "k_chan": 2,
+    "A1_pass": false
+  },
+  "mhr": {
+    "modality": "mhr",
+    "C": 6,
+    "n_windows": 89,
+    "n_active": 23,
+    "n_quiescent": 23,
+    "retention_median_active": 1.1077675819396973,
+    "retention_median_highSNR": 1.1805710792541504,
+    "freq_within_tol": 1.0,
+    "noninvention_fire_rate_quiescent": 0.0,
+    "amplitude_linearity_pearson_r": 0.9172907847469782,
+    "amplitude_linearity_slope": 1.1102774320934568,
+    "k_chan": 2,
+    "A1_pass": true
+  },
+  "A1_all_pass": false
+}

@@ -30,7 +30,7 @@ set -e
 # is useless for locating the repo. Use SLURM_SUBMIT_DIR — submit from the
 # repo root: `cd <repo> && sbatch scripts/slurm_frontier/train_e2e_stage1_flashattn.sh`.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
-if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_common.sh" ]; then
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
     echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
     echo "       cd into the FusionAIHub repo before sbatch." >&2
     exit 1
@@ -40,7 +40,7 @@ CHECKPOINT_DIR="/lustre/orion/fus187/proj-shared/models/e2e_stage1_flashattn"
 mkdir -p logs "${CHECKPOINT_DIR}"
 
 export MASTER_PORT=29500
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
 # Auto-resume from previous chained submission. Pass --resume_checkpoint
 # only when a `_latest.pt` is on disk; the Python script's flag guard

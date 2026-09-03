@@ -1,0 +1,70 @@
+{
+  "task0": {
+    "task": 0,
+    "modality": "mhr",
+    "n_mode_free": 20,
+    "false_positives": 0,
+    "fp_rate": 0.0,
+    "fp_peak_bins": [],
+    "patch_f": 8,
+    "fp_near_patch_grid": 0,
+    "verdict": "clean"
+  },
+  "task1": {
+    "task": 1,
+    "modality": "mhr",
+    "dim": 48,
+    "L": 16,
+    "n_windows": 8728,
+    "n_mode_pos": 2182,
+    "n_mode_neg": 5674,
+    "per_dim_mean_top1_level": 0.6538848146570108,
+    "per_dim_max_top1_level": 0.6549744715284143,
+    "joint_all": {
+      "tokens": 3351552,
+      "unique": 1161377,
+      "top1": 0.6534757628704553,
+      "top10": 0.6534838188397495,
+      "top100": 0.6535106720707302
+    },
+    "joint_mode_pos": {
+      "tokens": 837888,
+      "unique": 834924,
+      "top1": 0.003529111289337,
+      "top10": 0.003549400397189123,
+      "top100": 0.0036568133211121296
+    },
+    "joint_mode_neg": {
+      "tokens": 2178816,
+      "unique": 1,
+      "top1": 1.0,
+      "top10": 1.0,
+      "top100": 1.0
+    },
+    "mode_pixel_tokens": 10897,
+    "background_tokens": 65903,
+    "mode_token_fraction": 0.14188802083333332,
+    "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+    "inv_freq_weight_max": 13.79427075164945,
+    "inv_freq_weight_mean": 1.0,
+    "eff_num_weight_max": 9.44893022403066,
+    "eff_num_weight_mean": 1.0
+  },
+  "task2": {
+    "task": 2,
+    "modality": "mhr",
+    "n_pairs": 10,
+    "forward_pass_rate": 1.0,
+    "inverse_pass_rate": 1.0,
+    "fire_threshold_P75": 0.8608256280422211,
+    "P25": 0.0,
+    "detector_band_khz": [
+      5,
+      40
+    ],
+    "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+    "verdict": "FAITHFUL"
+  },
+  "n_windows": 8728,
+  "bg_subtract": true
+}

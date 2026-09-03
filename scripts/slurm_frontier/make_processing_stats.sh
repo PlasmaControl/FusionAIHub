@@ -14,7 +14,7 @@ set -uo pipefail
 # is useless for locating the repo. Use SLURM_SUBMIT_DIR — submit from the
 # repo root: `cd <repo> && sbatch scripts/slurm_frontier/make_processing_stats.sh`.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
-if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_common.sh" ]; then
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
     echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
     echo "       cd into the FusionAIHub repo before sbatch." >&2
     exit 1
@@ -23,6 +23,6 @@ cd "${PROJECT_DIR}"
 mkdir -p logs
 
 # shellcheck disable=SC1091
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
 srun python -u scripts/data_preparation/make_processing_stats.py

@@ -1,0 +1,70 @@
+{
+  "task0": {
+    "task": 0,
+    "modality": "co2",
+    "n_mode_free": 20,
+    "false_positives": 0,
+    "fp_rate": 0.0,
+    "fp_peak_bins": [],
+    "patch_f": 8,
+    "fp_near_patch_grid": 0,
+    "verdict": "clean"
+  },
+  "task1": {
+    "task": 1,
+    "modality": "co2",
+    "dim": 48,
+    "L": 16,
+    "n_windows": 5455,
+    "n_mode_pos": 1364,
+    "n_mode_neg": 1605,
+    "per_dim_mean_top1_level": 0.2961679345369946,
+    "per_dim_max_top1_level": 0.29656660556064773,
+    "joint_all": {
+      "tokens": 2094720,
+      "unique": 1474827,
+      "top1": 0.2959278567063856,
+      "top10": 0.29593597234952645,
+      "top100": 0.29597893751909565
+    },
+    "joint_mode_pos": {
+      "tokens": 523776,
+      "unique": 523776,
+      "top1": 1.9092130987292278e-06,
+      "top10": 1.9092130987292278e-05,
+      "top100": 0.00019092130987292277
+    },
+    "joint_mode_neg": {
+      "tokens": 616320,
+      "unique": 1,
+      "top1": 1.0,
+      "top10": 1.0,
+      "top100": 1.0
+    },
+    "mode_pixel_tokens": 11896,
+    "background_tokens": 64904,
+    "mode_token_fraction": 0.15489583333333334,
+    "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+    "inv_freq_weight_max": 15.663868048740317,
+    "inv_freq_weight_mean": 1.0,
+    "eff_num_weight_max": 14.784004184914307,
+    "eff_num_weight_mean": 1.0
+  },
+  "task2": {
+    "task": 2,
+    "modality": "co2",
+    "n_pairs": 10,
+    "forward_pass_rate": 0.5,
+    "inverse_pass_rate": 1.0,
+    "fire_threshold_P75": 0.405278742313385,
+    "P25": 0.0,
+    "detector_band_khz": [
+      5,
+      40
+    ],
+    "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+    "verdict": "UNFAITHFUL (<80%)"
+  },
+  "n_windows": 5455,
+  "bg_subtract": true
+}

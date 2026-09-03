@@ -776,6 +776,15 @@ signals:
     stft: true
     sampling_rate: 500000
     num_channels: 4
+    # Per-channel fallback to PTDATA when the MDSplus BCI path is empty
+    # for a given shot. Channel order matches input_key above.
+    fallback:
+      tree: PTDATA
+      input_key:
+        - DENR0UF
+        - DENV1UF
+        - DENV2UF
+        - DENV3UF
 
   vib:
     tree: D3D

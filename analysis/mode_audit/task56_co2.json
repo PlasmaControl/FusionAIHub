@@ -1,0 +1,17 @@
+{
+  "task": "5+6",
+  "modality": "co2",
+  "L": 16,
+  "random_floor": 0.0625,
+  "n_in": 1092,
+  "n_out": 546,
+  "stability_in": 0.4341925253934694,
+  "stability_out": 0.509803682019859,
+  "stability_in_active": 0.179465379726653,
+  "stability_out_active": 0.17662935362708185,
+  "persistence_in": 0.3775960682195056,
+  "persistence_out": 0.4598622676364154,
+  "persistence_active": 0.09839105386196113,
+  "persistence_quiescent": 0.9902154875032319,
+  "corr_persist_vs_residvar": -0.9210076517020308
+}

@@ -1,0 +1,50 @@
+{
+  "ece": {
+    "modality": "ece",
+    "n_windows": 102,
+    "n_active": 26,
+    "freq_persist": 0.8076923076923077,
+    "freq_shuffled": 0.38461538461538464,
+    "freq_margin": 0.4230769230769231,
+    "bandpower_corr": 0.8172001118989354,
+    "bandpower_shuffled": -0.03334367753171449,
+    "bandpower_margin": 0.8505437894306499,
+    "GREEN": true
+  },
+  "co2": {
+    "modality": "co2",
+    "n_windows": 220,
+    "n_active": 55,
+    "freq_persist": 0.7636363636363637,
+    "freq_shuffled": 0.16363636363636364,
+    "freq_margin": 0.6000000000000001,
+    "bandpower_corr": 0.7981693550125228,
+    "bandpower_shuffled": 0.023645497481762902,
+    "bandpower_margin": 0.7745238575307599,
+    "GREEN": true
+  },
+  "bes": {
+    "modality": "bes",
+    "n_windows": 74,
+    "n_active": 19,
+    "freq_persist": 0.9473684210526315,
+    "freq_shuffled": 0.47368421052631576,
+    "freq_margin": 0.47368421052631576,
+    "bandpower_corr": 0.7828047686861923,
+    "bandpower_shuffled": 0.11535779495090052,
+    "bandpower_margin": 0.6674469737352918,
+    "GREEN": true
+  },
+  "mhr": {
+    "modality": "mhr",
+    "n_windows": 220,
+    "n_active": 55,
+    "freq_persist": 0.7454545454545455,
+    "freq_shuffled": 0.2,
+    "freq_margin": 0.5454545454545454,
+    "bandpower_corr": 0.8188568582294733,
+    "bandpower_shuffled": 0.04936921341036595,
+    "bandpower_margin": 0.7694876448191074,
+    "GREEN": true
+  }
+}

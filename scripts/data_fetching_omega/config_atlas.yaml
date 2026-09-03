@@ -1927,5 +1927,9 @@ trees:
     - pcbcoil
     - plasticfix
     - dstdenp
+    - DENR0UF
+    - DENV1UF
+    - DENV2UF
+    - DENV3UF
 
 server: atlas.gat.com
