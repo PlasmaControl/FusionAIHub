@@ -21,12 +21,17 @@
 #SBATCH --cpus-per-task=7
 set -uo pipefail
 
-PROJECT_DIR=/lustre/orion/fus187/scratch/nchen/FusionAIHub
-cd "$PROJECT_DIR"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
+    echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
+    echo "       cd into the FusionAIHub repo before sbatch." >&2
+    exit 1
+fi
+cd "${PROJECT_DIR}"
 mkdir -p logs
 
 # shellcheck disable=SC1091
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
 OUT_DIR="profile/${SLURM_JOB_ID}_attn_bench"
 mkdir -p "$OUT_DIR"

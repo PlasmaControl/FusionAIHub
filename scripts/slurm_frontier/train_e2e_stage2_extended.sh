@@ -12,11 +12,17 @@
 #SBATCH --cpus-per-task=7
 set -e
 
-cd /lustre/orion/fus187/scratch/nchen/FusionAIHub
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
+    echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
+    echo "       cd into the FusionAIHub repo before sbatch." >&2
+    exit 1
+fi
+cd "${PROJECT_DIR}"
 mkdir -p logs runs/e2e_stage2_extended
 
 export MASTER_PORT=29503
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
 srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS -c $SLURM_CPUS_PER_TASK \
      --gpus-per-task=1 --gpu-bind=closest \

@@ -1,0 +1,70 @@
+{
+  "task0": {
+    "task": 0,
+    "modality": "bes",
+    "n_mode_free": 20,
+    "false_positives": 0,
+    "fp_rate": 0.0,
+    "fp_peak_bins": [],
+    "patch_f": 8,
+    "fp_near_patch_grid": 0,
+    "verdict": "clean"
+  },
+  "task1": {
+    "task": 1,
+    "modality": "bes",
+    "dim": 48,
+    "L": 16,
+    "n_windows": 1610,
+    "n_mode_pos": 403,
+    "n_mode_neg": 403,
+    "per_dim_mean_top1_level": 0.12706543979684265,
+    "per_dim_max_top1_level": 0.13292572463768115,
+    "joint_all": {
+      "tokens": 618240,
+      "unique": 618240,
+      "top1": 1.6174948240165631e-06,
+      "top10": 1.6174948240165633e-05,
+      "top100": 0.0001617494824016563
+    },
+    "joint_mode_pos": {
+      "tokens": 154752,
+      "unique": 154752,
+      "top1": 6.4619520264681555e-06,
+      "top10": 6.461952026468155e-05,
+      "top100": 0.0006461952026468156
+    },
+    "joint_mode_neg": {
+      "tokens": 154752,
+      "unique": 154752,
+      "top1": 6.4619520264681555e-06,
+      "top10": 6.461952026468155e-05,
+      "top100": 0.0006461952026468156
+    },
+    "mode_pixel_tokens": 11356,
+    "background_tokens": 65444,
+    "mode_token_fraction": 0.14786458333333333,
+    "class_weight_scheme": "per-dim inverse-freq AND effective-number(beta=0.9999); mean-normalized to L; report max/mean ratio vs the flat cw=20",
+    "inv_freq_weight_max": 14.694332276757706,
+    "inv_freq_weight_mean": 1.0,
+    "eff_num_weight_max": 14.390087617070545,
+    "eff_num_weight_mean": 1.0
+  },
+  "task2": {
+    "task": 2,
+    "modality": "bes",
+    "n_pairs": 10,
+    "forward_pass_rate": 1.0,
+    "inverse_pass_rate": 1.0,
+    "fire_threshold_P75": 0.49445436894893646,
+    "P25": 0.2505236491560936,
+    "detector_band_khz": [
+      5,
+      40
+    ],
+    "split": "relative top/bottom quartile of absolute band prominence (no human labels)",
+    "verdict": "FAITHFUL"
+  },
+  "n_windows": 1610,
+  "bg_subtract": true
+}

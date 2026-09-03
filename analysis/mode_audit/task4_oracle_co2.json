@@ -1,0 +1,17 @@
+{
+  "task": 4,
+  "modality": "co2",
+  "N_pairs": 5455,
+  "dim": 48,
+  "L": 16,
+  "random_floor": 0.0625,
+  "oracle_all": 0.36105087399482727,
+  "oracle_active": 0.09906364977359772,
+  "oracle_quiescent": 0.990212082862854,
+  "oracle_active_mode_patch": 0.10663043707609177,
+  "oracle_active_background": 0.09767600893974304,
+  "n_active": 1364,
+  "n_quiescent": 1605,
+  "n_active_mode_tokens": 81164,
+  "n_active_bg_tokens": 442612
+}

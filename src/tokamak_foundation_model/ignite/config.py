@@ -1,0 +1,900 @@
+"""Shared config + tensor-shape contracts for IGNITE Phase A (codecs).
+
+This module is the single source of truth for shapes and hyper-parameters that every
+Phase-A component builds against. Components depend ONLY on these shapes (and external
+libs), not on each other's implementations, so they can be built independently.
+
+Tensor-shape conventions (batch-first):
+
+    raw window          (B, C, W)          C channels, W = window_samples
+    spectrogram window  (B, C, F, T)       F = freq_bins, T = time_frames
+    pre-FSQ features     (B, n_tok, d_model)
+    fsq codes (int)     (B, n_tok, fsq_dim)   entry i in [0, fsq_levels[i])
+    quantized (cont)    (B, n_tok, d_model)
+    reconstruction      (B, C, F, T)
+
+    n_tok = (freq_bins // patch_f) * (time_frames // patch_t)
+
+Component interface contracts (implemented in sibling modules; TDD):
+
+    quantizer.SpectroQuantizer(cfg)
+        .quantize(feats: (B,n_tok,d_model)) -> (quant: (B,n_tok,d_model), codes: (B,n_tok,fsq_dim) long)
+        .indices_from_codes / .codebook_size  (thin wrapper over vector_quantize_pytorch.FSQ)
+
+    nets.SpectroEncoder(cfg)(x: (B,C,F,T)) -> feats (B,n_tok,d_model)      # x-transformers based
+    nets.SpectroDecoder(cfg)(quant: (B,n_tok,d_model)) -> recon (B,C,F,T)  # x-transformers based
+
+    losses.shift_consistency(feats_a, feats_b) -> scalar    # ||enc(x)-enc(shift_d x)||^2 on PRE-FSQ feats
+    losses.recon_objective(recon, target, disc, cfg) -> dict  # adversarial + lambda_pix * pixel-anchor
+
+    discriminator.FreqAwarePatchGAN(cfg)(x: (B,C,F,T)) -> list of patch-score maps  # multi-scale, freq-PE
+
+    gate.stability(codes_x, codes_shifted) -> float in [0,1]
+    gate.persistence(codes_t, codes_tp1, steady_mask) -> float
+    gate.forecastability(codes_seq, ...) -> dict   # cheap probe vs persistence, transition stratum
+    gate.decode_fidelity(recon, target) -> dict    # mode-detector F1 + distributional match
+
+    data.shift_pair_windows(...) -> (spec_a (B,C,F,T), spec_b (B,C,F,T))  # raw d-shift + re-STFT
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from math import prod
+from typing import Dict, List, Optional, Sequence, Tuple
+
+# --- STFT / windowing (matches the existing spectro pipeline; see data_loader.py) ---
+STFT_FS: float = 500_000.0   # Hz, spectro modality target sampling
+STFT_N_FFT: int = 1024       # Hann window length -> 0.512 ms/frame at hop 256
+STFT_HOP: int = 256          # STFT hop in samples
+CHUNK_S: float = 0.05        # 50 ms = ONE FRAME (the world-model stepping unit)
+
+# --- Fast-TS (filterscopes) raw sampling (matches TokamakH5Dataset.SIGNAL_CONFIGS) ---
+# The filterscopes SignalConfig is target_fs=10 kHz, channels_to_use=slice(0,8) (8 chans),
+# apply_stft=False, preprocess=standardize. So a 50 ms window is round(0.05*10000) = 500
+# raw samples per channel. The codec models the ELM ACTIVITY ENVELOPE of those raw samples,
+# NOT the raw spike waveform (§4.3: "Statistic = ELM activity envelope ... NOT spike timing").
+FASTTS_FS: float = 10_000.0  # Hz, filterscopes target sampling (== SignalConfig.target_fs)
+
+# --- slow-TS windowing (smooth kinetic-profile time-series; see data_loader.py) -----
+# All 7 slow-TS signals load at target_fs = 100 Hz (SignalConfig.target_fs=1e2), so ONE
+# 50 ms world-model frame = round(CHUNK_S * SLOWTS_FS) = 5 raw samples. A slow-TS window is
+# therefore (C_positions, T=5): a short slice of a smooth radial/position profile in time.
+SLOWTS_FS: float = 100.0     # Hz, slow-TS (Thomson / CER / MSE) target sampling
+
+
+@dataclass
+class SpectroCodecConfig:
+    """Statistics-first spectrogram codec (Phase A). Defaults match the real STFT grid."""
+
+    # data / shape
+    channels: int = 1
+    freq_bins: int = 512          # cropped from n_fft//2+1 = 513
+    time_frames: int = 96         # ~98 STFT frames / 50 ms, cropped to a multiple of patch_t
+    # DESIGNED per-frame budget (Phase-B frame layout): 192 tokens / spectro modality.
+    # patch_f=16 -> 512/16 = 32 freq-patches (~8 kHz each, freq-FINE to resolve the coherent
+    # modes — vs the old 31 kHz at patch_f=64); patch_t=16 -> 96/16 = 6 time-patches.
+    #   n_tok = 32 * 6 = 192  (was 8 * 3 = 24 at patch_f=64/patch_t=32).
+    patch_f: int = 16             # -> 32 freq patches
+    patch_t: int = 16             # -> 6 time patches    => n_tok = 192
+    # CHANNEL-FACTORIZED tokens (ece capacity lever, 2026-07-31): with channel_groups=G,
+    # each token's patch spans only channels/G channels (a channel-group axis is added to
+    # the token grid, group-outer order), so n_tok = G * n_freq_patch * n_time_patch and
+    # a code no longer has to describe all C channels at once (ece: 40 ch through one
+    # token was the diagnosed entanglement). Default 1 = all-channel tokens, BYTE-
+    # IDENTICAL to the prior behavior (no group PE parameter is even created).
+    # channels % channel_groups must be 0 (asserted in the encoder).
+    channel_groups: int = 1
+
+    # bottleneck (vector-quantize-pytorch FSQ)
+    # Right-sized to the FSQ-paper-recommended ~1024-code config: [8, 5, 5, 5] = prod = 1000.
+    # The previous [8, 8, 8, 8, 8] = 32768 was ~30x over-provisioned for a codec that only
+    # ever uses O(10-30) codes; the spare 5th dim always died (min_dim_entropy=0). Four dims
+    # at 1000 codes removes that dead dim while keeping ample capacity.
+    fsq_levels: List[int] = field(default_factory=lambda: [8, 5, 5, 5])  # codebook = prod = 1000
+
+    # RAW input standardization (modalities whose raw is NOT O(1); OFF by default -> rich spectros
+    # byte-identical). co2's raw is ~1e13 (unnormalized interferometer counts) -> log10(mag^2) ~ 24,
+    # which the log_power ceiling (_LOG_CEIL=20) clips to a flat plate (100% clipped), destroying
+    # the signal (true std ~1.08). When on, log_power_stft z-scores the RAW per channel BEFORE the
+    # STFT (raw_mean / raw_std, shape (C,)), a per-channel linear rescale that shifts log-power into
+    # the un-clipped [-10, 20] band while preserving all spectral structure. Set at runtime from the
+    # FM's preprocessing_stats[modality]['raw'] by train_codec.apply_spectro_standardization (co2).
+    input_standardize: bool = False
+    raw_mean: Optional[List[float]] = None   # (C,) per-channel raw mean
+    raw_std: Optional[List[float]] = None     # (C,) per-channel raw std
+
+    # PER-FREQ LOG-POWER Z-STANDARDIZATION (the THIN-modality mean-collapse fix; see
+    # data.log_power_stft + train_codec --logpow_stats_path). For thin spectros (co2), the
+    # log-power STFT window is a large near-constant plate (~20/freq, clipped at _LOG_CEIL=20)
+    # with real signal in only a few freq bins, so pure recon-MAE is minimized by predicting that
+    # constant -> the FSQ collapses to ONE code. The fix subtracts the per-(channel,freq) mean and
+    # divides by the per-freq std (clamped to a floor so near-constant "noise" bins are not blown
+    # up), so informative bins become O(1) and a constant can no longer minimize MAE. The stats
+    # live in the codec's OWN raw-clipped log_power_stft space (NO raw-std applied), so this
+    # REPLACES raw-standardization (input_standardize is turned OFF when this is on). Shapes are
+    # (C, F) nested lists (ckpt-serializable). All default to the no-op (byte-identical when off).
+    logpow_standardize: bool = False
+    logpow_freq_mean: Optional[list] = None   # (C, F) per-(channel,freq) log-power mean
+    logpow_freq_std: Optional[list] = None    # (C, F) per-(channel,freq) log-power std
+    logpow_std_floor: float = 0.25            # per-freq std clamp floor (guards flat/noise bins)
+    # Per-window instance z-score on the log-power input (mean~0/std~1 per window,channel). ROOT-CAUSE
+    # fix for the co2 encoder death: strips co2's large DC offset (window mean ~-9.9) that saturates
+    # the FSQ tanh bound. No-op when off (byte-identical). Composes with / supersedes the offset the
+    # raw-std + per-freq paths leave.
+    input_instance_norm: bool = False
+    # SHIFT-ROBUST instance norm (2026-08-03): quantize the per-(window,channel) stats —
+    # sd onto a log2 grid with step `q`, mu onto a grid of (q * quantized sd) — so a small
+    # realization perturbation (δ-shift ≤ 2 ms) almost never changes the APPLIED
+    # normalization. Fixes the measured instance-norm stability tax (codes inherited
+    # window-stat jitter: bes-no-norm stab 0.70 vs instance-normed trio 0.31-0.51,
+    # retrain v3 2026-08-02). 0.0 = OFF (plain instance norm, byte-identical).
+    instance_norm_quantize: float = 0.0
+
+    # transformer (x-transformers)
+    d_model: int = 256
+    enc_depth: int = 6
+    dec_depth: int = 6
+    heads: int = 8
+
+    # DECODER family (gated drop-in). "linear" = the original transformer + single nn.Linear
+    # `to_pixels` unpatchify (byte-identical DEFAULT). "conv" = HiFi-GAN/VQGAN-style 2D transposed-
+    # conv upsampling decoder (nets.SpectroConvDecoder): places each FSQ token on a coarse
+    # (n_freq_patch, n_time_patch) grid and SYNTHESIZES fine turbulent texture via a stack of
+    # ConvTranspose2d upsample + residual-conv blocks. The linear `to_pixels` can only produce
+    # SMOOTH patches (a linear map per token), capping recon of broadband bes/mhr/ece at
+    # GT↔recon corr ~0.5; the conv decoder is the one architectural lever left to break that.
+    decoder: str = "linear"           # {"linear", "conv"}
+    conv_dec_base_ch: int = 128       # SpectroConvDecoder proj_in channel width (halved on upsample)
+    conv_dec_res_blocks: int = 2      # residual conv blocks per upsample stage
+
+    # invariance (Phase-A consistency-loss-only; raw d-shift + re-STFT)
+    consistency_delta_ms: Tuple[float, float] = (0.1, 2.0)  # sub-window shift range (< 16 ms codec patch)
+    consistency_weight: float = 1.0
+    amp_jitter: float = 0.03      # +-3% multiplicative secondary nuisance; 0 disables
+    noise_floor: float = 0.0      # additive log-power noise std; 0 disables
+
+    # decoder / reconstruction objective
+    adversarial_weight: float = 1.0
+    pixel_anchor_weight: float = 0.05   # lambda_pix; STABILITY-GATED (raise only while stability >= 0.80)
+    # Multi-resolution + freq-gradient reconstruction loss (NeMo/audio-codec-style; the fix for the
+    # smooth-envelope reconstruction of TURBULENT modalities that plain pixel-L1 can't sharpen).
+    # Both default 0.0 = OFF (byte-identical). Folded into recon_ref so the adaptive adv balances it.
+    multiscale_recon_weight: float = 0.0
+    freq_grad_weight: float = 0.0
+    # Discriminator FEATURE-MATCHING weight (HiFi-GAN/MelGAN vocoder-GAN perceptual term;
+    # the spectrogram-adapted stand-in for Genie's VGG perceptual loss, which does NOT
+    # transfer to spectrograms). Folded INTO the reconstruction reference alongside the
+    # pixel anchor, so it enlarges `recon_ref` -> the VQGAN adaptive weight `lam` rises ->
+    # the balanced adversarial term regains sharpening strength. Realization-SAFE: it matches
+    # the discriminator's INTERNAL features, not raw STFT phase/realization pixels.
+    fm_weight: float = 1.0
+
+    # VQGAN/MagViT-style adaptive adversarial weight ("Taming Transformers" §3.3).
+    # The hinge GAN's adversarial term can oscillate against the diversity terms
+    # (entropy + shift-consistency). When enabled, the adversarial coefficient is
+    # auto-scaled every generator step by lam = ||∇ref|| / (||∇adv|| + 1e-4), the ratio
+    # of gradient norms of the non-adversarial ("ref") total and the adversarial term at
+    # the decoder's last layer, so neither overpowers the other. Only this lever is added
+    # (no LeCAM / EMA / spectral-norm; everything else stays hinge-only).
+    adaptive_adv_weight: bool = True    # auto-scale the adversarial term (VQGAN adaptive weight)
+    # upper clamp on lam (lower clamp is 0). In STABLE training lam sits ~0.01-1; the old 1e4
+    # let a collapsing codec's lam run away to ~729 (co2/video crash 2026-07), so the adversarial
+    # term dominated + diverged -> one DDP rank desynced -> NCCL watchdog SIGTERM (exit 143). 50
+    # is generous headroom over the ~1 stable value while making run-away domination impossible.
+    adaptive_adv_clamp: float = 50.0
+    adv_warmup_steps: int = 0           # steps with adv_coeff forced to 0 (adv term off during warmup)
+
+    # anti-collapse (codebook-utilization) regularizer — Genie-style entropy term.
+    # The shift-consistency loss has a trivial minimum at encoder ≡ constant (all inputs
+    # map to ONE code); these terms pressure the encoder toward diverse codebook usage.
+    # entropy_loss = per_sample_entropy_mean - diversity_weight * entropy_of_batch_mean.
+    # entropy_weight=1.0 is the value that achieved healthy diversity (min_dim_entropy≈0.65)
+    # in the diversity spike; the old 0.1 is the known-collapsing value (dead FSQ dim,
+    # min_dim_entropy≈0). Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0     # multiplies entropy_loss into the generator total
+    diversity_weight: float = 1.0   # weight on the batch-diversity (spread) reward
+
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Some modalities are mostly quiet / floored (co2 is ~48% present / 52% floored at ~-10,
+    # so the built log-power windows have a median std of only ~0.02 vs ~0.85 for ece/bes/mhr).
+    # A codec trained on such a batch is swamped by near-constant windows and collapses to the
+    # dominant degenerate value, never learning the minority active signal. `active_bias` biases
+    # the per-item draw toward ACTIVE windows (activity = the built log-power window's std here):
+    # with probability `active_bias`, if a window's activity < `min_activity` the dataset re-draws
+    # from nearby chunks looking for an active one (falling back to the drawn window if none is
+    # found, so QUIET windows are NOT dropped — the codec still gets a "quiet" code for Phase-B
+    # generalization). Both DEFAULT to 0 (OFF): the already-working modalities (ece/bes/mhr) are
+    # byte-identical to before; the trainer turns them ON per-modality only for co2 (see
+    # train_codec._activity_overrides). min_activity is a log-power std threshold when > 0.
+    min_activity: float = 0.0       # per-window activity threshold (log-power std); 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
+
+    # oracle-gate acceptance thresholds
+    gate_stability: float = 0.80
+    gate_persistence: float = 0.50
+    # collapse detection (§4.4 anti-posterior-collapse): a codec fails the gate if it uses
+    # too little of the codebook or has too-low per-dim code entropy. NOTE (2026-07): this
+    # `collapsed` flag is now INFORMATIONAL ONLY for best-ckpt selection — it no longer forces
+    # gate_score = -inf. See `gate_recon_floor` below and `spike.gate_score`.
+    gate_min_utilization: float = 0.02   # min fraction of the codebook used to pass
+    gate_min_code_entropy: float = 0.3   # min per-dim normalized code entropy to pass
+    # HARD best-ckpt floor on ABSOLUTE distinct codes (2026-08-03): below this the gate
+    # score is -inf — best.pt must never track a terminally collapsing codec (which can
+    # keep reconstructing via decoder pos-emb, so the recon floor alone misses it).
+    gate_hard_min_codes: int = 8
+    # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score).
+    # A codec is disqualified (gate_score = -inf) ONLY when reconstruction genuinely fails:
+    # decode envelope_corr is NaN or < gate_recon_floor. Utilization is folded in as a SOFT
+    # reward term instead of a hard gate, so a well-reconstructing codec with one dead FSQ dim
+    # is no longer wrongly rejected (it just scores slightly lower on the utilization reward).
+    gate_recon_floor: float = 0.2
+
+    @property
+    def n_freq_patch(self) -> int:
+        return self.freq_bins // self.patch_f
+
+    @property
+    def n_time_patch(self) -> int:
+        return self.time_frames // self.patch_t
+
+    @property
+    def n_tok(self) -> int:
+        return self.channel_groups * self.n_freq_patch * self.n_time_patch
+
+    @property
+    def fsq_dim(self) -> int:
+        return len(self.fsq_levels)
+
+    @property
+    def codebook_size(self) -> int:
+        return prod(self.fsq_levels)
+
+    @property
+    def window_samples(self) -> int:
+        return round(CHUNK_S * STFT_FS)
+
+    def __post_init__(self) -> None:
+        assert self.freq_bins % self.patch_f == 0, "freq_bins must be divisible by patch_f"
+        assert self.time_frames % self.patch_t == 0, "time_frames must be divisible by patch_t"
+
+
+# ---------------------------------------------------------------------------------------- #
+# Video codec (tangtv, Phase A) — statistics-first, generative-decoder, NO STFT machinery.
+# ---------------------------------------------------------------------------------------- #
+# Design (docs/IGNITE_DESIGN.md §4.3): the video codec is "closest to Genie-native (smooth
+# frames); mostly just the no-strong-pixel-MSE / generative-decoder move. Two separate
+# up/lower divertor codecs." So this config mirrors the spectro codec's INFRASTRUCTURE
+# (FSQ bottleneck, adaptive-adv-weight, entropy/utilization regularizer, gate thresholds,
+# feature-matching) but drops everything STFT/spectrogram/δ-shift-specific:
+#   * NO shift-consistency term. Video has no STFT-phase / speckle realization nuisance —
+#     that failure mode was spectrogram-only (a 0.5 ms shift scrambles ~74 % of spectro
+#     codes; a divertor movie has no such sub-window-phase confound). The invariance the
+#     spectro codec bought with a δ-shift pair is not needed here, so the video codec trains
+#     on a SINGLE frame window (no nuisance pair) with the pixel-anchor + FM + adversarial +
+#     entropy losses only.
+#   * The reconstruction target is the RAW frames (C, T, H, W); the tokenizer patchifies over
+#     space AND time -> tokens -> FSQ -> generative deconv decoder.
+#
+# Divertor mapping (read from data_loader.MovieConfig, NOT hard-coded physics):
+#   tangtv_lower = raw camera channels [0, 2]  (LODIV PAR-int + LODIV PERP)
+#   tangtv_upper = raw camera channels [4, 6]  (UPDIV0 PERP + UPDIV0 PAR)
+# ch1/ch3/ch5 are NaN (off) in all shots. Each divertor codec sees C=2 channels.
+
+
+# tangtv movie geometry (matches data_loader.MovieConfig for tangtv_lower / tangtv_upper).
+VIDEO_TARGET_FPS: int = 100      # target frame rate after resample
+VIDEO_HEIGHT: int = 120          # output frame height
+VIDEO_WIDTH: int = 360           # output frame width
+
+
+@dataclass
+class VideoCodecConfig:
+    """Statistics-first tangtv video codec (Phase A), per-divertor.
+
+    Two instances are used in production — one per divertor (``divertor="lower"`` /
+    ``"upper"``) — each its own encoder/decoder/discriminator, matching §4.3's "two separate
+    up/lower divertor codecs". ``divertor`` only selects the channel set + logging name; the
+    tensor contract is identical.
+
+    Tensor-shape conventions (batch-first):
+
+        frame window    (B, C, T, H, W)   C channels-per-divertor, T frames, H×W pixels
+        pre-FSQ feats    (B, n_tok, d_model)
+        fsq codes (int) (B, n_tok, fsq_dim)   entry i in [0, fsq_levels[i])
+        quantized       (B, n_tok, d_model)
+        reconstruction  (B, C, T, H, W)
+
+        n_tok = (T // patch_t) * (H // patch_h) * (W // patch_w)
+    """
+
+    # divertor selector (documentation / logging only; the loader maps it to channels).
+    divertor: str = "lower"  # "lower" (cams 0,2) or "upper" (cams 4,6)
+
+    # data / shape
+    channels: int = 2              # channels-per-divertor (both divertors keep 2 live cameras)
+    frames: int = 5                # T; a 50 ms window at 100 fps = round(0.05*100) = 5 frames
+    height: int = VIDEO_HEIGHT     # 120
+    width: int = VIDEO_WIDTH       # 360
+    patch_t: int = 5               # -> 1 time patch (whole window is one temporal patch)
+    patch_h: int = 20              # -> 6 height patches
+    patch_w: int = 20              # -> 18 width patches   => n_tok = 1*6*18 = 108
+
+    # bottleneck (vector-quantize-pytorch FSQ) — right-sized like the spectro fix:
+    # [8, 5, 5, 5] = prod = 1000 codes, 4 dims (ample for a smooth-frame divertor view; the
+    # spare-dim death seen at [8,8,8,8,8]=32768 is avoided). Video content is smoother than
+    # spectro modes, so 1000 codes is a comfortable start.
+    fsq_levels: List[int] = field(default_factory=lambda: [8, 5, 5, 5])  # codebook = 1000
+
+    # transformer (x-transformers) — spatial+temporal token set, bidirectional (codec frame).
+    d_model: int = 256
+    enc_depth: int = 6
+    dec_depth: int = 6
+    heads: int = 8
+
+    # decoder / reconstruction objective (Genie-native: generative decoder, LOW pixel anchor).
+    adversarial_weight: float = 1.0
+    # LOW-weight pixel anchor. §4.3's "no-strong-pixel-MSE move": the pixel term only buys
+    # optimization stability; the sharp, plausible-frame reconstruction is produced by the
+    # adversarial + feature-matching signal, not by minimizing pixel error to the mean.
+    pixel_anchor_weight: float = 0.05
+    # Discriminator FEATURE-MATCHING weight (VGG-style perceptual term via the discriminator's
+    # internal features — the standard image-GAN perceptual loss; unlike spectrograms, VGG-ish
+    # perceptual matching IS natural for camera frames, and the FM term is a clean stand-in that
+    # needs no external VGG weights). Folded into recon_ref so the VQGAN adaptive weight rises.
+    fm_weight: float = 1.0
+
+    # VQGAN/MagViT adaptive adversarial weight ("Taming Transformers" §3.3) — reused verbatim
+    # from the spectro codec (auto-scale adv coeff by grad-norm ratio at decoder.last_layer).
+    adaptive_adv_weight: bool = True
+    # upper clamp on lam (lower clamp is 0) — see SpectroCodecConfig: 50 stops a collapsing
+    # codec's lam from running away (old 1e4 -> ~729 -> diverge -> DDP desync -> exit 143).
+    adaptive_adv_clamp: float = 50.0
+    adv_warmup_steps: int = 0
+
+    # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, reused
+    # from the spectro quantizer's entropy_loss (per-sample entropy - diversity * batch-mean).
+    # entropy_weight=1.0 (the diversity-spike value, min_dim_entropy≈0.65); 0.1 was the
+    # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0
+    diversity_weight: float = 1.0
+
+    # --- decoder conv refinement head (patch-seam / checkerboard fix) ------------------ #
+    # The linear per-token unpatchify renders every 20x20(x5) patch independently, which leaves
+    # a visible 6x18 patch-seam checkerboard under the v6 GAN-free recipe (pixel+entropy only;
+    # the config note above `pixel_anchor_weight` predicted exactly this: the linear head relied
+    # on the adversarial+FM signal for plausible frames, and v6 removed both — confirmed on the
+    # 2026-08-05 renders). ``refine_depth > 0`` appends a small RESIDUAL per-frame stride-1 2D
+    # conv stack (kernel 3, ``refine_hidden`` channels, final conv ZERO-INIT so the head starts
+    # as an exact identity) after the unpatchify, letting the loss blend across patch borders.
+    # Deliberately NOT a ConvTranspose(kernel=stride) upsampler — that family is the documented
+    # FAITH checkerboard bug; this head is stride-1 smoothing at full resolution. 0 = OFF
+    # (byte-identical; old checkpoints unpickle without these fields and load unchanged).
+    refine_depth: int = 0
+    refine_hidden: int = 64
+
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Same lever as SpectroCodecConfig (activity = the clip's frame std here). tangtv frames
+    # are NOT degeneracy-dominated in the diagnostic (all built clips have std >= ~3.8, like the
+    # working spectro modalities) — the video collapse is an ADVERSARIAL-instability failure, not
+    # a quiet-window one — so the trainer leaves `active_bias = 0` (OFF) for tangtv and instead
+    # applies an adversarial warmup + lower adversarial_weight (see train_codec._activity_overrides).
+    # The lever is still exposed here for symmetry / future divertors. Both DEFAULT 0 (OFF).
+    min_activity: float = 0.0       # per-window activity threshold (clip frame std); 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold clip toward active); 0 = OFF
+
+    # oracle-gate acceptance thresholds (§4.4) — video analogues.
+    gate_stability: float = 0.80        # frame-to-frame code stickiness proxy (see gate note)
+    gate_persistence: float = 0.50
+    gate_min_utilization: float = 0.02
+    gate_hard_min_codes: int = 8         # hard best-ckpt floor on ABSOLUTE distinct codes (see SpectroCodecConfig)
+    gate_min_code_entropy: float = 0.3
+    # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score):
+    # a video codec is disqualified (gate_score = -inf) when frame reconstruction genuinely
+    # fails (video envelope_corr NaN or < floor). Mirrors SpectroCodecConfig.gate_recon_floor.
+    gate_recon_floor: float = 0.2
+
+    @property
+    def n_time_patch(self) -> int:
+        return self.frames // self.patch_t
+
+    @property
+    def n_height_patch(self) -> int:
+        return self.height // self.patch_h
+
+    @property
+    def n_width_patch(self) -> int:
+        return self.width // self.patch_w
+
+    @property
+    def n_tok(self) -> int:
+        return self.n_time_patch * self.n_height_patch * self.n_width_patch
+
+    @property
+    def fsq_dim(self) -> int:
+        return len(self.fsq_levels)
+
+    @property
+    def codebook_size(self) -> int:
+        return prod(self.fsq_levels)
+
+    def __post_init__(self) -> None:
+        assert self.frames % self.patch_t == 0, "frames must be divisible by patch_t"
+        assert self.height % self.patch_h == 0, "height must be divisible by patch_h"
+        assert self.width % self.patch_w == 0, "width must be divisible by patch_w"
+        assert self.divertor in ("lower", "upper"), (
+            f"divertor must be 'lower' or 'upper', got {self.divertor!r}"
+        )
+
+
+# ---------------------------------------------------------------------------------------- #
+# Fast-TS codec (filterscopes / ELMs, Phase A) — statistics-first, ENVELOPE target.
+# ---------------------------------------------------------------------------------------- #
+# Design (docs/IGNITE_DESIGN.md §4.3): "Fast-TS (filterscopes / ELMs) — hardest. Statistic =
+# ELM activity envelope (rate/amplitude), NOT spike timing; the decoder hallucinates
+# plausible spikes." This is the fast-TS analogue of the spectro codec: it removes the SAME
+# two failure modes (§4.1) with the SAME two moves —
+#   (1) codes carry only the STATISTIC (the ELM activity envelope), so a sub-window spike
+#       TIMING jitter (a realization nuisance, exactly like STFT phase for spectro) does not
+#       scramble the codes → predictable / passes the stability gate;
+#   (2) the decoder is generative (adversarial + small envelope-anchor) → it reconstructs a
+#       sharp envelope instead of collapsing to the mean.
+#
+# THE ELM-ENVELOPE STATISTIC (the key design decision — see ignite.data.elm_envelope):
+#   raw filterscope window (C, W)  [W = round(50 ms * 10 kHz) = 500 samples/chan]
+#     -> subtract a slow moving-mean baseline (remove the DC / slow drift)   [detrend]
+#     -> rectify (square)                                                    [|·|²]
+#     -> average within non-overlapping pooling bins of `pool` samples (RMS) [mean-pool]
+#     -> sqrt                                                                [-> RMS amplitude]
+#     -> log1p(env / eps_ref)                                                [compress dynamic range]
+#   giving an ENVELOPE (C, env_bins) with env_bins = W // pool. At pool=100 (10 ms bins),
+#   env_bins = 5: a coarse "how much ELM activity, and when" curve per channel. A spike's
+#   exact position WITHIN a 10 ms bin is discarded (the nuisance); the burst amplitude + timing
+#   at bin resolution is kept (the physics). ELM bursts recur every ~1.6 ms so a 10 ms bin
+#   averages over several bursts — a detector-free coarse RMS activity level, not a burst rate.
+#   This is directly analogous to the spectro codec's per-frequency log-power (which discards
+#   STFT phase, the spectro realization).
+#
+# The codec tokenizes the (C, env_bins) envelope like a 1-D "image": patch over the TIME
+# (envelope-bin) axis (channels are a feature dim carried into the patch, as freq/space are
+# for the other codecs), FSQ, generative decode back to the envelope.
+
+
+# fast-TS geometry (matches the filterscopes SignalConfig + a 50 ms window at FASTTS_FS).
+FASTTS_CHANNELS: int = 8         # channels_to_use=slice(0,8) on the filterscopes SignalConfig
+FASTTS_WINDOW: int = round(CHUNK_S * FASTTS_FS)   # 500 raw samples / channel in a 50 ms window
+# COARSE RMS envelope: a 3000-shot survey showed filterscope ELM bursts recur every ~1.6 ms and
+# a burst-RATE detector is param-fragile (rate swings 3× with threshold; interval just tracks
+# the min-distance floor), so we commit to a DETECTOR-FREE COARSE RMS envelope and coarsen the
+# bins from 1 ms to 10 ms — several inter-burst intervals per bin averages out burst-timing
+# realization noise while still resolving the shot-scale ELM activity level.
+FASTTS_POOL: int = round(0.010 * FASTTS_FS)       # envelope pooling bin = 100 samples = 10 ms at 10 kHz
+FASTTS_ENV_BINS: int = FASTTS_WINDOW // FASTTS_POOL  # 5 envelope bins (10 ms each)
+
+
+@dataclass
+class FastTSCodecConfig:
+    """Statistics-first fast-TS (filterscopes) codec (Phase A), ENVELOPE-domain.
+
+    Tensor-shape conventions (batch-first):
+
+        raw window       (B, C, W)          C channels, W = window_samples raw samples
+        envelope         (B, C, E)          E = env_bins  (the codec INPUT/TARGET)
+        pre-FSQ feats    (B, n_tok, d_model)
+        fsq codes (int)  (B, n_tok, fsq_dim)   entry i in [0, fsq_levels[i])
+        quantized        (B, n_tok, d_model)
+        reconstruction   (B, C, E)          reconstructed ENVELOPE (not raw spikes)
+
+        n_tok = env_bins // patch_e
+    """
+
+    # data / shape
+    channels: int = FASTTS_CHANNELS       # 8 filterscope channels
+    env_bins: int = FASTTS_ENV_BINS       # E = 5 (10 ms per bin over a 50 ms window)
+    patch_e: int = 1                       # -> 5 time patches (10 ms each)  => n_tok = 5
+
+    # envelope transform params (see ignite.data.elm_envelope). Right-sized to FASTTS_* so the
+    # loader's 500-sample / 10 kHz filterscope window maps to a 5-bin (10 ms) envelope.
+    pool: int = FASTTS_POOL                # RMS pooling bin (samples) = 100 = 10 ms
+    baseline_win: int = 20                 # moving-mean baseline window (samples) = 2 ms; 0 disables detrend
+    env_eps: float = 1e-3                  # log1p reference: log1p(env / env_eps); guards flat/zero windows
+
+    # PER-CHANNEL RAW STANDARDIZATION (the SCALE FIX; see ignite.data.elm_envelope).
+    # The raw filterscopes signal is UNSTANDARDIZED with magnitudes ~1e13-1e15 (per-channel std
+    # ~1e16), so feeding it straight into detrend->rectify->RMS->log1p(rms/env_eps) drives log1p
+    # to its clamp ceiling for ~100% of windows -> a CONSTANT envelope -> codec collapses to 1
+    # code (env_corr~0). The data_loader consumes STANDARDIZED filterscopes (SignalConfig
+    # preprocess=method="standardize", per-channel raw mean/std from preprocessing_stats.pt), so
+    # the codec must standardize the SAME way BEFORE the envelope: x <- (x - mean) / std. This is
+    # GLOBAL / per-channel (NOT per-window) so it PRESERVES the relative ELM activity LEVEL
+    # (quiet vs active windows stay distinguishable — the physics signal) while putting the input
+    # on the ~O(1) scale the envelope pipeline (and env_eps) is sized for. Length == channels.
+    # None (the default) => NO standardization => byte-identical to the pre-fix behaviour, so
+    # existing synthetic tests / callers are unaffected; the trainer loads + injects the real
+    # per-channel stats (see fastts_train.load_fastts_channel_stats).
+    channel_mean: Optional[Sequence[float]] = None
+    channel_std: Optional[Sequence[float]] = None
+
+    # bottleneck (vector-quantize-pytorch FSQ) — right-sized like the spectro/video fix:
+    # [8, 5, 5, 5] = prod = 1000 codes, 4 dims. The envelope carries O(10) distinct "activity
+    # levels/patterns", so 1000 codes is ample; 4 dims avoids the spare-dim death seen at
+    # [8,8,8,8,8]=32768 (min_dim_entropy=0).
+    fsq_levels: List[int] = field(default_factory=lambda: [8, 5, 5, 5])  # codebook = 1000
+
+    # transformer (x-transformers) — token set over envelope-time patches, bidirectional.
+    d_model: int = 256
+    enc_depth: int = 6
+    dec_depth: int = 6
+    heads: int = 8
+
+    # invariance (Phase-A consistency-loss). UNLIKE the video codec (§4.3 "no shift term"),
+    # fast-TS DOES take a δ-shift consistency term: the ELM spike TIMING is a
+    # realization/nuisance exactly like the spectrogram's STFT phase (§4.3 names it as such),
+    # so a sub-bin raw δ-shift produces the SAME envelope statistic but a different spike
+    # realization. The consistency loss ‖enc(env) − enc(env_shifted)‖² on the PRE-FSQ features
+    # projects that nuisance out (statistics-first).
+    #
+    # δ RANGE — capped at the pool-bin duration (pool=100 samples = 10 ms at 10 kHz), i.e.
+    # δ ~ U[0.1, 5.0] ms. With the COARSE 10 ms envelope bin a δ up to ~5 ms (half a bin) stays
+    # WITHIN a single bin, so the per-bin RMS activity statistic is preserved and the envelope
+    # curve is invariant (that is the whole reason the cap was pinned at < 1 bin — at the old
+    # 1 ms bin that meant < 1 ms; at the new 10 ms bin it can be up to ~5 ms). A shift of a WHOLE
+    # bin (≥10 ms) would translate the envelope by whole bins and break the statistic, so the cap
+    # stays sub-bin. (Spectro uses [0.1, 2] ms against its 0.512 ms STFT hop because its FSQ
+    # time-patch is 16 ms, huge vs δ.)
+    consistency_delta_ms: Tuple[float, float] = (0.1, 5.0)
+    consistency_weight: float = 1.0
+
+    # decoder / reconstruction objective (generative decoder, LOW envelope anchor).
+    adversarial_weight: float = 1.0
+    # LOW-weight envelope anchor (the fast-TS analogue of the spectro/video pixel anchor):
+    # buys optimization stability; the sharp envelope reconstruction is produced by the
+    # adversarial + feature-matching signal, not by minimizing anchor error to the mean.
+    pixel_anchor_weight: float = 0.05
+    # Discriminator FEATURE-MATCHING weight (HiFi-GAN/MelGAN vocoder-GAN perceptual term —
+    # natural here since the envelope is a smooth 1-D signal like a mel-spectrogram row).
+    # Folded into recon_ref so the VQGAN adaptive weight rises. Realization-SAFE.
+    fm_weight: float = 1.0
+
+    # VQGAN/MagViT adaptive adversarial weight ("Taming Transformers" §3.3) — reused verbatim
+    # from the spectro/video codec (auto-scale adv coeff by grad-norm ratio at decoder.last_layer).
+    adaptive_adv_weight: bool = True
+    # upper clamp on lam (lower clamp is 0) — see SpectroCodecConfig: 50 stops a collapsing
+    # codec's lam from running away (old 1e4 -> ~729 -> diverge -> DDP desync -> exit 143).
+    adaptive_adv_clamp: float = 50.0
+    adv_warmup_steps: int = 0
+
+    # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, reused from
+    # the shared SpectroQuantizer.entropy_loss (per-sample entropy - diversity * batch-mean).
+    # entropy_weight=1.0 (the diversity-spike value, min_dim_entropy≈0.65); 0.1 was the
+    # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0
+    diversity_weight: float = 1.0
+
+    # --- activity-stratified sampling (bias toward the more-active windows) ------------ #
+    # Same lever as SpectroCodecConfig (activity = the ELM-envelope window's std here). NOTE the
+    # OLD diagnostic ("~76%/~100% of windows saturate the log1p ceiling to a CONSTANT envelope,
+    # std 0") described the PRE-FIX raw path: the envelope input was the UNSTANDARDIZED ~1e15 raw
+    # filterscopes, which pinned log1p at its ceiling. That SCALE bug is now fixed — the codec
+    # standardizes per-channel with the same raw mean/std the FM model uses (channel_mean/std
+    # above), so envelopes now spread across a useful O(1) range (real-data per-window env std
+    # p10/p50/p90 ~ 0.41/0.45/0.92, 0% saturated). Stratification is now a MILD lever: with
+    # min_activity=0.5 ~1/3 of windows are "active", so biasing toward env std >= min_activity
+    # still pulls the batch toward the higher-ELM windows (the physics), not the flat mass. Both
+    # DEFAULT 0 (OFF); the trainer turns them ON for filterscopes (see fastts_train.main /
+    # train_codec._activity_overrides).
+    min_activity: float = 0.0       # per-window activity threshold (envelope std); 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold envelope toward active); 0 = OFF
+
+    # oracle-gate acceptance thresholds (§4.4) — fast-TS analogues (same numeric mandates).
+    gate_stability: float = 0.80
+    gate_persistence: float = 0.50
+    gate_min_utilization: float = 0.02
+    gate_hard_min_codes: int = 8         # hard best-ckpt floor on ABSOLUTE distinct codes (see SpectroCodecConfig)
+    gate_min_code_entropy: float = 0.3
+    # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score):
+    # disqualified (gate_score = -inf) when envelope reconstruction genuinely fails
+    # (envelope_corr NaN or < floor). Mirrors SpectroCodecConfig.gate_recon_floor.
+    gate_recon_floor: float = 0.2
+
+    @property
+    def n_env_patch(self) -> int:
+        return self.env_bins // self.patch_e
+
+    @property
+    def n_tok(self) -> int:
+        return self.n_env_patch
+
+    @property
+    def fsq_dim(self) -> int:
+        return len(self.fsq_levels)
+
+    @property
+    def codebook_size(self) -> int:
+        return prod(self.fsq_levels)
+
+    @property
+    def window_samples(self) -> int:
+        """Raw samples in a 50 ms window at FASTTS_FS (== env_bins * pool when consistent)."""
+        return round(CHUNK_S * FASTTS_FS)
+
+    def __post_init__(self) -> None:
+        assert self.env_bins % self.patch_e == 0, "env_bins must be divisible by patch_e"
+        assert self.pool >= 1, "pool must be >= 1"
+        assert self.baseline_win >= 0, "baseline_win must be >= 0 (0 disables detrend)"
+
+
+# ---------------------------------------------------------------------------------------- #
+# Slow-TS codec (Thomson / CER / MSE, Phase A) — the "lightest touch" statistics-first codec.
+# ---------------------------------------------------------------------------------------- #
+# Design (docs/IGNITE_DESIGN.md §4.3): "Slow-TS — smooth profiles; lightest touch." These are
+# smooth kinetic-profile time-series (electron density/temperature profiles from Thomson
+# scattering, ion temperature / rotation from charge-exchange, and the motional-Stark-effect
+# pitch-angle profile). Each is loaded at target_fs = 100 Hz (SLOWTS_FS), so a 50 ms
+# world-model frame is a tiny (C_positions, T=5) window: a short slice of a smooth
+# position-vs-time profile.
+#
+# This config MIRRORS the spectro/video codec INFRASTRUCTURE (FSQ bottleneck, entropy /
+# codebook-utilization regularizer, gate thresholds, gate_recon_floor) but drops everything
+# spectrogram-specific, and — being the *lightest touch* — everything adversarial too:
+#   * NO δ-shift consistency term. Consistency projects out an STFT-phase / speckle
+#     *realization* nuisance that exists only for spectrograms (a 0.5 ms sub-window shift
+#     scrambles ~74 % of spectro codes). A slow-TS profile has no such sub-window-phase
+#     realization — it is a smooth, directly-sampled physical quantity — so there is no
+#     nuisance pair to be invariant to.
+#   * NO adversarial / discriminator / feature-matching. Two reasons: (1) §4.3 scopes this as
+#     the lightest touch — a smooth low-dimensional profile is not a texture-rich signal where
+#     a GAN buys sharpness (that was the spectrogram / video mean-collapse problem); a plain
+#     masked reconstruction already captures a smooth profile faithfully. (2) CER/MSE/Thomson
+#     carry REAL missingness (neutral-beam-off gaps; diagnostic-not-firing zeros). A generative
+#     adversarial decoder would *hallucinate* plausible values into those masked regions —
+#     exactly the wrong behaviour for a kinetic profile, where "missing" must stay masked, not
+#     invented. So the codec is a reconstruction + entropy codec (no `decoder.last_layer`
+#     adaptive-adv machinery needed), with the reconstruction MASKED where the signal is
+#     genuinely missing.
+#
+# ONE codec class parameterized by `signal` (like SpectroCodec is parameterized by cfg): each
+# of the 7 signals gets its OWN cfg (different `channels` = profile positions + patch sizes)
+# and is trained + frozen INDEPENDENTLY. `signal` is documentation/logging + the loader's
+# channel-count + missingness-policy selector; the tensor contract is identical across signals.
+
+# The 7 slow-TS signals + their loaded channel counts (positions) — read from
+# data_loader.TokamakH5Dataset.SIGNAL_CONFIGS (num_channels; none of the 7 use channels_to_use)
+# so this stays a convenience default, NOT a hard-coded physics claim (the trainer reads the
+# real count from the loader at runtime, exactly like the spectro/video codecs).
+SLOWTS_SIGNALS: Tuple[str, ...] = (
+    "ts_core_density", "ts_core_temp", "ts_tangential_density", "ts_tangential_temp",
+    "cer_ti", "cer_rot", "mse",
+)
+# positions (channel count) per signal, from data_loader SIGNAL_CONFIGS.num_channels.
+SLOWTS_POSITIONS: Dict[str, int] = {
+    "ts_core_density": 44, "ts_core_temp": 44,
+    "ts_tangential_density": 10, "ts_tangential_temp": 10,
+    "cer_ti": 48, "cer_rot": 48, "mse": 69,
+}
+# Signals whose missingness is `zero_is_missing` (Thomson spikes-to-zero) vs an explicit NaN
+# mask (CER/MSE neutral-beam gaps). Mirrors data_loader.SignalConfig.zero_is_missing so the
+# dataset builds the SAME validity mask the loader would (`data != 0` for zero_is_missing;
+# `~isnan(data)` otherwise). NOT a new policy — a read of the loader's config.
+SLOWTS_ZERO_IS_MISSING: Dict[str, bool] = {
+    "ts_core_density": True, "ts_core_temp": True,
+    "ts_tangential_density": True, "ts_tangential_temp": True,
+    "cer_ti": False, "cer_rot": False, "mse": False,
+}
+# Per-signal preprocessing METHOD the FM model applies to each slow-TS signal — a READ of
+# data_loader.TokamakH5Dataset.SIGNAL_CONFIGS[*].preprocess.method (NOT a new policy). The codec
+# must standardize its input the SAME way the FM does (the SCALE FIX; see the module note on
+# SlowTSCodecConfig.channel_mean/std): the 4 Thomson signals are "log_standardize"
+# (log10(clip(x,-0.99)+1) then per-channel (x-mean)/std, LOG-space stats) and cer_ti/cer_rot/mse
+# are "standardize" (per-channel (x-mean)/std, RAW-space stats). Selects which stats sub-dict of
+# preprocessing_stats.pt is read ('log' for log_standardize, 'raw' for standardize) exactly like
+# data_loader._update_preprocessing_stats.
+SLOWTS_PREPROCESS_METHOD: Dict[str, str] = {
+    "ts_core_density": "log_standardize", "ts_core_temp": "log_standardize",
+    "ts_tangential_density": "log_standardize", "ts_tangential_temp": "log_standardize",
+    "cer_ti": "standardize", "cer_rot": "standardize", "mse": "standardize",
+}
+
+
+@dataclass
+class SlowTSCodecConfig:
+    """Statistics-first slow-TS codec (Phase A), per-signal.
+
+    Seven instances are used in production — one per :data:`SLOWTS_SIGNALS` — each its own
+    encoder/decoder (no discriminator; see the module note above), matching §4.3's "lightest
+    touch" for smooth profiles. ``signal`` selects the channel (position) count + missingness
+    policy + logging name; the tensor contract is identical across signals.
+
+    Tensor-shape conventions (batch-first):
+
+        signal window   (B, C, T)    C = profile positions, T = time samples (5 @ 50 ms/100 Hz)
+        validity mask   (B, C, T)    1.0 = valid (real) sample, 0.0 = missing/padded
+        pre-FSQ feats    (B, n_tok, d_model)
+        fsq codes (int) (B, n_tok, fsq_dim)   entry i in [0, fsq_levels[i])
+        quantized       (B, n_tok, d_model)
+        reconstruction  (B, C, T)
+
+        n_tok = (C // patch_c) * (T // patch_t)
+    """
+
+    # signal selector (documentation / logging + missingness policy; loader maps to channels).
+    signal: str = "ts_core_density"
+
+    # data / shape
+    channels: int = 44            # C = REAL profile positions (read from the loader at runtime).
+    time_steps: int = 5           # T; a 50 ms window at SLOWTS_FS=100 Hz = round(0.05*100) = 5.
+    # DESIGNED per-frame budget (Phase-B frame layout): EXACTLY 4 tokens / slow-TS signal =
+    # 4 radial-zone patches × 1 time-patch. The C profile positions are split into 4 contiguous
+    # radial zones of `patch_c = ceil(C / 4)` positions each; when C is not divisible by 4 the
+    # profile is PADDED up to `padded_channels = 4 * patch_c` and the padded tail positions are
+    # MASKED as missing (they never contribute to the encoder input or the loss — see
+    # SlowTSCodecPairDataset._fit_window). `patch_c` here is the per-ZONE position count; the
+    # encoder/decoder patchify over `padded_channels` (NOT `channels`).
+    #   n_pos_patch = 4  (the zone count);  n_tok = 4 * 1 = 4.
+    # The `slowts_patch_for` helper computes patch_c = ceil(channels / n_zones) for you.
+    n_zones: int = 4              # radial-zone patches (position-patches) -> n_pos_patch
+    patch_c: int = 11             # positions per radial zone = ceil(44 / 4) = 11 for the default C.
+    patch_t: int = 5              # time samples per patch (default: whole window = 1 time-patch).
+
+    # PER-CHANNEL RAW STANDARDIZATION (the SCALE FIX; see SlowTSCodecPairDataset._standardize).
+    # The raw slow-TS signal is UNSTANDARDIZED, and the high-magnitude Thomson DENSITY signals
+    # carry ~1e19-scale samples (electron density ~1e19 m^-3): fed straight into the codec encoder
+    # they collapse (ts_core_density -> 1 code, env_corr=NaN). The FM model consumes STANDARDIZED
+    # slow-TS — each signal's SignalConfig.preprocess.method applied: "log_standardize" for the 4
+    # Thomson signals, "standardize" for cer_ti/cer_rot/mse — so the codec must standardize the
+    # SAME way BEFORE the encoder, putting every signal on the ~O(1) scale the FM sees. This is
+    # GLOBAL / per-channel (NOT per-window) so the relative PROFILE LEVEL (which positions carry
+    # more, quiet vs active windows) is preserved. Length == channels.
+    #
+    # `preprocess_method` selects the transform (mirrors data_loader._apply_preprocessing EXACTLY):
+    #   "standardize"     -> (x - mean) / std.clamp(min=1e-3)                         [RAW-space stats]
+    #   "log_standardize" -> arr = log10(clip(x, min=-0.99) + 1); (arr - mean)/std.clamp(min=1e-3)
+    #                        [LOG-space stats; the loader reads the 'log' sub-dict for this method]
+    #   "none" / None     -> IDENTITY (byte-identical to the pre-fix path; the default).
+    # channel_mean / channel_std being None is ALSO the identity (no-op) regardless of method, so
+    # synthetic tests / stat-less callers are unaffected. The trainer loads + injects the real
+    # per-channel stats from preprocessing_stats.pt (see train_codec.load_slowts_channel_stats).
+    preprocess_method: Optional[str] = None
+    channel_mean: Optional[Sequence[float]] = None
+    channel_std: Optional[Sequence[float]] = None
+
+    # bottleneck (vector-quantize-pytorch FSQ) — right-sized like the spectro/video fix:
+    # [8, 5, 5, 5] = prod = 1000 codes, 4 dims. A smooth low-D profile needs even fewer codes
+    # than a spectrogram, so 1000 is a comfortable start (the entropy regularizer prunes the
+    # rest). The FSQ math is REUSED verbatim from the spectro quantizer.
+    fsq_levels: List[int] = field(default_factory=lambda: [8, 5, 5, 5])  # codebook = 1000
+
+    # transformer (x-transformers) — a modest patch/attention encoder (these are smooth,
+    # low-dimensional signals, so a small transformer is ample; matches §4.3 "lightest touch").
+    d_model: int = 128
+    enc_depth: int = 4
+    dec_depth: int = 4
+    heads: int = 4
+
+    # reconstruction objective — MASKED (see below) reconstruction only. No adversarial,
+    # no feature-matching, no consistency (all justified in the module note). The pixel anchor
+    # here is the WHOLE reconstruction signal (there is no GAN to balance against), so it is
+    # weight 1.0 — not a small "anchor" as in the generative spectro/video codecs.
+    recon_weight: float = 1.0
+
+    # anti-collapse (codebook-utilization) entropy regularizer — Genie/LFQ style, REUSED
+    # verbatim from the spectro quantizer's entropy_loss (per-sample entropy - diversity *
+    # batch-mean). The masked-recon objective alone does not pressure codebook diversity, so
+    # this keeps the encoder from posterior-collapsing to a single code.
+    # entropy_weight=1.0 (the diversity-spike value, min_dim_entropy≈0.65); 0.1 was the
+    # known-collapsing value. Paired with FIX 1 (global DDP batch-mean). See FIX 2.
+    entropy_weight: float = 1.0
+    diversity_weight: float = 1.0
+
+    # --- activity-stratified sampling (anti degenerate-window domination) ------------- #
+    # Same lever as SpectroCodecConfig, but slow-TS is a MASKED modality, so ACTIVITY here is the
+    # window's PRESENT-FRACTION (mask.mean()), NOT a std. ts_core_density is strongly bimodal in
+    # the diagnostic: median present-fraction ~0.07 (mostly-missing) but ~34% of windows are >=75%
+    # present — so ~2/3 of windows are near-empty. Biasing toward present-fraction >= min_activity
+    # pulls the batch onto the well-observed windows. Both DEFAULT 0 (OFF); the trainer turns them
+    # ON for ts_core_density (see train_codec._activity_overrides). min_activity is a present-
+    # fraction in [0, 1] here (interpretation differs from the std-based codecs by design).
+    min_activity: float = 0.0       # per-window present-fraction threshold in [0,1]; 0 = OFF
+    active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
+
+    # oracle-gate acceptance thresholds (§4.4) — slow-TS analogues (same fields the shared
+    # spike.gate_score / gate.utilization read).
+    gate_stability: float = 0.80
+    gate_persistence: float = 0.50
+    gate_min_utilization: float = 0.02
+    gate_hard_min_codes: int = 8         # hard best-ckpt floor on ABSOLUTE distinct codes (see SpectroCodecConfig)
+    gate_min_code_entropy: float = 0.3
+    # Reconstruction floor for best-ckpt DISQUALIFICATION (the only hard gate on the score):
+    # a slow-TS codec is disqualified (gate_score = -inf) when profile reconstruction genuinely
+    # fails (envelope_corr NaN or < floor). Mirrors SpectroCodecConfig.gate_recon_floor.
+    gate_recon_floor: float = 0.2
+
+    @property
+    def zero_is_missing(self) -> bool:
+        """Missingness policy for this signal (mirrors data_loader.SignalConfig.zero_is_missing).
+
+        True  -> Thomson spikes-to-zero: a sample is missing where the raw value is 0.
+        False -> CER/MSE neutral-beam gaps: a sample is missing where the raw value was NaN.
+        """
+        return SLOWTS_ZERO_IS_MISSING.get(self.signal, False)
+
+    @property
+    def padded_channels(self) -> int:
+        """Position count the encoder/decoder actually patchify over (``n_zones * patch_c``).
+
+        ``>= channels``; the extra ``padded_channels - channels`` tail positions are the
+        radial-zone padding, MASKED as missing by :meth:`SlowTSCodecPairDataset._fit_window` so
+        they never contribute to the encoder input or the reconstruction loss. Equals
+        ``channels`` exactly when ``channels`` is divisible by ``n_zones`` (no padding needed).
+        """
+        return self.n_zones * self.patch_c
+
+    @property
+    def n_pos_patch(self) -> int:
+        # The radial-zone count IS n_zones (padded_channels // patch_c == n_zones by construction).
+        return self.n_zones
+
+    @property
+    def n_time_patch(self) -> int:
+        return self.time_steps // self.patch_t
+
+    @property
+    def n_tok(self) -> int:
+        return self.n_pos_patch * self.n_time_patch
+
+    @property
+    def fsq_dim(self) -> int:
+        return len(self.fsq_levels)
+
+    @property
+    def codebook_size(self) -> int:
+        return prod(self.fsq_levels)
+
+    @property
+    def window_samples(self) -> int:
+        return round(CHUNK_S * SLOWTS_FS)
+
+    def __post_init__(self) -> None:
+        # `patch_c` is the per-ZONE position count; the encoder/decoder patchify over
+        # `padded_channels = n_zones * patch_c` (divisible by patch_c BY CONSTRUCTION). The real
+        # `channels` need NOT be divisible by patch_c — the profile is padded up to
+        # `padded_channels` and the pad tail is masked missing. We only require that `patch_c` is
+        # big enough to hold the real profile in `n_zones` zones (channels <= padded_channels) and
+        # not so big it leaves a WHOLE zone empty (channels > (n_zones-1)*patch_c), i.e. the split
+        # is contiguous + near-equal (patch_c == ceil(channels / n_zones)).
+        assert self.n_zones >= 1, "n_zones must be >= 1"
+        assert self.patch_c >= 1, "patch_c must be >= 1"
+        assert self.channels <= self.padded_channels, (
+            f"channels {self.channels} > padded_channels {self.padded_channels} "
+            f"(patch_c={self.patch_c} too small for {self.n_zones} zones)"
+        )
+        assert self.channels > (self.n_zones - 1) * self.patch_c, (
+            f"channels {self.channels} leaves a whole empty zone at patch_c={self.patch_c}, "
+            f"n_zones={self.n_zones}; patch_c must be ceil(channels / n_zones)"
+        )
+        assert self.time_steps % self.patch_t == 0, "time_steps must be divisible by patch_t"
+
+
+def slowts_patch_for(
+    channels: int, *, time_steps: int = 5, n_zones: int = 4
+) -> Tuple[int, int]:
+    """Pick ``(patch_c, patch_t)`` so a slow-TS signal yields EXACTLY ``n_zones`` tokens.
+
+    DESIGNED per-frame budget (Phase-B frame layout): every slow-TS signal produces
+    ``n_zones`` tokens = ``n_zones`` radial-zone position-patches × 1 time-patch. The C profile
+    positions are split into ``n_zones`` contiguous, near-equal radial zones of
+    ``patch_c = ceil(channels / n_zones)`` positions each; ``patch_t = time_steps`` keeps the
+    whole 50 ms window in a single time-patch (T stays 1 patch).
+
+    ``channels`` is NOT required to be divisible by ``n_zones`` (the real counts 44/10/48/69 are
+    not): the profile is PADDED up to ``padded_channels = n_zones * patch_c`` and the padded tail
+    positions are MASKED as missing (see :meth:`SlowTSCodecPairDataset._fit_window`), so they
+    never enter the encoder input or the loss. With ``n_zones = 4``:
+        C=44 -> patch_c=11 (44 = 4*11, no padding)         -> 4 tokens
+        C=10 -> patch_c=3  (padded_channels 12, pad 2)     -> 4 tokens
+        C=48 -> patch_c=12 (48 = 4*12, no padding)         -> 4 tokens
+        C=69 -> patch_c=18 (padded_channels 72, pad 3)     -> 4 tokens
+    Kept as a helper so the trainer sizes the codec from the loader's real channel count without
+    the caller hand-picking patch sizes.
+    """
+    patch_c = -(-int(channels) // int(n_zones))   # ceil(channels / n_zones)
+    return patch_c, time_steps

@@ -1,16 +1,4 @@
 #!/bin/bash
-# Frontier profile launcher: run scripts/training/profile_stage1.py twice on
-# one MI250X GCD — first WITHOUT flash-attn, then WITH — and diff the two
-# memory.json outputs. Designed to fit in a 1-hour batch allocation.
-#
-# Usage:
-#   sbatch scripts/slurm_frontier/profile_stage1_1x1.sh
-#
-# Outputs land in:
-#   profile/<JOBID>_stage1_1x1/without_flash/{trace.json,top_ops.txt,memory.json}
-#   profile/<JOBID>_stage1_1x1/with_flash/{trace.json,top_ops.txt,memory.json}
-#   profile/<JOBID>_stage1_1x1/comparison.txt  (printed to stdout too)
-#
 #SBATCH -A fus187
 #SBATCH -J e2e_s1_prof
 #SBATCH -o logs/%j_e2e_s1_prof.out
@@ -25,17 +13,18 @@
 #SBATCH --cpus-per-task=7
 set -uo pipefail
 
-PROJECT_DIR=/lustre/orion/fus187/scratch/nchen/FusionAIHub
-cd "$PROJECT_DIR"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+if [ ! -f "${PROJECT_DIR}/scripts/slurm_frontier/_frontier_settings.sh" ]; then
+    echo "ERROR: SLURM_SUBMIT_DIR (${PROJECT_DIR}) is not the repo root." >&2
+    echo "       cd into the FusionAIHub repo before sbatch." >&2
+    exit 1
+fi
+cd "${PROJECT_DIR}"
 mkdir -p logs
 
 # shellcheck disable=SC1091
-source scripts/slurm_frontier/_frontier_common.sh
+source scripts/slurm_frontier/_frontier_settings.sh
 
-# ─── Profile settings ────────────────────────────────────────────────────
-# Match canonical stage-1 model + modality mix so timings transfer to the
-# 8x8 production run. Batch deliberately small to fit one MI250X GCD with
-# full TS + video + spectro at n_layers=26.
 DATA_DIR="${DATA_DIR:-/lustre/orion/fus187/proj-shared/foundation_model}"
 STATS_PATH="${STATS_PATH:-/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt}"
 LENGTHS_CACHE_DIR="${LENGTHS_CACHE_DIR:-runs/profile_stage1_lengths_cache}"

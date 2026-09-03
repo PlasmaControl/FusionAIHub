@@ -356,6 +356,133 @@ class WelfordTensor:
         }
 
 
+class WelfordTensorPerBin:
+    """Welford accumulator for 4-D (B, C, F, T) spec tensors, tracking
+    mean / std / min / max **per (channel, frequency-bin)** instead of
+    per channel.
+
+    Use this when the loss should weight each frequency bin equally —
+    in the channel-only WelfordTensor, the high-dynamic-range bins (the
+    low-frequency band) dominate the channel-wide mean / std, making
+    quiet mode bins effectively invisible to a downstream MSE / MAE
+    objective.
+    """
+
+    def __init__(self) -> None:
+        self.mean: Optional[torch.Tensor] = None     # (C, F)
+        self.M2: Optional[torch.Tensor] = None       # (C, F)
+        self.n: Optional[torch.Tensor] = None        # (C, F)  per-bin count
+        self.min_val: Optional[torch.Tensor] = None  # (C, F)
+        self.max_val: Optional[torch.Tensor] = None  # (C, F)
+        self.initialized: bool = False
+
+    def _initialize(self, n_channels: int, n_freq_bins: int) -> None:
+        self.mean = torch.zeros(n_channels, n_freq_bins, dtype=torch.float64)
+        self.M2 = torch.zeros(n_channels, n_freq_bins, dtype=torch.float64)
+        self.n = torch.zeros(n_channels, n_freq_bins, dtype=torch.int64)
+        self.min_val = torch.full(
+            (n_channels, n_freq_bins), float("inf"), dtype=torch.float64,
+        )
+        self.max_val = torch.full(
+            (n_channels, n_freq_bins), float("-inf"), dtype=torch.float64,
+        )
+        self.initialized = True
+
+    def update(self, value: torch.Tensor) -> None:
+        """Accept ``(B, C, F, T)`` or ``(C, F, T)``."""
+        if value.ndim == 3:
+            value = value.unsqueeze(0)
+        if value.ndim != 4:
+            return
+        B, C, F, T = value.shape
+        if not self.initialized:
+            self._initialize(C, F)
+        v = value.permute(1, 2, 0, 3).reshape(C, F, B * T).to(torch.float64)
+
+        if torch.isnan(v).any().item():
+            nan_mask = torch.isnan(v)
+            n_valid = (~nan_mask).sum(dim=2).to(torch.int64)
+            if (n_valid == 0).all():
+                return
+            safe = v.clone()
+            safe[nan_mask] = 0.0
+            batch_sum = safe.sum(dim=2)
+            batch_sum_sq = (safe * safe).sum(dim=2)
+            safe.copy_(v)
+            safe[nan_mask] = float("inf")
+            batch_min = safe.amin(dim=2)
+            safe[nan_mask] = float("-inf")
+            batch_max = safe.amax(dim=2)
+        else:
+            n_valid = torch.full((C, F), B * T, dtype=torch.int64)
+            batch_sum = v.sum(dim=2)
+            batch_sum_sq = (v * v).sum(dim=2)
+            batch_min = v.amin(dim=2)
+            batch_max = v.amax(dim=2)
+
+        n_valid_f = n_valid.to(torch.float64)
+        safe_n_f = n_valid_f.clamp(min=1)
+        batch_mean = batch_sum / safe_n_f
+        batch_var = (
+            batch_sum_sq / safe_n_f - batch_mean * batch_mean
+        ).clamp(min=0)
+        batch_M2 = batch_var * n_valid_f
+
+        n_old_f = self.n.to(torch.float64)
+        n_total_f = (self.n + n_valid).to(torch.float64).clamp(min=1)
+        delta = batch_mean - self.mean
+        self.mean = (n_old_f * self.mean + n_valid_f * batch_mean) / n_total_f
+        self.M2 = (
+            self.M2 + batch_M2
+            + delta * delta * n_old_f * n_valid_f / n_total_f
+        )
+        self.n = self.n + n_valid
+
+        has_data = n_valid > 0
+        self.min_val[has_data] = torch.minimum(
+            self.min_val[has_data], batch_min[has_data]
+        )
+        self.max_val[has_data] = torch.maximum(
+            self.max_val[has_data], batch_max[has_data]
+        )
+
+    def merge(self, other: "WelfordTensorPerBin") -> None:
+        if not other.initialized:
+            return
+        if not self.initialized:
+            self.mean = other.mean.clone()
+            self.M2 = other.M2.clone()
+            self.n = other.n.clone()
+            self.min_val = other.min_val.clone()
+            self.max_val = other.max_val.clone()
+            self.initialized = True
+            return
+        n_old_f = self.n.to(torch.float64)
+        n_new_f = other.n.to(torch.float64)
+        n_total_f = (self.n + other.n).to(torch.float64).clamp(min=1)
+        delta = other.mean - self.mean
+        self.mean = (n_old_f * self.mean + n_new_f * other.mean) / n_total_f
+        self.M2 = (
+            self.M2 + other.M2
+            + delta * delta * n_old_f * n_new_f / n_total_f
+        )
+        self.n = self.n + other.n
+        self.min_val = torch.minimum(self.min_val, other.min_val)
+        self.max_val = torch.maximum(self.max_val, other.max_val)
+
+    def compute(self) -> Optional[dict]:
+        if not self.initialized or int(self.n.max().item()) < 2:
+            return None
+        denom = (self.n - 1).clamp(min=1).to(torch.float64)
+        std = torch.sqrt(self.M2 / denom)
+        return {
+            "mean": self.mean.numpy(),
+            "std": std.numpy(),
+            "min_val": self.min_val.numpy(),
+            "max_val": self.max_val.numpy(),
+        }
+
+
 _shared_counter = None
 _worker_args = {}
 
@@ -378,9 +505,17 @@ def _process_file_chunk(
         hop_length: int,
         hdf5_key_map: Optional[dict[str, str]] = None,
         zero_is_missing_signals: Optional[set[str]] = None,
+        compute_per_bin_for_stft: bool = False,
         counter=None,
-) -> dict[str, tuple[WelfordTensor, WelfordTensor]]:
-    """Process a chunk of HDF5 files, returning per-signal Welford trackers."""
+) -> dict[str, dict[str, "WelfordTensor"]]:
+    """Process a chunk of HDF5 files, returning per-signal Welford trackers.
+
+    When ``compute_per_bin_for_stft`` is True, an additional per-bin
+    Welford tracker is also accumulated for every signal in
+    ``stft_signals`` and returned under the ``'log_per_bin'`` key.
+    Returned dict keys are ``'raw'``, ``'log'``, optionally
+    ``'log_per_bin'``.
+    """
     import h5py
 
     if hdf5_key_map is None:
@@ -391,6 +526,12 @@ def _process_file_chunk(
     stft_window = torch.hann_window(n_fft)
     raw_trackers = {name: WelfordTensor() for name in signal_names}
     log_trackers = {name: WelfordTensor() for name in signal_names}
+    log_per_bin_trackers: dict[str, WelfordTensorPerBin] = {}
+    if compute_per_bin_for_stft:
+        log_per_bin_trackers = {
+            name: WelfordTensorPerBin() for name in signal_names
+            if name in stft_signals
+        }
 
     for path in paths:
         try:
@@ -457,13 +598,27 @@ def _process_file_chunk(
                 raw_trackers[name].update(data)
                 log_data = torch.log10(data.clamp(min=-0.99) + 1)
                 log_trackers[name].update(log_data)
+                # Per-(channel, freq_bin) tracker for STFT signals when
+                # requested. log_data here is (B, C, F, T) for STFT
+                # signals (constructed above in the STFT branch) — the
+                # PerBin accumulator handles its 4-D shape natively.
+                if name in log_per_bin_trackers and log_data.ndim == 4:
+                    log_per_bin_trackers[name].update(log_data)
 
         if counter is not None:
             with counter.get_lock():
                 counter.value += 1
 
-    return {name: (raw_trackers[name], log_trackers[name])
-            for name in signal_names}
+    out: dict[str, dict[str, object]] = {}
+    for name in signal_names:
+        entry: dict[str, object] = {
+            "raw": raw_trackers[name],
+            "log": log_trackers[name],
+        }
+        if name in log_per_bin_trackers:
+            entry["log_per_bin"] = log_per_bin_trackers[name]
+        out[name] = entry
+    return out
 
 
 def compute_preprocessing_stats(
@@ -477,6 +632,7 @@ def compute_preprocessing_stats(
         n_fft: int = 1024,
         hop_length: int = 256,
         num_workers: int = 1,
+        compute_per_bin_for_stft: bool = False,
 ) -> dict[str, dict[str, dict[str, np.ndarray]]]:
     """
     Compute per-modality preprocessing statistics directly from HDF5 files.
@@ -546,7 +702,8 @@ def compute_preprocessing_stats(
             r = _process_file_chunk(
                 [path], signal_names, stft_signals, n_fft, hop_length,
                 hdf5_key_map,
-                zero_is_missing_signals=zero_is_missing_signals)
+                zero_is_missing_signals=zero_is_missing_signals,
+                compute_per_bin_for_stft=compute_per_bin_for_stft)
             results.append(r)
     else:
         import multiprocessing as mp
@@ -560,6 +717,7 @@ def compute_preprocessing_stats(
             hop_length=hop_length,
             hdf5_key_map=hdf5_key_map,
             zero_is_missing_signals=zero_is_missing_signals,
+            compute_per_bin_for_stft=compute_per_bin_for_stft,
         )
 
         total = len(paths)
@@ -587,14 +745,26 @@ def compute_preprocessing_stats(
         pool.close()
         pool.join()
 
-    # Merge all worker results
+    # Merge all worker results. Each worker returns a dict of dicts:
+    # ``{name: {'raw': WelfordTensor, 'log': WelfordTensor,
+    #          'log_per_bin': WelfordTensorPerBin (optional)}}``.
     raw_merged = {name: WelfordTensor() for name in signal_names}
     log_merged = {name: WelfordTensor() for name in signal_names}
+    log_per_bin_merged: dict[str, WelfordTensorPerBin] = {}
+    if compute_per_bin_for_stft:
+        log_per_bin_merged = {
+            name: WelfordTensorPerBin() for name in signal_names
+            if stft_signals is not None and name in stft_signals
+        }
     for partial in results:
         for name in signal_names:
-            if name in partial:
-                raw_merged[name].merge(partial[name][0])
-                log_merged[name].merge(partial[name][1])
+            if name not in partial:
+                continue
+            entry = partial[name]
+            raw_merged[name].merge(entry["raw"])
+            log_merged[name].merge(entry["log"])
+            if "log_per_bin" in entry and name in log_per_bin_merged:
+                log_per_bin_merged[name].merge(entry["log_per_bin"])
 
     # Build final stats dict
     final_stats = {}
@@ -608,6 +778,14 @@ def compute_preprocessing_stats(
             final_stats[name]["raw"] = raw_merged[name].compute()
         if log_ok:
             final_stats[name]["log"] = log_merged[name].compute()
+        per_bin_tracker = log_per_bin_merged.get(name)
+        if per_bin_tracker is not None and per_bin_tracker.initialized:
+            per_bin = per_bin_tracker.compute()
+            if per_bin is not None:
+                # ``log_per_bin`` lives next to ``raw`` / ``log`` —
+                # training code reads either depending on its own
+                # config; channel-wise (``log``) remains the default.
+                final_stats[name]["log_per_bin"] = per_bin
 
     torch.save(final_stats, output_path)
     print(f"Saved statistics for {len(final_stats)} modalities to {output_path}")

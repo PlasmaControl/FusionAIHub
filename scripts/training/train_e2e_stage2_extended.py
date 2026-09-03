@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import math
 import random
 from dataclasses import asdict
 from pathlib import Path
@@ -71,8 +72,13 @@ from tokamak_foundation_model.e2e.model import (
     E2EFoundationModel,
 )
 from tokamak_foundation_model.e2e.rollout import TokenSpaceRollout
+from tokamak_foundation_model.e2e.output_heads import SpectrogramFlowHead
 from tokamak_foundation_model.utils.distributed import DistributedManager
 from torch.nn.parallel import DistributedDataParallel as _DDP
+
+# Sibling-module import (scripts/training is on sys.path at launch) — share
+# the per-bin sigma builder with the Stage 1 trainer rather than duplicate it.
+from train_e2e_stage1 import build_spec_per_bin_sigma  # noqa: E402
 
 from tokamak_foundation_model.e2e.multimodal import (
     SPECTROGRAM_MODALITIES,
@@ -108,6 +114,7 @@ FAST_TS_MODALITIES: List[Tuple[str, int, int]] = [("filterscopes", 8, 50)]
 ACTUATOR_MODALITIES: List[Tuple[str, int]] = [
     ("pin", 8),
     ("beam_voltage", 8),
+    ("tin", 8),
     ("ech_power", 12),
     ("ech_tor_angle", 12),
     ("ech_pol_angle", 12),
@@ -129,6 +136,8 @@ def build_configs(
     chunk_duration_s: float,
     use_video: Optional[List[str]] = None,
     use_spectro: Optional[List[str]] = None,
+    spectro_patch_f: Optional[int] = None,
+    spectro_patch_t: Optional[int] = None,
 ) -> Tuple[List[DiagnosticConfig], List[ActuatorConfig]]:
     slow_samples = round(chunk_duration_s * SLOW_FS)
     fast_samples = round(chunk_duration_s * FAST_FS)
@@ -143,6 +152,7 @@ def build_configs(
     # so the rollout's diagnostic-prefix slice stays contiguous (Guard G1).
     diagnostics = append_multimodal_diagnostics(
         diagnostics, use_video=use_video, use_spectro=use_spectro,
+        spectro_patch_f=spectro_patch_f, spectro_patch_t=spectro_patch_t,
     )
     actuators: List[ActuatorConfig] = [
         ActuatorConfig(n, c, fast_samples, n_tokens=5)
@@ -302,15 +312,25 @@ def current_K_from_list(step: int, Ks: List[int], block_steps: int) -> int:
 # ── Rollout with full-backprop + gradient checkpointing ─────────────────
 
 
-def _decode_diag(model: E2EFoundationModel, diag_tokens: torch.Tensor) -> Dict[str, torch.Tensor]:
+def _decode_diag(
+    model: E2EFoundationModel, diag_tokens: torch.Tensor,
+    return_slices: bool = False,
+):
+    """Decode per-modality predictions. With ``return_slices`` also return the
+    per-modality backbone token slice (a generative head's flow loss needs it
+    as conditioning). Default off → unchanged for the metric/eval callers."""
     out: Dict[str, torch.Tensor] = {}
+    slices: Dict[str, torch.Tensor] = {}
     offset = 0
     for cfg in model.diagnostics:
         n = cfg.n_tokens()
-        out[cfg.name] = model.diag_heads[cfg.name](
-            diag_tokens[:, offset : offset + n]
-        )
+        sl = diag_tokens[:, offset : offset + n]
+        out[cfg.name] = model.diag_heads[cfg.name](sl)
+        if return_slices:
+            slices[cfg.name] = sl
         offset += n
+    if return_slices:
+        return out, slices
     return out
 
 
@@ -367,6 +387,7 @@ def _make_chunk_fn(
     tf_in_group: Optional[List[bool]] = None,
     video_diag_names: Optional[List[str]] = None,
     spectro_diag_names: Optional[List[str]] = None,
+    keep_displacement_for_flow: bool = False,
 ):
     """Returns a function ``chunk_fn(diag_tokens, *prev_pred_list)`` suitable
     for ``torch.utils.checkpoint.checkpoint`` with ``use_reentrant=False``.
@@ -422,7 +443,9 @@ def _make_chunk_fn(
 
             out_tokens = model.backbone(all_tokens, step_idx, time_s)
             diag_tokens = out_tokens[:, :n_diag_tokens]
-            predictions = _decode_diag(model, diag_tokens)
+            predictions, tok_slices = _decode_diag(
+                model, diag_tokens, return_slices=True
+            )
 
             # Video heads emit (B, T, C, H, W); permute to (B, C, T, H, W)
             # so loss / metric / rollout-context paths all see the same
@@ -436,18 +459,56 @@ def _make_chunk_fn(
                 target = target_in_group[i][cfg.name]
                 mask = mask_in_group[i][cfg.name]
 
-                if cfg.name in video_set or cfg.name in spectro_set:
-                    # Video and spectrogram: MAE-only with the per-modality
-                    # presence/channel gate as ``mask``. No displacement
-                    # loss — cosine in ~900k pixel dims is meaningless for
-                    # video, and spectro displacement is deferred per Open
-                    # Decision #3 in the spectrogram plan.
+                if cfg.name in video_set:
+                    # Video: MAE only. Displacement loss is meaningless
+                    # for ~900k pixel dims. Patch-grid smoothness was
+                    # dropped 2026-06-10 — the zero-init refine_block
+                    # in VideoOutputHead is the anti-checkerboard
+                    # mechanism. (The pre-existing reference to
+                    # video_smoothness_weight here was a latent closure
+                    # bug; it lives in rollout_forward_loss_extended's
+                    # scope, not _make_chunk_fn's.)
                     mae = masked_mae(pred, target, mask)
                     chunk_loss = chunk_loss + mae_weight * mae
                     continue
 
-                ctx = ctx_dict[cfg.name].detach()
+                head = model.diag_heads[cfg.name]
                 mae = masked_mae(pred, target, mask)
+                if isinstance(head, SpectrogramFlowHead):
+                    # Generative spectro: pred == μ (train mode); the flow
+                    # loss on the residual owns the mode structure (computed
+                    # INSIDE this checkpointed chunk so the velocity net is
+                    # recomputed in backward → grad-checkpoint correct, and
+                    # runs every step → DDP-safe). Replaces the cos+mag
+                    # displacement (the failed deterministic mode-fix) unless
+                    # explicitly kept for ablation.
+                    flow = head.flow_loss(
+                        tok_slices[cfg.name], pred, target, mask
+                    )
+                    step_contrib = mae_weight * mae + head.flow_lambda * flow
+                    if keep_displacement_for_flow:
+                        ctx = ctx_dict[cfg.name].detach()[
+                            ..., : _spectro_trunc_t(cfg)
+                        ]
+                        cos_loss, mag_loss, _, _, _ = displacement_terms(
+                            pred, target, ctx, mask, min_disp_norm
+                        )
+                        step_contrib = (
+                            step_contrib
+                            + cos_weight * cos_loss + mag_weight * mag_loss
+                        )
+                    chunk_loss = chunk_loss + step_contrib
+                    continue
+                ctx = ctx_dict[cfg.name].detach()
+                if cfg.name in spectro_set:
+                    # Spec ctx at k=0 of group 0 comes from
+                    # diag_initial (full STFT, e.g. 98 frames) while
+                    # pred/target are already truncated to trunc_t
+                    # (e.g. 96). Mirror Stage 2b's slice so shapes
+                    # line up for displacement_terms. At all other
+                    # steps the ctx is already trunc_t-sized; the
+                    # slice is a no-op.
+                    ctx = ctx[..., : _spectro_trunc_t(cfg)]
                 cos_loss, mag_loss, _, _, _ = displacement_terms(
                     pred, target, ctx, mask, min_disp_norm
                 )
@@ -465,6 +526,45 @@ def _make_chunk_fn(
         return (diag_tokens, chunk_loss) + last_tensors
 
     return chunk_fn
+
+
+def _patch_grid_smoothness_loss(
+    pred: torch.Tensor,
+    patch_size: Tuple[int, int, int],
+    mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Penalise per-pixel discontinuities at video patch-grid boundaries.
+
+    See ``train_e2e_stage2_delta.py`` for the rationale — duplicated here
+    to keep the trainer self-contained. Keep in sync.
+    """
+    T_p, H_p, W_p = patch_size
+    loss = pred.new_zeros(())
+    n_terms = 0
+    if mask is not None:
+        pred = pred * mask
+    H = pred.shape[-2]
+    if H_p > 0 and H > H_p:
+        b = torch.arange(H_p, H, H_p, device=pred.device)
+        if b.numel() > 0:
+            diff = pred[..., b, :] - pred[..., b - 1, :]
+            loss = loss + (diff ** 2).mean()
+            n_terms += 1
+    W = pred.shape[-1]
+    if W_p > 0 and W > W_p:
+        b = torch.arange(W_p, W, W_p, device=pred.device)
+        if b.numel() > 0:
+            diff = pred[..., :, b] - pred[..., :, b - 1]
+            loss = loss + (diff ** 2).mean()
+            n_terms += 1
+    T_dim = pred.shape[1]
+    if T_p > 0 and T_dim > T_p:
+        b = torch.arange(T_p, T_dim, T_p, device=pred.device)
+        if b.numel() > 0:
+            diff = pred[:, b, ...] - pred[:, b - 1, ...]
+            loss = loss + (diff ** 2).mean()
+            n_terms += 1
+    return loss / max(n_terms, 1)
 
 
 def rollout_forward_loss_extended(
@@ -485,6 +585,8 @@ def rollout_forward_loss_extended(
     video_diag_names: Optional[List[str]] = None,
     video_n_frames: Optional[Dict[str, int]] = None,
     spectro_diag_names: Optional[List[str]] = None,
+    video_smoothness_weight: float = 0.0,
+    keep_displacement_for_flow: bool = False,
 ) -> torch.Tensor:
     """Full-backprop rollout with gradient checkpointing.
 
@@ -726,6 +828,7 @@ def rollout_forward_loss_extended(
             ),
             video_diag_names=video_diag_names,
             spectro_diag_names=spectro_diag_names,
+            keep_displacement_for_flow=keep_displacement_for_flow,
         )
         outputs = torch_ckpt.checkpoint(
             chunk_fn, diag_tokens, *prev_pred_tensors, use_reentrant=False,
@@ -755,6 +858,8 @@ def validate(
     video_diag_names: Optional[List[str]] = None,
     video_n_frames: Optional[Dict[str, int]] = None,
     spectro_diag_names: Optional[List[str]] = None,
+    step: int = 0,
+    ckpt_dir: Optional[Path] = None,
 ) -> Dict[int, Dict[str, Dict[str, float]]]:
     """Full K_max rollout, no checkpointing; return per-step per-modality
     ``{model_mae, copy_mae, dir_cos, mag_ratio}``. Context at k=0 is
@@ -775,7 +880,8 @@ def validate(
         n: _spectro_trunc_t(cfg_by_name[n]) for n in spectro_diag_names
     }
     model.eval()
-    keys = ("model_mae", "copy_mae", "dir_cos", "mag_ratio")
+    keys = ("model_mae", "copy_mae", "dir_cos", "mag_ratio",
+            "pred_var", "gt_var")
     sums = {
         k: {n: {m: 0.0 for m in keys} for n in diagnostic_names}
         for k in range(K_max)
@@ -889,38 +995,34 @@ def validate(
                 pred = result.predictions[k][name].float()
                 target = target_per_step[k][name]
                 mask = mask_per_step[k][name]
-                if name in video_set or name in spectro_set:
-                    # Video / spectrogram: MAE only; dir_cos / mag_ratio
-                    # remain at the initial 0.0 sentinel and the final
-                    # output reports them as NaN (counts[k][name]["disp"]
-                    # never advances).
+                if name in video_set:
+                    # Video: MAE only — no displacement metrics.
                     mae = masked_mae(pred, target, mask).item()
-                    # Spectrogram diag_initial holds the full STFT output
-                    # (e.g. 98 frames) while target is sliced to trunc_t
-                    # (e.g. 96) by split_spectro_target_by_step. Truncate
-                    # the copy baseline to match so masked_mae's
-                    # broadcast doesn't blow up. Video shapes already
-                    # agree.
-                    if name in spectro_set:
-                        baseline_input = diag_initial[name][
-                            ..., : spectro_trunc_t_map[name]
-                        ]
-                    else:
-                        baseline_input = diag_initial[name]
                     copy_mae = masked_mae(
-                        baseline_input, target, mask
+                        diag_initial[name], target, mask
                     ).item()
                     sums[k][name]["model_mae"] += mae
                     sums[k][name]["copy_mae"] += copy_mae
                     counts[k][name]["mae"] += 1
                     continue
-                # Teacher-forced ctx for metrics (consistency with Stage 2b
-                # val and the §5.9 gate tests, which also use GT context).
+                # Spectrogram diag_initial holds the full STFT output
+                # (e.g. 98 frames) while pred/target are trunc_t
+                # (e.g. 96). Slice diag_initial for both the copy
+                # baseline and the k=0 displacement ctx so shapes
+                # match. Slow_ts has no truncation.
+                if name in spectro_set:
+                    baseline_input = diag_initial[name][
+                        ..., : spectro_trunc_t_map[name]
+                    ]
+                else:
+                    baseline_input = diag_initial[name]
+                # Teacher-forced ctx for metrics (consistency with
+                # Stage 2b val and the §5.9 gate tests).
                 ctx = (
-                    diag_initial[name] if k == 0 else target_per_step[k - 1][name]
+                    baseline_input if k == 0 else target_per_step[k - 1][name]
                 )
                 mae = masked_mae(pred, target, mask).item()
-                copy_mae = masked_mae(diag_initial[name], target, mask).item()
+                copy_mae = masked_mae(baseline_input, target, mask).item()
                 _, _, dir_cos_t, mag_ratio_t, n_valid_t = displacement_terms(
                     pred, target, ctx, mask, min_disp_norm
                 )
@@ -934,6 +1036,21 @@ def validate(
                     sums[k][name]["dir_cos"] += float(dir_cos_t.item())
                     sums[k][name]["mag_ratio"] += float(mag_ratio_t.item())
                     counts[k][name]["disp"] += 1
+                # Temporal-variance ratio (collapse diagnostic) for spectro:
+                # var over time, summed over valid bins; pred/gt share the
+                # mask so the count cancels in the ratio.
+                if name in spectro_set:
+                    pf = pred.float()
+                    mv = (
+                        (mask[..., 0] > 0).float() if mask is not None
+                        else torch.ones(pf.shape[:3], device=pf.device)
+                    )
+                    sums[k][name]["pred_var"] += float(
+                        (pf.var(dim=-1) * mv).sum()
+                    )
+                    sums[k][name]["gt_var"] += float(
+                        (target.float().var(dim=-1) * mv).sum()
+                    )
             # Free this step's resident GPU tensors before moving on. The
             # ctx at step k+1 is target_per_step[k], so we keep the current
             # step's target; the previous step's target is safe to drop.
@@ -943,12 +1060,98 @@ def validate(
             if k > 0:
                 target_per_step[k - 1] = None  # type: ignore[index]
     model.train()
+
+    # Aggregate metrics across DDP ranks. Tier 4 approach (ported from
+    # train_e2e_stage2_delta.py 2026-06-03): NO DDP collectives inside
+    # validate(). Each rank writes its per-rank sums/counts to a small
+    # .pt file in ckpt_dir; rank 0 polls for those files (with a 5-min
+    # deadline for stragglers), merges available ones into its own
+    # sums/counts, and cleans up. Non-rank-0 ranks return with their
+    # rank-LOCAL metrics — fine because only rank 0 logs val_loss and
+    # saves best.pt.
+    #
+    # Earlier collective-based attempts (all_reduce, monitored_barrier
+    # + gloo sync) hung because val pipeline rank skew can exceed NCCL's
+    # 10-min watchdog (cold val NFS reads). File-based merge + polling
+    # tolerates arbitrary skew up to the deadline.
+    import torch.distributed as dist
+    if (dist.is_available() and dist.is_initialized()
+            and ckpt_dir is not None):
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        ckpt_dir_p = Path(ckpt_dir)
+        my_file = ckpt_dir_p / f"_val_metrics_step{step}_rank{rank:03d}.pt"
+        # Atomic write: write to .tmp then rename so rank 0 never sees a
+        # half-written file.
+        tmp_file = my_file.with_suffix(".pt.tmp")
+        try:
+            torch.save({"sums": sums, "counts": counts}, tmp_file)
+            tmp_file.rename(my_file)
+        except Exception as e:
+            logger.warning(
+                f"[rank{rank}] Tier 4 val metrics write failed: {e!r}"
+            )
+        if rank == 0:
+            import time as _time
+            deadline = _time.time() + 300.0  # 5 min for stragglers
+            collected = {0}  # already have own sums/counts in memory
+            while _time.time() < deadline and len(collected) < world_size:
+                for r in range(world_size):
+                    if r in collected:
+                        continue
+                    target = ckpt_dir_p / f"_val_metrics_step{step}_rank{r:03d}.pt"
+                    if not target.exists():
+                        continue
+                    try:
+                        other = torch.load(target, weights_only=False)
+                    except Exception as e:
+                        # Partial file? Will retry on next loop iteration.
+                        logger.warning(
+                            f"[rank0] failed to load rank {r} metrics "
+                            f"(may be partial): {e!r}"
+                        )
+                        continue
+                    for k in range(K_max):
+                        for n in diagnostic_names:
+                            for m in keys:
+                                sums[k][n][m] += other["sums"][k][n][m]
+                            for m in ("mae", "disp"):
+                                counts[k][n][m] += other["counts"][k][n][m]
+                    collected.add(r)
+                if len(collected) < world_size:
+                    _time.sleep(1.0)
+            if len(collected) == world_size:
+                logger.info(
+                    f"[rank0] val merge: collected all {world_size} "
+                    f"rank files at step {step}"
+                )
+            else:
+                missing = [r for r in range(world_size) if r not in collected]
+                logger.warning(
+                    f"[rank0] val merge: collected {len(collected)}/"
+                    f"{world_size} rank files at step {step} (5-min "
+                    f"deadline hit). Missing ranks: {missing}. "
+                    "val_loss reflects partial sample."
+                )
+            # Cleanup: remove per-rank files for this step.
+            for r in range(world_size):
+                target = ckpt_dir_p / f"_val_metrics_step{step}_rank{r:03d}.pt"
+                try:
+                    target.unlink()
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    logger.warning(
+                        f"[rank0] failed to unlink {target}: {e!r}"
+                    )
+
     out: Dict[int, Dict[str, Dict[str, float]]] = {}
     for k in range(K_max):
         out[k] = {}
         for name in diagnostic_names:
             mae_n = max(counts[k][name]["mae"], 1)
             disp_n = max(counts[k][name]["disp"], 1)
+            gt_var = sums[k][name]["gt_var"]
             out[k][name] = {
                 "model_mae": sums[k][name]["model_mae"] / mae_n,
                 "copy_mae": sums[k][name]["copy_mae"] / mae_n,
@@ -956,6 +1159,8 @@ def validate(
                 if counts[k][name]["disp"] else float("nan"),
                 "mag_ratio": sums[k][name]["mag_ratio"] / disp_n
                 if counts[k][name]["disp"] else float("nan"),
+                "tvr": (sums[k][name]["pred_var"] / gt_var
+                        if gt_var > 1e-8 else float("nan")),
             }
     return out
 
@@ -1030,6 +1235,23 @@ def main() -> None:
     parser.add_argument("--n_layers", type=int, default=8)
     parser.add_argument("--n_heads", type=int, default=8)
     parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument(
+        "--backbone_grad_checkpoint", action="store_true",
+        help="Per-block gradient checkpointing in the shared backbone. "
+        "Required at d_model=1024+ where activations don't fit per-GCD VRAM.",
+    )
+    parser.add_argument(
+        "--lengths_cache_dir",
+        type=Path,
+        default=Path("/lustre/orion/fus187/proj-shared/foundation_model_meta"),
+        help="Directory for TokamakMultiFileDataset length-cache sidecar "
+        "files (lengths_e2e_stage2_ext_{train,val}.pt) and the "
+        "video-presence cache (video_present_{train,val}.pt). Defaults "
+        "to the shared meta dir where the pre-built caches live — "
+        "critical at d=1024 + N>=8: a cold-start scan of 7878 train files "
+        "takes ~30 min, longer than the NCCL collective timeout (10 min). "
+        "Mirrors --lengths_cache_dir in train_e2e_stage2_delta.py.",
+    )
 
     # Curriculum
     parser.add_argument(
@@ -1047,9 +1269,38 @@ def main() -> None:
     parser.add_argument("--mag_weight", type=float, default=0.1)
     parser.add_argument("--min_disp_norm", type=float, default=0.01)
     parser.add_argument(
+        "--video_smoothness_weight",
+        type=float, default=0.0,
+        help="Weight on the patch-grid smoothness loss for video predictions. "
+        "Suppresses the 12×12 checkerboard baked into Stage 2's "
+        "representation by the autoregressive round-trip through "
+        "ConvTranspose3d(kernel=stride=patch_size). 0.0 disables; "
+        "0.1 is a reasonable starting point. Applied per video modality "
+        "with the same loss gate as the per-step MAE.",
+    )
+    parser.add_argument(
         "--no_displacement_loss", action="store_true",
         help="Disable the cos+log-mag displacement terms (MAE only).",
     )
+    # ── Generative-head / checkerboard-fix flags (2026-06-21) ──
+    parser.add_argument("--video_resize_conv", action="store_true",
+                        help="Resize-conv video decoder (kills the AR "
+                             "checkerboard); supersedes seam-refine. "
+                             "From-scratch / fresh-head only.")
+    parser.add_argument("--video_resize_conv_hidden", type=int, default=64)
+    parser.add_argument("--spec_generative", action="store_true",
+                        help="Generative SpectrogramFlowHead (rectified flow "
+                             "over a deterministic mean).")
+    parser.add_argument("--spec_flow_base_ch", type=int, default=64)
+    parser.add_argument("--spec_flow_steps", type=int, default=6)
+    parser.add_argument("--spec_flow_lambda", type=float, default=1.0)
+    parser.add_argument("--spec_gen_keep_displacement", action="store_true",
+                        help="Keep cos+mag displacement on a generative spectro "
+                             "head's mean (default off — the flow loss owns "
+                             "mode structure). Ablation knob.")
+    parser.add_argument("--collapse_aware_best", action="store_true",
+                        help="Penalise low TVR (collapse) in best.pt selection.")
+    parser.add_argument("--collapse_aware_lambda", type=float, default=1.0)
 
     # Memory
     parser.add_argument(
@@ -1066,6 +1317,15 @@ def main() -> None:
     parser.add_argument("--grad_clip", type=float, default=5.0)
 
     parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument(
+        "--val_batch_size", type=int, default=None,
+        help="Batch size for the val_loader. Defaults to --batch_size; "
+        "set lower (typically 1) when running with large K_max where "
+        "the val targets carry K_max × chunk_duration_s seconds of data "
+        "per sample. At d=1024 + K=80 every sample's targets ≈ 500 MB, "
+        "so val_batch_size=1 keeps the val-transition host RAM budget "
+        "well under the 502 GB node ceiling.",
+    )
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--max_steps", type=int, default=20_000)
     parser.add_argument("--log_every", type=int, default=20)
@@ -1114,6 +1374,17 @@ def main() -> None:
         help="Spectrogram modality names. Empty (default) skips all "
         "spectro paths. Mirrors Stage 2b / Stage 1.",
     )
+    parser.add_argument(
+        "--spectro_patch_f", type=int, default=None,
+        help="Override spectro freq-patch size for all spectro modalities "
+        "(default: registry). 512 = full-frequency patch. Must match the "
+        "delta init checkpoint's patch shape.",
+    )
+    parser.add_argument(
+        "--spectro_patch_t", type=int, default=None,
+        help="Override spectro time-patch size (default: registry). Must "
+        "match the delta init checkpoint's patch shape.",
+    )
     args = parser.parse_args()
 
     dm = DistributedManager()
@@ -1149,20 +1420,23 @@ def main() -> None:
 
     # Video-presence filter: when --use_video is set, retain only shot
     # files where every requested camera's HDF5 group exists. Mirrors
-    # Stage 2b's filter call. Cached in the run dir so subsequent
-    # submissions skip the rescan.
+    # Stage 2b's filter call. Cache lives in --lengths_cache_dir (the
+    # shared meta dir), NOT the per-run checkpoint dir, so a cold-start
+    # smoke / production launch finds the pre-built file and skips the
+    # ~30 min full-dataset scan (longer than NCCL's 10 min timeout).
     if args.use_video:
         if dm.is_main:
             args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            args.lengths_cache_dir.mkdir(parents=True, exist_ok=True)
         dm.barrier()
         train_before, val_before = len(train_files), len(val_files)
         train_files = filter_video_present_files(
             train_files, args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_train.pt",
+            cache_path=args.lengths_cache_dir / "video_present_train.pt",
         )
         val_files = filter_video_present_files(
             val_files, args.use_video,
-            cache_path=args.checkpoint_dir / "video_present_val.pt",
+            cache_path=args.lengths_cache_dir / "video_present_val.pt",
         )
         logger.info(
             f"Video-presence filter ({args.use_video}): "
@@ -1182,6 +1456,8 @@ def main() -> None:
         args.chunk_duration_s,
         use_video=args.use_video,
         use_spectro=args.use_spectro,
+        spectro_patch_f=args.spectro_patch_f,
+        spectro_patch_t=args.spectro_patch_t,
     )
     diagnostic_names = [c.name for c in diagnostics]
     actuator_names = [c.name for c in actuators]
@@ -1204,11 +1480,37 @@ def main() -> None:
         f"K_max = {K_max}"
     )
 
+    # Stage 2 enables the VideoOutputHead + SpectrogramOutputHead
+    # seam-refine blocks — fights the patch-grid checkerboard that
+    # the autoregressive K-step rollout amplifies.
+    video_seam_refine_flag = True
+    spectro_seam_refine_flag = True
+    logger.info(
+        f"Seam-refine: video_seam_refine={video_seam_refine_flag} "
+        f"spectro_seam_refine={spectro_seam_refine_flag}"
+    )
     model = E2EFoundationModel(
         diagnostics=diagnostics, actuators=actuators,
         d_model=args.d_model, n_heads=args.n_heads,
         n_layers=args.n_layers, dropout=args.dropout,
+        backbone_grad_checkpoint=args.backbone_grad_checkpoint,
+        video_seam_refine=video_seam_refine_flag,
+        spectro_seam_refine=spectro_seam_refine_flag,
+        video_resize_conv=args.video_resize_conv,
+        video_resize_conv_hidden=args.video_resize_conv_hidden,
+        spectro_generative=args.spec_generative,
+        spectro_flow_base_ch=args.spec_flow_base_ch,
+        spectro_flow_sample_steps=args.spec_flow_steps,
+        spectro_flow_lambda=args.spec_flow_lambda,
     ).to(device)
+    # Confirm the head modules actually built the refine_block.
+    for name in spectro_diag_names:
+        head = model.diag_heads[name]
+        logger.info(
+            f"  spectro head '{name}': enable_seam_refine="
+            f"{getattr(head, 'enable_seam_refine', 'MISSING')}, "
+            f"has refine_block={hasattr(head, 'refine_block')}"
+        )
 
     if args.init_checkpoint is not None:
         ckpt = torch.load(
@@ -1255,13 +1557,14 @@ def main() -> None:
     # bypassing the high-level model.__call__. To make DDP all_reduce fire
     # cleanly, wrap the per-step compute in a tiny Module and DDP that.
     class _TrainStepModule(torch.nn.Module):
-        def __init__(self, base):
+        def __init__(self, base, keep_displacement_for_flow=False):
             super().__init__()
             self.model = base
+            self.keep_displacement_for_flow = keep_displacement_for_flow
         def forward(
             self, batch, k_steps, chunk_duration_s, mae_weight, cos_weight,
             mag_weight, min_disp_norm, use_displacement_loss, grad_checkpoint_every,
-            p_tf,
+            p_tf, video_smoothness_weight,
         ):
             return rollout_forward_loss_extended(
                 self.model, batch, diagnostic_names, actuator_names,
@@ -1274,9 +1577,13 @@ def main() -> None:
                 video_diag_names=video_diag_names,
                 video_n_frames=video_n_frames,
                 spectro_diag_names=spectro_diag_names,
+                video_smoothness_weight=video_smoothness_weight,
+                keep_displacement_for_flow=self.keep_displacement_for_flow,
             )
 
-    train_step_module: torch.nn.Module = _TrainStepModule(model)
+    train_step_module: torch.nn.Module = _TrainStepModule(
+        model, keep_displacement_for_flow=args.spec_gen_keep_displacement
+    )
     if dm.distributed:
         train_step_module = _DDP(
             train_step_module,
@@ -1328,18 +1635,47 @@ def main() -> None:
     )
     train_ds = TokamakMultiFileDataset(
         train_files,
-        lengths_cache_path=args.checkpoint_dir / "lengths_e2e_stage2_ext_train.pt",
+        lengths_cache_path=args.lengths_cache_dir / "lengths_e2e_stage2_ext_train.pt",
         **shared,
     )
     val_ds = TokamakMultiFileDataset(
         val_files,
-        lengths_cache_path=args.checkpoint_dir / "lengths_e2e_stage2_ext_val.pt",
+        lengths_cache_path=args.lengths_cache_dir / "lengths_e2e_stage2_ext_val.pt",
         **shared,
     )
     logger.info(
         f"Chunks — train: {len(train_ds)}  val: {len(val_ds)}  "
         f"prediction_horizon_s={prediction_horizon_s:.3f}"
     )
+    # Generative spectro heads: set per-(channel, freq) residual std from the
+    # per-bin stats (persisted in the checkpoint → eval reconstructs it).
+    # Falls back to ones (no standardisation) if log_per_bin is unavailable.
+    if args.spec_generative:
+        _sigma_map = build_spec_per_bin_sigma(
+            stats, model.diagnostics, train_ds.signal_configs,
+        )
+        if not _sigma_map:
+            logger.warning(
+                "--spec_generative: stats lack 'log_per_bin' — flow heads "
+                "use unit residual std (no per-bin scaling)."
+            )
+        for _n in spectro_diag_names:
+            _h = model.diag_heads[_n]
+            if isinstance(_h, SpectrogramFlowHead) and _n in _sigma_map:
+                _h.set_sigma_pb(_sigma_map[_n].to(device))
+                logger.info(
+                    f"Flow head [{_n}]: per-bin residual std set, "
+                    f"shape {tuple(_sigma_map[_n].shape)}"
+                )
+    # num_workers cap — mirrors train_e2e_stage2_delta.py. Past Stage 1
+    # chain (4581026/27/28) OOM'd at ~9h45m / ~5850 steps with >4 workers
+    # due to slow per-worker leak (h5py metadata + PyTorch caches).
+    if args.num_workers > 4:
+        logger.warning(
+            f"Capping --num_workers {args.num_workers} → 4 (OOM mitigation; "
+            "see persistent_workers comment in train_e2e_stage2_delta.py)."
+        )
+        args.num_workers = 4
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size,
         # TwoLevelSampler: shuffle file order per epoch, sequential
@@ -1367,12 +1703,58 @@ def main() -> None:
             else TwoLevelSampler(train_ds, shuffle=True)
         ),
         num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
+        # prefetch_factor=1 at K=80 — delta runs 3 at K=10, but at d=1024
+        # + K=80 each batch's targets carry 4 s of all-modality data
+        # (~500 MB / batch). With 4 workers × prefetch_factor × 8 ranks
+        # = 8 × prefetch buffered batches per node, prefetch=2 → 32 GB
+        # / node of persistent host-RAM occupancy that eats the headroom
+        # val needs during its worker spawn. Job 4757844 confirmed the
+        # 14 GB shortfall. prefetch=1 → 16 GB / node, freeing room.
+        prefetch_factor=1 if args.num_workers > 0 else None,
         pin_memory=device.type == "cuda",
-        persistent_workers=args.num_workers > 0,
+        # persistent_workers=False — workers torn down per epoch to
+        # release the slow leak (h5py metadata + PyTorch caches) that
+        # OOM'd Stage 1 chained jobs at ~9h45m. Mirrors delta.
+        persistent_workers=False,
+    )
+    # Val loader is smaller and isolated from train workers to keep
+    # the combined in-flight footprint under the 502 GB node budget
+    # during val transitions. Without this delta hit OOM at 97 % host
+    # RAM on smokes when val workers spun up alongside the train pool
+    # — same failure mode the extended smoke (job 4757314) just hit.
+    val_num_workers = min(4, args.num_workers)
+    val_batch_size = args.val_batch_size if args.val_batch_size is not None \
+        else args.batch_size
+    logger.info(
+        f"DataLoader — train: batch={args.batch_size} workers={args.num_workers} "
+        f"prefetch=2 persistent=False | val: batch={val_batch_size} "
+        f"workers={val_num_workers} prefetch=1 persistent=False"
+    )
+    # Val sampler: under DDP, shard windows across ranks with a
+    # shuffled order so each rank sees different shots. Without this,
+    # every rank iterates val_ds in the same order and the first
+    # val_max_batches windows on every rank come from the same
+    # ~1-2 files. With ~62% of shots carrying stub (C, 1) placeholders
+    # for BES (~45% for CO2), those clusters can leave val_loss for
+    # those modalities reading exactly 0 across the entire 64-rank
+    # aggregate (observed ext val 1: co2/bes = 0.0 at every k).
+    # DistributedSampler-style strided sharding + shuffle=True is OK
+    # here because val runs ~60 batches per call, not the hot training
+    # loop where the per-step overhead was measured to be costly.
+    from torch.utils.data import DistributedSampler
+    val_sampler = (
+        DistributedSampler(
+            val_ds, num_replicas=dm.world_size, rank=dm.rank,
+            shuffle=True, seed=args.seed, drop_last=True,
+        )
+        if dm.distributed else None
     )
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
+        val_ds, batch_size=val_batch_size,
+        shuffle=False,  # sampler handles ordering when distributed
+        sampler=val_sampler,
+        num_workers=val_num_workers, collate_fn=collate_fn, drop_last=True,
+        prefetch_factor=1 if val_num_workers > 0 else None,
         # pin_memory=False for val: each iter() call re-creates the main
         # process's pin_memory thread + internal queues, and those pinned
         # allocations ratchet host RSS upward across validations (observed
@@ -1380,8 +1762,37 @@ def main() -> None:
         # OOM on val 2 at batch=256). Val is 1–20 batches per call so the
         # synchronous H2D cost is negligible.
         pin_memory=False,
-        persistent_workers=args.num_workers > 0,
+        persistent_workers=False,
     )
+
+    # Pre-warm val NFS cache. The Stage 2 val 1 has been the recurring
+    # failure point: val files are mostly disjoint from train, so when
+    # the first val event fires after ~10h of training, a subset of
+    # ranks hit cold NFS reads and lag the rest. monitored_barrier's
+    # 2-min window can't tolerate this, and downstream collectives hang
+    # on rank skew. By having each rank's main process briefly open
+    # every val file at startup, the per-node NFS metadata+page cache
+    # is warm before val 1 fires. ~1-2 min added to startup; eliminates
+    # the cold-val-cache hazard. Mirrors delta.
+    import time as _time
+    import h5py as _h5py
+    if dm.distributed:
+        n_val_files = len(val_ds.hdf5_paths)
+        if dm.is_main:
+            logger.info(f"Pre-warming val NFS cache ({n_val_files} files)...")
+        t0 = _time.time()
+        for path in val_ds.hdf5_paths:
+            try:
+                with _h5py.File(path, "r"):
+                    pass  # open + close warms the per-node NFS cache
+            except Exception:
+                pass  # skip unreadable files; dataset handles them
+        dm.barrier()  # all ranks finish warming before training starts
+        if dm.is_main:
+            logger.info(
+                f"  val NFS cache pre-warm: {n_val_files} files in "
+                f"{_time.time()-t0:.1f}s"
+            )
 
     opt = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -1417,15 +1828,39 @@ def main() -> None:
         )
         # Strict resume: a *_latest.pt was written by THIS run with the
         # same multimodal config; spectro/video keys must already be
-        # present. allowed_missing_prefixes=() catches accidental TS-key
-        # renames the same way as in the pre-multimodal contract.
+        # present. allowed_missing_prefixes catches accidental TS-key
+        # renames the same way as in the pre-multimodal contract — and
+        # also permits VideoOutputHead + SpectrogramOutputHead
+        # refine_block keys (zero-initialised, so missing = bit-identical
+        # output to the pre-patch model).
+        resume_allowed_missing = tuple(
+            f"diag_heads.{n}.refine_block."
+            for n in (list(args.use_video) + list(args.use_spectro))
+        )
         load_state_dict_explicit(
             model,
             resume_ckpt["model_state_dict"],
-            allowed_missing_prefixes=(),
+            allowed_missing_prefixes=resume_allowed_missing,
         )
         if "optimizer_state_dict" in resume_ckpt:
-            opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
+            # Param-count guard — mirrors train_e2e_stage2_delta.py.
+            # Falls back to fresh AdamW state when the model has more
+            # params than the saved optimizer (e.g. crossing the
+            # 2026-06-08 VideoOutputHead refine_block addition).
+            saved_n = sum(
+                len(g["params"])
+                for g in resume_ckpt["optimizer_state_dict"]["param_groups"]
+            )
+            cur_n = sum(len(g["params"]) for g in opt.param_groups)
+            if saved_n != cur_n:
+                logger.warning(
+                    f"Skipping optimizer state restore: saved had "
+                    f"{saved_n} params, model has {cur_n}. AdamW "
+                    f"starts fresh — momentum re-accumulates over the "
+                    f"first few hundred steps. Loss may wobble briefly."
+                )
+            else:
+                opt.load_state_dict(resume_ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in resume_ckpt:
             scheduler.load_state_dict(resume_ckpt["scheduler_state_dict"])
         resume_start_step = int(resume_ckpt.get("step", 0))
@@ -1478,7 +1913,7 @@ def main() -> None:
                 batch, K, args.chunk_duration_s,
                 args.mae_weight, args.cos_weight, args.mag_weight,
                 args.min_disp_norm, use_disp, args.grad_checkpoint_every,
-                p_tf,
+                p_tf, args.video_smoothness_weight,
             )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
@@ -1502,6 +1937,27 @@ def main() -> None:
             running_count = 0
 
         if step % args.val_every == 0 or step == args.max_steps:
+            # Reclaim memory before val transition. At K=80 each batch's
+            # targets carry 4 s of all-modality data (~500 MB / batch),
+            # so the train DataLoader's worker prefetch queues plus
+            # current batch hold ~16-50 GB of host RAM per node. Val
+            # workers spawning on top of that breaches the 502 GB ceiling
+            # (job 4757844 hit 97 %). Tearing down the train iter with
+            # `persistent_workers=False` sends SIGTERM to the workers,
+            # which release their queues; gc.collect() + empty_cache()
+            # finish the cleanup. Cost: workers respawn after val, so
+            # the per-worker HDF5 LRU cache is lost (~10-20 s cold-cache
+            # penalty + ~5-10 s respawn). At val_every=2500 over a
+            # 20k-step chain that's <0.03 % overhead — negligible.
+            import gc as _gc
+            del train_iter
+            del batch
+            _gc.collect()
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            if dm.distributed:
+                dm.barrier()
+
             # Pass bare model — validate constructs its own rollout from it.
             metrics = validate(
                 model, val_loader, device,
@@ -1513,7 +1969,14 @@ def main() -> None:
                 video_diag_names=video_diag_names,
                 video_n_frames=video_n_frames,
                 spectro_diag_names=spectro_diag_names,
+                step=step,
+                ckpt_dir=args.checkpoint_dir,
             )
+
+            # Respawn train workers from scratch. Next `next(train_iter)`
+            # call in the outer loop will block briefly while file
+            # handles re-open + first prefetch lands.
+            train_iter = iter(train_loader)
             highlight = sorted({0, min(9, K_max - 1), min(39, K_max - 1), K_max - 1})
             logger.info(
                 f"Validation @ step {step} — per-modality m(ae) / cos / mratio "
@@ -1599,9 +2062,26 @@ def main() -> None:
                     "  Head weights have not moved in 5k+ steps — flat region?"
                 )
 
-            is_new_best = val_loss < best_val_loss
+            # Collapse-aware selection: penalise spectro modalities whose TVR
+            # is below 1 (mean-collapsed) so a low-MAE collapse can't win
+            # best.pt. Default off → plain sum(MAE).
+            sel_loss = val_loss
+            if args.collapse_aware_best:
+                tvr_pen = sum(
+                    max(0.0, 1.0 - metrics[k][name]["tvr"])
+                    for k in range(K_max)
+                    for name in diagnostic_names
+                    if not math.isnan(metrics[k][name].get("tvr", float("nan")))
+                )
+                sel_loss = val_loss + args.collapse_aware_lambda * tvr_pen
+                logger.info(
+                    f"  [collapse-aware] sel_loss={sel_loss:.4f} "
+                    f"(tvr_penalty={tvr_pen:.4f}, "
+                    f"lambda={args.collapse_aware_lambda})"
+                )
+            is_new_best = sel_loss < best_val_loss
             if is_new_best:
-                best_val_loss = val_loss
+                best_val_loss = sel_loss
                 best_step = step
             if dm.is_main:
                 ckpt_state = {

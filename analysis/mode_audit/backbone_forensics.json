@@ -1,0 +1,182 @@
+{
+  "ckpt": "/lustre/orion/fus187/proj-shared/models/e2e_stage1_allshots_b32_resid/e2e_stage1_latest.pt",
+  "probe": {
+    "n": 256,
+    "auc_codes": 0.5491071428571429,
+    "auc_tokenizer_out": 0.5982142857142857,
+    "auc_backbone_out": 0.7514880952380952
+  },
+  "grad_share": {
+    "backbone_grad_norm": 6.442665100097656,
+    "per_modality_param_grad_norm": {
+      "ts_tangential_density": 6.8048,
+      "ts_tangential_temp": 2.421,
+      "ts_core_density": 1.6247,
+      "ts_core_temp": 1.4812,
+      "cer_ti": 1.4343,
+      "mse": 1.3698,
+      "filterscopes": 1.2496,
+      "tangtv_lower": 1.2041,
+      "cer_rot": 1.1808,
+      "tangtv_upper": 0.9137,
+      "bes": 0.8385,
+      "mhr": 0.704,
+      "ece": 0.6937,
+      "co2": 0.4903
+    },
+    "ece_per_layer_grad": [
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      4e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      3e-05,
+      2e-05,
+      2e-05,
+      2e-05,
+      2e-05,
+      2e-05,
+      1e-05,
+      1e-05
+    ]
+  },
+  "overfit_one_batch": {
+    "bs": 4,
+    "steps": 300,
+    "trajectory": [
+      {
+        "step": 0,
+        "loss": 18.5537,
+        "ece_ce": 2.3979,
+        "ece_codeacc": 0.1519
+      },
+      {
+        "step": 20,
+        "loss": 18.9207,
+        "ece_ce": 2.0866,
+        "ece_codeacc": 0.216
+      },
+      {
+        "step": 40,
+        "loss": 19.2774,
+        "ece_ce": 1.9834,
+        "ece_codeacc": 0.2559
+      },
+      {
+        "step": 60,
+        "loss": 16.4224,
+        "ece_ce": 1.8028,
+        "ece_codeacc": 0.3263
+      },
+      {
+        "step": 80,
+        "loss": 17.9979,
+        "ece_ce": 1.67,
+        "ece_codeacc": 0.3828
+      },
+      {
+        "step": 100,
+        "loss": 14.5766,
+        "ece_ce": 1.2997,
+        "ece_codeacc": 0.5234
+      },
+      {
+        "step": 120,
+        "loss": 12.6577,
+        "ece_ce": 0.9158,
+        "ece_codeacc": 0.6707
+      },
+      {
+        "step": 140,
+        "loss": 10.8488,
+        "ece_ce": 0.5483,
+        "ece_codeacc": 0.8177
+      },
+      {
+        "step": 160,
+        "loss": 10.1491,
+        "ece_ce": 0.3532,
+        "ece_codeacc": 0.8854
+      },
+      {
+        "step": 180,
+        "loss": 7.9847,
+        "ece_ce": 0.1808,
+        "ece_codeacc": 0.945
+      },
+      {
+        "step": 200,
+        "loss": 7.1773,
+        "ece_ce": 0.1198,
+        "ece_codeacc": 0.9651
+      },
+      {
+        "step": 220,
+        "loss": 6.3452,
+        "ece_ce": 0.0792,
+        "ece_codeacc": 0.9754
+      },
+      {
+        "step": 240,
+        "loss": 6.8032,
+        "ece_ce": 0.076,
+        "ece_codeacc": 0.9779
+      },
+      {
+        "step": 260,
+        "loss": 6.1961,
+        "ece_ce": 0.1467,
+        "ece_codeacc": 0.9551
+      },
+      {
+        "step": 280,
+        "loss": 10.5726,
+        "ece_ce": 0.4153,
+        "ece_codeacc": 0.894
+      },
+      {
+        "step": 299,
+        "loss": 5.8222,
+        "ece_ce": 0.0593,
+        "ece_codeacc": 0.9891
+      }
+    ],
+    "final_ece_codeacc": 0.9891,
+    "verdict": "HEALTHY (codeacc->~1)"
+  }
+}

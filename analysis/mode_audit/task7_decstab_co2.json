@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "modality": "co2",
+  "n_active": 410,
+  "decoded_stability_bandcorr": 0.7061460481043148,
+  "code_stability": 0.1781955286860466,
+  "recon_bandcorr": 0.40645391672281145,
+  "verdict": "DECODE MODERATE"
+}
