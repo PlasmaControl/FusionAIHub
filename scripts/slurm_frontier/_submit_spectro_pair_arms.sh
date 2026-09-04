@@ -91,6 +91,42 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "aspect" ]; then
+        # PATCH ASPECT AT CONSTANT n_tok -- the one geometry axis that has never been varied
+        # and does NOT touch FRAME_LAYOUT.
+        #
+        #   n_tok = (freq_bins // patch_f) * (time_frames // patch_t) = (512//F) * (96//T)
+        #   8x32 -> 64 * 3 = 192      16x16 -> 32 * 6 = 192 (production)      32x8 -> 16 * 12 = 192
+        #
+        # Same 192 tokens, same [8,5,5,5] vocab, same values-per-token (the patch AREA is 256
+        # either way) -- only the frequency/time SPLIT of the window moves. So this is in scope
+        # without a FRAME_LAYOUT decision.
+        #
+        # WHY freq-finer is the motivated direction: the ranking key is computed on a FREQUENCY
+        # PROFILE. gate._peak_overlap_f1 runs on _power_envelope = spec.mean(-1), i.e. all 96
+        # STFT frames are averaged away before peaks are detected -- which is why the tsmooth5
+        # oracle (GT low-passed in TIME) scores peak_f1 0.9936 while the patchmean oracle at
+        # 16x16 scores only 0.6537. Modes are thin in frequency and extended in time (co2 GT
+        # lag-1 autocorrelation along the frame axis is 0.61-0.68), so 8x32 buys resolution
+        # where the metric and the physics both live and spends it where the signal is
+        # redundant. 32x8 is the OPPOSITE-direction control: without it a win at 8x32 cannot be
+        # distinguished from "any change off the incumbent grid helps".
+        #
+        # These arms train FROM SCRATCH -- the patch size changes the encoder/decoder shapes, so
+        # there is nothing to resume from.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+        # gain_tokens 64 = one per freq patch at 8x32 (the documented natural default is
+        # n_freq_patch); it must divide freq_bins and stay < n_tok, and 64 does both.
+        ARMS_STR="${ARMS_STR};${M}_p832_s1|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p832_s2|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_p832gs|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --gain_shape --gain_tokens 64"
+        ARMS_STR="${ARMS_STR};${M}_p328|${P} ${MSK} ${MIR} ${B} --patch_f 32 --patch_t 8"
+        continue
+    fi
     if [ "${SWEEP}" = "gsm2" ]; then
         # LEG 2 OF THE GAIN-SHAPE CELL, and it is DELIBERATELY ASYMMETRIC because the two
         # modalities are at different distances from their bar.
