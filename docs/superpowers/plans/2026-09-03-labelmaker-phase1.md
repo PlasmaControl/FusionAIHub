@@ -1736,12 +1736,12 @@ def test_predict_members_refuses_a_multi_output_graph(tmp_path):
         predict_members(graphs, [np.zeros((1, 2))])
 
 
-pytestmark_upstream = pytest.mark.skipif(
+requires_upstream = pytest.mark.skipif(
     not TM_UPSTREAM.exists(), reason=f"upstream weights not available: {TM_UPSTREAM}"
 )
 
 
-@pytestmark_upstream
+@requires_upstream
 def test_real_ensemble_members_have_different_layer_names():
     # MEASURED: all ten members were built in one Keras session, so the
     # global name counter ran on - inputs are input_1/input_2 for member 0,
@@ -1759,7 +1759,7 @@ def test_real_ensemble_members_have_different_layer_names():
         ]
 
 
-@pytestmark_upstream
+@requires_upstream
 def test_real_tearing_ensemble_loads_and_predicts():
     paths = sorted(TM_UPSTREAM.glob("best_model_?_4c.h5"))
     assert len(paths) == 10
@@ -1775,7 +1775,7 @@ def test_real_tearing_ensemble_loads_and_predicts():
     np.testing.assert_allclose(members, predict_members(graphs, [x0, x1]))
 
 
-@pytestmark_upstream
+@requires_upstream
 def test_feeding_an_ensemble_by_name_fails_loudly():
     # The trap this guards: a dict keyed on member 0's names fits member 0
     # and raises for the other nine, rather than quietly mispredicting.
@@ -2462,7 +2462,7 @@ class DomainRule:
         if self.stat not in STATS:
             raise ValueError(f"stat must be one of {STATS}, got {self.stat!r}")
         # Model authors write these tuples by hand - the tearing spec alone has
-        # fourteen - so a stat that does not match the field's kind is a
+        # thirteen - so a stat that does not match the field's kind is a
         # plausible copy-paste error. Caught here, at import, rather than as an
         # opaque numpy AxisError from reducing a 1-D array along axis 1.
         kind = ns.by_name(self.canonical).kind
@@ -2808,6 +2808,8 @@ from pathlib import Path
 
 import yaml
 
+import hashlib
+
 from .base import ModelAdapter
 
 MODELS_DIR = Path(__file__).resolve().parent
@@ -3150,7 +3152,7 @@ git commit -m "labelmaker: model registry, card format, and the scaffolded roste
 **Upstream facts this task encodes** (verified 2026-09-03):
 - Weights: `/projects/EKOLEMEN/simple_ae_predictor/models/rt_multi_io/mse_bin_os_w/best_model_{0..9}_4c.h5`, Keras 2.8, ten members, two inputs `input_1 (None, 11)` and `input_2 (None, 33, 5)`, one output `dense_4 (None, 2)`.
 - Column 0 is `betan` (linear). Column 1 is the tearing logit; the head was trained with `from_logits=True`, so a sigmoid is applied on read.
-- The first layer of each branch is a `BatchNormalization` carrying the training-set moving statistics, so **there are no external normalisation constants to recover**.
+- The profile branch opens with a `BatchNormalization`; the eleven 0-D inputs enter the `Concatenate` directly and are normalised immediately after it, by the `BatchNormalization` on the resulting 15-vector. Either way every input is normalised by training-set moving statistics inside the graph, so **there are no external normalisation constants to recover**.
 - Input order is `train.py:31-32` verbatim. 0-D inputs are at `t+dt`, profiles at `t`, `dt = 25 ms`.
 - The domain rules are the `idx` filter of `train.py:83`.
 
@@ -3165,6 +3167,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from labelmaker.config import Paths
 from labelmaker.features import namespace as ns
 from labelmaker.features.store import FeatureArray
 from labelmaker.models import registry
@@ -3222,8 +3225,24 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert (rules[("tritop", "value")].lo, rules[("tritop", "value")].hi) == (0.0, 1.0)
     assert (rules[("tribot", "value")].lo, rules[("tribot", "value")].hi) == (0.0, 1.0)
     assert rules[("gapin", "value")].hi == 0.2
-    assert rules[("ech_rho", "value")].lo == 0.0
-    assert rules[("ech_rho", "value")].lo_inclusive
+    assert rules[("te_zipfit", "min")].lo == 0.0
+    assert rules[("te_zipfit", "min")].lo_inclusive
+    # No ech_rho rule: nonneg_zero_fill subsumes the upstream clause, so one
+    # could never fire. See the comment in spec.py.
+    assert ("ech_rho", "value") not in rules
+
+
+def test_the_qpsi_rule_bounds_the_reciprocal_not_qpsi_itself():
+    # max(1/qpsi) < 3 flags a low-q profile and admits a high-q one. Asserting
+    # only `hi == 3.0` cannot tell this from the opposite reading.
+    for qpsi, expect_valid in ((5.0, True), (2.5, True), (0.3, False)):
+        feats, grid = _features()
+        t = feats["qpsi"].x
+        feats["qpsi"] = FeatureArray(
+            x=t, y=np.full((33, t.size), qpsi), attrs={"resolver": "archive"}
+        )
+        built = tm.ADAPTER.input_spec.build(feats, grid)
+        assert bool(built.valid.all()) is expect_valid, qpsi
 
 
 def _features(n=8, *, ech_nan=False, rho_nan=False):
@@ -3286,11 +3305,19 @@ def test_negative_ech_power_also_becomes_zero():
     assert built.valid.all()
 
 
-def test_missing_ech_deposition_location_becomes_zero_which_is_in_domain():
-    feats, grid = _features(rho_nan=True)
-    built = tm.ADAPTER.input_spec.build(feats, grid)
-    np.testing.assert_allclose(built.scalars[:, 10], 0.0)
-    assert built.valid.all()
+def test_any_unusable_ech_deposition_location_becomes_zero():
+    # Zero is the upstream convention for ECH-off, so NaN and negative alike
+    # map to it and the row stays usable. That is the transform's doing, not
+    # a domain rule's - there is no ech_rho rule.
+    for value in (np.nan, -1.0, -1e9):
+        feats, grid = _features()
+        t = feats["ech_rho"].x
+        feats["ech_rho"] = FeatureArray(
+            x=t, y=np.full((1, t.size), value), attrs={"resolver": "archive"}
+        )
+        built = tm.ADAPTER.input_spec.build(feats, grid)
+        np.testing.assert_allclose(built.scalars[:, 10], 0.0)
+        assert built.valid.all(), value
 
 
 def test_out_of_domain_kappa_is_flagged():
@@ -3305,18 +3332,20 @@ def test_out_of_domain_kappa_is_flagged():
     assert built.valid.sum() == 7 and not built.valid[3]
 
 
-pytestmark_upstream = pytest.mark.skipif(
+requires_upstream = pytest.mark.skipif(
     not UPSTREAM.exists(), reason=f"upstream weights not available: {UPSTREAM}"
 )
 
 
-@pytestmark_upstream
 def test_card_matches_the_spec():
+    # Deliberately NOT gated on the upstream mount: this reads only the card
+    # and the spec, so it is a pure-repo invariant. Gating it would let card
+    # drift pass unnoticed in exactly the environments that lack /projects.
     assert registry.card_discrepancies("d3d_tearing_onset_cnn1d") == []
     assert registry.implemented() == ["d3d_tearing_onset_cnn1d"]
 
 
-@pytestmark_upstream
+@requires_upstream
 def test_predict_runs_end_to_end_from_the_upstream_directory():
     predict = tm.load(UPSTREAM)
     feats, grid = _features()
@@ -3331,7 +3360,20 @@ def test_predict_runs_end_to_end_from_the_upstream_directory():
     assert (decoded["tm_prob"].hi >= decoded["tm_prob"].mean).all()
 
 
-@pytestmark_upstream
+@pytest.mark.skipif(
+    not (Paths.from_env().models / "d3d_tearing_onset_cnn1d").exists(),
+    reason="weights not yet copied into the data root",
+)
+def test_verification_passes_against_the_copy_inference_will_load():
+    # Every other weights test reads the upstream directory, but the global
+    # constraint is that inference reads the copy in the data root. Exercise
+    # those bytes.
+    registry.verify_artifacts(
+        "d3d_tearing_onset_cnn1d", Paths.from_env().models / "d3d_tearing_onset_cnn1d"
+    )
+
+
+@requires_upstream
 def test_sha256_verification_rejects_a_tampered_artifact(tmp_path):
     import shutil
 
@@ -3382,8 +3424,10 @@ reference harness `../../test/test.py`.
 The model takes eleven 0-D quantities at `t + 25 ms` and five 33-point
 profiles at `t`, and emits two columns: `betan` and a tearing logit. Input
 names and their order are `train.py:31-32` verbatim; the domain rules are
-`train.py:83`. Each branch starts with a BatchNormalization holding the
-training-set moving statistics, so no external scaler is needed.
+`train.py:83`. The profile branch opens with a BatchNormalization; the eleven
+0-D inputs go straight into the Concatenate and are normalised just after it,
+by the BatchNormalization on the 15-vector. Either way the graph normalises
+its own inputs, so there is no external scaler to recover.
 
 Substitutions, all measured in validation/d3d_tearing_onset_cnn1d/:
   R0_EFITRT1, kappa_EFITRT1, 1/qpsi_EFITRT1  <- offline EFIT01 equivalents
@@ -3448,6 +3492,9 @@ INPUT_SPEC = InputSpec(
         DomainRule("ne_zipfit", "max", hi=12.0),
         DomainRule("te_zipfit", "min", lo=0.0, lo_inclusive=True),
         DomainRule("te_zipfit", "max", hi=10.0),
+        # NB reduces the TRANSFORMED array, so this is max(1/qpsi) < 3 - the
+        # upstream clause. Read literally as max(qpsi) < 3 it would flag
+        # nearly every H-mode slice, so do not "fix" it.
         DomainRule("qpsi", "max", hi=3.0),
         DomainRule("pres", "min", lo=0.0, lo_inclusive=True),
         DomainRule("pres", "max", lo=0.0, hi=2.0e5),
@@ -3457,7 +3504,12 @@ INPUT_SPEC = InputSpec(
         DomainRule("tritop", "value", lo=0.0, hi=1.0),
         DomainRule("tribot", "value", lo=0.0, hi=1.0),
         DomainRule("gapin", "value", hi=0.2),
-        DomainRule("ech_rho", "value", lo=0.0, lo_inclusive=True),
+        # train.py:83's `x0[:, 10] >= 0` clause needs no rule here:
+        # `nonneg_zero_fill` on the field already maps every negative and NaN
+        # deposition location to 0.0, so a rule could never fire. Upstream
+        # dropped those rows; labelmaker relabels them 0, which IS the
+        # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
+        # median). Said here rather than left as dead code that looks live.
     ),
 )
 
@@ -3504,8 +3556,6 @@ Append to `src/labelmaker/models/registry.py`:
 ```python
 def sha256_of(path) -> str:
     """Hex digest of a file, read in 1 MiB blocks."""
-    import hashlib
-
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for block in iter(lambda: fh.read(1 << 20), b""):
@@ -3514,28 +3564,46 @@ def sha256_of(path) -> str:
 
 
 def verify_artifacts(slug: str, model_dir) -> None:
-    """Raise unless every artifact in `model_dir` matches the card's sha256.
+    """Raise unless every artifact the spec loads matches the card's sha256.
 
-    Labels are only worth what the weights behind them are, so inference
-    refuses to run against unexpected bytes rather than silently producing
-    a label file whose provenance is wrong.
+    Labels are only worth what the weights behind them are, so `run.py`'s
+    `_predictor` calls this before loading a model rather than silently
+    producing a label file whose provenance is wrong. Absence and corruption
+    are reported separately: they are different failures.
     """
     card = read_card(slug)["labelmaker"]
     expected = (card.get("upstream") or {}).get("sha256") or {}
     if not expected:
         raise ValueError(f"{slug}: card records no sha256 for its artifacts")
+    # Verify the artifacts the SPEC loads, not merely the ones the card
+    # happens to list. Iterating `expected` alone fails open: a card with ten
+    # entries under `artifacts` but three under `sha256` - a hand edit, a
+    # partial regeneration, a bad merge - would pass while seven unverified
+    # weight files got loaded. This is the only guard between the pipeline and
+    # unverified weights, so it has to fail closed.
+    unlisted = [a for a in load_adapter(slug).artifacts if a not in expected]
+    if unlisted:
+        raise ValueError(
+            f"{slug}: card records no sha256 for {unlisted}; every artifact the "
+            "spec loads must be verifiable"
+        )
     model_dir = Path(model_dir)
-    problems = []
+    absent, mismatched = [], []
     for name, want in sorted(expected.items()):
         path = model_dir / name
         if not path.exists():
-            problems.append(f"{name}: missing from {model_dir}")
+            absent.append(name)
             continue
         got = sha256_of(path)
         if got != want:
-            problems.append(f"{name}: sha256 {got[:12]} != card {want[:12]}")
+            mismatched.append(f"{name}: {got[:12]} != card {want[:12]}")
+    problems = []
+    if absent:
+        problems.append(f"missing from {model_dir}: {absent}")
+    if mismatched:
+        problems.append(f"sha256 mismatch: {mismatched}")
     if problems:
-        raise ValueError(f"{slug}: artifact sha256 mismatch: " + "; ".join(problems))
+        raise ValueError(f"{slug}: " + "; ".join(problems))
 ```
 
 - [ ] **Step 6: Copy the weights into the data root and record provenance**
@@ -3697,8 +3765,10 @@ A ten-member ensemble of small multi-input networks (12,086 parameters each).
 The profile branch is two `Conv1D` layers over the 33-point radial axis, pooled
 and compressed to four numbers; those are concatenated with the eleven 0-D
 inputs and passed through three dense layers to a two-column output. Every
-block is preceded by a `BatchNormalization` carrying training-set statistics, so
-the graph normalises its own inputs.
+block is preceded by a `BatchNormalization` carrying training-set statistics -
+though note the eleven 0-D inputs are normalised not before the concatenation
+but immediately after it, on the 15-vector. Either way the graph normalises its
+own inputs and needs no external scaler.
 
 - Developed by: PlasmaControl group, Princeton (upstream author recorded in
   `PROVENANCE.json`)
