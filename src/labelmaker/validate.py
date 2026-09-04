@@ -683,3 +683,375 @@ def reconstruction_fidelity(
             "conflicts": ech_conflicts,
         },
     }
+
+
+def _rankdata(a: np.ndarray) -> np.ndarray:
+    """Mid-rank ranks: average the ordinal ranks within each tie group.
+
+    Replaces `scipy.stats.rankdata(a, method="average")` (task-16 addendum
+    item 1), for the same reason `_ks_statistic` above replaces
+    `scipy.stats.ks_2samp`: this module loads torch at module scope, torch's
+    bundled `libstdc++` shadows the newer system one, and scipy's compiled
+    extensions then fail with `ImportError: version 'GLIBCXX_3.4.29' not
+    found` whenever torch imported first - which `run.py`'s `--stage all`
+    guarantees, since the `infer` stage loads torch before `validate` is
+    imported at all. No import-order fix inside this module is sufficient,
+    so the fix is to need no scipy import at runtime. Verified against
+    `scipy.stats.rankdata` as an exact oracle in
+    `tests/labelmaker/test_label_quality.py`, which imports scipy only under
+    pytest - the one context where that import is known to succeed even
+    after torch (see `_ks_statistic`'s docstring for why).
+
+    Mid-ranks - the average of the ordinal ranks tied values would otherwise
+    occupy, not the first or last of them - are required, not a stylistic
+    choice: `binary_metrics`'s AUROC is the Mann-Whitney rank-sum identity,
+    and averaging within a tie group is what makes a model that emits an
+    identical probability for two rows of opposite truth score exactly 0.5
+    on that pair - see `test_auroc_matches_hand_computed_cases`'s all-tied
+    case.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    n = a.size
+    order = np.argsort(a, kind="mergesort")
+    sorted_a = a[order]
+    ordinal = np.arange(1, n + 1, dtype=np.float64)
+    new_group = np.empty(n, dtype=bool)
+    new_group[0] = True
+    new_group[1:] = sorted_a[1:] != sorted_a[:-1]
+    group_id = np.cumsum(new_group) - 1
+    group_mean = np.bincount(group_id, weights=ordinal) / np.bincount(group_id)
+    ranks = np.empty(n, dtype=np.float64)
+    ranks[order] = group_mean[group_id]
+    return ranks
+
+
+def binary_metrics(prob: np.ndarray, truth: np.ndarray, *, bins: int = 10) -> dict:
+    """AUROC, F1 at 0.5, Brier, and a calibration curve.
+
+    AUROC is the Mann-Whitney rank-sum identity over `_rankdata`, not a
+    trapezoid over a sampled ROC and not scikit-learn (not in this
+    environment, and not worth adding for three metrics) - exact, and needs
+    no scipy at runtime either (see `_rankdata`'s docstring). Ties get
+    mid-ranks, the correct convention for a model that emits identical
+    probabilities for different rows.
+    """
+    prob = np.asarray(prob, dtype=np.float64).ravel()
+    truth = np.asarray(truth, dtype=np.float64).ravel()
+    good = np.isfinite(prob) & np.isfinite(truth)
+    prob, truth = prob[good], (truth[good] > 0.5)
+    n_pos, n_neg = int(truth.sum()), int((~truth).sum())
+    out: dict = {
+        "n": int(prob.size),
+        "n_positive": n_pos,
+        "positive_fraction": float(n_pos / prob.size) if prob.size else None,
+        "auroc": None,
+        "f1_at_0.5": None,
+        "precision_at_0.5": None,
+        "recall_at_0.5": None,
+        "brier": None,
+        "ece": None,
+        "calibration": [],
+    }
+    if prob.size == 0 or n_pos == 0 or n_neg == 0:
+        return out
+    ranks = _rankdata(prob)
+    out["auroc"] = float(
+        (ranks[truth].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+    )
+    pred = prob >= 0.5
+    tp = int((pred & truth).sum())
+    fp = int((pred & ~truth).sum())
+    fn = int((~pred & truth).sum())
+    out["f1_at_0.5"] = float(2 * tp / (2 * tp + fp + fn)) if tp or fp or fn else 0.0
+    out["precision_at_0.5"] = float(tp / (tp + fp)) if tp + fp else None
+    out["recall_at_0.5"] = float(tp / (tp + fn)) if tp + fn else None
+    out["brier"] = float(np.mean((prob - truth.astype(np.float64)) ** 2))
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    which = np.clip(np.digitize(prob, edges[1:-1]), 0, bins - 1)
+    ece = 0.0
+    for b in range(bins):
+        sel = which == b
+        if not sel.any():
+            out["calibration"].append(
+                {"bin": b, "n": 0, "mean_prob": None, "observed": None}
+            )
+            continue
+        mean_prob = float(prob[sel].mean())
+        observed = float(truth[sel].mean())
+        out["calibration"].append(
+            {"bin": b, "n": int(sel.sum()), "mean_prob": mean_prob, "observed": observed}
+        )
+        ece += sel.sum() / prob.size * abs(mean_prob - observed)
+    out["ece"] = float(ece)
+    return out
+
+
+def regression_metrics(pred: np.ndarray, truth: np.ndarray) -> dict:
+    pred = np.asarray(pred, dtype=np.float64).ravel()
+    truth = np.asarray(truth, dtype=np.float64).ravel()
+    good = np.isfinite(pred) & np.isfinite(truth)
+    pred, truth = pred[good], truth[good]
+    if pred.size == 0:
+        return {"n": 0, "rmse": None, "bias": None, "corr": None}
+    return {
+        "n": int(pred.size),
+        "rmse": float(np.sqrt(np.mean((pred - truth) ** 2))),
+        "bias": float(np.mean(pred - truth)),
+        "corr": float(np.corrcoef(pred, truth)[0, 1])
+        if pred.std() > 0 and truth.std() > 0
+        else None,
+    }
+
+
+#: `y.npy`'s own columns (the archived truth): column 1 is `tm_label`,
+#: column 0 is `betan`. `OUTPUT_SPEC` independently declares
+#: `OutputField("betan", column=0)` / `OutputField("tm_prob", column=1)` for
+#: the MODEL's raw output order - a different array that happens to agree
+#: only because upstream built both in the same order (task-16 addendum item
+#: 5). `label_quality` asserts the two agree once, before any shot is
+#: touched, so a future spec or archive change that broke the coincidence
+#: fails loudly instead of silently scoring against the wrong truth column.
+_TRUTH_COLUMNS = {"tm_prob": 1, "betan": 0}
+
+
+def _score_field(task: str, pred: np.ndarray, truth: np.ndarray, valid: np.ndarray) -> dict:
+    """Score one output field twice: every matched row, and only the rows
+    labelmaker's own validity rule would actually publish a label for.
+
+    Task-16 addendum item 6: labelmaker masks invalid rows out of what it
+    emits, so a metric computed over every matched row measures something
+    the package would never publish - misstating the one number this whole
+    task exists to produce. `all_matched` is kept for reference and
+    diagnosis only; `published` (the valid-row-only score) is the one
+    `label_quality` surfaces as `reconstructed_inputs` and the one
+    `reconstruction_penalty`/`model_index_results` are computed from,
+    because it is the number the package actually stands behind.
+    """
+    scorer = binary_metrics if task == "binary" else regression_metrics
+    valid = np.asarray(valid, dtype=bool)
+    pred = np.asarray(pred)
+    truth = np.asarray(truth)
+    return {
+        "all_matched": scorer(pred, truth),
+        "published": scorer(pred[valid], truth[valid]),
+        "n_valid": int(valid.sum()),
+        "n_invalid": int((~valid).sum()),
+    }
+
+
+def label_quality(
+    slug: str,
+    shots,
+    paths: Paths,
+    *,
+    archive: Path = TM_ARCHIVE,
+) -> dict:
+    """Score the model twice against the same truth: their rows, then ours.
+
+    The first score (`archived_inputs`) is the model's own ceiling on these
+    shots - the archived rows *are* the training rows, so no validity mask
+    applies to them. The second (`reconstructed_inputs`) is what labelmaker
+    actually publishes: the model run on labelmaker's own reconstructed
+    features, scored only over the rows labelmaker's own validity rule would
+    publish a label for (addendum item 6 - see `_score_field`).
+    `reconstructed_inputs_all_matched` additionally scores every matched row
+    regardless of validity, kept for diagnosis, never for the headline
+    number. The gap between `archived_inputs` and `reconstructed_inputs` is
+    the reconstruction penalty, and it is the number that answers "are these
+    labels reliable".
+
+    Every shot is isolated (C1, matching `reconstruction_fidelity`): a
+    missing archive column, a truncated feature file, or a `match_rows`
+    variance-guard `ValueError` on a per-shot basis costs only that shot, not
+    the run.
+    """
+    from .features import namespace as ns
+    from .features.store import present, read_feature
+    from .models.base import BuiltInputs
+
+    # Materialized up front: `shots` is frequently a generator, and a
+    # `len()` taken after the loop below (which consumes it) would report 0.
+    shots = list(shots)
+    adapter = registry.load_adapter(slug)
+    spec = adapter.input_spec
+
+    # I10, shared with `reconstruction_fidelity`: MATCH_COLUMNS indexes
+    # d3d_tearing_onset_cnn1d's scalar column order specifically, and this
+    # function performs the same row alignment. Checked once, before any
+    # per-shot work and before the (potentially slow) weight load below, so
+    # a different slug's scalar order fails loudly here instead of silently
+    # comparing the wrong columns.
+    names_0d = [f.model_name for f in spec.scalar_fields]
+    match_names = tuple(names_0d[i] for i in MATCH_COLUMNS)
+    if match_names != _EXPECTED_MATCH_COLUMN_NAMES:
+        raise ValueError(
+            f"{slug}: MATCH_COLUMNS {MATCH_COLUMNS} indexes {match_names}, not "
+            f"the expected {_EXPECTED_MATCH_COLUMN_NAMES}; label_quality's row "
+            "alignment is specific to d3d_tearing_onset_cnn1d's scalar column "
+            "order and would silently compare the wrong columns for any other "
+            "slug"
+        )
+
+    # Addendum item 5: the coincidence label_quality depends on, asserted
+    # once, before any shot is touched.
+    for f in adapter.output_spec.fields:
+        want = _TRUTH_COLUMNS.get(f.name)
+        if want is not None and f.column != want:
+            raise ValueError(
+                f"{slug}: output field {f.name!r} declares column {f.column}, "
+                f"but the archived truth column map says its truth column is "
+                f"{want}; label_quality scores one array against the other and "
+                "cannot proceed if that coincidence breaks - see task-16 "
+                "addendum item 5"
+            )
+
+    predict = adapter.load(paths.models / slug)
+
+    arch_pred: dict[str, list[np.ndarray]] = {}
+    ours_pred: dict[str, list[np.ndarray]] = {}
+    valid_masks: list[np.ndarray] = []
+    truths: list[np.ndarray] = []
+    used: list[int] = []
+    skipped: dict[str, str] = {}
+
+    for shot in shots:
+        try:
+            got = archive_rows(shot, archive)
+            if got is None:
+                skipped[str(shot)] = "no archived rows"
+                continue
+            fpath = paths.features_file(shot)
+            if not fpath.exists():
+                skipped[str(shot)] = "no feature file"
+                continue
+            stored = present(fpath)
+            features = {
+                name: read_feature(fpath, name)
+                for name in spec.canonical_names
+                if name in stored
+            }
+            built = spec.build(features, ns.GRID_S)
+            info = match_rows(got["x0"], built)
+            if not info["passed"]:
+                skipped[str(shot)] = f"match rejected: {info['fail_reason']}"
+                continue
+            idx = info["index"]
+            theirs = BuiltInputs(
+                t=built.t[idx], scalars=got["x0"], profiles=got["x1"],
+                valid=np.ones(idx.size, bool), missing=(), resolvers={},
+            )
+            ours = BuiltInputs(
+                t=built.t[idx], scalars=built.scalars[idx],
+                profiles=built.profiles[idx], valid=built.valid[idx],
+                missing=built.missing, resolvers=built.resolvers,
+            )
+            a = adapter.output_spec.decode(predict(theirs))
+            b = adapter.output_spec.decode(predict(ours))
+            for name in a:
+                arch_pred.setdefault(name, []).append(a[name].mean)
+                ours_pred.setdefault(name, []).append(b[name].mean)
+            truths.append(got["y"])
+            valid_masks.append(np.asarray(ours.valid, dtype=bool))
+            used.append(int(shot))
+        except Exception as exc:  # noqa: BLE001 - per-shot isolation, see docstring
+            skipped[str(shot)] = f"{type(exc).__name__}: {exc}"
+            continue
+
+    report: dict = {
+        "slug": slug,
+        "truth": str(archive / "y.npy"),
+        "n_shots_requested": len(shots),
+        "n_shots_used": len(used),
+        "shots_used": used,
+        "skipped": skipped,
+        "archived_inputs": {},
+        "reconstructed_inputs": {},
+        "reconstructed_inputs_all_matched": {},
+        "row_counts": {},
+        "reconstruction_penalty": {},
+        "reconstruction_penalty_note": (
+            "computed as reconstructed_inputs (published: labelmaker's own "
+            "valid-row mask applied) minus archived_inputs (the model's own "
+            "ceiling, scored over every matched training row - the archived "
+            "rows are the training rows, so no validity mask applies to "
+            "them). reconstructed_inputs_all_matched additionally scores "
+            "every matched row regardless of labelmaker's validity flag - "
+            "rows the package would never actually publish a label for - "
+            "kept for reference only; see task-16 addendum item 6."
+        ),
+    }
+    if not used:
+        return report
+    y = np.concatenate(truths)
+    valid = np.concatenate(valid_masks)
+    for name, arch_values in arch_pred.items():
+        col = _TRUTH_COLUMNS.get(name)
+        if col is None:
+            continue
+        t = y[:, col]
+        pa = np.concatenate(arch_values)
+        po = np.concatenate(ours_pred[name])
+        field = next(f for f in adapter.output_spec.fields if f.name == name)
+        report["archived_inputs"][name] = (
+            binary_metrics if field.task == "binary" else regression_metrics
+        )(pa, t)
+        scored = _score_field(field.task, po, t, valid)
+        report["reconstructed_inputs"][name] = scored["published"]
+        report["reconstructed_inputs_all_matched"][name] = scored["all_matched"]
+        report["row_counts"][name] = {
+            "archived": int(pa.size),
+            "reconstructed_all_matched": int(po.size),
+            "reconstructed_published_valid": scored["n_valid"],
+            "reconstructed_published_invalid": scored["n_invalid"],
+        }
+    for name in report["archived_inputs"]:
+        a_m = report["archived_inputs"][name]
+        o_m = report["reconstructed_inputs"][name]
+        key = "auroc" if "auroc" in a_m else "rmse"
+        if a_m.get(key) is not None and o_m.get(key) is not None:
+            report["reconstruction_penalty"][name] = {key: float(o_m[key] - a_m[key])}
+    return report
+
+
+def model_index_results(reports: dict) -> list[dict]:
+    """The headline numbers, in HuggingFace `model-index` shape.
+
+    Reads `label_quality`'s `reconstructed_inputs` key, which is already the
+    valid-row-only, published score (`_score_field`), not
+    `reconstructed_inputs_all_matched` - so the number written to the card
+    is the one the package actually stands behind, never a metric over rows
+    it would never emit a label for (task-16 addendum item 6).
+    """
+    quality = reports.get("label_quality") or {}
+    results: list[dict] = []
+    for source, suffix in (
+        ("archived_inputs", "archived inputs"),
+        ("reconstructed_inputs", "reconstructed inputs"),
+    ):
+        for label, metrics in (quality.get(source) or {}).items():
+            entries = []
+            for key, mtype in (("auroc", "roc_auc"), ("f1_at_0.5", "f1"),
+                               ("rmse", "rmse")):
+                value = metrics.get(key)
+                if value is None:
+                    continue
+                entries.append(
+                    {"name": f"{key} ({suffix})", "type": mtype, "value": float(value)}
+                )
+            if not entries:
+                continue
+            kinds = {e["type"] for e in entries}
+            task_type = (
+                "tabular-regression" if kinds == {"rmse"} else "tabular-classification"
+            )
+            results.append(
+                {
+                    "task": {"type": task_type, "name": label},
+                    "dataset": {
+                        "name": f"d3d overlap shots (n={quality.get('n_shots_used')})",
+                        "type": "d3d-faith-corpus",
+                    },
+                    "metrics": entries,
+                }
+            )
+    return results

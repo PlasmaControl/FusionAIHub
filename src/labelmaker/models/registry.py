@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from ..config import sha256_of  # re-exported: registry.sha256_of is the public name
+from ..config import atomic_path, sha256_of  # re-exported: registry.sha256_of is public
 from .base import ModelAdapter
 
 MODELS_DIR = Path(__file__).resolve().parent
@@ -161,3 +161,41 @@ def verify_artifacts(slug: str, model_dir) -> None:
         problems.append(f"sha256 mismatch: {mismatched}")
     if problems:
         raise ValueError(f"{slug}: " + "; ".join(problems))
+
+
+def update_model_index(slug: str, results: list[dict]) -> None:
+    """Write validation results into the card's `model-index`, in place.
+
+    Only the front matter is rewritten - the prose below it is copied
+    verbatim - so a card keeps its human-written sections while its numbers
+    stay generated. The front matter carries no comments, so a `safe_load`/
+    `safe_dump` round trip is lossless in *content*. It is not necessarily
+    lossless in *formatting*: a card's `labelmaker.approximations` block (a
+    list of long prose entries) can be reflowed by the round trip even
+    though its content is untouched - see the task-16 report for the
+    measured diff on this card, since that changes on every validation run
+    and is worth knowing about rather than discovering by surprise.
+
+    This function **writes into the repo's source tree**
+    (`card_path` resolves to `src/labelmaker/models/<slug>/README.md`), so
+    running validation dirties the git working tree - deliberate, per the
+    plan's "the card is the one place to read how a model performed", but a
+    caller should not have to discover that by `git status`. After a write,
+    `card_discrepancies(slug)` must still return `[]`: this rewrite only
+    ever touches `model-index`, never `inputs`/`outputs`/`framework`/
+    `card_id`/`artifacts`/`ensemble_n`, which is what that check compares.
+    """
+    path = card_path(slug)
+    text = path.read_text()
+    m = _FRONT_MATTER.match(text)
+    if not m:
+        raise ValueError(f"{slug}: card has no front matter to update")
+    data = yaml.safe_load(m.group(1))
+    index = data.get("model-index") or [{"name": slug.replace("_", "-")}]
+    index[0]["results"] = results
+    data["model-index"] = index
+    body = text[m.end():]
+    dumped = yaml.safe_dump(data, sort_keys=False, allow_unicode=True,
+                            default_flow_style=False, width=100)
+    with atomic_path(path) as tmp:
+        tmp.write_text(f"---\n{dumped}---\n{body}")
