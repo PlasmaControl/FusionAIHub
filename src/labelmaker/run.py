@@ -1,13 +1,17 @@
 """The labelmaker CLI: `python -m labelmaker.run <stage>`.
 
-Three stages, each independently rerunnable, with a per-shot HDF5 file
-between them:
+Four stages, each independently rerunnable, with a per-shot HDF5 file
+between the first two:
 
     features  resolve the union of canonical features the requested models
               need, per shot, into <root>/features/<shot>_features.h5
     infer     build each model's inputs from that file, predict, and write
               <root>/labels/<shot>_labels.h5
-    all       features, then infer
+    validate  score adapter fidelity, reconstruction fidelity and label
+              quality (see `validate.py`'s module docstring), write their
+              JSON reports under <root>/validation/<slug>/, and fold the
+              headline numbers into the model card's `model-index`
+    all       features, then infer, then validate
 
 Every shot is isolated: one try/except and one SIGALRM timeout per shot, so
 a corrupt HDF5 or a hung read costs one shot and not the run (IGNITE
@@ -81,7 +85,7 @@ from .labels.schema import artifact_digest, specs_for
 from .labels.store import append_index, index_rows, labelled, write_labels
 from .models import registry
 
-STAGES = ("features", "infer", "all")
+STAGES = ("features", "infer", "validate", "all")
 
 #: Exit codes. Anything non-zero means no labels should be trusted from this
 #: run; 3 and 4 mean nothing ran at all.
@@ -90,6 +94,11 @@ EXIT_NO_SHOTS = 1
 #: 2 is argparse's own usage error.
 EXIT_UNVERIFIED_WEIGHTS = 3
 EXIT_BAD_MODEL = 4
+#: task-16 addendum item 2: NOT 2 - argparse already owns that code, and a
+#: caller testing `$? == 2` would then confuse "you passed bad flags" with
+#: "the evaluator disagrees with the framework it is supposed to match",
+#: which is the single most important failure this package can report.
+EXIT_FIDELITY_FAILED = 5
 
 #: Faults that make a requested model unusable before any shot is touched:
 #: a scaffold spec (NotImplementedError), a spec with no ADAPTER
@@ -512,19 +521,23 @@ def main(argv=None) -> int:
         print(f"cannot load the requested models: {type(exc).__name__}: {exc}",
               file=sys.stderr)
         return EXIT_BAD_MODEL
-    if args.stage in ("infer", "all"):
+    if args.stage in ("infer", "validate", "all"):
         # Verify the weights once, here, before either pool forks and before
         # the features stage spends hours on a run whose labels could not be
         # trusted anyway. A digest mismatch is a run-level fault, not a
         # per-shot one: leaving it to `_predictor` inside each worker would
         # turn one bad artifact into N identical per-shot errors and bury the
         # cause. The worker still checks, which catches an artifact changed
-        # mid-run.
+        # mid-run. `validate` shares this guard too: `reconstruction_fidelity`
+        # and `label_quality` both call `adapter.load(paths.models / slug)`
+        # directly, with no per-shot re-check of their own the way
+        # `_predictor` has, so this up-front guard is the only thing standing
+        # between a validate run and unverified weights.
         for slug in args.models:
             try:
                 registry.verify_artifacts(slug, paths.models / slug)
             except _MODEL_FAULTS as exc:
-                print(f"infer {slug}: refusing to run - {exc}", file=sys.stderr)
+                print(f"{args.stage} {slug}: refusing to run - {exc}", file=sys.stderr)
                 return EXIT_UNVERIFIED_WEIGHTS
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -594,6 +607,71 @@ def main(argv=None) -> int:
         if index:
             append_index(paths.labels_index, index)
             print(f"index: {len(index)} rows -> {paths.labels_index}")
+
+    if args.stage in ("validate", "all"):
+        # Deferred import, like every other framework-specific import in this
+        # module: `validate` loads torch at module scope (I1/addendum item 1
+        # is what makes that safe now - no scipy import at runtime means the
+        # `infer` stage above loading torch first, under `--stage all`, can
+        # no longer break a later scipy import the way it used to).
+        from . import validate as validation
+
+        for slug in args.models:
+            reports: dict = {}
+            try:
+                reports["adapter_fidelity"] = validation.adapter_fidelity(slug)
+            except OSError as exc:
+                # Addendum item 4: the golden file is committed, but the
+                # golden file's own `meta["models"]` names a path under
+                # `/projects/EKOLEMEN` - a different directory from
+                # `paths.models`, and not covered by the `verify_artifacts`
+                # guard above - which may not be mounted here. That is an
+                # environment limitation, not a run-level fault the way a
+                # bad digest is, so it is recorded as a skip rather than
+                # aborting the whole validate stage.
+                reports["adapter_fidelity"] = {
+                    "skipped": f"{type(exc).__name__}: {exc}"
+                }
+            except Exception as exc:  # noqa: BLE001 - see comment below
+                # `adapter_fidelity` is meaningful only for a model with a
+                # committed golden file (today, only
+                # `d3d_tearing_onset_cnn1d`); calling it for any other slug's
+                # adapter (e.g. an empty `artifacts` tuple) fails inside
+                # numpy/torch with something other than OSError. One model
+                # not being validatable this way is that model's fault, not
+                # a reason to crash a multi-model `--stage all` run.
+                reports["adapter_fidelity"] = {"error": f"{type(exc).__name__}: {exc}"}
+            try:
+                reports["reconstruction"] = validation.reconstruction_fidelity(
+                    slug, shots, paths
+                )
+            except Exception as exc:  # noqa: BLE001 - see comment above
+                # `reconstruction_fidelity` and `label_quality` are likewise
+                # specific to `d3d_tearing_onset_cnn1d`'s scalar column order
+                # (I10) - MATCH_COLUMNS indexing a different slug's shorter
+                # or differently-ordered scalar_fields raises before any
+                # per-shot work, which is by design (see validate.py), but
+                # it must not take down the rest of a multi-model run.
+                reports["reconstruction"] = {"error": f"{type(exc).__name__}: {exc}"}
+            try:
+                reports["label_quality"] = validation.label_quality(slug, shots, paths)
+            except Exception as exc:  # noqa: BLE001 - see comment above
+                reports["label_quality"] = {"error": f"{type(exc).__name__}: {exc}"}
+            for name, payload in reports.items():
+                out = validation.write_report(paths, slug, name, payload)
+                print(f"validate {slug}: {name} -> {out}")
+            results = validation.model_index_results(reports)
+            if results:
+                registry.update_model_index(slug, results)
+                print(f"validate {slug}: {len(results)} results written to the card")
+            fidelity = reports["adapter_fidelity"]
+            if fidelity.get("passed") is False:
+                print(
+                    f"validate {slug}: ADAPTER FIDELITY FAILED "
+                    f"(max_abs_diff={fidelity.get('max_abs_diff')})",
+                    file=sys.stderr,
+                )
+                return EXIT_FIDELITY_FAILED
 
     (paths.runs / run_id / "summary.json").write_text(
         json.dumps(
