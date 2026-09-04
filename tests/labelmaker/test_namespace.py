@@ -49,6 +49,11 @@ def test_lookup_helpers_and_locators():
     assert ns.by_name("pres").locator_for("archive") == "pres_EFIT01"
     assert ns.by_name("pinj_total").locator_for("corpus") == "pinj"
     assert all("archive" in f.sources for f in ns.by_source("archive"))
+    assert {f.name for f in ns.by_source("corpus")} == {
+        "pinj_total", "tinj_total", "ech_power_total"
+    }
+    assert "ip" in {f.name for f in ns.by_source("fdp")}
+    assert "ech_rho" not in {f.name for f in ns.by_source("fdp")}
     with pytest.raises(KeyError):
         ns.by_name("no_such_feature")
     # ech_rho is the only Phase 1 feature with no second source, so it is the

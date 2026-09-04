@@ -38,18 +38,20 @@ class FeatureArray:
             raise ValueError(f"x {np.shape(self.x)} and y {np.shape(self.y)} disagree")
 
 
+def _read_group(g) -> FeatureArray:
+    """One stored group back into a FeatureArray, in float64."""
+    return FeatureArray(
+        x=np.asarray(g["xdata"], dtype=np.float64),
+        y=np.asarray(g["ydata"], dtype=np.float64),
+        attrs={k: str(v) for k, v in g.attrs.items()},
+    )
+
+
 def _load_all(path: Path) -> tuple[dict[str, FeatureArray], dict[str, str]]:
     if not Path(path).exists():
         return {}, {}
-    arrays: dict[str, FeatureArray] = {}
     with h5py.File(path, "r") as f:
-        for name in f:
-            g = f[name]
-            arrays[name] = FeatureArray(
-                x=np.asarray(g["xdata"], dtype=np.float64),
-                y=np.asarray(g["ydata"], dtype=np.float64),
-                attrs={k: str(v) for k, v in g.attrs.items()},
-            )
+        arrays = {name: _read_group(f[name]) for name in f}
         missing = json.loads(f.attrs.get(MISSING_ATTR, "{}"))
     return arrays, missing
 
@@ -77,6 +79,18 @@ def write_features(
         for name in arrays:
             kept_missing.pop(name, None)
         arrays, missing = kept, kept_missing
+    # A group with fewer than two samples is the corpus' "signal absent"
+    # sentinel, and these files share the corpus layout. Absence here travels
+    # in the `missing` dict instead, so writing a *resolved* one-sample group
+    # would read as absent to any consumer applying the corpus rule - which
+    # `catalog.available_groups` does. Refuse it: a resolver that got one
+    # sample should record a miss, not persist an ambiguity.
+    too_short = {n: a.y.shape[-1] for n, a in arrays.items() if a.y.shape[-1] < 2}
+    if too_short:
+        raise ValueError(
+            "refusing to write features with fewer than 2 samples, which the "
+            f"corpus layout reads as absent: {too_short}"
+        )
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     tmp = path.with_name(path.name + ".tmp")
     with h5py.File(tmp, "w") as f:
@@ -109,12 +123,7 @@ def read_feature(path, name: str) -> FeatureArray:
     with h5py.File(path, "r") as f:
         if name not in f:
             raise KeyError(f"{name} not in {path}")
-        g = f[name]
-        return FeatureArray(
-            x=np.asarray(g["xdata"], dtype=np.float64),
-            y=np.asarray(g["ydata"], dtype=np.float64),
-            attrs={k: str(v) for k, v in g.attrs.items()},
-        )
+        return _read_group(f[name])
 
 
 def present(path) -> set[str]:
