@@ -89,6 +89,11 @@ def window_pool(modality: str, cfg, shots: List[str], n_windows: int, per_shot: 
                                      lengths_cache_path=None, emit_mask=True)
         except ValueError:
             continue
+        # The AUDIT POOL must not be activity-stratified either: cfg.min_activity /
+        # cfg.active_bias are baked into the checkpoint's cfg for co2 and mirnov, so without
+        # this the >=300-window table would be scored on a sample deliberately biased toward
+        # active windows. Zeroed on the instance so the codec's own cfg is untouched.
+        ds.min_activity, ds.active_bias = 0.0, 0.0
         n = len(ds)
         if n == 0:
             continue
@@ -113,6 +118,11 @@ def seq_pool(modality: str, cfg, shots: List[str], seq_len: int = 8, per_shot: i
                                      lengths_cache_path=None, emit_mask=True)
         except ValueError:
             continue
+        # The AUDIT POOL must not be activity-stratified either: cfg.min_activity /
+        # cfg.active_bias are baked into the checkpoint's cfg for co2 and mirnov, so without
+        # this the >=300-window table would be scored on a sample deliberately biased toward
+        # active windows. Zeroed on the instance so the codec's own cfg is untouched.
+        ds.min_activity, ds.active_bias = 0.0, 0.0
         n = len(ds)
         if n < seq_len:
             continue
@@ -256,6 +266,9 @@ def build_panels(modality: str, ckpt: str, shot: str, channels: List[int], devic
     codec, cfg, _ck = load_codec(ckpt, device=device)
     ds = tc.CodecPairDataset(modality, [shot], cfg, data_dir=DATA,
                              lengths_cache_path=None, emit_mask=True)
+    # A FIGURE must show consecutive real windows, never an activity-biased re-draw (which
+    # would silently substitute a different chunk for a quiet one and break the time axis).
+    ds.min_activity, ds.active_bias = 0.0, 0.0
     n = len(ds)
     if max_windows:
         n = min(n, max_windows)

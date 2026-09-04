@@ -2641,6 +2641,26 @@ def _stream_eval_data(
     # its map-style windows in order and materialize the first ``eval_batches*eval_batch_size``.
     ds = CodecPairDataset(modality, eval_shots, cfg, data_dir=data_dir, seed=seed,
                           emit_mask=bool(getattr(cfg, "mask_missing", False)))
+    # THE HELD-OUT SET MUST NOT BE ACTIVITY-STRATIFIED (2026-09-04).
+    #
+    # `cfg.min_activity` / `cfg.active_bias` are a TRAINING-time sampling choice (bias the
+    # batch toward active windows without dropping quiet ones). Letting them reach the gate
+    # set is wrong twice over:
+    #
+    #  * CORRECTNESS -- the gate would be measured on a sample deliberately biased toward
+    #    high-activity windows, so it does not describe held-out data. Only co2 and mirnov
+    #    carry the knobs, which is exactly where the gate was least trustworthy.
+    #  * COST -- `_stratified_draw` re-draws up to `max_tries` times per item, each a full
+    #    `_build_pair`, and this loop is SINGLE-PROCESS over `eval_batches * eval_batch_size`
+    #    items. Measured on mirnov (job 5416298): 29 channels x ~29 Lustre seeks per build x
+    #    up to 8 re-draws x 128 items consumed the ENTIRE 2 h leg -- all four mirnov arms
+    #    wrote zero gates and zero checkpoints while the bes arms beside them reached step
+    #    14000-29999. It is paid again on every resume because the eval set is never cached.
+    #
+    # Zeroing the two knobs on the DATASET INSTANCE (not the cfg, which the codec and the
+    # checkpoint share) makes `_stratified_draw` return its base draw immediately, which is
+    # its documented byte-identical path. Training sampling is untouched.
+    ds.min_activity, ds.active_bias = 0.0, 0.0
     n_pairs = eval_batches * eval_batch_size
     n_avail = len(ds)
     if n_avail < n_pairs:
@@ -4370,8 +4390,29 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         )
 
     t0 = time.time()
+    # LENGTHS-CACHE KEY MUST TRACK THE SHOT LIST (2026-09-04).
+    #
+    # TokamakMultiFileDataset._load_or_compute_lengths only reuses the sidecar when its STORED
+    # PATH LIST MATCHES the current hdf5_paths. A presence filter changes that list, so the
+    # shared `codec_<mod>_lengths.pt` MISSES and every arm cold-scans every shot -- the exact
+    # cold-scan hazard the N_SHOTS=9000 rule exists to avoid, arriving through a new door.
+    #
+    # MEASURED (job 5416298, 2026-09-04): with --spectro_presence any, mirnov resolved 8693
+    # shots (cache has 8737) and all four mirnov arms spent the ENTIRE 2 h leg scanning --
+    # zero gates, zero checkpoints. The three masked bes arms (3279 shots) reached step 14000
+    # while bes_nomask, whose 8737-shot list HITS the cache, ran the full 29999. The apparent
+    # "masking is slow" and "nomask is fast" effects were this cache miss, not the mask.
+    #
+    # Giving the filtered list its OWN sidecar makes the scan a one-off: it is cold once, then
+    # warm for every later leg. It never writes the shared file, so unfiltered runs are
+    # byte-identical and the production cache cannot be clobbered.
+    _presence_on = (
+        getattr(args, "spectro_presence", None) not in (None, "off")
+        or getattr(args, "video_presence", None) not in (None, "off")
+    )
+    _suffix = "_presence" if _presence_on else ""
     lengths_cache_path = args.lengths_cache_dir and (
-        Path(args.lengths_cache_dir) / f"codec_{args.modality}_lengths.pt"
+        Path(args.lengths_cache_dir) / f"codec_{args.modality}{_suffix}_lengths.pt"
     )
     if is_fastts:
         # fast-TS trainer has a distinct signature (modality is keyword-only; no positional
