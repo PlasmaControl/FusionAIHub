@@ -420,6 +420,39 @@ class SpectroCodecConfig:
     min_activity: float = 0.0       # per-window activity threshold (log-power std); 0 = OFF
     active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
 
+    # --- TIME-SMOOTHED RECONSTRUCTION TARGET (the predictable component) --------------- #
+    # ``target_time_smooth = K`` replaces the reconstruction TARGET with a K-frame boxcar
+    # moving average of the window along TIME. The ENCODER still sees the raw window (so the
+    # codes are computed from real data at inference, unchanged), and every REPORTED metric is
+    # still measured against the RAW spectrogram -- only what the decoder is asked to produce
+    # changes. 0 or 1 = OFF, bit-identical (``losses.time_smooth`` returns the same object).
+    #
+    # WHY. MEASURED on 320 held-out windows per modality (analysis/spectro_final_fig.py
+    # --mode structure): most of a spectrogram's frame-to-frame variation is REALIZATION
+    # SPECKLE that no code can carry. GT lag-1 autocorrelation along the STFT-frame axis is
+    # only 0.61-0.68 for co2, 0.42-0.48 for mirnov and 0.29-0.37 for ece, and the coherent
+    # share of variance is 0.42 / ~0.37 / 0.32. Training to reconstruct the RAW window
+    # therefore asks the decoder for something ~60-70% unpredictable, and the exact minimiser
+    # of every L-p term is the conditional mean -- so the decoder correctly answers with a
+    # low-amplitude blur. That IS the flat plate (measured std(recon)/std(GT) 0.15-0.32).
+    #
+    # Smoothing the TARGET removes the unpredictable part from the ask. The optimum is then
+    # the coherent structure AT FULL AMPLITUDE rather than the coherent structure diluted by
+    # the speckle it cannot predict. The ceiling this aims at is the ``tsmooth5`` oracle in
+    # the same table -- GT low-passed over 5 frames, scored against RAW GT:
+    #
+    #     modality   tsmooth5 hf_ratio   tsmooth5 nRMSE   best trained arm (raw target)
+    #     co2            0.250              0.3842        ms5   hf 0.037  nRMSE 0.6812
+    #     mirnov         0.290              0.6299        ctl_s1 hf 0.022 nRMSE 1.1086
+    #
+    # i.e. the smoothed predictor is BETTER than every trained arm on BOTH the ranking key and
+    # the nRMSE floor, while carrying no speckle at all. K should match the coherence length;
+    # 5 frames is where the oracle above was measured.
+    #
+    # SCOPE: this changes the training target only. n_tok, the vocab and FRAME_LAYOUT are
+    # untouched, and the audit still scores against raw GT, so any gain is honestly measured.
+    target_time_smooth: int = 0
+
     # --- ENVELOPE / SHAPE SPLIT ("gain-shape", spectro port of the fast-TS fix) --------- #
     # THE PROBLEM IT ATTACKS is amplitude collapse, i.e. the flat plate. Every term in the
     # 2026-09-03 recipe except ms_ssim is an L-p distance, and the exact minimiser of an L-p

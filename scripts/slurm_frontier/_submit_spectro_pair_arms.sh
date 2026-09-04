@@ -85,6 +85,50 @@ for M in ${MODS}; do
             echo "[submit] ${M}: no warm codec_${M}_presence_lengths.pt -> masked but UNFILTERED" >&2
         fi ;;
     esac
+    if [ "${SWEEP}" = "smooth" ]; then
+        # THE PREDICTABLE-TARGET sweep: --target_time_smooth.
+        #
+        # This is the one lever aimed at the CAUSE rather than a symptom. MEASURED per
+        # modality on 320 held-out windows (--mode structure), the GT's lag-1 autocorrelation
+        # along the STFT-frame axis is 0.61-0.68 (co2), 0.42-0.48 (mirnov), 0.29-0.37 (ece),
+        # with a coherent variance share of 0.42 / ~0.37 / 0.32. Training to reconstruct the
+        # RAW window therefore asks the decoder for ~60-70% unpredictable realization speckle,
+        # and the exact minimiser of every L-p term in the objective is the conditional mean --
+        # so the decoder correctly answers with a low-amplitude blur. THAT is the flat plate;
+        # the measured std(recon)/std(GT) of 0.15-0.32 is the arithmetic of it, not a bug.
+        #
+        # Smoothing the TARGET removes the unpredictable part from the ask, so the optimum
+        # becomes the coherent structure AT FULL AMPLITUDE. The encoder still sees the raw
+        # window and the audit still scores against RAW GT, so nothing is being graded on a
+        # curve. The ceiling is the tsmooth5 oracle in the same table, which already beats
+        # every trained arm on BOTH the ranking key and the nRMSE floor:
+        #     co2     hf 0.250 / nRMSE 0.3842   vs  ms5    hf 0.037 / 0.6812
+        #     mirnov  hf 0.290 / nRMSE 0.6299   vs  ctl_s1 hf 0.022 / 1.1086
+        #
+        # K=5 is where the oracle was measured; co2 also gets K=3 because it is the most
+        # coherent of the three and may not need as much low-passing.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        FG="--freq_grad_weight 20"
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_sm5_s1|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_sm5_s2|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_sm5fg_s1|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} ${FG} --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_sm5|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W}"
+                ARMS_STR="${ARMS_STR};${M}_sm5fg|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} ${FG}"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_sm5|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W}"
+                ARMS_STR="${ARMS_STR};${M}_sm5fg|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} ${FG}"
+                ARMS_STR="${ARMS_STR};${M}_sm3|${P} ${MSK} ${MIR} --target_time_smooth 3 --ms_ssim_weight ${W}"
+                ;;
+        esac
+        continue
+    fi
     if [ "${SWEEP}" = "sharp" ]; then
         # THE MODE-LINE sweep: freq_grad_weight, the one term in the objective whose gradient
         # actually PAYS for putting a line inside a patch.

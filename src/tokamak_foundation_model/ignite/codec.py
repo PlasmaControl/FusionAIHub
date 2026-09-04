@@ -34,6 +34,7 @@ from .losses import (
     ms_ssim_loss,
     multiscale_recon_loss,
     shift_consistency,
+    time_smooth,
 )
 from .nets import (
     SpectroConvDecoder,
@@ -239,6 +240,17 @@ class SpectroCodec(nn.Module):
         out = self.forward(x)
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
 
+        # ---- RECONSTRUCTION TARGET (cfg.target_time_smooth) --------------------------- #
+        # The ENCODER above already saw the RAW window, so the codes are computed from real
+        # data exactly as at inference. Only what the decoder is ASKED to match changes: with
+        # target_time_smooth = K the target is the K-frame time-boxcar, i.e. the PREDICTABLE
+        # component. See SpectroCodecConfig.target_time_smooth for the measured motivation
+        # (GT lag-1 autocorrelation is only 0.29-0.68 depending on modality, so a raw target
+        # asks for ~60-70% unpredictable speckle and every L-p term answers with a
+        # low-amplitude blur). ``time_smooth`` returns ``x`` ITSELF when K <= 1, so the
+        # default path below is bit-identical.
+        x_tgt = time_smooth(x, int(getattr(cfg, "target_time_smooth", 0) or 0))
+
         # ---- ENVELOPE/SHAPE auxiliary: DIRECT supervision of the decoded gain ---------- #
         # The reconstruction term already sees level and sigma (they multiply/offset the
         # shape), but it sees them mixed with the shape error at whatever relative scale the
@@ -246,7 +258,7 @@ class SpectroCodec(nn.Module):
         # per-(channel, frequency) time-mean AND temporal std, so it gets its own unambiguous
         # L1 target. OFF and exactly zero-cost unless gain_shape is enabled.
         if "gain_pred" in out and float(getattr(cfg, "gain_weight", 0.0)) > 0.0:
-            gain_tgt = spectro_gain_shape_split(x, cfg.uses_gain_scale)[0]
+            gain_tgt = spectro_gain_shape_split(x_tgt, cfg.uses_gain_scale)[0]
             gain = self._masked_gain_mae(out["gain_pred"], gain_tgt, frame_mask)
         else:
             gain = recon.new_zeros(())
@@ -256,7 +268,7 @@ class SpectroCodec(nn.Module):
         # entire path below is bit-identical to the unmasked loss.
         win = self._valid_windows(frame_mask, recon.shape)
         r_sel = recon if win is None else recon[win]
-        x_sel = x if win is None else x[win]
+        x_sel = x_tgt if win is None else x_tgt[win]
 
         # ONE discriminator pass over the reconstruction, returning BOTH the patch scores
         # (for the adversarial term) and the intermediate features (for feature matching).
@@ -266,7 +278,7 @@ class SpectroCodec(nn.Module):
         fake_scores = _as_score_list(fake_scores)
         adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
 
-        pixel = self._masked_pixel_mae(recon, x, frame_mask)
+        pixel = self._masked_pixel_mae(recon, x_tgt, frame_mask)
         # Multi-resolution + freq-gradient reconstruction (NeMo-style; sharpens turbulent detail
         # that plain pixel-L1 blurs). No-op when the weights are 0 (byte-identical).
         multiscale = (

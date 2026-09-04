@@ -2497,8 +2497,15 @@ def _spectro_discriminator_loss(
     or a mask that selects every window, keeps the ORIGINAL tensors and calls
     ``losses.discriminator_loss`` unchanged — bit-identical to the pre-fix path.
     """
-    from .losses import discriminator_loss
+    from .losses import discriminator_loss, time_smooth
 
+    # The discriminator's REAL sample must be the SAME target the generator is asked to
+    # produce (cfg.target_time_smooth). Showing D the raw window while the generator optimises
+    # a smoothed target would teach D that the speckle is the discriminator between real and
+    # fake -- a gradient the generator cannot satisfy from 192 codes, and the one thing that
+    # would make the smoothed target actively harmful. ``time_smooth`` returns ``real`` ITSELF
+    # at K <= 1, so the default path is bit-identical.
+    real = time_smooth(real, int(getattr(cfg, "target_time_smooth", 0) or 0))
     win = SpectroCodec._valid_windows(frame_mask, real.shape)
     if win is not None:
         real, fake = real[win], fake[win]
@@ -3798,6 +3805,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "texture is no longer one shared basis tiled on the patch lattice — the "
                         "measured checkerboard (gate.patch_lattice_metrics; mhr recon 61.6 vs GT "
                         "1.15). 0/unset = off (byte-identical decoder).")
+    p.add_argument("--target_time_smooth", type=int, default=None,
+                   help="SPECTRO: reconstruct a K-frame time-boxcar of the window instead of "
+                        "the window itself (0/1 = OFF, the default). The encoder still sees "
+                        "the RAW window and every reported metric is still measured against "
+                        "RAW GT -- only the decoder's target changes. Measured motivation: GT "
+                        "lag-1 autocorrelation along the STFT-frame axis is 0.61-0.68 (co2), "
+                        "0.42-0.48 (mirnov), 0.29-0.37 (ece), so a raw target asks the "
+                        "decoder for ~60-70% unpredictable speckle and every L-p term's exact "
+                        "minimiser is a low-amplitude blur -- the flat plate. The tsmooth5 "
+                        "oracle (GT smoothed over 5 frames, scored against RAW GT) beats every "
+                        "trained arm on BOTH the ranking key and the nRMSE floor: co2 hf 0.250 "
+                        "/ nRMSE 0.3842 vs ms5's 0.037 / 0.6812; mirnov 0.290 / 0.6299 vs "
+                        "ctl_s1's 0.022 / 1.1086.")
     p.add_argument("--codec_d_model", type=int, default=None,
                    help="Codec transformer width (cfg.d_model). CODEC-INTERNAL: it is "
                         "orthogonal to the Phase-B backbone dim and does NOT touch n_tok, "
@@ -4161,7 +4181,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     # flag is byte-identical. (adam_* / lr_decay_* / disc_update_every live on the cfg so the
     # checkpoint records the recipe it was trained under — see the persist-arch-flags lesson.)
     for _knob in ("conv_dec_base_ch", "conv_dec_res_blocks", "conv_dec_min_ch",
-                  "disc_update_every", "lr_decay_every"):
+                  "disc_update_every", "lr_decay_every", "target_time_smooth"):
         _v = getattr(args, _knob, None)
         if _v is not None and hasattr(cfg, _knob):
             setattr(cfg, _knob, int(_v))
@@ -4201,11 +4221,11 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             if ddp.is_main:
                 print(f"[train_codec] {_knob} override -> {_v}")
     for _knob in ("joint_entropy_weight", "decorrelation_weight",
-                  "joint_entropy_ramp_steps", "fsq_noise_dropout"):
+                  "joint_entropy_ramp_steps", "fsq_noise_dropout", "target_time_smooth"):
         if getattr(args, _knob, None) is not None and not hasattr(cfg, _knob):
             raise SystemExit(
-                f"--{_knob} is a SPECTRO-only anti-collapse knob (it lives on "
-                f"SpectroCodecConfig); {args.modality}'s {type(cfg).__name__} has no such field."
+                f"--{_knob} is a SPECTRO-only knob (it lives on SpectroCodecConfig); "
+                f"{args.modality}'s {type(cfg).__name__} has no such field."
             )
     for _knob in ("patch_w", "stem_layers", "stem_channels", "stem_kernel", "recon_loss",
                   "ssim_weight", "ssim_win", "fastts_target"):
