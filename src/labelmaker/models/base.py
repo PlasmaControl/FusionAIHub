@@ -134,6 +134,14 @@ class InputSpec:
                 continue
             resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
             t = grid + self.dt_s if f.lag == "t+dt" else grid
+            # Half a step, not a whole one, for two reasons. It is the
+            # correct nearest-neighbour rule: a query is trustworthy only
+            # if a real sample lies within half a sampling interval. And a
+            # whole step puts the record-edge case exactly on the boundary
+            # - for a t+dt field on a 240-row 25 ms record the final query
+            # sits 0.025 s past the last sample, so `gap > dt_s` is decided
+            # by a 3.5e-16 float residue. It happens to fall the right way
+            # on this data; half a step clears it by 0.0125.
             vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s / 2)
             v = vals[0] if f.kind == "scalar" else vals.T
             if f.transform is not None:
