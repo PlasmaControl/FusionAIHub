@@ -361,6 +361,8 @@ git commit -m "labelmaker: package skeleton, path config and pixi environment"
 
 ```python
 """The time-base conventions labelmaker shares with IGNITE."""
+import warnings
+
 import numpy as np
 import pytest
 
@@ -420,6 +422,19 @@ def test_sample_at_handles_1d_and_2d_and_gaps():
     np.testing.assert_allclose(sample_at(x, y2, [0.1])[:, 0], [10.0, 20.0])
     out = sample_at(x, y1, [10.0], max_gap=0.5)
     assert np.isnan(out[0])
+
+
+def test_window_mean_is_silent_when_a_window_holds_no_finite_sample():
+    # np.nanmean returns the right value here and raises "Mean of empty
+    # slice" through the warnings module, which np.errstate does NOT catch.
+    # Nine later tasks import this module and real channels have dropout
+    # stretches, so that warning would become permanent noise.
+    x = np.array([0.0, 0.1, 0.2])
+    y = np.array([np.nan, np.nan, 5.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = window_mean(x, y, [0.0], 0.15)
+    assert np.isnan(got[0])
 
 
 def test_window_mean_averages_the_following_window():
@@ -522,8 +537,13 @@ def sample_at(x: np.ndarray, y: np.ndarray, t, *, max_gap: float | None = None):
 def window_mean(x: np.ndarray, y: np.ndarray, t, width: float) -> np.ndarray:
     """Mean of `y` over each half-open window `[t, t + width)`.
 
-    NaN where the window contains no sample, so a missing stretch never
+    NaN where the window holds no finite sample, so a missing stretch never
     silently becomes an edge value.
+
+    The mean is accumulated by hand rather than with `np.nanmean`, which
+    raises "Mean of empty slice" through the `warnings` module on an
+    all-NaN window - `np.errstate` does not catch that, and real channels
+    have dropout stretches. Same approach as `decimate_to_step` below.
     """
     x = np.asarray(x, dtype=np.float64).ravel()
     y = np.asarray(y, dtype=np.float64)
@@ -534,10 +554,14 @@ def window_mean(x: np.ndarray, y: np.ndarray, t, width: float) -> np.ndarray:
     lo = np.searchsorted(x, t, side="left")
     hi = np.searchsorted(x, t + width, side="left")
     for j, (a, b) in enumerate(zip(lo, hi)):
-        if b > a:
-            seg = y[:, a:b]
-            with np.errstate(invalid="ignore"):
-                out[:, j] = np.nanmean(seg, axis=1)
+        if b <= a:
+            continue
+        seg = y[:, a:b]
+        good = np.isfinite(seg)
+        counts = good.sum(axis=1)
+        totals = np.where(good, seg, 0.0).sum(axis=1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[:, j] = np.where(counts > 0, totals / counts, np.nan)
     return out[0] if out.shape[0] == 1 else out
 
 
@@ -659,8 +683,10 @@ def test_lookup_helpers_and_locators():
     assert all("archive" in f.sources for f in ns.by_source("archive"))
     with pytest.raises(KeyError):
         ns.by_name("no_such_feature")
+    # ech_rho is the only Phase 1 feature with no second source, so it is the
+    # only one whose locator_for("fdp") can raise.
     with pytest.raises(KeyError):
-        ns.by_name("ne_zipfit").locator_for("fdp")
+        ns.by_name("ech_rho").locator_for("fdp")
 
 
 def test_source_preference_and_the_one_archive_only_feature():
