@@ -58,6 +58,50 @@ class _PatchPosEmb(nn.Module):
         return rearrange(pe, "f t d -> 1 (f t) d")
 
 
+_GAIN_EPS: float = 1e-6
+
+
+def spectro_gain_shape_split(x: torch.Tensor, use_scale: bool):
+    """Split a spectrogram window into (envelope gain, normalized shape).
+
+    The spectro port of ``fastts_nets.gain_shape_split``, with the statistics taken per
+    (channel, FREQUENCY BIN) along TIME instead of per channel along the envelope bins --
+    because that is where the structure the world model needs lives: a mode is a coherent
+    track at one frequency, and its amplitude in time is exactly ``sigma`` below.
+
+    ``x`` is ``(B, C, F, T)``. Returns ``(gain, shape, level, sigma)``::
+
+        level (B, C, F)      x.mean(-1)                      the static envelope
+        sigma (B, C, F)      (x - level).std(-1)             the TEMPORAL amplitude per bin
+        shape (B, C, F, T)   (x - level) / sigma  when ``use_scale`` (zero mean, unit std
+                             along T), else just ``x - level`` (zero mean, free scale)
+        gain  (B, 2C or C, F)  ``[level ; log1p(sigma)]`` -- the gain encoder's input
+
+    ``log1p`` on sigma because sigma is non-negative and spans orders of magnitude across
+    quiet and active frequency bins; the log makes it an O(1) regression target, and
+    ``expm1`` in the decoder inverts it exactly.
+    """
+    level = x.mean(dim=-1)                                          # (B, C, F)
+    res = x - level.unsqueeze(-1)
+    sigma = res.std(dim=-1, unbiased=False)                         # (B, C, F)
+    if use_scale:
+        shape = res / sigma.clamp_min(_GAIN_EPS).unsqueeze(-1)
+        gain = torch.cat([level, torch.log1p(sigma.clamp_min(0.0))], dim=1)
+    else:
+        shape = res
+        gain = level
+    return gain, shape, level, sigma
+
+
+def _gain_mlp(in_dim: int, hidden: int, out_dim: int) -> nn.Module:
+    """Per-patch 3-layer MLP. Shared across gain tokens (applied on the last axis)."""
+    return nn.Sequential(
+        nn.Linear(in_dim, hidden), nn.GELU(),
+        nn.Linear(hidden, hidden), nn.GELU(),
+        nn.Linear(hidden, out_dim),
+    )
+
+
 class SpectroEncoder(nn.Module):
     """(B, C, F, T) -> (B, n_tok, d_model)."""
 
@@ -76,9 +120,27 @@ class SpectroEncoder(nn.Module):
             depth=cfg.enc_depth,
             heads=cfg.heads,
         )
+        # --- ENVELOPE/SHAPE SPLIT (cfg.gain_shape; see SpectroCodecConfig) ------------- #
+        # Built ONLY when enabled, so an unchanged config has exactly the pre-2026-09-04
+        # parameter set and every existing checkpoint still loads strictly.
+        # The gain tokens BYPASS the transformer: the split is meant to be HARD, and
+        # self-attention between gain and shape tokens would let the shape path leak back
+        # into the envelope code -- which is the failure the split exists to remove.
+        self.gain_shape = cfg.n_gain_tok > 0
+        if self.gain_shape:
+            self.gain_to_tokens = _gain_mlp(
+                cfg.gain_values_per_tok, cfg.gain_hidden, cfg.d_model)
+            # n_tok shape patches -> n_shape_tok tokens: a learned mix along the TOKEN axis,
+            # so the patchify/unpatchify geometry (and therefore the decoder) is unchanged.
+            self.shape_mix = nn.Linear(cfg.n_tok, cfg.n_shape_tok)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         cfg = self.cfg
+        if self.gain_shape:
+            gain, x = spectro_gain_shape_split(x, cfg.uses_gain_scale)[:2]
+            # gain (B, G, F) -> one token per contiguous frequency band, all channels.
+            g_patch = rearrange(gain, "b g (ng pf) -> b ng (g pf)", pf=cfg.gain_patch_f)
+            g_tok = self.gain_to_tokens(g_patch)                # (B, n_gain_tok, d)
         # patchify: group outer, then freq, time inner -> n_tok = g * n_f * n_t.
         # At g=1 this is the identical (c pf pt) mapping as before (byte-identical).
         patches = rearrange(
@@ -88,8 +150,12 @@ class SpectroEncoder(nn.Module):
             pf=cfg.patch_f,
             pt=cfg.patch_t,
         )
-        tokens = self.to_tokens(patches) + self.pos_emb()
-        return self.transformer(tokens)
+        if not self.gain_shape:
+            tokens = self.to_tokens(patches) + self.pos_emb()
+            return self.transformer(tokens)
+        s_tok = self.transformer(self.to_tokens(patches))       # (B, n_tok, d)
+        s_tok = self.shape_mix(s_tok.transpose(1, 2)).transpose(1, 2)   # (B, n_shape_tok, d)
+        return torch.cat([g_tok, s_tok], dim=1) + self.pos_emb()
 
 
 class SpectroDecoder(nn.Module):
@@ -146,6 +212,16 @@ class SpectroDecoder(nn.Module):
             nn.Parameter(torch.zeros(cfg.channels))
             if bool(getattr(cfg, "decoder_noise", False)) else None
         )
+        # --- ENVELOPE/SHAPE SPLIT heads (cfg.gain_shape) ------------------------------- #
+        # `gain_head` is the ONLY thing that produces the reconstruction's per-(channel,
+        # frequency) time-mean AND its temporal std -- the shape branch is mean-removed and
+        # (when gain_scale) std-normalized in `_forward_gain_shape` below, so it can carry
+        # neither. That is what makes a flat plate unrepresentable.
+        self.gain_shape = cfg.n_gain_tok > 0
+        if self.gain_shape:
+            self.gain_head = _gain_mlp(
+                cfg.d_model, cfg.gain_hidden, cfg.gain_values_per_tok)
+            self.shape_unmix = nn.Linear(cfg.n_shape_tok, cfg.n_tok)
 
     @property
     def last_layer(self) -> nn.Parameter:
@@ -162,9 +238,27 @@ class SpectroDecoder(nn.Module):
             return self.refine[-1].weight
         return self.to_pixels.weight
 
-    def forward(self, quant: torch.Tensor) -> torch.Tensor:
+    def forward(self, quant: torch.Tensor, return_aux: bool = False):
+        """Quantized tokens -> reconstruction.
+
+        ``return_aux`` (gain-shape only) additionally returns the decoded gain
+        ``(B, 2C or C, F)`` so the codec can put a DIRECT loss on it; the default False keeps
+        the pre-2026-09-04 single-tensor contract for every existing caller.
+        """
+        if self.gain_shape:
+            recon, gain_pred = self._forward_gain_shape(quant)
+            return (recon, gain_pred) if return_aux else recon
+        x = self._shape_branch(quant)
+        return (x, None) if return_aux else x
+
+    def _shape_branch(self, tokens: torch.Tensor) -> torch.Tensor:
+        """``(B, n_tok, d)`` -> ``(B, C, F, T)``: transformer + unpatchify + refine + noise.
+
+        This is the ENTIRE pre-gain-shape decoder body, factored out unchanged so both paths
+        share it bit-for-bit (the gain-shape path feeds it the un-mixed shape tokens).
+        """
         cfg = self.cfg
-        h = self.transformer(quant + self.pos_emb())
+        h = self.transformer(tokens + self.pos_emb())
         patches = self.to_pixels(h)
         # unpatchify: inverse of the encoder rearrange (g=1 -> identical to before).
         g = int(getattr(cfg, "channel_groups", 1))
@@ -183,6 +277,46 @@ class SpectroDecoder(nn.Module):
         if self.noise_scale is not None:
             x = x + self.noise_scale.view(1, -1, 1, 1) * torch.randn_like(x)
         return x
+
+    def _forward_gain_shape(self, quant: torch.Tensor):
+        """``recon = level_hat + sigma_hat * unit_shape`` — the STRUCTURAL half of the split.
+
+        Two guarantees are enforced HERE rather than hoped for from the loss (both pinned by
+        tests/test_spectro_gain_shape.py):
+
+        1. The shape branch's output is MEAN-REMOVED along the TIME axis, so it cannot carry
+           any envelope. The reconstruction's per-(window, channel, frequency) time-mean is
+           therefore exactly ``level_hat``, produced by the gain head from the gain tokens
+           alone. Zero the shape path and the codec degenerates EXACTLY to a quantized
+           per-(channel, frequency) envelope coder.
+        2. When ``gain_scale`` is on the shape is also STD-NORMALIZED along time, so the
+           reconstruction's temporal std IS the transmitted ``sigma_hat`` and NOT an
+           nRMSE-minimising conditional mean. A flat plate is then unrepresentable: this is
+           the structural attack on std_ratio 0.15-0.28 / hf_ratio 0.008.
+
+        NOTE the refinement head and the noise injection run INSIDE the shape branch, i.e.
+        BEFORE the mean-removal and normalization. Applying them to the assembled
+        reconstruction instead would let them re-introduce DC and rescale the amplitude,
+        destroying both guarantees — the patch-lattice fix and the amplitude guarantee are
+        compatible only in this order.
+        """
+        cfg = self.cfg
+        n_g = cfg.n_gain_tok
+        # gain: per-patch MLP -> (B, n_gain_tok, G*gain_patch_f) -> (B, G, F)
+        g_out = self.gain_head(quant[:, :n_g])
+        gain_pred = rearrange(g_out, "b ng (g pf) -> b g (ng pf)", pf=cfg.gain_patch_f)
+        level_hat = gain_pred[:, : cfg.channels]                        # (B, C, F)
+        h = self.shape_unmix(quant[:, n_g:].transpose(1, 2)).transpose(1, 2)
+        shape = self._shape_branch(h)                                   # (B, C, F, T)
+        shape = shape - shape.mean(dim=-1, keepdim=True)                # (1) carries NO level
+        if cfg.uses_gain_scale:
+            shape = shape / shape.std(dim=-1, unbiased=False,
+                                      keepdim=True).clamp_min(_GAIN_EPS)
+            sigma_hat = torch.expm1(gain_pred[:, cfg.channels:].clamp(0.0, 30.0))
+            recon = level_hat.unsqueeze(-1) + sigma_hat.unsqueeze(-1) * shape   # (2)
+        else:
+            recon = level_hat.unsqueeze(-1) + shape
+        return recon, gain_pred
 
 
 class _ResBlock2d(nn.Module):

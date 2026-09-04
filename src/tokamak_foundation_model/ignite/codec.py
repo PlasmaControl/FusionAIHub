@@ -35,7 +35,12 @@ from .losses import (
     multiscale_recon_loss,
     shift_consistency,
 )
-from .nets import SpectroConvDecoder, SpectroDecoder, SpectroEncoder
+from .nets import (
+    SpectroConvDecoder,
+    SpectroDecoder,
+    SpectroEncoder,
+    spectro_gain_shape_split,
+)
 from .quantizer import SpectroQuantizer
 
 
@@ -68,6 +73,12 @@ class SpectroCodec(nn.Module):
         # DECODER family (gated drop-in; cfg.decoder defaults to "linear" -> byte-identical).
         # Both expose the SAME forward(quant)->(B,C,F,T) and `last_layer` property, so the
         # generative loss / adaptive-adv machinery below is unchanged for either.
+        if cfg.n_gain_tok > 0 and getattr(cfg, "decoder", "linear") == "conv":
+            raise NotImplementedError(
+                "gain_shape requires decoder='linear': SpectroConvDecoder places tokens on a "
+                "(n_freq_patch, n_time_patch) grid and has no shape_unmix / gain head, so the "
+                "envelope and amplitude guarantees cannot be enforced in it"
+            )
         self.decoder = (
             SpectroConvDecoder(cfg) if getattr(cfg, "decoder", "linear") == "conv"
             else SpectroDecoder(cfg)
@@ -95,8 +106,17 @@ class SpectroCodec(nn.Module):
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         feats = self.encode(x)
         quant, codes = self.quantize(feats)
-        recon = self.decode(quant)
-        return {"recon": recon, "feats": feats, "quant": quant, "codes": codes}
+        # ENVELOPE/SHAPE SPLIT (opt-in) additionally returns the decoded gain so it can be
+        # supervised directly; ``gain_pred`` is absent in every other configuration, so the
+        # returned dict is a strict superset of the old one and no caller changes.
+        if self.cfg.n_gain_tok > 0:
+            recon, gain_pred = self.decoder(quant, return_aux=True)
+        else:
+            recon, gain_pred = self.decode(quant), None
+        out = {"recon": recon, "feats": feats, "quant": quant, "codes": codes}
+        if gain_pred is not None:
+            out["gain_pred"] = gain_pred
+        return out
 
     @property
     def codebook_size(self) -> int:
@@ -219,6 +239,18 @@ class SpectroCodec(nn.Module):
         out = self.forward(x)
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
 
+        # ---- ENVELOPE/SHAPE auxiliary: DIRECT supervision of the decoded gain ---------- #
+        # The reconstruction term already sees level and sigma (they multiply/offset the
+        # shape), but it sees them mixed with the shape error at whatever relative scale the
+        # window happens to have. The gain head alone produces the reconstruction's ENTIRE
+        # per-(channel, frequency) time-mean AND temporal std, so it gets its own unambiguous
+        # L1 target. OFF and exactly zero-cost unless gain_shape is enabled.
+        if "gain_pred" in out and float(getattr(cfg, "gain_weight", 0.0)) > 0.0:
+            gain_tgt = spectro_gain_shape_split(x, cfg.uses_gain_scale)[0]
+            gain = self._masked_gain_mae(out["gain_pred"], gain_tgt, frame_mask)
+        else:
+            gain = recon.new_zeros(())
+
         # MISSING-DATA EXCLUSION. `win` is the (B,) "this whole window is real" selector;
         # None means "everything valid", in which case the ORIGINAL tensors are used and the
         # entire path below is bit-identical to the unmasked loss.
@@ -285,7 +317,8 @@ class SpectroCodec(nn.Module):
         recon_ref = (cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
                      + cfg.multiscale_recon_weight * multiscale
                      + cfg.freq_grad_weight * freq_grad
-                     + _msw * ms_ssim_t)
+                     + _msw * ms_ssim_t
+                     + float(getattr(cfg, "gain_weight", 0.0)) * gain)
         non_adv_total = (
             recon_ref
             + cfg.consistency_weight * consistency
@@ -312,6 +345,7 @@ class SpectroCodec(nn.Module):
                 + cfg.multiscale_recon_weight * multiscale
                 + cfg.freq_grad_weight * freq_grad
                 + _msw * ms_ssim_t
+                + float(getattr(cfg, "gain_weight", 0.0)) * gain
                 + cfg.consistency_weight * consistency
                 + cfg.entropy_weight * entropy
             )
@@ -324,6 +358,7 @@ class SpectroCodec(nn.Module):
             "multiscale": multiscale,
             "freq_grad": freq_grad,
             "ms_ssim": ms_ssim_t,
+            "gain": gain,
             "feature_matching": fm,
             "consistency": consistency,
             "entropy": entropy,
@@ -419,6 +454,48 @@ class SpectroCodec(nn.Module):
         if float(denom) <= 0.0:
             return torch.mean(torch.abs(recon - x))
         return (torch.abs(recon - x) * m).sum() / denom
+
+    # ------------------------------------------------------------------ #
+    # masked gain anchor (envelope/shape split)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _masked_gain_mae(
+        pred: torch.Tensor, tgt: torch.Tensor, frame_mask: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Mean |pred - tgt| over the (window, channel) pairs whose WHOLE time axis is real.
+
+        ``pred`` / ``tgt`` are ``(B, G, F)`` with ``G`` = C (level only) or 2C (level and
+        log1p sigma stacked on the channel axis, hence the ``repeat`` below). The gain target
+        is a statistic over the ENTIRE time axis, so it is meaningful only where that whole
+        axis is real; a per-frame mask cannot repair it, only exclude. Selection is per
+        (window, channel) — finer than the loss's window-level rule, because the gain path has
+        no cross-channel mixing that one dead channel could contaminate.
+
+        Falls back to the unmasked MAE when the mask is absent or selects nothing, so the term
+        is always finite and differentiable; with every frame valid it is BIT-IDENTICAL to the
+        unmasked MAE.
+        """
+        if frame_mask is None:
+            return torch.mean(torch.abs(pred - tgt))
+        m = frame_mask > 0.5
+        if m.dim() == 2:                                  # (B, T): all channels share it
+            ok = m.all(dim=-1, keepdim=True)              # (B, 1)
+        elif m.dim() == 3:                                # (B, C, T)
+            ok = m.all(dim=-1)                            # (B, C)
+        else:
+            raise ValueError(f"frame_mask must be (B,T) or (B,C,T); got {tuple(frame_mask.shape)}")
+        if ok.shape[1] != tgt.shape[1]:
+            if tgt.shape[1] % ok.shape[1] != 0:
+                raise ValueError(
+                    f"gain target has {tgt.shape[1]} rows, not a multiple of the mask's "
+                    f"{ok.shape[1]} channels"
+                )
+            ok = ok.repeat(1, tgt.shape[1] // ok.shape[1])
+        w = ok.to(dtype=pred.dtype).unsqueeze(-1)         # (B, G, 1), broadcasts over F
+        denom = w.expand_as(pred).sum()
+        if float(denom) <= 0.0:
+            return torch.mean(torch.abs(pred - tgt))
+        return (torch.abs(pred - tgt) * w).sum() / denom
 
     # ------------------------------------------------------------------ #
     # VQGAN adaptive adversarial weight ("Taming Transformers" §3.3)
