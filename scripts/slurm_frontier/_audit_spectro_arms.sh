@@ -20,7 +20,7 @@ NW="${4:-320}"
 # so a shared bar would be meaningless:
 #
 #   modality  values/token   floor    ~tmean   note
-#   co2           1024      0.6303      -      prior measurement, not re-run
+#   co2           1024      0.7112    0.6910   ~tmean BEATS it too; prior 0.6303 did NOT reproduce
 #   mhr           1536      0.8218    0.8768   prior measurement, reproduced by the audit
 #   bes           4096      0.8354    0.8662   per-freq log-z OFF (no bes stats file exists)
 #   mirnov        7424      0.8709    0.8307   ~tmean BEATS the linear code -> near dead end
@@ -30,7 +30,7 @@ NW="${4:-320}"
 # beats the floor (mirnov), a 192-dim linear code cannot even reach the time-averaged
 # spectrum, and no vocabulary change can help -- the bottleneck is the DIMENSION, not bits.
 case "${M}" in
-    co2)    DEF_FLOOR=0.6303 ;;
+    co2)    DEF_FLOOR=0.7112 ;;
     mhr)    DEF_FLOOR=0.8218 ;;
     bes)    DEF_FLOOR=0.8354 ;;
     mirnov) DEF_FLOOR=0.8709 ;;
