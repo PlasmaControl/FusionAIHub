@@ -2271,6 +2271,48 @@ def test_domain_rule_for_an_unused_feature_is_a_programming_error():
         spec.build({"bt": _scalar_feature([1.0] * 6)}, GRID)
 
 
+def test_a_profile_field_can_also_carry_the_t_plus_dt_lag():
+    # The lag arithmetic is kind-agnostic, but only scalars were covered.
+    spec = InputSpec(
+        fields=(
+            InputField("ne_now", "ne_zipfit", lag="t"),
+            InputField("ne_next", "te_zipfit", lag="t+dt"),
+        ),
+        dt_s=0.025,
+    )
+    rows = [np.full(33, float(i)) for i in range(7)]
+    feats = {"ne_zipfit": _profile_feature(rows), "te_zipfit": _profile_feature(rows)}
+    built = spec.build(feats, GRID)
+    np.testing.assert_allclose(built.profiles[:, 0, 0], [0, 1, 2, 3, 4, 5])
+    np.testing.assert_allclose(built.profiles[:, 0, 1], [1, 2, 3, 4, 5, 6])
+
+
+def test_a_domain_rule_whose_stat_mismatches_the_field_kind_is_rejected():
+    # Otherwise this surfaces as numpy.exceptions.AxisError from reducing a
+    # 1-D array along axis 1, well away from the typo that caused it.
+    with pytest.raises(ValueError, match="needs a profile"):
+        DomainRule("kappa", "max", hi=2.0)
+    with pytest.raises(ValueError, match="needs a scalar"):
+        DomainRule("ne_zipfit", "value", hi=12.0)
+
+
+def test_an_unknown_nan_policy_is_rejected():
+    with pytest.raises(ValueError, match="nan_policy"):
+        InputSpec(fields=(InputField("bt", "bt"),), dt_s=0.025, nan_policy="zeros")
+
+
+def test_an_ambiguous_domain_rule_is_rejected():
+    with pytest.raises(ValueError, match="ambiguous"):
+        InputSpec(
+            fields=(
+                InputField("bt_now", "bt", lag="t"),
+                InputField("bt_next", "bt", lag="t+dt"),
+            ),
+            dt_s=0.025,
+            domain=(DomainRule("bt", "value", lo=0.0),),
+        )
+
+
 def test_bad_field_definitions_are_rejected_at_construction():
     with pytest.raises(ValueError, match="lag"):
         InputField("bt", "bt", lag="tomorrow")
@@ -2369,6 +2411,7 @@ ACTIVATIONS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
 }
 
 STATS = ("value", "min", "max", "absmax")
+NAN_POLICIES = ("zero",)
 
 
 @dataclass(frozen=True)
@@ -2412,6 +2455,22 @@ class DomainRule:
     def __post_init__(self) -> None:
         if self.stat not in STATS:
             raise ValueError(f"stat must be one of {STATS}, got {self.stat!r}")
+        # Model authors write these tuples by hand - the tearing spec alone has
+        # fourteen - so a stat that does not match the field's kind is a
+        # plausible copy-paste error. Caught here, at import, rather than as an
+        # opaque numpy AxisError from reducing a 1-D array along axis 1.
+        kind = ns.by_name(self.canonical).kind
+        if self.stat == "value" and kind != "scalar":
+            raise ValueError(
+                f"stat='value' compares a field directly, so it needs a scalar; "
+                f"{self.canonical!r} is a profile - reduce it with 'min', 'max' "
+                "or 'absmax'"
+            )
+        if self.stat != "value" and kind != "profile":
+            raise ValueError(
+                f"stat={self.stat!r} reduces along the radial axis, so it needs a "
+                f"profile; {self.canonical!r} is a scalar - use 'value'"
+            )
 
 
 @dataclass(frozen=True)
@@ -2435,6 +2494,23 @@ class InputSpec:
     rho_grid: np.ndarray = field(default_factory=lambda: ns.RHO_GRID)
     nan_policy: str = "zero"
     domain: tuple[DomainRule, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.nan_policy not in NAN_POLICIES:
+            raise ValueError(
+                f"nan_policy must be one of {NAN_POLICIES}, got {self.nan_policy!r}"
+            )
+        # A domain rule on a canonical that two fields share would check an
+        # unspecified one of them. `canonical_names` deduplicates, so the same
+        # physical quantity at two lags is an anticipated configuration - make
+        # the ambiguity loud rather than arbitrary.
+        for rule in self.domain:
+            shared = [f.model_name for f in self.fields if f.canonical == rule.canonical]
+            if len(shared) > 1:
+                raise ValueError(
+                    f"domain rule on {rule.canonical!r} is ambiguous: fields "
+                    f"{shared} all use it"
+                )
 
     @property
     def scalar_fields(self) -> tuple[InputField, ...]:
