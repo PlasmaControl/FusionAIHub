@@ -85,6 +85,68 @@ for M in ${MODS}; do
             echo "[submit] ${M}: no warm codec_${M}_presence_lengths.pt -> masked but UNFILTERED" >&2
         fi ;;
     esac
+    if [ "${SWEEP}" = "advbest" ]; then
+        # THE MEASURED RECIPE. Screened on the login GPU with
+        # analysis/probe_spectro_objective.py (decoder-only, codes FROZEN so every arm sees the
+        # identical codebook, discriminator trained, 1200 steps, 96 held-out windows). co2 from
+        # the shipped ms5 @55001, as % of that pool's coherent hf ceiling (0.322):
+        #
+        #   arm                                              hf   %ceil  lattice  std_r  nRMSE
+        #   base (ms_ssim 5, adv 0, fm 0)                0.0472      15      5.1  0.766  0.5447
+        #   freq_grad 5 / 20 / 60                    0.0461-0.0442   14   5.4-6.7  0.763  0.5417
+        #   target_time_smooth 5                         0.0277       9      5.2  0.743  0.5463
+        #   ms_ssim 20 / 50                          0.0551/0.0616  17/19   6.0/5.4 0.763 0.5396
+        #   multiscale_recon_scales 1,2,4                0.0665      21      5.2  0.772  0.5428
+        #   adversarial 0.2 + fm 1.0                     0.1460      45      7.2  0.790  0.5553
+        #   adversarial 0.5 + fm 1.0                     0.2532      79      7.4  0.793  0.5522
+        #   adversarial 1.0 + fm 1.0                     1.2025     374     10.1  0.881  0.6612
+        #   adv 0.2 + fm 1.0 + ms_ssim 50 + scales 1,2,4 0.2626      82      6.7  0.813  0.5541
+        #
+        # So: ADVERSARIAL IS THE LEVER (15% -> 45-79% of ceiling), and it was set to 0.0 in
+        # every arm of the flat-plate cohort. ms_ssim 50 and scales 1,2,4 each add a few points
+        # and cost nothing. freq_grad is a NEGATIVE at all three weights and target smoothing
+        # is a NEGATIVE -- both are closed, do not re-run them. adversarial 1.0 OVERSHOOTS
+        # (374% of ceiling, nRMSE 0.6612), so the ladder here stops at 0.5.
+        #
+        # --adv_warmup_steps 1500 is MANDATORY: the recorded failure is that filterscopes ran
+        # adversarial_weight 1.0 with ZERO warmup, so D hammered a from-scratch encoder from
+        # step 0 and drove an adversarial 1-code collapse.
+        #
+        # MIRNOV DIFFERS AND GETS THE MULTISCALE CRITIC. On the same screen (from
+        # mirnov_ms20_s2), every hf gain came with a LATTICE EXPLOSION -- base 13.1, adv 0.2
+        # 31.6, adv 0.5 42.5, against a GT control of 1.16 -- with nRMSE and corr2d getting
+        # WORSE. That is checkerboard, not modes: a PATCH discriminator is satisfiable by one
+        # fixed tiled texture, which is exactly the documented lattice mechanism, and mirnov
+        # has 7424 values per token so the tiled basis is the cheapest way to raise HF energy.
+        # discriminator=multiscale scores the WHOLE spectrogram at 1x/2x/4x and cannot be
+        # fooled that way; on co2 it matched the patch-D combo exactly (hf 83% vs 82%,
+        # lattice 6.8 vs 6.7), so it costs nothing where the patch D already works.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --fm_weight 1.0 --adv_warmup_steps 1500"
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_a02d_s1|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --discriminator multiscale --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_a02d_s2|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --discriminator multiscale --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_a02_s1|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_a02d|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --discriminator multiscale"
+                ARMS_STR="${ARMS_STR};${M}_a02|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2"
+                # ece's decoder maps ONE 256-column basis to 40*16*16 = 10240 outputs per
+                # token (6.7x mhr) and its measured lattice is 127-282 against GT 1.04, so it
+                # also gets the only in-scope capacity lever: a wider codec (n_tok, vocab and
+                # FRAME_LAYOUT are untouched).
+                ARMS_STR="${ARMS_STR};${M}_a02w|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --codec_d_model 512"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_a02|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2"
+                ARMS_STR="${ARMS_STR};${M}_a05|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5"
+                ;;
+        esac
+        continue
+    fi
     if [ "${SWEEP}" = "smooth" ]; then
         # THE PREDICTABLE-TARGET sweep: --target_time_smooth.
         #
