@@ -3798,6 +3798,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "texture is no longer one shared basis tiled on the patch lattice — the "
                         "measured checkerboard (gate.patch_lattice_metrics; mhr recon 61.6 vs GT "
                         "1.15). 0/unset = off (byte-identical decoder).")
+    p.add_argument("--codec_d_model", type=int, default=None,
+                   help="Codec transformer width (cfg.d_model). CODEC-INTERNAL: it is "
+                        "orthogonal to the Phase-B backbone dim and does NOT touch n_tok, "
+                        "the vocab or FRAME_LAYOUT, so it is a legal capacity lever. It DOES "
+                        "change every weight shape, so an arm that sets it cannot resume a "
+                        "checkpoint trained at another width. Motivated by ece: its decoder "
+                        "to_pixels maps ONE 256-column basis to channels*patch_f*patch_t = "
+                        "10240 outputs, and its measured patch_lattice_ratio is 127-282 "
+                        "against a GT control of 1.04, i.e. the reconstruction is dominated "
+                        "by that one basis tiled on the patch lattice.")
+    p.add_argument("--codec_enc_depth", type=int, default=None,
+                   help="Codec encoder depth (cfg.enc_depth). Same scope as --codec_d_model.")
+    p.add_argument("--codec_dec_depth", type=int, default=None,
+                   help="Codec decoder depth (cfg.dec_depth). Same scope as --codec_d_model.")
+    p.add_argument("--codec_heads", type=int, default=None,
+                   help="Codec attention heads (cfg.heads). Same scope as --codec_d_model.")
     p.add_argument("--refine_hidden", type=int, default=None,
                    help="Channel width of the refinement head's hidden convs (default 64). "
                         "Only meaningful with --refine_depth > 1.")
@@ -4034,6 +4050,19 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             "--decoder {linear,conv} is a SPECTRO-only override (the conv decoder is "
             "nets.SpectroConvDecoder); it is not valid for a video / slow-TS / fast-TS modality."
         )
+    # ARCHITECTURE overrides (codec-internal; see --codec_d_model). Applied BEFORE the codec
+    # is built and before any resume, and recorded on the cfg the checkpoint pickles, so the
+    # four consumers that rebuild a codec from its checkpoint infer the width automatically.
+    for _a, _f in (("codec_d_model", "d_model"), ("codec_enc_depth", "enc_depth"),
+                   ("codec_dec_depth", "dec_depth"), ("codec_heads", "heads")):
+        _v = getattr(args, _a, None)
+        if _v is None:
+            continue
+        if not hasattr(cfg, _f):
+            raise SystemExit(f"--{_a}: {type(cfg).__name__} has no field {_f!r}")
+        setattr(cfg, _f, int(_v))
+        if ddp.is_main:
+            print(f"[train_codec] {_f} override -> {_v}")
     if getattr(args, "refine_depth", None) is not None or getattr(args, "refine_hidden", None) \
             is not None or getattr(args, "refine_dilated", False):
         # VIDEO + SPECTRO: only those two configs carry the refinement-head fields.
