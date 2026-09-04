@@ -5359,7 +5359,74 @@ pixi run -e labelmaker python -m pytest tests/labelmaker/test_run.py -q
 ```
 Expected: `ModuleNotFoundError: No module named 'labelmaker.run'`.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Teach the store which misses are worth retrying**
+
+`is_complete` currently counts every recorded miss as known, so a shot whose
+fdp fetch timed out is skipped on the next run exactly like a shot whose
+MDSplus node genuinely does not exist. That defeats the resume behaviour this
+stage is built around: a transient failure should be retried, a permanent one
+should not, and `--force` should not be the only way to distinguish them.
+
+Add to `src/labelmaker/features/store.py`:
+
+```python
+#: Miss causes worth another attempt on a later run. Everything else - an
+#: absent node, a shape mismatch, a genuinely one-sample record - is a
+#: property of the data and will fail again identically, so a rerun skips it.
+TRANSIENT_CAUSES = ("TimeoutError", "OSError", "ConnectionError", "StageTimeout")
+
+
+def is_transient(cause: str) -> bool:
+    """True when a recorded miss is worth retrying on a later run."""
+    return any(t in cause for t in TRANSIENT_CAUSES)
+```
+
+and change `is_complete` to ignore transient misses:
+
+```python
+def is_complete(path, names, *, retry_transient: bool = True) -> bool:
+    """True when every requested name is stored or permanently missed.
+
+    A transient miss (a timeout, a dropped connection) does not count as
+    known: the next run should try it again. Pass `retry_transient=False`
+    to treat any recorded miss as final.
+    """
+    if not Path(path).exists():
+        return False
+    misses = missing_names(path)
+    if retry_transient:
+        misses = {n: c for n, c in misses.items() if not is_transient(c)}
+    return set(names) <= (present(path) | set(misses))
+```
+
+Add to `tests/labelmaker/test_feature_store.py`:
+
+```python
+def test_a_transient_miss_does_not_count_as_complete(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {"ip": _scalar()}, {"bt": "fdp:TimeoutError"})
+    assert not is_complete(p, ["ip", "bt"])                    # retry the timeout
+    assert is_complete(p, ["ip", "bt"], retry_transient=False)  # unless told not to
+
+
+def test_a_permanent_miss_counts_as_complete(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {"ip": _scalar()}, {"bt": "archive:KeyError"})
+    assert is_complete(p, ["ip", "bt"])
+
+
+def test_a_demoted_one_sample_feature_is_permanent(tmp_path):
+    # A one-sample record is a property of the data, not of the attempt, so
+    # it is not worth retrying - unlike a timeout.
+    p = tmp_path / "190000_features.h5"
+    one = FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)))
+    write_features(p, 190000, {"ip": one}, {})
+    assert is_complete(p, ["ip"])
+```
+
+Import `is_complete` and `is_transient` where the tests need them.
+
+- [ ] **Step 5: Write the implementation**
 
 `src/labelmaker/run.py`:
 
@@ -5744,7 +5811,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run the test to verify it passes**
 
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub
@@ -5752,7 +5819,7 @@ pixi run -e labelmaker python -m pytest tests/labelmaker/test_run.py -q
 ```
 Expected: `9 passed`. The timeout test takes ~1 s of real time; that is the only slow test in the suite.
 
-- [ ] **Step 5: Run the whole suite**
+- [ ] **Step 6: Run the whole suite**
 
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub
@@ -5760,7 +5827,7 @@ pixi run -e labelmaker python -m pytest tests/labelmaker -q
 ```
 Expected: everything green, with the fdp live test skipped.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub
