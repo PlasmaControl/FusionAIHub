@@ -5,6 +5,7 @@ import pytest
 from labelmaker.features import namespace as ns
 from labelmaker.features.store import FeatureArray
 from labelmaker.models.base import (
+    ARCHIVE_WINDOW_S,
     TRANSFORMS,
     BuiltInputs,
     Decoded,
@@ -16,6 +17,7 @@ from labelmaker.models.base import (
     Transform,
     UnknownWhenActive,
 )
+from labelmaker.timebase import sample_at, window_mean
 
 GRID = 0.025 * np.arange(6)          # 0.000 .. 0.125 s
 
@@ -444,3 +446,56 @@ def test_built_inputs_is_the_declared_shape_contract():
     )
     assert built.scalars.shape[0] == built.profiles.shape[0] == built.t.size
     assert built.profiles.shape[1] == ns.RHO_GRID.size
+
+
+def test_a_non_archive_resolved_field_is_sampled_as_the_archives_window():
+    # Per-resolver sampling (Task 15): a field resolved from anywhere but the
+    # archive is a true-time record, not yet the 50 ms boxcar the archive's
+    # own build averaged over, so it must be turned into that same window -
+    # ending exactly at the query time - to be comparable to an
+    # archive-resolved field in the same row. MEASURED on both the corpus
+    # (`pinj_total`, `tinj_total`) and fdp (`ip`, `kappa`) paths to beat
+    # nearest-sample and every other window placement by three to five
+    # orders of magnitude; see the Task 15 report for the four-candidate
+    # scan.
+    spec = InputSpec(fields=(InputField("bt", "bt"),), dt_s=0.025)
+    x = 0.001 * np.arange(201)              # 0 .. 0.200 s at 1 ms, high-rate
+    y = (10.0 + x)[None, :]                 # a ramp, so window != nearest
+    feats = {"bt": FeatureArray(x=x, y=y, attrs={"resolver": "corpus"})}
+    grid = np.array([0.100, 0.150])
+    built = spec.build(feats, grid)
+    want = window_mean(x, y, grid - ARCHIVE_WINDOW_S, ARCHIVE_WINDOW_S)
+    np.testing.assert_allclose(built.scalars[:, 0], want)
+    # and it must actually differ from nearest-sample, or this could pass by
+    # accident on a signal too flat to tell the two conventions apart
+    nearest = sample_at(x, y, grid, max_gap=spec.dt_s / 2)[0]
+    assert not np.allclose(built.scalars[:, 0], nearest)
+
+
+def test_an_archive_resolved_field_is_read_nearest_not_windowed_again():
+    # The archive path is unchanged by the per-resolver fix: its own row is
+    # ALREADY the 50 ms boxcar, so windowing it a second time would average
+    # an already-averaged signal.
+    spec = InputSpec(fields=(InputField("bt", "bt"),), dt_s=0.025)
+    feats = {"bt": _scalar_feature([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], resolver="archive")}
+    built = spec.build(feats, GRID)
+    np.testing.assert_allclose(built.scalars[:, 0], [1, 2, 3, 4, 5, 6])
+
+
+def test_a_non_archive_profile_field_is_also_windowed():
+    # The per-resolver rule is keyed on the resolver, not the feature kind:
+    # a profile served from fdp or the corpus needs the same treatment as a
+    # scalar.
+    spec = InputSpec(fields=(InputField("ne", "ne_zipfit"),), dt_s=0.025)
+    x = 0.001 * np.arange(201)
+    ramp = 10.0 + x
+    y = np.stack([ramp] * 33, axis=0)       # (33, T), every channel the ramp
+    feats = {"ne_zipfit": FeatureArray(x=x, y=y, attrs={"resolver": "fdp"})}
+    grid = np.array([0.100, 0.150])
+    built = spec.build(feats, grid)
+    want = window_mean(x, y, grid - ARCHIVE_WINDOW_S, ARCHIVE_WINDOW_S)
+    np.testing.assert_allclose(built.profiles[:, 0, 0], want[0])
+    # every radial channel was fed the same ramp, so they must all agree
+    np.testing.assert_allclose(
+        built.profiles[:, :, 0], np.broadcast_to(want[0][:, None], (2, 33))
+    )

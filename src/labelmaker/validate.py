@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .catalog import TM_ARCHIVE
 from .config import Paths, atomic_path
 from .models import registry
 from .models.runners.keras_h5 import load_ensemble, predict_members
@@ -300,4 +301,238 @@ def adapter_fidelity(
         "label_max_abs_diff": label_max_abs_diff,
         "tolerances": asdict(tolerances),
         "passed": bool(passed),
+    }
+
+
+#: Columns of the archived x0 that are bit-identical to the archive store,
+#: measured on shot 185945: bt, ip, tritop, tribot, gapin. They are what
+#: makes the archived rows addressable - the arrays carry no timestamps.
+MATCH_COLUMNS = (0, 1, 6, 7, 8)
+
+
+def archive_rows(shot: int, archive: Path = TM_ARCHIVE) -> dict | None:
+    """The archived training rows for one shot, or None if it has none.
+
+    `z.npy` holds the shot of every row, so this is a mask, not a lookup.
+    The arrays are memory-mapped: x1 alone is 422 MB.
+    """
+    z = np.load(archive / "z.npy", mmap_mode="r")
+    rows = np.where(np.asarray(z).astype(np.int64) == int(shot))[0]
+    if rows.size == 0:
+        return None
+    out = {}
+    for name in ("x0", "x1", "y"):
+        arr = np.load(archive / f"{name}.npy", mmap_mode="r")
+        out[name] = np.asarray(arr[rows], dtype=np.float64)
+    out["rows"] = rows
+    return out
+
+
+def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
+    """Map each archived row to the timestep of our own inputs.
+
+    Nearest neighbour on the columns that are bit-identical between the two
+    sources, each scaled by its own spread so no single column dominates.
+    The upstream filter dropped rows, so the mapping is a strictly increasing
+    subsequence; `monotonic` is the check that it really is one, and a large
+    `median_distance` means the mapping is not to be trusted at all.
+
+    An archived row can be unmatchable: if one of the five match columns is
+    missing for this shot (a per-shot gap `resolve_archive` documents), every
+    distance from that row to every one of our timesteps is NaN. Bare
+    `nanargmin`/`nanmin` raise `ValueError: All-NaN slice encountered` on
+    such a row, which would abort the whole shot instead of reporting one
+    unmatched row - guarded below by masking row-by-row, and the reductions
+    that follow run only over the rows that did match. `passed` therefore
+    requires every archived row to have matched: a partial mapping is not a
+    mapping to be trusted either.
+    """
+    ours = np.asarray(built.scalars, dtype=np.float64)[:, MATCH_COLUMNS]
+    theirs = np.asarray(archived_x0, dtype=np.float64)[:, MATCH_COLUMNS]
+    scale = np.nanstd(ours, axis=0)
+    if not np.all(scale > 0):
+        raise ValueError(
+            f"match columns are constant in our inputs (std={scale}); "
+            "cannot align without variation"
+        )
+    d = np.linalg.norm(
+        (theirs[:, None, :] - ours[None, :, :]) / scale, axis=2
+    )
+    n = theirs.shape[0]
+    index = np.full(n, -1, dtype=np.int64)
+    distance = np.full(n, np.nan, dtype=np.float64)
+    has_finite = np.isfinite(d).any(axis=1)
+    if np.any(has_finite):
+        rows = np.flatnonzero(has_finite)
+        index[rows] = np.nanargmin(d[rows], axis=1)
+        distance[rows] = np.nanmin(d[rows], axis=1)
+    # Reductions on the already-filtered, all-finite subset: `np.median` and
+    # `np.max` never see a NaN here, so neither can raise numpy's "All-NaN
+    # slice encountered" warning - which `-W error` promotes to an exception,
+    # exactly like `nanmean`'s "Mean of empty slice" (see
+    # `timebase.window_mean`'s docstring for the same trap).
+    finite_distance = distance[has_finite]
+    median = float(np.median(finite_distance)) if finite_distance.size else float("nan")
+    max_distance = float(np.max(finite_distance)) if finite_distance.size else float("nan")
+    matched_index = index[has_finite]
+    monotonic = bool(np.all(np.diff(matched_index) > 0)) if matched_index.size > 1 else True
+    passed = bool(
+        matched_index.size == n
+        and median < tol
+        and np.unique(matched_index).size == n
+    )
+    return {
+        "index": index,
+        "distance": distance,
+        "median_distance": median,
+        "max_distance": max_distance,
+        "monotonic": monotonic,
+        "n_matched": int(n),
+        "n_unique": int(np.unique(matched_index).size) if matched_index.size else 0,
+        "passed": passed,
+    }
+
+
+def _stats(ours: np.ndarray, theirs: np.ndarray) -> dict:
+    """Agreement between two samples of the same quantity.
+
+    Both branches return the same key set - `mean_ours`/`mean_archive`
+    included - even when there are too few points to compute them (`None`
+    rather than absent). These dicts are serialized to JSON and read by a
+    later stage; a shape that varies with `n` would make every consumer
+    write a `.get` guard instead of a plain lookup.
+    """
+    from scipy import stats
+
+    a = np.asarray(ours, dtype=np.float64).ravel()
+    b = np.asarray(theirs, dtype=np.float64).ravel()
+    good = np.isfinite(a) & np.isfinite(b)
+    if good.sum() < 10:
+        return {
+            "n": int(good.sum()),
+            "median_rel": None,
+            "corr": None,
+            "ks": None,
+            "mean_ours": None,
+            "mean_archive": None,
+        }
+    a, b = a[good], b[good]
+    rel = np.median(np.abs(a - b) / (np.abs(b) + 1e-12))
+    corr = float(np.corrcoef(a, b)[0, 1]) if a.std() > 0 and b.std() > 0 else None
+    return {
+        "n": int(good.size),
+        "median_rel": float(rel),
+        "corr": corr,
+        "ks": float(stats.ks_2samp(a, b).statistic),
+        "mean_ours": float(a.mean()),
+        "mean_archive": float(b.mean()),
+    }
+
+
+def reconstruction_fidelity(
+    slug: str,
+    shots,
+    paths: Paths,
+    *,
+    archive: Path = TM_ARCHIVE,
+) -> dict:
+    """Price every substitution, per feature, against the training rows."""
+    from .features import namespace as ns
+    from .features.store import missing_names, present, read_feature
+    from .timebase import sample_at
+
+    # Materialized once, up front: `shots` is frequently a generator
+    # (`catalog.overlap_shots`, or a comprehension over it), and the loop
+    # below consumes it. Computing `len(shots)` after the loop - as an
+    # earlier draft of this function did - reports 0 for any such caller.
+    shots = list(shots)
+    adapter = registry.load_adapter(slug)
+    spec = adapter.input_spec
+    names_0d = [f.model_name for f in spec.scalar_fields]
+    names_1d = [f.model_name for f in spec.profile_fields]
+    ech_rho_field = next((f for f in spec.fields if f.canonical == "ech_rho"), None)
+    pooled: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {}
+    match_info: dict[str, dict] = {}
+    skipped: dict[str, str] = {}
+    incomplete: dict[str, dict] = {}
+    resolvers: dict[str, set] = {}
+    used: list[int] = []
+    ech_conflicts = 0
+    ech_rows = 0
+
+    for shot in shots:
+        got = archive_rows(shot, archive)
+        if got is None:
+            skipped[str(shot)] = "no archived rows"
+            continue
+        fpath = paths.features_file(shot)
+        if not fpath.exists():
+            skipped[str(shot)] = "no feature file"
+            continue
+        stored = present(fpath)
+        features = {
+            name: read_feature(fpath, name)
+            for name in spec.canonical_names
+            if name in stored
+        }
+        built = spec.build(features, ns.GRID_S)
+        for canonical, source in built.resolvers.items():
+            resolvers.setdefault(canonical, set()).add(source)
+        info = match_rows(got["x0"], built)
+        match_info[str(shot)] = {
+            k: v for k, v in info.items() if k not in ("index", "distance")
+        }
+        if not info["passed"]:
+            skipped[str(shot)] = (
+                f"match rejected (median {info['median_distance']:.3g})"
+            )
+            continue
+        idx = info["index"]
+        used.append(int(shot))
+        for j, name in enumerate(names_0d):
+            pooled.setdefault(name, []).append(
+                (built.scalars[idx, j], got["x0"][:, j])
+            )
+        for j, name in enumerate(names_1d):
+            pooled.setdefault(name, []).append(
+                (built.profiles[idx, :, j], got["x1"][:, :, j])
+            )
+        # Diagnostic for the zero-filled ECH deposition location: how often
+        # is the location unknown while power is actually being injected?
+        # Read the field's own declared lag rather than assuming "t+dt": a
+        # future model spec could carry `ech_rho` at plain "t", and hardcoding
+        # the offset would silently report a conflict count for a time the
+        # model never actually sees.
+        if "ech_power_total" in features and "ech_rho" in features and ech_rho_field:
+            raw = features["ech_rho"]
+            t = ns.GRID_S + spec.dt_s if ech_rho_field.lag == "t+dt" else ns.GRID_S
+            rho = np.asarray(
+                sample_at(raw.x, raw.y, t, max_gap=spec.dt_s / 2)
+            ).ravel()[idx]
+            power = built.scalars[idx, names_0d.index("ech_pwr_total")]
+            ech_rows += int(power.size)
+            ech_conflicts += int(((power > 0) & ~np.isfinite(rho)).sum())
+        incomplete[str(shot)] = missing_names(fpath)
+
+    per_feature = {
+        name: _stats(
+            np.concatenate([np.asarray(a).ravel() for a, _ in pairs]),
+            np.concatenate([np.asarray(b).ravel() for _, b in pairs]),
+        )
+        for name, pairs in pooled.items()
+    }
+    return {
+        "slug": slug,
+        "n_shots_requested": len(shots),
+        "n_shots_used": len(used),
+        "shots_used": used,
+        "skipped": skipped,
+        "incomplete_features": {k: v for k, v in incomplete.items() if v},
+        "match": match_info,
+        "per_feature": per_feature,
+        "resolvers": {k: sorted(v) for k, v in resolvers.items()},
+        "ech_location_unknown_while_powered": {
+            "rows": ech_rows,
+            "conflicts": ech_conflicts,
+        },
     }
