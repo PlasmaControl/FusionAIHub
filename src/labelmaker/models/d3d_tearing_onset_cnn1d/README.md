@@ -87,38 +87,64 @@ labelmaker:
       median relative difference, correlation 0.98-0.99"
     - "ech_pwr_total is served by the archive column EC.PECH, the machine
       total. NOT ech_pwr, which is stored (1, 240) and holds a single
-      gyrotron (ech_names is length 1) - measured, it reads 0.544 MW on shot
-      186504 at t=3.05 s where the three gyrotrons that are on sum to 2.11
-      MW. The model's own saved training values (x0[:, 9]) match EC.PECH to
-      0.1% on every ECH shot checked while ech_pwr is ~4x smaller"
-    - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81). This
+      gyrotron (ech_names is length 1: LEIA, LUKE or TINMAN). Established by
+      exact row alignment to the model's own training array: matching x0.npy
+      rows to archive time indices on the five bit-identical columns resolves
+      9805 of 9805 rows uniquely, and at powered rows EC.PECH has median
+      relative error 0.097% (91.2% within 1%) against ech_pwr's 61% (0.0%
+      within 1%). Coverage: EC.PECH on 1,299 of the 1,497 PoC-pool shots
+      against ech_pwr's 384"
+    - "NaN or negative ECH power becomes 0 (upstream rule, train.py:80). This
       is a CORRECTION, not a fill, so a corrected row still counts as a
       MEASURED power, which is what lets the rule below tell a benign gap
       from a fabrication. On the archive path there is nothing to correct -
-      measured, EC.PECH has zero negative readings in 233,280 samples over
-      2,000 shots - but on the corpus path 2.563% of per-gyrotron samples are
-      negative, down to -79,860 W. Only a non-finite power counts as
-      unmeasured, and EC.PECH is NaN off-window on 57.6% of rows"
+      measured, EC.PECH has zero negative readings in 578,160 samples - but
+      on the corpus path ~3.1% of per-gyrotron samples are negative, to
+      -112 kW"
+    - "a NaN ECH power is treated as UNMEASURED, which is labelmaker's own
+      conservatism and not upstream fidelity: train.py:80 clips a NaN to 0
+      and keeps the row. It coincides with upstream on the archive only
+      because the location is NaN on exactly the same rows. EC.PECH is NaN on
+      56.8% of rows, and 23.0% of those NaNs (13.05% of all rows) are
+      interior to the measured window rather than before or after the shot"
     - "a missing or negative EC.RHO_ECH becomes 0, the upstream ECH-off
       convention, and is then adjudicated against the ECH power rather than
-      assumed benign. Measured: the column is absent on 1,028 of 2,000
-      sampled shots, and negative on 20 of 233,280 readings - a negative rho
-      is not a location, so the fill invents a value either way. An exact 0.0
-      is left alone, being the genuine ECH-off reading"
+      assumed benign. Measured over the full store: the column is absent on
+      2,591 of 5,000 shots, and negative on 75 of 578,160 readings (0.0130%,
+      in 15 shots) - a negative rho is not a location, so the fill invents a
+      value either way. An exact 0.0 is left alone, being the genuine ECH-off
+      reading"
     - "an unknown deposition location is benign only when the power is KNOWN
       to have been off. If the power itself was never measured, nothing is
       known about the pair and the row is flagged - otherwise a gap in the
       power would quietly read as inactive and license the very fabrication
       the rule exists to catch"
     - "EC.PECH and EC.RHO_ECH are co-present by construction: measured over
-      2,000 shots, 972 have both and 1,028 have neither, never one without
-      the other, and on all 972 their finite masks are identical. So on the
-      archive path a powered row with no location is nearly nonexistent (6 of
-      8,631 powered rows, 0.07%, all negative-rho readings) and what the rule
-      does here is invalidate the 57.6% of rows where both are NaN - which is
-      what upstream did, its x0[:, 10] >= 0 clause dropping a NaN rho. The
-      rule stays load-bearing in the original sense on the corpus and fdp
-      paths, where the two come from different sources"
+      the full store, 2,409 shots have both and 2,591 have neither, never one
+      without the other, and on all 2,409 their finite masks are identical.
+      So a powered row with no location is rare here - 75 of 56,658 powered
+      rows (0.132%), exactly the negative-rho count, since all 75 negative
+      readings carry a finite positive power. What the rule mostly does is
+      invalidate the rows where both are NaN, and over all 2,409 paired shots
+      that set is IDENTICAL to the set upstream drops via x0[:, 10] >= 0 -
+      zero rows either way"
+    - "the corpus cannot supply a deposition location at all - it has no such
+      group - so on a corpus-served shot any row with ECH power flowing is
+      invalid. The corpus is also not interchangeable with EC.PECH for power:
+      time-aligned over a random 60 overlap shots, the corpus channel sum is
+      0.779 of EC.PECH at the median (per-shot 0.444 to 1.406), because its
+      12 channels miss gyrotrons EC.PECH counts. Both are in W; the shortfall
+      is content, not units"
+    - "49 PoC-pool shots carry only the old ech_pwr column and not EC.PECH,
+      so the archive alone cannot serve their ECH power and every row of
+      theirs is invalid: measured, 2,676 valid rows become 0. Falling back to
+      ech_pwr would add nothing - measured, all 49 read identically 0.0 W.
+      The rows are recoverable from the corpus source instead, and the corpus
+      reads all 12 gyrotrons: it serves 38 of the 49 and shows zero power
+      flowing on every one, which CONFIRMS ECH-off rather than assuming it.
+      Upstream, by contrast, fabricated a 0.0 for an absent ECH signal and
+      trained on those rows; labelmaker declines to invent the value and
+      takes the evidence from the second source"
     - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
       equality with TensorFlow is checked to 1e-5 in validation"
 ---

@@ -17,10 +17,10 @@ canonical feature is kW. `tinj` needs no scaling (8.43 vs 9.24 N m). The
 residual difference is a sampling difference, not a unit one, and Task 15
 decides between nearest-sample and window-mean by measurement.
 
-Roughly 0.7% of the corpus files are truncated on disk (2 of a random 300;
-186419 and 186800 among them) and cannot be opened at all. That is recorded
-as a per-shot miss like any other, because raising would abort a bulk run on
-a file that will never be readable.
+A small but non-negligible fraction of corpus files are truncated on disk
+and raise OSError on open: MEASURED 1.33% (8 of a random 600), and 2.0-3.7%
+in three independent 300-file draws, so quote it as a range rather than a
+point. They are recorded as a per-shot miss, never raised.
 """
 from __future__ import annotations
 

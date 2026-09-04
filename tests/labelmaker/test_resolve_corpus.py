@@ -87,7 +87,12 @@ def test_real_corpus_shot_resolves_all_three_actuator_totals():
     assert missing == {}
     for name in ("pinj_total", "tinj_total", "ech_power_total"):
         assert got[name].y.shape[0] == 1
-        assert got[name].x[0] <= 0.0 or name == "pinj_total"
+    # MEASURED grid origins on this shot: the beam groups start at t=0, and
+    # ech_power starts a quarter-second early. Asserted per group rather than
+    # as one disjunction, which passed whatever the origins turned out to be.
+    assert got["pinj_total"].x[0] == pytest.approx(0.0, abs=1e-3)
+    assert got["tinj_total"].x[0] == pytest.approx(0.0, abs=1e-3)
+    assert got["ech_power_total"].x[0] == pytest.approx(-0.25, abs=1e-3)
     # 10 MW-class beam power on this shot, expressed in kW
     assert 5_000.0 < np.nanmax(got["pinj_total"].y) < 30_000.0
 
@@ -97,13 +102,32 @@ def test_the_scales_are_the_measured_ones():
 
     The ECH scale was settled by comparing the corpus channel sum against
     the archive's own total column `EC.PECH`, time-aligned onto the 25 ms
-    grid: global median ratio 1.001 over 20 overlap shots. The archive's
-    `ech_pwr` is a single gyrotron and cannot answer the question; see the
-    note on the `ech_power_total` spec.
+    grid over a RANDOM 60 overlap shots (n=5,186): global median ratio
+    0.779, per-shot medians 0.444 to 1.406. That is order 1, not 1e-3 or
+    1e3, so no scaling - but the two are NOT interchangeable, and the
+    ~22% median shortfall is a content difference (the corpus's 12
+    channels miss gyrotrons `EC.PECH` counts), not a unit one. The
+    archive's `ech_pwr` is a single gyrotron and cannot answer the
+    question at all; see the note on the `ech_power_total` spec.
     """
     assert rc.SCALE_TO_CANONICAL["pinj_total"] == 1e-3
     assert rc.SCALE_TO_CANONICAL["tinj_total"] == 1.0
     assert rc.SCALE_TO_CANONICAL["ech_power_total"] == 1.0
+
+
+def test_every_corpus_sourced_feature_has_a_scale():
+    """A corpus feature with no entry would raise KeyError mid-run, per shot.
+
+    `resolve` indexes SCALE_TO_CANONICAL directly, so the failure would land
+    in a bulk run rather than here. One assertion moves it to test time.
+    """
+    from labelmaker.features import namespace as ns
+
+    declared = {spec.name for spec in ns.by_source("corpus")}
+    assert declared == set(rc.SCALE_TO_CANONICAL), (
+        f"corpus features without a scale: {declared - set(rc.SCALE_TO_CANONICAL)}; "
+        f"scales for non-corpus features: {set(rc.SCALE_TO_CANONICAL) - declared}"
+    )
 
 
 def test_a_time_with_no_finite_channel_is_unknown_not_zero(tmp_path):
