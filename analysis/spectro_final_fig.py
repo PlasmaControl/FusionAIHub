@@ -334,6 +334,52 @@ def band_slices(cfg, F: int, bands_khz: List[tuple]) -> List[tuple]:
     return out
 
 
+def coherent_rank(X: np.ndarray, M: Optional[np.ndarray], smooth: int = 5) -> Dict[str, float]:
+    """How many TEMPORAL PATTERNS describe one window's coherent dynamics.
+
+    This is the number that decides whether 192 tokens x log2(1000) = 1914 bits/window is
+    the binding constraint or an excuse. Per window: low-pass along time (drop the speckle no
+    codec should reproduce), remove the per-(channel, frequency) time mean (that is the static
+    envelope, which the gain path codes separately), and take the spectrum of the resulting
+    ``(C*F, T)`` matrix. Its rank is the count of independent time-courses the window's
+    coherent content actually has -- if the 29 mirnov channels and 512 frequency bins all
+    ride a handful of shared mode envelopes, that count is small and the bit budget is ample.
+
+    Reported:
+      rank90  smallest k with >= 90% of the coherent variance in the top k singular values.
+      pr      participation ratio (sum lam)^2 / sum lam^2 -- a soft, threshold-free rank.
+      coh_var share of the window's total variance that is coherent (post-smoothing).
+
+    The Gram matrix is only (T, T), so the eigendecomposition is microseconds -- and it runs
+    on the HOST in numpy because torch.linalg.eigh SIGKILLs silently on this machine.
+    """
+    B, C, F, T = X.shape
+    valid = _masked_bct(M, X.shape)
+    r90, prs, cvs = [], [], []
+    for b in range(B):
+        x = X[b].astype(np.float64)                                  # (C, F, T)
+        if valid is not None:
+            keep = valid[b].all(axis=-1)                             # (C,)
+            if not keep.any():
+                continue
+            x = x[keep]
+        tot = float(((x - x.mean(-1, keepdims=True)) ** 2).mean())
+        xs = _boxcar_last(x, smooth, mode="same")
+        xs = xs - xs.mean(-1, keepdims=True)                         # drop the envelope
+        cvs.append(float((xs * xs).mean()) / tot if tot > 0 else np.nan)
+        A = xs.reshape(-1, T)
+        lam = np.linalg.eigvalsh(A.T @ A)[::-1].clip(min=0.0)        # (T,) descending
+        tl = lam.sum()
+        if tl <= 0:
+            continue
+        r90.append(int(np.searchsorted(np.cumsum(lam) / tl, 0.90) + 1))
+        prs.append(float(tl ** 2 / (lam ** 2).sum()))
+    return {"rank90": float(np.mean(r90)) if r90 else float("nan"),
+            "pr": float(np.mean(prs)) if prs else float("nan"),
+            "coh_var": float(np.nanmean(cvs)) if cvs else float("nan"),
+            "T": T, "n_windows": len(r90)}
+
+
 _CHUNK = 24
 
 
@@ -388,6 +434,18 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
         print(f"{bin_to_khz(cfg, r['b0']):7.1f}-{bin_to_khz(cfg, r['b1']):6.1f}"
               f"{r['std']:>9.3f}{r['ac1']:>8.3f}{r['coh_frac']:>10.3f}", flush=True)
 
+    rk = coherent_rank(X, M, smooth=smooth)
+    print(f"\ncoherent DIMENSION per window (time-smoothed over {smooth} frames, envelope "
+          f"removed): rank90 {rk['rank90']:.1f} of T={rk['T']}   participation-ratio "
+          f"{rk['pr']:.1f}   coherent share of variance {rk['coh_var']:.3f}", flush=True)
+    _bits = cfg.n_tok * math.log2(cfg.codebook_size)
+    print(f"  -> the window's coherent content rides ~{rk['rank90']:.0f} independent "
+          f"time-courses; the token budget is {_bits:.0f} bits "
+          f"({_bits / max(rk['rank90'], 1e-9):.0f} bits per coherent time-course over "
+          f"{C}x{F} = {C * F} (channel, freq) cells). Bits are NOT obviously the binding "
+          f"constraint; read the arm rows below as a statement about the OBJECTIVE.",
+          flush=True)
+
     # ORACLES + arms, scored on the FULL band and on each requested sub-band.
     bands = [("full", 0, F)] + (band_slices(cfg, F, bands_khz) if bands_khz else [])
     preds: List[tuple] = [
@@ -424,7 +482,7 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
         rows.append(rec)
     print("\n  hf here is recon HF-gradient energy / GT HF-gradient energy IN THAT BAND "
           "(ideal 1.0). nRMSE is a FLOOR (< 1.0), never the ranking key.")
-    return {"bands_profile": prof, "rows": rows,
+    return {"bands_profile": prof, "coherent_rank": rk, "rows": rows,
             "bands": [{"name": nm, "b0": b0, "b1": b1} for nm, b0, b1 in bands]}
 
 
