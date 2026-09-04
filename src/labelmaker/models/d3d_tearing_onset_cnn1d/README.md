@@ -100,7 +100,14 @@ labelmaker:
       from a fabrication. On the archive path there is nothing to correct -
       measured, EC.PECH has zero negative readings in 578,160 samples - but
       on the corpus path ~3.1% of per-gyrotron samples are negative, to
-      -112 kW"
+      -112 kW. NOTE (Task 15 code review, I7): this percentage was measured
+      before the per-resolver sampling fix, which now windows every
+      corpus-served field (`ns.SAMPLING_BY_SOURCE`) rather than reading it
+      nearest-sample; it describes the raw corpus samples, not a quantity
+      `build()` computes today, and is pending re-measurement under the
+      current convention. ECH's rule, threshold and locator are unchanged
+      and remain on hold - this note is about the number's currency, not
+      about the rule"
     - "a NaN ECH power is treated as UNMEASURED, which is labelmaker's own
       conservatism and not upstream fidelity: train.py:80 clips a NaN to 0
       and keeps the row. It coincides with upstream on the archive only
@@ -144,7 +151,14 @@ labelmaker:
       flowing on every one, which CONFIRMS ECH-off rather than assuming it.
       Upstream, by contrast, fabricated a 0.0 for an absent ECH signal and
       trained on those rows; labelmaker declines to invent the value and
-      takes the evidence from the second source"
+      takes the evidence from the second source. NOTE (Task 15 code review,
+      I7): '38 of the 49 show zero power' was measured against the
+      nearest-sample series `build()` produced before the per-resolver
+      sampling fix; `build()` now windows a corpus-served field into the
+      archive's 50 ms mean instead, a different derived series from the
+      same raw samples, so this count is pending re-measurement under the
+      current convention. ECH's rule, threshold and locator are unchanged
+      and remain on hold"
     - "inference evaluates the Keras graph in torch (models/runners/keras_h5.py);
       checked against frozen real-TensorFlow outputs (tensorflow-cpu==2.15.1)
       on 1,673 reference rows x 10 members, gated on a scale-normalized max
@@ -193,6 +207,19 @@ different artifact) and not a substitute for magnetics-based mode detection.
 
 - The label answers "is a tearing mode present at t+25 ms", not "will one appear"
   - a mode already present is the easy majority of positives.
+- A label stamped at time `t` is computed from inputs averaged over
+  `[t-50ms, t]`, not from an instantaneous reading at `t`: the label's
+  timestamp trails its input window's centre by 25 ms. This is uniform
+  across every feature source (archive, corpus, fdp - see Task 15's
+  per-resolver sampling fix in `models/base.py`), causal, and matches what
+  the model trained on; it compounds with the `t+25 ms` label-semantics
+  caveat above rather than replacing it. One row is a further, source-
+  dependent special case: at `t=0` the window `[-50ms, 0]` predates the
+  record, so an archive-served input (whose row already carries this
+  average, computed from raw data that starts well before the shot) is
+  measured there while a corpus-served actuator total (whose stored record
+  is clipped to start at exactly `t=0`) is not - `models/base.py`'s
+  `ARCHIVE_WINDOW_S` comment has the measurement.
 - Trained on 2011-2021 shots; corpus shots beyond 190997 are outside the
   training shot range even when their parameters are in domain.
 - The three kinetic profiles are substituted (see `approximations`), which is

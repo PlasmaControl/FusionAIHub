@@ -107,21 +107,30 @@ each archive row against the raw record on shot 185945:
     in both directions.
 
 Both say the same thing: archive row k holds the value at 25*(k-1) ms, one
-row earlier than `STEP_S * arange(n)` claims, and it is a ~25 ms window
-statistic rather than a point sample. `ARCHIVE_LAG_S` records the offset for
-the comparison scripts; nothing in the resolver depends on it, and correcting
+row earlier than `STEP_S * arange(n)` claims, and it is a 50 ms window
+statistic rather than a point sample (see `models.base.ARCHIVE_WINDOW_S`,
+`2 * STEP_S`). `ARCHIVE_LAG_S` records the offset for the comparison
+scripts; nothing in the resolver depends on it, and correcting
 `resolve_archive` is not this module's business (it would move every feature
 Task 15 compares).
 
-FDP AGAINST THE ARCHIVE, MEASURED - a RANDOM 120 of the 3,246 corpus/archive
-overlap shots (`catalog.sample_shots(overlap, 120, seed=12)`; not the first
-120 by number, which would have been the early shot range only). Each archive
-row is compared at `t + ARCHIVE_LAG_S`: the two PTDATA points against a 25 ms
-window mean centred there, everything else against the nearest source slice
-with `max_gap` half a grid step, so nothing is compared to a clamped edge.
-"exact" repeats the comparison on the subset of rows whose time coincides
-with a source sample to 1e-9 s, which removes the remaining sampling
-difference for the 20 ms EFIT and ZIPFIT nodes.
+FDP AGAINST THE ARCHIVE, MEASURED UNDER A SUPERSEDED CONVENTION - a RANDOM
+120 of the 3,246 corpus/archive overlap shots (`catalog.sample_shots(overlap,
+120, seed=12)`; not the first 120 by number, which would have been the early
+shot range only). Each archive row was compared at `t + ARCHIVE_LAG_S`: the
+two PTDATA points against a 25 ms window mean centred there, everything else
+against the nearest source slice with `max_gap` half a grid step, so nothing
+was compared to a clamped edge. "exact" repeats the comparison on the subset
+of rows whose time coincides with a source sample to 1e-9 s, which removes
+the remaining sampling difference for the 20 ms EFIT and ZIPFIT nodes.
+
+**This table's own convention no longer matches what `build()` uses** (I8,
+Task 15 code review): `InputSpec.build` now samples EVERY fdp-resolved field
+- not just the two PTDATA points - with the archive's own 50 ms window ending
+at `t` (`ARCHIVE_WINDOW_S`, via `ns.SAMPLING_BY_SOURCE`/`sample_by_resolver`).
+Kept below for the unit-factor and profile-axis conclusions, which do not
+depend on the windowing convention; superseded for accuracy purposes by the
+re-measurement immediately after it.
 
     feature      med rel   p90 rel   med ratio  shots   points | exact med rel
     ip          1.08e-03  4.81e-03    1.000034     39     9360 |            -
@@ -149,6 +158,50 @@ steepest-in-time profile of the set, and it does not shrink much on the
 exactly-coincident subset, so it is not purely a sampling artefact - the
 offline EFIT01 tree has been rerun at least once since the store was built.
 Everything is far inside the plan's 5e-2 gate.
+
+FDP AGAINST THE ARCHIVE, RE-MEASURED UNDER THE CONVENTION `build()` ACTUALLY
+USES (I8, Task 15 code review) - all thirteen features, each source's array
+windowed with `window_mean(x, y, t - ARCHIVE_WINDOW_S, ARCHIVE_WINDOW_S)`
+against the archive column at the archive's own grid times `t`, exactly what
+`InputSpec.build` does for a `"fdp"`-resolved field. A RANDOM 10 of the
+overlap shots (`catalog.sample_shots(catalog.overlap_shots(paths), 10,
+seed=12)`; script `scan_fdp_price_table.py`, not committed - see the Task 15
+report):
+
+    186154, 186644, 186727, 186743, 187255, 189059, 189681, 189744, 190835,
+    190915
+
+    feature      med rel     p90 rel     shots   points | this table's old med rel
+    ip          9.80e-05    1.39e-03        5     1200  |           1.08e-03
+    bt          7.19e-05    1.86e-04        5     1200  |           1.03e-03
+    r0          3.26e-08    1.99e-04       10     2094  |           7.87e-04
+    kappa       3.00e-08    4.32e-04       10     2094  |           1.22e-03
+    tritop      3.39e-08    5.49e-04       10     2094  |           3.19e-03
+    tribot      3.22e-08    6.44e-04       10     2094  |           2.77e-03
+    gapin       3.19e-08    1.73e-03       10     2094  |           7.33e-03
+    betan       3.33e-08    2.94e-03       10     2094  |           1.31e-02
+    qpsi        3.56e-08    5.11e-03       10    69069  |           6.93e-03
+    pres        3.50e-08    1.92e-02       10    66976  |           3.00e-02
+    ne_zipfit   2.45e-08    2.80e-03        9    59565  |           1.26e-02
+    te_zipfit   2.37e-08    3.22e-03        9    59532  |           1.24e-02
+    rot_zipfit  2.23e-08    2.19e-03        9    40755  |           1.09e-02
+
+Every one of the thirteen improves, several by four to five orders of
+magnitude: the eleven EFIT/ZIPFIT features that were already sampled
+nearest-sample in the old table land at ~3e-8 median relative error once
+windowed the same way as the two PTDATA points, because EFIT's own ~20 ms
+cadence lines a 50 ms window up with whole EFIT slices almost every time -
+the same effect `validate`'s module docstring records for `kappa` on shot
+185945. `ip` and `bt` (the two features the old table already windowed, just
+centred rather than ending at `t`) improve by roughly 11x and 14x. This is
+NOT twelve of the thirteen becoming bit-identical to the archive: `p90 rel`
+stays in the 1e-4 to 2e-2 range, so the tail - the rows where an EFIT/ZIPFIT
+slice does not land inside the window, or the offline tree was rerun since
+the store was built (see `pres`'s note above) - is not fixed by this
+convention change, only the typical row. `n_shots`/`points` are lower here
+than the old table's 120-shot scan (a 10-shot re-measurement, not a
+120-shot one); the direction and rough magnitude of the improvement is what
+matters for I8, not a fourth-decimal-place match to a larger sample.
 
 `shots` is below 120 for two different reasons, both recorded rather than
 worked around:

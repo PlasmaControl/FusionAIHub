@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -309,6 +310,28 @@ def adapter_fidelity(
 #: makes the archived rows addressable - the arrays carry no timestamps.
 MATCH_COLUMNS = (0, 1, 6, 7, 8)
 
+#: The `spec.scalar_fields[i].model_name` this module expects at each of
+#: `MATCH_COLUMNS`, for `d3d_tearing_onset_cnn1d` - the only model with a
+#: training archive (I10). `reconstruction_fidelity` asserts this holds
+#: before doing any per-shot work: a different slug's scalar order would
+#: otherwise compare the wrong columns and report a plausible-looking
+#: distance instead of failing loudly.
+_EXPECTED_MATCH_COLUMN_NAMES = ("bt", "ip", "tritop_EFIT01", "tribot_EFIT01", "gapin_EFIT01")
+
+
+@lru_cache(maxsize=1)
+def _archive_shot_ids(archive: Path) -> np.ndarray:
+    """`z.npy`, loaded and cast to int64 once per process.
+
+    `archive_rows` used to re-open and fully materialize this 639,555-row
+    array (a memmap forced into memory by `np.asarray`, then copied again by
+    `.astype`) on every call - once per shot in a `reconstruction_fidelity`
+    run over as many as a few hundred shots - for what is otherwise a
+    constant lookup table.
+    """
+    z = np.load(archive / "z.npy", mmap_mode="r")
+    return np.asarray(z).astype(np.int64)
+
 
 def archive_rows(shot: int, archive: Path = TM_ARCHIVE) -> dict | None:
     """The archived training rows for one shot, or None if it has none.
@@ -316,8 +339,7 @@ def archive_rows(shot: int, archive: Path = TM_ARCHIVE) -> dict | None:
     `z.npy` holds the shot of every row, so this is a mask, not a lookup.
     The arrays are memory-mapped: x1 alone is 422 MB.
     """
-    z = np.load(archive / "z.npy", mmap_mode="r")
-    rows = np.where(np.asarray(z).astype(np.int64) == int(shot))[0]
+    rows = np.where(_archive_shot_ids(archive) == int(shot))[0]
     if rows.size == 0:
         return None
     out = {}
@@ -346,6 +368,15 @@ def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
     that follow run only over the rows that did match. `passed` therefore
     requires every archived row to have matched: a partial mapping is not a
     mapping to be trusted either.
+
+    The returned dict names each count for what it actually counts (I4):
+    `n_archived_rows` is how many rows were presented for matching,
+    `n_matched` is how many of those actually found a finite-distance match,
+    and `n_unique_matched` is how many *distinct* timesteps those matches
+    landed on - so `n_matched > n_unique_matched` means two archived rows
+    collided onto the same one. `fail_reason` names which of the three ways
+    this can fail actually happened, rather than making a caller infer it
+    from a bare median.
     """
     ours = np.asarray(built.scalars, dtype=np.float64)[:, MATCH_COLUMNS]
     theirs = np.asarray(archived_x0, dtype=np.float64)[:, MATCH_COLUMNS]
@@ -375,22 +406,68 @@ def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
     median = float(np.median(finite_distance)) if finite_distance.size else float("nan")
     max_distance = float(np.max(finite_distance)) if finite_distance.size else float("nan")
     matched_index = index[has_finite]
+    n_matched = int(matched_index.size)
+    n_unique_matched = int(np.unique(matched_index).size) if n_matched else 0
     monotonic = bool(np.all(np.diff(matched_index) > 0)) if matched_index.size > 1 else True
-    passed = bool(
-        matched_index.size == n
-        and median < tol
-        and np.unique(matched_index).size == n
-    )
+    passed = bool(n_matched == n and median < tol and n_unique_matched == n)
+    fail_reason = None
+    if not passed:
+        if n_matched != n:
+            fail_reason = (
+                f"{n - n_matched} of {n} archived rows unmatched "
+                "(no finite distance to any of our timesteps)"
+            )
+        elif n_unique_matched != n:
+            fail_reason = (
+                f"{n - n_unique_matched} of {n} matches collided onto a "
+                "timestep another archived row also matched"
+            )
+        else:
+            fail_reason = f"median distance {median:.3g} exceeds tol {tol:.3g}"
     return {
         "index": index,
         "distance": distance,
         "median_distance": median,
         "max_distance": max_distance,
         "monotonic": monotonic,
-        "n_matched": int(n),
-        "n_unique": int(np.unique(matched_index).size) if matched_index.size else 0,
+        "n_archived_rows": int(n),
+        "n_matched": n_matched,
+        "n_unique_matched": n_unique_matched,
+        "fail_reason": fail_reason,
         "passed": passed,
     }
+
+
+def _ks_statistic(a: np.ndarray, b: np.ndarray) -> float:
+    """Two-sample Kolmogorov-Smirnov statistic: `max|ECDF_a(x) - ECDF_b(x)|`.
+
+    Replaces `scipy.stats.ks_2samp(a, b).statistic` (I2). scipy is used
+    nowhere else in this module, and importing it here was the reason
+    `import labelmaker.validate` could crash outside pytest: this module
+    loads torch at module scope (needed by `adapter_fidelity`), torch's
+    bundled `libstdc++` shadows the newer system one, and scipy's compiled
+    `_ckdtree` extension then fails with `ImportError: version
+    'GLIBCXX_3.4.29' not found` - reliably, and only when torch imports
+    first. No import-order fix in this module is sufficient (a later task's
+    `--stage all` loads torch via the `infer` stage before `validate` is
+    imported at all), so the fix is to need no scipy import at runtime.
+
+    Both samples are sorted and the right-continuous ECDF of each is
+    evaluated at every value in the pooled sample via `searchsorted`; the
+    statistic is the largest gap between the two. This is the same
+    definition scipy's `statistic` uses (verified against it as an exact
+    oracle in `tests/labelmaker/test_ks_statistic.py`, which does import
+    scipy - that import succeeds under pytest, since some test-collection
+    plugin loads a compatible `libstdc++` before torch does, and never
+    happens at runtime here since scipy is no longer imported outside that
+    one test file).
+    """
+    a = np.sort(np.asarray(a, dtype=np.float64))
+    b = np.sort(np.asarray(b, dtype=np.float64))
+    pooled = np.concatenate([a, b])
+    cdf_a = np.searchsorted(a, pooled, side="right") / a.size
+    cdf_b = np.searchsorted(b, pooled, side="right") / b.size
+    return float(np.max(np.abs(cdf_a - cdf_b)))
 
 
 def _stats(ours: np.ndarray, theirs: np.ndarray) -> dict:
@@ -402,8 +479,6 @@ def _stats(ours: np.ndarray, theirs: np.ndarray) -> dict:
     later stage; a shape that varies with `n` would make every consumer
     write a `.get` guard instead of a plain lookup.
     """
-    from scipy import stats
-
     a = np.asarray(ours, dtype=np.float64).ravel()
     b = np.asarray(theirs, dtype=np.float64).ravel()
     good = np.isfinite(a) & np.isfinite(b)
@@ -423,7 +498,7 @@ def _stats(ours: np.ndarray, theirs: np.ndarray) -> dict:
         "n": int(good.size),
         "median_rel": float(rel),
         "corr": corr,
-        "ks": float(stats.ks_2samp(a, b).statistic),
+        "ks": _ks_statistic(a, b),
         "mean_ours": float(a.mean()),
         "mean_archive": float(b.mean()),
     }
@@ -436,10 +511,21 @@ def reconstruction_fidelity(
     *,
     archive: Path = TM_ARCHIVE,
 ) -> dict:
-    """Price every substitution, per feature, against the training rows."""
+    """Price every substitution, per feature, against the training rows.
+
+    C1: every shot is isolated. The body below reads an archive file, an
+    HDF5 feature file, calls `InputSpec.build` and `match_rows` - any of
+    which can raise on real data (a truncated feature file, a per-shot
+    column `resolve_archive` did not carry, `nan_policy="zero"` turning an
+    absent feature into an all-zero column that makes `match_rows`' own
+    variance guard raise `ValueError`). None of that is allowed to cost the
+    rest of the run: one bad shot goes to `skipped` with its cause, exactly
+    like the two `continue`s already in this loop for a missing archive row
+    or feature file.
+    """
     from .features import namespace as ns
     from .features.store import missing_names, present, read_feature
-    from .timebase import sample_at
+    from .models.base import sample_by_resolver
 
     # Materialized once, up front: `shots` is frequently a generator
     # (`catalog.overlap_shots`, or a comprehension over it), and the loop
@@ -449,9 +535,27 @@ def reconstruction_fidelity(
     adapter = registry.load_adapter(slug)
     spec = adapter.input_spec
     names_0d = [f.model_name for f in spec.scalar_fields]
-    names_1d = [f.model_name for f in spec.profile_fields]
     ech_rho_field = next((f for f in spec.fields if f.canonical == "ech_rho"), None)
+
+    # I10: MATCH_COLUMNS is specific to d3d_tearing_onset_cnn1d's scalar
+    # column order. Checked once, before any per-shot work, so a different
+    # slug fails loudly here instead of silently comparing the wrong
+    # columns and reporting a plausible-looking distance. This is a
+    # programming error, not a per-shot failure, so it is not caught by the
+    # per-shot guard below.
+    match_names = tuple(names_0d[i] for i in MATCH_COLUMNS)
+    if match_names != _EXPECTED_MATCH_COLUMN_NAMES:
+        raise ValueError(
+            f"{slug}: MATCH_COLUMNS {MATCH_COLUMNS} indexes {match_names}, "
+            f"not the expected {_EXPECTED_MATCH_COLUMN_NAMES} "
+            "(bt, ip, tritop, tribot, gapin); reconstruction_fidelity's row "
+            "alignment is specific to d3d_tearing_onset_cnn1d's scalar "
+            "column order and would silently compare the wrong columns for "
+            "any other slug"
+        )
+
     pooled: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {}
+    n_pooled_shots: dict[str, int] = {}
     match_info: dict[str, dict] = {}
     skipped: dict[str, str] = {}
     incomplete: dict[str, dict] = {}
@@ -459,68 +563,104 @@ def reconstruction_fidelity(
     used: list[int] = []
     ech_conflicts = 0
     ech_rows = 0
+    n_valid_pooled = 0
+    n_invalid_pooled = 0
 
     for shot in shots:
-        got = archive_rows(shot, archive)
-        if got is None:
-            skipped[str(shot)] = "no archived rows"
+        try:
+            got = archive_rows(shot, archive)
+            if got is None:
+                skipped[str(shot)] = "no archived rows"
+                continue
+            fpath = paths.features_file(shot)
+            if not fpath.exists():
+                skipped[str(shot)] = "no feature file"
+                continue
+            stored = present(fpath)
+            features = {
+                name: read_feature(fpath, name)
+                for name in spec.canonical_names
+                if name in stored
+            }
+            built = spec.build(features, ns.GRID_S)
+            for canonical, source in built.resolvers.items():
+                resolvers.setdefault(canonical, set()).add(source)
+            info = match_rows(got["x0"], built)
+            match_info[str(shot)] = {
+                k: v for k, v in info.items() if k not in ("index", "distance")
+            }
+            if not info["passed"]:
+                skipped[str(shot)] = f"match rejected: {info['fail_reason']}"
+                continue
+            idx = info["index"]
+            used.append(int(shot))
+            # I3: a canonical in `built.missing` was never resolved for this
+            # shot, so `build`'s `nan_policy="zero"` fill is a zero-filled
+            # placeholder, not a reading - pooling it against the real
+            # archive column would price a substitution that never
+            # happened. `pinj_total` (corpus-only) on a shot with no corpus
+            # file is the common case, not an edge case.
+            for j, f in enumerate(spec.scalar_fields):
+                if f.canonical in built.missing:
+                    continue
+                pooled.setdefault(f.model_name, []).append(
+                    (built.scalars[idx, j], got["x0"][:, j])
+                )
+                n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
+            for j, f in enumerate(spec.profile_fields):
+                if f.canonical in built.missing:
+                    continue
+                pooled.setdefault(f.model_name, []).append(
+                    (built.profiles[idx, :, j], got["x1"][:, :, j])
+                )
+                n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
+            # Part 3: `pooled` prices every matched row regardless of
+            # `built.valid`, so a row for which labelmaker would publish no
+            # label is priced alongside one it would. Not filtered out here
+            # (that would need re-deriving each pair's row count per
+            # feature), but counted, so a reader can see how much of the
+            # price above belongs to rows that are never actually published.
+            valid_at_idx = np.asarray(built.valid)[idx]
+            n_valid_pooled += int(valid_at_idx.sum())
+            n_invalid_pooled += int((~valid_at_idx).sum())
+            # Diagnostic for the zero-filled ECH deposition location: how
+            # often is the location unknown while power is actually being
+            # injected? Read the field's own declared lag rather than
+            # assuming "t+dt": a future model spec could carry `ech_rho` at
+            # plain "t", and hardcoding the offset would silently report a
+            # conflict count for a time the model never actually sees.
+            # Sampled through `sample_by_resolver` (I5) rather than a bare
+            # `sample_at`, so this diagnostic and `InputSpec.build` cannot
+            # drift on what "the right way to read this resolver" means -
+            # today `ech_rho` is archive-only, so this is a no-op change in
+            # behaviour, but it stays correct if that ever stops being true.
+            if "ech_power_total" in features and "ech_rho" in features and ech_rho_field:
+                raw = features["ech_rho"]
+                t = ns.GRID_S + spec.dt_s if ech_rho_field.lag == "t+dt" else ns.GRID_S
+                ech_resolver = str(raw.attrs.get("resolver", "unknown"))
+                rho = np.asarray(
+                    sample_by_resolver(raw.x, raw.y, t, ech_resolver, spec.dt_s)
+                ).ravel()[idx]
+                power = built.scalars[idx, names_0d.index("ech_pwr_total")]
+                ech_rows += int(power.size)
+                ech_conflicts += int(((power > 0) & ~np.isfinite(rho)).sum())
+            incomplete[str(shot)] = missing_names(fpath)
+        except Exception as exc:  # noqa: BLE001 - per-shot isolation, see docstring
+            skipped[str(shot)] = f"{type(exc).__name__}: {exc}"
             continue
-        fpath = paths.features_file(shot)
-        if not fpath.exists():
-            skipped[str(shot)] = "no feature file"
-            continue
-        stored = present(fpath)
-        features = {
-            name: read_feature(fpath, name)
-            for name in spec.canonical_names
-            if name in stored
-        }
-        built = spec.build(features, ns.GRID_S)
-        for canonical, source in built.resolvers.items():
-            resolvers.setdefault(canonical, set()).add(source)
-        info = match_rows(got["x0"], built)
-        match_info[str(shot)] = {
-            k: v for k, v in info.items() if k not in ("index", "distance")
-        }
-        if not info["passed"]:
-            skipped[str(shot)] = (
-                f"match rejected (median {info['median_distance']:.3g})"
-            )
-            continue
-        idx = info["index"]
-        used.append(int(shot))
-        for j, name in enumerate(names_0d):
-            pooled.setdefault(name, []).append(
-                (built.scalars[idx, j], got["x0"][:, j])
-            )
-        for j, name in enumerate(names_1d):
-            pooled.setdefault(name, []).append(
-                (built.profiles[idx, :, j], got["x1"][:, :, j])
-            )
-        # Diagnostic for the zero-filled ECH deposition location: how often
-        # is the location unknown while power is actually being injected?
-        # Read the field's own declared lag rather than assuming "t+dt": a
-        # future model spec could carry `ech_rho` at plain "t", and hardcoding
-        # the offset would silently report a conflict count for a time the
-        # model never actually sees.
-        if "ech_power_total" in features and "ech_rho" in features and ech_rho_field:
-            raw = features["ech_rho"]
-            t = ns.GRID_S + spec.dt_s if ech_rho_field.lag == "t+dt" else ns.GRID_S
-            rho = np.asarray(
-                sample_at(raw.x, raw.y, t, max_gap=spec.dt_s / 2)
-            ).ravel()[idx]
-            power = built.scalars[idx, names_0d.index("ech_pwr_total")]
-            ech_rows += int(power.size)
-            ech_conflicts += int(((power > 0) & ~np.isfinite(rho)).sum())
-        incomplete[str(shot)] = missing_names(fpath)
 
-    per_feature = {
-        name: _stats(
+    per_feature = {}
+    for name, pairs in pooled.items():
+        stats = _stats(
             np.concatenate([np.asarray(a).ravel() for a, _ in pairs]),
             np.concatenate([np.asarray(b).ravel() for _, b in pairs]),
         )
-        for name, pairs in pooled.items()
-    }
+        # I3: how many shots (not rows) actually contributed to this
+        # feature's pooled comparison, so a reader can tell a feature priced
+        # over the whole `n_shots_used` from one that is corpus-only and
+        # only ever resolved on a handful of them.
+        stats["n_shots"] = n_pooled_shots[name]
+        per_feature[name] = stats
     return {
         "slug": slug,
         "n_shots_requested": len(shots),
@@ -531,6 +671,13 @@ def reconstruction_fidelity(
         "match": match_info,
         "per_feature": per_feature,
         "resolvers": {k: sorted(v) for k, v in resolvers.items()},
+        # Part 3: rows priced above that `built.valid` says are never
+        # actually published, versus rows that are - see the comment where
+        # these are accumulated.
+        "pooled_row_validity": {
+            "valid": n_valid_pooled,
+            "invalid": n_invalid_pooled,
+        },
         "ech_location_unknown_while_powered": {
             "rows": ech_rows,
             "conflicts": ech_conflicts,

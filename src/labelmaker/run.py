@@ -34,10 +34,15 @@ Two things this stage reports that are easy to miss:
   Features are resolved cheapest-source-first *per feature*, so one shot's
   file can legitimately hold archive rows beside corpus or fdp rows - and
   the archive's row k is stamped 25 ms later than the interval it actually
-  averages (measured to 3.9e-08; see `resolve_archive`'s docstring). One
-  whole `dt` of misalignment between features in the same row is not
-  visible in the numbers, so it is recorded per shot in the run log and
-  aggregated into `runs/<run_id>/summary.json` for Task 15 to act on.
+  averages (measured to 3.9e-08; see `resolve_archive`'s docstring). Task 15
+  resolved the resulting one-`dt` misalignment at the point model inputs are
+  assembled (`InputSpec.build` samples each field per the resolver that
+  produced it, `ns.SAMPLING_BY_SOURCE`), so it is no longer a live
+  correctness concern for anything that reads features through `build()`.
+  It is still recorded per shot in the run log and aggregated into
+  `runs/<run_id>/summary.json`, as provenance: which sources served which
+  features is useful on its own, and a consumer reading the raw feature
+  file directly (bypassing `build()`) still meets the offset.
 """
 from __future__ import annotations
 
@@ -429,12 +434,31 @@ def _stage_summary(stage: str, rows) -> dict:
 
 #: Printed and stored beside the mixed-source count, so the number arrives
 #: with the reason it matters instead of needing a reader to go and find it.
+#:
+#: I9 (Task 15 code review): this used to describe a live misalignment - the
+#: archive's row k is stamped 25 ms later than the 50 ms interval it
+#: averages, while corpus and fdp carry true time axes - as something a
+#: future task would need to fix. `models.base.InputSpec.build` now resolves
+#: it at the point model inputs are assembled: sampling is keyed on which
+#: resolver produced each stored array (`ns.SAMPLING_BY_SOURCE`), so an
+#: archive-served field (read nearest-sample, since it is already the
+#: boxcar) and a corpus- or fdp-served field (windowed into that same
+#: boxcar) refer to the same physical 50 ms interval once `build()` is
+#: done with them. A mixed-source shot is therefore provenance information,
+#: not a correctness warning, for any consumer that reads features through
+#: `build()` - which every model adapter does. It stays worth recording
+#: per shot regardless: which sources served which features is useful on
+#: its own, and a consumer reading the raw feature file directly (bypassing
+#: `build()`) still meets the 25 ms archive stamp offset this note
+#: describes.
 MIXED_SOURCE_NOTE = (
     "features from more than one source in the same row: the archive's row k "
     "is stamped 25 ms - one whole dt - later than the 50 ms interval it "
     "averages (measured to 3.9e-08), while corpus and fdp carry true time "
-    "axes. Pure-archive and pure-fdp shots are unaffected. See "
-    "features/resolve_archive.py."
+    "axes. `InputSpec.build` (models/base.py) reconciles this per-resolver "
+    "when assembling model inputs, so a mixed shot's labels are not "
+    "misaligned; the raw feature file still carries the offset described "
+    "here for a consumer reading it directly. See features/resolve_archive.py."
 )
 
 
