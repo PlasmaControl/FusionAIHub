@@ -53,8 +53,14 @@ INPUT_SPEC = InputSpec(
         InputField("tribot_EFIT01", "tribot", lag="t+dt"),
         InputField("gapin_EFIT01", "gapin", lag="t+dt"),
         InputField(
+            # A correction, not a fill: negative readings are baseline noise
+            # meaning "off" (18.9% of archive readings, min -4,086 W), so
+            # clipping them recovers the physical value. A NON-FINITE reading
+            # is different - nothing is known - and still counts as invented,
+            # which is what lets the pair rule below flag a row where neither
+            # the power nor the location was measured.
             "ech_pwr_total", "ech_power_total", lag="t+dt",
-            transform="nonneg_zero_fill",
+            transform="clip_negative_to_zero",
         ),
         # absent_ok: the archive omits this column entirely on 1,370 of 2,000
         # sampled shots, and its absence carries NO information about whether

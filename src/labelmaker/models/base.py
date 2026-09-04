@@ -22,15 +22,31 @@ from ..features import namespace as ns
 from ..features.store import FeatureArray
 from ..timebase import sample_at
 
+
+def _nonpositive_to_zero(a: np.ndarray) -> np.ndarray:
+    return np.where(np.isfinite(a) & (a > 0.0), a, 0.0)
+
+
 #: Named pure transforms a spec may apply after sampling - named rather than
 #: inline lambdas so the model card can list them and a test can compare the
 #: card against the spec.
 TRANSFORMS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "reciprocal": lambda a: 1.0 / a,
-    # train.py:81 - NaN or negative ECH power was set to zero before the
-    # training filter ran, so those rows were kept. Applied before the
-    # validity flags so a zeroed ECH channel does not invalidate a row.
-    "nonneg_zero_fill": lambda a: np.where(np.isfinite(a) & (a > 0.0), a, 0.0),
+    # These two compute the SAME arithmetic and mean different things. Do not
+    # merge them: only the name distinguishes a measurement correction from a
+    # fabrication, and `FILL_TRANSFORMS` reads that distinction.
+    #
+    # clip_negative_to_zero - a CORRECTION. A negative power reading is sensor
+    # baseline noise meaning "off": MEASURED, 18.9% of archive ECH power
+    # readings are negative, down to -4,086 W, and 41.0% are exactly zero.
+    # Clipping recovers the physical value, so overwriting is not an invention.
+    # This is train.py:81's rule, which CORRECTED power in place.
+    "clip_negative_to_zero": _nonpositive_to_zero,
+    # nonneg_zero_fill - a FILL. A negative deposition location is not a
+    # location, so overwriting one invents a value. This is why train.py:83
+    # DROPPED those rows rather than correcting them; labelmaker keeps the row
+    # and marks it untrustworthy instead.
+    "nonneg_zero_fill": _nonpositive_to_zero,
 }
 
 #: Transforms that FILL rather than map - they overwrite an unusable reading
