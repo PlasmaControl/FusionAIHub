@@ -645,7 +645,14 @@ export STEPS="${STEPS_IN}"
 export EVAL_EVERY=1000
 export BATCH_SIZE=8
 export NUM_WORKERS=6
-export LR=2e-4
+# LR IS OVERRIDABLE, and it is the measured STABILITY lever, not just a speed knob. The
+# sweep 1e-3/3e-4/1e-4/3e-5/1e-5 found gate-to-gate spread falling MONOTONICALLY with LR
+# (0.090 -> 0.031) and the fine-tune optimum at 1e-4; "gate noise" and "training longer makes
+# it worse" were mostly LR instability. That matters here because co2's mode track turned out
+# to be a per-seed lottery driven by exactly that thrash -- co2_r_m seed 1 spikes gate nRMSE
+# to 2.168/1.110 over its last 8 gates and never places the track, while its stable seed 2
+# does. Lowering LR attacks the MEAN; more seeds only samples the tail.
+export LR="${LR:-2e-4}"
 # OUT_DIR is TAGGED by the sweep: the launcher auto-resumes every arm from
 # ${OUT_DIR}/<arm>/codec_last.pt, so reusing one dir across sweeps would silently continue a
 # DIFFERENT recipe's checkpoint under the new arm's flags. OUT_DIR_TAG overrides it.
