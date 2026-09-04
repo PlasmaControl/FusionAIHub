@@ -3566,10 +3566,10 @@ def sha256_of(path) -> str:
 def verify_artifacts(slug: str, model_dir) -> None:
     """Raise unless every artifact the spec loads matches the card's sha256.
 
-    Labels are only worth what the weights behind them are, so `run.py`'s
-    `_predictor` calls this before loading a model rather than silently
-    producing a label file whose provenance is wrong. Absence and corruption
-    are reported separately: they are different failures.
+    Labels are only worth what the weights behind them are, so this must run
+    before a model is loaded, never after - otherwise a label file records a
+    provenance it does not have. Absence and corruption are reported
+    separately: they are different failures.
     """
     card = read_card(slug)["labelmaker"]
     expected = (card.get("upstream") or {}).get("sha256") or {}
@@ -5536,6 +5536,28 @@ def test_all_chains_the_stages(wired):
     assert (wired["root"] / "labels" / "190001_labels.h5").exists()
 
 
+def test_infer_refuses_to_run_against_unverified_weights(tmp_path, monkeypatch):
+    # The existing tests monkeypatch verify_artifacts to a no-op, so nothing
+    # otherwise asserts the pipeline reaches its only weight guard. Here the
+    # card names a digest for a file that is absent, so the run must abort
+    # before writing any label rather than failing every shot in turn.
+    from labelmaker.models import registry
+
+    monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
+    monkeypatch.setattr(
+        registry, "read_card",
+        lambda slug: {"labelmaker": {"upstream": {"sha256": {"absent.h5": "00" * 32}}}},
+    )
+    archive, corpus, root = _archive(tmp_path), _corpus(tmp_path), tmp_path / "out"
+    argv = [
+        "infer", "--models", SLUG, "--shots", "190000",
+        "--root", str(root), "--corpus-dir", str(corpus),
+        "--archive", str(archive), "--workers", "1",
+    ]
+    assert run.main(argv) == 3
+    assert not (root / "labels").exists() or not list((root / "labels").iterdir())
+
+
 def test_a_broken_shot_does_not_stop_the_run(wired):
     bad = wired["corpus"] / "190001_processed.h5"
     bad.write_bytes(b"not an hdf5 file")
@@ -6025,6 +6047,17 @@ def main(argv=None) -> int:
         _summarise("features", rows)
 
     if args.stage in ("infer", "all"):
+        # Verify the weights once, here, before the pool forks. A digest
+        # mismatch is a run-level fault, not a per-shot one: leaving it to
+        # `_predictor` inside each worker would turn one bad artifact into
+        # N identical per-shot errors and bury the cause. The worker still
+        # checks, which catches an artifact changed mid-run.
+        for slug in args.models:
+            try:
+                registry.verify_artifacts(slug, paths.models / slug)
+            except (ValueError, FileNotFoundError) as exc:
+                print(f"infer {slug}: refusing to run - {exc}", file=sys.stderr)
+                return 3
         all_rows = []
         for slug in args.models:
             rows = _run_pool(
