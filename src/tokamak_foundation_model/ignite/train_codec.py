@@ -485,6 +485,58 @@ VIDEO_LIVENESS_CACHE = Path(
 )
 
 
+# Full-dataset per-channel SPECTRO liveness scan
+# (scripts/data_preparation/scan_video_channels.py --family spectro). Same role and same
+# one-torch.load contract as VIDEO_LIVENESS_CACHE: never a cold HDF5 scan at job time.
+# dict {shot_int: {modality: {"n", "t0", "t1", "live" [C flags], "live_frac" [C floats]}}}.
+SPECTRO_LIVENESS_CACHE = Path(
+    "/lustre/orion/fus187/proj-shared/foundation_model_meta/spectro_channel_liveness.pt"
+)
+
+
+def spectro_live_shots(
+    modality: str,
+    shots: Sequence[Union[str, int]],
+    *,
+    require_all: bool = False,
+    liveness_path: Union[str, Path] = SPECTRO_LIVENESS_CACHE,
+    log_fn=None,
+) -> List[str]:
+    """Keep only the shots whose channels for THIS spectro modality actually recorded.
+
+    The spectro codecs had NO per-channel presence filter at all (only co2 had a whole-shot
+    "is the group non-empty" filter, via ``_PRESENCE_FILTER_SIGNALS``). A shot whose HDF5
+    group is an empty ``(C, 1)`` stub can never yield a real window — every draw falls
+    through ``_draw_valid_pair``'s re-draws to the eps-floor last-resort pair — so those
+    shots contribute nothing but a constant plate, which was then reconstructed and shown to
+    the discriminator as REAL.
+
+    ``require_all`` additionally drops shots with any dead channel. Order is preserved.
+    Falls back to the input list (with a warning) if the liveness cache is missing, so this
+    can never harden into a hard dependency.
+    """
+    path = Path(liveness_path)
+    if not path.exists():
+        if log_fn is not None:
+            log_fn(f"[train_codec] WARNING: spectro liveness cache {path} missing -> NO "
+                   f"per-channel presence filter applied for {modality}")
+        return [str(s) for s in shots]
+    live = torch.load(str(path), map_location="cpu", weights_only=False)
+    keep: List[str] = []
+    for sh in shots:
+        rec = live.get(int(sh)) if str(sh).lstrip("-").isdigit() else None
+        flags = (rec or {}).get(modality, {}).get("live")
+        if not flags:
+            continue
+        n = int(sum(flags))
+        if (n == len(flags)) if require_all else (n >= 1):
+            keep.append(str(sh))
+    if log_fn is not None:
+        log_fn(f"[train_codec] {modality} spectro presence filter (require_all={require_all}): "
+               f"kept {len(keep)}/{len(list(shots))} shots")
+    return keep
+
+
 def video_channels_of(modality: str) -> List[int]:
     """The RAW tangtv channel indices this divertor codec consumes (lower [0,2], upper [4,6]).
 
@@ -725,6 +777,7 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         lengths_cache_path: Optional[Union[str, Path]] = None,
         max_open_files: int = 512,
         max_tries: int = 8,
+        emit_mask: bool = False,
     ) -> None:
         if modality not in SPECTRO_MODALITIES:
             raise ValueError(f"modality {modality!r} not in {SPECTRO_MODALITIES}")
@@ -738,6 +791,21 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
         self.min_activity = float(getattr(cfg, "min_activity", 0.0))
         self.active_bias = float(getattr(cfg, "active_bias", 0.0))
+        # MISSING-DATA knobs (2026-09-03). See SpectroCodecConfig.mask_missing for the
+        # measured motivation.
+        #
+        # ITEM ARITY IS A CONSTRUCTOR ARGUMENT, NOT A cfg FIELD, and deliberately so. The
+        # trainer opts in with emit_mask=cfg.mask_missing; every OTHER consumer of this
+        # dataset builds it from a checkpoint's pickled cfg — the audit / figure scripts,
+        # train_dynamics._single_shot_dataset (the frame-code cache), compute_logpow_stats —
+        # and those all unpack a 2-tuple. Keying the arity off the cfg would silently change
+        # what they receive the moment a masked codec's checkpoint is loaded, i.e. it would
+        # break the cache rebuild rather than the trainer. Default False = the 2-tuple this
+        # dataset has always returned, and no mask is even built.
+        self.emit_mask = bool(emit_mask)
+        self.require_live_channels = bool(getattr(cfg, "require_live_channels", False))
+        # A fully-missing window is rejected only when someone is actually consuming the mask.
+        self.mask_missing = self.emit_mask
 
         # δ-extended span the STFT pair needs: A covers [t0, t0+CHUNK_S]; B is shifted by up
         # to δ_max, ending at t0 + CHUNK_S + δ_max. Make the parent reserve room for the WHOLE
@@ -788,12 +856,16 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         floored). With ``active_bias == 0`` (ece/bes/mhr default) this is byte-identical to the
         plain build+degenerate-redraw below.
         """
-        return _stratified_draw(
+        item = _stratified_draw(
             idx, self._draw_valid_pair, lambda p: float(p[0].std()),
             lambda: self._chunks_in_current_shot(idx),
             min_activity=self.min_activity, active_bias=self.active_bias,
             max_tries=self.max_tries, seed=self.pair_seed,
         )
+        # ARITY CONTRACT (see __init__): 2-tuple unless the CONSTRUCTOR asked for the mask.
+        # With emit_mask=True the third element is the ``(C, cfg.time_frames)``
+        # per-(channel, STFT-frame) validity mask for ``spec_a``.
+        return item if self.emit_mask else (item[0], item[1])
 
     def _draw_valid_pair(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Build the δ-pair for window ``idx``, re-drawing DEGENERATE windows (the prior path)."""
@@ -809,12 +881,15 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
             pair = self._build_pair(alt)
             if pair is not None:
                 return pair
-        # Last resort: an eps-floor "silent" pair (finite, non-NaN). Extremely rare — only if
-        # a whole shot is degenerate; the batch/DDP average still moves.
+        # Last resort: an eps-floor "silent" pair (finite, non-NaN). NOT rare: a shot whose
+        # HDF5 group is an empty (C, 1) stub — measured in 100% of a 60-shot 190xxx sample for
+        # bes and co2 — can NEVER produce a real window, so every draw from it lands here.
+        # This constant plate was being reconstructed, discriminated as REAL and counted in the
+        # FSQ entropy statistic: exactly the video failure. Its mask is ALL-INVALID.
         C = self._num_channels()
         floor = float(math.log10(1e-10))
         z = torch.full((C, self.codec_cfg.freq_bins, self.codec_cfg.time_frames), floor)
-        return z, z.clone()
+        return z, z.clone(), torch.zeros((C, self.codec_cfg.time_frames))
 
     # -- helpers (all reuse parent state; no re-implementation of the index map) ------- #
     def _build_pair(self, chunk_idx: int) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
@@ -830,7 +905,7 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         span_s = CHUNK_S + self.span_tail_s
         t_end = t_start + span_s
 
-        raw, valid_len, _nan = self._load_signal_raw(
+        raw, valid_len, nan_mask = self._load_signal_raw(
             self.h5_file, self._cfg_sig, t_start, t_end
         )
         need = round(span_s * self._cfg_sig.target_fs)
@@ -840,6 +915,9 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
             return None
         if float(raw.std()) < self.min_std:
             return None                              # all-zero / flat window
+        # NOTE the std guard is GLOBAL over ALL channels, which is exactly why a per-channel
+        # mask is needed: a 40-channel ece window with 12 zero-slab channels still has a large
+        # global std and sails through. `nan_mask` used to be DISCARDED here (bound to `_nan`).
 
         lo, hi = self.delta_ms_range
         gen = torch.Generator().manual_seed(self.pair_seed + 1_000_003 * int(chunk_idx) + 1)
@@ -848,7 +926,21 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         spec_a, spec_b = data.shift_pair_windows(
             raw, t0=0.0, cfg=self.codec_cfg, delta_ms=d
         )
-        return spec_a, spec_b
+        # Per-(channel, STFT-frame) validity for window A (the reconstruction target), built
+        # from the SAME raw samples A is STFT'd from: `raw` starts at t_start and A spans
+        # [t_start, t_start + CHUNK_S] = the first cfg.window_samples samples.
+        mask = data.spectro_frame_mask(
+            raw[:, : self.codec_cfg.window_samples],
+            nan_mask[:, : self.codec_cfg.window_samples],
+            self.codec_cfg,
+        )
+        # `require_live_channels`: reject (-> re-draw) any window with a dead channel so the
+        # codec only ever sees fully-populated windows. OFF by default.
+        if self.require_live_channels and float(mask.min()) <= 0.0:
+            return None
+        if self.mask_missing and float(mask.sum()) <= 0.0:
+            return None                              # nothing real in this window at all
+        return spec_a, spec_b, mask
 
     def _chunks_in_current_shot(self, chunk_idx: int) -> int:
         """Number of chunks in the shot currently pinned on ``self.h5_file`` (best-effort).
@@ -888,13 +980,17 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         return cfg_sig.num_channels
 
 
-def _pair_collate(
-    batch: List[Tuple[torch.Tensor, torch.Tensor]]
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Stack a list of ``(spec_a, spec_b)`` pairs into ``(B, C, F, T)`` batched tensors."""
-    spec_a = torch.stack([a for a, _ in batch], dim=0)
-    spec_b = torch.stack([b for _, b in batch], dim=0)
-    return spec_a, spec_b
+def _pair_collate(batch):
+    """Stack ``(spec_a, spec_b[, mask])`` items into ``(B, C, F, T)`` batched tensors.
+
+    Arity follows the ITEM: a 2-tuple for the legacy (unmasked) dataset — byte-identical —
+    and a 3-tuple ``(a, b, (B, C, T) mask)`` when the dataset carries ``cfg.mask_missing``.
+    """
+    spec_a = torch.stack([it[0] for it in batch], dim=0)
+    spec_b = torch.stack([it[1] for it in batch], dim=0)
+    if len(batch[0]) < 3:
+        return spec_a, spec_b
+    return spec_a, spec_b, torch.stack([it[2] for it in batch], dim=0)
 
 
 def make_codec_loader(
@@ -1993,6 +2089,22 @@ def video_compute_gate(
         "envelope_corr": float(sum(dec_corr) / len(dec_corr)),
         "peak_f1": float(sum(dec_f1) / len(dec_f1)),
         "sharpness": float(sum(dec_sharp) / len(dec_sharp)),
+        # PATCH-LATTICE (checkerboard) beside the ``sharpness`` it can masquerade as.
+        # ADDITIVE ONLY: :func:`spike.gate_score` reads exactly ``envelope_corr`` /
+        # ``peak_f1`` from this dict (plus ``forecastability`` + ``utilization``), so adding
+        # these two keys leaves every selection decision bit-identical. They live in
+        # ``decode`` rather than only in ``full`` because :func:`spike._fmt_gate` already
+        # prints ``lattice=<recon>/gt<target>`` whenever ``patch_lattice_ratio`` is present —
+        # which is what makes the artifact visible in the TRAINING LOG, not just in the gate
+        # JSON. Job 5413747 (video1kb) raised video ``sharpness`` 0.157 -> 0.378 with an
+        # adversarial term and NOTHING in the log could say whether that was texture or
+        # checkerboard; on the spectro side the same objective sustained a lattice of 26-75
+        # against a ground truth of ~1.15. Always read this as a PAIR with the GT value: a
+        # BLUR also drops the lattice, for free, by destroying real detail too.
+        "patch_lattice_ratio": (float(sum(vlat_rows) / len(vlat_rows))
+                                if vlat_rows else float("nan")),
+        "target_patch_lattice_ratio": (float(sum(vgtlat_rows) / len(vgtlat_rows))
+                                       if vgtlat_rows else float("nan")),
     }
     import math as _vmath
 
@@ -2236,8 +2348,11 @@ class _GenLossAdapter(torch.nn.Module):
         disc: torch.nn.Module,
         cfg: SpectroCodecConfig,
         step: int,
+        frame_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
-        return self.codec.generator_losses(spec_a, spec_b, disc, cfg, step=step)
+        return self.codec.generator_losses(
+            spec_a, spec_b, disc, cfg, step=step, frame_mask=frame_mask
+        )
 
 
 def _ddp_codec_train_step(
@@ -2251,6 +2366,7 @@ def _ddp_codec_train_step(
     spec_b: torch.Tensor,
     cfg: SpectroCodecConfig,
     step: int,
+    frame_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
     """DDP-aware analogue of :func:`spike.codec_train_step`.
 
@@ -2261,14 +2377,12 @@ def _ddp_codec_train_step(
     for the detached D-step recon uses the raw codec (no DDP graph needed — it's under
     ``no_grad``).
     """
-    from .losses import discriminator_loss
-
     codec.train()
     disc_raw.train()
 
     # ---- generator (codec) step: forward through the DDP-wrapped adapter ----
     opt_g.zero_grad(set_to_none=True)
-    g_terms = gen_module(spec_a, spec_b, disc_raw, cfg, step)
+    g_terms = gen_module(spec_a, spec_b, disc_raw, cfg, step, frame_mask)
     g_terms["total"].backward()
     # DDP-safe divergence guard: backward (+ its grad all-reduce) ran uniformly on every rank;
     # opt_g.step() is skipped IDENTICALLY on all ranks if any rank's loss is non-finite.
@@ -2293,13 +2407,13 @@ def _ddp_codec_train_step(
         # raw module is the same weights with no reducer bookkeeping.
         with torch.no_grad():
             recon = codec.forward(spec_a)["recon"]
-            d_loss = discriminator_loss(disc_raw, spec_a, recon, cfg)
+            d_loss = _spectro_discriminator_loss(disc_raw, spec_a, recon, cfg, frame_mask)
         return g_terms, d_loss
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
         recon = codec.forward(spec_a)["recon"]
-    d_loss = discriminator_loss(disc, spec_a, recon, cfg)
+    d_loss = _spectro_discriminator_loss(disc, spec_a, recon, cfg, frame_mask)
     d_loss.backward()
     if spike.is_step_diverged(d_loss):
         spike.note_skipped_step()
@@ -2307,6 +2421,33 @@ def _ddp_codec_train_step(
         opt_d.step()
 
     return g_terms, d_loss
+
+
+def _spectro_discriminator_loss(
+    disc: torch.nn.Module,
+    real: torch.Tensor,
+    fake: torch.Tensor,
+    cfg: SpectroCodecConfig,
+    frame_mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """:func:`losses.discriminator_loss`, with the missing windows removed from BOTH sides.
+
+    2026-09-03. The spectro discriminator step was the LAST unmasked consumer: with no mask
+    anywhere on the spectro path, D was trained to call a constant log-eps plate (a shot whose
+    HDF5 group is an empty stub) and a zero-slab channel "real". That is a direct reward for a
+    mean-collapsed generator, which is the failure mode this whole family fights.
+
+    Uses EXACTLY the selector the generator uses (``SpectroCodec._valid_windows``), so the two
+    halves of the GAN alternation never disagree about what data is real. ``frame_mask`` None,
+    or a mask that selects every window, keeps the ORIGINAL tensors and calls
+    ``losses.discriminator_loss`` unchanged — bit-identical to the pre-fix path.
+    """
+    from .losses import discriminator_loss
+
+    win = SpectroCodec._valid_windows(frame_mask, real.shape)
+    if win is not None:
+        real, fake = real[win], fake[win]
+    return discriminator_loss(disc, real, fake, cfg)
 
 
 # ------------------------------------------------------------------------------------- #
@@ -2498,7 +2639,8 @@ def _stream_eval_data(
     """
     # δ-pairs via the SAME production dataset (single-process, deterministic draw). Iterate
     # its map-style windows in order and materialize the first ``eval_batches*eval_batch_size``.
-    ds = CodecPairDataset(modality, eval_shots, cfg, data_dir=data_dir, seed=seed)
+    ds = CodecPairDataset(modality, eval_shots, cfg, data_dir=data_dir, seed=seed,
+                          emit_mask=bool(getattr(cfg, "mask_missing", False)))
     n_pairs = eval_batches * eval_batch_size
     n_avail = len(ds)
     if n_avail < n_pairs:
@@ -2508,12 +2650,20 @@ def _stream_eval_data(
             f"eval_batch_size={eval_batch_size}). Add more eval shots."
         )
     flat_pairs = [ds[i] for i in range(n_pairs)]
-    eval_pairs: List[Tuple[torch.Tensor, torch.Tensor]] = []
+    eval_pairs: List[Tuple[torch.Tensor, ...]] = []
     for bi in range(eval_batches):
         chunk = flat_pairs[bi * eval_batch_size : (bi + 1) * eval_batch_size]
         a = torch.stack([p[0] for p in chunk], dim=0).to(device)
         b = torch.stack([p[1] for p in chunk], dim=0).to(device)
-        eval_pairs.append((a, b))
+        # 3rd element ONLY when the dataset carries cfg.mask_missing; spike.compute_gate
+        # forwards it to gate.decode_fidelity so the held-out metrics are computed on real
+        # data only. Without it the tuple is the same 2-tuple as before (byte-identical).
+        if len(chunk[0]) > 2:
+            eval_pairs.append(
+                (a, b, torch.stack([p[2] for p in chunk], dim=0).to(device))
+            )
+        else:
+            eval_pairs.append((a, b))
 
     # consecutive-frame sequence for persistence / forecastability, streamed from eval shots.
     frame_seq = _stream_frame_sequence(
@@ -2816,6 +2966,7 @@ def train_codec(
     train_ds = CodecPairDataset(
         modality, train_shots, cfg,
         data_dir=data_dir, seed=seed, lengths_cache_path=lengths_cache_path,
+        emit_mask=bool(getattr(cfg, "mask_missing", False)),
     )
     loader = make_codec_loader(
         train_ds,
@@ -2838,13 +2989,18 @@ def train_codec(
         step = start_step + local_step
         # Exponential LR decay on the ABSOLUTE step (no-op at the default gamma 1.0).
         _apply_lr_decay([opt_g, opt_d], _base_lrs, step, cfg)
-        spec_a, spec_b = next(stream)
+        batch = next(stream)
+        # The loader yields (a, b) by default and (a, b, mask) when cfg.mask_missing is set;
+        # `frame_mask` stays None in the default case so every downstream term takes the
+        # ORIGINAL (bit-identical) branch.
+        spec_a, spec_b = batch[0], batch[1]
+        frame_mask = batch[2].to(device, non_blocking=True) if len(batch) > 2 else None
         spec_a = spec_a.to(device, non_blocking=True)
         spec_b = spec_b.to(device, non_blocking=True)
 
         g_terms, d_loss = _ddp_codec_train_step(
             gen_module, codec, disc, disc_raw, opt_g, opt_d,
-            spec_a, spec_b, cfg, step=step,
+            spec_a, spec_b, cfg, step=step, frame_mask=frame_mask,
         )
         if ema_shadow is not None:
             ema_shadow.update(codec)
@@ -3617,18 +3773,31 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "stats (sd on a log2 grid, mu in units of q*sd). 0.5 recommended; "
                         "unset keeps plain instance norm. Only active with "
                         "--input_instance_norm.")
-    # --- VIDEO missing-data (dead camera) exclusion; all three default OFF = byte-identical.
+    # --- VIDEO + SPECTRO missing-data exclusion; all default OFF = byte-identical.
     p.add_argument("--mask_missing", action="store_true",
-                   help="VIDEO: emit a REAL per-(channel, frame) validity mask from the "
-                        "loader's channel_valid and honour it in the pixel anchor, the "
-                        "ADVERSARIAL + FEATURE-MATCHING terms (dead frames are dropped from "
-                        "the discriminator instead of being shown to it as 'real') and the FSQ "
-                        "entropy statistic. Default OFF reproduces the previous ALL-ONES mask, "
-                        "which excluded nothing.")
+                   help="VIDEO/SPECTRO: emit a REAL per-channel validity mask and honour it in "
+                        "EVERY loss term. VIDEO: per-(channel, frame) from the loader's "
+                        "channel_valid. SPECTRO: per-(channel, STFT-frame) from "
+                        "data.spectro_frame_mask (NaN projected exactly like the production "
+                        "data_loader._raw_to_frame_mask, PLUS all-zero supports, which is how "
+                        "the loader represents an absent channel). Masked terms: pixel anchor, "
+                        "ADVERSARIAL + FEATURE-MATCHING (missing windows are dropped from the "
+                        "discriminator instead of being shown to it as 'real'), multiscale / "
+                        "freq-grad / MS-SSIM, the FSQ entropy statistic, shift-consistency and "
+                        "the discriminator's own step. Default OFF = no mask anywhere, which "
+                        "is precisely the 2026-09-03 audit finding on BOTH families.")
     p.add_argument("--require_live_channels", action="store_true",
-                   help="VIDEO: re-draw any clip in which a camera was off, so the codec only "
-                        "sees fully-populated windows (19.0%% of lower / 16.9%% of upper "
-                        "channel-slots are dead even among shots that have SOME video).")
+                   help="VIDEO/SPECTRO: re-draw any window in which a channel was dead, so the "
+                        "codec only sees fully-populated windows (video: 19.0%% of lower / "
+                        "16.9%% of upper channel-slots are dead even among shots that have SOME "
+                        "video).")
+    p.add_argument("--spectro_presence", type=str, default=None, choices=["off", "any", "all"],
+                   help="SPECTRO whole-shot presence filter from the precomputed per-channel "
+                        "liveness cache (no HDF5 scan): 'any' keeps shots with >=1 live channel "
+                        "for this modality, 'all' keeps only fully-populated shots, 'off' "
+                        "(default) keeps every shot -- including the ones whose HDF5 group is an "
+                        "empty (C, 1) stub, which can only ever yield the eps-floor constant "
+                        "last-resort pair.")
     p.add_argument("--video_presence", type=str, default=None, choices=["off", "any", "all"],
                    help="VIDEO whole-shot presence filter from the precomputed liveness cache "
                         "(no HDF5 scan): 'any' keeps shots with >=1 live camera for this "
@@ -3827,6 +3996,12 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cfg.presence_filter = args.video_presence != "off"
         if ddp.is_main:
             print(f"[train_codec] video_presence -> {args.video_presence}")
+    if getattr(args, "spectro_presence", None) is not None:
+        if args.modality not in SPECTRO_MODALITIES:
+            raise SystemExit("--spectro_presence is a SPECTRO-only flag.")
+        cfg.presence_filter = args.spectro_presence != "off"
+        if ddp.is_main:
+            print(f"[train_codec] spectro_presence -> {args.spectro_presence}")
 
     if args.consistency_weight is not None:
         if is_video or is_slowts:
@@ -4123,6 +4298,21 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             raise RuntimeError(
                 f"presence filter left 0 shots for {args.modality} under {args.data_dir}"
             )
+
+    # SPECTRO per-channel presence filter (precomputed liveness cache). Runs BEFORE the
+    # eval/train split so BOTH draw from shots that actually recorded this diagnostic.
+    if args.modality in SPECTRO_MODALITIES and \
+            getattr(args, "spectro_presence", None) not in (None, "off"):
+        _before = len(all_shots)
+        all_shots = spectro_live_shots(
+            args.modality, all_shots,
+            require_all=(args.spectro_presence == "all"),
+            log_fn=(print if ddp.is_main else None),
+        )
+        if not all_shots:
+            raise RuntimeError(
+                f"spectro presence filter left 0 shots for {args.modality} "
+                f"(started from {_before})")
 
     # VIDEO presence filter (per divertor, from the precomputed liveness cache). Runs BEFORE
     # the eval/train split so BOTH draw from shots that actually have this divertor's cameras.
