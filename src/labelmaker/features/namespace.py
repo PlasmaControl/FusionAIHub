@@ -92,8 +92,33 @@ FEATURES: tuple[FeatureSpec, ...] = (
         locators=("ech_pwr", "ech_power"),
         step=0.001,
         notes="corpus holds 12 gyrotrons and can contain NaN channels; "
-              "nansum, then NaN or negative -> 0 (upstream rule). Units "
-              "confirmed against the archive in Task 10 Step 5",
+              "nansum, then NaN or negative -> 0 (upstream rule). Both "
+              "sources are in W, MEASURED: the corpus channel sum over "
+              "the archive column `EC.PECH`, time-aligned onto the 25 ms "
+              "grid, has per-shot median ratios of 0.64 to 1.10 (global "
+              "median 1.001 over 1,738 samples on 20 overlap shots, "
+              "185950/186114/186508/186985/189295/189549 among them), so "
+              "the corpus needs no scaling - the ratio is order 1, not "
+              "1e-3 or 1e3. "
+              "OPEN, MEASURED: this archive locator is the wrong column. "
+              "`ech_pwr` is stored (1, 240) and is ONE gyrotron - "
+              "`ech_names` is length 1 ('LEIA', 'LUKE') - 0.544 MW on "
+              "shot 186504 at t=3.05 s, where the three gyrotrons that "
+              "are on sum to 2.11 MW and `ech_pwr` equals corpus channel "
+              "5 to 0.4%. The corpus/`ech_pwr` ratio is one stable value "
+              "per shot in 1.88..4.01 (IQR 0.06 within a shot, and the "
+              "same under nearest-sample, forward-window and centred-"
+              "window alignment, so it is not a duty-cycle artefact). "
+              "`EC.PECH` is the archive's total: it matches the model's "
+              "own training column x0[:, 9] in magnitude (2.027e6 vs "
+              "2.042e6 on 186504, 9.69e5 vs 9.71e5 on 185950) where "
+              "`ech_pwr` is 4x smaller, and it is present on 174 of 200 "
+              "sampled archive shots against `ech_pwr`'s 52. Switching "
+              "the locator also invalidates the negative-baseline "
+              "statistics measured on `ech_pwr` in "
+              "d3d_tearing_onset_cnn1d/spec.py (18.9% negative readings, "
+              "min -4,086 W: `EC.PECH` is NaN off-window instead), so it "
+              "is left for Task 15 to settle with those together",
     ),
     FeatureSpec(
         name="r0", kind="scalar", units="m",
