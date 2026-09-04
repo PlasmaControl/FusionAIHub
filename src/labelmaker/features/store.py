@@ -139,6 +139,22 @@ def present(path) -> set[str]:
         return set(f.keys())
 
 
+def resolvers(path) -> dict[str, str]:
+    """Stored feature name -> the source that actually produced it.
+
+    The authoritative per-shot provenance: `namespace.sources` says only
+    where a feature *could* come from, and a run resolves cheapest-source
+    -first per feature, so one shot's file can legitimately carry a mix.
+    That mix matters - see `resolve_archive`'s docstring for the 25 ms row
+    lag the archive carries relative to the corpus and fdp - so the runner
+    reports it per shot rather than leaving it to be discovered.
+    """
+    if not Path(path).exists():
+        return {}
+    with h5py.File(path, "r") as f:
+        return {name: str(f[name].attrs.get("resolver", "unknown")) for name in f}
+
+
 def missing_names(path) -> dict[str, str]:
     """Feature name -> cause, for everything a run tried and could not get."""
     if not Path(path).exists():
@@ -147,8 +163,67 @@ def missing_names(path) -> dict[str, str]:
         return json.loads(f.attrs.get(MISSING_ATTR, "{}"))
 
 
-def is_complete(path, names) -> bool:
-    """True when every requested name is either stored or a recorded miss."""
+#: Miss causes worth another attempt on a later run. Everything else - an
+#: absent node, a shape mismatch, a genuinely one-sample record - is a
+#: property of the data and will fail again identically, so a rerun skips it.
+#:
+#: The last three are properties of the *process*, not of the data, and they
+#: are here because of a MEASURED trap. `resolve_fdp.available()` only checks
+#: that toksearch imports, which it does in this environment - so a run
+#: launched WITHOUT the `fdp run` wrapper does not report
+#: `ToksearchUnavailable`; it reaches the fetch and fails per signal, with
+#: `PtDataError` for every PTDATA point and `TreeFOPENR` for every MDSplus
+#: node. Measured on shot 189382: without the wrapper `{'kappa':
+#: 'TreeFOPENR', 'ne_zipfit': 'TreeFOPENR', 'ip': 'PtDataError'}`, and with
+#: it all three fetch (bt and ip likewise on 190347). Calling those permanent
+#: would let ONE mis-launched bulk run write "no fdp source" across the whole
+#: corpus - including the 2,192 of 5,000 archive shots that have no `ip`/`bt`
+#: column and depend on fdp entirely - and have every later, correctly
+#: launched run skip them for good.
+#:
+#: `TreeFOPENR` is "could not open the tree", a whole-tree condition worth
+#: one more open. The genuinely permanent MDSplus case, a node that does not
+#: exist (`TreeNNF`), is deliberately NOT here.
+TRANSIENT_CAUSES = (
+    "TimeoutError",
+    "OSError",
+    "ConnectionError",
+    "StageTimeout",
+    "ToksearchUnavailable",
+    "PtDataError",
+    "TreeFOPENR",
+)
+
+
+def is_transient(cause: str) -> bool:
+    """True when a recorded miss is worth retrying on a later run.
+
+    Matched as a substring, which is what makes a cause recorded across
+    several sources work: `features_for_shot` joins one feature's causes
+    with commas, so a feature the archive genuinely does not carry and fdp
+    merely timed out on reads `"archive:KeyError,fdp:TimeoutError"`. That
+    counts as transient - one of the two sources is worth another attempt,
+    and retrying the pair costs one fetch while not retrying it loses the
+    feature permanently.
+    """
+    return any(t in cause for t in TRANSIENT_CAUSES)
+
+
+def permanent_names(path) -> set[str]:
+    """Names whose recorded miss will fail again identically."""
+    return {n for n, c in missing_names(path).items() if not is_transient(c)}
+
+
+def is_complete(path, names, *, retry_transient: bool = True) -> bool:
+    """True when every requested name is stored or permanently missed.
+
+    A transient miss (a timeout, a dropped connection) does not count as
+    known: the next run should try it again. Pass `retry_transient=False`
+    to treat any recorded miss as final.
+    """
     if not Path(path).exists():
         return False
-    return set(names) <= (present(path) | set(missing_names(path)))
+    misses = missing_names(path)
+    if retry_transient:
+        misses = {n: c for n, c in misses.items() if not is_transient(c)}
+    return set(names) <= (present(path) | set(misses))
