@@ -461,6 +461,14 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
         preds.append((label, r))
         del codec
 
+    # peak_f1 for the ORACLES is the number that decides whether the mode TRACKS are
+    # reachable at all: patchmean is what a patch-level code gives for free, tsmooth5 is what
+    # perfect coherent structure gives. An arm sitting at patchmean's peak_f1 is carrying no
+    # track information beyond the patch grid, however good its hf_ratio looks.
+    print("\npeak_f1 (top-k spectral peak OVERLAP) is the TRACK metric and rides at the end of "
+          "each row:\n  patchmean = what the patch grid gives for FREE; tsmooth5 = what "
+          "PERFECT coherent structure gives. An arm sitting at patchmean's peak_f1 carries no "
+          "track information beyond the grid, however good its hf_ratio looks.", flush=True)
     print(f"\n{'predictor':<18}" + "".join(
         f"{nm + ' hf':>16}{nm + ' nRMSE':>17}" for nm, _a, _b in bands), flush=True)
     gt_line = f"{'GROUND TRUTH':<18}"
@@ -478,7 +486,14 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
             rec[f"{nm}_hf_ratio"] = hf
             rec[f"{nm}_nrmse"] = met["spec_nrmse"]
             rec[f"{nm}_corr2d"] = met["spec_corr2d"]
-        print(line, flush=True)
+        # peak_f1 on the FULL band, chunked (it pools over windows internally, so a per-chunk
+        # mean is the same convention the trainer's gate uses).
+        pf = float(np.mean([
+            gate.decode_fidelity(r[i:i + _CHUNK], X[i:i + _CHUNK],
+                                 mask=(None if M is None else M[i:i + _CHUNK]))["peak_f1"]
+            for i in range(0, X.shape[0], _CHUNK)]))
+        rec["peak_f1"] = pf
+        print(line + f"   peak_f1 {pf:.4f}", flush=True)
         rows.append(rec)
     print("\n  hf here is recon HF-gradient energy / GT HF-gradient energy IN THAT BAND "
           "(ideal 1.0). nRMSE is a FLOOR (< 1.0), never the ranking key.")
@@ -499,6 +514,13 @@ def score_arm(label: str, ckpt: str, X: np.ndarray, M: np.ndarray, seq: Optional
         "base_tmean": out["base_tmean_spec_nrmse"],
         "base_cfmean": out["base_cfmean_spec_nrmse"],
         "base_wcmean": out["base_wcmean_spec_nrmse"],
+        # peak_f1 is the TRACK metric -- the overlap of the top-k spectral peaks. It is the
+        # only column that separates "looks like a spectrogram" from "is THIS spectrogram":
+        # measured, a co2 arm at adversarial 0.2 + ms_ssim 50 reaches hf 82% of its coherent
+        # ceiling and std_ratio 0.964 with GT-like granularity and correctly placed burst
+        # columns, and still does not reproduce the coherent 10-20 kHz mode track.
+        "peak_f1": out["peak_f1"],
+        "envelope_corr": out["envelope_corr"],
         "lattice": out["patch_lattice_ratio"],
         "gt_lattice": out["target_patch_lattice_ratio"],
         "hf_ratio": out["sharpness"],
@@ -555,9 +577,9 @@ def hf_references(X: np.ndarray, cfg, smooth: int = 5) -> Dict[str, float]:
 
 def print_table(rows: List[Dict], floor: Optional[float] = None,
                 hf_ref: Optional[Dict[str, float]] = None):
-    hdr = (f"{'arm':<16}{'step':>7}{'nRMSE':>9}{'corr2d':>8}{'std_r':>7}{'lattice':>9}"
-           f"{'GTlat':>7}{'hf_r':>7}{'bits/win':>10}{'%ceil':>7}{'codes':>10}"
-           f"{'m_over':>9}{'m_trans':>9}{'n_tr':>7}")
+    hdr = (f"{'arm':<16}{'step':>7}{'nRMSE':>9}{'corr2d':>8}{'std_r':>7}{'hf_r':>7}"
+           f"{'peakF1':>8}{'envcor':>8}{'lattice':>9}{'GTlat':>7}{'bits/win':>10}"
+           f"{'%ceil':>7}{'codes':>10}{'m_over':>9}{'m_trans':>9}{'n_tr':>7}")
     print(hdr)
     print("-" * len(hdr))
     for r in rows:
@@ -571,8 +593,9 @@ def print_table(rows: List[Dict], floor: Optional[float] = None,
         pct = (100.0 * used / (avail * ceil)
                if avail and np.isfinite(avail) and avail > 0 else float("nan"))
         print(f"{r['label']:<16}{str(r.get('step')):>7}{r['nrmse']:>9.4f}{r['corr2d']:>8.4f}"
-              f"{r['std_ratio']:>7.3f}{r['lattice']:>9.2f}{r['gt_lattice']:>7.2f}"
-              f"{r['hf_ratio']:>7.3f}{used:>10.1f}{pct:>7.1f}"
+              f"{r['std_ratio']:>7.3f}{r['hf_ratio']:>7.3f}{r['peak_f1']:>8.4f}"
+              f"{r['envelope_corr']:>8.4f}{r['lattice']:>9.2f}{r['gt_lattice']:>7.2f}"
+              f"{used:>10.1f}{pct:>7.1f}"
               f"{str(r.get('n_distinct_codes')) + '/' + str(r.get('codebook_size')):>10}"
               f"{r.get('margin_overall', float('nan')):>9.4f}"
               f"{r.get('margin_transition', float('nan')):>9.4f}"
@@ -591,10 +614,13 @@ def print_table(rows: List[Dict], floor: Optional[float] = None,
         print(f"\nhf_ratio CALIBRATION on these windows: coherent ceiling (GT smoothed over 5 "
               f"STFT frames) {hf_ref['hf_tsmooth']:.3f}  |  patch-level floor (exact per-patch "
               f"mean) {hf_ref['hf_patchmean']:.3f}")
-    print("RANKING KEY: hf_ratio toward the coherent ceiling, read WITH lattice vs GTlat "
-          "(a high hf at a high lattice is checkerboard, not modes). nRMSE < 1.0 is a FLOOR; "
-          "do NOT rank on it, and do NOT treat tmean as a target -- it has zero temporal "
-          "structure by construction.")
+    print("RANKING KEYS, in order: (1) peakF1 -- do the top-k spectral peaks COINCIDE, i.e. "
+          "are the mode tracks in the right place; (2) hf_ratio toward the coherent ceiling, "
+          "read WITH lattice vs GTlat (a high hf at a high lattice is checkerboard, and a "
+          "high hf at the RIGHT amplitude can still be the wrong texture in the wrong place "
+          "-- hence peakF1 leads); (3) std_r toward 1.0. nRMSE < 1.0 is a FLOOR; do NOT rank "
+          "on it, and do NOT treat tmean as a target -- it has zero temporal structure by "
+          "construction.")
 
 
 # ------------------------------------------------------------------------------------ #
