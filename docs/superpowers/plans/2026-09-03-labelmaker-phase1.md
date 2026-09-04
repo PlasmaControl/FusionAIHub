@@ -816,14 +816,24 @@ def test_mismatched_shapes_are_rejected_at_construction():
         FeatureArray(x=np.zeros(3), y=np.zeros(3))     # must be (C, T)
 
 
-def test_a_one_sample_feature_is_refused_as_ambiguous(tmp_path):
+def test_a_one_sample_feature_is_demoted_to_a_miss(tmp_path):
     # The corpus layout reads ydata.shape[-1] < 2 as "signal absent", so a
-    # resolved one-sample group would be silently misread downstream.
+    # resolved one-sample group would be silently misread downstream. It is
+    # recorded as a miss instead - and NOT raised on, which would cost this
+    # shot the other feature resolved in the same call.
     p = tmp_path / "190000_features.h5"
     one = FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)), attrs={"resolver": "corpus"})
-    with pytest.raises(ValueError, match="absent"):
-        write_features(p, 190000, {"ip": one}, {})
-    assert not p.exists()
+    write_features(p, 190000, {"ip": one, "bt": _scalar()}, {})
+    assert present(p) == {"bt"}
+    assert "OneSampleAmbiguous" in missing_names(p)["ip"]
+
+
+def test_write_features_leaves_the_callers_dicts_alone(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    arrays = {"ip": FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)))}
+    missing: dict[str, str] = {}
+    write_features(p, 190000, arrays, missing)
+    assert set(arrays) == {"ip"} and missing == {}
 
 
 def test_read_feature_raises_for_absent_group(tmp_path):
@@ -1116,9 +1126,14 @@ def write_features(
     With `merge`, groups already in the file are kept and any name now
     resolved is dropped from the recorded misses, so a rerun that fetches
     one more feature does not throw away the previous ones.
+
+    A feature carrying fewer than two samples is moved into `missing`
+    instead of being stored; see the comment below. The caller's `arrays`
+    and `missing` dicts are never mutated.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    arrays, missing = dict(arrays), dict(missing)
     if merge:
         kept, kept_missing = _load_all(path)
         kept.update(arrays)
@@ -1127,17 +1142,20 @@ def write_features(
             kept_missing.pop(name, None)
         arrays, missing = kept, kept_missing
     # A group with fewer than two samples is the corpus' "signal absent"
-    # sentinel, and these files share the corpus layout. Absence here travels
-    # in the `missing` dict instead, so writing a *resolved* one-sample group
-    # would read as absent to any consumer applying the corpus rule - which
-    # `catalog.available_groups` does. Refuse it: a resolver that got one
-    # sample should record a miss, not persist an ambiguity.
-    too_short = {n: a.y.shape[-1] for n, a in arrays.items() if a.y.shape[-1] < 2}
-    if too_short:
-        raise ValueError(
-            "refusing to write features with fewer than 2 samples, which the "
-            f"corpus layout reads as absent: {too_short}"
-        )
+    # sentinel, and these files share the corpus layout - so a *resolved*
+    # one-sample group would read as absent to any consumer applying the
+    # corpus rule, which `catalog.available_groups` does. It is reachable:
+    # `decimate_to_step` on a degenerate time axis returns one sample.
+    #
+    # Such a feature is demoted into `missing` rather than persisted, and
+    # rather than raised on. Raising would cost the shot every other feature
+    # resolved in the same call, against this pipeline's rule that one bad
+    # feature never costs a shot the rest; `missing` is the channel built to
+    # carry exactly this. Demotion also heals a file that somehow already
+    # holds a short group, which a raise would have made unwritable forever.
+    for name in [n for n, a in arrays.items() if a.y.shape[-1] < 2]:
+        missing[name] = f"OneSampleAmbiguous({arrays[name].y.shape[-1]})"
+        del arrays[name]
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     tmp = path.with_name(path.name + ".tmp")
     with h5py.File(tmp, "w") as f:
