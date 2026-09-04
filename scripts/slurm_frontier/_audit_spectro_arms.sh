@@ -49,9 +49,13 @@ PY=.pixi/envs/frontier/bin/python
 # measured on mhr o_ms20, best was saved at step 22001 (nRMSE 0.7964 on the audit pool) while
 # the run went on to 0.7398 at step 28000 -- a 0.056 nRMSE penalty for reading only the "best"
 # file. gate_score must not be changed, so the audit reads LAST as well and reports both.
+# ARM_PREFIX filters which subdirs are scored. Needed because one job's OUT_DIR can hold arms
+# of TWO modalities (the bes+mirnov pairing), and scoring a mirnov checkpoint as bes would
+# silently produce nonsense rather than an error.
 ARMS=""
 for d in "${DIR}"/*/; do
     n=$(basename "${d}")
+    case "${n}" in ${ARM_PREFIX:-*}) ;; *) continue ;; esac
     [ -f "${d}codec_best.pt" ] && ARMS="${ARMS}${ARMS:+,}${n}=${d}codec_best.pt"
     [ -f "${d}codec_last.pt" ] && ARMS="${ARMS}${ARMS:+,}${n}_last=${d}codec_last.pt"
 done
