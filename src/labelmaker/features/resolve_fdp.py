@@ -276,6 +276,13 @@ ARCHIVE_LAG_S = -0.025
 _TIME_SCALE = {"ms": 1.0 / MS_PER_S, "s": 1.0, "sec": 1.0, "secs": 1.0,
                "second": 1.0, "seconds": 1.0}
 
+#: Bound on a recorded miss cause: it is written into an HDF5 attribute and
+#: into the JSON `missing` blob (`store.MISSING_ATTR`), both read back on
+#: every later run, so an unbounded traceback-length string must not land
+#: there. 200 matches `run._guarded`'s existing `str(exc)[:200]` bound on a
+#: per-shot error detail.
+_CAUSE_MAX_LEN = 200
+
 
 class ShortRecord(ValueError):
     """A node that came back with fewer than two time samples.
@@ -288,14 +295,44 @@ class ShortRecord(ValueError):
     """
 
 
-def available() -> bool:
-    """True when toksearch can be imported (the `labelmaker`/`fdp` envs)."""
+def _import_diagnosis() -> str | None:
+    """None if toksearch imports cleanly; otherwise which module failed, and
+    why.
+
+    Checked as two separate imports so the diagnosis names which one broke
+    rather than collapsing to "toksearch is unavailable" - that collapse is
+    exactly what made this regression (Task 16b) silent. The root cause was
+    `import torch` binding the SYSTEM `/lib64/libstdc++.so.6` ahead of the
+    pixi env's own copy, so every compiled extension needing a newer GLIBCXX
+    symbol - `toksearch_d3d` among them, via `fdp` -> `pyxrootd` - raised a
+    bare `ImportError`. `available()` swallowing that into a plain `False`
+    meant the recorded miss cause was the string `"ToksearchUnavailable"`
+    forever, indistinguishable from an environment that simply lacks the
+    package, and a re-run reproduced it identically without ever attempting
+    a fetch. See `pyproject.toml`'s `tool.pixi.feature.fdp` activation table
+    for the fix to the loader ordering itself; this only makes the next
+    occurrence of *any* import failure here self-diagnosing instead of
+    requiring the same investigation again.
+    """
     try:
         import toksearch  # noqa: F401
+    except ImportError as exc:
+        return f"toksearch: {type(exc).__name__}: {exc}"
+    try:
         import toksearch_d3d  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    except ImportError as exc:
+        return f"toksearch_d3d: {type(exc).__name__}: {exc}"
+    return None
+
+
+def available() -> bool:
+    """True when toksearch can be imported (the `labelmaker`/`fdp` envs).
+
+    A bool, not the diagnosis: kept as the simple gate `resolve()` and any
+    other caller can branch on. `resolve()` uses `_import_diagnosis()`
+    directly so a miss it records carries the reason, not just this verdict.
+    """
+    return _import_diagnosis() is None
 
 
 def _fetch_ptdata(name: str, shot: int) -> dict:
@@ -593,8 +630,15 @@ def resolve(
     """
     specs = [ns.by_name(n) for n in names]
     locators = {spec.name: spec.locator_for(SOURCE) for spec in specs}
-    if not available():
-        return {}, dict.fromkeys(names, "ToksearchUnavailable")
+    diagnosis = _import_diagnosis()
+    if diagnosis is not None:
+        # "ToksearchUnavailable" is kept as a literal prefix - not just a
+        # class name - because `store.TRANSIENT_CAUSES`/`is_transient`
+        # matches it as a substring, and that classification (retryable by
+        # a plain re-run) is correct and must survive the diagnosis being
+        # appended.
+        cause = f"ToksearchUnavailable: {diagnosis}"[:_CAUSE_MAX_LEN]
+        return {}, dict.fromkeys(names, cause)
 
     arrays: dict[str, FeatureArray] = {}
     missing: dict[str, str] = {}

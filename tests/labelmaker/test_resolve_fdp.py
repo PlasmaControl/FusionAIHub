@@ -7,6 +7,11 @@ the transpose of the order they were requested in.
 """
 from __future__ import annotations
 
+import importlib.util
+import subprocess
+import sys
+import textwrap
+
 import numpy as np
 import pytest
 
@@ -143,10 +148,49 @@ def test_profile_axes_refuses_a_record_with_no_time_at_all():
 
 
 def test_resolve_records_a_miss_when_toksearch_is_unavailable(monkeypatch):
-    monkeypatch.setattr(rf, "available", lambda: False)
+    monkeypatch.setattr(
+        rf, "_import_diagnosis",
+        lambda: "toksearch_d3d: ImportError: bad juju",
+    )
     got, missing = rf.resolve(190000, ["ip", "kappa"])
     assert got == {}
-    assert missing == {"ip": "ToksearchUnavailable", "kappa": "ToksearchUnavailable"}
+    assert missing == {
+        "ip": "ToksearchUnavailable: toksearch_d3d: ImportError: bad juju",
+        "kappa": "ToksearchUnavailable: toksearch_d3d: ImportError: bad juju",
+    }
+    # The literal prefix survives the diagnosis, so the miss is still
+    # classified transient (retryable by a plain re-run) - see store.py.
+    from labelmaker.features.store import is_transient
+
+    assert is_transient(missing["ip"])
+
+
+def test_resolve_bounds_the_diagnosis_length(monkeypatch):
+    monkeypatch.setattr(
+        rf, "_import_diagnosis", lambda: "toksearch: ImportError: " + "x" * 500
+    )
+    _, missing = rf.resolve(190000, ["ip"])
+    assert len(missing["ip"]) == rf._CAUSE_MAX_LEN
+    assert missing["ip"].startswith("ToksearchUnavailable: toksearch: ImportError:")
+
+
+def test_the_import_diagnosis_names_the_module_that_failed(monkeypatch):
+    import builtins
+
+    real = builtins.__import__
+
+    def no_toksearch_d3d(name, *a, **k):
+        if name == "toksearch_d3d":
+            raise ImportError(
+                "/lib64/libstdc++.so.6: version `GLIBCXX_3.4.29' not found"
+            )
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", no_toksearch_d3d)
+    reason = rf._import_diagnosis()
+    assert reason is not None
+    assert reason.startswith("toksearch_d3d: ImportError:")
+    assert "GLIBCXX_3.4.29" in reason
 
 
 def test_resolve_records_per_signal_failures(monkeypatch):
@@ -329,6 +373,79 @@ def test_available_is_false_without_toksearch(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", no_toksearch)
     assert rf.available() is False
+
+
+# --- regression: torch-first loader ordering --------------------------------
+
+#: `find_spec` reads the package's metadata without executing its `__init__`,
+#: so this stays True regardless of whether the GLIBCXX loader-ordering bug
+#: (Task 16b) is present - it would be wrong to gate this test on anything
+#: that the bug itself makes False, which would make it skip exactly when it
+#: is needed. `labelmaker`'s environment always has `toksearch`, so this
+#: never skips there; it exists only so the test also collects harmlessly in
+#: an environment that genuinely lacks the package.
+_HAS_TOKSEARCH = importlib.util.find_spec("toksearch") is not None
+
+
+@pytest.mark.skipif(not _HAS_TOKSEARCH, reason="toksearch is not installed here")
+def test_available_survives_a_fork_after_torch_is_already_loaded():
+    """The regression itself: `import torch` then a forked worker's first
+    `toksearch` import must still succeed.
+
+    This is `run.py`'s actual configuration - the worker pool is forked
+    before toksearch is imported anywhere, and torch is already loaded in
+    the parent by the time it forks (`registry.load_adapter` imports it via
+    `spec.py` -> `models/runners/keras_h5.py`). `import torch` binds the
+    SYSTEM `/lib64/libstdc++.so.6` unless `pyproject.toml`'s
+    `tool.pixi.feature.fdp` activation table puts the pixi env's own copy
+    first on the loader's path; without that, every worker's first
+    `resolve_fdp.available()` call raises `ImportError` and the whole fdp
+    scaling path goes dark with no error anywhere (Task 16b).
+
+    Run in a fresh subprocess, not in-process: this pytest process may have
+    already imported `toksearch` (e.g. an earlier test's real, unpatched
+    check), and a fork after that would hand the child an already-imported
+    module - proving nothing about loader ordering. A subprocess guarantees
+    the parent-imports-torch-but-not-toksearch precondition asserted below.
+    That exact mistake - forking after the parent had already imported
+    toksearch - is called out in the Task 16b brief as the one made while
+    diagnosing this.
+    """
+    script = textwrap.dedent("""
+        import multiprocessing
+        import sys
+
+        import torch  # noqa: F401 - binds libstdc++ first, as the real runner does
+
+        assert "toksearch" not in sys.modules, (
+            "toksearch must not be imported in the parent, or the forked "
+            "child inherits it and the test proves nothing"
+        )
+
+        def _child():
+            # First touch of toksearch in this process happens here, fresh,
+            # after the fork - exactly like a real worker's first fetch.
+            from labelmaker.features import resolve_fdp
+            sys.exit(0 if resolve_fdp.available() else 1)
+
+        ctx = multiprocessing.get_context("fork")
+        p = ctx.Process(target=_child)
+        p.start()
+        p.join(timeout=60)
+        sys.exit(0 if p.exitcode == 0 else 1)
+    """)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        "resolve_fdp.available() was False in a forked child after the "
+        "parent had already loaded torch - the loader-ordering regression "
+        f"is back.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
 
 # --- live ------------------------------------------------------------------

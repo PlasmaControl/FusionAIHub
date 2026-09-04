@@ -85,6 +85,28 @@ line_profiler = ">=5.0.2,<6"
 [tool.pixi.feature.fdp]
 platforms = ["linux-64"]
 
+# MEASURED 2026-09-04 (Task 16b): `import torch` binds the SYSTEM
+# `/lib64/libstdc++.so.6`, which lacks `GLIBCXX_3.4.29`. Every compiled
+# extension in this feature that needs that symbol then fails to import
+# after torch does - `toksearch_d3d` (via `fdp` -> `pyxrootd`) and `scipy` -
+# with a bare `ImportError`, which `resolve_fdp.available()` swallowed into
+# an indistinguishable `ToksearchUnavailable` and silently disabled the
+# whole fdp scaling path. The pixi env ships its OWN
+# `lib/libstdc++.so.6.0.36`, which DOES have the symbol; it is just not
+# first on the loader's path. `LD_LIBRARY_PATH` (rather than `LD_PRELOAD`) is
+# sufficient: verified that with it set, `torch` followed by `fdp`,
+# `toksearch`, `toksearch_d3d` and `scipy` all import, which means torch's
+# extensions carry `DT_RUNPATH` (which `LD_LIBRARY_PATH` overrides), not
+# `DT_RPATH` (which it would not). Scoped to this feature - not the shared
+# workspace - because it is `fdp`'s own packages (toksearch/toksearch_d3d,
+# via pyxrootd) that need the symbol; both the `fdp` and `labelmaker`
+# environments include this feature, so both are covered. Prepended, never
+# overwritten: an inherited `LD_LIBRARY_PATH` (e.g. from a module-loaded
+# library on a SLURM node) must still take effect first for anything it
+# already covers.
+[tool.pixi.feature.fdp.target.unix.activation.env]
+LD_LIBRARY_PATH = "$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+
 [tool.pixi.feature.fdp.dependencies]
 # Versions match Nathan's working fetch env (/scratch/gpfs/nc1514/fdp/pixi.toml)
 # rather than floating. `fdp` itself is REQUIRED, not optional: `toksearch_d3d`
