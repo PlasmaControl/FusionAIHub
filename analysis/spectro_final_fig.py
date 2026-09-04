@@ -501,12 +501,62 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
             "bands": [{"name": nm, "b0": b0, "b1": b1} for nm, b0, b1 in bands]}
 
 
+def _decode_fidelity_chunked(recon: np.ndarray, target: np.ndarray, mask: Optional[np.ndarray],
+                             cfg, chunk: int = 24) -> Dict[str, float]:
+    """``gate.decode_fidelity(full_spec=True)`` accumulated over WINDOW chunks.
+
+    WHY THIS IS NOT OPTIONAL. ``decode_fidelity`` casts to float64 and evaluates
+    ``_nrmse_corr2d`` + ``_envelope_correlation`` + ``_peak_overlap_f1`` +
+    ``patch_lattice_metrics`` on the WHOLE array. At the required >= 300 windows that is
+    320 x 40 x 512 x 96 = 629 M elements = 5 GB per copy for ece, and the temporaries multiply
+    it: MEASURED 2026-09-04, three concurrent 320-window audits sat at 31 GB RSS each and
+    scored ZERO arms in 38 minutes. Chunked, the same table is minutes.
+
+    COMBINATION CONVENTION, per key -- the same one ``analysis/_specport_plateau.py``
+    already documents as "identical convention to the audit":
+      * every value is combined as a WINDOW-COUNT-WEIGHTED MEAN over chunks, so an uneven
+        last chunk cannot bias it;
+      * EXCEPT ``hf_energy_recon`` / ``hf_energy_target``, which are SUMS of squared finite
+        differences over the array -- those are accumulated as sums, and ``sharpness`` is then
+        recomputed as their exact ratio rather than averaged.
+    ``spec_nrmse`` / ``spec_corr2d`` / ``peak_f1`` / ``envelope_corr`` are already per-window
+    (or per window-channel) means inside the function, so the weighted mean is exact up to the
+    per-chunk distribution of dead channels. The lattice ratios are ratios of energies, so
+    their chunked mean is an approximation -- fine, they are read as orders of magnitude
+    (4 vs 40 vs 130 against a GT control near 1.1), never to two decimals.
+    """
+    acc: Dict[str, list] = {}
+    wts: list = []
+    hf_r = hf_t = 0.0
+    for i in range(0, recon.shape[0], chunk):
+        sl = slice(i, i + chunk)
+        d = gate.decode_fidelity(
+            recon[sl], target[sl], patch_f=cfg.patch_f, patch_t=cfg.patch_t,
+            full_spec=True, band_bins=None,
+            mask=(None if mask is None else mask[sl]))
+        n = int(recon[sl].shape[0])
+        wts.append(n)
+        hf_r += float(d["hf_energy_recon"])
+        hf_t += float(d["hf_energy_target"])
+        for k, v in d.items():
+            if isinstance(v, (int, float)):
+                acc.setdefault(k, []).append(float(v))
+    w = np.asarray(wts, dtype=np.float64)
+    out: Dict[str, float] = {}
+    for k, vals in acc.items():
+        a = np.asarray(vals, dtype=np.float64)
+        ok = np.isfinite(a)
+        out[k] = float(np.average(a[ok], weights=w[ok])) if ok.any() else float("nan")
+    out["hf_energy_recon"], out["hf_energy_target"] = hf_r, hf_t
+    out["sharpness"] = float(hf_r / hf_t) if hf_t > 1e-12 else float("nan")
+    return out
+
+
 def score_arm(label: str, ckpt: str, X: np.ndarray, M: np.ndarray, seq: Optional[np.ndarray],
               device="cpu", batch: int = 8) -> Dict:
     codec, cfg, ck = load_codec(ckpt, device=device)
     recon, codes = reconstruct(codec, X, batch=batch, device=device)
-    out = gate.decode_fidelity(recon, X, patch_f=cfg.patch_f, patch_t=cfg.patch_t,
-                               full_spec=True, band_bins=None, mask=M)
+    out = _decode_fidelity_chunked(recon, X, M, cfg, chunk=_CHUNK)
     row = {
         "label": label, "ckpt": ckpt, "step": ck.get("step"),
         "nrmse": out["spec_nrmse"], "corr2d": out["spec_corr2d"],
