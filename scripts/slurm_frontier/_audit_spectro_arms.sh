@@ -7,6 +7,22 @@
 #
 # Usage: _audit_spectro_arms.sh <modality> <arms_dir> [floor] [n_windows]
 #   arms_dir = the job's OUT_DIR; every subdir with a codec_best.pt becomes an arm.
+#
+# THREE stages, in the order a verdict needs them (2026-09-04):
+#   1. --mode score      the arm table. nRMSE here is a FLOOR to clear, NOT the ranking key.
+#   2. --mode structure  the RANKING stage: per-band hf_ratio for every arm against the two
+#                        oracles that calibrate it (tsmooth = the coherent ceiling, the most
+#                        any codec should reproduce, measured 0.250 on co2; patchmean = what
+#                        the token grid gives away for free, 0.015 on co2). Set STRUCT_ARMS
+#                        to a shorter arm list -- it is O(30) full-array metric evaluations
+#                        per arm. STRUCT=0 skips it.
+#   3. --mode figure     the deliverable, ZOOMED to FIG_BAND_KHZ. At the full 0-250 kHz a
+#                        coherent mode line 1-2 STFT bins wide is under one screen pixel, so
+#                        the full-band panel cannot distinguish "resolved the tracks" from
+#                        "painted a smooth band" and a good codec is judged blurry by
+#                        rendering artefact. Both a full-band and a zoomed figure are written.
+#
+# Env: ARM_PREFIX, ARM_FOR_FIG, FIG_CHANNELS, FIG_BAND_KHZ, STRUCT, STRUCT_ARMS, BANDS_KHZ.
 set -e
 M="${1:?modality}"
 DIR="${2:?arms dir}"
@@ -67,11 +83,31 @@ ${PY} analysis/spectro_final_fig.py --mode score --modality "${M}" \
     ${FLOOR:+--floor ${FLOOR}} \
     --json "eval_runs/codec_recon_figs/${M}_arms.json" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
 
-# The figure is built from the FIRST arm listed; pass ARM_FOR_FIG=<name> to pick another.
+# STAGE 2: the RANKING stage. Defaults to the same arm list; STRUCT_ARMS narrows it.
+if [ "${STRUCT:-1}" != "0" ]; then
+    ${PY} analysis/spectro_final_fig.py --mode structure --modality "${M}" \
+        --n_windows "${NW}" --batch_size 8 --device cuda \
+        --arms "${STRUCT_ARMS:-${ARMS}}" \
+        --bands_khz "${BANDS_KHZ:-0-10,10-30,30-60,60-120,120-250}" \
+        --json "eval_runs/codec_recon_figs/${M}_structure.json" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
+fi
+
+# STAGE 3: the figure is built from the FIRST arm listed; pass ARM_FOR_FIG=<name> to pick
+# another. A ckpt suffixed _last is addressed as <arm>_last -> strip it back to the file.
 FIGARM="${ARM_FOR_FIG:-}"
 if [ -n "${FIGARM}" ]; then
-    ${PY} analysis/spectro_final_fig.py --mode figure --modality "${M}" \
-        --arms "${FIGARM}=${DIR}/${FIGARM}/codec_best.pt" \
-        --channels "${FIG_CHANNELS:-0}" --device cuda \
-        --out "eval_runs/codec_recon_figs/${M}_FINAL_fullshot.png" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
+    case "${FIGARM}" in *_last) FIGCK="${DIR}/${FIGARM%_last}/codec_last.pt" ;;
+                        *)      FIGCK="${DIR}/${FIGARM}/codec_best.pt" ;; esac
+    for BK in "" "${FIG_BAND_KHZ:-0-60}"; do
+        if [ -z "${BK}" ]; then
+            OUT="eval_runs/codec_recon_figs/${M}_FINAL_fullshot.png"; BKFLAG=""
+        else
+            OUT="eval_runs/codec_recon_figs/${M}_FINAL_band.png"
+            BKFLAG="--band_khz ${BK/-/,}"
+        fi
+        ${PY} analysis/spectro_final_fig.py --mode figure --modality "${M}" \
+            --arms "${FIGARM}=${FIGCK}" \
+            --channels "${FIG_CHANNELS:-0}" --device cuda ${BKFLAG} \
+            --out "${OUT}" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
+    done
 fi
