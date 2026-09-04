@@ -44,29 +44,62 @@ def test_torch_evaluator_matches_keras_to_1e4():
     # predict_members' own docstring.
     got = predict_members(graphs, [x0, x1])
     assert got.shape == want.shape
-    # 1e-4, not 1e-5: measured max_abs_diff is ~5.6e-5 at this evaluator's
-    # default float64, and ~8.2e-5 re-measured at float32 (Task 14b) - the
-    # same order, not two apart, which rules out "TensorFlow's own float32
-    # rounding against our float64 arithmetic" as the explanation (that was
-    # Task 14's untested guess). See validate.adapter_fidelity's docstring
-    # for the localization and why 1e-4 is kept rather than adjusted to fit
-    # either number: both are still two orders of magnitude below the ~1e-2
-    # a genuine implementation error produces.
+    # Regression floor, not the real gate: measured max_abs_diff is ~5.6e-5.
+    # `validate.adapter_fidelity`'s three scale-aware gates (Task 14b) are
+    # what actually decides pass/fail; this assertion only catches a real
+    # blowup (a genuine implementation error measured ~1e-2 in Task 14),
+    # kept two orders of magnitude below that.
     assert np.abs(got - want).max() < 1e-4
 
 
 def test_adapter_fidelity_report_is_a_pass(tmp_path):
     report = validate.adapter_fidelity("d3d_tearing_onset_cnn1d", golden=GOLDEN)
     assert report["passed"] is True
+    # Regression floor on the raw number - see the docstring for why this
+    # alone no longer gates `passed`.
     assert report["max_abs_diff"] < 1e-4
-    # Both dtype measurements are reported regardless of which one gates
+    # Both dtype measurements are reported regardless of which gates
     # `passed` - see validate.adapter_fidelity's docstring for why float64
-    # is still the one that gates it.
+    # is the one the other measurements are taken against.
     assert report["max_abs_diff_float64"] == report["max_abs_diff"]
     assert 0 < report["max_abs_diff_float32"] < 1e-3
     assert report["n_rows"] > 1000 and report["n_members"] == 10
+
+    # The proof behind the docstring's reasoning: our own two dtypes
+    # disagree with each other by about the same amount as either dtype
+    # disagrees with TensorFlow - measured ~5.48e-5, next to a raw
+    # max_abs_diff of ~5.60e-5. Loosely bounded (not pinned to the exact
+    # float) because this is measured from live torch/BLAS arithmetic, not
+    # read back from a fixture.
+    assert 1e-5 < report["self_max_abs_diff_float64_vs_float32"] < 1e-4
+    assert 1e-7 < report["self_median_abs_diff_float64_vs_float32"] < 1e-6
+
+    # The three measured gates that actually decide `passed`, each well
+    # inside its tolerance - see FidelityTolerances for what each catches.
+    tolerances = report["tolerances"]
+    assert report["scale_normalized_max_abs_diff"] < tolerances["scale_normalized_max"]
+    assert report["scale_normalized_max_abs_diff"] < 5e-6
+    assert report["median_abs_diff"] < tolerances["median_abs_diff"]
+    assert 1e-7 < report["median_abs_diff"] < 1e-6
+    assert report["label_max_abs_diff"] < tolerances["label_max_abs_diff"]
+    assert report["label_max_abs_diff"] < 2e-6
+    assert "tm_prob" in report["label_max_abs_diff_by_field"]
+
     out = validate.write_report(
         Paths(root=tmp_path), "d3d_tearing_onset_cnn1d",
         "adapter_fidelity", report,
     )
     assert json.loads(out.read_text())["passed"] is True
+
+
+def test_adapter_fidelity_gate_is_conjunctive():
+    """A tightened gate on any one of the three measurements alone fails."""
+    from labelmaker.validate import FidelityTolerances
+
+    report = validate.adapter_fidelity(
+        "d3d_tearing_onset_cnn1d",
+        golden=GOLDEN,
+        tolerances=FidelityTolerances(median_abs_diff=1e-9),
+    )
+    assert report["passed"] is False
+    assert report["median_abs_diff"] > report["tolerances"]["median_abs_diff"]
