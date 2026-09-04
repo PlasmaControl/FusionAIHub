@@ -184,6 +184,14 @@ def missing_names(path) -> dict[str, str]:
 #: `TreeFOPENR` is "could not open the tree", a whole-tree condition worth
 #: one more open. The genuinely permanent MDSplus case, a node that does not
 #: exist (`TreeNNF`), is deliberately NOT here.
+#:
+#: The accepted cost, stated so it is not rediscovered: where a tree really
+#: is unopenable for a shot, that feature is refetched on every run and the
+#: shot never reports `ok`. MEASURED in Task 12 - efit01 was `TreeFOPENR` on
+#: 1 of 120 random overlap shots (190830). One failed open per run per such
+#: shot is the cheaper error: the alternative is unrecoverable without
+#: `--force`, which also discards the genuine permanent misses. `OSError`
+#: carries the same trade-off for the 1.3-3.7% of truncated corpus files.
 TRANSIENT_CAUSES = (
     "TimeoutError",
     "OSError",
