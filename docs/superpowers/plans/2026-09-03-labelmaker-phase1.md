@@ -2698,6 +2698,15 @@ Recorded so they are not re-added by mistake:
 For each row of the table below, create `models/<slug>/__init__.py` (empty),
 `models/<slug>/spec.py`, and `models/<slug>/README.md`.
 
+Two values the table does not carry, because they are derived from the slug and
+must be derived the same way every time (`test_registry.py` asserts the first):
+
+- `<card_id>` is `plasmacontrol/` followed by the slug with every underscore
+  replaced by a hyphen. For `d3d_elm_time_to_event_dsm` that is
+  `plasmacontrol/d3d-elm-time-to-event-dsm`.
+- `<card_id without the namespace>`, used as the `model-index` `name`, is just
+  the hyphenated slug: `d3d-elm-time-to-event-dsm`.
+
 `spec.py`, with `<slug>`, `<upstream>` and `<blocked>` substituted:
 
 ```python
