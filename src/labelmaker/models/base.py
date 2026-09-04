@@ -23,18 +23,98 @@ from ..features.store import FeatureArray
 from ..timebase import sample_at, window_mean
 
 #: Width of the boxcar the archive store's own build averaged over: two
-#: 25 ms grid steps. MEASURED in Task 12 (PTDATA `ip`, 8 random overlap
-#: shots) and confirmed in Task 15 on both the corpus and fdp paths (`ip`,
-#: `kappa`, `pinj_total`, `tinj_total`; see `validate`'s module docstring and
-#: the Task 15 report for the four-candidate scan): archive row k is the
-#: mean of the raw signal over `[STEP_S*(k-2), STEP_S*k]`, reproducing the
-#: archive to a median relative error of 3.9e-08, three to five orders of
-#: magnitude better than nearest-sample or any other window placement tried.
+#: 25 ms grid steps. MEASURED in Task 12 against raw PTDATA `ip` (8 random
+#: overlap shots): archive row k is the mean of the raw signal over
+#: `[STEP_S*(k-2), STEP_S*k]`, reproducing the RAW SIGNAL to a median
+#: relative error of 3.9e-08 (float32 round-trip precision) under this
+#: convention - three to five orders of magnitude better than nearest-sample
+#: or any other window placement tried against that raw signal.
+#:
+#: Task 15 independently confirmed the SAME window convention wins on the
+#: corpus and fdp paths (`ip`, `kappa`, `pinj_total`, `tinj_total`; see
+#: `validate`'s module docstring and the Task 15 report for the
+#: four-candidate scan) - but do not read 3.9e-08 as those paths' accuracy.
+#: That figure is Task 12's raw-PTDATA number only. Measured against the
+#: ARCHIVE column (not raw PTDATA) on the corpus and fdp paths, this
+#: convention beats the best alternative candidate by 11x to 232x and
+#: nearest-sample alone by 98x to 233x - ONE TO TWO orders of magnitude,
+#: never three or four - landing at 5.9e-4 to 1.4e-2 median relative error
+#: on corpus `pinj_total`/`tinj_total` and 9.9e-5 on fdp `ip`.
 #:
 #: This is a property of how the archive store was built, not of any one
 #: model's `dt_s`, so it is fixed at two grid steps rather than derived from
 #: a per-model value.
 ARCHIVE_WINDOW_S = 2 * ns.STEP_S
+
+#: ROW 0 AND COVERAGE, MEASURED (I7, Task 15 code review). Windowing
+#: introduces two things a bare nearest-sample convention did not have.
+#:
+#: (a) Row 0's validity is now source-dependent. The window at `t=0` is
+#: `[-ARCHIVE_WINDOW_S, 0)`, and whether that holds a sample depends on
+#: where the SOURCE record starts, not on the physics. MEASURED: the
+#: archive's own row 0 is a genuine finite reading, not NaN - `ip` on
+#: shots 183224/183225/183226 is -1175.8 A / 1717.6 A / -3726.1 A, a noisy
+#: near-zero pre-plasma baseline - because the raw PTDATA record it was
+#: built from starts well before t=0 (fdp's own fetch of `ip` on shot
+#: 185945 starts at t=-0.973 s), so upstream's window had real samples to
+#: average. The corpus' `pinj`/`tinj` records, by contrast, are clipped to
+#: start at EXACTLY t=0.0 s (measured on 10 of 10 random corpus shots), so
+#: the SAME window at row 0 finds nothing and `window_mean` correctly
+#: returns NaN, which `_validity` then correctly marks invalid. This is not
+#: a bug: it is the resolver-dependence this task set out to remove
+#: elsewhere in the record, surfacing at the one row of 240 the archive can
+#: answer from data no corpus-served channel has (an fdp-served field -
+#: PTDATA `ip`/`bt`, EFIT, ZIPFIT - generally does not have this problem,
+#: since its raw record also predates t=0).
+#:
+#: (b) Coverage. `timebase.window_mean` has no minimum-sample requirement -
+#: one finite sample in the window is enough to mark a row measured, where
+#: the old `sample_at(max_gap=dt/2)` convention returned NaN whenever the
+#: nearest sample was more than half a step away. MEASURED on a
+#: corpus-served 10 kHz channel (`pinj`, 8 random corpus shots, `n=960`
+#: rows): the interior of the record holds a median of exactly 500 samples
+#: per 50 ms window, as the sample rate predicts, and the only rows below
+#: that are the record's own edges - row 0 (0 samples, see (a) above) and
+#: row 1 (half the window, ~250 samples) - 4 of 960 sampled rows (0.4%),
+#: all at the very start of a shot. No row elsewhere in a shot was found
+#: under-covered, so no minimum-coverage guard is added here: the looser
+#: policy costs only the same edge rows (a) already accounts for, not an
+#: unbounded fraction of the record.
+
+
+def sample_by_resolver(
+    x: np.ndarray, y: np.ndarray, t: np.ndarray, resolver: str, dt_s: float
+) -> np.ndarray:
+    """Sample one stored array the way its resolver's convention prescribes.
+
+    Shared by `InputSpec.build` and `validate.reconstruction_fidelity`'s ECH
+    diagnostic (I5) so the two cannot drift apart on what "the right way to
+    read this resolver" means - both read `ns.SAMPLING_BY_SOURCE` rather than
+    each hand-coding the `resolver in (...)` test that this replaces.
+
+    `"window"` sources (corpus, fdp) get the archive's own 50 ms mean ending
+    at `t`; anything else - `"nearest"` (archive) and `"unknown"` (an
+    undeclared or future source, and every hand-built `FeatureArray` in the
+    test suite that omits `attrs`) - is read nearest-sample. Falling through
+    to nearest on `"unknown"` rather than raising is deliberate: raising here
+    would cost a whole shot, which the per-shot-isolation rule this module's
+    callers all honour forbids (see `validate.reconstruction_fidelity`'s
+    docstring). Always returns a 2-D `(channels, len(t))` array - `sample_at`
+    already does; `window_mean` is wrapped in `np.atleast_2d` because it
+    squeezes a single-channel result to 1-D, and skipping that wrapper would
+    let a scalar field's `vals[0]` silently index the first *timestep*
+    instead of the whole series.
+    """
+    convention = ns.SAMPLING_BY_SOURCE.get(resolver, "unknown")
+    if convention == "window":
+        return np.atleast_2d(window_mean(x, y, t - ARCHIVE_WINDOW_S, ARCHIVE_WINDOW_S))
+    # "nearest", and "unknown" as safe fallback. Half a step, not a whole
+    # one: it is the correct nearest-neighbour rule (a query is trustworthy
+    # only if a real sample lies within half a sampling interval), and a
+    # whole step puts the record-edge case exactly on the boundary - for a
+    # t+dt field on a 240-row 25 ms record the final query sits 0.025 s past
+    # the last sample, so `gap > dt_s` is decided by a 3.5e-16 float residue.
+    return sample_at(x, y, t, max_gap=dt_s / 2)
 
 
 def _nonpositive_to_zero(a: np.ndarray) -> np.ndarray:
@@ -286,54 +366,31 @@ class InputSpec:
             resolver = str(arr.attrs.get("resolver", "unknown"))
             resolvers[f.canonical] = resolver
             t = grid + self.dt_s if f.lag == "t+dt" else grid
-            if resolver in ("corpus", "fdp"):
-                # A corpus- or fdp-served field is a true-time, high-rate
-                # record, not yet the boxcar the model trained on. Turning it
-                # into the same 50 ms mean, ending exactly at `t`, is what
-                # makes it comparable to an archive-served field in the same
-                # row - MEASURED in Task 15 to beat nearest-sample and every
-                # other window placement by three to five orders of
-                # magnitude on both the corpus (`pinj_total`, `tinj_total`)
-                # and fdp (`ip`, `kappa`) paths; see the Task 15 report for
-                # the four-candidate scan. This is why sampling is keyed on
-                # the resolver rather than on the feature: the same canonical
-                # name means a different sampling rule depending on which
-                # source actually produced the stored array.
-                #
-                # A label stamped at `t` is therefore computed from an input
-                # window `[t - ARCHIVE_WINDOW_S, t)` - the label's timestamp
-                # trails its input window's centre by half that width. That
-                # is uniform across every source, causal, and matches what
-                # upstream trained on; it is not corrected here for the same
-                # reason `resolve_archive`'s own lag is not: doing so would
-                # move every archive-derived figure already published.
-                vals = np.atleast_2d(
-                    window_mean(arr.x, arr.y, t - ARCHIVE_WINDOW_S, ARCHIVE_WINDOW_S)
-                )
-            else:
-                # The archive's own row is ALREADY the 50 ms boxcar the
-                # model trained on (see `ARCHIVE_WINDOW_S`); reading it
-                # nearest-sample at its own stamp is what reproduces the
-                # training input exactly (see `validate.match_rows`, which
-                # aligns to 2.3e-7). Windowing it again would average an
-                # already-averaged signal a second time. An `"unknown"`
-                # resolver (every hand-built `FeatureArray` in this test
-                # suite that omits `attrs`) takes this branch too, matching
-                # this function's behaviour before Task 15: only a resolver
-                # this module can actually name as high-rate opts into
-                # windowing, so a fixture that says nothing about its
-                # provenance is never silently double-averaged.
-                #
-                # Half a step, not a whole one, for two reasons. It is the
-                # correct nearest-neighbour rule: a query is trustworthy only
-                # if a real sample lies within half a sampling interval. And
-                # a whole step puts the record-edge case exactly on the
-                # boundary - for a t+dt field on a 240-row 25 ms record the
-                # final query sits 0.025 s past the last sample, so
-                # `gap > dt_s` is decided by a 3.5e-16 float residue. It
-                # happens to fall the right way on this data; half a step
-                # clears it by 0.0125.
-                vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s / 2)
+            # Sampling is keyed on the resolver (`sample_by_resolver`, which
+            # reads `ns.SAMPLING_BY_SOURCE` - I5) rather than on the feature:
+            # the same canonical name means a different sampling rule
+            # depending on which source actually produced the stored array.
+            # A corpus- or fdp-served field is a true-time, high-rate record
+            # and gets windowed into the archive's own 50 ms mean ending at
+            # `t`; an archive-served field is read nearest-sample at its own
+            # stamp, since it is ALREADY that boxcar - windowing it again
+            # would average an already-averaged signal a second time (see
+            # `validate.match_rows`, which aligns the un-windowed archive
+            # path to 2.3e-7). MEASURED in Task 15, on the corpus
+            # (`pinj_total`, `tinj_total`) and fdp (`ip`, `kappa`) paths, to
+            # beat the best of three other candidates by 11x to 232x and
+            # nearest-sample alone by 98x to 233x - see `ARCHIVE_WINDOW_S`'s
+            # docstring for the corrected magnitude and the Task 15 report
+            # for the full four-candidate scan.
+            #
+            # A label stamped at `t` is therefore computed from an input
+            # window `[t - ARCHIVE_WINDOW_S, t)` for a windowed source - the
+            # label's timestamp trails its input window's centre by half
+            # that width. That is uniform across every source, causal, and
+            # matches what upstream trained on; it is not corrected here for
+            # the same reason `resolve_archive`'s own lag is not: doing so
+            # would move every archive-derived figure already published.
+            vals = sample_by_resolver(arr.x, arr.y, t, resolver, self.dt_s)
             v = vals[0] if f.kind == "scalar" else vals.T
             gap = ~np.isfinite(v)
             if f.transform is not None:

@@ -74,3 +74,19 @@ def test_source_preference_and_the_one_archive_only_feature():
     # ech_rho is the one feature with no second source: TORBEAM deposition
     # locations exist only as the archived column.
     assert ns.by_name("ech_rho").sources == ("archive",)
+
+
+def test_every_source_has_a_declared_sampling_convention():
+    """I5: `SAMPLING_BY_SOURCE` must be total over `ns.SOURCES`.
+
+    Before this, `models.base.InputSpec.build` tested `resolver in
+    ("corpus", "fdp")` directly - an opt-in against an open set, the same
+    shape commit 38b137b fixed for the correction/fill split. A fourth
+    source added to `SOURCES` without a matching entry here would silently
+    fall through `sample_by_resolver` to "nearest", which is wrong for any
+    future high-rate source and would misalign a shot by a full grid step
+    with no warning.
+    """
+    for source in ns.SOURCES:
+        assert source in ns.SAMPLING_BY_SOURCE, source
+        assert ns.SAMPLING_BY_SOURCE[source] in ("nearest", "window")

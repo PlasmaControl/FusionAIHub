@@ -40,9 +40,19 @@ corrected:
    scaling path, so it has to be settled before archive and non-archive
    features are combined in one row.
 
-Correcting it moves every archive-derived output, including the measurements
-the model card and the ECH validity rule already quote, so it is Task 15's
-call and not a drive-by fix. It also explains a set of inflated agreement
+Correcting it would move every archive-derived output, including the
+measurements the model card and the ECH validity rule already quote, so
+Task 15's fix is deliberately NOT here: `resolve_archive`'s own axis is
+untouched. Instead, `models.base.InputSpec.build` reconciles the offset at
+the point model inputs are assembled - a corpus- or fdp-served field is
+windowed into the archive's own 50 ms boxcar ending at `t`
+(`ARCHIVE_WINDOW_S`, keyed on resolver via `ns.SAMPLING_BY_SOURCE`), so an
+archive-served field and a non-archive one in the same row refer to the
+same physical interval once `build()` is done with them, without moving any
+number this module or the model card already publishes. See
+`models.base.ARCHIVE_WINDOW_S`'s docstring and the Task 15 report for the
+measurement that this convention wins by one to two orders of magnitude
+over every alternative tried. It also explains a set of inflated agreement
 figures that were in `namespace.py` before Task 12 re-measured them (r0
 8.8e-3 -> 7.9e-4, kappa 3.1e-3 -> 1.2e-3): they were taken without the lag
 correction.

@@ -31,6 +31,27 @@ GRID_S = STEP_S * np.arange(240, dtype=np.float64)
 KINDS = ("scalar", "profile")
 SOURCES = ("archive", "corpus", "fdp")
 
+#: How a stored array from each source must be sampled at model-input time
+#: (I5). An archive-served field is already the archive's own 50 ms boxcar
+#: (see `models.base.ARCHIVE_WINDOW_S`) and must be read nearest-sample at
+#: its own stamp - windowing it again would double-average it. A corpus- or
+#: fdp-served field is a true-time, high-rate record and must be turned into
+#: the SAME 50 ms mean to be comparable - MEASURED in Task 15 to beat every
+#: other convention by one to two orders of magnitude on both paths (see
+#: `pinj_total`'s notes below and the Task 15 report's four-candidate scan).
+#: `models.base.sample_by_resolver` and `validate`'s ECH diagnostic both read
+#: this dict rather than each hand-coding the rule, and
+#: `test_every_source_has_a_declared_sampling_convention` asserts every
+#: entry of `SOURCES` has one - the same shape commit 38b137b gave the
+#: correction/fill split, so a fourth source added to `SOURCES` cannot
+#: silently fall through to the wrong convention (or to no convention) the
+#: way an untotaled `resolver in (...)` check could.
+SAMPLING_BY_SOURCE: dict[str, str] = {
+    "archive": "nearest",
+    "corpus": "window",
+    "fdp": "window",
+}
+
 
 @dataclass(frozen=True)
 class FeatureSpec:
@@ -98,15 +119,23 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "archive's own 50ms-window-ending-at-t against the archive "
               "column over 8 RANDOM overlap shots (seed 42, both `pinj_total` "
               "and `tinj_total`): the archive convention's per-shot median "
-              "relative error ranges 5.9e-4 to 1.4e-2, against 1.5e-2 to 1.53 "
-              "for the best of the other three on the same shots - two to "
-              "four orders of magnitude better, never worse, on every one of "
-              "the 14 available shot/feature pairs. `models.base.build` now "
-              "samples any corpus- or fdp-resolved field with that "
-              "convention (`ARCHIVE_WINDOW_S`, per-resolver, not "
-              "per-feature) rather than nearest-sample; an archive-resolved "
-              "field is untouched. See `validate`'s module docstring and the "
-              "Task 15 report for the full table",
+              "relative error ranges 5.9e-4 to 1.4e-2, against 1.5e-2 to "
+              "1.17 for the best of the other three candidates on the same "
+              "row - 11x to 232x better (tightest at shot 190512 `tinj`: "
+              "0.001311 vs 0.014514; loosest at shot 190000 `pinj`), and "
+              "98x to 233x better than nearest-sample alone. That is ONE TO "
+              "TWO orders of magnitude, never three or four - an earlier "
+              "version of this note overstated the margin and also "
+              "misattributed nearest-sample's own worst value (1.532485, "
+              "shot 190308 `tinj`) to 'the best of the other three', whose "
+              "actual value on that row is window-back's 1.170076. "
+              "`models.base.build` (via `sample_by_resolver`) now samples "
+              "any corpus- or fdp-resolved field with the archive's "
+              "convention (`ARCHIVE_WINDOW_S`, per-resolver via "
+              "`SAMPLING_BY_SOURCE`, not per-feature) rather than "
+              "nearest-sample; an archive-resolved field is untouched. See "
+              "`validate`'s module docstring and the Task 15 report for the "
+              "full table",
     ),
     FeatureSpec(
         name="tinj_total", kind="scalar", units="N m",
