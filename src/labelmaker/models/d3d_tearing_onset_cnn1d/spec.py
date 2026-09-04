@@ -28,6 +28,7 @@ from ..base import (
     ModelAdapter,
     OutputField,
     OutputSpec,
+    UnknownWhenActive,
 )
 from ..runners import keras_h5
 
@@ -87,13 +88,23 @@ INPUT_SPEC = InputSpec(
         DomainRule("tritop", "value", lo=0.0, hi=1.0),
         DomainRule("tribot", "value", lo=0.0, hi=1.0),
         DomainRule("gapin", "value", hi=0.2),
-        # train.py:83's `x0[:, 10] >= 0` clause needs no rule here:
-        # `nonneg_zero_fill` on the field already maps every negative and NaN
-        # deposition location to 0.0, so a rule could never fire. Upstream
-        # dropped those rows; labelmaker relabels them 0, which IS the
-        # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
-        # median). Said here rather than left as dead code that looks live.
     ),
+    # `nonneg_zero_fill` reproduces the upstream ECH-off convention when the
+    # deposition location is absent, which MEASURED over 400 archive shots is
+    # 74.7% of its gaps. The other 26% are rows where ECH is injecting and
+    # nobody recorded where - 70.1% of all powered rows - and there the
+    # zero-fill would tell the model the power lands on axis. Upstream dropped
+    # those rows, so the model never saw that state. Flag them.
+    unknown_when_active=(
+        UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+    ),
+    # NOTE the removed clause, kept as a comment for the audit trail:
+    # train.py:83's `x0[:, 10] >= 0` needs no DomainRule here:
+    # `nonneg_zero_fill` on the field already maps every negative and NaN
+    # deposition location to 0.0, so a rule could never fire. Upstream
+    # dropped those rows; labelmaker relabels them 0, which IS the
+    # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
+    # median). Said here rather than left as dead code that looks live.
 )
 
 OUTPUT_SPEC = OutputSpec(

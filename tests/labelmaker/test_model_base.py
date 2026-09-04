@@ -12,6 +12,7 @@ from labelmaker.models.base import (
     InputSpec,
     OutputField,
     OutputSpec,
+    UnknownWhenActive,
 )
 
 GRID = 0.025 * np.arange(6)          # 0.000 .. 0.125 s
@@ -181,6 +182,57 @@ def test_a_profile_field_can_also_carry_the_t_plus_dt_lag():
     built = spec.build(feats, GRID)
     np.testing.assert_allclose(built.profiles[:, 0, 0], [0, 1, 2, 3, 4, 5])
     np.testing.assert_allclose(built.profiles[:, 0, 1], [1, 2, 3, 4, 5, 6])
+
+
+def test_an_unmeasured_input_is_flagged_only_when_its_partner_is_active():
+    # A gap in one input can be benign or a fabrication, and only a second
+    # field says which. Here `ech_rho` is never measured; the row survives
+    # while power is zero and is flagged once power flows.
+    spec = InputSpec(
+        fields=(
+            InputField("ech_pwr", "ech_power_total", transform="nonneg_zero_fill"),
+            InputField("rho", "ech_rho", transform="nonneg_zero_fill"),
+        ),
+        dt_s=0.025,
+        unknown_when_active=(
+            UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+        ),
+    )
+    t = 0.025 * np.arange(6)
+    power = np.array([0.0, 0.0, 0.0, 1.0e6, 1.0e6, 0.0])
+    feats = {
+        "ech_power_total": FeatureArray(x=t, y=power[None, :]),
+        "ech_rho": FeatureArray(x=t, y=np.full((1, 6), np.nan)),
+    }
+    built = spec.build(feats, t)
+    # the zero-fill still happens - the model gets 0.0 either way
+    np.testing.assert_allclose(built.scalars[:, 1], 0.0)
+    # but the two powered steps are no longer claimed as trustworthy
+    assert built.valid.tolist() == [True, True, True, False, False, True]
+
+
+def test_a_measured_input_is_never_flagged_by_the_pair_rule():
+    spec = InputSpec(
+        fields=(
+            InputField("ech_pwr", "ech_power_total", transform="nonneg_zero_fill"),
+            InputField("rho", "ech_rho", transform="nonneg_zero_fill"),
+        ),
+        dt_s=0.025,
+        unknown_when_active=(
+            UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+        ),
+    )
+    t = 0.025 * np.arange(4)
+    feats = {
+        "ech_power_total": FeatureArray(x=t, y=np.full((1, 4), 1.0e6)),
+        "ech_rho": FeatureArray(x=t, y=np.full((1, 4), 0.35)),
+    }
+    assert spec.build(feats, t).valid.all()
+
+
+def test_a_pair_rule_naming_an_unknown_feature_is_rejected():
+    with pytest.raises(KeyError):
+        UnknownWhenActive(unknown="no_such_feature", active="ech_power_total")
 
 
 def test_a_domain_rule_whose_stat_mismatches_the_field_kind_is_rejected():

@@ -86,8 +86,11 @@ labelmaker:
       and csaps fits; measured 2.0e-1 (ne), 1.8e-1 (Te), 1.7e-1 (rotation)
       median relative difference, correlation 0.98-0.99"
     - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81)"
-    - "a missing EC.RHO_ECH becomes 0, which the training filter admitted;
-      validation reports how often that happens while ECH power is non-zero"
+    - "a missing EC.RHO_ECH becomes 0, the upstream ECH-off convention.
+      Measured over 400 archive shots: 74.7% of its gaps are genuinely
+      ECH-off, but 70.1% of ECH-POWERED rows also lack it, and those rows
+      are flagged invalid rather than fed a fabricated on-axis location -
+      upstream dropped them, so the model never trained on that state"
     - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
       equality with TensorFlow is checked to 1e-5 in validation"
 ---
