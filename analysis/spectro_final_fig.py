@@ -540,12 +540,17 @@ def hf_references(X: np.ndarray, cfg, smooth: int = 5) -> Dict[str, float]:
                    -- measured 0.015 on co2. An arm below this has learned nothing the grid
                    did not already imply.
     """
-    gt = gate._hf_gradient_energy(X.astype(np.float64))
-    return {
-        "hf_tsmooth": gate._hf_gradient_energy(tsmooth_oracle(X, smooth)) / max(gt, 1e-12),
-        "hf_patchmean": gate._hf_gradient_energy(
-            patchmean_oracle(X, cfg.patch_f, cfg.patch_t).astype(np.float64)) / max(gt, 1e-12),
-    }
+    # CHUNKED over windows (see _hf_chunked): both oracles are full-size arrays, and at 40
+    # channels a float64 copy of a 320-window pool is 5 GB before the metric's temporaries.
+    gt = 0.0
+    ts = pm = 0.0
+    for i in range(0, X.shape[0], _CHUNK):
+        c = X[i:i + _CHUNK]
+        gt += gate._hf_gradient_energy(c.astype(np.float64))
+        ts += gate._hf_gradient_energy(tsmooth_oracle(c, smooth))
+        pm += gate._hf_gradient_energy(
+            patchmean_oracle(c, cfg.patch_f, cfg.patch_t).astype(np.float64))
+    return {"hf_tsmooth": ts / max(gt, 1e-12), "hf_patchmean": pm / max(gt, 1e-12)}
 
 
 def print_table(rows: List[Dict], floor: Optional[float] = None,
