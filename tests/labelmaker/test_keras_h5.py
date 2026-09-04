@@ -60,8 +60,12 @@ def _sigmoid(x):
 
 def test_dense_with_sigmoid_matches_hand_computation(tmp_path):
     p = tmp_path / "m.h5"
+    # Every value here is an exact binary fraction, so the float32 round trip
+    # through the HDF5 is lossless and rtol=1e-12 tests the arithmetic rather
+    # than the storage. 0.1 would not be: float32(0.1) differs from
+    # float64(0.1) by ~1.5e-9 relative.
     kernel = np.array([[1.0, -2.0], [0.5, 0.25], [0.0, 3.0]])
-    bias = np.array([0.1, -0.1])
+    bias = np.array([0.25, -0.5])
     _write_legacy_h5(
         p,
         [
@@ -230,22 +234,47 @@ pytestmark_upstream = pytest.mark.skipif(
 
 
 @pytestmark_upstream
+def test_real_ensemble_members_have_different_layer_names():
+    # MEASURED: all ten members were built in one Keras session, so the
+    # global name counter ran on - inputs are input_1/input_2 for member 0,
+    # input_3/input_4 for member 1, through input_19/input_20 for member 9,
+    # and the outputs are dense_4, dense_9, ... dense_49. Only the
+    # POSITIONAL order is common, which is why an ensemble is fed a
+    # sequence and never a dict keyed on one member's names.
+    graphs = load_ensemble(sorted(TM_UPSTREAM.glob("best_model_?_4c.h5")))
+    assert len({g.input_names for g in graphs}) == 10
+    assert len({g.output_names for g in graphs}) == 10
+    for g in graphs:
+        assert len(g.input_names) == 2 and len(g.output_names) == 1
+        assert [g.input_shapes[n] for n in g.input_names] == [
+            (None, 11), (None, 33, 5)
+        ]
+
+
+@pytestmark_upstream
 def test_real_tearing_ensemble_loads_and_predicts():
     paths = sorted(TM_UPSTREAM.glob("best_model_?_4c.h5"))
     assert len(paths) == 10
     graphs = load_ensemble(paths)
-    for g in graphs:
-        assert g.input_names == ("input_1", "input_2")
-        assert g.input_shapes["input_1"] == (None, 11)
-        assert g.input_shapes["input_2"] == (None, 33, 5)
-        assert g.output_names == ("dense_4",)
     rng = np.random.default_rng(0)
     x0 = rng.normal(size=(7, 11))
     x1 = rng.normal(size=(7, 33, 5))
-    members = predict_members(graphs, {"input_1": x0, "input_2": x1})
+    members = predict_members(graphs, [x0, x1])       # positional, per above
     assert members.shape == (10, 7, 2)
     assert np.isfinite(members).all()
     # the members are different models, not ten copies
     assert members.std(axis=0).max() > 1e-6
-    again = predict_members(graphs, {"input_1": x0, "input_2": x1})
-    np.testing.assert_allclose(members, again)
+    np.testing.assert_allclose(members, predict_members(graphs, [x0, x1]))
+
+
+@pytestmark_upstream
+def test_feeding_an_ensemble_by_name_fails_loudly():
+    # The trap this guards: a dict keyed on member 0's names fits member 0
+    # and raises for the other nine, rather than quietly mispredicting.
+    graphs = load_ensemble(sorted(TM_UPSTREAM.glob("best_model_?_4c.h5")))
+    rng = np.random.default_rng(0)
+    feed = {"input_1": rng.normal(size=(3, 11)),
+            "input_2": rng.normal(size=(3, 33, 5))}
+    graphs[0](feed)                                    # member 0 is fine
+    with pytest.raises(ValueError, match="missing input"):
+        graphs[1](feed)

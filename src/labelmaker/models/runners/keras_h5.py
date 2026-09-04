@@ -237,6 +237,13 @@ def load_ensemble(paths) -> tuple[KerasGraph, ...]:
 def predict_members(graphs, inputs) -> np.ndarray:
     """`(n_members, n_rows, n_out)` for single-output graphs.
 
+    Pass `inputs` as a SEQUENCE, not a dict. Members trained in one Keras
+    session carry different layer names - this project's tearing ensemble
+    runs input_1/input_2 through input_19/input_20, with outputs dense_4
+    through dense_49 - so only the positional order is common across
+    members. A dict keyed on one member's names fits that member and raises
+    for the rest.
+
     Statistics across members are the caller's business: the label store
     keeps the mean as the label and the min/max as its spread.
     """
