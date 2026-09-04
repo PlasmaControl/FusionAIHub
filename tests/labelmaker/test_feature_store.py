@@ -87,6 +87,17 @@ def test_write_is_atomic_and_leaves_no_temp_file(tmp_path):
     assert list(tmp_path.iterdir()) == [p]
 
 
+def test_a_failed_write_leaves_no_temp_file(tmp_path):
+    # An attrs value h5py cannot serialise raises after the temp file is open,
+    # which is the only case that matters: nothing else would ever remove it,
+    # and over 16,909 shots that is a slow leak of files nobody recognises.
+    p = tmp_path / "190000_features.h5"
+    bad = FeatureArray(x=np.zeros(3), y=np.zeros((1, 3)), attrs={"nested": {"a": 1}})
+    with pytest.raises(TypeError):
+        write_features(p, 190000, {"ip": bad}, {})
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_is_complete_needs_every_name_present_or_missing(tmp_path):
     p = tmp_path / "190000_features.h5"
     assert not is_complete(p, ["ip"])          # no file yet

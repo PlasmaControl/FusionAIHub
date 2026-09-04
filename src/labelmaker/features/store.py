@@ -17,7 +17,7 @@ import h5py
 import numpy as np
 
 from .. import __version__
-from ..config import git_sha
+from ..config import atomic_path, git_sha
 from . import namespace as ns
 
 MISSING_ATTR = "missing"
@@ -75,7 +75,6 @@ def write_features(
     and `missing` dicts are never mutated.
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     arrays, missing = dict(arrays), dict(missing)
     if merge:
         kept, kept_missing = _load_all(path)
@@ -100,8 +99,7 @@ def write_features(
         missing[name] = f"OneSampleAmbiguous({arrays[name].y.shape[-1]})"
         del arrays[name]
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    tmp = path.with_name(path.name + ".tmp")
-    with h5py.File(tmp, "w") as f:
+    with atomic_path(path) as tmp, h5py.File(tmp, "w") as f:
         f.attrs["shot"] = int(shot)
         f.attrs["labelmaker_version"] = __version__
         f.attrs["git_sha"] = git_sha()
@@ -123,7 +121,6 @@ def write_features(
             g.attrs["units"] = spec.units
             if spec.kind == "profile" and np.shape(arr.y)[0] == ns.RHO_GRID.size:
                 g.create_dataset("rho", data=ns.RHO_GRID)
-    tmp.replace(path)
 
 
 def read_feature(path, name: str) -> FeatureArray:
