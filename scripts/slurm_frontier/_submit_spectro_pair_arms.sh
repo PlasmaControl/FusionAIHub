@@ -73,18 +73,24 @@ for M in ${MODS}; do
     # and --mask_missing already excludes the dead (channel, frame) cells inside the loss. So
     # ece runs masked-but-unfiltered rather than burning a leg on a cold scan.
     MSK="--mask_missing"
-    # co2 is safe WITHOUT its own sidecar: it has had whole-shot presence filtering via
-    # _PRESENCE_FILTER_SIGNALS since July, so `codec_co2_lengths.pt` was itself built from the
-    # filtered path list and the presence run HITS it. MEASURED (job 5416277, 2026-09-03): the
-    # 7 presence-filtered co2 arms launched 21:06 and wrote gate_0 at 21:08 / gate_1000 at
-    # 21:11, and the only "Computing file lengths" in the log is 16 files (the eval split).
-    case "${M}" in co2) MSK="${MSK} --spectro_presence any" ;; *)
-        if [ -f "/lustre/orion/fus187/proj-shared/foundation_model_meta/codec_${M}_presence_lengths.pt" ]; then
-            MSK="${MSK} --spectro_presence any"
-        else
-            echo "[submit] ${M}: no warm codec_${M}_presence_lengths.pt -> masked but UNFILTERED" >&2
-        fi ;;
-    esac
+    # CORRECTION 2026-09-04: co2 is NOT exempt. It looked exempt because job 5416277 wrote
+    # gate_0 two minutes after launch with --spectro_presence any and no co2 sidecar -- its
+    # 4789-shot filtered list happened to match what was cached. But the list DRIFTS: job
+    # 5420031 resolved 4787 shots (the liveness/presence caches moved by 2 shots), the stored
+    # path list no longer matched, and both co2 arms sat for 40+ minutes with an EMPTY output
+    # directory, cold-scanning 4787 files at ~0.77 s each. A shot-count coincidence is not an
+    # exemption. The rule is now uniform: presence needs its own sidecar, and
+    # `--build_presence_lengths` derives one in seconds by subsetting the unfiltered cache.
+    if [ -f "/lustre/orion/fus187/proj-shared/foundation_model_meta/codec_${M}_presence_lengths.pt" ]; then
+        MSK="${MSK} --spectro_presence any"
+    else
+        echo "[submit] ${M}: no warm codec_${M}_presence_lengths.pt -> masked but UNFILTERED." >&2
+        echo "[submit]   build one first (seconds, no HDF5 scan):" >&2
+        echo "[submit]   python -m tokamak_foundation_model.ignite.train_codec --modality ${M} \\" >&2
+        echo "[submit]     --n_shots 9000 --eval_n_shots 16 --spectro_presence any \\" >&2
+        echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
+        echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
+    fi
     if [ "${SWEEP}" = "advbest" ]; then
         # THE MEASURED RECIPE. Screened on the login GPU with
         # analysis/probe_spectro_objective.py (decoder-only, codes FROZEN so every arm sees the
