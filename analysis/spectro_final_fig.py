@@ -15,6 +15,35 @@ so no arm has seen them):
   --mode figure   The deliverable figure: GT vs reconstruction across a whole shot over the
                   FULL 0-250 kHz band, missing data left as GAPS (never filled), % data
                   coverage per panel, and per-panel metrics so each panel stands alone.
+                  ``--band_khz lo,hi`` zooms the frequency axis onto the coherent-mode band
+                  (see --mode structure): at the full 0-250 kHz a mode line 1-2 bins wide is
+                  ONE PIXEL, so the full-band panel cannot show whether tracks were resolved
+                  and a codec is judged "smooth" by rendering artefact.
+
+  --mode structure  WHERE THE MODE STRUCTURE IS, and how much of it each arm reproduces.
+                  Added 2026-09-04 because the arm table cannot answer the question the
+                  codecs are FOR. These feed a world model that predicts how modes EVOLVE, so
+                  ``spec_nrmse`` is a floor (its exact minimiser is the blur) and ~tmean --
+                  the time-AVERAGED spectrum -- is not a target at all: it has zero temporal
+                  structure by construction, so an arm converging on it has thrown away
+                  exactly the signal the world model needs. Reports, per frequency band:
+
+                    ac1        the GT's lag-1 autocorrelation along the STFT-frame axis.
+                               ~0 = the band is realization speckle no codec can reproduce;
+                               high = a temporally coherent (predictable) band, i.e. modes.
+                    coh_frac   var(GT smoothed over `smooth` frames) / var(GT). The share of
+                               the band's variance that is coherent rather than speckle.
+                    hf_gt/arm  HF gradient energy of GT and of each arm, so "sharpness" is
+                               read where the modes actually are instead of pooled over a
+                               band that is 80% noise.
+
+                  Plus two ORACLES that bound the token grid itself:
+                    patchmean  the exact per-(channel, patch_f x patch_t) mean. This is the
+                               most a codec can say if a token carries only its patch's
+                               level. If mode tracks are already invisible here, the blocker
+                               is the PATCH GRID (and therefore FRAME_LAYOUT), not the codec.
+                    tsmooth    GT smoothed along time. The ceiling for any predictor that
+                               cannot reproduce speckle.
 
 MASKING. Every statistic -- mean, std, RMSE, correlation, and each baseline's OWN mean -- is
 taken over valid samples only, via ``data.spectro_frame_mask`` and the ``mask=`` argument of
@@ -183,6 +212,186 @@ def masked_std_ratio(recon: np.ndarray, target: np.ndarray, mask: Optional[np.nd
     return float((rs[ok] / ts[ok]).mean()) if ok.any() else float("nan")
 
 
+def _boxcar_last(x: np.ndarray, k: int, mode: str = "valid") -> np.ndarray:
+    """Vectorized k-tap boxcar moving average along the LAST axis, via a cumulative sum.
+
+    ``np.apply_along_axis(np.convolve, ...)`` here means ~650k independent 96-sample
+    convolutions in Python for one modality's pool, which takes minutes; the cumsum form is
+    one pass. ``mode="valid"`` returns ``T - k + 1`` samples (used for the variance ratio);
+    ``mode="same"`` edge-pads first and returns ``T`` (used by the smoothing oracle, so it
+    stays shape-compatible with the target).
+    """
+    if k <= 1:
+        return x
+    if mode == "same":
+        pad = k // 2
+        x = np.pad(x, [(0, 0)] * (x.ndim - 1) + [(pad, k - 1 - pad)], mode="edge")
+    c = np.cumsum(x, axis=-1, dtype=np.float64)
+    head = c[..., k - 1:]
+    tail = np.concatenate([np.zeros(c.shape[:-1] + (1,)), c[..., :-k]], axis=-1)
+    return (head - tail) / float(k)
+
+
+def bin_to_khz(cfg, b: int) -> float:
+    """STFT bin index -> kHz. Bin width is STFT_FS / stft_n_fft (488 Hz at 500 kHz / 1024)."""
+    return float(b) * (STFT_FS / float(getattr(cfg, "stft_n_fft", 1024))) / 1e3
+
+
+def khz_to_bin(cfg, khz: float) -> int:
+    return int(round(khz * 1e3 / (STFT_FS / float(getattr(cfg, "stft_n_fft", 1024)))))
+
+
+def _masked_bct(mask: Optional[np.ndarray], shape):
+    """(B, C, T) bool from a (B,C,T) mask, or None when everything is valid."""
+    if mask is None:
+        return None
+    m = np.asarray(mask) > 0.5
+    return None if m.all() else m
+
+
+def band_structure(X: np.ndarray, M: Optional[np.ndarray], n_bands: int = 16,
+                   smooth: int = 5) -> List[Dict]:
+    """Per-frequency-band temporal-coherence profile of the GROUND TRUTH.
+
+    ``X`` is (B, C, F, T). For each band of ``F // n_bands`` bins, over VALID (b, c, t) only:
+
+      ac1       lag-1 autocorrelation along T of the per-(b, c, f) mean-removed series,
+                pooled over (b, c, f) as sum(x_t x_{t+1}) / sum(x_t^2). This is the same
+                estimator the spectrogram trend/noise audit used; it separates a coherent
+                band (ac1 -> 1) from realization speckle (ac1 -> 0).
+      coh_frac  var of the ``smooth``-frame moving average / var of the band. The share of
+                the band's variance that survives low-passing in TIME, i.e. the share a
+                codec could even in principle carry.
+      std       the band's own std (so a band with ac1 ~ 1 but no amplitude is not mistaken
+                for the signal).
+    """
+    B, C, F, T = X.shape
+    step = max(1, F // n_bands)
+    valid = _masked_bct(M, X.shape)
+    out: List[Dict] = []
+    k = int(smooth)
+    for b0 in range(0, F, step):
+        b1 = min(F, b0 + step)
+        x = X[:, :, b0:b1, :].astype(np.float64)                     # (B, C, f, T)
+        if valid is not None:
+            # A window/channel with ANY invalid frame is dropped whole: the ac1 and the
+            # moving average both need CONSECUTIVE frames, and gathering a subset of frames
+            # would splice non-adjacent times into an autocorrelation.
+            keep = valid.all(axis=2)                                  # (B, C)
+            if not keep.any():
+                continue
+            x = x[keep]                                               # (n, f, T)
+        else:
+            x = x.reshape(B * C, b1 - b0, T)
+        x = x - x.mean(axis=-1, keepdims=True)
+        num = float((x[..., :-1] * x[..., 1:]).sum())
+        den = float((x * x).sum())
+        ac1 = num / den if den > 0 else float("nan")
+        if k > 1 and T >= k:
+            xs = _boxcar_last(x, k, mode="valid")
+            coh = float((xs * xs).mean()) / (float((x * x).mean()) or float("nan"))
+        else:
+            coh = float("nan")
+        out.append({"b0": b0, "b1": b1, "ac1": ac1, "coh_frac": coh,
+                    "std": float(np.sqrt(den / max(x.size, 1)))})
+    return out
+
+
+def patchmean_oracle(X: np.ndarray, patch_f: int, patch_t: int) -> np.ndarray:
+    """The EXACT per-(channel, patch) mean, broadcast back — the token grid's own ceiling.
+
+    A codec token owns one (patch_f x patch_t) patch across all channels. This predictor is
+    handed that patch's exact mean for FREE, per channel, at infinite precision. Anything a
+    real codec resolves INSIDE a patch it must synthesise; anything invisible here is
+    invisible to any codec on this grid, which makes ``patch_f`` / ``patch_t`` (and therefore
+    FRAME_LAYOUT) the blocker rather than the objective.
+    """
+    B, C, F, T = X.shape
+    nf, nt = F // patch_f, T // patch_t
+    x = X[:, :, : nf * patch_f, : nt * patch_t]
+    m = x.reshape(B, C, nf, patch_f, nt, patch_t).mean(axis=(3, 5), keepdims=True)
+    out = np.broadcast_to(m, (B, C, nf, patch_f, nt, patch_t)).reshape(
+        B, C, nf * patch_f, nt * patch_t)
+    if out.shape != X.shape:                     # pad the cropped tail with the edge patch
+        full = X.copy()
+        full[:, :, : out.shape[2], : out.shape[3]] = out
+        return full
+    return np.ascontiguousarray(out)
+
+
+def tsmooth_oracle(X: np.ndarray, k: int = 5) -> np.ndarray:
+    """GT low-passed along TIME with a k-frame boxcar — the no-speckle ceiling."""
+    return _boxcar_last(X.astype(np.float64), k, mode="same")
+
+
+def band_slices(cfg, F: int, bands_khz: List[tuple]) -> List[tuple]:
+    """[(name, b0, b1)] for the requested kHz windows, clipped to F."""
+    out = []
+    for lo, hi in bands_khz:
+        b0 = max(0, khz_to_bin(cfg, lo))
+        b1 = min(F, max(b0 + 1, khz_to_bin(cfg, hi)))
+        out.append((f"{lo:g}-{hi:g}kHz", b0, b1))
+    return out
+
+
+def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
+                     arms: List[tuple], device="cpu", batch: int = 8,
+                     n_bands: int = 16, smooth: int = 5,
+                     bands_khz: Optional[List[tuple]] = None) -> Dict:
+    """Print the GT coherence profile, the two oracles, and each arm's per-band sharpness."""
+    B, C, F, T = X.shape
+    print(f"\n=== {modality}: WHERE THE MODE STRUCTURE IS  ({B} held-out windows, "
+          f"{C} ch, {F} bins x {T} frames, bin {bin_to_khz(cfg, 1) * 1e3:.0f} Hz) ===")
+    prof = band_structure(X, M, n_bands=n_bands, smooth=smooth)
+    print(f"{'band (kHz)':>16}{'GT std':>9}{'ac1':>8}{'coh_frac':>10}   "
+          f"(ac1 ~ 0 = realization speckle; high = temporally coherent = MODES)")
+    for r in prof:
+        print(f"{bin_to_khz(cfg, r['b0']):7.1f}-{bin_to_khz(cfg, r['b1']):6.1f}"
+              f"{r['std']:>9.3f}{r['ac1']:>8.3f}{r['coh_frac']:>10.3f}")
+
+    # ORACLES + arms, scored on the FULL band and on each requested sub-band.
+    bands = [("full", 0, F)] + (band_slices(cfg, F, bands_khz) if bands_khz else [])
+    preds: List[tuple] = [
+        ("patchmean", patchmean_oracle(X, cfg.patch_f, cfg.patch_t)),
+        (f"tsmooth{smooth}", tsmooth_oracle(X, smooth)),
+    ]
+    for label, ckpt in arms:
+        if not Path(ckpt).exists():
+            print(f"  SKIP {label}: {ckpt} missing")
+            continue
+        codec, ccfg, _ck = load_codec(ckpt, device=device)
+        r, _c = reconstruct(codec, X, batch=batch, device=device)
+        preds.append((label, r))
+        del codec
+
+    print(f"\n{'predictor':<18}" + "".join(
+        f"{nm + ' hf':>16}{nm + ' nRMSE':>17}" for nm, _a, _b in bands))
+    gt_line = f"{'GROUND TRUTH':<18}"
+    for _nm, b0, b1 in bands:
+        g = X[:, :, b0:b1, :]
+        gt_line += f"{gate._hf_gradient_energy(g.astype(np.float64)):>16.4g}{0.0:>17.4f}"
+    print(gt_line)
+    rows = []
+    for label, r in preds:
+        line = f"{label:<18}"
+        rec = {"label": label}
+        for nm, b0, b1 in bands:
+            g = X[:, :, b0:b1, :].astype(np.float64)
+            rr = r[:, :, b0:b1, :].astype(np.float64)
+            hf = gate._hf_gradient_energy(rr) / max(gate._hf_gradient_energy(g), 1e-12)
+            met = gate.full_spectro_metrics(rr, g, band_bins=None, mask=M)
+            line += f"{hf:>16.3f}{met['spec_nrmse']:>17.4f}"
+            rec[f"{nm}_hf_ratio"] = hf
+            rec[f"{nm}_nrmse"] = met["spec_nrmse"]
+            rec[f"{nm}_corr2d"] = met["spec_corr2d"]
+        print(line)
+        rows.append(rec)
+    print("\n  hf here is recon HF-gradient energy / GT HF-gradient energy IN THAT BAND "
+          "(ideal 1.0). nRMSE is a FLOOR (< 1.0), never the ranking key.")
+    return {"bands_profile": prof, "rows": rows,
+            "bands": [{"name": nm, "b0": b0, "b1": b1} for nm, b0, b1 in bands]}
+
+
 def score_arm(label: str, ckpt: str, X: np.ndarray, M: np.ndarray, seq: Optional[np.ndarray],
               device="cpu", batch: int = 8) -> Dict:
     codec, cfg, ck = load_codec(ckpt, device=device)
@@ -287,14 +496,25 @@ def build_panels(modality: str, ckpt: str, shot: str, channels: List[int], devic
 
 
 def make_figure(out_png: str, modality: str, shot: str, X, M, recon, cfg, times,
-                channels: List[int], title: str):
+                channels: List[int], title: str, band_khz: Optional[tuple] = None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     N, C, F, T = X.shape
-    khz = (STFT_FS / cfg.stft_n_fft) / 1e3 * F / 1e3           # MHz -> label helper
-    fmax_khz = (STFT_FS / cfg.stft_n_fft) * F / 1e3
+    # FREQUENCY ZOOM. At the full 0-250 kHz a coherent mode line 1-2 STFT bins wide occupies
+    # well under one screen pixel, so a full-band panel cannot distinguish "resolved several
+    # mode lines" from "painted one smooth band" -- the exact discrimination this figure is
+    # the deliverable for. `band_khz` crops BOTH rows to the same window (see --mode
+    # structure for where each modality's coherent band is). None = the full band, unchanged.
+    f0, f1 = 0, F
+    if band_khz is not None:
+        f0 = max(0, khz_to_bin(cfg, band_khz[0]))
+        f1 = min(F, max(f0 + 1, khz_to_bin(cfg, band_khz[1])))
+        X, recon = X[:, :, f0:f1, :], recon[:, :, f0:f1, :]
+    fmin_khz = bin_to_khz(cfg, f0)
+    fmax_khz = bin_to_khz(cfg, f1)
+    F = X.shape[2]
     # Stitch the per-window (F, T) tiles into one (F, N*T) shot-long spectrogram per channel.
     n_ch = len(channels)
     fig = plt.figure(figsize=(19, 3.5 * n_ch))
@@ -323,14 +543,14 @@ def make_figure(out_png: str, modality: str, shot: str, X, M, recon, cfg, times,
                  f"{modality}  shot {shot}  channel {c}   |   data coverage {cov:5.1f}% "
                  f"(grey = NO DATA, never filled)   |   nRMSE {nr:.3f}   "
                  f"std(recon)/std(GT) {sr:.3f}   corr {cc:.3f}   |   "
-                 f"0-{fmax_khz:.0f} kHz, {N} windows x {T} STFT frames",
+                 f"{fmin_khz:.0f}-{fmax_khz:.0f} kHz, {N} windows x {T} STFT frames",
                  fontsize=9, family="monospace", ha="left", va="center")
         for row, img, tag in ((1, gtm, "GT"), (2, rcm, "recon")):
             ax = fig.add_subplot(sub[row])
             ax.set_facecolor("0.85")                                    # the GAP colour
             ax.imshow(img, aspect="auto", origin="lower", cmap="inferno",
                       vmin=vmin, vmax=vmax, interpolation="nearest",
-                      extent=[times[0], times[-1] + T * 0.0005, 0.0, fmax_khz])
+                      extent=[times[0], times[-1] + T * 0.0005, fmin_khz, fmax_khz])
             ax.set_ylabel(f"{tag}\nkHz", fontsize=8)
             ax.tick_params(labelsize=7)
             if row == 1:
@@ -346,7 +566,7 @@ def make_figure(out_png: str, modality: str, shot: str, X, M, recon, cfg, times,
 # ------------------------------------------------------------------------------------ #
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--mode", choices=["score", "figure"], required=True)
+    ap.add_argument("--mode", choices=["score", "figure", "structure"], required=True)
     ap.add_argument("--modality", required=True, choices=list(tc.SPECTRO_MODALITIES))
     ap.add_argument("--arms", default="", help="label=ckpt,label=ckpt,...")
     ap.add_argument("--eval_n_shots", type=int, default=16)
@@ -364,6 +584,16 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--title", default=None)
+    ap.add_argument("--band_khz", default=None,
+                    help="--mode figure: 'lo,hi' frequency zoom in kHz (default full band). "
+                         "A 1-2 bin mode line is invisible at 0-250 kHz.")
+    ap.add_argument("--bands_khz", default=None,
+                    help="--mode structure: 'lo-hi,lo-hi,...' sub-bands to score separately, "
+                         "on top of the always-reported full band.")
+    ap.add_argument("--n_bands", type=int, default=16,
+                    help="--mode structure: equal-width bands for the GT ac1 profile.")
+    ap.add_argument("--smooth", type=int, default=5,
+                    help="--mode structure: frames in the time-smoothing oracle / coh_frac.")
     args = ap.parse_args()
 
     specs = []
@@ -379,6 +609,26 @@ def main():
     shots = held_out_shots(args.modality, args.eval_n_shots)
     print(f"[{args.modality}] held-out shots: {shots}", flush=True)
 
+    if args.mode == "structure":
+        _c0, cfg0 = load_codec(specs[0][1], device="cpu")[:2]
+        X, M = window_pool(args.modality, cfg0, shots, args.n_windows)
+        print(f"[{args.modality}] structure on {X.shape[0]} held-out windows {X.shape[1:]}; "
+              f"real-data fraction {float((M > 0.5).mean()):.4f}", flush=True)
+        bands = None
+        if args.bands_khz:
+            bands = []
+            for tok in args.bands_khz.split(","):
+                lo, _, hi = tok.strip().partition("-")
+                bands.append((float(lo), float(hi)))
+        rep = structure_report(args.modality, X, M, cfg0, specs, device=args.device,
+                               batch=args.batch_size, n_bands=args.n_bands,
+                               smooth=args.smooth, bands_khz=bands)
+        if args.json:
+            Path(args.json).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.json).write_text(json.dumps(rep, indent=1, default=float))
+            print("wrote", args.json)
+        return
+
     if args.mode == "figure":
         shot = args.fig_shot or shots[0]
         chans = [int(c) for c in args.channels.split(",") if c.strip()]
@@ -387,9 +637,16 @@ def main():
             args.modality, ckpt, shot, chans, device=args.device,
             max_windows=args.max_windows)
         out = args.out or f"eval_runs/codec_recon_figs/{args.modality}_FINAL_fullshot.png"
-        title = args.title or (f"IGNITE {args.modality} spectrogram codec [{label}] - "
-                               f"GT vs reconstruction, full 0-250 kHz, gaps never filled")
-        make_figure(out, args.modality, shot, X, M, recon, cfg, times, chans, title)
+        bk = None
+        if args.band_khz:
+            lo, _, hi = args.band_khz.partition(",")
+            bk = (float(lo), float(hi))
+        title = args.title or (
+            f"IGNITE {args.modality} spectrogram codec [{label}] - GT vs reconstruction, "
+            + (f"{bk[0]:g}-{bk[1]:g} kHz zoom" if bk else "full 0-250 kHz")
+            + ", gaps never filled")
+        make_figure(out, args.modality, shot, X, M, recon, cfg, times, chans, title,
+                    band_khz=bk)
         return
 
     # --mode score

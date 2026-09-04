@@ -420,6 +420,68 @@ class SpectroCodecConfig:
     min_activity: float = 0.0       # per-window activity threshold (log-power std); 0 = OFF
     active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
 
+    # --- ENVELOPE / SHAPE SPLIT ("gain-shape", spectro port of the fast-TS fix) --------- #
+    # THE PROBLEM IT ATTACKS is amplitude collapse, i.e. the flat plate. Every term in the
+    # 2026-09-03 recipe except ms_ssim is an L-p distance, and the exact minimiser of an L-p
+    # distance is the CONDITIONAL MEAN -- so a decoder that emits each window's smooth
+    # time-average scores well while reproducing no temporal structure at all. Measured:
+    # mirnov ctl_s1 std(recon)/std(GT) 0.282 and 0.151 on two channels, hf_ratio 0.008;
+    # bes_ctl_last 0.278; co2 ctl 0.613. These codecs feed a world model whose job is
+    # predicting how MODES EVOLVE, so that failure is total regardless of nRMSE.
+    #
+    # THE DECOMPOSITION. With gain_shape ON, the leading ``gain_tokens`` tokens carry the
+    # per-(channel, frequency) TIME statistics of the window and the remaining
+    # ``n_tok - gain_tokens`` carry a NORMALIZED shape:
+    #
+    #     level (B,C,F) = x.mean(-1)                     the static envelope
+    #     sigma (B,C,F) = (x - level).std(-1)            the TEMPORAL amplitude per freq bin
+    #     shape (B,C,F,T) = (x - level) / sigma          zero-mean, unit-std along T
+    #
+    # and the decoder rebuilds ``recon = level_hat + sigma_hat * shape_hat`` with shape_hat
+    # mean-removed AND std-normalized along T inside the decoder. Two things then hold BY
+    # CONSTRUCTION rather than by hope (both pinned by tests/test_spectro_gain_shape.py):
+    #
+    #   1. recon.mean(-1) IS level_hat  -> the envelope is transmitted, not re-derived, so the
+    #      shape tokens stop spending their budget re-describing the DC level every window.
+    #   2. recon.std(-1) IS sigma_hat   -> THE AMPLITUDE IS TRANSMITTED. A flat plate is no
+    #      longer representable: the decoder cannot shrink toward the conditional mean, because
+    #      the temporal std of its output is set by a code, not by the loss. This is the
+    #      structural attack on hf_ratio / std_ratio, and it is the reason to run this arm.
+    #      (``gain_scale`` False keeps only guarantee 1 -- level transmitted, amplitude free --
+    #      which is the control that isolates how much of the effect is the std normalization.)
+    #
+    # HOW IT IS *NOT* TO BE JUDGED (2026-09-04). Not by whether it approaches ``~tmean``.
+    # ~tmean is the time-AVERAGED spectrum: it has zero temporal structure by construction, so
+    # "get closer to ~tmean" is an instruction to delete the modes. Judge these arms on
+    # hf_ratio toward GT (with patch_lattice_ratio beside it) and on visible mode tracks in
+    # the band where the GT actually has coherent structure (analysis/spectro_final_fig.py
+    # --mode structure locates it). If an arm improves nRMSE while the figure stays a smooth
+    # plate it has made things WORSE and must be rejected.
+    #
+    # TOKEN BUDGET IS UNCHANGED: this is a REALLOCATION of the 192 tokens, not a new token.
+    # ``FRAME_LAYOUT`` and the Phase-B vocab are untouched.
+    #
+    # gain_shape False = OFF: no parameter is constructed, no split is computed, and the
+    # forward/state_dict are byte-identical to the pre-2026-09-04 codec (every field is read
+    # with getattr, so old pickled configs unpickle and load unchanged).
+    gain_shape: bool = False
+    # Tokens reserved for the (level, sigma) envelope. MUST divide freq_bins: the envelope is
+    # patchified along FREQUENCY into exactly this many patches, so each gain token owns one
+    # contiguous frequency band's statistics for ALL channels. gain_tokens == n_freq_patch
+    # (32 at the production geometry) puts the envelope on the SAME frequency lattice as the
+    # main path, which is the natural default; smaller values coarsen it and leave more tokens
+    # for the shape. Must be < n_tok (a codec with no shape path is just an envelope coder).
+    gain_tokens: int = 32
+    # Transmit sigma as well as level (guarantee 2 above). False = level only.
+    gain_scale: bool = True
+    # Weight on the DIRECT L1 supervision of the decoded (level, log1p sigma) against their
+    # analytic targets. The reconstruction term already sees both, but mixed with the shape
+    # error at whatever relative scale the window happens to have; the gain head produces the
+    # reconstruction's entire envelope AND amplitude, so it gets its own unambiguous target.
+    gain_weight: float = 1.0
+    # Hidden width of the per-patch gain MLPs (encoder input head / decoder output head).
+    gain_hidden: int = 256
+
     # oracle-gate acceptance thresholds
     gate_stability: float = 0.80
     gate_persistence: float = 0.50
@@ -472,9 +534,59 @@ class SpectroCodecConfig:
     def window_samples(self) -> int:
         return round(CHUNK_S * STFT_FS)
 
+    # --- envelope/shape split (see the gain_shape note above) --------------------------- #
+    @property
+    def n_gain_tok(self) -> int:
+        """Tokens carrying the (level, sigma) envelope code; 0 unless gain_shape is on."""
+        if not getattr(self, "gain_shape", False):
+            return 0
+        return int(getattr(self, "gain_tokens", 32))
+
+    @property
+    def n_shape_tok(self) -> int:
+        """Tokens carrying the normalized shape (== n_tok when gain_shape is off)."""
+        return self.n_tok - self.n_gain_tok
+
+    @property
+    def uses_gain_scale(self) -> bool:
+        """gain_scale, forced OFF when there is no shape path for it to normalize."""
+        return bool(getattr(self, "gain_scale", True)) and self.n_shape_tok > 0
+
+    @property
+    def gain_patch_f(self) -> int:
+        """Frequency bins per gain token (freq_bins / n_gain_tok)."""
+        return self.freq_bins // max(1, self.n_gain_tok)
+
+    @property
+    def gain_values_per_tok(self) -> int:
+        """Numbers ONE gain token transmits: channels x gain_patch_f x (2 if sigma else 1)."""
+        if self.n_gain_tok == 0:
+            return 0
+        return self.channels * self.gain_patch_f * (2 if self.uses_gain_scale else 1)
+
+    @property
+    def gain_bits(self) -> float:
+        """Bits the gain path owns (n_gain_tok * log2(codebook))."""
+        return self.n_gain_tok * log2(self.codebook_size)
+
     def __post_init__(self) -> None:
         assert self.freq_bins % self.patch_f == 0, "freq_bins must be divisible by patch_f"
         assert self.time_frames % self.patch_t == 0, "time_frames must be divisible by patch_t"
+        if getattr(self, "gain_shape", False):
+            g = int(self.gain_tokens)
+            assert 1 <= g < self.n_tok, (
+                f"gain_tokens ({g}) must be in [1, n_tok={self.n_tok}); a codec with no shape "
+                f"tokens left is an envelope coder, not a spectrogram codec"
+            )
+            assert self.freq_bins % g == 0, (
+                f"gain_tokens ({g}) must divide freq_bins ({self.freq_bins}): each gain token "
+                f"owns one contiguous frequency band's (level, sigma) for all channels"
+            )
+            assert self.gain_hidden >= 1, "gain_hidden must be >= 1"
+            assert int(getattr(self, "channel_groups", 1)) == 1, (
+                "gain_shape does not support channel_groups > 1 (the shape token axis is "
+                "mixed as one block; a group axis would have to be mixed per group)"
+            )
 
 
 # ---------------------------------------------------------------------------------------- #

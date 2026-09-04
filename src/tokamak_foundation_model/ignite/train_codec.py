@@ -3840,6 +3840,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     is_video = args.modality in VIDEO_MODALITIES
     is_slowts = args.modality in SLOWTS_MODALITIES
     is_fastts = args.modality == FASTTS_MODALITY
+    is_spectro = args.modality in SPECTRO_MODALITIES
 
     # cfg with the modality's real channel count baked in (all ranks agree).
     channels = modality_channels(args.modality)
@@ -4115,18 +4116,58 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 f"SpectroCodecConfig); {args.modality}'s {type(cfg).__name__} has no such field."
             )
     for _knob in ("patch_w", "stem_layers", "stem_channels", "stem_kernel", "recon_loss",
-                  "ssim_weight", "ssim_win", "fastts_target", "gain_tokens", "gain_scale",
-                  "gain_weight"):
+                  "ssim_weight", "ssim_win", "fastts_target"):
         if getattr(args, _knob, None) is not None and not is_fastts:
             raise SystemExit(
                 f"--{_knob} is a FAST-TS-only knob (it lives on FastTSCodecConfig); "
                 f"{args.modality} is not the fast-TS modality."
             )
-    if getattr(args, "gain_shape", False) and not is_fastts:
+    # --gain_shape and its knobs are shared by the FAST-TS envelope codec and (since
+    # 2026-09-04) the SPECTRO codec. The two decompositions differ in WHAT statistic is
+    # split off -- fast-TS takes the per-channel mean over envelope bins, spectro takes the
+    # per-(channel, FREQUENCY) mean and std over TIME -- but the flag surface, the structural
+    # guarantees and the direct gain supervision are the same, so one flag set drives both.
+    _gs_knobs = ("gain_tokens", "gain_scale", "gain_weight")
+    _gs_family = is_fastts or is_spectro
+    for _knob in _gs_knobs:
+        if getattr(args, _knob, None) is not None and not _gs_family:
+            raise SystemExit(
+                f"--{_knob} configures the gain-shape decomposition, which exists on the "
+                f"FAST-TS and SPECTRO codecs only; {args.modality} is neither."
+            )
+    if getattr(args, "gain_shape", False) and not _gs_family:
         raise SystemExit(
-            "--gain_shape is a FAST-TS ENVELOPE-only decomposition (level = mean over the "
-            f"envelope bins); {args.modality} is not the fast-TS modality."
+            "--gain_shape is the envelope/shape decomposition of the FAST-TS and SPECTRO "
+            f"codecs; {args.modality} is neither."
         )
+    if any(getattr(args, k, None) is not None for k in _gs_knobs) \
+            and not getattr(args, "gain_shape", False):
+        raise SystemExit(
+            "--gain_tokens/--gain_scale/--no_gain_scale/--gain_weight require --gain_shape "
+            "(they configure the envelope/shape decomposition, which is OFF by default)."
+        )
+    if is_spectro and getattr(args, "gain_shape", False):
+        # SPECTRO geometry: gain_tokens must divide freq_bins and stay < n_tok, both asserted
+        # in SpectroCodecConfig.__post_init__, so rebuild the dataclass rather than mutate.
+        _gs = {"gain_shape": True}
+        if args.gain_tokens is not None:
+            _gs["gain_tokens"] = int(args.gain_tokens)
+        if args.gain_scale is not None:
+            _gs["gain_scale"] = bool(args.gain_scale)
+        if args.gain_weight is not None:
+            _gs["gain_weight"] = float(args.gain_weight)
+        cfg = _dc_replace(cfg, **_gs)
+        if ddp.is_main:
+            print(
+                f"[train_codec] SPECTRO ENVELOPE/SHAPE SPLIT: gain_tok={cfg.n_gain_tok} "
+                f"({cfg.gain_bits:.1f} of {cfg.n_tok * math.log2(cfg.codebook_size):.1f} bits) "
+                f"shape_tok={cfg.n_shape_tok} gain_scale={cfg.uses_gain_scale} "
+                f"gain_patch_f={cfg.gain_patch_f} bins ({cfg.gain_values_per_tok} "
+                f"values/gain token) gain_weight={cfg.gain_weight}; "
+                f"recon.mean(-1) IS the coded envelope and recon.std(-1) IS the coded "
+                f"amplitude BY CONSTRUCTION",
+                flush=True,
+            )
 
     # per-freq LOG-POWER z-standardization (the THIN-modality mean-collapse fix; spectro ONLY).
     # Applied AFTER apply_spectro_standardization + the fsq/prod-recipe overrides. The per-freq z
@@ -4200,12 +4241,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             ("gain_scale", args.gain_scale),
             ("gain_weight", args.gain_weight),
         ) if v is not None}
-        if _gs and not getattr(args, "gain_shape", False):
-            raise SystemExit(
-                "--gain_tokens/--gain_scale/--no_gain_scale/--gain_weight require "
-                "--gain_shape (they configure the gain-shape decomposition, which is OFF "
-                "by default)."
-            )
+        # (the "these knobs require --gain_shape" guard is now shared with the spectro path
+        # and runs earlier, before the family split.)
         _geom.update(_gs)
         if _geom:
             cfg = _dc_replace(cfg, **{
