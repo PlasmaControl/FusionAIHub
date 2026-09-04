@@ -96,6 +96,12 @@ platforms = ["linux-64"]
 # labels_index.parquet. pandas 3 can write parquet only through pyarrow,
 # and the default env does not have it.
 pyarrow = ">=17,<22"
+# registry.py parses every model card's YAML front matter. `yaml` currently
+# reaches this environment only transitively, via hydra-core -> omegaconf,
+# and hydra-core is declared in [project] for IGNITE's benefit, not
+# labelmaker's - anyone tidying IGNITE's dependencies would silently break
+# every card read in this package. Declare it directly.
+pyyaml = ">=6,<7"
 # Solving `labelmaker` (labelmaker + fdp + the implicit default feature)
 # against live conda-forge picks up protobuf 7.35.1, published to
 # conda-forge sometime after pixi.lock's other environments were last

@@ -38,7 +38,8 @@ Recorded so they are not re-added by mistake:
   their own packaged application.
 - **TokaMind** (`tokamind_base_v2`) - MAST-pretrained; its tokenizer and inverse
   decode live outside the saved graph.
-- **diag2diag** - excluded by decision.
+- **diag2diag** - excluded at the project owner's direction. No technical reason
+  was recorded, so do not infer one; ask before re-adding it.
 - Anything from `tokamak_deploy_bench`'s `models/` directory. That repo is a
   latency benchmark: it feeds random noise to models and stores only timings. It
   is a useful *index* of what exists (`MODEL_ROSTER.md`), never a source of
