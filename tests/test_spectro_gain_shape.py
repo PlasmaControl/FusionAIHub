@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from tokamak_foundation_model.ignite.codec import SpectroCodec           # noqa: E402
 from tokamak_foundation_model.ignite.config import SpectroCodecConfig    # noqa: E402
 from tokamak_foundation_model.ignite.discriminator import FreqAwarePatchGAN  # noqa: E402
+from tokamak_foundation_model.ignite.losses import time_smooth           # noqa: E402
 from tokamak_foundation_model.ignite.nets import (                       # noqa: E402
     SpectroDecoder,
     SpectroEncoder,
@@ -286,3 +287,101 @@ def test_token_budget_is_a_reallocation_not_an_extension():
     with torch.no_grad():
         out = codec.forward(x)
     assert out["codes"].shape == (2, on.n_tok, on.fsq_dim)
+
+
+# --------------------------------------------------------------------------------------- #
+# TIME-SMOOTHED reconstruction target (cfg.target_time_smooth)
+# --------------------------------------------------------------------------------------- #
+def test_time_smooth_is_a_boxcar_and_off_is_the_same_object():
+    """K <= 1 returns the INPUT OBJECT (so the default path is bit-identical, not just equal)."""
+    x = torch.randn(2, 3, 7, 9, dtype=torch.float64)
+    assert time_smooth(x, 0) is x
+    assert time_smooth(x, 1) is x
+    for k in (2, 3, 5, 8):
+        got = time_smooth(x, k)
+        assert got.shape == x.shape
+        pl, pr = k // 2, k - 1 - k // 2
+        xp = torch.cat([x[..., :1].expand(-1, -1, -1, pl), x,
+                        x[..., -1:].expand(-1, -1, -1, pr)], dim=-1)
+        ref = torch.stack([xp[..., i:i + k].mean(-1) for i in range(x.shape[-1])], dim=-1)
+        torch.testing.assert_close(got, ref, atol=1e-12, rtol=0)
+
+
+def test_time_smooth_removes_hf_energy_but_keeps_the_envelope():
+    """The point of the target: the speckle goes, the per-(channel, freq) envelope stays.
+
+    ``level`` is a mean over the WHOLE time axis and the boxcar is edge-replicated, so the
+    envelope is preserved only approximately (the replication reweights the two end frames);
+    it is the HF energy collapse that must be large, and it is.
+    """
+    torch.manual_seed(11)
+    x = torch.randn(4, 3, 64, 96, dtype=torch.float64)
+    xs = time_smooth(x, 5)
+    hf = lambda a: float((a.diff(dim=-1) ** 2).sum() + (a.diff(dim=-2) ** 2).sum())
+    assert hf(xs) / hf(x) < 0.35, hf(xs) / hf(x)
+    torch.testing.assert_close(xs.mean(-1), x.mean(-1), atol=0.05, rtol=0)
+
+
+def test_smoothed_target_is_what_the_recon_terms_score_against():
+    """With target_time_smooth on, the pixel term is |recon - smooth(x)|, not |recon - x|."""
+    torch.manual_seed(12)
+    cfg = _cfg(target_time_smooth=5, pixel_anchor_weight=1.0, ms_ssim_weight=0.0,
+               multiscale_recon_weight=0.0, adversarial_weight=0.0, fm_weight=0.0,
+               consistency_weight=0.0, freq_grad_weight=0.0)
+    codec, disc = SpectroCodec(cfg).double(), FreqAwarePatchGAN(cfg).double()
+    x = torch.randn(2, cfg.channels, cfg.freq_bins, cfg.time_frames, dtype=torch.float64)
+    with torch.no_grad():
+        out = codec.generator_losses(x, x.clone(), disc, cfg, step=0)
+        recon = codec.forward(x)["recon"]
+    torch.testing.assert_close(out["pixel"], (recon - time_smooth(x, 5)).abs().mean(),
+                               atol=1e-10, rtol=0)
+    # and it is NOT the raw-target value
+    assert abs(float(out["pixel"]) - float((recon - x).abs().mean())) > 1e-6
+
+
+def test_target_time_smooth_off_is_bit_identical():
+    """target_time_smooth 0 and 1 give IDENTICAL loss dicts to an unset config."""
+    torch.manual_seed(13)
+    base = dict(pixel_anchor_weight=5.0, ms_ssim_weight=20.0, multiscale_recon_weight=2.0,
+                freq_grad_weight=1.0, adversarial_weight=0.0, fm_weight=0.0,
+                consistency_weight=0.0)
+    x = torch.randn(2, 3, 64, 16, dtype=torch.float64)
+    ref = None
+    for k in (None, 0, 1):
+        torch.manual_seed(99)
+        cfg = _cfg(**base) if k is None else _cfg(target_time_smooth=k, **base)
+        codec, disc = SpectroCodec(cfg).double(), FreqAwarePatchGAN(cfg).double()
+        with torch.no_grad():
+            out = codec.generator_losses(x, x.clone(), disc, cfg, step=0)
+        got = {kk: float(v) for kk, v in out.items()
+               if kk not in ("recon", "codes", "adaptive_weight")}
+        if ref is None:
+            ref = got
+        else:
+            assert got == ref, (k, got, ref)
+
+
+def test_smoothed_target_composes_with_the_gain_split():
+    """The gain target is taken on the SMOOTHED window, and both guarantees still hold.
+
+    That pairing is the point: with the target smoothed, ``sigma`` is the COHERENT temporal
+    amplitude, so the transmitted amplitude is one the decoder can actually deliver instead of
+    one inflated by speckle it cannot predict.
+    """
+    torch.manual_seed(14)
+    cfg = _cfg(gain_shape=True, gain_tokens=8, target_time_smooth=5, gain_weight=1.0)
+    codec, disc = SpectroCodec(cfg).double(), FreqAwarePatchGAN(cfg).double()
+    x = torch.randn(2, cfg.channels, cfg.freq_bins, cfg.time_frames, dtype=torch.float64)
+    out = codec.generator_losses(x, x.clone(), disc, cfg, step=0)
+    assert float(out["gain"]) > 0.0
+    with torch.no_grad():
+        f = codec.forward(x)
+    g = f["gain_pred"]
+    torch.testing.assert_close(f["recon"].mean(-1), g[:, : cfg.channels], atol=1e-9, rtol=0)
+    torch.testing.assert_close(f["recon"].std(-1, unbiased=False),
+                               torch.expm1(g[:, cfg.channels:].clamp(0.0, 30.0)),
+                               atol=1e-9, rtol=0)
+    # the gain target is the smoothed one, whose sigma is SMALLER than the raw window's
+    _, _, _, sig_raw = spectro_gain_shape_split(x, True)
+    _, _, _, sig_smooth = spectro_gain_shape_split(time_smooth(x, 5), True)
+    assert float(sig_smooth.mean()) < float(sig_raw.mean())

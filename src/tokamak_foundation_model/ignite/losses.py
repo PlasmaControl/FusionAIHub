@@ -126,6 +126,24 @@ def multiscale_recon_loss(recon: torch.Tensor, target: torch.Tensor,
     return loss / max(1, len(scales))
 
 
+def time_smooth(x: torch.Tensor, k: int) -> torch.Tensor:
+    """``k``-tap boxcar moving average along the TIME axis, edge-padded, shape-preserving.
+
+    ``x`` is ``(B, C, F, T)``; returns the same shape. ``k <= 1`` returns ``x`` ITSELF (the
+    identical object), so a disabled smoothing target is bit-identical, not merely equal.
+    """
+    if k <= 1:
+        return x
+    import torch.nn.functional as _F
+    pad_l, pad_r = k // 2, k - 1 - k // 2
+    # 'replicate' on a 4-D tensor pads the LAST TWO dims, so pad the time axis only by
+    # folding (C, F) into one batch-of-rows dim and using the 3-D form.
+    B, C, F, T = x.shape
+    xp = _F.pad(x.reshape(B * C, F, T), (pad_l, pad_r), mode="replicate")
+    ker = x.new_full((1, 1, k), 1.0 / float(k)).expand(F, 1, k)
+    return _F.conv1d(xp, ker, groups=F).reshape(B, C, F, T)
+
+
 def freq_gradient_loss(recon: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """L1 on the FREQUENCY-derivative — directly penalizes a smooth envelope. A mean reconstruction
     has ~0 freq-gradient where GT has sharp band structure, so matching ∂_F rewards exactly the
