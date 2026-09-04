@@ -126,6 +126,59 @@ def multiscale_recon_loss(recon: torch.Tensor, target: torch.Tensor,
     return loss / max(1, len(scales))
 
 
+def peak_l1_loss(recon: torch.Tensor, target: torch.Tensor,
+                 mask: torch.Tensor | None = None) -> torch.Tensor:
+    """L1 REWEIGHTED toward the target's spectral PEAKS -- the surrogate for peak_f1.
+
+    ``recon`` / ``target`` are ``(B, C, F, T)``. Per ``(b, c, t)`` column the weight is each
+    frequency bin's PROMINENCE over that column's own mean::
+
+        w = relu(target - target.mean(dim=F, keepdim=True))      # 0 on the floor, big on peaks
+        w = w / mean(w)                                          # mean weight 1
+        loss = mean(w * |recon - target|)
+
+    WHY A NEW TERM. MEASURED on 320 held-out co2 windows, ``peak_f1`` (top-k spectral peak
+    overlap -- whether the mode tracks are in the RIGHT PLACE):
+
+        tsmooth5 oracle (perfect coherent structure)  0.9936   <- the prize
+        patchmean oracle (exact patch means, free)    0.6537
+        shipped ms5 arm                               0.6116
+        best adversarial arm (hf 82% of ceiling)      0.6196
+
+    Both trained codecs sit BELOW the free patch-mean code, while 0.9936 is reachable. So the
+    codes carry essentially no sub-patch track information, and none of the sharpness levers
+    move it: adversarial pressure took hf from 15% to 82% of ceiling and std_ratio from 0.766
+    to 0.964 and bought +0.008 of peak_f1. The reason is that no term in the objective PAYS
+    for peak placement -- a mode line spans 1-2 of a patch's 16 frequency bins, so getting it
+    right moves plain L1 by ~10% of the patch's area and moves ms_ssim's local contrast only
+    slightly, while the adversarial term rewards the right TEXTURE STATISTICS anywhere.
+    Reweighting L1 by prominence makes the peaks most of the loss instead of a tenth of it.
+
+    ``mask`` is an optional ``(B, C, T)`` validity mask, broadcast over frequency; weights and
+    the mean are taken over valid positions only. Returns a scalar. Weight normalisation uses
+    the SAME masked positions, so the term's scale does not drift with missingness.
+    """
+    t_mean = target.mean(dim=-2, keepdim=True)                 # (B, C, 1, T)
+    w = torch.relu(target - t_mean)
+    if mask is not None:
+        m = mask.to(dtype=recon.dtype)
+        if m.dim() == 2:
+            m = m[:, None, None, :]
+        elif m.dim() == 3:
+            m = m.unsqueeze(2)
+        else:
+            raise ValueError(f"mask must be (B,T) or (B,C,T); got {tuple(mask.shape)}")
+        w = w * m
+        denom = w.sum()
+        if float(denom) <= 0.0:
+            return torch.mean(torch.abs(recon - target))
+        return (w * torch.abs(recon - target)).sum() / denom
+    denom = w.sum()
+    if float(denom) <= 0.0:                                    # a constant plate has no peaks
+        return torch.mean(torch.abs(recon - target))
+    return (w * torch.abs(recon - target)).sum() / denom
+
+
 def time_smooth(x: torch.Tensor, k: int) -> torch.Tensor:
     """``k``-tap boxcar moving average along the TIME axis, edge-padded, shape-preserving.
 

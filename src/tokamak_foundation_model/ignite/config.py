@@ -420,6 +420,26 @@ class SpectroCodecConfig:
     min_activity: float = 0.0       # per-window activity threshold (log-power std); 0 = OFF
     active_bias: float = 0.0        # P(re-draw a below-threshold window toward active); 0 = OFF
 
+    # --- PEAK-WEIGHTED RECONSTRUCTION (the surrogate for peak_f1) ---------------------- #
+    # ``losses.peak_l1_loss``: L1 reweighted by each frequency bin's prominence over its own
+    # column mean, so the target's spectral PEAKS carry most of the loss. 0.0 = OFF
+    # (byte-identical; the term is not even evaluated).
+    #
+    # WHY. MEASURED on 320 held-out co2 windows, peak_f1 (top-k spectral peak overlap -- are
+    # the mode tracks in the RIGHT PLACE):
+    #     tsmooth5 oracle (perfect coherent structure)   0.9936   <- reachable
+    #     patchmean oracle (exact patch means, FREE)     0.6537
+    #     shipped ms5 arm                                0.6116
+    #     best adversarial arm (hf 82% of ceiling)       0.6196
+    # Both trained codecs sit BELOW the free patch-mean code, and no sharpness lever moves it:
+    # adversarial pressure took hf from 15% to 82% of the coherent ceiling and std_ratio from
+    # 0.766 to 0.964 for +0.008 of peak_f1. Its rendered panel gains GT-like granularity and
+    # correct burst columns and still has no 10-20 kHz mode track. Nothing in the objective
+    # PAYS for peak placement: a line spans 1-2 of a patch's 16 frequency bins, so placing it
+    # correctly moves plain L1 by ~10% of the patch area, while the adversarial term rewards
+    # the right texture STATISTICS anywhere in the patch.
+    peak_weight: float = 0.0
+
     # --- TIME-SMOOTHED RECONSTRUCTION TARGET (the predictable component) --------------- #
     # ``target_time_smooth = K`` replaces the reconstruction TARGET with a K-frame boxcar
     # moving average of the window along TIME. The ENCODER still sees the raw window (so the

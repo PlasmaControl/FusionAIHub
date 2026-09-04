@@ -3805,6 +3805,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "texture is no longer one shared basis tiled on the patch lattice — the "
                         "measured checkerboard (gate.patch_lattice_metrics; mhr recon 61.6 vs GT "
                         "1.15). 0/unset = off (byte-identical decoder).")
+    p.add_argument("--peak_weight", type=float, default=None,
+                   help="SPECTRO: weight on losses.peak_l1_loss -- L1 reweighted by each "
+                        "frequency bin's prominence over its own column mean, so the "
+                        "target's spectral PEAKS carry most of the loss. 0 = OFF. This is "
+                        "the surrogate for peak_f1, the TRACK metric: measured on 320 "
+                        "held-out co2 windows the coherent oracle scores peak_f1 0.9936, the "
+                        "free patch-mean oracle 0.6537, and the shipped ms5 arm 0.6116 -- "
+                        "i.e. the codecs place peaks WORSE than free patch means, and "
+                        "adversarial pressure that took hf from 15% to 82% of ceiling moved "
+                        "peak_f1 by +0.008.")
     p.add_argument("--target_time_smooth", type=int, default=None,
                    help="SPECTRO: reconstruct a K-frame time-boxcar of the window instead of "
                         "the window itself (0/1 = OFF, the default). The encoder still sees "
@@ -4194,7 +4204,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         if ddp.is_main:
             print(f"[train_codec] multiscale_recon_scales -> {cfg.multiscale_recon_scales}"
                   f"{'  (includes FULL resolution)' if 1 in cfg.multiscale_recon_scales else ''}")
-    for _knob in ("ms_ssim_weight",):
+    for _knob in ("ms_ssim_weight", "peak_weight"):
         _v = getattr(args, _knob, None)
         if _v is not None and hasattr(cfg, _knob):
             setattr(cfg, _knob, float(_v))
@@ -4221,7 +4231,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             if ddp.is_main:
                 print(f"[train_codec] {_knob} override -> {_v}")
     for _knob in ("joint_entropy_weight", "decorrelation_weight",
-                  "joint_entropy_ramp_steps", "fsq_noise_dropout", "target_time_smooth"):
+                  "joint_entropy_ramp_steps", "fsq_noise_dropout", "target_time_smooth",
+                  "peak_weight"):
         if getattr(args, _knob, None) is not None and not hasattr(cfg, _knob):
             raise SystemExit(
                 f"--{_knob} is a SPECTRO-only knob (it lives on SpectroCodecConfig); "
@@ -4268,7 +4279,12 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             _gs["gain_scale"] = bool(args.gain_scale)
         if args.gain_weight is not None:
             _gs["gain_weight"] = float(args.gain_weight)
-        cfg = _dc_replace(cfg, **_gs)
+        # LOCAL import: `from dataclasses import replace as _dc_replace` also appears in the
+        # fast-TS branch further down, which makes _dc_replace a FUNCTION-LOCAL name -- so
+        # referring to it here, before that line executes, raised UnboundLocalError and killed
+        # all 8 arms of job 5419372 in 18 s. Importing it here binds it on this path too.
+        from dataclasses import replace as _dc_replace_local
+        cfg = _dc_replace_local(cfg, **_gs)
         if ddp.is_main:
             print(
                 f"[train_codec] SPECTRO ENVELOPE/SHAPE SPLIT: gain_tok={cfg.n_gain_tok} "

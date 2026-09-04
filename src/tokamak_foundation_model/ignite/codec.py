@@ -33,6 +33,7 @@ from .losses import (
     freq_gradient_loss,
     ms_ssim_loss,
     multiscale_recon_loss,
+    peak_l1_loss,
     shift_consistency,
     time_smooth,
 )
@@ -279,6 +280,13 @@ class SpectroCodec(nn.Module):
         adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
 
         pixel = self._masked_pixel_mae(recon, x_tgt, frame_mask)
+        # PEAK-weighted L1 (cfg.peak_weight; see SpectroCodecConfig). Uses the FULL tensors
+        # with the per-(channel, frame) mask rather than the whole-window selector, because
+        # the weighting is per (b, c, t) column and a partially-dead window still has valid
+        # columns worth scoring. Not evaluated at all when the weight is 0 -> byte-identical.
+        _pkw = float(getattr(cfg, "peak_weight", 0.0))
+        peak = (peak_l1_loss(recon, x_tgt, frame_mask) if _pkw > 0
+                else recon.new_zeros(()))
         # Multi-resolution + freq-gradient reconstruction (NeMo-style; sharpens turbulent detail
         # that plain pixel-L1 blurs). No-op when the weights are 0 (byte-identical).
         multiscale = (
@@ -330,6 +338,7 @@ class SpectroCodec(nn.Module):
                      + cfg.multiscale_recon_weight * multiscale
                      + cfg.freq_grad_weight * freq_grad
                      + _msw * ms_ssim_t
+                     + _pkw * peak
                      + float(getattr(cfg, "gain_weight", 0.0)) * gain)
         non_adv_total = (
             recon_ref
@@ -357,6 +366,7 @@ class SpectroCodec(nn.Module):
                 + cfg.multiscale_recon_weight * multiscale
                 + cfg.freq_grad_weight * freq_grad
                 + _msw * ms_ssim_t
+                + _pkw * peak
                 + float(getattr(cfg, "gain_weight", 0.0)) * gain
                 + cfg.consistency_weight * consistency
                 + cfg.entropy_weight * entropy
@@ -370,6 +380,7 @@ class SpectroCodec(nn.Module):
             "multiscale": multiscale,
             "freq_grad": freq_grad,
             "ms_ssim": ms_ssim_t,
+            "peak": peak,
             "gain": gain,
             "feature_matching": fm,
             "consistency": consistency,
