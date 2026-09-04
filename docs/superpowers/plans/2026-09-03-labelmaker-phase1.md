@@ -4069,6 +4069,10 @@ re-export so existing callers keep working:
 from ..config import sha256_of  # re-exported: registry.sha256_of is the public name
 ```
 
+Delete `registry.py`'s own `sha256_of` **and** its now-unused `import hashlib`
+(Task 8 moved that to module level). Leaving it behind is an `F401` and the
+lint gate will fail.
+
 - [ ] **Step 4: Write `labels/schema.py`**
 
 `src/labelmaker/labels/__init__.py`:
