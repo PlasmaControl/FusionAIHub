@@ -53,23 +53,39 @@ INPUT_SPEC = InputSpec(
         InputField("tribot_EFIT01", "tribot", lag="t+dt"),
         InputField("gapin_EFIT01", "gapin", lag="t+dt"),
         InputField(
-            # A correction, not a fill: negative readings are baseline noise
-            # meaning "off" (18.9% of archive readings, min -4,086 W), so
-            # clipping them recovers the physical value. A NON-FINITE reading
-            # is different - nothing is known - and still counts as invented,
-            # which is what lets the pair rule below flag a row where neither
-            # the power nor the location was measured.
+            # A correction, not a fill, and this is train.py:81, which
+            # clipped NaN and negative alike. On the ARCHIVE path there is
+            # nothing to correct - MEASURED, `EC.PECH` has ZERO negative
+            # readings in 233,280 samples over 2,000 shots - but on the
+            # CORPUS path there is: 2.563% of per-gyrotron samples are
+            # negative, down to -79,860 W, which is sensor baseline noise
+            # meaning "off", so clipping recovers the physical value. A
+            # NON-FINITE reading is different - nothing is known - and still
+            # counts as invented, which is what lets the pair rule below flag
+            # a row where neither the power nor the location was measured.
+            # That is the archive's case: `EC.PECH` is NaN off-window on
+            # 57.6% of rows.
             "ech_pwr_total", "ech_power_total", lag="t+dt",
             transform="clip_negative_to_zero",
         ),
-        # absent_ok: the archive omits this column entirely on 1,370 of 2,000
-        # sampled shots, and its absence carries NO information about whether
-        # ECH ran - MEASURED, 336 of those shots had ECH off, 468 had power
-        # flowing, and 566 lack the power column too. So absence is not
-        # assumed benign; it is zero-filled and then adjudicated by the
-        # `unknown_when_active` pair below against the power field. Where the
-        # power column is itself absent it stays NaN and the row is
-        # invalidated, which is what must happen for those 566.
+        # absent_ok: the archive omits this column on 1,028 of 2,000 sampled
+        # shots, and its absence carries no information about whether ECH ran
+        # - of the 972 shots that have it, MEASURED, 335 had power flowing and
+        # 637 were ECH-off throughout. So absence is not assumed benign; it is
+        # zero-filled and then adjudicated by the `unknown_when_active` pair
+        # below against the power field.
+        #
+        # `EC.PECH` and `EC.RHO_ECH` come from the same EC subtree and are
+        # co-present by construction: MEASURED over 2,000 shots, 972 have both
+        # and 1,028 have neither - never one without the other - and on all
+        # 972 their finite masks are IDENTICAL. So on the archive path a row
+        # with power but no location is nearly nonexistent (6 of 8,631 powered
+        # rows, 0.07%, all of them negative-rho readings), and what the pair
+        # rule actually does here is invalidate the 57.6% of rows where BOTH
+        # are NaN - which is exactly what upstream did, since its
+        # `x0[:, 10] >= 0` clause drops a NaN rho. The rule stays load-bearing
+        # in the original sense on the corpus and fdp paths, where power and
+        # location come from different sources and need not be co-present.
         InputField(
             "EC.RHO_ECH", "ech_rho", lag="t+dt", transform="nonneg_zero_fill",
             absent_ok=True,
@@ -105,20 +121,17 @@ INPUT_SPEC = InputSpec(
         DomainRule("gapin", "value", hi=0.2),
     ),
     # `nonneg_zero_fill` reproduces the upstream ECH-off convention when the
-    # deposition location is unusable, which MEASURED over 400 archive shots
-    # is 74.7% of its gaps. "Unusable" is two cases, not one: the column is
-    # absent, or it holds a negative value (48 of 55,041 readings) - a
-    # negative rho is not a location, so the fill invents one either way. The
-    # remaining 26% are rows where ECH is injecting and nobody recorded where
-    # - 70.1% of all powered rows - and there the zero-fill would tell the
-    # model the power lands on axis. Upstream dropped those rows, so the model
-    # never saw that state. Flag them.
+    # deposition location is unusable. "Unusable" is two cases, not one: the
+    # column is absent, or it holds a negative value - MEASURED, 20 of 233,280
+    # archive readings (0.0086%) - and a negative rho is not a location, so
+    # the fill invents one either way. Where the location is unknown and power
+    # is flowing, the zero-fill would tell the model the power lands on axis;
+    # upstream dropped those rows, so the model never saw that state.
     #
-    # The power field's `clip_negative_to_zero` is deliberately NOT a fill:
-    # 18.9% of archive power readings are negative baseline noise meaning
-    # "off", so correcting one leaves the row's power MEASURED and lets this
-    # rule read it. Classifying it as a fill instead costs shot 183343 all 21
-    # of its valid rows.
+    # The power field's `clip_negative_to_zero` is deliberately NOT a fill, so
+    # a corrected reading stays MEASURED and this rule can read it. Only a
+    # non-finite power counts as invented, and then the row is flagged
+    # regardless of the location, because nothing is known about the pair.
     unknown_when_active=(
         UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
     ),
@@ -130,8 +143,9 @@ INPUT_SPEC = InputSpec(
     # pair rule above, which sees that the fill CHANGED the value and so
     # treats the row's location as unknown. Upstream dropped such rows;
     # labelmaker keeps the row, feeds the model the 0.0 that is the upstream
-    # ECH-off convention, and marks the row invalid whenever power is
-    # flowing. Said here rather than left as dead code that looks live.
+    # ECH-off convention, and marks the row invalid unless the power is known
+    # to have been off. Said here rather than left as dead code that looks
+    # live.
 )
 
 OUTPUT_SPEC = OutputSpec(

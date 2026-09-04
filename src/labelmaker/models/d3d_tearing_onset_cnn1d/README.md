@@ -85,33 +85,40 @@ labelmaker:
     - "the three kinetic profiles are ZIPFIT fits, not the pipeline's own mtanh
       and csaps fits; measured 2.0e-1 (ne), 1.8e-1 (Te), 1.7e-1 (rotation)
       median relative difference, correlation 0.98-0.99"
+    - "ech_pwr_total is served by the archive column EC.PECH, the machine
+      total. NOT ech_pwr, which is stored (1, 240) and holds a single
+      gyrotron (ech_names is length 1) - measured, it reads 0.544 MW on shot
+      186504 at t=3.05 s where the three gyrotrons that are on sum to 2.11
+      MW. The model's own saved training values (x0[:, 9]) match EC.PECH to
+      0.1% on every ECH shot checked while ech_pwr is ~4x smaller"
     - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81). This
-      is a CORRECTION, not a fill: measured, 18.9% of archive ECH power
-      readings are negative, down to -4,086 W, and 41.0% are exactly zero, so
-      a negative reading is sensor baseline noise that means off. The
-      corrected row therefore still counts as a MEASURED power, which is what
-      lets the rule below distinguish a benign gap from a fabrication. Only a
-      non-finite power counts as unmeasured"
-    - "a missing EC.RHO_ECH becomes 0, the upstream ECH-off convention, and
-      is then adjudicated against the ECH power rather than assumed benign.
-      Measured: 71.4% of its values are absent, and of the 1,370 of 2,000
-      sampled shots missing the column outright, 336 had ECH off, 468 had
-      power flowing and 566 lack the power column too - so absence carries
-      no information about whether ECH ran. Rows where power flows and the
-      location is unknown are flagged invalid rather than fed a fabricated
-      on-axis location; upstream dropped them, so the model never trained on
-      that state. 70.1% of all ECH-powered rows are in that condition"
-    - "a NEGATIVE EC.RHO_ECH counts as unknown, not as a measured location.
-      Measured: 48 of 55,041 archive readings are negative, and a negative
-      rho is not a location, so the fill invents a value exactly as it does
-      for an absent one. Unlike the power correction above, this is a FILL:
-      the row is treated as unknown wherever the fill changed the value, an
-      exact 0.0 excepted, since that is the genuine ECH-off reading"
+      is a CORRECTION, not a fill, so a corrected row still counts as a
+      MEASURED power, which is what lets the rule below tell a benign gap
+      from a fabrication. On the archive path there is nothing to correct -
+      measured, EC.PECH has zero negative readings in 233,280 samples over
+      2,000 shots - but on the corpus path 2.563% of per-gyrotron samples are
+      negative, down to -79,860 W. Only a non-finite power counts as
+      unmeasured, and EC.PECH is NaN off-window on 57.6% of rows"
+    - "a missing or negative EC.RHO_ECH becomes 0, the upstream ECH-off
+      convention, and is then adjudicated against the ECH power rather than
+      assumed benign. Measured: the column is absent on 1,028 of 2,000
+      sampled shots, and negative on 20 of 233,280 readings - a negative rho
+      is not a location, so the fill invents a value either way. An exact 0.0
+      is left alone, being the genuine ECH-off reading"
     - "an unknown deposition location is benign only when the power is KNOWN
       to have been off. If the power itself was never measured, nothing is
       known about the pair and the row is flagged - otherwise a gap in the
       power would quietly read as inactive and license the very fabrication
       the rule exists to catch"
+    - "EC.PECH and EC.RHO_ECH are co-present by construction: measured over
+      2,000 shots, 972 have both and 1,028 have neither, never one without
+      the other, and on all 972 their finite masks are identical. So on the
+      archive path a powered row with no location is nearly nonexistent (6 of
+      8,631 powered rows, 0.07%, all negative-rho readings) and what the rule
+      does here is invalidate the 57.6% of rows where both are NaN - which is
+      what upstream did, its x0[:, 10] >= 0 clause dropping a NaN rho. The
+      rule stays load-bearing in the original sense on the corpus and fdp
+      paths, where the two come from different sources"
     - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
       equality with TensorFlow is checked to 1e-5 in validation"
 ---

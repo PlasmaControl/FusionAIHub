@@ -89,36 +89,33 @@ FEATURES: tuple[FeatureSpec, ...] = (
     FeatureSpec(
         name="ech_power_total", kind="scalar", units="W",
         sources=("archive", "corpus"),
-        locators=("ech_pwr", "ech_power"),
+        locators=("EC.PECH", "ech_power"),
         step=0.001,
         notes="corpus holds 12 gyrotrons and can contain NaN channels; "
-              "nansum, then NaN or negative -> 0 (upstream rule). Both "
-              "sources are in W, MEASURED: the corpus channel sum over "
-              "the archive column `EC.PECH`, time-aligned onto the 25 ms "
-              "grid, has per-shot median ratios of 0.64 to 1.10 (global "
-              "median 1.001 over 1,738 samples on 20 overlap shots, "
-              "185950/186114/186508/186985/189295/189549 among them), so "
-              "the corpus needs no scaling - the ratio is order 1, not "
-              "1e-3 or 1e3. "
-              "OPEN, MEASURED: this archive locator is the wrong column. "
-              "`ech_pwr` is stored (1, 240) and is ONE gyrotron - "
-              "`ech_names` is length 1 ('LEIA', 'LUKE') - 0.544 MW on "
-              "shot 186504 at t=3.05 s, where the three gyrotrons that "
-              "are on sum to 2.11 MW and `ech_pwr` equals corpus channel "
-              "5 to 0.4%. The corpus/`ech_pwr` ratio is one stable value "
-              "per shot in 1.88..4.01 (IQR 0.06 within a shot, and the "
-              "same under nearest-sample, forward-window and centred-"
-              "window alignment, so it is not a duty-cycle artefact). "
-              "`EC.PECH` is the archive's total: it matches the model's "
-              "own training column x0[:, 9] in magnitude (2.027e6 vs "
-              "2.042e6 on 186504, 9.69e5 vs 9.71e5 on 185950) where "
-              "`ech_pwr` is 4x smaller, and it is present on 174 of 200 "
-              "sampled archive shots against `ech_pwr`'s 52. Switching "
-              "the locator also invalidates the negative-baseline "
-              "statistics measured on `ech_pwr` in "
-              "d3d_tearing_onset_cnn1d/spec.py (18.9% negative readings, "
-              "min -4,086 W: `EC.PECH` is NaN off-window instead), so it "
-              "is left for Task 15 to settle with those together",
+              "nansum, then NaN or negative -> 0 (upstream rule). "
+              "The archive locator is `EC.PECH`, the machine total, and "
+              "NOT `ech_pwr`. MEASURED: `ech_pwr` is stored (1, 240) and "
+              "holds ONE gyrotron - `ech_names` is length 1, 'LEIA' or "
+              "'LUKE' - reading 0.544 MW on shot 186504 at t=3.05 s where "
+              "the three gyrotrons that are on sum to 2.11 MW, and it "
+              "equals corpus channel 5 to 0.4%. The model's own training "
+              "column is named `ech_pwr_total` (inputs_0d[9], "
+              "simple_ae_predictor/models/rt_multi_io/train.py:31); that "
+              "name is absent from the archive, but its saved values in "
+              "x0.npy match `EC.PECH` to 0.1% on every ECH shot checked "
+              "(2.38094e6 vs 2.38221e6 on 183347) while `ech_pwr` is ~4x "
+              "smaller, and nearest-value containment against x0[:, 9] is "
+              "0.55 for `EC.PECH` against 0.06 for `ech_pwr` over 15 "
+              "shots. `EC.PECH` also covers more of the store: 972 of "
+              "2,000 sampled shots against `ech_pwr`'s 652. "
+              "Both sources are in W, MEASURED: the corpus channel sum "
+              "over `EC.PECH`, time-aligned onto the 25 ms grid and "
+              "restricted to samples above 0.1 MW in both, has global "
+              "median 1.0051 (n=1,756 over 20 overlap shots) with 16 of "
+              "20 per-shot medians inside 0.3% of unity, so the corpus "
+              "needs no scaling - order 1, not 1e-3 or 1e3. OPEN for "
+              "Task 15: three shots sit at 1.08-1.10 and one at 2.12, a "
+              "content difference between the two totals, not a unit one",
     ),
     FeatureSpec(
         name="r0", kind="scalar", units="m",

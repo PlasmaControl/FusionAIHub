@@ -72,12 +72,13 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
 
 
 def test_a_negative_ech_power_is_a_correction_not_an_invention():
-    # MEASURED: 18.9% of archive ECH power readings are negative, down to
-    # -4,086 W, and shot 183343's off-segments never read exactly zero. That
-    # is sensor baseline noise meaning "off", so clipping it recovers the
-    # physical value - it must NOT mark the power as unknown, or an absent
-    # location would be flagged on every row of such a shot and the benign
-    # case would vanish.
+    # MEASURED: 2.563% of the corpus's per-gyrotron ECH samples are negative,
+    # down to -79,860 W. That is sensor baseline noise meaning "off", so
+    # clipping it recovers the physical value - it must NOT mark the power as
+    # unknown, or an absent location would be flagged on every row of such a
+    # shot and the benign case would vanish. (The archive's EC.PECH has zero
+    # negatives in 233,280 samples, so this case belongs to the corpus and
+    # fdp paths; it is exercised here because the rule lives in the spec.)
     feats, grid = _features()
     t = feats["ech_rho"].x
     feats["ech_rho"] = FeatureArray(
@@ -94,9 +95,12 @@ def test_a_negative_ech_power_is_a_correction_not_an_invention():
 def test_an_unmeasured_ech_power_also_flags_an_unknown_location():
     # A fill transform on the partner would otherwise report "inactive" and
     # license the gap: an unknown location is benign only when power is KNOWN
-    # to have been off. Zero archive exposure today (every shot carrying the
-    # column has it fully measured), but the corpus resolver emits NaN where
-    # all twelve gyrotron channels are NaN, and the fdp path will have gaps.
+    # to have been off. This is the archive's DOMINANT case, not a corner one
+    # - MEASURED, EC.PECH is NaN off-window on 57.6% of rows, and EC.RHO_ECH
+    # is NaN on exactly the same rows (identical finite masks on all 972 of
+    # 2,000 sampled shots that carry the pair). Upstream dropped those rows
+    # too, via its `x0[:, 10] >= 0` clause. The corpus resolver also emits
+    # NaN where all twelve gyrotron channels are NaN.
     feats, grid = _features()
     t = feats["ech_rho"].x
     feats["ech_rho"] = FeatureArray(
@@ -112,7 +116,7 @@ def test_an_unmeasured_ech_power_also_flags_an_unknown_location():
 
 
 def test_a_negative_ech_location_counts_as_unknown_not_as_measured():
-    # MEASURED: 48 of 55,041 archive rho readings are negative. A negative
+    # MEASURED: 20 of 233,280 archive rho readings are negative. A negative
     # deposition location is not a location, and the fill overwrites it - so
     # it is invented, exactly like a NaN, and must not be exempt from the
     # pair rule while power flows.
@@ -139,11 +143,17 @@ def test_an_exact_zero_ech_location_is_a_real_reading(feats_zero_power=None):
 
 
 def test_a_fabricated_ech_location_is_flagged_when_power_is_flowing():
-    # MEASURED over 400 archive shots: 70.1% of ECH-powered rows have no
-    # recorded deposition location. Zero-filling those says "on axis", a
-    # state upstream dropped from training - so the row must not be claimed
-    # as valid. With ECH off, the same gap is the upstream convention and
-    # the row stands.
+    # Zero-filling an unrecorded location says "on axis", a state upstream
+    # dropped from training - so the row must not be claimed as valid. With
+    # ECH off, the same gap is the upstream convention and the row stands.
+    #
+    # MEASURED: on the archive this is now RARE, 6 of 8,631 powered rows
+    # (0.07%), because EC.PECH and EC.RHO_ECH come from one subtree and are
+    # co-present. An earlier 70.1% figure was measured against `ech_pwr`, a
+    # single-gyrotron column that is not the model's input and whose coverage
+    # differs from the location's. The rule is kept because it is exact, and
+    # because the corpus and fdp paths draw power and location from different
+    # sources where co-presence is not guaranteed.
     for power, expect_valid in ((0.0, True), (1.0e6, False)):
         feats, grid = _features()
         t = feats["ech_rho"].x
