@@ -56,11 +56,11 @@ TRANSFORMS: dict[str, Transform] = {
     # not merge them: only the name and the `fills` flag distinguish a
     # measurement correction from a fabrication.
     #
-    # A CORRECTION. A negative power reading is sensor baseline noise meaning
-    # "off": MEASURED, 18.9% of archive ECH power readings are negative, down
-    # to -4,086 W, and 41.0% are exactly zero. Clipping recovers the physical
-    # value, so overwriting is not an invention. This is train.py:81's rule,
-    # which CORRECTED power in place.
+    # A CORRECTION. Its input is a reading that means something physical but
+    # is out of range - a negative power is sensor baseline noise meaning
+    # "off" - so clipping recovers the value rather than inventing one, and
+    # the row stays MEASURED. The per-model measurements justifying a
+    # particular field's use of it belong in that model's spec and card.
     "clip_negative_to_zero": Transform(_nonpositive_to_zero, fills=False),
     # A FILL. A negative deposition location is not a location, so overwriting
     # one invents a value. This is why train.py:83 DROPPED those rows rather
@@ -288,9 +288,11 @@ class InputSpec:
                 if TRANSFORMS[f.transform].fills:
                     # `!=` rather than a finiteness test: NaN != NaN is True,
                     # which is wanted, and it also catches a finite reading the
-                    # transform overwrote - MEASURED, 48 of 55,041 archive rho
-                    # readings are negative, and a negative location is as
-                    # unknown as a missing one.
+                    # transform overwrote. That second case is the point - a
+                    # negative deposition location is a reading, but it is not
+                    # a location, so filling it invents a value just as surely
+                    # as filling an absent one. An exact 0.0 is left alone,
+                    # since the fill does not change it.
                     gap |= filled != v
                 v = filled
             unmeasured[f.model_name] = gap if gap.ndim == 1 else gap.any(axis=1)

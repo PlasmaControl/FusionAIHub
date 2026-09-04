@@ -15,7 +15,10 @@ def _fake_archive(tmp_path, n=240):
         g = f.create_group("190000")
         g.create_dataset("bt", data=np.full(n, 2.0))
         g.create_dataset("ip", data=np.linspace(0.0, 1e6, n))
-        g.create_dataset("ech_pwr", data=np.full((1, n), 3.0))       # stored (1, N)
+        # EC.PECH is stored (N,); the (1, N) shape that `np.squeeze` also
+        # handles belongs to `ech_pwr`, which is a single gyrotron and is NOT
+        # this feature's locator. See namespace.py's ech_power_total note.
+        g.create_dataset("EC.PECH", data=np.full(n, 3.0))
         g.create_dataset("pres_EFIT01", data=np.full((n, 33), 5.0e4))
         g.create_dataset("zipfit_edensfit_rho", data=np.tile(
             np.linspace(4.0, 1.0, 33), (n, 1)))

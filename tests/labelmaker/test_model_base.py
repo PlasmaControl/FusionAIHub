@@ -252,8 +252,8 @@ def test_a_correction_and_a_fill_computing_the_same_arithmetic_differ():
     t = 0.025 * np.arange(3)
     feats = {
         "ech_power_total": FeatureArray(x=t, y=np.full((1, 3), 1.0e6)),
-        # MEASURED: 48 of 55,041 archive rho readings are negative, and 18.9%
-        # of ECH power readings are, so both cases below are real data.
+        # Both cases below are real: 20 of 233,280 archive rho readings are
+        # negative, and 2.563% of the corpus's ECH power samples are.
         "ech_rho": FeatureArray(x=t, y=np.full((1, 3), -1.0)),
     }
     pair = (UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),)
@@ -294,7 +294,7 @@ def test_a_negative_reading_a_correction_maps_is_still_measured():
         ),
     )
     t = 0.025 * np.arange(4)
-    off = np.array([-40.0, -4086.0, 0.0, -1.0])      # real off-segment noise
+    off = np.array([-40.0, -4086.0, 0.0, -1.0])      # off-segment noise
     built = spec.build({"ech_power_total": FeatureArray(x=t, y=off[None, :])}, t)
     assert built.valid.all(), "a corrected reading is measured, not invented"
     # and a power that was never measured at all still is invented
