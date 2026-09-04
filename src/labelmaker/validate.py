@@ -438,6 +438,158 @@ def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
     }
 
 
+@dataclass
+class _ShotMatch:
+    """One shot's archive-vs-reconstruction alignment, or why it has none.
+
+    `built` and `info` are populated as far as the pipeline actually got,
+    even when `skip_reason` is set - not only on success. A shot that fails
+    `match_rows`' variance/median gate still had `spec.build` run on it, and
+    `built.missing`/`built.resolvers` are exactly the diagnosis task-16's
+    review (I3) found being computed and thrown away at skip time instead of
+    reported. `got` is the archived rows, present unless the shot has none
+    in the archive at all.
+    """
+
+    got: dict | None = None
+    built: object | None = None
+    info: dict | None = None
+    features: dict | None = None
+    skip_reason: str | None = None
+
+
+def _matched_shot(shot: int, spec, paths: Paths, archive: Path) -> _ShotMatch:
+    """Archive rows aligned to our own reconstructed features, for one shot.
+
+    M10 (task-16 review): `reconstruction_fidelity` and `label_quality`
+    independently hand-rolled the same four calls - `archive_rows`, the
+    feature-file existence check, `spec.build`, `match_rows` - which is how
+    the two could in principle drift apart on how a shot gets skipped. This
+    returns a `_ShotMatch` rather than raising on the failure paths, because
+    a caller needs `built` for I3's per-shot diagnosis even when the shot is
+    about to be skipped - a bare exception would throw that information away
+    a second time.
+    """
+    from .features import namespace as ns
+    from .features.store import present, read_feature
+
+    got = archive_rows(shot, archive)
+    if got is None:
+        return _ShotMatch(skip_reason="no archived rows")
+    fpath = paths.features_file(shot)
+    if not fpath.exists():
+        return _ShotMatch(got=got, skip_reason="no feature file")
+    stored = present(fpath)
+    features = {
+        name: read_feature(fpath, name)
+        for name in spec.canonical_names
+        if name in stored
+    }
+    built = spec.build(features, ns.GRID_S)
+    info = match_rows(got["x0"], built)
+    if not info["passed"]:
+        return _ShotMatch(
+            got=got, built=built, info=info, features=features,
+            skip_reason=f"match rejected: {info['fail_reason']}",
+        )
+    return _ShotMatch(got=got, built=built, info=info, features=features)
+
+
+def _skip_category(reason: str) -> str:
+    """Collapse a skip reason to a bucket a histogram can actually count (I3).
+
+    Skip reasons routinely carry per-shot numeric detail - a numpy array
+    repr inside a caught `ValueError`'s message (`"...constant in our inputs
+    (std=[0. 0. 0. 0. 0.])"`), or an exact row count in `match_rows`' own
+    `fail_reason` - which makes the raw string unique to nearly every shot.
+    That is exactly the failure mode a histogram exists to avoid: 69 shots
+    sharing one real cause (a dead fdp resolver, C2) would otherwise render
+    as up to 69 distinct entries and hide the pattern entirely.
+    """
+    if reason in ("no archived rows", "no feature file"):
+        return reason
+    if reason.startswith("match rejected:"):
+        fail = reason.split(":", 1)[1]
+        if "unmatched" in fail:
+            return "match rejected: rows unmatched"
+        if "collided" in fail:
+            return "match rejected: rows collided onto the same timestep"
+        if "median distance" in fail:
+            return "match rejected: median distance exceeds tolerance"
+        return "match rejected: other"
+    # A caught exception's `f"{type(exc).__name__}: {exc}"` - keep the
+    # exception type and the message's fixed prefix (up to the first
+    # parenthesis, where a numpy repr or a count usually starts), and drop
+    # the rest.
+    exc_type, _, detail = reason.partition(":")
+    prefix = detail.split("(")[0].strip()
+    return f"{exc_type}: {prefix}" if prefix else exc_type
+
+
+def _skip_report(skipped: dict[str, str], resolvers: dict[str, set]) -> dict:
+    """I3: a histogram of *why* shots were skipped, plus a warning when the
+    run looks broken rather than merely gappy.
+
+    Two triggers, either of which would have surfaced this task's own defect
+    (a dead fdp scaling path, C2) directly in this JSON instead of needing a
+    separate investigation: one cause accounting for most of the skips, or a
+    whole feature source contributing nothing across every shot the run
+    touched.
+    """
+    histogram: dict[str, int] = {}
+    for reason in skipped.values():
+        cat = _skip_category(reason)
+        histogram[cat] = histogram.get(cat, 0) + 1
+    warnings: list[str] = []
+    if histogram:
+        total = sum(histogram.values())
+        cause, count = max(histogram.items(), key=lambda kv: kv[1])
+        if total >= 5 and count / total >= 0.5:
+            warnings.append(
+                f"{count} of {total} skips ({count / total:.0%}) share one "
+                f"cause: {cause!r} - this looks systemic, not scattered "
+                "per-shot data gaps; see task-16 review findings I3/C2"
+            )
+    from .features import namespace as ns
+
+    served = {s for sources in resolvers.values() for s in sources}
+    for source in ns.SOURCES:
+        if source not in served:
+            warnings.append(
+                f"no shot resolved any feature through {source!r} this run - "
+                "that source served nothing at all, which is either an empty "
+                "request or a systemic failure (this is exactly the shape "
+                "C2's dead fdp scaling path took)"
+            )
+    return {"histogram": dict(sorted(histogram.items())), "warnings": warnings}
+
+
+def _shot_budget(timeout_s: int | None):
+    """M8 (task-16 review): the per-shot SIGALRM guard, opt-in.
+
+    `run.py`'s module docstring promises "one try/except and one SIGALRM
+    timeout per shot" for every stage, but `reconstruction_fidelity` and
+    `label_quality` used to have only the try/except half - the exact
+    hung-read mode the rest of the package guards against (IGNITE measured
+    ~56 of 3,000 corpus shots hanging on reads), left uncovered here because
+    `validate` runs single-threaded in the parent rather than through
+    `run.py`'s worker pool. `run.py`'s validate branch passes `--timeout`
+    through; deferred-imports `run.time_limit` rather than importing it at
+    module scope, since `run.py` only imports `validate` lazily (inside
+    `main`'s stage branch) and this keeps that lazy-import direction the
+    only one that exists between the two modules. A bare `contextlib.
+    nullcontext()` when `timeout_s` is `None` preserves every existing
+    caller (tests, notebooks) that has no `run.py` timeout to pass.
+    """
+    if timeout_s is None:
+        from contextlib import nullcontext
+
+        return nullcontext()
+    from .run import time_limit
+
+    return time_limit(timeout_s)
+
+
 def _ks_statistic(a: np.ndarray, b: np.ndarray) -> float:
     """Two-sample Kolmogorov-Smirnov statistic: `max|ECDF_a(x) - ECDF_b(x)|`.
 
@@ -526,21 +678,31 @@ def reconstruction_fidelity(
     paths: Paths,
     *,
     archive: Path = TM_ARCHIVE,
+    timeout_s: int | None = None,
 ) -> dict:
     """Price every substitution, per feature, against the training rows.
 
     C1: every shot is isolated. The body below reads an archive file, an
-    HDF5 feature file, calls `InputSpec.build` and `match_rows` - any of
-    which can raise on real data (a truncated feature file, a per-shot
-    column `resolve_archive` did not carry, `nan_policy="zero"` turning an
-    absent feature into an all-zero column that makes `match_rows`' own
-    variance guard raise `ValueError`). None of that is allowed to cost the
-    rest of the run: one bad shot goes to `skipped` with its cause, exactly
-    like the two `continue`s already in this loop for a missing archive row
-    or feature file.
+    HDF5 feature file, calls `InputSpec.build` and `match_rows` (via
+    `_matched_shot`, M10) - any of which can raise on real data (a
+    truncated feature file, a per-shot column `resolve_archive` did not
+    carry, `nan_policy="zero"` turning an absent feature into an all-zero
+    column that makes `match_rows`' own variance guard raise `ValueError`).
+    None of that is allowed to cost the rest of the run: one bad shot goes
+    to `skipped` with its cause, exactly like the `_ShotMatch.skip_reason`
+    cases below.
+
+    M8 (task-16 review): `timeout_s`, when given, wraps each shot's body in
+    the same SIGALRM guard `run.py`'s `_guarded` applies to the `features`
+    and `infer` stages - this function otherwise reads GPFS memmaps and
+    HDF5 with nothing but a try/except, the exact hung-read mode the rest of
+    the package guards against. `run.py`'s validate branch passes its own
+    `--timeout`; a caller with no `run.py` context (a notebook, a test) gets
+    no timeout by default, matching every other keyword-optional guard in
+    this module.
     """
     from .features import namespace as ns
-    from .features.store import missing_names, present, read_feature
+    from .features.store import missing_names
     from .models.base import sample_by_resolver
 
     # Materialized once, up front: `shots` is frequently a generator
@@ -574,6 +736,7 @@ def reconstruction_fidelity(
     n_pooled_shots: dict[str, int] = {}
     match_info: dict[str, dict] = {}
     skipped: dict[str, str] = {}
+    skip_diagnosis: dict[str, dict] = {}
     incomplete: dict[str, dict] = {}
     resolvers: dict[str, set] = {}
     used: list[int] = []
@@ -584,85 +747,102 @@ def reconstruction_fidelity(
 
     for shot in shots:
         try:
-            got = archive_rows(shot, archive)
-            if got is None:
-                skipped[str(shot)] = "no archived rows"
-                continue
-            fpath = paths.features_file(shot)
-            if not fpath.exists():
-                skipped[str(shot)] = "no feature file"
-                continue
-            stored = present(fpath)
-            features = {
-                name: read_feature(fpath, name)
-                for name in spec.canonical_names
-                if name in stored
-            }
-            built = spec.build(features, ns.GRID_S)
-            for canonical, source in built.resolvers.items():
-                resolvers.setdefault(canonical, set()).add(source)
-            info = match_rows(got["x0"], built)
-            match_info[str(shot)] = {
-                k: v for k, v in info.items() if k not in ("index", "distance")
-            }
-            if not info["passed"]:
-                skipped[str(shot)] = f"match rejected: {info['fail_reason']}"
-                continue
-            idx = info["index"]
-            used.append(int(shot))
-            # I3: a canonical in `built.missing` was never resolved for this
-            # shot, so `build`'s `nan_policy="zero"` fill is a zero-filled
-            # placeholder, not a reading - pooling it against the real
-            # archive column would price a substitution that never
-            # happened. `pinj_total` (corpus-only) on a shot with no corpus
-            # file is the common case, not an edge case.
-            for j, f in enumerate(spec.scalar_fields):
-                if f.canonical in built.missing:
+            with _shot_budget(timeout_s):
+                # I3 (related): recorded for EVERY shot reached, not only
+                # the ones that end up `used` - a shot skipped for a match
+                # failure or a missing archive row can still have partial
+                # feature misses worth showing, and the old placement (after
+                # the `passed` check) meant a skipped shot's misses appeared
+                # in neither this report nor `skipped`.
+                fpath = paths.features_file(shot)
+                incomplete[str(shot)] = missing_names(fpath)
+
+                m = _matched_shot(shot, spec, paths, archive)
+                if m.built is not None:
+                    for canonical, source in m.built.resolvers.items():
+                        resolvers.setdefault(canonical, set()).add(source)
+                if m.info is not None:
+                    match_info[str(shot)] = {
+                        k: v for k, v in m.info.items() if k not in ("index", "distance")
+                    }
+                if m.skip_reason:
+                    skipped[str(shot)] = m.skip_reason
+                    # I3: the diagnosis that used to be in scope and thrown
+                    # away at skip time - `built.missing`/`built.resolvers`
+                    # when a build was reached, plus the per-feature miss
+                    # causes `store.missing_names` already tracks.
+                    skip_diagnosis[str(shot)] = {
+                        "missing_features": (
+                            sorted(m.built.missing) if m.built is not None else []
+                        ),
+                        "resolvers": (
+                            {k: sorted(v) for k, v in m.built.resolvers.items()}
+                            if m.built is not None else {}
+                        ),
+                        "feature_misses": incomplete[str(shot)],
+                    }
                     continue
-                pooled.setdefault(f.model_name, []).append(
-                    (built.scalars[idx, j], got["x0"][:, j])
-                )
-                n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
-            for j, f in enumerate(spec.profile_fields):
-                if f.canonical in built.missing:
-                    continue
-                pooled.setdefault(f.model_name, []).append(
-                    (built.profiles[idx, :, j], got["x1"][:, :, j])
-                )
-                n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
-            # Part 3: `pooled` prices every matched row regardless of
-            # `built.valid`, so a row for which labelmaker would publish no
-            # label is priced alongside one it would. Not filtered out here
-            # (that would need re-deriving each pair's row count per
-            # feature), but counted, so a reader can see how much of the
-            # price above belongs to rows that are never actually published.
-            valid_at_idx = np.asarray(built.valid)[idx]
-            n_valid_pooled += int(valid_at_idx.sum())
-            n_invalid_pooled += int((~valid_at_idx).sum())
-            # Diagnostic for the zero-filled ECH deposition location: how
-            # often is the location unknown while power is actually being
-            # injected? Read the field's own declared lag rather than
-            # assuming "t+dt": a future model spec could carry `ech_rho` at
-            # plain "t", and hardcoding the offset would silently report a
-            # conflict count for a time the model never actually sees.
-            # Sampled through `sample_by_resolver` (I5) rather than a bare
-            # `sample_at`, so this diagnostic and `InputSpec.build` cannot
-            # drift on what "the right way to read this resolver" means -
-            # today `ech_rho` is archive-only, so this is a no-op change in
-            # behaviour, but it stays correct if that ever stops being true.
-            if "ech_power_total" in features and "ech_rho" in features and ech_rho_field:
-                raw = features["ech_rho"]
-                t = ns.GRID_S + spec.dt_s if ech_rho_field.lag == "t+dt" else ns.GRID_S
-                ech_resolver = str(raw.attrs.get("resolver", "unknown"))
-                rho = np.asarray(
-                    sample_by_resolver(raw.x, raw.y, t, ech_resolver, spec.dt_s)
-                ).ravel()[idx]
-                power = built.scalars[idx, names_0d.index("ech_pwr_total")]
-                ech_rows += int(power.size)
-                ech_conflicts += int(((power > 0) & ~np.isfinite(rho)).sum())
-            incomplete[str(shot)] = missing_names(fpath)
+                got, built, features = m.got, m.built, m.features
+                idx = m.info["index"]
+                used.append(int(shot))
+                # I3: a canonical in `built.missing` was never resolved for
+                # this shot, so `build`'s `nan_policy="zero"` fill is a
+                # zero-filled placeholder, not a reading - pooling it against
+                # the real archive column would price a substitution that
+                # never happened. `pinj_total` (corpus-only) on a shot with
+                # no corpus file is the common case, not an edge case.
+                for j, f in enumerate(spec.scalar_fields):
+                    if f.canonical in built.missing:
+                        continue
+                    pooled.setdefault(f.model_name, []).append(
+                        (built.scalars[idx, j], got["x0"][:, j])
+                    )
+                    n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
+                for j, f in enumerate(spec.profile_fields):
+                    if f.canonical in built.missing:
+                        continue
+                    pooled.setdefault(f.model_name, []).append(
+                        (built.profiles[idx, :, j], got["x1"][:, :, j])
+                    )
+                    n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
+                # Part 3: `pooled` prices every matched row regardless of
+                # `built.valid`, so a row for which labelmaker would publish
+                # no label is priced alongside one it would. Not filtered out
+                # here (that would need re-deriving each pair's row count per
+                # feature), but counted, so a reader can see how much of the
+                # price above belongs to rows that are never actually
+                # published.
+                valid_at_idx = np.asarray(built.valid)[idx]
+                n_valid_pooled += int(valid_at_idx.sum())
+                n_invalid_pooled += int((~valid_at_idx).sum())
+                # Diagnostic for the zero-filled ECH deposition location: how
+                # often is the location unknown while power is actually being
+                # injected? Read the field's own declared lag rather than
+                # assuming "t+dt": a future model spec could carry `ech_rho`
+                # at plain "t", and hardcoding the offset would silently
+                # report a conflict count for a time the model never
+                # actually sees. Sampled through `sample_by_resolver` (I5)
+                # rather than a bare `sample_at`, so this diagnostic and
+                # `InputSpec.build` cannot drift on what "the right way to
+                # read this resolver" means - today `ech_rho` is
+                # archive-only, so this is a no-op change in behaviour, but
+                # it stays correct if that ever stops being true.
+                if "ech_power_total" in features and "ech_rho" in features and ech_rho_field:
+                    raw = features["ech_rho"]
+                    t = ns.GRID_S + spec.dt_s if ech_rho_field.lag == "t+dt" else ns.GRID_S
+                    ech_resolver = str(raw.attrs.get("resolver", "unknown"))
+                    rho = np.asarray(
+                        sample_by_resolver(raw.x, raw.y, t, ech_resolver, spec.dt_s)
+                    ).ravel()[idx]
+                    power = built.scalars[idx, names_0d.index("ech_pwr_total")]
+                    ech_rows += int(power.size)
+                    ech_conflicts += int(((power > 0) & ~np.isfinite(rho)).sum())
         except Exception as exc:  # noqa: BLE001 - per-shot isolation, see docstring
             skipped[str(shot)] = f"{type(exc).__name__}: {exc}"
+            skip_diagnosis[str(shot)] = {
+                "missing_features": [], "resolvers": {},
+                "feature_misses": incomplete.get(str(shot), {}),
+            }
             continue
 
     per_feature = {}
@@ -683,6 +863,11 @@ def reconstruction_fidelity(
         "n_shots_used": len(used),
         "shots_used": used,
         "skipped": skipped,
+        # I3: the diagnosis that used to be computed and thrown away at skip
+        # time, plus the histogram/warning a reader would otherwise have to
+        # re-derive by hand from `skipped` (as this task's own review did).
+        "skip_diagnosis": skip_diagnosis,
+        "skip_reasons": _skip_report(skipped, resolvers),
         "incomplete_features": {k: v for k, v in incomplete.items() if v},
         "match": match_info,
         "per_feature": per_feature,
@@ -833,6 +1018,53 @@ def regression_metrics(pred: np.ndarray, truth: np.ndarray) -> dict:
 _TRUTH_COLUMNS = {"tm_prob": 1, "betan": 0}
 
 
+def _assert_truth_column_shapes(archive: Path) -> None:
+    """I6 (task-16 review): close the half of the truth-column coincidence
+    the model-side guard above cannot see.
+
+    `label_quality`'s other assertion (`OUTPUT_SPEC.column ==
+    _TRUTH_COLUMNS[name]`) catches a change on the MODEL side - a spec whose
+    output order no longer matches this module's hardcoded map. It does
+    nothing for a change on the ARCHIVE side: if `y.npy` were re-exported
+    with its two columns swapped, that assertion still passes (both sides
+    still agree the map is `{tm_prob: 1, betan: 0}`) and every metric in
+    this module would silently score against the wrong truth column while
+    looking entirely plausible - `betan`'s RMSE would be computed against a
+    ~8%-positive binary column and `tm_prob`'s AUROC against a continuous
+    one, both of which still *run*, just wrongly.
+
+    Closed here with a property of the data itself, not of the mapping:
+    measured on 200,000 archive rows, the `tm_prob` truth column is exactly
+    binary (`{0.0, 1.0}`, ~8.07% positive) and the `betan` column is
+    continuous (198,520 distinct values over 0.002-4.92). A column swap
+    flips both properties at once, so this is checked once, before any shot
+    is touched, using a small slice of `y.npy` rather than the full
+    639,555-row array.
+    """
+    y = np.load(archive / "y.npy", mmap_mode="r")
+    sample = np.asarray(y[: min(200_000, y.shape[0])], dtype=np.float64)
+    tm_col = sample[:, _TRUTH_COLUMNS["tm_prob"]]
+    betan_col = sample[:, _TRUTH_COLUMNS["betan"]]
+    tm_values = set(np.unique(tm_col).tolist())
+    if not tm_values <= {0.0, 1.0}:
+        raise ValueError(
+            f"y.npy column {_TRUTH_COLUMNS['tm_prob']} (expected tm_prob, "
+            f"binary) is not binary - found {sorted(tm_values)[:5]}...; this "
+            "looks like a column swap in the archive export (task-16 review "
+            "finding I6), and every metric in this module would silently "
+            "score against the wrong truth column if this were allowed to "
+            "proceed"
+        )
+    if np.unique(betan_col).size < 1000:
+        raise ValueError(
+            f"y.npy column {_TRUTH_COLUMNS['betan']} (expected betan, "
+            f"continuous) has only {np.unique(betan_col).size} distinct "
+            "values in a 200,000-row sample - too few to be a continuous "
+            "quantity; this looks like a column swap in the archive export "
+            "(task-16 review finding I6)"
+        )
+
+
 def _score_field(task: str, pred: np.ndarray, truth: np.ndarray, valid: np.ndarray) -> dict:
     """Score one output field twice: every matched row, and only the rows
     labelmaker's own validity rule would actually publish a label for.
@@ -842,9 +1074,10 @@ def _score_field(task: str, pred: np.ndarray, truth: np.ndarray, valid: np.ndarr
     the package would never publish - misstating the one number this whole
     task exists to produce. `all_matched` is kept for reference and
     diagnosis only; `published` (the valid-row-only score) is the one
-    `label_quality` surfaces as `reconstructed_inputs` and the one
-    `reconstruction_penalty`/`model_index_results` are computed from,
-    because it is the number the package actually stands behind.
+    `label_quality` surfaces for both `archived_inputs_valid` and
+    `reconstructed_inputs_valid` (C1, task-16 review), which is what makes
+    the two comparable at all: they now share the same row set as well as
+    the same truth.
     """
     scorer = binary_metrics if task == "binary" else regression_metrics
     valid = np.asarray(valid, dtype=bool)
@@ -864,28 +1097,64 @@ def label_quality(
     paths: Paths,
     *,
     archive: Path = TM_ARCHIVE,
+    timeout_s: int | None = None,
 ) -> dict:
-    """Score the model twice against the same truth: their rows, then ours.
+    """Score the model twice against the same truth AND the same rows.
 
-    The first score (`archived_inputs`) is the model's own ceiling on these
-    shots - the archived rows *are* the training rows, so no validity mask
-    applies to them. The second (`reconstructed_inputs`) is what labelmaker
-    actually publishes: the model run on labelmaker's own reconstructed
-    features, scored only over the rows labelmaker's own validity rule would
-    publish a label for (addendum item 6 - see `_score_field`).
-    `reconstructed_inputs_all_matched` additionally scores every matched row
-    regardless of validity, kept for diagnosis, never for the headline
-    number. The gap between `archived_inputs` and `reconstructed_inputs` is
-    the reconstruction penalty, and it is the number that answers "are these
-    labels reliable".
+    C1 (task-16 review): the two scores this function exists to produce must
+    differ in exactly one thing - the input source - not also in which rows
+    got counted. So every field is scored four ways, all from one row-
+    matched, valid-masked pair underneath:
 
-    Every shot is isolated (C1, matching `reconstruction_fidelity`): a
-    missing archive column, a truncated feature file, or a `match_rows`
-    variance-guard `ValueError` on a per-shot basis costs only that shot, not
-    the run.
+    - `archived_inputs_all`: the model's ceiling, every matched row.
+    - `archived_inputs_valid`: the same ceiling, restricted to the rows
+      labelmaker's own validity rule would publish a label for.
+    - `reconstructed_inputs_valid`: what labelmaker actually publishes - its
+      own reconstructed features, valid rows only.
+    - `reconstructed_inputs_all`: reconstructed features over every matched
+      row regardless of validity, kept for diagnosis only.
+
+    `reconstruction_penalty` is computed ONLY from the row-matched pair,
+    `reconstructed_inputs_valid` minus `archived_inputs_valid` - both sides
+    scored over the identical set of rows, so the difference is attributable
+    to the input source alone. Scoring the published `reconstructed_inputs`
+    against an `archived_inputs` that was never masked (as an earlier
+    version of this function did) let the row set change along with the
+    input source in one step: measured on the n=31 proof-of-concept run,
+    that mistake understated the AUROC penalty by ~34% and inverted the F1
+    comparison entirely (a "reconstruction improves F1" reading that was
+    purely the row-selection artifact, not a property of the reconstruction
+    - see task-16 review finding C1 for the full numbers).
+
+    I4: shots skip exactly when their archive lacks the five `MATCH_COLUMNS`
+    features, which correlates with whatever else that shot's archive group
+    is missing - so `shots_used` is not a random sample of
+    `shots_requested` even at full coverage. `selection_effect_note` states
+    this in the report itself, not only here.
+
+    I3: every skip records its diagnosis (`skip_diagnosis`) rather than
+    discarding `built.missing`/`built.resolvers`/`store.missing_names` at
+    the point they were last in scope, and `skip_reasons` aggregates
+    identical causes into a histogram with a warning when one cause (or one
+    whole feature source contributing nothing) looks systemic - both would
+    have surfaced this task's own C2 defect (a dead fdp scaling path)
+    directly in this JSON.
+
+    I6: `y.npy`'s two truth columns are asserted to have the shapes their
+    names imply (`_assert_truth_column_shapes`) before any shot is touched,
+    closing the half of the truth-column coincidence the model-side
+    `_TRUTH_COLUMNS`/`OUTPUT_SPEC.column` assertion below cannot see - a
+    swapped archive export, not a swapped spec.
+
+    M8: `timeout_s`, when given, applies the same per-shot SIGALRM guard
+    `reconstruction_fidelity` now has - see `_shot_budget`.
+
+    Every shot is isolated (C1 of Task 15's review, matching
+    `reconstruction_fidelity`): a missing archive column, a truncated
+    feature file, or a `match_rows` variance-guard `ValueError` on a
+    per-shot basis costs only that shot, not the run.
     """
-    from .features import namespace as ns
-    from .features.store import present, read_feature
+    from .features.store import missing_names
     from .models.base import BuiltInputs
 
     # Materialized up front: `shots` is frequently a generator, and a
@@ -912,7 +1181,9 @@ def label_quality(
         )
 
     # Addendum item 5: the coincidence label_quality depends on, asserted
-    # once, before any shot is touched.
+    # once, before any shot is touched. This is the MODEL-side half; I6's
+    # `_assert_truth_column_shapes` below is the ARCHIVE-side half neither
+    # this nor the addendum's original check can see.
     for f in adapter.output_spec.fields:
         want = _TRUTH_COLUMNS.get(f.name)
         if want is not None and f.column != want:
@@ -923,6 +1194,7 @@ def label_quality(
                 "cannot proceed if that coincidence breaks - see task-16 "
                 "addendum item 5"
             )
+    _assert_truth_column_shapes(archive)  # I6
 
     predict = adapter.load(paths.models / slug)
 
@@ -932,48 +1204,55 @@ def label_quality(
     truths: list[np.ndarray] = []
     used: list[int] = []
     skipped: dict[str, str] = {}
+    skip_diagnosis: dict[str, dict] = {}
+    resolvers: dict[str, set] = {}
 
     for shot in shots:
         try:
-            got = archive_rows(shot, archive)
-            if got is None:
-                skipped[str(shot)] = "no archived rows"
-                continue
-            fpath = paths.features_file(shot)
-            if not fpath.exists():
-                skipped[str(shot)] = "no feature file"
-                continue
-            stored = present(fpath)
-            features = {
-                name: read_feature(fpath, name)
-                for name in spec.canonical_names
-                if name in stored
-            }
-            built = spec.build(features, ns.GRID_S)
-            info = match_rows(got["x0"], built)
-            if not info["passed"]:
-                skipped[str(shot)] = f"match rejected: {info['fail_reason']}"
-                continue
-            idx = info["index"]
-            theirs = BuiltInputs(
-                t=built.t[idx], scalars=got["x0"], profiles=got["x1"],
-                valid=np.ones(idx.size, bool), missing=(), resolvers={},
-            )
-            ours = BuiltInputs(
-                t=built.t[idx], scalars=built.scalars[idx],
-                profiles=built.profiles[idx], valid=built.valid[idx],
-                missing=built.missing, resolvers=built.resolvers,
-            )
-            a = adapter.output_spec.decode(predict(theirs))
-            b = adapter.output_spec.decode(predict(ours))
-            for name in a:
-                arch_pred.setdefault(name, []).append(a[name].mean)
-                ours_pred.setdefault(name, []).append(b[name].mean)
-            truths.append(got["y"])
-            valid_masks.append(np.asarray(ours.valid, dtype=bool))
-            used.append(int(shot))
+            with _shot_budget(timeout_s):
+                m = _matched_shot(shot, spec, paths, archive)
+                if m.built is not None:
+                    for canonical, source in m.built.resolvers.items():
+                        resolvers.setdefault(canonical, set()).add(source)
+                if m.skip_reason:
+                    skipped[str(shot)] = m.skip_reason
+                    # I3: the diagnosis that used to be in scope and thrown
+                    # away at skip time.
+                    skip_diagnosis[str(shot)] = {
+                        "missing_features": (
+                            sorted(m.built.missing) if m.built is not None else []
+                        ),
+                        "resolvers": (
+                            {k: sorted(v) for k, v in m.built.resolvers.items()}
+                            if m.built is not None else {}
+                        ),
+                        "feature_misses": missing_names(paths.features_file(shot)),
+                    }
+                    continue
+                got, built = m.got, m.built
+                idx = m.info["index"]
+                theirs = BuiltInputs(
+                    t=built.t[idx], scalars=got["x0"], profiles=got["x1"],
+                    valid=np.ones(idx.size, bool), missing=(), resolvers={},
+                )
+                ours = BuiltInputs(
+                    t=built.t[idx], scalars=built.scalars[idx],
+                    profiles=built.profiles[idx], valid=built.valid[idx],
+                    missing=built.missing, resolvers=built.resolvers,
+                )
+                a = adapter.output_spec.decode(predict(theirs))
+                b = adapter.output_spec.decode(predict(ours))
+                for name in a:
+                    arch_pred.setdefault(name, []).append(a[name].mean)
+                    ours_pred.setdefault(name, []).append(b[name].mean)
+                truths.append(got["y"])
+                valid_masks.append(np.asarray(ours.valid, dtype=bool))
+                used.append(int(shot))
         except Exception as exc:  # noqa: BLE001 - per-shot isolation, see docstring
             skipped[str(shot)] = f"{type(exc).__name__}: {exc}"
+            skip_diagnosis[str(shot)] = {
+                "missing_features": [], "resolvers": {}, "feature_misses": {},
+            }
             continue
 
     report: dict = {
@@ -983,26 +1262,48 @@ def label_quality(
         "n_shots_used": len(used),
         "shots_used": used,
         "skipped": skipped,
-        "archived_inputs": {},
-        "reconstructed_inputs": {},
-        "reconstructed_inputs_all_matched": {},
+        "skip_diagnosis": skip_diagnosis,
+        "skip_reasons": _skip_report(skipped, resolvers),
+        "resolvers": {k: sorted(v) for k, v in resolvers.items()},
+        "selection_effect_note": (
+            "I4 (task-16 review): shots skip exactly when their archive "
+            "lacks bt/ip/tritop/tribot/gapin (the five MATCH_COLUMNS), which "
+            "correlates with whatever else that shot's archive group is "
+            "missing - so shots_used is not a random sample of "
+            "shots_requested even at full coverage. Treat the metrics below "
+            "as measured on the subset of shots whose archive group happens "
+            "to be complete enough to align, not on a representative draw."
+        ),
+        "archived_inputs_all": {},
+        "archived_inputs_valid": {},
+        "reconstructed_inputs_valid": {},
+        "reconstructed_inputs_all": {},
         "row_counts": {},
+        "row_counts_total": {},
         "reconstruction_penalty": {},
         "reconstruction_penalty_note": (
-            "computed as reconstructed_inputs (published: labelmaker's own "
-            "valid-row mask applied) minus archived_inputs (the model's own "
-            "ceiling, scored over every matched training row - the archived "
-            "rows are the training rows, so no validity mask applies to "
-            "them). reconstructed_inputs_all_matched additionally scores "
-            "every matched row regardless of labelmaker's validity flag - "
-            "rows the package would never actually publish a label for - "
-            "kept for reference only; see task-16 addendum item 6."
+            "C1 (task-16 review): computed as reconstructed_inputs_valid "
+            "minus archived_inputs_valid - the SAME valid-row mask applied "
+            "to both sides, so the two scores differ only in input source "
+            "(archived vs. reconstructed), never also in which rows were "
+            "counted. archived_inputs_all and reconstructed_inputs_all "
+            "additionally score every matched row regardless of "
+            "labelmaker's validity flag, kept for reference only; computing "
+            "the penalty from *_all instead (or from *_valid on one side "
+            "and *_all on the other, as an earlier version of this function "
+            "did) mixes a row-selection change into the reconstruction "
+            "price and can even invert which direction a metric moved - "
+            "measured, on the n=31 proof-of-concept run, to understate the "
+            "AUROC penalty by ~34% and invert the F1 comparison outright."
         ),
     }
     if not used:
         return report
     y = np.concatenate(truths)
     valid = np.concatenate(valid_masks)
+    report["row_counts_total"] = {
+        "valid": int(valid.sum()), "invalid": int((~valid).sum()),
+    }
     for name, arch_values in arch_pred.items():
         col = _TRUTH_COLUMNS.get(name)
         if col is None:
@@ -1011,41 +1312,68 @@ def label_quality(
         pa = np.concatenate(arch_values)
         po = np.concatenate(ours_pred[name])
         field = next(f for f in adapter.output_spec.fields if f.name == name)
-        report["archived_inputs"][name] = (
-            binary_metrics if field.task == "binary" else regression_metrics
-        )(pa, t)
-        scored = _score_field(field.task, po, t, valid)
-        report["reconstructed_inputs"][name] = scored["published"]
-        report["reconstructed_inputs_all_matched"][name] = scored["all_matched"]
+        # C1: the ceiling is now scored the SAME two ways the published
+        # score already was (`_score_field` does both in one call), so the
+        # row-matched pair (`*_valid` on both sides) and the diagnostic pair
+        # (`*_all` on both sides) are each internally consistent.
+        archived_scored = _score_field(field.task, pa, t, valid)
+        reconstructed_scored = _score_field(field.task, po, t, valid)
+        report["archived_inputs_all"][name] = archived_scored["all_matched"]
+        report["archived_inputs_valid"][name] = archived_scored["published"]
+        report["reconstructed_inputs_valid"][name] = reconstructed_scored["published"]
+        report["reconstructed_inputs_all"][name] = reconstructed_scored["all_matched"]
         report["row_counts"][name] = {
-            "archived": int(pa.size),
-            "reconstructed_all_matched": int(po.size),
-            "reconstructed_published_valid": scored["n_valid"],
-            "reconstructed_published_invalid": scored["n_invalid"],
+            "matched": int(pa.size),
+            "valid": archived_scored["n_valid"],
+            "invalid": archived_scored["n_invalid"],
         }
-    for name in report["archived_inputs"]:
-        a_m = report["archived_inputs"][name]
-        o_m = report["reconstructed_inputs"][name]
-        key = "auroc" if "auroc" in a_m else "rmse"
-        if a_m.get(key) is not None and o_m.get(key) is not None:
-            report["reconstruction_penalty"][name] = {key: float(o_m[key] - a_m[key])}
+    for name in report["archived_inputs_valid"]:
+        a_v = report["archived_inputs_valid"][name]
+        o_v = report["reconstructed_inputs_valid"][name]
+        key = "auroc" if "auroc" in a_v else "rmse"
+        if a_v.get(key) is not None and o_v.get(key) is not None:
+            report["reconstruction_penalty"][name] = {
+                key: float(o_v[key] - a_v[key]),
+                "n_rows": report["row_counts"][name]["valid"],
+                "computed_from": (
+                    "reconstructed_inputs_valid minus archived_inputs_valid "
+                    "(row-matched - see reconstruction_penalty_note)"
+                ),
+            }
     return report
 
 
 def model_index_results(reports: dict) -> list[dict]:
     """The headline numbers, in HuggingFace `model-index` shape.
 
-    Reads `label_quality`'s `reconstructed_inputs` key, which is already the
-    valid-row-only, published score (`_score_field`), not
-    `reconstructed_inputs_all_matched` - so the number written to the card
-    is the one the package actually stands behind, never a metric over rows
-    it would never emit a label for (task-16 addendum item 6).
+    Reads `label_quality`'s `archived_inputs_valid` and
+    `reconstructed_inputs_valid` - the row-matched pair C1 (task-16 review)
+    exists to produce - never `*_all`, which mixes a different row set into
+    the comparison (see `label_quality`'s docstring). `dataset.name` states
+    both denominators a card-only reader needs to see this is a like-for-
+    like comparison: how many of the requested shots were used, and how
+    many of the matched rows passed labelmaker's own validity mask (C1/I4)
+    - without them, "d3d overlap shots (n=31)" alone hides that the
+    headline numbers are a 31-of-100-shot, valid-rows-only measurement.
     """
     quality = reports.get("label_quality") or {}
     results: list[dict] = []
+    row_counts = quality.get("row_counts_total") or {}
+    n_valid, n_invalid = row_counts.get("valid"), row_counts.get("invalid")
+    if n_valid is not None and n_invalid is not None:
+        dataset_name = (
+            f"d3d overlap shots (n_shots={quality.get('n_shots_used')}"
+            f"/{quality.get('n_shots_requested')} requested, "
+            f"n_rows={n_valid}/{n_valid + n_invalid} valid after "
+            "labelmaker's validity mask)"
+        )
+    else:
+        # No rows scored (e.g. n_shots_used == 0) - fall back to the shot
+        # count alone rather than a dataset name with a bare "None" in it.
+        dataset_name = f"d3d overlap shots (n={quality.get('n_shots_used')})"
     for source, suffix in (
-        ("archived_inputs", "archived inputs"),
-        ("reconstructed_inputs", "reconstructed inputs"),
+        ("archived_inputs_valid", "archived inputs"),
+        ("reconstructed_inputs_valid", "reconstructed inputs"),
     ):
         for label, metrics in (quality.get(source) or {}).items():
             entries = []
@@ -1066,10 +1394,7 @@ def model_index_results(reports: dict) -> list[dict]:
             results.append(
                 {
                     "task": {"type": task_type, "name": label},
-                    "dataset": {
-                        "name": f"d3d overlap shots (n={quality.get('n_shots_used')})",
-                        "type": "d3d-faith-corpus",
-                    },
+                    "dataset": {"name": dataset_name, "type": "d3d-faith-corpus"},
                     "metrics": entries,
                 }
             )

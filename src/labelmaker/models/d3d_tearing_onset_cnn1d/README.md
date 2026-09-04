@@ -270,8 +270,22 @@ into `model-index` above and, in full, into
 - `reconstruction.json` - per-feature agreement between labelmaker's features
   and the model's own training rows on the corpus/archive overlap shots.
 - `label_quality.json` - AUROC, F1 at 0.5 and calibration against the archived
-  labels, computed twice: with archived inputs and with labelmaker's inputs. The
-  difference is the reconstruction penalty.
+  labels, scored two ways over the SAME rows: with archived (training) inputs
+  and with labelmaker's own reconstructed inputs, both restricted to the rows
+  labelmaker's own validity rule would actually publish a label for. The
+  `model-index` numbers above are this row-matched pair; the difference
+  between them is the reconstruction penalty. `dataset.name` states how many
+  of the requested shots were used and how many of the matched rows passed the
+  validity mask - both denominators matter: shots skip exactly when their
+  archive lacks `bt`/`ip`/`tritop`/`tribot`/`gapin`, which correlates with
+  whatever else that shot's archive is missing, so the shots used are not a
+  random sample of the shots requested even at full coverage. The full JSON
+  also reports each side scored over every matched row regardless of
+  validity (`*_all`, diagnostic only, never the published number) and a
+  `skip_reasons` histogram with a warning when one cause dominates the
+  skips - see `labelmaker.validate.label_quality`'s docstring for why scoring
+  the two inputs over different row sets (an earlier version of this card)
+  understates the penalty and can invert which direction a metric moved.
 
 ## Technical specifications
 

@@ -99,6 +99,16 @@ EXIT_BAD_MODEL = 4
 #: "the evaluator disagrees with the framework it is supposed to match",
 #: which is the single most important failure this package can report.
 EXIT_FIDELITY_FAILED = 5
+#: I5 (task-16 review): distinct from EXIT_FIDELITY_FAILED. Before this, a
+#: validate run in which every one of the three per-slug reports raised
+#: (adapter_fidelity/reconstruction/label_quality all caught into
+#: `{"error": ...}`) still printed the same `validate <slug>: <name> ->
+#: <path>` line a success prints and exited 0 - `fidelity.get("passed") is
+#: False` is false for `{"error": ...}` just as it is for a real pass, so
+#: neither the log nor `$?` could tell a broken validate run from a clean
+#: one. Set when one or more reports errored but none failed fidelity
+#: outright (that case keeps EXIT_FIDELITY_FAILED, the more severe verdict).
+EXIT_VALIDATE_ERRORED = 6
 
 #: Faults that make a requested model unusable before any shot is touched:
 #: a scaffold spec (NotImplementedError), a spec with no ADAPTER
@@ -608,6 +618,16 @@ def main(argv=None) -> int:
             append_index(paths.labels_index, index)
             print(f"index: {len(index)} rows -> {paths.labels_index}")
 
+    # I5/M7 (task-16 review): collected across the whole loop rather than
+    # returned from inside it, so (a) one model's fidelity failure does not
+    # stop later models in a multi-`--models` run from being validated at
+    # all, and (b) the exit code and the summary.json write both happen
+    # once, at the bottom, after every model has had its turn - a
+    # `--stage all` run that fails fidelity still gets a manifest for the
+    # features/infer work it completed, instead of none.
+    fidelity_failed: list[str] = []
+    errored_reports: list[tuple[str, str]] = []
+
     if args.stage in ("validate", "all"):
         # Deferred import, like every other framework-specific import in this
         # module: `validate` loads torch at module scope (I1/addendum item 1
@@ -643,7 +663,7 @@ def main(argv=None) -> int:
                 reports["adapter_fidelity"] = {"error": f"{type(exc).__name__}: {exc}"}
             try:
                 reports["reconstruction"] = validation.reconstruction_fidelity(
-                    slug, shots, paths
+                    slug, shots, paths, timeout_s=args.timeout
                 )
             except Exception as exc:  # noqa: BLE001 - see comment above
                 # `reconstruction_fidelity` and `label_quality` are likewise
@@ -654,12 +674,20 @@ def main(argv=None) -> int:
                 # it must not take down the rest of a multi-model run.
                 reports["reconstruction"] = {"error": f"{type(exc).__name__}: {exc}"}
             try:
-                reports["label_quality"] = validation.label_quality(slug, shots, paths)
+                reports["label_quality"] = validation.label_quality(
+                    slug, shots, paths, timeout_s=args.timeout
+                )
             except Exception as exc:  # noqa: BLE001 - see comment above
                 reports["label_quality"] = {"error": f"{type(exc).__name__}: {exc}"}
             for name, payload in reports.items():
                 out = validation.write_report(paths, slug, name, payload)
                 print(f"validate {slug}: {name} -> {out}")
+                if isinstance(payload, dict) and "error" in payload:
+                    errored_reports.append((slug, name))
+                    print(
+                        f"validate {slug}: {name} ERRORED: {payload['error']}",
+                        file=sys.stderr,
+                    )
             results = validation.model_index_results(reports)
             if results:
                 registry.update_model_index(slug, results)
@@ -671,7 +699,20 @@ def main(argv=None) -> int:
                     f"(max_abs_diff={fidelity.get('max_abs_diff')})",
                     file=sys.stderr,
                 )
-                return EXIT_FIDELITY_FAILED
+                fidelity_failed.append(slug)
+
+    exit_code = EXIT_OK
+    if fidelity_failed:
+        exit_code = EXIT_FIDELITY_FAILED
+    elif errored_reports:
+        # I5: at least one report is `{"error": ...}` and none failed
+        # fidelity outright - still not a clean run, and `$?` must say so.
+        print(
+            f"validate: {len(errored_reports)} report(s) errored: "
+            + ", ".join(f"{s}/{n}" for s, n in errored_reports),
+            file=sys.stderr,
+        )
+        exit_code = EXIT_VALIDATE_ERRORED
 
     (paths.runs / run_id / "summary.json").write_text(
         json.dumps(
@@ -680,6 +721,14 @@ def main(argv=None) -> int:
                 "finished_at": datetime.now(UTC).isoformat(timespec="seconds"),
                 "mixed_source_note": MIXED_SOURCE_NOTE,
                 "stages": summaries,
+                # I5: an error count in the run summary, not only on stderr -
+                # a caller inspecting summary.json after the fact (rather
+                # than capturing stderr at run time) must be able to see the
+                # same verdict $? carried.
+                "validate_fidelity_failed": fidelity_failed,
+                "validate_errors": [
+                    {"slug": s, "report": n} for s, n in errored_reports
+                ],
             },
             indent=2,
             sort_keys=True,
@@ -687,7 +736,7 @@ def main(argv=None) -> int:
         )
         + "\n"
     )
-    return EXIT_OK
+    return exit_code
 
 
 if __name__ == "__main__":
