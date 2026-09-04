@@ -33,6 +33,12 @@ TRANSFORMS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "nonneg_zero_fill": lambda a: np.where(np.isfinite(a) & (a > 0.0), a, 0.0),
 }
 
+#: Transforms that FILL rather than map - they overwrite an unusable reading
+#: with a stand-in. Wherever one of these changes a value it has invented it,
+#: which is not the same as the input being non-finite: a negative deposition
+#: location is a reading, but it is not the reading the model receives.
+FILL_TRANSFORMS = frozenset({"nonneg_zero_fill"})
+
 ACTIVATIONS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "none": lambda a: a,
     "sigmoid": lambda a: 1.0 / (1.0 + np.exp(-a)),
@@ -112,15 +118,17 @@ class UnknownWhenActive:
     """Flag rows where one input was never measured while another was active.
 
     A gap in an input is sometimes benign and sometimes a fabrication, and
-    only a second field can tell you which. The ECH deposition location is
-    the case this exists for. It is absent whenever ECH is off, where the
-    zero-fill reproduces the upstream convention and costs nothing - and
-    MEASURED over 400 archive shots, 74.7% of its gaps are exactly that. But
-    it is also absent on 70.1% of the rows where ECH is genuinely injecting,
-    and there the zero-fill tells the model the power lands on axis when
-    nobody knows where it lands. Upstream dropped those rows, so the model
-    never trained on that state; a label computed from one is an
-    extrapolation and must say so.
+    only a second field can tell you which. An ECH deposition location that
+    nobody recorded is harmless while no ECH power is flowing - the
+    zero-filled stand-in then matches a state the model trained on - and is a
+    fabrication the moment power flows, because the fill asserts the power
+    lands on axis. The rule flags the second case and leaves the first alone.
+
+    A row is flagged when the `unknown` field's value was invented AND the
+    `active` field either exceeds `threshold` or was itself invented: an
+    unknown value is benign only when the partner is *known* to have been
+    inactive. The per-model measurements that justify a particular pair
+    belong in that model's spec and card, not here.
     """
 
     unknown: str
@@ -164,6 +172,7 @@ class InputSpec:
         # unspecified one of them. `canonical_names` deduplicates, so the same
         # physical quantity at two lags is an anticipated configuration - make
         # the ambiguity loud rather than arbitrary.
+        carried = [f.canonical for f in self.fields]
         for rule in self.domain:
             shared = [f.model_name for f in self.fields if f.canonical == rule.canonical]
             if len(shared) > 1:
@@ -171,6 +180,18 @@ class InputSpec:
                     f"domain rule on {rule.canonical!r} is ambiguous: fields "
                     f"{shared} all use it"
                 )
+        for pair in self.unknown_when_active:
+            for role, name in (("unknown", pair.unknown), ("active", pair.active)):
+                if name not in carried:
+                    raise ValueError(
+                        f"pair rule's {role} names {name!r}, which is not an input "
+                        f"of this spec; inputs are {sorted(set(carried))}"
+                    )
+                if carried.count(name) > 1:
+                    raise ValueError(
+                        f"pair rule's {role} names {name!r}, which two fields "
+                        "carry; disambiguate before adding the rule"
+                    )
 
     @property
     def scalar_fields(self) -> tuple[InputField, ...]:
@@ -230,12 +251,19 @@ class InputSpec:
             # on this data; half a step clears it by 0.0125.
             vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s / 2)
             v = vals[0] if f.kind == "scalar" else vals.T
-            unmeasured[f.model_name] = (
-                ~np.isfinite(v) if v.ndim == 1 else ~np.isfinite(v).all(axis=1)
-            )
+            gap = ~np.isfinite(v)
             if f.transform is not None:
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    v = TRANSFORMS[f.transform](v)
+                    filled = TRANSFORMS[f.transform](v)
+                if f.transform in FILL_TRANSFORMS:
+                    # `!=` rather than a finiteness test: NaN != NaN is True,
+                    # which is wanted, and it also catches a finite reading the
+                    # transform overwrote - MEASURED, 48 of 55,041 archive rho
+                    # readings are negative, and a negative location is as
+                    # unknown as a missing one.
+                    gap |= filled != v
+                v = filled
+            unmeasured[f.model_name] = gap if gap.ndim == 1 else gap.any(axis=1)
             sampled[f.model_name] = v * f.scale
         valid = self._validity(sampled, n, unmeasured)
         scalars = (
@@ -270,6 +298,7 @@ class InputSpec:
         for v in sampled.values():
             ok &= np.isfinite(v) if v.ndim == 1 else np.isfinite(v).all(axis=1)
         by_canonical = {f.canonical: f.model_name for f in self.fields}
+        # built once and shared with the pair-rule loop below
         for rule in self.domain:
             key = by_canonical.get(rule.canonical)
             if key is None:
@@ -292,13 +321,21 @@ class InputSpec:
                 ok &= (red >= rule.lo) if rule.lo_inclusive else (red > rule.lo)
             if rule.hi is not None:
                 ok &= (red <= rule.hi) if rule.hi_inclusive else (red < rule.hi)
-        by_canonical = {f.canonical: f.model_name for f in self.fields}
         for pair in self.unknown_when_active:
             gap = unmeasured[by_canonical[pair.unknown]]
+            active_gap = unmeasured[by_canonical[pair.active]]
             active = sampled[by_canonical[pair.active]]
             if active.ndim > 1:
-                active = np.nanmax(np.where(np.isfinite(active), active, 0.0), axis=1)
-            ok &= ~(gap & (active > pair.threshold))
+                # The fill assumes 0 means inactive, which holds for a
+                # non-negative threshold; `max` suffices because `where` has
+                # already removed every non-finite channel.
+                active = np.where(np.isfinite(active), active, 0.0).max(axis=1)
+            # An unknown value is benign only when the partner is known to
+            # have been inactive. If the partner was itself never measured,
+            # nothing is known about the pair and the row cannot be trusted -
+            # otherwise a fill transform on the partner would quietly report
+            # "inactive" and license the very gap this rule exists to catch.
+            ok &= ~(gap & (active_gap | (active > pair.threshold)))
         return ok
 
 

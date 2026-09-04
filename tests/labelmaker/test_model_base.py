@@ -262,6 +262,34 @@ def test_an_absent_field_without_absent_ok_still_invalidates_the_row():
     assert built.missing == ("ip",) and not built.valid.any()
 
 
+def test_a_pair_rule_naming_a_non_input_is_rejected_descriptively():
+    # The equivalent domain-rule mistake already raises a descriptive error;
+    # this one used to surface as a bare KeyError from deep inside build.
+    with pytest.raises(ValueError, match="not an input"):
+        InputSpec(
+            fields=(InputField("bt", "bt"),),
+            dt_s=0.025,
+            unknown_when_active=(
+                UnknownWhenActive(unknown="ech_rho", active="bt"),
+            ),
+        )
+
+
+def test_a_pair_rule_on_an_ambiguous_canonical_is_rejected():
+    # Same hazard the domain-rule guard exists for: two fields carrying one
+    # canonical means the rule would adjudicate against an arbitrary one.
+    with pytest.raises(ValueError, match="two fields"):
+        InputSpec(
+            fields=(
+                InputField("bt_now", "bt", lag="t"),
+                InputField("bt_next", "bt", lag="t+dt"),
+                InputField("ip", "ip"),
+            ),
+            dt_s=0.025,
+            unknown_when_active=(UnknownWhenActive(unknown="ip", active="bt"),),
+        )
+
+
 def test_a_pair_rule_naming_an_unknown_feature_is_rejected():
     with pytest.raises(KeyError):
         UnknownWhenActive(unknown="no_such_feature", active="ech_power_total")
