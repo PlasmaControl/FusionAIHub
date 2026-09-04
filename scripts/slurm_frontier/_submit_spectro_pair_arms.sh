@@ -41,10 +41,29 @@ for M in "${A}" "${B}"; do
         # arms ended at 1 code and the same recipe at the same seed spanned lattice 61.02-22.86.
         # Its 4 slots buy 2 configurations x 2 SEEDS instead of 4 one-shot knobs, and the axis
         # is the anti-collapse lever, not sharpness.
-        ARMS_STR="${ARMS_STR};${M}_ctl_s1|${P} ${MSK} --seed 1"
-        ARMS_STR="${ARMS_STR};${M}_ctl_s2|${P} ${MSK} --seed 2"
-        ARMS_STR="${ARMS_STR};${M}_je2_s1|${P} ${MSK} --joint_entropy_weight 2.0 --seed 1"
-        ARMS_STR="${ARMS_STR};${M}_je2_s2|${P} ${MSK} --joint_entropy_weight 2.0 --seed 2"
+        # MEASURED 2026-09-04 (job 5416298): mirnov wrote ZERO files in 70 minutes while the
+        # bes arms beside it reached step 3000-20000 -- it never finished step 0's gate. Cause:
+        # _activity_overrides gives mirnov min_activity 0.10 / active_bias 0.5, so
+        # _stratified_draw does up to 8 re-draws PER ITEM, each a full _build_pair (a 29-channel
+        # strided HDF5 read, ~29 Lustre seeks at ~13 ms, plus 2 STFTs), and _stream_eval_data
+        # builds --eval_batches 32 x --eval_batch_size 4 = 128 such items SINGLE-PROCESS before
+        # training starts. That is ~1 h of every 2 h leg, and it is paid again on every resume
+        # because the eval set is rebuilt, never cached.
+        #
+        # --skip_activity_override removes it. The stratification was introduced to stop mirnov
+        # collapsing on degenerate windows -- but the 2026-09-03 audit shows those "degenerate
+        # windows" were overwhelmingly the 28-of-29 DEAD CHANNELS that the new mask now excludes
+        # properly (only 0.5% of mirnov shots are absent; the loss is temporal). So the hack was
+        # compensating for the missing mask and is now redundant as well as ruinously expensive.
+        # It only clears min_activity/active_bias here: the adv_warmup_steps / adversarial_weight
+        # it also carries are already overridden by BASE (--adversarial_weight 0.0
+        # --adv_warmup_steps 0), and CLI wins over _activity_overrides either way.
+        # --eval_batches 8 (the script default) cuts the remaining build another 4x.
+        MIR="--skip_activity_override --eval_batches 8"
+        ARMS_STR="${ARMS_STR};${M}_ctl_s1|${P} ${MSK} ${MIR} --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_ctl_s2|${P} ${MSK} ${MIR} --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_je2_s1|${P} ${MSK} ${MIR} --joint_entropy_weight 2.0 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_je2_s2|${P} ${MSK} ${MIR} --joint_entropy_weight 2.0 --seed 2"
     else
         ARMS_STR="${ARMS_STR};${M}_ctl|${P} ${MSK}"
         ARMS_STR="${ARMS_STR};${M}_je2|${P} ${MSK} --joint_entropy_weight 2.0"
