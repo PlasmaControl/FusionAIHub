@@ -681,6 +681,11 @@ def test_lookup_helpers_and_locators():
     assert ns.by_name("pres").locator_for("archive") == "pres_EFIT01"
     assert ns.by_name("pinj_total").locator_for("corpus") == "pinj"
     assert all("archive" in f.sources for f in ns.by_source("archive"))
+    assert {f.name for f in ns.by_source("corpus")} == {
+        "pinj_total", "tinj_total", "ech_power_total"
+    }
+    assert "ip" in {f.name for f in ns.by_source("fdp")}
+    assert "ech_rho" not in {f.name for f in ns.by_source("fdp")}
     with pytest.raises(KeyError):
         ns.by_name("no_such_feature")
     # ech_rho is the only Phase 1 feature with no second source, so it is the
@@ -809,6 +814,16 @@ def test_mismatched_shapes_are_rejected_at_construction():
         FeatureArray(x=np.zeros(3), y=np.zeros((1, 4)))
     with pytest.raises(ValueError):
         FeatureArray(x=np.zeros(3), y=np.zeros(3))     # must be (C, T)
+
+
+def test_a_one_sample_feature_is_refused_as_ambiguous(tmp_path):
+    # The corpus layout reads ydata.shape[-1] < 2 as "signal absent", so a
+    # resolved one-sample group would be silently misread downstream.
+    p = tmp_path / "190000_features.h5"
+    one = FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)), attrs={"resolver": "corpus"})
+    with pytest.raises(ValueError, match="absent"):
+        write_features(p, 190000, {"ip": one}, {})
+    assert not p.exists()
 
 
 def test_read_feature_raises_for_absent_group(tmp_path):
@@ -1070,18 +1085,20 @@ class FeatureArray:
             raise ValueError(f"x {np.shape(self.x)} and y {np.shape(self.y)} disagree")
 
 
+def _read_group(g) -> FeatureArray:
+    """One stored group back into a FeatureArray, in float64."""
+    return FeatureArray(
+        x=np.asarray(g["xdata"], dtype=np.float64),
+        y=np.asarray(g["ydata"], dtype=np.float64),
+        attrs={k: str(v) for k, v in g.attrs.items()},
+    )
+
+
 def _load_all(path: Path) -> tuple[dict[str, FeatureArray], dict[str, str]]:
     if not Path(path).exists():
         return {}, {}
-    arrays: dict[str, FeatureArray] = {}
     with h5py.File(path, "r") as f:
-        for name in f:
-            g = f[name]
-            arrays[name] = FeatureArray(
-                x=np.asarray(g["xdata"], dtype=np.float64),
-                y=np.asarray(g["ydata"], dtype=np.float64),
-                attrs={k: str(v) for k, v in g.attrs.items()},
-            )
+        arrays = {name: _read_group(f[name]) for name in f}
         missing = json.loads(f.attrs.get(MISSING_ATTR, "{}"))
     return arrays, missing
 
@@ -1109,6 +1126,18 @@ def write_features(
         for name in arrays:
             kept_missing.pop(name, None)
         arrays, missing = kept, kept_missing
+    # A group with fewer than two samples is the corpus' "signal absent"
+    # sentinel, and these files share the corpus layout. Absence here travels
+    # in the `missing` dict instead, so writing a *resolved* one-sample group
+    # would read as absent to any consumer applying the corpus rule - which
+    # `catalog.available_groups` does. Refuse it: a resolver that got one
+    # sample should record a miss, not persist an ambiguity.
+    too_short = {n: a.y.shape[-1] for n, a in arrays.items() if a.y.shape[-1] < 2}
+    if too_short:
+        raise ValueError(
+            "refusing to write features with fewer than 2 samples, which the "
+            f"corpus layout reads as absent: {too_short}"
+        )
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     tmp = path.with_name(path.name + ".tmp")
     with h5py.File(tmp, "w") as f:
@@ -1141,12 +1170,7 @@ def read_feature(path, name: str) -> FeatureArray:
     with h5py.File(path, "r") as f:
         if name not in f:
             raise KeyError(f"{name} not in {path}")
-        g = f[name]
-        return FeatureArray(
-            x=np.asarray(g["xdata"], dtype=np.float64),
-            y=np.asarray(g["ydata"], dtype=np.float64),
-            attrs={k: str(v) for k, v in g.attrs.items()},
-        )
+        return _read_group(f[name])
 
 
 def present(path) -> set[str]:
