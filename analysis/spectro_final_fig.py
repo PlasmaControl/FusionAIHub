@@ -382,6 +382,21 @@ def coherent_rank(X: np.ndarray, M: Optional[np.ndarray], smooth: int = 5) -> Di
 
 _CHUNK = 24
 
+# Set by _decode_fidelity_chunked immediately before forking the pool; workers read it
+# copy-on-write. Module-level (not a closure) so the fork context can reach it.
+_PAR = None
+
+
+def _chunk_fidelity(args):
+    """One chunk of gate.decode_fidelity. Returns (n_windows, metrics dict)."""
+    i, chunk = args
+    recon, target, mask, pf, pt = _PAR
+    sl = slice(i, i + chunk)
+    d = gate.decode_fidelity(
+        recon[sl], target[sl], patch_f=pf, patch_t=pt, full_spec=True, band_bins=None,
+        mask=(None if mask is None else mask[sl]))
+    return int(recon[sl].shape[0]), d
+
 
 def _hf_chunked(a: np.ndarray, b0: int, b1: int, chunk: int = _CHUNK) -> float:
     """gate._hf_gradient_energy over a frequency slice, accumulated in window chunks.
@@ -525,16 +540,28 @@ def _decode_fidelity_chunked(recon: np.ndarray, target: np.ndarray, mask: Option
     their chunked mean is an approximation -- fine, they are read as orders of magnitude
     (4 vs 40 vs 130 against a GT control near 1.1), never to two decimals.
     """
+    # PARALLEL over chunks. decode_fidelity is host-numpy with Python-level loops, so it is
+    # single-core bound: MEASURED 2026-09-04, a 40-channel ece arm took over 2 HOURS for ONE
+    # checkpoint on one core (and it was doing that on a shared login node, which is the other
+    # reason this is now a process pool inside an allocation). Chunks are independent by
+    # construction -- the combination is a weighted mean plus two summed energies -- so this
+    # is the same arithmetic, just concurrent. Arrays are inherited copy-on-write through
+    # fork; workers index the globals rather than receiving pickled slices.
+    global _PAR
+    _PAR = (recon, target, mask, cfg.patch_f, cfg.patch_t)
+    idx = list(range(0, recon.shape[0], chunk))
+    nproc = max(1, min(len(idx), int(os.environ.get("AUDIT_WORKERS", "16"))))
+    if nproc > 1:
+        import multiprocessing as _mp
+        with _mp.get_context("fork").Pool(nproc) as pool:
+            results = pool.map(_chunk_fidelity, [(i, chunk) for i in idx])
+    else:
+        results = [_chunk_fidelity((i, chunk)) for i in idx]
+    _PAR = None
     acc: Dict[str, list] = {}
     wts: list = []
     hf_r = hf_t = 0.0
-    for i in range(0, recon.shape[0], chunk):
-        sl = slice(i, i + chunk)
-        d = gate.decode_fidelity(
-            recon[sl], target[sl], patch_f=cfg.patch_f, patch_t=cfg.patch_t,
-            full_spec=True, band_bins=None,
-            mask=(None if mask is None else mask[sl]))
-        n = int(recon[sl].shape[0])
+    for n, d in results:
         wts.append(n)
         hf_r += float(d["hf_energy_recon"])
         hf_t += float(d["hf_energy_target"])
