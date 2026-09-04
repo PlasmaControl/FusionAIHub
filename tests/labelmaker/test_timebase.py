@@ -1,4 +1,6 @@
 """The time-base conventions labelmaker shares with IGNITE."""
+import warnings
+
 import numpy as np
 import pytest
 
@@ -31,6 +33,7 @@ def test_sample_rate_is_exact_on_float32_records():
     assert abs(naive - 10_000.0) / 10_000.0 < 1e-3       # NOT a big rate error
     elapsed = 0.9 - float(x32[0])
     assert abs(round(elapsed * naive) - round(elapsed * fs)) >= 10
+    assert index_at(x32, 0.9)[0] == 109_000              # span-based is exact
 
 
 def test_sample_rate_rejects_degenerate_axes():
@@ -57,6 +60,19 @@ def test_sample_at_handles_1d_and_2d_and_gaps():
     np.testing.assert_allclose(sample_at(x, y2, [0.1])[:, 0], [10.0, 20.0])
     out = sample_at(x, y1, [10.0], max_gap=0.5)
     assert np.isnan(out[0])
+
+
+def test_window_mean_is_silent_when_a_window_holds_no_finite_sample():
+    # np.nanmean returns the right value here and raises "Mean of empty
+    # slice" through the warnings module, which np.errstate does NOT catch.
+    # Nine later tasks import this module and real channels have dropout
+    # stretches, so that warning would become permanent noise.
+    x = np.array([0.0, 0.1, 0.2])
+    y = np.array([np.nan, np.nan, 5.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = window_mean(x, y, [0.0], 0.15)
+    assert np.isnan(got[0])
 
 
 def test_window_mean_averages_the_following_window():

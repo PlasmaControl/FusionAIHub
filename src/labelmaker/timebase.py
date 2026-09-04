@@ -59,8 +59,13 @@ def sample_at(x: np.ndarray, y: np.ndarray, t, *, max_gap: float | None = None):
 def window_mean(x: np.ndarray, y: np.ndarray, t, width: float) -> np.ndarray:
     """Mean of `y` over each half-open window `[t, t + width)`.
 
-    NaN where the window contains no sample, so a missing stretch never
+    NaN where the window holds no finite sample, so a missing stretch never
     silently becomes an edge value.
+
+    The mean is accumulated by hand rather than with `np.nanmean`, which
+    raises "Mean of empty slice" through the `warnings` module on an
+    all-NaN window - `np.errstate` does not catch that, and real channels
+    have dropout stretches. Same approach as `decimate_to_step` below.
     """
     x = np.asarray(x, dtype=np.float64).ravel()
     y = np.asarray(y, dtype=np.float64)
@@ -71,10 +76,14 @@ def window_mean(x: np.ndarray, y: np.ndarray, t, width: float) -> np.ndarray:
     lo = np.searchsorted(x, t, side="left")
     hi = np.searchsorted(x, t + width, side="left")
     for j, (a, b) in enumerate(zip(lo, hi)):
-        if b > a:
-            seg = y[:, a:b]
-            with np.errstate(invalid="ignore"):
-                out[:, j] = np.nanmean(seg, axis=1)
+        if b <= a:
+            continue
+        seg = y[:, a:b]
+        good = np.isfinite(seg)
+        counts = good.sum(axis=1)
+        totals = np.where(good, seg, 0.0).sum(axis=1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[:, j] = np.where(counts > 0, totals / counts, np.nan)
     return out[0] if out.shape[0] == 1 else out
 
 
