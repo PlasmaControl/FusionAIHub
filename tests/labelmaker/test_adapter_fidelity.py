@@ -55,15 +55,23 @@ def test_torch_evaluator_matches_keras_to_1e4():
 def test_adapter_fidelity_report_is_a_pass(tmp_path):
     report = validate.adapter_fidelity("d3d_tearing_onset_cnn1d", golden=GOLDEN)
     assert report["passed"] is True
-    # Regression floor on the raw number - see the docstring for why this
-    # alone no longer gates `passed`.
+    # Regression floor on the raw number, AND (since FidelityTolerances grew
+    # a fourth gate) one of the things `passed` actually checks now - see
+    # the docstring for the hole an error confined to a handful of rows
+    # would otherwise open.
     assert report["max_abs_diff"] < 1e-4
-    # Both dtype measurements are reported regardless of which gates
-    # `passed` - see validate.adapter_fidelity's docstring for why float64
-    # is the one the other measurements are taken against.
-    assert report["max_abs_diff_float64"] == report["max_abs_diff"]
     assert 0 < report["max_abs_diff_float32"] < 1e-3
     assert report["n_rows"] > 1000 and report["n_members"] == 10
+
+    # The evidence behind the docstring's "not a directional bias, not a
+    # uniform spread" corrections: both are computed and returned, not only
+    # asserted in prose.
+    assert len(report["max_abs_diff_by_member"]) == 10
+    assert max(report["max_abs_diff_by_member"]) == report["max_abs_diff"]
+    assert len(report["mean_signed_diff_by_column"]) == 2
+    # Measured: the logit column's signed mean is negative and an order of
+    # magnitude past what zero-mean rounding on 16,730 samples would give.
+    assert report["mean_signed_diff_by_column"][1] < -1e-7
 
     # The proof behind the docstring's reasoning: our own two dtypes
     # disagree with each other by about the same amount as either dtype
@@ -74,7 +82,7 @@ def test_adapter_fidelity_report_is_a_pass(tmp_path):
     assert 1e-5 < report["self_max_abs_diff_float64_vs_float32"] < 1e-4
     assert 1e-7 < report["self_median_abs_diff_float64_vs_float32"] < 1e-6
 
-    # The three measured gates that actually decide `passed`, each well
+    # The four measured gates that actually decide `passed`, each well
     # inside its tolerance - see FidelityTolerances for what each catches.
     tolerances = report["tolerances"]
     assert report["scale_normalized_max_abs_diff"] < tolerances["scale_normalized_max"]
@@ -84,6 +92,7 @@ def test_adapter_fidelity_report_is_a_pass(tmp_path):
     assert report["label_max_abs_diff"] < tolerances["label_max_abs_diff"]
     assert report["label_max_abs_diff"] < 2e-6
     assert "tm_prob" in report["label_max_abs_diff_by_field"]
+    assert report["max_abs_diff"] < tolerances["max_abs_diff"]
 
     out = validate.write_report(
         Paths(root=tmp_path), "d3d_tearing_onset_cnn1d",

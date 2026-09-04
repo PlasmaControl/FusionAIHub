@@ -38,30 +38,48 @@ GOLDEN = Path(__file__).resolve().parents[2] / (
 
 @dataclass(frozen=True)
 class FidelityTolerances:
-    """The three measured gates `adapter_fidelity` checks, in place of one bare `tol`.
+    """The four measured gates `adapter_fidelity` checks, in place of one bare `tol`.
 
     A single absolute number cannot discriminate a real bug from float32
-    noise once the output columns sit at different scales (`betan` ~1,
-    the tearing logit ~20) - see `adapter_fidelity`'s docstring for the
+    noise once the output columns sit at different scales (`betan` ~3.89,
+    the tearing logit ~20.7) - see `adapter_fidelity`'s docstring for the
     Task 14b measurement each default is derived from.
     """
 
     #: `max_abs_diff` per column, divided by that column's own scale
     #: (`max(|golden output|)`), gated at the plan's original 1e-5 - applied
     #: to a normalized quantity so it means what the plan intended. Measured
-    #: 8.79e-07 (`betan`) and 2.71e-06 (tearing logit).
+    #: 8.79e-07 (`betan`) and 2.71e-06 (tearing logit) - 3.7x headroom on the
+    #: binding (larger) column.
     scale_normalized_max: float = 1e-5
     #: `median(|diff|)` over every member/row/column, gated at 1e-6. The
     #: strongest discriminator against a semantic error - a wrong epsilon or
     #: a transposed kernel raises the median, not merely the tail - so this
-    #: is the gate most likely to catch a real bug. Measured 7.65e-07.
+    #: is the gate most likely to catch a real bug. Measured 7.65e-07, 1.31x
+    #: headroom - the tightest margin of the four; a torch or BLAS upgrade
+    #: is the thing that would move it.
     median_abs_diff: float = 1e-6
     #: max abs diff of the published, post-activation, post-ensemble-mean
-    #: label (e.g. `tm_prob`), gated at 1e-5 - the only gate expressed in
-    #: units anyone downstream reads. Measured 1.22e-06.
+    #: label MEAN (e.g. `tm_prob`), gated at 1e-5. `Decoded.lo`/`.hi` - the
+    #: ensemble min/max the label store also publishes as the label's
+    #: spread - are not checked by this gate. Measured 1.24e-06, 8.1x
+    #: headroom.
     label_max_abs_diff: float = 1e-5
+    #: the raw, un-normalized `max_abs_diff` (see `adapter_fidelity`'s
+    #: return value) - restored here rather than left to the tests alone,
+    #: because the three gates above can all pass while this one does not:
+    #: an error confined to a handful of rows moves the max without moving
+    #: the median of 16,730 values. Measured 5.60e-05.
+    max_abs_diff: float = 1e-4
 
 
+# median_abs_diff and label_max_abs_diff, unlike scale_normalized_max, are
+# absolute numbers in output units, not scale-normalized. Applied here, by
+# slug, as one shared default, they would spuriously fail a future model
+# whose outputs sit an order of magnitude larger than this one's (~1-20) -
+# the same defect this dataclass was written to fix in the old bare `tol`.
+# Not building a per-model tolerance mechanism for that now: a future model
+# needs its own FidelityTolerances passed explicitly until one exists.
 DEFAULT_TOLERANCES = FidelityTolerances()
 
 
@@ -110,22 +128,49 @@ def adapter_fidelity(
     experiment was not able to test the hypothesis; it did not falsify it.
 
     The hypothesis's substance - that this is float32 rounding noise, not a
-    semantic error - is confirmed instead by a measurement Task 14b did not
+    semantic error - is supported instead by a measurement Task 14b did not
     make: comparing this evaluator against **itself**, float64 load vs.
     float32 load, both on the same weights and inputs (`self_max_abs_diff`
     below). That self-disagreement measures ~5.48e-5 - the same magnitude as
-    the ~5.60e-5 disagreement against TensorFlow. A semantic bug (a wrong
-    BatchNorm epsilon, a transposed kernel, a mismatched pad) could not
-    produce a residual that coincides with our own dtype's self-disagreement
-    with itself; only rounding noise of that dtype's own scale could. Three
-    further facts corroborate it, all visible in the returned dict: the
-    per-member max is uniform across all ten members (`self_max_abs_diff` is
-    not dominated by one outlier, which a weight-loading bug would produce);
-    the mean *signed* difference per column is ~1e-7 against a max of 5.6e-5
-    (zero-mean rounding, not a directional bias); and `median_abs_diff` is
-    ~7.65e-7 on outputs of magnitude 1-20 - float32 epsilon at that scale,
-    exactly. Layer-by-layer tracing (see `models/runners/keras_h5.py`'s
-    module docstring) places the noise on the ensemble's one unbounded
+    the ~5.60e-5 disagreement against TensorFlow. This does not exclude a
+    semantic bug; it bounds one. The self-comparison is a noise floor: this
+    graph amplifies float32-level perturbations to ~5.5e-5 on the logit, so
+    a float32 reference *cannot resolve* any semantic error smaller than
+    that. It still fully licenses the pass verdict below - a bug large
+    enough to matter would clear that floor and show up in
+    `median_abs_diff`, the gate built to catch exactly that kind of error
+    (see below) - but "cannot resolve anything smaller" is a bound, not
+    proof that nothing smaller is there.
+
+    Four further facts corroborate that the residual is float32-scale
+    rounding, all visible in the returned dict:
+
+    - the per-member max ranges 2.71e-05 to 5.60e-05 across the ten members
+      (`max_abs_diff_by_member` below) - a 2.07x spread, not a uniform one,
+      but with no single outlier the way a weight-loading bug on one member
+      would produce;
+    - `median_abs_diff` is ~7.65e-7 on outputs of magnitude 1-20.7 - float32
+      epsilon at that scale, exactly;
+    - the mean *signed* difference per column (`mean_signed_diff_by_column`
+      below) is `[-2.17e-07, -8.96e-07]`. On the logit column this is NOT
+      the zero-mean rounding it might look like next to a max of 5.6e-5:
+      57.3% of differences are negative, `mean|diff|` is 5.47e-06, and for
+      16,730 i.i.d. zero-mean samples of that magnitude the mean would be
+      ~4.23e-08 - the measured -8.96e-07 is 21x that. The bias is real, and
+      it is **magnitude-proportional relative rounding**: `mean(signed_diff
+      / logit)` over rows with `|logit| > 1` is 1.28e-07 - float32-epsilon
+      scale - on a logit distribution whose own mean is -6.47. A mostly-
+      negative quantity, rounded relatively, yields a mostly-negative signed
+      difference; that is a property of representing the quantity in
+      float32, not a directional error in the graph;
+    - the same bias appears in the evaluator's own float64-vs-float32
+      self-comparison, which involves no TensorFlow at all: mean signed diff
+      -2.91e-07, 54.7% negative, 8x its own zero-mean expectation. Seeing it
+      there too is what shows this is a property of float32 arithmetic on
+      this graph, not a framework difference.
+
+    Layer-by-layer tracing (see `models/runners/keras_h5.py`'s module
+    docstring) places the noise on the ensemble's one unbounded
     (linear-activation) output column - the tearing logit, never `betan` -
     because every other activation in the graph is a saturating sigmoid that
     absorbs small perturbations once saturated.
@@ -137,27 +182,43 @@ def adapter_fidelity(
     looser than `betan`'s. Normalizing `max_abs_diff` by each column's own
     scale (`max(|golden output|)` on that column) turns the plan's 1e-5 into
     the gate it was meant to be: measured 8.79e-07 (`betan`) and 2.71e-06
-    (tearing logit), both comfortably inside it. Three gates replace the one
-    number, each catching something the others do not:
+    (tearing logit), 3.7x headroom on the binding column. Four gates now
+    replace the one number, each catching something the others do not:
 
     - `scale_normalized_max` (1e-5): the plan's original tolerance, applied
       per-column so a large-magnitude column cannot hide behind a small one.
-    - `median_abs_diff` (1e-6): unaffected by scale, and the strongest
-      discriminator against a semantic error - a wrong epsilon or a
-      transposed kernel would raise the bulk of the distribution, not merely
-      its tail, so this is the gate most likely to actually catch a bug.
+    - `median_abs_diff` (1e-6): the strongest discriminator against a
+      semantic error - a wrong epsilon or a transposed kernel would raise
+      the bulk of the distribution, not merely its tail, so this is the
+      gate most likely to actually catch a bug. Unaffected by tail outliers
+      (not by scale - it is an absolute number in output units; see the
+      comment on `DEFAULT_TOLERANCES` for the limit that implies). Measured
+      7.65e-07, 1.31x headroom - the tightest margin of the four.
     - `label_max_abs_diff` (1e-5): the max abs difference in the published,
-      post-activation, post-ensemble-mean label (`tm_prob = sigmoid(mean over
-      members of the logit)`, per `OutputSpec.decode`) - the only one of the
-      three expressed in units anyone downstream reads. Measured ~1.22e-06:
-      an 8.2e-5-wide logit disagreement survives ensembling and the sigmoid's
-      compression to a barely-there ~1.2e-6 change in a reported probability.
+      post-activation, post-ensemble-mean label MEAN (`tm_prob = sigmoid(mean
+      over members of the logit)`, per `OutputSpec.decode`) - units anyone
+      downstream reads. Measured ~1.24e-06, 8.1x headroom: an 8.2e-5-wide
+      logit disagreement survives ensembling and the sigmoid's compression
+      to a barely-there ~1.2e-6 change in a reported probability. This gate
+      checks `Decoded.mean` only; `Decoded.lo`/`.hi` (the ensemble min/max
+      the label store also publishes as the label's spread) are not covered.
+    - `max_abs_diff` (1e-4): the raw bound the other three replaced,
+      restored rather than left to the tests alone. On the logit column
+      (scale 20.686) `scale_normalized_max`'s 1e-5 admits an absolute error
+      up to 2.07e-04 - twice as loose as this bound. The median gate is the
+      binding one for an error affecting the bulk of rows, but an error
+      confined to a handful of rows (a `'same'`-padding edge case at an
+      unusual length, a saturation path) moves the max without moving the
+      median of 16,730 values, so it could pass all three scale-aware gates;
+      this one still catches it. Measured 5.60e-05.
 
-    `passed` is the conjunction of all three. The raw `max_abs_diff` (and its
-    float32 counterpart) are still computed and returned for documentation,
+    `passed` is the conjunction of all four. The float32 counterpart of
+    `max_abs_diff` is still computed and returned for documentation,
     alongside the float64-vs-float32 self-disagreement that is the actual
-    evidence behind this docstring's reasoning - that pairing belongs in the
-    JSON report a run writes, not only here.
+    evidence behind this docstring's reasoning - that pairing is written
+    into whatever report calls `write_report` on this function's return
+    value (there is no dedicated `validate` stage in `run.py` yet - a later
+    task adds one), not only kept here in prose.
     """
     adapter = registry.load_adapter(slug)
     with np.load(golden, allow_pickle=False) as z:
@@ -179,6 +240,13 @@ def adapter_fidelity(
     # TensorFlow. See the docstring above.
     self_diff = np.abs(got - got32_as64)
 
+    # The evidence behind the docstring's "not a directional bias" fix: the
+    # per-member spread (not perfectly uniform) and the signed mean (not
+    # zero-mean) that the reasoning above depends on being auditable from
+    # this function's return value, not only from prose.
+    max_abs_diff_by_member = diff.max(axis=(1, 2))
+    mean_signed_diff_by_column = (got - want).mean(axis=(0, 1))
+
     diff_by_column = diff.max(axis=(0, 1))
     # Each column's own scale, so a normalized tolerance means the same
     # thing on the ~1-magnitude `betan` column and the ~20-magnitude tearing
@@ -197,10 +265,13 @@ def adapter_fidelity(
     }
     label_max_abs_diff = max(label_max_abs_diff_by_field.values())
 
+    max_abs_diff = float(diff.max())
+
     passed = (
         scale_normalized_max < tolerances.scale_normalized_max
         and median_abs_diff < tolerances.median_abs_diff
         and label_max_abs_diff < tolerances.label_max_abs_diff
+        and max_abs_diff < tolerances.max_abs_diff
     )
     return {
         "slug": slug,
@@ -208,15 +279,17 @@ def adapter_fidelity(
         "framework_version": meta.get("keras"),
         "n_rows": int(x0.shape[0]),
         "n_members": int(got.shape[0]),
-        "max_abs_diff": float(diff.max()),
-        "max_abs_diff_float64": float(diff.max()),
+        "max_abs_diff": max_abs_diff,
         "max_abs_diff_float32": float(diff32.max()),
         "median_abs_diff": median_abs_diff,
         "max_abs_diff_by_column": [float(c) for c in diff_by_column],
+        "max_abs_diff_by_member": [float(m) for m in max_abs_diff_by_member],
+        "mean_signed_diff_by_column": [float(c) for c in mean_signed_diff_by_column],
         # The evidence behind the docstring's reasoning: our own two dtypes'
         # disagreement, reported beside the raw max/median above so the
         # pairing (same magnitude as the TensorFlow comparison) is on the
-        # record in every report a run writes, not only in prose.
+        # record in whatever report calls write_report on this dict, not
+        # only in prose.
         "self_max_abs_diff_float64_vs_float32": float(self_diff.max()),
         "self_median_abs_diff_float64_vs_float32": float(np.median(self_diff)),
         "scale_normalized_max_abs_diff_by_column": [

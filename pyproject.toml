@@ -137,8 +137,9 @@ protobuf = "<7"
 [tool.pixi.feature.labelmaker.pypi-dependencies]
 # The workspace installs `faith` editable into every environment, which
 # drags torch in. Labelmaker never uses a GPU (its heaviest model is 12k
-# parameters evaluated in numpy), so take the CPU wheels and save ~3 GB
-# in an environment that would otherwise duplicate cu124.
+# parameters evaluated in torch on CPU, see models/runners/keras_h5.py), so
+# take the CPU wheels and save ~3 GB in an environment that would otherwise
+# duplicate cu124.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
 

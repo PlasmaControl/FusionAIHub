@@ -1,4 +1,4 @@
-"""The numpy evaluator reproduces Keras semantics layer by layer.
+"""The torch evaluator reproduces Keras semantics layer by layer.
 
 Every expectation here is hand-computed from the layer definition, so the
 tests are an independent oracle rather than a recording of our own output.
@@ -133,6 +133,98 @@ def test_conv1d_valid_then_maxpool_matches_hand_computation(tmp_path):
     out = load_graph(p)([x])[0]
     # conv -> [1, 3, 5, 7]; maxpool/2 -> [3, 7]
     np.testing.assert_allclose(out[0, :, 0], [3.0, 7.0], rtol=1e-12)
+
+
+def test_conv1d_same_padding_even_kernel_stride2_pads_right_not_left(tmp_path):
+    """Regression coverage for the port's own docstring warning.
+
+    `torch.nn.functional`'s native `padding='same'` puts the extra pad on
+    the *left* for an odd amount and rejects `stride > 1` outright, where
+    TensorFlow (and `_conv1d`'s manual `F.pad`) puts it on the *right*. This
+    was differentially tested against the pre-port numpy evaluator over
+    1,152 Conv1D configurations before the port, but nothing in the repo
+    exercised it as a standalone case - so a regression to torch's native
+    `'same'` would previously have shipped unnoticed.
+
+    kernel_size=2 (even), stride=2, input length 5: TF-style 'same' needs 1
+    padding sample total, and `_conv1d`'s `need // 2` puts it (`left=0`)
+    entirely on the right. With kernel [1, 0] (i.e. `out[t]` reads only the
+    first tap of each stride-2 window) and input [21, 21, 43, 43, 5], the
+    right-padded convolution reads [21, 21, 43, 43, 5, pad] -> [21, 43, 5].
+    A left-padded ('same' done torch's native way, `left=1`) convolution
+    would instead read [pad, 21, 21, 43, 43, 5] -> [0, 21, 43], dropping the
+    true last output entirely.
+    """
+    p = tmp_path / "m.h5"
+    kernel = np.array([[[1.0]], [[0.0]]])           # (k=2, cin=1, cout=1)
+    _write_legacy_h5(
+        p,
+        [
+            _layer(
+                "InputLayer", "in", [], batch_input_shape=[None, 5, 1], dtype="float32"
+            ),
+            _layer(
+                "Conv1D", "c", ["in"], filters=1, kernel_size=[2], strides=[2],
+                padding="same", dilation_rate=[1], activation="linear", use_bias=True,
+            ),
+        ],
+        [["in", 0, 0]],
+        [["c", 0, 0]],
+        {"c": {"kernel": kernel, "bias": np.array([0.0])}},
+    )
+    x = np.array([21.0, 21.0, 43.0, 43.0, 5.0]).reshape(1, 5, 1)
+    out = load_graph(p)([x])[0]
+    np.testing.assert_allclose(out[0, :, 0], [21.0, 43.0, 5.0], rtol=1e-12)
+
+
+def test_conv1d_dilated_valid_matches_hand_computation(tmp_path):
+    """dilation_rate=2, padding='valid': `out[t] = x[t] + 100*x[t+2]`."""
+    p = tmp_path / "m.h5"
+    kernel = np.array([[[1.0]], [[100.0]]])         # (k=2, cin=1, cout=1)
+    _write_legacy_h5(
+        p,
+        [
+            _layer(
+                "InputLayer", "in", [], batch_input_shape=[None, 6, 1], dtype="float32"
+            ),
+            _layer(
+                "Conv1D", "c", ["in"], filters=1, kernel_size=[2], strides=[1],
+                padding="valid", dilation_rate=[2], activation="linear", use_bias=True,
+            ),
+        ],
+        [["in", 0, 0]],
+        [["c", 0, 0]],
+        {"c": {"kernel": kernel, "bias": np.array([0.0])}},
+    )
+    x = np.arange(6.0).reshape(1, 6, 1)              # 0 1 2 3 4 5
+    out = load_graph(p)([x])[0]
+    np.testing.assert_allclose(out[0, :, 0], [200.0, 301.0, 402.0, 503.0], rtol=1e-12)
+
+
+def test_conv1d_same_output_length_is_ceil_of_length_over_stride(tmp_path):
+    """`'same'` padding always outputs `ceil(L / stride)`, any kernel/stride."""
+    p = tmp_path / "m.h5"
+    kernel = np.ones((3, 1, 1))                      # (k=3, cin=1, cout=1)
+    length, stride = 10, 3
+    _write_legacy_h5(
+        p,
+        [
+            _layer(
+                "InputLayer", "in", [], batch_input_shape=[None, length, 1],
+                dtype="float32",
+            ),
+            _layer(
+                "Conv1D", "c", ["in"], filters=1, kernel_size=[3], strides=[stride],
+                padding="same", dilation_rate=[1], activation="linear", use_bias=False,
+            ),
+        ],
+        [["in", 0, 0]],
+        [["c", 0, 0]],
+        {"c": {"kernel": kernel}},
+    )
+    x = np.arange(float(length)).reshape(1, length, 1)
+    out = load_graph(p)([x])[0]
+    assert out.shape[1] == -(-length // stride)      # ceil division
 
 
 def test_flatten_is_channels_last(tmp_path):
