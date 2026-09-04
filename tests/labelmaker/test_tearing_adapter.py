@@ -69,6 +69,53 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert ("ech_rho", "value") not in rules
 
 
+def test_an_unmeasured_ech_power_also_flags_an_unknown_location():
+    # A fill transform on the partner would otherwise report "inactive" and
+    # license the gap: an unknown location is benign only when power is KNOWN
+    # to have been off. Zero archive exposure today (every shot carrying the
+    # column has it fully measured), but the corpus resolver emits NaN where
+    # all twelve gyrotron channels are NaN, and the fdp path will have gaps.
+    feats, grid = _features()
+    t = feats["ech_rho"].x
+    feats["ech_rho"] = FeatureArray(
+        x=t, y=np.full((1, t.size), np.nan), attrs={"resolver": "archive"}
+    )
+    feats["ech_power_total"] = FeatureArray(
+        x=t, y=np.full((1, t.size), np.nan), attrs={"resolver": "archive"}
+    )
+    built = tm.ADAPTER.input_spec.build(feats, grid)
+    np.testing.assert_allclose(built.scalars[:, 9], 0.0)    # power zero-filled
+    np.testing.assert_allclose(built.scalars[:, 10], 0.0)   # rho zero-filled
+    assert not built.valid.any(), "nothing is known about ECH; claim nothing"
+
+
+def test_a_negative_ech_location_counts_as_unknown_not_as_measured():
+    # MEASURED: 48 of 55,041 archive rho readings are negative. A negative
+    # deposition location is not a location, and the fill overwrites it - so
+    # it is invented, exactly like a NaN, and must not be exempt from the
+    # pair rule while power flows.
+    feats, grid = _features()
+    t = feats["ech_rho"].x
+    feats["ech_rho"] = FeatureArray(
+        x=t, y=np.full((1, t.size), -1.0), attrs={"resolver": "archive"}
+    )
+    built = tm.ADAPTER.input_spec.build(feats, grid)
+    np.testing.assert_allclose(built.scalars[:, 10], 0.0)
+    assert not built.valid.any(), "a negative location is unknown, and power is flowing"
+
+
+def test_an_exact_zero_ech_location_is_a_real_reading(feats_zero_power=None):
+    # 0.0 is the upstream ECH-off convention, not an invention: the fill
+    # leaves it untouched, so it must NOT be treated as unknown.
+    feats, grid = _features()
+    t = feats["ech_rho"].x
+    feats["ech_rho"] = FeatureArray(
+        x=t, y=np.zeros((1, t.size)), attrs={"resolver": "archive"}
+    )
+    built = tm.ADAPTER.input_spec.build(feats, grid)
+    assert built.valid.all(), "an exactly-zero reading is measured, not invented"
+
+
 def test_a_fabricated_ech_location_is_flagged_when_power_is_flowing():
     # MEASURED over 400 archive shots: 70.1% of ECH-powered rows have no
     # recorded deposition location. Zero-filling those says "on axis", a
@@ -157,24 +204,6 @@ def test_negative_ech_power_also_becomes_zero():
     built = tm.ADAPTER.input_spec.build(feats, grid)
     np.testing.assert_allclose(built.scalars[:, 9], 0.0)
     assert built.valid.all()
-
-
-def test_a_finite_but_nonsensical_ech_location_becomes_zero_and_stays_valid():
-    # -1.0 and -1e9 are MEASURED readings (finite), just physically
-    # impossible, so nonneg_zero_fill zeroes them and the row stays usable -
-    # there is no ech_rho DomainRule. NaN is a different case: it means the
-    # deposition location was never measured at all, and whether that is
-    # benign or a fabrication now depends on whether ECH power is flowing -
-    # see test_a_fabricated_ech_location_is_flagged_when_power_is_flowing.
-    for value in (-1.0, -1e9):
-        feats, grid = _features()
-        t = feats["ech_rho"].x
-        feats["ech_rho"] = FeatureArray(
-            x=t, y=np.full((1, t.size), value), attrs={"resolver": "archive"}
-        )
-        built = tm.ADAPTER.input_spec.build(feats, grid)
-        np.testing.assert_allclose(built.scalars[:, 10], 0.0)
-        assert built.valid.all(), value
 
 
 def test_out_of_domain_kappa_is_flagged():
