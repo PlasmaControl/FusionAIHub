@@ -104,8 +104,16 @@ done
 [ -n "${ARMS}" ] || { echo "no codec_best.pt under ${DIR}" >&2; exit 1; }
 echo "[audit] ${M}: ${ARMS}"
 
+# NO_SEQ=1 skips the forecastability pool. MEASURED 2026-09-04: on mirnov it NEVER finished --
+# `seq_pool` needs blocks of 8 CONSECUTIVE windows in which EVERY channel is valid, and
+# mirnov's streamed tensor is only 87.3% real, so nearly every candidate block is rejected and
+# the scan walks the entire shot list (1.5 h with zero arms scored). The arm table is the
+# deliverable; the forecastability margin is not.
+SEQFLAG=""
+[ "${NO_SEQ:-0}" = "1" ] && SEQFLAG="--no_seq"
+
 ${PY} analysis/spectro_final_fig.py --mode score --modality "${M}" \
-    --n_windows "${NW}" --batch_size 8 --device cuda --arms "${ARMS}" \
+    --n_windows "${NW}" --batch_size 8 --device cuda --arms "${ARMS}" ${SEQFLAG} \
     ${FLOOR:+--floor ${FLOOR}} \
     --json "eval_runs/codec_recon_figs/${M}_arms.json" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
 
