@@ -91,6 +91,50 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "gsmulti" ]; then
+        # THE UNEXPLORED CELL: ENVELOPE/SHAPE SPLIT **x** MULTISCALE CRITIC, plus the RATE
+        # lever. Both corners of the 320-window tables are unshippable in opposite ways:
+        #
+        #   co2     arm            nRMSE   hf_r  peakF1  lattice  %rate ceiling
+        #           co2_m02       0.7028  0.166  0.6243    9.64   92.5   best peakF1
+        #           co2_gsadv     0.7300  0.237  0.5959    2.01   73.0   best hf AND lattice
+        #   mirnov  a02d_s2_last  1.0004  0.215  0.5022   14.60   85.5   best peakF1
+        #           gs_s2         1.1178  0.103  0.3558    2.20   78.5   best lattice
+        #
+        # Adversarial+multiscale buys peak placement at a 9-24x lattice (GT control 1.12-1.18);
+        # gain-shape buys a near-GT lattice (2.01 / 2.20) but loses peakF1 AND spends only
+        # 66-78% of the achievable bit rate against 85-94% for the sharp arms. Never run
+        # together. This leg runs them together.
+        #
+        # RATE LEVER: the gain-shape deficit is structural -- `gain_tokens` of the 192 carry
+        # the per-(channel, frequency) ENVELOPE, which is smooth across windows and therefore
+        # LOW-ENTROPY, so those token positions deliver few bits. Sweeping gain_tokens
+        # 32 -> 16 -> 8 hands the shape path 160 -> 176 -> 184 tokens and should walk the rate
+        # back toward 90%. If gain-shape reaches ~90% rate while holding lattice near 2, that
+        # is the win for both modalities. gain_tokens must DIVIDE freq_bins (512).
+        #
+        # NOT swept here, with reasons:
+        #   pixel_anchor_weight -- already AT its documented optimum 5.0 in BASE (0.05 was the
+        #     old default; 1.0 is worse than 5.0 on co2 on both axes; 20 collapses to 1 code).
+        #   decoder receptive field -- refine_depth 6 + refine_dilated gives RF 2^(6+1)-1 = 127
+        #     against patch_f 16, i.e. already 8x the patch, so the lattice on the adversarial
+        #     arms is NOT an RF shortfall.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        # Per-modality objective = each modality's OWN best-measured sharp arm, + gain-shape.
+        # co2: ms_ssim 5 (its documented optimum; 20 triples its lattice, 50 was my error).
+        # mirnov: ms_ssim 20 -- the 320-window audit REFUTES my 2-seed ms_ssim-50 screen, the
+        #   a02d arms (ms_ssim 20 + multiscale + adversarial) beat every ms50 arm on peakF1,
+        #   0.5022 vs 0.4471. Build on a02d.
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+        ARMS_STR="${ARMS_STR};${M}_gsm32_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_gsm32_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_gsm16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+        ARMS_STR="${ARMS_STR};${M}_gsm8|${P} ${MSK} ${MIR} ${B} --gain_tokens 8"
+        continue
+    fi
     if [ "${SWEEP}" = "co2fix" ]; then
         # CORRECTION LEG. Every co2 arm launched earlier today used ms_ssim_weight 50,
         # joint_entropy_weight 1.0 and adversarial 0.2-0.5 + fm 1.0. The MEASURED co2 optima
