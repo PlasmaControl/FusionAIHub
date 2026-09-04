@@ -236,11 +236,21 @@ def render_production(out: Path) -> None:
 # (label, run, windows, effective batch, colour) — epoch = step * batch / windows, and the
 # effective batch is NOT constant across runs (ACCUM_STEPS changes it), so it must travel with
 # each entry or an accumulation arm lands at the wrong epoch on the x-axis.
+# 2026-08-18: the memconv_* arms SUPERSEDE the earlier memcap_* probes -- they ran to 31k/30k
+# steps (886/422 epochs) instead of stopping early, and both reach or approach the floor. The
+# earlier memcap_N4/N8 curves were cut off while still descending and reading them as "stalled"
+# was wrong. Old arms kept below for continuity, labelled as the short runs they are.
 MEMCAP = [("N=1  d256xL4 (memorised)", "ignite_bpfull/runs/overfit_lr1e3_d256",  140,  8, "#2a78d6"),
-          ("N=2  batch 64",            "ignite_bpfull/runs/memcap_N2_acc8",      280, 64, "#111111"),
-          ("N=2  stride 10",           "ignite_bpfull/runs/memcap_N2_stride10",   28,  8, "#b02f8a"),
-          ("N=4  d256xL4",             "ignite_bpfull/runs/memcap_N4",           560,  8, "#eb6834"),
-          ("N=8  d256xL4 (stalled)",   "ignite_bpfull/runs/memcap_N8",          1120,  8, "#1baf7a")]
+          ("N=2  d256xL4 (converged)", "ignite_bpfull/runs/memconv_N2",          280,  8, "#111111"),
+          ("N=4  d256xL4 (converged)", "ignite_bpfull/runs/memconv_N4",          560,  8, "#eb6834"),
+          # 2026-08-19 LADDER at N=8: capacity control (d256 vs d512) and OBJECTIVE bridge
+          # (split-point vs GENIE, +/- scheduled sampling). All four converged; note the two
+          # objectives optimise DIFFERENT losses, so their curves are NOT directly comparable --
+          # see score_ladder.py for the common-condition ranking.
+          ("N=8  d256 split-point",   "ignite_bpfull/runs/ladder_N8_d256",     1120,  8, "#1baf7a"),
+          ("N=8  d512 split-point",   "ignite_bpfull/runs/ladder_N8_d512",     1120,  8, "#7a5cc6"),
+          ("N=8  d512 GENIE",         "ignite_bpfull/runs/ladder_N8gen",       1120,  8, "#b02f8a"),
+          ("N=8  d512 GENIE+ss0.75",  "ignite_bpfull/runs/ladder_N8genss",     1120,  8, "#d4a017")]
 
 
 

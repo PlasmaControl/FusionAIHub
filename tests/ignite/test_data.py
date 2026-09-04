@@ -292,3 +292,49 @@ def test_instance_norm_quantized_stats_are_piecewise_constant():
     cfg_plain = SpectroCodecConfig(input_instance_norm=True)
     a2 = data.log_power_stft(raw, cfg_plain)
     assert torch.isfinite(a2).all()
+
+
+# --------------------------------------------------------------------------------------- #
+# PER-CODEC STFT GEOMETRY (NVIDIA Spectral Codec port, arXiv 2406.05298)
+# --------------------------------------------------------------------------------------- #
+def test_stft_geometry_defaults_to_the_module_globals():
+    """A cfg that never touches the new fields must resolve to EXACTLY the 1024/256 grid.
+
+    This is the no-op guarantee that keeps every existing codec checkpoint and the
+    ``ignite_prod_v2`` token cache valid: the fields exist, but their defaults ARE the
+    globals, and ``log_power_stft`` reads them via ``getattr(..., GLOBAL)`` so an old
+    pickled config that lacks them entirely lands on the same path.
+    """
+    cfg = SpectroCodecConfig()
+    assert cfg.stft_n_fft == STFT_N_FFT == 1024
+    assert cfg.stft_hop == STFT_HOP == 256
+    raw = _toy_raw(2)
+    out = data.log_power_stft(raw, cfg)
+    assert out.shape[-2:] == (cfg.freq_bins, cfg.time_frames) == (512, 96)
+
+
+def test_stft_geometry_is_read_from_cfg_not_the_globals():
+    """n_fft 512 must produce 256 DC-dropped bins over the SAME 0-250 kHz band.
+
+    The band is set by ``STFT_FS``, not by ``n_fft``: halving n_fft halves the number of
+    bins and doubles the bin width (488 -> 977 Hz), it does NOT crop the top of the band.
+    """
+    cfg = SpectroCodecConfig(freq_bins=256, patch_f=8)
+    cfg.stft_n_fft, cfg.stft_hop = 512, 256
+    raw = _toy_raw(2)
+    out = data.log_power_stft(raw, cfg)
+    assert out.shape[-2:] == (256, 96)
+    # the port keeps the Phase-B budget of 192 tokens per spectro modality
+    assert cfg.n_freq_patch == 32 and cfg.n_time_patch == 6 and cfg.n_tok == 192
+    # bin width doubles; the covered band is unchanged
+    assert STFT_FS / cfg.stft_n_fft == 2 * (STFT_FS / STFT_N_FFT)
+    assert cfg.freq_bins * (STFT_FS / cfg.stft_n_fft) == 250_000.0
+
+
+def test_stft_geometry_missing_fields_fall_back_to_globals():
+    """An OLD pickled config (no stft_* attributes at all) must still hit the 1024/256 path."""
+    class _LegacyCfg:                       # deliberately NOT a SpectroCodecConfig
+        channels, freq_bins, time_frames = 1, 512, 96
+        input_standardize = logpow_standardize = input_instance_norm = False
+    out = data.log_power_stft(_toy_raw(1), _LegacyCfg())
+    assert out.shape[-2:] == (512, 96)

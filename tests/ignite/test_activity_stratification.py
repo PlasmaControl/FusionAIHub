@@ -189,13 +189,27 @@ def test_overrides_on_for_the_four_failing_codecs():
         tc.apply_activity_overrides(tt, sig)
         assert tt.active_bias > 0 and 0.0 < tt.min_activity <= 1.0, sig
 
+    # fast-TS: the ENVELOPE codec (the default) still gets its original overrides — the
+    # 2026-09-03 raw redesign must not change the old codec's behaviour.
     fts = FastTSCodecConfig(channels=8)
+    assert not fts.is_raw, "the default fast-TS config must still be the envelope codec"
     tc.apply_activity_overrides(fts, "filterscopes")
     assert fts.active_bias > 0 and fts.min_activity > 0
     # fast-TS adversarial-driven collapse (2026-07-27): rich data (91% structured) still pinned to
     # 1 code under full adversarial_weight=1.0 + zero warmup -> gets the SAME adv-warmup + halved
     # adversarial_weight its collapse-prone siblings (co2 / tangtv_lower) already have.
     assert fts.adv_warmup_steps > 0 and fts.adversarial_weight < 1.0
+
+    # ...but the RAW-SAMPLE codec is EXEMPT: min_activity 0.5 is an ENVELOPE-std threshold
+    # (raw window std median ~0.007, so it would reject nearly every window) and
+    # adversarial_weight 0.5 would silently re-enable the GAN the raw codec defaults OFF.
+    from tokamak_foundation_model.ignite.config import fastts_raw_config
+    raw = fastts_raw_config(channels=8, patch_w=20)
+    before = (raw.active_bias, raw.min_activity, raw.adv_warmup_steps, raw.adversarial_weight)
+    tc.apply_activity_overrides(raw, "filterscopes")
+    after = (raw.active_bias, raw.min_activity, raw.adv_warmup_steps, raw.adversarial_weight)
+    assert before == after, ("raw fast-TS must be exempt from the envelope overrides", before, after)
+    assert raw.adversarial_weight == 0.0 and raw.active_bias == 0.0
 
 
 @pytest.mark.parametrize(

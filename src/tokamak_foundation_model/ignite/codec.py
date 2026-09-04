@@ -31,6 +31,7 @@ from .losses import (
     _mean_over_maps,
     feature_matching_loss,
     freq_gradient_loss,
+    ms_ssim_loss,
     multiscale_recon_loss,
     shift_consistency,
 )
@@ -196,10 +197,23 @@ class SpectroCodec(nn.Module):
         pixel = torch.mean(torch.abs(recon - x))
         # Multi-resolution + freq-gradient reconstruction (NeMo-style; sharpens turbulent detail
         # that plain pixel-L1 blurs). No-op when the weights are 0 (byte-identical).
-        multiscale = (multiscale_recon_loss(recon, x)
-                      if cfg.multiscale_recon_weight > 0 else recon.new_zeros(()))
+        multiscale = (
+            multiscale_recon_loss(
+                recon, x,
+                scales=tuple(getattr(cfg, "multiscale_recon_scales", (2, 4))),
+            )
+            if cfg.multiscale_recon_weight > 0 else recon.new_zeros(())
+        )
         freq_grad = (freq_gradient_loss(recon, x)
                      if cfg.freq_grad_weight > 0 else recon.new_zeros(()))
+        # 1 - MS-SSIM: the differentiable twin of the gate's ranking metric (see
+        # losses.ms_ssim_loss). Not evaluated at all when the weight is 0 -> byte-identical.
+        _msw = float(getattr(cfg, "ms_ssim_weight", 0.0))
+        ms_ssim_t = (
+            ms_ssim_loss(recon, x, win=int(getattr(cfg, "ms_ssim_win", 7)),
+                         scales=tuple(getattr(cfg, "ms_ssim_scales", (1, 2, 4))))
+            if _msw > 0 else recon.new_zeros(())
+        )
 
         # DETACHED real features: generator matches fake -> real (grad only via fake feats).
         with torch.no_grad():
@@ -209,7 +223,10 @@ class SpectroCodec(nn.Module):
         feats_shift = self.encode(x_shift)
         consistency = shift_consistency(feats_x, feats_shift)
 
-        entropy = self.quantizer.entropy_loss(feats_x)
+        # step is passed ONLY here (spectro): it drives cfg.joint_entropy_ramp_steps, the
+        # linear 0 -> joint_entropy_weight ramp. Other families call entropy_loss without
+        # step, so their behavior is unchanged.
+        entropy = self.quantizer.entropy_loss(feats_x, step=step)
 
         # VQGAN-canonical (Taming Transformers §3.3): the adaptive weight balances the
         # adversarial term against the RECONSTRUCTION reference — NOT the consistency/entropy
@@ -223,7 +240,8 @@ class SpectroCodec(nn.Module):
         # the balanced adversarial term regains sharpening strength.
         recon_ref = (cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
                      + cfg.multiscale_recon_weight * multiscale
-                     + cfg.freq_grad_weight * freq_grad)
+                     + cfg.freq_grad_weight * freq_grad
+                     + _msw * ms_ssim_t)
         non_adv_total = (
             recon_ref
             + cfg.consistency_weight * consistency
@@ -249,6 +267,7 @@ class SpectroCodec(nn.Module):
                 + cfg.pixel_anchor_weight * pixel
                 + cfg.multiscale_recon_weight * multiscale
                 + cfg.freq_grad_weight * freq_grad
+                + _msw * ms_ssim_t
                 + cfg.consistency_weight * consistency
                 + cfg.entropy_weight * entropy
             )
@@ -260,6 +279,7 @@ class SpectroCodec(nn.Module):
             "pixel": pixel,
             "multiscale": multiscale,
             "freq_grad": freq_grad,
+            "ms_ssim": ms_ssim_t,
             "feature_matching": fm,
             "consistency": consistency,
             "entropy": entropy,

@@ -138,22 +138,51 @@ class SlowTSCodec(nn.Module):
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
 
         pixel = self._masked_recon_mae(recon, x, mask)
-        entropy = self.quantizer.entropy_loss(feats_x)
+        # MASKED SQUARED error (cfg.recon_mse_weight, default 0.0 = OFF -> the term is skipped
+        # entirely and the objective is byte-identical to the L1-only original). See
+        # SlowTSCodecConfig.recon_mse_weight: the gate's slowts_nrmse is an RMSE, so an L1-only
+        # objective optimises the conditional MEDIAN of a metric that wants the MEAN.
+        mse_w = float(getattr(cfg, "recon_mse_weight", 0.0))
+        pixel_mse = (self._masked_recon_mse(recon, x, mask) if mse_w != 0.0
+                     else recon.new_zeros(()))
+        # `step` is forwarded so cfg.joint_entropy_ramp_steps (the joint-entropy 0->w linear ramp
+        # in SpectroQuantizer.entropy_loss) applies here too; with the default ramp 0 / joint
+        # weight 0 this is a no-op and the returned value is unchanged.
+        entropy = self.quantizer.entropy_loss(feats_x, step=step)
 
-        total = cfg.recon_weight * pixel + cfg.entropy_weight * entropy
+        total = (cfg.recon_weight * pixel + mse_w * pixel_mse
+                 + cfg.entropy_weight * entropy)
 
         return {
             "total": total,
             "recon": recon,
             "pixel": pixel,
+            "pixel_mse": pixel_mse,
             "entropy": entropy,
             "adaptive_weight": 1.0,
             "codes": codes,
         }
 
     # ------------------------------------------------------------------ #
-    # masked reconstruction MAE
+    # masked reconstruction MAE / MSE
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _broadcast_mask(recon: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Expand a (B,C,T) / (B,T) / (B,C) validity mask to ``recon``'s (B, C, T) shape."""
+        m = mask.to(dtype=recon.dtype)
+        if m.dim() == 3:            # (B, C, T)
+            pass
+        elif m.dim() == 2 and m.shape == (recon.shape[0], recon.shape[2]):  # (B, T)
+            m = m[:, None, :]
+        elif m.dim() == 2 and m.shape == (recon.shape[0], recon.shape[1]):  # (B, C)
+            m = m[:, :, None]
+        else:
+            raise ValueError(
+                f"mask must be (B,C,T), (B,T) or (B,C); got {tuple(mask.shape)} "
+                f"for recon {tuple(recon.shape)}"
+            )
+        return m.expand_as(recon)
+
     @staticmethod
     def _masked_recon_mae(
         recon: torch.Tensor, x: torch.Tensor, mask: Optional[torch.Tensor]
@@ -167,20 +196,26 @@ class SlowTSCodec(nn.Module):
         """
         if mask is None:
             return torch.mean(torch.abs(recon - x))
-        m = mask.to(dtype=recon.dtype)
-        if m.dim() == 3:            # (B, C, T)
-            pass
-        elif m.dim() == 2 and m.shape == (recon.shape[0], recon.shape[2]):  # (B, T)
-            m = m[:, None, :]
-        elif m.dim() == 2 and m.shape == (recon.shape[0], recon.shape[1]):  # (B, C)
-            m = m[:, :, None]
-        else:
-            raise ValueError(
-                f"mask must be (B,C,T), (B,T) or (B,C); got {tuple(mask.shape)} "
-                f"for recon {tuple(recon.shape)}"
-            )
-        m = m.expand_as(recon)
+        m = SlowTSCodec._broadcast_mask(recon, mask)
         denom = m.sum()
         if float(denom) <= 0.0:
             return torch.mean(torch.abs(recon - x))
         return (torch.abs(recon - x) * m).sum() / denom
+
+    @classmethod
+    def _masked_recon_mse(
+        cls, recon: torch.Tensor, x: torch.Tensor, mask: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Mean ``(recon - x)**2`` over VALID positions — the L2 twin of :meth:`_masked_recon_mae`.
+
+        Same mask broadcasting + same empty-mask fallback (delegated to
+        :meth:`_broadcast_mask`), so the two terms are always averaged over exactly the same
+        positions and can be mixed with ``cfg.recon_mse_weight`` without a normalisation skew.
+        """
+        if mask is None:
+            return torch.mean((recon - x) ** 2)
+        m = cls._broadcast_mask(recon, mask)
+        denom = m.sum()
+        if float(denom) <= 0.0:
+            return torch.mean((recon - x) ** 2)
+        return (((recon - x) ** 2) * m).sum() / denom

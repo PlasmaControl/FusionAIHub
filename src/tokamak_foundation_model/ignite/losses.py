@@ -186,3 +186,64 @@ def _r1_penalty(disc: torch.nn.Module, real: torch.Tensor, gamma: float) -> torc
     )[0]
     penalty = grad.reshape(grad.shape[0], -1).pow(2).sum(dim=1).mean()
     return 0.5 * gamma * penalty
+
+
+# --------------------------------------------------------------------------------------- #
+# MS-SSIM reconstruction loss — the DIFFERENTIABLE form of the ranking metric
+# --------------------------------------------------------------------------------------- #
+def ms_ssim_loss(recon: torch.Tensor, target: torch.Tensor,
+                 win: int = 7, scales=(1, 2, 4), c1_frac: float = 0.01,
+                 c2_frac: float = 0.03) -> torch.Tensor:
+    """``1 - MS-SSIM`` between two (B, C, F, T) log-magnitude spectrograms.
+
+    WHY SSIM AND NOT AN L-p TERM. Written out,
+
+        SSIM = luminance x CONTRAST x STRUCTURE,
+        contrast factor = 2 sigma_x sigma_y / (sigma_x^2 + sigma_y^2)
+
+    A blurred reconstruction has local ``sigma_y << sigma_x`` exactly where a mode ridge was,
+    so its contrast factor collapses and SSIM penalises the blur EXPLICITLY. An L1/L2 term has
+    no variance factor at all — the conditional mean is its exact minimiser — which is the
+    measured failure here: the arm with the best ``spec_nrmse`` (0.9010) has ``hf_ratio``
+    0.0143 and no visible structure, while a worse-scoring arm (1.0972 / 0.8258) reproduces the
+    mode track. This term is the differentiable twin of ``gate.ms_ssim``, so the quantity being
+    trained and the quantity being judged are the SAME quantity.
+
+    This is also what the reference's own metric choice implies: ViSQOL is built on NSIM, a
+    structural-similarity measure over spectro-temporal patches of a gammatone spectrogram
+    (arXiv 2406.05298 reports MOS/ViSQOL/ESTOI and explicitly discounts time-domain error).
+
+    Implementation notes: local statistics use a uniform ``win x win`` window via ``avg_pool2d``
+    (separable box filter, cheap and differentiable); scales are produced by ``avg_pool2d``
+    downsampling; the stabilising constants are set from each (sample, channel) TARGET's own
+    dynamic range, so the term is invariant to the modality's units. Returns a scalar in
+    ``[0, ~2]`` that is 0 for a perfect reconstruction.
+    """
+    import torch.nn.functional as _F
+
+    def _box(z: torch.Tensor, k: int) -> torch.Tensor:
+        return _F.avg_pool2d(z, kernel_size=k, stride=1)
+
+    rng = (target.amax(dim=(-2, -1), keepdim=True)
+           - target.amin(dim=(-2, -1), keepdim=True)).clamp_min(1e-12)
+    c1 = (c1_frac * rng) ** 2
+    c2 = (c2_frac * rng) ** 2
+    terms = []
+    a, b = recon, target
+    for i, s in enumerate(scales):
+        if i > 0:
+            f = s // scales[i - 1] if scales[i - 1] > 0 else s
+            if f > 1:
+                a, b = _F.avg_pool2d(a, f), _F.avg_pool2d(b, f)
+        if min(a.shape[-2], a.shape[-1]) <= win:
+            break
+        mu_a, mu_b = _box(a, win), _box(b, win)
+        sa = (_box(a * a, win) - mu_a * mu_a).clamp_min(0.0)
+        sb = (_box(b * b, win) - mu_b * mu_b).clamp_min(0.0)
+        sab = _box(a * b, win) - mu_a * mu_b
+        ssim = (((2 * mu_a * mu_b + c1) * (2 * sab + c2))
+                / ((mu_a ** 2 + mu_b ** 2 + c1) * (sa + sb + c2)))
+        terms.append(ssim.mean())
+    if not terms:
+        return recon.new_zeros(())
+    return 1.0 - torch.stack(terms).mean()

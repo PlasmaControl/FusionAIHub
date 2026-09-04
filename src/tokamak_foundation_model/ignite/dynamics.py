@@ -39,15 +39,20 @@ class _MHA(nn.Module):
         self.dropout = dropout
         self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
         self.proj = nn.Linear(d_model, d_model, bias=False)
+        # OUTPUT dropout, deliberately NOT SDPA's dropout_p. Passing dropout_p > 0 to
+        # scaled_dot_product_attention aborts on this ROCm build with
+        # "torch.AcceleratorError: HIP error: invalid argument" -- the flash kernel rejects it
+        # (killed job 5322227, 2026-08-21, all 64 ranks in the first 40 s). Dropping the mask on
+        # the projected output regularises the same path, keeps the fast attention kernel, and
+        # adds NO parameters, so existing checkpoints load unchanged.
+        self.attn_drop = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # (B, L, d)
         B, L, d = x.shape
         qkv = self.qkv(x).reshape(B, L, 3, self.h, self.dh).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]                       # (B, h, L, dh)
-        o = F.scaled_dot_product_attention(
-            q, k, v, is_causal=self.causal, dropout_p=self.dropout if self.training else 0.0
-        )
-        return self.proj(o.transpose(1, 2).reshape(B, L, d))
+        o = F.scaled_dot_product_attention(q, k, v, is_causal=self.causal)   # dropout_p=0: see __init__
+        return self.attn_drop(self.proj(o.transpose(1, 2).reshape(B, L, d)))
 
 
 class _FFN(nn.Module):
@@ -94,6 +99,62 @@ class FactorizedSTBlock(nn.Module):
         return x
 
 
+class ActuatorCrossAttention(nn.Module):
+    """Per-token cross-attention from frame tokens (queries) to the actuator channels (keys/values).
+
+    WHY THIS REPLACES `x + act_embed(actuators)`. MEASURED 2026-08-18 on the best model, 24 held-out
+    shots: swapping in a DIFFERENT shot's control program moves the forecast by only 0.263 of its
+    own spread; zeroing the actuators entirely, 0.240. Three quarters of the forecast is
+    independent of the actuators -- for a model whose purpose is "forecast diagnostics from
+    actuator trajectories" that is the whole task missing.
+
+    The old pathway was 70 channels -> ONE Linear -> ONE vector added identically to all ~1280
+    token embeddings of the frame. No gating, no per-token selectivity, no per-modality
+    modulation: the control signal competes additively against 1280 learned embeddings and is
+    swamped. Here each token ATTENDS over the 70 actuator channels individually, so a co2 band
+    token can weight `pinj` while a magnetics token weights `i_coil`.
+
+    Channels are embedded individually (value * per-channel embedding + per-channel identity) so
+    the key set is 70 tokens, not one pooled vector -- otherwise attention has nothing to select
+    between and degenerates to the additive path it replaces.
+
+    Zero-init on the output projection makes this an EXACT no-op at initialisation, so a run
+    starts byte-identical to the additive baseline and the cross-attention has to earn its
+    contribution. cfg.act_cross_attn = False restores the old path entirely.
+    """
+
+    def __init__(self, cfg: DynamicsConfig):
+        super().__init__()
+        d, self.n_act = cfg.d_model, cfg.actuator_dim
+        self.n_head = max(1, cfg.n_heads // 2)
+        self.chan_val = nn.Linear(1, d)                     # scalar channel value -> d
+        self.chan_id = nn.Parameter(torch.randn(cfg.actuator_dim, d) * 0.02)
+        self.q = nn.Linear(d, d, bias=False)
+        self.kv = nn.Linear(d, 2 * d, bias=False)
+        self.o = nn.Linear(d, d, bias=False)
+        nn.init.zeros_(self.o.weight)                       # exact no-op at init
+        self.qn = nn.LayerNorm(d)
+        self.kn = nn.LayerNorm(d)
+
+    def forward(self, x: torch.Tensor, actuators: torch.Tensor) -> torch.Tensor:
+        """x: (B, F, N, d) frame tokens. actuators: (B, F, n_act) -> same shape as x."""
+        B, Fr, N, d = x.shape
+        # per-CHANNEL key/value tokens: (B, F, n_act, d)
+        a = self.chan_val(actuators.unsqueeze(-1)) + self.chan_id.view(1, 1, self.n_act, d)
+        a = self.kn(a)
+        k, v = self.kv(a).chunk(2, dim=-1)
+        q = self.q(self.qn(x))
+        h = self.n_head
+        # fold (B,F) into the batch axis: attention is WITHIN a frame, so no information crosses
+        # frames here and causality is untouched (the temporal blocks still own that).
+        q = q.reshape(B * Fr, N, h, d // h).transpose(1, 2)
+        k = k.reshape(B * Fr, self.n_act, h, d // h).transpose(1, 2)
+        v = v.reshape(B * Fr, self.n_act, h, d // h).transpose(1, 2)
+        o = F.scaled_dot_product_attention(q, k, v)
+        o = o.transpose(1, 2).reshape(B * Fr, N, d).reshape(B, Fr, N, d)
+        return self.o(o)
+
+
 class DynamicsBackbone(nn.Module):
     """codes {name:(B,F,n_tok)} + actuators (B,F,70) → per-modality logits {name:(B,F,n_tok,vocab)}."""
 
@@ -102,6 +163,8 @@ class DynamicsBackbone(nn.Module):
         self.cfg = cfg
         self.tok = FrameTokenizer(cfg)
         self.act_embed = nn.Linear(cfg.actuator_dim, cfg.d_model)
+        self.act_cross = (ActuatorCrossAttention(cfg)
+                          if getattr(cfg, 'act_cross_attn', False) else None)
         self.blocks = nn.ModuleList([FactorizedSTBlock(cfg) for _ in range(cfg.depth)])
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
@@ -115,6 +178,8 @@ class DynamicsBackbone(nn.Module):
             )
         # additive, causal (actuator_f added to frame f; temporal attn is causal)
         x = x + self.act_embed(actuators).unsqueeze(2)         # (B, F, 1, d) broadcast over tokens
+        if self.act_cross is not None:
+            x = x + self.act_cross(x, actuators)               # per-token attention over 70 channels
         use_ckpt = self.training and getattr(self.cfg, "grad_checkpointing", False) and x.requires_grad
         for blk in self.blocks:
             if use_ckpt:
@@ -122,10 +187,14 @@ class DynamicsBackbone(nn.Module):
                 # manual all-reduce). DDP's autograd hooks are what corrupt the checkpoint recompute
                 # (t()-on-4D / addmm / lost grads on out-of-checkpoint params); bare + manual sync
                 # avoids that entirely. determinism_check off: SDPA saves different valid tensors on
-                # recompute. preserve_rng_state off: blocks are RNG-free (dropout=0).
+                # recompute. preserve_rng_state: OFF is sound ONLY while the blocks are RNG-free.
+                # With dropout > 0 they are NOT -- the recompute would draw a DIFFERENT dropout
+                # mask than the forward pass, so gradients would be silently wrong (no error,
+                # just a corrupted run). Tie the flag to dropout so enabling regularisation
+                # cannot quietly break checkpointing. Verified numerically 2026-08-21.
                 x = torch.utils.checkpoint.checkpoint(
                     blk, x, use_reentrant=False, determinism_check="none",
-                    preserve_rng_state=False)
+                    preserve_rng_state=float(getattr(self.cfg, "dropout", 0.0)) > 0.0)
             else:
                 x = blk(x)
         return self.out_norm(x)

@@ -52,6 +52,18 @@ eval "${_hook_out}"
 # 4700720/21 d=256 ALLREDUCE timeout, 4700730/31 d=1024 BROADCAST timeout —
 # all same code as 4642538 that ran 10h fine 2026-05-25).
 # export LD_LIBRARY_PATH="$HOME/aws-ofi-nccl/install/lib:$LD_LIBRARY_PATH"
+# GUARDED OPT-IN (2026-08-29). The line above stays commented: ~100 scripts source this file,
+# so uncommenting it would put the plugin under every running chain's next leg at once, and the
+# failure mode is a collective HANG that burns a whole walltime leg rather than a slowdown.
+# Set OFI_PREFIX=<prefix> in a single job's --export to load the plugin for THAT job only.
+# Rebuilt 2026-08-29 against libfabric 2.3.1 (the May build targeted 1.22.0, which the
+# maintenance removed -- the most likely cause of the 4700720/21 ALLREDUCE hangs):
+#   OFI_PREFIX=/ccs/home/ps9551/aws-ofi-nccl/install-20260829
+# Must come AFTER the pixi shell-hook, same as the original line.
+if [ -n "${OFI_PREFIX:-}" ]; then
+    export LD_LIBRARY_PATH="${OFI_PREFIX}/lib:$LD_LIBRARY_PATH"
+    echo "[common] AWS-OFI-NCCL plugin ENABLED from ${OFI_PREFIX}"
+fi
 
 # Performance / correctness knobs
 export PYTORCH_ROCM_ARCH=gfx90a

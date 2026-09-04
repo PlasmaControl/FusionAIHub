@@ -107,16 +107,59 @@ class SpectroDecoder(nn.Module):
             heads=cfg.heads,
         )
         self.to_pixels = nn.Linear(cfg.d_model, patch_dim)
+        # Optional RESIDUAL conv refinement head over the ASSEMBLED (F, T) spectrogram
+        # (cfg.refine_depth > 0): stride-1 kernel-3 2D convs that give the decoder
+        # full-resolution CROSS-PATCH context, so its texture is no longer forced to be one
+        # shared basis tiled on a (patch_f x patch_t) lattice — the measured checkerboard
+        # (gate.patch_lattice_metrics; see the SpectroCodecConfig note). The final conv is
+        # ZERO-INIT so the head starts as an exact identity; depth 0 (and old pickled configs,
+        # which lack the field entirely — hence the getattr) builds NOTHING, keeping the
+        # state_dict byte-identical to pre-refine checkpoints.
+        depth = int(getattr(cfg, "refine_depth", 0))
+        self.refine: nn.Sequential | None = None
+        if depth > 0:
+            hidden = int(getattr(cfg, "refine_hidden", 64))
+            dilated = bool(getattr(cfg, "refine_dilated", False))
+            ch = cfg.channels
+            layers: list[nn.Module] = []
+            for i in range(depth - 1):
+                d = (2 ** i) if dilated else 1
+                layers += [
+                    nn.Conv2d(ch if i == 0 else hidden, hidden, 3, padding=d, dilation=d),
+                    nn.GELU(),
+                ]
+            d_last = (2 ** (depth - 1)) if dilated else 1
+            last = nn.Conv2d(
+                hidden if depth > 1 else ch, ch, 3, padding=d_last, dilation=d_last,
+            )
+            nn.init.zeros_(last.weight)
+            nn.init.zeros_(last.bias)
+            layers.append(last)
+            self.refine = nn.Sequential(*layers)
+        # Optional StyleGAN-style per-pixel NOISE input with a learned PER-CHANNEL scale
+        # (cfg.decoder_noise). Zero-init => an exact identity at step 0; see the
+        # SpectroCodecConfig note for why a deterministic decoder cannot satisfy the
+        # adversarial term without tiling a fixed texture. Applied at FULL resolution AFTER
+        # the refinement head, in train AND eval (this is a generative decoder — the decoded
+        # spectrogram is a sample, not a conditional mean).
+        self.noise_scale: nn.Parameter | None = (
+            nn.Parameter(torch.zeros(cfg.channels))
+            if bool(getattr(cfg, "decoder_noise", False)) else None
+        )
 
     @property
     def last_layer(self) -> nn.Parameter:
         """The weight ``Parameter`` of the final layer producing the (B,C,F,T) output.
 
-        This is ``to_pixels.weight`` — the last conv/linear before the (parameter-free)
-        unpatchify rearrange. The VQGAN adaptive adversarial weight balances the
-        reconstruction and adversarial gradients at this tensor (see
-        ``codec.SpectroCodec.generator_losses`` and "Taming Transformers" §3.3).
+        Without the refinement head this is ``to_pixels.weight`` — the last conv/linear before
+        the (parameter-free) unpatchify rearrange; with ``cfg.refine_depth > 0`` it is the final
+        refinement conv's weight (the last parameterized layer on the output path). The VQGAN
+        adaptive adversarial weight balances the reconstruction and adversarial gradients at
+        this tensor (see ``codec.SpectroCodec.generator_losses`` and "Taming Transformers"
+        §3.3); it MUST be the last parameterized layer before the output.
         """
+        if self.refine is not None:
+            return self.refine[-1].weight
         return self.to_pixels.weight
 
     def forward(self, quant: torch.Tensor) -> torch.Tensor:
@@ -125,7 +168,7 @@ class SpectroDecoder(nn.Module):
         patches = self.to_pixels(h)
         # unpatchify: inverse of the encoder rearrange (g=1 -> identical to before).
         g = int(getattr(cfg, "channel_groups", 1))
-        return rearrange(
+        x = rearrange(
             patches,
             "b (g nf nt) (gc pf pt) -> b (g gc) (nf pf) (nt pt)",
             g=g,
@@ -135,6 +178,11 @@ class SpectroDecoder(nn.Module):
             pf=cfg.patch_f,
             pt=cfg.patch_t,
         )
+        if self.refine is not None:
+            x = x + self.refine(x)
+        if self.noise_scale is not None:
+            x = x + self.noise_scale.view(1, -1, 1, 1) * torch.randn_like(x)
+        return x
 
 
 class _ResBlock2d(nn.Module):
@@ -198,7 +246,11 @@ class SpectroConvDecoder(nn.Module):
         self.cfg = cfg
         base_ch = int(cfg.conv_dec_base_ch)
         n_res = int(cfg.conv_dec_res_blocks)
-        min_ch = 64
+        # Channel floor for the halving schedule. Configurable so the decoder can be sized to
+        # the NVIDIA Spectral Codec's 5.5:1 decoder:encoder ratio (arXiv 2406.05298 section 4:
+        # "HiFi-GAN V1 decoder with upsample rates [8,8,4,2] and 1024 initial channels",
+        # 55 M decoder vs 10 M encoder). Default 64 = the prior hard-coded value.
+        min_ch = int(getattr(cfg, "conv_dec_min_ch", 64))
 
         # per-axis upsample counts (how many ×2 steps each axis needs to reach the patch size).
         self._pow2_f = (cfg.patch_f & (cfg.patch_f - 1)) == 0 and cfg.patch_f > 0

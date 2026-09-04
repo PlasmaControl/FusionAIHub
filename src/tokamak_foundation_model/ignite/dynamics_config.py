@@ -126,6 +126,9 @@ class DynamicsConfig:
     # Horizon UNIFORM in [1, gen_horizon_max] (0 = off). Preferred over alpha: keeps the
     # horizon short WITHOUT collapsing the scored-frame count to 1 (see maskgit._random_mask).
     gen_horizon_max: int = 0
+    # Per-token cross-attention from frame tokens to the 70 actuator channels, replacing the
+    # single additive vector. False = historical additive-only path, byte-identical.
+    act_cross_attn: bool = False
 
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels
