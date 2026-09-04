@@ -8,7 +8,9 @@ its columns are bit-identical to that model's training inputs (see the
 plan's Deviation 6), which is why this resolver comes first in every
 feature's `sources`.
 
-It covers only 21% of the corpus (3,621 of 16,909 shots), so it is the
+It covers only 19% of the corpus (3,246 of 16,909 shots - the intersection,
+not the 3,621 corpus shots that merely fall inside its shot-number span), so
+it is the
 proof-of-concept path, not the scaling path. `resolve_fdp` is the latter.
 
 Availability varies per shot: some groups are missing individual columns, so
@@ -85,6 +87,15 @@ def resolve(
             if spec.kind == "profile":
                 if raw.ndim != 2:
                     missing[spec.name] = "ShapeError"
+                    continue
+                if raw.shape[1] != ns.RHO_GRID.size:
+                    # The store's convention is (T, n_rho). A column stored
+                    # time-first would transpose into something whose x and y
+                    # lengths still agree, so nothing downstream would catch
+                    # it until `build` failed on a broadcast, far from here.
+                    missing[spec.name] = (
+                        f"RadialAxisMismatch({raw.shape[1]}!={ns.RHO_GRID.size})"
+                    )
                     continue
                 y = raw.T                      # (n_rho, T)
                 n = y.shape[1]

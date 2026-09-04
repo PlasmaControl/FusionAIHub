@@ -73,6 +73,19 @@ def test_an_unknown_feature_name_is_refused(tmp_path):
         ra.resolve(190000, ["no_such_feature"], files=(p,))
 
 
+def test_a_profile_with_the_wrong_radial_width_is_refused(tmp_path):
+    # The store's convention is (T, n_rho). A time-first column would
+    # transpose into an array whose x and y lengths still agree, so it would
+    # pass every check here and fail much later inside InputSpec.build.
+    p = tmp_path / "archive.h5"
+    with h5py.File(p, "w") as f:
+        g = f.create_group("190000")
+        g.create_dataset("pres_EFIT01", data=np.zeros((33, 240)))   # transposed
+    got, missing = ra.resolve(190000, ["pres"], files=(p,))
+    assert got == {}
+    assert "RadialAxisMismatch" in missing["pres"]
+
+
 def test_a_shorter_record_keeps_its_own_grid(tmp_path):
     p = _fake_archive(tmp_path, n=120)
     got, _ = ra.resolve(190000, ["bt"], files=(p,))
