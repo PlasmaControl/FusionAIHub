@@ -228,6 +228,24 @@ def test_wrong_number_of_inputs_is_an_error(tmp_path):
         g([np.zeros((1, 7))])        # wrong feature width
 
 
+def test_predict_members_refuses_a_multi_output_graph(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "in", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("Dense", "a", ["in"], units=1, activation="linear", use_bias=False),
+            _layer("Dense", "b", ["in"], units=1, activation="linear", use_bias=False),
+        ],
+        [["in", 0, 0]],
+        [["a", 0, 0], ["b", 0, 0]],
+        {"a": {"kernel": np.ones((2, 1))}, "b": {"kernel": np.ones((2, 1))}},
+    )
+    graphs = load_ensemble([p])
+    with pytest.raises(ValueError, match="single-output"):
+        predict_members(graphs, [np.zeros((1, 2))])
+
+
 pytestmark_upstream = pytest.mark.skipif(
     not TM_UPSTREAM.exists(), reason=f"upstream weights not available: {TM_UPSTREAM}"
 )

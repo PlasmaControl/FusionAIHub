@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import h5py
@@ -99,7 +99,7 @@ def write_features(
     for name in [n for n, a in arrays.items() if a.y.shape[-1] < 2]:
         missing[name] = f"OneSampleAmbiguous({arrays[name].y.shape[-1]})"
         del arrays[name]
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    now = datetime.now(UTC).isoformat(timespec="seconds")
     tmp = path.with_name(path.name + ".tmp")
     with h5py.File(tmp, "w") as f:
         f.attrs["shot"] = int(shot)

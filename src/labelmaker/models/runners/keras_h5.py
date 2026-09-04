@@ -251,8 +251,9 @@ def predict_members(graphs, inputs) -> np.ndarray:
     for g in graphs:
         got = g(inputs)
         if len(got) != 1:
-            raise UnsupportedLayer(
-                f"expected a single output, got {len(got)}: {g.output_names}"
+            raise ValueError(
+                f"expected a single-output graph, got {len(got)} outputs: "
+                f"{g.output_names}"
             )
         outs.append(np.atleast_2d(got[0]))
     return np.stack(outs, axis=0)
