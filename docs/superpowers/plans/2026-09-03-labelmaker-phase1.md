@@ -189,8 +189,10 @@ variable. Defaults are group storage: Nathan's own scratch is near quota.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -807,6 +809,17 @@ def test_write_is_atomic_and_leaves_no_temp_file(tmp_path):
     assert list(tmp_path.iterdir()) == [p]
 
 
+def test_a_failed_write_leaves_no_temp_file(tmp_path):
+    # An attrs value h5py cannot serialise raises after the temp file is open,
+    # which is the only case that matters: nothing else would ever remove it,
+    # and over 16,909 shots that is a slow leak of files nobody recognises.
+    p = tmp_path / "190000_features.h5"
+    bad = FeatureArray(x=np.zeros(3), y=np.zeros((1, 3)), attrs={"nested": {"a": 1}})
+    with pytest.raises(TypeError):
+        write_features(p, 190000, {"ip": bad}, {})
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_is_complete_needs_every_name_present_or_missing(tmp_path):
     p = tmp_path / "190000_features.h5"
     assert not is_complete(p, ["ip"])          # no file yet
@@ -1081,7 +1094,7 @@ import h5py
 import numpy as np
 
 from .. import __version__
-from ..config import git_sha
+from ..config import atomic_path, git_sha
 from . import namespace as ns
 
 MISSING_ATTR = "missing"
@@ -1164,8 +1177,7 @@ def write_features(
         missing[name] = f"OneSampleAmbiguous({arrays[name].y.shape[-1]})"
         del arrays[name]
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    tmp = path.with_name(path.name + ".tmp")
-    with h5py.File(tmp, "w") as f:
+    with atomic_path(path) as tmp, h5py.File(tmp, "w") as f:
         f.attrs["shot"] = int(shot)
         f.attrs["labelmaker_version"] = __version__
         f.attrs["git_sha"] = git_sha()
@@ -1187,7 +1199,6 @@ def write_features(
             g.attrs["units"] = spec.units
             if spec.kind == "profile" and np.shape(arr.y)[0] == ns.RHO_GRID.size:
                 g.create_dataset("rho", data=ns.RHO_GRID)
-    tmp.replace(path)
 
 
 def read_feature(path, name: str) -> FeatureArray:
@@ -4026,6 +4037,46 @@ def test_append_index_is_idempotent_per_shot_and_label(tmp_path):
     assert list(tmp_path.iterdir()).count(idx) == 1
 
 
+def test_a_failed_write_leaves_no_temp_file(tmp_path):
+    # decoded is missing the spec's label, so the loop raises after the temp
+    # file is open. See the features-store counterpart for why this matters.
+    p = tmp_path / "190000_labels.h5"
+    with pytest.raises(KeyError):
+        write_labels(p, 190000, T, {}, _specs(), np.ones(6, bool),
+                     run_id="r", features_sha256="f" * 64)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_specs_must_share_one_slug(tmp_path):
+    # write_labels writes everything into specs[0]'s group, so a mixed batch
+    # would silently file the rest under the wrong model.
+    p = tmp_path / "190000_labels.h5"
+    other = LabelSpec(
+        name="x", task="binary", activation="none", units="", classes=(),
+        slug="another_model", card_id="a/b", time_step_ms=25.0, ensemble_n=1,
+        artifact_sha256="ab",
+    )
+    with pytest.raises(ValueError, match="one slug"):
+        write_labels(p, 190000, T, _decoded(), (*_specs(), other),
+                     np.ones(6, bool), run_id="r", features_sha256="f" * 64)
+
+
+def test_merge_false_replaces_the_whole_file(tmp_path):
+    p = tmp_path / "190000_labels.h5"
+    _write(p)
+    other = (
+        LabelSpec(
+            name="elm_hazard", task="regression", activation="none", units="1/s",
+            classes=(), slug="d3d_elm_time_to_event_dsm", card_id="x/y",
+            time_step_ms=50.0, ensemble_n=1, artifact_sha256="def456",
+        ),
+    )
+    d = {"elm_hazard": Decoded(mean=np.zeros(6), lo=np.zeros(6), hi=np.zeros(6))}
+    write_labels(p, 190000, T, d, other, np.ones(6, bool),
+                 run_id="run-2", features_sha256="f" * 64, merge=False)
+    assert labelled(p) == {"d3d_elm_time_to_event_dsm/elm_hazard"}
+
+
 def test_read_label_raises_for_an_absent_label(tmp_path):
     p = tmp_path / "190000_labels.h5"
     _write(p)
@@ -4046,14 +4097,39 @@ Expected: `ModuleNotFoundError: No module named 'labelmaker.labels'`.
 Add to `src/labelmaker/config.py`:
 
 ```python
+@contextmanager
+def atomic_path(path):
+    """Yield a temporary sibling to write, then rename it into place.
+
+    The rename is what makes a write atomic: a reader sees either the whole
+    old file or the whole new one, never a half-written one. If the body
+    raises - a bad dtype, an unserialisable attribute, a keyboard interrupt
+    mid-run - the temporary file is removed, because nothing else ever
+    would: a stray `.tmp` sibling sits in the data root until some later
+    write to the very same path happens to truncate it, and over 16,909
+    shots that is a slow leak of files nobody will recognise.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    done = False
+    try:
+        yield tmp
+        done = True
+    finally:
+        # `finally` rather than `except`, so an interrupt is covered too.
+        if done:
+            tmp.replace(path)
+        else:
+            tmp.unlink(missing_ok=True)
+
+
 def sha256_of(path) -> str:
     """Hex digest of a file, read in 1 MiB blocks.
 
     Lives here beside `git_sha` because both answer the same question about
     an artifact: exactly which bytes produced this output.
     """
-    import hashlib
-
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for block in iter(lambda: fh.read(1 << 20), b""):
@@ -4065,6 +4141,7 @@ and in `src/labelmaker/models/registry.py`, replace the local definition with a
 re-export so existing callers keep working:
 
 ```python
+from ..config import atomic_path
 from ..config import sha256_of  # re-exported: registry.sha256_of is the public name
 ```
 
@@ -4172,7 +4249,7 @@ import h5py
 import numpy as np
 
 from .. import __version__
-from ..config import git_sha
+from ..config import atomic_path, git_sha
 from .schema import LabelSpec
 
 
@@ -4212,9 +4289,12 @@ def write_labels(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     slug = specs[0].slug
+    if any(spec.slug != slug for spec in specs):
+        raise ValueError(
+            f"every spec must share one slug; got {sorted({s.slug for s in specs})}"
+        )
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    tmp = path.with_name(path.name + ".tmp")
-    with h5py.File(tmp, "w") as f:
+    with atomic_path(path) as tmp, h5py.File(tmp, "w") as f:
         if merge and path.exists():
             with h5py.File(path, "r") as old:
                 for key, value in old.attrs.items():
@@ -4248,7 +4328,6 @@ def write_labels(
                 np.stack([np.asarray(dec.lo), np.asarray(dec.hi)]), np.float32,
             )
             _put(model_group, f"{spec.name}_valid", t, valid_u8, np.uint8)
-    tmp.replace(path)
 
 
 def read_label(path, slug: str, label: str) -> LabelArray:
@@ -6323,7 +6402,7 @@ from pathlib import Path
 import numpy as np
 
 from .catalog import TM_ARCHIVE
-from .config import Paths
+from .config import Paths, atomic_path
 from .models import registry
 from .models.runners.keras_h5 import load_ensemble, predict_members
 
@@ -6337,9 +6416,8 @@ def write_report(paths: Paths, slug: str, name: str, payload: dict) -> Path:
     out_dir = paths.validation / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{name}.json"
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n")
-    tmp.replace(path)
+    with atomic_path(path) as tmp:
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n")
     return path
 
 
@@ -7147,9 +7225,8 @@ def update_model_index(slug: str, results: list[dict]) -> None:
     body = text[m.end():]
     dumped = yaml.safe_dump(data, sort_keys=False, allow_unicode=True,
                             default_flow_style=False, width=100)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(f"---\n{dumped}---\n{body}")
-    tmp.replace(path)
+    with atomic_path(path) as tmp:
+        tmp.write_text(f"---\n{dumped}---\n{body}")
 ```
 
 - [ ] **Step 5: Add the `validate` stage to `run.py`**
