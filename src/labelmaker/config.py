@@ -6,8 +6,10 @@ variable. Defaults are group storage: Nathan's own scratch is near quota.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,14 +69,39 @@ class Paths:
             d.mkdir(parents=True, exist_ok=True)
 
 
+@contextmanager
+def atomic_path(path):
+    """Yield a temporary sibling to write, then rename it into place.
+
+    The rename is what makes a write atomic: a reader sees either the whole
+    old file or the whole new one, never a half-written one. If the body
+    raises - a bad dtype, an unserialisable attribute, a keyboard interrupt
+    mid-run - the temporary file is removed, because nothing else ever
+    would: a stray `.tmp` sibling sits in the data root until some later
+    write to the very same path happens to truncate it, and over 16,909
+    shots that is a slow leak of files nobody will recognise.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    done = False
+    try:
+        yield tmp
+        done = True
+    finally:
+        # `finally` rather than `except`, so an interrupt is covered too.
+        if done:
+            tmp.replace(path)
+        else:
+            tmp.unlink(missing_ok=True)
+
+
 def sha256_of(path) -> str:
     """Hex digest of a file, read in 1 MiB blocks.
 
     Lives here beside `git_sha` because both answer the same question about
     an artifact: exactly which bytes produced this output.
     """
-    import hashlib
-
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for block in iter(lambda: fh.read(1 << 20), b""):

@@ -145,6 +145,46 @@ def test_append_index_is_idempotent_per_shot_and_label(tmp_path):
     assert list(tmp_path.iterdir()).count(idx) == 1
 
 
+def test_a_failed_write_leaves_no_temp_file(tmp_path):
+    # decoded is missing the spec's label, so the loop raises after the temp
+    # file is open. See the features-store counterpart for why this matters.
+    p = tmp_path / "190000_labels.h5"
+    with pytest.raises(KeyError):
+        write_labels(p, 190000, T, {}, _specs(), np.ones(6, bool),
+                     run_id="r", features_sha256="f" * 64)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_specs_must_share_one_slug(tmp_path):
+    # write_labels writes everything into specs[0]'s group, so a mixed batch
+    # would silently file the rest under the wrong model.
+    p = tmp_path / "190000_labels.h5"
+    other = LabelSpec(
+        name="x", task="binary", activation="none", units="", classes=(),
+        slug="another_model", card_id="a/b", time_step_ms=25.0, ensemble_n=1,
+        artifact_sha256="ab",
+    )
+    with pytest.raises(ValueError, match="one slug"):
+        write_labels(p, 190000, T, _decoded(), (*_specs(), other),
+                     np.ones(6, bool), run_id="r", features_sha256="f" * 64)
+
+
+def test_merge_false_replaces_the_whole_file(tmp_path):
+    p = tmp_path / "190000_labels.h5"
+    _write(p)
+    other = (
+        LabelSpec(
+            name="elm_hazard", task="regression", activation="none", units="1/s",
+            classes=(), slug="d3d_elm_time_to_event_dsm", card_id="x/y",
+            time_step_ms=50.0, ensemble_n=1, artifact_sha256="def456",
+        ),
+    )
+    d = {"elm_hazard": Decoded(mean=np.zeros(6), lo=np.zeros(6), hi=np.zeros(6))}
+    write_labels(p, 190000, T, d, other, np.ones(6, bool),
+                 run_id="run-2", features_sha256="f" * 64, merge=False)
+    assert labelled(p) == {"d3d_elm_time_to_event_dsm/elm_hazard"}
+
+
 def test_read_label_raises_for_an_absent_label(tmp_path):
     p = tmp_path / "190000_labels.h5"
     _write(p)

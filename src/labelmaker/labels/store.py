@@ -18,7 +18,7 @@ import h5py
 import numpy as np
 
 from .. import __version__
-from ..config import git_sha
+from ..config import atomic_path, git_sha
 from .schema import LabelSpec
 
 
@@ -56,11 +56,13 @@ def write_labels(
     numbers are stale.
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     slug = specs[0].slug
+    if any(spec.slug != slug for spec in specs):
+        raise ValueError(
+            f"every spec must share one slug; got {sorted({s.slug for s in specs})}"
+        )
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    tmp = path.with_name(path.name + ".tmp")
-    with h5py.File(tmp, "w") as f:
+    with atomic_path(path) as tmp, h5py.File(tmp, "w") as f:
         if merge and path.exists():
             with h5py.File(path, "r") as old:
                 for key, value in old.attrs.items():
@@ -94,7 +96,6 @@ def write_labels(
                 np.stack([np.asarray(dec.lo), np.asarray(dec.hi)]), np.float32,
             )
             _put(model_group, f"{spec.name}_valid", t, valid_u8, np.uint8)
-    tmp.replace(path)
 
 
 def read_label(path, slug: str, label: str) -> LabelArray:
