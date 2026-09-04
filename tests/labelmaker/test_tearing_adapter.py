@@ -82,7 +82,7 @@ def test_the_qpsi_rule_bounds_the_reciprocal_not_qpsi_itself():
         assert bool(built.valid.all()) is expect_valid, qpsi
 
 
-def _features(n=8, *, ech_nan=False, rho_nan=False):
+def _features(n=8, *, ech_nan=False):
     t = ns.STEP_S * np.arange(n + 1)          # one extra step for the t+dt lag
     scalars = {
         "bt": 2.0, "ip": 1.0e6, "pinj_total": 5000.0, "tinj_total": 4.0,
@@ -96,9 +96,6 @@ def _features(n=8, *, ech_nan=False, rho_nan=False):
     if ech_nan:
         y = np.full((1, t.size), np.nan)
         out["ech_power_total"] = FeatureArray(x=t, y=y, attrs={"resolver": "archive"})
-    if rho_nan:
-        y = np.full((1, t.size), np.nan)
-        out["ech_rho"] = FeatureArray(x=t, y=y, attrs={"resolver": "archive"})
     profiles = {
         "ne_zipfit": 3.0, "te_zipfit": 2.0, "qpsi": 2.5, "pres": 5.0e4,
         "rot_zipfit": 50.0,
@@ -219,5 +216,7 @@ def test_sha256_verification_rejects_a_tampered_artifact(tmp_path):
     registry.verify_artifacts("d3d_tearing_onset_cnn1d", tmp_path)  # passes
     with open(tmp_path / tm.ARTIFACTS[0], "ab") as fh:
         fh.write(b"\x00")
-    with pytest.raises(ValueError, match="sha256"):
+    # "sha256 mismatch", not "sha256": the latter also matches the
+    # truncated-card error, so this test could pass on the wrong failure.
+    with pytest.raises(ValueError, match="sha256 mismatch"):
         registry.verify_artifacts("d3d_tearing_onset_cnn1d", tmp_path)

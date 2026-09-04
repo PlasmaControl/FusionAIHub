@@ -84,7 +84,7 @@ class DomainRule:
         if self.stat not in STATS:
             raise ValueError(f"stat must be one of {STATS}, got {self.stat!r}")
         # Model authors write these tuples by hand - the tearing spec alone has
-        # fourteen - so a stat that does not match the field's kind is a
+        # thirteen - so a stat that does not match the field's kind is a
         # plausible copy-paste error. Caught here, at import, rather than as an
         # opaque numpy AxisError from reducing a 1-D array along axis 1.
         kind = ns.by_name(self.canonical).kind
