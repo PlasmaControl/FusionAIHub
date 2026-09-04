@@ -61,7 +61,7 @@ echo "[audit] ${M}: ${ARMS}"
 ${PY} analysis/spectro_final_fig.py --mode score --modality "${M}" \
     --n_windows "${NW}" --batch_size 8 --device cuda --arms "${ARMS}" \
     ${FLOOR:+--floor ${FLOOR}} \
-    --json "eval_runs/codec_recon_figs/${M}_arms.json" 2>&1 | grep -vE "it/s\]|^ *$"
+    --json "eval_runs/codec_recon_figs/${M}_arms.json" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
 
 # The figure is built from the FIRST arm listed; pass ARM_FOR_FIG=<name> to pick another.
 FIGARM="${ARM_FOR_FIG:-}"
@@ -69,5 +69,5 @@ if [ -n "${FIGARM}" ]; then
     ${PY} analysis/spectro_final_fig.py --mode figure --modality "${M}" \
         --arms "${FIGARM}=${DIR}/${FIGARM}/codec_best.pt" \
         --channels "${FIG_CHANNELS:-0}" --device cuda \
-        --out "eval_runs/codec_recon_figs/${M}_FINAL_fullshot.png" 2>&1 | grep -vE "it/s\]|^ *$"
+        --out "eval_runs/codec_recon_figs/${M}_FINAL_fullshot.png" 2>&1 | grep --line-buffered -vE "it/s\]|^ *$"
 fi
