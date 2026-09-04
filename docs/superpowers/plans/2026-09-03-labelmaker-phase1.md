@@ -55,7 +55,7 @@ Fix the spec in the same commit as the task that touches each item.
    The bit-identical rows also confirm the lag convention: the 0-D block is row `m` (`t+dt`) and the profile block is row `m-1` (`t`), matching `train.py`'s `[jump::jump]` / `[:-jump:jump]` slicing.
 
 7. **§9.5 geometry leaves Phase 1.** Thomson and CER channel `(R, Z)` were needed only to re-fit the kinetic profiles the store already carries as ZIPFIT. So `features/geometry.py` and `features/resolve_fits.py` are **not** built in Phase 1, and the canonical profile features are `ne_zipfit`, `te_zipfit`, `rot_zipfit` - served from the archive store for the proof of concept and from the `zipfit01` MDSplus tree through fdp for everything else (omnimode.py:387 confirms that tree is reachable). Fitting our own mtanh/csaps profiles from raw Thomson/CER becomes a Phase 2 improvement measured against the 20% ZIPFIT baseline above, which is a far better justification for that work than a guess. (Verified for the record: the corpus files carry **zero** attributes and no channel positions; the only channel geometry on disk is `/scratch/gpfs/nc1514/omnimode/data/geometry/{shot}_geom.h5`, 17 shots, Thomson present in 2, none in the corpus range — produced by `/scratch/gpfs/nc1514/fdp/scripts/geometry.py` via `ImasSignal`.)
-8. **§12 scaling is now quantified.** The corpus is 16,909 shots spanning **185601-204999**; only **3,621 (21.4%)** fall inside the archive store's range. The archive resolver serves the proof of concept (1,497 of the 1,503 overlap shots) and the fdp resolver is what makes the other 79% reachable. Phase 1 therefore builds and validates the fdp path on a handful of overlap shots, where the store provides an exact reference, instead of needing it for all 100.
+8. **§12 scaling is now quantified.** The corpus is 16,909 shots spanning **185601-204999**; only **3,246 (19.2%)** are actually present in the archive store. (Note 3,621 corpus shots fall inside that store's *shot-number span*, but it holds 5,000 shots rather than every shot in the span - counting the span rather than the intersection was an error in an earlier draft of this plan, corrected after Task 10 measured it.) The archive resolver serves the proof of concept (1,497 of the 1,503 overlap shots) and the fdp resolver is what makes the other 81% reachable. Phase 1 therefore builds and validates the fdp path on a handful of overlap shots, where the store provides an exact reference, instead of needing it for all 100.
 9. **§9.4 corpus units and sampling, measured.** Corpus `pinj` is in **W** (shot 185945 at t=1.025 s: 1.002e7 summed over 8 beams) while the store and the model are in **kW** (10,995.6) — a factor of 1000 plus a ~10% difference that is a *sampling* difference, not a unit one: the store's 25 ms value is a window statistic and the corpus is a 10 kHz instantaneous sample. Corpus `tinj` is already in N m (8.43 vs 9.24). Corpus `ech_power` contains NaN channels (channel 3 on that shot), so totals need `nansum` before the upstream NaN-or-negative-to-zero rule. Which sampling convention reproduces the store is decided by measurement in Task 14, not by assumption.
 
 ## File Structure
@@ -707,7 +707,7 @@ def test_source_preference_and_the_one_archive_only_feature():
     # The archive store comes first everywhere: for twelve features it is
     # bit-identical to what the Phase 1 model was trained on. ZIPFIT is
     # reachable through fdp too, which is what lets the pipeline leave the
-    # archive's 21% of the corpus behind.
+    # archive's 19% of the corpus behind.
     for f in ns.FEATURES:
         assert f.sources[0] == "archive" or "archive" not in f.sources
     for name in ("ne_zipfit", "te_zipfit", "rot_zipfit"):
@@ -4709,7 +4709,7 @@ its columns are bit-identical to that model's training inputs (see the
 plan's Deviation 6), which is why this resolver comes first in every
 feature's `sources`.
 
-It covers only 21% of the corpus (3,621 of 16,909 shots), so it is the
+It covers only 19% of the corpus (3,246 of 16,909 shots), so it is the
 proof-of-concept path, not the scaling path. `resolve_fdp` is the latter.
 
 Availability varies per shot: some groups are missing individual columns, so
@@ -4835,7 +4835,7 @@ print(f"corpus & archive  {len(corpus & arch):6d}  ({100*len(corpus & arch)/len(
 print(f"poc pool in arch  {len(overlap & arch):6d}  of {len(overlap)} overlap shots")
 PY
 ```
-Expected (measured 2026-09-03): corpus 16,909 / archive 5,000 / corpus & archive 3,621 (21.4%) / poc pool 1,497 of 1,503. Record the numbers printed in the commit message; if the archive coverage of the PoC pool has dropped below ~1,400, stop and re-check the shot list before continuing.
+Expected (measured 2026-09-04): corpus 16,909 / archive 5,000 / corpus & archive 3,246 (19.2%) / poc pool 1,497 of 1,503. Note this is the *intersection*, not the count of corpus shots inside the archive's shot-number span, which is 3,621 - the archive holds 5,000 shots, not every shot in its span. Record the numbers printed in the commit message; if the archive coverage of the PoC pool has dropped below ~1,400, stop and re-check the shot list before continuing.
 
 - [ ] **Step 6: Commit**
 
@@ -5141,7 +5141,7 @@ git commit -m "labelmaker: corpus resolver for actuator totals, units measured"
 - Test: `tests/labelmaker/test_resolve_fdp.py`
 - Modify: `src/labelmaker/features/namespace.py` (correct any locator the probe disproves; add ZIPFIT locators)
 
-**Why this task exists:** the archive resolver covers 21% of the corpus. Everything else — 13,288 shots, and every shot recorded after 191450 — can only be reached through fdp. Phase 1 builds this path and *measures* it against the archive on overlap shots, where the archive is a bit-identical reference for seven of the features. It is not run over all 100 PoC shots; that is a scheduling decision for later, not a design one.
+**Why this task exists:** the archive resolver covers 19% of the corpus. Everything else — 13,663 shots, and every shot recorded after 191450 — can only be reached through fdp. Phase 1 builds this path and *measures* it against the archive on overlap shots, where the archive is a bit-identical reference for seven of the features. It is not run over all 100 PoC shots; that is a scheduling decision for later, not a design one.
 
 **Environment:** the `labelmaker` pixi env includes the `fdp` feature (toksearch 2.2.3, toksearch_d3d 0.1.5). Fetching needs a cached SciToken: `pixi run fdp login` once, then `FDP_NO_AUTO_LOGIN=1` in batch. The reference implementation to copy from is `/scratch/gpfs/nc1514/fdp/scripts/omnimode.py` — Nathan's working fetch script, which is where every pattern below comes from:
 
@@ -5320,7 +5320,7 @@ Expected: `ImportError: cannot import name 'resolve_fdp'`.
 ```python
 """Features from fdp: PTDATA points and MDSplus trees.
 
-This is the path that scales. The archive store covers 3,621 of the corpus'
+This is the path that scales. The archive store covers 3,246 of the corpus'
 16,909 shots; everything else has to be fetched. Patterns here are copied
 from /scratch/gpfs/nc1514/fdp/scripts/omnimode.py, which is a working fetch
 script against this cluster's Pelican/OSDF route:
@@ -5561,7 +5561,7 @@ for shot in SHOTS:
 PY
 ```
 
-Expected shape of the answer: `bt`, `ip`, `tritop`, `tribot`, `gapin`, `pres` should agree to ~1e-3 or better (the archive built them from these same nodes; residual is decimation and sampling), `kappa` and `r0` similar, `qpsi` possibly worse because of the rho remapping. Save this table into `docs/superpowers/plans/` notes or the module docstring. **A relative difference above ~0.05 on any of the bit-identical features means a wrong node, a wrong time axis, or an inverted dim order — fix it before moving on**, because the same code is what scales to the other 79% of the corpus.
+Expected shape of the answer: `bt`, `ip`, `tritop`, `tribot`, `gapin`, `pres` should agree to ~1e-3 or better (the archive built them from these same nodes; residual is decimation and sampling), `kappa` and `r0` similar, `qpsi` possibly worse because of the rho remapping. Save this table into `docs/superpowers/plans/` notes or the module docstring. **A relative difference above ~0.05 on any of the bit-identical features means a wrong node, a wrong time axis, or an inverted dim order — fix it before moving on**, because the same code is what scales to the other 81% of the corpus.
 
 - [ ] **Step 6: Commit**
 
@@ -7632,7 +7632,7 @@ with h5py.File(".../labels/190000_labels.h5") as f:
 
 ## Known limits
 
-- The archive resolver covers 3,621 of 16,909 corpus shots (21%); everything
+- The archive resolver covers 3,246 of 16,909 corpus shots (19%); everything
   else needs the fdp resolver, which is built and measured but has not been run
   at corpus scale.
 - The three kinetic profiles are ZIPFIT fits standing in for the tearing model's
