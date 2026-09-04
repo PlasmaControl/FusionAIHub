@@ -200,6 +200,41 @@ def test_reconstruction_fidelity_isolates_a_per_shot_crash(tmp_path, monkeypatch
     assert report["skipped"]["222"] == "no archived rows"
     assert "ValueError" in report["skipped"]["111"]
     assert "constant" in report["skipped"]["111"]
+    # I3 (task-16 review): the diagnosis at skip time, not thrown away.
+    assert "111" in report["skip_diagnosis"] and "222" in report["skip_diagnosis"]
+    assert report["skip_reasons"]["histogram"]  # non-empty: something to count
+
+
+def test_reconstruction_fidelity_records_incomplete_features_for_skipped_shots(
+    tmp_path, monkeypatch
+):
+    """I3 (related): `incomplete_features` used to be recorded only after
+    the `match_rows` `passed` check, so a skipped shot's feature misses
+    never appeared in this report OR in `skipped` - the census that
+    diagnosed this task's own C2 defect had to come from a fresh
+    investigation instead of from this JSON.
+    """
+    import h5py
+
+    n = 3
+    fake_archive = {
+        "x0": np.zeros((n, 11)), "x1": np.zeros((n, 33, 5)),
+        "y": np.zeros((n, 2)), "rows": np.arange(n),
+    }
+    monkeypatch.setattr(
+        validate, "archive_rows",
+        lambda shot, archive=TM_ARCHIVE: fake_archive if shot == 111 else None,
+    )
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    with h5py.File(features_dir / "111_features.h5", "w") as f:
+        f.attrs["missing"] = '{"bt": "fdp:ToksearchUnavailable"}'
+
+    report = validate.reconstruction_fidelity(
+        "d3d_tearing_onset_cnn1d", [111], Paths(root=tmp_path)
+    )
+    assert report["n_shots_used"] == 0  # 111 fails match_rows (all-zero cols)
+    assert report["incomplete_features"]["111"] == {"bt": "fdp:ToksearchUnavailable"}
 
 
 def test_reconstruction_fidelity_asserts_the_match_column_mapping():
