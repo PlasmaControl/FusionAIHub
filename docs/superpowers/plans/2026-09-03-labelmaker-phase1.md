@@ -4077,9 +4077,11 @@ def test_a_shot_outside_the_archive_misses_everything(tmp_path):
     assert missing == {"bt": "ShotNotInArchive", "pres": "ShotNotInArchive"}
 
 
-def test_a_feature_with_no_archive_source_is_refused(tmp_path):
+def test_an_unknown_feature_name_is_refused(tmp_path):
+    # Every Phase 1 feature has an archive source, so the refusal this
+    # resolver can actually raise is for a name outside the namespace.
     p = _fake_archive(tmp_path)
-    with pytest.raises(KeyError, match="archive"):
+    with pytest.raises(KeyError, match="no_such_feature"):
         ra.resolve(190000, ["no_such_feature"], files=(p,))
 
 
