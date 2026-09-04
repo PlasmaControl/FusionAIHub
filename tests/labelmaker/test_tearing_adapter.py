@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from labelmaker.config import Paths
 from labelmaker.features import namespace as ns
 from labelmaker.features.store import FeatureArray
 from labelmaker.models import registry
@@ -61,8 +62,24 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert (rules[("tritop", "value")].lo, rules[("tritop", "value")].hi) == (0.0, 1.0)
     assert (rules[("tribot", "value")].lo, rules[("tribot", "value")].hi) == (0.0, 1.0)
     assert rules[("gapin", "value")].hi == 0.2
-    assert rules[("ech_rho", "value")].lo == 0.0
-    assert rules[("ech_rho", "value")].lo_inclusive
+    assert rules[("te_zipfit", "min")].lo == 0.0
+    assert rules[("te_zipfit", "min")].lo_inclusive
+    # No ech_rho rule: nonneg_zero_fill subsumes the upstream clause, so one
+    # could never fire. See the comment in spec.py.
+    assert ("ech_rho", "value") not in rules
+
+
+def test_the_qpsi_rule_bounds_the_reciprocal_not_qpsi_itself():
+    # max(1/qpsi) < 3 flags a low-q profile and admits a high-q one. Asserting
+    # only `hi == 3.0` cannot tell this from the opposite reading.
+    for qpsi, expect_valid in ((5.0, True), (2.5, True), (0.3, False)):
+        feats, grid = _features()
+        t = feats["qpsi"].x
+        feats["qpsi"] = FeatureArray(
+            x=t, y=np.full((33, t.size), qpsi), attrs={"resolver": "archive"}
+        )
+        built = tm.ADAPTER.input_spec.build(feats, grid)
+        assert bool(built.valid.all()) is expect_valid, qpsi
 
 
 def _features(n=8, *, ech_nan=False, rho_nan=False):
@@ -125,11 +142,19 @@ def test_negative_ech_power_also_becomes_zero():
     assert built.valid.all()
 
 
-def test_missing_ech_deposition_location_becomes_zero_which_is_in_domain():
-    feats, grid = _features(rho_nan=True)
-    built = tm.ADAPTER.input_spec.build(feats, grid)
-    np.testing.assert_allclose(built.scalars[:, 10], 0.0)
-    assert built.valid.all()
+def test_any_unusable_ech_deposition_location_becomes_zero():
+    # Zero is the upstream convention for ECH-off, so NaN and negative alike
+    # map to it and the row stays usable. That is the transform's doing, not
+    # a domain rule's - there is no ech_rho rule.
+    for value in (np.nan, -1.0, -1e9):
+        feats, grid = _features()
+        t = feats["ech_rho"].x
+        feats["ech_rho"] = FeatureArray(
+            x=t, y=np.full((1, t.size), value), attrs={"resolver": "archive"}
+        )
+        built = tm.ADAPTER.input_spec.build(feats, grid)
+        np.testing.assert_allclose(built.scalars[:, 10], 0.0)
+        assert built.valid.all(), value
 
 
 def test_out_of_domain_kappa_is_flagged():
@@ -144,18 +169,20 @@ def test_out_of_domain_kappa_is_flagged():
     assert built.valid.sum() == 7 and not built.valid[3]
 
 
-pytestmark_upstream = pytest.mark.skipif(
+requires_upstream = pytest.mark.skipif(
     not UPSTREAM.exists(), reason=f"upstream weights not available: {UPSTREAM}"
 )
 
 
-@pytestmark_upstream
 def test_card_matches_the_spec():
+    # Deliberately NOT gated on the upstream mount: this reads only the card
+    # and the spec, so it is a pure-repo invariant. Gating it would let card
+    # drift pass unnoticed in exactly the environments that lack /projects.
     assert registry.card_discrepancies("d3d_tearing_onset_cnn1d") == []
     assert registry.implemented() == ["d3d_tearing_onset_cnn1d"]
 
 
-@pytestmark_upstream
+@requires_upstream
 def test_predict_runs_end_to_end_from_the_upstream_directory():
     predict = tm.load(UPSTREAM)
     feats, grid = _features()
@@ -170,7 +197,20 @@ def test_predict_runs_end_to_end_from_the_upstream_directory():
     assert (decoded["tm_prob"].hi >= decoded["tm_prob"].mean).all()
 
 
-@pytestmark_upstream
+@pytest.mark.skipif(
+    not (Paths.from_env().models / "d3d_tearing_onset_cnn1d").exists(),
+    reason="weights not yet copied into the data root",
+)
+def test_verification_passes_against_the_copy_inference_will_load():
+    # Every other weights test reads the upstream directory, but the global
+    # constraint is that inference reads the copy in the data root. Exercise
+    # those bytes.
+    registry.verify_artifacts(
+        "d3d_tearing_onset_cnn1d", Paths.from_env().models / "d3d_tearing_onset_cnn1d"
+    )
+
+
+@requires_upstream
 def test_sha256_verification_rejects_a_tampered_artifact(tmp_path):
     import shutil
 

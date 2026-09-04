@@ -103,8 +103,10 @@ A ten-member ensemble of small multi-input networks (12,086 parameters each).
 The profile branch is two `Conv1D` layers over the 33-point radial axis, pooled
 and compressed to four numbers; those are concatenated with the eleven 0-D
 inputs and passed through three dense layers to a two-column output. Every
-block is preceded by a `BatchNormalization` carrying training-set statistics, so
-the graph normalises its own inputs.
+block is preceded by a `BatchNormalization` carrying training-set statistics -
+though note the eleven 0-D inputs are normalised not before the concatenation
+but immediately after it, on the 15-vector. Either way the graph normalises its
+own inputs and needs no external scaler.
 
 - Developed by: PlasmaControl group, Princeton (upstream author recorded in
   `PROVENANCE.json`)

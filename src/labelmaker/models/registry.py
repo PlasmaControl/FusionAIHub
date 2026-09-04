@@ -9,6 +9,7 @@ keeps the card honest about the first two.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib
 import re
 from pathlib import Path
@@ -121,8 +122,6 @@ def card_discrepancies(slug: str) -> list[str]:
 
 def sha256_of(path) -> str:
     """Hex digest of a file, read in 1 MiB blocks."""
-    import hashlib
-
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for block in iter(lambda: fh.read(1 << 20), b""):
@@ -131,25 +130,43 @@ def sha256_of(path) -> str:
 
 
 def verify_artifacts(slug: str, model_dir) -> None:
-    """Raise unless every artifact in `model_dir` matches the card's sha256.
+    """Raise unless every artifact the spec loads matches the card's sha256.
 
-    Labels are only worth what the weights behind them are, so inference
-    refuses to run against unexpected bytes rather than silently producing
-    a label file whose provenance is wrong.
+    Labels are only worth what the weights behind them are, so `run.py`'s
+    `_predictor` calls this before loading a model rather than silently
+    producing a label file whose provenance is wrong. Absence and corruption
+    are reported separately: they are different failures.
     """
     card = read_card(slug)["labelmaker"]
     expected = (card.get("upstream") or {}).get("sha256") or {}
     if not expected:
         raise ValueError(f"{slug}: card records no sha256 for its artifacts")
+    # Verify the artifacts the SPEC loads, not merely the ones the card
+    # happens to list. Iterating `expected` alone fails open: a card with ten
+    # entries under `artifacts` but three under `sha256` - a hand edit, a
+    # partial regeneration, a bad merge - would pass while seven unverified
+    # weight files got loaded. This is the only guard between the pipeline and
+    # unverified weights, so it has to fail closed.
+    unlisted = [a for a in load_adapter(slug).artifacts if a not in expected]
+    if unlisted:
+        raise ValueError(
+            f"{slug}: card records no sha256 for {unlisted}; every artifact the "
+            "spec loads must be verifiable"
+        )
     model_dir = Path(model_dir)
-    problems = []
+    absent, mismatched = [], []
     for name, want in sorted(expected.items()):
         path = model_dir / name
         if not path.exists():
-            problems.append(f"{name}: missing from {model_dir}")
+            absent.append(name)
             continue
         got = sha256_of(path)
         if got != want:
-            problems.append(f"{name}: sha256 {got[:12]} != card {want[:12]}")
+            mismatched.append(f"{name}: {got[:12]} != card {want[:12]}")
+    problems = []
+    if absent:
+        problems.append(f"missing from {model_dir}: {absent}")
+    if mismatched:
+        problems.append(f"sha256 mismatch: {mismatched}")
     if problems:
-        raise ValueError(f"{slug}: artifact sha256 mismatch: " + "; ".join(problems))
+        raise ValueError(f"{slug}: " + "; ".join(problems))
