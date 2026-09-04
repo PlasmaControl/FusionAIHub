@@ -3455,6 +3455,26 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert ("ech_rho", "value") not in rules
 
 
+def test_a_negative_ech_power_is_a_correction_not_an_invention():
+    # MEASURED: 18.9% of archive ECH power readings are negative, down to
+    # -4,086 W, and shot 183343's off-segments never read exactly zero. That
+    # is sensor baseline noise meaning "off", so clipping it recovers the
+    # physical value - it must NOT mark the power as unknown, or an absent
+    # location would be flagged on every row of such a shot and the benign
+    # case would vanish.
+    feats, grid = _features()
+    t = feats["ech_rho"].x
+    feats["ech_rho"] = FeatureArray(
+        x=t, y=np.full((1, t.size), np.nan), attrs={"resolver": "archive"}
+    )
+    feats["ech_power_total"] = FeatureArray(
+        x=t, y=np.full((1, t.size), -50.0), attrs={"resolver": "archive"}
+    )
+    built = tm.ADAPTER.input_spec.build(feats, grid)
+    np.testing.assert_allclose(built.scalars[:, 9], 0.0)
+    assert built.valid.all(), "power known off; an absent location is benign here"
+
+
 def test_an_unmeasured_ech_power_also_flags_an_unknown_location():
     # A fill transform on the partner would otherwise report "inactive" and
     # license the gap: an unknown location is benign only when power is KNOWN
@@ -3688,12 +3708,27 @@ Expected: `ModuleNotFoundError: No module named 'labelmaker.models.d3d_tearing_o
 In `src/labelmaker/models/base.py`, extend `TRANSFORMS`:
 
 ```python
+def _nonpositive_to_zero(a: np.ndarray) -> np.ndarray:
+    return np.where(np.isfinite(a) & (a > 0.0), a, 0.0)
+
+
 TRANSFORMS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "reciprocal": lambda a: 1.0 / a,
-    # train.py:81 - NaN or negative ECH power was set to zero before the
-    # training filter ran, so those rows were kept. Applied before the
-    # validity flags so a zeroed ECH channel does not invalidate a row.
-    "nonneg_zero_fill": lambda a: np.where(np.isfinite(a) & (a > 0.0), a, 0.0),
+    # These two compute the SAME arithmetic and mean different things. Do not
+    # merge them: only the name distinguishes a measurement correction from a
+    # fabrication, and `FILL_TRANSFORMS` reads that distinction.
+    #
+    # clip_negative_to_zero - a CORRECTION. A negative power reading is sensor
+    # baseline noise meaning "off": MEASURED, 18.9% of archive ECH power
+    # readings are negative, down to -4,086 W, and 41.0% are exactly zero.
+    # Clipping recovers the physical value, so overwriting is not an invention.
+    # This is train.py:81's rule, which CORRECTED power in place.
+    "clip_negative_to_zero": _nonpositive_to_zero,
+    # nonneg_zero_fill - a FILL. A negative deposition location is not a
+    # location, so overwriting one invents a value. This is why train.py:83
+    # DROPPED those rows rather than correcting them; labelmaker keeps the row
+    # and marks it untrustworthy instead.
+    "nonneg_zero_fill": _nonpositive_to_zero,
 }
 ```
 
@@ -3759,8 +3794,14 @@ INPUT_SPEC = InputSpec(
         InputField("tribot_EFIT01", "tribot", lag="t+dt"),
         InputField("gapin_EFIT01", "gapin", lag="t+dt"),
         InputField(
+            # A correction, not a fill: negative readings are baseline noise
+            # meaning "off" (18.9% of archive readings, min -4,086 W), so
+            # clipping them recovers the physical value. A NON-FINITE reading
+            # is different - nothing is known - and still counts as invented,
+            # which is what lets the pair rule below flag a row where neither
+            # the power nor the location was measured.
             "ech_pwr_total", "ech_power_total", lag="t+dt",
-            transform="nonneg_zero_fill",
+            transform="clip_negative_to_zero",
         ),
         # absent_ok: the archive omits this column entirely on 1,370 of 2,000
         # sampled shots, and its absence carries NO information about whether
