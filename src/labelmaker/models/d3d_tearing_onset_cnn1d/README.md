@@ -22,48 +22,52 @@ model-index:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n=31)
+      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+        mask)
       type: d3d-faith-corpus
     metrics:
     - name: rmse (archived inputs)
       type: rmse
-      value: 0.1177219395622723
+      value: 0.11145168853458205
   - task:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n=31)
+      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+        mask)
       type: d3d-faith-corpus
     metrics:
     - name: auroc (archived inputs)
       type: roc_auc
-      value: 0.9411347360485999
+      value: 0.9497427900228241
     - name: f1_at_0.5 (archived inputs)
       type: f1
-      value: 0.5570934256055363
+      value: 0.6620959843290891
   - task:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n=31)
+      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+        mask)
       type: d3d-faith-corpus
     metrics:
     - name: rmse (reconstructed inputs)
       type: rmse
-      value: 0.14341735003535894
+      value: 0.12808783311320734
   - task:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n=31)
+      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+        mask)
       type: d3d-faith-corpus
     metrics:
     - name: auroc (reconstructed inputs)
       type: roc_auc
-      value: 0.9199245579491083
+      value: 0.9165758097397513
     - name: f1_at_0.5 (reconstructed inputs)
       type: f1
-      value: 0.6367583212735166
+      value: 0.6393738711619507
 labelmaker:
   status: implemented
   slug: d3d_tearing_onset_cnn1d
