@@ -91,6 +91,61 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "advmulti" ]; then
+        # THE MULTISCALE CRITIC IS WHAT MAKES ADVERSARIAL PRESSURE USABLE.
+        #
+        # MEASURED at FULL training, job 5420031 (advbest), where the ONLY difference between
+        # these arms is the discriminator family:
+        #
+        #   arm              D          step    hf      peak_f1  nRMSE   lattice  corr2d
+        #   mirnov_a02d_s1   multiscale 15000   0.1260  0.375    1.061   21.1     0.286
+        #   mirnov_a02d_s2   multiscale 15000   0.0809  0.354    1.123   15.1     0.346
+        #   mirnov_a02_s1    patch      14000   0.1883  0.239    1.778   16.7     0.197
+        #   ece_a02d         multiscale 10000   0.0060  0.285    1.304   27.2     0.105
+        #   ece_a02          patch      10000   0.0404  0.256    1.409   34.0     0.063
+        #   co2_a02          patch       3000   0.0021  0.000    1.220   19.6    -0.349
+        #   co2_a05          patch       3000   0.0018  0.000    1.190   24.6    -0.347
+        #
+        # The patch-discriminator arms DESTABILISE: mirnov_a02_s1's peak_f1 fell 0.365 -> 0.239
+        # between steps 8000 and 14000 while its nRMSE rose to 1.778, and both co2 arms went
+        # ANTI-correlated (envelope_corr -0.68, peak_f1 0.000) within 1500 steps of the
+        # adversarial term switching on. The multiscale arms are stable and are the best
+        # numbers either modality has produced.
+        #
+        # This is the same mechanism as the lattice: a PATCH critic is satisfiable by one fixed
+        # tiled texture, so under pressure the generator races toward that degenerate solution;
+        # a critic that scores the WHOLE spectrogram at 1x/2x/4x cannot be answered that way.
+        # NOTE the decoder-only screen did NOT predict this -- it fine-tunes an already
+        # CONVERGED decoder, where the patch critic is harmless (co2 patch-D combo read hf 82%
+        # of ceiling, lattice 6.7). The instability only appears when the ENCODER is also
+        # moving. A screen orders levers; only a full arm decides.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --fm_weight 1.0"
+        B="${B} --adv_warmup_steps 1500 --discriminator multiscale"
+        case "${M}" in
+            co2)
+                # co2 has never had the multiscale critic at full training, and its patch-D
+                # arms are the ones that inverted.
+                ARMS_STR="${ARMS_STR};${M}_m02|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2"
+                ARMS_STR="${ARMS_STR};${M}_m05|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5"
+                ARMS_STR="${ARMS_STR};${M}_m02s2|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 2"
+                ;;
+            mirnov)
+                # 3rd seed of the leading recipe -- mirnov's seed spread (0.050-0.120) is wider
+                # than the gap between recipes, so two seeds is the minimum and three is better.
+                ARMS_STR="${ARMS_STR};${M}_m02_s3|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 3"
+                ARMS_STR="${ARMS_STR};${M}_m05_s1|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5 --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_m02_s2|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_m05|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5"
+                ARMS_STR="${ARMS_STR};${M}_m02ms50|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --ms_ssim_weight 50"
+                ;;
+        esac
+        continue
+    fi
     if [ "${SWEEP}" = "advbest" ]; then
         # THE MEASURED RECIPE. Screened on the login GPU with
         # analysis/probe_spectro_objective.py (decoder-only, codes FROZEN so every arm sees the
