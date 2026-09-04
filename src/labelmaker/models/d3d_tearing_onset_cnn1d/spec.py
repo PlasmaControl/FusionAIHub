@@ -105,21 +105,33 @@ INPUT_SPEC = InputSpec(
         DomainRule("gapin", "value", hi=0.2),
     ),
     # `nonneg_zero_fill` reproduces the upstream ECH-off convention when the
-    # deposition location is absent, which MEASURED over 400 archive shots is
-    # 74.7% of its gaps. The other 26% are rows where ECH is injecting and
-    # nobody recorded where - 70.1% of all powered rows - and there the
-    # zero-fill would tell the model the power lands on axis. Upstream dropped
-    # those rows, so the model never saw that state. Flag them.
+    # deposition location is unusable, which MEASURED over 400 archive shots
+    # is 74.7% of its gaps. "Unusable" is two cases, not one: the column is
+    # absent, or it holds a negative value (48 of 55,041 readings) - a
+    # negative rho is not a location, so the fill invents one either way. The
+    # remaining 26% are rows where ECH is injecting and nobody recorded where
+    # - 70.1% of all powered rows - and there the zero-fill would tell the
+    # model the power lands on axis. Upstream dropped those rows, so the model
+    # never saw that state. Flag them.
+    #
+    # The power field's `clip_negative_to_zero` is deliberately NOT a fill:
+    # 18.9% of archive power readings are negative baseline noise meaning
+    # "off", so correcting one leaves the row's power MEASURED and lets this
+    # rule read it. Classifying it as a fill instead costs shot 183343 all 21
+    # of its valid rows.
     unknown_when_active=(
         UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
     ),
     # NOTE the removed clause, kept as a comment for the audit trail:
-    # train.py:83's `x0[:, 10] >= 0` needs no DomainRule here:
-    # `nonneg_zero_fill` on the field already maps every negative and NaN
-    # deposition location to 0.0, so a rule could never fire. Upstream
-    # dropped those rows; labelmaker relabels them 0, which IS the
-    # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
-    # median). Said here rather than left as dead code that looks live.
+    # train.py:83's `x0[:, 10] >= 0` needs no DomainRule here, because a
+    # DomainRule reads the value AFTER the transform and `nonneg_zero_fill`
+    # has already mapped every negative and NaN location to 0.0 - so the rule
+    # could never fire. The clause is not lost, though: it moved into the
+    # pair rule above, which sees that the fill CHANGED the value and so
+    # treats the row's location as unknown. Upstream dropped such rows;
+    # labelmaker keeps the row, feeds the model the 0.0 that is the upstream
+    # ECH-off convention, and marks the row invalid whenever power is
+    # flowing. Said here rather than left as dead code that looks live.
 )
 
 OUTPUT_SPEC = OutputSpec(

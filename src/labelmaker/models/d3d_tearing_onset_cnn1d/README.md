@@ -85,7 +85,13 @@ labelmaker:
     - "the three kinetic profiles are ZIPFIT fits, not the pipeline's own mtanh
       and csaps fits; measured 2.0e-1 (ne), 1.8e-1 (Te), 1.7e-1 (rotation)
       median relative difference, correlation 0.98-0.99"
-    - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81)"
+    - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81). This
+      is a CORRECTION, not a fill: measured, 18.9% of archive ECH power
+      readings are negative, down to -4,086 W, and 41.0% are exactly zero, so
+      a negative reading is sensor baseline noise that means off. The
+      corrected row therefore still counts as a MEASURED power, which is what
+      lets the rule below distinguish a benign gap from a fabrication. Only a
+      non-finite power counts as unmeasured"
     - "a missing EC.RHO_ECH becomes 0, the upstream ECH-off convention, and
       is then adjudicated against the ECH power rather than assumed benign.
       Measured: 71.4% of its values are absent, and of the 1,370 of 2,000
@@ -95,6 +101,17 @@ labelmaker:
       location is unknown are flagged invalid rather than fed a fabricated
       on-axis location; upstream dropped them, so the model never trained on
       that state. 70.1% of all ECH-powered rows are in that condition"
+    - "a NEGATIVE EC.RHO_ECH counts as unknown, not as a measured location.
+      Measured: 48 of 55,041 archive readings are negative, and a negative
+      rho is not a location, so the fill invents a value exactly as it does
+      for an absent one. Unlike the power correction above, this is a FILL:
+      the row is treated as unknown wherever the fill changed the value, an
+      exact 0.0 excepted, since that is the genuine ECH-off reading"
+    - "an unknown deposition location is benign only when the power is KNOWN
+      to have been off. If the power itself was never measured, nothing is
+      known about the pair and the row is flagged - otherwise a gap in the
+      power would quietly read as inactive and license the very fabrication
+      the rule exists to catch"
     - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
       equality with TensorFlow is checked to 1e-5 in validation"
 ---
