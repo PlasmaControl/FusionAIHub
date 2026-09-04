@@ -56,6 +56,7 @@ ensemble twice (see `validate.adapter_fidelity`).
 from __future__ import annotations
 
 import json
+import multiprocessing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -291,18 +292,29 @@ def load_graph(path, dtype: torch.dtype = torch.float64) -> KerasGraph:
 def load_ensemble(paths, dtype: torch.dtype = torch.float64) -> tuple[KerasGraph, ...]:
     """Load ensemble members in the order given.
 
-    Also pins torch to a single intra-op thread. `run.py` forks a worker
-    pool (default `--workers 8`, one process per shot batch) and each worker
-    calls this once per model via `_predictor`; torch's default intra-op
-    thread count is the machine's core count, so N workers x that many
-    threads oversubscribes a shared cluster node - a well-known
-    multiprocessing-plus-torch pathology. Set here, in the only place a
-    forked worker touches torch, rather than in `run.py`: `run.py` is
-    otherwise framework-agnostic (it dispatches to `adapter.load`/`predict`
-    without knowing or caring what runs underneath) and has no other reason
-    to import torch.
+    Also pins torch to a single intra-op thread, but only inside a forked
+    worker. `run.py` forks a worker pool (default `--workers 8`, one process
+    per shot batch) and each worker calls this once per model via
+    `_predictor`; torch's default intra-op thread count is the machine's
+    core count, so N workers x that many threads oversubscribes a shared
+    cluster node - a well-known multiprocessing-plus-torch pathology. Set
+    here, in the only place a forked worker touches torch, rather than in
+    `run.py`: `run.py` is otherwise framework-agnostic (it dispatches to
+    `adapter.load`/`predict` without knowing or caring what runs underneath)
+    and has no other reason to import torch.
+
+    Conditioned on `multiprocessing.parent_process() is not None` - true
+    only inside a process that multiprocessing itself started, i.e. inside
+    one of `run.py`'s forked pool workers (including the `--workers 1`
+    in-process path, which never forks and so never hits this branch: see
+    `_run_pool`) - because this used to fire unconditionally from a library
+    loader, mutating global torch state in whatever process called it. IGNITE
+    is also torch, in this same repo and environment: a notebook, a combined
+    script, or a single pytest session that touches this runner and then
+    runs IGNITE was silently pinned to one thread with no way to see why.
     """
-    torch.set_num_threads(1)
+    if multiprocessing.parent_process() is not None:
+        torch.set_num_threads(1)
     return tuple(load_graph(Path(p), dtype=dtype) for p in paths)
 
 

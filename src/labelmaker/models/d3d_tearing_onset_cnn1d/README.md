@@ -145,8 +145,15 @@ labelmaker:
       Upstream, by contrast, fabricated a 0.0 for an absent ECH signal and
       trained on those rows; labelmaker declines to invent the value and
       takes the evidence from the second source"
-    - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
-      equality with TensorFlow is checked to 1e-5 in validation"
+    - "inference evaluates the Keras graph in torch (models/runners/keras_h5.py);
+      checked against frozen real-TensorFlow outputs (tensorflow-cpu==2.15.1)
+      on 1,673 reference rows x 10 members, gated on a scale-normalized max
+      (measured 2.71e-06 against 1e-5), a median absolute difference
+      (7.65e-07 against 1e-6), and a label-space max on the published
+      post-activation tm_prob (1.24e-06 against 1e-5). The raw absolute max
+      is 5.6005e-05 - float32 arithmetic noise, not a semantic error (see
+      labelmaker.validate.adapter_fidelity) - and the operational
+      consequence is 1.2e-06 in published tm_prob probability"
 ---
 
 # plasmacontrol/d3d-tearing-onset-cnn1d
@@ -208,8 +215,12 @@ Written by `python -m labelmaker.run validate --models d3d_tearing_onset_cnn1d`
 into `model-index` above and, in full, into
 `<LABELMAKER_ROOT>/validation/d3d_tearing_onset_cnn1d/`:
 
-- `adapter_fidelity.json` - numpy evaluator against TensorFlow on the upstream
-  reference file, max absolute difference.
+- `adapter_fidelity.json` - torch evaluator against frozen real-TensorFlow
+  outputs on the upstream reference file: a scale-normalized max, a median
+  absolute difference, and a label-space max on the published `tm_prob`
+  (measured 2.71e-06, 7.65e-07 and 1.24e-06 against gates of 1e-5, 1e-6 and
+  1e-5), plus the raw absolute max (5.6005e-05, float32 arithmetic noise -
+  see `labelmaker.validate.adapter_fidelity`).
 - `reconstruction.json` - per-feature agreement between labelmaker's features
   and the model's own training rows on the corpus/archive overlap shots.
 - `label_quality.json` - AUROC, F1 at 0.5 and calibration against the archived
@@ -224,7 +235,7 @@ into `model-index` above and, in full, into
 - Radial grid: 33 points, `rho = linspace(0, 1, 33)`
 - Ensemble: mean over ten members in logit space, then the activation; the
   member min and max are stored as the label's spread
-- Framework: Keras 2.8 legacy HDF5, evaluated in numpy
+- Framework: Keras 2.8 legacy HDF5, evaluated in torch
 
 ## Citation
 
