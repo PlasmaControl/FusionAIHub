@@ -15,6 +15,37 @@ proof-of-concept path, not the scaling path. `resolve_fdp` is the latter.
 
 Availability varies per shot: some groups are missing individual columns, so
 a missing column is recorded as a per-feature miss rather than raised.
+
+OPEN, and MEASURED exactly - the time axis this module assigns is one step
+late. `resolve` stamps row k at `STEP_S * k`, but row k is the mean of the
+raw signal over the 50 ms interval `[25*(k-2), 25*k]` ms, i.e. a 50 ms
+boxcar CENTRED on `25*(k-1)` ms. Established against PTDATA `ip` over 8
+random overlap shots by scanning offsets from -50 to +20 ms against nearest
+-sample and 12.5/25/50 ms window means: the 50 ms window at -25 ms gives a
+median relative error of 3.9e-08 - float32 round-trip precision - while
+every other combination is 1e-4 or worse, and nearest-sample at zero offset
+(what a naive reading assumes) is 5.8e-03.
+
+Two consequences, which is why this is documented rather than silently
+corrected:
+
+1. For a pure-archive build the VALUES are right. The model's training rows
+   came from these same rows - matching x0.npy on the five bit-identical
+   columns resolves 9,805 of 9,805 rows uniquely - and upstream's own t and
+   t+dt were row offsets too, so the lag structure the model sees is the one
+   it trained on. Only the timestamps written onto the labels are 25 ms late.
+2. In a MIXED build it is a real misalignment. A feature served here sits
+   25 ms - one whole `dt` - away from the same nominal time served by the
+   corpus or fdp resolvers, which do carry true time axes. That is the
+   scaling path, so it has to be settled before archive and non-archive
+   features are combined in one row.
+
+Correcting it moves every archive-derived output, including the measurements
+the model card and the ECH validity rule already quote, so it is Task 15's
+call and not a drive-by fix. It also explains a set of inflated agreement
+figures that were in `namespace.py` before Task 12 re-measured them (r0
+8.8e-3 -> 7.9e-4, kappa 3.1e-3 -> 1.2e-3): they were taken without the lag
+correction.
 """
 from __future__ import annotations
 
