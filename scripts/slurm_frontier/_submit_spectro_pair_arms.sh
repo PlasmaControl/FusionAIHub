@@ -127,6 +127,52 @@ for M in ${MODS}; do
         ARMS_STR="${ARMS_STR};${M}_p328|${P} ${MSK} ${MIR} ${B} --patch_f 32 --patch_t 8"
         continue
     fi
+    if [ "${SWEEP}" = "co2conf" ]; then
+        # LEG 2, THE "co2_r_gsm HELD UP" BRANCH: confirm the leader on more seeds and close the
+        # two flags that separate it from its nearest sibling. Same asymmetry as gsm2 -- mirnov
+        # CONTINUES its four gsm arms with byte-identical flags (needs the steps), co2 gets
+        # fresh arms -- so submit with DEP_AFTER=<gsmulti> and OUT_DIR_TAG=gsmulti.
+        #
+        # co2_r_gsm is the documented co2 recipe (ms_ssim 5 / joint_entropy 0.5 / adversarial
+        # 0.05 + fm 0.5) with the MULTISCALE critic and the envelope/shape split, and it ran the
+        # whole second half of its 30k steps at patch lattice 1.92-2.36 against a GT control of
+        # 1.09 while its gate peakF1 climbed to 0.71. A ONE-SEED co2 claim is not a claim
+        # though: m02 (seed 1) audits peakF1 0.6243 and m02s2 (seed 2) audits 0.5287 on the same
+        # recipe at the same step, a 0.096 spread against a 0.007 m02-vs-ms5 gap. Hence two more
+        # seeds, not one.
+        #
+        # The two knobs: ms_ssim 20 is tried AGAIN even though 20 was measured to TRIPLE co2's
+        # lattice (8.40 -> 20.51), because that measurement was made WITHOUT gain_shape, and
+        # gain_shape suppresses the lattice by construction (recon.std(-1) IS a transmitted
+        # code, so the decoder cannot buy HF energy from the tiled basis). If the two interact,
+        # the old verdict does not carry. multiscale_recon_scales 1,2,4 is the ONLY other flag
+        # separating co2_r_gsm from the gsmulti co2_gsm32 arms besides the adversarial level, so
+        # it is worth one node to attribute the difference rather than infer it.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in
+            mirnov)
+                B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+                B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsm16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+                ARMS_STR="${ARMS_STR};${M}_gsm8|${P} ${MSK} ${MIR} ${B} --gain_tokens 8"
+                ;;
+            co2)
+                # EXACTLY co2_r_gsm's flags (SWEEP=co2fix + --discriminator multiscale
+                # --gain_shape --gain_tokens 32), then one change per arm.
+                R="--ms_ssim_weight 5 --joint_entropy_weight 0.5 --adversarial_weight 0.05"
+                R="${R} --fm_weight 0.5 --adv_warmup_steps 1500 --pixel_anchor_weight 5.0"
+                R="${R} --discriminator multiscale --gain_shape --gain_tokens 32"
+                ARMS_STR="${ARMS_STR};${M}_rg_s2|${P} ${MSK} ${MIR} ${R} --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_rg_s3|${P} ${MSK} ${MIR} ${R} --seed 3"
+                ARMS_STR="${ARMS_STR};${M}_rg_ms20|${P} ${MSK} ${MIR} ${R} --ms_ssim_weight 20"
+                ARMS_STR="${ARMS_STR};${M}_rg_sc124|${P} ${MSK} ${MIR} ${R} --multiscale_recon_scales 1,2,4"
+                ;;
+        esac
+        continue
+    fi
     if [ "${SWEEP}" = "gsm2" ]; then
         # LEG 2 OF THE GAIN-SHAPE CELL, and it is DELIBERATELY ASYMMETRIC because the two
         # modalities are at different distances from their bar.
