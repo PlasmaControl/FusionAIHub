@@ -103,6 +103,16 @@ def test_mismatched_shapes_are_rejected_at_construction():
         FeatureArray(x=np.zeros(3), y=np.zeros(3))     # must be (C, T)
 
 
+def test_a_one_sample_feature_is_refused_as_ambiguous(tmp_path):
+    # The corpus layout reads ydata.shape[-1] < 2 as "signal absent", so a
+    # resolved one-sample group would be silently misread downstream.
+    p = tmp_path / "190000_features.h5"
+    one = FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)), attrs={"resolver": "corpus"})
+    with pytest.raises(ValueError, match="absent"):
+        write_features(p, 190000, {"ip": one}, {})
+    assert not p.exists()
+
+
 def test_read_feature_raises_for_absent_group(tmp_path):
     p = tmp_path / "190000_features.h5"
     write_features(p, 190000, {"ip": _scalar()}, {})
