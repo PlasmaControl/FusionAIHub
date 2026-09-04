@@ -2113,21 +2113,28 @@ def test_decode_applies_the_activation_after_the_ensemble_mean():
             OutputField("tm_prob", "binary", column=1, activation="sigmoid"),
         )
     )
-    # two members, three rows; logits chosen so mean-then-sigmoid differs
-    # measurably from sigmoid-then-mean
+
+    def sigmoid(a):
+        return 1.0 / (1.0 + np.exp(-np.asarray(a, dtype=float)))
+
+    # Two members, three rows. The tearing logits are deliberately
+    # asymmetric: with symmetric logits both orderings collapse to 0.5 and
+    # the test would prove nothing.
     members = np.array(
-        [[[1.0, -4.0], [2.0, 0.0], [3.0, 4.0]],
-         [[3.0, 4.0], [4.0, 0.0], [5.0, -4.0]]]
+        [[[1.0, 1.0], [2.0, -2.0], [3.0, 0.0]],
+         [[3.0, 3.0], [4.0, -1.0], [5.0, 4.0]]]
     )
     got = spec.decode(members)
     np.testing.assert_allclose(got["betan"].mean, [2.0, 3.0, 4.0])
     np.testing.assert_allclose(got["betan"].lo, [1.0, 2.0, 3.0])
     np.testing.assert_allclose(got["betan"].hi, [3.0, 4.0, 5.0])
-    np.testing.assert_allclose(got["tm_prob"].mean, [0.5, 0.5, 0.5])
-    sigmoid_then_mean = (1 / (1 + np.exp(4.0)) + 1 / (1 + np.exp(-4.0))) / 2
-    assert abs(sigmoid_then_mean - 0.5) < 1e-9  # symmetric here, so also check bounds
-    np.testing.assert_allclose(got["tm_prob"].lo, 1 / (1 + np.exp(4.0)), atol=1e-12)
-    np.testing.assert_allclose(got["tm_prob"].hi, 1 / (1 + np.exp(-4.0)), atol=1e-12)
+    # mean over members in logit space, THEN the activation
+    np.testing.assert_allclose(got["tm_prob"].mean, sigmoid([2.0, -1.5, 2.0]))
+    np.testing.assert_allclose(got["tm_prob"].lo, sigmoid([1.0, -2.0, 0.0]))
+    np.testing.assert_allclose(got["tm_prob"].hi, sigmoid([3.0, -1.0, 4.0]))
+    # averaging probabilities instead would give a materially different answer
+    averaged_probs = (sigmoid([1.0, -2.0, 0.0]) + sigmoid([3.0, -1.0, 4.0])) / 2
+    assert np.abs(averaged_probs - got["tm_prob"].mean).max() > 0.01
     assert isinstance(got["tm_prob"], Decoded)
 
 
@@ -2998,9 +3005,11 @@ def test_out_of_domain_kappa_is_flagged():
     feats, grid = _features()
     t = feats["kappa"].x
     y = np.full((1, t.size), 1.8)
-    y[0, 3] = 1.2                                   # below the 1.6 floor
+    y[0, 4] = 1.2                                   # below the 1.6 floor
     feats["kappa"] = FeatureArray(x=t, y=y, attrs={"resolver": "archive"})
     built = tm.ADAPTER.input_spec.build(feats, grid)
+    # kappa is a t+dt field, so grid step i reads feature sample i+1:
+    # spoiling sample 4 flags grid step 3, not grid step 4.
     assert built.valid.sum() == 7 and not built.valid[3]
 
 
