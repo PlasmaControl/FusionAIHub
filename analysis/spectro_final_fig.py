@@ -436,7 +436,8 @@ def _metrics_chunked(r: np.ndarray, t: np.ndarray, m: Optional[np.ndarray],
 def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
                      arms: List[tuple], device="cpu", batch: int = 8,
                      n_bands: int = 16, smooth: int = 5,
-                     bands_khz: Optional[List[tuple]] = None) -> Dict:
+                     bands_khz: Optional[List[tuple]] = None,
+                     patch_aspects: Optional[List[tuple]] = None) -> Dict:
     """Print the GT coherence profile, the two oracles, and each arm's per-band sharpness."""
     B, C, F, T = X.shape
     print(f"\n=== {modality}: WHERE THE MODE STRUCTURE IS  ({B} held-out windows, "
@@ -467,6 +468,22 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
         ("patchmean", patchmean_oracle(X, cfg.patch_f, cfg.patch_t)),
         (f"tsmooth{smooth}", tsmooth_oracle(X, smooth)),
     ]
+    # PATCH ASPECT AT CONSTANT n_tok. ``n_tok = (freq_bins // patch_f) * (time_frames //
+    # patch_t)``, so 8x32, 16x16, 32x8 and 64x4 ALL give 192 tokens on the production spectro
+    # geometry (512 bins x 96 frames): they are a REALLOCATION of the same 192 dimensions
+    # between frequency and time, not a token-count change, and FRAME_LAYOUT / the Phase-B
+    # vocab are untouched. That matters because the headline ranking key, ``peak_f1``, is
+    # computed on ``_power_envelope`` = ``spec.mean(-1)`` -- the window's per-FREQUENCY profile
+    # with time averaged away -- and modes are thin in frequency and extended in time. Each
+    # extra row is the patch-grid ceiling AT THAT ASPECT: if 8x32 lifts patchmean's peak_f1
+    # well above the 16x16 value, the current grid, not the objective, is what the arms are
+    # stuck against. Rows are oracles (an avg-pool), so they cost no codec decode.
+    for pf, pt in (patch_aspects or []):
+        if X.shape[2] % pf or X.shape[3] % pt:
+            print(f"  SKIP patchmean {pf}x{pt}: does not divide {X.shape[2]}x{X.shape[3]}")
+            continue
+        ntok = (cfg.freq_bins // pf) * (cfg.time_frames // pt) * getattr(cfg, "channel_groups", 1)
+        preds.append((f"patchmean{pf}x{pt}[n_tok {ntok}]", patchmean_oracle(X, pf, pt)))
     for label, ckpt in arms:
         if not Path(ckpt).exists():
             print(f"  SKIP {label}: {ckpt} missing")
@@ -828,6 +845,12 @@ def main():
                     help="--mode structure: equal-width bands for the GT ac1 profile.")
     ap.add_argument("--smooth", type=int, default=5,
                     help="--mode structure: frames in the time-smoothing oracle / coh_frac.")
+    ap.add_argument("--patch_aspects", default="",
+                    help="--mode structure: extra patchmean oracles at 'FxT,FxT,...' patch "
+                         "sizes, e.g. '8x32,32x8'. On the production spectro geometry every "
+                         "aspect whose (512//F)*(96//T) is 192 keeps n_tok and FRAME_LAYOUT "
+                         "unchanged -- these rows say whether the frequency/time SPLIT of the "
+                         "same 192 dimensions is what caps peak_f1.")
     args = ap.parse_args()
 
     specs = []
@@ -854,9 +877,17 @@ def main():
             for tok in args.bands_khz.split(","):
                 lo, _, hi = tok.strip().partition("-")
                 bands.append((float(lo), float(hi)))
+        aspects = []
+        for tok in (args.patch_aspects or "").split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            a, _, b = tok.partition("x")
+            aspects.append((int(a), int(b)))
         rep = structure_report(args.modality, X, M, cfg0, specs, device=args.device,
                                batch=args.batch_size, n_bands=args.n_bands,
-                               smooth=args.smooth, bands_khz=bands)
+                               smooth=args.smooth, bands_khz=bands,
+                               patch_aspects=aspects)
         if args.json:
             Path(args.json).parent.mkdir(parents=True, exist_ok=True)
             Path(args.json).write_text(json.dumps(rep, indent=1, default=float))
