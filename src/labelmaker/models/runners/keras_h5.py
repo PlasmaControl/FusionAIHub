@@ -12,9 +12,11 @@ Supported layers: InputLayer, BatchNormalization, Conv1D, MaxPooling1D,
 Flatten, Dense, Concatenate, Dropout (identity at inference). Anything else
 raises UnsupportedLayer, naming the class, rather than silently skipping it.
 
-Equality with TensorFlow is not assumed: `labelmaker.validate adapter`
-compares this evaluator against a real Keras load of the same file to 1e-5
-and stores the golden outputs under tests/labelmaker/data/.
+Equality with TensorFlow is not assumed: `labelmaker.validate.adapter_fidelity`
+compares this evaluator against a real Keras load of the same file to 1e-4
+(TensorFlow's own float32 rounding, not evaluator error - see that
+function's docstring) and stores the golden outputs under
+tests/labelmaker/data/.
 """
 from __future__ import annotations
 
@@ -31,7 +33,20 @@ class UnsupportedLayer(RuntimeError):
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-x))
+    # Split on sign rather than `1.0 / (1.0 + np.exp(-x))` directly: on real
+    # weights a Conv1D sigmoid gate's pre-activation reaches ~1.4e5 in
+    # magnitude (Task 14's fidelity check against the tearing ensemble), and
+    # `exp` of that overflows to `inf`, which is the mathematically correct
+    # saturation (1/(1+inf) == 0.0) but raises RuntimeWarning: overflow
+    # encountered in exp - a failure under this suite's `-W error`. Each
+    # branch below only ever exponentiates a non-positive number, so it
+    # cannot overflow, and it is exact where the naive form does not warn.
+    out = np.empty_like(x, dtype=np.float64)
+    pos = x >= 0
+    out[pos] = 1.0 / (1.0 + np.exp(-x[pos]))
+    exp_neg = np.exp(x[~pos])
+    out[~pos] = exp_neg / (1.0 + exp_neg)
+    return out
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
