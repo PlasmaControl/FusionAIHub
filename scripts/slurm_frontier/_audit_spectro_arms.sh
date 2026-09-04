@@ -19,10 +19,15 @@ export AMD_COMGR_CACHE_DIR="${SC}/comgr" MIOPEN_USER_DB_PATH="${SC}/miopen" MIOP
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}" OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 PY=.pixi/envs/frontier/bin/python
 
+# BOTH checkpoints per arm. `codec_best.pt` is selected on gate_score, which is NOT nRMSE:
+# measured on mhr o_ms20, best was saved at step 22001 (nRMSE 0.7964 on the audit pool) while
+# the run went on to 0.7398 at step 28000 -- a 0.056 nRMSE penalty for reading only the "best"
+# file. gate_score must not be changed, so the audit reads LAST as well and reports both.
 ARMS=""
 for d in "${DIR}"/*/; do
-    [ -f "${d}codec_best.pt" ] || continue
-    ARMS="${ARMS}${ARMS:+,}$(basename "${d}")=${d}codec_best.pt"
+    n=$(basename "${d}")
+    [ -f "${d}codec_best.pt" ] && ARMS="${ARMS}${ARMS:+,}${n}=${d}codec_best.pt"
+    [ -f "${d}codec_last.pt" ] && ARMS="${ARMS}${ARMS:+,}${n}_last=${d}codec_last.pt"
 done
 [ -n "${ARMS}" ] || { echo "no codec_best.pt under ${DIR}" >&2; exit 1; }
 echo "[audit] ${M}: ${ARMS}"
