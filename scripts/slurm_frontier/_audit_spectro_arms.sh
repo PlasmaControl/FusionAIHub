@@ -15,7 +15,7 @@ NW="${4:-320}"
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 SC="${SCRATCH_DIR:-/tmp/ignite_audit_$USER}"
 mkdir -p "${SC}/comgr" "${SC}/miopen" eval_runs/codec_recon_figs
-export AMD_COMGR_CACHE_DIR="${SC}/comgr" MIOPEN_USER_DB_PATH="${SC}/miopen"
+export AMD_COMGR_CACHE_DIR="${SC}/comgr" MIOPEN_USER_DB_PATH="${SC}/miopen" MIOPEN_CUSTOM_CACHE_DIR="${SC}/miopen"
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}" OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 PY=.pixi/envs/frontier/bin/python
 
