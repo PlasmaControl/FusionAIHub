@@ -39,6 +39,20 @@ set -e
 #                      empty = disable cache / re-scan every job)
 #   NODES        node count (informational; set -N to match)
 #   LR / EMA / EXTRA_ARGS                                  (optional passthrough)
+#   ARMS         MULTI-ARM mode (default: unset = the single DDP run described above).
+#                Semicolon-separated "name|extra args" entries; entry i runs as an
+#                INDEPENDENT single-process (world_size 1) codec run on node i, all inside
+#                ONE SLURM job, writing to ${OUT_DIR}/<name>. Use it to sweep a knob when the
+#                per-user RUNNING-job cap (MaxJobs=3) is the binding constraint: 8 arms cost
+#                one job slot instead of eight. Every arm gets the common flags above plus
+#                its own "extra args" (which win, being appended last), so each arm differs
+#                from the shared recipe in exactly the tokens you list. Requires
+#                --ntasks-per-node=1 and -N >= (number of arms). Implemented with
+#                `srun --multi-prog`, so arm args are WHITESPACE-SPLIT and must not contain
+#                spaces inside a single token (comma lists are fine — unlike --export, this
+#                path never splits on commas).
+#                Example (1 job, 3 nodes, 3 independent arms):
+#                  ARMS='base|;je2|--joint_entropy_weight 2.0;je5|--joint_entropy_weight 5.0'
 #
 # NOTE (standing multi-partition rule): after submit, the parent runs
 #   scontrol update job=<id> Partition=extended,batch,g1
@@ -94,6 +108,48 @@ echo "[ignite_codec_prod] host=$(hostname) nodes=${SLURM_JOB_NUM_NODES} \
 world_size(=nodes)=${SLURM_NTASKS} modality=${MODALITY} n_shots=${N_SHOTS} \
 eval_n_shots=${EVAL_N_SHOTS} steps=${STEPS} eval_every=${EVAL_EVERY} \
 batch_size=${BATCH_SIZE} num_workers=${NUM_WORKERS} out=${OUT_DIR} extra=${EXTRA_ARGS:-}"
+
+# ------------------------------------------------------------------------------------- #
+# MULTI-ARM mode (ARMS set): N INDEPENDENT single-process runs, one per node, ONE job.
+# Each task leaves WORLD_SIZE unset (we do NOT go through _srun_rank_wrapper.sh), so
+# train_codec._DDPState takes its single-process branch and the arms never form a process
+# group with each other. Falls through to the normal single DDP run when ARMS is unset.
+# ------------------------------------------------------------------------------------- #
+if [ -n "${ARMS:-}" ]; then
+    MP="${OUT_DIR}/multiprog_${SLURM_JOB_ID:-local}.conf"
+    : > "${MP}"
+    IFS=';' read -r -a _arm_list <<< "${ARMS}"
+    if [ "${#_arm_list[@]}" -gt "${SLURM_NTASKS}" ]; then
+        echo "ERROR: ${#_arm_list[@]} arms but only ${SLURM_NTASKS} tasks (-N/--ntasks-per-node)." >&2
+        exit 1
+    fi
+    for i in "${!_arm_list[@]}"; do
+        ARM_NAME="${_arm_list[$i]%%|*}"
+        ARM_ARGS="${_arm_list[$i]#*|}"
+        [ "${ARM_ARGS}" = "${_arm_list[$i]}" ] && ARM_ARGS=""   # no '|' => no extra args
+        ARM_OUT="${OUT_DIR}/${ARM_NAME}"
+        mkdir -p "${ARM_OUT}"
+        ARM_RESUME=""
+        if [ -f "${ARM_OUT}/codec_last.pt" ]; then
+            echo "[ignite_codec_prod] arm ${ARM_NAME}: resuming from ${ARM_OUT}/codec_last.pt"
+            ARM_RESUME="--resume ${ARM_OUT}/codec_last.pt"
+        fi
+        echo "${i} python -m tokamak_foundation_model.ignite.train_codec \
+--modality ${MODALITY} --n_shots ${N_SHOTS} --eval_n_shots ${EVAL_N_SHOTS} \
+--steps ${STEPS} --eval_every ${EVAL_EVERY} --batch_size ${BATCH_SIZE} \
+--num_workers ${NUM_WORKERS} --lr ${LR} --out_dir ${ARM_OUT} \
+${LENGTHS_CACHE_FLAG} ${EMA_FLAG} ${ARM_RESUME} ${EXTRA_ARGS:-} ${ARM_ARGS}" >> "${MP}"
+        echo "[ignite_codec_prod] arm ${i} '${ARM_NAME}' -> ${ARM_OUT}  extra: ${ARM_ARGS}"
+    done
+    echo "[ignite_codec_prod] MULTI-ARM: ${#_arm_list[@]} independent single-GPU runs, one per node"
+    cat "${MP}"
+    # --label prefixes every line with its task id, so the 8 arms' interleaved stdout in the
+    # single job log stays attributable (each arm also writes its own gate_*.json / summary.json).
+    srun -N "$SLURM_JOB_NUM_NODES" -n "${#_arm_list[@]}" -c "$SLURM_CPUS_PER_TASK" \
+         --gpus-per-task=1 --gpu-bind=closest --label --multi-prog "${MP}"
+    echo "=== IGNITE CODEC PROD MULTI-ARM DONE (exit $?) ==="
+    exit 0
+fi
 
 # One rank per node (--ntasks-per-node=1): global world size == node count. The
 # rank wrapper (SLURM_PROCID/LOCALID/NTASKS -> RANK/LOCAL_RANK/WORLD_SIZE) is the

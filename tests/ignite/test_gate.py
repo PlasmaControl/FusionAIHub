@@ -488,3 +488,412 @@ def test_utilization_large_codebook_small_eval_not_flagged():
     assert u["min_dim_entropy"] > cfg.gate_min_code_entropy
     assert u["frac_of_observable"] > cfg.gate_min_utilization
     assert u["collapsed"] is False
+
+
+# ======================================================================================
+# 4a. patch_lattice_metrics — the checkerboard / patch-seam detector
+# ======================================================================================
+def _tiled_texture_spectrogram(B=2, C=1, F=64, T=48, pf=16, pt=16, amp=1.0, seed=3):
+    """A spectrogram whose decoder painted every (pf x pt) patch from ONE shared texture.
+
+    This is exactly what a per-token linear ``to_pixels`` + tile does: the same high-frequency
+    basis pattern is replicated on the patch lattice, on top of smooth per-patch levels.
+    """
+    r = np.random.default_rng(seed)
+    texture = r.standard_normal((C, pf, pt))                       # ONE shared patch texture
+    tiled = np.tile(texture, (1, F // pf, T // pt))                # replicated on the lattice
+    levels = r.standard_normal((B, C, F // pf, T // pt))           # smooth per-patch content
+    smooth = np.repeat(np.repeat(levels, pf, axis=2), pt, axis=3)
+    return smooth + amp * tiled[None]
+
+
+def test_patch_lattice_ratio_is_one_on_lattice_free_data():
+    """Ground-truth-like data (no tiled texture) reads ~1: the lattice bins look exactly like
+    their neighbours. This is the control that makes an elevated recon number meaningful."""
+    gt = _mode_spectrogram(B=4, F=64, T=48)
+    m = gate.patch_lattice_metrics(gt, patch_f=16, patch_t=16)
+    assert m["patch_lattice_ratio"] == pytest.approx(1.0, abs=0.35)
+    assert m["lattice_energy_frac"] < 0.10
+    # The seam ratios are DIAGNOSTIC, not primary: they read one position per boundary, so a
+    # narrow mode that happens to sit on a boundary moves them (this synthetic has modes at
+    # freq 10/30/50 vs boundaries at 15/31/47). On real mhr ground truth they read 1.003 /
+    # 0.971. Assert only that they are not wildly elevated.
+    assert 0.5 < m["seam_ratio_freq"] < 2.0
+    assert 0.5 < m["seam_ratio_time"] < 2.0
+
+
+def test_patch_lattice_ratio_fires_on_a_tiled_patch_texture():
+    """A shared per-patch texture tiled on the 16x16 grid is detected, and MORE of it reads
+    higher — the metric is monotone in artifact strength, not just a boolean."""
+    weak = gate.patch_lattice_metrics(
+        _tiled_texture_spectrogram(amp=0.3), patch_f=16, patch_t=16)
+    strong = gate.patch_lattice_metrics(
+        _tiled_texture_spectrogram(amp=3.0), patch_f=16, patch_t=16)
+    assert strong["patch_lattice_ratio"] > weak["patch_lattice_ratio"] > 2.0
+    assert strong["lattice_energy_frac"] > weak["lattice_energy_frac"]
+
+
+def test_sharpness_cannot_see_the_lattice_but_the_metric_can():
+    """The reason this metric had to exist: the lattice IS high-frequency gradient energy, so
+    ``sharpness`` reads ~1 (or above) on a badly checkerboarded reconstruction."""
+    tgt = _mode_spectrogram(B=4, F=64, T=48)
+    recon = tgt + _tiled_texture_spectrogram(B=4, F=64, T=48, amp=0.5)
+    res = gate.decode_fidelity(recon, tgt, patch_f=16, patch_t=16)
+    assert res["sharpness"] > 1.0                       # blind: looks "sharp", not blurred
+    assert res["patch_lattice_ratio"] > 3.0             # the artifact IS detected
+    assert res["target_patch_lattice_ratio"] < 2.0      # ...and the GT control is not
+
+
+def test_decode_fidelity_lattice_keys_absent_without_patch_size():
+    """Default call is unchanged for every existing caller (no new keys, no cost)."""
+    tgt = _mode_spectrogram()
+    res = gate.decode_fidelity(tgt.copy(), tgt)
+    assert "patch_lattice_ratio" not in res
+    assert set(res) == {"envelope_corr", "peak_f1", "sharpness",
+                        "hf_energy_recon", "hf_energy_target"}
+
+
+def test_patch_lattice_metrics_rejects_indivisible_shape():
+    with pytest.raises(ValueError):
+        gate.patch_lattice_metrics(_mode_spectrogram(F=60, T=48), patch_f=16, patch_t=16)
+
+
+def test_remove_patch_lattice_deletes_the_artifact_and_keeps_the_signal():
+    """The ideal notch drives the lattice ratio to ~0 while leaving lattice-free content alone.
+
+    This is the diagnostic behind the measured claim that 92% of the mhr baseline's HF gradient
+    energy is the artifact: notch the recon, re-measure, compare.
+    """
+    tgt = _mode_spectrogram(B=4, F=64, T=48)
+    recon = tgt + _tiled_texture_spectrogram(B=4, F=64, T=48, amp=1.0)
+    before = gate.patch_lattice_metrics(recon, 16, 16)
+    notched = gate.remove_patch_lattice(recon, 16, 16)
+    after = gate.patch_lattice_metrics(notched, 16, 16)
+    assert before["patch_lattice_ratio"] > 3.0
+    assert after["lattice_energy_frac"] == pytest.approx(0.0, abs=1e-9)
+    # the notch is a projection: applying it twice changes nothing further.
+    assert np.allclose(notched, gate.remove_patch_lattice(notched, 16, 16))
+    # and it moves the recon TOWARD the (lattice-free) target rather than away from it.
+    assert np.abs(notched - tgt).mean() < np.abs(recon - tgt).mean()
+    assert notched.shape == recon.shape
+
+
+# ======================================================================================
+# 4c. full_spectro_metrics / trivial_spectro_baselines — the FULL-array recon check
+# ======================================================================================
+def test_full_spectro_metrics_self_comparison_is_exact():
+    """The wiring self-check: target vs itself MUST read nrmse 0.0 and corr2d 1.0."""
+    tgt = _mode_spectrogram(B=3, C=2, F=64, T=48)
+    m = gate.full_spectro_metrics(tgt.copy(), tgt, band_bins=32)
+    assert m["spec_nrmse"] == pytest.approx(0.0, abs=1e-12)
+    assert m["spec_corr2d"] == pytest.approx(1.0, abs=1e-12)
+    assert m["spec_nrmse_band"] == pytest.approx(0.0, abs=1e-12)
+    assert m["spec_corr2d_band"] == pytest.approx(1.0, abs=1e-12)
+    assert m["spec_valid_frac"] == pytest.approx(1.0)
+
+
+def test_full_spectro_nrmse_anchor_is_the_per_window_mean():
+    """The stated normalisation: predicting each (window, channel)'s own scalar mean scores
+    EXACTLY nrmse 1.0 and corr2d 0.0 — that is what makes ``< 1`` mean something."""
+    tgt = _mode_spectrogram(B=3, C=2, F=64, T=48)
+    const = np.broadcast_to(tgt.mean(axis=(-2, -1), keepdims=True), tgt.shape)
+    m = gate.full_spectro_metrics(const, tgt, band_bins=None)
+    assert m["spec_nrmse"] == pytest.approx(1.0, abs=1e-12)
+    assert m["spec_corr2d"] == pytest.approx(0.0, abs=1e-12)
+    assert "spec_nrmse_band" not in m  # band_bins=None disables the band variant
+
+
+def _drifting_mode_spectrogram(B=3, C=2, F=64, T=48, seed=7):
+    """Spectrogram whose modes DRIFT in frequency across the window — a mode TRACK.
+
+    ``_mode_spectrogram``'s modes sit at a fixed frequency with a mild time modulation, so its
+    time-averaged envelope already explains ~97 % of the array and the two metrics barely
+    separate. Real mhr/ece windows carry drifting tracks and bursts, which is exactly the
+    structure the time-collapsed metrics cannot see.
+    """
+    r = np.random.default_rng(seed)
+    freqs = np.arange(F)[None, :, None].astype(float)
+    tt = np.linspace(0.0, 1.0, T)[None, None, :]
+    spec = 0.1 * r.standard_normal((B * C, F, T)) - 2.0
+    for _ in range(3):
+        f0 = r.uniform(0.15 * F, 0.75 * F, size=(B * C, 1, 1))
+        drift = r.uniform(-0.25 * F, 0.25 * F, size=(B * C, 1, 1))
+        spec += 3.0 * np.exp(-0.5 * ((freqs - (f0 + drift * tt)) / 1.5) ** 2)
+    return spec.reshape(B, C, F, T)
+
+
+def test_full_spectro_metrics_sees_what_envelope_corr_cannot():
+    """A recon that reproduces the time-averaged envelope PERFECTLY but has no temporal
+    structure scores envelope_corr 1.0 while corr2d stays well below it. This is the whole
+    reason the metric exists."""
+    tgt = _drifting_mode_spectrogram(B=3, C=2, F=64, T=48)
+    flat = np.broadcast_to(tgt.mean(axis=-1, keepdims=True), tgt.shape).copy()
+    old = gate.decode_fidelity(flat, tgt)
+    new = gate.full_spectro_metrics(flat, tgt, band_bins=None)
+    assert old["envelope_corr"] == pytest.approx(1.0, abs=1e-9)  # blind by construction
+    assert new["spec_corr2d"] < old["envelope_corr"] - 0.2
+    assert 0.0 < new["spec_nrmse"] < 1.0
+
+
+def test_full_spectro_metrics_excludes_constant_target_channels():
+    """Absent/dead diagnostics (constant target) have no structure to reconstruct: they are
+    dropped from both means and counted in ``spec_valid_frac`` instead of dividing by zero."""
+    tgt = _mode_spectrogram(B=2, C=4, F=64, T=48)
+    tgt[:, 0] = 7.0  # one dead channel of four
+    m = gate.full_spectro_metrics(tgt.copy(), tgt, band_bins=None)
+    assert m["spec_valid_frac"] == pytest.approx(0.75)
+    assert m["spec_nrmse"] == pytest.approx(0.0, abs=1e-12)
+    assert m["spec_corr2d"] == pytest.approx(1.0, abs=1e-12)
+
+
+def test_full_spectro_metrics_rejects_bad_shapes():
+    with pytest.raises(ValueError):
+        gate.full_spectro_metrics(_mode_spectrogram(B=2), _mode_spectrogram(B=3))
+    with pytest.raises(ValueError):
+        gate.full_spectro_metrics(np.zeros((4, 8, 6)), np.zeros((4, 8, 6)))
+
+
+def test_trivial_spectro_baselines_are_ordered_and_anchored():
+    """self (0.0 / 1.0) is the best possible, wcmean (1.0 / 0.0) the anchor, and the
+    time-mean envelope baseline sits strictly between them."""
+    tgt = _mode_spectrogram(B=3, C=2, F=64, T=48)
+    b = gate.trivial_spectro_baselines(tgt, band_bins=32)
+    assert b["base_self_spec_nrmse"] == pytest.approx(0.0, abs=1e-12)
+    assert b["base_self_spec_corr2d"] == pytest.approx(1.0, abs=1e-12)
+    assert b["base_wcmean_spec_nrmse"] == pytest.approx(1.0, abs=1e-12)
+    assert b["base_wcmean_spec_corr2d"] == pytest.approx(0.0, abs=1e-12)
+    assert 0.0 < b["base_tmean_spec_nrmse"] < b["base_wcmean_spec_nrmse"]
+    assert b["base_wcmean_spec_corr2d"] < b["base_tmean_spec_corr2d"] < 1.0
+    assert "base_self_spec_valid_frac" not in b  # identical for every baseline; not repeated
+
+
+def test_decode_fidelity_full_spec_is_opt_in_and_additive():
+    """DEFAULT OFF: the default dict is unchanged; full_spec=True only ADDS keys and leaves
+    every pre-existing value bit-identical."""
+    tgt = _mode_spectrogram(B=2, C=2, F=64, T=48)
+    recon = tgt + 0.3 * np.random.default_rng(4).standard_normal(tgt.shape)
+    off = gate.decode_fidelity(recon, tgt, patch_f=16, patch_t=16)
+    on = gate.decode_fidelity(recon, tgt, patch_f=16, patch_t=16, full_spec=True)
+    assert "spec_corr2d" not in off
+    assert set(off).issubset(set(on))
+    for k, v in off.items():
+        assert on[k] == v  # bit-identical, not approx
+    assert on["spec_nrmse"] > 0.0 and on["base_self_spec_nrmse"] == 0.0
+
+
+# --------------------------------------------------------------------------------------- #
+# MODE-TRACK metrics — the replacements for spec_nrmse as the RANKING key
+# --------------------------------------------------------------------------------------- #
+def _ridge_window(seed: int = 0, F: int = 128, T: int = 64, rise: bool = True):
+    """(1, 2, F, T) log-power-like array with a narrow ridge that MOVES in frequency."""
+    rng = np.random.default_rng(seed)
+    x = rng.normal(0.0, 1.0, (1, 2, F, T))
+    f0 = (F // 3) + (np.arange(T) * (F // 6) // T if rise else np.zeros(T, dtype=int))
+    for t in range(T):
+        x[:, :, int(f0[t]), t] += 12.0
+        x[:, :, int(f0[t]) + 1, t] += 6.0
+    return x
+
+
+def test_mode_track_metrics_are_perfect_on_self_and_low_on_the_time_mean():
+    """The whole point: a static envelope must NOT score well. ``peak_f1`` gives it 1.0."""
+    x = _ridge_window()
+    tm = np.broadcast_to(x.mean(axis=-1, keepdims=True), x.shape).copy()
+
+    s = gate.mode_structure_metrics(x, x, band_bins=None)
+    assert s["mode_track_f1"] == pytest.approx(1.0)
+    assert s["ridge_traj_corr"] == pytest.approx(1.0)
+    assert s["spectral_contrast_ratio"] == pytest.approx(1.0)
+    assert s["ms_ssim"] == pytest.approx(1.0, abs=1e-6)
+    assert s["mode_track_n_gt_peaks"] > 1.0          # the target really does have peaks
+
+    b = gate.mode_structure_metrics(tm, x, band_bins=None)
+    assert b["mode_track_f1"] < 0.5, b["mode_track_f1"]
+    assert abs(b["ridge_traj_corr"]) < 0.1, b["ridge_traj_corr"]
+    assert b["spectral_contrast_ratio"] < 0.4, b["spectral_contrast_ratio"]
+    assert b["ms_ssim"] < s["ms_ssim"]
+
+    # ...whereas the OLD time-collapsed metric cannot tell them apart at all — this is the
+    # documented defect that motivated the new metrics.
+    assert gate.decode_fidelity(tm, x)["envelope_corr"] == pytest.approx(1.0, abs=1e-6)
+
+
+def test_ridge_traj_corr_follows_a_moving_ridge_but_not_a_static_one():
+    """A reconstruction with the ridge at a FIXED frequency must score ~0, not ~1."""
+    x = _ridge_window(rise=True)
+    static = _ridge_window(rise=False)
+    assert gate.ridge_traj_corr(x, x, band_bins=None)["ridge_traj_corr"] == pytest.approx(1.0)
+    assert abs(gate.ridge_traj_corr(static, x, band_bins=None)["ridge_traj_corr"]) < 0.2
+
+
+def test_patch_lattice_inflates_hf_ratio_far_more_than_the_new_metrics():
+    """MEASURED artifact sensitivity — the reason ``sharpness`` cannot be a quality signal.
+
+    Adding a synthetic checkerboard to a BLURRED reconstruction inflates ``sharpness`` by
+    12-19x (consistent with the measured 92-94 % of the mhr reconstruction's HF energy sitting
+    on the patch lattice), while ``spectral_contrast_ratio`` moves 2-3x — about 6x less — and
+    is EXACTLY unchanged by a purely TIME-periodic lattice. ``mode_track_f1`` and ``ms_ssim``
+    are the artifact-SAFE members: a lattice makes both WORSE, because its spurious peaks are
+    false positives. So ``spectral_contrast_ratio`` is ROBUST, not immune: a frequency-periodic
+    lattice is a set of narrow frequency peaks, which it rewards by design, and its inflation
+    grows as the target's own contrast falls. The invariant asserted here is the RATIO of
+    sensitivities, which does not depend on the ridge geometry.
+    """
+    x = _ridge_window()
+    tm = np.broadcast_to(x.mean(axis=-1, keepdims=True), x.shape).copy()
+    F, T = x.shape[2], x.shape[3]
+    fg, tg = np.meshgrid(np.arange(F), np.arange(T), indexing="ij")
+    lat_f = tm + 3.0 * (fg % 16 == 0).astype(float)[None, None]
+    lat_t = tm + 3.0 * (tg % 16 == 0).astype(float)[None, None]
+
+    def _m(c):
+        d = gate.decode_fidelity(c, x)
+        s = gate.mode_structure_metrics(c, x, band_bins=None)
+        return d["sharpness"], s["spectral_contrast_ratio"], s["mode_track_f1"], s["ms_ssim"]
+
+    hf0, c0, f0, ss0 = _m(tm)
+    hf1, c1, f1, ss1 = _m(lat_f)
+    hf2, c2, f2, ss2 = _m(lat_t)
+
+    # sharpness is inflated by an order of magnitude by EITHER lattice orientation
+    assert hf1 / max(hf0, 1e-9) > 5.0
+    assert hf2 / max(hf0, 1e-9) > 5.0
+    # the contrast ratio is at least 3x LESS sensitive to the artifact than sharpness is,
+    # and a TIME-periodic lattice does not move it at all
+    assert (hf1 / max(hf0, 1e-9)) > 3.0 * (c1 / max(c0, 1e-9))
+    assert c2 == pytest.approx(c0, rel=1e-6)
+    # and the two artifact-safe metrics get WORSE, not better
+    assert f1 < f0 and ss1 < ss0 and ss2 < ss0
+
+
+def test_detrended_envelope_scores_exactly_zero_not_rounding_noise():
+    """REGRESSION: the detrended time-mean envelope must score EXACTLY 0, not float32 noise.
+
+    ``mode_track_f1(detrend=True)`` subtracts each pair's own time-average, so the envelope's
+    detrended array is analytically zero and can contain no peaks. But the prominence test is
+    RELATIVE to each frame's own std, and after the metrics were moved to float32 the residual
+    is ~1.8e-07 rather than ~3.3e-16 — enough for the relative test to peak-pick pure rounding
+    noise and report ~0.17. ``gate._PEAK_MIN_SD`` is the absolute floor that prevents it; real
+    log-power z-scored frames have sd ~0.5-1.5, so the floor never fires on actual data.
+    """
+    x = _ridge_window(F=256, T=96)
+    tm = np.broadcast_to(x.mean(axis=-1, keepdims=True), x.shape).copy()
+
+    assert gate.mode_track_f1(tm, x, band_bins=None, detrend=True)["mode_track_f1"] == 0.0
+    # ...and the floor must NOT suppress peaks on real-scale data
+    assert gate.mode_track_f1(x, x, band_bins=None, detrend=True)["mode_track_f1"] == \
+        pytest.approx(1.0)
+    assert gate.mode_track_f1(x, x, band_bins=None)["mode_track_f1"] == pytest.approx(1.0)
+    assert gate.mode_track_f1(x, x, band_bins=None)["mode_track_n_gt_peaks"] > 1.0
+
+
+# ===================================================================================== #
+# VIDEO full-array metrics (2026-09-03) — the tangtv analogue of full_slowts_metrics.
+# The reference points below are the SAME "known ordering" discipline that rejected four
+# 2-D spectrogram metrics on the same day: a metric that cannot order these is not allowed
+# to order codecs.
+# ===================================================================================== #
+def _vid(seed=0, B=3, C=2, T=5, H=40, W=60):
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:H, 0:W]
+    base = np.sin(yy / 6.0) * np.cos(xx / 9.0)
+    x = (base[None, None, None] * (1.0 + 0.3 * rng.standard_normal((B, C, T, 1, 1)))
+         + 0.4 * rng.standard_normal((B, C, T, H, W)))
+    return x
+
+
+def test_full_video_metrics_self_and_constant_anchors():
+    import numpy as np
+    from tokamak_foundation_model.ignite import gate
+
+    t = _vid()
+    b = gate.trivial_video_baselines(t)
+    assert abs(b["base_self_video_nrmse"]) < 1e-12
+    assert abs(b["base_self_video_corr"] - 1.0) < 1e-12
+    assert abs(b["base_self_video_std_ratio"] - 1.0) < 1e-12
+    assert abs(b["base_self_video_hf_ratio"] - 1.0) < 1e-12
+    # the per-(window, channel) constant mean is the EXACT 1.0 normalisation anchor
+    assert abs(b["base_wcmean_video_nrmse"] - 1.0) < 1e-9
+    assert abs(b["base_wcmean_video_std_ratio"]) < 1e-12
+    # the per-pixel time mean is "perfect still image, ZERO temporal structure"
+    assert abs(b["base_tmean_video_std_ratio_t"]) < 1e-12
+    assert b["base_tmean_video_nrmse"] < b["base_wcmean_video_nrmse"]
+
+
+def test_video_std_ratio_reports_amplitude_collapse_that_nrmse_rewards():
+    import numpy as np
+    from tokamak_foundation_model.ignite import gate
+
+    t = _vid(1)
+    mu = t.mean(axis=(2, 3, 4), keepdims=True)
+    shrunk = mu + 0.40 * (t - mu)
+    m = gate.full_video_metrics(shrunk, t)
+    assert abs(m["video_std_ratio"] - 0.40) < 1e-6         # the collapse is a NUMBER
+    assert m["video_nrmse"] < 1.0                          # ... which nRMSE alone accepts
+    assert abs(m["video_corr"] - 1.0) < 1e-9               # ... and corr cannot see at all
+
+
+def test_full_video_metrics_masking_ignores_dead_cameras():
+    import numpy as np
+    from tokamak_foundation_model.ignite import gate
+
+    t = _vid(2)
+    # camera 1 stops recording PART-WAY through the window (frames 3-4 zero-filled), which is
+    # the case the "constant target" guard cannot catch on its own: the group still has
+    # variance, so an unmasked metric happily scores the zero-fill.
+    t_dead = t.copy()
+    t_dead[:, 1, 3:] = 0.0
+    mask = np.ones(t.shape[:3])
+    mask[:, 1, 3:] = 0.0
+    recon = t.copy()
+    recon[:, 1, 3:] = 50.0                                 # garbage where nothing was recorded
+    m = gate.full_video_metrics(recon, t_dead, mask=mask)
+    assert abs(m["video_nrmse"]) < 1e-9                    # the garbage is excluded
+    assert abs(m["video_present_frac"] - 0.8) < 1e-9       # 2 of 10 (channel, frame) slots dead
+    # unmasked, the SAME reconstruction is catastrophic
+    assert gate.full_video_metrics(recon, t_dead)["video_nrmse"] > 10.0
+    # a fully dead camera (constant target) is dropped by the valid-group guard either way
+    t2, r2 = t.copy(), t.copy()
+    t2[:, 1] = 0.0
+    r2[:, 1] = 12345.0
+    m2 = np.ones(t.shape[:3]); m2[:, 1] = 0.0
+    assert abs(gate.full_video_metrics(r2, t2, mask=m2)["video_nrmse"]) < 1e-9
+    assert abs(gate.full_video_metrics(r2, t2)["video_valid_frac"] - 0.5) < 1e-9
+
+
+def test_video_patch_lattice_detects_an_injected_checkerboard():
+    import numpy as np
+    from tokamak_foundation_model.ignite import gate
+
+    t = _vid(3, H=120, W=180)                # 6 x 9 patches, like the real 6 x 18 grid
+    clean = gate.video_patch_lattice(t, 20, 20)["patch_lattice_ratio"]
+    rng = np.random.default_rng(5)
+    tile = rng.standard_normal((20, 20))
+    grid = np.tile(tile, (t.shape[-2] // 20, t.shape[-1] // 20))
+    dirty = gate.video_patch_lattice(t + 1.0 * t.std() * grid, 20, 20)
+    assert clean < 2.0                       # smooth frames: ~1 = no lattice
+    assert dirty["patch_lattice_ratio"] > 5.0 * clean         # a tiled texture is caught
+    assert dirty["lattice_energy_frac"] > 10 * gate.video_patch_lattice(
+        t, 20, 20)["lattice_energy_frac"]
+
+
+def test_code_rate_bits_matches_hand_computable_cases():
+    import numpy as np
+    from tokamak_foundation_model.ignite import gate
+
+    # every token always the same code -> ZERO delivered bits at every position
+    dead = np.zeros((50, 4, 3), dtype=np.int64)
+    r = gate.code_rate_bits(dead, 1000, n_tok=4)
+    assert abs(r["rate_positional"]) < 1e-12
+    assert abs(r["rate_pooled"]) < 1e-12
+    assert r["n_distinct_codes"] == 1
+
+    # each POSITION emits its own fixed distinct code: pooled entropy log2(4) but the honest
+    # positional rate is still ZERO -- the exact confusion the pooled number would hide.
+    fixed = np.zeros((50, 4, 1), dtype=np.int64)
+    fixed[:, :, 0] = np.arange(4)[None, :]
+    r = gate.code_rate_bits(fixed, 1000, n_tok=4)
+    assert abs(r["bits_pooled_per_token"] - 2.0) < 1e-9
+    assert abs(r["bits_positional_per_token"]) < 1e-12
+    assert r["bits_available_per_frame"] == 4 * np.log2(1000)

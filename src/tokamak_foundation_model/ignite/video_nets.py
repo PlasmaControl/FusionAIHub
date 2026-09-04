@@ -110,13 +110,24 @@ class VideoDecoder(nn.Module):
         self.refine: nn.Sequential | None = None
         if depth > 0:
             hidden = int(getattr(cfg, "refine_hidden", 64))
+            # DILATION schedule. `cfg.refine_dilated` (default False -> every dilation 1, i.e.
+            # BYTE-IDENTICAL to the pre-2026-09-03 head) makes layer i use dilation 2**i, so the
+            # stack's receptive field is 2^(depth+1)-1 rather than 2*depth+1. The recorded
+            # patch-lattice rule is that the head must SEE further than one patch; the video
+            # patch is 20x20, so depth 4 dilated (RF 31) clears it while depth 4 undilated
+            # (RF 9) cannot -- it can only smooth inside a patch, never across two seams.
+            dilated = bool(getattr(cfg, "refine_dilated", False))
             layers: list[nn.Module] = []
             for i in range(depth - 1):
+                d = (2 ** i) if dilated else 1
                 layers += [
-                    nn.Conv2d(cfg.channels if i == 0 else hidden, hidden, 3, padding=1),
+                    nn.Conv2d(cfg.channels if i == 0 else hidden, hidden, 3,
+                              padding=d, dilation=d),
                     nn.GELU(),
                 ]
-            last = nn.Conv2d(hidden if depth > 1 else cfg.channels, cfg.channels, 3, padding=1)
+            d_last = (2 ** (depth - 1)) if dilated else 1
+            last = nn.Conv2d(hidden if depth > 1 else cfg.channels, cfg.channels, 3,
+                             padding=d_last, dilation=d_last)
             nn.init.zeros_(last.weight)
             nn.init.zeros_(last.bias)
             layers.append(last)

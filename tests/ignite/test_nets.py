@@ -113,3 +113,103 @@ def test_spectro_default_is_192_tokens_and_pe_sized_32x6() -> None:
     assert feats.shape == (1, 192, cfg.d_model)
     recon = dec(feats)
     assert recon.shape == x.shape and torch.isfinite(recon).all()
+
+
+# ------------------------------------------------------------------------------------- #
+# decoder conv REFINEMENT head (patch-lattice / checkerboard fix)
+# ------------------------------------------------------------------------------------- #
+def test_refine_depth_default_is_off_and_state_dict_unchanged() -> None:
+    """refine_depth defaults to 0: NOTHING is constructed, so the state_dict is byte-identical
+    to a pre-refine checkpoint's and every production / live-arm codec loads unchanged."""
+    cfg = _small_cfg()
+    assert cfg.refine_depth == 0
+    dec = SpectroDecoder(cfg)
+    assert dec.refine is None
+    assert not any(k.startswith("refine") for k in dec.state_dict())
+    # last_layer keeps pointing at to_pixels (the adaptive-adv weight's balance point).
+    assert dec.last_layer is dec.to_pixels.weight
+
+
+def test_refine_head_is_a_bit_identical_no_op_when_off() -> None:
+    """Same weights + refine_depth 0 -> bit-identical output to the pre-change decoder path."""
+    torch.manual_seed(0)
+    cfg = _small_cfg()
+    dec = SpectroDecoder(cfg).eval()
+    quant = torch.randn(2, cfg.n_tok, cfg.d_model)
+    with torch.no_grad():
+        out = dec(quant)
+        # reference: the unpatchify path with the refine head explicitly bypassed.
+        dec.refine = None
+        ref = dec(quant)
+    assert torch.equal(out, ref)
+
+
+def test_refine_head_starts_as_exact_identity() -> None:
+    """The final conv is zero-init, so a freshly built refine head is an EXACT no-op: an arm
+    with the head ON begins from the same function as the baseline arm."""
+    torch.manual_seed(0)
+    cfg = _small_cfg()
+    dec_off = SpectroDecoder(cfg).eval()
+    cfg_on = _small_cfg()
+    cfg_on.refine_depth = 3
+    cfg_on.refine_hidden = 8
+    torch.manual_seed(0)
+    dec_on = SpectroDecoder(cfg_on).eval()
+    dec_on.load_state_dict(dec_off.state_dict(), strict=False)
+    assert dec_on.refine is not None
+    quant = torch.randn(2, cfg.n_tok, cfg.d_model)
+    with torch.no_grad():
+        assert torch.equal(dec_off(quant), dec_on(quant))
+    # ...and the adaptive-adv balance point moves to the head's last conv.
+    assert dec_on.last_layer is dec_on.refine[-1].weight
+
+
+def test_refine_head_dilations_and_gradients() -> None:
+    """Dilated head: receptive field 2^(D+1)-1, output shape preserved, gradients flow."""
+    cfg = _small_cfg()
+    cfg.refine_depth = 3
+    cfg.refine_hidden = 8
+    cfg.refine_dilated = True
+    dec = SpectroDecoder(cfg)
+    convs = [m for m in dec.refine if isinstance(m, torch.nn.Conv2d)]
+    assert [c.dilation[0] for c in convs] == [1, 2, 4]
+    quant = torch.randn(1, cfg.n_tok, cfg.d_model)
+    out = dec(quant)
+    assert out.shape == (1, cfg.channels, cfg.freq_bins, cfg.time_frames)
+    # zero-init last conv means a zero grad at init would hide a wiring bug -> perturb first.
+    with torch.no_grad():
+        dec.refine[-1].weight.normal_(std=0.01)
+    dec(quant).sum().backward()
+    assert dec.refine[0].weight.grad is not None
+    assert torch.isfinite(dec.refine[0].weight.grad).all()
+
+
+def test_decoder_noise_default_off_and_zero_init_identity() -> None:
+    """decoder_noise: no parameter when off (byte-identical state_dict); zero-init when on, so
+    a noise-enabled decoder is an EXACT identity to the noiseless one at step 0 — yet the
+    scale still receives a gradient, so it can grow if the objective rewards it."""
+    torch.manual_seed(0)
+    cfg = _small_cfg()
+    assert cfg.decoder_noise is False
+    dec_off = SpectroDecoder(cfg).eval()
+    assert dec_off.noise_scale is None
+    assert not any("noise" in k for k in dec_off.state_dict())
+
+    cfg_on = _small_cfg()
+    cfg_on.decoder_noise = True
+    torch.manual_seed(0)
+    dec_on = SpectroDecoder(cfg_on).eval()
+    dec_on.load_state_dict(dec_off.state_dict(), strict=False)
+    quant = torch.randn(2, cfg.n_tok, cfg.d_model)
+    with torch.no_grad():
+        assert torch.equal(dec_off(quant), dec_on(quant))
+    assert tuple(dec_on.noise_scale.shape) == (cfg.channels,)
+
+    with torch.no_grad():
+        dec_on.noise_scale.fill_(0.1)
+    dec_on(quant).sum().backward()
+    assert dec_on.noise_scale.grad is not None
+    assert torch.isfinite(dec_on.noise_scale.grad).all()
+    # ...and with a non-zero scale the decoder is genuinely stochastic.
+    with torch.no_grad():
+        assert not torch.equal(dec_on(quant), dec_on(quant))

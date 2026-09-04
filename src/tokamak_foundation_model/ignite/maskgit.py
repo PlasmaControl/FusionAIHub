@@ -233,8 +233,14 @@ class MaskGITDynamics(nn.Module):
                       mask_ratio: Optional[float] = None,
                       history_frames: int = 0,
                       mod_weights: Optional[Dict[str, float]] = None,
-                      gen_mask_p: Optional[float] = None) -> torch.Tensor:
+                      gen_mask_p: Optional[float] = None,
+                      label_smoothing: float = 0.0) -> torch.Tensor:
         """Masked-token cross-entropy over the masked positions, summed per modality, mean-reduced.
+
+        ``label_smoothing`` is an EXPLICIT ARGUMENT, never read from cfg, because _val_loss calls
+        this same method: smoothing the validation CE would raise it by ~eps*ln(vocab) (1.15 nats at
+        eps=0.1 for this frame layout) and make the metric incomparable to every arm ever run. Only
+        the training call site passes it; validation keeps the default 0.0.
 
         ``ss_frac`` > 0 applies scheduled sampling: a fraction of context frames are replaced by
         the model's own codes before masking; the CE target remains the REAL codes.
@@ -266,7 +272,7 @@ class MaskGITDynamics(nn.Module):
             lg = mlogits[m.name]                                      # (n_masked, vocab)
             tg = codes[m.name][mk]                                    # (n_masked,)
             if present is None:
-                term = F.cross_entropy(lg, tg)
+                term = F.cross_entropy(lg, tg, label_smoothing=label_smoothing)
                 wt = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
                 total = total + wt * term
                 count += wt
@@ -283,7 +289,8 @@ class MaskGITDynamics(nn.Module):
             if not bool(denom > 0):        # absent in EVERY sample of this batch
                 total = total + 0.0 * lg.sum()        # keep the head in the autograd graph
                 continue
-            ce = F.cross_entropy(lg, tg, reduction="none")            # (n_masked,)
+            ce = F.cross_entropy(lg, tg, reduction="none",
+                                 label_smoothing=label_smoothing)   # (n_masked,)
             term = (ce * w).sum() / denom
             wt = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
             total = total + wt * term

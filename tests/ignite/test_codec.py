@@ -15,6 +15,7 @@ Small synthetic tensors only, CPU. No real HDF5. No SLURM / GPU.
 """
 from __future__ import annotations
 
+import pytest
 import torch
 
 from tokamak_foundation_model.ignite import spike
@@ -170,6 +171,41 @@ def test_gate_runs_on_codec_outputs():
     assert 0.0 <= dec["peak_f1"] <= 1.0
     import math as _math
     assert _math.isfinite(dec["sharpness"])
+
+
+def test_compute_gate_carries_full_spectrogram_metrics_without_moving_the_score():
+    """Every gate dict now carries the FULL-spectrogram recon metrics + trivial baselines,
+    and best-checkpoint selection is unchanged by them.
+
+    The keys are informational: ``gate_score`` reads envelope_corr / peak_f1 / margin /
+    utilization only, so dropping every new key must give a BIT-identical score.
+    """
+    import math as _math
+
+    cfg = _small_cfg()
+    codec = SpectroCodec(cfg)
+    eval_pairs = spike.synthetic_batches(cfg, n_batches=1, batch_size=2, seed=5)
+    frame_seq = spike._consecutive_frame_sequence(cfg, batch_size=2, n_frames=4, seed=6)
+
+    g = spike.compute_gate(codec, eval_pairs, frame_seq, cfg)
+    dec = g["decode"]
+    for key in ("spec_nrmse", "spec_corr2d", "spec_valid_frac",
+                "spec_nrmse_band", "spec_corr2d_band",
+                "base_self_spec_nrmse", "base_self_spec_corr2d",
+                "base_tmean_spec_nrmse", "base_tmean_spec_corr2d",
+                "base_cfmean_spec_nrmse", "base_wcmean_spec_nrmse"):
+        assert key in dec and isinstance(dec[key], float), key
+    assert dec["spec_nrmse"] >= 0.0 and -1.0 <= dec["spec_corr2d"] <= 1.0
+    # the metric self-check survives the whole pipeline
+    assert dec["base_self_spec_nrmse"] == pytest.approx(0.0, abs=1e-9)
+    assert dec["base_self_spec_corr2d"] == pytest.approx(1.0, abs=1e-9)
+    assert dec["base_wcmean_spec_nrmse"] == pytest.approx(1.0, abs=1e-9)
+
+    stripped = dict(g)
+    stripped["decode"] = {k: v for k, v in dec.items()
+                          if not (k.startswith("spec_") or k.startswith("base_"))}
+    a, b = spike.gate_score(g), spike.gate_score(stripped)
+    assert a == b or (_math.isnan(a) and _math.isnan(b))
 
 
 # --------------------------------------------------------------------------- #
