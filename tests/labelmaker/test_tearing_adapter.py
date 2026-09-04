@@ -69,6 +69,26 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert ("ech_rho", "value") not in rules
 
 
+def test_a_fabricated_ech_location_is_flagged_when_power_is_flowing():
+    # MEASURED over 400 archive shots: 70.1% of ECH-powered rows have no
+    # recorded deposition location. Zero-filling those says "on axis", a
+    # state upstream dropped from training - so the row must not be claimed
+    # as valid. With ECH off, the same gap is the upstream convention and
+    # the row stands.
+    for power, expect_valid in ((0.0, True), (1.0e6, False)):
+        feats, grid = _features()
+        t = feats["ech_rho"].x
+        feats["ech_rho"] = FeatureArray(
+            x=t, y=np.full((1, t.size), np.nan), attrs={"resolver": "archive"}
+        )
+        feats["ech_power_total"] = FeatureArray(
+            x=t, y=np.full((1, t.size), power), attrs={"resolver": "archive"}
+        )
+        built = tm.ADAPTER.input_spec.build(feats, grid)
+        np.testing.assert_allclose(built.scalars[:, 10], 0.0)   # zero-filled either way
+        assert bool(built.valid.all()) is expect_valid, power
+
+
 def test_the_qpsi_rule_bounds_the_reciprocal_not_qpsi_itself():
     # max(1/qpsi) < 3 flags a low-q profile and admits a high-q one. Asserting
     # only `hi == 3.0` cannot tell this from the opposite reading.
@@ -139,11 +159,14 @@ def test_negative_ech_power_also_becomes_zero():
     assert built.valid.all()
 
 
-def test_any_unusable_ech_deposition_location_becomes_zero():
-    # Zero is the upstream convention for ECH-off, so NaN and negative alike
-    # map to it and the row stays usable. That is the transform's doing, not
-    # a domain rule's - there is no ech_rho rule.
-    for value in (np.nan, -1.0, -1e9):
+def test_a_finite_but_nonsensical_ech_location_becomes_zero_and_stays_valid():
+    # -1.0 and -1e9 are MEASURED readings (finite), just physically
+    # impossible, so nonneg_zero_fill zeroes them and the row stays usable -
+    # there is no ech_rho DomainRule. NaN is a different case: it means the
+    # deposition location was never measured at all, and whether that is
+    # benign or a fabrication now depends on whether ECH power is flowing -
+    # see test_a_fabricated_ech_location_is_flagged_when_power_is_flowing.
+    for value in (-1.0, -1e9):
         feats, grid = _features()
         t = feats["ech_rho"].x
         feats["ech_rho"] = FeatureArray(

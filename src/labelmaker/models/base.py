@@ -102,6 +102,31 @@ class DomainRule:
 
 
 @dataclass(frozen=True)
+class UnknownWhenActive:
+    """Flag rows where one input was never measured while another was active.
+
+    A gap in an input is sometimes benign and sometimes a fabrication, and
+    only a second field can tell you which. The ECH deposition location is
+    the case this exists for. It is absent whenever ECH is off, where the
+    zero-fill reproduces the upstream convention and costs nothing - and
+    MEASURED over 400 archive shots, 74.7% of its gaps are exactly that. But
+    it is also absent on 70.1% of the rows where ECH is genuinely injecting,
+    and there the zero-fill tells the model the power lands on axis when
+    nobody knows where it lands. Upstream dropped those rows, so the model
+    never trained on that state; a label computed from one is an
+    extrapolation and must say so.
+    """
+
+    unknown: str
+    active: str
+    threshold: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in (self.unknown, self.active):
+            ns.by_name(name)  # fail at import on a typo
+
+
+@dataclass(frozen=True)
 class BuiltInputs:
     """Model-ready arrays for one shot, plus what is trustworthy."""
 
@@ -122,6 +147,7 @@ class InputSpec:
     rho_grid: np.ndarray = field(default_factory=lambda: ns.RHO_GRID)
     nan_policy: str = "zero"
     domain: tuple[DomainRule, ...] = ()
+    unknown_when_active: tuple[UnknownWhenActive, ...] = ()
 
     def __post_init__(self) -> None:
         if self.nan_policy not in NAN_POLICIES:
@@ -161,6 +187,10 @@ class InputSpec:
         grid = np.asarray(grid, dtype=np.float64)
         n = grid.size
         sampled: dict[str, np.ndarray] = {}
+        # What was never measured, recorded before any transform runs - a
+        # zero-filling transform destroys exactly this information, and a
+        # cross-field rule needs it to tell a benign gap from a fabrication.
+        unmeasured: dict[str, np.ndarray] = {}
         missing: list[str] = []
         resolvers: dict[str, str] = {}
         for f in self.fields:
@@ -169,6 +199,7 @@ class InputSpec:
                 missing.append(f.canonical)
                 shape = (n,) if f.kind == "scalar" else (n, self.rho_grid.size)
                 sampled[f.model_name] = np.full(shape, np.nan)
+                unmeasured[f.model_name] = np.ones(n, dtype=bool)
                 continue
             resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
             t = grid + self.dt_s if f.lag == "t+dt" else grid
@@ -182,11 +213,14 @@ class InputSpec:
             # on this data; half a step clears it by 0.0125.
             vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s / 2)
             v = vals[0] if f.kind == "scalar" else vals.T
+            unmeasured[f.model_name] = (
+                ~np.isfinite(v) if v.ndim == 1 else ~np.isfinite(v).all(axis=1)
+            )
             if f.transform is not None:
                 with np.errstate(divide="ignore", invalid="ignore"):
                     v = TRANSFORMS[f.transform](v)
             sampled[f.model_name] = v * f.scale
-        valid = self._validity(sampled, n)
+        valid = self._validity(sampled, n, unmeasured)
         scalars = (
             np.stack([sampled[f.model_name] for f in self.scalar_fields], axis=1)
             if self.scalar_fields
@@ -209,7 +243,12 @@ class InputSpec:
             resolvers=resolvers,
         )
 
-    def _validity(self, sampled: dict[str, np.ndarray], n: int) -> np.ndarray:
+    def _validity(
+        self,
+        sampled: dict[str, np.ndarray],
+        n: int,
+        unmeasured: dict[str, np.ndarray],
+    ) -> np.ndarray:
         ok = np.ones(n, dtype=bool)
         for v in sampled.values():
             ok &= np.isfinite(v) if v.ndim == 1 else np.isfinite(v).all(axis=1)
@@ -236,6 +275,13 @@ class InputSpec:
                 ok &= (red >= rule.lo) if rule.lo_inclusive else (red > rule.lo)
             if rule.hi is not None:
                 ok &= (red <= rule.hi) if rule.hi_inclusive else (red < rule.hi)
+        by_canonical = {f.canonical: f.model_name for f in self.fields}
+        for pair in self.unknown_when_active:
+            gap = unmeasured[by_canonical[pair.unknown]]
+            active = sampled[by_canonical[pair.active]]
+            if active.ndim > 1:
+                active = np.nanmax(np.where(np.isfinite(active), active, 0.0), axis=1)
+            ok &= ~(gap & (active > pair.threshold))
         return ok
 
 
