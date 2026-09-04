@@ -2203,6 +2203,34 @@ def test_a_gap_larger_than_one_step_is_not_extrapolated():
     assert built.valid.tolist() == [True, True, False, False, False, False]
 
 
+def test_the_last_step_of_a_t_plus_dt_field_is_never_extrapolated():
+    # The real archive record is exactly 240 rows at 25 ms, so a t+dt field's
+    # final query lands one step past the end. Upstream training dropped that
+    # row for the same reason (x0 = rows[1:], x1 = rows[:-1]); reusing the
+    # last row would fabricate a label, so the step must be flagged.
+    spec = InputSpec(fields=(InputField("bt", "bt", lag="t+dt"),), dt_s=ns.STEP_S)
+    x = ns.STEP_S * np.arange(240)
+    feats = {
+        "bt": FeatureArray(
+            x=x, y=np.arange(240, dtype=float)[None, :], attrs={"resolver": "archive"}
+        )
+    }
+    built = spec.build(feats, ns.GRID_S)
+    assert built.valid.sum() == 239
+    assert not built.valid[-1]
+    assert built.valid[:-1].all()
+
+
+def test_the_trust_boundary_is_not_decided_by_float_residue():
+    # A gap comfortably inside half a step is trusted, one comfortably
+    # outside is not, and neither verdict sits on a knife edge.
+    spec = InputSpec(fields=(InputField("bt", "bt"),), dt_s=0.025)
+    x = np.array([0.0, 0.05])          # 50 ms apart, so 0.025 is the midpoint
+    feats = {"bt": FeatureArray(x=x, y=np.array([[1.0, 2.0]]))}
+    built = spec.build(feats, np.array([0.010, 0.020]))
+    assert built.valid.tolist() == [True, False]
+
+
 def test_domain_rules_flag_rows_without_dropping_them():
     spec = InputSpec(
         fields=(
@@ -2440,7 +2468,15 @@ class InputSpec:
                 continue
             resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
             t = grid + self.dt_s if f.lag == "t+dt" else grid
-            vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s)
+            # Half a step, not a whole one, for two reasons. It is the
+            # correct nearest-neighbour rule: a query is trustworthy only
+            # if a real sample lies within half a sampling interval. And a
+            # whole step puts the record-edge case exactly on the boundary
+            # - for a t+dt field on a 240-row 25 ms record the final query
+            # sits 0.025 s past the last sample, so `gap > dt_s` is decided
+            # by a 3.5e-16 float residue. It happens to fall the right way
+            # on this data; half a step clears it by 0.0125.
+            vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s / 2)
             v = vals[0] if f.kind == "scalar" else vals.T
             if f.transform is not None:
                 with np.errstate(divide="ignore", invalid="ignore"):
