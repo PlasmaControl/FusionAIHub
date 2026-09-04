@@ -42,9 +42,35 @@ NW="${4:-320}"
 #   mirnov        7424      0.8709    0.8307   ~tmean BEATS the linear code -> near dead end
 #   ece          10240      0.9915      -      prior measurement, not re-run
 #
-# ~tmean is the "perfect per-frequency envelope, zero temporal structure" predictor. Where it
-# beats the floor (mirnov), a 192-dim linear code cannot even reach the time-averaged
-# spectrum, and no vocabulary change can help -- the bottleneck is the DIMENSION, not bits.
+# ~tmean is the "perfect per-frequency envelope, zero temporal structure" predictor. It is
+# CONTEXT ONLY and never a target: it has zero temporal structure by construction, so an arm
+# converging on it has deleted exactly the mode evolution the world model exists to predict.
+#
+# THE RANKING CALIBRATION (2026-09-04, 320 held-out windows per modality, --mode structure).
+# hf_ratio 1.0 is NOT the target -- most of a spectrogram's HF gradient energy is
+# frame-to-frame realization speckle no codec can carry. Divide an arm's hf by ITS OWN
+# modality's coherent ceiling:
+#
+#   modality  GT ac1      coh_frac    coherent rank90   patchmean hf/nRMSE  tsmooth5 hf/nRMSE
+#   co2       0.61-0.68   0.46-0.56   16.9 (PR 11.0)    0.015 / 0.6566      0.250 / 0.3842
+#   mirnov    0.42-0.48   0.35-0.41   -                 0.034 / 0.9805      0.290 / 0.6299
+#   ece       0.29-0.37   0.29-0.35   22.7 (PR 21.8)    0.001 / 0.9752      0.178 / 0.7646
+#
+#   ac1        GT lag-1 autocorrelation along the STFT-frame axis (0 = pure speckle).
+#   coh_frac   share of band variance surviving a 5-frame time boxcar.
+#   rank90     independent time-courses the window's coherent content rides, of T=96.
+#              => the 1914-bit budget is 83-114 bits PER TIME-COURSE. Bits are NOT the
+#              binding constraint; a flat plate is a statement about the OBJECTIVE.
+#   patchmean  the exact per-(channel, patch_f x patch_t) mean at INFINITE precision. On
+#              mirnov/ece it barely beats the 1.0 constant anchor, so whatever these codecs
+#              deliver must come from INSIDE the patch.
+#   tsmooth5   GT low-passed over 5 frames, scored against RAW GT. THE CEILING an arm aims at,
+#              and it already beats every trained arm on both hf and nRMSE.
+#
+# AND hf MUST be read WITH patch_lattice_ratio. The ece production codec reads hf 0.065 (37%
+# of its ceiling, better than any co2 arm relatively) at nRMSE 1.2333 and lattice 127-282
+# against a GT control of 1.04 -- that HF energy is checkerboard, and its rendered panel is a
+# flat plate (std ratio 0.164/0.297, corr 0.007/0.055).
 case "${M}" in
     co2)    DEF_FLOOR=0.7112 ;;
     mhr)    DEF_FLOOR=0.8218 ;;
