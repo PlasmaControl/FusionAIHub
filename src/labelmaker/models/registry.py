@@ -110,3 +110,39 @@ def card_discrepancies(slug: str) -> list[str]:
     if int(card.get("ensemble_n") or 1) != adapter.ensemble_n:
         out.append(f"ensemble_n: card {card.get('ensemble_n')} != {adapter.ensemble_n}")
     return out
+
+
+def sha256_of(path) -> str:
+    """Hex digest of a file, read in 1 MiB blocks."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def verify_artifacts(slug: str, model_dir) -> None:
+    """Raise unless every artifact in `model_dir` matches the card's sha256.
+
+    Labels are only worth what the weights behind them are, so inference
+    refuses to run against unexpected bytes rather than silently producing
+    a label file whose provenance is wrong.
+    """
+    card = read_card(slug)["labelmaker"]
+    expected = (card.get("upstream") or {}).get("sha256") or {}
+    if not expected:
+        raise ValueError(f"{slug}: card records no sha256 for its artifacts")
+    model_dir = Path(model_dir)
+    problems = []
+    for name, want in sorted(expected.items()):
+        path = model_dir / name
+        if not path.exists():
+            problems.append(f"{name}: missing from {model_dir}")
+            continue
+        got = sha256_of(path)
+        if got != want:
+            problems.append(f"{name}: sha256 {got[:12]} != card {want[:12]}")
+    if problems:
+        raise ValueError(f"{slug}: artifact sha256 mismatch: " + "; ".join(problems))

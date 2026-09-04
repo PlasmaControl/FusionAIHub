@@ -27,6 +27,10 @@ from ..timebase import sample_at
 #: card against the spec.
 TRANSFORMS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "reciprocal": lambda a: 1.0 / a,
+    # train.py:81 - NaN or negative ECH power was set to zero before the
+    # training filter ran, so those rows were kept. Applied before the
+    # validity flags so a zeroed ECH channel does not invalidate a row.
+    "nonneg_zero_fill": lambda a: np.where(np.isfinite(a) & (a > 0.0), a, 0.0),
 }
 
 ACTIVATIONS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
