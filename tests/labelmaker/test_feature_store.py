@@ -6,7 +6,9 @@ import pytest
 from labelmaker.features.store import (
     FeatureArray,
     is_complete,
+    is_transient,
     missing_names,
+    permanent_names,
     present,
     read_feature,
     write_features,
@@ -139,3 +141,66 @@ def test_read_feature_raises_for_absent_group(tmp_path):
     write_features(p, 190000, {"ip": _scalar()}, {})
     with pytest.raises(KeyError):
         read_feature(p, "bt")
+
+
+def test_a_transient_miss_does_not_count_as_complete(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {"ip": _scalar()}, {"bt": "fdp:TimeoutError"})
+    assert not is_complete(p, ["ip", "bt"])                    # retry the timeout
+    assert is_complete(p, ["ip", "bt"], retry_transient=False)  # unless told not to
+
+
+def test_a_permanent_miss_counts_as_complete(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {"ip": _scalar()}, {"bt": "archive:KeyError"})
+    assert is_complete(p, ["ip", "bt"])
+
+
+def test_a_demoted_one_sample_feature_is_permanent(tmp_path):
+    # A one-sample record is a property of the data, not of the attempt, so
+    # it is not worth retrying - unlike a timeout.
+    p = tmp_path / "190000_features.h5"
+    one = FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)))
+    write_features(p, 190000, {"ip": one}, {})
+    assert is_complete(p, ["ip"])
+
+
+def test_a_cause_joined_across_sources_is_transient_if_any_source_is(tmp_path):
+    # `features_for_shot` comma-joins one feature's causes across the sources
+    # it tried, so a single cause string can mix a permanent miss with a
+    # transient one. It counts as transient: the archive will not grow a
+    # column it does not have, but the fdp fetch that timed out is worth one
+    # more attempt, and the alternative is losing the feature for good.
+    assert is_transient("archive:KeyError,fdp:TimeoutError")
+    assert not is_transient("archive:KeyError,corpus:SignalAbsent")
+    p = tmp_path / "190000_features.h5"
+    write_features(
+        p, 190000, {"ip": _scalar()},
+        {"bt": "archive:KeyError,fdp:TimeoutError",
+         "te_zipfit": "archive:KeyError,fdp:MdsException"},
+    )
+    assert permanent_names(p) == {"te_zipfit"}
+    assert not is_complete(p, ["ip", "bt"])
+    assert is_complete(p, ["ip", "te_zipfit"])
+
+
+def test_the_causes_a_run_launched_without_fdp_run_records_are_transient(tmp_path):
+    # MEASURED, and the reason this list is longer than the obvious one.
+    # `resolve_fdp.available()` only checks that toksearch imports, which it
+    # does here, so a run launched without the `fdp run` wrapper does NOT
+    # report ToksearchUnavailable: it reaches the fetch and fails per signal.
+    # Shot 189382 without the wrapper gives TreeFOPENR for kappa and
+    # ne_zipfit and PtDataError for ip; with the wrapper all three fetch. If
+    # those counted as permanent, one mis-launched bulk run would settle
+    # "no fdp source" corpus-wide.
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {}, {
+        "bt": "archive:KeyError,fdp:PtDataError",
+        "kappa": "archive:KeyError,fdp:TreeFOPENR",
+        "te_zipfit": "fdp:ToksearchUnavailable",
+    })
+    assert permanent_names(p) == set()
+    assert not is_complete(p, ["bt", "kappa", "te_zipfit"])
+    # A node that genuinely does not exist stays permanent, or nothing would
+    # ever be settled.
+    assert not is_transient("fdp:TreeNNF")
