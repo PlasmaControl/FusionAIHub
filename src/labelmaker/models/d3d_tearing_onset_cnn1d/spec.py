@@ -7,7 +7,7 @@ reference harness `../../test/test.py`.
 The model takes eleven 0-D quantities at `t + 25 ms` and five 33-point
 profiles at `t`, and emits two columns: `betan` and a tearing logit. Input
 names and their order are `train.py:31-32` verbatim; the domain rules are
-`train.py:83`. The profile branch opens with a BatchNormalization; the eleven
+`train.py:81`. The profile branch opens with a BatchNormalization; the eleven
 0-D inputs go straight into the Concatenate and are normalised just after it,
 by the BatchNormalization on the 15-vector. Either way the graph normalises
 its own inputs, so there is no external scaler to recover.
@@ -53,39 +53,58 @@ INPUT_SPEC = InputSpec(
         InputField("tribot_EFIT01", "tribot", lag="t+dt"),
         InputField("gapin_EFIT01", "gapin", lag="t+dt"),
         InputField(
-            # A correction, not a fill, and this is train.py:81, which
-            # clipped NaN and negative alike. On the ARCHIVE path there is
-            # nothing to correct - MEASURED, `EC.PECH` has ZERO negative
-            # readings in 233,280 samples over 2,000 shots - but on the
-            # CORPUS path there is: 2.563% of per-gyrotron samples are
-            # negative, down to -79,860 W, which is sensor baseline noise
-            # meaning "off", so clipping recovers the physical value. A
-            # NON-FINITE reading is different - nothing is known - and still
+            # A correction, not a fill, following train.py:80, which clipped
+            # NaN and negative alike. On the ARCHIVE path there is nothing to
+            # correct - MEASURED over the full store, `EC.PECH` has ZERO
+            # negative readings in 578,160 samples - but on the CORPUS path
+            # there is: ~3.1% of per-gyrotron samples are negative (3.1% over
+            # 393 shots, 3.3-3.7% in other draws), down to -112 kW, which is
+            # sensor baseline noise meaning "off", so clipping recovers the
+            # physical value.
+            #
+            # A NON-FINITE reading is different - nothing is known - and
             # counts as invented, which is what lets the pair rule below flag
             # a row where neither the power nor the location was measured.
-            # That is the archive's case: `EC.PECH` is NaN off-window on
-            # 57.6% of rows.
+            # NOTE this is labelmaker's own conservatism, NOT upstream
+            # fidelity: train.py:80 clips a NaN power to 0 and KEEPS the row,
+            # because column 9 is de-NaN'd before the `isnan(x0).sum() == 0`
+            # test at train.py:81. It coincides with upstream on the archive
+            # only because the location is NaN on exactly the same rows.
+            # `EC.PECH` is NaN on 56.8% of rows, and 23.0% of those NaNs
+            # (13.05% of all rows) are INTERIOR to the measured window, not
+            # merely before or after the shot.
             "ech_pwr_total", "ech_power_total", lag="t+dt",
             transform="clip_negative_to_zero",
         ),
-        # absent_ok: the archive omits this column on 1,028 of 2,000 sampled
-        # shots, and its absence carries no information about whether ECH ran
-        # - of the 972 shots that have it, MEASURED, 335 had power flowing and
-        # 637 were ECH-off throughout. So absence is not assumed benign; it is
-        # zero-filled and then adjudicated by the `unknown_when_active` pair
-        # below against the power field.
+        # absent_ok: the archive omits this column on 2,591 of its 5,000
+        # shots, and absence carries no information about whether ECH ran, so
+        # it is not assumed benign; it is zero-filled and then adjudicated by
+        # the `unknown_when_active` pair below against the power field.
         #
         # `EC.PECH` and `EC.RHO_ECH` come from the same EC subtree and are
-        # co-present by construction: MEASURED over 2,000 shots, 972 have both
-        # and 1,028 have neither - never one without the other - and on all
-        # 972 their finite masks are IDENTICAL. So on the archive path a row
-        # with power but no location is nearly nonexistent (6 of 8,631 powered
-        # rows, 0.07%, all of them negative-rho readings), and what the pair
-        # rule actually does here is invalidate the 57.6% of rows where BOTH
-        # are NaN - which is exactly what upstream did, since its
-        # `x0[:, 10] >= 0` clause drops a NaN rho. The rule stays load-bearing
-        # in the original sense on the corpus and fdp paths, where power and
-        # location come from different sources and need not be co-present.
+        # co-present by construction: MEASURED over the full store, 2,409
+        # shots have both and 2,591 have neither - never one without the
+        # other - and on all 2,409 their finite masks are IDENTICAL. Two
+        # consequences:
+        #
+        # 1. A row with power flowing but no location is RARE here: 75 of
+        #    56,658 powered rows (0.132%). It is exactly the negative-rho
+        #    count, and necessarily so - all 75 negative readings have a
+        #    finite positive power. An earlier comment claimed 70.1%, which
+        #    was measured against `ech_pwr`, a single-gyrotron column whose
+        #    coverage differs from the location's.
+        # 2. What the rule mostly does here is invalidate the rows where BOTH
+        #    are NaN, which upstream also dropped via `x0[:, 10] >= 0`.
+        #    Verified: over all 2,409 paired shots, the set labelmaker
+        #    invalidates and the set upstream drops are IDENTICAL - zero rows
+        #    either way.
+        #
+        # `ech_rho` has `sources=("archive",)` and the corpus has no
+        # deposition-location group at all (its ECH groups are `ech_power`,
+        # `ech_pol_angle`, `ech_polarization`, `ech_tor_angle`). So on a
+        # corpus-served shot the location is absent, and any row with corpus
+        # power flowing is invalid. OPEN for Task 12: whether fdp can fetch a
+        # deposition location, which is what the scaling path needs.
         InputField(
             "EC.RHO_ECH", "ech_rho", lag="t+dt", transform="nonneg_zero_fill",
             absent_ok=True,
@@ -100,7 +119,7 @@ INPUT_SPEC = InputSpec(
     dt_s=DT_S,
     rho_grid=ns.RHO_GRID,
     nan_policy="zero",
-    # train.py:83, clause by clause. Rows outside these ranges are labelled
+    # train.py:81, clause by clause. Rows outside these ranges are labelled
     # anyway and flagged: the model never saw such states in training.
     domain=(
         DomainRule("ne_zipfit", "min", lo=0.0, lo_inclusive=True),
@@ -122,9 +141,11 @@ INPUT_SPEC = InputSpec(
     ),
     # `nonneg_zero_fill` reproduces the upstream ECH-off convention when the
     # deposition location is unusable. "Unusable" is two cases, not one: the
-    # column is absent, or it holds a negative value - MEASURED, 20 of 233,280
-    # archive readings (0.0086%) - and a negative rho is not a location, so
-    # the fill invents one either way. Where the location is unknown and power
+    # column is absent, or it holds a negative value - MEASURED over the full
+    # store, 75 of 578,160 readings (0.0130%) in 15 shots - and a negative rho
+    # is not a location, so the fill invents one either way. That rate is
+    # heavy-tailed: 2,000-shot draws gave 8, 20, 48 and 60, so it must be
+    # quoted from the population, not a sample. Where the location is unknown and power
     # is flowing, the zero-fill would tell the model the power lands on axis;
     # upstream dropped those rows, so the model never saw that state.
     #
@@ -136,7 +157,7 @@ INPUT_SPEC = InputSpec(
         UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
     ),
     # NOTE the removed clause, kept as a comment for the audit trail:
-    # train.py:83's `x0[:, 10] >= 0` needs no DomainRule here, because a
+    # train.py:81's `x0[:, 10] >= 0` needs no DomainRule here, because a
     # DomainRule reads the value AFTER the transform and `nonneg_zero_fill`
     # has already mapped every negative and NaN location to 0.0 - so the rule
     # could never fire. The clause is not lost, though: it moved into the

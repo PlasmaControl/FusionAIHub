@@ -72,13 +72,13 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
 
 
 def test_a_negative_ech_power_is_a_correction_not_an_invention():
-    # MEASURED: 2.563% of the corpus's per-gyrotron ECH samples are negative,
-    # down to -79,860 W. That is sensor baseline noise meaning "off", so
+    # MEASURED: ~3.1% of the corpus's per-gyrotron ECH samples are negative,
+    # down to -112 kW. That is sensor baseline noise meaning "off", so
     # clipping it recovers the physical value - it must NOT mark the power as
     # unknown, or an absent location would be flagged on every row of such a
     # shot and the benign case would vanish. (The archive's EC.PECH has zero
-    # negatives in 233,280 samples, so this case belongs to the corpus and
-    # fdp paths; it is exercised here because the rule lives in the spec.)
+    # negatives in all 578,160 samples, so this case belongs to the corpus
+    # and fdp paths; it is exercised here because the rule lives in the spec.)
     feats, grid = _features()
     t = feats["ech_rho"].x
     feats["ech_rho"] = FeatureArray(
@@ -96,11 +96,12 @@ def test_an_unmeasured_ech_power_also_flags_an_unknown_location():
     # A fill transform on the partner would otherwise report "inactive" and
     # license the gap: an unknown location is benign only when power is KNOWN
     # to have been off. This is the archive's DOMINANT case, not a corner one
-    # - MEASURED, EC.PECH is NaN off-window on 57.6% of rows, and EC.RHO_ECH
-    # is NaN on exactly the same rows (identical finite masks on all 972 of
-    # 2,000 sampled shots that carry the pair). Upstream dropped those rows
-    # too, via its `x0[:, 10] >= 0` clause. The corpus resolver also emits
-    # NaN where all twelve gyrotron channels are NaN.
+    # - MEASURED over the full store, EC.PECH is NaN on 56.8% of rows and
+    # EC.RHO_ECH is NaN on exactly the same rows (identical finite masks on
+    # all 2,409 shots carrying the pair). Upstream dropped those rows too,
+    # via its `x0[:, 10] >= 0` clause, and over all 2,409 shots the two sets
+    # are identical. The corpus resolver also emits NaN where all twelve
+    # gyrotron channels are NaN.
     feats, grid = _features()
     t = feats["ech_rho"].x
     feats["ech_rho"] = FeatureArray(
@@ -116,7 +117,8 @@ def test_an_unmeasured_ech_power_also_flags_an_unknown_location():
 
 
 def test_a_negative_ech_location_counts_as_unknown_not_as_measured():
-    # MEASURED: 20 of 233,280 archive rho readings are negative. A negative
+    # MEASURED over the full store: 75 of 578,160 archive rho readings
+    # (0.0130%, in 15 shots) are negative. A negative
     # deposition location is not a location, and the fill overwrites it - so
     # it is invented, exactly like a NaN, and must not be exempt from the
     # pair rule while power flows.
@@ -147,13 +149,15 @@ def test_a_fabricated_ech_location_is_flagged_when_power_is_flowing():
     # dropped from training - so the row must not be claimed as valid. With
     # ECH off, the same gap is the upstream convention and the row stands.
     #
-    # MEASURED: on the archive this is now RARE, 6 of 8,631 powered rows
-    # (0.07%), because EC.PECH and EC.RHO_ECH come from one subtree and are
-    # co-present. An earlier 70.1% figure was measured against `ech_pwr`, a
+    # MEASURED over the full store: on the archive this is RARE, 75 of 56,658
+    # powered rows (0.132%), because EC.PECH and EC.RHO_ECH come from one
+    # subtree and are co-present. It is exactly the negative-rho count, and
+    # necessarily so - all 75 negative readings carry a finite positive
+    # power. An earlier 70.1% figure was measured against `ech_pwr`, a
     # single-gyrotron column that is not the model's input and whose coverage
     # differs from the location's. The rule is kept because it is exact, and
-    # because the corpus and fdp paths draw power and location from different
-    # sources where co-presence is not guaranteed.
+    # because the corpus cannot supply a location at all, so a corpus-served
+    # shot with power flowing needs exactly this verdict.
     for power, expect_valid in ((0.0, True), (1.0e6, False)):
         feats, grid = _features()
         t = feats["ech_rho"].x

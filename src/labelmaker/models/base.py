@@ -63,7 +63,7 @@ TRANSFORMS: dict[str, Transform] = {
     # particular field's use of it belong in that model's spec and card.
     "clip_negative_to_zero": Transform(_nonpositive_to_zero, fills=False),
     # A FILL. A negative deposition location is not a location, so overwriting
-    # one invents a value. This is why train.py:83 DROPPED those rows rather
+    # one invents a value. This is why train.py:81's filter DROPPED those rows rather
     # than correcting them; labelmaker keeps the row and marks it untrustworthy
     # instead.
     "nonneg_zero_fill": Transform(_nonpositive_to_zero, fills=True),
