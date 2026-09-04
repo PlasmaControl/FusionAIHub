@@ -1,22 +1,30 @@
 """`validate._ks_statistic` must equal scipy's oracle (I2).
 
 `validate.py` loads torch at module scope (needed by `adapter_fidelity`),
-and torch's bundled `libstdc++` shadows the newer system one that scipy's
-compiled `_ckdtree` extension needs - so `import scipy.stats` after
-`import labelmaker.validate` fails outside pytest with `ImportError:
-version 'GLIBCXX_3.4.29' not found`. No import-order fix inside
-`validate.py` is sufficient (a later task's `--stage all` loads torch via
-the `infer` stage before `validate` is imported at all), so `_ks_statistic`
-replaces the one thing `validate.py` used scipy for
+and `import torch` binds the SYSTEM `/lib64/libstdc++.so.6` - which lacks
+`GLIBCXX_3.4.29` - ahead of the pixi env's own newer copy, unless something
+puts the latter first on the loader's path. Unpatched, that made
+`import scipy.stats` after `import labelmaker.validate` fail with
+`ImportError: version 'GLIBCXX_3.4.29' not found`. This is NOT a defect
+unique to scipy: the identical loader-ordering problem is what silently
+disabled labelmaker's entire fdp scaling path (Task 16b - see
+`features/resolve_fdp.py`'s module docstring), whose fix,
+`pyproject.toml`'s `tool.pixi.feature.fdp` activation table, now puts the
+pixi env's own `libstdc++` first via `LD_LIBRARY_PATH` for the whole
+`labelmaker` environment - which also fixes this scipy import, in any
+context, not just under pytest. No import-order fix inside `validate.py`
+alone would have been sufficient regardless (a later task's `--stage all`
+loads torch via the `infer` stage before `validate` is imported at all), so
+`_ks_statistic` replaces the one thing `validate.py` used scipy for
 (`scipy.stats.ks_2samp(...).statistic`) with four lines of numpy, and scipy
-is no longer imported anywhere at runtime.
+is no longer imported anywhere at runtime - kept even after the activation
+fix, for the independent reduced-dependency benefit.
 
 This file is the reason that replacement can be trusted: it imports scipy
-itself, as an independent oracle, and is only able to because some
-test-collection plugin loads a compatible `libstdc++` before torch does -
-an environment quirk that holds under pytest and nowhere else, which is
-exactly why `_ks_statistic` needs an oracle here rather than a scipy import
-at runtime.
+itself, as an independent oracle, guarded with `importorskip` so it
+degrades gracefully in an environment where the activation fix does not
+apply, rather than asserting anything about *why* scipy is or is not
+importable here.
 """
 import numpy as np
 import pytest

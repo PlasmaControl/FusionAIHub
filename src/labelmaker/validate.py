@@ -443,24 +443,40 @@ def _ks_statistic(a: np.ndarray, b: np.ndarray) -> float:
 
     Replaces `scipy.stats.ks_2samp(a, b).statistic` (I2). scipy is used
     nowhere else in this module, and importing it here was the reason
-    `import labelmaker.validate` could crash outside pytest: this module
-    loads torch at module scope (needed by `adapter_fidelity`), torch's
-    bundled `libstdc++` shadows the newer system one, and scipy's compiled
-    `_ckdtree` extension then fails with `ImportError: version
-    'GLIBCXX_3.4.29' not found` - reliably, and only when torch imports
-    first. No import-order fix in this module is sufficient (a later task's
-    `--stage all` loads torch via the `infer` stage before `validate` is
-    imported at all), so the fix is to need no scipy import at runtime.
+    `import labelmaker.validate` could crash outside pytest - NOT because
+    scipy is uniquely cursed, but because it was the module that happened to
+    surface a loader-ordering problem shared by every compiled extension in
+    this environment that needs a newer GLIBCXX than the system provides.
+    This module loads torch at module scope (needed by `adapter_fidelity`),
+    and `import torch` binds the SYSTEM `/lib64/libstdc++.so.6` - which
+    lacks `GLIBCXX_3.4.29` - ahead of the pixi env's own newer copy unless
+    something puts the latter first on the loader's path. With the system
+    one bound, scipy's compiled `_ckdtree` extension fails with
+    `ImportError: version 'GLIBCXX_3.4.29' not found` - reliably, and only
+    when torch imports first. No import-order fix in this module is
+    sufficient (a later task's `--stage all` loads torch via the `infer`
+    stage before `validate` is imported at all), so the fix here is to need
+    no scipy import at runtime.
+
+    The SAME loader-ordering problem is what silently disabled labelmaker's
+    entire fdp scaling path (Task 16b, see `features/resolve_fdp.py`'s
+    module docstring): `toksearch_d3d`, `fdp` and `pyxrootd` all need the
+    same symbol and all failed the same way. That task's fix,
+    `pyproject.toml`'s `tool.pixi.feature.fdp` activation table, puts the
+    pixi env's own `libstdc++` ahead of the system one via `LD_LIBRARY_PATH`
+    for the whole `labelmaker` environment - which also fixes scipy's
+    import here, in any context, not just under pytest. This replacement is
+    kept anyway: needing no scipy import at runtime is strictly fewer
+    moving parts, independent of whether the loader is configured correctly.
 
     Both samples are sorted and the right-continuous ECDF of each is
     evaluated at every value in the pooled sample via `searchsorted`; the
     statistic is the largest gap between the two. This is the same
     definition scipy's `statistic` uses (verified against it as an exact
     oracle in `tests/labelmaker/test_ks_statistic.py`, which does import
-    scipy - that import succeeds under pytest, since some test-collection
-    plugin loads a compatible `libstdc++` before torch does, and never
-    happens at runtime here since scipy is no longer imported outside that
-    one test file).
+    scipy - now unconditionally importable here, per the previous
+    paragraph, but still guarded with `importorskip` so this test degrades
+    gracefully in an environment where the activation fix does not apply).
     """
     a = np.sort(np.asarray(a, dtype=np.float64))
     b = np.sort(np.asarray(b, dtype=np.float64))
@@ -689,18 +705,21 @@ def _rankdata(a: np.ndarray) -> np.ndarray:
     """Mid-rank ranks: average the ordinal ranks within each tie group.
 
     Replaces `scipy.stats.rankdata(a, method="average")` (task-16 addendum
-    item 1), for the same reason `_ks_statistic` above replaces
-    `scipy.stats.ks_2samp`: this module loads torch at module scope, torch's
-    bundled `libstdc++` shadows the newer system one, and scipy's compiled
-    extensions then fail with `ImportError: version 'GLIBCXX_3.4.29' not
-    found` whenever torch imported first - which `run.py`'s `--stage all`
-    guarantees, since the `infer` stage loads torch before `validate` is
-    imported at all. No import-order fix inside this module is sufficient,
-    so the fix is to need no scipy import at runtime. Verified against
-    `scipy.stats.rankdata` as an exact oracle in
-    `tests/labelmaker/test_label_quality.py`, which imports scipy only under
-    pytest - the one context where that import is known to succeed even
-    after torch (see `_ks_statistic`'s docstring for why).
+    item 1), for the same loader-ordering reason `_ks_statistic` above
+    replaces `scipy.stats.ks_2samp` - see that docstring for the mechanism
+    (`import torch` binding the SYSTEM `libstdc++`, which the pixi env's own
+    copy needs to come before) and for why this is not a defect unique to
+    scipy: the identical problem silently disabled labelmaker's fdp scaling
+    path (Task 16b). `run.py`'s `--stage all` guarantees the failing order
+    here, since the `infer` stage loads torch before `validate` is imported
+    at all, and no import-order fix inside this module is sufficient, so the
+    fix is to need no scipy import at runtime - kept even after Task 16b's
+    `pyproject.toml` activation fix, for the independent reduced-dependency
+    benefit. Verified against `scipy.stats.rankdata` as an exact oracle in
+    `tests/labelmaker/test_label_quality.py`, guarded with `importorskip`
+    (now unconditionally importable here after the activation fix, but the
+    guard costs nothing and keeps this test honest in an environment where
+    it does not apply).
 
     Mid-ranks - the average of the ordinal ranks tied values would otherwise
     occupy, not the first or last of them - are required, not a stylistic

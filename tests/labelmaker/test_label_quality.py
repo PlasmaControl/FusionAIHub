@@ -97,11 +97,13 @@ def test_regression_metrics():
 def test_rankdata_matches_scipy_oracle_with_ties(seed):
     """Addendum item 1: `_rankdata` replaces `scipy.stats.rankdata` at
     runtime (scipy must not be imported by validate.py - see the module's
-    reasoning on `_ks_statistic`, which this mirrors). This test is the
-    proof: it imports scipy itself, as an independent oracle, exactly the
-    way `test_ks_statistic.py` does, and is only able to because some
-    test-collection plugin loads a compatible libstdc++ before torch does -
-    an environment quirk that holds under pytest and nowhere else.
+    reasoning on `_ks_statistic`, which this mirrors: a loader-ordering
+    problem shared with labelmaker's fdp scaling path, Task 16b - not a
+    defect unique to scipy). This test is the proof: it imports scipy
+    itself, as an independent oracle, exactly the way `test_ks_statistic.py`
+    does, guarded with `importorskip` so it degrades gracefully wherever
+    that import is not available (now unconditionally importable in this
+    environment after Task 16b's `pyproject.toml` activation fix).
     """
     scipy_stats = pytest.importorskip("scipy.stats", reason="scipy not importable here")
     rng = np.random.default_rng(seed)
