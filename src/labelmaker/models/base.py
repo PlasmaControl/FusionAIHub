@@ -51,12 +51,18 @@ class InputField:
     lag: str = "t"
     transform: str | None = None
     scale: float = 1.0
+    absent_ok: bool = False
 
     def __post_init__(self) -> None:
         if self.lag not in ("t", "t+dt"):
             raise ValueError(f"lag must be 't' or 't+dt', got {self.lag!r}")
         if self.transform is not None and self.transform not in TRANSFORMS:
             raise ValueError(f"unknown transform {self.transform!r}")
+        if self.absent_ok and self.transform is None:
+            raise ValueError(
+                f"{self.model_name}: absent_ok needs a transform to turn the "
+                "absence into a value"
+            )
         ns.by_name(self.canonical)  # fail loudly on a typo, at import time
 
     @property
@@ -198,8 +204,19 @@ class InputSpec:
             if arr is None:
                 missing.append(f.canonical)
                 shape = (n,) if f.kind == "scalar" else (n, self.rho_grid.size)
-                sampled[f.model_name] = np.full(shape, np.nan)
+                v = np.full(shape, np.nan)
                 unmeasured[f.model_name] = np.ones(n, dtype=bool)
+                if f.absent_ok:
+                    # This field says its transform knows how to represent
+                    # absence. `unmeasured` still remembers the value was
+                    # never measured, so a cross-field rule can adjudicate
+                    # whether that matters. Without `absent_ok` the NaN
+                    # survives and the finiteness check below invalidates the
+                    # row, which is the right default.
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        v = TRANSFORMS[f.transform](v)
+                    v = v * f.scale
+                sampled[f.model_name] = v
                 continue
             resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
             t = grid + self.dt_s if f.lag == "t+dt" else grid

@@ -56,8 +56,17 @@ INPUT_SPEC = InputSpec(
             "ech_pwr_total", "ech_power_total", lag="t+dt",
             transform="nonneg_zero_fill",
         ),
+        # absent_ok: the archive omits this column entirely on 1,370 of 2,000
+        # sampled shots, and its absence carries NO information about whether
+        # ECH ran - MEASURED, 336 of those shots had ECH off, 468 had power
+        # flowing, and 566 lack the power column too. So absence is not
+        # assumed benign; it is zero-filled and then adjudicated by the
+        # `unknown_when_active` pair below against the power field. Where the
+        # power column is itself absent it stays NaN and the row is
+        # invalidated, which is what must happen for those 566.
         InputField(
             "EC.RHO_ECH", "ech_rho", lag="t+dt", transform="nonneg_zero_fill",
+            absent_ok=True,
         ),
         # profile block, at t. Order is x1's channel order.
         InputField("thomson_density_mtanh_1d", "ne_zipfit", lag="t"),
