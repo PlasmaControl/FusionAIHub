@@ -94,7 +94,11 @@ PY=.pixi/envs/frontier/bin/python
 # ARM_PREFIX filters which subdirs are scored. Needed because one job's OUT_DIR can hold arms
 # of TWO modalities (the bes+mirnov pairing), and scoring a mirnov checkpoint as bes would
 # silently produce nonsense rather than an error.
-ARMS=""
+# ARMS_OVERRIDE: an explicit "label=ckpt,label=ckpt,..." list, for when a modality's arms are
+# spread across SEVERAL job OUT_DIRs (they are -- _mssim, _struct2, _advbest and _advmulti each
+# hold arms of the same three modalities). The directory scan below only sees one dir.
+ARMS="${ARMS_OVERRIDE:-}"
+[ -n "${ARMS}" ] || \
 for d in "${DIR}"/*/; do
     n=$(basename "${d}")
     case "${n}" in ${ARM_PREFIX:-*}) ;; *) continue ;; esac

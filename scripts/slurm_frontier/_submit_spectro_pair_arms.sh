@@ -91,6 +91,37 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "co2fix" ]; then
+        # CORRECTION LEG. Every co2 arm launched earlier today used ms_ssim_weight 50,
+        # joint_entropy_weight 1.0 and adversarial 0.2-0.5 + fm 1.0. The MEASURED co2 optima
+        # (project-per-modality-codec-tuning-required, from controlled full arms) are
+        # ms_ssim 5, joint_entropy 0.5, and adversarial 0.05 + fm 0.5 -- and ms_ssim 20 was
+        # measured to cost nRMSE 1.0084->1.0560, collapse sharpness 0.0278->0.0043 and TRIPLE
+        # the lattice 8.40->20.51 on co2. I overrode that from a 96-window decoder-only screen,
+        # which is exactly the kind of low-window evidence that produced a wrong co2 MS-SSIM
+        # verdict once before. The patch-discriminator arms then INVERTED at step 3000
+        # (peak_f1 0.000, corr2d -0.349, envelope_corr -0.682).
+        #
+        # What is kept from today's work, because it is measured and new: the MULTISCALE
+        # CRITIC. On the same full-training leg it was the only thing that stopped the
+        # adversarial term destabilising (mirnov a02d peak_f1 0.375 stable vs a02 0.365->0.239
+        # with nRMSE 1.778; co2 patch-D inverted while co2 multiscale-D reached gate nRMSE
+        # 0.852 / peak_f1 0.710 on TWO seeds). And the ENVELOPE/SHAPE SPLIT, which gave the
+        # lowest patch lattice ever recorded here (co2_gs gate lattice 2.1 against a GT
+        # control of ~1.16-1.26, vs 4.4-6.5 for every non-gain-shape arm).
+        MIR="--eval_batches 8"
+        DOC="--ms_ssim_weight 5 --joint_entropy_weight 0.5 --adversarial_weight 0.05"
+        DOC="${DOC} --fm_weight 0.5 --adv_warmup_steps 1500 --pixel_anchor_weight 5.0"
+        case "${M}" in
+            co2)
+                ARMS_STR="${ARMS_STR};${M}_r_ctl|${P} ${MSK} ${MIR} ${DOC}"
+                ARMS_STR="${ARMS_STR};${M}_r_m|${P} ${MSK} ${MIR} ${DOC} --discriminator multiscale"
+                ARMS_STR="${ARMS_STR};${M}_r_m_s2|${P} ${MSK} ${MIR} ${DOC} --discriminator multiscale --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_r_gsm|${P} ${MSK} ${MIR} ${DOC} --discriminator multiscale --gain_shape --gain_tokens 32"
+                ;;
+        esac
+        continue
+    fi
     if [ "${SWEEP}" = "advmulti" ]; then
         # THE MULTISCALE CRITIC IS WHAT MAKES ADVERSARIAL PRESSURE USABLE.
         #
@@ -434,7 +465,11 @@ mkdir -p "${OUT_DIR}"
 # so two legs can never write the same arm's codec_last.pt concurrently.
 DEP_FLAG=""
 [ -n "${DEP_AFTER:-}" ] && DEP_FLAG="--dependency=afterany:${DEP_AFTER}"
-JID=$(sbatch --parsable -J codec_${_TAG}_${OUT_DIR_TAG:-${SWEEP}} -N 8 -t "${WALL}" \
+# NODES: one node per arm. The QOS cap is 16 and prod_nfulldecay permanently holds 8, so a
+# 4-arm leg must ask for 4 nodes, not 8 -- the launcher srun's exactly ${#arms} tasks and the
+# spare nodes would sit idle while blocking a production leg.
+NODES="${NODES:-8}"
+JID=$(sbatch --parsable -J codec_${_TAG}_${OUT_DIR_TAG:-${SWEEP}} -N "${NODES}" -t "${WALL}" \
       ${DEP_FLAG} --export=ALL \
       scripts/slurm_frontier/ignite_codec_prod.sh)
 echo "[submit] ${MODS} (${SWEEP}) -> job ${JID}"
