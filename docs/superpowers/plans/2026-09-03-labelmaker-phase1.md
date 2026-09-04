@@ -2133,6 +2133,7 @@ from labelmaker.models.base import (
     InputSpec,
     OutputField,
     OutputSpec,
+    UnknownWhenActive,
 )
 
 GRID = 0.025 * np.arange(6)          # 0.000 .. 0.125 s
@@ -2302,6 +2303,57 @@ def test_a_profile_field_can_also_carry_the_t_plus_dt_lag():
     built = spec.build(feats, GRID)
     np.testing.assert_allclose(built.profiles[:, 0, 0], [0, 1, 2, 3, 4, 5])
     np.testing.assert_allclose(built.profiles[:, 0, 1], [1, 2, 3, 4, 5, 6])
+
+
+def test_an_unmeasured_input_is_flagged_only_when_its_partner_is_active():
+    # A gap in one input can be benign or a fabrication, and only a second
+    # field says which. Here `ech_rho` is never measured; the row survives
+    # while power is zero and is flagged once power flows.
+    spec = InputSpec(
+        fields=(
+            InputField("ech_pwr", "ech_power_total", transform="nonneg_zero_fill"),
+            InputField("rho", "ech_rho", transform="nonneg_zero_fill"),
+        ),
+        dt_s=0.025,
+        unknown_when_active=(
+            UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+        ),
+    )
+    t = 0.025 * np.arange(6)
+    power = np.array([0.0, 0.0, 0.0, 1.0e6, 1.0e6, 0.0])
+    feats = {
+        "ech_power_total": FeatureArray(x=t, y=power[None, :]),
+        "ech_rho": FeatureArray(x=t, y=np.full((1, 6), np.nan)),
+    }
+    built = spec.build(feats, t)
+    # the zero-fill still happens - the model gets 0.0 either way
+    np.testing.assert_allclose(built.scalars[:, 1], 0.0)
+    # but the two powered steps are no longer claimed as trustworthy
+    assert built.valid.tolist() == [True, True, True, False, False, True]
+
+
+def test_a_measured_input_is_never_flagged_by_the_pair_rule():
+    spec = InputSpec(
+        fields=(
+            InputField("ech_pwr", "ech_power_total", transform="nonneg_zero_fill"),
+            InputField("rho", "ech_rho", transform="nonneg_zero_fill"),
+        ),
+        dt_s=0.025,
+        unknown_when_active=(
+            UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+        ),
+    )
+    t = 0.025 * np.arange(4)
+    feats = {
+        "ech_power_total": FeatureArray(x=t, y=np.full((1, 4), 1.0e6)),
+        "ech_rho": FeatureArray(x=t, y=np.full((1, 4), 0.35)),
+    }
+    assert spec.build(feats, t).valid.all()
+
+
+def test_a_pair_rule_naming_an_unknown_feature_is_rejected():
+    with pytest.raises(KeyError):
+        UnknownWhenActive(unknown="no_such_feature", active="ech_power_total")
 
 
 def test_a_domain_rule_whose_stat_mismatches_the_field_kind_is_rejected():
@@ -2491,6 +2543,31 @@ class DomainRule:
 
 
 @dataclass(frozen=True)
+class UnknownWhenActive:
+    """Flag rows where one input was never measured while another was active.
+
+    A gap in an input is sometimes benign and sometimes a fabrication, and
+    only a second field can tell you which. The ECH deposition location is
+    the case this exists for. It is absent whenever ECH is off, where the
+    zero-fill reproduces the upstream convention and costs nothing - and
+    MEASURED over 400 archive shots, 74.7% of its gaps are exactly that. But
+    it is also absent on 70.1% of the rows where ECH is genuinely injecting,
+    and there the zero-fill tells the model the power lands on axis when
+    nobody knows where it lands. Upstream dropped those rows, so the model
+    never trained on that state; a label computed from one is an
+    extrapolation and must say so.
+    """
+
+    unknown: str
+    active: str
+    threshold: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in (self.unknown, self.active):
+            ns.by_name(name)  # fail at import on a typo
+
+
+@dataclass(frozen=True)
 class BuiltInputs:
     """Model-ready arrays for one shot, plus what is trustworthy."""
 
@@ -2511,6 +2588,7 @@ class InputSpec:
     rho_grid: np.ndarray = field(default_factory=lambda: ns.RHO_GRID)
     nan_policy: str = "zero"
     domain: tuple[DomainRule, ...] = ()
+    unknown_when_active: tuple[UnknownWhenActive, ...] = ()
 
     def __post_init__(self) -> None:
         if self.nan_policy not in NAN_POLICIES:
@@ -2550,6 +2628,10 @@ class InputSpec:
         grid = np.asarray(grid, dtype=np.float64)
         n = grid.size
         sampled: dict[str, np.ndarray] = {}
+        # What was never measured, recorded before any transform runs - a
+        # zero-filling transform destroys exactly this information, and a
+        # cross-field rule needs it to tell a benign gap from a fabrication.
+        unmeasured: dict[str, np.ndarray] = {}
         missing: list[str] = []
         resolvers: dict[str, str] = {}
         for f in self.fields:
@@ -2558,6 +2640,7 @@ class InputSpec:
                 missing.append(f.canonical)
                 shape = (n,) if f.kind == "scalar" else (n, self.rho_grid.size)
                 sampled[f.model_name] = np.full(shape, np.nan)
+                unmeasured[f.model_name] = np.ones(n, dtype=bool)
                 continue
             resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
             t = grid + self.dt_s if f.lag == "t+dt" else grid
@@ -2571,11 +2654,14 @@ class InputSpec:
             # on this data; half a step clears it by 0.0125.
             vals = sample_at(arr.x, arr.y, t, max_gap=self.dt_s / 2)
             v = vals[0] if f.kind == "scalar" else vals.T
+            unmeasured[f.model_name] = (
+                ~np.isfinite(v) if v.ndim == 1 else ~np.isfinite(v).all(axis=1)
+            )
             if f.transform is not None:
                 with np.errstate(divide="ignore", invalid="ignore"):
                     v = TRANSFORMS[f.transform](v)
             sampled[f.model_name] = v * f.scale
-        valid = self._validity(sampled, n)
+        valid = self._validity(sampled, n, unmeasured)
         scalars = (
             np.stack([sampled[f.model_name] for f in self.scalar_fields], axis=1)
             if self.scalar_fields
@@ -2598,7 +2684,12 @@ class InputSpec:
             resolvers=resolvers,
         )
 
-    def _validity(self, sampled: dict[str, np.ndarray], n: int) -> np.ndarray:
+    def _validity(
+        self,
+        sampled: dict[str, np.ndarray],
+        n: int,
+        unmeasured: dict[str, np.ndarray],
+    ) -> np.ndarray:
         ok = np.ones(n, dtype=bool)
         for v in sampled.values():
             ok &= np.isfinite(v) if v.ndim == 1 else np.isfinite(v).all(axis=1)
@@ -2625,6 +2716,13 @@ class InputSpec:
                 ok &= (red >= rule.lo) if rule.lo_inclusive else (red > rule.lo)
             if rule.hi is not None:
                 ok &= (red <= rule.hi) if rule.hi_inclusive else (red < rule.hi)
+        by_canonical = {f.canonical: f.model_name for f in self.fields}
+        for pair in self.unknown_when_active:
+            gap = unmeasured[by_canonical[pair.unknown]]
+            active = sampled[by_canonical[pair.active]]
+            if active.ndim > 1:
+                active = np.nanmax(np.where(np.isfinite(active), active, 0.0), axis=1)
+            ok &= ~(gap & (active > pair.threshold))
         return ok
 
 
@@ -3243,6 +3341,26 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert ("ech_rho", "value") not in rules
 
 
+def test_a_fabricated_ech_location_is_flagged_when_power_is_flowing():
+    # MEASURED over 400 archive shots: 70.1% of ECH-powered rows have no
+    # recorded deposition location. Zero-filling those says "on axis", a
+    # state upstream dropped from training - so the row must not be claimed
+    # as valid. With ECH off, the same gap is the upstream convention and
+    # the row stands.
+    for power, expect_valid in ((0.0, True), (1.0e6, False)):
+        feats, grid = _features()
+        t = feats["ech_rho"].x
+        feats["ech_rho"] = FeatureArray(
+            x=t, y=np.full((1, t.size), np.nan), attrs={"resolver": "archive"}
+        )
+        feats["ech_power_total"] = FeatureArray(
+            x=t, y=np.full((1, t.size), power), attrs={"resolver": "archive"}
+        )
+        built = tm.ADAPTER.input_spec.build(feats, grid)
+        np.testing.assert_allclose(built.scalars[:, 10], 0.0)   # zero-filled either way
+        assert bool(built.valid.all()) is expect_valid, power
+
+
 def test_the_qpsi_rule_bounds_the_reciprocal_not_qpsi_itself():
     # max(1/qpsi) < 3 flags a low-q profile and admits a high-q one. Asserting
     # only `hi == 3.0` cannot tell this from the opposite reading.
@@ -3455,6 +3573,7 @@ from ..base import (
     ModelAdapter,
     OutputField,
     OutputSpec,
+    UnknownWhenActive,
 )
 from ..runners import keras_h5
 
@@ -3514,13 +3633,23 @@ INPUT_SPEC = InputSpec(
         DomainRule("tritop", "value", lo=0.0, hi=1.0),
         DomainRule("tribot", "value", lo=0.0, hi=1.0),
         DomainRule("gapin", "value", hi=0.2),
-        # train.py:83's `x0[:, 10] >= 0` clause needs no rule here:
+    ),
+    # `nonneg_zero_fill` reproduces the upstream ECH-off convention when the
+    # deposition location is absent, which MEASURED over 400 archive shots is
+    # 74.7% of its gaps. The other 26% are rows where ECH is injecting and
+    # nobody recorded where - 70.1% of all powered rows - and there the
+    # zero-fill would tell the model the power lands on axis. Upstream dropped
+    # those rows, so the model never saw that state. Flag them.
+    unknown_when_active=(
+        UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+    ),
+    # NOTE the removed clause, kept as a comment for the audit trail:
+    # train.py:83's `x0[:, 10] >= 0` needs no DomainRule here:
         # `nonneg_zero_fill` on the field already maps every negative and NaN
         # deposition location to 0.0, so a rule could never fire. Upstream
-        # dropped those rows; labelmaker relabels them 0, which IS the
-        # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
-        # median). Said here rather than left as dead code that looks live.
-    ),
+    # dropped those rows; labelmaker relabels them 0, which IS the
+    # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
+    # median). Said here rather than left as dead code that looks live.
 )
 
 OUTPUT_SPEC = OutputSpec(
@@ -3758,8 +3887,11 @@ labelmaker:
       and csaps fits; measured 2.0e-1 (ne), 1.8e-1 (Te), 1.7e-1 (rotation)
       median relative difference, correlation 0.98-0.99"
     - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81)"
-    - "a missing EC.RHO_ECH becomes 0, which the training filter admitted;
-      validation reports how often that happens while ECH power is non-zero"
+    - "a missing EC.RHO_ECH becomes 0, the upstream ECH-off convention.
+      Measured over 400 archive shots: 74.7% of its gaps are genuinely
+      ECH-off, but 70.1% of ECH-POWERED rows also lack it, and those rows
+      are flagged invalid rather than fed a fabricated on-axis location -
+      upstream dropped them, so the model never trained on that state"
     - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
       equality with TensorFlow is checked to 1e-5 in validation"
 ---
