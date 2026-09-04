@@ -91,14 +91,30 @@ FEATURES: tuple[FeatureSpec, ...] = (
         sources=("archive", "corpus"),
         locators=("pinj", "pinj"),
         step=0.001,
-        notes="corpus holds 8 beams in W; sum and divide by 1000",
+        notes="corpus holds 8 beams in W; sum and divide by 1000. SAMPLING, "
+              "Task 15: at t=1.025s on shot 185945 the corpus sum reads "
+              "10.02 MW where the archive reads 10.996 MW, ~10% - sampling, "
+              "not units. Scanned nearest/25ms-window/25ms-window-back/the "
+              "archive's own 50ms-window-ending-at-t against the archive "
+              "column over 8 RANDOM overlap shots (seed 42, both `pinj_total` "
+              "and `tinj_total`): the archive convention's per-shot median "
+              "relative error ranges 5.9e-4 to 1.4e-2, against 1.5e-2 to 1.53 "
+              "for the best of the other three on the same shots - two to "
+              "four orders of magnitude better, never worse, on every one of "
+              "the 14 available shot/feature pairs. `models.base.build` now "
+              "samples any corpus- or fdp-resolved field with that "
+              "convention (`ARCHIVE_WINDOW_S`, per-resolver, not "
+              "per-feature) rather than nearest-sample; an archive-resolved "
+              "field is untouched. See `validate`'s module docstring and the "
+              "Task 15 report for the full table",
     ),
     FeatureSpec(
         name="tinj_total", kind="scalar", units="N m",
         sources=("archive", "corpus"),
         locators=("tinj", "tinj"),
         step=0.001,
-        notes="corpus holds 8 beams already in N m; sum only",
+        notes="corpus holds 8 beams already in N m; sum only. Same sampling "
+              "finding and fix as `pinj_total` - see its notes",
     ),
     FeatureSpec(
         name="ech_power_total", kind="scalar", units="W",
