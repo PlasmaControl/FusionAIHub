@@ -392,3 +392,37 @@ def test_spectro_gate_mask_is_a_noop_and_keeps_the_wcmean_anchor_at_one():
     part = np.ones((B, C, T))
     part[:, :, :8] = 0.0
     assert run(part)["base_wcmean_spec_nrmse"] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_spectro_gate_mask_equals_deleting_the_masked_data():
+    """The real correctness proof for the masked gate statistics.
+
+    The no-op test shows masking changes nothing when nothing is missing; this shows the
+    masked statistics are genuinely computed over VALID SAMPLES ONLY -- masking a channel is
+    bit-identical to deleting that channel and scoring the remainder, and masking a tail of
+    time frames is bit-identical to cropping them. Without this, a mask that merely produced
+    *different* numbers would pass the no-op test while silently mis-weighting the average.
+    """
+    import numpy as np
+
+    from tokamak_foundation_model.ignite import gate
+
+    rng = np.random.default_rng(3)
+    B, C, F, T = 6, 4, 32, 16
+    t = rng.standard_normal((B, C, F, T))
+    r = 0.7 * t + 0.3 * rng.standard_normal((B, C, F, T))
+
+    m = np.ones((B, C, T))
+    m[:, 2, :] = 0.0                                    # channel 2 dead everywhere
+    masked = gate.full_spectro_metrics(r, t, band_bins=None, mask=m)
+    kept = [c for c in range(C) if c != 2]
+    deleted = gate.full_spectro_metrics(r[:, kept], t[:, kept], band_bins=None)
+    assert masked["spec_nrmse"] == pytest.approx(deleted["spec_nrmse"], abs=1e-12)
+    assert masked["spec_corr2d"] == pytest.approx(deleted["spec_corr2d"], abs=1e-12)
+
+    m2 = np.ones((B, C, T))
+    m2[:, :, 10:] = 0.0                                 # window straddles the record edge
+    mask_t = gate.full_spectro_metrics(r, t, band_bins=None, mask=m2)
+    crop_t = gate.full_spectro_metrics(r[..., :10], t[..., :10], band_bins=None)
+    assert mask_t["spec_nrmse"] == pytest.approx(crop_t["spec_nrmse"], abs=1e-12)
+    assert mask_t["spec_corr2d"] == pytest.approx(crop_t["spec_corr2d"], abs=1e-12)
