@@ -86,8 +86,14 @@ line_profiler = ">=5.0.2,<6"
 platforms = ["linux-64"]
 
 [tool.pixi.feature.fdp.dependencies]
-toksearch = { channel = "ga-fdp" }
-toksearch_d3d = { channel = "ga-fdp" }
+# Versions match Nathan's working fetch env (/scratch/gpfs/nc1514/fdp/pixi.toml)
+# rather than floating. `fdp` itself is REQUIRED, not optional: `toksearch_d3d`
+# imports it at module scope, so leaving it out resolved an env where
+# `import toksearch_d3d` raised ModuleNotFoundError while `toksearch` imported
+# fine - the fdp path was unreachable and nothing said so.
+fdp = { version = ">=0.5.1,<0.6", channel = "ga-fdp" }
+toksearch = { version = ">=2.8.1,<3", channel = "ga-fdp" }
+toksearch_d3d = { version = ">=0.10.1,<0.11", channel = "ga-fdp" }
 
 [tool.pixi.feature.labelmaker]
 platforms = ["linux-64"]
