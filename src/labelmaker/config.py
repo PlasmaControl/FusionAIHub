@@ -23,7 +23,7 @@ class Paths:
     corpus: Path = DEFAULT_CORPUS
 
     @classmethod
-    def from_env(cls) -> "Paths":
+    def from_env(cls) -> Paths:
         return cls(
             root=Path(os.environ.get("LABELMAKER_ROOT", str(DEFAULT_ROOT))),
             corpus=Path(os.environ.get("LABELMAKER_CORPUS", str(DEFAULT_CORPUS))),
