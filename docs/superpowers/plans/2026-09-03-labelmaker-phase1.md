@@ -16,7 +16,7 @@
 - **Lint: `pixi run -e labelmaker ruff check src/labelmaker tests/labelmaker` must be clean.** Measured on 2026-09-03, and not what `pyproject.toml` appears to say: the repo declares only `[tool.ruff] line-length = 88`, but the installed ruff (0.16.5) applies a broad default rule set - `UP`, `B`, `S`, `BLE`, `ASYNC`, `YTT` among others - and **`E501` is not in it**. So the 88-column figure is a formatter target that nothing enforces, and the rest of the repo exceeds it 2,659 times. Stay near 88 columns to match the surrounding code, but a long line is not a defect; a `ruff check` finding is. Run it over the whole package, not just the files a task touched - two real errors (`UP037`, `UP017`) survived five task reviews because each one checked only its own files.
 - **`except Exception` is deliberate where this plan uses it**, and ruff's default `BLE001` will flag it. Per-shot and per-signal isolation is the pipeline's core resilience property, so add `# noqa: BLE001` on those handlers with a short reason rather than narrowing the catch - an unforeseen exception class from h5py or toksearch is exactly what must not kill a 100-shot run.
 - **No Pydantic.** Repo convention is `@dataclass(frozen=True)` and plain functions. Config over code.
-- **No imports from `tokamak_foundation_model`.** Labelmaker sits on the `ignite/gate.py` side of the reuse boundary: numpy, h5py, scipy, stdlib only, plus import-guarded toksearch. Conventions that are shared (the time base) are *copied with a comment naming the source*, not imported.
+- **No imports from `tokamak_foundation_model`.** Labelmaker sits on the `ignite/gate.py` side of the reuse boundary. Its dependencies are numpy, h5py, scipy, pandas + pyarrow, pyyaml (card front matter), stdlib, and import-guarded toksearch - every one of them declared in the `labelmaker` pixi feature or in `[project]`, never merely inherited. Conventions that are shared (the time base) are *copied with a comment naming the source*, not imported.
 - **No TensorFlow anywhere in `src/labelmaker/`.** conda-forge's only `tensorflow-cpu` is 2.21.0 with a **py312** build, which cannot be installed next to this repo's `python <3.12` pin. TensorFlow appears exactly once, in a throwaway uv venv, in Task 14's fidelity check.
 - **Data root** `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/`, override `LABELMAKER_ROOT`. Never write artifacts into `/scratch/gpfs/nc1514/` (near quota) and never into the repo.
 - **Corpus** `/scratch/gpfs/EKOLEMEN/foundation_model/<shot>_processed.h5`, override `LABELMAKER_CORPUS`. Read-only.
@@ -298,6 +298,12 @@ platforms = ["linux-64"]
 # labels_index.parquet. pandas 3 can write parquet only through pyarrow,
 # and the default env does not have it.
 pyarrow = ">=17,<22"
+# models/registry.py parses model-card front matter with yaml. It is present
+# in this env today only as a transitive dependency of hydra-core ->
+# omegaconf, and hydra-core is in [project] for IGNITE's sake rather than
+# labelmaker's - so an unrelated change to IGNITE's dependencies would break
+# every card read. Declare what we import.
+pyyaml = ">=6,<7"
 
 [tool.pixi.feature.labelmaker.pypi-dependencies]
 # The workspace installs `faith` editable into every environment, which
@@ -2829,7 +2835,14 @@ def parse_card(text: str) -> dict:
         raise ValueError("card has no YAML front matter (expected a leading --- block)")
     data = yaml.safe_load(m.group(1))
     if not isinstance(data, dict):
-        raise ValueError(f"card front matter is not a mapping: {type(data).__name__}")
+        # ValueError, not TypeError, despite ruff's TRY004: `text` is always a
+        # str, so this is a malformed *data file*, not a caller passing the
+        # wrong argument type - and the sibling branch above raises ValueError
+        # for the same category. A caller wanting to catch "bad card" should
+        # need one except clause, not two.
+        raise ValueError(  # noqa: TRY004
+            f"card front matter is not a mapping: {type(data).__name__}"
+        )
     return data
 
 
@@ -2942,7 +2955,8 @@ Recorded so they are not re-added by mistake:
   their own packaged application.
 - **TokaMind** (`tokamind_base_v2`) - MAST-pretrained; its tokenizer and inverse
   decode live outside the saved graph.
-- **diag2diag** - excluded by decision.
+- **diag2diag** - excluded at the project owner's direction. No technical reason
+  was recorded, so do not infer one; ask before re-adding it.
 - Anything from `tokamak_deploy_bench`'s `models/` directory. That repo is a
   latency benchmark: it feeds random noise to models and stores only timings. It
   is a useful *index* of what exists (`MODEL_ROSTER.md`), never a source of
@@ -2988,7 +3002,7 @@ tags:
 datasets:
   - plasmacontrol/d3d-faith-corpus
 metrics:
-  - roc_auc
+<metrics>
 model-index:
   - name: <card_id without the namespace>
     results: []
@@ -3056,6 +3070,19 @@ Unpublished internal model. Attribute to the PlasmaControl group, Princeton.
 
 `nc1514@princeton.edu`.
 ```
+
+`<metrics>` per row, as a YAML list with two-space indent - a fixed `roc_auc` on
+every card would assert a meaningless evaluation commitment on the pure-regression
+models, which a light-touch reader could mistake for a real one:
+
+| slug | `<metrics>` |
+|---|---|
+| `d3d_elm_time_to_event_dsm` | `  - concordance_index` |
+| `d3d_tearing_time_to_event_dsm` | `  - concordance_index` |
+| `d3d_ech_beam_fate_mlp` | `  - roc_auc`<br>`  - rmse` |
+| `d3d_ech_deposition_torbeamnn` | `  - rmse` |
+| `d3d_kinetic_equilibrium_rtcakenn` | `  - rmse` |
+| `d3d_inpa_image_cnn` | `  - rmse` |
 
 Substitution table:
 
