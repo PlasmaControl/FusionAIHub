@@ -12,6 +12,7 @@ datasets:
   - plasmacontrol/d3d-faith-corpus
 metrics:
   - roc_auc
+  - rmse
 model-index:
   - name: d3d-ech-beam-fate-mlp
     results: []

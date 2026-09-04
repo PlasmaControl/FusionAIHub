@@ -42,7 +42,14 @@ def parse_card(text: str) -> dict:
         raise ValueError("card has no YAML front matter (expected a leading --- block)")
     data = yaml.safe_load(m.group(1))
     if not isinstance(data, dict):
-        raise TypeError(f"card front matter is not a mapping: {type(data).__name__}")
+        # ValueError, not TypeError, despite ruff's TRY004: `text` is always a
+        # str, so this is a malformed *data file*, not a caller passing the
+        # wrong argument type - and the sibling branch above raises ValueError
+        # for the same category. A caller wanting to catch "bad card" should
+        # need one except clause, not two.
+        raise ValueError(  # noqa: TRY004
+            f"card front matter is not a mapping: {type(data).__name__}"
+        )
     return data
 
 

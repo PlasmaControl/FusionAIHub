@@ -11,7 +11,7 @@ tags:
 datasets:
   - plasmacontrol/d3d-faith-corpus
 metrics:
-  - roc_auc
+  - concordance_index
 model-index:
   - name: d3d-tearing-time-to-event-dsm
     results: []
