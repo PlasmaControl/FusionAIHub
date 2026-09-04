@@ -91,6 +91,74 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "gsm2" ]; then
+        # LEG 2 OF THE GAIN-SHAPE CELL, and it is DELIBERATELY ASYMMETRIC because the two
+        # modalities are at different distances from their bar.
+        #
+        # mirnov: CONTINUATION, byte-identical flags to SWEEP=gsmulti so the launcher's
+        #   ${OUT_DIR}/<arm>/codec_last.pt auto-resume picks each arm up where the first leg
+        #   timed out. It needs the steps: the arm it must beat (a02d_s2) was still improving
+        #   at 51k gate steps (nRMSE 0.9687, peak_f1 0.4079) and the gsm arms only reach ~18k
+        #   in one 2 h leg, so a verdict on them before ~40k would be a verdict on the wrong
+        #   part of the trajectory. MUST be submitted with DEP_AFTER=<gsmulti job> and
+        #   OUT_DIR_TAG=gsmulti: two legs writing one arm's codec_last.pt concurrently would
+        #   interleave checkpoints.
+        # co2: FRESH arms, because co2's gsm arms are nearly done (~27k of 30k) and the open
+        #   question is not more steps, it is whether the envelope/shape split can be carried
+        #   by the objective that actually won the 320-window table (ms_ssim 50 + adv 0.2 +
+        #   multiscale critic) rather than by the documented-recipe control. Fourth co2 slot is
+        #   a THIRD SEED of the current leader with no gain-shape, because m02 (0.6243) and
+        #   m02s2 (0.5287) disagree by 0.096 and the leader is otherwise a one-seed claim.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsm16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+                ARMS_STR="${ARMS_STR};${M}_gsm8|${P} ${MSK} ${MIR} ${B} --gain_tokens 8"
+                ;;
+            co2)
+                B50="--ms_ssim_weight 50 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+                B50="${B50} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+                ARMS_STR="${ARMS_STR};${M}_gsm50_s1|${P} ${MSK} ${MIR} ${B50} --gain_shape --gain_tokens 32 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gsm50_s2|${P} ${MSK} ${MIR} ${B50} --gain_shape --gain_tokens 32 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsm50_16|${P} ${MSK} ${MIR} ${B50} --gain_shape --gain_tokens 16"
+                ARMS_STR="${ARMS_STR};${M}_m02_s3|${P} ${MSK} ${MIR} ${B50} --seed 3"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "gsm50" ]; then
+        # GAIN-SHAPE ON THE ARM THAT ACTUALLY WON, not on the documented-recipe control.
+        #
+        # The 320-window co2 table ranks by peakF1: co2_m02 0.6243 (ms_ssim 50 + adv 0.2 + fm 1.0
+        # + multiscale critic + scales 1,2,4, NO gain-shape) at lattice 9.64, and its _last
+        # 0.6200 at 5.75. Every gain-shape arm so far was built on a DIFFERENT objective --
+        # co2_gs/co2_gsadv carry ms_ssim 5 and a PATCH discriminator -- and they land at
+        # peakF1 0.5959-0.6006 with lattice 2.01-2.43. The rendered band figure says the same
+        # thing the numbers do: gsadv reproduces the burst TIMES as 16-frame blocks and none of
+        # the mode tracks, while m02_last reproduces the 2.25-2.5 s braid at the right
+        # frequencies. So the missing cell is m02's objective PLUS the envelope/shape split, not
+        # a third variation on the low-ms_ssim recipe.
+        #
+        # SEEDS ARE LOAD-BEARING ON co2 TOO. m02 (seed 1) audits 0.6243 and m02s2 (seed 2)
+        # audits 0.5287 at the same step -- a 0.096 spread that DWARFS the m02-vs-ms5 gap of
+        # 0.007. A single-seed co2 verdict is not a verdict, so the headline arm runs twice.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+        ARMS_STR="${ARMS_STR};${M}_gsm50_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_gsm50_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_gsm50_16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+        ARMS_STR="${ARMS_STR};${M}_m02_s3|${P} ${MSK} ${MIR} ${B%% --gain_shape} --seed 3"
+        continue
+    fi
     if [ "${SWEEP}" = "gsmulti" ]; then
         # THE UNEXPLORED CELL: ENVELOPE/SHAPE SPLIT **x** MULTISCALE CRITIC, plus the RATE
         # lever. Both corners of the 320-window tables are unshippable in opposite ways:

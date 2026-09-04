@@ -15,11 +15,23 @@ M_STRUCT=/lustre/orion/fus187/proj-shared/models/ignite_codecs_ece_mirnov_co2_st
 M_ADVB=/lustre/orion/fus187/proj-shared/models/ignite_codecs_ece_mirnov_co2_advbest
 M_ADVM=/lustre/orion/fus187/proj-shared/models/ignite_codecs_ece_mirnov_co2_advmulti
 M_CO2OLD=/lustre/orion/fus187/proj-shared/models/ignite_codecs_co2_msk
+# 2026-09-04 evening legs: the DOCUMENTED-RECIPE correction (co2fix) and the GAIN-SHAPE x
+# MULTISCALE cell + gain_tokens rate ladder (gsmulti). Both are continuation-friendly (the
+# launcher resumes from codec_last.pt in the same OUT_DIR), so re-running this audit after a
+# continuation leg re-scores the SAME labels at their new steps.
+M_CO2FIX=/lustre/orion/fus187/proj-shared/models/ignite_codecs_co2_co2fix
+M_GSM=/lustre/orion/fus187/proj-shared/models/ignite_codecs_co2_mirnov_gsmulti
+# MODS selects which modality tables to build. ece is PARKED (24 checkpoints across ms_ssim
+# 0/5/20/50, two discriminator families, gain-shape and d_model 512 never moved nRMSE below
+# 1.0472), so it is NOT in the default -- pass MODS="co2 mirnov ece" to include it.
+MODS="${MODS:-co2 mirnov}"
 
 add() {  # add <label> <dir>/<arm>  -> appends "<label>=.../codec_best.pt,<label>_last=.../codec_last.pt"
+    # `|| true` is LOAD-BEARING: `set -e` is on, and `[ -f x ] && VAR=...` returns 1 when the
+    # file is absent, which would abort the whole audit for one arm that never checkpointed.
     local lab="$1" pth="$2"
-    [ -f "${pth}/codec_best.pt" ] && ARMS="${ARMS}${ARMS:+,}${lab}=${pth}/codec_best.pt"
-    [ -f "${pth}/codec_last.pt" ] && ARMS="${ARMS}${ARMS:+,}${lab}_last=${pth}/codec_last.pt"
+    [ -f "${pth}/codec_best.pt" ] && ARMS="${ARMS}${ARMS:+,}${lab}=${pth}/codec_best.pt" || true
+    [ -f "${pth}/codec_last.pt" ] && ARMS="${ARMS}${ARMS:+,}${lab}_last=${pth}/codec_last.pt" || true
 }
 
 audit() {  # audit <modality> <floor>
@@ -29,27 +41,62 @@ audit() {  # audit <modality> <floor>
         bash scripts/slurm_frontier/_audit_spectro_arms.sh "${M}" "${M_MSSIM}" "${FL}" "${NW:-320}"
 }
 
-# ---- co2: struct2 arms are the ONLY ones on the documented ms_ssim 5 recipe --------------- #
+# ---- co2 ---------------------------------------------------------------------------------- #
+# The INCUMBENTS stay in every table: --mode score OVERWRITES the json with only the arms of
+# this run, and the pool is rebuilt from the FIRST arm's cfg, so dropping them would leave a
+# table that cannot be compared with the previous one. ms5_incumbent is listed first for that
+# reason (its cfg has no gain_shape, i.e. the plainest geometry).
+case " ${MODS} " in *" co2 "*)
 ARMS=""
 add ms5_incumbent  "${M_CO2OLD}/ms5"
-for a in co2_gs co2_gsadv co2_adv;      do add "${a}" "${M_STRUCT}/${a}"; done
-for a in co2_m02 co2_m02s2 co2_m05;     do add "${a}" "${M_ADVM}/${a}";  done
-for a in co2_a02 co2_a05;               do add "${a}" "${M_ADVB}/${a}";  done
+for a in co2_m02 co2_m02s2;             do add "${a}" "${M_ADVM}/${a}";  done
+for a in co2_gs co2_gsadv;              do add "${a}" "${M_STRUCT}/${a}"; done
+for a in co2_r_ctl co2_r_m co2_r_m_s2 co2_r_gsm; do add "${a}" "${M_CO2FIX}/${a}"; done
+for a in co2_gsm32_s1 co2_gsm32_s2 co2_gsm16 co2_gsm8; do add "${a}" "${M_GSM}/${a}"; done
 audit co2 0.7112
+;; esac
 
 # ---- mirnov ------------------------------------------------------------------------------ #
+case " ${MODS} " in *" mirnov "*)
 ARMS=""
-for a in mirnov_ms50_s1 mirnov_ms50_s2; do add "${a}" "${M_MSSIM}/${a}"; done
-for a in mirnov_gs_s1 mirnov_gs_s2 mirnov_gsadv_s1; do add "${a}" "${M_STRUCT}/${a}"; done
-for a in mirnov_m02_s3 mirnov_m05_s1;   do add "${a}" "${M_ADVM}/${a}"; done
-for a in mirnov_a02_s1 mirnov_a02d_s1 mirnov_a02d_s2; do add "${a}" "${M_ADVB}/${a}"; done
+for a in mirnov_a02d_s1 mirnov_a02d_s2; do add "${a}" "${M_ADVB}/${a}"; done
+for a in mirnov_gs_s1 mirnov_gs_s2;     do add "${a}" "${M_STRUCT}/${a}"; done
+for a in mirnov_ms50_s2;                do add "${a}" "${M_MSSIM}/${a}"; done
+for a in mirnov_gsm32_s1 mirnov_gsm32_s2 mirnov_gsm16 mirnov_gsm8; do add "${a}" "${M_GSM}/${a}"; done
 audit mirnov 0.8709
+;; esac
 
-# ---- ece: the slowest (40 channels) ------------------------------------------------------- #
+# ---- ece: the slowest (40 channels); PARKED, off by default ------------------------------- #
+case " ${MODS} " in *" ece "*)
 ARMS=""
 for a in ece_ms0 ece_ms5 ece_ms20 ece_ms50; do add "${a}" "${M_MSSIM}/${a}"; done
 for a in ece_gs ece_gsadv;                   do add "${a}" "${M_STRUCT}/${a}"; done
 for a in ece_m02_s2 ece_m05 ece_m02ms50;     do add "${a}" "${M_ADVM}/${a}"; done
 for a in ece_a02 ece_a02d ece_a02w;          do add "${a}" "${M_ADVB}/${a}"; done
 audit ece 0.9915
+;; esac
+# ---- mirnov ORACLE CALIBRATION, LAST so a timeout cannot cost the score tables ---------- #
+# co2 already has this (co2_structure_peakf1.json): patchmean -- the exact per-(channel,
+# 16x16 patch) mean at INFINITE precision -- scores peak_f1 0.6537 and tsmooth5 scores 0.9936,
+# so co2's best arm at 0.6243 sits just BELOW what the patch grid gives for free and there is
+# a factor of 1.6 of real headroom above it. mirnov has NO such calibration, and without it
+# "mirnov peak_f1 0.5022" cannot be called either a near-ceiling result or a failure. Two arms
+# only: --mode structure is ~30 full-array metric evaluations per row.
+case " ${MODS} " in *" mirnov "*)
+if [ "${MIRNOV_STRUCT:-1}" = "1" ]; then
+    echo "=================== mirnov ORACLES ==================="
+    _SC="${SCRATCH_DIR:-/tmp/ignite_audit_$USER}"
+    mkdir -p "${_SC}/comgr" "${_SC}/miopen"
+    export AMD_COMGR_CACHE_DIR="${_SC}/comgr" MIOPEN_USER_DB_PATH="${_SC}/miopen"
+    export MIOPEN_CUSTOM_CACHE_DIR="${_SC}/miopen"
+    export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+    _MA="a02d_s2_last=${M_ADVB}/mirnov_a02d_s2/codec_last.pt"
+    [ -f "${M_GSM}/mirnov_gsm32_s1/codec_last.pt" ] &&         _MA="${_MA},gsm32_s1_last=${M_GSM}/mirnov_gsm32_s1/codec_last.pt"
+    .pixi/envs/frontier/bin/python analysis/spectro_final_fig.py --mode structure \
+        --modality mirnov --n_windows "${NW:-320}" --batch_size 8 --device cuda \
+        --arms "${_MA}" --bands_khz 0-10,10-30,30-60,60-120,120-250 \
+        --json eval_runs/codec_recon_figs/mirnov_structure_peakf1.json 2>&1 \
+        | grep --line-buffered -vE "it/s\]|^ *$" || echo "mirnov structure FAILED (tables already written)"
+fi
+;; esac
 echo "=== ALL SPECTRO ARM TABLES DONE ==="
