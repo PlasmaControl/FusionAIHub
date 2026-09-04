@@ -494,6 +494,61 @@ SPECTRO_LIVENESS_CACHE = Path(
 )
 
 
+def derive_presence_lengths_sidecar(
+    modality: str,
+    lengths_cache_dir: Union[str, Path],
+    *,
+    shots: Sequence[Union[str, int]],
+    data_dir: Union[str, Path],
+    require_all: bool = False,
+    log_fn=None,
+) -> Optional[Path]:
+    """Write ``codec_<mod>_presence_lengths.pt`` by SUBSETTING the unfiltered sidecar.
+
+    WHY THIS EXISTS. ``TokamakMultiFileDataset._load_or_compute_lengths`` reuses a sidecar
+    only when its stored PATH LIST matches the dataset's, so ``--spectro_presence any``
+    (a different shot list) misses ``codec_<mod>_lengths.pt`` and every arm cold-scans every
+    shot at ~0.77 s/file -- ~98 min for ece's 7616 shots, i.e. the whole of a 2 h leg. That
+    cost mirnov two entire legs on 2026-09-04, and it is what pushed ece to run unfiltered:
+    MEASURED in job 5419336, the 4 unfiltered ece arms advanced ~3x slower than the
+    presence-filtered mirnov arms beside them (step 3000 vs 6000 at 29 min), because ~13% of
+    ece shots are empty stubs on which every one of ``max_tries`` re-draws fails.
+
+    But NO SCAN IS NEEDED: a per-file chunk count depends only on that file's duration and
+    the dataset's window geometry, never on which other shots are in the list, and the
+    presence-filtered train list is a SUBSET of the unfiltered one. So the lengths can be
+    copied across exactly.
+
+    Refuses to write (returns None) if ANY required path is absent from the unfiltered cache
+    -- a partially-correct lengths cache would silently mis-index every window, which is far
+    worse than a slow scan.
+    """
+    cdir = Path(lengths_cache_dir)
+    src = cdir / f"codec_{modality}_lengths.pt"
+    dst = cdir / f"codec_{modality}_presence_lengths.pt"
+    if not src.exists():
+        if log_fn:
+            log_fn(f"[train_codec] no unfiltered sidecar at {src}; cannot derive {dst.name}")
+        return None
+    cache = torch.load(str(src), map_location="cpu", weights_only=False)
+    have = dict(zip(cache["paths"], cache["lengths"]))
+    want = [str(q) for q in _shot_paths(shots, data_dir)]
+    missing = [q for q in want if q not in have]
+    if missing:
+        if log_fn:
+            log_fn(f"[train_codec] REFUSING to write {dst.name}: {len(missing)} of "
+                   f"{len(want)} paths are absent from {src.name} (first: "
+                   f"{Path(missing[0]).name}). Let the dataset scan instead.")
+        return None
+    tmp = Path(f"{dst}.tmp.{os.getpid()}")
+    torch.save({"paths": want, "lengths": [have[q] for q in want]}, tmp)
+    tmp.replace(dst)
+    if log_fn:
+        log_fn(f"[train_codec] wrote {dst} ({len(want)} shots) by subsetting {src.name} "
+               f"-- no HDF5 scan")
+    return dst
+
+
 def spectro_live_shots(
     modality: str,
     shots: Sequence[Union[str, int]],
@@ -3780,6 +3835,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--skip_activity_override", action="store_true",
                    help="Skip the per-modality _activity_overrides entirely (needed to reproduce "
                         "the clean prod recipe for co2/mhr, whose overrides force warm/advw/bias).")
+    p.add_argument("--build_presence_lengths", action="store_true",
+                   help="Write codec_<modality>_presence_lengths.pt for the RESOLVED train "
+                        "shots by subsetting codec_<modality>_lengths.pt, then exit. No "
+                        "HDF5 scan and no training. Run this ONCE per modality before the "
+                        "first --spectro_presence leg: without the sidecar every arm "
+                        "cold-scans every shot (~0.77 s/file) and burns the whole leg. "
+                        "Needs --spectro_presence/--video_presence set so the resolved shot "
+                        "list is the filtered one.")
     p.add_argument("--compute_logpow_stats", type=str, default=None,
                    help="Compute dataset-level per-freq log-power stats (COMPOSE space, i.e. "
                         "after the raw z-score for co2) over the resolved train shots, write "
@@ -4393,6 +4456,26 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         raise RuntimeError(
             f"no train shots (discovered {len(all_shots)}, eval_n_shots={args.eval_n_shots})"
         )
+
+    # SIDECAR-DERIVATION mode: write the presence-filtered lengths cache and exit. Placed
+    # BEFORE the stats mode (both are single-process data-prep exits) and after the shot
+    # resolution above, so `train_shots` is already the filtered list the arms will use.
+    if getattr(args, "build_presence_lengths", False):
+        if not args.lengths_cache_dir:
+            raise SystemExit("--build_presence_lengths needs --lengths_cache_dir")
+        if (getattr(args, "spectro_presence", None) in (None, "off")
+                and getattr(args, "video_presence", None) in (None, "off")):
+            raise SystemExit(
+                "--build_presence_lengths needs --spectro_presence (or --video_presence) "
+                "set: without it the resolved shot list is the UNFILTERED one and the "
+                "derived sidecar would just duplicate codec_<mod>_lengths.pt."
+            )
+        derive_presence_lengths_sidecar(
+            args.modality, args.lengths_cache_dir, shots=train_shots,
+            data_dir=args.data_dir, log_fn=(print if ddp.is_main else None),
+        )
+        ddp.shutdown()
+        return
 
     # STATS-GENERATION mode (per-freq log-z promotion prep): compute dataset-level stats
     # in the COMPOSE space over the resolved train shots (presence-filtered for co2),
