@@ -230,6 +230,38 @@ def test_a_measured_input_is_never_flagged_by_the_pair_rule():
     assert spec.build(feats, t).valid.all()
 
 
+def test_absent_ok_routes_an_absent_field_through_its_transform():
+    # Without absent_ok a wholly absent field stays NaN and invalidates every
+    # row, which is the right default. With it, the transform represents the
+    # absence and a pair rule decides whether that matters.
+    fields = (
+        InputField("ech_pwr", "ech_power_total", transform="nonneg_zero_fill"),
+        InputField("rho", "ech_rho", transform="nonneg_zero_fill", absent_ok=True),
+    )
+    pair = (UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),)
+    t = 0.025 * np.arange(4)
+    off = {"ech_power_total": FeatureArray(x=t, y=np.zeros((1, 4)))}
+    on = {"ech_power_total": FeatureArray(x=t, y=np.full((1, 4), 1.0e6))}
+
+    spec = InputSpec(fields=fields, dt_s=0.025, unknown_when_active=pair)
+    built = spec.build(off, t)                      # rho absent, power off
+    assert built.missing == ("ech_rho",)
+    np.testing.assert_allclose(built.scalars[:, 1], 0.0)
+    assert built.valid.all(), "a benign absence must not cost the shot its rows"
+    assert not spec.build(on, t).valid.any(), "absence with power flowing is a fabrication"
+
+
+def test_absent_ok_without_a_transform_is_rejected():
+    with pytest.raises(ValueError, match="absent_ok"):
+        InputField("rho", "ech_rho", absent_ok=True)
+
+
+def test_an_absent_field_without_absent_ok_still_invalidates_the_row():
+    spec = InputSpec(fields=(InputField("bt", "bt"), InputField("ip", "ip")), dt_s=0.025)
+    built = spec.build({"bt": _scalar_feature([1.0] * 6)}, GRID)
+    assert built.missing == ("ip",) and not built.valid.any()
+
+
 def test_a_pair_rule_naming_an_unknown_feature_is_rejected():
     with pytest.raises(KeyError):
         UnknownWhenActive(unknown="no_such_feature", active="ech_power_total")
