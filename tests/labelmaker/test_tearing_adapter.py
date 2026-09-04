@@ -64,8 +64,10 @@ def test_every_upstream_filter_clause_is_a_domain_rule():
     assert rules[("gapin", "value")].hi == 0.2
     assert rules[("te_zipfit", "min")].lo == 0.0
     assert rules[("te_zipfit", "min")].lo_inclusive
-    # No ech_rho rule: nonneg_zero_fill subsumes the upstream clause, so one
-    # could never fire. See the comment in spec.py.
+    # No ech_rho rule: a DomainRule reads the post-transform value, and
+    # nonneg_zero_fill has already mapped every negative location to 0.0, so
+    # one could never fire. The upstream clause lives in the pair rule
+    # instead, which sees that the fill changed the value. See spec.py.
     assert ("ech_rho", "value") not in rules
 
 

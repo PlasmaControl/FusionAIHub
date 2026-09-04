@@ -27,33 +27,47 @@ def _nonpositive_to_zero(a: np.ndarray) -> np.ndarray:
     return np.where(np.isfinite(a) & (a > 0.0), a, 0.0)
 
 
+@dataclass(frozen=True)
+class Transform:
+    """A named pure mapping a spec applies to a field after sampling.
+
+    `fills` is the entire reason this is a class and not a bare callable. It
+    says whether the mapping stands in for a reading that cannot be used (a
+    FILL, which INVENTS a value) or recovers the physical value from a reading
+    that can (a CORRECTION, which does not). Two entries below compute
+    identical arithmetic and differ only in this flag, so it is keyword-only
+    and has no default: adding a transform forces the author to decide which
+    kind it is, and `build` reads the answer to decide whether a row's value
+    was measured. A flag that could be forgotten would fail the way this
+    module already failed once - silently reporting an invented value as
+    measured - so the classification is total by construction.
+    """
+
+    fn: Callable[[np.ndarray], np.ndarray]
+    fills: bool = field(kw_only=True)
+
+
 #: Named pure transforms a spec may apply after sampling - named rather than
 #: inline lambdas so the model card can list them and a test can compare the
 #: card against the spec.
-TRANSFORMS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
-    "reciprocal": lambda a: 1.0 / a,
-    # These two compute the SAME arithmetic and mean different things. Do not
-    # merge them: only the name distinguishes a measurement correction from a
-    # fabrication, and `FILL_TRANSFORMS` reads that distinction.
+TRANSFORMS: dict[str, Transform] = {
+    "reciprocal": Transform(lambda a: 1.0 / a, fills=False),
+    # The next two compute the SAME arithmetic and mean different things. Do
+    # not merge them: only the name and the `fills` flag distinguish a
+    # measurement correction from a fabrication.
     #
-    # clip_negative_to_zero - a CORRECTION. A negative power reading is sensor
-    # baseline noise meaning "off": MEASURED, 18.9% of archive ECH power
-    # readings are negative, down to -4,086 W, and 41.0% are exactly zero.
-    # Clipping recovers the physical value, so overwriting is not an invention.
-    # This is train.py:81's rule, which CORRECTED power in place.
-    "clip_negative_to_zero": _nonpositive_to_zero,
-    # nonneg_zero_fill - a FILL. A negative deposition location is not a
-    # location, so overwriting one invents a value. This is why train.py:83
-    # DROPPED those rows rather than correcting them; labelmaker keeps the row
-    # and marks it untrustworthy instead.
-    "nonneg_zero_fill": _nonpositive_to_zero,
+    # A CORRECTION. A negative power reading is sensor baseline noise meaning
+    # "off": MEASURED, 18.9% of archive ECH power readings are negative, down
+    # to -4,086 W, and 41.0% are exactly zero. Clipping recovers the physical
+    # value, so overwriting is not an invention. This is train.py:81's rule,
+    # which CORRECTED power in place.
+    "clip_negative_to_zero": Transform(_nonpositive_to_zero, fills=False),
+    # A FILL. A negative deposition location is not a location, so overwriting
+    # one invents a value. This is why train.py:83 DROPPED those rows rather
+    # than correcting them; labelmaker keeps the row and marks it untrustworthy
+    # instead.
+    "nonneg_zero_fill": Transform(_nonpositive_to_zero, fills=True),
 }
-
-#: Transforms that FILL rather than map - they overwrite an unusable reading
-#: with a stand-in. Wherever one of these changes a value it has invented it,
-#: which is not the same as the input being non-finite: a negative deposition
-#: location is a reading, but it is not the reading the model receives.
-FILL_TRANSFORMS = frozenset({"nonneg_zero_fill"})
 
 ACTIVATIONS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "none": lambda a: a,
@@ -251,7 +265,7 @@ class InputSpec:
                     # survives and the finiteness check below invalidates the
                     # row, which is the right default.
                     with np.errstate(divide="ignore", invalid="ignore"):
-                        v = TRANSFORMS[f.transform](v)
+                        v = TRANSFORMS[f.transform].fn(v)
                     v = v * f.scale
                 sampled[f.model_name] = v
                 continue
@@ -270,8 +284,8 @@ class InputSpec:
             gap = ~np.isfinite(v)
             if f.transform is not None:
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    filled = TRANSFORMS[f.transform](v)
-                if f.transform in FILL_TRANSFORMS:
+                    filled = TRANSFORMS[f.transform].fn(v)
+                if TRANSFORMS[f.transform].fills:
                     # `!=` rather than a finiteness test: NaN != NaN is True,
                     # which is wanted, and it also catches a finite reading the
                     # transform overwrote - MEASURED, 48 of 55,041 archive rho

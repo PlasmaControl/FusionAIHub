@@ -5,6 +5,7 @@ import pytest
 from labelmaker.features import namespace as ns
 from labelmaker.features.store import FeatureArray
 from labelmaker.models.base import (
+    TRANSFORMS,
     BuiltInputs,
     Decoded,
     DomainRule,
@@ -12,6 +13,7 @@ from labelmaker.models.base import (
     InputSpec,
     OutputField,
     OutputSpec,
+    Transform,
     UnknownWhenActive,
 )
 
@@ -228,6 +230,79 @@ def test_a_measured_input_is_never_flagged_by_the_pair_rule():
         "ech_rho": FeatureArray(x=t, y=np.full((1, 4), 0.35)),
     }
     assert spec.build(feats, t).valid.all()
+
+
+
+def test_every_transform_declares_whether_it_fills():
+    # `fills` decides whether a row's value counts as measured, so no entry may
+    # leave it implicit. A `Transform` cannot be built without it, which is the
+    # point: forgetting is a TypeError here rather than a silent claim that an
+    # invented value was measured.
+    assert all(isinstance(t.fills, bool) for t in TRANSFORMS.values())
+    with pytest.raises(TypeError):
+        Transform(lambda a: a)                       # no `fills`
+
+
+def test_a_correction_and_a_fill_computing_the_same_arithmetic_differ():
+    # `clip_negative_to_zero` and `nonneg_zero_fill` are the same function.
+    # Only the classification separates a corrected reading from an invented
+    # one, so pin the behavioural consequence: without this, a well-meaning
+    # dedupe of the two entries is a green test run.
+    assert TRANSFORMS["clip_negative_to_zero"].fn is TRANSFORMS["nonneg_zero_fill"].fn
+    t = 0.025 * np.arange(3)
+    feats = {
+        "ech_power_total": FeatureArray(x=t, y=np.full((1, 3), 1.0e6)),
+        # MEASURED: 48 of 55,041 archive rho readings are negative, and 18.9%
+        # of ECH power readings are, so both cases below are real data.
+        "ech_rho": FeatureArray(x=t, y=np.full((1, 3), -1.0)),
+    }
+    pair = (UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),)
+
+    def valid_with(transform):
+        spec = InputSpec(
+            fields=(
+                InputField("ech_pwr", "ech_power_total",
+                           transform="clip_negative_to_zero"),
+                InputField("rho", "ech_rho", transform=transform),
+            ),
+            dt_s=0.025,
+            unknown_when_active=pair,
+        )
+        return spec.build(feats, t).valid
+
+    # As a fill, overwriting -1.0 invents a location: with power flowing, the
+    # row cannot be trusted. As a correction, -1.0 would read as a measured
+    # "off" and the row would stand - which for a location is wrong.
+    assert not valid_with("nonneg_zero_fill").any()
+    assert valid_with("clip_negative_to_zero").all()
+
+
+def test_a_negative_reading_a_correction_maps_is_still_measured():
+    # The other half of the same distinction, on the field that motivated it:
+    # a negative ECH power is baseline noise meaning "off", so clipping it
+    # must not make the row's partner gap look unadjudicable.
+    spec = InputSpec(
+        fields=(
+            InputField("ech_pwr", "ech_power_total",
+                       transform="clip_negative_to_zero"),
+            InputField("rho", "ech_rho", transform="nonneg_zero_fill",
+                       absent_ok=True),
+        ),
+        dt_s=0.025,
+        unknown_when_active=(
+            UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+        ),
+    )
+    t = 0.025 * np.arange(4)
+    off = np.array([-40.0, -4086.0, 0.0, -1.0])      # real off-segment noise
+    built = spec.build({"ech_power_total": FeatureArray(x=t, y=off[None, :])}, t)
+    assert built.valid.all(), "a corrected reading is measured, not invented"
+    # and a power that was never measured at all still is invented
+    nan_power = np.array([np.nan, np.nan, 0.0, -1.0])
+    built = spec.build(
+        {"ech_power_total": FeatureArray(x=t, y=nan_power[None, :])}, t
+    )
+    assert built.valid.tolist() == [False, False, True, True]
 
 
 def test_absent_ok_routes_an_absent_field_through_its_transform():
