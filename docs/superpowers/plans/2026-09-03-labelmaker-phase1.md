@@ -375,13 +375,25 @@ from labelmaker.timebase import (
 
 def test_sample_rate_is_exact_on_float32_records():
     # A real actuator group: 10 kHz, starting 10 s before the shot, stored
-    # float32. `1/median(diff(x))` loses the step to cancellation here; the
-    # span-based rate does not. See train_dynamics.py:189-191.
+    # float32. Quantization puts up to 0.82% of a step of error on any single
+    # diff - the figure train_dynamics.py:190 quotes, reproduced here as
+    # 8.18e-7 s. See train_dynamics.py:189-191.
     x64 = np.arange(-10.0, 1.0, 1e-4)
     x32 = x64.astype(np.float32)
-    assert abs(sample_rate(x32) - 10_000.0) / 10_000.0 < 1e-6
+    fs = sample_rate(x32)
+    assert abs(fs - 10_000.0) / 10_000.0 < 1e-6          # measured 1.5e-9
+    worst_step = np.abs(np.diff(x32.astype(np.float64)) - 1e-4).max()
+    assert worst_step > 0.005 * 1e-4                     # measured 0.82% of a step
+
+    # The median is a *robust* estimator, so a rate taken from diff() is only
+    # ~1.7e-4 off - small enough to look fine and still wrong. The damage is
+    # cumulative: that rate misplaces a sample 18 deep into an 11 s record,
+    # which is precisely what index_at must never do.
     naive = 1.0 / float(np.median(np.diff(x32.astype(np.float64))))
-    assert abs(naive - 10_000.0) / 10_000.0 > 1e-3  # the bug being avoided
+    assert abs(naive - 10_000.0) / 10_000.0 < 1e-3       # NOT a big rate error
+    elapsed = 0.9 - float(x32[0])
+    assert abs(round(elapsed * naive) - round(elapsed * fs)) >= 10
+    assert index_at(x32, 0.9)[0] == 109_000              # span-based is exact
 
 
 def test_sample_rate_rejects_degenerate_axes():
