@@ -46,12 +46,16 @@ ARMS_STR="${ARMS_STR};nomask|"
 # instead of 8 one-shot knobs, and the sweep axis is the anti-collapse lever
 # (joint_entropy_weight) rather than the sharpness levers.
 if [ "${M}" = "mirnov" ]; then
-    ARMS_STR="ctl_s1|${MSK} --seed 1"
-    ARMS_STR="${ARMS_STR};ctl_s2|${MSK} --seed 2"
-    ARMS_STR="${ARMS_STR};je2_s1|${MSK} --joint_entropy_weight 2.0 --seed 1"
-    ARMS_STR="${ARMS_STR};je2_s2|${MSK} --joint_entropy_weight 2.0 --seed 2"
-    ARMS_STR="${ARMS_STR};je4_s1|${MSK} --joint_entropy_weight 4.0 --seed 1"
-    ARMS_STR="${ARMS_STR};je4_s2|${MSK} --joint_entropy_weight 4.0 --seed 2"
+    # See _submit_spectro_pair_arms.sh for the measurement: mirnov's activity stratification
+    # plus a 128-item single-process eval build is dead weight now that the mask handles its
+    # dead channels, and --eval_batches 8 is the script default.
+    MIR="--skip_activity_override --eval_batches 8"
+    ARMS_STR="ctl_s1|${MSK} ${MIR} --seed 1"
+    ARMS_STR="${ARMS_STR};ctl_s2|${MSK} ${MIR} --seed 2"
+    ARMS_STR="${ARMS_STR};je2_s1|${MSK} ${MIR} --joint_entropy_weight 2.0 --seed 1"
+    ARMS_STR="${ARMS_STR};je2_s2|${MSK} ${MIR} --joint_entropy_weight 2.0 --seed 2"
+    ARMS_STR="${ARMS_STR};je4_s1|${MSK} ${MIR} --joint_entropy_weight 4.0 --seed 1"
+    ARMS_STR="${ARMS_STR};je4_s2|${MSK} ${MIR} --joint_entropy_weight 4.0 --seed 2"
     ARMS_STR="${ARMS_STR};nomask_s1|--seed 1"
     ARMS_STR="${ARMS_STR};nomask_s2|--seed 2"
 fi
