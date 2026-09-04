@@ -116,6 +116,15 @@ for M in ${MODS}; do
         # there is nothing to resume from.
         MIR="--eval_batches 8"
         [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        # ms_ssim: co2 50 / mirnov 20 -- these are NOT the per-modality optima (co2's is 5),
+        # they are the weights of each modality's own audited 16x16 BASELINE, so that
+        # <mod>_p832_* differs from an existing 320-window number in EXACTLY the patch aspect:
+        #   co2_p832_*   vs co2_m02        (ms_ssim 50, adv 0.2, multiscale D) peakF1 0.6243
+        #   mirnov_p832_* vs mirnov_a02d_s2 (ms_ssim 20, adv 0.2, multiscale D) peakF1 0.4951
+        # Do NOT "fix" co2 to ms_ssim 5 here without also moving the baseline -- that would make
+        # the aspect effect unattributable. NOTE ms_ssim 50 is only a closed negative for co2
+        # with the PATCH discriminator (co2_a02 0.5286 / co2_a05 0.3427, both patch-D); with the
+        # multiscale critic it is co2's second-best arm ever.
         case "${M}" in co2) W=50 ;; *) W=20 ;; esac
         B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
         B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
@@ -123,6 +132,11 @@ for M in ${MODS}; do
         # n_freq_patch); it must divide freq_bins and stay < n_tok, and 64 does both.
         ARMS_STR="${ARMS_STR};${M}_p832_s1|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --seed 1"
         ARMS_STR="${ARMS_STR};${M}_p832_s2|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --seed 2"
+        # gain-shape arm for co2 ONLY: measured 2026-09-04, it is a CLOSED NEGATIVE on mirnov
+        # (every gsm arm peakF1 0.2737-0.3572 vs a02d 0.4847-0.4951 despite lattice 1.44-3.19 --
+        # the blur corner with none of the benefit it has on co2, because the envelope path gets
+        # 0.0107 bits/value at C=29 vs 0.078 at C=4).
+        [ "${M}" = "mirnov" ] || \
         ARMS_STR="${ARMS_STR};${M}_p832gs|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --gain_shape --gain_tokens 64"
         ARMS_STR="${ARMS_STR};${M}_p328|${P} ${MSK} ${MIR} ${B} --patch_f 32 --patch_t 8"
         continue
