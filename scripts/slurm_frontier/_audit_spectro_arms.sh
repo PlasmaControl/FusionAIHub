@@ -10,8 +10,34 @@
 set -e
 M="${1:?modality}"
 DIR="${2:?arms dir}"
-FLOOR="${3:-}"
 NW="${4:-320}"
+
+# OUT-OF-SAMPLE LINEAR FLOOR at k = n_tok = 192, per modality: the strongest 192-dimensional
+# linear code at INFINITE precision on HELD-OUT shots, i.e. the bar an arm must beat for
+# criterion 1. Measured 2026-09-03 with analysis/_specport_plateau.py at the reference
+# protocol (N=720 windows, 40 fit shots spread across campaigns, 4 held-out shots,
+# presence-filtered pool, gate normalisation). They are NOT alike and track values-per-token,
+# so a shared bar would be meaningless:
+#
+#   modality  values/token   floor    ~tmean   note
+#   co2           1024      0.6303      -      prior measurement, not re-run
+#   mhr           1536      0.8218    0.8768   prior measurement, reproduced by the audit
+#   bes           4096      0.8354    0.8662   per-freq log-z OFF (no bes stats file exists)
+#   mirnov        7424      0.8709    0.8307   ~tmean BEATS the linear code -> near dead end
+#   ece          10240      0.9915      -      prior measurement, not re-run
+#
+# ~tmean is the "perfect per-frequency envelope, zero temporal structure" predictor. Where it
+# beats the floor (mirnov), a 192-dim linear code cannot even reach the time-averaged
+# spectrum, and no vocabulary change can help -- the bottleneck is the DIMENSION, not bits.
+case "${M}" in
+    co2)    DEF_FLOOR=0.6303 ;;
+    mhr)    DEF_FLOOR=0.8218 ;;
+    bes)    DEF_FLOOR=0.8354 ;;
+    mirnov) DEF_FLOOR=0.8709 ;;
+    ece)    DEF_FLOOR=0.9915 ;;
+    *)      DEF_FLOOR="" ;;
+esac
+FLOOR="${3:-${DEF_FLOOR}}"
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 SC="${SCRATCH_DIR:-/tmp/ignite_audit_$USER}"
 mkdir -p "${SC}/comgr" "${SC}/miopen" eval_runs/codec_recon_figs
