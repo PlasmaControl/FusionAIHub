@@ -650,7 +650,12 @@ export LR=2e-4
 # ${OUT_DIR}/<arm>/codec_last.pt, so reusing one dir across sweeps would silently continue a
 # DIFFERENT recipe's checkpoint under the new arm's flags. OUT_DIR_TAG overrides it.
 _TAG="$(printf '%s' "${MODS}" | tr ' ' '_')"
-export OUT_DIR="/lustre/orion/fus187/proj-shared/models/ignite_codecs_${_TAG}_${OUT_DIR_TAG:-${SWEEP}}"
+# An explicit OUT_DIR wins. NEEDED for a SINGLE-MODALITY CONTINUATION of a leg that was
+# submitted as a PAIR: the default name is built from MODS, so re-submitting just mirnov would
+# resolve to ignite_codecs_mirnov_gsmulti while its arms actually live in
+# ignite_codecs_co2_mirnov_gsmulti -- the launcher would find no codec_last.pt and silently
+# RESTART all four arms from scratch instead of resuming them.
+export OUT_DIR="${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_codecs_${_TAG}_${OUT_DIR_TAG:-${SWEEP}}}"
 export EXTRA_ARGS="${BASE}"
 export ARMS="${ARMS_STR}"
 mkdir -p "${OUT_DIR}"
