@@ -334,6 +334,44 @@ def band_slices(cfg, F: int, bands_khz: List[tuple]) -> List[tuple]:
     return out
 
 
+_CHUNK = 24
+
+
+def _hf_chunked(a: np.ndarray, b0: int, b1: int, chunk: int = _CHUNK) -> float:
+    """gate._hf_gradient_energy over a frequency slice, accumulated in window chunks.
+
+    The metric is a SUM of squared finite differences, so chunking is exact (not an
+    approximation) as long as the split is along the WINDOW axis, which carries no
+    differences. Chunking matters: at 40 channels the full-band float64 copy of a 320-window
+    pool is 5 GB and the metric's temporaries multiply that -- the same trap that got
+    _specport_plateau's host process SIGKILLed.
+    """
+    tot = 0.0
+    for i in range(0, a.shape[0], chunk):
+        tot += gate._hf_gradient_energy(a[i:i + chunk, :, b0:b1, :].astype(np.float64))
+    return tot
+
+
+def _metrics_chunked(r: np.ndarray, t: np.ndarray, m: Optional[np.ndarray],
+                     b0: int, b1: int, chunk: int = _CHUNK) -> Dict[str, float]:
+    """gate.full_spectro_metrics over a frequency slice, averaged over window chunks.
+
+    Same convention as the trainer's gate and analysis/_specport_plateau.py: a per-chunk mean
+    of the per-(window, channel) means. Exact when chunks are equal-sized; the last chunk is
+    weighted by its window count so an uneven tail cannot bias the result.
+    """
+    acc, wts = [], []
+    for i in range(0, r.shape[0], chunk):
+        sl = slice(i, i + chunk)
+        met = gate.full_spectro_metrics(
+            r[sl, :, b0:b1, :].astype(np.float64), t[sl, :, b0:b1, :].astype(np.float64),
+            band_bins=None, mask=(None if m is None else m[sl]))
+        acc.append((met["spec_nrmse"], met["spec_corr2d"]))
+        wts.append(r[sl].shape[0])
+    a = np.average(np.array(acc), axis=0, weights=wts)
+    return {"spec_nrmse": float(a[0]), "spec_corr2d": float(a[1])}
+
+
 def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
                      arms: List[tuple], device="cpu", batch: int = 8,
                      n_bands: int = 16, smooth: int = 5,
@@ -341,13 +379,14 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
     """Print the GT coherence profile, the two oracles, and each arm's per-band sharpness."""
     B, C, F, T = X.shape
     print(f"\n=== {modality}: WHERE THE MODE STRUCTURE IS  ({B} held-out windows, "
-          f"{C} ch, {F} bins x {T} frames, bin {bin_to_khz(cfg, 1) * 1e3:.0f} Hz) ===")
+          f"{C} ch, {F} bins x {T} frames, bin {bin_to_khz(cfg, 1) * 1e3:.0f} Hz) ===",
+          flush=True)
     prof = band_structure(X, M, n_bands=n_bands, smooth=smooth)
     print(f"{'band (kHz)':>16}{'GT std':>9}{'ac1':>8}{'coh_frac':>10}   "
-          f"(ac1 ~ 0 = realization speckle; high = temporally coherent = MODES)")
+          f"(ac1 ~ 0 = realization speckle; high = temporally coherent = MODES)", flush=True)
     for r in prof:
         print(f"{bin_to_khz(cfg, r['b0']):7.1f}-{bin_to_khz(cfg, r['b1']):6.1f}"
-              f"{r['std']:>9.3f}{r['ac1']:>8.3f}{r['coh_frac']:>10.3f}")
+              f"{r['std']:>9.3f}{r['ac1']:>8.3f}{r['coh_frac']:>10.3f}", flush=True)
 
     # ORACLES + arms, scored on the FULL band and on each requested sub-band.
     bands = [("full", 0, F)] + (band_slices(cfg, F, bands_khz) if bands_khz else [])
@@ -365,26 +404,23 @@ def structure_report(modality: str, X: np.ndarray, M: np.ndarray, cfg,
         del codec
 
     print(f"\n{'predictor':<18}" + "".join(
-        f"{nm + ' hf':>16}{nm + ' nRMSE':>17}" for nm, _a, _b in bands))
+        f"{nm + ' hf':>16}{nm + ' nRMSE':>17}" for nm, _a, _b in bands), flush=True)
     gt_line = f"{'GROUND TRUTH':<18}"
     for _nm, b0, b1 in bands:
-        g = X[:, :, b0:b1, :]
-        gt_line += f"{gate._hf_gradient_energy(g.astype(np.float64)):>16.4g}{0.0:>17.4f}"
-    print(gt_line)
+        gt_line += f"{_hf_chunked(X, b0, b1):>16.4g}{0.0:>17.4f}"
+    print(gt_line, flush=True)
     rows = []
     for label, r in preds:
         line = f"{label:<18}"
         rec = {"label": label}
         for nm, b0, b1 in bands:
-            g = X[:, :, b0:b1, :].astype(np.float64)
-            rr = r[:, :, b0:b1, :].astype(np.float64)
-            hf = gate._hf_gradient_energy(rr) / max(gate._hf_gradient_energy(g), 1e-12)
-            met = gate.full_spectro_metrics(rr, g, band_bins=None, mask=M)
+            hf = _hf_chunked(r, b0, b1) / max(_hf_chunked(X, b0, b1), 1e-12)
+            met = _metrics_chunked(r, X, M, b0, b1)
             line += f"{hf:>16.3f}{met['spec_nrmse']:>17.4f}"
             rec[f"{nm}_hf_ratio"] = hf
             rec[f"{nm}_nrmse"] = met["spec_nrmse"]
             rec[f"{nm}_corr2d"] = met["spec_corr2d"]
-        print(line)
+        print(line, flush=True)
         rows.append(rec)
     print("\n  hf here is recon HF-gradient energy / GT HF-gradient energy IN THAT BAND "
           "(ideal 1.0). nRMSE is a FLOOR (< 1.0), never the ranking key.")
@@ -431,7 +467,31 @@ def score_arm(label: str, ckpt: str, X: np.ndarray, M: np.ndarray, seq: Optional
     return row
 
 
-def print_table(rows: List[Dict], floor: Optional[float] = None):
+def hf_references(X: np.ndarray, cfg, smooth: int = 5) -> Dict[str, float]:
+    """The two hf_ratio CALIBRATION points every arm must be read against.
+
+    ``hf_ratio`` 1.0 is NOT the target. Most of a spectrogram's HF gradient energy is
+    frame-to-frame realization speckle, which no codec can or should reproduce (the recorded
+    turbulent-tokenization finding: 87-91% of these codes flip per frame). So:
+
+      hf_tsmooth   GT low-passed over ``smooth`` STFT frames. The ceiling for a codec that
+                   reproduces ALL temporally coherent structure and NO speckle -- measured
+                   0.250 on co2. This is the number an arm is trying to approach.
+      hf_patchmean the exact per-(channel, patch) mean at infinite precision. The floor a
+                   token grid gives you for free if a token says only "this patch's level"
+                   -- measured 0.015 on co2. An arm below this has learned nothing the grid
+                   did not already imply.
+    """
+    gt = gate._hf_gradient_energy(X.astype(np.float64))
+    return {
+        "hf_tsmooth": gate._hf_gradient_energy(tsmooth_oracle(X, smooth)) / max(gt, 1e-12),
+        "hf_patchmean": gate._hf_gradient_energy(
+            patchmean_oracle(X, cfg.patch_f, cfg.patch_t).astype(np.float64)) / max(gt, 1e-12),
+    }
+
+
+def print_table(rows: List[Dict], floor: Optional[float] = None,
+                hf_ref: Optional[Dict[str, float]] = None):
     hdr = (f"{'arm':<16}{'step':>7}{'nRMSE':>9}{'corr2d':>8}{'std_r':>7}{'lattice':>9}"
            f"{'GTlat':>7}{'hf_r':>7}{'bits/win':>10}{'%ceil':>7}{'codes':>10}"
            f"{'m_over':>9}{'m_trans':>9}{'n_tr':>7}")
@@ -462,8 +522,16 @@ def print_table(rows: List[Dict], floor: Optional[float] = None):
           f"self {b['base_self']:.4f}  wcmean {b['base_wcmean']:.4f} (the 1.0 anchor)  "
           f"tmean {b['base_tmean']:.4f}  cfmean {b['base_cfmean']:.4f}")
     if floor is not None:
-        print(f"out-of-sample LINEAR FLOOR at k=n_tok: {floor:.4f}  "
-              f"-> an arm PASSES criterion 1 iff nRMSE < {floor:.4f}")
+        print(f"out-of-sample LINEAR FLOOR at k=n_tok: {floor:.4f}  (context only -- nRMSE is "
+              f"a floor to CLEAR, not the ranking key)")
+    if hf_ref:
+        print(f"\nhf_ratio CALIBRATION on these windows: coherent ceiling (GT smoothed over 5 "
+              f"STFT frames) {hf_ref['hf_tsmooth']:.3f}  |  patch-level floor (exact per-patch "
+              f"mean) {hf_ref['hf_patchmean']:.3f}")
+    print("RANKING KEY: hf_ratio toward the coherent ceiling, read WITH lattice vs GTlat "
+          "(a high hf at a high lattice is checkerboard, not modes). nRMSE < 1.0 is a FLOOR; "
+          "do NOT rank on it, and do NOT treat tmean as a target -- it has zero temporal "
+          "structure by construction.")
 
 
 # ------------------------------------------------------------------------------------ #
@@ -666,7 +734,7 @@ def main():
         print(f"  scored {label}", flush=True)
     if not rows:
         raise SystemExit("no arms scored")
-    print_table(rows, floor=args.floor)
+    print_table(rows, floor=args.floor, hf_ref=hf_references(X, cfg0))
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(rows, indent=1, default=float))

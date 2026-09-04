@@ -85,6 +85,49 @@ for M in ${MODS}; do
             echo "[submit] ${M}: no warm codec_${M}_presence_lengths.pt -> masked but UNFILTERED" >&2
         fi ;;
     esac
+    if [ "${SWEEP}" = "sharp" ]; then
+        # THE MODE-LINE sweep: freq_grad_weight, the one term in the objective whose gradient
+        # actually PAYS for putting a line inside a patch.
+        #
+        # WHY, from the zoomed co2 figure (ms5, shot 204984 ch 2, 0-60 kHz): the GT has thin
+        # coherent tracks 1-2 STFT bins wide (a rising line at 10-20 kHz through 1.3-1.7 s, a
+        # multi-line braid at 20-50 kHz through 2.3-2.5 s) and the reconstruction has NONE --
+        # it is visibly blocky on the 16-bin x 16-frame patch lattice, i.e. near-constant
+        # inside each patch, which is what the patchmean oracle (hf 0.015) looks like.
+        #
+        # The gradient argument for the lever: a line occupies ~1-2 of a patch's 16 frequency
+        # bins, so turning a flat patch into "line in the right bin" barely moves pixel-L1
+        # (~10% of the patch area improves, the rest gets marginally worse) -- L1 does not pay
+        # for it. losses.freq_gradient_loss is L1 on the FREQUENCY DERIVATIVE, where a line is
+        # a large +/- spike and a flat patch is ~0, so the same change moves it a lot. It is
+        # also half of the ranking metric by construction (hf_ratio is HF gradient energy over
+        # frequency AND time). It has been 0.0 in every production arm to date.
+        #
+        # multiscale_recon_scales 1,2,4 is the paired control on the OTHER end: at the default
+        # (2,4) every multiscale term is L1 on an AVG-POOLED (low-passed) copy, so the recipe
+        # carries a 2.0-weighted "match my blurred spectrogram" term and never scores full
+        # resolution at all. Adding scale 1 makes it a real multi-resolution pyramid.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_fg20_s1|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_fg20_s2|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_fg20msc_s1|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --multiscale_recon_scales 1,2,4 --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_fg5|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 5"
+                ARMS_STR="${ARMS_STR};${M}_fg20|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_fg5|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 5"
+                ARMS_STR="${ARMS_STR};${M}_fg20|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20"
+                ARMS_STR="${ARMS_STR};${M}_fg20msc|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --multiscale_recon_scales 1,2,4"
+                ;;
+        esac
+        continue
+    fi
     if [ "${SWEEP}" = "struct" ]; then
         # STRUCTURE sweep: the two levers MEASURED to raise hf_ratio, plus the structural one.
         #
