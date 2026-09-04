@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - **Python** `>=3.11,<3.12` (pinned by `[tool.pixi.dependencies]`). The env has numpy 2.4.2, scipy 1.17.0, pandas 3.0.0, h5py 3.15.1, pyyaml 6.0.3, pytest 9.0.2.
-- **Ruff `line-length = 88`** is the only lint rule in the repo. Follow it; there is no other style config.
+- **Lint: `pixi run -e labelmaker ruff check src/labelmaker tests/labelmaker` must be clean.** Measured on 2026-09-03, and not what `pyproject.toml` appears to say: the repo declares only `[tool.ruff] line-length = 88`, but the installed ruff (0.16.5) applies a broad default rule set - `UP`, `B`, `S`, `BLE`, `ASYNC`, `YTT` among others - and **`E501` is not in it**. So the 88-column figure is a formatter target that nothing enforces, and the rest of the repo exceeds it 2,659 times. Stay near 88 columns to match the surrounding code, but a long line is not a defect; a `ruff check` finding is. Run it over the whole package, not just the files a task touched - two real errors (`UP037`, `UP017`) survived five task reviews because each one checked only its own files.
+- **`except Exception` is deliberate where this plan uses it**, and ruff's default `BLE001` will flag it. Per-shot and per-signal isolation is the pipeline's core resilience property, so add `# noqa: BLE001` on those handlers with a short reason rather than narrowing the catch - an unforeseen exception class from h5py or toksearch is exactly what must not kill a 100-shot run.
 - **No Pydantic.** Repo convention is `@dataclass(frozen=True)` and plain functions. Config over code.
 - **No imports from `tokamak_foundation_model`.** Labelmaker sits on the `ignite/gate.py` side of the reuse boundary: numpy, h5py, scipy, stdlib only, plus import-guarded toksearch. Conventions that are shared (the time base) are *copied with a comment naming the source*, not imported.
 - **No TensorFlow anywhere in `src/labelmaker/`.** conda-forge's only `tensorflow-cpu` is 2.21.0 with a **py312** build, which cannot be installed next to this repo's `python <3.12` pin. TensorFlow appears exactly once, in a throwaway uv venv, in Task 14's fidelity check.
@@ -205,7 +206,7 @@ class Paths:
     corpus: Path = DEFAULT_CORPUS
 
     @classmethod
-    def from_env(cls) -> "Paths":
+    def from_env(cls) -> Paths:
         return cls(
             root=Path(os.environ.get("LABELMAKER_ROOT", str(DEFAULT_ROOT))),
             corpus=Path(os.environ.get("LABELMAKER_CORPUS", str(DEFAULT_CORPUS))),
@@ -1067,7 +1068,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import h5py
@@ -1156,7 +1157,7 @@ def write_features(
     for name in [n for n, a in arrays.items() if a.y.shape[-1] < 2]:
         missing[name] = f"OneSampleAmbiguous({arrays[name].y.shape[-1]})"
         del arrays[name]
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    now = datetime.now(UTC).isoformat(timespec="seconds")
     tmp = path.with_name(path.name + ".tmp")
     with h5py.File(tmp, "w") as f:
         f.attrs["shot"] = int(shot)
@@ -1711,6 +1712,24 @@ def test_wrong_number_of_inputs_is_an_error(tmp_path):
         g([np.zeros((1, 7))])        # wrong feature width
 
 
+def test_predict_members_refuses_a_multi_output_graph(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "in", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("Dense", "a", ["in"], units=1, activation="linear", use_bias=False),
+            _layer("Dense", "b", ["in"], units=1, activation="linear", use_bias=False),
+        ],
+        [["in", 0, 0]],
+        [["a", 0, 0], ["b", 0, 0]],
+        {"a": {"kernel": np.ones((2, 1))}, "b": {"kernel": np.ones((2, 1))}},
+    )
+    graphs = load_ensemble([p])
+    with pytest.raises(ValueError, match="single-output"):
+        predict_members(graphs, [np.zeros((1, 2))])
+
+
 pytestmark_upstream = pytest.mark.skipif(
     not TM_UPSTREAM.exists(), reason=f"upstream weights not available: {TM_UPSTREAM}"
 )
@@ -2041,8 +2060,9 @@ def predict_members(graphs, inputs) -> np.ndarray:
     for g in graphs:
         got = g(inputs)
         if len(got) != 1:
-            raise UnsupportedLayer(
-                f"expected a single output, got {len(got)}: {g.output_names}"
+            raise ValueError(
+                f"expected a single-output graph, got {len(got)} outputs: "
+                f"{g.output_names}"
             )
         outs.append(np.atleast_2d(got[0]))
     return np.stack(outs, axis=0)
@@ -3385,7 +3405,7 @@ def verify_artifacts(slug: str, model_dir) -> None:
 cd /scratch/gpfs/nc1514/FusionAIHub
 pixi run -e labelmaker python - <<'PY'
 import json, shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from labelmaker.config import Paths
@@ -3411,7 +3431,7 @@ for name in tm.ARTIFACTS:
             "slug": tm.SLUG,
             "card_id": tm.CARD_ID,
             "upstream": str(tm.UPSTREAM),
-            "copied_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "copied_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "artifacts": records,
         },
         indent=2,
@@ -3933,7 +3953,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import h5py
@@ -3980,7 +4000,7 @@ def write_labels(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     slug = specs[0].slug
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    now = datetime.now(UTC).isoformat(timespec="seconds")
     tmp = path.with_name(path.name + ".tmp")
     with h5py.File(tmp, "w") as f:
         if merge and path.exists():
@@ -5464,7 +5484,7 @@ import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -5746,7 +5766,7 @@ def main(argv=None) -> int:
     if not shots:
         print("no shots selected", file=sys.stderr)
         return 1
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{args.stage}-{stamp}"
     ctx = RunContext(
         paths=paths,
@@ -5763,7 +5783,7 @@ def main(argv=None) -> int:
         {
             "stage": args.stage,
             "run_id": run_id,
-            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "labelmaker_version": __version__,
             "git_sha": git_sha(),
             "hostname": socket.gethostname(),
