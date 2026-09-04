@@ -55,22 +55,36 @@ class FeatureSpec:
 # The `archive` locators are columns of
 # /projects/EKOLEMEN/profile_predictor/DATA/new_h5_data/example_191450_183224.h5
 # (5,000 shots, 183224..191450, 240 rows at 25 ms), which is the store the
-# Phase 1 model's training features were built from. `fdp` locators are
-# verified against that store in Task 11 Step 1 before any bulk fetch.
+# Phase 1 model's training features were built from. Every `fdp` locator
+# below was fetched live and compared against that store before any bulk
+# fetch; the per-feature figures are in `resolve_fdp`'s docstring, which also
+# records the ~25 ms lag the archive's rows carry relative to the raw
+# records, since the comparison had to correct for it.
 FEATURES: tuple[FeatureSpec, ...] = (
     FeatureSpec(
         name="ip", kind="scalar", units="A",
         sources=("archive", "fdp"),
         locators=("ip", "ip"),
         step=0.001,
-        notes="archive column is bit-identical to the model's training input",
+        notes="archive column is bit-identical to the model's training input. "
+              "The fdp locator is a PTDATA point in AMPS and needs no scale "
+              "factor: median ratio to the archive column 1.000034 over a "
+              "random 120 overlap shots, median relative difference 1.1e-3. "
+              "It is also the wider source - the archive omits `ip` on 2,192 "
+              "of its 5,000 shots (present on 2,808, 56.2%) while fdp served "
+              "it on all 120",
     ),
     FeatureSpec(
         name="bt", kind="scalar", units="T",
         sources=("archive", "fdp"),
         locators=("bt", "bt"),
         step=0.001,
-        notes="archive column is bit-identical to the model's training input",
+        notes="archive column is bit-identical to the model's training input. "
+              "The fdp locator is a PTDATA point in TESLA and needs no scale "
+              "factor: median ratio 0.999992, median relative difference "
+              "1.0e-3, same 120-shot sample. Same archive coverage gap as "
+              "`ip`: the two columns are present on exactly the same 2,808 "
+              "shots",
     ),
     FeatureSpec(
         name="pinj_total", kind="scalar", units="kW",
@@ -132,72 +146,114 @@ FEATURES: tuple[FeatureSpec, ...] = (
         name="r0", kind="scalar", units="m",
         sources=("archive", "fdp"),
         locators=("rmaxis_EFIT01", r"\efit01::top.results.geqdsk:rmaxis"),
-        notes="stands in for R0_EFITRT1; measured 8.8e-3 median relative "
-              "difference on shot 185945",
+        notes="stands in for R0_EFITRT1. fdp against the archive: median "
+              "relative difference 7.9e-4 over a RANDOM 120 overlap shots "
+              "(seed 12), median ratio 1.000000. An earlier note here said "
+              "8.8e-3 on shot 185945 alone; that comparison had not "
+              "corrected for the archive's 25 ms row lag - see "
+              "`resolve_fdp`'s docstring for the lag and the full table",
     ),
     FeatureSpec(
         name="kappa", kind="scalar", units="",
         sources=("archive", "fdp"),
         locators=("kappa_EFIT01", r"\efit01::top.results.aeqdsk:kappa"),
-        notes="stands in for kappa_EFITRT1; measured 3.1e-3",
+        notes="stands in for kappa_EFITRT1; fdp against the archive 1.2e-3 "
+              "median relative difference, ratio 1.000000, 120 shots",
     ),
     FeatureSpec(
         name="tritop", kind="scalar", units="",
         sources=("archive", "fdp"),
         locators=("tritop_EFIT01", r"\efit01::top.results.aeqdsk:tritop"),
-        notes="bit-identical to the training input",
+        notes="bit-identical to the training input; fdp against the archive "
+              "3.2e-3 median relative difference, ratio 1.000000, 120 shots",
     ),
     FeatureSpec(
         name="tribot", kind="scalar", units="",
         sources=("archive", "fdp"),
         locators=("tribot_EFIT01", r"\efit01::top.results.aeqdsk:tribot"),
-        notes="bit-identical to the training input",
+        notes="bit-identical to the training input; fdp against the archive "
+              "2.8e-3 median relative difference, ratio 1.000000, 120 shots",
     ),
     FeatureSpec(
         name="gapin", kind="scalar", units="m",
         sources=("archive", "fdp"),
         locators=("gapin_EFIT01", r"\efit01::top.results.aeqdsk:gapin"),
-        notes="bit-identical to the training input",
+        notes="bit-identical to the training input; fdp against the archive "
+              "7.3e-3 median relative difference, ratio 1.000000, 120 shots",
     ),
     FeatureSpec(
         name="betan", kind="scalar", units="",
         sources=("archive", "fdp"),
         locators=("betan_EFIT01", r"\efit01::top.results.aeqdsk:betan"),
         notes="not a model input; the model predicts it, and validation "
-              "compares against it",
+              "compares against it. fdp against the archive 1.3e-2 median "
+              "relative difference, ratio 1.000000, 120 shots",
     ),
     FeatureSpec(
         name="qpsi", kind="profile", units="",
         sources=("archive", "fdp"),
         locators=("qpsi_EFIT01", r"\efit01::top.results.geqdsk:qpsi"),
-        notes="stands in for qpsi_EFITRT1; measured 6.4e-2. The model "
-              "consumes 1/qpsi, applied by the adapter, not here",
+        notes="stands in for qpsi_EFITRT1. The model consumes 1/qpsi, "
+              "applied by the adapter, not here. fdp against the archive "
+              "6.9e-3 median relative difference over 120 shots. NOTE the "
+              "radial axis: the geqdsk node arrives on 65 points of "
+              "NORMALIZED PSI, and the archive column is those points' even "
+              "indices - i.e. `RHO_GRID` here is a uniform psi grid for the "
+              "two EFIT profiles, not rho, despite its name. Converting psi "
+              "to rho with geqdsk `rhovn` was tried and is 7x WORSE "
+              "(6.9e-2); see `resolve_fdp`'s docstring for the table",
     ),
     FeatureSpec(
         name="pres", kind="profile", units="Pa",
         sources=("archive", "fdp"),
         locators=("pres_EFIT01", r"\efit01::top.results.geqdsk:pres"),
-        notes="bit-identical to the training input",
+        notes="bit-identical to the training input. fdp against the archive "
+              "3.0e-2 median relative difference over 120 shots - the "
+              "loosest of the thirteen, and it barely improves on "
+              "exactly-coincident rows (2.9e-2), so it is the offline "
+              "EFIT01 tree having been rerun since the store was built, not "
+              "a sampling artefact. Same normalized-psi radial axis as "
+              "`qpsi`, where the rhovn conversion is 10x worse on the "
+              "shot-185945 exact-time comparison",
     ),
     FeatureSpec(
         name="ne_zipfit", kind="profile", units="1e19 m^-3",
         sources=("archive", "fdp"),
         locators=("zipfit_edensfit_rho", r"\ZIPFIT01::TOP.PROFILES.EDENSFIT"),
-        notes="stands in for thomson_density_mtanh_1d; measured 2.0e-1 "
-              "median relative difference, correlation 0.984. Our own mtanh "
-              "fit to raw Thomson is Phase 2",
+        notes="stands in for thomson_density_mtanh_1d. Our own mtanh fit to "
+              "raw Thomson is Phase 2. fdp is in 1e19 m^-3 (the node's own "
+              "units field) and needs no scale factor: median ratio to the "
+              "archive column 0.999352, median relative difference 1.3e-2 "
+              "over 120 shots. An earlier note here said 2.0e-1 with "
+              "correlation 0.984, which is not reproducible - that "
+              "comparison had not corrected for the archive's 25 ms row "
+              "lag. Its x axis IS rho (121 points), so this path "
+              "interpolates only, with no coordinate conversion. Absent on "
+              "10 of the 120 sampled shots and single-sliced on 1",
     ),
     FeatureSpec(
         name="te_zipfit", kind="profile", units="keV",
         sources=("archive", "fdp"),
         locators=("zipfit_etempfit_rho", r"\ZIPFIT01::TOP.PROFILES.ETEMPFIT"),
-        notes="stands in for thomson_temp_mtanh_1d; measured 1.8e-1, 0.991",
+        notes="stands in for thomson_temp_mtanh_1d; fdp in keV, no scale "
+              "factor (ratio 0.999438), 1.2e-2 median relative difference "
+              "over 120 shots. Absent on the same 10 shots as the density",
     ),
     FeatureSpec(
-        name="rot_zipfit", kind="profile", units="krad/s",
+        name="rot_zipfit", kind="profile", units="kHz",
         sources=("archive", "fdp"),
         locators=("zipfit_trotfit_rho", r"\ZIPFIT01::TOP.PROFILES.TROTFIT"),
-        notes="stands in for cer_rot_csaps_1d; measured 1.7e-1, 0.980",
+        notes="stands in for cer_rot_csaps_1d. Units are kHz, not krad/s "
+              "and not km/s: MEASURED from the node's own units field "
+              "(the TROTFIT node reports `kHz`), which "
+              "settles the question carried from Task 8 - magnitude alone "
+              "could not, since v = omega*R with R ~ 1.75 m puts all three "
+              "readings in the same range. The model's domain rule "
+              "`absmax < 150` therefore reads as 150 kHz. No scale factor "
+              "against the archive (ratio 1.000000), 1.1e-2 median relative "
+              "difference over 120 shots. The THINNEST of the thirteen: "
+              "absent on 26 of the 120 sampled shots and single-sliced on "
+              "1, so ~22% of shots have no rotation profile at all",
     ),
     FeatureSpec(
         name="ech_rho", kind="scalar", units="",
