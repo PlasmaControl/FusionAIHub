@@ -67,6 +67,21 @@ class Paths:
             d.mkdir(parents=True, exist_ok=True)
 
 
+def sha256_of(path) -> str:
+    """Hex digest of a file, read in 1 MiB blocks.
+
+    Lives here beside `git_sha` because both answer the same question about
+    an artifact: exactly which bytes produced this output.
+    """
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 def git_sha() -> str:
     """Short sha of the checkout that produced an artifact, or 'unknown'."""
     try:

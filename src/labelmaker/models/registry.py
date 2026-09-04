@@ -9,13 +9,13 @@ keeps the card honest about the first two.
 """
 from __future__ import annotations
 
-import hashlib
 import importlib
 import re
 from pathlib import Path
 
 import yaml
 
+from ..config import sha256_of  # re-exported: registry.sha256_of is the public name
 from .base import ModelAdapter
 
 MODELS_DIR = Path(__file__).resolve().parent
@@ -118,15 +118,6 @@ def card_discrepancies(slug: str) -> list[str]:
     if int(card.get("ensemble_n") or 1) != adapter.ensemble_n:
         out.append(f"ensemble_n: card {card.get('ensemble_n')} != {adapter.ensemble_n}")
     return out
-
-
-def sha256_of(path) -> str:
-    """Hex digest of a file, read in 1 MiB blocks."""
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for block in iter(lambda: fh.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def verify_artifacts(slug: str, model_dir) -> None:
