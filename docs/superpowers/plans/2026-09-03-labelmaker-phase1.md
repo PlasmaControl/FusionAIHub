@@ -1613,6 +1613,23 @@ def test_dropout_is_identity_and_graph_order_may_be_arbitrary(tmp_path):
     np.testing.assert_allclose(g([a, b])[0], [[1, 2, 3, 4, 5]])
 
 
+def test_a_dict_feed_missing_an_input_is_named_in_the_error(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "a", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("Concatenate", "cat", ["a", "b"], axis=-1),
+            _layer("InputLayer", "b", [], batch_input_shape=[None, 3], dtype="float32"),
+        ],
+        [["a", 0, 0], ["b", 0, 0]],
+        [["cat", 0, 0]],
+        {},
+    )
+    with pytest.raises(ValueError, match="'b'"):
+        load_graph(p)({"a": np.zeros((1, 2))})
+
+
 def test_unsupported_layer_names_the_class(tmp_path):
     p = tmp_path / "m.h5"
     _write_legacy_h5(
@@ -1861,8 +1878,6 @@ class KerasGraph:
         layers = {lay["config"]["name"]: lay for lay in self.config["config"]["layers"]}
         for name, lay in layers.items():
             if lay["class_name"] == "InputLayer":
-                if name not in feed:
-                    raise ValueError(f"missing input {name!r}")
                 tensors[name] = np.asarray(feed[name], dtype=np.float64)
         pending = [lay for lay in layers.values() if lay["class_name"] != "InputLayer"]
         while pending:
@@ -1891,6 +1906,11 @@ class KerasGraph:
                     f"{self.input_names}, got {len(seq)}"
                 )
             feed = dict(zip(self.input_names, seq))
+        for name in self.input_names:
+            if name not in feed:
+                raise ValueError(
+                    f"missing input {name!r}; this graph expects {self.input_names}"
+                )
         for name, want in self.input_shapes.items():
             got = np.asarray(feed[name]).shape
             if len(got) != len(want) or got[1:] != tuple(want[1:]):
