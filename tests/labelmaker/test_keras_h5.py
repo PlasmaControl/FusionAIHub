@@ -1,0 +1,251 @@
+"""The numpy evaluator reproduces Keras semantics layer by layer.
+
+Every expectation here is hand-computed from the layer definition, so the
+tests are an independent oracle rather than a recording of our own output.
+Equality with TensorFlow itself is Task 14.
+"""
+import json
+from pathlib import Path
+
+import h5py
+import numpy as np
+import pytest
+
+from labelmaker.models.runners.keras_h5 import (
+    UnsupportedLayer,
+    load_ensemble,
+    load_graph,
+    predict_members,
+)
+
+TM_UPSTREAM = Path(
+    "/projects/EKOLEMEN/simple_ae_predictor/models/rt_multi_io/mse_bin_os_w"
+)
+
+
+def _layer(cls, name, inbound, **cfg):
+    node = [[[i, 0, 0, {}] for i in inbound]] if inbound else []
+    return {"class_name": cls, "config": {"name": name, **cfg}, "inbound_nodes": node}
+
+
+def _write_legacy_h5(path, layers, input_layers, output_layers, weights):
+    """A Keras-2.8-shaped legacy HDF5 file, written without TensorFlow."""
+    cfg = {
+        "class_name": "Functional",
+        "config": {
+            "name": "m",
+            "layers": layers,
+            "input_layers": input_layers,
+            "output_layers": output_layers,
+        },
+    }
+    with h5py.File(path, "w") as f:
+        f.attrs["keras_version"] = "2.8.0"
+        f.attrs["backend"] = "tensorflow"
+        f.attrs["model_config"] = json.dumps(cfg)
+        mw = f.create_group("model_weights")
+        for lname in [lay["config"]["name"] for lay in layers]:
+            g = mw.create_group(lname)
+            names = []
+            for wname, arr in weights.get(lname, {}).items():
+                full = f"{lname}/{wname}:0"
+                g.create_dataset(full, data=np.asarray(arr, dtype=np.float32))
+                names.append(full.encode())
+            g.attrs["weight_names"] = names
+
+
+def _sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def test_dense_with_sigmoid_matches_hand_computation(tmp_path):
+    p = tmp_path / "m.h5"
+    kernel = np.array([[1.0, -2.0], [0.5, 0.25], [0.0, 3.0]])
+    bias = np.array([0.1, -0.1])
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "in", [], batch_input_shape=[None, 3], dtype="float32"),
+            _layer("Dense", "d", ["in"], units=2, activation="sigmoid", use_bias=True),
+        ],
+        [["in", 0, 0]],
+        [["d", 0, 0]],
+        {"d": {"kernel": kernel, "bias": bias}},
+    )
+    g = load_graph(p)
+    assert g.input_names == ("in",) and g.output_names == ("d",)
+    x = np.array([[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]])
+    out = g([x])[0]
+    np.testing.assert_allclose(out, _sigmoid(x @ kernel + bias), rtol=1e-12)
+
+
+def test_batchnorm_uses_moving_statistics(tmp_path):
+    p = tmp_path / "m.h5"
+    stats = {
+        "gamma": np.array([2.0, 1.0]),
+        "beta": np.array([0.5, -0.5]),
+        "moving_mean": np.array([1.0, 2.0]),
+        "moving_variance": np.array([4.0, 9.0]),
+    }
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "in", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("BatchNormalization", "bn", ["in"], axis=[1], epsilon=1e-3),
+        ],
+        [["in", 0, 0]],
+        [["bn", 0, 0]],
+        {"bn": stats},
+    )
+    x = np.array([[3.0, 5.0]])
+    out = load_graph(p)([x])[0]
+    want = stats["gamma"] * (x - stats["moving_mean"]) / np.sqrt(
+        stats["moving_variance"] + 1e-3
+    ) + stats["beta"]
+    np.testing.assert_allclose(out, want, rtol=1e-12)
+
+
+def test_conv1d_valid_then_maxpool_matches_hand_computation(tmp_path):
+    p = tmp_path / "m.h5"
+    kernel = np.array([[[1.0]], [[1.0]]])          # (k=2, cin=1, cout=1), sum of pairs
+    _write_legacy_h5(
+        p,
+        [
+            _layer(
+                "InputLayer", "in", [], batch_input_shape=[None, 5, 1], dtype="float32"
+            ),
+            _layer(
+                "Conv1D", "c", ["in"], filters=1, kernel_size=[2], strides=[1],
+                padding="valid", dilation_rate=[1], activation="linear", use_bias=True,
+            ),
+            _layer("MaxPooling1D", "mp", ["c"], pool_size=[2], strides=[2],
+                   padding="valid"),
+        ],
+        [["in", 0, 0]],
+        [["mp", 0, 0]],
+        {"c": {"kernel": kernel, "bias": np.array([0.0])}},
+    )
+    x = np.arange(5.0).reshape(1, 5, 1)            # 0 1 2 3 4
+    out = load_graph(p)([x])[0]
+    # conv -> [1, 3, 5, 7]; maxpool/2 -> [3, 7]
+    np.testing.assert_allclose(out[0, :, 0], [3.0, 7.0], rtol=1e-12)
+
+
+def test_flatten_is_channels_last(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer(
+                "InputLayer", "in", [], batch_input_shape=[None, 2, 3], dtype="float32"
+            ),
+            _layer("Flatten", "fl", ["in"]),
+        ],
+        [["in", 0, 0]],
+        [["fl", 0, 0]],
+        {},
+    )
+    x = np.arange(6.0).reshape(1, 2, 3)
+    np.testing.assert_allclose(load_graph(p)([x])[0][0], np.arange(6.0))
+
+
+def test_dropout_is_identity_and_graph_order_may_be_arbitrary(tmp_path):
+    # `input_1` is listed *after* the layer that consumes it, exactly as in the
+    # real artifact, so the evaluator cannot assume the list is topological.
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "a", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("Concatenate", "cat", ["a", "b"], axis=-1),
+            _layer("Dropout", "dr", ["cat"], rate=0.2),
+            _layer("InputLayer", "b", [], batch_input_shape=[None, 3], dtype="float32"),
+        ],
+        [["a", 0, 0], ["b", 0, 0]],
+        [["dr", 0, 0]],
+        {},
+    )
+    g = load_graph(p)
+    a = np.array([[1.0, 2.0]])
+    b = np.array([[3.0, 4.0, 5.0]])
+    np.testing.assert_allclose(g({"a": a, "b": b})[0], [[1, 2, 3, 4, 5]])
+    np.testing.assert_allclose(g([a, b])[0], [[1, 2, 3, 4, 5]])
+
+
+def test_a_dict_feed_missing_an_input_is_named_in_the_error(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "a", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("Concatenate", "cat", ["a", "b"], axis=-1),
+            _layer("InputLayer", "b", [], batch_input_shape=[None, 3], dtype="float32"),
+        ],
+        [["a", 0, 0], ["b", 0, 0]],
+        [["cat", 0, 0]],
+        {},
+    )
+    with pytest.raises(ValueError, match="'b'"):
+        load_graph(p)({"a": np.zeros((1, 2))})
+
+
+def test_unsupported_layer_names_the_class(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "in", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("LSTM", "l", ["in"], units=4),
+        ],
+        [["in", 0, 0]],
+        [["l", 0, 0]],
+        {},
+    )
+    with pytest.raises(UnsupportedLayer, match="LSTM"):
+        load_graph(p)([np.zeros((1, 2))])
+
+
+def test_wrong_number_of_inputs_is_an_error(tmp_path):
+    p = tmp_path / "m.h5"
+    _write_legacy_h5(
+        p,
+        [
+            _layer("InputLayer", "in", [], batch_input_shape=[None, 2], dtype="float32"),
+            _layer("Dense", "d", ["in"], units=1, activation="linear", use_bias=False),
+        ],
+        [["in", 0, 0]],
+        [["d", 0, 0]],
+        {"d": {"kernel": np.ones((2, 1))}},
+    )
+    g = load_graph(p)
+    with pytest.raises(ValueError):
+        g([np.zeros((1, 2)), np.zeros((1, 2))])
+    with pytest.raises(ValueError):
+        g([np.zeros((1, 7))])        # wrong feature width
+
+
+pytestmark_upstream = pytest.mark.skipif(
+    not TM_UPSTREAM.exists(), reason=f"upstream weights not available: {TM_UPSTREAM}"
+)
+
+
+@pytestmark_upstream
+def test_real_tearing_ensemble_loads_and_predicts():
+    paths = sorted(TM_UPSTREAM.glob("best_model_?_4c.h5"))
+    assert len(paths) == 10
+    graphs = load_ensemble(paths)
+    for g in graphs:
+        assert g.input_names == ("input_1", "input_2")
+        assert g.input_shapes["input_1"] == (None, 11)
+        assert g.input_shapes["input_2"] == (None, 33, 5)
+        assert g.output_names == ("dense_4",)
+    rng = np.random.default_rng(0)
+    x0 = rng.normal(size=(7, 11))
+    x1 = rng.normal(size=(7, 33, 5))
+    members = predict_members(graphs, {"input_1": x0, "input_2": x1})
+    assert members.shape == (10, 7, 2)
+    assert np.isfinite(members).all()
+    # the members are different models, not ten copies
+    assert members.std(axis=0).max() > 1e-6
+    again = predict_members(graphs, {"input_1": x0, "input_2": x1})
+    np.testing.assert_allclose(members, again)
