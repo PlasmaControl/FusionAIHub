@@ -7,8 +7,10 @@ reference harness `../../test/test.py`.
 The model takes eleven 0-D quantities at `t + 25 ms` and five 33-point
 profiles at `t`, and emits two columns: `betan` and a tearing logit. Input
 names and their order are `train.py:31-32` verbatim; the domain rules are
-`train.py:83`. Each branch starts with a BatchNormalization holding the
-training-set moving statistics, so no external scaler is needed.
+`train.py:83`. The profile branch opens with a BatchNormalization; the eleven
+0-D inputs go straight into the Concatenate and are normalised just after it,
+by the BatchNormalization on the 15-vector. Either way the graph normalises
+its own inputs, so there is no external scaler to recover.
 
 Substitutions, all measured in validation/d3d_tearing_onset_cnn1d/:
   R0_EFITRT1, kappa_EFITRT1, 1/qpsi_EFITRT1  <- offline EFIT01 equivalents
@@ -73,6 +75,9 @@ INPUT_SPEC = InputSpec(
         DomainRule("ne_zipfit", "max", hi=12.0),
         DomainRule("te_zipfit", "min", lo=0.0, lo_inclusive=True),
         DomainRule("te_zipfit", "max", hi=10.0),
+        # NB reduces the TRANSFORMED array, so this is max(1/qpsi) < 3 - the
+        # upstream clause. Read literally as max(qpsi) < 3 it would flag
+        # nearly every H-mode slice, so do not "fix" it.
         DomainRule("qpsi", "max", hi=3.0),
         DomainRule("pres", "min", lo=0.0, lo_inclusive=True),
         DomainRule("pres", "max", lo=0.0, hi=2.0e5),
@@ -82,7 +87,12 @@ INPUT_SPEC = InputSpec(
         DomainRule("tritop", "value", lo=0.0, hi=1.0),
         DomainRule("tribot", "value", lo=0.0, hi=1.0),
         DomainRule("gapin", "value", hi=0.2),
-        DomainRule("ech_rho", "value", lo=0.0, lo_inclusive=True),
+        # train.py:83's `x0[:, 10] >= 0` clause needs no rule here:
+        # `nonneg_zero_fill` on the field already maps every negative and NaN
+        # deposition location to 0.0, so a rule could never fire. Upstream
+        # dropped those rows; labelmaker relabels them 0, which IS the
+        # upstream convention for ECH-off (EC.RHO_ECH is 0.0 at the training
+        # median). Said here rather than left as dead code that looks live.
     ),
 )
 
