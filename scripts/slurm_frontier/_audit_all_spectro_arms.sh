@@ -75,28 +75,50 @@ for a in ece_m02_s2 ece_m05 ece_m02ms50;     do add "${a}" "${M_ADVM}/${a}"; don
 for a in ece_a02 ece_a02d ece_a02w;          do add "${a}" "${M_ADVB}/${a}"; done
 audit ece 0.9915
 ;; esac
-# ---- mirnov ORACLE CALIBRATION, LAST so a timeout cannot cost the score tables ---------- #
-# co2 already has this (co2_structure_peakf1.json): patchmean -- the exact per-(channel,
-# 16x16 patch) mean at INFINITE precision -- scores peak_f1 0.6537 and tsmooth5 scores 0.9936,
-# so co2's best arm at 0.6243 sits just BELOW what the patch grid gives for free and there is
-# a factor of 1.6 of real headroom above it. mirnov has NO such calibration, and without it
-# "mirnov peak_f1 0.5022" cannot be called either a near-ceiling result or a failure. Two arms
-# only: --mode structure is ~30 full-array metric evaluations per row.
-case " ${MODS} " in *" mirnov "*)
-if [ "${MIRNOV_STRUCT:-1}" = "1" ]; then
-    echo "=================== mirnov ORACLES ==================="
-    _SC="${SCRATCH_DIR:-/tmp/ignite_audit_$USER}"
-    mkdir -p "${_SC}/comgr" "${_SC}/miopen"
-    export AMD_COMGR_CACHE_DIR="${_SC}/comgr" MIOPEN_USER_DB_PATH="${_SC}/miopen"
-    export MIOPEN_CUSTOM_CACHE_DIR="${_SC}/miopen"
-    export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
-    _MA="a02d_s2_last=${M_ADVB}/mirnov_a02d_s2/codec_last.pt"
-    [ -f "${M_GSM}/mirnov_gsm32_s1/codec_last.pt" ] &&         _MA="${_MA},gsm32_s1_last=${M_GSM}/mirnov_gsm32_s1/codec_last.pt"
+# ---- ORACLE CALIBRATION, LAST so a timeout cannot cost the score tables ----------------- #
+# Two questions this stage answers and the score table cannot:
+#
+#  1. WHERE IS THE CEILING. co2 already has this (co2_structure_peakf1.json): patchmean -- the
+#     exact per-(channel, 16x16 patch) mean at INFINITE precision -- scores peak_f1 0.6537 and
+#     tsmooth5 scores 0.9936, so co2's best arm at 0.6243 sits just BELOW what the patch grid
+#     gives for free. mirnov has NO such calibration, and without it "mirnov peak_f1 0.5022"
+#     cannot be called either a near-ceiling result or a failure.
+#
+#  2. IS THE GRID ITSELF THE BLOCKER. n_tok = (512//patch_f) * (96//patch_t), so 8x32, 16x16,
+#     32x8 and 64x4 ALL give 192 tokens: they REALLOCATE the same 192 dimensions between
+#     frequency and time and leave FRAME_LAYOUT and the vocab untouched. peak_f1 is computed on
+#     the window's per-FREQUENCY profile with time averaged away, and modes are thin in
+#     frequency and extended in time, so a freq-finer grid should raise the ceiling. These rows
+#     are avg-pools -- no codec decode -- so they cost one metric pass each.
+_ORACLE_STRUCT="${ORACLE_STRUCT:-1}"
+_SC="${SCRATCH_DIR:-/tmp/ignite_audit_$USER}"
+mkdir -p "${_SC}/comgr" "${_SC}/miopen"
+export AMD_COMGR_CACHE_DIR="${_SC}/comgr" MIOPEN_USER_DB_PATH="${_SC}/miopen"
+export MIOPEN_CUSTOM_CACHE_DIR="${_SC}/miopen"
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+oracle() {  # oracle <modality> <label=ckpt list>
+    local M="$1" A="$2"
+    echo "=================== ${M} ORACLES + PATCH ASPECT ==================="
     .pixi/envs/frontier/bin/python analysis/spectro_final_fig.py --mode structure \
-        --modality mirnov --n_windows "${NW:-320}" --batch_size 8 --device cuda \
-        --arms "${_MA}" --bands_khz 0-10,10-30,30-60,60-120,120-250 \
-        --json eval_runs/codec_recon_figs/mirnov_structure_peakf1.json 2>&1 \
-        | grep --line-buffered -vE "it/s\]|^ *$" || echo "mirnov structure FAILED (tables already written)"
+        --modality "${M}" --n_windows "${NW:-320}" --batch_size 8 --device cuda \
+        --arms "${A}" --bands_khz 0-10,10-30,30-60,60-120,120-250 \
+        --patch_aspects 8x32,32x8 \
+        --json "eval_runs/codec_recon_figs/${M}_structure_peakf1.json" 2>&1 \
+        | grep --line-buffered -vE "it/s\]|^ *$" \
+        || echo "[oracle] ${M} structure FAILED (score tables already written)"
+}
+if [ "${_ORACLE_STRUCT}" = "1" ]; then
+    case " ${MODS} " in *" co2 "*)
+        _A="ms5=${M_CO2OLD}/ms5/codec_best.pt"
+        [ -f "${M_CO2FIX}/co2_r_gsm/codec_last.pt" ] && \
+            _A="${_A},co2_r_gsm_last=${M_CO2FIX}/co2_r_gsm/codec_last.pt" || true
+        oracle co2 "${_A}"
+        ;; esac
+    case " ${MODS} " in *" mirnov "*)
+        _A="a02d_s2_last=${M_ADVB}/mirnov_a02d_s2/codec_last.pt"
+        [ -f "${M_GSM}/mirnov_gsm32_s1/codec_last.pt" ] && \
+            _A="${_A},gsm32_s1_last=${M_GSM}/mirnov_gsm32_s1/codec_last.pt" || true
+        oracle mirnov "${_A}"
+        ;; esac
 fi
-;; esac
 echo "=== ALL SPECTRO ARM TABLES DONE ==="
