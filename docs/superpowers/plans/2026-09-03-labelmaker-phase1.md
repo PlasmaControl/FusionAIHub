@@ -4662,6 +4662,19 @@ def test_an_unknown_feature_name_is_refused(tmp_path):
         ra.resolve(190000, ["no_such_feature"], files=(p,))
 
 
+def test_a_profile_with_the_wrong_radial_width_is_refused(tmp_path):
+    # The store's convention is (T, n_rho). A time-first column would
+    # transpose into an array whose x and y lengths still agree, so it would
+    # pass every check here and fail much later inside InputSpec.build.
+    p = tmp_path / "archive.h5"
+    with h5py.File(p, "w") as f:
+        g = f.create_group("190000")
+        g.create_dataset("pres_EFIT01", data=np.zeros((33, 240)))   # transposed
+    got, missing = ra.resolve(190000, ["pres"], files=(p,))
+    assert got == {}
+    assert "RadialAxisMismatch" in missing["pres"]
+
+
 def test_a_shorter_record_keeps_its_own_grid(tmp_path):
     p = _fake_archive(tmp_path, n=120)
     got, _ = ra.resolve(190000, ["bt"], files=(p,))
@@ -4709,7 +4722,9 @@ its columns are bit-identical to that model's training inputs (see the
 plan's Deviation 6), which is why this resolver comes first in every
 feature's `sources`.
 
-It covers only 19% of the corpus (3,246 of 16,909 shots), so it is the
+It covers only 19% of the corpus (3,246 of 16,909 shots - the intersection,
+not the 3,621 corpus shots that merely fall inside its shot-number span), so
+it is the
 proof-of-concept path, not the scaling path. `resolve_fdp` is the latter.
 
 Availability varies per shot: some groups are missing individual columns, so
@@ -4786,6 +4801,15 @@ def resolve(
             if spec.kind == "profile":
                 if raw.ndim != 2:
                     missing[spec.name] = "ShapeError"
+                    continue
+                if raw.shape[1] != ns.RHO_GRID.size:
+                    # The store's convention is (T, n_rho). A column stored
+                    # time-first would transpose into something whose x and y
+                    # lengths still agree, so nothing downstream would catch
+                    # it until `build` failed on a broadcast, far from here.
+                    missing[spec.name] = (
+                        f"RadialAxisMismatch({raw.shape[1]}!={ns.RHO_GRID.size})"
+                    )
                     continue
                 y = raw.T                      # (n_rho, T)
                 n = y.shape[1]
