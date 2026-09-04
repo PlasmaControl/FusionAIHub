@@ -2351,6 +2351,38 @@ def test_a_measured_input_is_never_flagged_by_the_pair_rule():
     assert spec.build(feats, t).valid.all()
 
 
+def test_absent_ok_routes_an_absent_field_through_its_transform():
+    # Without absent_ok a wholly absent field stays NaN and invalidates every
+    # row, which is the right default. With it, the transform represents the
+    # absence and a pair rule decides whether that matters.
+    fields = (
+        InputField("ech_pwr", "ech_power_total", transform="nonneg_zero_fill"),
+        InputField("rho", "ech_rho", transform="nonneg_zero_fill", absent_ok=True),
+    )
+    pair = (UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),)
+    t = 0.025 * np.arange(4)
+    off = {"ech_power_total": FeatureArray(x=t, y=np.zeros((1, 4)))}
+    on = {"ech_power_total": FeatureArray(x=t, y=np.full((1, 4), 1.0e6))}
+
+    spec = InputSpec(fields=fields, dt_s=0.025, unknown_when_active=pair)
+    built = spec.build(off, t)                      # rho absent, power off
+    assert built.missing == ("ech_rho",)
+    np.testing.assert_allclose(built.scalars[:, 1], 0.0)
+    assert built.valid.all(), "a benign absence must not cost the shot its rows"
+    assert not spec.build(on, t).valid.any(), "absence with power flowing is a fabrication"
+
+
+def test_absent_ok_without_a_transform_is_rejected():
+    with pytest.raises(ValueError, match="absent_ok"):
+        InputField("rho", "ech_rho", absent_ok=True)
+
+
+def test_an_absent_field_without_absent_ok_still_invalidates_the_row():
+    spec = InputSpec(fields=(InputField("bt", "bt"), InputField("ip", "ip")), dt_s=0.025)
+    built = spec.build({"bt": _scalar_feature([1.0] * 6)}, GRID)
+    assert built.missing == ("ip",) and not built.valid.any()
+
+
 def test_a_pair_rule_naming_an_unknown_feature_is_rejected():
     with pytest.raises(KeyError):
         UnknownWhenActive(unknown="no_such_feature", active="ech_power_total")
@@ -2492,12 +2524,18 @@ class InputField:
     lag: str = "t"
     transform: str | None = None
     scale: float = 1.0
+    absent_ok: bool = False
 
     def __post_init__(self) -> None:
         if self.lag not in ("t", "t+dt"):
             raise ValueError(f"lag must be 't' or 't+dt', got {self.lag!r}")
         if self.transform is not None and self.transform not in TRANSFORMS:
             raise ValueError(f"unknown transform {self.transform!r}")
+        if self.absent_ok and self.transform is None:
+            raise ValueError(
+                f"{self.model_name}: absent_ok needs a transform to turn the "
+                "absence into a value"
+            )
         ns.by_name(self.canonical)  # fail loudly on a typo, at import time
 
     @property
@@ -2639,8 +2677,19 @@ class InputSpec:
             if arr is None:
                 missing.append(f.canonical)
                 shape = (n,) if f.kind == "scalar" else (n, self.rho_grid.size)
-                sampled[f.model_name] = np.full(shape, np.nan)
+                v = np.full(shape, np.nan)
                 unmeasured[f.model_name] = np.ones(n, dtype=bool)
+                if f.absent_ok:
+                    # This field says its transform knows how to represent
+                    # absence. `unmeasured` still remembers the value was
+                    # never measured, so a cross-field rule can adjudicate
+                    # whether that matters. Without `absent_ok` the NaN
+                    # survives and the finiteness check below invalidates the
+                    # row, which is the right default.
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        v = TRANSFORMS[f.transform](v)
+                    v = v * f.scale
+                sampled[f.model_name] = v
                 continue
             resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
             t = grid + self.dt_s if f.lag == "t+dt" else grid
@@ -3601,8 +3650,17 @@ INPUT_SPEC = InputSpec(
             "ech_pwr_total", "ech_power_total", lag="t+dt",
             transform="nonneg_zero_fill",
         ),
+        # absent_ok: the archive omits this column entirely on 1,370 of 2,000
+        # sampled shots, and its absence carries NO information about whether
+        # ECH ran - MEASURED, 336 of those shots had ECH off, 468 had power
+        # flowing, and 566 lack the power column too. So absence is not
+        # assumed benign; it is zero-filled and then adjudicated by the
+        # `unknown_when_active` pair below against the power field. Where the
+        # power column is itself absent it stays NaN and the row is
+        # invalidated, which is what must happen for those 566.
         InputField(
             "EC.RHO_ECH", "ech_rho", lag="t+dt", transform="nonneg_zero_fill",
+            absent_ok=True,
         ),
         # profile block, at t. Order is x1's channel order.
         InputField("thomson_density_mtanh_1d", "ne_zipfit", lag="t"),
@@ -3887,11 +3945,15 @@ labelmaker:
       and csaps fits; measured 2.0e-1 (ne), 1.8e-1 (Te), 1.7e-1 (rotation)
       median relative difference, correlation 0.98-0.99"
     - "NaN or negative ECH power becomes 0 (upstream rule, train.py:81)"
-    - "a missing EC.RHO_ECH becomes 0, the upstream ECH-off convention.
-      Measured over 400 archive shots: 74.7% of its gaps are genuinely
-      ECH-off, but 70.1% of ECH-POWERED rows also lack it, and those rows
-      are flagged invalid rather than fed a fabricated on-axis location -
-      upstream dropped them, so the model never trained on that state"
+    - "a missing EC.RHO_ECH becomes 0, the upstream ECH-off convention, and
+      is then adjudicated against the ECH power rather than assumed benign.
+      Measured: 71.4% of its values are absent, and of the 1,370 of 2,000
+      sampled shots missing the column outright, 336 had ECH off, 468 had
+      power flowing and 566 lack the power column too - so absence carries
+      no information about whether ECH ran. Rows where power flows and the
+      location is unknown are flagged invalid rather than fed a fabricated
+      on-axis location; upstream dropped them, so the model never trained on
+      that state. 70.1% of all ECH-powered rows are in that condition"
     - "inference evaluates the Keras graph in numpy (models/runners/keras_h5.py);
       equality with TensorFlow is checked to 1e-5 in validation"
 ---
