@@ -593,7 +593,27 @@ DEFAULT_MODE_BAND_BINS: int = 120
 _SPEC_STD_EPS: float = 1e-8
 
 
-def _nrmse_corr2d(recon: np.ndarray, target: np.ndarray):
+def _spectro_mask_bct(mask, shape) -> Optional[np.ndarray]:
+    """Normalise a spectro validity mask to a ``(B, C, T)`` bool array, or None.
+
+    Accepts ``(B, T)`` (broadcast over channels) or ``(B, C, T)``; ``shape`` is the
+    ``(B, C, F, T)`` spectrogram shape. Returns None when the mask is absent OR selects
+    everything, so every caller then takes the ORIGINAL unmasked code path and the default
+    is bit-identical. Mirrors ``_video_mask_bct``.
+    """
+    if mask is None:
+        return None
+    B, C, _F, T = shape
+    m = _to_numpy(mask)
+    if m.ndim == 2:
+        m = np.broadcast_to(m[:, None, :], (B, C, T))
+    if m.shape != (B, C, T):
+        raise ValueError(f"spectro mask must be (B,T) or (B,C,T)=({B},{C},{T}); got {m.shape}")
+    m = m > 0.5
+    return None if m.all() else m
+
+
+def _nrmse_corr2d(recon: np.ndarray, target: np.ndarray, mask=None):
     """(nrmse, corr2d, valid_frac) over the FULL (F, T) array, per (window, channel).
 
     Both arrays are (B, C, F, T). For each of the ``B*C`` (window, channel) pairs, with
@@ -610,22 +630,50 @@ def _nrmse_corr2d(recon: np.ndarray, target: np.ndarray):
     (exactly 1.0 when that constant happens to be the target's own mean), which is the honest
     reading.
     """
-    B, C = recon.shape[0], recon.shape[1]
+    B, C, F, T = recon.shape
     r = recon.reshape(B * C, -1)
     t = target.reshape(B * C, -1)
-    rc = r - r.mean(axis=1, keepdims=True)
-    tc = t - t.mean(axis=1, keepdims=True)
-    t_std = np.sqrt((tc * tc).mean(axis=1))
-    rmse = np.sqrt(((r - t) ** 2).mean(axis=1))
-    valid = t_std > _SPEC_STD_EPS
+    m = _spectro_mask_bct(mask, recon.shape)
+    if m is None:
+        # UNMASKED path, untouched: every statistic over all F*T elements.
+        w = None
+        n = np.full(B * C, float(r.shape[1]))
+        rmean = r.mean(axis=1, keepdims=True)
+        tmean = t.mean(axis=1, keepdims=True)
+    else:
+        # MASKED path. Missingness is per (window, channel, FRAME) and has no frequency
+        # structure, so the (B, C, T) mask broadcasts over F. EVERY statistic below --
+        # each side's own mean, the target std that normalises the RMSE, the RMSE itself
+        # and both correlation sums -- is then taken over VALID elements only, which is the
+        # standard the slow-TS gate already meets.
+        w = np.broadcast_to(m[:, :, None, :], (B, C, F, T)).reshape(B * C, -1).astype(np.float64)
+        n = w.sum(axis=1)
+        safe = np.maximum(n, 1.0)[:, None]
+        rmean = (r * w).sum(axis=1, keepdims=True) / safe
+        tmean = (t * w).sum(axis=1, keepdims=True) / safe
+    rc = r - rmean
+    tc = t - tmean
+    if w is None:
+        t_std = np.sqrt((tc * tc).mean(axis=1))
+        rmse = np.sqrt(((r - t) ** 2).mean(axis=1))
+        num = (rc * tc).sum(axis=1)
+        denom = np.sqrt((rc * rc).sum(axis=1) * (tc * tc).sum(axis=1))
+    else:
+        rc, tc = rc * w, tc * w                      # zero the invalid elements everywhere
+        safe1 = np.maximum(n, 1.0)
+        t_std = np.sqrt((tc * tc).sum(axis=1) / safe1)
+        rmse = np.sqrt((((r - t) ** 2) * w).sum(axis=1) / safe1)
+        num = (rc * tc).sum(axis=1)
+        denom = np.sqrt((rc * rc).sum(axis=1) * (tc * tc).sum(axis=1))
+    # A pair needs a non-constant target AND (masked) at least 2 real elements to score.
+    valid = (t_std > _SPEC_STD_EPS) & (n >= 2)
     if not valid.any():
         return float("nan"), float("nan"), 0.0
     nrmse = rmse[valid] / t_std[valid]
-    denom = np.sqrt((rc * rc).sum(axis=1) * (tc * tc).sum(axis=1))
     # denom == 0 means one side is constant: no structure to correlate -> 0.0 (the same
     # convention _envelope_correlation uses). np.maximum only guards the divide-by-zero
     # that np.where would still evaluate.
-    corr = np.where(denom > 0.0, (rc * tc).sum(axis=1) / np.maximum(denom, 1e-300), 0.0)
+    corr = np.where(denom > 0.0, num / np.maximum(denom, 1e-300), 0.0)
     return float(nrmse.mean()), float(corr[valid].mean()), float(valid.mean())
 
 
@@ -634,6 +682,7 @@ def full_spectro_metrics(
     target,
     band_bins: Optional[int] = DEFAULT_MODE_BAND_BINS,
     prefix: str = "",
+    mask=None,
 ) -> Dict[str, float]:
     """FULL-array (B, C, F, T) reconstruction fidelity — no axis averaged away.
 
@@ -675,7 +724,7 @@ def full_spectro_metrics(
         raise ValueError(f"full_spectro_metrics: shape mismatch {r.shape} vs {t.shape}")
     if r.ndim != 4:
         raise ValueError(f"full_spectro_metrics expects (B, C, F, T); got {r.shape}")
-    nrmse, corr, valid = _nrmse_corr2d(r, t)
+    nrmse, corr, valid = _nrmse_corr2d(r, t, mask)
     out = {
         f"{prefix}spec_nrmse": nrmse,
         f"{prefix}spec_corr2d": corr,
@@ -683,7 +732,7 @@ def full_spectro_metrics(
     }
     if band_bins is not None:
         k = int(min(int(band_bins), r.shape[-2]))
-        b_nrmse, b_corr, _ = _nrmse_corr2d(r[..., :k, :], t[..., :k, :])
+        b_nrmse, b_corr, _ = _nrmse_corr2d(r[..., :k, :], t[..., :k, :], mask)
         out[f"{prefix}spec_nrmse_band"] = b_nrmse
         out[f"{prefix}spec_corr2d_band"] = b_corr
     return out
@@ -692,6 +741,7 @@ def full_spectro_metrics(
 def trivial_spectro_baselines(
     target,
     band_bins: Optional[int] = DEFAULT_MODE_BAND_BINS,
+    mask=None,
 ) -> Dict[str, float]:
     """The reference points that make :func:`full_spectro_metrics` interpretable.
 
@@ -719,12 +769,29 @@ def trivial_spectro_baselines(
     t = _to_numpy(target).astype(np.float64)
     if t.ndim != 4:
         raise ValueError(f"trivial_spectro_baselines expects (B, C, F, T); got {t.shape}")
-    tmean = np.broadcast_to(t.mean(axis=-1, keepdims=True), t.shape)
-    cfmean = np.broadcast_to(t.mean(axis=(0, -1))[None, :, :, None], t.shape)
-    wcmean = np.broadcast_to(t.mean(axis=(-2, -1), keepdims=True), t.shape)
+    mb = _spectro_mask_bct(mask, t.shape)
+    if mb is None:
+        tmean = np.broadcast_to(t.mean(axis=-1, keepdims=True), t.shape)
+        cfmean = np.broadcast_to(t.mean(axis=(0, -1))[None, :, :, None], t.shape)
+        wcmean = np.broadcast_to(t.mean(axis=(-2, -1), keepdims=True), t.shape)
+    else:
+        # EACH BASELINE'S OWN MEAN over valid samples only -- otherwise the reference points
+        # that make the codec row interpretable are themselves computed on fill, and
+        # base_wcmean stops being the exact 1.0 anchor the normalisation is defined by.
+        w = np.broadcast_to(mb[:, :, None, :], t.shape).astype(np.float64)
+        tw = t * w
+        tmean = tw.sum(axis=-1, keepdims=True) / np.maximum(w.sum(axis=-1, keepdims=True), 1.0)
+        tmean = np.broadcast_to(tmean, t.shape)
+        cfnum = tw.sum(axis=(0, -1))[None, :, :, None]
+        cfden = np.maximum(w.sum(axis=(0, -1))[None, :, :, None], 1.0)
+        cfmean = np.broadcast_to(cfnum / cfden, t.shape)
+        wcnum = tw.sum(axis=(-2, -1), keepdims=True)
+        wcden = np.maximum(w.sum(axis=(-2, -1), keepdims=True), 1.0)
+        wcmean = np.broadcast_to(wcnum / wcden, t.shape)
     out: Dict[str, float] = {}
     for name, pred in (("self", t), ("tmean", tmean), ("cfmean", cfmean), ("wcmean", wcmean)):
-        m = full_spectro_metrics(pred, t, band_bins=band_bins, prefix=f"base_{name}_")
+        m = full_spectro_metrics(pred, t, band_bins=band_bins, prefix=f"base_{name}_",
+                                 mask=mask)
         m.pop(f"base_{name}_spec_valid_frac", None)  # identical for every baseline (same target)
         out.update(m)
     return out
@@ -736,7 +803,8 @@ def decode_fidelity(recon, target, peak_k: float = 1.0,
                     full_spec: bool = False,
                     band_bins: Optional[int] = DEFAULT_MODE_BAND_BINS,
                     mode_baseline: bool = True,
-                    detrended: bool = False) -> Dict[str, float]:
+                    detrended: bool = False,
+                    mask=None) -> Dict[str, float]:
     # ``mode_baseline`` gates EVERY target-only baseline (the trivial spectro baselines and the
     # time-mean envelope's mode-structure scores). They are identical for all arms on a given
     # window set, so the audit computes them for the first arm and shares them across rows.
@@ -779,6 +847,13 @@ def decode_fidelity(recon, target, peak_k: float = 1.0,
         full_spec: add the full-spectrogram metrics + trivial baselines (default False).
         band_bins: mode-band cut passed through to :func:`full_spectro_metrics` when
             ``full_spec`` is on; None disables the ``_band`` variants.
+        mask: optional ``(B, T)`` / ``(B, C, T)`` validity mask (see
+            ``data.spectro_frame_mask``). When given, ``spec_nrmse`` / ``spec_corr2d`` and
+            EVERY trivial baseline -- including each baseline's own mean -- are taken over
+            VALID samples only, which is the standard the slow-TS gate already meets. Also
+            excludes fully-invalid windows from ``envelope_corr`` / ``peak_f1`` / the
+            sharpness and patch-lattice energies, so no statistic is computed on fill.
+            ``None`` (default) = every existing caller returns a byte-identical dict.
 
     Returns:
         dict with ``envelope_corr``, ``peak_f1``, ``sharpness``, the raw
@@ -794,6 +869,19 @@ def decode_fidelity(recon, target, peak_k: float = 1.0,
         raise ValueError(
             f"decode_fidelity expects (B, C, F, T); got {r.shape}"
         )
+
+    # WINDOW-LEVEL exclusion for the structure metrics. `_envelope_correlation`,
+    # `_peak_overlap_f1`, `_hf_gradient_energy` and `patch_lattice_metrics` all operate on the
+    # (F, T) plane and cannot take a per-frame mask, so a window with ANY missing channel is
+    # dropped whole -- the same rule the trainer's loss uses (SpectroCodec._valid_windows).
+    # Spectro missingness is a per-(shot, channel) property, so this loses almost nothing.
+    _mb = _spectro_mask_bct(mask, r.shape)
+    if _mb is not None:
+        _keep = _mb.all(axis=(1, 2))                  # (B,) fully-valid windows
+        if _keep.any():
+            r, t = r[_keep], t[_keep]
+            mask = _mb[_keep]
+        # if NOTHING is fully valid, fall through on the full arrays rather than emit NaNs.
 
     env_corr = _envelope_correlation(r, t)
     peak_f1 = _peak_overlap_f1(r, t, k=peak_k)
@@ -813,12 +901,12 @@ def decode_fidelity(recon, target, peak_k: float = 1.0,
         for k, v in patch_lattice_metrics(t, int(patch_f), int(patch_t)).items():
             out[f"target_{k}"] = v
     if full_spec:
-        out.update(full_spectro_metrics(r, t, band_bins=band_bins))
+        out.update(full_spectro_metrics(r, t, band_bins=band_bins, mask=mask))
         if mode_baseline:
             # trivial_spectro_baselines depends ONLY on the target, so it is identical for
             # every arm scored against the same windows -- computing it per arm was ~9.5 s per
             # chunk of pure duplication (profiled; it is the single most expensive call here).
-            out.update(trivial_spectro_baselines(t, band_bins=band_bins))
+            out.update(trivial_spectro_baselines(t, band_bins=band_bins, mask=mask))
         # MODE-TRACK metrics (see the section at the end of this module). Reported over the
         # FULL band, not `band_bins`: the mhr mode tracks run to ~90 kHz, above the 58.6 kHz
         # mode-band cut, and the deliverable is the whole 0-250 kHz range. These are the keys

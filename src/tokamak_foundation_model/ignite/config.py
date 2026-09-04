@@ -346,6 +346,35 @@ class SpectroCodecConfig:
     # applies the full joint pressure.
     joint_entropy_ramp_steps: int = 0
 
+    # --- MISSING-DATA (dead diagnostic channel) EXCLUSION ------------------------------ #
+    # 2026-09-03 audit, generalising the VIDEO finding to the spectro family. The spectro
+    # dataset (train_codec.CodecPairDataset._build_pair) DISCARDS the loader's ``nan_mask``
+    # and guards a window only on (a) ``valid_len`` (the padded TAIL), (b) global finiteness,
+    # and (c) ``raw.std() < min_std`` computed over ALL CHANNELS AT ONCE. So a window in which
+    # some channels are a zero slab and at least one channel is live passes every guard, and
+    # the dead channels are reconstructed, fed to the discriminator as REAL, feature-matched
+    # and entropy-counted. There was no per-channel mask anywhere on the spectro path -- not
+    # in the dataset, not in any loss term, not in the discriminator step.
+    #
+    #   mask_missing   build a REAL per-(channel, STFT-frame) validity mask
+    #                  (data.spectro_frame_mask: NaN-projected exactly like the production
+    #                  data_loader._raw_to_frame_mask, PLUS all-zero frames, which is how the
+    #                  loader represents an absent channel / an out-of-range window) and
+    #                  honour it in EVERY loss term, the discriminator step and the gate.
+    #                  False = no mask is built and every consumer receives ``None`` =>
+    #                  BYTE-IDENTICAL to the pre-2026-09-03 path.
+    #   require_live_channels
+    #                  dataset-side: re-draw windows in which ANY channel is dead, so the
+    #                  codec only ever sees fully-populated windows (the mask then has
+    #                  nothing left to exclude). False = the previous "any live channel" rule.
+    #   presence_filter
+    #                  drop whole shots that carry no live channel for THIS modality, from the
+    #                  precomputed foundation_model_meta/spectro_channel_liveness.pt (one
+    #                  torch.load, no HDF5 scan). False = no filtering, as before.
+    mask_missing: bool = False
+    require_live_channels: bool = False
+    presence_filter: bool = False
+
     # --- FSQ-NATIVE anti-collapse knobs (vector_quantize_pytorch.FSQ constructor args) ----
     # These are the library's OWN hyper-parameters, not a re-implementation. Both default to
     # the library defaults, so every existing codec constructs a byte-identical FSQ.

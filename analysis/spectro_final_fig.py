@@ -1,0 +1,407 @@
+"""FINAL spectrogram codec deliverable: arm table + the one figure, per modality.
+
+Spectro sibling of ``analysis/video_final_fig.py`` (tangtv) and
+``analysis/fastts_env_final_fig.py`` (filterscopes). EVALUATION + RENDERING ONLY -- every
+checkpoint is opened read-only and nothing is trained here.
+
+Two modes, both on HELD-OUT shots (the trainer's eval split is ``all_shots[-eval_n_shots:]``,
+so no arm has seen them):
+
+  --mode score    The arm table: nRMSE with its trivial baselines (self 0.0, wcmean exactly
+                  1.0, tmean, cfmean), corr2d, patch_lattice_ratio WITH its ground-truth
+                  control, hf_ratio, std_ratio, codebook utilization AS A BIT RATE, and the
+                  forecastability margins with n_transition.
+
+  --mode figure   The deliverable figure: GT vs reconstruction across a whole shot over the
+                  FULL 0-250 kHz band, missing data left as GAPS (never filled), % data
+                  coverage per panel, and per-panel metrics so each panel stands alone.
+
+MASKING. Every statistic -- mean, std, RMSE, correlation, and each baseline's OWN mean -- is
+taken over valid samples only, via ``data.spectro_frame_mask`` and the ``mask=`` argument of
+``gate.decode_fidelity``. This is not cosmetic: measured over all 8753 shots
+(foundation_model_meta/spectro_channel_liveness.pt) the fraction of the streamed tensor that
+is REAL diagnostic data is bes 0.376, mirnov 0.356, co2 0.547, ece 0.872, mhr 0.874.
+
+nRMSE IS A FLOOR, NOT A RANKING KEY -- its exact minimiser is the conditional mean, so it
+rewards blur and amplitude collapse. ``std_ratio`` (ideal EXACTLY 1.0) is printed beside it,
+``patch_lattice_ratio`` is always read as a PAIR with ``hf_ratio`` and against the GT control,
+and utilization is a HARD GATE.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import numpy as np
+import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "16")))
+
+from tokamak_foundation_model.ignite import gate                      # noqa: E402
+from tokamak_foundation_model.ignite import train_codec as tc         # noqa: E402
+from tokamak_foundation_model.ignite.codec import SpectroCodec        # noqa: E402
+from tokamak_foundation_model.ignite.config import STFT_FS            # noqa: E402
+
+DATA = tc.DEFAULT_DATA_DIR
+CACHE = Path("/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/eval_runs/"
+             "codec_recon_figs/_cache")
+
+
+# ------------------------------------------------------------------------------------ #
+# data / model
+# ------------------------------------------------------------------------------------ #
+def load_codec(ckpt_path: str, device="cpu"):
+    ck = torch.load(ckpt_path, map_location=device, weights_only=False)
+    cfg = ck["cfg"]
+    codec = SpectroCodec(cfg).to(device)
+    codec.load_state_dict(ck["codec"])
+    codec.eval()
+    return codec, cfg, ck
+
+
+def held_out_shots(modality: str, eval_n_shots: int = 16, live_only: bool = True) -> List[str]:
+    """The trainer's eval split, after the SAME presence filter the arms trained under.
+
+    Without the filter the held-out pool for bes/co2 is dominated by shots whose HDF5 group
+    is an empty stub, whose only possible window is the eps-floor constant plate -- scoring
+    against that measures nothing about the codec.
+    """
+    shots = tc.spike.discover_shots(DATA)
+    if live_only:
+        shots = tc.spectro_live_shots(modality, shots, log_fn=print)
+    return [str(s) for s in shots[-eval_n_shots:]]
+
+
+def window_pool(modality: str, cfg, shots: List[str], n_windows: int, per_shot: int = 0):
+    """``(N, C, F, T)`` held-out windows + their ``(N, C, T)`` validity masks."""
+    X, M = [], []
+    for sh in shots:
+        if len(X) >= n_windows:
+            break
+        try:
+            ds = tc.CodecPairDataset(modality, [sh], cfg, data_dir=DATA,
+                                     lengths_cache_path=None, emit_mask=True)
+        except ValueError:
+            continue
+        n = len(ds)
+        if n == 0:
+            continue
+        k = per_shot or max(1, math.ceil(n_windows / max(1, len(shots))))
+        for i in np.linspace(0, n - 1, min(k, n)).astype(int):
+            a, _b, m = ds[int(i)]
+            X.append(a.numpy())
+            M.append(m.numpy())
+            if len(X) >= n_windows:
+                break
+    if not X:
+        raise RuntimeError(f"no held-out windows for {modality}")
+    return np.stack(X, 0), np.stack(M, 0)
+
+
+def seq_pool(modality: str, cfg, shots: List[str], seq_len: int = 8, per_shot: int = 2):
+    """``(B, seq_len, C, F, T)`` blocks of CONSECUTIVE windows, for forecastability."""
+    blocks = []
+    for sh in shots:
+        try:
+            ds = tc.CodecPairDataset(modality, [sh], cfg, data_dir=DATA,
+                                     lengths_cache_path=None, emit_mask=True)
+        except ValueError:
+            continue
+        n = len(ds)
+        if n < seq_len:
+            continue
+        got = 0
+        for s0 in np.unique(np.linspace(0, n - seq_len, per_shot * 3).astype(int)):
+            if got >= per_shot:
+                break
+            blk, ok = [], True
+            for k in range(seq_len):
+                a, _b, m = ds[int(s0) + k]
+                if float(m.min()) <= 0.0:          # only fully-real blocks
+                    ok = False
+                    break
+                blk.append(a.numpy())
+            if ok:
+                blocks.append(np.stack(blk, 0))
+                got += 1
+    if not blocks:
+        return None
+    return np.stack(blocks, 0)
+
+
+@torch.no_grad()
+def reconstruct(codec, X: np.ndarray, batch: int = 8, device="cpu"):
+    recon, codes = [], []
+    for i in range(0, X.shape[0], batch):
+        xb = torch.from_numpy(X[i:i + batch]).to(device, torch.float32)
+        out = codec.forward(xb)
+        recon.append(out["recon"].cpu().numpy())
+        codes.append(out["codes"].cpu())
+    return np.concatenate(recon, 0), torch.cat(codes, 0)
+
+
+# ------------------------------------------------------------------------------------ #
+# metrics the gate does not carry for spectro
+# ------------------------------------------------------------------------------------ #
+def masked_std_ratio(recon: np.ndarray, target: np.ndarray, mask: Optional[np.ndarray]):
+    """mean over (window, channel) of std(recon)/std(target), over VALID samples only.
+
+    Reported BESIDE nRMSE because nRMSE's exact minimiser is the conditional mean: a codec
+    that shrinks amplitude toward the mean improves nRMSE while destroying the signal. Ideal
+    is EXACTLY 1.0; < 1 is amplitude collapse, > 1 is added noise.
+    """
+    B, C, F, T = recon.shape
+    r = recon.reshape(B * C, -1).astype(np.float64)
+    t = target.reshape(B * C, -1).astype(np.float64)
+    if mask is None:
+        rs, ts = r.std(axis=1), t.std(axis=1)
+    else:
+        w = np.broadcast_to(np.asarray(mask)[:, :, None, :] > 0.5,
+                            (B, C, F, T)).reshape(B * C, -1).astype(np.float64)
+        n = np.maximum(w.sum(axis=1), 1.0)
+        rm = (r * w).sum(axis=1) / n
+        tm = (t * w).sum(axis=1) / n
+        rs = np.sqrt((((r - rm[:, None]) ** 2) * w).sum(axis=1) / n)
+        ts = np.sqrt((((t - tm[:, None]) ** 2) * w).sum(axis=1) / n)
+    ok = ts > 1e-8
+    return float((rs[ok] / ts[ok]).mean()) if ok.any() else float("nan")
+
+
+def score_arm(label: str, ckpt: str, X: np.ndarray, M: np.ndarray, seq: Optional[np.ndarray],
+              device="cpu", batch: int = 8) -> Dict:
+    codec, cfg, ck = load_codec(ckpt, device=device)
+    recon, codes = reconstruct(codec, X, batch=batch, device=device)
+    out = gate.decode_fidelity(recon, X, patch_f=cfg.patch_f, patch_t=cfg.patch_t,
+                               full_spec=True, band_bins=None, mask=M)
+    row = {
+        "label": label, "ckpt": ckpt, "step": ck.get("step"),
+        "nrmse": out["spec_nrmse"], "corr2d": out["spec_corr2d"],
+        "base_self": out["base_self_spec_nrmse"],
+        "base_tmean": out["base_tmean_spec_nrmse"],
+        "base_cfmean": out["base_cfmean_spec_nrmse"],
+        "base_wcmean": out["base_wcmean_spec_nrmse"],
+        "lattice": out["patch_lattice_ratio"],
+        "gt_lattice": out["target_patch_lattice_ratio"],
+        "hf_ratio": out["sharpness"],
+        "std_ratio": masked_std_ratio(recon, X, M),
+        "n_windows": int(X.shape[0]),
+    }
+    row.update(gate.code_rate_bits(codes, cfg.codebook_size, n_tok=cfg.n_tok))
+    ut = gate.utilization(codes, cfg=cfg)
+    row["n_distinct_codes"] = ut.get("n_distinct_codes")
+    row["codebook_size"] = cfg.codebook_size
+    row["effective_codes"] = ut.get("effective_codes")
+    row["min_dim_entropy"] = ut.get("min_dim_entropy")
+    row["n_tok"] = cfg.n_tok
+    row["fsq_levels"] = list(cfg.fsq_levels)
+    if seq is not None:
+        B, L = seq.shape[0], seq.shape[1]
+        _, cs = reconstruct(codec, seq.reshape(B * L, *seq.shape[2:]), batch=batch,
+                            device=device)
+        cs = cs.reshape(B, L, cfg.n_tok, cfg.fsq_dim)
+        fc = gate.forecastability(cs)
+        row.update({"margin_overall": fc["margin_overall"],
+                    "margin_transition": fc["margin_transition"],
+                    "n_transition": fc["n_transition"], "n_stable": fc["n_stable"]})
+    return row
+
+
+def print_table(rows: List[Dict], floor: Optional[float] = None):
+    hdr = (f"{'arm':<16}{'step':>7}{'nRMSE':>9}{'corr2d':>8}{'std_r':>7}{'lattice':>9}"
+           f"{'GTlat':>7}{'hf_r':>7}{'bits/win':>10}{'%ceil':>7}{'codes':>10}"
+           f"{'m_over':>9}{'m_trans':>9}{'n_tr':>7}")
+    print(hdr)
+    print("-" * len(hdr))
+    for r in rows:
+        # UTILIZATION AS A BIT RATE. `bits_delivered_per_frame_positional` is what the tokens
+        # actually carry; `bits_available_per_frame` is n_tok * log2(K). The %-of-ceiling
+        # column divides by the EVAL-SIZE ceiling (an entropy from N windows cannot exceed
+        # log2 N), so a perfect codec reads ~100 rather than an unreachable number.
+        used = r.get("bits_delivered_per_frame_positional", float("nan"))
+        avail = r.get("bits_available_per_frame", float("nan"))
+        ceil = r.get("rate_positional_ceiling", 1.0) or 1.0
+        pct = (100.0 * used / (avail * ceil)
+               if avail and np.isfinite(avail) and avail > 0 else float("nan"))
+        print(f"{r['label']:<16}{str(r.get('step')):>7}{r['nrmse']:>9.4f}{r['corr2d']:>8.4f}"
+              f"{r['std_ratio']:>7.3f}{r['lattice']:>9.2f}{r['gt_lattice']:>7.2f}"
+              f"{r['hf_ratio']:>7.3f}{used:>10.1f}{pct:>7.1f}"
+              f"{str(r.get('n_distinct_codes')) + '/' + str(r.get('codebook_size')):>10}"
+              f"{r.get('margin_overall', float('nan')):>9.4f}"
+              f"{r.get('margin_transition', float('nan')):>9.4f}"
+              f"{str(r.get('n_transition')):>7}")
+    b = rows[0]
+    print(f"  bits available/frame {b.get('bits_available_per_frame', float('nan')):.0f} "
+          f"(n_tok {b['n_tok']} x log2 {b['codebook_size']}); eval-size rate ceiling "
+          f"{b.get('rate_positional_ceiling', float('nan')):.3f} at {b['n_windows']} windows")
+    print(f"\ntrivial baselines (same windows, same mask, each with its OWN masked mean): "
+          f"self {b['base_self']:.4f}  wcmean {b['base_wcmean']:.4f} (the 1.0 anchor)  "
+          f"tmean {b['base_tmean']:.4f}  cfmean {b['base_cfmean']:.4f}")
+    if floor is not None:
+        print(f"out-of-sample LINEAR FLOOR at k=n_tok: {floor:.4f}  "
+              f"-> an arm PASSES criterion 1 iff nRMSE < {floor:.4f}")
+
+
+# ------------------------------------------------------------------------------------ #
+# THE FIGURE
+# ------------------------------------------------------------------------------------ #
+def build_panels(modality: str, ckpt: str, shot: str, channels: List[int], device="cpu",
+                 max_windows: int = 0):
+    """One panel per requested channel: GT / recon strips over the WHOLE shot + a metric trace."""
+    codec, cfg, _ck = load_codec(ckpt, device=device)
+    ds = tc.CodecPairDataset(modality, [shot], cfg, data_dir=DATA,
+                             lengths_cache_path=None, emit_mask=True)
+    n = len(ds)
+    if max_windows:
+        n = min(n, max_windows)
+    X, M = [], []
+    for i in range(n):
+        a, _b, m = ds[i]
+        X.append(a.numpy())
+        M.append(m.numpy())
+    X = np.stack(X, 0)
+    M = np.stack(M, 0)
+    recon, _codes = reconstruct(codec, X, device=device)
+    t0 = getattr(ds, "warmup_s", 1.0)
+    step = getattr(ds, "step_size_s", 0.05)
+    times = t0 + np.arange(n) * step
+    return X, M, recon, cfg, times, ds
+
+
+def make_figure(out_png: str, modality: str, shot: str, X, M, recon, cfg, times,
+                channels: List[int], title: str):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    N, C, F, T = X.shape
+    khz = (STFT_FS / cfg.stft_n_fft) / 1e3 * F / 1e3           # MHz -> label helper
+    fmax_khz = (STFT_FS / cfg.stft_n_fft) * F / 1e3
+    # Stitch the per-window (F, T) tiles into one (F, N*T) shot-long spectrogram per channel.
+    n_ch = len(channels)
+    fig = plt.figure(figsize=(19, 3.5 * n_ch))
+    gs = fig.add_gridspec(n_ch, 1, hspace=0.55)
+    for pi, c in enumerate(channels):
+        gt = np.concatenate([X[i, c] for i in range(N)], axis=-1)       # (F, N*T)
+        rc = np.concatenate([recon[i, c] for i in range(N)], axis=-1)
+        live = np.repeat(M[:, c, :].reshape(-1) > 0.5, 1)              # (N*T,)
+        cov = 100.0 * float(live.mean())
+        # per-panel metrics over the LIVE columns only
+        g, r = gt[:, live], rc[:, live]
+        if g.size:
+            nr = float(np.sqrt(((r - g) ** 2).mean()) / max(g.std(), 1e-9))
+            sr = float(r.std() / max(g.std(), 1e-9))
+            cc = float(np.corrcoef(r.ravel(), g.ravel())[0, 1])
+        else:
+            nr = sr = cc = float("nan")
+        vmin, vmax = np.percentile(g, [1, 99]) if g.size else (0.0, 1.0)
+        # GAPS: missing columns are painted as a flat grey band in BOTH rows, never filled
+        # with a reconstruction.
+        gtm = np.where(live[None, :], gt, np.nan)
+        rcm = np.where(live[None, :], rc, np.nan)
+        sub = gs[pi].subgridspec(3, 1, hspace=0.10, height_ratios=[0.22, 1, 1])
+        cap = fig.add_subplot(sub[0]); cap.axis("off")
+        cap.text(0.0, 0.5,
+                 f"{modality}  shot {shot}  channel {c}   |   data coverage {cov:5.1f}% "
+                 f"(grey = NO DATA, never filled)   |   nRMSE {nr:.3f}   "
+                 f"std(recon)/std(GT) {sr:.3f}   corr {cc:.3f}   |   "
+                 f"0-{fmax_khz:.0f} kHz, {N} windows x {T} STFT frames",
+                 fontsize=9, family="monospace", ha="left", va="center")
+        for row, img, tag in ((1, gtm, "GT"), (2, rcm, "recon")):
+            ax = fig.add_subplot(sub[row])
+            ax.set_facecolor("0.85")                                    # the GAP colour
+            ax.imshow(img, aspect="auto", origin="lower", cmap="inferno",
+                      vmin=vmin, vmax=vmax, interpolation="nearest",
+                      extent=[times[0], times[-1] + T * 0.0005, 0.0, fmax_khz])
+            ax.set_ylabel(f"{tag}\nkHz", fontsize=8)
+            ax.tick_params(labelsize=7)
+            if row == 1:
+                ax.set_xticklabels([])
+            else:
+                ax.set_xlabel("time (s)", fontsize=8)
+    fig.suptitle(title, fontsize=12, y=0.995)
+    Path(out_png).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=110, bbox_inches="tight")
+    print("wrote", out_png, flush=True)
+
+
+# ------------------------------------------------------------------------------------ #
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--mode", choices=["score", "figure"], required=True)
+    ap.add_argument("--modality", required=True, choices=list(tc.SPECTRO_MODALITIES))
+    ap.add_argument("--arms", default="", help="label=ckpt,label=ckpt,...")
+    ap.add_argument("--eval_n_shots", type=int, default=16)
+    ap.add_argument("--n_windows", type=int, default=320,
+                    help=">= 300: the 32-window training gate has misled repeatedly.")
+    ap.add_argument("--seq_len", type=int, default=8)
+    ap.add_argument("--no_seq", action="store_true", help="skip forecastability")
+    ap.add_argument("--floor", type=float, default=None,
+                    help="this modality's out-of-sample linear floor (analysis/_specport_plateau.py)")
+    ap.add_argument("--fig_shot", default=None)
+    ap.add_argument("--channels", default="0", help="comma list, --mode figure")
+    ap.add_argument("--max_windows", type=int, default=0, help="cap windows in --mode figure")
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--json", default=None)
+    ap.add_argument("--device", default="cpu")
+    ap.add_argument("--batch_size", type=int, default=8)
+    ap.add_argument("--title", default=None)
+    args = ap.parse_args()
+
+    specs = []
+    for tok in args.arms.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        label, _, path = tok.partition("=")
+        specs.append((label if path else Path(label).parent.name, path or label))
+    if not specs:
+        raise SystemExit("--arms is required (label=ckpt,...)")
+
+    shots = held_out_shots(args.modality, args.eval_n_shots)
+    print(f"[{args.modality}] held-out shots: {shots}", flush=True)
+
+    if args.mode == "figure":
+        shot = args.fig_shot or shots[0]
+        chans = [int(c) for c in args.channels.split(",") if c.strip()]
+        label, ckpt = specs[0]
+        X, M, recon, cfg, times, _ds = build_panels(
+            args.modality, ckpt, shot, chans, device=args.device,
+            max_windows=args.max_windows)
+        out = args.out or f"eval_runs/codec_recon_figs/{args.modality}_FINAL_fullshot.png"
+        title = args.title or (f"IGNITE {args.modality} spectrogram codec [{label}] - "
+                               f"GT vs reconstruction, full 0-250 kHz, gaps never filled")
+        make_figure(out, args.modality, shot, X, M, recon, cfg, times, chans, title)
+        return
+
+    # --mode score
+    _c0, cfg0 = load_codec(specs[0][1], device="cpu")[:2]
+    X, M = window_pool(args.modality, cfg0, shots, args.n_windows)
+    print(f"[{args.modality}] scored on {X.shape[0]} held-out windows "
+          f"{X.shape[1:]}; real-data fraction of the pool {float((M > 0.5).mean()):.4f}",
+          flush=True)
+    seq = None if args.no_seq else seq_pool(args.modality, cfg0, shots, seq_len=args.seq_len)
+    rows = []
+    for label, ckpt in specs:
+        if not Path(ckpt).exists():
+            print(f"  SKIP {label}: {ckpt} missing", flush=True)
+            continue
+        rows.append(score_arm(label, ckpt, X, M, seq, device=args.device,
+                              batch=args.batch_size))
+        print(f"  scored {label}", flush=True)
+    if not rows:
+        raise SystemExit("no arms scored")
+    print_table(rows, floor=args.floor)
+    if args.json:
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.json).write_text(json.dumps(rows, indent=1, default=float))
+        print("wrote", args.json)
+
+
+if __name__ == "__main__":
+    main()

@@ -218,6 +218,91 @@ def log_power_stft(raw: ArrayLike, cfg: SpectroCodecConfig) -> torch.Tensor:
     return spec
 
 
+def spectro_frame_mask(
+    raw: ArrayLike,
+    nan_mask: ArrayLike,
+    cfg: SpectroCodecConfig,
+) -> torch.Tensor:
+    """Per-(channel, STFT-frame) VALIDITY mask for one raw window -> ``(C, cfg.time_frames)``.
+
+    The spectro analogue of the video ``channel_valid`` flag and of the slow-TS ``valid``
+    mask. ``1.0`` = this (channel, frame) is real diagnostic data; ``0.0`` = it is fill.
+
+    Parameters
+    ----------
+    raw : (C, W)
+        The RAW window exactly as ``TokamakH5Dataset._load_signal_raw`` returns it (already
+        at ``STFT_FS``, NaN replaced by 0, out-of-range positions zero-padded).
+    nan_mask : (C, W)
+        The loader's companion mask: ``1.0`` where the HDF5 value was literally NaN.
+    cfg : SpectroCodecConfig
+        Supplies the PER-CODEC STFT grid (``stft_n_fft`` / ``stft_hop``, defaulting to the
+        module globals) and ``time_frames`` for the crop/pad.
+
+    What counts as missing
+    ----------------------
+    Two independent things, because the loader represents absence in two different ways:
+
+    1. **NaN** — the diagnostic recorded but the value is NaN. Projected from raw-sample to
+       STFT-frame coordinates with EXACTLY the production rule
+       (``data_loader._raw_to_frame_mask``): a frame is invalid if ANY sample inside its
+       ``n_fft``-wide support was invalid, implemented as a ``max_pool1d`` of the INVALID
+       indicator with ``kernel=n_fft, stride=hop, padding=n_fft//2`` — the same support
+       ``torch.stft(center=True)`` actually reads. Reusing that rule (rather than inventing
+       one) is what keeps the codec's notion of "missing" identical to the FM's.
+
+    2. **All-zero support** — the diagnostic did NOT record. ``_load_signal_raw`` zero-fills
+       (a) an absent / empty HDF5 group, (b) a channel that is a zero slab, and (c) any part
+       of the window outside ``[xdata[0], xdata[-1]]``, and it sets NO nan flag for any of
+       them, so rule 1 alone calls all three VALID. A real 500 kHz digitiser trace is never
+       identically 0.0 across a whole 1024-sample STFT support, so ``max|raw| == 0`` over the
+       support is an exact, false-positive-free detector for those three cases. This is the
+       spectro form of the slow-TS ``zero_is_missing`` policy, lifted from the sample to the
+       STFT-frame level so it cannot fire on an ordinary zero-crossing sample.
+
+    A frame is VALID iff rule 1 says "no NaN" AND rule 2 says "not an all-zero support" AND
+    the raw support is finite.
+
+    Time crop/pad mirrors :func:`_crop_pad_freq_time` exactly (right crop / right pad), with
+    PADDED frames marked INVALID — they are the log-eps floor, not data.
+
+    Returns
+    -------
+    (C, cfg.time_frames) float32 tensor of 1.0 / 0.0.
+    """
+    x = _as_tensor(raw)
+    m = _as_tensor(nan_mask)
+    if x.dim() != 2:
+        raise ValueError(f"spectro_frame_mask expects raw (C, W); got {tuple(x.shape)}")
+    if m.shape != x.shape:
+        raise ValueError(
+            f"spectro_frame_mask: nan_mask {tuple(m.shape)} != raw {tuple(x.shape)}"
+        )
+    n_fft = int(getattr(cfg, "stft_n_fft", STFT_N_FFT))
+    hop = int(getattr(cfg, "stft_hop", STFT_HOP))
+
+    invalid = ((m >= 0.5) | ~torch.isfinite(x)).to(torch.float32).unsqueeze(0)  # (1, C, W)
+    # rule 1: production _raw_to_frame_mask, verbatim (max over each frame's n_fft support).
+    inv_f = torch.nn.functional.max_pool1d(
+        invalid, kernel_size=n_fft, stride=hop, padding=n_fft // 2
+    ).squeeze(0)                                                    # (C, n_frames)
+    # rule 2: the same support, but on |raw| -- an identically-zero support is fill.
+    absx = torch.nan_to_num(x.abs(), nan=0.0, posinf=0.0, neginf=0.0).unsqueeze(0)
+    max_f = torch.nn.functional.max_pool1d(
+        absx, kernel_size=n_fft, stride=hop, padding=n_fft // 2
+    ).squeeze(0)                                                    # (C, n_frames)
+    valid = (inv_f < 0.5) & (max_f > 0.0)
+
+    # time crop / right-pad to cfg.time_frames; PADDED frames are invalid (log-eps floor).
+    C, n_frames = valid.shape
+    T = int(cfg.time_frames)
+    if n_frames >= T:
+        valid = valid[:, :T]
+    else:
+        valid = torch.cat([valid, valid.new_zeros((C, T - n_frames))], dim=1)
+    return valid.to(torch.float32)
+
+
 def raw_pair_windows(
     raw_shot: ArrayLike,
     t0: float,

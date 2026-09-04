@@ -27,4 +27,16 @@ echo "=== ARM RANKING: distance to the rank-192 ORACLE profile ==="
 # 4-vector with hard gates. The five references are printed alongside for context.
 [ -n "${AUDIT_JSON}" ] && [ -f "${AUDIT_JSON}" ] && \
   python analysis/_specport_rank_arms.py "${AUDIT_JSON}"
+# OPTIONAL SECOND PASS -- ideal lattice notch (gate.remove_patch_lattice) applied to the
+# RECONSTRUCTION before metering. This is the diagnostic that separates real high-frequency
+# content from the patch-lattice artifact: the share of hf_ratio that SURVIVES the notch is
+# the real sharpness, the rest was the 16x16 grid. Set AUDIT_NOTCH_JSON to enable.
+if [ -n "${AUDIT_NOTCH_JSON:-}" ]; then
+  echo "=== NOTCHED PASS: lattice DFT bins zeroed in the recon (hf_ratio that survives is REAL) ==="
+  srun -N1 -n1 -c "${SLURM_CPUS_PER_TASK}" --gpus-per-task=1 --gpu-bind=closest \
+    python analysis/render_codec_recon_figs.py --audit ${AUDIT_SPECS} \
+      --modality mhr --n_windows "${AUDIT_WINDOWS:-720}" --audit_shots 4 --eval_n_shots 16 \
+      --batch_size "${AUDIT_BS:-8}" --num_workers 7 --device cuda --detrended --notch \
+      --json "${AUDIT_NOTCH_JSON}"
+fi
 echo "=== SPECPORT AUDIT DONE (exit $?) ==="

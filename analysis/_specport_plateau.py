@@ -12,6 +12,7 @@ exactly the number the audit prints.
 """
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -24,8 +25,29 @@ from tokamak_foundation_model.ignite import spike
 from tokamak_foundation_model.ignite import train_codec as tc
 from tokamak_foundation_model.ignite.config import SpectroCodecConfig
 
-MOD = "mhr"
-N = int(sys.argv[1]) if len(sys.argv) > 1 else 720
+# 2026-09-03: generalised from mhr-only to ANY spectro modality (`--modality`) so each one is
+# judged against ITS OWN floor -- the floors are not remotely alike (co2 0.6303, mhr 0.7487,
+# bes 0.7592, ece 0.9915), and they track values-per-token, so a shared reference would be
+# meaningless. The two-geometry sweep is gone: the n_fft 512 port is DEAD on mhr (worse on both
+# axes), so only the production 1024/256 grid is measured unless --stft_n_fft says otherwise.
+import argparse
+
+_ap = argparse.ArgumentParser(description=__doc__)
+_ap.add_argument("--modality", default="mhr", choices=list(tc.SPECTRO_MODALITIES))
+_ap.add_argument("--n", type=int, default=720, help="windows streamed per split")
+_ap.add_argument("--stats", default=None,
+                 help="per-freq log-z stats (--logpow_stats_path). Default: the shared "
+                      "ignite_codecs_noinorm/stats file for this modality if it exists; "
+                      "'none' disables the per-freq z (must match how the arms train).")
+_ap.add_argument("--stft_n_fft", type=int, default=1024)
+_ap.add_argument("--freq_bins", type=int, default=512)
+_ap.add_argument("--patch_f", type=int, default=16)
+_ap.add_argument("--patch_t", type=int, default=16)
+_ap.add_argument("--ks", default="16,48,96,192,384,700")
+_args = _ap.parse_args()
+
+MOD = _args.modality
+N = int(_args.n)
 CACHE = "/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/eval_runs/codec_recon_figs/_cache"
 
 
@@ -109,57 +131,66 @@ all_shots = spike.discover_shots(tc.DEFAULT_DATA_DIR)
 # all_shots[:4] made this a CROSS-CAMPAIGN transfer test rather than a capacity test --
 # a basis fitted on 4 early shots does not transfer to the held-out late shots (the
 # known cross-campaign failure), and the oracle then scored WORSE than the 1.0 anchor.
+#
+# PRESENCE FILTER (2026-09-03): shots whose HDF5 group for this modality is an empty (C, 1)
+# stub yield ONLY the eps-floor constant last-resort window, which would put a constant plate
+# in both the PCA fit and the held-out set and make the "floor" meaningless. bes is empty in
+# 61.8% of shots and co2 in 48.2%, so this is not a corner case. Uses the same precomputed
+# liveness cache the trainer's --spectro_presence reads; passthrough (with a warning) if it
+# has not been built yet.
+all_shots = tc.spectro_live_shots(MOD, all_shots, log_fn=print)
 _pool = all_shots[:-16]
 train_shots = _pool[:: max(1, len(_pool) // 40)][:40]
 test_shots = all_shots[-16:][:4]
-print(f"train shots {train_shots}  test shots {test_shots}   N={N} windows each", flush=True)
+print(f"[{MOD}] train shots {train_shots}  test shots {test_shots}   N={N} windows each",
+      flush=True)
 
-STATS_512 = ("/lustre/orion/fus187/proj-shared/models/ignite_codecs_noinorm/stats/"
-             "codec_mhr_perfreq_stats.pt")
-STATS_256 = ("/lustre/orion/fus187/proj-shared/models/ignite_codecs_mhr_specport/stats/"
-             "codec_mhr_perfreq_stats_nfft512.pt")
+_DEFAULT_STATS = ("/lustre/orion/fus187/proj-shared/models/ignite_codecs_noinorm/stats/"
+                  f"codec_{MOD}_perfreq_stats.pt")
+stats = _args.stats or (_DEFAULT_STATS if Path(_DEFAULT_STATS).exists() else "none")
 
-# k = number of continuous coefficients the oracle may spend per window. 192 is the
-# codec's token budget; the larger values locate where a linear code would have to sit to
-# match ~tmean, which is itself a C*F = 3072-number oracle (the exact per-(channel,freq)
-# time-average), i.e. 16x the codec's dimension budget before any quantisation.
-KS = [16, 48, 96, 192, 384, 700]
-for name, (nfft, fbins, pf, pt, stats) in (
-    ("TODAY  n_fft1024 / 512 bins / patch 16x16", (1024, 512, 16, 16, STATS_512)),
-    ("PORT   n_fft 512 / 256 bins / patch  8x16", (512, 256, 8, 16, STATS_256)),
-):
-    cfg = SpectroCodecConfig(channels=tc.modality_channels(MOD))
-    cfg.stft_n_fft, cfg.stft_hop = nfft, 256
-    cfg.freq_bins, cfg.time_frames = fbins, 96
-    cfg.patch_f, cfg.patch_t = pf, pt
-    # PER-FREQ LOG-Z, exactly as every mhr arm trains (--logpow_stats_path). Without it the
-    # target is a DIFFERENT tensor and none of these numbers are comparable to the audit:
-    # ~tmean reads 0.787 in raw log-power space vs 0.878 in the per-freq-z space the arms use.
+KS = [int(k) for k in _args.ks.split(",") if k.strip()]
+cfg = SpectroCodecConfig(channels=tc.modality_channels(MOD))
+cfg.stft_n_fft, cfg.stft_hop = _args.stft_n_fft, 256
+cfg.freq_bins, cfg.time_frames = _args.freq_bins, 96
+cfg.patch_f, cfg.patch_t = _args.patch_f, _args.patch_t
+# RAW per-channel standardization, exactly as the trainer applies it (co2 only today). Without
+# it co2's log-power is 100% clipped at the ceiling and the floor is measured on a flat plate.
+tc.apply_spectro_standardization(cfg, MOD, log_fn=print)
+# PER-FREQ LOG-Z, exactly as the arms train (--logpow_stats_path). Without it the target is a
+# DIFFERENT tensor and none of these numbers are comparable to the audit: ~tmean reads 0.787 in
+# raw log-power space vs 0.878 in the per-freq-z space the mhr arms use.
+if stats != "none":
     _st = torch.load(stats, map_location="cpu", weights_only=False)
-    assert len(_st["mean"][0]) == fbins, f"{stats} has F={len(_st['mean'][0])}, need {fbins}"
+    assert len(_st["mean"][0]) == cfg.freq_bins, \
+        f"{stats} has F={len(_st['mean'][0])}, need {cfg.freq_bins}"
     cfg.logpow_freq_mean = torch.as_tensor(_st["mean"], dtype=torch.float32).tolist()
     cfg.logpow_freq_std = torch.as_tensor(_st["std"], dtype=torch.float32).tolist()
     cfg.logpow_standardize = True
-    t0 = time.time()
-    # 720 train windows set the available PCA rank; the metric is accumulated in CHUNKS so the
-    # float64 host arrays never exceed one chunk (the un-chunked version was OOM-killed).
-    Xtr = stream(cfg, train_shots, N, "plateau_tr")
-    Xte = stream(cfg, test_shots, N, "audit4")
-    vals = int(np.prod(Xte.shape[1:]))
-    bits = cfg.n_tok * np.log2(cfg.codebook_size)
-    print(f"\n=== {name} ===", flush=True)
-    print(f"  window {Xte.shape[1:]} = {vals} values | n_tok {cfg.n_tok} -> {bits:.0f} bits "
-          f"= {bits / vals:.4f} bits/value | stream {time.time() - t0:.0f}s", flush=True)
-    base = baselines_chunked(Xte)
-    print(f"  ~tmean  (perfect envelope, no temporal structure): nrmse "
-          f"{base['tmean'][0]:.4f}  corr2d {base['tmean'][1]:.4f}", flush=True)
-    print(f"  ~wcmean (per-window constant, the 1.0 anchor)   : nrmse "
-          f"{base['wcmean'][0]:.4f}  corr2d {base['wcmean'][1]:.4f}", flush=True)
-    res, rank = pca_plateau(Xtr, Xte, KS)
-    print(f"  out-of-sample PCA (rank available {rank}) -- k continuous dims, INFINITE "
-          f"precision:", flush=True)
-    for k in KS:
-        mark = "   <-- n_tok (the codec's dimension budget)" if k == cfg.n_tok else ""
-        print(f"    k={k:>4}   nrmse {res[k][0]:.4f}   corr2d {res[k][1]:.4f}{mark}", flush=True)
-    del Xtr, Xte
-print("PLATEAU DONE")
+    print(f"[{MOD}] per-freq log-z ON from {stats}", flush=True)
+else:
+    print(f"[{MOD}] per-freq log-z OFF (no stats file)", flush=True)
+
+t0 = time.time()
+Xtr = stream(cfg, train_shots, N, "plateau_tr")
+Xte = stream(cfg, test_shots, N, "audit4")
+vals = int(np.prod(Xte.shape[1:]))
+bits = cfg.n_tok * np.log2(cfg.codebook_size)
+print(f"\n=== {MOD}  n_fft {cfg.stft_n_fft} / {cfg.freq_bins} bins / patch "
+      f"{cfg.patch_f}x{cfg.patch_t} ===", flush=True)
+print(f"  window {Xte.shape[1:]} = {vals} values | n_tok {cfg.n_tok} -> {bits:.0f} bits "
+      f"= {bits / vals:.4f} bits/value | {vals // cfg.n_tok} values/token | "
+      f"stream {time.time() - t0:.0f}s", flush=True)
+base = baselines_chunked(Xte)
+print(f"  ~tmean  (perfect envelope, no temporal structure): nrmse "
+      f"{base['tmean'][0]:.4f}  corr2d {base['tmean'][1]:.4f}", flush=True)
+print(f"  ~wcmean (per-window constant, the 1.0 anchor)   : nrmse "
+      f"{base['wcmean'][0]:.4f}  corr2d {base['wcmean'][1]:.4f}", flush=True)
+res, rank = pca_plateau(Xtr, Xte, KS)
+print(f"  out-of-sample PCA (rank available {rank}) -- k continuous dims, INFINITE precision:",
+      flush=True)
+for k in KS:
+    mark = "   <-- n_tok = THE FLOOR" if k == cfg.n_tok else ""
+    print(f"    k={k:>4}   nrmse {res[k][0]:.4f}   corr2d {res[k][1]:.4f}{mark}", flush=True)
+print(f"PLATEAU DONE {MOD} floor(k={cfg.n_tok})="
+      f"{res.get(cfg.n_tok, (float('nan'),))[0]:.4f}", flush=True)

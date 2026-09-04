@@ -674,9 +674,14 @@ def compute_gate(
     ----------
     codec : SpectroCodec
         The (partially) trained codec.
-    eval_pairs : list of (spec_a, spec_b)
+    eval_pairs : list of (spec_a, spec_b) or (spec_a, spec_b, mask)
         Held-out δ-shift pairs; used for **stability** (codes of a vs b) and
-        **decode_fidelity** (recon of a vs a).
+        **decode_fidelity** (recon of a vs a). A third element, when present, is the
+        ``(B, C, T)`` per-(channel, STFT-frame) validity mask for ``spec_a`` (built by
+        ``data.spectro_frame_mask`` when ``cfg.mask_missing`` is set) and is forwarded to
+        ``gate.decode_fidelity``, so every reconstruction statistic AND every trivial
+        baseline is taken over real diagnostic data only. A 2-element pair passes ``None``
+        and the gate is byte-identical to the pre-2026-09-03 one.
     frame_seq : (B, n_frames, C, F, T)
         Consecutive world-model frames; used for **persistence** (frame t vs t+1) and
         **forecastability** (whole sequence of codes).
@@ -717,13 +722,15 @@ def compute_gate(
         for m in ("spec_nrmse", "spec_corr2d", "spec_nrmse_band", "spec_corr2d_band")
     )
     dec_lat: Dict[str, List[float]] = {}
-    for spec_a, spec_b in eval_pairs:
+    for _pair in eval_pairs:
+        spec_a, spec_b = _pair[0], _pair[1]
+        pair_mask = _pair[2] if len(_pair) > 2 else None
         out_a = codec.forward(spec_a)
         _, codes_b = codec.quantize(codec.encode(spec_b))
         stab_vals.append(gate.stability(out_a["codes"], codes_b))
         dm = gate.decode_fidelity(
             out_a["recon"], spec_a, patch_f=cfg.patch_f, patch_t=cfg.patch_t,
-            full_spec=True,
+            full_spec=True, mask=pair_mask,
         )
         dec_corr.append(dm["envelope_corr"])
         dec_f1.append(dm["peak_f1"])
