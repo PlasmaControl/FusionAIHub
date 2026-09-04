@@ -103,14 +103,24 @@ def test_mismatched_shapes_are_rejected_at_construction():
         FeatureArray(x=np.zeros(3), y=np.zeros(3))     # must be (C, T)
 
 
-def test_a_one_sample_feature_is_refused_as_ambiguous(tmp_path):
+def test_a_one_sample_feature_is_demoted_to_a_miss(tmp_path):
     # The corpus layout reads ydata.shape[-1] < 2 as "signal absent", so a
-    # resolved one-sample group would be silently misread downstream.
+    # resolved one-sample group would be silently misread downstream. It is
+    # recorded as a miss instead - and NOT raised on, which would cost this
+    # shot the other feature resolved in the same call.
     p = tmp_path / "190000_features.h5"
     one = FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)), attrs={"resolver": "corpus"})
-    with pytest.raises(ValueError, match="absent"):
-        write_features(p, 190000, {"ip": one}, {})
-    assert not p.exists()
+    write_features(p, 190000, {"ip": one, "bt": _scalar()}, {})
+    assert present(p) == {"bt"}
+    assert "OneSampleAmbiguous" in missing_names(p)["ip"]
+
+
+def test_write_features_leaves_the_callers_dicts_alone(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    arrays = {"ip": FeatureArray(x=np.zeros(1), y=np.zeros((1, 1)))}
+    missing: dict[str, str] = {}
+    write_features(p, 190000, arrays, missing)
+    assert set(arrays) == {"ip"} and missing == {}
 
 
 def test_read_feature_raises_for_absent_group(tmp_path):
