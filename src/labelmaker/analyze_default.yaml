@@ -1,0 +1,16 @@
+# What `python -m labelmaker.run analyze` produces and plots for a shot.
+# Edit a copy and pass it with --config; this file is the default.
+
+# Labels, as <model folder>/<output name>, plotted top to bottom in this order.
+labels:
+  - d3d_tearing_onset_cnn1d/tm_prob
+  - d3d_tearing_onset_cnn1d/betan
+
+# Canonical features (features/namespace.py) drawn above the labels for
+# orientation. They are fetched like model inputs if not already stored.
+context:
+  - ip
+  - pinj_total
+
+# Drawn on binary labels, and where `first_above_threshold` is measured.
+threshold: 0.5
