@@ -863,6 +863,42 @@ def main():
     if not specs:
         raise SystemExit("--arms is required (label=ckpt,...)")
 
+    # ---- POOL-CONSISTENCY GUARD -------------------------------------------------------- #
+    # window_pool() builds the GROUND TRUTH from specs[0]'s cfg, so every arm in one run is
+    # scored against a GT standardised the FIRST arm's way. Mixing arms whose input transform
+    # differs silently corrupts the whole table.
+    #
+    # MEASURED 2026-09-04: production ece (logpow_freq_mean=None, raw per-channel z) was listed
+    # first alongside arms trained with per-frequency log-z. The GT changed underneath every-
+    # thing -- tmean 0.9688 -> 0.7258, GT patch-lattice 1.05 -> 1.13 -- and the log-z arms, fed
+    # a distribution they had never seen, read nRMSE 3.2-3.9 instead of ~1.1. Three conclusions
+    # were drawn from that table and all three were wrong ("ece diverges", "arm at 77% of its
+    # ceiling", "aspect buys ece nothing"). The one finding that survived was the production
+    # codec's own collapse, because it alone was scored in its native normalisation.
+    #
+    # Codecs with DIFFERENT standardisation must be scored in SEPARATE runs and their numbers
+    # never placed in one table.
+    if len(specs) > 1:
+        _sig = {}
+        for _lab, _ck in specs:
+            if not Path(_ck).exists():
+                continue
+            try:
+                _c = load_codec(_ck, device="cpu")[1]
+            except Exception:
+                continue
+            _sig.setdefault(getattr(_c, "logpow_freq_mean", None) is not None, []).append(_lab)
+        if len(_sig) > 1:
+            _on = _sig.get(True, []); _off = _sig.get(False, [])
+            raise SystemExit(
+                "REFUSING TO SCORE: the arms disagree on INPUT STANDARDISATION, so one pool "
+                "cannot serve them.\n"
+                f"  per-freq log-z ON  ({len(_on)}): {', '.join(_on[:6])}{' ...' if len(_on)>6 else ''}\n"
+                f"  per-freq log-z OFF ({len(_off)}): {', '.join(_off[:6])}{' ...' if len(_off)>6 else ''}\n"
+                "The ground truth is built from the FIRST arm's cfg; the others would be fed an "
+                "input distribution they never saw. Score them in separate runs."
+            )
+
     shots = held_out_shots(args.modality, args.eval_n_shots)
     print(f"[{args.modality}] held-out shots: {shots}", flush=True)
 
