@@ -551,6 +551,25 @@ training and report CPU/GPU utilisation and memory, and raise
 1. Measure `big_tf_unet`'s coherent mask against the 180 annotated shots before
    trusting it as a label source. If the mask misses modes the annotation finds,
    the product label is worse than either input.
+
+   **Decided 2026-09-05 (task 6, SLURM job 2923882): GO.** Measured on all 180
+   shots / 1,407,600 frames, under the `tokeye` transform, band 80.57-250.00 kHz
+   (bins 164-511), mask `sigmoid(coherent) >= 0.2`, 0.8 first-pass notch: pooled
+   recall of annotated-active frames **0.912** at occupancy >= 0.01 and **172 of
+   180 shots (95.6 %)** at per-shot recall >= 0.5 there, against a rule of 0.70
+   and 80 %. It also passes at occupancy >= 0.005 (0.938 / 98.3 %) and >= 0.02
+   (0.869 / 93.3 %), and fails only at >= 0.05 (0.720 / 78.9 %, the per-shot half).
+   The `aemodes` transform passes too (0.902 / 95.0 % at >= 0.01). Reported, not
+   disqualifying per Nathan's under-counting amendment: precision 0.313, pooled
+   AUROC 0.721, 61.3 % of all frames called active, and 68.7 % of predicted-positive
+   frames unannotated - of which essentially none (0.03 %) are inside an LFM window,
+   the rest outside any annotation. The masked-pixel centroid frequency lands inside
+   80-250 kHz on 179/179 shots that have an annotation, median 124.2 kHz. Caveats
+   that survive the GO: the per-shot AUROC distribution is bimodal (median 0.798,
+   47 shots below 0.6) and broadband transients leak into the coherent channel, so
+   `channel 0 & ~channel 1` and a minimum mask component extent are worth testing
+   before the occupancy threshold is fixed. Numbers, figures and the per-shot table:
+   `outputs/labelmaker/ae/README.md` and `mask_vs_annotation.json`.
 2. Fix and record the notch rule's threshold, with a per-shot review of which
    bins it removes.
 3. Fix the `ae_active` occupancy threshold and the 25 ms aggregation.
@@ -611,6 +630,22 @@ same shots, the fdp BES fetch is not worth building.
 2. AE: publish LFM as its own separate label later, or discard it?
 3. AE: which spectrogram - `aemodes`' `log1p` STFT (settings measured above) or
    `tokeye`'s cross-spectrum with percentile clipping?
+
+   **Answered by measurement, 2026-09-05 (task 6): `tokeye`'s.** Both were run
+   through `big_tf_unet` over all 180 annotated shots. `tokeye`'s
+   `compute_stft` - `log1p(|STFT|)` with a 1st/99th percentile clip, standardised
+   per array as `tokeye.inference.model_infer` does - scored pooled AUROC **0.7207**
+   against `aemodes`' **0.7166**, and was ahead on recall at every threshold
+   (0.912 vs 0.902 at occupancy >= 0.01) and on per-shot recall (172/180 vs
+   171/180 at >= 0.5). The margin is small; the tie-breaker is that this is
+   tokeye's own inference contract for these weights - `transforms.py` records
+   that `hop = 128` "matches the released model's training recipe" - so training
+   and corpus inference inherit one recipe instead of two.
+   Note that **no cross-spectrum is involved**: `compute_stft` only forms one when
+   handed two rows, and each CO2 channel is fed on its own, so the choice is
+   magnitude + percentile clip vs `aemodes`' power, not cross vs auto. The two
+   candidates also differed in standardisation (per array vs `step_0a/stats.json`
+   global), so the 0.004 AUROC gap is not attributable to the STFT alone.
 4. Notch: is "a bin active across most of the record" the rule you use by eye, or
    is there a specific frequency list per campaign?
 5. Survival: ship the retrained (C) model as the default once it measures better,
