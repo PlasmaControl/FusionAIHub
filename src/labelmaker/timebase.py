@@ -32,6 +32,10 @@ def index_at(x: np.ndarray, t) -> np.ndarray:
 
     Counted from the record start, not from zero: actuator groups begin at
     negative times, where an unclamped index would wrap to the array tail.
+
+    Assumes a uniformly sampled axis - the rate is estimated from the span.
+    For an irregular record (a native-rate EFIT node) use `window_mean`,
+    which searches the axis instead.
     """
     x = np.asarray(x, dtype=np.float64).ravel()
     t = np.atleast_1d(np.asarray(t, dtype=np.float64))

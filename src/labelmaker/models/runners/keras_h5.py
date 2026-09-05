@@ -1,57 +1,42 @@
 """Evaluate a Keras-2 legacy HDF5 model in torch.
 
-The group's Keras artifacts were saved by Keras 2.8, and there is no
-TensorFlow build for this environment's Python (conda-forge ships
-tensorflow-cpu 2.21 for py312 only, against this repo's `python <3.12`
-pin). The graphs in the roster are small feed-forward networks whose layers
-have closed-form inference semantics, so instead of a framework we read the
-serialized config and the moving statistics out of the file and evaluate the
-graph directly. The arithmetic is torch, not numpy: the lab standardizes on
-torch (IGNITE is torch), and a second numerical framework living only here
-was a maintenance liability nobody asked for. Torch is an implementation
-detail of this evaluator alone - `__call__` and `predict_members` still take
-and return plain numpy arrays, so nothing downstream has to know torch is
-there.
+The group's Keras artifacts were saved by Keras 2.8. TensorFlow is not a
+dependency of this environment: the frozen reference under
+tests/labelmaker/data/ was produced once, in a throwaway `uv` environment
+with tensorflow-cpu 2.15.1, and is all that is ever needed of it. The graphs
+in the roster are small feed-forward networks whose layers have closed-form
+inference semantics, so instead of a framework we read the serialized config
+and the moving statistics out of the file and evaluate the graph directly.
+The arithmetic is torch: the lab standardizes on torch (IGNITE is torch),
+and a second numerical framework living only here was a maintenance
+liability nobody asked for. Torch is an implementation detail of this
+evaluator alone - `__call__` and `predict_members` take and return plain
+numpy arrays, so nothing downstream has to know torch is there.
 
 Supported layers: InputLayer, BatchNormalization, Conv1D, MaxPooling1D,
 Flatten, Dense, Concatenate, Dropout (identity at inference). Anything else
 raises UnsupportedLayer, naming the class, rather than silently skipping it.
 
 Equality with TensorFlow is not assumed: `labelmaker.validate.adapter_fidelity`
-compares this evaluator against a real Keras load of the same file and
-stores the golden outputs under tests/labelmaker/data/. Measured against
-that golden file: float64 max_abs_diff = 5.600518791837317e-05, float32
-max_abs_diff = 8.20159912109375e-05 - the same order of magnitude, not two
-orders apart, so switching this evaluator's own arithmetic to float32 does
-NOT make the residual collapse toward float32 eps (~1e-6). That falsifies
-"TensorFlow's own float32 rounding against our float64 arithmetic", the
-hypothesis Task 14 guessed but could not test.
+compares this evaluator against real Keras outputs frozen for the same weight
+files. Measured there: max abs diff 5.6e-5 on a logit column that reaches
+20.7, median 7.65e-7 - float32 rounding amplified through a ~15-layer chain
+onto the graph's one unbounded (linear) output, the tearing logit, never
+`betan`. The evaluator's own float64-vs-float32 disagreement is the same
+size, which is what makes that rounding rather than a semantic error; the
+four gates and the reasoning are in `adapter_fidelity`'s docstring. One
+golden-file profile row carries a physically implausible `cer_rot_csaps_1d`
+value (6,437,599, five orders past the model's trained range and the
+downstream `DomainRule("rot_zipfit", "absmax", hi=150.0)`) that blows the
+first BatchNormalization's output to ~2.3e5; sigmoid saturation downstream
+absorbs it and it is not among the worst rows, but it is a real oddity in
+the reference data.
 
-Tracing every layer's output for one member (float64 vs float32, same
-inputs) localizes the sensitivity: every one of the ten members' single
-worst-diff row lands on the tearing-logit column, never `betan` - the
-graph's only unbounded, non-saturating (`linear`) output, at the end of a
-~15-layer BatchNorm/Conv1D/Dense chain whose other six activations are all
-sigmoids that absorb small perturbations once saturated. One golden-file
-profile row does carry a physically implausible `cer_rot_csaps_1d` value
-(6,437,599, five orders of magnitude past the model's trained range and the
-downstream `DomainRule(\"rot_zipfit\", \"absmax\", hi=150.0)`) that blows the
-first BatchNormalization's output to ~2.3e5 and produces a large float64-
-vs-float32 divergence right at that layer (~2.9e-2) - but that row is not
-among the actual worst rows against the golden reference, so sigmoid
-saturation elsewhere absorbs it; it is a real oddity in the reference data,
-not the explanation for the measured residual. The residual itself is
-ordinary float32-scale rounding, compounded across the chain and expressed
-on the one linear output - see `validate.adapter_fidelity`'s docstring for
-the full reasoning and why the tolerance is unchanged at 1e-4.
-
-`load_graph`/`load_ensemble` take a `dtype` (default `torch.float64`,
-matching this evaluator's historical numpy precision) and convert every
-weight to a torch tensor of that dtype once, at load time - not per call,
-since `predict_members` runs a graph over the whole corpus. `predict_members`
-itself has no dtype of its own: it evaluates whatever dtype the graphs
-passed to it were loaded with, so comparing dtypes means loading the
-ensemble twice (see `validate.adapter_fidelity`).
+`load_graph`/`load_ensemble` take a `dtype` (default `torch.float64`) and
+convert every weight to a torch tensor of that dtype once, at load time -
+not per call, since `predict_members` runs a graph over the whole corpus.
+`predict_members` evaluates whatever dtype the graphs were loaded with, so
+comparing dtypes means loading the ensemble twice (see `adapter_fidelity`).
 """
 from __future__ import annotations
 
@@ -113,8 +98,8 @@ def _conv1d(x: torch.Tensor, kernel: torch.Tensor, bias: torch.Tensor | None, cf
     `kernel` is Keras layout `(kernel_size, in_ch, out_ch)`; `permute(2, 1, 0)`
     is a view (no copy) to torch's `(out_ch, in_ch, kernel_size)`.
 
-    `'same'` padding is computed exactly as the numpy evaluator this replaces
-    computed it, not via `F.conv1d(padding='same')`: torch's `'same'` puts
+    `'same'` padding is computed by hand, not via `F.conv1d(padding='same')`:
+    torch's `'same'` puts
     the extra pad on the *left* for an odd amount where TensorFlow puts it on
     the *right*, and torch's `'same'` also rejects stride > 1. Padding
     manually with `F.pad` and passing `padding=0` to the convolution keeps

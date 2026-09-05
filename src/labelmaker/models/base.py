@@ -46,7 +46,7 @@ from ..timebase import sample_at, window_mean
 #: a per-model value.
 ARCHIVE_WINDOW_S = 2 * ns.STEP_S
 
-#: ROW 0 AND COVERAGE, MEASURED (I7, Task 15 code review). Windowing
+#: ROW 0 AND COVERAGE, MEASURED (Task 15). Windowing
 #: introduces two things a bare nearest-sample convention did not have.
 #:
 #: (a) Row 0's validity is now source-dependent. The window at `t=0` is
@@ -88,7 +88,7 @@ def sample_by_resolver(
     """Sample one stored array the way its resolver's convention prescribes.
 
     Shared by `InputSpec.build` and `validate.reconstruction_fidelity`'s ECH
-    diagnostic (I5) so the two cannot drift apart on what "the right way to
+    diagnostic so the two cannot drift apart on what "the right way to
     read this resolver" means - both read `ns.SAMPLING_BY_SOURCE` rather than
     each hand-coding the `resolver in (...)` test that this replaces.
 
@@ -163,9 +163,17 @@ TRANSFORMS: dict[str, Transform] = {
     "nonneg_zero_fill": Transform(_nonpositive_to_zero, fills=True),
 }
 
+def _sigmoid(a: np.ndarray) -> np.ndarray:
+    # `exp` of a large negative logit overflows to inf, which gives the right
+    # answer (a probability of 0.0) but raises a RuntimeWarning that the test
+    # suite's `-W error` would turn into an exception.
+    with np.errstate(over="ignore"):
+        return 1.0 / (1.0 + np.exp(-a))
+
+
 ACTIVATIONS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "none": lambda a: a,
-    "sigmoid": lambda a: 1.0 / (1.0 + np.exp(-a)),
+    "sigmoid": _sigmoid,
 }
 
 STATS = ("value", "min", "max", "absmax")
@@ -367,7 +375,7 @@ class InputSpec:
             resolvers[f.canonical] = resolver
             t = grid + self.dt_s if f.lag == "t+dt" else grid
             # Sampling is keyed on the resolver (`sample_by_resolver`, which
-            # reads `ns.SAMPLING_BY_SOURCE` - I5) rather than on the feature:
+            # reads `ns.SAMPLING_BY_SOURCE`) rather than on the feature:
             # the same canonical name means a different sampling rule
             # depending on which source actually produced the stored array.
             # A corpus- or fdp-served field is a true-time, high-rate record

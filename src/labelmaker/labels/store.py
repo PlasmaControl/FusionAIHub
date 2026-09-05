@@ -21,6 +21,9 @@ from .. import __version__
 from ..config import atomic_path, git_sha
 from .schema import LabelSpec
 
+#: Every label group has two of these beside it; they are not labels.
+COMPANION_SUFFIXES = ("_spread", "_valid")
+
 
 @dataclass(frozen=True)
 class LabelArray:
@@ -120,7 +123,7 @@ def labelled(path) -> set[str]:
     with h5py.File(path, "r") as f:
         for slug in f:
             for name in f[slug]:
-                if name.endswith(("_spread", "_valid")):
+                if name.endswith(COMPANION_SUFFIXES):
                     continue
                 out.add(f"{slug}/{name}")
     return out
@@ -133,27 +136,29 @@ def index_rows(path) -> list[dict]:
         shot = int(f.attrs["shot"])
         run_id = str(f.attrs.get("run_id", ""))
         written_at = str(f.attrs.get("written_at", ""))
-        for key in sorted(labelled(path)):
-            slug, label = key.split("/", 1)
-            g = f[slug][label]
-            y = np.asarray(g["ydata"], dtype=np.float64)[0]
-            v = np.asarray(f[slug][f"{label}_valid"]["ydata"])[0].astype(bool)
-            rows.append(
-                {
-                    "shot": shot,
-                    "slug": slug,
-                    "label": label,
-                    "card_id": str(g.attrs.get("card_id", "")),
-                    "task": str(g.attrs.get("task", "")),
-                    "artifact_sha256": str(g.attrs.get("artifact_sha256", "")),
-                    "n_total": int(y.size),
-                    "n_valid": int(v.sum()),
-                    "mean_valid": float(y[v].mean()) if v.any() else float("nan"),
-                    "max_valid": float(y[v].max()) if v.any() else float("nan"),
-                    "run_id": run_id,
-                    "written_at": written_at,
-                }
-            )
+        for slug in sorted(f):
+            for label in sorted(f[slug]):
+                if label.endswith(COMPANION_SUFFIXES):
+                    continue
+                g = f[slug][label]
+                y = np.asarray(g["ydata"], dtype=np.float64)[0]
+                v = np.asarray(f[slug][f"{label}_valid"]["ydata"])[0].astype(bool)
+                rows.append(
+                    {
+                        "shot": shot,
+                        "slug": slug,
+                        "label": label,
+                        "card_id": str(g.attrs.get("card_id", "")),
+                        "task": str(g.attrs.get("task", "")),
+                        "artifact_sha256": str(g.attrs.get("artifact_sha256", "")),
+                        "n_total": int(y.size),
+                        "n_valid": int(v.sum()),
+                        "mean_valid": float(y[v].mean()) if v.any() else float("nan"),
+                        "max_valid": float(y[v].max()) if v.any() else float("nan"),
+                        "run_id": run_id,
+                        "written_at": written_at,
+                    }
+                )
     return rows
 
 

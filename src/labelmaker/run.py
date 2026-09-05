@@ -94,20 +94,17 @@ EXIT_NO_SHOTS = 1
 #: 2 is argparse's own usage error.
 EXIT_UNVERIFIED_WEIGHTS = 3
 EXIT_BAD_MODEL = 4
-#: task-16 addendum item 2: NOT 2 - argparse already owns that code, and a
-#: caller testing `$? == 2` would then confuse "you passed bad flags" with
+#: Not 2: argparse already owns that code, and a caller testing `$? == 2`
+#: would then confuse "you passed bad flags" with
 #: "the evaluator disagrees with the framework it is supposed to match",
 #: which is the single most important failure this package can report.
 EXIT_FIDELITY_FAILED = 5
-#: I5 (task-16 review): distinct from EXIT_FIDELITY_FAILED. Before this, a
-#: validate run in which every one of the three per-slug reports raised
-#: (adapter_fidelity/reconstruction/label_quality all caught into
-#: `{"error": ...}`) still printed the same `validate <slug>: <name> ->
-#: <path>` line a success prints and exited 0 - `fidelity.get("passed") is
-#: False` is false for `{"error": ...}` just as it is for a real pass, so
-#: neither the log nor `$?` could tell a broken validate run from a clean
-#: one. Set when one or more reports errored but none failed fidelity
-#: outright (that case keeps EXIT_FIDELITY_FAILED, the more severe verdict).
+#: Distinct from EXIT_FIDELITY_FAILED: set when one or more validation
+#: reports raised (recorded as `{"error": ...}`) but none failed fidelity
+#: outright, which keeps the more severe verdict. Without it a validate run
+#: whose every report errored printed the same lines a success prints and
+#: exited 0 - `fidelity.get("passed") is False` is false for an error dict
+#: just as it is for a real pass.
 EXIT_VALIDATE_ERRORED = 6
 
 #: Faults that make a requested model unusable before any shot is touched:
@@ -178,7 +175,7 @@ def build_parser() -> ArgumentParser:
                         help="shots present in both the corpus and the "
                              "tearing-mode training archive")
     parser.add_argument("--sample", type=int, default=0,
-                        help="with --corpus/--overlap: take a seeded sample")
+                        help="take a seeded sample of the selected shots")
     parser.add_argument("--seed", type=int, default=20260903)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=300,
@@ -454,22 +451,19 @@ def _stage_summary(stage: str, rows) -> dict:
 #: Printed and stored beside the mixed-source count, so the number arrives
 #: with the reason it matters instead of needing a reader to go and find it.
 #:
-#: I9 (Task 15 code review): this used to describe a live misalignment - the
-#: archive's row k is stamped 25 ms later than the 50 ms interval it
-#: averages, while corpus and fdp carry true time axes - as something a
-#: future task would need to fix. `models.base.InputSpec.build` now resolves
-#: it at the point model inputs are assembled: sampling is keyed on which
-#: resolver produced each stored array (`ns.SAMPLING_BY_SOURCE`), so an
-#: archive-served field (read nearest-sample, since it is already the
-#: boxcar) and a corpus- or fdp-served field (windowed into that same
-#: boxcar) refer to the same physical 50 ms interval once `build()` is
-#: done with them. A mixed-source shot is therefore provenance information,
-#: not a correctness warning, for any consumer that reads features through
-#: `build()` - which every model adapter does. It stays worth recording
-#: per shot regardless: which sources served which features is useful on
-#: its own, and a consumer reading the raw feature file directly (bypassing
-#: `build()`) still meets the 25 ms archive stamp offset this note
-#: describes.
+#: The archive's row k is stamped 25 ms later than the 50 ms interval it
+#: averages, while corpus and fdp carry true time axes.
+#: `models.base.InputSpec.build` reconciles that at the point model inputs
+#: are assembled - sampling is keyed on which resolver produced each stored
+#: array (`ns.SAMPLING_BY_SOURCE`), so an archive-served field (read
+#: nearest-sample, since it is already the boxcar) and a corpus- or
+#: fdp-served field (windowed into that same boxcar) refer to the same
+#: physical 50 ms interval. A mixed-source shot is therefore provenance
+#: information, not a correctness warning, for any consumer that reads
+#: features through `build()` - which every model adapter does. It stays
+#: worth recording per shot: which sources served which features is useful
+#: on its own, and a consumer reading the raw feature file directly still
+#: meets the offset.
 MIXED_SOURCE_NOTE = (
     "features from more than one source in the same row: the archive's row k "
     "is stamped 25 ms - one whole dt - later than the 50 ms interval it "
@@ -618,7 +612,7 @@ def main(argv=None) -> int:
             append_index(paths.labels_index, index)
             print(f"index: {len(index)} rows -> {paths.labels_index}")
 
-    # I5/M7 (task-16 review): collected across the whole loop rather than
+    # Collected across the whole loop rather than
     # returned from inside it, so (a) one model's fidelity failure does not
     # stop later models in a multi-`--models` run from being validated at
     # all, and (b) the exit code and the summary.json write both happen
@@ -630,10 +624,7 @@ def main(argv=None) -> int:
 
     if args.stage in ("validate", "all"):
         # Deferred import, like every other framework-specific import in this
-        # module: `validate` loads torch at module scope (I1/addendum item 1
-        # is what makes that safe now - no scipy import at runtime means the
-        # `infer` stage above loading torch first, under `--stage all`, can
-        # no longer break a later scipy import the way it used to).
+        # module: `validate` loads torch at module scope.
         from . import validate as validation
 
         for slug in args.models:
@@ -668,7 +659,7 @@ def main(argv=None) -> int:
             except Exception as exc:  # noqa: BLE001 - see comment above
                 # `reconstruction_fidelity` and `label_quality` are likewise
                 # specific to `d3d_tearing_onset_cnn1d`'s scalar column order
-                # (I10) - MATCH_COLUMNS indexing a different slug's shorter
+                # - MATCH_COLUMNS indexing a different slug's shorter
                 # or differently-ordered scalar_fields raises before any
                 # per-shot work, which is by design (see validate.py), but
                 # it must not take down the rest of a multi-model run.
@@ -705,7 +696,7 @@ def main(argv=None) -> int:
     if fidelity_failed:
         exit_code = EXIT_FIDELITY_FAILED
     elif errored_reports:
-        # I5: at least one report is `{"error": ...}` and none failed
+        # At least one report is `{"error": ...}` and none failed
         # fidelity outright - still not a clean run, and `$?` must say so.
         print(
             f"validate: {len(errored_reports)} report(s) errored: "
@@ -721,7 +712,7 @@ def main(argv=None) -> int:
                 "finished_at": datetime.now(UTC).isoformat(timespec="seconds"),
                 "mixed_source_note": MIXED_SOURCE_NOTE,
                 "stages": summaries,
-                # I5: an error count in the run summary, not only on stderr -
+                # An error count in the run summary, not only on stderr -
                 # a caller inspecting summary.json after the fact (rather
                 # than capturing stderr at run time) must be able to see the
                 # same verdict $? carried.

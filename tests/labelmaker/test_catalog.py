@@ -72,3 +72,12 @@ def test_overlap_with_the_tearing_archive_is_the_poc_pool():
     overlap = catalog.overlap_shots(Paths())
     assert len(overlap) > 1_000       # measured 1,503 on 2026-09-03
     assert min(overlap) >= 185_000
+
+
+def test_sample_shots_deduplicates_before_sampling():
+    """A shot file may list a shot twice; the sample must not."""
+    shots = [5, 5, 5, 1, 2, 2]
+    assert catalog.sample_shots(shots, 10, seed=0) == [1, 2, 5]
+    # 300 entries but three distinct shots: the sample is those three, not
+    # three draws from a list full of repeats.
+    assert catalog.sample_shots(shots * 50, 3, seed=0) == [1, 2, 5]

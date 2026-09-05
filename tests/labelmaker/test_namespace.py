@@ -77,7 +77,7 @@ def test_source_preference_and_the_one_archive_only_feature():
 
 
 def test_every_source_has_a_declared_sampling_convention():
-    """I5: `SAMPLING_BY_SOURCE` must be total over `ns.SOURCES`.
+    """`SAMPLING_BY_SOURCE` must be total over `ns.SOURCES`.
 
     Before this, `models.base.InputSpec.build` tested `resolver in
     ("corpus", "fdp")` directly - an opt-in against an open set, the same
@@ -90,3 +90,15 @@ def test_every_source_has_a_declared_sampling_convention():
     for source in ns.SOURCES:
         assert source in ns.SAMPLING_BY_SOURCE, source
         assert ns.SAMPLING_BY_SOURCE[source] in ("nearest", "window")
+
+
+def test_every_feature_lists_its_sources_in_global_preference_order():
+    """`run.features_for_shot` walks `ns.SOURCES` in order for every feature
+    at once, so a spec's own `sources` tuple is honoured only when it is
+    ordered the same way. Asserted here so the two cannot silently disagree
+    the day a feature prefers fdp over the archive.
+    """
+    rank = {s: i for i, s in enumerate(ns.SOURCES)}
+    for spec in ns.FEATURES:
+        ranks = [rank[s] for s in spec.sources]
+        assert ranks == sorted(ranks), (spec.name, spec.sources)

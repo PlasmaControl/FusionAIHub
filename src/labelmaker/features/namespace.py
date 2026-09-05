@@ -32,7 +32,7 @@ KINDS = ("scalar", "profile")
 SOURCES = ("archive", "corpus", "fdp")
 
 #: How a stored array from each source must be sampled at model-input time
-#: (I5). An archive-served field is already the archive's own 50 ms boxcar
+#: An archive-served field is already the archive's own 50 ms boxcar
 #: (see `models.base.ARCHIVE_WINDOW_S`) and must be read nearest-sample at
 #: its own stamp - windowing it again would double-average it. A corpus- or
 #: fdp-served field is a true-time, high-rate record and must be turned into

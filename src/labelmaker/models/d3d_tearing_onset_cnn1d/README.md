@@ -144,7 +144,7 @@ labelmaker:
     so a corrected row still counts as a MEASURED power, which is what lets the rule below tell a benign
     gap from a fabrication. On the archive path there is nothing to correct - measured, EC.PECH has zero
     negative readings in 578,160 samples - but on the corpus path ~3.1% of per-gyrotron samples are negative,
-    to -112 kW. NOTE (Task 15 code review, I7): this percentage was measured before the per-resolver sampling
+    to -112 kW. NOTE: this percentage was measured before the per-resolver sampling
     fix, which now windows every corpus-served field (`ns.SAMPLING_BY_SOURCE`) rather than reading it
     nearest-sample; it describes the raw corpus samples, not a quantity `build()` computes today, and
     is pending re-measurement under the current convention. ECH''s rule, threshold and locator are unchanged
@@ -179,7 +179,7 @@ labelmaker:
     from the corpus source instead, and the corpus reads all 12 gyrotrons: it serves 38 of the 49 and
     shows zero power flowing on every one, which CONFIRMS ECH-off rather than assuming it. Upstream, by
     contrast, fabricated a 0.0 for an absent ECH signal and trained on those rows; labelmaker declines
-    to invent the value and takes the evidence from the second source. NOTE (Task 15 code review, I7):
+    to invent the value and takes the evidence from the second source. NOTE:
     ''38 of the 49 show zero power'' was measured against the nearest-sample series `build()` produced
     before the per-resolver sampling fix; `build()` now windows a corpus-served field into the archive''s
     50 ms mean instead, a different derived series from the same raw samples, so this count is pending

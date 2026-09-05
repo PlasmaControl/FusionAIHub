@@ -124,8 +124,8 @@ was compared to a clamped edge. "exact" repeats the comparison on the subset
 of rows whose time coincides with a source sample to 1e-9 s, which removes
 the remaining sampling difference for the 20 ms EFIT and ZIPFIT nodes.
 
-**This table's own convention no longer matches what `build()` uses** (I8,
-Task 15 code review): `InputSpec.build` now samples EVERY fdp-resolved field
+**This table's own convention no longer matches what `build()` uses**:
+`InputSpec.build` now samples EVERY fdp-resolved field
 - not just the two PTDATA points - with the archive's own 50 ms window ending
 at `t` (`ARCHIVE_WINDOW_S`, via `ns.SAMPLING_BY_SOURCE`/`sample_by_resolver`).
 Kept below for the unit-factor and profile-axis conclusions, which do not
@@ -160,7 +160,7 @@ offline EFIT01 tree has been rerun at least once since the store was built.
 Everything is far inside the plan's 5e-2 gate.
 
 FDP AGAINST THE ARCHIVE, RE-MEASURED UNDER THE CONVENTION `build()` ACTUALLY
-USES (I8, Task 15 code review) - all thirteen features, each source's array
+USES (Task 15) - all thirteen features, each source's array
 windowed with `window_mean(x, y, t - ARCHIVE_WINDOW_S, ARCHIVE_WINDOW_S)`
 against the archive column at the archive's own grid times `t`, exactly what
 `InputSpec.build` does for a `"fdp"`-resolved field. A RANDOM 10 of the
@@ -201,7 +201,7 @@ the store was built (see `pres`'s note above) - is not fixed by this
 convention change, only the typical row. `n_shots`/`points` are lower here
 than the old table's 120-shot scan (a 10-shot re-measurement, not a
 120-shot one); the direction and rough magnitude of the improvement is what
-matters for I8, not a fourth-decimal-place match to a larger sample.
+matters here, not a fourth-decimal-place match to a larger sample.
 
 `shots` is below 120 for two different reasons, both recorded rather than
 worked around:

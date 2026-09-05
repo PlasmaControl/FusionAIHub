@@ -75,7 +75,7 @@ def test_f1_and_brier_and_calibration():
     assert got["n"] == 5 and got["n_positive"] == 3
     assert len(got["calibration"]) == 2
     assert 0.0 <= got["ece"] <= 1.0
-    # M9 (task-16 review): pin the exact value, independently hand-verified
+    # Pin the exact value, independently hand-verified
     # for these inputs - bin0 (prob < 0.5: 0.2, 0.3) n=2, mean_prob 0.25 vs
     # observed 0.5 -> contributes 2/5 * 0.25 = 0.10; bin1 (0.7, 0.9, 0.6) n=3,
     # mean_prob 0.73333 vs observed 0.66667 -> contributes 3/5 * 0.06667 =
@@ -86,7 +86,7 @@ def test_f1_and_brier_and_calibration():
 
 
 def test_ece_all_ones_truth_returns_auroc_none():
-    """M9: the `n_neg == 0` branch was untested. All-positive truth means no
+    """The `n_neg == 0` branch: all-positive truth means no
     negative to rank against, so AUROC is undefined (`None`), not 1.0 or 0.0
     - and the function must not raise dividing by a zero `n_neg`.
     """
@@ -244,10 +244,10 @@ def test_label_quality_isolates_a_per_shot_crash(tmp_path, monkeypatch):
 
 
 def test_label_quality_skip_reasons_histogram_and_warning(tmp_path, monkeypatch):
-    """I3 (task-16 review): many shots skipping for the identical underlying
+    """Many shots skipping for the identical underlying
     cause must collapse into one histogram bucket with a warning, not vanish
     into `skipped`'s per-shot dict of numpy-repr strings - which is exactly
-    how this task's own dead-fdp-scaling defect (C2) went undiagnosed from
+    how the dead fdp scaling path went undiagnosed from
     this report alone. Also checks the per-shot diagnosis (`skip_diagnosis`)
     is populated, not thrown away, at skip time.
     """
@@ -286,7 +286,7 @@ def test_label_quality_skip_reasons_histogram_and_warning(tmp_path, monkeypatch)
 
 
 def test_label_quality_asserts_truth_column_shapes(tmp_path, monkeypatch):
-    """I6 (task-16 review): the model-side truth-column assertion cannot see
+    """The model-side truth-column assertion cannot see
     an ARCHIVE-side column swap. Built here with `betan` and `tm_prob`
     swapped: column 0 binary, column 1 continuous - the opposite of what
     `_TRUTH_COLUMNS` (`betan: 0, tm_prob: 1`) declares.
@@ -343,7 +343,7 @@ def test_model_index_results_shape():
 
 def test_model_index_results_reads_the_published_reconstructed_score():
     """The headline number must be `reconstructed_inputs_valid` (the
-    row-matched, valid-row-only, published score - C1, task-16 review), not
+    row-matched, valid-row-only, published score), not
     `reconstructed_inputs_all`. This locks that choice down: if a future
     edit swapped the source dict, this test would catch the wrong number
     reaching the card.
@@ -367,7 +367,7 @@ def test_model_index_results_reads_the_published_reconstructed_score():
 
 
 def test_model_index_results_dataset_name_states_shots_and_rows():
-    """C1/I4 (task-16 review): a card-only reader must be able to see the
+    """A card-only reader must be able to see the
     row denominators and that labelmaker's validity mask was applied,
     without opening the JSON - "d3d overlap shots (n=31)" alone hid that
     the headline numbers were a 31-of-100-shot, valid-rows-only measurement.
@@ -468,7 +468,7 @@ def test_update_model_index_leaves_card_discrepancies_empty(monkeypatch, tmp_pat
 
 
 def test_update_model_index_preserves_approximations_content(monkeypatch, tmp_path):
-    """M11 (task-16 review): `card_discrepancies` never inspects
+    """`card_discrepancies` never inspects
     `labelmaker.approximations`, so a future `safe_dump` change that mangled
     those 12 prose entries would pass the whole suite silently. A
     `yaml.safe_load` before/after equality test on that block closes it
@@ -519,7 +519,7 @@ def test_label_quality_report_on_one_real_shot():
     counts = report["row_counts"]["betan"]
     assert counts["matched"] == report["row_counts_total"]["valid"] + report["row_counts_total"]["invalid"]
     assert counts["valid"] + counts["invalid"] == counts["matched"]
-    # C1: the penalty is computed from the row-matched pair and says so.
+    # The penalty is computed from the row-matched pair and says so.
     penalty = report["reconstruction_penalty"]["betan"]
     a_v = report["archived_inputs_valid"]["betan"]["rmse"]
     o_v = report["reconstructed_inputs_valid"]["betan"]["rmse"]
@@ -529,7 +529,7 @@ def test_label_quality_report_on_one_real_shot():
 
 
 def test_reconstruction_penalty_is_computed_row_matched_not_from_all_matched(monkeypatch):
-    """C1 (task-16 review): the two headline scores must come from the same
+    """The two headline scores must come from the same
     row set. `theirs` (archived, `bt=0`) and `ours` (reconstructed, `bt=2`)
     predict different baseline values, and the last two of six rows are
     marked invalid and predicted wildly wrong on BOTH sides - so
