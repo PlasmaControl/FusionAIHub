@@ -208,7 +208,12 @@ step. Truth: `data/elm_labels_dict.pkl`.
 fdp-only canonical features, `spec.py` reproducing the upstream preprocessing, golden file
 from the fork matched to 1e-9. Measured on 199597: 185 of 240 rows valid against the CNN's 11,
 because this model needs no ECH deposition location. The risk stays below 0.3 on both shots
-tried; a per-label threshold in the analyze config is a follow-up.
+tried; per-label thresholds were then added to the analyze config (default 0.2 for this label).
+Scored once outside `validate` against the archive's onset times on the 486 aligned shots
+(pre-onset rows only): AUROC 0.81 / 0.79 / 0.76 at 250 ms / 500 ms / 1 s, calibrated (ECE
+0.002 to 0.02), best F1 0.13 to 0.21 at a 1.3% to 5.5% positive rate; the CNN's `tm_prob`
+read as a predictor of the same truth scores 0.79 / 0.75 / 0.67. Numbers and method in the
+card and in `outputs/labelmaker/dsm_onset_quality.json`.
 
 ## 7. TabPFN study (Phase 3, pulled forward)
 

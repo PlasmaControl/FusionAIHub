@@ -144,6 +144,24 @@ series - "onset within the next horizon", derivable from the tearing archive's
 `tm_label` on the 1,503 overlap shots - which `validate` does not yet build for
 this model.
 
+Measured once outside `validate` (2026-09-05, `outputs/labelmaker/dsm_onset_quality.py`
+in the FusionAIHub checkout): on the 486 aligned shots of the 500-shot pool,
+86 of which have an onset in their archived window, taking rows before the
+onset only (28,290 rows) and truth "onset within the next horizon":
+
+| label | positives | AUROC | best F1 (at) | ECE | CNN `tm_prob` on the same truth, AUROC |
+|---|---|---|---|---|---|
+| `tm_risk_250ms` | 369 | 0.810 | 0.134 (0.08) | 0.002 | 0.786 |
+| `tm_risk_500ms` | 780 | 0.787 | 0.169 (0.11) | 0.007 | 0.749 |
+| `tm_risk_1s` | 1,565 | 0.758 | 0.211 (0.16) | 0.022 | 0.671 |
+
+The risk ranks pre-onset rows better than the CNN's present-mode probability
+does, and is calibrated, but the absolute discrimination is modest and the
+best F1 is low because onsets are rare in the windows (1.3% to 5.5% of rows).
+Inputs were labelmaker's reconstruction (offline EFIT01, ZIPFIT), so this is
+the published label's quality, not the model's ceiling; the truth is the
+archive's 25 ms `tm_label`, whose own onset timing is unexamined.
+
 ## Technical specifications
 
 104,800 embedding weights plus 9,009 head weights, float64, in a pickle read
