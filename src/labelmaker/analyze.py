@@ -129,7 +129,7 @@ def _scalar(value):
 
 
 def summarize_label(labels_path, slug: str, name: str, *, threshold: float,
-                    infer_row: dict) -> dict:
+                    infer_row: dict, truth: dict | None = None) -> dict:
     """What one label series says about the shot, as numbers.
 
     `infer_row` carries the provenance `InputSpec.build` produced for this
@@ -143,7 +143,7 @@ def summarize_label(labels_path, slug: str, name: str, *, threshold: float,
     peak = int(np.argmax(np.where(finite, y, -np.inf))) if finite.any() else None
     binary = task == "binary"
     above = np.flatnonzero(finite & (y >= threshold)) if binary else np.array([], int)
-    return {
+    out = {
         "card_id": str(_scalar(lab.attrs["card_id"])),
         "artifact_sha256": str(_scalar(lab.attrs["artifact_sha256"])),
         "task": task,
@@ -160,6 +160,14 @@ def summarize_label(labels_path, slug: str, name: str, *, threshold: float,
         "resolvers": dict(infer_row.get("resolvers") or {}),
         "missing_inputs": list(infer_row.get("missing_inputs") or []),
     }
+    if name.endswith("_p50"):
+        out["p50_at_onset_minus_1s"] = None
+        onset = (truth or {}).get("onset_s")
+        if onset is not None and np.isfinite(onset) and t.size:
+            i = int(np.argmin(np.abs(t - (onset - 1.0))))
+            if valid[i] and finite[i]:
+                out["p50_at_onset_minus_1s"] = float(y[i])
+    return out
 
 
 def empty_summary(infer_row: dict, note: str) -> dict:
@@ -222,6 +230,19 @@ def panels_for(features_path, labels_path, cfg: AnalysisConfig,
                 t=lab.x, y=lab.y[0], lo=spread.y[0], hi=spread.y[1],
                 valid=valid.y[0].astype(bool), note="",
             )
+            if name.endswith("_p50") and all(
+                f"{slug}/{name[:-3]}{q}" in have for q in ("p10", "p90")
+            ):
+                panel.update(
+                    kind="band", units="ms",
+                    lo=read_label(labels_path, slug, f"{name[:-3]}p10").y[0],
+                    hi=read_label(labels_path, slug, f"{name[:-3]}p90").y[0],
+                )
+                onset = panel["onset_s"]
+                if (truth or {}).get("available") and onset is not None:
+                    before = lab.x < onset
+                    panel["truth_t"] = lab.x[before]
+                    panel["truth_y"] = (onset - lab.x[before]) * 1000.0
         panels.append(panel)
     return panels
 
@@ -272,7 +293,7 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
     # context signal recorded from -4 s to 20 s does not squeeze a 6 s
     # plasma into a third of the width.
     spans = [(p["t"][0], p["t"][-1]) for p in panels
-             if p["kind"] == "label" and p["t"] is not None and len(p["t"])]
+             if p["kind"] in ("label", "band") and p["t"] is not None and len(p["t"])]
     if spans:
         lo, hi = min(s[0] for s in spans), max(s[1] for s in spans)
         pad = 0.02 * (hi - lo) if hi > lo else 0.1
@@ -294,7 +315,10 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
                         ha="right", va="top", color=_MUTED, fontsize=7)
             continue
         t, y, valid = panel["t"], panel["y"], panel["valid"]
+        band = panel["kind"] == "band"
         binary = panel["task"] == "binary"
+        if band:
+            ax.set_yscale("log")
         if binary and panel.get("truth_mask") is not None:
             # Labelled only once: one legend entry, not one per run.
             for k, (lo, hi) in enumerate(_spans(panel["truth_mask"], panel["truth_t"])):
@@ -306,10 +330,10 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
                 color=_GRID, alpha=0.75, linewidth=0, label="invalid rows",
             )
         ax.fill_between(t, panel["lo"], panel["hi"], color=_SERIES, alpha=0.18,
-                        linewidth=0, label="ensemble spread")
+                        linewidth=0, label="p10..p90" if band else "ensemble spread")
         ax.plot(t, y, color=_SERIES, linewidth=1.5, label=panel["name"])
         if panel.get("truth_y") is not None:
-            ax.plot(panel["truth_t"], panel["truth_y"], color=_INK, linewidth=1.1,
+            ax.plot(panel["truth_t"], panel["truth_y"], color=_TRUTH if band else _INK, linewidth=1.1,
                     linestyle=(0, (5, 2)), label="archived truth")
         if panel.get("onset_s") is not None:
             ax.axvline(panel["onset_s"], color=_TRUTH, linewidth=1.4,

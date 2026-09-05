@@ -69,6 +69,62 @@ labelmaker:
     task: binary
     activation: none
     units: ''
+  - name: tm_time_p10
+    task: regression
+    activation: none
+    units: 'ms'
+  - name: tm_time_p50
+    task: regression
+    activation: none
+    units: 'ms'
+  - name: tm_time_p90
+    task: regression
+    activation: none
+    units: 'ms'
+  - name: tm_time_iqr_log
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_mix_w0
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_mix_w1
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_mix_w2
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_mix_mu0
+    task: regression
+    activation: none
+    units: 'ln ms'
+  - name: tm_mix_mu1
+    task: regression
+    activation: none
+    units: 'ln ms'
+  - name: tm_mix_mu2
+    task: regression
+    activation: none
+    units: 'ln ms'
+  - name: tm_mix_sigma0
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_mix_sigma1
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_mix_sigma2
+    task: regression
+    activation: none
+    units: ''
+  - name: tm_gate_entropy
+    task: regression
+    activation: none
+    units: 'nat'
   approximations:
   - every EFITRT2 quantity (betan, qmin, li, aminor, rmaxis, tribot, tritop, kappa, volume, qpsi, pres) is
     served by offline EFIT01; for the four quantities the tearing CNN also uses, that substitution was
@@ -98,6 +154,19 @@ and 6 fitted profiles. Labelmaker publishes the risk of an onset within 250 ms,
 500 ms and 1 s: `1 - S(horizon | x)`. Complements `d3d_tearing_onset_cnn1d`,
 which answers the fixed-horizon "is a mode present 25 ms from now" question
 with a different architecture and input set.
+
+The 14 additional series expose that distribution: `tm_time_p10`,
+`tm_time_p50`, and `tm_time_p90` are event-time quantiles in ms;
+`tm_time_iqr_log` is ln(p90) - ln(p10). `tm_mix_w0..2` are softmax gate
+weights, `tm_mix_mu0..2` are locations in ln ms, and `tm_mix_sigma0..2`
+are component log-scales: exp(sigma) is the standard deviation of ln t.
+`tm_gate_entropy` is -sum w ln w in nats, from 0 to ln 3. Component order
+is the checkpoint's own; components are not identifiable across retrainings.
+
+This spread is the predictive distribution of event time (aleatoric variation
+plus what the network learned), not epistemic uncertainty over weights.
+The upstream `rt_models*.pkl` ensembles would give the latter. The p10–p90
+band therefore differs from the stored single-member ensemble spread.
 
 Architecture, read from the checkpoint: `Linear(38, 100, no bias) -> ReLU6 ->
 Linear(100, 1000, no bias) -> ReLU6`, then a softmax gate (1000 -> 3) and
@@ -197,6 +266,35 @@ best F1 is low because onsets are rare in the windows (1.3% to 5.5% of rows).
 Inputs were labelmaker's reconstruction (offline EFIT01, ZIPFIT), so this is
 the published label's quality, not the model's ceiling; the truth is the
 archive's 25 ms `tm_label`, whose own onset timing is unexamined.
+
+### Published event-time distribution
+
+Re-published the 500-shot pool on 2026-09-05 in **755.23 s** wall time
+(eight workers; 500 successful shots). Row set: **all valid published rows**,
+including post-onset rows, without requiring archive alignment: 55,407 of
+120,000 grid rows, from 484 shots with at least one valid row.
+The pooled median `tm_time_p50` is **17,344.333984 ms** and the pooled median
+`tm_time_iqr_log` is **3.519858122**. **0 / 55,407 (0%)** valid rows have
+`tm_gate_entropy > 0.9 ln 3` (0.988751060 nat). A decisive gate does not
+imply a narrow event-time distribution.
+
+Default `analyze` on the two example shots produced the following `tm_time_p50`
+scores. Row set: **valid aligned pre-onset rows of each tearing shot only**;
+errors are ln(predicted ms / archived time remaining in ms).
+
+| shot | archived onset (s) | n | median absolute log ratio | bias_log | rmse_log | p50 at onset minus 1 s (ms) |
+|---|---|---|---|---|---|---|
+| 187199 | 3.825 | 92 | 2.141511 | 2.163416 | 2.245654 | 11,779.271484 |
+| 186545 | 3.275 | 51 | 1.751241 | 2.181940 | 2.356755 | — (nearest row invalid) |
+
+The logarithmic p10–p90 panels show medians well above the remaining time
+on both shots. On 187199 the median remains around 10,000 ms approaching
+onset while the archived countdown falls below the band. On 186545 the
+band widens markedly near onset, reaching much shorter lower-tail times
+while the median remains several thousand ms. Neither panel is evidence
+of epistemic uncertainty or a new held-out evaluation. The figures and full
+per-shot scores are in `outputs/labelmaker/analysis/{187199,186545}/` in the
+FusionAIHub checkout.
 
 ### Per shot, upstream's way
 

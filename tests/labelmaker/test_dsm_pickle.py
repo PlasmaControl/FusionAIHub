@@ -167,3 +167,55 @@ def test_upstream_checkpoint_matches_the_fork_on_the_golden_inputs():
     g = dsm_pickle.load_dsm(UPSTREAM)
     got = dsm_pickle.survival(g, gold["x"], horizons_ms=tuple(gold["horizons_ms"]))
     np.testing.assert_allclose(got, gold["survival"], rtol=0, atol=1e-9)
+
+
+def test_mixture_exposes_normalized_gate_and_component_heads():
+    g = _graph()
+    x = np.array([[0.3, -1.2], [1.0, 0.5]])
+    log_w, mu, sigma = dsm_pickle.mixture(g, x)
+    assert log_w.shape == mu.shape == sigma.shape == (2, 2)
+    np.testing.assert_allclose(np.exp(log_w).sum(axis=1), 1.0, rtol=0, atol=1e-12)
+    h = _relu6(_relu6(x @ g.embedding[0].T) @ g.embedding[1].T)
+    np.testing.assert_allclose(mu, np.tanh(h @ g.shapeg[0].T + g.shapeg[1]) + g.shape)
+    np.testing.assert_allclose(sigma, np.tanh(h @ g.scaleg[0].T + g.scaleg[1]) + g.scale)
+
+
+def test_single_component_quantiles_are_analytic_lognormal():
+    from dataclasses import replace
+
+    from scipy.special import erfinv
+
+    g = replace(_graph(), k=1, gate=np.zeros((1, 2)),
+                shapeg=(np.zeros((1, 2)), np.zeros(1)),
+                scaleg=(np.zeros((1, 2)), np.zeros(1)),
+                shape=np.array([6.0]), scale=np.array([0.2]))
+    x = np.array([[0.3, -1.2], [1.0, 0.5]])
+    q = np.array([0.1, 0.5, 0.9])
+    want = np.exp(6.0 + np.exp(0.2) * np.sqrt(2) * erfinv(2 * q - 1))
+    got = dsm_pickle.quantiles(g, x, q)
+    assert got.shape == (2, 3)
+    np.testing.assert_allclose(got, np.tile(want, (2, 1)), rtol=1e-6)
+
+
+def test_mixture_quantiles_are_ordered_and_invert_survival():
+    g = _graph()
+    x = np.array([[0.3, -1.2], [1.0, 0.5]])
+    got = dsm_pickle.quantiles(g, x, (0.1, 0.5, 0.9))
+    assert (np.diff(got, axis=1) > 0).all()
+    for row, quantiles in zip(x, got, strict=True):
+        np.testing.assert_allclose(dsm_pickle.survival(g, row[None], quantiles),
+                                   [[0.9, 0.5, 0.1]], atol=1e-6)
+
+
+def test_quantiles_report_rows_outside_the_bracket():
+    from dataclasses import replace
+
+    for location in (-100.0, 100.0):
+        g = replace(_graph(), shape=np.full(2, location))
+        with pytest.raises(ValueError, match="2 rows"):
+            dsm_pickle.quantiles(g, np.zeros((2, 2)), (0.1, 0.5, 0.9))
+
+
+def test_gate_entropy_uniform_and_one_hot():
+    log_w = np.array([[-np.log(3)] * 3, [0.0, -np.inf, -np.inf]])
+    np.testing.assert_allclose(dsm_pickle.gate_entropy(log_w), [np.log(3), 0.0], atol=1e-12)
