@@ -15,3 +15,9 @@ context:
 
 # Drawn on binary labels, and where `first_above_threshold` is measured.
 threshold: 0.5
+
+# Per-label overrides. The survival model's risk is a probability of onset
+# within the horizon, on a different scale from the CNN's probability that a
+# mode is already present.
+thresholds:
+  d3d_tearing_time_to_event_dsm/tm_risk_1s: 0.2

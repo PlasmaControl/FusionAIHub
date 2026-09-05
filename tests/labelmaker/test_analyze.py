@@ -125,3 +125,25 @@ def test_analyze_does_not_take_models_and_other_stages_require_it(wired, tmp_pat
     with pytest.raises(SystemExit) as exc:
         run.main(["features", "--shots", "190000", "--root", str(wired["root"])])
     assert exc.value.code == 2
+
+
+def test_config_thresholds_may_be_set_per_label(wired, tmp_path):
+    """The survival model's 1 s risk peaks near 0.3 on shots where the CNN's
+    probability reaches 0.9: one threshold does not fit two labels. A
+    `thresholds` mapping overrides the global value per label."""
+    cfg = analyze.load_config(_cfg(tmp_path, threshold=0.5, thresholds={f"{SLUG}/score": 0.2}))
+    assert cfg.threshold_for(f"{SLUG}/score") == 0.2
+    assert cfg.threshold_for("other/label") == 0.5
+    assert cfg.as_dict()["thresholds"] == {f"{SLUG}/score": 0.2}
+    with pytest.raises(analyze.ConfigError, match="thresholds"):
+        analyze.load_config(_cfg(tmp_path, thresholds={f"{SLUG}/nope": 0.2}))
+    with pytest.raises(analyze.ConfigError, match="thresholds"):
+        analyze.load_config(_cfg(tmp_path, thresholds={f"{SLUG}/score": 1.5}))
+
+
+def test_analyze_summary_and_figure_use_the_per_label_threshold(wired, tmp_path):
+    out = tmp_path / "analysis"
+    cfg = _cfg(tmp_path, thresholds={f"{SLUG}/score": 0.05})
+    assert run.main(_argv(wired, cfg, out)) == 0
+    summary = json.loads((out / "190000" / "190000_analysis.json").read_text())
+    assert summary["labels"][f"{SLUG}/score"]["threshold"] == 0.05
