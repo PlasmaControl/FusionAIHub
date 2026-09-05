@@ -466,3 +466,22 @@ def test_calibration_empty_fit_preserves_existing_map(wired, monkeypatch):
         validate.calibration_study(slug, [], paths,
                                    training_reader=lambda: pytest.fail("must not read training"))
     assert saved.read_text() == "existing map"
+
+
+@pytest.mark.parametrize("row_set", ["all_pre_onset", "onset_shots_only"])
+def test_calibration_empty_population_names_label_and_row_set(wired, monkeypatch, row_set):
+    slug, name = "d3d_tearing_time_to_event_dsm", "tm_risk_250ms"
+    paths = Paths(root=wired["root"])
+    saved = paths.models / slug / "calibration.json"
+    saved.parent.mkdir(parents=True)
+    saved.write_text("existing map")
+    fit, report = np.random.default_rng(0).permutation([1, 2])
+    shots = np.array([report]) if row_set == "all_pre_onset" else np.array([fit, report])
+    rows = {"shot": shots, "y": np.full(shots.size, .2),
+            "truth": np.zeros(shots.size), "onset_s": np.full(shots.size, np.nan)}
+    monkeypatch.setattr(validate, "_pooled_onset_rows", lambda *a, **k: {
+        "labels": {name: rows}, "shots_used": [1, 2], "skipped": {}})
+    with pytest.raises(ValueError, match=f"{name}: empty fitting population for {row_set}"):
+        validate.calibration_study(slug, [1, 2], paths,
+                                   training_reader=lambda: (np.array([1]), np.array([1]), {}))
+    assert saved.read_text() == "existing map"

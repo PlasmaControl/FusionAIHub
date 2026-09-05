@@ -50,3 +50,13 @@ def test_shifted_sample_calibrates_on_held_out_draws():
 def test_invalid_fitting_rows_are_rejected(scores, truth):
     with pytest.raises(ValueError):
         calibrate.fit_isotonic(scores, truth)
+
+
+@pytest.mark.parametrize("scores, expected", [([.2, .2], [.5, .5, .5]),
+                                               ([0., 1.], [0., .2, 1.])])
+def test_apply_preserves_nonfinite_inputs(scores, expected):
+    fitted = calibrate.fit_isotonic(scores, [0, 1])
+    got = fitted.apply([np.nan, np.inf, -np.inf, -1., .2, 2.])
+    assert np.isnan(got[:3]).all()
+    np.testing.assert_allclose(got[3:], expected)
+    assert np.isnan(fitted.apply(np.nan))

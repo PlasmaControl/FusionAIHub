@@ -1819,6 +1819,8 @@ def calibration_study(
                     else np.isfinite(rows["onset_s"]))
             fitting = keep & np.isin(rows["shot"], fit)
             testing = keep & np.isin(rows["shot"], report)
+            if not fitting.any():
+                raise ValueError(f"{name}: empty fitting population for {row_set}")
             iso = fit_isotonic(rows["y"][fitting], rows["truth"][fitting])
             p1 = iso.prevalence_fit
             prob, truth = rows["y"][testing], rows["truth"][testing]

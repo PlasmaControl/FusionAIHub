@@ -29,8 +29,9 @@ class IsotonicMap:
         return fit_isotonic(scores, truth)
 
     def apply(self, scores: np.ndarray) -> np.ndarray:
-        """Linearly interpolate knots, clamping beyond the fitted range."""
-        return np.interp(scores, self.x, self.y)
+        """Interpolate finite scores with endpoint clamping; non-finite scores stay NaN."""
+        scores = np.asarray(scores, dtype=float)
+        return np.where(np.isfinite(scores), np.interp(scores, self.x, self.y), np.nan)
 
     def to_dict(self) -> dict:
         """JSON-compatible knots and fitting population statistics."""
