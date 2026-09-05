@@ -22,52 +22,52 @@ model-index:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
-        mask)
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+        validity mask)
       type: d3d-faith-corpus
     metrics:
     - name: rmse (archived inputs)
       type: rmse
-      value: 0.128024620759937
+      value: 0.1198152800935405
   - task:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
-        mask)
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+        validity mask)
       type: d3d-faith-corpus
     metrics:
     - name: auroc (archived inputs)
       type: roc_auc
-      value: 0.9317557907864519
+      value: 0.9315146853156802
     - name: f1_at_0.5 (archived inputs)
       type: f1
-      value: 0.5805293853746074
+      value: 0.5211251565880879
   - task:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
-        mask)
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+        validity mask)
       type: d3d-faith-corpus
     metrics:
     - name: rmse (reconstructed inputs)
       type: rmse
-      value: 0.14926923745153772
+      value: 0.1572815611360803
   - task:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
-        mask)
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+        validity mask)
       type: d3d-faith-corpus
     metrics:
     - name: auroc (reconstructed inputs)
       type: roc_auc
-      value: 0.8966370283341698
+      value: 0.8971832940727098
     - name: f1_at_0.5 (reconstructed inputs)
       type: f1
-      value: 0.5553121577217963
+      value: 0.4858807709547288
 labelmaker:
   status: implemented
   slug: d3d_tearing_onset_cnn1d
@@ -261,6 +261,13 @@ different artifact) and not a substitute for magnetics-based mode detection.
 - A shot missing any input for its whole record has no valid rows at all - the
   ZIPFIT rotation profile is absent on ~22% of shots - and its labels are
   published entirely as extrapolations: 5 of the 100 proof-of-concept shots.
+- Outside the training archive there is no source for the ECH deposition
+  location, so every row with ECH power flowing is invalid. On the 2024
+  tearing-mode shots 199597-199607 ECH is on for ~90% of plasma rows: they come
+  out 4-15% valid, and the ten members disagree widely on them (the ensemble
+  spread spans 0 to 1 where the mean sits at 0.2-0.5). Their `tm_prob` peaks
+  above 0.9 on 9 of the 11, but by this card's definition it is an
+  extrapolation there.
 
 ## Training details
 
@@ -284,28 +291,39 @@ into `model-index` above and, in full, into
   see `labelmaker.validate.adapter_fidelity`).
 - `reconstruction.json` - per-feature agreement between labelmaker's features
   and the model's own training rows on the corpus/archive overlap shots. On
-  the 100-shot proof-of-concept pool: the archive-served columns (`pinj`,
-  `tinj`, `tritop`, `tribot`, `gapin`, `pres`, the ECH pair) are exact;
-  `bt`/`ip` through fdp 5e-6 and 1e-5; the offline-EFIT01-for-EFITRT1
-  substitutions 2.5e-3 (R0), 3.3e-3 (kappa) and 3.4e-2 (1/qpsi); the ZIPFIT
-  profiles 6.7e-2 (ne), 1.25e-1 (Te) and 1.4e-1 (rotation) median relative
-  difference.
-- `label_quality.json` - AUROC, F1 at 0.5, precision, recall, Brier and
-  calibration against the archived labels, scored two ways over the SAME
-  rows: with archived (training) inputs and with labelmaker's own
-  reconstructed inputs, both restricted to the rows labelmaker's own validity
-  rule would actually publish a label for. The `model-index` numbers above are
-  this row-matched pair; the difference between them is the reconstruction
-  penalty - on the proof-of-concept pool, `tm_prob` AUROC 0.932 -> 0.897
-  (-0.035) and `betan` RMSE 0.128 -> 0.149 (+0.021) over 6,400 valid rows of
-  7,373 matched. `dataset.name` states how many of the requested shots were
-  used and how many of the matched rows passed the validity mask - both
-  denominators matter. The archived rows are aligned to labelmaker's
-  timesteps by an exact match on whichever of `bt`/`ip`/`tritop`/`tribot`/
-  `gapin` the archive served for that shot (all five on 31 of the 100, the
-  three geometry columns on the 69 where fdp supplied `bt`/`ip`), with the
-  reconstructed columns breaking exact ties; every shot in the pool aligned at
-  distance zero. A shot that cannot be aligned is skipped and diagnosed, and
+  the 486 aligned shots of the 500-shot pool: the archive-served columns
+  (`pinj`, `tinj`, `tritop`, `tribot`, `gapin`, `pres`, the ECH pair) are
+  exact; `bt`/`ip` through fdp 7e-6 and 1e-5; the offline-EFIT01-for-EFITRT1
+  substitutions 2.1e-3 (R0), 2.8e-3 (kappa) and 3.0e-2 (1/qpsi); the ZIPFIT
+  profiles 6.0e-2 (ne), 1.24e-1 (Te) and 1.24e-1 (rotation) median relative
+  difference. (On the 100-shot proof-of-concept pool the same figures were
+  2.5e-3, 3.3e-3, 3.4e-2, 6.7e-2, 1.25e-1, 1.4e-1.)
+- `label_quality.json` - AUROC, F1 at 0.5, precision, recall, best F1 and
+  the threshold reaching it, Brier and calibration against the archived
+  labels, scored two ways over the SAME rows: with archived (training) inputs
+  and with labelmaker's own reconstructed inputs, both restricted to the rows
+  labelmaker's own validity rule would actually publish a label for. The
+  `model-index` numbers above are this row-matched pair; the difference
+  between them is the reconstruction penalty - on the 500-shot pool (486
+  aligned), `tm_prob` AUROC 0.932 -> 0.897 (-0.034), best F1 0.576 -> 0.490
+  (-0.086, reached at 0.76 and 0.60), and `betan` RMSE 0.120 -> 0.157
+  (+0.037) over 31,257 valid rows of 35,776 matched. Best F1 is reported
+  because the AUROC gap understates the cost: the reconstruction loses
+  positives the model had placed confidently, which a rank statistic barely
+  registers. F1 at 0.5 is low on both sides for a reason unrelated to the
+  reconstruction: oversampled, class-weighted training makes the model flag
+  about twice the base rate of rows at 0.5 (the 0.5-0.6 reliability bin
+  observes 8%); the ranking is fine, the operating threshold is a choice.
+  `dataset.name` states how many of the requested shots were used and how
+  many of the matched rows passed the validity mask - both denominators
+  matter. The archived rows are aligned to labelmaker's timesteps by an exact
+  match on the EFIT01 geometry columns `tritop`/`tribot`/`gapin` plus
+  whichever of `bt`/`ip` the archive served for that shot, with the
+  reconstructed columns breaking exact ties; 486 of the 489 archived shots
+  in the pool aligned at median distance zero, and the other three have
+  archived rows whose geometry appears nowhere in our EFIT01 series (the
+  archive covers times the reconstruction does not). A shot that cannot be
+  aligned is skipped and diagnosed, and
   the full JSON also reports each side scored over every matched row
   regardless of validity (`*_all`, diagnostic only, never the published
   number) and a `skip_reasons` histogram with a warning when one cause
