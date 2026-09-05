@@ -1,4 +1,4 @@
-"""`validate._ks_statistic` must equal scipy's oracle (I2).
+"""`validate._ks_statistic` must equal scipy's oracle.
 
 `validate.py` loads torch at module scope (needed by `adapter_fidelity`),
 and `import torch` binds the SYSTEM `/lib64/libstdc++.so.6` - which lacks

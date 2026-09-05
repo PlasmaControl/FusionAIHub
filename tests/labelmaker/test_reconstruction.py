@@ -51,7 +51,7 @@ def test_match_rows_reports_a_bad_match_rather_than_hiding_it():
     # Both offset rows snap to the same out-of-range nearest timestep here,
     # so the failure this particular input produces is a collision, not a
     # loose median - either way `fail_reason` must say something, not hide
-    # it behind a bare median (I4).
+    # it behind a bare median.
     assert got["fail_reason"]
 
 
@@ -68,13 +68,13 @@ def test_match_rows_needs_the_match_columns_to_vary():
 def test_match_rows_skips_an_archived_row_with_no_finite_distance():
     """A row missing one of the five match columns must not abort the run.
 
-    Addendum defect 4: `np.nanargmin` raises `ValueError: All-NaN slice
+    `np.nanargmin` raises `ValueError: All-NaN slice
     encountered` when an archived row has no finite distance to any of our
     timesteps. That is reachable per-shot (a column `resolve_archive` did
     not carry for that shot), so it must be guarded rather than allowed to
     abort the whole validation run.
 
-    I4: `n_archived_rows` (3, how many rows were presented) and `n_matched`
+    `n_archived_rows` (3, how many rows were presented) and `n_matched`
     (2, how many actually found a finite-distance match) are different
     numbers - the pre-fix code called the former `n_matched`, which is wrong
     whenever a row goes unmatched.
@@ -127,7 +127,7 @@ def test_reconstruction_report_on_one_real_shot():
 
 
 def test_match_rows_reports_a_loose_median_when_that_is_the_only_problem():
-    """I4's third `fail_reason` branch: every row matched, no collision, but
+    """The third `fail_reason` branch: every row matched, no collision, but
     the median distance itself exceeds `tol` - a small, uniform perturbation
     that does not change which row is nearest.
     """
@@ -145,7 +145,7 @@ def test_match_rows_reports_a_loose_median_when_that_is_the_only_problem():
 
 
 def test_match_rows_reports_a_collision_rather_than_a_bare_median():
-    """I4: a collision (two archived rows matching the same timestep) is a
+    """A collision (two archived rows matching the same timestep) is a
     different failure from an unmatched row or a loose median, and the skip
     reason must say which one happened rather than always naming the
     median - the pre-fix message was "match rejected (median 0)" even for a
@@ -162,7 +162,7 @@ def test_match_rows_reports_a_collision_rather_than_a_bare_median():
 
 
 def test_reconstruction_fidelity_isolates_a_per_shot_crash(tmp_path, monkeypatch):
-    """C1: `nan_policy='zero'` turns an absent feature into an all-zero
+    """`nan_policy='zero'` turns an absent feature into an all-zero
     column. A shot missing every one of the five `MATCH_COLUMNS` features
     (an archive coverage gap - `ip`/`bt` are absent on 2,192 of 5,000 archive
     shots - or a `features` run without the `fdp run` wrapper) makes
@@ -200,7 +200,7 @@ def test_reconstruction_fidelity_isolates_a_per_shot_crash(tmp_path, monkeypatch
     assert report["skipped"]["222"] == "no archived rows"
     assert "ValueError" in report["skipped"]["111"]
     assert "constant" in report["skipped"]["111"]
-    # I3 (task-16 review): the diagnosis at skip time, not thrown away.
+    # The diagnosis at skip time, not thrown away.
     assert "111" in report["skip_diagnosis"] and "222" in report["skip_diagnosis"]
     assert report["skip_reasons"]["histogram"]  # non-empty: something to count
 
@@ -208,11 +208,10 @@ def test_reconstruction_fidelity_isolates_a_per_shot_crash(tmp_path, monkeypatch
 def test_reconstruction_fidelity_records_incomplete_features_for_skipped_shots(
     tmp_path, monkeypatch
 ):
-    """I3 (related): `incomplete_features` used to be recorded only after
-    the `match_rows` `passed` check, so a skipped shot's feature misses
-    never appeared in this report OR in `skipped` - the census that
-    diagnosed this task's own C2 defect had to come from a fresh
-    investigation instead of from this JSON.
+    """`incomplete_features` used to be recorded only after the `match_rows`
+    `passed` check, so a skipped shot's feature misses never appeared in
+    this report OR in `skipped` - the census that diagnosed the dead fdp
+    path had to come from a fresh investigation instead of from this JSON.
     """
     import h5py
 
@@ -259,7 +258,7 @@ def test_reconstruction_fidelity_asserts_the_match_column_mapping():
 
 
 def test_reconstruction_fidelity_counts_shots_before_the_generator_is_consumed():
-    """Addendum defect 1: `len(list(shots))` after the loop reports 0 for a
+    """`len(list(shots))` after the loop reports 0 for a
     generator. `shots_requested` must reflect what was actually asked for."""
 
     def shots():
@@ -270,3 +269,23 @@ def test_reconstruction_fidelity_counts_shots_before_the_generator_is_consumed()
     )
     assert report["n_shots_requested"] == 1
     assert report["skipped"]["999999999"] == "no archived rows"
+
+
+def test_skip_diagnosis_reports_resolver_names_not_their_letters():
+    """Both JSON reports used to apply `sorted()` to each resolver *string*,
+    publishing `['a', 'c', 'e', 'h', 'i', 'r', 'v']` for "archive".
+    """
+    built = BuiltInputs(
+        t=np.zeros(1), scalars=np.zeros((1, 0)), profiles=np.zeros((1, 33, 0)),
+        valid=np.ones(1, bool), missing=("pinj_total",),
+        resolvers={"bt": "fdp", "ip": "archive"},
+    )
+    m = validate._ShotMatch(built=built, skip_reason="match rejected: x")
+    assert validate._skip_diagnosis(m, {"pinj_total": "corpus:KeyError"}) == {
+        "missing_features": ["pinj_total"],
+        "resolvers": {"bt": "fdp", "ip": "archive"},
+        "feature_misses": {"pinj_total": "corpus:KeyError"},
+    }
+    assert validate._skip_diagnosis(None, {}) == {
+        "missing_features": [], "resolvers": {}, "feature_misses": {},
+    }

@@ -64,8 +64,8 @@ def overlap_shots(paths: Paths, archive: Path = TM_ARCHIVE) -> list[int]:
 
 
 def sample_shots(shots, n: int, seed: int) -> list[int]:
-    """A reproducible sample; all of `shots` when `n` is larger."""
-    shots = sorted(int(s) for s in shots)
+    """A reproducible sample of the distinct shots; all of them when `n` is larger."""
+    shots = sorted({int(s) for s in shots})
     if n >= len(shots):
         return shots
     rng = np.random.default_rng(seed)

@@ -103,8 +103,9 @@ INPUT_SPEC = InputSpec(
         # deposition-location group at all (its ECH groups are `ech_power`,
         # `ech_pol_angle`, `ech_polarization`, `ech_tor_angle`). So on a
         # corpus-served shot the location is absent, and any row with corpus
-        # power flowing is invalid. OPEN for Task 12: whether fdp can fetch a
-        # deposition location, which is what the scaling path needs.
+        # power flowing is invalid. Whether fdp can fetch a deposition
+        # location - what the scaling path needs - has not been investigated;
+        # ECH is on hold.
         InputField(
             "EC.RHO_ECH", "ech_rho", lag="t+dt", transform="nonneg_zero_fill",
             absent_ok=True,

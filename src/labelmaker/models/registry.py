@@ -87,8 +87,8 @@ def card_discrepancies(slug: str) -> list[str]:
     """Where a card disagrees with its own `spec.py`.
 
     Checked: the input mapping (`"<model name> <- <canonical>"`), the output
-    names with their task and activation, the framework, the artifact list
-    and the ensemble size. A card that drifts from the code is worse than no
+    names with their task and activation, the framework, the artifact list,
+    the ensemble size and the time step. A card that drifts from the code is worse than no
     card, so a test fails on any entry here.
     """
     card = read_card(slug)["labelmaker"]
@@ -117,6 +117,10 @@ def card_discrepancies(slug: str) -> list[str]:
         out.append(f"artifacts: card {artifacts} != spec {list(adapter.artifacts)}")
     if int(card.get("ensemble_n") or 1) != adapter.ensemble_n:
         out.append(f"ensemble_n: card {card.get('ensemble_n')} != {adapter.ensemble_n}")
+    if float(card.get("time_step_ms") or 0.0) != float(adapter.time_step_ms):
+        out.append(
+            f"time_step_ms: card {card.get('time_step_ms')} != {adapter.time_step_ms}"
+        )
     return out
 
 

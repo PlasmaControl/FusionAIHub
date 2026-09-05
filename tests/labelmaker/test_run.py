@@ -162,7 +162,7 @@ def test_infer_stage_writes_labels_and_the_index(wired):
 
 
 def test_all_chains_the_stages(wired):
-    # I5 (task-16 review): `fake_model` has no committed golden file and a
+    # `fake_model` has no committed golden file and a
     # scalar order MATCH_COLUMNS does not describe, so its three validate
     # reports are EXPECTED to error even though the features+infer work
     # below is fine - this is exactly what EXIT_VALIDATE_ERRORED exists to
@@ -243,7 +243,7 @@ def test_the_weight_guard_is_called_for_every_model_before_any_shot(
         "--root", str(root), "--corpus-dir", str(corpus),
         "--archive", str(archive), "--workers", "1",
     ]
-    # I5 (task-16 review): `fake_model` cannot be validated (no golden file,
+    # `fake_model` cannot be validated (no golden file,
     # no MATCH_COLUMNS-compatible scalar order), so `--stage all` correctly
     # reports EXIT_VALIDATE_ERRORED here - this test only cares about the
     # weight guard being reached before any shot, which the assertions below
@@ -277,7 +277,7 @@ def test_a_model_that_cannot_be_loaded_is_a_run_level_fault(tmp_path, monkeypatc
 def test_a_broken_shot_does_not_stop_the_run(wired):
     bad = wired["corpus"] / "190001_processed.h5"
     bad.write_bytes(b"not an hdf5 file")
-    # I5: `fake_model` can't be validated (see test_all_chains_the_stages),
+    # `fake_model` can't be validated (see test_all_chains_the_stages),
     # so `--stage all` reports EXIT_VALIDATE_ERRORED - the assertions below
     # are about the features/infer stages, which this exit code doesn't
     # affect.
@@ -326,12 +326,12 @@ def test_time_limit_raises_rather_than_hanging():
 
 
 # --------------------------------------------------------------------------
-# The validate stage's own honesty: I5 and M7 (task-16 code review).
+# The validate stage's own honesty.
 # --------------------------------------------------------------------------
 
 
 def test_validate_stage_reports_errors_and_a_nonzero_exit(wired, capsys):
-    """I5: previously, a validate run in which every one of the three
+    """Previously, a validate run in which every one of the three
     per-slug reports raised (caught into `{"error": ...}`) still printed the
     same `validate <slug>: <name> -> <path>` line a success prints and
     exited 0 - `fidelity.get("passed") is False` is false for `{"error":
@@ -351,7 +351,7 @@ def test_validate_stage_reports_errors_and_a_nonzero_exit(wired, capsys):
 
 
 def test_validate_writes_summary_even_when_fidelity_fails(wired, monkeypatch):
-    """M7: `EXIT_FIDELITY_FAILED` used to `return` from inside the per-slug
+    """`EXIT_FIDELITY_FAILED` used to `return` from inside the per-slug
     loop, before summary.json was written - so a `--stage all` run that
     fails fidelity left no manifest for the features/infer work it had
     already completed. Forces a fidelity failure directly (fake_model has
@@ -389,7 +389,7 @@ def test_a_mixed_source_shot_is_flagged_in_the_log_and_the_summary(wired, capsys
     # base - the archive stamps its rows one whole dt late - so a run has to
     # say which shots are affected instead of leaving the mix implicit in
     # per-group attributes nobody reads.
-    # I5: `fake_model` can't be validated (see test_all_chains_the_stages).
+    # `fake_model` can't be validated (see test_all_chains_the_stages).
     assert run.main(_argv(wired, "all")) == run.EXIT_VALIDATE_ERRORED
     out = capsys.readouterr().out
     assert "mixed sources" in out
@@ -536,7 +536,7 @@ def test_force_retries_everything_including_permanent_misses(wired, monkeypatch)
 def test_the_pool_path_produces_the_same_files(wired):
     argv = _argv(wired, "all")
     argv[argv.index("--workers") + 1] = "2"
-    # I5: `fake_model` can't be validated (see test_all_chains_the_stages).
+    # `fake_model` can't be validated (see test_all_chains_the_stages).
     assert run.main(argv) == run.EXIT_VALIDATE_ERRORED
     for shot in (190000, 190001):
         assert (wired["root"] / "features" / f"{shot}_features.h5").exists()
