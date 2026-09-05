@@ -147,6 +147,20 @@ Long SLURM jobs (Tasks 4, 5, 6, 7b, 8a) may run while the next code task is impl
 
 ---
 
+## Task 3c: held-out versus in-training shots for every survival-model pool number
+
+**Why (found 2026-09-05 during Task 4's gate):** the shipped `rt_fixed_rot.pkl` was validated on a row-level 85/15 holdout (auton-survival `fit()`'s default `vsize=0.15`; 8,685 shots on both sides), not the by-shot split its training script suggests, and its training set (8,923 shots, 140444-193373) contains **214 of the 500 pool shots, 208 of the 463 aligned scored shots and 41 of the 80 onset shots**. Every survival number measured on the pool so far is about 45% in-sample. The CNN's case is already known and framed (the archive is its training store).
+
+**Read first:** `validate._pooled_onset_rows`, `alarm_quality`, `calibration_study` (Tasks 1 and 3), `models/base.py::ModelAdapter`, the two survival cards, `outputs/labelmaker/presentation/scripts/{pool_rows.py,make_presentation.py}` and their README.
+
+- [ ] Commit the training-shot list as `src/labelmaker/models/d3d_tearing_time_to_event_dsm/training_shots.txt` (one integer per line, sorted, 8,923 lines) generated from `/projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl` by a script under `scripts/labelmaker/` that also prints the pickle's sha256; record the sha256 and the count in the card's `upstream.notes`. `ModelAdapter` gains `training_shots: frozenset[int] = frozenset()`; the base spec loads the file; the `_continued` variant shares it (same training set).
+- [ ] `_pooled_onset_rows` returns `in_training` (bool per row) from the adapter's set. `alarm_quality` and `calibration_study` report every metric three ways - `all`, `held_out`, `in_training` - with the shot counts of each subset; `calibration_study` fits its published isotonic map on the **held-out** fit half only (an in-sample fit is calibrated to memorised rows) and reports on held-out and in-training separately; `calibration.json`'s `fit_on` records `subset: held_out`. Tests: a fake adapter with two training shots out of four; the subset counts and the fit set follow.
+- [ ] `pool_rows.py`/`make_presentation.py` (the originals, and the `presentation_continued` copies if Task 4 has landed) gain an `in_training` column and a `--subset {all,held_out,in_training}` option; render the held-out figures into `outputs/labelmaker/presentation/held_out/` (and `presentation_continued/held_out/`) with a README whose table shows all / held-out / in-training side by side for AUROC per horizon, ECE on both row sets, median lead time, final-label FPR/FNR at 0.2.
+- [ ] Re-run `alarm_quality` and `calibration_study` for both survival slugs, then `infer --force` for both to republish the isotonic series from the held-out map. Both cards' Evaluation sections carry the three-way table and name the training-set overlap counts. `docs/LABELMAKER.md` Known limits gets one bullet.
+- [ ] Commit `labelmaker: survival pool numbers split into held-out and in-training shots`.
+
+---
+
 ## Task 4: continue training the survival model on SLURM (`d3d_tearing_time_to_event_dsm_continued`)
 
 **Why:** the shipped pickle stopped at 20 epochs at lr 1e-5 with validation NLL still falling (0.534 -> 0.471); spec section 3.3.
@@ -256,4 +270,4 @@ Long SLURM jobs (Tasks 4, 5, 6, 7b, 8a) may run while the next code task is impl
 
 ## Order and stop points
 
-1 -> 2 -> 3 -> 4 (SLURM; Task 5 may start once Task 2's labels exist) -> 5 -> 6 (**stop: read the verdict**) -> 7a -> 7b (SLURM) -> 7c -> 8a (SLURM; **stop: read the ablation**) -> 8b. Final whole-branch review after the last task that ran.
+1 -> 2 -> 3 -> 4 (SLURM; Task 6 runs in parallel, disjoint paths) -> 3c (needs Task 4's variant folder) -> 5 -> 6 (**stop: read the verdict**) -> 7a -> 7b (SLURM) -> 7c -> 8a (SLURM; **stop: read the ablation**) -> 8b. Final whole-branch review after the last task that ran.
