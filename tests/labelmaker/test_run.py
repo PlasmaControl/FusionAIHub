@@ -590,3 +590,22 @@ def test_ns_grid_is_the_label_time_base(wired):
     run.main(_argv(wired, "all", shots=("190000",)))
     got = read_label(wired["root"] / "labels" / "190000_labels.h5", SLUG, "score")
     np.testing.assert_allclose(got.x, ns.GRID_S)
+
+
+def test_infer_log_row_says_why_rows_are_invalid(wired):
+    """The per-rule counts from `InputSpec.build` reach the run log, so a
+    reader of log.txt learns why a shot is 95% invalid without re-running it.
+    """
+    run.main(_argv(wired, "features"))
+    run.main(_argv(wired, "infer"))
+    infer_dir = next(
+        d for d in (wired["root"] / "runs").iterdir() if d.name.startswith("infer")
+    )
+    rows = [json.loads(l) for l in (infer_dir / "log.txt").read_text().splitlines()]
+    assert {r["status"] for r in rows} == {"ok"}
+    for row in rows:
+        assert isinstance(row["invalid_reasons"], dict)
+        n_invalid = row["n_total"] - row["n_valid"]
+        # every invalid row fails at least one rule; a fully valid shot has none
+        assert sum(row["invalid_reasons"].values()) >= n_invalid
+        assert (n_invalid == 0) == (row["invalid_reasons"] == {})

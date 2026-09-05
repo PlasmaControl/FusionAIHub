@@ -622,3 +622,36 @@ def test_reconstruction_penalty_is_computed_row_matched_not_from_all_matched(mon
     assert abs(penalty["rmse"] - (o_valid - a_all)) > 1.0
     assert penalty["n_rows"] == n - n_invalid
     assert "row-matched" in penalty["computed_from"]
+
+
+def test_binary_metrics_report_the_best_f1_and_the_threshold_that_reaches_it():
+    """Measured 2026-09-05 on the proof-of-concept pool: the reconstruction
+    penalty in best-achievable F1 is -0.14, four times the AUROC penalty, and
+    invisible in a report that only scores the 0.5 threshold.
+    """
+    truth = np.array([0, 0, 1, 1, 1])
+    prob = np.array([0.2, 0.7, 0.9, 0.6, 0.3])
+    got = validate.binary_metrics(prob, truth, bins=2)
+    # predict positive at prob >= tau: tau=0.2 -> 6/8; 0.3 -> tp 3, fp 1 -> 6/7
+    # (best); 0.6 -> 4/6; 0.7 -> 2/5; 0.9 -> 2/4.
+    assert abs(got["f1_max"] - 6 / 7) < 1e-12
+    assert got["threshold_at_f1_max"] == 0.3
+    degenerate = validate.binary_metrics(np.array([0.1, 0.2]), np.array([0, 0]))
+    assert degenerate["f1_max"] is None and degenerate["threshold_at_f1_max"] is None
+
+
+def test_penalty_carries_the_best_f1_gap_for_a_binary_label():
+    """AUROC alone understated the reconstruction cost by a factor of four on
+    the proof-of-concept pool (-0.035 AUROC against -0.14 best F1), so the
+    penalty entry carries both, and the thresholds each side reached it at.
+    """
+    a = {"auroc": 0.93, "f1_max": 0.70, "threshold_at_f1_max": 0.8}
+    o = {"auroc": 0.90, "f1_max": 0.56, "threshold_at_f1_max": 0.58}
+    got = validate._penalty(a, o, n_rows=6400)
+    assert got["auroc"] == pytest.approx(-0.03)
+    assert got["f1_max"] == pytest.approx(-0.14)
+    assert got["threshold_at_f1_max"] == {"archived": 0.8, "reconstructed": 0.58}
+    assert got["n_rows"] == 6400 and "row-matched" in got["computed_from"]
+    reg = validate._penalty({"rmse": 0.12}, {"rmse": 0.15}, n_rows=10)
+    assert reg["rmse"] == pytest.approx(0.03) and "f1_max" not in reg
+    assert validate._penalty({"auroc": None}, {"auroc": 0.9}, n_rows=1) is None

@@ -251,6 +251,8 @@ MATCH_COLUMNS = (0, 1, 6, 7, 8)
 #: than this are tied on the match columns. Far below the float32 spacing of
 #: a genuinely different EFIT value (~1e-7 relative), far above rounding.
 _TIE_EPS = 1e-9
+#: `tritop`, `tribot`, `gapin` - the EFIT01 shape columns of `MATCH_COLUMNS`.
+_GEOMETRY_COLUMNS = (6, 7, 8)
 
 #: The `spec.scalar_fields[i].model_name` this module expects at each of
 #: `MATCH_COLUMNS`, for `d3d_tearing_onset_cnn1d` - the only model with a
@@ -499,17 +501,22 @@ def _match_columns(spec, built) -> tuple[tuple[int, ...], tuple[int, ...]]:
     archived row the geometry columns aligned, not against the row they
     themselves selected.
 
-    Falls back to all of `MATCH_COLUMNS` with no tiebreak when fewer than
-    two are archive-served, and lets `match_rows`' gates decide.
+    The geometry columns are always matched on, whoever served them: fdp's
+    offline EFIT01 reproduces the archive's EFIT01 columns exactly (median
+    relative difference 0, KS 0, on all 486 validated shots), so a shot the
+    archive does not hold at all - every column through fdp - aligns the
+    same way a mixed shot does. MEASURED: the five-column match rejected 3
+    such shots in the 500-shot pool for row collisions; geometry with a
+    bt/ip tie-break is exactly what fixed the same collisions on the mixed
+    shots.
     """
     scalar = spec.scalar_fields
-    served = tuple(
+    served = {
         i for i in MATCH_COLUMNS
         if built.resolvers.get(scalar[i].canonical) == "archive"
-    )
-    if len(served) < 2:
-        return MATCH_COLUMNS, ()
-    return served, tuple(i for i in MATCH_COLUMNS if i not in served)
+    }
+    columns = tuple(i for i in MATCH_COLUMNS if i in served or i in _GEOMETRY_COLUMNS)
+    return columns, tuple(i for i in MATCH_COLUMNS if i not in columns)
 
 
 def _matched_shot(shot: int, spec, paths: Paths, archive: Path) -> _ShotMatch:
@@ -940,6 +947,8 @@ def binary_metrics(prob: np.ndarray, truth: np.ndarray, *, bins: int = 10) -> di
         "f1_at_0.5": None,
         "precision_at_0.5": None,
         "recall_at_0.5": None,
+        "f1_max": None,
+        "threshold_at_f1_max": None,
         "brier": None,
         "ece": None,
         "calibration": [],
@@ -957,6 +966,19 @@ def binary_metrics(prob: np.ndarray, truth: np.ndarray, *, bins: int = 10) -> di
     out["f1_at_0.5"] = float(2 * tp / (2 * tp + fp + fn)) if tp or fp or fn else 0.0
     out["precision_at_0.5"] = float(tp / (tp + fp)) if tp + fp else None
     out["recall_at_0.5"] = float(tp / (tp + fn)) if tp + fn else None
+    # Best F1 over every threshold the data can distinguish: sort by
+    # probability, take the cumulative confusion counts at the last row of
+    # each run of equal probabilities. `argmax` returns the first maximum,
+    # which in descending order is the HIGHEST threshold among ties.
+    order = np.argsort(-prob, kind="mergesort")
+    p_sorted, t_sorted = prob[order], truth[order]
+    last = np.flatnonzero(np.r_[p_sorted[1:] != p_sorted[:-1], True])
+    tp_c = np.cumsum(t_sorted)[last]
+    fp_c = np.cumsum(~t_sorted)[last]
+    f1_c = 2 * tp_c / (2 * tp_c + fp_c + (n_pos - tp_c))
+    best = int(np.argmax(f1_c))
+    out["f1_max"] = float(f1_c[best])
+    out["threshold_at_f1_max"] = float(p_sorted[last[best]])
     out["brier"] = float(np.mean((prob - truth.astype(np.float64)) ** 2))
     edges = np.linspace(0.0, 1.0, bins + 1)
     which = np.clip(np.digitize(prob, edges[1:-1]), 0, bins - 1)
@@ -1270,19 +1292,44 @@ def label_quality(
             "invalid": archived_scored["n_invalid"],
         }
     for name in report["archived_inputs_valid"]:
-        a_v = report["archived_inputs_valid"][name]
-        o_v = report["reconstructed_inputs_valid"][name]
-        key = "auroc" if "auroc" in a_v else "rmse"
-        if a_v.get(key) is not None and o_v.get(key) is not None:
-            report["reconstruction_penalty"][name] = {
-                key: float(o_v[key] - a_v[key]),
-                "n_rows": report["row_counts"][name]["valid"],
-                "computed_from": (
-                    "reconstructed_inputs_valid minus archived_inputs_valid "
-                    "(row-matched - see reconstruction_penalty_note)"
-                ),
-            }
+        entry = _penalty(
+            report["archived_inputs_valid"][name],
+            report["reconstructed_inputs_valid"][name],
+            n_rows=report["row_counts"][name]["valid"],
+        )
+        if entry is not None:
+            report["reconstruction_penalty"][name] = entry
     return report
+
+
+def _penalty(archived: dict, reconstructed: dict, *, n_rows: int) -> dict | None:
+    """Reconstructed-minus-archived on the row-matched valid rows.
+
+    AUROC or RMSE by task; a binary label also carries the gap in best
+    achievable F1 and the thresholds each side reached it at, because on the
+    proof-of-concept pool that gap (-0.14) was four times the AUROC gap
+    (-0.035): the reconstruction loses positives the model had placed
+    confidently, which a rank statistic barely registers. `None` when either
+    side could not be scored.
+    """
+    key = "auroc" if "auroc" in archived else "rmse"
+    if archived.get(key) is None or reconstructed.get(key) is None:
+        return None
+    entry = {
+        key: float(reconstructed[key] - archived[key]),
+        "n_rows": int(n_rows),
+        "computed_from": (
+            "reconstructed_inputs_valid minus archived_inputs_valid "
+            "(row-matched - see reconstruction_penalty_note)"
+        ),
+    }
+    if key == "auroc" and None not in (archived.get("f1_max"), reconstructed.get("f1_max")):
+        entry["f1_max"] = float(reconstructed["f1_max"] - archived["f1_max"])
+        entry["threshold_at_f1_max"] = {
+            "archived": archived["threshold_at_f1_max"],
+            "reconstructed": reconstructed["threshold_at_f1_max"],
+        }
+    return entry
 
 
 def model_index_results(reports: dict) -> list[dict]:
