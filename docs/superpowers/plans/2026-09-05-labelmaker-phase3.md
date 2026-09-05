@@ -182,6 +182,17 @@ Long SLURM jobs (Tasks 4, 5, 6, 7b, 8a) may run while the next code task is impl
 
 ---
 
+## Task 4b: retrain the survival model from scratch on a by-shot split
+
+**Why (Task 4 result, 2026-09-05):** continuing the shipped weights drove the leaky row-level validation NLL from 0.471 to 0.288 without the early stop ever firing, and the pool AUROC fell from 0.810/0.787/0.758 to 0.681/0.670/0.680. A validation set that shares shots with training cannot stop training; the model memorised. Nathan's decision C ("finish training the model") therefore needs the honest version: train from scratch with the by-shot split the upstream script intended, early-stop on held-out shots, and compare on the pool's held-out shots (Task 3c).
+
+- [ ] `scripts/labelmaker/retrain_tearing_dsm.py` gains `--from-scratch` and `--split by_shot` (the split of `train_tm_model.py` lines 75-77: seed 0, 80% of unique shots train, 10% valid, 10% test; rows of a shot stay together). From scratch means a new `DeepSurvivalMachines(k=3, layers=[100,1000], distribution='LogNormal', activation='ReLU6', temp=1.0, discount=1.0)` with the fork's own `fit()` path INCLUDING `pretrain_dsm`, lr 1e-4, batch 1000, `iters` 300, the fork's `train_patience = 5` deciding; seed 0. Also report the test-split NLL (never used for stopping). Same artifact layout as Task 4 into `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_tearing_time_to_event_dsm_byshot/`, PROVENANCE with the split's shot lists' sha256 and the job's utilisation. sbatch: 8 CPUs, 8 GB, 3 h.
+- [ ] Model folder `d3d_tearing_time_to_event_dsm_byshot` exactly as the `_continued` one (shared `make_load`), card saying the split, the stopping rule that actually fired, and the held-out-shot numbers from Task 3c once available; roster row; tests mirroring `test_tearing_dsm_continued.py`.
+- [ ] `infer` on the pool; `alarm_quality` and `calibration_study`; presentation via the `--dsm-slug` scripts into `outputs/labelmaker/presentation_byshot/`; README table shipped / continued / byshot with the held-out column once Task 3c lands (re-run then).
+- [ ] Commit `labelmaker: retrain the survival model from scratch on a by-shot split`.
+
+---
+
 ## Task 5: TabPFN regressor beside the survival band
 
 **Why:** a second Bayesian model's predictive distribution drawn next to the DSM's on the same shot (spec section 4.2). Not a like-for-like comparison and the caption says so.
@@ -277,4 +288,4 @@ Long SLURM jobs (Tasks 4, 5, 6, 7b, 8a) may run while the next code task is impl
 
 ## Order and stop points
 
-1 -> 2 -> 3 -> 4 (SLURM; Task 6 runs in parallel, disjoint paths) -> 3c (needs Task 4's variant folder) -> 5 -> 6 (**stop: read the verdict**) -> 7a -> 7b (SLURM) -> 7c -> 8a (SLURM; **stop: read the ablation**) -> 8b. Final whole-branch review after the last task that ran.
+1 -> 2 -> 3 -> 4 (SLURM; Task 6 runs in parallel, disjoint paths) -> 3c (needs Task 4's variant folder) -> 4b (SLURM) -> 5 -> 6 (**stop: read the verdict**) -> 7a -> 7b (SLURM) -> 7c -> 8a (SLURM; **stop: read the ablation**) -> 8b. Final whole-branch review after the last task that ran.
