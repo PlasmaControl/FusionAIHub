@@ -89,3 +89,14 @@ def test_ipcw_missing_cases_or_controls(t, e):
 
 def test_empty_censoring_sample_has_unit_survival():
     np.testing.assert_array_equal(km_censoring([], [])([0, 1]), [1, 1])
+
+
+@pytest.mark.parametrize('horizon', [.25, .5, 1.])
+def test_ipcw_uses_supplied_boundary_truth_without_making_cases_controls(horizon):
+    # A 25 ms grid subtraction can lie just above the mathematical horizon.
+    duration = np.array([np.nextafter(horizon, np.inf), horizon / 2, horizon * 2])
+    truth = duration <= horizon + 1e-9
+    score = np.array([.9, .1, .5])
+    assert truth.tolist() == [True, True, False]
+    assert ipcw_auc(duration, [1, 1, 1], score, horizon, cases=truth) == pytest.approx(
+        binary_metrics(score, truth)['auroc'])

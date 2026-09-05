@@ -222,14 +222,16 @@ thresholds 0.1–0.3; at 0.7 both rules miss every tearing shot.
 
 | horizon (s) | plain AUROC | IPCW AUC |
 |---|---|---|
-| 0.25 | 0.810043 | 0.809647 |
-| 0.5 | 0.786852 | 0.785184 |
-| 1.0 | 0.758441 | 0.758792 |
+| 0.25 | 0.810043 | 0.808217 |
+| 0.5 | 0.786852 | 0.784507 |
+| 1.0 | 0.758441 | 0.758210 |
 
 Both AUCs start from the same 28,290 rows. IPCW uses reverse Kaplan–Meier
 censoring weights and excludes quiet rows censored before the horizon from
-case/control pairs. The differences here are small and are not uniformly
-in the direction of an optimistic plain AUROC. These are descriptive pool
+case/control pairs. Both metrics share the same onset-within case truth,
+including the 1 ns tolerance for floating-point grid subtraction. Plain
+AUROC exceeds IPCW AUC by 0.001826, 0.002344 and 0.000231 at the three
+horizons, respectively. These are descriptive pool
 results, not a new held-out evaluation or a threshold recommendation.
 The complete threshold sweep, warning quartiles, jump histograms and
 horizon integrals are in `$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm/alarm_quality.json`.
