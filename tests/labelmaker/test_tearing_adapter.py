@@ -266,6 +266,7 @@ def test_card_matches_the_spec():
     assert registry.card_discrepancies("d3d_tearing_onset_cnn1d") == []
     assert registry.implemented() == [
         "d3d_tearing_onset_cnn1d", "d3d_tearing_time_to_event_dsm",
+        "d3d_tearing_time_to_event_dsm_continued",
     ]
 
 

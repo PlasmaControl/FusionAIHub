@@ -1405,6 +1405,16 @@ ARCHIVE_TRUTH: dict[str, dict] = {
     "d3d_tearing_time_to_event_dsm/tm_risk_250ms": {"kind": "onset_within", "horizon_s": 0.25},
     "d3d_tearing_time_to_event_dsm/tm_risk_500ms": {"kind": "onset_within", "horizon_s": 0.5},
     "d3d_tearing_time_to_event_dsm/tm_risk_1s": {"kind": "onset_within", "horizon_s": 1.0},
+    # The retrained variant publishes the same labels against the same truth,
+    # so it is scored by the same rules; without these entries its published
+    # labels would be silently unscoreable.
+    "d3d_tearing_time_to_event_dsm_continued/tm_time_p50": {"kind": "time_to_onset"},
+    "d3d_tearing_time_to_event_dsm_continued/tm_risk_250ms": {
+        "kind": "onset_within", "horizon_s": 0.25},
+    "d3d_tearing_time_to_event_dsm_continued/tm_risk_500ms": {
+        "kind": "onset_within", "horizon_s": 0.5},
+    "d3d_tearing_time_to_event_dsm_continued/tm_risk_1s": {
+        "kind": "onset_within", "horizon_s": 1.0},
 }
 
 
@@ -1715,10 +1725,16 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
                 "jumps": {str(int(k)): int(v) for k, v in zip(keys, counts, strict=True)},
                 "n_excursions": float(np.median(excursions)) if excursions else None}
         out['labels'][name] = label
-    if slug == 'd3d_tearing_time_to_event_dsm':
-        pairs = sorted((rule['horizon_s'], key.split('/')[1])
-                       for key, rule in ARCHIVE_TRUTH.items()
-                       if key.startswith(f'{slug}/') and rule['kind'] == 'onset_within')
+    pairs = sorted((rule['horizon_s'], key.split('/')[1])
+                   for key, rule in ARCHIVE_TRUTH.items()
+                   if key.startswith(f'{slug}/') and rule['kind'] == 'onset_within')
+    # Integrating over horizons needs a slug whose horizon labels share one row
+    # set - the survival models and their retrained variants. Asking the rules
+    # rather than naming one slug keeps a variant from silently losing the
+    # integral; `same` below still checks the row sets really do match. A
+    # horizon whose label was never published leaves the integral out rather
+    # than raising: the report is about what is on disk.
+    if len(pairs) > 1 and all(name in pooled['labels'] for _, name in pairs):
         horizons, names = zip(*pairs, strict=True)
         reference = pooled['labels'][names[0]]
         same = all(np.array_equal(pooled['labels'][n][key], reference[key])

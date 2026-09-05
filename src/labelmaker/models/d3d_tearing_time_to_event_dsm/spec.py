@@ -147,38 +147,55 @@ def with_calibration_attrs(output_spec: OutputSpec, fit_on: dict) -> OutputSpec:
     ))
 
 
-def load(model_dir: Path) -> Callable[[BuiltInputs], np.ndarray]:
-    """Read the checkpoint and constants once; return a predictor over BuiltInputs."""
-    model_dir = Path(model_dir)
-    graph = dsm_pickle.load_dsm(model_dir / ARTIFACTS[0])
-    with open(model_dir / ARTIFACTS[1], "rb") as fh:
-        norm = dsm_pickle.RestrictedUnpickler(fh).load()
+def make_load(artifacts: tuple[str, str]) -> Callable[[Path], Callable[[BuiltInputs], np.ndarray]]:
+    """A `load` for a checkpoint of this architecture under other file names.
 
-    calibration_path = model_dir / "calibration.json"
-    calibration = (json.loads(calibration_path.read_text())["labels"]
-                   if calibration_path.exists() else None)
-    maps = ([IsotonicMap.from_dict(calibration[f.name]["map"])
-             for f in OUTPUT_SPEC.fields[:3]] if calibration is not None else None)
+    The retrained variant (`d3d_tearing_time_to_event_dsm_continued`) is the
+    same graph, the same preprocessing and the same 20 columns; only the weight
+    file's name and directory differ. It gets this loader rather than a copy of
+    it, so a change to the prediction stack cannot apply to one model and not
+    the other.
+    """
+    def load(model_dir: Path) -> Callable[[BuiltInputs], np.ndarray]:
+        """Read the checkpoint and constants once; return a predictor over BuiltInputs."""
+        model_dir = Path(model_dir)
+        graph = dsm_pickle.load_dsm(model_dir / artifacts[0])
+        with open(model_dir / artifacts[1], "rb") as fh:
+            norm = dsm_pickle.RestrictedUnpickler(fh).load()
 
-    def predict(built):
-        x = preprocess(built, norm)
-        risk = 1.0 - dsm_pickle.survival(graph, x, horizons_ms=HORIZONS_MS)
-        log_w, mu, sigma = dsm_pickle.mixture(graph, x)
-        q = dsm_pickle.quantiles(graph, x, (0.1, 0.5, 0.9))
-        isotonic = (np.column_stack([mapping.apply(risk[:, i])
-                                     for i, mapping in enumerate(maps)])
-                    if maps is not None else np.full_like(risk, np.nan))
-        outputs = np.column_stack((
-            risk, q, np.log(q[:, 2]) - np.log(q[:, 0]),
-            np.exp(log_w), mu, sigma, dsm_pickle.gate_entropy(log_w), isotonic,
-        ))
-        return outputs[None, :, :]                   # one member: (1, T, 20)
+        # Per-model: the variant's own directory has no calibration.json (its
+        # isotonic columns are NaN until a calibration study is published for
+        # it), and a map fitted on one model's scores never applies to another.
+        calibration_path = model_dir / "calibration.json"
+        calibration = (json.loads(calibration_path.read_text())["labels"]
+                       if calibration_path.exists() else None)
+        maps = ([IsotonicMap.from_dict(calibration[f.name]["map"])
+                 for f in OUTPUT_SPEC.fields[:3]] if calibration is not None else None)
 
-    # The runner adopts this spec from the same load as the prediction maps.
-    predict.output_spec = (with_calibration_attrs(
-        OUTPUT_SPEC, {name: entry["fit_on"] for name, entry in calibration.items()})
-        if calibration is not None else OUTPUT_SPEC)
-    return predict
+        def predict(built):
+            x = preprocess(built, norm)
+            risk = 1.0 - dsm_pickle.survival(graph, x, horizons_ms=HORIZONS_MS)
+            log_w, mu, sigma = dsm_pickle.mixture(graph, x)
+            q = dsm_pickle.quantiles(graph, x, (0.1, 0.5, 0.9))
+            isotonic = (np.column_stack([mapping.apply(risk[:, i])
+                                         for i, mapping in enumerate(maps)])
+                        if maps is not None else np.full_like(risk, np.nan))
+            outputs = np.column_stack((
+                risk, q, np.log(q[:, 2]) - np.log(q[:, 0]),
+                np.exp(log_w), mu, sigma, dsm_pickle.gate_entropy(log_w), isotonic,
+            ))
+            return outputs[None, :, :]                   # one member: (1, T, 20)
+
+        # The runner adopts this spec from the same load as the prediction maps.
+        predict.output_spec = (with_calibration_attrs(
+            OUTPUT_SPEC, {name: entry["fit_on"] for name, entry in calibration.items()})
+            if calibration is not None else OUTPUT_SPEC)
+        return predict
+
+    return load
+
+
+load = make_load(ARTIFACTS)
 
 
 ADAPTER = ModelAdapter(
