@@ -621,3 +621,26 @@ def test_validate_without_archive_truth_writes_no_alarm_report(wired):
     directory = wired['root'] / 'validation' / SLUG
     assert (directory / 'label_quality.json').exists()
     assert not (directory / 'alarm_quality.json').exists()
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_validate_writes_calibration_study_for_survival(wired, monkeypatch, broken):
+    from labelmaker import validate
+
+    slug = "d3d_tearing_time_to_event_dsm"
+
+    def study(*args, **kwargs):
+        if broken:
+            raise ValueError("calibration unavailable")
+        return {"seed": 0, "prevalence_source": "FIT"}
+
+    monkeypatch.setattr(validate, "calibration_study", study, raising=False)
+    argv = _argv(wired, "validate")
+    argv[argv.index(SLUG)] = slug
+    assert run.main(argv) == run.EXIT_VALIDATE_ERRORED
+    payload = json.loads((wired["root"] / "validation" / slug / "calibration_study.json").read_text())
+    assert ("error" in payload) == broken
+    if broken:
+        assert "calibration unavailable" in payload["error"]
+    else:
+        assert payload["prevalence_source"] == "FIT"

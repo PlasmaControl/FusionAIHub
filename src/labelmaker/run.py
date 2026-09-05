@@ -59,7 +59,7 @@ import sys
 import time
 from argparse import ArgumentParser
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from multiprocessing import Pool
 from pathlib import Path
@@ -343,8 +343,10 @@ def _predictor(slug: str, ctx: RunContext):
         sha_map = (registry.read_card(slug)["labelmaker"].get("upstream") or {}).get(
             "sha256"
         ) or {}
+        predict = adapter.load(model_dir)
+        adapter = replace(adapter, output_spec=getattr(predict, "output_spec", adapter.output_spec))
         specs = specs_for(adapter, artifact_digest(sha_map))
-        _PREDICTORS[slug] = (adapter, adapter.load(model_dir), specs)
+        _PREDICTORS[slug] = (adapter, predict, specs)
     return _PREDICTORS[slug]
 
 
@@ -811,6 +813,13 @@ def main(argv=None) -> int:
                     )
                 except Exception as exc:  # noqa: BLE001 - isolate a model's report
                     reports["alarm_quality"] = {"error": f"{type(exc).__name__}: {exc}"}
+            if slug == "d3d_tearing_time_to_event_dsm":
+                try:
+                    reports["calibration_study"] = validation.calibration_study(
+                        slug, shots, paths, timeout_s=args.timeout
+                    )
+                except Exception as exc:  # noqa: BLE001 - isolate a model's report
+                    reports["calibration_study"] = {"error": f"{type(exc).__name__}: {exc}"}
             for name, payload in reports.items():
                 out = validation.write_report(paths, slug, name, payload)
                 print(f"validate {slug}: {name} -> {out}")

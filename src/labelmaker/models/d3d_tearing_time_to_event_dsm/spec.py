@@ -25,12 +25,23 @@ tearing CNN archive; the card distinguishes fidelity from label quality.
 """
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
+from ...calibrate import IsotonicMap
 from ...features import namespace as ns
-from ..base import InputField, InputSpec, ModelAdapter, OutputField, OutputSpec
+from ..base import (
+    BuiltInputs,
+    InputField,
+    InputSpec,
+    ModelAdapter,
+    OutputField,
+    OutputSpec,
+)
 from ..runners import dsm_pickle
 
 SLUG = "d3d_tearing_time_to_event_dsm"
@@ -90,6 +101,10 @@ OUTPUT_SPEC = OutputSpec(
             ("tm_mix_sigma0", ""), ("tm_mix_sigma1", ""), ("tm_mix_sigma2", ""),
             ("tm_gate_entropy", "nat"),
         ), start=3)
+    ) + tuple(
+        OutputField(name + "_isotonic", "binary", column=i,
+                    classes=("no_onset", "onset"))
+        for i, name in enumerate(("tm_risk_250ms", "tm_risk_500ms", "tm_risk_1s"), start=17)
     )
 )
 
@@ -121,24 +136,48 @@ def preprocess(built, norm: dict) -> np.ndarray:
     return np.concatenate(cols, axis=1)
 
 
-def load(model_dir):
+def with_calibration_attrs(output_spec: OutputSpec, fit_on: dict) -> OutputSpec:
+    """Bind per-label fitting records without mutating the module constant."""
+    return OutputSpec(tuple(
+        replace(field, attrs=(("calibration", "isotonic, fit on all_pre_onset rows"),
+                              ("calibration_fit_on", json.dumps(
+                                  fit_on[field.name.removesuffix("_isotonic")], sort_keys=True))))
+        if field.name.endswith("_isotonic") else field
+        for field in output_spec.fields
+    ))
+
+
+def load(model_dir: Path) -> Callable[[BuiltInputs], np.ndarray]:
     """Read the checkpoint and constants once; return a predictor over BuiltInputs."""
     model_dir = Path(model_dir)
     graph = dsm_pickle.load_dsm(model_dir / ARTIFACTS[0])
     with open(model_dir / ARTIFACTS[1], "rb") as fh:
         norm = dsm_pickle.RestrictedUnpickler(fh).load()
 
+    calibration_path = model_dir / "calibration.json"
+    calibration = (json.loads(calibration_path.read_text())["labels"]
+                   if calibration_path.exists() else None)
+    maps = ([IsotonicMap.from_dict(calibration[f.name]["map"])
+             for f in OUTPUT_SPEC.fields[:3]] if calibration is not None else None)
+
     def predict(built):
         x = preprocess(built, norm)
         risk = 1.0 - dsm_pickle.survival(graph, x, horizons_ms=HORIZONS_MS)
         log_w, mu, sigma = dsm_pickle.mixture(graph, x)
         q = dsm_pickle.quantiles(graph, x, (0.1, 0.5, 0.9))
+        isotonic = (np.column_stack([mapping.apply(risk[:, i])
+                                     for i, mapping in enumerate(maps)])
+                    if maps is not None else np.full_like(risk, np.nan))
         outputs = np.column_stack((
             risk, q, np.log(q[:, 2]) - np.log(q[:, 0]),
-            np.exp(log_w), mu, sigma, dsm_pickle.gate_entropy(log_w),
+            np.exp(log_w), mu, sigma, dsm_pickle.gate_entropy(log_w), isotonic,
         ))
-        return outputs[None, :, :]                   # one member: (1, T, 17)
+        return outputs[None, :, :]                   # one member: (1, T, 20)
 
+    # The runner adopts this spec from the same load as the prediction maps.
+    predict.output_spec = (with_calibration_attrs(
+        OUTPUT_SPEC, {name: entry["fit_on"] for name, entry in calibration.items()})
+        if calibration is not None else OUTPUT_SPEC)
     return predict
 
 
