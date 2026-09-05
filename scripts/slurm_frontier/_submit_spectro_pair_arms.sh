@@ -91,6 +91,55 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "ecestab" ]; then
+        # ece: GEOMETRY *AND* STABILITY, AS A 2x2 SO THE EFFECT IS ATTRIBUTABLE.
+        #
+        # MEASURED 2026-09-05 on the CORRECT per-freq-log-z pool (the earlier ece table mixed two
+        # standardisations and is void -- see the pool guard in spectro_final_fig.py):
+        #   patchmean 16x16 0.4672 | 8x32 0.5257 (+0.0585) | 32x8 0.4293 (inverts)
+        #   best arm ece_m02_s2 @18001 peakF1 0.3620 = 77.5% of its own 16x16 ceiling
+        # ece matches mirnov on both diagnostics (aspect gain +12.5% relative, 32x8 inverts) and
+        # NOT co2 (+5.3%, 32x8 wins in practice). So the aspect lever transfers.
+        #
+        # BUT the binding defect is AMPLITUDE, and it is orthogonal to geometry: all 24 audited
+        # ece checkpoints sit at std_r 0.12-0.32 against an ideal of 1.0 (mirnov's ship candidate
+        # 0.622, co2's 0.802), every one fails the 1.0 anchor, and tmean 0.9688 beats all of them.
+        # Running geometry alone would rediscover the same std_r at a higher ceiling.
+        #
+        # THE 2x2 IS THE POINT. Two new levers at once cannot be attributed from a 2-arm leg, and
+        # the 16x16 @ 2e-4 cell ALREADY EXISTS (ece_m02_s2, 0.3620, same recipe), so the other
+        # three cells cost 4 nodes and make the attribution complete:
+        #        patch \ LR      2e-4                     1e-4
+        #        16x16           ece_m02_s2 (measured)     b16_lr1        <- isolates LR
+        #         8x32           p832_lr2   <- isolates    p832_s1/_s2    <- both levers
+        #                                     the aspect
+        # Plus p328_lr1 (the 32x8 control, which INVERTS on the oracle, so it is a real control
+        # here as it was for mirnov) and p832_ema (EMA on top of the best cell).
+        #
+        # LR 1e-4 is the MEASURED codec optimum (sweep 1e-3/3e-4/1e-4/3e-5/1e-5, gate-to-gate
+        # spread falling monotonically as LR drops); every ece arm to date ran 2e-4. --lr and
+        # --ema in an arm's args win, because arm args are appended last.
+        #
+        # NO gain-shape: ece's gs/gsadv are its WORST arms (peakF1 0.244-0.303) despite having its
+        # highest std_r, and mirnov's p832gs collapsed to 1 code. ece's gain path is also the most
+        # bit-starved of the three -- 40ch x 16 freq x 2 stats = 1280 values/gain token at ~9.97
+        # bits = 0.0078 bits/value, vs mirnov 0.0107 and co2 0.078.
+        #
+        # NOTE: there is no explicit amplitude/std term in the trainer, and pixel_anchor_weight is
+        # already at its documented optimum 5.0 (20 collapses to 1 code). LR and EMA are the
+        # available stabilisers without a code change, which I am not making blind mid-session.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+        P832="--patch_f 8 --patch_t 32"
+        ARMS_STR="${ARMS_STR};${M}_p832_s1|${P} ${MSK} ${MIR} ${B} ${P832} --lr 1e-4 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p832_s2|${P} ${MSK} ${MIR} ${B} ${P832} --lr 1e-4 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_p832_ema|${P} ${MSK} ${MIR} ${B} ${P832} --lr 1e-4 --ema --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p832_lr2|${P} ${MSK} ${MIR} ${B} ${P832} --lr 2e-4 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_b16_lr1|${P} ${MSK} ${MIR} ${B} --lr 1e-4 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p328_lr1|${P} ${MSK} ${MIR} ${B} --patch_f 32 --patch_t 8 --lr 1e-4 --seed 1"
+        continue
+    fi
     if [ "${SWEEP}" = "aspect" ]; then
         # PATCH ASPECT AT CONSTANT n_tok -- the one geometry axis that has never been varied
         # and does NOT touch FRAME_LAYOUT.
