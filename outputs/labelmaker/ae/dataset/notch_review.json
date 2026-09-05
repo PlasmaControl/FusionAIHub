@@ -1,0 +1,2333 @@
+{
+  "notch_threshold": 0.5,
+  "rule": "a (channel, bin) lit in more than the threshold fraction of the 7820 frames of the cleaned mask is receiver pickup and its row is zeroed before the activity decision and before the centroid",
+  "review_rule": "any shot whose notch removes a bin below 190 kHz is flagged needs_review and that channel's notch is NOT applied to the label; the other channels' notches still are",
+  "shots_needing_review": [
+    "170671_valid",
+    "170790_valid",
+    "170792_valid",
+    "170793_valid",
+    "170795_valid",
+    "170799_valid",
+    "170801_valid",
+    "170803_valid",
+    "170808_valid",
+    "170815_train",
+    "170816_train",
+    "172007_train",
+    "172008_train",
+    "172011_train",
+    "172012_train",
+    "172013_train",
+    "172017_train",
+    "172018_train",
+    "172019_train",
+    "172024_train",
+    "172025_train",
+    "175239_valid",
+    "175240_valid",
+    "175241_valid",
+    "175963_train",
+    "176003_train",
+    "176043_train",
+    "176045_train",
+    "176060_train",
+    "176526_train",
+    "176543_train",
+    "176544_train",
+    "176548_train",
+    "178640_train"
+  ],
+  "n_shots_with_any_notch": 54,
+  "shots": [
+    {
+      "shot": "170671_valid",
+      "split": "valid",
+      "channels": {
+        "r0": {
+          "bins": [
+            29
+          ],
+          "khz": [
+            14.648
+          ],
+          "occupancy": [
+            0.5231
+          ],
+          "in_band": [
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 1 bin(s) below 190 kHz (14.6-14.6 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170790_valid",
+      "split": "valid",
+      "channels": {
+        "v3": {
+          "bins": [
+            36,
+            37
+          ],
+          "khz": [
+            18.066,
+            18.555
+          ],
+          "occupancy": [
+            0.5005,
+            0.5008
+          ],
+          "in_band": [
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (18.1-18.6 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170792_valid",
+      "split": "valid",
+      "channels": {
+        "r0": {
+          "bins": [
+            19,
+            20
+          ],
+          "khz": [
+            9.766,
+            10.254
+          ],
+          "occupancy": [
+            0.5362,
+            0.5072
+          ],
+          "in_band": [
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (9.8-10.3 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v1": {
+          "bins": [
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "khz": [
+            7.813,
+            8.301,
+            8.789,
+            9.277,
+            9.766,
+            10.254,
+            10.742
+          ],
+          "occupancy": [
+            0.5072,
+            0.5414,
+            0.5551,
+            0.5699,
+            0.557,
+            0.5399,
+            0.5196
+          ],
+          "in_band": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 7 bin(s) below 190 kHz (7.8-10.7 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v2": {
+          "bins": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "khz": [
+            8.301,
+            8.789,
+            9.277,
+            9.766
+          ],
+          "occupancy": [
+            0.5084,
+            0.5353,
+            0.5317,
+            0.5193
+          ],
+          "in_band": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (8.3-9.8 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170793_valid",
+      "split": "valid",
+      "channels": {
+        "v1": {
+          "bins": [
+            10,
+            11,
+            12,
+            13
+          ],
+          "khz": [
+            5.371,
+            5.859,
+            6.348,
+            6.836
+          ],
+          "occupancy": [
+            0.5336,
+            0.5657,
+            0.588,
+            0.5114
+          ],
+          "in_band": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (5.4-6.8 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v2": {
+          "bins": [
+            10,
+            11,
+            12
+          ],
+          "khz": [
+            5.371,
+            5.859,
+            6.348
+          ],
+          "occupancy": [
+            0.528,
+            0.5444,
+            0.6045
+          ],
+          "in_band": [
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 3 bin(s) below 190 kHz (5.4-6.3 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v3": {
+          "bins": [
+            11,
+            12
+          ],
+          "khz": [
+            5.859,
+            6.348
+          ],
+          "occupancy": [
+            0.5293,
+            0.5409
+          ],
+          "in_band": [
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (5.9-6.3 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170795_valid",
+      "split": "valid",
+      "channels": {
+        "v3": {
+          "bins": [
+            198,
+            199,
+            200,
+            201,
+            202,
+            203,
+            204,
+            205
+          ],
+          "khz": [
+            97.168,
+            97.656,
+            98.145,
+            98.633,
+            99.121,
+            99.609,
+            100.098,
+            100.586
+          ],
+          "occupancy": [
+            0.5093,
+            0.5275,
+            0.5417,
+            0.5708,
+            0.5705,
+            0.5602,
+            0.5434,
+            0.5063
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 8 bin(s) below 190 kHz (97.2-100.6 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170799_valid",
+      "split": "valid",
+      "channels": {
+        "v3": {
+          "bins": [
+            36,
+            37,
+            38,
+            39
+          ],
+          "khz": [
+            18.066,
+            18.555,
+            19.043,
+            19.531
+          ],
+          "occupancy": [
+            0.5004,
+            0.5121,
+            0.5111,
+            0.5024
+          ],
+          "in_band": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (18.1-19.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170801_valid",
+      "split": "valid",
+      "channels": {
+        "v3": {
+          "bins": [
+            34,
+            35
+          ],
+          "khz": [
+            17.09,
+            17.578
+          ],
+          "occupancy": [
+            0.5171,
+            0.5178
+          ],
+          "in_band": [
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (17.1-17.6 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170803_valid",
+      "split": "valid",
+      "channels": {
+        "v3": {
+          "bins": [
+            35,
+            36,
+            37,
+            38
+          ],
+          "khz": [
+            17.578,
+            18.066,
+            18.555,
+            19.043
+          ],
+          "occupancy": [
+            0.5326,
+            0.5391,
+            0.5281,
+            0.5096
+          ],
+          "in_band": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (17.6-19.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170808_valid",
+      "split": "valid",
+      "channels": {
+        "v1": {
+          "bins": [
+            34,
+            35
+          ],
+          "khz": [
+            17.09,
+            17.578
+          ],
+          "occupancy": [
+            0.5017,
+            0.5084
+          ],
+          "in_band": [
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (17.1-17.6 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170815_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            225,
+            226,
+            227
+          ],
+          "khz": [
+            110.352,
+            110.84,
+            111.328
+          ],
+          "occupancy": [
+            0.507,
+            0.5069,
+            0.51
+          ],
+          "in_band": [
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 3 bin(s) below 190 kHz (110.4-111.3 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "170816_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            198,
+            199,
+            200,
+            201,
+            202,
+            203,
+            204
+          ],
+          "khz": [
+            97.168,
+            97.656,
+            98.145,
+            98.633,
+            99.121,
+            99.609,
+            100.098
+          ],
+          "occupancy": [
+            0.5171,
+            0.5636,
+            0.5746,
+            0.5877,
+            0.5693,
+            0.5458,
+            0.528
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 7 bin(s) below 190 kHz (97.2-100.1 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172007_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            340,
+            341
+          ],
+          "khz": [
+            166.504,
+            166.992
+          ],
+          "occupancy": [
+            0.538,
+            0.5434
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (166.5-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172008_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.5437,
+            0.5899,
+            0.5902,
+            0.5509
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (166.0-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172011_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            340,
+            341
+          ],
+          "khz": [
+            166.504,
+            166.992
+          ],
+          "occupancy": [
+            0.5231,
+            0.5238
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (166.5-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172012_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.5551,
+            0.5936,
+            0.5932,
+            0.5706
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (166.0-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172013_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            340,
+            341
+          ],
+          "khz": [
+            166.504,
+            166.992
+          ],
+          "occupancy": [
+            0.5293,
+            0.5331
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (166.5-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172017_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            340,
+            341
+          ],
+          "khz": [
+            166.504,
+            166.992
+          ],
+          "occupancy": [
+            0.5132,
+            0.5226
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (166.5-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172018_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            341
+          ],
+          "khz": [
+            166.992
+          ],
+          "occupancy": [
+            0.512
+          ],
+          "in_band": [
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 1 bin(s) below 190 kHz (167.0-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172019_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            340,
+            341
+          ],
+          "khz": [
+            166.504,
+            166.992
+          ],
+          "occupancy": [
+            0.5133,
+            0.517
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (166.5-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172024_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.5353,
+            0.6312,
+            0.6234,
+            0.5794
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (166.0-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "172025_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.5327,
+            0.6092,
+            0.6051,
+            0.5698
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (166.0-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "175239_valid",
+      "split": "valid",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.6201,
+            0.6806,
+            0.6836,
+            0.6132
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (166.0-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "175240_valid",
+      "split": "valid",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342,
+            343
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481,
+            167.969
+          ],
+          "occupancy": [
+            0.651,
+            0.7129,
+            0.7095,
+            0.6726,
+            0.5515
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 5 bin(s) below 190 kHz (166.0-168.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "175241_valid",
+      "split": "valid",
+      "channels": {
+        "v1": {
+          "bins": [
+            339,
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.016,
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.573,
+            0.6492,
+            0.6597,
+            0.5923
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (166.0-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "175963_train",
+      "split": "train",
+      "channels": {
+        "v1": {
+          "bins": [
+            340,
+            341
+          ],
+          "khz": [
+            166.504,
+            166.992
+          ],
+          "occupancy": [
+            0.5032,
+            0.5225
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (166.5-167.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176003_train",
+      "split": "train",
+      "channels": {
+        "v2": {
+          "bins": [
+            162,
+            163,
+            164,
+            165
+          ],
+          "khz": [
+            79.59,
+            80.078,
+            80.566,
+            81.055
+          ],
+          "occupancy": [
+            0.5272,
+            0.5554,
+            0.5399,
+            0.5171
+          ],
+          "in_band": [
+            false,
+            false,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (79.6-81.1 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176010_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637
+          ],
+          "occupancy": [
+            0.534,
+            0.5579,
+            0.5563,
+            0.5121
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176011_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.6113,
+            0.8893,
+            0.9512,
+            0.9632,
+            0.9605,
+            0.9359,
+            0.6987
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176012_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.7084,
+            0.7737,
+            0.7899,
+            0.7532,
+            0.6698
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176013_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.6115,
+            0.8377,
+            0.8944,
+            0.9079,
+            0.8808,
+            0.8347,
+            0.5611
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176014_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.6005,
+            0.9096,
+            0.949,
+            0.9566,
+            0.9465,
+            0.9032,
+            0.6478
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176043_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            145
+          ],
+          "khz": [
+            71.289
+          ],
+          "occupancy": [
+            0.5041
+          ],
+          "in_band": [
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 1 bin(s) below 190 kHz (71.3-71.3 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176045_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            144,
+            150
+          ],
+          "khz": [
+            70.801,
+            73.731
+          ],
+          "occupancy": [
+            0.5069,
+            0.5037
+          ],
+          "in_band": [
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (70.8-73.7 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176060_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            130,
+            131,
+            132,
+            133,
+            134
+          ],
+          "khz": [
+            63.965,
+            64.453,
+            64.941,
+            65.43,
+            65.918
+          ],
+          "occupancy": [
+            0.5189,
+            0.5436,
+            0.5366,
+            0.5197,
+            0.5003
+          ],
+          "in_band": [
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 5 bin(s) below 190 kHz (64.0-65.9 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176517_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.5198,
+            0.8214,
+            0.9189,
+            0.94,
+            0.9402,
+            0.9032,
+            0.6234
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176518_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.6592,
+            0.7465,
+            0.7817,
+            0.7665,
+            0.7206
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176519_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.5434,
+            0.8928,
+            0.9474,
+            0.9555,
+            0.9518,
+            0.9183,
+            0.6664
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176520_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.5476,
+            0.6192,
+            0.6605,
+            0.6419,
+            0.5885
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176521_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.818,
+            0.913,
+            0.9161,
+            0.9143,
+            0.8703,
+            0.5766
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176526_train",
+      "split": "train",
+      "channels": {
+        "r0": {
+          "bins": [
+            252,
+            253,
+            254,
+            255,
+            256,
+            257,
+            258,
+            259,
+            260,
+            261,
+            262
+          ],
+          "khz": [
+            123.535,
+            124.024,
+            124.512,
+            125.0,
+            125.488,
+            125.977,
+            126.465,
+            126.953,
+            127.442,
+            127.93,
+            128.418
+          ],
+          "occupancy": [
+            0.6289,
+            0.7873,
+            0.8726,
+            0.916,
+            0.9391,
+            0.95,
+            0.9471,
+            0.9281,
+            0.8756,
+            0.7829,
+            0.6023
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 11 bin(s) below 190 kHz (123.5-128.4 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v1": {
+          "bins": [
+            340,
+            341,
+            342
+          ],
+          "khz": [
+            166.504,
+            166.992,
+            167.481
+          ],
+          "occupancy": [
+            0.5568,
+            0.5712,
+            0.5246
+          ],
+          "in_band": [
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 3 bin(s) below 190 kHz (166.5-167.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.6868,
+            0.7691,
+            0.7889,
+            0.7772,
+            0.699
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176528_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.5302,
+            0.6142,
+            0.6527,
+            0.6201,
+            0.5389
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176529_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.51,
+            0.8281,
+            0.9091,
+            0.9394,
+            0.9408,
+            0.9083,
+            0.6472
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176531_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.6962,
+            0.7671,
+            0.796,
+            0.7891,
+            0.7481
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176532_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.5027,
+            0.7769,
+            0.8265,
+            0.8538,
+            0.8372,
+            0.7835,
+            0.5499
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176533_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.585,
+            0.6699,
+            0.6879,
+            0.6522,
+            0.5774
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176537_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.7233,
+            0.8115,
+            0.8231,
+            0.8105,
+            0.7648
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176540_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            410,
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            200.684,
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.5051,
+            0.8478,
+            0.9238,
+            0.9527,
+            0.9566,
+            0.9243,
+            0.6735
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176541_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.6244,
+            0.7279,
+            0.7621,
+            0.7398,
+            0.6607
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176543_train",
+      "split": "train",
+      "channels": {
+        "r0": {
+          "bins": [
+            256,
+            257
+          ],
+          "khz": [
+            125.488,
+            125.977
+          ],
+          "occupancy": [
+            0.5162,
+            0.5265
+          ],
+          "in_band": [
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 2 bin(s) below 190 kHz (125.5-126.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.7115,
+            0.7875,
+            0.8093,
+            0.7985,
+            0.7598,
+            0.5258
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176544_train",
+      "split": "train",
+      "channels": {
+        "r0": {
+          "bins": [
+            255,
+            256,
+            257,
+            258,
+            259
+          ],
+          "khz": [
+            125.0,
+            125.488,
+            125.977,
+            126.465,
+            126.953
+          ],
+          "occupancy": [
+            0.5909,
+            0.6592,
+            0.6758,
+            0.6251,
+            0.5322
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 5 bin(s) below 190 kHz (125.0-127.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v3": {
+          "bins": [
+            412,
+            413,
+            414
+          ],
+          "khz": [
+            201.66,
+            202.149,
+            202.637
+          ],
+          "occupancy": [
+            0.5491,
+            0.5668,
+            0.5341
+          ],
+          "in_band": [
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176547_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.6138,
+            0.7,
+            0.7253,
+            0.7088,
+            0.6535
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "176548_train",
+      "split": "train",
+      "channels": {
+        "r0": {
+          "bins": [
+            255,
+            256,
+            257,
+            258
+          ],
+          "khz": [
+            125.0,
+            125.488,
+            125.977,
+            126.465
+          ],
+          "occupancy": [
+            0.5156,
+            0.5648,
+            0.5707,
+            0.5331
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 4 bin(s) below 190 kHz (125.0-126.5 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        },
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125
+          ],
+          "occupancy": [
+            0.5486,
+            0.609,
+            0.6281,
+            0.6036,
+            0.5554
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": true
+    },
+    {
+      "shot": "176549_train",
+      "split": "train",
+      "channels": {
+        "v3": {
+          "bins": [
+            411,
+            412,
+            413,
+            414,
+            415,
+            416
+          ],
+          "khz": [
+            201.172,
+            201.66,
+            202.149,
+            202.637,
+            203.125,
+            203.613
+          ],
+          "occupancy": [
+            0.8303,
+            0.9008,
+            0.9153,
+            0.9014,
+            0.8777,
+            0.6225
+          ],
+          "in_band": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "needs_review": false,
+          "notch_applied": true,
+          "reason": ""
+        }
+      },
+      "needs_review": false
+    },
+    {
+      "shot": "178640_train",
+      "split": "train",
+      "channels": {
+        "r0": {
+          "bins": [
+            214,
+            215,
+            216
+          ],
+          "khz": [
+            104.981,
+            105.469,
+            105.957
+          ],
+          "occupancy": [
+            0.5003,
+            0.5097,
+            0.5166
+          ],
+          "in_band": [
+            true,
+            true,
+            true
+          ],
+          "needs_review": true,
+          "notch_applied": false,
+          "reason": "removes 3 bin(s) below 190 kHz (105.0-106.0 kHz), inside the AE centroid range; the notch is not applied to this channel until a human looks"
+        }
+      },
+      "needs_review": true
+    }
+  ]
+}
