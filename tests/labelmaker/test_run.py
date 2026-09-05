@@ -592,3 +592,25 @@ def test_infer_log_row_says_why_rows_are_invalid(wired):
         # every invalid row fails at least one rule; a fully valid shot has none
         assert sum(row["invalid_reasons"].values()) >= n_invalid
         assert (n_invalid == 0) == (row["invalid_reasons"] == {})
+
+
+@pytest.mark.parametrize('broken', [False, True])
+def test_validate_writes_alarm_quality_for_archive_labels(wired, monkeypatch, broken):
+    from labelmaker import validate
+
+    monkeypatch.setitem(validate.ARCHIVE_TRUTH, f'{SLUG}/score',
+                        {'kind': 'column', 'column': 1, 'task': 'binary'})
+
+    def alarm(*args, **kwargs):
+        if broken:
+            raise ValueError('alarm unavailable')
+        return {'row_set': 'pre-onset valid rows of every aligned shot'}
+
+    monkeypatch.setattr(validate, 'alarm_quality', alarm, raising=False)
+    assert run.main(_argv(wired, 'validate')) == run.EXIT_VALIDATE_ERRORED
+    payload = json.loads((wired['root'] / 'validation' / SLUG / 'alarm_quality.json').read_text())
+    assert ('error' in payload) == broken
+    if broken:
+        assert 'alarm unavailable' in payload['error']
+    else:
+        assert payload['row_set'] == 'pre-onset valid rows of every aligned shot'
