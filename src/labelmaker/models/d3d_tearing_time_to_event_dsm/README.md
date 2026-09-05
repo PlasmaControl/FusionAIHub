@@ -219,6 +219,14 @@ have (below).
   0-to-1 transition, a count of crossings that fail to persist 400 ms, FPR over
   quiet shots and FNR over tearing shots, at a default threshold of 0.7. The
   per-row F1 numbers below are therefore not comparable to any upstream figure.
+- This checkpoint is under-trained (Training details), but training it to
+  convergence did not help: `d3d_tearing_time_to_event_dsm_continued` continues
+  this fit for 300 epochs, cutting validation NLL 0.471321 -> 0.287652 on the
+  same (leaky, row-level) split, and **measured worse on the 500-shot pool** -
+  AUROC 0.810 -> 0.681, 0.787 -> 0.670, 0.758 -> 0.680 at 250 ms / 500 ms / 1 s,
+  with ECE on all pre-onset rows worse at every horizon. This model stays the
+  default; the comparison is in that card and in
+  `outputs/labelmaker/presentation_continued/`.
 - Calibration depends on the reported row set. The earlier full-pool 1 s
   figures were ECE 0.022 on all aligned pre-onset rows (5.5% positive), versus
   0.448 on onset-only shots (54% positive). The study below estimates the
@@ -274,13 +282,34 @@ The pickle also carries its loss curves: 20 entries, validation NLL 0.534 to
 0.471, **monotone and still falling at the last epoch**. auton-survival's early
 stop (`train_patience = 5`) never fired, so this fit was ended by its `iters`
 setting, not by convergence. It is under-trained.
+`d3d_tearing_time_to_event_dsm_continued` continues this fit from these
+weights; see that card and the comparison in Evaluation below.
 
 **No class balancing was applied.** `losses._conditional_lognormal_loss` scores
 events with `log f(t)` and censored rows with `alpha * log S(t)`, normalised by
 the total row count; `alpha = model.discount = 1.0`, so censored rows are not
 down-weighted. The survival likelihood is the whole of the imbalance handling.
-`train_tm_model.py` applies no resampling and no time cut, and splits 80/10/10
-**by shot**.
+`train_tm_model.py` applies no resampling and no time cut.
+
+**Correction, 2026-09-05: the validation split behind the 0.471 above is a
+row-level holdout, not the by-shot split `train_tm_model.py` performs today.**
+That script's 80/10/10 by-shot rule reproduces 0.4517 on these weights, not
+0.4713, and the parameter dict inside the pickle has no `seed` for that rule to
+use; the config that names this model
+(`/projects/EKOLEMEN/survival_tm/outputs/rt_fixed_rotconfig`) does not even name
+a shots list. Searching the plausible rules against the pickle's own stored
+final validation loss found the one that reproduces it to machine precision
+(|diff| < 1e-15): the whole 914,898-row dataset went into `SurvivalModel.fit`
+with no `val_data`, so `estimators.py` applied its own default,
+`data.sample(frac=1 - 0.15, random_state=0)`, training on 777,663 rows and
+validating on the 137,235-row complement. 8,685 of the 8,690 shots with a
+validation row also have training rows, so **the stored validation curve is
+optimistic**: it is not a by-shot holdout and does not measure generalisation
+to unseen shots. Everything else in this section - the hyperparameters, the
+absence of balancing, the row statistics - is unaffected. The measurement is
+`$LABELMAKER_ROOT/runs/task4_split_search.py`, and
+`scripts/labelmaker/retrain_tearing_dsm.py` gates on reproducing 0.4713 before
+it will continue the fit.
 
 Training rows (`rt_filtered_{e,t}_bms_pcb_rot.pkl`): 914,898 rows, **15.07%
 events**, `t` in ms with median 1,920 and max 5,740, and only 14.7% of rows
@@ -304,6 +333,12 @@ the upstream script. Reconstruction fidelity and label quality need a truth
 series - "onset within the next horizon", derivable from the tearing archive's
 `tm_label` on the 1,503 overlap shots. `validate.alarm_quality` now builds
 that truth for the published-label alarm report below.
+
+**These pool numbers are roughly half in-sample.** The training set is 8,923
+unique DIII-D shots spanning 140444-193373; 214 of the 500 pool shots, 208 of
+the 463 aligned scored shots and 41 of the 80 shots with an archived onset are
+training shots. The metrics below pool in-sample and held-out shots together;
+separating them is a follow-up, not something these numbers do.
 
 Measured once outside `validate` (2026-09-05, `outputs/labelmaker/dsm_onset_quality.py`
 in the FusionAIHub checkout): on the 486 aligned shots of the 500-shot pool,

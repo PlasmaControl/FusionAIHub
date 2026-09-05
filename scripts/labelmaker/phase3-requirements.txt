@@ -1,0 +1,21 @@
+# Phase 3 training environment for labelmaker (uv venv, Python 3.11).
+#
+# Nothing here belongs in the `labelmaker` pixi env, which stays numpy/scipy/
+# h5py/torch-cpu and has no scikit-learn by design. This env is only ever used
+# by the training and study scripts under scripts/labelmaker/ and
+# outputs/labelmaker/*/scripts/, which never import `labelmaker` itself.
+#
+# torch comes from the CUDA 12.6 wheel index so the same env serves the CPU
+# survival training (Task 4) and the GPU jobs later in the phase.
+--extra-index-url https://download.pytorch.org/whl/cu126
+
+torch==2.14.0
+scikit-learn
+scikit-survival
+tqdm
+pandas
+h5py
+matplotlib
+tabpfn==8.5.0
+tifffile
+pyarrow
