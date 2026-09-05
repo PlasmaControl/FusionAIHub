@@ -177,7 +177,10 @@ prevalence, row set, date and git SHA.
 
 The 14 additional series expose that distribution: `tm_time_p10`,
 `tm_time_p50`, and `tm_time_p90` are event-time quantiles in ms;
-`tm_time_iqr_log` is ln(p90) - ln(p10). `tm_mix_w0..2` are softmax gate
+`tm_time_iqr_log` is ln(p90) - ln(p10). Those quantiles are clamped to
+[1e-3, 1e7] ms, so a value sitting on either end is not a predicted time but
+"beyond the representable range" - 1e7 ms is 10,000 s, far longer than any
+DIII-D discharge. `tm_mix_w0..2` are softmax gate
 weights, `tm_mix_mu0..2` are locations in ln ms, and `tm_mix_sigma0..2`
 are component log-scales: exp(sigma) is the standard deviation of ln t.
 `tm_gate_entropy` is -sum w ln w in nats, from 0 to ln 3. Component order

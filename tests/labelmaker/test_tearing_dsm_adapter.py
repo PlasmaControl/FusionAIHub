@@ -51,6 +51,7 @@ def test_predict_reproduces_the_upstream_preprocessing_step_by_step(tmp_path, mo
     from .test_dsm_pickle import _fake_pickle
 
     model_dir = tmp_path
+    # _fake_pickle seeds every fake torch model with a fixed seed.
     path, _ = _fake_pickle(tmp_path, monkeypatch)
     path.rename(model_dir / dsm.ARTIFACTS[0])
     rng = np.random.default_rng(21)
@@ -116,6 +117,7 @@ def test_output_contract_and_card_match_including_units():
 def test_predict_publishes_all_mixture_columns(tmp_path, monkeypatch):
     from .test_dsm_pickle import _fake_pickle
 
+    # _fake_pickle seeds every fake torch model with a fixed seed.
     path, _ = _fake_pickle(tmp_path, monkeypatch)
     graph = dsm_pickle.load_dsm(path)
     path.rename(tmp_path / dsm.ARTIFACTS[0])
@@ -151,6 +153,7 @@ def test_loaded_calibration_reaches_predictions_and_hdf5(tmp_path, monkeypatch):
     paths = Paths(root=tmp_path)
     model_dir = paths.models / dsm.SLUG
     model_dir.mkdir(parents=True)
+    # _fake_pickle seeds every fake torch model with a fixed seed.
     path, _ = _fake_pickle(model_dir, monkeypatch)
     path.rename(model_dir / dsm.ARTIFACTS[0])
     (model_dir / dsm.ARTIFACTS[1]).write_bytes(pickle.dumps({}))

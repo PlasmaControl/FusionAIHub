@@ -64,6 +64,7 @@ class _FakeTorch(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
+        torch.manual_seed(0)
         self.k, self.dist, self.temp, self.risks = 3, "LogNormal", 1.0, 1
         self.act = torch.nn.Tanh()
         self.embedding = torch.nn.Sequential(
@@ -207,13 +208,33 @@ def test_mixture_quantiles_are_ordered_and_invert_survival():
                                    [[0.9, 0.5, 0.1]], atol=1e-6)
 
 
-def test_quantiles_report_rows_outside_the_bracket():
+def test_quantiles_clamp_rows_outside_the_bracket():
     from dataclasses import replace
 
-    for location in (-100.0, 100.0):
+    for location, endpoint in ((-100.0, 1e-3), (100.0, 1e7)):
         g = replace(_graph(), shape=np.full(2, location))
-        with pytest.raises(ValueError, match="2 rows"):
-            dsm_pickle.quantiles(g, np.zeros((2, 2)), (0.1, 0.5, 0.9))
+        got = dsm_pickle.quantiles(g, np.zeros((2, 2)), (0.1, 0.5, 0.9))
+        np.testing.assert_array_equal(got, np.full((2, 3), endpoint))
+
+
+def test_quantiles_clamp_extreme_row_without_affecting_normal_row():
+    from dataclasses import replace
+
+    from scipy.special import erfinv
+
+    g = replace(_graph(), k=1, embedding=(), gate=np.zeros((1, 1)),
+                shapeg=(np.zeros((1, 1)), np.zeros(1)),
+                scaleg=(np.array([[10.0]]), np.zeros(1)),
+                shape=np.array([6.0]), scale=np.array([3.0]))
+    q = np.array([0.1, 0.5, 0.9])
+    x = np.array([[1.0], [-1.0]])
+    normal = dsm_pickle.quantiles(g, x[1:], q)
+    got = dsm_pickle.quantiles(g, x, q)
+    np.testing.assert_array_equal(got[0, [0, 2]], [1e-3, 1e7])
+    np.testing.assert_allclose(got[0, 1], np.exp(6.0), rtol=1e-12)
+    np.testing.assert_array_equal(got[1:], normal)
+    want = np.exp(6.0 + np.exp(3.0 + np.tanh(-10.0)) * np.sqrt(2) * erfinv(2 * q - 1))
+    np.testing.assert_allclose(got[1], want, rtol=1e-12)
 
 
 def test_gate_entropy_uniform_and_one_hot():

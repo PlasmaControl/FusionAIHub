@@ -182,7 +182,17 @@ def survival(graph: DsmGraph, x, horizons_ms: Sequence[float]) -> np.ndarray:
 
 
 def quantiles(graph: DsmGraph, x: np.ndarray, q: Sequence[float]) -> np.ndarray:
-    """Invert mixture survival for event-time quantiles in milliseconds."""
+    """Invert mixture survival for event-time quantiles in milliseconds.
+
+    The inversion bisects in ln t over the bracket [1e-3, 1e7] ms. A quantile
+    that falls outside it is clamped to the end it exceeded, and a clamped
+    value means "beyond the representable range", not a time the model
+    predicts: 1e7 ms is 10,000 s, far beyond any DIII-D discharge, so a
+    clamped p90 says the mixture puts that quantile's mass on "never". The
+    clamp is per element, so one extreme row leaves every other row's and
+    quantile's bisection unchanged; raising instead would abort a whole shot
+    over a single row.
+    """
     log_w, mu, sigma = map(torch.as_tensor, mixture(graph, x))
     target = 1.0 - torch.as_tensor(np.asarray(q, dtype=np.float64))
     lo = torch.full((mu.shape[0], target.numel()), np.log(1e-3), dtype=torch.float64)
@@ -192,17 +202,17 @@ def quantiles(graph: DsmGraph, x: np.ndarray, q: Sequence[float]) -> np.ndarray:
         z = (log_t[:, :, None] - mu[:, None, :]) / (torch.exp(sigma[:, None, :]) * np.sqrt(2.0))
         return ((0.5 - 0.5 * torch.erf(z)) * torch.exp(log_w[:, None, :])).sum(dim=2)
 
-    bracketed = (at(lo) >= target) & (at(hi) <= target)
-    bad_rows = int((~bracketed.all(dim=1)).sum())
-    if bad_rows:
-        raise ValueError(f"quantiles outside [1e-3, 1e7] ms bracket for {bad_rows} rows")
+    shorter_than_lo = at(lo) < target        # S already below 1 - q at 1e-3 ms
+    longer_than_hi = at(hi) > target         # S still above 1 - q at 1e7 ms
     # Bisection in log time resolves both short and long event times uniformly.
     for _ in range(80):
         mid = (lo + hi) * 0.5
         below = at(mid) > target
         lo = torch.where(below, mid, lo)
         hi = torch.where(below, hi, mid)
-    return torch.exp((lo + hi) * 0.5).numpy()
+    out = torch.exp((lo + hi) * 0.5)
+    out = torch.where(shorter_than_lo, torch.full_like(out, 1e-3), out)
+    return torch.where(longer_than_hi, torch.full_like(out, 1e7), out).numpy()
 
 
 def gate_entropy(log_w: np.ndarray) -> np.ndarray:
