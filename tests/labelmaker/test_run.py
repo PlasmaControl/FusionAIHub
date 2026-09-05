@@ -87,23 +87,6 @@ def _archive_only_adapter():
     ))
 
 
-@pytest.fixture
-def wired(tmp_path, monkeypatch):
-    from labelmaker.models import registry
-
-    monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
-    monkeypatch.setattr(registry, "verify_artifacts", lambda slug, d: None)
-    monkeypatch.setattr(
-        registry, "read_card",
-        lambda slug: {"labelmaker": {"upstream": {"sha256": {"fake.h5": "00"}}}},
-    )
-    return {
-        "archive": _archive(tmp_path),
-        "corpus": _corpus(tmp_path),
-        "root": tmp_path / "out",
-    }
-
-
 def _argv(wired, stage, *extra, shots=("190000", "190001")):
     return [
         stage, "--models", SLUG, "--shots", *shots,

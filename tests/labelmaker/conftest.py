@@ -51,3 +51,27 @@ def pytest_collection_modifyitems(config, items) -> None:
     for item in items:
         if "live" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture
+def wired(tmp_path, monkeypatch):
+    """A synthetic archive and corpus, a fake model, and an empty data root.
+
+    Lives here rather than in test_run.py so test_analyze.py can use it
+    without re-importing another test module's fixture.
+    """
+    from labelmaker.models import registry
+
+    from .test_run import _archive, _corpus, _fake_adapter
+
+    monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
+    monkeypatch.setattr(registry, "verify_artifacts", lambda slug, d: None)
+    monkeypatch.setattr(
+        registry, "read_card",
+        lambda slug: {"labelmaker": {"upstream": {"sha256": {"fake.h5": "00"}}}},
+    )
+    return {
+        "archive": _archive(tmp_path),
+        "corpus": _corpus(tmp_path),
+        "root": tmp_path / "out",
+    }

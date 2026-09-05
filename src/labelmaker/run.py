@@ -66,7 +66,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import __version__
+from . import __version__, analyze
 from .catalog import corpus_shots, overlap_shots, read_shot_file, sample_shots
 from .config import Paths, git_sha, sha256_of
 from .features import namespace as ns
@@ -85,7 +85,7 @@ from .labels.schema import artifact_digest, specs_for
 from .labels.store import append_index, index_rows, labelled, write_labels
 from .models import registry
 
-STAGES = ("features", "infer", "validate", "all")
+STAGES = ("features", "infer", "validate", "all", "analyze")
 
 #: Exit codes. Anything non-zero means no labels should be trusted from this
 #: run; 3 and 4 mean nothing ran at all.
@@ -165,7 +165,14 @@ def build_parser() -> ArgumentParser:
         description="Run trained models over the FAITH shot corpus.",
     )
     parser.add_argument("stage", choices=STAGES)
-    parser.add_argument("--models", nargs="+", required=True, metavar="SLUG")
+    parser.add_argument("--models", nargs="+", metavar="SLUG",
+                        help="required by every stage but analyze, which takes "
+                             "its models from --config")
+    parser.add_argument("--config", type=Path, default=analyze.DEFAULT_CONFIG,
+                        help="analyze: the labels and context to produce")
+    parser.add_argument("--out", type=Path, default=None,
+                        help="analyze: where <shot>/<shot>_analysis.json and "
+                             "<shot>_labels.png go (default <root>/analysis)")
     picker = parser.add_mutually_exclusive_group(required=True)
     picker.add_argument("--shots", nargs="+", type=int, metavar="SHOT")
     picker.add_argument("--shot-file", type=Path)
@@ -335,6 +342,17 @@ def _predictor(slug: str, ctx: RunContext):
     return _PREDICTORS[slug]
 
 
+def _build_inputs(features_path, adapter):
+    """This model's input arrays for one shot, from its stored features."""
+    stored = present(features_path)
+    features = {
+        name: read_feature(features_path, name)
+        for name in adapter.input_spec.canonical_names
+        if name in stored
+    }
+    return adapter.input_spec.build(features, ns.GRID_S)
+
+
 def infer_for_shot(shot: int, slug: str, ctx: RunContext) -> dict:
     """Build inputs, predict, and write one model's labels for one shot."""
     features_path = ctx.paths.features_file(shot)
@@ -345,13 +363,7 @@ def infer_for_shot(shot: int, slug: str, ctx: RunContext) -> dict:
     wanted = {f"{slug}/{f.name}" for f in adapter.output_spec.fields}
     if not ctx.force and wanted <= labelled(labels_path):
         return {"shot": shot, "status": "skipped"}
-    stored = present(features_path)
-    features = {
-        name: read_feature(features_path, name)
-        for name in adapter.input_spec.canonical_names
-        if name in stored
-    }
-    built = adapter.input_spec.build(features, ns.GRID_S)
+    built = _build_inputs(features_path, adapter)
     members = predict(built)
     decoded = adapter.output_spec.decode(members)
     write_labels(
@@ -408,6 +420,79 @@ def _features_worker(payload):
 def _infer_worker(payload):
     shot, slug, ctx = payload
     return _guarded(infer_for_shot, shot, ctx, slug)
+
+
+def analyze_for_shot(shot: int, cfg, out_dir, ctx: RunContext) -> dict:
+    """Features, then inference, then the JSON summary and figure for one shot.
+
+    Both earlier stages skip work that is complete, so on a shot that has
+    already been run this is a read of the label file and a plot.
+    """
+    adapters = {slug: _predictor(slug, ctx)[0] for slug in cfg.slugs}
+    names = _feature_names(adapters.values())
+    names += [c for c in cfg.context if c not in names]
+    frow = features_for_shot(shot, names, ctx)
+    for slug in cfg.slugs:
+        infer_for_shot(shot, slug, ctx)
+    features_path = ctx.paths.features_file(shot)
+    labels_path = ctx.paths.labels_file(shot)
+    # Rebuilt here rather than taken from `infer_for_shot`'s row, which is
+    # empty when inference was skipped as already complete.
+    provenance = {}
+    for slug, adapter in adapters.items():
+        built = _build_inputs(features_path, adapter)
+        provenance[slug] = {
+            "invalid_reasons": dict(built.invalid_reasons),
+            "resolvers": dict(built.resolvers),
+            "missing_inputs": list(built.missing),
+        }
+    have = labelled(labels_path)
+    summaries = {}
+    for label in cfg.labels:
+        slug, name = label.split("/", 1)
+        if label in have:
+            summaries[label] = analyze.summarize_label(
+                labels_path, slug, name, threshold=cfg.threshold,
+                infer_row=provenance[slug],
+            )
+        else:
+            summaries[label] = analyze.empty_summary(
+                provenance[slug], note=f"{slug} wrote no labels for this shot"
+            )
+    shot_dir = Path(out_dir) / str(shot)
+    shot_dir.mkdir(parents=True, exist_ok=True)
+    png = analyze.plot_shot(
+        shot, analyze.panels_for(features_path, labels_path, cfg),
+        shot_dir / f"{shot}_labels.png", threshold=cfg.threshold,
+        title_ids=[adapters[s].card_id for s in cfg.slugs],
+    )
+    summary = {
+        "shot": shot,
+        "config": cfg.as_dict(),
+        "written": datetime.now(UTC).isoformat(timespec="seconds"),
+        "run_id": ctx.run_id,
+        "labels": summaries,
+        "labels_file": str(labels_path),
+        "features_file": str(features_path),
+        "features": {k: frow.get(k) for k in ("status", "missing", "resolvers")},
+        "figure": str(png),
+    }
+    out_json = shot_dir / f"{shot}_analysis.json"
+    out_json.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n")
+    n_rows = sum(v["n_rows"] for v in summaries.values())
+    return {
+        "shot": shot,
+        "status": "ok" if n_rows else "no-labels",
+        "n_labels": sum(1 for v in summaries.values() if v["n_rows"]),
+        "valid_fraction": {k: v["valid_fraction"] for k, v in summaries.items()},
+        "summary": str(out_json),
+        "figure": str(png),
+    }
+
+
+def _analyze_worker(payload):
+    shot, cfg, out_dir, ctx = payload
+    return _guarded(analyze_for_shot, shot, ctx, cfg, out_dir)
 
 
 def write_manifest(paths: Paths, run_id: str, payload: dict) -> Path:
@@ -502,7 +587,19 @@ def _run_pool(worker, payloads, workers: int):
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    cfg = None
+    if args.stage == "analyze":
+        if args.models:
+            parser.error("analyze takes its models from --config, not --models")
+        try:
+            cfg = analyze.load_config(args.config)
+        except analyze.ConfigError as exc:
+            parser.error(str(exc))
+        args.models = list(cfg.slugs)
+    elif not args.models:
+        parser.error("--models is required")
     base = Paths.from_env()
     paths = Paths(
         root=args.root or base.root,
@@ -528,7 +625,7 @@ def main(argv=None) -> int:
         print(f"cannot load the requested models: {type(exc).__name__}: {exc}",
               file=sys.stderr)
         return EXIT_BAD_MODEL
-    if args.stage in ("infer", "validate", "all"):
+    if args.stage in ("infer", "validate", "all", "analyze"):
         # Verify the weights once, here, before either pool forks and before
         # the features stage spends hours on a run whose labels could not be
         # trusted anyway. A digest mismatch is a run-level fault, not a
@@ -577,6 +674,7 @@ def main(argv=None) -> int:
             "timeout_s": args.timeout,
             "force": args.force,
             "models": list(args.models),
+            "analyze_config": cfg.as_dict() if cfg is not None else None,
             "cards": {
                 slug: card["labelmaker"].get("upstream", {})
                 for slug, card in cards.items()
@@ -590,6 +688,19 @@ def main(argv=None) -> int:
     )
 
     summaries = []
+    if args.stage == "analyze":
+        out_dir = args.out or paths.root / "analysis"
+        rows = _run_pool(
+            _analyze_worker, [(s, cfg, out_dir, ctx) for s in shots], args.workers
+        )
+        _log(paths, run_id, rows)
+        summary = _stage_summary("analyze", rows)
+        _summarise(summary)
+        summaries.append(summary)
+        for row in rows:
+            if row["status"] != "error":
+                print(f"  {row['shot']}: {row['figure']}")
+
     if args.stage in ("features", "all"):
         rows = _run_pool(
             _features_worker, [(s, names, ctx) for s in shots], args.workers
