@@ -125,6 +125,18 @@ labelmaker:
     task: regression
     activation: none
     units: 'nat'
+  - name: tm_risk_250ms_isotonic
+    task: binary
+    activation: none
+    units: ''
+  - name: tm_risk_500ms_isotonic
+    task: binary
+    activation: none
+    units: ''
+  - name: tm_risk_1s_isotonic
+    task: binary
+    activation: none
+    units: ''
   approximations:
   - every EFITRT2 quantity (betan, qmin, li, aminor, rmaxis, tribot, tritop, kappa, volume, qpsi, pres) is
     served by offline EFIT01; for the four quantities the tearing CNN also uses, that substitution was
@@ -154,6 +166,14 @@ and 6 fitted profiles. Labelmaker publishes the risk of an onset within 250 ms,
 500 ms and 1 s: `1 - S(horizon | x)`. Complements `d3d_tearing_onset_cnn1d`,
 which answers the fixed-horizon "is a mode present 25 ms from now" question
 with a different architecture and input set.
+
+Three further series, `tm_risk_250ms_isotonic`, `tm_risk_500ms_isotonic`, and
+`tm_risk_1s_isotonic`, apply per-horizon isotonic maps fitted on **all_pre_onset**
+valid rows of the calibration fit shots. The raw `tm_risk_*` series remain the
+model's output. Isotonic series are always declared and are NaN when
+`calibration.json` is absent. Each calibrated label group carries `calibration`
+and `calibration_fit_on` attributes recording the fitting shots, row count,
+prevalence, row set, date and git SHA.
 
 The 14 additional series expose that distribution: `tm_time_p10`,
 `tm_time_p50`, and `tm_time_p90` are event-time quantiles in ms;
@@ -196,12 +216,45 @@ have (below).
   0-to-1 transition, a count of crossings that fail to persist 400 ms, FPR over
   quiet shots and FNR over tearing shots, at a default threshold of 0.7. The
   per-row F1 numbers below are therefore not comparable to any upstream figure.
-- **The calibration depends on which rows you ask about, and both numbers below
-  are correct.** Over every aligned shot's pre-onset rows (5.5% positive at 1 s)
-  the risk is calibrated, ECE 0.022. Restricted to the 86 shots that do get an
-  onset (54% positive) it is badly under-confident, ECE 0.448. That is a
-  base-rate shift, not miscalibration: the model was fit to a population that is
-  85% censored with a median 1.92 s to event. Any report has to name its row set.
+- Calibration depends on the reported row set. The earlier full-pool 1 s
+  figures were ECE 0.022 on all aligned pre-onset rows (5.5% positive), versus
+  0.448 on onset-only shots (54% positive). The study below estimates the
+  adjustment on separate fit shots and measures it on report shots.
+
+Calibration study (2026-09-05, seed 0): 463 shots have usable pooled rows from
+the 500-shot pool; 231 fit shots and 232 report shots, split by a permutation
+of the sorted shot list. The report half has 14,005 **all_pre_onset** rows,
+of which 1,702 are **onset_shots_only** rows. Target prevalence p1 is computed
+on the FIT half of each row set, then applied to the REPORT half. Training
+prevalence q1(h) is `mean((e == 1) & (t <= h_ms))` over 914,898 upstream rows;
+source paths and SHA256s are in `validation/d3d_tearing_time_to_event_dsm/calibration_study.json`.
+
+Forced republication succeeded on all 500 shots in **766.38 s** (eight workers);
+shot 187199 confirms all three isotonic series and their fitting attributes.
+
+The published isotonic maps use only **all_pre_onset fit rows**. The study
+also fits onset-only maps for comparison; those maps are not published.
+PAVA pools tied scores first; application interpolates linearly and clamps
+at the end knots. In the table, each triplet is **raw / prior shift / isotonic**,
+measured only on the indicated row set's report half.
+
+| Row set | Horizon | q1 training | p1 fit | ECE (raw / prior / iso) | Brier (raw / prior / iso) |
+|---|---|---:|---:|---|---|
+| all_pre_onset | 250ms | 0.01811677 | 0.00966048 | 0.004434 / 0.009053 / 0.006532 | 0.015981 / 0.015986 / 0.015972 |
+| all_pre_onset | 500ms | 0.03759982 | 0.02107105 | 0.014819 / 0.018292 / 0.013854 | 0.032197 / 0.032390 / 0.032104 |
+| all_pre_onset | 1s | 0.07185282 | 0.04333217 | 0.024092 / 0.033419 / 0.022473 | 0.060719 / 0.061533 / 0.060377 |
+| onset_shots_only | 250ms | 0.01811677 | 0.11567477 | 0.109420 / 0.086294 / 0.058737 | 0.126021 / 0.121663 / 0.117992 |
+| onset_shots_only | 500ms | 0.03759982 | 0.25230511 | 0.230784 / 0.119505 / 0.095371 | 0.248367 / 0.205810 / 0.206509 |
+| onset_shots_only | 1s | 0.07185282 | 0.51886002 | 0.459990 / 0.102460 / 0.132424 | 0.450946 / 0.255720 / 0.255254 |
+
+The onset-only corrections substantially reduce calibration error and Brier
+loss, but residual error remains. On all_pre_onset report rows, isotonic
+Brier gains are small and 250 ms ECE worsens (0.004434 to 0.006532); prior
+shift worsens ECE at all three horizons. The fit and report prevalences
+differ, so these results do not establish calibration on another shot pool.
+Isotonic plateaus can change ranking through ties: all_pre_onset AUROC
+(raw to isotonic) is 0.7874 to 0.7693 at 250 ms, 0.7740 to 0.7517 at 500 ms,
+and 0.7584 to 0.7495 at 1 s. Prior shift preserves ordering here.
 
 ## Training details
 

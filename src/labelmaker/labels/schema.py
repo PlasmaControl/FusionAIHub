@@ -25,6 +25,7 @@ class LabelSpec:
     time_step_ms: float
     ensemble_n: int
     artifact_sha256: str
+    attrs: tuple[tuple[str, str], ...] = ()
 
 
 def group_path(slug: str, label: str) -> str:
@@ -49,6 +50,7 @@ def specs_for(adapter, artifact_sha256: str) -> tuple[LabelSpec, ...]:
     """One `LabelSpec` per output field of a model."""
     return tuple(
         LabelSpec(
+            attrs=f.attrs,
             name=f.name,
             task=f.task,
             activation=f.activation,

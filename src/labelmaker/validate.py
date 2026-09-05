@@ -15,6 +15,7 @@ a model performed.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -1734,3 +1735,113 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
         else:
             out['horizon_integrated_reason'] = 'published horizons have different row sets'
     return out
+
+
+def _read_training_prevalence() -> tuple[np.ndarray, np.ndarray, dict]:
+    """Read trusted upstream numpy pickles once, with their source digests."""
+    import pickle
+
+    from .config import sha256_of
+
+    arrays, files = {}, {}
+    for key in ("t", "e"):
+        path = Path(f"/projects/EKOLEMEN/survival_tm_2/data/rt_filtered_{key}_bms_pcb_rot.pkl")
+        with path.open("rb") as fh:
+            arrays[key] = np.asarray(pickle.load(fh)).ravel()
+        files[key] = {"path": str(path), "sha256": sha256_of(path)}
+    return arrays["t"], arrays["e"], files
+
+
+def _calibration_metrics(prob: np.ndarray, truth: np.ndarray) -> dict:
+    metrics = binary_metrics(prob, truth, bins=10)
+    keys = ("n", "n_positive", "auroc", "brier", "ece", "calibration")
+    out = {key: metrics[key] for key in keys}
+    if metrics["ece"] is not None:
+        return out
+    # AUROC is undefined for one class, but Brier and calibration still exist.
+    out["calibration"] = []
+    which = np.clip(np.digitize(prob, np.linspace(0, 1, 11)[1:-1]), 0, 9)
+    ece = 0.0
+    for b in range(10):
+        keep = which == b
+        mean = float(prob[keep].mean()) if keep.any() else None
+        observed = float(truth[keep].mean()) if keep.any() else None
+        out["calibration"].append({"bin": b, "n": int(keep.sum()),
+                                   "mean_prob": mean, "observed": observed})
+        if keep.any():
+            ece += keep.sum() / prob.size * abs(mean - observed)
+    if prob.size:
+        out["brier"] = float(np.mean((prob - truth) ** 2))
+        out["ece"] = float(ece)
+    return out
+
+
+def calibration_study(
+    slug: str, shots: list[int], paths: Paths, *, archive: Path = TM_ARCHIVE,
+    seed: int = 0, timeout_s: float | None = None,
+    training_reader: Callable[[], tuple[np.ndarray, np.ndarray, dict]] = _read_training_prevalence,
+) -> dict:
+    """Fit on half the aligned shots; score the other half in each row set.
+
+    Only all_pre_onset isotonic maps are published. Prior shift uses the FIT
+    half's prevalence, never the REPORT half's outcomes.
+    """
+    from datetime import UTC, datetime
+
+    from .calibrate import fit_isotonic, prior_shift
+    from .config import git_sha
+
+    pooled = _pooled_onset_rows(slug, shots, paths, archive=archive, timeout_s=timeout_s)
+    aligned = sorted(pooled["shots_used"])
+    split = np.random.default_rng(seed).permutation(aligned)
+    fit, report = split[:len(split) // 2], split[len(split) // 2:]
+    if not fit.size or not report.size:
+        raise ValueError("calibration requires at least two aligned shots")
+    t_train, e_train, files = training_reader()
+    t_train, e_train = np.asarray(t_train), np.asarray(e_train)
+    if t_train.shape != e_train.shape or not t_train.size:
+        raise ValueError("training times and events must be matching nonempty arrays")
+    result = {"slug": slug, "seed": seed, "split": {"fit": fit.tolist(), "report": report.tolist()},
+              "training": {"n_rows": int(t_train.size), "files": files},
+              "prevalence_source": "FIT half of each row set; applied to REPORT half",
+              "skipped": pooled["skipped"], "labels": {}}
+    maps = {}
+    date, sha = datetime.now(UTC).isoformat(timespec="seconds"), git_sha()
+    for name, rows in pooled["labels"].items():
+        rule = ARCHIVE_TRUTH[f"{slug}/{name}"]
+        if rule["kind"] != "onset_within":
+            continue
+        horizon_ms = rule["horizon_s"] * 1000
+        q1 = float(np.mean((e_train == 1) & (t_train <= horizon_ms)))
+        item = {"horizon_ms": horizon_ms, "q1": q1, "row_sets": {}}
+        for row_set in ("all_pre_onset", "onset_shots_only"):
+            keep = (np.ones(rows["shot"].size, bool) if row_set == "all_pre_onset"
+                    else np.isfinite(rows["onset_s"]))
+            fitting = keep & np.isin(rows["shot"], fit)
+            testing = keep & np.isin(rows["shot"], report)
+            iso = fit_isotonic(rows["y"][fitting], rows["truth"][fitting])
+            p1 = iso.prevalence_fit
+            prob, truth = rows["y"][testing], rows["truth"][testing]
+            methods = {"raw": prob,
+                       "prior_shift": prior_shift(prob, from_prevalence=q1, to_prevalence=p1),
+                       "isotonic": iso.apply(prob)}
+            item["row_sets"][row_set] = {
+                "p1": p1, "n_fit": iso.n_fit,
+                "methods": {method: _calibration_metrics(values, truth)
+                            for method, values in methods.items()},
+            }
+            if row_set == "all_pre_onset":
+                maps[name] = {"map": iso.to_dict(), "fit_on": {
+                    "shots": sorted(np.unique(rows["shot"][fitting]).tolist()),
+                    "n_rows": iso.n_fit, "prevalence": p1, "row_set": row_set,
+                    "date": date, "git_sha": sha,
+                }}
+        result["labels"][name] = item
+    if not maps:
+        raise ValueError("no onset_within labels to calibrate")
+    destination = paths.models / slug / "calibration.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with atomic_path(destination) as tmp:
+        tmp.write_text(json.dumps({"labels": maps}, indent=2, sort_keys=True) + "\n")
+    write_report(paths, slug, "calibration_study", result)
+    return result

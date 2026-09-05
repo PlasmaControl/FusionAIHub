@@ -369,3 +369,100 @@ def test_time_to_onset_drops_nonpositive_nonfinite_predictions(monkeypatch, bad)
                                        threshold=None)
     assert got["n"] == 0
     assert got["median_abs_log_ratio"] is got["bias_log"] is got["rmse_log"] is None
+
+
+def test_calibration_study_splits_shots_and_publishes_only_all_rows(wired, monkeypatch):
+    import json
+
+    from labelmaker.calibrate import IsotonicMap, prior_shift
+
+    slug = "d3d_tearing_time_to_event_dsm"
+    paths = Paths(root=wired["root"], corpus=wired["corpus"])
+    shots = np.repeat(np.arange(8), 4)
+    onset = np.where(shots % 2 == 0, 2., np.nan)
+    labels = {}
+    for i, name in enumerate(("tm_risk_250ms", "tm_risk_500ms", "tm_risk_1s")):
+        truth = (np.tile(np.arange(4), 8) <= i) & np.isfinite(onset)
+        labels[name] = {"shot": shots, "t": np.tile(np.arange(4) * .1, 8),
+                        "y": np.tile([.05, .1, .2, .3], 8), "truth": truth,
+                        "onset_s": onset, "t_end": np.full(32, 3.),
+                        "shots_used": list(range(8)), "shots_with_onset": [0, 2, 4, 6],
+                        "skipped": {}}
+    pooled = {"labels": labels, "shots_used": list(reversed(range(8))),
+              "shots_with_onset": [0, 2, 4, 6], "skipped": {"99": "missing"}}
+    calls = []
+
+    def pool(*args, **kwargs):
+        calls.append(1)
+        return pooled
+
+    monkeypatch.setattr(validate, "_pooled_onset_rows", pool)
+    source = {"t": {"path": "synthetic_t", "sha256": "abc"},
+              "e": {"path": "synthetic_e", "sha256": "def"}}
+
+    def reader():
+        return np.array([250, 500, 1000, 1]), np.array([1, 1, 1, 0]), source
+
+    report = validate.calibration_study(slug, list(range(8)) + [99], paths,
+                                         training_reader=reader)
+    assert len(calls) == 1
+    fit = np.random.default_rng(0).permutation(np.arange(8))[:4].tolist()
+    assert report["split"]["fit"] == fit
+    assert set(report["split"]["report"]).isdisjoint(fit)
+    assert report["training"]["files"] == source
+    assert report["training"]["n_rows"] == 4
+    assert report["prevalence_source"] == "FIT half of each row set; applied to REPORT half"
+    saved = json.loads((paths.models / slug / "calibration.json").read_text())
+    for i, (name, rows) in enumerate(labels.items()):
+        item = report["labels"][name]
+        assert item["q1"] == (i + 1) / 4
+        for row_set in ("all_pre_onset", "onset_shots_only"):
+            keep = np.ones(32, bool) if row_set == "all_pre_onset" else np.isfinite(onset)
+            fitting = keep & np.isin(shots, fit)
+            testing = keep & ~np.isin(shots, fit)
+            result = item["row_sets"][row_set]
+            assert result["p1"] == rows["truth"][fitting].mean()
+            iso = IsotonicMap.fit(rows["y"][fitting], rows["truth"][fitting])
+            values = {"raw": rows["y"][testing],
+                      "prior_shift": prior_shift(rows["y"][testing], from_prevalence=item["q1"],
+                                                 to_prevalence=result["p1"]),
+                      "isotonic": iso.apply(rows["y"][testing])}
+            for method, prob in values.items():
+                want = validate.binary_metrics(prob, rows["truth"][testing])
+                got = result["methods"][method]
+                for key in ("n", "n_positive", "ece", "brier", "auroc", "calibration"):
+                    assert got[key] == want[key]
+                assert len(got["calibration"]) == 10
+        published = saved["labels"][name]
+        fit_on = published["fit_on"]
+        assert fit_on["row_set"] == "all_pre_onset"
+        assert fit_on["shots"] == sorted(fit)
+        assert fit_on["n_rows"] == 16
+        assert fit_on["prevalence"] == item["row_sets"]["all_pre_onset"]["p1"]
+        assert fit_on["date"] and fit_on["git_sha"]
+        assert published["map"]["n_fit"] == 16
+    assert json.loads((paths.validation / slug / "calibration_study.json").read_text()) == report
+
+
+@pytest.mark.parametrize("truth, brier, ece", [([0, 0], .34, .5), ([1, 1], .34, .5)])
+def test_calibration_metrics_keep_single_class_scores(truth, brier, ece):
+    result = validate._calibration_metrics(np.array([.2, .8]), np.array(truth))
+    assert result["auroc"] is None
+    assert result["n"] == 2
+    assert result["brier"] == pytest.approx(brier)
+    assert result["ece"] == pytest.approx(ece)
+    assert len(result["calibration"]) == 10
+
+
+def test_calibration_empty_fit_preserves_existing_map(wired, monkeypatch):
+    slug = "d3d_tearing_time_to_event_dsm"
+    paths = Paths(root=wired["root"])
+    saved = paths.models / slug / "calibration.json"
+    saved.parent.mkdir(parents=True)
+    saved.write_text("existing map")
+    monkeypatch.setattr(validate, "_pooled_onset_rows", lambda *a, **k: {
+        "labels": {}, "shots_used": [], "shots_with_onset": [], "skipped": {}})
+    with pytest.raises(ValueError, match="at least two aligned shots"):
+        validate.calibration_study(slug, [], paths,
+                                   training_reader=lambda: pytest.fail("must not read training"))
+    assert saved.read_text() == "existing map"

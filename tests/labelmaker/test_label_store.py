@@ -190,3 +190,19 @@ def test_read_label_raises_for_an_absent_label(tmp_path):
     _write(p)
     with pytest.raises(KeyError):
         read_label(p, SLUG, "no_such_label")
+
+
+def test_output_field_attrs_round_trip(tmp_path):
+    from dataclasses import replace
+
+    from labelmaker.labels.schema import specs_for
+    from labelmaker.models import registry
+    from labelmaker.models.base import OutputField, OutputSpec
+
+    adapter = replace(registry.load_adapter(SLUG), output_spec=OutputSpec((
+        OutputField("tm_prob", "binary", 0, attrs=(("calibration_fit_on", '{"shots":[1]}'),)),
+    )))
+    path = tmp_path / "labels.h5"
+    write_labels(path, 1, T, _decoded(), specs_for(adapter, "abc"), np.ones(6, bool),
+                 run_id="test", features_sha256="abc")
+    assert read_label(path, SLUG, "tm_prob").attrs["calibration_fit_on"] == '{"shots":[1]}'

@@ -85,6 +85,8 @@ def write_labels(
             dec = decoded[spec.name]
             g = _put(model_group, spec.name, t, np.asarray(dec.mean)[None, :],
                      np.float32)
+            for key, value in spec.attrs:
+                g.attrs[key] = str(value)
             g.attrs["task"] = spec.task
             g.attrs["activation"] = spec.activation
             g.attrs["units"] = spec.units

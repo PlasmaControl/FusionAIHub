@@ -523,6 +523,7 @@ class OutputField:
     activation: str = "none"
     units: str = ""
     classes: tuple[str, ...] = ()
+    attrs: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.activation not in ACTIVATIONS:
