@@ -57,7 +57,8 @@ def test_load_config_rejects_a_context_name_that_is_not_a_canonical_feature(wire
 def test_default_config_names_labels_the_roster_produces():
     cfg = analyze.load_config(analyze.DEFAULT_CONFIG)
     assert "d3d_tearing_onset_cnn1d/tm_prob" in cfg.labels
-    assert cfg.slugs == ("d3d_tearing_onset_cnn1d",)
+    assert "d3d_tearing_time_to_event_dsm/tm_risk_1s" in cfg.labels
+    assert cfg.slugs == ("d3d_tearing_onset_cnn1d", "d3d_tearing_time_to_event_dsm")
 
 
 def _labels_file(tmp_path, task, values, valid):

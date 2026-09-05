@@ -196,5 +196,11 @@ one in its config.
 - The label-quality numbers come from shots the archive holds, because only
   there is there an archived truth to score against; they are a measurement of
   the reconstruction, not of the model on unseen shots.
-- Only one model is implemented. The other six roster folders are scaffolds
-  whose cards say what blocks each of them.
+- Two models are implemented: the tearing-onset CNN and the tearing
+  time-to-event survival model (`d3d_tearing_time_to_event_dsm`, onset risk at
+  250 ms, 500 ms and 1 s). The survival model's labels are produced but not yet
+  scored by `validate`, whose reports are specific to the CNN's training
+  archive; its adapter fidelity is a test against the upstream fork's own
+  outputs. The other five roster folders are scaffolds whose cards say what
+  blocks each of them; `docs/superpowers/specs/2026-09-05-labelmaker-phase2-design.md`
+  records what the upstream archaeology found for each.

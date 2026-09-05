@@ -300,6 +300,54 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "absent on 26 of the 120 sampled shots and single-sliced on "
               "1, so ~22% of shots have no rotation profile at all",
     ),
+    # Added for d3d_tearing_time_to_event_dsm (2026-09-05). None is in the
+    # tearing CNN's archive, so each is fdp-only; every node was fetched live
+    # on shot 186563 before being listed (aeqdsk scalars: 390 slices, all
+    # finite; itempfit (304, 121) in keV; pcbcoil 162,497 samples, 'raw').
+    FeatureSpec(
+        name="qmin", kind="scalar", units="",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:qmin",),
+        notes="stands in for qmin_EFITRT2 (offline EFIT01 for real-time EFIT)",
+    ),
+    FeatureSpec(
+        name="li", kind="scalar", units="",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:li",),
+        notes="stands in for li_EFITRT2",
+    ),
+    FeatureSpec(
+        name="aminor", kind="scalar", units="m",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:aminor",),
+        notes="stands in for aminor_EFITRT2",
+    ),
+    FeatureSpec(
+        name="volume", kind="scalar", units="m^3",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:volume",),
+        notes="stands in for volume_EFITRT2",
+    ),
+    FeatureSpec(
+        name="pcbcoil", kind="scalar", units="A",
+        sources=("fdp",),
+        locators=("pcbcoil",),
+        step=0.001,
+        notes="B-coil current, PTDATA. The survival model multiplies it by "
+              "1.69861e-5 (get_survival_from_shot.py, the line commented "
+              "'fix BT') before normalising, i.e. it is used as a toroidal "
+              "field in tesla; kept as the raw current here so the adapter "
+              "reproduces that step verbatim",
+    ),
+    FeatureSpec(
+        name="ti_zipfit", kind="profile", units="keV",
+        sources=("fdp",),
+        locators=(r"\ZIPFIT01::TOP.PROFILES.ITEMPFIT",),
+        notes="stands in for cer_temp_csaps_1d, the CER ion temperature fit. "
+              "Same tree and layout as te_zipfit; not priced against any "
+              "archive (the survival model's training data are not on disk "
+              "in a form labelmaker reads)",
+    ),
     FeatureSpec(
         name="ech_rho", kind="scalar", units="",
         sources=("archive",),

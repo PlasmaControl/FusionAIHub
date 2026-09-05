@@ -141,7 +141,7 @@ synthetic archive and corpus fixtures from `test_run.py`.
 
 ## 6. New adapters
 
-### 6.1 `d3d_tearing_time_to_event_dsm` *(built if time allowed; otherwise this is the plan)*
+### 6.1 `d3d_tearing_time_to_event_dsm` *(built)*
 
 Upstream: `/projects/EKOLEMEN/survival_tm_2/models/rt_fixed_rot.pkl` (Hf8585, 2024-11), the
 real-time-signal variant; constants `survival_tm/data/rt_normalizations_dict.pkl`; inference
@@ -174,9 +174,11 @@ Inputs, in upstream order, and their canonical features:
 
 Preprocessing inside the adapter: each 33-point profile linearly interpolated to 100 points
 (65 for 1/q and pressure), projected on the stored PCA (4 components each), z-scored; the 14
-scalars z-scored; concatenated to 38. Output label `tm_risk_1s` = 1 - S(1000 ms), task
-`binary`-like probability on a 20 ms step (upstream's grid), plus `tm_survival_1s` = S. Truth
-for label quality: from the archive's `tm_label`, "an onset occurs within the next 1 s".
+scalars z-scored; concatenated to 38. Output labels `tm_risk_250ms`, `tm_risk_500ms`,
+`tm_risk_1s` = 1 - S(h), on labelmaker's 25 ms grid (upstream sampled at 20 ms; the model has
+no temporal structure, so the grid is a sampling choice, recorded as an approximation). Truth
+for label quality (not built): from the archive's `tm_label`, "an onset occurs within the next
+h".
 Adapter fidelity: a golden file made once in the throwaway venv with the auton-survival fork,
 compared to labelmaker's evaluator on the same rows. Also compare to upstream's own outputs
 on 199597-199607 (`survival_tm/data/199596199610_data_outputs.pkl`) once their layout is
@@ -201,6 +203,12 @@ step. Truth: `data/elm_labels_dict.pkl`.
 - `d3d_kinetic_equilibrium_rtcakenn`: three candidate checkpoints found; the card lists them
   and asks for an author.
 - `d3d_inpa_image_cnn`: moved from scaffold to the excluded list - no corpus input.
+
+**As built.** `runners/dsm_pickle.py` (restricted unpickler, float64 evaluator), six new
+fdp-only canonical features, `spec.py` reproducing the upstream preprocessing, golden file
+from the fork matched to 1e-9. Measured on 199597: 185 of 240 rows valid against the CNN's 11,
+because this model needs no ECH deposition location. The risk stays below 0.3 on both shots
+tried; a per-label threshold in the analyze config is a follow-up.
 
 ## 7. TabPFN study (Phase 3, pulled forward)
 
