@@ -237,7 +237,7 @@ def test_reconstruction_fidelity_records_incomplete_features_for_skipped_shots(
 
 
 def test_reconstruction_fidelity_asserts_the_match_column_mapping():
-    """I10: MATCH_COLUMNS indexes d3d_tearing_onset_cnn1d's scalar order
+    """MATCH_COLUMNS indexes d3d_tearing_onset_cnn1d's scalar order
     specifically. If it ever silently drifted from that (a spec reorder, or
     this function pointed at a different slug), the row alignment would
     compare the wrong columns and report a plausible-looking distance rather
@@ -289,3 +289,80 @@ def test_skip_diagnosis_reports_resolver_names_not_their_letters():
     assert validate._skip_diagnosis(None, {}) == {
         "missing_features": [], "resolvers": {}, "feature_misses": {},
     }
+
+
+def test_match_columns_match_on_archive_served_and_tiebreak_on_the_rest():
+    """Where fdp backfilled bt/ip, only the archive-served geometry columns
+    can align the archived rows - a reconstructed column fails the tolerance
+    or collides rows (measured on 24 of the 101 proof-of-concept shots) - and
+    the reconstructed ones are kept only to break exact geometry ties.
+    """
+    from labelmaker.models import registry
+
+    spec = registry.load_adapter("d3d_tearing_onset_cnn1d").input_spec
+    geometry = {"tritop": "archive", "tribot": "archive", "gapin": "archive"}
+    b = _built()
+
+    def with_resolvers(resolvers):
+        return BuiltInputs(
+            t=b.t, scalars=b.scalars, profiles=b.profiles, valid=b.valid,
+            missing=(), resolvers=resolvers,
+        )
+
+    mixed = with_resolvers({"bt": "fdp", "ip": "fdp", **geometry})
+    assert validate._match_columns(spec, mixed) == ((6, 7, 8), (0, 1))
+    pure = with_resolvers({"bt": "archive", "ip": "archive", **geometry})
+    assert validate._match_columns(spec, pure) == (validate.MATCH_COLUMNS, ())
+    # Fewer than two archive-served columns: fall back to all five and let
+    # the match gates decide.
+    lone = with_resolvers({"gapin": "archive"})
+    assert validate._match_columns(spec, lone) == (validate.MATCH_COLUMNS, ())
+
+
+def test_match_rows_on_a_column_subset_recovers_what_the_full_set_rejects():
+    """A 0.5% perturbation on bt (an fdp-served value against archive truth)
+    fails the five-column match; the same rows align exactly on the three
+    archive-served geometry columns, and the report says which were used.
+    """
+    built = _built()
+    take = np.array([41, 58, 100])
+    archived = built.scalars[take].copy()
+    archived[:, 0] *= 1.005                      # bt reconstructed, not bit-identical
+    full = validate.match_rows(archived, built)
+    assert full["passed"] is False
+    assert "median distance" in full["fail_reason"]
+    subset = validate.match_rows(archived, built, columns=(6, 7, 8))
+    np.testing.assert_array_equal(subset["index"], take)
+    assert subset["passed"] is True
+    assert subset["median_distance"] == 0.0
+    assert subset["columns"] == [6, 7, 8]
+    assert subset["n_tiebroken"] == 0
+
+
+def test_match_rows_breaks_an_exact_geometry_tie_with_the_reconstructed_columns():
+    """EFIT01 at 50 ms holds the geometry for two 25 ms grid steps, so two
+    consecutive archived rows tie exactly on the geometry columns and the
+    plain nearest-neighbour puts both on the first. The reconstructed bt/ip
+    (fdp, ~1e-5 off) cannot be matched on, but they can say which tied
+    timestep is which - measured to do so correctly on all four such shots
+    in the proof-of-concept pool.
+    """
+    built = _built()
+    scalars = built.scalars.copy()
+    scalars[101, 6:9] = scalars[100, 6:9]        # geometry held for two steps
+    held = BuiltInputs(
+        t=built.t, scalars=scalars, profiles=built.profiles, valid=built.valid,
+        missing=(), resolvers={},
+    )
+    archived = scalars[[100, 101]].copy()
+    archived[:, 0] *= 1.00001                    # fdp-served bt/ip: close, not exact
+    archived[:, 1] *= 1.00001
+    geometry_only = validate.match_rows(archived, held, columns=(6, 7, 8))
+    assert geometry_only["passed"] is False
+    assert "collided" in geometry_only["fail_reason"]
+    broken = validate.match_rows(archived, held, columns=(6, 7, 8), tiebreak=(0, 1))
+    np.testing.assert_array_equal(broken["index"], [100, 101])
+    assert broken["passed"] is True
+    assert broken["n_tiebroken"] == 2
+    assert broken["median_distance"] == 0.0     # reported over the exact columns only
+    assert broken["tiebreak_columns"] == [0, 1]

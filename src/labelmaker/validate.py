@@ -240,10 +240,17 @@ def adapter_fidelity(
     }
 
 
-#: Columns of the archived x0 that are bit-identical to the archive store,
-#: measured on shot 185945: bt, ip, tritop, tribot, gapin. They are what
-#: makes the archived rows addressable - the arrays carry no timestamps.
+#: Columns of the archived x0 that are bit-identical to the archive store
+#: when the archive serves them, measured on shot 185945: bt, ip, tritop,
+#: tribot, gapin. They are what makes the archived rows addressable - the
+#: arrays carry no timestamps. Per shot, `_match_columns` demotes the ones
+#: another resolver reconstructed to tie-breakers.
 MATCH_COLUMNS = (0, 1, 6, 7, 8)
+
+#: Two timesteps whose normalized distances to an archived row differ by less
+#: than this are tied on the match columns. Far below the float32 spacing of
+#: a genuinely different EFIT value (~1e-7 relative), far above rounding.
+_TIE_EPS = 1e-9
 
 #: The `spec.scalar_fields[i].model_name` this module expects at each of
 #: `MATCH_COLUMNS`, for `d3d_tearing_onset_cnn1d` - the only model with a
@@ -307,16 +314,32 @@ def archive_rows(shot: int, archive: Path = TM_ARCHIVE) -> dict | None:
     return out
 
 
-def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
+def match_rows(
+    archived_x0: np.ndarray,
+    built,
+    *,
+    tol: float = 1e-3,
+    columns: tuple[int, ...] = MATCH_COLUMNS,
+    tiebreak: tuple[int, ...] = (),
+) -> dict:
     """Map each archived row to the timestep of our own inputs.
 
-    Nearest neighbour on the columns that are bit-identical between the two
-    sources, each scaled by its own spread so no single column dominates.
+    Nearest neighbour on `columns` - by default all of `MATCH_COLUMNS`; per
+    shot, the archive-served subset `_match_columns` picks - each scaled by
+    its own spread so no single column dominates. `tiebreak` columns are
+    consulted only where two or more timesteps tie exactly on `columns`:
+    EFIT01 runs at 50 ms on some shots, so two consecutive archived rows can
+    carry identical geometry, and only a column that moves every step (`bt`,
+    `ip`) can say which of the two tied timesteps is which. A reconstructed
+    column is good enough to break a tie it could not have been trusted to
+    measure, which is why the two roles are kept separate: the reported
+    `distance` is over `columns` alone.
+
     The upstream filter dropped rows, so the mapping is a strictly increasing
     subsequence; `monotonic` is the check that it really is one, and a large
     `median_distance` means the mapping is not to be trusted at all.
 
-    An archived row can be unmatchable: if one of the five match columns is
+    An archived row can be unmatchable: if one of the match columns is
     missing for this shot (a per-shot gap `resolve_archive` documents), every
     distance from that row to every one of our timesteps is NaN. Bare
     `nanargmin`/`nanmin` raise `ValueError: All-NaN slice encountered` on
@@ -329,14 +352,17 @@ def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
     The returned dict names each count for what it actually counts:
     `n_archived_rows` is how many rows were presented for matching,
     `n_matched` is how many of those actually found a finite-distance match,
-    and `n_unique_matched` is how many *distinct* timesteps those matches
-    landed on - so `n_matched > n_unique_matched` means two archived rows
-    collided onto the same one. `fail_reason` names which of the three ways
-    this can fail actually happened, rather than making a caller infer it
-    from a bare median.
+    `n_unique_matched` is how many *distinct* timesteps those matches landed
+    on - so `n_matched > n_unique_matched` means two archived rows collided
+    onto the same one - and `n_tiebroken` is how many needed `tiebreak` to
+    choose. `fail_reason` names which of the three ways this can fail
+    actually happened, rather than making a caller infer it from a bare
+    median.
     """
-    ours = np.asarray(built.scalars, dtype=np.float64)[:, MATCH_COLUMNS]
-    theirs = np.asarray(archived_x0, dtype=np.float64)[:, MATCH_COLUMNS]
+    ours_all = np.asarray(built.scalars, dtype=np.float64)
+    theirs_all = np.asarray(archived_x0, dtype=np.float64)
+    ours = ours_all[:, list(columns)]
+    theirs = theirs_all[:, list(columns)]
     scale = np.nanstd(ours, axis=0)
     if not np.all(scale > 0):
         raise ValueError(
@@ -350,10 +376,26 @@ def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
     index = np.full(n, -1, dtype=np.int64)
     distance = np.full(n, np.nan, dtype=np.float64)
     has_finite = np.isfinite(d).any(axis=1)
+    n_tiebroken = 0
     if np.any(has_finite):
         rows = np.flatnonzero(has_finite)
         index[rows] = np.nanargmin(d[rows], axis=1)
         distance[rows] = np.nanmin(d[rows], axis=1)
+        if tiebreak:
+            ours2 = ours_all[:, list(tiebreak)]
+            theirs2 = theirs_all[:, list(tiebreak)]
+            # A constant tiebreak column separates nothing; unit scale makes
+            # it contribute zero rather than NaN.
+            scale2 = np.nanstd(ours2, axis=0)
+            scale2 = np.where(scale2 > 0, scale2, 1.0)
+            d2 = np.linalg.norm(
+                (theirs2[:, None, :] - ours2[None, :, :]) / scale2, axis=2
+            )
+            for r in rows:
+                tied = np.flatnonzero(d[r] <= distance[r] + _TIE_EPS)
+                if tied.size > 1 and np.isfinite(d2[r, tied]).any():
+                    index[r] = tied[np.nanargmin(d2[r, tied])]
+                    n_tiebroken += 1
     # Reductions on the already-filtered, all-finite subset: `np.median` and
     # `np.max` never see a NaN here, so neither can raise numpy's "All-NaN
     # slice encountered" warning - which `-W error` promotes to an exception,
@@ -390,8 +432,11 @@ def match_rows(archived_x0: np.ndarray, built, *, tol: float = 1e-3) -> dict:
         "n_archived_rows": int(n),
         "n_matched": n_matched,
         "n_unique_matched": n_unique_matched,
+        "n_tiebroken": int(n_tiebroken),
         "fail_reason": fail_reason,
         "passed": passed,
+        "columns": [int(c) for c in columns],
+        "tiebreak_columns": [int(c) for c in tiebreak],
     }
 
 
@@ -430,6 +475,43 @@ def _skip_diagnosis(m: _ShotMatch | None, feature_misses: dict) -> dict:
         "feature_misses": dict(feature_misses),
     }
 
+def _match_columns(spec, built) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """`(columns, tiebreak)` for `match_rows`, from this shot's provenance.
+
+    The match columns are bit-identical to the archived training rows only
+    when the ARCHIVE served them. Where the archive group lacks `bt`/`ip`
+    (2,192 of its 5,000 shots) and fdp backfills them, those two columns are
+    reconstructed to ~1e-5 relative - tight, but `match_rows` normalizes
+    each column by its own within-shot spread, and `bt` is nearly flat
+    within a shot, so 1e-5 of 2 T is a large fraction of that spread and a
+    five-column match fails its tolerance or collides two rows onto one
+    timestep. So the archive-served columns match, and the reconstructed
+    ones only break ties. MEASURED on the 101-shot proof-of-concept pool:
+    the five-column match rejected 24 shots. Matching on the archive-served
+    columns alone recovers 21 of them with median distance exactly zero;
+    the other three, plus one shot the five-column match had passed, tie two
+    consecutive archived rows on geometry (EFIT01 held for two grid steps),
+    and the reconstructed `bt`/`ip` break every one of those ties correctly
+    - all 101 shots align, at median distance zero.
+
+    It also makes `bt`/`ip`'s pooled reconstruction price mean what it
+    says: where fdp served them, the fdp values are priced against the
+    archived row the geometry columns aligned, not against the row they
+    themselves selected.
+
+    Falls back to all of `MATCH_COLUMNS` with no tiebreak when fewer than
+    two are archive-served, and lets `match_rows`' gates decide.
+    """
+    scalar = spec.scalar_fields
+    served = tuple(
+        i for i in MATCH_COLUMNS
+        if built.resolvers.get(scalar[i].canonical) == "archive"
+    )
+    if len(served) < 2:
+        return MATCH_COLUMNS, ()
+    return served, tuple(i for i in MATCH_COLUMNS if i not in served)
+
+
 def _matched_shot(shot: int, spec, paths: Paths, archive: Path) -> _ShotMatch:
     """Archive rows aligned to our own reconstructed features, for one shot.
 
@@ -456,7 +538,11 @@ def _matched_shot(shot: int, spec, paths: Paths, archive: Path) -> _ShotMatch:
         if name in stored
     }
     built = spec.build(features, ns.GRID_S)
-    info = match_rows(got["x0"], built)
+    columns, tiebreak = _match_columns(spec, built)
+    info = match_rows(got["x0"], built, columns=columns, tiebreak=tiebreak)
+    names = [f.model_name for f in spec.scalar_fields]
+    info["column_names"] = [names[i] for i in columns]
+    info["tiebreak_column_names"] = [names[i] for i in tiebreak]
     if not info["passed"]:
         return _ShotMatch(
             got=got, built=built, info=info, features=features,
