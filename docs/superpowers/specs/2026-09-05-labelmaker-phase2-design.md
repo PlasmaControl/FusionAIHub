@@ -227,6 +227,22 @@ labelmaker can actually reconstruct closes the -0.14 best-F1 gap.
 
 When Nathan sets `TABPFN_TOKEN`, both studies rerun with v2.5/v3.
 
+**Study A, measured** (`outputs/labelmaker/tabpfn/`): on the CNN's own archived inputs, 7,373
+rows of the PoC 100, base rate 0.112:
+
+| model | AUROC | AUPRC | F1 at 0.5 | best F1 (at) | ECE | Brier |
+|---|---|---|---|---|---|---|
+| CNN, trained on these rows | 0.928 | 0.652 | 0.567 | 0.679 (0.80) | 0.129 | 0.099 |
+| CNN + isotonic fitted on other shots | 0.928 | 0.637 | 0.544 | 0.677 (0.41) | 0.032 | 0.059 |
+| TabPFN v2, 10k rows of other shots | 0.910 | 0.615 | 0.488 | 0.600 (0.24) | 0.029 | 0.064 |
+| TabPFN v2, 50k rows of other shots | 0.923 | 0.691 | 0.507 | 0.669 (0.26) | 0.031 | 0.058 |
+
+`betan` RMSE: CNN 0.133, TabPFN regressor on 10k rows 0.090. TabPFN never saw the test
+shots and matches the CNN's ranking and best F1 while being calibrated; the CNN's calibration
+is recoverable by isotonic regression with no loss of AUROC or best F1. "Improve the model"
+therefore has a cheap answer (recalibrate, or pick the threshold) and a credible substitute on
+the CNN's own features. The 50k fit took 36 minutes on a V100S.
+
 ## 8. Open questions for Nathan
 
 1. **ECH.** The famous shots are unusable as published because the tearing model needs a
