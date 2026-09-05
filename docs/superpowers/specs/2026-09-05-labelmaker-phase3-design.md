@@ -469,7 +469,13 @@ respect: `ae_true` must exclude `label_0` (LFM), per 5.1.
 
 Nathan's framing to preserve in the card: *if* tokeye pulls the eigenmode out
 correctly, then the mask is more informative about AEs than the hand annotation,
-and it can be produced automatically. The conditional is load-bearing - the mask's
+and it can be produced automatically. He added (2026-09-05) that **the hand
+annotations under-count the real AE activity**, so activity the mask finds outside
+an annotated window is expected, and a label with more positives than the
+annotation is acceptable. That changes the construction: the primary label is the
+band-restricted, notched mask itself; the annotation is kept for evaluation (recall
+of annotated frames is the test the mask must pass; its precision against the
+annotation is reported but is not a failure). The conditional is load-bearing - the mask's
 own quality on these 180 shots has not been measured, and measuring it is the
 first task, not an assumption.
 
