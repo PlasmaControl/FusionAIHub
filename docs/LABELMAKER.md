@@ -215,3 +215,16 @@ one in its config.
   outputs. The other five roster folders are scaffolds whose cards say what
   blocks each of them; `docs/superpowers/specs/2026-09-05-labelmaker-phase2-design.md`
   records what the upstream archaeology found for each.
+- The survival model's calibration depends on which rows a report covers, and
+  that is a property of its training population, not a defect: over all aligned
+  shots' pre-onset rows (5.5% positive at 1 s) it is calibrated, ECE 0.022;
+  restricted to shots that do get an onset (54% positive) it is under-confident,
+  ECE 0.448. It was fit on rows that are 85% censored with a median 1.92 s to
+  event. Every figure and every report states its row set for this reason.
+- `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` carries the
+  next round: what the tearing-survival, ELM and Alfven-eigenmode training loops
+  upstream actually do (measured, with the shipped survival model's
+  hyperparameters decoded from its own pickle), the three agreed reliability
+  fixes, the uncertainty series to publish from the survival mixture, and the
+  requirements for `d3d_ae_activity_seldnet` - the one model labelmaker will
+  train itself.

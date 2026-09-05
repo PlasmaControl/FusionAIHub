@@ -122,14 +122,50 @@ have (below).
   so labelmaker applies none, and out-of-domain inputs are not flagged.
 - The rotation profile is absent on ~22% of shots and the ion-temperature fit
   on some more; a row missing either is invalid.
-- Upstream's own evaluation and the survival-label construction
-  (`survival_tm_2/formatted_labels`) were not reviewed for this card.
+- Upstream's own evaluation is per **shot**, not per row (`metrics_helpers.py`):
+  one verdict from the last label in the trace, a warning time from the final
+  0-to-1 transition, a count of crossings that fail to persist 400 ms, FPR over
+  quiet shots and FNR over tearing shots, at a default threshold of 0.7. The
+  per-row F1 numbers below are therefore not comparable to any upstream figure.
+- **The calibration depends on which rows you ask about, and both numbers below
+  are correct.** Over every aligned shot's pre-onset rows (5.5% positive at 1 s)
+  the risk is calibrated, ECE 0.022. Restricted to the 86 shots that do get an
+  onset (54% positive) it is badly under-confident, ECE 0.448. That is a
+  base-rate shift, not miscalibration: the model was fit to a population that is
+  85% censored with a median 1.92 s to event. Any report has to name its row set.
 
 ## Training details
 
 Upstream, outside this repository: `train_tm_model.py` over the `rt_*` pickles
-in `/projects/EKOLEMEN/survival_tm_2/data/`; hyperparameters in the pickle's
-own dict (k=3, LogNormal, layers [100, 1000]).
+in `/projects/EKOLEMEN/survival_tm_2/data/`. The full hyperparameter dict,
+decoded from the shipped pickle's own opcode stream on 2026-09-05:
+
+```
+iters=20  k=3  layers=[100,1000]  distribution=LogNormal  learning_rate=1e-05
+batch_size=1000  discount=1.0  temp=1.0  activation=ReLU6  random_seed=0
+```
+
+The pickle also carries its loss curves: 20 entries, validation NLL 0.534 to
+0.471, **monotone and still falling at the last epoch**. auton-survival's early
+stop (`train_patience = 5`) never fired, so this fit was ended by its `iters`
+setting, not by convergence. It is under-trained.
+
+**No class balancing was applied.** `losses._conditional_lognormal_loss` scores
+events with `log f(t)` and censored rows with `alpha * log S(t)`, normalised by
+the total row count; `alpha = model.discount = 1.0`, so censored rows are not
+down-weighted. The survival likelihood is the whole of the imbalance handling.
+`train_tm_model.py` applies no resampling and no time cut, and splits 80/10/10
+**by shot**.
+
+Training rows (`rt_filtered_{e,t}_bms_pcb_rot.pkl`): 914,898 rows, **15.07%
+events**, `t` in ms with median 1,920 and max 5,740, and only 14.7% of rows
+within 600 ms of their event. Labels come from `format_survival_labels.py`,
+which truncates each shot at onset, so no post-onset row is ever a training row.
+
+The 1:1 event/censor undersampling and the `t < 600 ms` cut that appear in
+`train_survival_study.py` and `tm_survival.ipynb` belong to an Optuna study and
+were **not** used for this model. Details in
+`docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 2.1.
 
 ## Evaluation
 

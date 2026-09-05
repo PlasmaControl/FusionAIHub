@@ -24,18 +24,29 @@ would be called. Label groups in `<shot>_labels.h5` use the folder name.
 | `d3d_ech_deposition_torbeamnn` | `plasmacontrol/d3d-ech-deposition-torbeamnn` | regression | scaffold |
 | `d3d_kinetic_equilibrium_rtcakenn` | `plasmacontrol/d3d-kinetic-equilibrium-rtcakenn` | profile regression | scaffold |
 | `d3d_inpa_image_cnn` | `plasmacontrol/d3d-inpa-image-cnn` | image regression | scaffold |
+| `d3d_ae_activity_seldnet` | `plasmacontrol/d3d-ae-activity-seldnet` | binary + regression | planned |
 
 `status: scaffold` means the folder documents a model that labelmaker cannot run
 yet; its card's `blocked_on` list says exactly what is missing, and importing its
 `spec.py` raises `NotImplementedError`.
 
+`planned` is weaker still: there is no folder yet. `d3d_ae_activity_seldnet` is
+the one model labelmaker will **train itself** - no upstream artifact answers
+"is an Alfven eigenmode present now, and at what frequency" - so its
+requirements live in `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
+section 5 until the training data and label construction are settled.
+
 ## Deliberately excluded
 
 Recorded so they are not re-added by mistake:
 
-- **TokEye** (`tokeye_unet`) and **`ae_tf_maskrcnn`** - spectrogram-to-pixel-mask
-  models. A different I/O contract (image in, mask out) and they already ship as
-  their own packaged application.
+- **TokEye** (`tokeye_unet`, `big_tf_unet`) and **`ae_tf_maskrcnn`** -
+  spectrogram-to-pixel-mask models. A different I/O contract (image in, mask
+  out) and they already ship as their own packaged application. This excludes
+  them as *label producers*, not as tools: `big_tf_unet`'s coherent-mode channel
+  is used offline to build the AE model's training labels
+  (phase3-design section 5.5). It never publishes a label of its own, so the
+  exclusion stands.
 - **TokaMind** (`tokamind_base_v2`) - MAST-pretrained; its tokenizer and inverse
   decode live outside the saved graph.
 - **diag2diag** - excluded at the project owner's direction. No technical reason

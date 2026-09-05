@@ -33,10 +33,15 @@ labelmaker:
   inputs: []
   outputs: []
   approximations: []
+  resolved:
+    - "2026-09-05: the 124 trained-on names and their order ARE recovered - see Input order below"
+    - "2026-09-05: the embedding does bake in its own normalisation (identity kernel with bias = -mean, then diag(1/std)); the constants need no recovery"
+    - "2026-09-05: the graph is structurally identical to d3d_tearing_time_to_event_dsm (k=3, 100 then 1000 hidden, gate/scaleg/shapeg heads at (1000,3)), so runners/dsm_pickle.survival() applies verbatim"
   blocked_on:
-    - "recover the ~124 trained-on feature names and their order from `hiro_scripts/`"
-    - "decide how a deep-survival-machines head (gate, scale, shape) becomes a label series: hazard at fixed horizons, or expected time to event"
-    - "the embedding network bakes in its own input normalisation, so the constants need no recovery - confirm that"
+    - "BES is 64 of the 124 inputs and the corpus fills it on only 2 of 24 sampled shots; serving this model at corpus scale needs an fdp/toksearch BES fetch plus a 1 ms downsample"
+    - "the upstream grid is 1 ms, labelmaker's is 25 ms; decide the aggregation"
+    - "decide how a deep-survival-machines head becomes a label series: hazard at fixed horizons, or expected time to event"
+    - "DECIDED 2026-09-05: reproducing these exact weights is no longer the goal - labelmaker will train its own model from the same inputs and labels, so this folder may be superseded by a labelmaker-owned slug (phase3-design section 6)"
 ---
 
 # plasmacontrol/d3d-elm-time-to-event-dsm
@@ -47,7 +52,40 @@ scheme and the known upstream location are recorded in one place.
 
 ## Model details
 
-Predicts time to the next ELM from a wide 0-D and profile feature vector, as a mixture of Weibull distributions (deep survival machines). Four saved graphs: an embedding network with normalisation, and gate, scale and shape heads.
+Predicts time to the next ELM from a wide 0-D and diagnostic-channel feature
+vector as a mixture of parametric distributions (deep survival machines). Four
+saved graphs: an embedding network with normalisation, and gate, scale and shape
+heads.
+
+The mixture family is **not** decidable from the weights. The only configuration
+in the upstream directory (`hiro_scripts/model.cfg`) says `LogNormal`; an earlier
+version of this card said Weibull, which nothing supports. Treat it as LogNormal
+and confirm before use.
+
+### Input order (measured 2026-09-05)
+
+124 columns, in `current_diagnostic_order` from cell 34 of
+`hiro_scripts/data_processing.ipynb`:
+
+| slots | contents |
+|---|---|
+| 0-5 | `ip`, `bt`, `gas`, `pinj`, `tinj`, `ech` |
+| 6-53 | `ece_slow_channel_1..48` |
+| 54-55 | `pcphd02`, `pcphd03` |
+| 56-59 | `co2_density_slow_{r0,v1,v2,v3}` |
+| 60-123 | `bes_slow_channel_1..64` |
+
+Proved rather than assumed: slots 56-59 carry baked normalisation means of
+8.6e13 to 1.3e14, which is CO2 line-integrated density. Under the alternative
+order those slots would hold BES volts near -1.
+
+**There is a second order and it is a trap.** `new_diagnostic_order` puts all 76
+non-ECE columns first and `ece_slow_channel_1..48` last; it is materialised in
+`wpqh_elm_hiro/data/reordered_model10.pkl` and it is what the PCS wants. Feeding
+it to these weights produces silent garbage.
+
+Upstream also applies `t + 1` at fit time, so a horizon `h` must be queried as
+`S(h + 1)`.
 
 ## Uses
 
@@ -63,9 +101,23 @@ nothing is known here about how its labels behave on corpus shots.
 
 ## Training details
 
-Upstream, outside this repository: `/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/`. Recovering the trained-on
-feature list and preprocessing constants is part of the work listed in
-`blocked_on`.
+Upstream, outside this repository:
+`/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/`. Read on 2026-09-05 and
+recorded in full in
+`docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 2.2.
+In brief: rows are restricted to wide-pedestal QH phases
+(`WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1`) on
+a 1 ms grid; `t` is ms to the next ELM as a sawtooth and `e = 1` at an ELM;
+filters are NaN to 0, CO2 outside `[0, 1e15]` dropped, a 100 ms boxcar on `pinj`
+and `tinj` because NBI is modulated, and `|z| > 10` rows dropped on every column
+except the two D-alpha photodiodes; the split is by shot with `seed 0`, 80/20.
+`model.cfg` records `k=3, iters=1000, LogNormal, lr=1e-3, batch=1024,
+layers=[128], dropout=0.2`. No event/censor resampling is applied anywhere.
+
+Two upstream defects worth knowing: `train_elm_model.py` has train and test
+**swapped** (it trains on the last 10% of shots), and the card's former Weibull
+claim came from nowhere. `new_train_elm_model.py` with
+`data/train_test_split_model10.pkl` is the correct entry point.
 
 ## Evaluation
 
