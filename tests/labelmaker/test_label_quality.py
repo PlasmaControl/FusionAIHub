@@ -188,7 +188,7 @@ def test_label_quality_asserts_the_truth_column_mapping(monkeypatch):
 
 
 def test_label_quality_asserts_the_match_column_mapping():
-    """I10, shared with `reconstruction_fidelity`: MATCH_COLUMNS indexes
+    """Shared with `reconstruction_fidelity`: MATCH_COLUMNS indexes
     d3d_tearing_onset_cnn1d's scalar order specifically, and label_quality
     performs the same row alignment reconstruction_fidelity does, so it
     needs the same loud guard - checked before adapter.load, so this test
@@ -206,7 +206,7 @@ def test_label_quality_asserts_the_match_column_mapping():
 
 
 def test_label_quality_isolates_a_per_shot_crash(tmp_path, monkeypatch):
-    """C1, shared with `reconstruction_fidelity`: one shot's bad data must
+    """Shared with `reconstruction_fidelity`: one shot's bad data must
     not abort the whole validation run. A shot missing every one of the five
     `MATCH_COLUMNS` features makes `match_rows`' variance guard raise
     `ValueError` on a constant column - reachable per-shot, so it must cost
