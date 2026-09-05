@@ -120,7 +120,7 @@ with h5py.File(".../labels/190000_labels.h5") as f:
 
 ## How reliable are the labels
 
-`python -m labelmaker.run validate` writes three reports and folds the headline
+`python -m labelmaker.run validate` writes four reports for models with archived truth and folds the headline
 numbers into the model card's `model-index`, so the card is the one place to
 read how a model performed. For `d3d_tearing_onset_cnn1d`, measured on the
 500-shot pool (486 aligned to their archived training rows - the 11 tearing-mode
@@ -139,6 +139,10 @@ reconstruction does not cover; 31,257 published rows of 35,776 matched):
 3. **Label quality** - against the archived labels, scored twice over the same
    rows: with the training inputs (the model's ceiling) and with our
    reconstruction (what labelmaker publishes).
+4. **Alarm quality** (`alarm_quality.json`) - final-label and any-row shot
+   FPR/FNR, warning times, jumps, and per-horizon IPCW AUC alongside plain
+   AUROC. Available for slugs with archived truth; survival uses pre-onset
+   valid rows, while column labels use all valid aligned rows.
 
 | `tm_prob` | AUROC | F1 at 0.5 | precision | recall | best F1 (at) |
 |---|---|---|---|---|---|

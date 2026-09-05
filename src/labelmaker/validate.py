@@ -1449,6 +1449,14 @@ def archived_truth(shot: int, paths: Paths, archive: Path = TM_ARCHIVE) -> dict:
     }
 
 
+def _onset_within_truth(t, onset_s, horizon_s) -> np.ndarray:
+    """Archived onset-within truth, tolerating floating-point grid subtraction."""
+    t = np.asarray(t, dtype=float)
+    if onset_s is None or not np.isfinite(onset_s):
+        return np.zeros(t.shape, dtype=bool)
+    return (onset_s - t) <= horizon_s + 1e-9
+
+
 def score_against_truth(
     label_key: str,
     y: np.ndarray,
@@ -1495,7 +1503,7 @@ def score_against_truth(
         # appear within h" is no longer the question being asked.
         before = np.ones(t.size, bool) if onset is None else t < onset - 1e-9
         keep = ok & before
-        target = np.zeros(t.size, bool) if onset is None else (onset - t) <= horizon + 1e-9
+        target = _onset_within_truth(t, onset, horizon)
     n_dropped = int((~keep).sum())
     y_s, target_s = y[keep], np.asarray(target)[keep]
     out = {
@@ -1585,7 +1593,7 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
                         keep = valid.y[0][index].astype(bool) & np.isfinite(y)
                         if rule['kind'] == 'onset_within':
                             keep &= before
-                            target = np.isfinite(onset) & (onset - t <= rule['horizon_s'] + 1e-9)
+                            target = _onset_within_truth(t, onset, rule['horizon_s'])
                         else:
                             target = np.asarray(match.got['y'])[order, rule['column']]
                         keep &= np.isfinite(target)
@@ -1653,7 +1661,7 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
         label.update(n_rows=int(event.size), n_positive=int(np.count_nonzero(target > .5)),
                      horizon_s=horizon,
                      auroc=binary_metrics(rows['y'], target)['auroc'],
-                     ipcw_auc=alarm.ipcw_auc(duration, event, rows['y'], horizon)
+                     ipcw_auc=alarm.ipcw_auc(duration, event, rows['y'], horizon, cases=target)
                      if horizon else None, thresholds={})
         if horizon is None:
             label['ipcw_auc_reason'] = (
@@ -1685,7 +1693,10 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
                 "n_excursions": float(np.median(excursions)) if excursions else None}
         out['labels'][name] = label
     if slug == 'd3d_tearing_time_to_event_dsm':
-        names = ['tm_risk_250ms', 'tm_risk_500ms', 'tm_risk_1s']
+        pairs = sorted((rule['horizon_s'], key.split('/')[1])
+                       for key, rule in ARCHIVE_TRUTH.items()
+                       if key.startswith(f'{slug}/') and rule['kind'] == 'onset_within')
+        horizons, names = zip(*pairs, strict=True)
         reference = pooled['labels'][names[0]]
         same = all(np.array_equal(pooled['labels'][n][key], reference[key])
                    for n in names for key in ('shot', 't'))
@@ -1695,7 +1706,7 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
                 key = str(float(threshold))
                 rates = [out['labels'][n]['thresholds'][key]['any_row'] for n in names]
                 out['horizon_integrated'][key] = {
-                    metric: alarm.horizon_integral([.25, .5, 1.], [r[metric] for r in rates])
+                    metric: alarm.horizon_integral(horizons, [r[metric] for r in rates])
                     if all(r[metric] is not None for r in rates) else None
                     for metric in ('fpr', 'fnr')}
         else:

@@ -181,7 +181,8 @@ def test_quiet_spike_is_any_row_but_not_final_alarm(monkeypatch):
     assert got['any_row_call'] is True
 
 
-def test_pooled_rows_and_alarm_quality(wired, monkeypatch):
+@pytest.mark.parametrize('last_horizon', [1., 2.])
+def test_pooled_rows_and_alarm_quality(wired, monkeypatch, last_horizon):
     from labelmaker.labels.schema import LabelSpec
     from labelmaker.labels.store import write_labels
     from labelmaker.models.base import Decoded
@@ -197,6 +198,8 @@ def test_pooled_rows_and_alarm_quality(wired, monkeypatch):
         return m
 
     monkeypatch.setattr(validate, '_matched_shot', match)
+    monkeypatch.setitem(validate.ARCHIVE_TRUTH, f'{slug}/tm_risk_1s',
+                        {'kind': 'onset_within', 'horizon_s': last_horizon})
     names = ['tm_risk_250ms', 'tm_risk_500ms', 'tm_risk_1s']
     specs = tuple(LabelSpec(name=n, task='binary', activation='none', units='',
                            classes=(), slug=slug, card_id='test/model', time_step_ms=25,
@@ -227,7 +230,7 @@ def test_pooled_rows_and_alarm_quality(wired, monkeypatch):
     assert rates['any_row']['fpr'] == 1 and rates['any_row']['fnr'] == 0
     assert rates['warning_time_s']['median'] == pytest.approx(.075)
     assert label['auroc'] is not None and label['ipcw_auc'] is None  # no T > 1
-    assert report['horizon_integrated']['0.5']['fpr'] == .75
+    assert report['horizon_integrated']['0.5']['fpr'] == last_horizon - .25
 
 
 def test_pool_isolates_rejected_and_failed_matches(wired, monkeypatch):
@@ -287,3 +290,43 @@ def test_column_pool_keeps_archived_positives_and_whole_trace_alarm(wired, monke
     rates = label['thresholds']['0.5']
     assert rates['final_label']['counts']['FN'] == 1
     assert rates['any_row']['counts']['TP'] == 1
+
+
+def test_empty_valid_population_has_no_alarm_verdict(monkeypatch):
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
+    got = validate.score_against_truth(
+        'd3d_tearing_time_to_event_dsm/tm_risk_1s', np.ones(8), np.zeros(8, bool),
+        validate.archived_truth(190000, Paths.from_env()), threshold=.5)
+    assert got['n'] == 0
+    assert got['alarm'] is None and got['verdict'] is None
+
+
+def test_grid_boundary_truth_is_shared_by_plain_and_ipcw_metrics(monkeypatch):
+    from labelmaker import alarm
+
+    t = .025 * np.array([1, 2, 3])
+    onset = .025 * 12
+    duration = onset - t
+    assert duration[1] > .25  # 0.30000000000000004 - 0.05
+    target = validate._onset_within_truth(t, onset, .25)
+    np.testing.assert_array_equal(target, [False, True, True])
+    truth = {'available': True, 'index': np.arange(3), 't': t, 'onset_s': onset}
+    score = np.array([.5, .9, .1])
+    got = validate.score_against_truth('d3d_tearing_time_to_event_dsm/tm_risk_250ms',
+                                       score, np.ones(3, bool), truth, threshold=.5)
+    assert got['n_positive'] == 2
+    assert alarm.ipcw_auc(duration, np.ones(3, bool), score, .25,
+                          cases=target) == got['auroc'] == .5
+    # Exercise the report call site as well: dropping cases=target would
+    # turn the high-scoring boundary case into a control and yield AUC 0.
+    rows = {'shot': np.ones(3, int), 't': t, 'y': score, 'truth': target,
+            'onset_s': np.full(3, onset), 't_end': np.full(3, onset),
+            'shots_used': [1], 'shots_with_onset': [1], 'skipped': {},
+            'row_set': 'pre-onset valid rows of every aligned shot'}
+    monkeypatch.setitem(validate.ARCHIVE_TRUTH, 'boundary/risk',
+                        {'kind': 'onset_within', 'horizon_s': .25})
+    monkeypatch.setattr(validate, '_pooled_onset_rows', lambda *a, **kw: {
+        'labels': {'risk': rows}, 'shots_used': [1], 'shots_with_onset': [1], 'skipped': {}})
+    report = validate.alarm_quality('boundary', [1], Paths.from_env(), thresholds=(.5,))
+    assert report['labels']['risk']['n_positive'] == 2
+    assert report['labels']['risk']['auroc'] == report['labels']['risk']['ipcw_auc'] == .5

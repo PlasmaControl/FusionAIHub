@@ -614,3 +614,10 @@ def test_validate_writes_alarm_quality_for_archive_labels(wired, monkeypatch, br
         assert 'alarm unavailable' in payload['error']
     else:
         assert payload['row_set'] == 'pre-onset valid rows of every aligned shot'
+
+
+def test_validate_without_archive_truth_writes_no_alarm_report(wired):
+    assert run.main(_argv(wired, 'validate')) == run.EXIT_VALIDATE_ERRORED
+    directory = wired['root'] / 'validation' / SLUG
+    assert (directory / 'label_quality.json').exists()
+    assert not (directory / 'alarm_quality.json').exists()

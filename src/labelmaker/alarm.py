@@ -88,17 +88,21 @@ def km_censoring(T, e):
     return evaluate
 
 
-def ipcw_auc(T, e, score, horizon_s) -> float | None:
+def ipcw_auc(T, e, score, horizon_s, *, cases=None) -> float | None:
     """Cumulative/dynamic AUC; undefined populations or zero G return None.
 
-    Cases are observed events at T <= h, controls have T > h. Controls all
+    By default cases are observed events at T <= h. A supplied boolean
+    `cases` array uses the caller's horizon truth (including its numerical
+    tolerance) instead. Cases cannot also be controls, even if rounding
+    puts their duration slightly above h. Other controls have T > h. Controls all
     carry 1/G(h), which cancels in the weighted fraction. Early censored
     rows estimate G but are neither cases nor controls. Score ties get half.
     """
     t, event, score = np.asarray(T, float), np.asarray(e, bool), np.asarray(score, float)
     good = np.isfinite(t) & np.isfinite(score) & (t >= 0)
     t, event, score = t[good], event[good], score[good]
-    cases, controls = event & (t <= horizon_s), t > horizon_s
+    cases = event & ((t <= horizon_s) if cases is None else np.asarray(cases, bool)[good])
+    controls = (t > horizon_s) & ~cases
     if not cases.any() or not controls.any():
         return None
     g = km_censoring(t, event)
