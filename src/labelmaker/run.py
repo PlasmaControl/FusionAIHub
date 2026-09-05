@@ -82,7 +82,13 @@ from .features.store import (
     write_features,
 )
 from .labels.schema import artifact_digest, specs_for
-from .labels.store import append_index, index_rows, labelled, write_labels
+from .labels.store import (
+    append_index,
+    index_rows,
+    labelled,
+    read_label,
+    write_labels,
+)
 from .models import registry
 
 STAGES = ("features", "infer", "validate", "all", "analyze")
@@ -446,6 +452,11 @@ def analyze_for_shot(shot: int, cfg, out_dir, ctx: RunContext) -> dict:
             "resolvers": dict(built.resolvers),
             "missing_inputs": list(built.missing),
         }
+    # Deferred like every other framework-specific import in this module:
+    # `validate` loads torch at module scope, and this runs inside a worker.
+    from . import validate as validation
+
+    truth = validation.archived_truth(shot, ctx.paths)
     have = labelled(labels_path)
     summaries = {}
     for label in cfg.labels:
@@ -455,20 +466,29 @@ def analyze_for_shot(shot: int, cfg, out_dir, ctx: RunContext) -> dict:
                 labels_path, slug, name, threshold=cfg.threshold_for(label),
                 infer_row=provenance[slug],
             )
+            series = read_label(labels_path, slug, name)
+            series_valid = read_label(labels_path, slug, f"{name}_valid")
+            summaries[label]["truth"] = validation.score_against_truth(
+                label, series.y[0], series_valid.y[0].astype(bool), truth,
+                threshold=summaries[label]["threshold"],
+            )
         else:
             summaries[label] = analyze.empty_summary(
                 provenance[slug], note=f"{slug} wrote no labels for this shot"
             )
+            summaries[label]["truth"] = {"scored": False, "reason": "no labels"}
     shot_dir = Path(out_dir) / str(shot)
     shot_dir.mkdir(parents=True, exist_ok=True)
     png = analyze.plot_shot(
-        shot, analyze.panels_for(features_path, labels_path, cfg),
+        shot, analyze.panels_for(features_path, labels_path, cfg, truth=truth),
         shot_dir / f"{shot}_labels.png",
         title_ids=[adapters[s].card_id for s in cfg.slugs],
     )
     summary = {
         "shot": shot,
         "config": cfg.as_dict(),
+        "truth": {k: v for k, v in truth.items()
+                  if k in ("available", "reason", "onset_s", "n_rows")},
         "written": datetime.now(UTC).isoformat(timespec="seconds"),
         "run_id": ctx.run_id,
         "labels": summaries,

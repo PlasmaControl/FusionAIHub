@@ -32,6 +32,7 @@ _MUTED = "#898781"
 _GRID = "#e1e0d9"
 _AXIS = "#c3c2b7"
 _SERIES = "#2a78d6"
+_TRUTH = "#4a3aa7"
 
 
 class ConfigError(ValueError):
@@ -173,8 +174,16 @@ def empty_summary(infer_row: dict, note: str) -> dict:
     }
 
 
-def panels_for(features_path, labels_path, cfg: AnalysisConfig) -> list[dict]:
-    """The series the figure draws: context features first, then each label."""
+def panels_for(features_path, labels_path, cfg: AnalysisConfig,
+               truth: dict | None = None) -> list[dict]:
+    """The series the figure draws: context features first, then each label.
+
+    `truth` is `validate.archived_truth` for this shot when it has any: its
+    tearing label is shaded on binary panels, its `betan` column drawn on the
+    matching regression panel, and the archived onset marked on every label
+    panel, so the picture answers "how did it do" and not only "what did it
+    say".
+    """
     panels: list[dict] = []
     stored = present(features_path) if Path(features_path).exists() else set()
     for name in cfg.context:
@@ -193,7 +202,16 @@ def panels_for(features_path, labels_path, cfg: AnalysisConfig) -> list[dict]:
     for label in cfg.labels:
         slug, name = label.split("/", 1)
         panel = {"kind": "label", "name": label, "t": None, "note": "no labels",
-                 "threshold": cfg.threshold_for(label)}
+                 "threshold": cfg.threshold_for(label), "truth_t": None,
+                 "truth_mask": None, "truth_y": None,
+                 "onset_s": (truth or {}).get("onset_s")}
+        if truth is not None and truth.get("available"):
+            panel["truth_t"] = truth["t"]
+            # The archive's own tearing label, and its `betan` column for the
+            # one label that predicts it.
+            panel["truth_mask"] = truth["tm_label"]
+            if name == "betan":
+                panel["truth_y"] = truth["betan"]
         if label in have:
             lab = read_label(labels_path, slug, name)
             spread = read_label(labels_path, slug, f"{name}_spread")
@@ -206,6 +224,24 @@ def panels_for(features_path, labels_path, cfg: AnalysisConfig) -> list[dict]:
             )
         panels.append(panel)
     return panels
+
+
+def _spans(mask, x):
+    """Contiguous `[start, end]` runs of a boolean mask over `x`.
+
+    The archived rows are a subset of the label's grid and can have gaps, so
+    a run ends at the last row that is true, not at the next grid step.
+    """
+    mask = np.asarray(mask, dtype=bool)
+    x = np.asarray(x, dtype=float)
+    out, start = [], None
+    for i, on in enumerate(mask):
+        if on and start is None:
+            start = x[i]
+        if start is not None and (not on or i == mask.size - 1):
+            out.append((start, x[i] if on else x[i - 1]))
+            start = None
+    return out
 
 
 def _style(ax) -> None:
@@ -259,6 +295,11 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
             continue
         t, y, valid = panel["t"], panel["y"], panel["valid"]
         binary = panel["task"] == "binary"
+        if binary and panel.get("truth_mask") is not None:
+            # Labelled only once: one legend entry, not one per run.
+            for k, (lo, hi) in enumerate(_spans(panel["truth_mask"], panel["truth_t"])):
+                ax.axvspan(lo, hi, color=_TRUTH, alpha=0.16, linewidth=0, zorder=0,
+                           label="archived label: mode present" if k == 0 else None)
         if (~valid).any():
             ax.fill_between(
                 t, 0, 1, where=~valid, transform=ax.get_xaxis_transform(),
@@ -267,6 +308,12 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
         ax.fill_between(t, panel["lo"], panel["hi"], color=_SERIES, alpha=0.18,
                         linewidth=0, label="ensemble spread")
         ax.plot(t, y, color=_SERIES, linewidth=1.5, label=panel["name"])
+        if panel.get("truth_y") is not None:
+            ax.plot(panel["truth_t"], panel["truth_y"], color=_INK, linewidth=1.1,
+                    linestyle=(0, (5, 2)), label="archived truth")
+        if panel.get("onset_s") is not None:
+            ax.axvline(panel["onset_s"], color=_TRUTH, linewidth=1.4,
+                       label=f"archived onset {panel['onset_s']:.2f} s")
         if binary:
             threshold = panel["threshold"]
             ax.axhline(threshold, color=_MUTED, linestyle="--", linewidth=0.9,

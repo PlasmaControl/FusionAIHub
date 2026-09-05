@@ -1388,3 +1388,140 @@ def model_index_results(reports: dict) -> list[dict]:
                 }
             )
     return results
+
+
+#: Which archived quantity each published label should be scored against, by
+#: `"<slug>/<name>"`. The archive is the tearing CNN's training store, so it
+#: can serve the tearing labels and nothing else; anything absent here is
+#: reported unscored rather than guessed at. `column` reads a `y.npy` column
+#: directly; `onset_within` builds "an onset occurs within `horizon_s`",
+#: which is only a question on rows BEFORE the archived onset.
+ARCHIVE_TRUTH: dict[str, dict] = {
+    "d3d_tearing_onset_cnn1d/tm_prob": {"kind": "column", "column": 1, "task": "binary"},
+    "d3d_tearing_onset_cnn1d/betan": {"kind": "column", "column": 0, "task": "regression"},
+    "d3d_tearing_time_to_event_dsm/tm_risk_250ms": {"kind": "onset_within", "horizon_s": 0.25},
+    "d3d_tearing_time_to_event_dsm/tm_risk_500ms": {"kind": "onset_within", "horizon_s": 0.5},
+    "d3d_tearing_time_to_event_dsm/tm_risk_1s": {"kind": "onset_within", "horizon_s": 1.0},
+}
+
+
+def archived_truth(shot: int, paths: Paths, archive: Path = TM_ARCHIVE) -> dict:
+    """One shot's archived truth, placed on labelmaker's own time grid.
+
+    The archive carries no time axis: its rows are identified by their
+    feature values, so the only way to say *when* a row is is the same match
+    `label_quality` uses (`_matched_shot`). A shot the match rejects has no
+    usable truth, and the reason is returned rather than raised - a per-shot
+    report says "not scored, because" instead of failing.
+
+    `onset_s` is the time of the FIRST row the archive calls a tearing mode,
+    which is what a time-to-event label is predicting; `None` when the shot
+    never shows one in its archived window.
+    """
+    from .models import registry
+
+    # Anything at all can go wrong reaching for the truth - the archive not
+    # mounted, a shot whose rows the match cannot place, a spec whose column
+    # order MATCH_COLUMNS does not describe - and none of it should cost the
+    # caller its analysis. A per-shot report says "not scored, because".
+    try:
+        spec = registry.load_adapter("d3d_tearing_onset_cnn1d").input_spec
+        match = _matched_shot(shot, spec, paths, archive)
+    except Exception as exc:  # noqa: BLE001 - reported, never raised
+        return {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    if match.skip_reason is not None:
+        return {"available": False, "reason": match.skip_reason}
+    index = np.asarray(match.info["index"], dtype=int)
+    y = np.asarray(match.got["y"], dtype=np.float64)
+    order = np.argsort(match.built.t[index], kind="mergesort")
+    index = index[order]
+    tm = y[order, _TRUTH_COLUMNS["tm_prob"]] > 0.5
+    t = np.asarray(match.built.t, dtype=np.float64)[index]
+    return {
+        "available": True,
+        "index": index,
+        "t": t,
+        "tm_label": tm,
+        "betan": y[order, _TRUTH_COLUMNS["betan"]],
+        "onset_s": float(t[np.argmax(tm)]) if tm.any() else None,
+        "n_rows": int(index.size),
+    }
+
+
+def score_against_truth(
+    label_key: str,
+    y: np.ndarray,
+    valid: np.ndarray,
+    truth: dict,
+    *,
+    threshold: float | None,
+    horizon_s: float | None = None,
+) -> dict:
+    """How one published label did on one shot, against the archived truth.
+
+    `y` and `valid` are the label's full series on labelmaker's grid; the
+    archived rows are a subset of it (`truth["index"]`). Only rows the
+    validity mask would publish are scored - a flagged row is not a
+    prediction labelmaker stands behind - and how many were dropped is
+    reported so a good-looking score on three rows cannot pass for one on
+    three hundred.
+
+    For a binary label this also reports `lead_time_s`: how far before the
+    archived onset the label first crosses its threshold. Positive means the
+    model called it early, negative means late, `None` means it never
+    crossed or the shot has no onset.
+    """
+    if not truth.get("available"):
+        return {"scored": False, "reason": truth.get("reason", "no archived truth")}
+    rule = ARCHIVE_TRUTH.get(label_key)
+    if rule is None:
+        return {
+            "scored": False,
+            "reason": f"no archived truth is defined for {label_key}",
+        }
+    index = truth["index"]
+    y = np.asarray(y, dtype=np.float64)[index]
+    ok = np.asarray(valid, dtype=bool)[index]
+    t = truth["t"]
+    onset = truth["onset_s"]
+    if rule["kind"] == "column":
+        target = truth["tm_label"] if rule["task"] == "binary" else truth["betan"]
+        kind, keep = "archived column" if rule["task"] == "regression" else "archived label", ok
+    else:
+        horizon = float(horizon_s if horizon_s is not None else rule["horizon_s"])
+        kind = f"onset within {horizon:g} s"
+        # Only rows before the onset: once the mode is there, "will one
+        # appear within h" is no longer the question being asked.
+        before = np.ones(t.size, bool) if onset is None else t < onset - 1e-9
+        keep = ok & before
+        target = np.zeros(t.size, bool) if onset is None else (onset - t) <= horizon + 1e-9
+    n_dropped = int((~keep).sum())
+    y_s, target_s = y[keep], np.asarray(target)[keep]
+    out = {
+        "scored": True,
+        "kind": kind,
+        "n": int(y_s.size),
+        "n_invalid_dropped": n_dropped,
+        "onset_s": onset,
+    }
+    if rule["kind"] == "column" and rule["task"] == "regression":
+        out.update(regression_metrics(y_s, target_s))
+        return out
+    m = binary_metrics(y_s, target_s.astype(np.float64))
+    out.update({k: m[k] for k in ("n_positive", "auroc", "f1_max", "threshold_at_f1_max")})
+    if threshold is not None:
+        pred = y_s >= threshold
+        tp = int((pred & target_s).sum())
+        fp = int((pred & ~target_s).sum())
+        fn = int((~pred & target_s).sum())
+        out["threshold"] = float(threshold)
+        out["precision"] = float(tp / (tp + fp)) if tp + fp else None
+        out["recall"] = float(tp / (tp + fn)) if tp + fn else None
+        out["f1"] = float(2 * tp / (2 * tp + fp + fn)) if tp or fp or fn else 0.0
+        crossings = np.flatnonzero(np.isfinite(y) & ok & (y >= threshold))
+        first = float(t[crossings[0]]) if crossings.size else None
+        out["first_above_threshold"] = first
+        out["lead_time_s"] = (
+            float(onset - first) if (first is not None and onset is not None) else None
+        )
+    return out
