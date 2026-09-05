@@ -313,10 +313,27 @@ def test_match_columns_match_on_archive_served_and_tiebreak_on_the_rest():
     assert validate._match_columns(spec, mixed) == ((6, 7, 8), (0, 1))
     pure = with_resolvers({"bt": "archive", "ip": "archive", **geometry})
     assert validate._match_columns(spec, pure) == (validate.MATCH_COLUMNS, ())
-    # Fewer than two archive-served columns: fall back to all five and let
-    # the match gates decide.
+    # Geometry is reproduced exactly by fdp EFIT01 (median relative difference
+    # 0 on 486 shots), so a shot with fewer archive-served columns still
+    # matches on all three geometry columns and tie-breaks on bt/ip.
     lone = with_resolvers({"gapin": "archive"})
-    assert validate._match_columns(spec, lone) == (validate.MATCH_COLUMNS, ())
+    assert validate._match_columns(spec, lone) == ((6, 7, 8), (0, 1))
+
+
+def test_match_columns_use_the_geometry_when_nothing_is_archive_served():
+    """A fully fdp-served shot (3 of the 500-shot pool were rejected by the
+    five-column match, colliding rows where EFIT01 held for two grid steps)
+    aligns the same way a mixed shot does: geometry matches, bt/ip break ties.
+    """
+    from labelmaker.models import registry
+
+    spec = registry.load_adapter("d3d_tearing_onset_cnn1d").input_spec
+    b = _built()
+    fdp_only = BuiltInputs(
+        t=b.t, scalars=b.scalars, profiles=b.profiles, valid=b.valid, missing=(),
+        resolvers={n: "fdp" for n in ("bt", "ip", "tritop", "tribot", "gapin")},
+    )
+    assert validate._match_columns(spec, fdp_only) == ((6, 7, 8), (0, 1))
 
 
 def test_match_rows_on_a_column_subset_recovers_what_the_full_set_rejects():

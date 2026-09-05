@@ -499,3 +499,48 @@ def test_a_non_archive_profile_field_is_also_windowed():
     np.testing.assert_allclose(
         built.profiles[:, :, 0], np.broadcast_to(want[0][:, None], (2, 33))
     )
+
+
+def test_invalid_reasons_count_the_rows_each_rule_alone_rejects():
+    """A physicist asking "why is this shot 95% invalid" needs the answer per
+    rule, not a bool. The 2024 tearing shots came out 4-15% valid because ECH
+    power flows with no deposition location on ~90% of rows, and a script was
+    needed to find that out; `build` should say it.
+    """
+    spec = InputSpec(
+        fields=(
+            InputField("kappa", "kappa"),
+            InputField("ne", "ne_zipfit"),
+            InputField("pech", "ech_power_total"),
+            InputField("rho", "ech_rho", transform="nonneg_zero_fill", absent_ok=True),
+        ),
+        dt_s=0.025,
+        domain=(
+            DomainRule("kappa", "value", lo=1.6, hi=2.0),
+            DomainRule("ne_zipfit", "max", hi=12.0),
+        ),
+        unknown_when_active=(
+            UnknownWhenActive(unknown="ech_rho", active="ech_power_total"),
+        ),
+    )
+    kappa = _scalar_feature([1.8, 1.5, 1.8, 1.8, 1.8, 1.8])          # row 1
+    ne = [np.full(33, 3.0) for _ in range(6)]
+    ne[2] = np.full(33, 20.0)                                       # row 2
+    pech = _scalar_feature([0.0, 0.0, 0.0, 1e5, 1e5, 0.0])          # rows 3, 4
+    built = spec.build(
+        {"kappa": kappa, "ne_zipfit": _profile_feature(ne), "ech_power_total": pech},
+        GRID,
+    )
+    assert built.valid.tolist() == [True, False, False, False, False, True]
+    assert built.invalid_reasons == {
+        "kappa value": 1,
+        "ne_zipfit max": 1,
+        "ech_rho unknown while ech_power_total active": 2,
+    }
+
+
+def test_invalid_reasons_name_a_non_finite_input_by_its_canonical_feature():
+    spec = InputSpec(fields=(InputField("bt", "bt"), InputField("ip", "ip")), dt_s=0.025)
+    built = spec.build({"bt": _scalar_feature([1, 1, np.nan, 1, 1, 1])}, GRID)  # ip absent
+    assert built.valid.tolist() == [False] * 6
+    assert built.invalid_reasons == {"bt not finite": 1, "ip not finite": 6}

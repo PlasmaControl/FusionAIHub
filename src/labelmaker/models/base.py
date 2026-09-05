@@ -282,6 +282,12 @@ class BuiltInputs:
     valid: np.ndarray              # (T,) bool
     missing: tuple[str, ...]
     resolvers: dict[str, str]
+    #: rows each rule ALONE rejects, keyed "<canonical> <stat>" for a domain
+    #: rule, "<canonical> not finite" for a gap, "<unknown> unknown while
+    #: <active> active" for a pair rule; only rules that rejected something.
+    #: A row failing two rules is counted under both, so the values do not
+    #: sum to the invalid count - they answer "why", not "how many".
+    invalid_reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -416,7 +422,7 @@ class InputSpec:
                 v = filled
             unmeasured[f.model_name] = gap if gap.ndim == 1 else gap.any(axis=1)
             sampled[f.model_name] = v * f.scale
-        valid = self._validity(sampled, n, unmeasured)
+        valid, invalid_reasons = self._validity(sampled, n, unmeasured)
         scalars = (
             np.stack([sampled[f.model_name] for f in self.scalar_fields], axis=1)
             if self.scalar_fields
@@ -437,6 +443,7 @@ class InputSpec:
             valid=valid,
             missing=tuple(sorted(set(missing))),
             resolvers=resolvers,
+            invalid_reasons=invalid_reasons,
         )
 
     def _validity(
@@ -444,10 +451,21 @@ class InputSpec:
         sampled: dict[str, np.ndarray],
         n: int,
         unmeasured: dict[str, np.ndarray],
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, dict[str, int]]:
+        """The row mask, and how many rows each rule alone rejected."""
         ok = np.ones(n, dtype=bool)
-        for v in sampled.values():
-            ok &= np.isfinite(v) if v.ndim == 1 else np.isfinite(v).all(axis=1)
+        reasons: dict[str, int] = {}
+
+        def reject(label: str, bad: np.ndarray) -> None:
+            nonlocal ok
+            if bad.any():
+                reasons[label] = int(bad.sum())
+            ok &= ~bad
+
+        canonical_of = {f.model_name: f.canonical for f in self.fields}
+        for key, v in sampled.items():
+            finite = np.isfinite(v) if v.ndim == 1 else np.isfinite(v).all(axis=1)
+            reject(f"{canonical_of[key]} not finite", ~finite)
         by_canonical = {f.canonical: f.model_name for f in self.fields}
         # built once and shared with the pair-rule loop below
         for rule in self.domain:
@@ -468,10 +486,12 @@ class InputSpec:
                 red = v.max(axis=1)
             else:
                 red = np.abs(v).max(axis=1)
+            inside = np.ones(n, dtype=bool)
             if rule.lo is not None:
-                ok &= (red >= rule.lo) if rule.lo_inclusive else (red > rule.lo)
+                inside &= (red >= rule.lo) if rule.lo_inclusive else (red > rule.lo)
             if rule.hi is not None:
-                ok &= (red <= rule.hi) if rule.hi_inclusive else (red < rule.hi)
+                inside &= (red <= rule.hi) if rule.hi_inclusive else (red < rule.hi)
+            reject(f"{rule.canonical} {rule.stat}", ~inside)
         for pair in self.unknown_when_active:
             gap = unmeasured[by_canonical[pair.unknown]]
             active_gap = unmeasured[by_canonical[pair.active]]
@@ -486,8 +506,11 @@ class InputSpec:
             # nothing is known about the pair and the row cannot be trusted -
             # otherwise a fill transform on the partner would quietly report
             # "inactive" and license the very gap this rule exists to catch.
-            ok &= ~(gap & (active_gap | (active > pair.threshold)))
-        return ok
+            reject(
+                f"{pair.unknown} unknown while {pair.active} active",
+                gap & (active_gap | (active > pair.threshold)),
+            )
+        return ok, reasons
 
 
 @dataclass(frozen=True)

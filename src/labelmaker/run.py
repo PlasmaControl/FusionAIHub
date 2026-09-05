@@ -371,6 +371,9 @@ def infer_for_shot(shot: int, slug: str, ctx: RunContext) -> dict:
         "n_valid": int(np.asarray(built.valid).sum()),
         "n_total": int(built.t.size),
         "missing_inputs": list(built.missing),
+        # Rows each rule alone rejected - the answer to "why is this shot 95%
+        # invalid" (on the 2024 tearing shots: ECH power with no location).
+        "invalid_reasons": dict(built.invalid_reasons),
         # Per-input provenance, as the model actually saw it. `mixed` is the
         # one that matters: see this module's docstring.
         "resolvers": dict(built.resolvers),
