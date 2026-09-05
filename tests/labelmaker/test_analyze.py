@@ -147,3 +147,32 @@ def test_analyze_summary_and_figure_use_the_per_label_threshold(wired, tmp_path)
     assert run.main(_argv(wired, cfg, out)) == 0
     summary = json.loads((out / "190000" / "190000_analysis.json").read_text())
     assert summary["labels"][f"{SLUG}/score"]["threshold"] == 0.05
+
+
+def test_summary_carries_a_truth_block_per_label(wired, tmp_path):
+    """A shot with no archived truth still says so, per label, rather than
+    leaving the reader to wonder whether it was scored."""
+    out = tmp_path / "analysis"
+    assert run.main(_argv(wired, _cfg(tmp_path), out)) == 0
+    summary = json.loads((out / "190000" / "190000_analysis.json").read_text())
+    assert summary["truth"]["available"] is False
+    got = summary["labels"][f"{SLUG}/score"]["truth"]
+    assert got["scored"] is False and got["reason"]
+
+
+def test_panels_carry_the_archived_truth_when_there_is_some(tmp_path):
+    path = _labels_file(tmp_path, "binary", [0.1, 0.6, 0.9, 0.2], [1, 1, 1, 1])
+    # built directly: "m" is a synthetic label file, not a registered model,
+    # and load_config would rightly refuse it
+    cfg = analyze.AnalysisConfig(labels=("m/lab",), context=(), threshold=0.5)
+    truth = {"available": True, "index": np.array([0, 2, 3]),
+             "t": np.array([0.0, 0.05, 0.075]),
+             "tm_label": np.array([False, True, True]),
+             "betan": np.array([1.0, 2.0, 3.0]), "onset_s": 0.05, "n_rows": 3}
+    panels = analyze.panels_for(tmp_path / "missing_features.h5", path, cfg, truth=truth)
+    panel = panels[0]
+    np.testing.assert_allclose(panel["truth_t"], [0.0, 0.05, 0.075])
+    np.testing.assert_array_equal(panel["truth_mask"], [False, True, True])
+    assert panel["onset_s"] == 0.05
+    png = analyze.plot_shot(1, panels, tmp_path / "p.png", title_ids=["x/m"])
+    assert png.exists() and png.stat().st_size > 5_000

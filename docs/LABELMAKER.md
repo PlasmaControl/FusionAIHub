@@ -68,7 +68,16 @@ It runs `features` and `infer` for the models those labels need, then writes
 valid fraction, *why* rows are invalid (per rule), the peak and when the label
 first crosses the threshold - and `<shot>_labels.png`, one panel per context
 feature and per label, invalid rows washed grey, the ensemble spread as a
-band. `--out` defaults to `$LABELMAKER_ROOT/analysis/`. The label file under
+band.
+
+When the shot is in the tearing model's training archive, the archived truth is
+overlaid and scored: the rows the archive calls a tearing mode are shaded, the
+first of them marked as the onset, `betan`'s archived column drawn as a dashed
+line, and each label's `truth` block in the JSON carries AUROC, precision,
+recall and F1 at the label's threshold, plus `lead_time_s` - how far before the
+archived onset the label first crossed. A survival label is scored only on rows
+before the onset, against "an onset occurs within the horizon". A shot with no
+archived truth says so instead, per label. `--out` defaults to `$LABELMAKER_ROOT/analysis/`. The label file under
 `labels/` stays the one canonical output; the analysis directory is a view of
 it.
 
