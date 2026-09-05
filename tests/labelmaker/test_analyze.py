@@ -58,6 +58,7 @@ def test_default_config_names_labels_the_roster_produces():
     cfg = analyze.load_config(analyze.DEFAULT_CONFIG)
     assert "d3d_tearing_onset_cnn1d/tm_prob" in cfg.labels
     assert "d3d_tearing_time_to_event_dsm/tm_risk_1s" in cfg.labels
+    assert cfg.labels[2] == "d3d_tearing_time_to_event_dsm/tm_time_p50"
     assert cfg.slugs == ("d3d_tearing_onset_cnn1d", "d3d_tearing_time_to_event_dsm")
 
 
@@ -176,3 +177,100 @@ def test_panels_carry_the_archived_truth_when_there_is_some(tmp_path):
     assert panel["onset_s"] == 0.05
     png = analyze.plot_shot(1, panels, tmp_path / "p.png", title_ids=["x/m"])
     assert png.exists() and png.stat().st_size > 5_000
+
+
+@pytest.fixture
+def band_labels(wired):
+    from labelmaker.config import Paths
+
+    paths = Paths(root=wired["root"], corpus=wired["corpus"])
+    t = np.array([0.0, 0.5, 1.0, 1.5, 2.0])
+    values = {"time_p10": np.full(5, 100.0), "time_p50": np.arange(1, 6) * 1000.0,
+              "time_p90": np.full(5, 10000.0)}
+    specs = tuple(LabelSpec(name=name, task="regression", activation="none", units="ms",
+                            classes=(), slug=SLUG, card_id="x/m", time_step_ms=500.0,
+                            ensemble_n=1, artifact_sha256="abc") for name in values)
+    write_labels(paths.labels_file(190000), 190000, t,
+                 {n: Decoded(mean=y, lo=y, hi=y) for n, y in values.items()},
+                 specs, np.array([1, 1, 0, 1, 1], bool), run_id="test", features_sha256="abc")
+    return paths.labels_file(190000)
+
+
+@pytest.mark.parametrize("onset", [1.6, None])
+def test_band_panel_uses_quantile_siblings_and_pre_onset_truth(
+    wired, band_labels, tmp_path, monkeypatch, onset,
+):
+    cfg = analyze.AnalysisConfig(labels=(f"{SLUG}/time_p50",), context=(), threshold=0.5)
+    truth = {"available": True, "onset_s": onset, "t": np.array([0.0, 1.0, 2.0]),
+             "tm_label": np.array([0, 0, 1], bool)}
+    panel, = analyze.panels_for(tmp_path / "missing.h5", band_labels, cfg, truth=truth)
+    assert panel["kind"] == "band" and panel["units"] == "ms"
+    np.testing.assert_allclose(panel["lo"], 100.0)
+    np.testing.assert_allclose(panel["hi"], 10000.0)
+    np.testing.assert_allclose(panel["y"], np.arange(1, 6) * 1000.0)
+    np.testing.assert_array_equal(panel["valid"], [1, 1, 0, 1, 1])
+    if onset is None:
+        assert panel["truth_y"] is None
+    else:
+        np.testing.assert_allclose(panel["truth_t"], [0.0, 0.5, 1.0, 1.5])
+        np.testing.assert_allclose(panel["truth_y"], [1600.0, 1100.0, 600.0, 100.0])
+    from matplotlib.figure import Figure
+
+    savefig = Figure.savefig
+    drawn = []
+
+    def capture(fig, *args, **kwargs):
+        drawn.append(fig.axes[0])
+        return savefig(fig, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", capture)
+    png = analyze.plot_shot(190000, [panel], tmp_path / "band.png", title_ids=["x/m"])
+    ax, = drawn
+    assert ax.get_yscale() == "log" and ax.get_ylabel() == "time_p50 (ms)"
+    assert "p10..p90" in ax.get_legend_handles_labels()[1]
+    truth_lines = [line for line in ax.lines if line.get_label() == "archived truth"]
+    assert len(truth_lines) == (onset is not None)
+    if truth_lines:
+        assert truth_lines[0].get_color() == analyze._TRUTH
+    assert png.exists() and png.stat().st_size > 5000
+
+
+@pytest.mark.parametrize("onset, expected", [(1.6, 2000.0), (2.0, None), (None, None)])
+def test_p50_summary_uses_nearest_grid_row_and_respects_validity(band_labels, onset, expected):
+    got = analyze.summarize_label(band_labels, SLUG, "time_p50", threshold=0.5,
+                                  infer_row={}, truth={"available": True, "onset_s": onset})
+    assert got["p50_at_onset_minus_1s"] == expected
+
+
+def test_analyze_stage_passes_truth_to_p50_summary(wired, band_labels, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from labelmaker import validate
+    from labelmaker.models import registry
+    from labelmaker.models.base import OutputField, OutputSpec
+
+    adapter = registry.load_adapter(SLUG)
+    adapter = replace(adapter, output_spec=OutputSpec(fields=tuple(
+        OutputField(f"time_p{q}", "regression", column=i, units="ms")
+        for i, q in enumerate((10, 50, 90)))))
+    monkeypatch.setattr(registry, "load_adapter", lambda slug: adapter)
+    monkeypatch.setattr(validate, "archived_truth", lambda *a, **kw: {
+        "available": True, "onset_s": 1.6, "t": np.array([0.0, 1.0, 2.0]),
+        "tm_label": np.array([0, 0, 1], bool), "n_rows": 3})
+    out = tmp_path / "analysis"
+    cfg = _cfg(tmp_path, labels=[f"{SLUG}/time_p50"])
+    assert run.main(_argv(wired, cfg, out)) == 0
+    summary = json.loads((out / "190000" / "190000_analysis.json").read_text())
+    assert summary["labels"][f"{SLUG}/time_p50"]["p50_at_onset_minus_1s"] == 2000.0
+
+
+def test_p50_without_quantile_siblings_remains_an_ordinary_panel(band_labels, tmp_path):
+    import h5py
+
+    with h5py.File(band_labels, "a") as f:
+        del f[f"{SLUG}/time_p10"]
+    cfg = analyze.AnalysisConfig(labels=(f"{SLUG}/time_p50",), context=(), threshold=0.5)
+    panel, = analyze.panels_for(tmp_path / "missing.h5", band_labels, cfg)
+    assert panel["kind"] == "label"
+    got = analyze.summarize_label(band_labels, SLUG, "time_p50", threshold=0.5, infer_row={})
+    assert got["p50_at_onset_minus_1s"] is None

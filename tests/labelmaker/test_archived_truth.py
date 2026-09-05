@@ -200,8 +200,9 @@ def test_pooled_rows_and_alarm_quality(wired, monkeypatch, last_horizon):
     monkeypatch.setattr(validate, '_matched_shot', match)
     monkeypatch.setitem(validate.ARCHIVE_TRUTH, f'{slug}/tm_risk_1s',
                         {'kind': 'onset_within', 'horizon_s': last_horizon})
-    names = ['tm_risk_250ms', 'tm_risk_500ms', 'tm_risk_1s']
-    specs = tuple(LabelSpec(name=n, task='binary', activation='none', units='',
+    names = ['tm_risk_250ms', 'tm_risk_500ms', 'tm_risk_1s', 'tm_time_p50']
+    specs = tuple(LabelSpec(name=n, task='regression' if n.endswith('_p50') else 'binary',
+                           activation='none', units='',
                            classes=(), slug=slug, card_id='test/model', time_step_ms=25,
                            ensemble_n=1, artifact_sha256='abc') for n in names)
     for shot in [190000, 190001]:
@@ -213,6 +214,10 @@ def test_pooled_rows_and_alarm_quality(wired, monkeypatch, last_horizon):
                      run_id='test', features_sha256='abc')
     pooled = validate._pooled_onset_rows(slug, [190000, 190001, 99], paths,
                                         archive=wired['archive'], timeout_s=None)
+    regression = pooled["labels"]["tm_time_p50"]
+    np.testing.assert_array_equal(regression["shot"], [190000] * 2)
+    np.testing.assert_allclose(regression["truth"], [75.0, 50.0])
+    assert regression["row_set"] == "pre-onset valid rows of aligned tearing shots only"
     r = pooled['labels']['tm_risk_1s']
     np.testing.assert_array_equal(r['shot'], [190000]*2 + [190001]*4)
     np.testing.assert_allclose(r['t'], [.025, .05, .025, .05, .1, .15])
@@ -223,6 +228,7 @@ def test_pooled_rows_and_alarm_quality(wired, monkeypatch, last_horizon):
     assert 'labels' in pooled['skipped']['99']
     report = validate.alarm_quality(slug, [190000, 190001, 99], paths,
                                     archive=wired['archive'], thresholds=(.5,))
+    assert 'tm_time_p50' not in report['labels']
     label = report['labels']['tm_risk_1s']
     rates = label['thresholds']['0.5']
     assert rates['n_quiet'] == rates['n_tearing'] == 1
@@ -330,3 +336,36 @@ def test_grid_boundary_truth_is_shared_by_plain_and_ipcw_metrics(monkeypatch):
     report = validate.alarm_quality('boundary', [1], Paths.from_env(), thresholds=(.5,))
     assert report['labels']['risk']['n_positive'] == 2
     assert report['labels']['risk']['auroc'] == report['labels']['risk']['ipcw_auc'] == .5
+
+
+@pytest.mark.parametrize("onset", [0.1, None])
+@pytest.mark.parametrize("ratios", [(2.0, 0.5), (2.0, 4.0)])
+def test_time_to_onset_scores_only_positive_valid_pre_onset_predictions(monkeypatch, onset, ratios):
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0] if onset else [0] * N)
+    truth = validate.archived_truth(190000, Paths.from_env())
+    y = np.array([100.0 * ratios[0], 75.0 * ratios[1], 50000.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    valid = np.ones(8, bool)
+    valid[2] = False
+    got = validate.score_against_truth("d3d_tearing_time_to_event_dsm/tm_time_p50",
+                                       y, valid, truth, threshold=0.5)
+    if onset is None:
+        assert got["scored"] is False and "onset" in got["reason"]
+        return
+    assert got["scored"] is True and got["n"] == 2
+    assert got["kind"] == "time to archived onset (ms), tearing shots only"
+    errors = np.log(ratios)
+    assert got["median_abs_log_ratio"] == pytest.approx(np.median(np.abs(errors)))
+    assert got["bias_log"] == pytest.approx(errors.mean(), abs=1e-12)
+    assert got["rmse_log"] == pytest.approx(np.sqrt(np.mean(errors ** 2)))
+    assert "alarm" not in got and "auroc" not in got
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, np.nan, np.inf])
+def test_time_to_onset_drops_nonpositive_nonfinite_predictions(monkeypatch, bad):
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
+    got = validate.score_against_truth("d3d_tearing_time_to_event_dsm/tm_time_p50",
+                                       np.full(8, bad), np.ones(8, bool),
+                                       validate.archived_truth(190000, Paths.from_env()),
+                                       threshold=None)
+    assert got["n"] == 0
+    assert got["median_abs_log_ratio"] is got["bias_log"] is got["rmse_log"] is None

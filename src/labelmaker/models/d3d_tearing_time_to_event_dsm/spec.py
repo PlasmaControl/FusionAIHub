@@ -20,7 +20,8 @@ Substitutions: offline EFIT01 for every EFITRT2 quantity; ZIPFIT fits for the
 mtanh/csaps profiles; labelmaker's 25 ms grid and 50 ms input window for
 upstream's 20 ms samples. Unlike the tearing CNN, this model's training rows
 are not on disk in a form labelmaker reads, so none of these is priced against
-an archive; `validate` cannot score it yet and its card says so.
+its own training archive. Published labels are scored against the aligned
+tearing CNN archive; the card distinguishes fidelity from label quality.
 """
 from __future__ import annotations
 
@@ -79,6 +80,16 @@ OUTPUT_SPEC = OutputSpec(
         OutputField(name, "binary", column=i, activation="none",
                     classes=("no_onset", "onset"))
         for i, name in enumerate(("tm_risk_250ms", "tm_risk_500ms", "tm_risk_1s"))
+    ) + tuple(
+        OutputField(name, "regression", column=i, activation="none", units=units)
+        for i, (name, units) in enumerate((
+            ("tm_time_p10", "ms"), ("tm_time_p50", "ms"), ("tm_time_p90", "ms"),
+            ("tm_time_iqr_log", ""),
+            ("tm_mix_w0", ""), ("tm_mix_w1", ""), ("tm_mix_w2", ""),
+            ("tm_mix_mu0", "ln ms"), ("tm_mix_mu1", "ln ms"), ("tm_mix_mu2", "ln ms"),
+            ("tm_mix_sigma0", ""), ("tm_mix_sigma1", ""), ("tm_mix_sigma2", ""),
+            ("tm_gate_entropy", "nat"),
+        ), start=3)
     )
 )
 
@@ -120,7 +131,13 @@ def load(model_dir):
     def predict(built):
         x = preprocess(built, norm)
         risk = 1.0 - dsm_pickle.survival(graph, x, horizons_ms=HORIZONS_MS)
-        return risk[None, :, :]                      # one member: (1, T, 3)
+        log_w, mu, sigma = dsm_pickle.mixture(graph, x)
+        q = dsm_pickle.quantiles(graph, x, (0.1, 0.5, 0.9))
+        outputs = np.column_stack((
+            risk, q, np.log(q[:, 2]) - np.log(q[:, 0]),
+            np.exp(log_w), mu, sigma, dsm_pickle.gate_entropy(log_w),
+        ))
+        return outputs[None, :, :]                   # one member: (1, T, 17)
 
     return predict
 

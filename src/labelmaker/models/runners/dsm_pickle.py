@@ -157,8 +157,8 @@ def load_dsm(path) -> DsmGraph:
     )
 
 
-def survival(graph: DsmGraph, x, horizons_ms: Sequence[float]) -> np.ndarray:
-    """`S(t | x)` for every row of `x` at every horizon: `(n, len(horizons))`."""
+def mixture(graph: DsmGraph, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return `(log_w, mu, sigma)`, each `(n, k)`, in checkpoint component order."""
     h = torch.as_tensor(np.asarray(x, dtype=np.float64))
     for w in graph.embedding:
         h = torch.clamp(h @ torch.as_tensor(w).T, 0.0, 6.0)
@@ -167,9 +167,47 @@ def survival(graph: DsmGraph, x, horizons_ms: Sequence[float]) -> np.ndarray:
     sigma = torch.tanh(h @ torch.as_tensor(graph.scaleg[0]).T + torch.as_tensor(graph.scaleg[1]))
     sigma = sigma + torch.as_tensor(graph.scale)
     log_w = torch.log_softmax(h @ torch.as_tensor(graph.gate).T / graph.temp, dim=1)
-    out = torch.empty((h.shape[0], len(horizons_ms)), dtype=torch.float64)
+    return log_w.numpy(), mu.numpy(), sigma.numpy()
+
+
+def survival(graph: DsmGraph, x, horizons_ms: Sequence[float]) -> np.ndarray:
+    """`S(t | x)` for every row of `x` at every horizon: `(n, len(horizons))`."""
+    log_w, mu, sigma = map(torch.as_tensor, mixture(graph, x))
+    out = torch.empty((mu.shape[0], len(horizons_ms)), dtype=torch.float64)
     for j, t in enumerate(horizons_ms):
         z = (np.log(float(t)) - mu) / (torch.exp(sigma) * np.sqrt(2.0))
         s_k = 0.5 - 0.5 * torch.erf(z)
         out[:, j] = torch.exp(torch.logsumexp(torch.log(s_k) + log_w, dim=1))
     return out.numpy()
+
+
+def quantiles(graph: DsmGraph, x: np.ndarray, q: Sequence[float]) -> np.ndarray:
+    """Invert mixture survival for event-time quantiles in milliseconds."""
+    log_w, mu, sigma = map(torch.as_tensor, mixture(graph, x))
+    target = 1.0 - torch.as_tensor(np.asarray(q, dtype=np.float64))
+    lo = torch.full((mu.shape[0], target.numel()), np.log(1e-3), dtype=torch.float64)
+    hi = torch.full_like(lo, np.log(1e7))
+
+    def at(log_t):
+        z = (log_t[:, :, None] - mu[:, None, :]) / (torch.exp(sigma[:, None, :]) * np.sqrt(2.0))
+        return ((0.5 - 0.5 * torch.erf(z)) * torch.exp(log_w[:, None, :])).sum(dim=2)
+
+    bracketed = (at(lo) >= target) & (at(hi) <= target)
+    bad_rows = int((~bracketed.all(dim=1)).sum())
+    if bad_rows:
+        raise ValueError(f"quantiles outside [1e-3, 1e7] ms bracket for {bad_rows} rows")
+    # Bisection in log time resolves both short and long event times uniformly.
+    for _ in range(80):
+        mid = (lo + hi) * 0.5
+        below = at(mid) > target
+        lo = torch.where(below, mid, lo)
+        hi = torch.where(below, hi, mid)
+    return torch.exp((lo + hi) * 0.5).numpy()
+
+
+def gate_entropy(log_w: np.ndarray) -> np.ndarray:
+    """Gate entropy in nats per row, with the limiting convention 0 ln 0 = 0."""
+    log_w = np.asarray(log_w, dtype=np.float64)
+    terms = np.zeros_like(log_w)
+    np.multiply(np.exp(log_w), log_w, out=terms, where=np.isfinite(log_w))
+    return -terms.sum(axis=1)

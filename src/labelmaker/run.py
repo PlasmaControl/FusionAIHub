@@ -464,7 +464,7 @@ def analyze_for_shot(shot: int, cfg, out_dir, ctx: RunContext) -> dict:
         if label in have:
             summaries[label] = analyze.summarize_label(
                 labels_path, slug, name, threshold=cfg.threshold_for(label),
-                infer_row=provenance[slug],
+                infer_row=provenance[slug], truth=truth,
             )
             series = read_label(labels_path, slug, name)
             series_valid = read_label(labels_path, slug, f"{name}_valid")

@@ -1398,6 +1398,7 @@ def model_index_results(reports: dict) -> list[dict]:
 #: directly; `onset_within` builds "an onset occurs within `horizon_s`",
 #: which is only a question on rows BEFORE the archived onset.
 ARCHIVE_TRUTH: dict[str, dict] = {
+    "d3d_tearing_time_to_event_dsm/tm_time_p50": {"kind": "time_to_onset"},
     "d3d_tearing_onset_cnn1d/tm_prob": {"kind": "column", "column": 1, "task": "binary"},
     "d3d_tearing_onset_cnn1d/betan": {"kind": "column", "column": 0, "task": "regression"},
     "d3d_tearing_time_to_event_dsm/tm_risk_250ms": {"kind": "onset_within", "horizon_s": 0.25},
@@ -1493,7 +1494,13 @@ def score_against_truth(
     ok = np.asarray(valid, dtype=bool)[index] & np.isfinite(y) & np.isfinite(truth["t"])
     t = truth["t"]
     onset = truth["onset_s"]
-    if rule["kind"] == "column":
+    if rule["kind"] == "time_to_onset":
+        if onset is None or not np.isfinite(onset):
+            return {"scored": False, "reason": "no archived onset for time-to-onset scoring"}
+        kind = "time to archived onset (ms), tearing shots only"
+        keep = ok & (t < onset) & (y > 0)
+        target = (onset - t) * 1000.0
+    elif rule["kind"] == "column":
         target = truth["tm_label"] if rule["task"] == "binary" else truth["betan"]
         kind, keep = "archived column" if rule["task"] == "regression" else "archived label", ok
     else:
@@ -1513,6 +1520,15 @@ def score_against_truth(
         "n_invalid_dropped": n_dropped,
         "onset_s": onset,
     }
+    if rule["kind"] == "time_to_onset":
+        # Subtract logs rather than forming a ratio that may overflow.
+        error = np.log(y_s) - np.log(target_s)
+        out.update(
+            median_abs_log_ratio=float(np.median(np.abs(error))) if error.size else None,
+            bias_log=float(error.mean()) if error.size else None,
+            rmse_log=float(np.sqrt(np.mean(error ** 2))) if error.size else None,
+        )
+        return out
     if rule["kind"] == "column" and rule["task"] == "regression":
         out.update(regression_metrics(y_s, target_s))
         return out
@@ -1548,6 +1564,7 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
 
     Column labels retain all valid rows and their archived column truth;
     onset_within labels retain only pre-onset rows and horizon truth.
+    time_to_onset labels retain positive predictions before onset on tearing shots.
     Arrays are keyed by label name, including archived regression labels for
     downstream reuse. Each label has its own shot lists and skipped reasons;
     top-level lists describe their union. A missing/empty label never turns a
@@ -1591,7 +1608,10 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
                         y = lab.y[0][index]
                         rule = ARCHIVE_TRUTH[f'{slug}/{name}']
                         keep = valid.y[0][index].astype(bool) & np.isfinite(y)
-                        if rule['kind'] == 'onset_within':
+                        if rule["kind"] == "time_to_onset":
+                            keep &= np.isfinite(onset) & (t < onset) & (y > 0)
+                            target = (onset - t) * 1000.0
+                        elif rule['kind'] == 'onset_within':
                             keep &= before
                             target = _onset_within_truth(t, onset, rule['horizon_s'])
                         else:
@@ -1629,6 +1649,8 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
             [], dtype=int if key == 'shot' else float) for key, parts in rows[name].items()}
         labels[name].update(meta[name])
         labels[name]['row_set'] = (
+            "pre-onset valid rows of aligned tearing shots only"
+            if ARCHIVE_TRUTH[f"{slug}/{name}"]["kind"] == "time_to_onset" else
             'pre-onset valid rows of every aligned shot'
             if ARCHIVE_TRUTH[f'{slug}/{name}']['kind'] == 'onset_within'
             else 'all valid rows of every aligned shot')
@@ -1651,7 +1673,7 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
                else 'label-specific populations; see labels.*.row_set', labels={})
     for name, rows in pooled['labels'].items():
         rule = ARCHIVE_TRUTH[f'{slug}/{name}']
-        if rule.get('task') == 'regression':
+        if rule.get("task") == "regression" or rule["kind"] == "time_to_onset":
             continue
         event = np.isfinite(rows['onset_s'])
         duration = np.where(event, rows['onset_s'], rows['t_end']) - rows['t']
