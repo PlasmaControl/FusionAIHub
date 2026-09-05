@@ -44,6 +44,15 @@ _ap.add_argument("--freq_bins", type=int, default=512)
 _ap.add_argument("--patch_f", type=int, default=16)
 _ap.add_argument("--patch_t", type=int, default=16)
 _ap.add_argument("--ks", default="16,48,96,192,384,700")
+_ap.add_argument("--band_pool", type=int, default=0,
+                 help="BAND-POWER representation: mean-pool the freq_bins into this many equal "
+                      "bands before measuring the floor (0 = raw bins, the default). The 1.0 "
+                      "anchor and ~tmean are recomputed ON THE POOLED ARRAY, so 'does the floor "
+                      "drop below 1.0' stays well-posed -- it asks whether THIS representation "
+                      "is linearly predictable at rank n_tok, which is the question a codec "
+                      "inherits. Motivated for ece: its band profile is FLAT (std 0.887-0.943, "
+                      "ac1 0.288-0.371 across all 16 bands), so 512 bins carry little "
+                      "differentiated structure while consuming the whole token budget.")
 _args = _ap.parse_args()
 
 MOD = _args.modality
@@ -58,6 +67,16 @@ def stream(cfg, shots, n_windows, tag):
     idx = np.linspace(0, n - 1, min(n_windows, n)).astype(int).tolist()
     dl = DataLoader(Subset(ds, idx), batch_size=8, num_workers=8, shuffle=False)
     return np.concatenate([a.numpy() for a, _b in dl], 0)      # (N, C, F, T)
+
+
+def band_pool(X, k):
+    """(N, C, F, T) -> (N, C, k, T) by mean-pooling F into k equal bands. k<=0 is a no-op."""
+    if k <= 0:
+        return X
+    N, C, F, T = X.shape
+    if F % k:
+        raise SystemExit(f"--band_pool {k} must divide freq_bins {F}")
+    return X.reshape(N, C, k, F // k, T).mean(axis=3)
 
 
 def _chunked_metrics(pred_fn, Xte, chunk=24):
@@ -173,7 +192,9 @@ else:
 
 t0 = time.time()
 Xtr = stream(cfg, train_shots, N, "plateau_tr")
+Xtr = band_pool(Xtr, _args.band_pool)
 Xte = stream(cfg, test_shots, N, "audit4")
+Xte = band_pool(Xte, _args.band_pool)
 vals = int(np.prod(Xte.shape[1:]))
 bits = cfg.n_tok * np.log2(cfg.codebook_size)
 print(f"\n=== {MOD}  n_fft {cfg.stft_n_fft} / {cfg.freq_bins} bins / patch "

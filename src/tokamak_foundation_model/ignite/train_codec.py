@@ -3805,6 +3805,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "texture is no longer one shared basis tiled on the patch lattice — the "
                         "measured checkerboard (gate.patch_lattice_metrics; mhr recon 61.6 vs GT "
                         "1.15). 0/unset = off (byte-identical decoder).")
+    p.add_argument("--std_weight", type=float, default=None,
+                   help="Weight on the AMPLITUDE-RATIO term |log std(recon) - log std(target)| "
+                        "per (window, channel) -- the quantity the audit reports as std_ratio "
+                        "(ideal 1.0). 0.0 = off and byte-identical. Added 2026-09-05 because "
+                        "ece's std_r is pinned at 0.232-0.267 across six arms spanning two patch "
+                        "geometries, two learning rates and EMA: no existing knob moves it, and "
+                        "pixel_anchor_weight matches PIXELS, not amplitude. nRMSE is blind to it "
+                        "by construction (its minimiser is the conditional mean).")
     p.add_argument("--peak_weight", type=float, default=None,
                    help="SPECTRO: weight on losses.peak_l1_loss -- L1 reweighted by each "
                         "frequency bin's prominence over its own column mean, so the "
@@ -4204,7 +4212,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         if ddp.is_main:
             print(f"[train_codec] multiscale_recon_scales -> {cfg.multiscale_recon_scales}"
                   f"{'  (includes FULL resolution)' if 1 in cfg.multiscale_recon_scales else ''}")
-    for _knob in ("ms_ssim_weight", "peak_weight"):
+    for _knob in ("ms_ssim_weight", "peak_weight", "std_weight"):
         _v = getattr(args, _knob, None)
         if _v is not None and hasattr(cfg, _knob):
             setattr(cfg, _knob, float(_v))
