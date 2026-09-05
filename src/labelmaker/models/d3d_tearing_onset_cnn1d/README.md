@@ -22,52 +22,52 @@ model-index:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
         mask)
       type: d3d-faith-corpus
     metrics:
     - name: rmse (archived inputs)
       type: rmse
-      value: 0.11145168853458205
+      value: 0.128024620759937
   - task:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
         mask)
       type: d3d-faith-corpus
     metrics:
     - name: auroc (archived inputs)
       type: roc_auc
-      value: 0.9497427900228241
+      value: 0.9317557907864519
     - name: f1_at_0.5 (archived inputs)
       type: f1
-      value: 0.6620959843290891
+      value: 0.5805293853746074
   - task:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
         mask)
       type: d3d-faith-corpus
     metrics:
     - name: rmse (reconstructed inputs)
       type: rmse
-      value: 0.12808783311320734
+      value: 0.14926923745153772
   - task:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n_shots=77/101 requested, n_rows=4884/5671 valid after labelmaker's validity
+      name: d3d overlap shots (n_shots=100/100 requested, n_rows=6400/7373 valid after labelmaker's validity
         mask)
       type: d3d-faith-corpus
     metrics:
     - name: auroc (reconstructed inputs)
       type: roc_auc
-      value: 0.9165758097397513
+      value: 0.8966370283341698
     - name: f1_at_0.5 (reconstructed inputs)
       type: f1
-      value: 0.6393738711619507
+      value: 0.5553121577217963
 labelmaker:
   status: implemented
   slug: d3d_tearing_onset_cnn1d
@@ -129,11 +129,20 @@ labelmaker:
     activation: sigmoid
     units: ''
   approximations:
-  - R0_EFITRT1 and kappa_EFITRT1 are served by offline EFIT01 (rmaxis, kappa); measured median relative
-    difference 8.8e-3 and 3.1e-3 on shot 185945
-  - 1/qpsi_EFITRT1 is served by offline EFIT01 qpsi; measured 6.4e-2
-  - the three kinetic profiles are ZIPFIT fits, not the pipeline's own mtanh and csaps fits; measured
-    2.0e-1 (ne), 1.8e-1 (Te), 1.7e-1 (rotation) median relative difference, correlation 0.98-0.99
+  - 'R0_EFITRT1 and kappa_EFITRT1 are served by offline EFIT01 (rmaxis, kappa); measured against the model''s
+    own training inputs over the 100-shot proof-of-concept pool (7,373 matched rows): median relative
+    difference 2.5e-3 and 3.3e-3, correlation 0.88 and 0.97'
+  - 1/qpsi_EFITRT1 is served by offline EFIT01 qpsi; measured 3.4e-2 median relative difference, correlation
+    0.95, over the same pool (243,309 profile points)
+  - 'the three kinetic profiles are ZIPFIT fits, not the pipeline''s own mtanh and csaps fits; measured
+    against the training inputs over the same pool: 6.7e-2 (ne, correlation 0.92), 1.25e-1 (Te, 0.97)
+    and 1.4e-1 (rotation, 0.93) median relative difference. This is the dominant reconstruction error,
+    and the rotation profile is absent altogether on ~22% of shots'
+  - bt and ip come from the archive where its group carries them (31 of the 100 proof-of-concept shots)
+    and from PTDATA through fdp otherwise (69 of 100), windowed into the archive's own 50 ms mean ending
+    at t; measured against the training inputs over the pool, 5.3e-6 (bt) and 9.6e-6 (ip) median relative
+    difference, so the fdp path is not a visible substitution for these two. pinj, tinj, tritop, tribot,
+    gapin, pres and the ECH pair are served by the archive and are exact (median relative difference 0)
   - 'ech_pwr_total is served by the archive column EC.PECH, the machine total. NOT ech_pwr, which is stored
     (1, 240) and holds a single gyrotron (ech_names is length 1: LEIA, LUKE or TINMAN). Established by
     exact row alignment to the model''s own training array: matching x0.npy rows to archive time indices
@@ -144,11 +153,11 @@ labelmaker:
     so a corrected row still counts as a MEASURED power, which is what lets the rule below tell a benign
     gap from a fabrication. On the archive path there is nothing to correct - measured, EC.PECH has zero
     negative readings in 578,160 samples - but on the corpus path ~3.1% of per-gyrotron samples are negative,
-    to -112 kW. NOTE: this percentage was measured before the per-resolver sampling
-    fix, which now windows every corpus-served field (`ns.SAMPLING_BY_SOURCE`) rather than reading it
-    nearest-sample; it describes the raw corpus samples, not a quantity `build()` computes today, and
-    is pending re-measurement under the current convention. ECH''s rule, threshold and locator are unchanged
-    and remain on hold - this note is about the number''s currency, not about the rule'
+    to -112 kW. NOTE: this percentage was measured before the per-resolver sampling fix, which now windows
+    every corpus-served field (`ns.SAMPLING_BY_SOURCE`) rather than reading it nearest-sample; it describes
+    the raw corpus samples, not a quantity `build()` computes today, and is pending re-measurement under
+    the current convention. ECH''s rule, threshold and locator are unchanged and remain on hold - this
+    note is about the number''s currency, not about the rule'
   - 'a NaN ECH power is treated as UNMEASURED, which is labelmaker''s own conservatism and not upstream
     fidelity: train.py:80 clips a NaN to 0 and keeps the row. It coincides with upstream on the archive
     only because the location is NaN on exactly the same rows. EC.PECH is NaN on 56.8% of rows, and 23.0%
@@ -179,12 +188,11 @@ labelmaker:
     from the corpus source instead, and the corpus reads all 12 gyrotrons: it serves 38 of the 49 and
     shows zero power flowing on every one, which CONFIRMS ECH-off rather than assuming it. Upstream, by
     contrast, fabricated a 0.0 for an absent ECH signal and trained on those rows; labelmaker declines
-    to invent the value and takes the evidence from the second source. NOTE:
-    ''38 of the 49 show zero power'' was measured against the nearest-sample series `build()` produced
-    before the per-resolver sampling fix; `build()` now windows a corpus-served field into the archive''s
-    50 ms mean instead, a different derived series from the same raw samples, so this count is pending
-    re-measurement under the current convention. ECH''s rule, threshold and locator are unchanged and
-    remain on hold'
+    to invent the value and takes the evidence from the second source. NOTE: ''38 of the 49 show zero
+    power'' was measured against the nearest-sample series `build()` produced before the per-resolver
+    sampling fix; `build()` now windows a corpus-served field into the archive''s 50 ms mean instead,
+    a different derived series from the same raw samples, so this count is pending re-measurement under
+    the current convention. ECH''s rule, threshold and locator are unchanged and remain on hold'
   - inference evaluates the Keras graph in torch (models/runners/keras_h5.py); checked against frozen
     real-TensorFlow outputs (tensorflow-cpu==2.15.1) on 1,673 reference rows x 10 members, gated on a
     scale-normalized max (measured 2.71e-06 against 1e-5), a median absolute difference (7.65e-07 against
@@ -250,6 +258,9 @@ different artifact) and not a substitute for magnetics-based mode detection.
   the Evaluation section.
 - `betan` is a secondary head; the upstream training filter kept only rows with
   `0 < betan < 5`, so predictions far outside that band are unreliable.
+- A shot missing any input for its whole record has no valid rows at all - the
+  ZIPFIT rotation profile is absent on ~22% of shots - and its labels are
+  published entirely as extrapolations: 5 of the 100 proof-of-concept shots.
 
 ## Training details
 
@@ -272,24 +283,35 @@ into `model-index` above and, in full, into
   1e-5), plus the raw absolute max (5.6005e-05, float32 arithmetic noise -
   see `labelmaker.validate.adapter_fidelity`).
 - `reconstruction.json` - per-feature agreement between labelmaker's features
-  and the model's own training rows on the corpus/archive overlap shots.
-- `label_quality.json` - AUROC, F1 at 0.5 and calibration against the archived
-  labels, scored two ways over the SAME rows: with archived (training) inputs
-  and with labelmaker's own reconstructed inputs, both restricted to the rows
-  labelmaker's own validity rule would actually publish a label for. The
-  `model-index` numbers above are this row-matched pair; the difference
-  between them is the reconstruction penalty. `dataset.name` states how many
-  of the requested shots were used and how many of the matched rows passed the
-  validity mask - both denominators matter: shots skip exactly when their
-  archive lacks `bt`/`ip`/`tritop`/`tribot`/`gapin`, which correlates with
-  whatever else that shot's archive is missing, so the shots used are not a
-  random sample of the shots requested even at full coverage. The full JSON
-  also reports each side scored over every matched row regardless of
-  validity (`*_all`, diagnostic only, never the published number) and a
-  `skip_reasons` histogram with a warning when one cause dominates the
-  skips - see `labelmaker.validate.label_quality`'s docstring for why scoring
-  the two inputs over different row sets (an earlier version of this card)
-  understates the penalty and can invert which direction a metric moved.
+  and the model's own training rows on the corpus/archive overlap shots. On
+  the 100-shot proof-of-concept pool: the archive-served columns (`pinj`,
+  `tinj`, `tritop`, `tribot`, `gapin`, `pres`, the ECH pair) are exact;
+  `bt`/`ip` through fdp 5e-6 and 1e-5; the offline-EFIT01-for-EFITRT1
+  substitutions 2.5e-3 (R0), 3.3e-3 (kappa) and 3.4e-2 (1/qpsi); the ZIPFIT
+  profiles 6.7e-2 (ne), 1.25e-1 (Te) and 1.4e-1 (rotation) median relative
+  difference.
+- `label_quality.json` - AUROC, F1 at 0.5, precision, recall, Brier and
+  calibration against the archived labels, scored two ways over the SAME
+  rows: with archived (training) inputs and with labelmaker's own
+  reconstructed inputs, both restricted to the rows labelmaker's own validity
+  rule would actually publish a label for. The `model-index` numbers above are
+  this row-matched pair; the difference between them is the reconstruction
+  penalty - on the proof-of-concept pool, `tm_prob` AUROC 0.932 -> 0.897
+  (-0.035) and `betan` RMSE 0.128 -> 0.149 (+0.021) over 6,400 valid rows of
+  7,373 matched. `dataset.name` states how many of the requested shots were
+  used and how many of the matched rows passed the validity mask - both
+  denominators matter. The archived rows are aligned to labelmaker's
+  timesteps by an exact match on whichever of `bt`/`ip`/`tritop`/`tribot`/
+  `gapin` the archive served for that shot (all five on 31 of the 100, the
+  three geometry columns on the 69 where fdp supplied `bt`/`ip`), with the
+  reconstructed columns breaking exact ties; every shot in the pool aligned at
+  distance zero. A shot that cannot be aligned is skipped and diagnosed, and
+  the full JSON also reports each side scored over every matched row
+  regardless of validity (`*_all`, diagnostic only, never the published
+  number) and a `skip_reasons` histogram with a warning when one cause
+  dominates - see `labelmaker.validate.label_quality`'s docstring for why
+  scoring the two inputs over different row sets (an earlier version of this
+  card) understates the penalty and can invert which direction a metric moved.
 
 ## Technical specifications
 

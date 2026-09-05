@@ -470,7 +470,7 @@ def test_update_model_index_leaves_card_discrepancies_empty(monkeypatch, tmp_pat
 def test_update_model_index_preserves_approximations_content(monkeypatch, tmp_path):
     """`card_discrepancies` never inspects
     `labelmaker.approximations`, so a future `safe_dump` change that mangled
-    those 12 prose entries would pass the whole suite silently. A
+    those prose entries would pass the whole suite silently. A
     `yaml.safe_load` before/after equality test on that block closes it
     cheaply, against the real card - the one this rewrite actually touches.
     """
@@ -479,7 +479,7 @@ def test_update_model_index_preserves_approximations_content(monkeypatch, tmp_pa
     approximations_before = registry.parse_card(text_before)["labelmaker"][
         "approximations"
     ]
-    assert len(approximations_before) == 12
+    assert len(approximations_before) >= 12  # the block is substantial, not a stub
 
     copy = tmp_path / "README.md"
     copy.write_text(text_before)
