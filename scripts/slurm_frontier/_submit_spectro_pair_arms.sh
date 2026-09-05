@@ -652,6 +652,40 @@ if [ -n "${ARMS_EXTRA}" ]; then
     ARMS_STR="$(printf '%s' "${ARMS_STR}" | sed "s#;# ${ARMS_EXTRA};#g") ${ARMS_EXTRA}"
 fi
 
+# ---------------------------------------------------------------------------------------- #
+# HARD GUARD: n_tok MUST STAY 192. USER CONSTRAINT, NOT A PREFERENCE.
+#
+# n_tok = (freq_bins // patch_f) * (time_frames // patch_t) = (512 // pf) * (96 // pt).
+# Legal aspects: 16x16 (32x6), 8x32 (64x3), 32x8 (16x12), 64x4 (8x24). Anything else is
+# forbidden and this loop refuses to submit it.
+#
+# WHY IT IS ABSOLUTE: the v3 production frame-code cache is BUILT at 1017 tokens/frame over
+# 8753/8753 shots. 1017 matches v2, which is the only reason the MEASURED 2.9055 no-skill CE
+# baseline still applies. Changing any modality's n_tok invalidates the cache (a ~3.6 h
+# 8-node rebuild) AND makes every CE number in the project incomparable. FRAME_LAYOUT is a
+# USER decision. If a modality genuinely needs a different width: STOP, do not launch, report.
+_FB=512; _TF=96; _WANT=192
+_IFS_SAVE="$IFS"; IFS=';'
+for _arm in ${ARMS_STR}; do
+    IFS="$_IFS_SAVE"
+    _name="${_arm%%|*}"; _args="${_arm#*|}"
+    _pf=16; _pt=16
+    case "${_args}" in *--patch_f*) _pf=$(printf '%s\n' "${_args}" | sed 's/.*--patch_f  *\([0-9]*\).*/\1/') ;; esac
+    case "${_args}" in *--patch_t*) _pt=$(printf '%s\n' "${_args}" | sed 's/.*--patch_t  *\([0-9]*\).*/\1/') ;; esac
+    if [ $(( _FB % _pf )) -ne 0 ] || [ $(( _TF % _pt )) -ne 0 ]; then
+        echo "FATAL: arm ${_name}: patch ${_pf}x${_pt} does not divide ${_FB}x${_TF}." >&2; exit 2
+    fi
+    _ntok=$(( (_FB / _pf) * (_TF / _pt) ))
+    if [ "${_ntok}" -ne "${_WANT}" ]; then
+        echo "FATAL: arm ${_name}: patch ${_pf}x${_pt} -> n_tok ${_ntok}, but FRAME_LAYOUT requires ${_WANT}." >&2
+        echo "       Refusing to submit. n_tok is a USER decision -- report, do not launch." >&2
+        exit 2
+    fi
+    echo "[ntok-guard] ${_name}: patch ${_pf}x${_pt} -> n_tok ${_ntok} OK"
+    IFS=';'
+done
+IFS="$_IFS_SAVE"
+
 export MODALITY="${MODS%% *}" # per-arm --modality overrides this; only names the default
 export N_SHOTS=9000           # MANDATORY: a wrong N cold-scans (33 min > NCCL watchdog)
 export EVAL_N_SHOTS=16
