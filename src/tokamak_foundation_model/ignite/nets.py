@@ -452,9 +452,9 @@ class SpectroConvDecoder(nn.Module):
         for layer in self.up:
             h = layer(h)
         # If a patch size was not a power of 2 (upsample stack under-shoots), snap to (F, T).
-        if h.shape[-2] != cfg.freq_bins or h.shape[-1] != cfg.time_frames:
+        if h.shape[-2] != cfg.eff_freq_bins or h.shape[-1] != cfg.time_frames:
             h = F.interpolate(
-                h, size=(cfg.freq_bins, cfg.time_frames),
+                h, size=(cfg.eff_freq_bins, cfg.time_frames),
                 mode="bilinear", align_corners=False,
             )
         return self.to_out(h)

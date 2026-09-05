@@ -232,13 +232,28 @@ def _boxcar_last(x: np.ndarray, k: int, mode: str = "valid") -> np.ndarray:
     return (head - tail) / float(k)
 
 
+def _row_width_hz(cfg) -> float:
+    """Hz per ROW of the array the codec actually sees.
+
+    Raw STFT: one row is one bin, STFT_FS / stft_n_fft (488 Hz at 500 kHz / 1024).
+    BAND-POWER (cfg.band_pool > 0): one row is freq_bins/band_pool bins pooled together, so a
+    row is that many times wider. Without this the axis labels a 64-band window as 64 BINS and
+    understates the span 8x -- it rendered "0-31 kHz" for a window that covers 0-250 kHz.
+    """
+    hz = STFT_FS / float(getattr(cfg, "stft_n_fft", 1024))
+    bp = int(getattr(cfg, "band_pool", 0) or 0)
+    if bp > 0:
+        hz *= float(getattr(cfg, "freq_bins", 512)) / float(bp)
+    return hz
+
+
 def bin_to_khz(cfg, b: int) -> float:
-    """STFT bin index -> kHz. Bin width is STFT_FS / stft_n_fft (488 Hz at 500 kHz / 1024)."""
-    return float(b) * (STFT_FS / float(getattr(cfg, "stft_n_fft", 1024))) / 1e3
+    """Row index of the modelled array -> kHz (band-power aware; see :func:`_row_width_hz`)."""
+    return float(b) * _row_width_hz(cfg) / 1e3
 
 
 def khz_to_bin(cfg, khz: float) -> int:
-    return int(round(khz * 1e3 / (STFT_FS / float(getattr(cfg, "stft_n_fft", 1024)))))
+    return int(round(khz * 1e3 / _row_width_hz(cfg)))
 
 
 def _masked_bct(mask: Optional[np.ndarray], shape):
@@ -701,9 +716,16 @@ def print_table(rows: List[Dict], floor: Optional[float] = None,
     print(f"\ntrivial baselines (same windows, same mask, each with its OWN masked mean): "
           f"self {b['base_self']:.4f}  wcmean {b['base_wcmean']:.4f} (the 1.0 anchor)  "
           f"tmean {b['base_tmean']:.4f}  cfmean {b['base_cfmean']:.4f}")
-    if floor is not None:
+    # A floor of 0 means "not supplied" -- this script NEVER computes one (no PCA lives here;
+    # analysis/_specport_plateau.py measures it). Printing 0.0000 as though it were measured put
+    # an unusable reference into a live table, which is worse than no reference at all.
+    if floor:
         print(f"out-of-sample LINEAR FLOOR at k=n_tok: {floor:.4f}  (context only -- nRMSE is "
-              f"a floor to CLEAR, not the ranking key)")
+              f"a floor to CLEAR, not the ranking key; MEASURED by _specport_plateau.py in THIS "
+              f"representation, never transferred from another)")
+    else:
+        print("out-of-sample LINEAR FLOOR: NOT SUPPLIED for this representation "
+              "(this script does not compute one; measure it with analysis/_specport_plateau.py)")
     if hf_ref:
         print(f"\nhf_ratio CALIBRATION on these windows: coherent ceiling (GT smoothed over 5 "
               f"STFT frames) {hf_ref['hf_tsmooth']:.3f}  |  patch-level floor (exact per-patch "
@@ -817,7 +839,7 @@ def make_figure(out_png: str, modality: str, shot: str, X, M, recon, cfg, times,
 # ------------------------------------------------------------------------------------ #
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--mode", choices=["score", "figure", "structure"], required=True)
+    ap.add_argument("--mode", choices=["score", "figure", "structure", "perchan"], required=True)
     ap.add_argument("--modality", required=True, choices=list(tc.SPECTRO_MODALITIES))
     ap.add_argument("--arms", default="", help="label=ckpt,label=ckpt,...")
     ap.add_argument("--eval_n_shots", type=int, default=16)
@@ -879,6 +901,13 @@ def main():
     # Codecs with DIFFERENT standardisation must be scored in SEPARATE runs and their numbers
     # never placed in one table.
     if len(specs) > 1:
+        # The pool signature is EVERY cfg field that changes the ground-truth array. Two so far,
+        # both learned the hard way:
+        #   logpow_freq_mean -> per-freq log-z (the 2026-09-04 ece contamination)
+        #   band_pool        -> BAND-POWER width. A 64-band GT and a 16-band GT are different
+        #                       arrays of different SHAPE; mixing them is not merely mis-scaled,
+        #                       and their 1.0 anchors, tmean and patchmean ceilings are all
+        #                       representation-specific.
         _sig = {}
         for _lab, _ck in specs:
             if not Path(_ck).exists():
@@ -887,16 +916,24 @@ def main():
                 _c = load_codec(_ck, device="cpu")[1]
             except Exception:
                 continue
-            _sig.setdefault(getattr(_c, "logpow_freq_mean", None) is not None, []).append(_lab)
+            # freq_bins is part of the signature too: a 128-bin CROP and a 512-bin window are
+            # different arrays of different shape, with different anchors, tmean and patchmean
+            # ceilings -- exactly like band_pool. Added after the crop leg, before it could bite.
+            _key = (getattr(_c, "logpow_freq_mean", None) is not None,
+                    int(getattr(_c, "band_pool", 0) or 0),
+                    int(getattr(_c, "freq_bins", 512)))
+            _sig.setdefault(_key, []).append(_lab)
         if len(_sig) > 1:
-            _on = _sig.get(True, []); _off = _sig.get(False, [])
+            _lines = "\n".join(
+                f"  log-z={'ON ' if k[0] else 'OFF'} band_pool={k[1]:<4} freq_bins={k[2]:<4} ({len(v)}): "
+                f"{', '.join(v[:6])}{' ...' if len(v) > 6 else ''}"
+                for k, v in sorted(_sig.items()))
             raise SystemExit(
-                "REFUSING TO SCORE: the arms disagree on INPUT STANDARDISATION, so one pool "
-                "cannot serve them.\n"
-                f"  per-freq log-z ON  ({len(_on)}): {', '.join(_on[:6])}{' ...' if len(_on)>6 else ''}\n"
-                f"  per-freq log-z OFF ({len(_off)}): {', '.join(_off[:6])}{' ...' if len(_off)>6 else ''}\n"
-                "The ground truth is built from the FIRST arm's cfg; the others would be fed an "
-                "input distribution they never saw. Score them in separate runs."
+                "REFUSING TO SCORE: the arms disagree on the INPUT REPRESENTATION, so one pool "
+                "cannot serve them.\n" + _lines + "\n"
+                "The ground truth is built from the FIRST arm's cfg; the others would be scored "
+                "against an array they were never trained on. Score them in separate runs, and "
+                "re-derive tmean / wcmean / patchmean / the hf ceiling in EACH representation."
             )
 
     shots = held_out_shots(args.modality, args.eval_n_shots)
@@ -944,10 +981,62 @@ def main():
             bk = (float(lo), float(hi))
         title = args.title or (
             f"IGNITE {args.modality} spectrogram codec [{label}] - GT vs reconstruction, "
-            + (f"{bk[0]:g}-{bk[1]:g} kHz zoom" if bk else "full 0-250 kHz")
+            # NOT a hardcoded "0-250 kHz": with --freq_bins the window is CROPPED, so the full
+            # span is whatever the modelled rows cover (freq_bins=64 -> 0-31.25 kHz). The render
+            # that exposed this was titled "full 0-250 kHz" over a 0-31 kHz axis.
+            + (f"{bk[0]:g}-{bk[1]:g} kHz zoom" if bk
+               else f"full 0-{bin_to_khz(cfg, cfg.eff_freq_bins):g} kHz")
             + ", gaps never filled")
         make_figure(out, args.modality, shot, X, M, recon, cfg, times, chans, title,
                     band_khz=bk)
+        return
+
+    if args.mode == "perchan":
+        # PER-CHANNEL nRMSE / peakF1. The pooled table averages over 40 ece channels, and the
+        # render showed those channels are NOT alike: on ece_cr64_s1, ch20 scores nRMSE 0.944
+        # with a sharp 15->10 kHz track while ch0 scores 1.131 with none. A pooled 1.0271 that is
+        # a mixture of "clears the anchor" and "noise" is a materially different result from
+        # "uniformly misses by 0.027", and only a per-channel breakdown can tell them apart.
+        _c0, cfg0 = load_codec(specs[0][1], device="cpu")[:2]
+        X, M = window_pool(args.modality, cfg0, shots, args.n_windows)
+        print(f"[{args.modality}] per-channel on {X.shape[0]} windows, C={X.shape[1]}, "
+              f"freq_bins={cfg0.eff_freq_bins} ({bin_to_khz(cfg0, cfg0.eff_freq_bins):g} kHz)",
+              flush=True)
+        out = {}
+        for label, ckpt in specs:
+            if not Path(ckpt).exists():
+                print(f"  SKIP {label}"); continue
+            codec, _cc, _k = load_codec(ckpt, device=args.device)
+            r, _ = reconstruct(codec, X, batch=args.batch_size, device=args.device)
+            del codec
+            rows = []
+            for c in range(X.shape[1]):
+                rc, xc = r[:, c:c + 1], X[:, c:c + 1]
+                mc = None if M is None else M[:, c:c + 1]
+                d = gate.decode_fidelity(rc, xc, full_spec=True, mask=mc)
+                rows.append((c, float(d["spec_nrmse"]), float(d["peak_f1"]),
+                             float(d["spec_corr2d"])))
+            arr = np.array([[a[1], a[2], a[3]] for a in rows])
+            n_clear = int((arr[:, 0] < 1.0).sum())
+            print(f"\n=== {label} ===")
+            print(f"  channels CLEARING the 1.0 anchor: {n_clear}/{len(rows)} "
+                  f"({100.0 * n_clear / len(rows):.0f}%)")
+            print(f"  nRMSE   min {arr[:,0].min():.4f}  p25 {np.percentile(arr[:,0],25):.4f}  "
+                  f"median {np.median(arr[:,0]):.4f}  p75 {np.percentile(arr[:,0],75):.4f}  "
+                  f"max {arr[:,0].max():.4f}")
+            print(f"  peakF1  min {arr[:,1].min():.4f}  median {np.median(arr[:,1]):.4f}  "
+                  f"max {arr[:,1].max():.4f}")
+            best = sorted(rows, key=lambda z: z[1])[:8]
+            print("  BEST 8 channels (by nRMSE):  " +
+                  "  ".join(f"ch{c}:{n:.3f}/{p:.3f}" for c, n, p, _ in best))
+            worst = sorted(rows, key=lambda z: -z[1])[:5]
+            print("  WORST 5:                     " +
+                  "  ".join(f"ch{c}:{n:.3f}/{p:.3f}" for c, n, p, _ in worst))
+            out[label] = [{"ch": c, "nrmse": n, "peak_f1": p, "corr2d": cc} for c, n, p, cc in rows]
+        if args.json:
+            Path(args.json).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.json).write_text(json.dumps(out, indent=1, default=float))
+            print("wrote", args.json)
         return
 
     # --mode score

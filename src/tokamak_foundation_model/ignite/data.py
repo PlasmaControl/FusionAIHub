@@ -215,6 +215,16 @@ def log_power_stft(raw: ArrayLike, cfg: SpectroCodecConfig) -> torch.Tensor:
             spec = (spec - mu) / sd
         else:
             spec = (spec - mu) / (sd + 1e-5)
+    # BAND-POWER pooling, LAST. Mean-pools freq_bins into cfg.band_pool equal bands, matching the
+    # order analysis/_specport_plateau.py --band_pool measured (it pooled the dataset OUTPUT, i.e.
+    # after crop + per-freq log-z + instance norm). Doing it earlier would invalidate the (C, F)
+    # log-z stats, which are defined at the unpooled width. No-op when band_pool <= 0.
+    _bp = int(getattr(cfg, "band_pool", 0) or 0)
+    if _bp > 0:
+        F = spec.shape[-2]
+        if F % _bp:
+            raise ValueError(f"band_pool {_bp} must divide freq_bins {F}")
+        spec = spec.reshape(*spec.shape[:-2], _bp, F // _bp, spec.shape[-1]).mean(dim=-2)
     return spec
 
 

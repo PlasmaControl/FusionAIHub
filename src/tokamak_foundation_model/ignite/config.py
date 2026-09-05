@@ -69,6 +69,23 @@ class SpectroCodecConfig:
     # data / shape
     channels: int = 1
     freq_bins: int = 512          # cropped from n_fft//2+1 = 513
+    # BAND-POWER input representation. 0 = OFF (raw STFT bins, byte-identical).
+    # >0 mean-pools the ``freq_bins`` STFT bins into this many equal bands as the LAST step of
+    # ``data.log_power_stft`` -- AFTER the crop and AFTER per-freq log-z, which is the order the
+    # floor probe measured (it pooled the CodecPairDataset output).
+    # MEASURED 2026-09-05, out-of-sample linear floor at k=n_tok=192 on ece:
+    #     pool 0 (raw)  1.0063   0.0010 bits/value   <- ABOVE the 1.0 constant anchor
+    #     pool 64       0.9843   0.0078
+    #     pool 16       0.9274   0.0311
+    #     pool 8        0.8826   0.0623
+    # READ THAT WITH CARE: the floor tracks bits/value almost exactly, because pooling shrinks
+    # the TARGET (1.97M values -> 30720 at pool 8). Floors at different pools are NOT comparable
+    # -- they are different targets -- and mirnov improves too (0.8708 -> 0.7292 at pool 16).
+    # So this is a real change in what the codec is asked to represent, and EVERY calibration
+    # number (patchmean, tmean, wcmean, the hf coherent ceiling) must be re-derived in-space.
+    # n_tok is UNAFFECTED: it is (eff_freq_bins // patch_f) * (time_frames // patch_t) and the
+    # patch size is chosen per pool to keep it at 192.
+    band_pool: int = 0
     time_frames: int = 96         # ~98 STFT frames / 50 ms, cropped to a multiple of patch_t
     # DESIGNED per-frame budget (Phase-B frame layout): 192 tokens / spectro modality.
     # patch_f=16 -> 512/16 = 32 freq-patches (~8 kHz each, freq-FINE to resolve the coherent
@@ -574,8 +591,17 @@ class SpectroCodecConfig:
     # this reason; the SELECTION score is deliberately unchanged (they are informational).
 
     @property
+    def eff_freq_bins(self) -> int:
+        """Frequency rows the MODEL sees: band_pool when pooling, else freq_bins.
+
+        freq_bins keeps its original meaning (the STFT crop width, and the shape of the
+        per-freq log-z stats); only the model-facing geometry follows the pooled width.
+        """
+        return int(self.band_pool) if int(self.band_pool or 0) > 0 else int(self.freq_bins)
+
+    @property
     def n_freq_patch(self) -> int:
-        return self.freq_bins // self.patch_f
+        return self.eff_freq_bins // self.patch_f
 
     @property
     def n_time_patch(self) -> int:
@@ -617,8 +643,8 @@ class SpectroCodecConfig:
 
     @property
     def gain_patch_f(self) -> int:
-        """Frequency bins per gain token (freq_bins / n_gain_tok)."""
-        return self.freq_bins // max(1, self.n_gain_tok)
+        """Frequency bins per gain token (eff_freq_bins / n_gain_tok)."""
+        return self.eff_freq_bins // max(1, self.n_gain_tok)
 
     @property
     def gain_values_per_tok(self) -> int:
@@ -633,7 +659,12 @@ class SpectroCodecConfig:
         return self.n_gain_tok * log2(self.codebook_size)
 
     def __post_init__(self) -> None:
-        assert self.freq_bins % self.patch_f == 0, "freq_bins must be divisible by patch_f"
+        assert self.eff_freq_bins % self.patch_f == 0, (
+            f"eff_freq_bins ({self.eff_freq_bins}) must be divisible by patch_f "
+            f"({self.patch_f}); band_pool={self.band_pool}")
+        if self.band_pool:
+            assert self.freq_bins % self.band_pool == 0, (
+                f"band_pool ({self.band_pool}) must divide freq_bins ({self.freq_bins})")
         assert self.time_frames % self.patch_t == 0, "time_frames must be divisible by patch_t"
         if getattr(self, "gain_shape", False):
             g = int(self.gain_tokens)
@@ -641,8 +672,8 @@ class SpectroCodecConfig:
                 f"gain_tokens ({g}) must be in [1, n_tok={self.n_tok}); a codec with no shape "
                 f"tokens left is an envelope coder, not a spectrogram codec"
             )
-            assert self.freq_bins % g == 0, (
-                f"gain_tokens ({g}) must divide freq_bins ({self.freq_bins}): each gain token "
+            assert self.eff_freq_bins % g == 0, (
+                f"gain_tokens ({g}) must divide eff_freq_bins ({self.eff_freq_bins}): each gain token "
                 f"owns one contiguous frequency band's (level, sigma) for all channels"
             )
             assert self.gain_hidden >= 1, "gain_hidden must be >= 1"

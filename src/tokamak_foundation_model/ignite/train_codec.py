@@ -3805,6 +3805,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "texture is no longer one shared basis tiled on the patch lattice — the "
                         "measured checkerboard (gate.patch_lattice_metrics; mhr recon 61.6 vs GT "
                         "1.15). 0/unset = off (byte-identical decoder).")
+    p.add_argument("--band_pool", type=int, default=None,
+                   help="BAND-POWER input: mean-pool freq_bins into this many equal bands as the "
+                        "LAST step of log_power_stft (0/unset = raw STFT bins, byte-identical). "
+                        "Changes what the codec REPRESENTS, not how many tokens it uses: n_tok "
+                        "stays (eff_freq_bins//patch_f)*(time_frames//patch_t), so patch_f must be "
+                        "chosen per pool to keep it at 192. Measured 2026-09-05: ece's rank-192 "
+                        "linear floor goes 1.0063 (raw, ABOVE the 1.0 anchor) -> 0.9274 (16 bands) "
+                        "-> 0.8826 (8 bands). Read with care -- the floor tracks bits/value, since "
+                        "pooling shrinks the target, so re-derive every calibration in-space.")
     p.add_argument("--std_weight", type=float, default=None,
                    help="Weight on the AMPLITUDE-RATIO term |log std(recon) - log std(target)| "
                         "per (window, channel) -- the quantity the audit reports as std_ratio "
@@ -4199,7 +4208,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     # flag is byte-identical. (adam_* / lr_decay_* / disc_update_every live on the cfg so the
     # checkpoint records the recipe it was trained under — see the persist-arch-flags lesson.)
     for _knob in ("conv_dec_base_ch", "conv_dec_res_blocks", "conv_dec_min_ch",
-                  "disc_update_every", "lr_decay_every", "target_time_smooth"):
+                  "disc_update_every", "lr_decay_every", "target_time_smooth", "band_pool"):
         _v = getattr(args, _knob, None)
         if _v is not None and hasattr(cfg, _knob):
             setattr(cfg, _knob, int(_v))
@@ -4323,15 +4332,30 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         # tensor raises "Boolean value of Tensor with more than one value is ambiguous", so
         # normalise through torch first and read the trailing (frequency) axis.
         _sf = int(_t.as_tensor(_st["mean"]).shape[-1]) if "mean" in _st else -1
-        if _sf != cfg.freq_bins:
+        # BAND RESTRICTION: freq_bins < the stats width means the spectrogram is CROPPED to the
+        # low band (data._crop_pad_freq_time keeps the first freq_bins, ordered low->high), so
+        # the stats are still valid on exactly those bins and are sliced to match. A stats file
+        # NARROWER than freq_bins is still an error -- there is nothing to slice.
+        # WHY CROP AT ALL (measured 2026-09-05): ece's mode tracks sit below ~20 kHz, the bottom
+        # 8% of 0-250 kHz, visible as a thin 15->8 kHz line in the raw 512-bin render. Band-POWER
+        # pooling smears them away (at 3.91 kHz/band the track is gone from the GROUND TRUTH
+        # itself); cropping keeps 0.49 kHz resolution where the modes are and drops the broadband
+        # range that consumes most of the token budget.
+        if _sf < cfg.freq_bins:
             raise SystemExit(
-                f"--logpow_stats_path {args.logpow_stats_path} has F={_sf} but this codec's "
-                f"freq_bins={cfg.freq_bins} (stft_n_fft={cfg.stft_n_fft}). Per-freq stats are "
-                f"only valid on the grid they were computed on — regenerate with "
-                f"--compute_logpow_stats and the SAME --stft_n_fft/--freq_bins."
+                f"--logpow_stats_path {args.logpow_stats_path} has F={_sf}, NARROWER than this "
+                f"codec's freq_bins={cfg.freq_bins} (stft_n_fft={cfg.stft_n_fft}). Regenerate "
+                f"with --compute_logpow_stats and the SAME --stft_n_fft/--freq_bins."
             )
-        cfg.logpow_freq_mean = _t.as_tensor(_st["mean"], dtype=_t.float32).tolist()
-        cfg.logpow_freq_std = _t.as_tensor(_st["std"], dtype=_t.float32).tolist()
+        _mean = _t.as_tensor(_st["mean"], dtype=_t.float32)
+        _std = _t.as_tensor(_st["std"], dtype=_t.float32)
+        if _sf > cfg.freq_bins:
+            _mean, _std = _mean[..., :cfg.freq_bins], _std[..., :cfg.freq_bins]
+            if ddp.is_main:
+                print(f"[train_codec] per-freq stats SLICED {_sf} -> {cfg.freq_bins} bins "
+                      f"(band crop to 0-{cfg.freq_bins * 250.0 / 512:.1f} kHz)", flush=True)
+        cfg.logpow_freq_mean = _mean.tolist()
+        cfg.logpow_freq_std = _std.tolist()
         cfg.logpow_standardize = True
         if ddp.is_main:
             print(f"[train_codec] per-freq log-z ON from {args.logpow_stats_path} "

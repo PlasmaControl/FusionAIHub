@@ -181,8 +181,23 @@ tc.apply_spectro_standardization(cfg, MOD, log_fn=print)
 # raw log-power space vs 0.878 in the per-freq-z space the mhr arms use.
 if stats != "none":
     _st = torch.load(stats, map_location="cpu", weights_only=False)
-    assert len(_st["mean"][0]) == cfg.freq_bins, \
-        f"{stats} has F={len(_st['mean'][0])}, need {cfg.freq_bins}"
+    # BAND RESTRICTION: --freq_bins < the stats width crops to the LOW band (bins are ordered
+    # low->high), so slice the per-freq stats to match instead of refusing. ece's mode tracks sit
+    # below ~20 kHz (measured from the raw 0-60 kHz render), i.e. the bottom 8% of 0-250 kHz, so
+    # cropping keeps the modes at FULL 0.49 kHz resolution while dropping the broadband speckle
+    # that consumes most of the token budget.
+    _sf = len(_st["mean"][0])
+    assert _sf >= cfg.freq_bins, f"{stats} has F={_sf}, need >= {cfg.freq_bins}"
+    if _sf > cfg.freq_bins:
+        # SLICE AS TENSORS. The stats files are not uniform: legacy ones store torch TENSORS,
+        # current ones nested LISTS. A list-comprehension slice over a TENSOR yields a list of
+        # tensors, and torch.as_tensor(list_of_tensors) raises "only one element tensors can be
+        # converted to Python scalars" -- which is exactly how every cropped config died.
+        _m = torch.as_tensor(_st["mean"])[..., :cfg.freq_bins]
+        _s2 = torch.as_tensor(_st["std"])[..., :cfg.freq_bins]
+        _st = {"mean": _m, "std": _s2}
+        print(f"[{MOD}] per-freq stats sliced {_sf} -> {cfg.freq_bins} bins (band restriction)",
+              flush=True)
     cfg.logpow_freq_mean = torch.as_tensor(_st["mean"], dtype=torch.float32).tolist()
     cfg.logpow_freq_std = torch.as_tensor(_st["std"], dtype=torch.float32).tolist()
     cfg.logpow_standardize = True

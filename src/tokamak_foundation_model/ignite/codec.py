@@ -485,11 +485,11 @@ class SpectroCodec(nn.Module):
         return (torch.abs(recon - x) * m).sum() / denom
 
     # ------------------------------------------------------------------ #
-    # masked gain anchor (envelope/shape split)
+    # amplitude-ratio term (std_weight)
     # ------------------------------------------------------------------ #
-    @staticmethod
+    @classmethod
     def _masked_std_ratio_loss(
-        self,
+        cls,
         recon: torch.Tensor,
         target: torch.Tensor,
         frame_mask: Optional[torch.Tensor] = None,
@@ -518,7 +518,7 @@ class SpectroCodec(nn.Module):
 
         Returns a scalar; zero-cost and never called unless ``std_weight > 0``.
         """
-        win = self._valid_windows(frame_mask, recon.shape)
+        win = cls._valid_windows(frame_mask, recon.shape)
         r = recon if win is None else recon[win]
         t = target if win is None else target[win]
         if r.numel() == 0:
@@ -529,6 +529,10 @@ class SpectroCodec(nn.Module):
         eps = 1e-6
         return (torch.log(rs + eps) - torch.log(ts + eps)).abs().mean()
 
+    # ------------------------------------------------------------------ #
+    # masked gain anchor (envelope/shape split)
+    # ------------------------------------------------------------------ #
+    @staticmethod
     def _masked_gain_mae(
         pred: torch.Tensor, tgt: torch.Tensor, frame_mask: Optional[torch.Tensor]
     ) -> torch.Tensor:

@@ -91,6 +91,136 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "ececrop64" ]; then
+        # REPLICATE + std ladder on the FIRST ece configuration that renders modes.
+        #
+        # ece_cr64_s1 (freq_bins 64 = 0-31.25 kHz at full 0.49 kHz resolution, patch 4x8,
+        # n_tok 192): nRMSE 1.0271, peakF1 0.5271 = 89.7% of a NON-degenerate 0.5874 patchmean
+        # ceiling, std_r 0.468 (raw-STFT was pinned 0.12-0.32), and the render shows a SHARP
+        # continuous mode track descending 15 -> 10 kHz on ch20 of shot 204983 -- the first ece
+        # reconstruction all session with visible modes.
+        #
+        # IT IS ONE ARM AT ONE SEED. ece seed spread has run 0.019-0.05 elsewhere, and shipping a
+        # single draw is exactly the trap co2_r_m_s2 fell into (its twin scored 0.5964 with no
+        # track, so it had to be flagged best-of-N rather than reproducible). Three more seeds.
+        #
+        # std ladder DOWNWARD: at weight 2 the amplitude term drove std_r to 0.959 but overshot
+        # hf to 1.31 against a 0.252 coherent ceiling and pushed nRMSE 1.21 -> 1.66 -- it matched
+        # amplitude by injecting noise. 0.1/0.25/0.5 brackets the useful range from below, and
+        # cr64 still has std_r 0.468, so there is real room if it can be had without the noise.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4"
+        C64="--freq_bins 64 --patch_f 4 --patch_t 8"
+        for _sd in 2 3 4; do
+            ARMS_STR="${ARMS_STR};${M}_cr64_s${_sd}|${P} ${MSK} ${MIR} ${B} ${C64} --seed ${_sd}"
+        done
+        ARMS_STR="${ARMS_STR};${M}_cr64_sw0p1|${P} ${MSK} ${MIR} ${B} ${C64} --std_weight 0.1 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr64_sw0p25|${P} ${MSK} ${MIR} ${B} ${C64} --std_weight 0.25 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr64_sw0p5|${P} ${MSK} ${MIR} ${B} ${C64} --std_weight 0.5 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "ececrop" ]; then
+        # ece BAND CROP: keep 0.49 kHz resolution, discard RANGE not RESOLUTION.
+        #
+        # WHY, measured 2026-09-05 and it overturned my own earlier call. I refuted a restricted
+        # band using the flat band VARIANCE profile (std 0.887-0.943 across 16 bands) -- but
+        # variance is not mode information, the same error class as ranking on nRMSE. The raw
+        # 512-bin render at 0-60 kHz shows ece DOES have mode tracks: a thin line descending
+        # 15 -> 8 kHz through 2.5-5.5 s on ch20 of shot 204983, i.e. in the bottom ~8% of the
+        # 0-250 kHz range, and the raw codec even reproduces a faint version of it.
+        #
+        # BAND-POWER IS REJECTED BECAUSE IT SMEARS EXACTLY THAT. At 64 bands (3.91 kHz) the track
+        # is absent from the GROUND TRUTH itself; at 16 bands (15.6 kHz) the whole track fits in
+        # one band and patchmean peak_f1 hits 1.0000, i.e. the metric stops carrying information.
+        # Cropping instead keeps every bin the modes occupy at full resolution and drops the
+        # broadband range that consumes most of the token budget:
+        #     512 bins -> 1.97M values, 0.0010 bits/value   (floor 1.0063, ABOVE the anchor)
+        #     128 bins -> 0.49M values, 0.0039 bits/value   0-62.5 kHz, modes fully resolved
+        #
+        # n_tok STAYS 192 -- verified by the guard, which now reads --freq_bins:
+        #     128 bins, patch 8x8 -> 16 x 12 = 192   (2560 values/token)
+        #      64 bins, patch 4x8 -> 16 x 12 = 192   (1280 values/token)
+        # The per-freq log-z stats are SLICED to the crop (they are per-bin, so still valid).
+        #
+        # std_weight ladder runs DOWNWARD: at 2 the term drove ece std_r 0.12-0.32 -> 0.959, which
+        # is the fix working, but overshot hf to 1.31 against a 0.252 coherent ceiling and pushed
+        # nRMSE 1.21 -> 1.66. It matches amplitude by injecting noise. 0.1/0.25/0.5 brackets the
+        # useful range from below.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4"
+        C128="--freq_bins 128 --patch_f 8 --patch_t 8"
+        ARMS_STR="${ARMS_STR};${M}_cr128_s1|${P} ${MSK} ${MIR} ${B} ${C128} --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr128_s2|${P} ${MSK} ${MIR} ${B} ${C128} --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_cr128_sw0p1|${P} ${MSK} ${MIR} ${B} ${C128} --std_weight 0.1 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr128_sw0p25|${P} ${MSK} ${MIR} ${B} ${C128} --std_weight 0.25 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr128_sw0p5|${P} ${MSK} ${MIR} ${B} ${C128} --std_weight 0.5 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr64_s1|${P} ${MSK} ${MIR} ${B} --freq_bins 64 --patch_f 4 --patch_t 8 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "eceband" ]; then
+        # ece IN BAND-POWER SPACE. The first representation change of the session, and the first
+        # measurement that says ece CAN work.
+        #
+        # MEASURED 2026-09-05, out-of-sample rank-192 linear floor (analysis/_specport_plateau.py
+        # --band_pool), ece unless noted:
+        #     raw 512 bins  1.0063  corr2d 0.1214   0.0010 bits/value  <- ABOVE the 1.0 anchor
+        #     64 bands      0.9843         0.2605   0.0078
+        #     16 bands      0.9274         0.4346   0.0311
+        #      8 bands      0.8826         0.5254   0.0623
+        #     mirnov raw    0.8708         0.4336  (the modality that SHIPPED today)
+        #     mirnov 16     0.7292         0.6895  (control: pooling flatters mirnov too)
+        #
+        # HOW TO READ THAT, because it is not a free lunch: the floor tracks bits/value almost
+        # exactly, since pooling shrinks the TARGET (1.97M values -> 30720 at pool 8). Floors at
+        # different pools are DIFFERENT TARGETS and are not comparable to each other or to raw.
+        # What the numbers do establish is that a rank-192 linear code beats a per-window constant
+        # in band-power space and cannot in raw space -- i.e. the raw representation was not
+        # expressible at this token budget, which is why std_r stayed pinned at 0.232-0.267 across
+        # six arms and why 37 checkpoints failed.
+        #
+        # n_tok STAYS 192 -- the patch is chosen per pool, verified by the guard above:
+        #     16 bands, patch 1x8  -> 16 x 12 = 192   (320 values/token)
+        #      8 bands, patch 1x4  ->  8 x 24 = 192   (160 values/token)
+        # BOTH pools run: 8 has the better floor, 16 keeps 2x the frequency resolution
+        # (15.6 kHz vs 31.2 kHz per band) and the floor is NOT the ranking key -- the one that
+        # renders modes wins.
+        #
+        # RECIPE = mirnov's, the one that produced today's shippable codec: ms_ssim 20 +
+        # multiscale critic + adversarial 0.2 + multiscale D, LR 2e-4. NOT 1e-4 (measured -0.052
+        # on ece). NO gain-shape (ece's worst arms; collapsed to 1 code on mirnov at 8x32).
+        # 2 seeds on each pool.
+        #
+        # EVERY ece CALIBRATION NUMBER IS RAW-STFT AND DOES NOT TRANSFER: patchmean 0.4672,
+        # tmean 0.9688, the hf coherent ceiling 0.178 and the 0.9915 linear floor are all in the
+        # old space. Re-derive them in-space BEFORE ranking any arm from this leg.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4"
+        # CRITIC DEPTH LIMITS THE POOL -- measured by CPU forward smoke, not assumed:
+        #   bp64 (F=64) + multiscale D  OK
+        #   bp16 (F=16) + multiscale D  FAILS (downsamples 16->8->4, then a 4x4 kernel on 3 rows)
+        #   bp16 (F=16) + PATCH D       OK
+        #   bp8  (F=8)  + either        FAILS -- too few rows for a 4-layer critic
+        # So bp8, which has the BEST floor (0.8826), is BLOCKED on a discriminator-depth knob
+        # (MultiScaleSpectroGAN takes n_layers/scales as constructor defaults, not cfg fields).
+        # Not adding that knob mid-launch; bp16 already clears the anchor by 0.073 and keeps 2x
+        # the frequency resolution of bp8 (15.6 vs 31.2 kHz per band), which is what modes need.
+        # NOTE bp16 therefore runs the PATCH critic, which DESTABILISED on raw spectro
+        # (co2_a02/a05 inverted, mirnov_a02 peak_f1 0.365->0.239). That verdict was measured in
+        # raw-STFT space at F=512; at F=16 the tiled-texture shortcut it exploits barely exists.
+        # Untested there, so bp64+multiscale is carried as the safe arm alongside it.
+        ARMS_STR="${ARMS_STR};${M}_bp64_s1|${P} ${MSK} ${MIR} ${B} --band_pool 64 --patch_f 4 --patch_t 8 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_bp64_s2|${P} ${MSK} ${MIR} ${B} --band_pool 64 --patch_f 4 --patch_t 8 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_bp16_s1|${P} ${MSK} ${MIR} ${BP} --band_pool 16 --patch_f 1 --patch_t 8 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_bp16_s2|${P} ${MSK} ${MIR} ${BP} --band_pool 16 --patch_f 1 --patch_t 8 --seed 2"
+        # amplitude term re-tested IN THE NEW SPACE: at a 1.0063 floor it was pushing on a locked
+        # door, so this is its first fair test. One per pool.
+        ARMS_STR="${ARMS_STR};${M}_bp64_sw2|${P} ${MSK} ${MIR} ${B} --band_pool 64 --patch_f 4 --patch_t 8 --std_weight 2 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_bp16_sw2|${P} ${MSK} ${MIR} ${BP} --band_pool 16 --patch_f 1 --patch_t 8 --std_weight 2 --seed 1"
+        continue
+    fi
     if [ "${SWEEP}" = "ecestd" ]; then
         # ece: the AMPLITUDE-RATIO term, ablated. This is the first lever aimed at ece's actual
         # measured defect rather than at geometry or optimisation.
@@ -753,19 +883,34 @@ _IFS_SAVE="$IFS"; IFS=';'
 for _arm in ${ARMS_STR}; do
     IFS="$_IFS_SAVE"
     _name="${_arm%%|*}"; _args="${_arm#*|}"
-    _pf=16; _pt=16
+    _pf=16; _pt=16; _bp=0
     case "${_args}" in *--patch_f*) _pf=$(printf '%s\n' "${_args}" | sed 's/.*--patch_f  *\([0-9]*\).*/\1/') ;; esac
     case "${_args}" in *--patch_t*) _pt=$(printf '%s\n' "${_args}" | sed 's/.*--patch_t  *\([0-9]*\).*/\1/') ;; esac
-    if [ $(( _FB % _pf )) -ne 0 ] || [ $(( _TF % _pt )) -ne 0 ]; then
-        echo "FATAL: arm ${_name}: patch ${_pf}x${_pt} does not divide ${_FB}x${_TF}." >&2; exit 2
+    # BAND-POWER changes the MODEL's frequency width: n_tok is computed on eff_freq_bins, not on
+    # the 512 STFT bins. Without this the guard would compute (512//16)*(96//16)=192 for
+    # band_pool 16 + patch 16x16 and PASS a leg whose real n_tok is 6.
+    case "${_args}" in *--band_pool*) _bp=$(printf '%s\n' "${_args}" | sed 's/.*--band_pool  *\([0-9]*\).*/\1/') ;; esac
+    # BAND CROP: --freq_bins narrows the modelled array before any pooling, so the guard must
+    # read it too. Without this a crop to 128 bins would be checked against 512 and REFUSED
+    # (or, with a different patch, silently passed at the wrong width).
+    case "${_args}" in *--freq_bins*) _FBA=$(printf '%s\n' "${_args}" | sed 's/.*--freq_bins  *\([0-9]*\).*/\1/') ;; *) _FBA=${_FB} ;; esac
+    _EFF=${_FBA}
+    if [ "${_bp}" -gt 0 ]; then
+        if [ $(( _FBA % _bp )) -ne 0 ]; then
+            echo "FATAL: arm ${_name}: band_pool ${_bp} does not divide freq_bins ${_FBA}." >&2; exit 2
+        fi
+        _EFF=${_bp}
     fi
-    _ntok=$(( (_FB / _pf) * (_TF / _pt) ))
+    if [ $(( _EFF % _pf )) -ne 0 ] || [ $(( _TF % _pt )) -ne 0 ]; then
+        echo "FATAL: arm ${_name}: patch ${_pf}x${_pt} does not divide ${_EFF}x${_TF} (band_pool=${_bp})." >&2; exit 2
+    fi
+    _ntok=$(( (_EFF / _pf) * (_TF / _pt) ))
     if [ "${_ntok}" -ne "${_WANT}" ]; then
-        echo "FATAL: arm ${_name}: patch ${_pf}x${_pt} -> n_tok ${_ntok}, but FRAME_LAYOUT requires ${_WANT}." >&2
+        echo "FATAL: arm ${_name}: band_pool ${_bp} patch ${_pf}x${_pt} -> n_tok ${_ntok}, but FRAME_LAYOUT requires ${_WANT}." >&2
         echo "       Refusing to submit. n_tok is a USER decision -- report, do not launch." >&2
         exit 2
     fi
-    echo "[ntok-guard] ${_name}: patch ${_pf}x${_pt} -> n_tok ${_ntok} OK"
+    echo "[ntok-guard] ${_name}: freq_bins ${_FBA} band_pool ${_bp} eff_F ${_EFF} patch ${_pf}x${_pt} -> n_tok ${_ntok} OK"
     IFS=';'
 done
 IFS="$_IFS_SAVE"
