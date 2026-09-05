@@ -243,6 +243,23 @@ is recoverable by isotonic regression with no loss of AUROC or best F1. "Improve
 therefore has a cheap answer (recalibrate, or pick the threshold) and a credible substitute on
 the CNN's own features. The 50k fit took 36 minutes on a V100S.
 
+**Study B, measured**: trained on labelmaker's reconstructed inputs of the 371 non-PoC aligned
+shots (24,857 valid rows), tested on the PoC 95's 6,400 valid reconstructed rows:
+
+| model | AUROC | AUPRC | F1 at 0.5 | best F1 (at) | ECE |
+|---|---|---|---|---|---|
+| CNN on reconstructed inputs | 0.897 | 0.520 | 0.555 | 0.560 (0.58) | 0.073 |
+| TabPFN v2, 10k reconstructed rows | 0.772 | 0.431 | 0.481 | 0.487 (0.39) | 0.092 |
+| TabPFN v2, all 24,857 reconstructed rows | 0.762 | 0.434 | 0.484 | 0.484 (0.52) | 0.087 |
+
+`betan` RMSE on reconstructed inputs: CNN 0.149, TabPFN regressor on 10k rows 0.078. So for
+the tearing label, 371 shots of reconstructed features do not replace 8,505 shots of training
+data: the CNN fed reconstructed inputs stays far ahead, and more reconstructed rows did not
+help (the shots, not the rows, are the limit). For `betan`, a smooth function of the same
+inputs, the substitute halves the error even on 10k rows. The path to a better tearing label
+through labelmaker's own features runs through many more shots (the 1,503 overlap shots are
+all validatable) or through v2.5/v3 weights, not through this data volume.
+
 ## 8. Open questions for Nathan
 
 1. **ECH.** The famous shots are unusable as published because the tearing model needs a
