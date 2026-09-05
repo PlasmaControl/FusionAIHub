@@ -86,8 +86,8 @@ labelmaker:
 
 # plasmacontrol/d3d-tearing-time-to-event-dsm
 
-**Status: implemented** (2026-09-05). Labels are produced; `validate` does not
-yet score them (see Evaluation).
+**Status: implemented** (2026-09-05). Labels are produced and `validate` scores their per-shot alarms
+against archived onsets (see Evaluation).
 
 ## Model details
 
@@ -169,7 +169,7 @@ were **not** used for this model. Details in
 
 ## Evaluation
 
-Adapter fidelity only, and as a test rather than a `validate` report:
+Adapter fidelity is checked as a test rather than a `validate` report:
 `tests/labelmaker/test_dsm_pickle.py` compares labelmaker's evaluator against
 the fork's own `predict_survival` on 256 inputs
 (`tests/labelmaker/data/tearing_dsm_golden.npz`, made once by
@@ -177,8 +177,8 @@ the fork's own `predict_survival` on 256 inputs
 `test_tearing_dsm_adapter.py` checks the preprocessing step by step against
 the upstream script. Reconstruction fidelity and label quality need a truth
 series - "onset within the next horizon", derivable from the tearing archive's
-`tm_label` on the 1,503 overlap shots - which `validate` does not yet build for
-this model.
+`tm_label` on the 1,503 overlap shots. `validate.alarm_quality` now builds
+that truth for the published-label alarm report below.
 
 Measured once outside `validate` (2026-09-05, `outputs/labelmaker/dsm_onset_quality.py`
 in the FusionAIHub checkout): on the 486 aligned shots of the 500-shot pool,
@@ -197,6 +197,42 @@ best F1 is low because onsets are rare in the windows (1.3% to 5.5% of rows).
 Inputs were labelmaker's reconstruction (offline EFIT01, ZIPFIT), so this is
 the published label's quality, not the model's ceiling; the truth is the
 archive's 25 ms `tm_label`, whose own onset timing is unexamined.
+
+### Per shot, upstream's way
+
+Measured 2026-09-05 from existing published labels on the 500-shot pool.
+Row set: **pre-onset valid rows of every aligned shot**: 28,290 rows from
+463 scored shots, **383 quiet and 80 tearing**. There are 486 aligned shots
+(86 with onset), but 23 have no valid pre-onset predictions and are excluded
+from shot-rate denominators; 14 other pool shots fail archive alignment.
+
+Final-label calls use `risk >= threshold` on the last retained row; any-row
+calls use any retained row. Warning time is onset minus the start of the
+final on-run, summarized over final-label TPs only.
+
+| `tm_risk_1s` threshold | final FPR | final FNR | any-row FPR | any-row FNR | median warning (s) |
+|---|---|---|---|---|---|
+| 0.1 | 0.180157 | 0.475000 | 0.321149 | 0.350000 | 0.675 |
+| 0.2 | 0.065274 | 0.662500 | 0.146214 | 0.600000 | 0.350 |
+| 0.3 | 0.000000 | 0.987500 | 0.015666 | 0.950000 | 0.050 |
+| 0.7 | 0.000000 | 1.000000 | 0.000000 | 1.000000 | — (no TPs) |
+
+The final-label rule has lower FPR and higher FNR than the any-row rule at
+thresholds 0.1–0.3; at 0.7 both rules miss every tearing shot.
+
+| horizon (s) | plain AUROC | IPCW AUC |
+|---|---|---|
+| 0.25 | 0.810043 | 0.809647 |
+| 0.5 | 0.786852 | 0.785184 |
+| 1.0 | 0.758441 | 0.758792 |
+
+Both AUCs start from the same 28,290 rows. IPCW uses reverse Kaplan–Meier
+censoring weights and excludes quiet rows censored before the horizon from
+case/control pairs. The differences here are small and are not uniformly
+in the direction of an optimistic plain AUROC. These are descriptive pool
+results, not a new held-out evaluation or a threshold recommendation.
+The complete threshold sweep, warning quartiles, jump histograms and
+horizon integrals are in `$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm/alarm_quality.json`.
 
 ## Technical specifications
 

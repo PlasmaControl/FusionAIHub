@@ -193,8 +193,9 @@ shots, then a 1 ms downsample.
 Add a per-shot alarm scorer beside the existing per-row metrics, ported from
 `metrics_helpers.py` so the numbers are comparable to the upstream paper:
 
-- alarm = the risk crossing its threshold and **staying** above it; a crossing
-  that reverts within 400 ms is a *jump*, counted separately, not an alarm;
+- alarm = risk >= threshold on the final valid finite row; a 0 -> 1 run
+  that later reverts to 0 and lasted at least 400 ms is a *jump*. Every
+  reverted 0 -> 1 run is an excursion; the final, unreverted run is neither;
 - `warning_time` = onset time minus the time of the last 0 -> 1 transition;
 - FPR over shots with no archived onset, FNR over shots that have one;
 - sweep the horizon and integrate FPR/FNR, as `fnr_fpr_calculator` does;

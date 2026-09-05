@@ -804,6 +804,13 @@ def main(argv=None) -> int:
                 )
             except Exception as exc:  # noqa: BLE001 - see comment above
                 reports["label_quality"] = {"error": f"{type(exc).__name__}: {exc}"}
+            if any(key.startswith(f"{slug}/") for key in validation.ARCHIVE_TRUTH):
+                try:
+                    reports["alarm_quality"] = validation.alarm_quality(
+                        slug, shots, paths, timeout_s=args.timeout
+                    )
+                except Exception as exc:  # noqa: BLE001 - isolate a model's report
+                    reports["alarm_quality"] = {"error": f"{type(exc).__name__}: {exc}"}
             for name, payload in reports.items():
                 out = validation.write_report(paths, slug, name, payload)
                 print(f"validate {slug}: {name} -> {out}")

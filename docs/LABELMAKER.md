@@ -94,7 +94,8 @@ corpus location):
 | `labels_index.parquet` | one row per shot, model and label - the "which shots have labels" query |
 | `models/<slug>/` | the weights, copied once; verified against the card's sha256 before every load |
 | `runs/<run_id>/` | `manifest.json` (config, git sha, shot list), `log.txt` (one JSON row per shot), `summary.json` |
-| `validation/<slug>/` | the three reliability reports (below) |
+| `validation/<slug>/` | reliability reports (below) |
+| `validation/<slug>/alarm_quality.json` | per-shot final-label and any-row FPR/FNR, warning times, jumps, and IPCW AUC for labels with archive truth |
 | `analysis/<shot>/` | `analyze`'s JSON summary and figure for that shot |
 
 Labels are probabilities, never thresholded, on the model's own time step.

@@ -159,3 +159,131 @@ def test_reaching_for_the_truth_never_raises(monkeypatch):
     monkeypatch.setattr(validate, "_matched_shot", boom)
     got = validate.archived_truth(190000, Paths.from_env())
     assert got["available"] is False and "not mounted" in got["reason"]
+
+
+def test_survival_final_alarm_warns_before_onset(monkeypatch):
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
+    truth = validate.archived_truth(190000, Paths.from_env())
+    got = validate.score_against_truth(
+        'd3d_tearing_time_to_event_dsm/tm_risk_1s',
+        np.array([0, 0, .8, 0, 0, 0, 0, 0]), np.ones(8, bool), truth, threshold=.5)
+    assert got['verdict'] == 'TP' and got['alarm'] is True
+    assert got['warning_time_s'] == pytest.approx(.05)
+    assert got['jumps'] == got['n_excursions'] == 0
+
+
+def test_quiet_spike_is_any_row_but_not_final_alarm(monkeypatch):
+    _fake_match(monkeypatch, tm_label=[0]*N)
+    got = validate.score_against_truth(
+        'd3d_tearing_onset_cnn1d/tm_prob', np.array([0, 1, 0, 0, 0, 0, 0, 0]),
+        np.ones(8, bool), validate.archived_truth(190000, Paths.from_env()), threshold=.5)
+    assert got['verdict'] == 'TN' and got['alarm'] is False
+    assert got['any_row_call'] is True
+
+
+def test_pooled_rows_and_alarm_quality(wired, monkeypatch):
+    from labelmaker.labels.schema import LabelSpec
+    from labelmaker.labels.store import write_labels
+    from labelmaker.models.base import Decoded
+
+    slug = 'd3d_tearing_time_to_event_dsm'
+    paths = Paths(root=wired['root'], corpus=wired['corpus'])
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
+    original = validate._matched_shot
+
+    def match(shot, spec, paths, archive):
+        m = original(190000, spec, paths, archive)
+        m.got['y'][:, 1] = [0, 0, 0, 1, 1, 0] if shot == 190000 else 0
+        return m
+
+    monkeypatch.setattr(validate, '_matched_shot', match)
+    names = ['tm_risk_250ms', 'tm_risk_500ms', 'tm_risk_1s']
+    specs = tuple(LabelSpec(name=n, task='binary', activation='none', units='',
+                           classes=(), slug=slug, card_id='test/model', time_step_ms=25,
+                           ensemble_n=1, artifact_sha256='abc') for n in names)
+    for shot in [190000, 190001]:
+        y = np.array([.1, .8, .8, .2, .1, np.nan, .1, .9])
+        valid = np.ones(8, bool)
+        valid[0] = False
+        write_labels(paths.labels_file(shot), shot, _FakeBuilt().t,
+                     {n: Decoded(mean=y, lo=y, hi=y) for n in names}, specs, valid,
+                     run_id='test', features_sha256='abc')
+    pooled = validate._pooled_onset_rows(slug, [190000, 190001, 99], paths,
+                                        archive=wired['archive'], timeout_s=None)
+    r = pooled['labels']['tm_risk_1s']
+    np.testing.assert_array_equal(r['shot'], [190000]*2 + [190001]*4)
+    np.testing.assert_allclose(r['t'], [.025, .05, .025, .05, .1, .15])
+    np.testing.assert_allclose(r['t_end'], [.15]*6)
+    assert np.isnan(r['onset_s'][2:]).all()
+    assert pooled['shots_used'] == [190000, 190001]
+    assert pooled['shots_with_onset'] == [190000]
+    assert 'labels' in pooled['skipped']['99']
+    report = validate.alarm_quality(slug, [190000, 190001, 99], paths,
+                                    archive=wired['archive'], thresholds=(.5,))
+    label = report['labels']['tm_risk_1s']
+    rates = label['thresholds']['0.5']
+    assert rates['n_quiet'] == rates['n_tearing'] == 1
+    assert rates['final_label']['fpr'] == rates['final_label']['fnr'] == 0
+    assert rates['any_row']['fpr'] == 1 and rates['any_row']['fnr'] == 0
+    assert rates['warning_time_s']['median'] == pytest.approx(.075)
+    assert label['auroc'] is not None and label['ipcw_auc'] is None  # no T > 1
+    assert report['horizon_integrated']['0.5']['fpr'] == .75
+
+
+def test_pool_isolates_rejected_and_failed_matches(wired, monkeypatch):
+    paths = Paths(root=wired['root'], corpus=wired['corpus'])
+    paths.labels.mkdir(parents=True)
+    for shot in [1, 2]:
+        paths.labels_file(shot).touch()
+
+    def match(shot, spec, paths, archive):
+        if shot == 1:
+            return validate._ShotMatch(skip_reason='match rejected: ambiguous')
+        raise TimeoutError('shot budget expired')
+
+    monkeypatch.setattr(validate, '_matched_shot', match)
+    got = validate._pooled_onset_rows('d3d_tearing_time_to_event_dsm', [1, 2], paths,
+                                     archive=wired['archive'], timeout_s=None)
+    assert got['shots_used'] == []
+    assert 'ambiguous' in got['skipped']['1']
+    assert 'budget expired' in got['skipped']['2']
+    assert got['labels']['tm_risk_1s']['y'].size == 0
+    report = validate.alarm_quality('d3d_tearing_time_to_event_dsm', [], paths,
+                                    archive=wired['archive'])
+    rates = report['labels']['tm_risk_1s']['thresholds']['0.5']
+    assert rates['n_quiet'] == rates['n_tearing'] == 0
+    assert rates['final_label']['fpr'] is None
+    assert rates['warning_time_s']['median'] is None
+
+
+def test_column_pool_keeps_archived_positives_and_whole_trace_alarm(wired, monkeypatch):
+    from labelmaker.labels.schema import LabelSpec
+    from labelmaker.labels.store import write_labels
+    from labelmaker.models.base import Decoded
+
+    slug = 'd3d_tearing_onset_cnn1d'
+    paths = Paths(root=wired['root'], corpus=wired['corpus'])
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
+    y = np.array([.1, .1, .1, .1, .9, .9, .1, .1])
+    spec = LabelSpec(name='tm_prob', task='binary', activation='none', units='',
+                     classes=(), slug=slug, card_id='test/model', time_step_ms=25,
+                     ensemble_n=1, artifact_sha256='abc')
+    write_labels(paths.labels_file(190000), 190000, _FakeBuilt().t,
+                 {'tm_prob': Decoded(mean=y, lo=y, hi=y)}, (spec,), np.ones(8, bool),
+                 run_id='test', features_sha256='abc')
+    pooled = validate._pooled_onset_rows(slug, [190000], paths,
+                                        archive=wired['archive'], timeout_s=None)
+    rows = pooled['labels']['tm_prob']
+    np.testing.assert_array_equal(rows['truth'], [0, 0, 0, 1, 1, 0])
+    assert rows['t'].size == 6
+    report = validate.alarm_quality(slug, [190000], paths,
+                                    archive=wired['archive'], thresholds=(.5,))
+    label = report['labels']['tm_prob']
+    assert label['row_set'] == 'all valid rows of every aligned shot'
+    assert label['n_positive'] == 2 and label['auroc'] == 1
+    assert label['ipcw_auc'] is None
+    assert label['ipcw_auc_reason'] == (
+        'column label: the archived tm_label has no horizon, IPCW AUC is undefined')
+    rates = label['thresholds']['0.5']
+    assert rates['final_label']['counts']['FN'] == 1
+    assert rates['any_row']['counts']['TP'] == 1

@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from . import alarm
 from .catalog import TM_ARCHIVE
 from .config import Paths, atomic_path
 from .models import registry
@@ -1481,7 +1482,7 @@ def score_against_truth(
         }
     index = truth["index"]
     y = np.asarray(y, dtype=np.float64)[index]
-    ok = np.asarray(valid, dtype=bool)[index]
+    ok = np.asarray(valid, dtype=bool)[index] & np.isfinite(y) & np.isfinite(truth["t"])
     t = truth["t"]
     onset = truth["onset_s"]
     if rule["kind"] == "column":
@@ -1510,6 +1511,13 @@ def score_against_truth(
     m = binary_metrics(y_s, target_s.astype(np.float64))
     out.update({k: m[k] for k in ("n_positive", "auroc", "f1_max", "threshold_at_f1_max")})
     if threshold is not None:
+        if keep.any():
+            result = alarm.shot_alarm(t, y, keep, threshold=threshold, onset_s=onset)
+            out.update({k: v for k, v in asdict(result).items() if k != "n_rows"})
+        else:
+            out.update(alarm=None, verdict=None, warning_time_s=None,
+                       jumps=None, n_excursions=None)
+        out["any_row_call"] = alarm.any_row_call(y, keep, threshold=threshold)
         pred = y_s >= threshold
         tp = int((pred & target_s).sum())
         fp = int((pred & ~target_s).sum())
@@ -1524,4 +1532,172 @@ def score_against_truth(
         out["lead_time_s"] = (
             float(onset - first) if (first is not None and onset is not None) else None
         )
+    return out
+
+
+def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
+    """Pool published labels on aligned, finite, valid rows by truth kind.
+
+    Column labels retain all valid rows and their archived column truth;
+    onset_within labels retain only pre-onset rows and horizon truth.
+    Arrays are keyed by label name, including archived regression labels for
+    downstream reuse. Each label has its own shot lists and skipped reasons;
+    top-level lists describe their union. A missing/empty label never turns a
+    shot into a TN. The censoring endpoint is the last ARCHIVED time, before
+    validity filtering. Stored label and mask time grids must match alignment.
+    """
+    from .labels.store import read_label
+
+    names = [key.split('/')[1] for key in ARCHIVE_TRUTH if key.startswith(f'{slug}/')]
+    columns = ('shot', 't', 'y', 'truth', 'onset_s', 't_end')
+    rows = {name: {key: [] for key in columns} for name in names}
+    meta = {name: {'shots_used': [], 'shots_with_onset': [], 'skipped': {}} for name in names}
+    used, onset_shots, skipped = [], [], {}
+    spec = registry.load_adapter('d3d_tearing_onset_cnn1d').input_spec
+    for shot in dict.fromkeys(map(int, shots)):
+        try:
+            with _shot_budget(timeout_s):
+                path = paths.labels_file(shot)
+                if not path.exists():
+                    raise ValueError('no labels file')
+                match = _matched_shot(shot, spec, paths, archive)
+                if match.skip_reason:
+                    raise ValueError(match.skip_reason)
+                index = np.asarray(match.info['index'], int)
+                order = np.argsort(match.built.t[index], kind='stable')
+                index = index[order]
+                t = np.asarray(match.built.t[index], float)
+                if not t.size or not np.isfinite(t).all():
+                    raise ValueError('no finite archived time grid')
+                tm = np.asarray(match.got['y'])[order, _TRUTH_COLUMNS['tm_prob']] > .5
+                onset = float(t[np.argmax(tm)]) if tm.any() else np.nan
+                before = t < onset - 1e-9 if np.isfinite(onset) else np.ones(t.size, bool)
+                pending = {}
+                for name in names:
+                    try:
+                        lab = read_label(path, slug, name)
+                        valid = read_label(path, slug, f'{name}_valid')
+                        if (not np.array_equal(lab.x[index], t)
+                                or not np.array_equal(valid.x[index], t)):
+                            raise ValueError('label time grid differs from archived alignment')
+                        y = lab.y[0][index]
+                        rule = ARCHIVE_TRUTH[f'{slug}/{name}']
+                        keep = valid.y[0][index].astype(bool) & np.isfinite(y)
+                        if rule['kind'] == 'onset_within':
+                            keep &= before
+                            target = np.isfinite(onset) & (onset - t <= rule['horizon_s'] + 1e-9)
+                        else:
+                            target = np.asarray(match.got['y'])[order, rule['column']]
+                        keep &= np.isfinite(target)
+                        if not keep.any():
+                            raise ValueError('no valid finite rows for truth population')
+                        n = int(keep.sum())
+                        pending[name] = {"shot": np.full(n, shot), "t": t[keep], "y": y[keep],
+                                             "truth": target[keep],
+                                             "onset_s": np.full(n, onset), "t_end": np.full(n, t[-1])}
+                    except (KeyError, ValueError, IndexError) as exc:
+                        meta[name]['skipped'][str(shot)] = f'{type(exc).__name__}: {exc}'
+                # Commit only after the entire shot finishes inside its timeout.
+            for name, values in pending.items():
+                for key in columns:
+                    rows[name][key].append(values[key])
+                meta[name]['shots_used'].append(shot)
+                if np.isfinite(onset):
+                    meta[name]['shots_with_onset'].append(shot)
+            if pending:
+                used.append(shot)
+                if np.isfinite(onset):
+                    onset_shots.append(shot)
+            else:
+                skipped[str(shot)] = 'no usable published labels; see per-label skipped'
+        except Exception as exc:  # noqa: BLE001 - isolate unavailable or timed-out shots
+            reason = f'{type(exc).__name__}: {exc}'
+            skipped[str(shot)] = reason
+            for name in names:
+                meta[name]['skipped'][str(shot)] = reason
+    labels = {}
+    for name in names:
+        labels[name] = {key: np.concatenate(parts) if parts else np.array(
+            [], dtype=int if key == 'shot' else float) for key, parts in rows[name].items()}
+        labels[name].update(meta[name])
+        labels[name]['row_set'] = (
+            'pre-onset valid rows of every aligned shot'
+            if ARCHIVE_TRUTH[f'{slug}/{name}']['kind'] == 'onset_within'
+            else 'all valid rows of every aligned shot')
+    return {"labels": labels, "shots_used": used, "shots_with_onset": onset_shots, "skipped": skipped}
+
+
+def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
+                  thresholds=(0.05, 0.1, 0.2, 0.3, 0.5, 0.7), timeout_s=None) -> dict:
+    """Shot alarm rates and row ranking on one explicitly named population.
+
+    Plain AUROC counts quiet rows as negatives even when censored before h;
+    IPCW excludes those rows from the pair comparison and estimates censoring
+    on the same pooled rows. CNN column labels have no horizon, hence no IPCW
+    AUC. Regression columns are pooled for reuse but not alarm-scored.
+    """
+    pooled = _pooled_onset_rows(slug, shots, paths, archive=archive, timeout_s=timeout_s)
+    out = {key: value for key, value in pooled.items() if key != 'labels'}
+    populations = {rows['row_set'] for rows in pooled['labels'].values()}
+    out.update(slug=slug, row_set=next(iter(populations)) if len(populations) == 1
+               else 'label-specific populations; see labels.*.row_set', labels={})
+    for name, rows in pooled['labels'].items():
+        rule = ARCHIVE_TRUTH[f'{slug}/{name}']
+        if rule.get('task') == 'regression':
+            continue
+        event = np.isfinite(rows['onset_s'])
+        duration = np.where(event, rows['onset_s'], rows['t_end']) - rows['t']
+        horizon = rule.get('horizon_s')
+        target = rows['truth']
+        label = {key: rows[key] for key in ('shots_used', 'shots_with_onset', 'skipped', 'row_set')}
+        label.update(n_rows=int(event.size), n_positive=int(np.count_nonzero(target > .5)),
+                     horizon_s=horizon,
+                     auroc=binary_metrics(rows['y'], target)['auroc'],
+                     ipcw_auc=alarm.ipcw_auc(duration, event, rows['y'], horizon)
+                     if horizon else None, thresholds={})
+        if horizon is None:
+            label['ipcw_auc_reason'] = (
+                'column label: the archived tm_label has no horizon, IPCW AUC is undefined')
+        groups = [np.flatnonzero(rows['shot'] == shot) for shot in rows['shots_used']]
+        for threshold in thresholds:
+            final, any_verdicts, warnings, jumps, excursions = [], [], [], [], []
+            for idx in groups:
+                onset = float(rows['onset_s'][idx[0]]) if event[idx[0]] else None
+                t, y = rows['t'][idx], rows['y'][idx]
+                valid = np.ones(idx.size, bool)
+                result = alarm.shot_alarm(t, y, valid, threshold=threshold, onset_s=onset)
+                called = alarm.any_row_call(y, valid, threshold=threshold)
+                final.append(result.verdict)
+                any_verdicts.append(('TP' if called else 'FN') if onset is not None
+                                    else ('FP' if called else 'TN'))
+                if result.warning_time_s is not None:
+                    warnings.append(result.warning_time_s)
+                jumps.append(result.jumps)
+                excursions.append(result.n_excursions)
+            q = np.quantile(warnings, [.25, .5, .75]) if warnings else [None]*3
+            keys, counts = np.unique(jumps, return_counts=True)
+            label['thresholds'][str(float(threshold))] = {
+                "n_quiet": len(rows['shots_used']) - len(rows['shots_with_onset']),
+                "n_tearing": len(rows['shots_with_onset']),
+                "final_label": alarm.pool_rates(final), "any_row": alarm.pool_rates(any_verdicts),
+                "warning_time_s": {"q25": q[0], "median": q[1], "q75": q[2]},
+                "jumps": {str(int(k)): int(v) for k, v in zip(keys, counts, strict=True)},
+                "n_excursions": float(np.median(excursions)) if excursions else None}
+        out['labels'][name] = label
+    if slug == 'd3d_tearing_time_to_event_dsm':
+        names = ['tm_risk_250ms', 'tm_risk_500ms', 'tm_risk_1s']
+        reference = pooled['labels'][names[0]]
+        same = all(np.array_equal(pooled['labels'][n][key], reference[key])
+                   for n in names for key in ('shot', 't'))
+        out['horizon_integrated'] = {}
+        if same:
+            for threshold in thresholds:
+                key = str(float(threshold))
+                rates = [out['labels'][n]['thresholds'][key]['any_row'] for n in names]
+                out['horizon_integrated'][key] = {
+                    metric: alarm.horizon_integral([.25, .5, 1.], [r[metric] for r in rates])
+                    if all(r[metric] is not None for r in rates) else None
+                    for metric in ('fpr', 'fnr')}
+        else:
+            out['horizon_integrated_reason'] = 'published horizons have different row sets'
     return out
