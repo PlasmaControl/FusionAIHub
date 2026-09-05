@@ -11,7 +11,7 @@ canonical output; `analysis/` is a view of it that is cheap to regenerate.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +43,11 @@ class AnalysisConfig:
     labels: tuple[str, ...]
     context: tuple[str, ...]
     threshold: float
+    #: per-label overrides of `threshold`; one scale does not fit every model
+    thresholds: dict[str, float] = field(default_factory=dict)
+
+    def threshold_for(self, label: str) -> float:
+        return float(self.thresholds.get(label, self.threshold))
 
     @property
     def slugs(self) -> tuple[str, ...]:
@@ -58,6 +63,7 @@ class AnalysisConfig:
             "labels": list(self.labels),
             "context": list(self.context),
             "threshold": self.threshold,
+            "thresholds": dict(self.thresholds),
         }
 
 
@@ -98,8 +104,17 @@ def load_config(path) -> AnalysisConfig:
     threshold = raw.get("threshold", 0.5)
     if not isinstance(threshold, (int, float)) or not 0.0 <= threshold <= 1.0:
         raise ConfigError(f"threshold must be a number in [0, 1], got {threshold!r}")
+    overrides = raw.get("thresholds") or {}
+    if not isinstance(overrides, dict):
+        raise ConfigError(f"{path}: `thresholds` must map a label to a number")
+    for label, value in overrides.items():
+        if label not in labels:
+            raise ConfigError(f"thresholds: {label!r} is not one of the `labels`")
+        if not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0:
+            raise ConfigError(f"thresholds: {label} must be a number in [0, 1], got {value!r}")
     return AnalysisConfig(
-        labels=tuple(labels), context=tuple(context), threshold=float(threshold)
+        labels=tuple(labels), context=tuple(context), threshold=float(threshold),
+        thresholds={k: float(v) for k, v in overrides.items()},
     )
 
 
@@ -177,7 +192,8 @@ def panels_for(features_path, labels_path, cfg: AnalysisConfig) -> list[dict]:
     have = labelled(labels_path)
     for label in cfg.labels:
         slug, name = label.split("/", 1)
-        panel = {"kind": "label", "name": label, "t": None, "note": "no labels"}
+        panel = {"kind": "label", "name": label, "t": None, "note": "no labels",
+                 "threshold": cfg.threshold_for(label)}
         if label in have:
             lab = read_label(labels_path, slug, name)
             spread = read_label(labels_path, slug, f"{name}_spread")
@@ -204,10 +220,9 @@ def _style(ax) -> None:
     ax.set_axisbelow(True)
 
 
-def plot_shot(shot: int, panels: list[dict], out_png, *, threshold: float,
-              title_ids) -> Path:
+def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
     """One column of panels on a shared time axis; a label panel shows the
-    series, the ensemble spread, the invalid rows, and the threshold."""
+    series, the ensemble spread, the invalid rows, and its threshold."""
     # Figure objects directly, not pyplot: no global state to leak between
     # shots in one worker, and no display backend to negotiate.
     from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -253,6 +268,7 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, threshold: float,
                         linewidth=0, label="ensemble spread")
         ax.plot(t, y, color=_SERIES, linewidth=1.5, label=panel["name"])
         if binary:
+            threshold = panel["threshold"]
             ax.axhline(threshold, color=_MUTED, linestyle="--", linewidth=0.9,
                        label=f"threshold {threshold:g}")
             ax.set_ylim(-0.02, 1.02)

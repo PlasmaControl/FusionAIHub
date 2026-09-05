@@ -59,6 +59,8 @@ context:                                 # canonical features drawn above them
   - ip
   - pinj_total
 threshold: 0.5                           # drawn on binary labels
+thresholds:                              # per-label overrides of that value
+  d3d_tearing_time_to_event_dsm/tm_risk_1s: 0.2
 ```
 
 It runs `features` and `infer` for the models those labels need, then writes

@@ -452,7 +452,7 @@ def analyze_for_shot(shot: int, cfg, out_dir, ctx: RunContext) -> dict:
         slug, name = label.split("/", 1)
         if label in have:
             summaries[label] = analyze.summarize_label(
-                labels_path, slug, name, threshold=cfg.threshold,
+                labels_path, slug, name, threshold=cfg.threshold_for(label),
                 infer_row=provenance[slug],
             )
         else:
@@ -463,7 +463,7 @@ def analyze_for_shot(shot: int, cfg, out_dir, ctx: RunContext) -> dict:
     shot_dir.mkdir(parents=True, exist_ok=True)
     png = analyze.plot_shot(
         shot, analyze.panels_for(features_path, labels_path, cfg),
-        shot_dir / f"{shot}_labels.png", threshold=cfg.threshold,
+        shot_dir / f"{shot}_labels.png",
         title_ids=[adapters[s].card_id for s in cfg.slugs],
     )
     summary = {
