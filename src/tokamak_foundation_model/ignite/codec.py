@@ -280,6 +280,10 @@ class SpectroCodec(nn.Module):
         adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
 
         pixel = self._masked_pixel_mae(recon, x_tgt, frame_mask)
+        # AMPLITUDE RATIO. OFF (0.0) by default -> exactly zero cost and byte-identical.
+        _stdw = float(getattr(cfg, "std_weight", 0.0) or 0.0)
+        std_ratio_l = (self._masked_std_ratio_loss(recon, x_tgt, frame_mask)
+                       if _stdw > 0.0 else recon.new_zeros(()))
         # PEAK-weighted L1 (cfg.peak_weight; see SpectroCodecConfig). Uses the FULL tensors
         # with the per-(channel, frame) mask rather than the whole-window selector, because
         # the weighting is per (b, c, t) column and a partially-dead window still has valid
@@ -339,6 +343,7 @@ class SpectroCodec(nn.Module):
                      + cfg.freq_grad_weight * freq_grad
                      + _msw * ms_ssim_t
                      + _pkw * peak
+                     + _stdw * std_ratio_l
                      + float(getattr(cfg, "gain_weight", 0.0)) * gain)
         non_adv_total = (
             recon_ref
@@ -367,6 +372,7 @@ class SpectroCodec(nn.Module):
                 + cfg.freq_grad_weight * freq_grad
                 + _msw * ms_ssim_t
                 + _pkw * peak
+                + _stdw * std_ratio_l
                 + float(getattr(cfg, "gain_weight", 0.0)) * gain
                 + cfg.consistency_weight * consistency
                 + cfg.entropy_weight * entropy
@@ -482,6 +488,47 @@ class SpectroCodec(nn.Module):
     # masked gain anchor (envelope/shape split)
     # ------------------------------------------------------------------ #
     @staticmethod
+    def _masked_std_ratio_loss(
+        self,
+        recon: torch.Tensor,
+        target: torch.Tensor,
+        frame_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """|log std(recon) - log std(target)| per (window, channel), over VALID frames.
+
+        THE QUANTITY THIS TARGETS IS THE ONE THE AUDIT REPORTS.
+        ``analysis.spectro_final_fig.masked_std_ratio`` is the mean over (window, channel) of
+        ``std(recon)/std(target)`` with an ideal of EXACTLY 1.0, and it is the metric that
+        exposes amplitude collapse -- nRMSE cannot, because its exact minimiser IS the
+        conditional mean, so shrinking amplitude toward the mean IMPROVES nRMSE while
+        destroying the signal.
+
+        WHY THIS TERM EXISTS (measured 2026-09-05). ece sits at std_r 0.232-0.267 across SIX
+        arms spanning two patch geometries (16x16, 8x32), two learning rates (2e-4, 1e-4) and
+        EMA, and across all 24 earlier checkpoints (0.12-0.32). No existing knob moves it.
+        ``pixel_anchor_weight`` is a PIXEL-matching term already at its optimum 5.0 (20
+        collapses to 1 code); an amplitude RATIO is a different quantity and nothing in the
+        objective addresses it.
+
+        LOG form so under- and over-shoot are penalised symmetrically (a ratio term is
+        bounded below by -1 on one side and unbounded on the other, which biases it toward
+        overshoot). std is taken over the whole (F, T) plane per (window, channel), matching
+        the metric; the mask is applied at WINDOW granularity for the same reason
+        :meth:`_valid_windows` gives -- one dead channel contaminates the plane.
+
+        Returns a scalar; zero-cost and never called unless ``std_weight > 0``.
+        """
+        win = self._valid_windows(frame_mask, recon.shape)
+        r = recon if win is None else recon[win]
+        t = target if win is None else target[win]
+        if r.numel() == 0:
+            return recon.new_zeros(())
+        B, C = r.shape[0], r.shape[1]
+        rs = r.reshape(B, C, -1).std(dim=-1)
+        ts = t.reshape(B, C, -1).std(dim=-1)
+        eps = 1e-6
+        return (torch.log(rs + eps) - torch.log(ts + eps)).abs().mean()
+
     def _masked_gain_mae(
         pred: torch.Tensor, tgt: torch.Tensor, frame_mask: Optional[torch.Tensor]
     ) -> torch.Tensor:

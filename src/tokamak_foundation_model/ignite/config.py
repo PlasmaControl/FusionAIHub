@@ -535,6 +535,16 @@ class SpectroCodecConfig:
     # Hidden width of the per-patch gain MLPs (encoder input head / decoder output head).
     gain_hidden: int = 256
 
+    # AMPLITUDE-RATIO term. 0.0 = OFF and byte-identical (the loss is not even computed).
+    # Penalises |log std(recon) - log std(target)| per (window, channel) -- the exact quantity
+    # analysis.spectro_final_fig.masked_std_ratio reports, ideal 1.0.
+    # MEASURED motivation (2026-09-05): ece sits at std_r 0.232-0.267 across six arms spanning
+    # 16x16 and 8x32 patches, LR 2e-4 and 1e-4, and EMA -- and 0.12-0.32 across all 24 earlier
+    # checkpoints. Nothing in the objective addresses an amplitude RATIO: pixel_anchor_weight
+    # matches PIXELS and is already at its optimum 5.0. nRMSE cannot expose the problem because
+    # its exact minimiser is the conditional mean, so amplitude collapse IMPROVES it.
+    std_weight: float = 0.0
+
     # oracle-gate acceptance thresholds
     gate_stability: float = 0.80
     gate_persistence: float = 0.50

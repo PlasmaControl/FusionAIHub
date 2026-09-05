@@ -91,6 +91,41 @@ for M in ${MODS}; do
         echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
         echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
     fi
+    if [ "${SWEEP}" = "ecestd" ]; then
+        # ece: the AMPLITUDE-RATIO term, ablated. This is the first lever aimed at ece's actual
+        # measured defect rather than at geometry or optimisation.
+        #
+        # WHY NOW. std_r sat at 0.232-0.267 across the SIX arms of the ecestab 2x2 -- two patch
+        # geometries, two learning rates, EMA -- and 0.12-0.32 across all 24 earlier checkpoints.
+        # Nothing in the objective addresses an amplitude RATIO: pixel_anchor_weight matches
+        # PIXELS and is already at its optimum 5.0, and nRMSE is blind by construction because
+        # its exact minimiser IS the conditional mean, so shrinking amplitude IMPROVES it.
+        # --std_weight adds |log std(recon) - log std(target)| per (window, channel), the exact
+        # quantity the audit reports as std_ratio. Unit-tested: 0.0 at ratio 1, symmetric in
+        # over/undershoot, and 1.386 at ece's measured 0.25.
+        #
+        # BASE = the WINNING cell of the 2x2: 8x32 at LR 2e-4 (peakF1 0.3784). NOT LR 1e-4 --
+        # that was a measured NEGATIVE for ece (-0.052 at matched aspect, and it tripled the
+        # lattice). The control arm is NOT re-run: ece_p832_lr2 IS that cell, already audited at
+        # 320 windows, so all six nodes buy ablation points instead.
+        #
+        # WEIGHT SCALE: recon_ref carries pixel_anchor 5.0 x pixel (~2.5-5 in practice), so the
+        # std term at weight W contributes ~1.4W at ece's current amplitude. 0.5 is a nudge, 2 is
+        # comparable to the pixel anchor, 8 and 20 are dominant -- the ablation brackets the point
+        # where it starts trading away peakF1, which is the failure mode to watch for.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+        B="${B} --patch_f 8 --patch_t 32 --lr 2e-4"
+        ARMS_STR="${ARMS_STR};${M}_sw0p5|${P} ${MSK} ${MIR} ${B} --std_weight 0.5 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_sw2|${P} ${MSK} ${MIR} ${B} --std_weight 2 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_sw2_s2|${P} ${MSK} ${MIR} ${B} --std_weight 2 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_sw8|${P} ${MSK} ${MIR} ${B} --std_weight 8 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_sw20|${P} ${MSK} ${MIR} ${B} --std_weight 20 --seed 1"
+        # does the std term need the aspect change, or does it work on the production grid?
+        ARMS_STR="${ARMS_STR};${M}_sw2_p16|${P} ${MSK} ${MIR} --ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2 --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4 --std_weight 2 --seed 1"
+        continue
+    fi
     if [ "${SWEEP}" = "ecestab" ]; then
         # ece: GEOMETRY *AND* STABILITY, AS A 2x2 SO THE EFFECT IS ATTRIBUTABLE.
         #
