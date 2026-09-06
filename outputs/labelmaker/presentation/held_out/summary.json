@@ -1,0 +1,53 @@
+{
+  "subset": "held_out",
+  "subset_note": "only the shots the survival model was NOT trained on",
+  "n_shots_in_training": 214,
+  "n_shots": 272,
+  "n_rows_cnn_valid": 18363,
+  "base_rate": 0.06229918858574307,
+  "cnn_auroc_archived": 0.9613354515279714,
+  "cnn_auroc_reconstructed": 0.9387571238796629,
+  "cnn_best_f1": {
+    "archived (training) inputs": [
+      0.6628803245436106,
+      0.8300000000000001
+    ],
+    "labelmaker reconstruction": [
+      0.5512465373961218,
+      0.53
+    ]
+  },
+  "dsm": {
+    "tm_risk_250ms": {
+      "auroc": 0.8387243167614152,
+      "positive_rate": 0.01080597014925373,
+      "n": 16750
+    },
+    "tm_risk_500ms": {
+      "auroc": 0.8168263132298761,
+      "positive_rate": 0.022746268656716417,
+      "n": 16750
+    },
+    "tm_risk_1s": {
+      "auroc": 0.8006487038520781,
+      "positive_rate": 0.04674626865671642,
+      "n": 16750
+    }
+  },
+  "lead_time_median_s": {
+    "cnn": -0.03749999999999987,
+    "dsm": 0.2749999999999999
+  },
+  "lead_time_fires_early_fraction": {
+    "cnn": 0.34375,
+    "dsm": 0.8260869565217391
+  },
+  "coverage_median": {
+    "cnn": 0.4479166666666667,
+    "dsm": 0.5458333333333333
+  },
+  "examples": {
+    "early": 186523,
+    "late": 186554
+  }
+}
