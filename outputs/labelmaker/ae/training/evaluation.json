@@ -1,0 +1,186 @@
+{
+  "dataset_dir": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae/dataset",
+  "device": "cuda",
+  "figures": [
+    "valid_178872_valid.png",
+    "valid_178879_valid.png",
+    "valid_170671_valid.png",
+    "valid_170663_valid.png",
+    "valid_170678_valid.png",
+    "valid_170672_valid.png"
+  ],
+  "generated": "2026-09-06T01:25:30-0400",
+  "n_valid_shots": 60,
+  "note": "Precision against `annotated` is not an error rate: the annotation under-counts, so predicted-positive frames outside an annotated window may be unlabelled modes. Recall and AUROC are the honest summaries.",
+  "runs": {
+    "mask_sce": {
+      "best_epoch": 11,
+      "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet/ae_seldnet_mask_sce.pt",
+      "freq_bias_khz": -9.751801189334579,
+      "freq_mae_khz": 17.38805961448114,
+      "freq_median_ae_khz": 12.378623962402344,
+      "loss": "sce",
+      "n_freq_frames": 81859,
+      "n_shots": 60,
+      "per_shot_recall_annotated_median": 1.0,
+      "target": "mask",
+      "val_loss": 0.47166678309440613,
+      "vs_active": {
+        "auroc": 0.9854486857369188,
+        "f1": 0.9613865280096537,
+        "n_frames": 469200,
+        "precision": 0.9663056558363418,
+        "predicted_positive_frac": 0.6712468030690537,
+        "recall": 0.9565172296745157,
+        "truth_frac": 0.6781159420289855
+      },
+      "vs_annotated": {
+        "auroc": 0.6016266215917212,
+        "f1": 0.40099741047428694,
+        "n_frames": 469200,
+        "precision": 0.2586228246478001,
+        "predicted_positive_frac": 0.6712468030690537,
+        "recall": 0.8921174550671939,
+        "truth_frac": 0.1945929241261722
+      },
+      "vs_threeway_labelled": {
+        "auroc": 0.9884734026781753,
+        "f1": 0.9347560903395431,
+        "labelled_frac": 0.4762212276214834,
+        "n_frames": 223443,
+        "note": "only the frames the three-way target weights (annotated&active vs neither)",
+        "precision": 0.907062000804459,
+        "predicted_positive_frac": 0.3894281763134222,
+        "recall": 0.9641945296180017,
+        "truth_frac": 0.36635294012343195
+      }
+    },
+    "threeway_bce": {
+      "best_epoch": 7,
+      "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet/ae_seldnet_threeway_bce.pt",
+      "freq_bias_khz": -3.965972408099467,
+      "freq_mae_khz": 16.439223965609525,
+      "freq_median_ae_khz": 13.079643249511719,
+      "loss": "bce",
+      "n_freq_frames": 81859,
+      "n_shots": 60,
+      "per_shot_recall_annotated_median": 1.0,
+      "target": "threeway",
+      "val_loss": 0.14293533563613892,
+      "vs_active": {
+        "auroc": 0.9835800496223885,
+        "f1": 0.9604156508532833,
+        "n_frames": 469200,
+        "precision": 0.9773192387905764,
+        "predicted_positive_frac": 0.6550575447570333,
+        "recall": 0.9440868461083942,
+        "truth_frac": 0.6781159420289855
+      },
+      "vs_annotated": {
+        "auroc": 0.6146720782278727,
+        "f1": 0.4000692326216086,
+        "n_frames": 469200,
+        "precision": 0.2594573666110303,
+        "predicted_positive_frac": 0.6550575447570333,
+        "recall": 0.8734105122504189,
+        "truth_frac": 0.1945929241261722
+      },
+      "vs_threeway_labelled": {
+        "auroc": 0.9896910301364085,
+        "f1": 0.9449176948494861,
+        "labelled_frac": 0.4762212276214834,
+        "n_frames": 223443,
+        "note": "only the frames the three-way target weights (annotated&active vs neither)",
+        "precision": 0.9379965332948144,
+        "predicted_positive_frac": 0.3717995193405029,
+        "recall": 0.9519417535029746,
+        "truth_frac": 0.36635294012343195
+      }
+    },
+    "threeway_sce": {
+      "best_epoch": 6,
+      "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet/ae_seldnet_threeway_sce.pt",
+      "freq_bias_khz": 2.7936251497057225,
+      "freq_mae_khz": 17.63182834026004,
+      "freq_median_ae_khz": 15.285423278808594,
+      "loss": "sce",
+      "n_freq_frames": 81859,
+      "n_shots": 60,
+      "per_shot_recall_annotated_median": 1.0,
+      "target": "threeway",
+      "val_loss": 0.40652328729629517,
+      "vs_active": {
+        "auroc": 0.9856570289585944,
+        "f1": 0.9638048743277775,
+        "n_frames": 469200,
+        "precision": 0.9747849455452546,
+        "predicted_positive_frac": 0.6630093776641092,
+        "recall": 0.9530694089989062,
+        "truth_frac": 0.6781159420289855
+      },
+      "vs_annotated": {
+        "auroc": 0.6209199008545677,
+        "f1": 0.3995407406302887,
+        "n_frames": 469200,
+        "precision": 0.25840287510768795,
+        "predicted_positive_frac": 0.6630093776641092,
+        "recall": 0.8804201395353931,
+        "truth_frac": 0.1945929241261722
+      },
+      "vs_threeway_labelled": {
+        "auroc": 0.9908067638347553,
+        "f1": 0.9439653617174815,
+        "labelled_frac": 0.4762212276214834,
+        "n_frames": 223443,
+        "note": "only the frames the three-way target weights (annotated&active vs neither)",
+        "precision": 0.92958747379517,
+        "predicted_positive_frac": 0.3778637057325582,
+        "recall": 0.9587950011605322,
+        "truth_frac": 0.36635294012343195
+      }
+    },
+    "threeway_sce_f29": {
+      "best_epoch": 14,
+      "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet/ae_seldnet_threeway_sce_f29.pt",
+      "freq_bias_khz": -3.575992154801876,
+      "freq_mae_khz": 12.898973355290769,
+      "freq_median_ae_khz": 9.340736389160156,
+      "loss": "sce",
+      "n_freq_frames": 81859,
+      "n_shots": 60,
+      "per_shot_recall_annotated_median": 1.0,
+      "target": "threeway",
+      "val_loss": 0.5232350826263428,
+      "vs_active": {
+        "auroc": 0.9557429424857316,
+        "f1": 0.9221094623828482,
+        "n_frames": 469200,
+        "precision": 0.9626316815230437,
+        "predicted_positive_frac": 0.6233312020460358,
+        "recall": 0.884861018568573,
+        "truth_frac": 0.6781159420289855
+      },
+      "vs_annotated": {
+        "auroc": 0.7229820911350147,
+        "f1": 0.41539463741303384,
+        "n_frames": 469200,
+        "precision": 0.2725367306396961,
+        "predicted_positive_frac": 0.6233312020460358,
+        "recall": 0.8730052681730064,
+        "truth_frac": 0.1945929241261722
+      },
+      "vs_threeway_labelled": {
+        "auroc": 0.9803104848587724,
+        "f1": 0.9203400772238395,
+        "labelled_frac": 0.4762212276214834,
+        "n_frames": 223443,
+        "note": "only the frames the three-way target weights (annotated&active vs neither)",
+        "precision": 0.917657489160665,
+        "predicted_positive_frac": 0.3685011389929423,
+        "recall": 0.9230383952894612,
+        "truth_frac": 0.36635294012343195
+      }
+    }
+  },
+  "threshold": 0.5
+}
