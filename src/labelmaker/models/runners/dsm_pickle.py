@@ -3,8 +3,8 @@
 The upstream tearing-survival model is a pickle of the group's auton-survival
 fork: `SurvivalModel` wrapping `DeepSurvivalMachines` wrapping a torch module.
 Only those three classes are foreign; everything under them is plain torch
-(`Sequential`, `Linear`, `ReLU6`, `Tanh`, `ModuleDict`, `ParameterDict`) and
-plain numbers. So the pickle is read with an unpickler that stands in a shell
+(`Sequential`, `Linear`, `ReLU6`, `Dropout`, `Tanh`, `ModuleDict`,
+`ParameterDict`) and plain numbers. So the pickle is read with an unpickler that stands in a shell
 class for each of the three and refuses any other class it has not been told
 about - the same "upstream bytes, our evaluator" posture as `keras_h5`, with
 the weights verified by the card's sha256 before the file is opened.
@@ -140,6 +140,11 @@ def load_dsm(path) -> DsmGraph:
             if layer.bias is not None:
                 raise UnsupportedModel(f"{path}: embedding Linear with a bias")
             weights.append(_f64(layer.weight))
+        elif isinstance(layer, torch.nn.Dropout):
+            # The ELM fork inserts `nn.Dropout` after every ReLU6. Dropout is the
+            # identity in eval mode, which is the only mode a checkpoint is read
+            # in, so it is skipped rather than refused. It carries no weights.
+            continue
         elif not isinstance(layer, torch.nn.ReLU6):
             raise UnsupportedModel(f"{path}: embedding layer {type(layer).__name__}")
     risk = "1"
