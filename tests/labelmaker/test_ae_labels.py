@@ -24,8 +24,10 @@ from labelmaker.ae.labels import (
     clean_mask,
     contiguous_runs,
     notch_bins,
+    notch_threshold_passes,
     persist_open,
     power_weights,
+    protected_removal_counts,
 )
 
 # --- clean_mask --------------------------------------------------------------
@@ -167,6 +169,56 @@ def test_apply_notch_broadcasts_over_channels():
     assert got[0, 1].sum() == 0
     assert got[1, 0].sum() == 0
     assert got.sum() == 2 * 3 * 4 - 2 * 4
+
+
+# --- the notch pass rule: counted per BIN, not per shot -----------------------
+
+
+def test_protected_removal_counts_counts_shots_per_bin():
+    # bin 1 is protected and removed on 3 of the 4 shots; bin 3 on one only.
+    protected = np.array([False, True, False, True, False])
+    notched = [
+        np.array([False, True, False, True, False]),
+        np.array([False, True, False, False, False]),
+        np.array([True, True, False, False, False]),
+        np.array([True, False, False, False, False]),
+    ]
+    counts = protected_removal_counts(notched, [protected] * 4, n_bins=5)
+    assert counts.tolist() == [0, 3, 0, 1, 0]
+
+
+def test_protected_removal_counts_ors_the_channel_axis_within_a_shot():
+    protected = np.array([False, True, False])
+    # two channels of one shot both take bin 1: that is ONE shot, not two.
+    notched = [np.array([[False, True, False], [False, True, False]])]
+    assert protected_removal_counts(notched, [protected], n_bins=3).tolist() == [0, 1, 0]
+
+
+def test_protected_removal_counts_uses_each_shots_own_protected_bins():
+    notched = [np.array([True, False]), np.array([True, False])]
+    protected = [np.array([True, False]), np.array([False, False])]
+    assert protected_removal_counts(notched, protected, n_bins=2).tolist() == [1, 0]
+
+
+def test_protected_removal_counts_rejects_a_length_mismatch():
+    with pytest.raises(ValueError, match='per shot'):
+        protected_removal_counts([np.zeros(4, bool)], [np.zeros(5, bool)], n_bins=5)
+
+
+def test_notch_threshold_passes_on_the_per_bin_count_not_the_shot_count():
+    # 40 shots each lose a protected bin, but no single bin more than twice:
+    # counting shots would fail this threshold, counting bins passes it.
+    counts = np.array([2, 2, 1, 0, 2])
+    assert notch_threshold_passes(counts, max_shots=2)
+
+
+def test_notch_threshold_fails_when_one_bin_is_removed_on_more_than_max_shots():
+    assert not notch_threshold_passes(np.array([0, 3, 0]), max_shots=2)
+    assert notch_threshold_passes(np.array([0, 2, 0]), max_shots=2)
+
+
+def test_notch_threshold_passes_with_nothing_removed():
+    assert notch_threshold_passes(np.zeros(512, dtype=int))
 
 
 # --- centroid_khz ------------------------------------------------------------

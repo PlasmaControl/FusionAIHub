@@ -138,7 +138,7 @@ in the 180 denominator of the verdict's 80 % rule, i.e. counted as failing).
 | AUROC 10th percentile | 0.4167 | 0.3914 |
 | AUROC min / max | 0.2232 / 0.9901 | 0.2104 / 0.9910 |
 | shots with AUROC < 0.6 | 44 | 47 |
-| shots with AUROC < 0.5 | 33 | 36 |
+| shots with AUROC < 0.5 | 36 | 36 |
 | recall median @ occ>=0.005 | 0.991 | 0.997 |
 | recall median @ occ>=0.01 | 0.972 | 0.982 |
 | recall median @ occ>=0.02 | 0.914 | 0.923 |
@@ -155,6 +155,13 @@ in the 180 denominator of the verdict's 80 % rule, i.e. counted as failing).
 Under `tokeye`, per-shot recall at occ>=0.01 has a minimum of 0.375 and only 7 shots
 fall below 0.5.
 
+Both AUROC < 0.5 counts were recomputed from the per-shot AUROCs in
+`mask_vs_annotation.json` (task 7a review, 2026-09-05): **36 for each transform**, not
+the 33 first written for `aemodes`. The two transforms disagree about *which* shots
+they are - the union is larger than 36 - but the count is the same. `auroc_below_0.5`
+now sits beside `auroc_below_0.6` in `metrics.<transform>.per_shot_summary`, so the
+number no longer has to be recounted by hand.
+
 ### Centroid frequency check
 
 The intensity-weighted centroid frequency of the masked pixels, taken over
@@ -168,10 +175,20 @@ annotated-active frames only and then median-reduced per shot:
 | shots whose median centroid is inside 80-250 kHz | 179/179 | 179/179 |
 
 Every shot's median centroid lands inside the band, clustered at 100-170 kHz - where
-TAE/EAE activity on DIII-D belongs. The centroid is weighted by the transform's own
-(un-standardised) spectrogram intensity, so the `tokeye` numbers are weighted by
-clipped log-amplitude and the `aemodes` ones by log-power; they agree to ~1 kHz, so
-the weighting choice does not matter at this resolution.
+TAE/EAE activity on DIII-D belongs.
+
+**How this centroid is weighted (corrected 2026-09-05).** It is weighted by the
+transform's own un-standardised values, which are *logarithmic*: `tokeye`'s
+`clip(log1p(|STFT|), p1, p99)` and `aemodes`' log-power tif. Those values barely vary -
+measured over task 7a's dataset the `tokeye` ones span 24.2-31.9 with a coefficient of
+variation of 0.034-0.039 per (shot, channel), and the `aemodes` tif spans 46-63 at
+CV 0.026 - so a log-weighted centroid is **effectively an unweighted mean over the
+masked pixels**, not an intensity-weighted one. That, and not a real agreement about
+where the power is, is why the two transforms land within ~1 kHz of each other here.
+Task 7a therefore weights `freq_khz` by **linear power**, `power_weights(x) =
+expm1(x)**2`, which spreads the weights over a ~5e6 dynamic range; it moves the pooled
+median centroid down about 11 kHz (124.2 kHz here to 113.0 kHz in
+`dataset/dataset.json`). Read the numbers in this section as unweighted centroids.
 
 ### Notch
 
