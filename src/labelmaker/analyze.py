@@ -349,8 +349,11 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
         ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.0), frameon=False,
                   fontsize=7, ncol=4, labelcolor=_SECONDARY, borderaxespad=0.2)
     axes[-1].set_xlabel("time (s)", fontsize=8, color=_INK)
-    fig.suptitle(f"shot {shot}  |  " + ", ".join(title_ids), fontsize=10,
-                 color=_INK, x=0.01, ha="left")
+    # One model id per line once there are more than two: the ids are long and
+    # a single line runs off the right edge with five models.
+    joiner = ", " if len(title_ids) <= 2 else "\n"
+    fig.suptitle(f"shot {shot}  |  " + joiner.join(title_ids), fontsize=10,
+                 color=_INK, x=0.01, ha="left", va="top", y=0.995)
     fig.subplots_adjust(left=0.08, right=0.99, top=0.95, bottom=0.07, hspace=0.42)
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
