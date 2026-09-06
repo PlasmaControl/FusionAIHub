@@ -14,6 +14,9 @@
       "d3d_ae_activity_seldnet/ae_frequency",
       "d3d_elm_time_to_event_dsm/elm_risk_20ms"
     ],
+    "scatter": [
+      "d3d_ae_activity_seldnet/ae_frequency"
+    ],
     "threshold": 0.5,
     "thresholds": {
       "d3d_tearing_time_to_event_dsm/tm_risk_1s": 0.2,
@@ -55,7 +58,7 @@
       "tritop": "archive",
       "volume": "fdp"
     },
-    "status": "partial"
+    "status": "skipped"
   },
   "features_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/features/187199_features.h5",
   "figure": "/scratch/gpfs/nc1514/FusionAIHub/outputs/labelmaker/analysis/187199/187199_labels.png",
@@ -527,12 +530,12 @@
     }
   },
   "labels_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/labels/187199_labels.h5",
-  "run_id": "analyze-20260906T160707Z-3453698",
+  "run_id": "analyze-20260906T161014Z-3456217",
   "shot": 187199,
   "truth": {
     "available": true,
     "n_rows": 104,
     "onset_s": 3.825
   },
-  "written": "2026-09-06T16:07:11+00:00"
+  "written": "2026-09-06T16:10:15+00:00"
 }

@@ -14,6 +14,9 @@
       "d3d_ae_activity_seldnet/ae_frequency",
       "d3d_elm_time_to_event_dsm/elm_risk_20ms"
     ],
+    "scatter": [
+      "d3d_ae_activity_seldnet/ae_frequency"
+    ],
     "threshold": 0.5,
     "thresholds": {
       "d3d_tearing_time_to_event_dsm/tm_risk_1s": 0.2,
@@ -439,11 +442,11 @@
     }
   },
   "labels_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/labels/199597_labels.h5",
-  "run_id": "analyze-20260906T160411Z-3452911",
+  "run_id": "analyze-20260906T160926Z-3455703",
   "shot": 199597,
   "truth": {
     "available": false,
     "reason": "no archived rows"
   },
-  "written": "2026-09-06T16:04:13+00:00"
+  "written": "2026-09-06T16:09:28+00:00"
 }

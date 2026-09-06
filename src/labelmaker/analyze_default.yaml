@@ -27,3 +27,8 @@ threshold: 0.5
 thresholds:
   d3d_tearing_time_to_event_dsm/tm_risk_1s: 0.2
   d3d_tearing_time_to_event_dsm_continued/tm_risk_1s: 0.2
+
+# Drawn as markers rather than a line: defined only while a mode is active, so
+# there is nothing to connect between the islands.
+scatter:
+  - d3d_ae_activity_seldnet/ae_frequency

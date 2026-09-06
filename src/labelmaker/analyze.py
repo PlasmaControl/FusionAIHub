@@ -46,6 +46,10 @@ class AnalysisConfig:
     threshold: float
     #: per-label overrides of `threshold`; one scale does not fit every model
     thresholds: dict[str, float] = field(default_factory=dict)
+    #: labels drawn as markers, not a line: a value that is defined only while
+    #: something is happening (a frequency while a mode is active) has no
+    #: meaningful path between its islands
+    scatter: tuple[str, ...] = ()
 
     def threshold_for(self, label: str) -> float:
         return float(self.thresholds.get(label, self.threshold))
@@ -65,6 +69,7 @@ class AnalysisConfig:
             "context": list(self.context),
             "threshold": self.threshold,
             "thresholds": dict(self.thresholds),
+            "scatter": list(self.scatter),
         }
 
 
@@ -113,9 +118,15 @@ def load_config(path) -> AnalysisConfig:
             raise ConfigError(f"thresholds: {label!r} is not one of the `labels`")
         if not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0:
             raise ConfigError(f"thresholds: {label} must be a number in [0, 1], got {value!r}")
+    scatter = raw.get("scatter") or []
+    if not isinstance(scatter, list) or not all(isinstance(x, str) for x in scatter):
+        raise ConfigError(f"{path}: `scatter` must be a list of labels")
+    for label in scatter:
+        if label not in labels:
+            raise ConfigError(f"scatter: {label!r} is not one of the `labels`")
     return AnalysisConfig(
         labels=tuple(labels), context=tuple(context), threshold=float(threshold),
-        thresholds={k: float(v) for k, v in overrides.items()},
+        thresholds={k: float(v) for k, v in overrides.items()}, scatter=tuple(scatter),
     )
 
 
@@ -211,6 +222,7 @@ def panels_for(features_path, labels_path, cfg: AnalysisConfig,
         slug, name = label.split("/", 1)
         panel = {"kind": "label", "name": label, "t": None, "note": "no labels",
                  "threshold": cfg.threshold_for(label), "truth_t": None,
+                 "scatter": label in cfg.scatter,
                  "truth_mask": None, "truth_y": None,
                  "onset_s": (truth or {}).get("onset_s")}
         if truth is not None and truth.get("available"):
@@ -329,9 +341,16 @@ def plot_shot(shot: int, panels: list[dict], out_png, *, title_ids) -> Path:
                 t, 0, 1, where=~valid, transform=ax.get_xaxis_transform(),
                 color=_GRID, alpha=0.75, linewidth=0, label="invalid rows",
             )
-        ax.fill_between(t, panel["lo"], panel["hi"], color=_SERIES, alpha=0.18,
-                        linewidth=0, label="p10..p90" if band else "ensemble spread")
-        ax.plot(t, y, color=_SERIES, linewidth=1.5, label=panel["name"])
+        if panel.get("scatter"):
+            # Markers with the spread as a whisker: the value exists only on
+            # islands, and a line would invent a path between them.
+            ax.errorbar(t, y, yerr=[np.clip(y - panel["lo"], 0, None), np.clip(panel["hi"] - y, 0, None)],
+                        fmt="o", color=_SERIES, markersize=3, linewidth=0, elinewidth=0.8,
+                        ecolor=_SERIES, alpha=0.9, label=panel["name"])
+        else:
+            ax.fill_between(t, panel["lo"], panel["hi"], color=_SERIES, alpha=0.18,
+                            linewidth=0, label="p10..p90" if band else "ensemble spread")
+            ax.plot(t, y, color=_SERIES, linewidth=1.5, label=panel["name"])
         if panel.get("truth_y") is not None:
             ax.plot(panel["truth_t"], panel["truth_y"], color=_TRUTH if band else _INK, linewidth=1.1,
                     linestyle=(0, (5, 2)), label="archived truth")
