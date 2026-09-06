@@ -38,6 +38,9 @@ def test_the_variant_reuses_the_base_specs_and_names_its_own_weights():
     assert cont.ADAPTER.ensemble_n == 1
     assert cont.ADAPTER.framework == "dsm_pickle"
     assert str(cont.UPSTREAM).endswith(cont.SLUG)
+    # The continuation ran on the same rows, so it inherits the same training
+    # shots - not a copy of the list, the same object.
+    assert cont.ADAPTER.training_shots is base.ADAPTER.training_shots
 
 
 def test_card_matches_the_spec_and_declares_the_same_columns_as_the_base_card():
@@ -53,7 +56,12 @@ def test_card_matches_the_spec_and_declares_the_same_columns_as_the_base_card():
 def test_load_reads_the_continued_weights_and_leaves_isotonic_columns_nan(
         tmp_path, monkeypatch):
     """Same predictions as the base loader on the same graph, from a file of
-    the variant's own name, with no calibration.json in the directory."""
+    the variant's own name, with no calibration.json in the directory.
+
+    The shipped model directory does now hold one - `validate` runs
+    `calibration_study` for this slug too - so this is the no-map path, not a
+    statement that the variant never publishes isotonic columns.
+    """
     from .test_dsm_pickle import _fake_pickle
 
     # _fake_pickle seeds every fake torch model with a fixed seed.

@@ -1,5 +1,8 @@
 {
   "dsm_slug": "d3d_tearing_time_to_event_dsm_continued",
+  "subset": "all",
+  "subset_note": "every aligned shot of the pool, in-sample and held-out together",
+  "n_shots_in_training": 214,
   "n_shots": 486,
   "n_rows_cnn_valid": 31257,
   "base_rate": 0.084908980388393,

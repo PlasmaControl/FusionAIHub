@@ -142,7 +142,10 @@ reconstruction does not cover; 31,257 published rows of 35,776 matched):
 4. **Alarm quality** (`alarm_quality.json`) - final-label and any-row shot
    FPR/FNR, warning times, jumps, and per-horizon IPCW AUC alongside plain
    AUROC. Available for slugs with archived truth; survival uses pre-onset
-   valid rows, while column labels use all valid aligned rows.
+   valid rows, while column labels use all valid aligned rows. Every metric
+   appears three times, under `labels.<name>.subsets.{all,held_out,in_training}`,
+   split by the adapter's own `training_shots` - a model that records none
+   reports every shot as held out.
 
 | `tm_prob` | AUROC | F1 at 0.5 | precision | recall | best F1 (at) |
 |---|---|---|---|---|---|
@@ -226,6 +229,19 @@ one in its config.
   restricted to shots that do get an onset (54% positive) it is under-confident,
   ECE 0.448. It was fit on rows that are 85% censored with a median 1.92 s to
   event. Every figure and every report states its row set for this reason.
+- Roughly half the 500-shot pool is in the survival models' own training set:
+  214 of the 500 shots, 208 of the 463 scored shots and 41 of the 80 shots with
+  an archived onset are among the 8,923 shots of
+  `models/d3d_tearing_time_to_event_dsm/training_shots.txt`, which both survival
+  checkpoints share. `alarm_quality` and `calibration_study` therefore report
+  every metric on `all`, `held_out` and `in_training`, and the published
+  isotonic maps are fitted on held-out shots only; a number labelled `all` is
+  still part in-sample. Measured, the contamination did not flatter the shipped
+  checkpoint - its held-out AUROC is 0.839 / 0.817 / 0.801 against 0.761 /
+  0.738 / 0.696 in-sample - because the two subsets are different populations
+  (19.7% of in-training pool shots tear, against 15.3% of held-out ones). The
+  tearing CNN is a separate case and not covered by this split: the archive it
+  is scored against IS its training store, as its card says.
 - `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` carries the
   next round: what the tearing-survival, ELM and Alfven-eigenmode training loops
   upstream actually do (measured, with the shipped survival model's

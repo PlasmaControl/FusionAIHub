@@ -813,7 +813,16 @@ def main(argv=None) -> int:
                     )
                 except Exception as exc:  # noqa: BLE001 - isolate a model's report
                     reports["alarm_quality"] = {"error": f"{type(exc).__name__}: {exc}"}
-            if slug == "d3d_tearing_time_to_event_dsm":
+            # Every slug whose archive truth includes a horizon can be
+            # calibrated, not merely the checkpoint the study was written for:
+            # naming one slug here left the retrained variant publishing NaN
+            # isotonic columns for no reason. Note the side effect - the study
+            # writes `calibration.json` into the model directory, so the next
+            # `infer` for this slug publishes its `*_isotonic` labels from the
+            # map fitted here.
+            if any(rule["kind"] == "onset_within"
+                   for key, rule in validation.ARCHIVE_TRUTH.items()
+                   if key.startswith(f"{slug}/")):
                 try:
                     reports["calibration_study"] = validation.calibration_study(
                         slug, shots, paths, timeout_s=args.timeout

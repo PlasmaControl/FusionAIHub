@@ -29,6 +29,21 @@ def test_inputs_are_the_upstream_signals_in_upstream_order():
     assert dsm.ADAPTER.time_step_ms == 25.0 and dsm.ADAPTER.ensemble_n == 1
 
 
+def test_the_training_shots_are_committed_beside_the_spec():
+    """Half the 500-shot pool is in this set, so every pool number needs it.
+
+    The list is generated from the upstream per-row shot pickle by
+    `scripts/labelmaker/write_training_shots.py` and committed, because the
+    split has to be reproducible where `/projects` is not mounted.
+    """
+    shots = dsm.TRAINING_SHOTS
+    assert isinstance(shots, frozenset) and len(shots) == 8923
+    assert min(shots) == 140444 and max(shots) == 193373
+    assert all(isinstance(shot, int) for shot in (min(shots), max(shots)))
+    assert dsm.ADAPTER.training_shots is shots
+    assert 187199 in shots and 186545 not in shots      # the two example shots
+
+
 def _built(n=7, seed=0):
     rng = np.random.default_rng(seed)
     scalars = np.abs(rng.normal(size=(n, 14))) * np.array(
@@ -176,7 +191,8 @@ def test_loaded_calibration_reaches_predictions_and_hdf5(tmp_path, monkeypatch):
         raw = read_label(paths.labels_file(123), dsm.SLUG, name)
         iso = read_label(paths.labels_file(123), dsm.SLUG, name + "_isotonic")
         np.testing.assert_allclose(iso.y, fitted.apply(raw.y), atol=1e-7)
-        assert iso.attrs["calibration"] == "isotonic, fit on all_pre_onset rows"
+        assert iso.attrs["calibration"] == (
+            "isotonic, fit on held-out all_pre_onset rows")
         assert json.loads(iso.attrs["calibration_fit_on"]) == fit_on
     # A subsequent load without the file must not retain stale module metadata.
     (model_dir / "calibration.json").unlink()

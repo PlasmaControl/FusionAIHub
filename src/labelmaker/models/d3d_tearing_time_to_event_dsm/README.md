@@ -34,7 +34,14 @@ labelmaker:
     sha256:
       rt_fixed_rot.pkl: 2a7b65a9e7484c917c92d8394e5a4bce5a2b09e027da95e3832dd5f8b2d16f5b
       rt_normalizations_dict.pkl: fa515c7b591f3e1ea5f710d75a825b1a7831cbd63e06543f9ccb87ff87a73fbe
-    notes: rt_normalizations_dict.pkl lives in /projects/EKOLEMEN/survival_tm/data/ upstream
+    notes: >-
+      rt_normalizations_dict.pkl lives in /projects/EKOLEMEN/survival_tm/data/ upstream.
+      Training shots: 8,923 unique DIII-D shots, 140444-193373, over 914,898 training rows,
+      read from /projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl
+      (sha256 f89286ed88bdf20bfa6af0abd49a881e7902f77b78e6ecf811f3d9aab5f03288) and committed
+      beside this card as training_shots.txt by scripts/labelmaker/write_training_shots.py.
+      214 of labelmaker's 500 pool shots, 208 of the 463 scored shots and 41 of the 80 onset
+      shots are in that list; every pool number below is split on it.
   inputs:
   - bmspinj <- pinj_total
   - bmstinj <- tinj_total
@@ -223,49 +230,79 @@ have (below).
   convergence did not help: `d3d_tearing_time_to_event_dsm_continued` continues
   this fit for 300 epochs, cutting validation NLL 0.471321 -> 0.287652 on the
   same (leaky, row-level) split, and **measured worse on the 500-shot pool** -
-  AUROC 0.810 -> 0.681, 0.787 -> 0.670, 0.758 -> 0.680 at 250 ms / 500 ms / 1 s,
-  with ECE on all pre-onset rows worse at every horizon. This model stays the
+  AUROC 0.810 -> 0.681, 0.787 -> 0.670, 0.758 -> 0.680 at 250 ms / 500 ms / 1 s
+  (on held-out shots alone, 0.839 -> 0.692, 0.817 -> 0.672, 0.801 -> 0.688: the
+  same verdict), with raw ECE on all pre-onset rows worse at every horizon. This model stays the
   default; the comparison is in that card and in
   `outputs/labelmaker/presentation_continued/`.
 - Calibration depends on the reported row set. The earlier full-pool 1 s
   figures were ECE 0.022 on all aligned pre-onset rows (5.5% positive), versus
   0.448 on onset-only shots (54% positive). The study below estimates the
-  adjustment on separate fit shots and measures it on report shots.
+  adjustment on separate **held-out** fit shots - never on shots this
+  checkpoint was trained on - and measures it on the report shots, on the
+  in-training shots and on both together.
 
-Calibration study (2026-09-05, seed 0): 463 shots have usable pooled rows from
-the 500-shot pool; 231 fit shots and 232 report shots, split by a permutation
-of the sorted shot list. The report half has 14,005 **all_pre_onset** rows,
-of which 1,702 are **onset_shots_only** rows. Target prevalence p1 is computed
-on the FIT half of each row set, then applied to the REPORT half. Training
-prevalence q1(h) is `mean((e == 1) & (t <= h_ms))` over 914,898 upstream rows;
-source paths and SHA256s are in `validation/d3d_tearing_time_to_event_dsm/calibration_study.json`.
+Calibration study (2026-09-05, seed 0), **fitted on held-out shots only**: 463
+shots have usable pooled rows from the 500-shot pool, 208 of them training
+shots. The seeded permutation is applied to the **255 held-out shots alone** -
+127 fit, 128 report - because an isotonic map fitted on rows the model
+memorised is calibrated to memorisation. The fit half has 7,941
+**all_pre_onset** rows and 741 **onset_shots_only** rows. Every metric is then
+reported on three populations: `held_out` (the 128 report shots, 8,809 /
+685 rows), `in_training` (all 208, 11,540 / 1,469 rows) and `all`, their union
+(336 shots, 20,349 / 2,154 rows) - which is every scored shot the fit did not
+use, not the whole pool. Target prevalence p1 is computed on the held-out FIT
+half of each row set and applied to all three. Training prevalence q1(h) is
+`mean((e == 1) & (t <= h_ms))` over 914,898 upstream rows; source paths and
+SHA256s are in `validation/d3d_tearing_time_to_event_dsm/calibration_study.json`,
+and `calibration.json`'s `fit_on` records `subset: held_out`.
 
-Forced republication succeeded on all 500 shots in **766.38 s** (eight workers);
-shot 187199 confirms all three isotonic series and their fitting attributes.
+Forced republication succeeded on all 500 shots in **746.97 s** (eight
+workers, 2026-09-05); shot 187199's `tm_risk_1s_isotonic` carries
+`calibration: isotonic, fit on held-out all_pre_onset rows` and a
+`calibration_fit_on` with `subset: held_out`, so the published series come
+from the held-out map.
 
 The published isotonic maps use only **all_pre_onset fit rows**. The study
 also fits onset-only maps for comparison; those maps are not published.
 PAVA pools tied scores first; application interpolates linearly and clamps
-at the end knots. In the table, each triplet is **raw / prior shift / isotonic**,
-measured only on the indicated row set's report half.
+at the end knots. In the table, each triplet is **raw / prior shift / isotonic**.
 
-| Row set | Horizon | q1 training | p1 fit | ECE (raw / prior / iso) | Brier (raw / prior / iso) |
-|---|---|---:|---:|---|---|
-| all_pre_onset | 250ms | 0.01811677 | 0.00966048 | 0.004434 / 0.009053 / 0.006532 | 0.015981 / 0.015986 / 0.015972 |
-| all_pre_onset | 500ms | 0.03759982 | 0.02107105 | 0.014819 / 0.018292 / 0.013854 | 0.032197 / 0.032390 / 0.032104 |
-| all_pre_onset | 1s | 0.07185282 | 0.04333217 | 0.024092 / 0.033419 / 0.022473 | 0.060719 / 0.061533 / 0.060377 |
-| onset_shots_only | 250ms | 0.01811677 | 0.11567477 | 0.109420 / 0.086294 / 0.058737 | 0.126021 / 0.121663 / 0.117992 |
-| onset_shots_only | 500ms | 0.03759982 | 0.25230511 | 0.230784 / 0.119505 / 0.095371 | 0.248367 / 0.205810 / 0.206509 |
-| onset_shots_only | 1s | 0.07185282 | 0.51886002 | 0.459990 / 0.102460 / 0.132424 | 0.450946 / 0.255720 / 0.255254 |
+| Row set | Horizon | q1 training | p1 fit | subset | ECE (raw / prior / iso) | Brier (raw / prior / iso) |
+|---|---|---:|---:|---|---|---|
+| all_pre_onset | 250ms | 0.01811677 | 0.01183730 | all | 0.001672 / 0.003407 / 0.004342 | 0.013043 / 0.012965 / 0.013018 |
+| all_pre_onset | 250ms | 0.01811677 | 0.01183730 | held_out | 0.002928 / 0.001904 / 0.004723 | 0.009524 / 0.009407 / 0.009452 |
+| all_pre_onset | 250ms | 0.01811677 | 0.01183730 | in_training | 0.000714 / 0.005006 / 0.004052 | 0.015730 / 0.015682 / 0.015740 |
+| all_pre_onset | 500ms | 0.03759982 | 0.02480796 | all | 0.005000 / 0.007875 / 0.008049 | 0.026986 / 0.026863 / 0.026969 |
+| all_pre_onset | 500ms | 0.03759982 | 0.02480796 | held_out | 0.005542 / 0.005233 / 0.008640 | 0.019774 / 0.019546 / 0.019718 |
+| all_pre_onset | 500ms | 0.03759982 | 0.02480796 | in_training | 0.005710 / 0.010473 / 0.009062 | 0.032491 / 0.032448 / 0.032504 |
+| all_pre_onset | 1s | 0.07185282 | 0.05326785 | all | 0.019731 / 0.017428 / 0.027483 | 0.051189 / 0.050819 / 0.051871 |
+| all_pre_onset | 1s | 0.07185282 | 0.05326785 | held_out | 0.014508 / 0.009268 / 0.021393 | 0.037235 / 0.036876 / 0.037276 |
+| all_pre_onset | 1s | 0.07185282 | 0.05326785 | in_training | 0.023743 / 0.024076 / 0.032133 | 0.061840 / 0.061462 / 0.063013 |
+| onset_shots_only | 250ms | 0.01811677 | 0.12685560 | all | 0.101148 / 0.057292 / 0.028080 | 0.115520 / 0.106379 / 0.103838 |
+| onset_shots_only | 250ms | 0.01811677 | 0.12685560 | held_out | 0.093080 / 0.060444 / 0.034065 | 0.111981 / 0.106758 / 0.100489 |
+| onset_shots_only | 250ms | 0.01811677 | 0.12685560 | in_training | 0.104910 / 0.066005 / 0.027741 | 0.117170 / 0.106203 / 0.105399 |
+| onset_shots_only | 500ms | 0.03759982 | 0.26585695 | all | 0.220396 / 0.063889 / 0.028660 | 0.232118 / 0.176459 / 0.185617 |
+| onset_shots_only | 500ms | 0.03759982 | 0.26585695 | held_out | 0.208588 / 0.090528 / 0.026287 | 0.226711 / 0.184016 / 0.184275 |
+| onset_shots_only | 500ms | 0.03759982 | 0.26585695 | in_training | 0.225903 / 0.072478 / 0.029767 | 0.234639 / 0.172936 / 0.186243 |
+| onset_shots_only | 1s | 0.07185282 | 0.57085020 | all | 0.435796 / 0.071241 / 0.043990 | 0.416344 / 0.216335 / 0.249538 |
+| onset_shots_only | 1s | 0.07185282 | 0.57085020 | held_out | 0.420512 / 0.154653 / 0.048024 | 0.406911 / 0.236554 / 0.249751 |
+| onset_shots_only | 1s | 0.07185282 | 0.57085020 | in_training | 0.442923 / 0.077276 / 0.042108 | 0.420743 / 0.206907 / 0.249439 |
 
 The onset-only corrections substantially reduce calibration error and Brier
-loss, but residual error remains. On all_pre_onset report rows, isotonic
-Brier gains are small and 250 ms ECE worsens (0.004434 to 0.006532); prior
-shift worsens ECE at all three horizons. The fit and report prevalences
-differ, so these results do not establish calibration on another shot pool.
-Isotonic plateaus can change ranking through ties: all_pre_onset AUROC
-(raw to isotonic) is 0.7874 to 0.7693 at 250 ms, 0.7740 to 0.7517 at 500 ms,
-and 0.7584 to 0.7495 at 1 s. Prior shift preserves ordering here.
+loss, but residual error remains. On all_pre_onset rows the raw scores are
+already close to calibrated and isotonic makes ECE **worse** at every horizon
+and on every subset (held-out 1 s: 0.014508 raw to 0.021393). Prior shift is
+the only correction that ever beats raw there, and it does so at all three
+horizons on held-out rows (1 s: 0.014508 to 0.009268) while worsening all
+three on in-training rows. The map is fitted on 127 shots and
+reported on different ones, so none of this establishes calibration on another
+shot pool. Isotonic plateaus change ranking through ties: all_pre_onset AUROC
+(raw to isotonic) on held-out rows is 0.8868 to 0.8814 at 250 ms, 0.8587 to
+0.8433 at 500 ms and 0.8313 to 0.8248 at 1 s. Prior shift preserves ordering.
+Splitting the report changes the conclusion nowhere: raw ECE is between
+0.0007 and 0.024 on all_pre_onset for both halves, and the isotonic penalty
+is the same sign on both.
 
 ## Training details
 
@@ -334,11 +371,50 @@ series - "onset within the next horizon", derivable from the tearing archive's
 `tm_label` on the 1,503 overlap shots. `validate.alarm_quality` now builds
 that truth for the published-label alarm report below.
 
-**These pool numbers are roughly half in-sample.** The training set is 8,923
-unique DIII-D shots spanning 140444-193373; 214 of the 500 pool shots, 208 of
-the 463 aligned scored shots and 41 of the 80 shots with an archived onset are
-training shots. The metrics below pool in-sample and held-out shots together;
-separating them is a follow-up, not something these numbers do.
+**Roughly half of the pool is in this checkpoint's own training set, and every
+report now splits on it.** The training set is the 8,923 unique DIII-D shots of
+`training_shots.txt` (140444-193373, 914,898 training rows); **214 of the 500
+pool shots, 208 of the 463 aligned scored shots and 41 of the 80 shots with an
+archived onset** are in it. `validate.alarm_quality` and
+`validate.calibration_study` therefore report every metric three ways - `all`,
+`held_out`, `in_training` - taking the split from the adapter's own
+`training_shots`, and the published isotonic map is fitted on held-out shots
+only. Any number below labelled `all` still mixes the two.
+
+### Held out against in training
+
+Measured 2026-09-05 by `validate.alarm_quality` on the 500-shot pool. Row set:
+**pre-onset valid rows of every aligned shot**. Membership is constant within a
+shot, so each subset is a whole number of shots.
+
+| subset | shots | quiet | tearing | rows | positive at 1 s |
+|---|---:|---:|---:|---:|---:|
+| all | 463 | 383 | 80 | 28,290 | 1,565 |
+| held_out | 255 | 216 | 39 | 16,750 | 783 |
+| in_training | 208 | 167 | 41 | 11,540 | 782 |
+
+| horizon | AUROC all | AUROC held_out | AUROC in_training | IPCW held_out | IPCW in_training |
+|---|---:|---:|---:|---:|---:|
+| 0.25 s | 0.810043 | 0.838724 | 0.760792 | 0.837937 | 0.756859 |
+| 0.5 s | 0.786852 | 0.816826 | 0.738049 | 0.815260 | 0.733874 |
+| 1 s | 0.758441 | 0.800649 | 0.696373 | 0.801975 | 0.691228 |
+
+| subset | final FPR/FNR at 0.2 | any-row FPR/FNR at 0.2 | median warning (s) | horizon-integrated FPR/FNR at 0.2 |
+|---|---|---|---:|---|
+| all | 0.065274 / 0.662500 | 0.146214 / 0.600000 | 0.350 | 0.054504 / 0.603125 |
+| held_out | 0.069444 / 0.589744 | 0.101852 / 0.512821 | 0.288 | 0.043981 / 0.580128 |
+| in_training | 0.059880 / 0.731707 | 0.203593 / 0.682927 | 0.375 | 0.068114 / 0.625000 |
+
+**The in-sample half is the worse half, not the better one.** Ranking is 0.04
+to 0.10 of AUROC *higher* on the shots this checkpoint never saw, at all three
+horizons and under both AUC definitions. The contamination therefore did not
+inflate the headline numbers; it depressed them. The two subsets are different
+populations - 41 of 208 in-training shots tear (19.7%, 6.8% of their pre-onset
+rows positive at 1 s) against 39 of 255 held-out shots (15.3%, 4.7%) - so this
+is a statement about which shots the pool sampled, not evidence that training
+hurt. What it does settle is that the pool numbers were not being carried by
+memorisation. Whether an honest by-shot retrain scores differently is Task 4b,
+not something these rows answer.
 
 Measured once outside `validate` (2026-09-05, `outputs/labelmaker/dsm_onset_quality.py`
 in the FusionAIHub checkout): on the 486 aligned shots of the 500-shot pool,
@@ -423,7 +499,11 @@ AUROC exceeds IPCW AUC by 0.001826, 0.002344 and 0.000231 at the three
 horizons, respectively. These are descriptive pool
 results, not a new held-out evaluation or a threshold recommendation.
 The complete threshold sweep, warning quartiles, jump histograms and
-horizon integrals are in `$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm/alarm_quality.json`.
+horizon integrals are in `$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm/alarm_quality.json`,
+each of them under `labels.<name>.subsets.{all,held_out,in_training}`. The two
+tables above are the `all` subset; "Held out against in training" gives the
+same numbers split, and the held-out figures are in
+`outputs/labelmaker/presentation/held_out/`.
 
 ## Technical specifications
 

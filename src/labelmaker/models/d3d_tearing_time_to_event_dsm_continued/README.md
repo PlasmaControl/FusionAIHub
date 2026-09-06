@@ -36,8 +36,15 @@ labelmaker:
     sha256:
       rt_fixed_rot_continued.pkl: 4b1745ddd641c61bb826edd2f4969647213a6d94e365b3f8fd3c671470bfa5be
       rt_normalizations_dict.pkl: fa515c7b591f3e1ea5f710d75a825b1a7831cbd63e06543f9ccb87ff87a73fbe
-    notes: trained by labelmaker, not upstream; rt_normalizations_dict.pkl is byte-identical to the base
-      model's copy of /projects/EKOLEMEN/survival_tm/data/rt_normalizations_dict.pkl
+    notes: >-
+      trained by labelmaker, not upstream; rt_normalizations_dict.pkl is byte-identical to the base
+      model's copy of /projects/EKOLEMEN/survival_tm/data/rt_normalizations_dict.pkl.
+      Training shots: the continuation ran on the shipped checkpoint's own rows, so this model's
+      training set IS the base model's - the same 8,923 shots (140444-193373, 914,898 rows) from
+      /projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl
+      (sha256 f89286ed88bdf20bfa6af0abd49a881e7902f77b78e6ecf811f3d9aab5f03288), read from the base
+      model's committed training_shots.txt rather than copied. 214 of labelmaker's 500 pool shots,
+      208 of the 463 scored shots and 41 of the 80 onset shots are in that list.
   inputs:
   - bmspinj <- pinj_total
   - bmstinj <- tinj_total
@@ -177,12 +184,12 @@ from the base module and builds its loader with the base module's own
 weight file.
 
 The three `*_isotonic` columns are declared, as they are for the base model,
-and are **NaN for this model**: they are filled only when a `calibration.json`
-sits in the model's own directory, and this model's directory has none. A
-calibration study was run for it and its report is published (Evaluation), but
-the maps that study writes were removed rather than installed, so the labels on
-disk and this card agree. The base model's isotonic maps were fitted on the
-base model's scores and do not transfer to different weights.
+and since 2026-09-05 they are **filled from this model's own map**: `validate`
+runs `calibration_study` for every slug whose archive truth carries a horizon,
+not only the base one, and the study writes `calibration.json` into this
+model's directory. That map is fitted on the shots this model was **not**
+trained on (Evaluation). The base model's maps were fitted on the base model's
+scores and never transfer to different weights.
 
 ## Uses
 
@@ -267,8 +274,9 @@ put through.
   labelmaker's 25 ms grid and 50 ms window for upstream's 20 ms samples, rows
   valid only where every input is finite, no out-of-domain flagging, and the
   rotation profile missing on ~22% of shots.
-- The isotonic columns are NaN (above), so any consumer that reads
-  `tm_risk_*_isotonic` gets nothing from this model.
+- The isotonic columns come from a map fitted on 127 held-out pool shots of
+  this model's own scores; they are a pool-local correction, not a calibration
+  established on another population.
 - The mixture components are not identifiable across retrainings: this model's
   `tm_mix_*` component order is its own and has no relation to the base
   model's.
@@ -276,16 +284,20 @@ put through.
 ## Evaluation
 
 Published for the 500-shot pool on 2026-09-05 (`infer --workers 8`, 500 shots
-in **813.99 s**, 31,550 valid rows), then scored exactly as the base model was:
+in **813.99 s**, 31,550 valid rows; re-published with `--force` in **1,082.66 s**
+on 2026-09-05 once the held-out isotonic maps existed), then scored exactly as
+the base model was:
 `validate.alarm_quality` and `validate.calibration_study` with the same seed-0
 shot split. Reports:
 `$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm_continued/{alarm_quality,calibration_study}.json`.
 
 Row sets: **AUROC, IPCW AUC, lead time, FPR and FNR** are over all **28,290
 pre-onset valid rows of the 463 scored shots** (383 quiet, 80 tearing);
-**ECE** is over the **report half** of that pool (232 shots, 14,005
-all_pre_onset rows of which 1,702 are onset-shot rows), raw risks with no
-post-hoc map.
+**ECE** is over the calibration study's report shots, which since 2026-09-05
+are drawn from the **held-out** shots alone (128 shots, 8,809 all_pre_onset
+rows of which 685 are onset-shot rows), raw risks with no post-hoc map. The
+AUROC, IPCW, lead-time and rate rows of the table below pool in-sample and
+held-out shots together; "Held out against in training" splits them.
 
 | quantity | shipped | continued | difference |
 |---|---:|---:|---:|
@@ -294,8 +306,8 @@ post-hoc map.
 | AUROC `tm_risk_500ms` | 0.786852 | 0.669523 | **-0.117329** |
 | AUROC `tm_risk_1s` | 0.758441 | 0.680208 | **-0.078233** |
 | IPCW AUC `tm_risk_250ms` / `500ms` / `1s` | 0.808217 / 0.784507 / 0.758210 | 0.679597 / 0.664393 / 0.673280 | -0.128620 / -0.120115 / -0.084930 |
-| ECE all_pre_onset, 250 ms / 500 ms / 1 s | 0.004434 / 0.014819 / 0.024092 | 0.009956 / 0.027431 / 0.055926 | +0.005522 / +0.012612 / +0.031834 |
-| ECE onset_shots_only, 250 ms / 500 ms / 1 s | 0.109420 / 0.230784 / 0.459990 | 0.104915 / 0.220567 / 0.438905 | -0.004505 / -0.010217 / -0.021085 |
+| ECE all_pre_onset, 250 ms / 500 ms / 1 s | 0.002928 / 0.005542 / 0.014508 | 0.008132 / 0.021728 / 0.043870 | +0.005204 / +0.016186 / +0.029362 |
+| ECE onset_shots_only, 250 ms / 500 ms / 1 s | 0.093080 / 0.208588 / 0.420512 | 0.108482 / 0.230165 / 0.438004 | +0.015402 / +0.021577 / +0.017492 |
 | median lead time, `tm_risk_1s` at 0.2 | 0.350 s | 0.500 s | +0.150 s |
 | final-label FPR at 0.2, `tm_risk_1s` | 0.065274 | 0.117493 | +0.052219 |
 | final-label FNR at 0.2, `tm_risk_1s` | 0.662500 | 0.625000 | -0.037500 |
@@ -303,9 +315,10 @@ post-hoc map.
 **The continued model did not measure better where it counts.** It gained
 0.1837 nats of validation likelihood and lost 0.078 to 0.129 of AUROC at every
 horizon, with IPCW AUC agreeing and calibration on all pre-onset rows getting
-worse. It calls more shots at threshold 0.2 - FNR down, FPR up by more, lead
-time longer - which is the behaviour of a model whose risks moved up, not of a
-model that ranks rows better. Firing earlier is not ranking better.
+worse at every horizon and on both row sets. It calls more shots at threshold
+0.2 - FNR down, FPR up by more, lead time longer - which is the behaviour of a
+model whose risks moved up, not of a model that ranks rows better. Firing
+earlier is not ranking better.
 
 The explanation this card can support is the leaky split above: the objective
 that improved is a likelihood measured on rows whose shots are in training.
@@ -313,22 +326,54 @@ Nothing here recommends replacing the shipped checkpoint, and the default in
 `analyze_default.yaml` is unchanged; phase3 design section 7 question 5 stays
 open.
 
-**These pool numbers are roughly half in-sample for both models.** The
-survival training set is 8,923 unique DIII-D shots spanning 140444-193373; 214
-of the 500 pool shots, 208 of the 463 aligned scored shots and 41 of the 80
-shots with an archived onset are training shots. Separating in-training from
-held-out shots is a separate task; these numbers pool the two.
+### Held out against in training
+
+Both checkpoints share one training set - 8,923 DIII-D shots, 140444-193373 -
+so both are scored against the same split: **214 of the 500 pool shots, 208 of
+the 463 aligned scored shots and 41 of the 80 shots with an archived onset**
+are training shots. `validate.alarm_quality` reports every metric on `all`,
+`held_out` and `in_training`; the subsets are whole numbers of shots (255
+held-out: 216 quiet, 39 tearing, 16,750 rows; 208 in-training: 167 quiet, 41
+tearing, 11,540 rows).
+
+| horizon | AUROC all | AUROC held_out | AUROC in_training | base model, held_out |
+|---|---:|---:|---:|---:|
+| 0.25 s | 0.681327 | 0.691764 | 0.667086 | 0.838724 |
+| 0.5 s | 0.669523 | 0.671948 | 0.655263 | 0.816826 |
+| 1 s | 0.680208 | 0.687985 | 0.649863 | 0.800649 |
+
+| subset | final FPR/FNR at 0.2 | any-row FPR/FNR at 0.2 | median warning (s) | horizon-integrated FPR/FNR at 0.2 |
+|---|---|---|---:|---|
+| all | 0.117493 / 0.625000 | 0.342037 / 0.375000 | 0.500 | 0.162533 / 0.412500 |
+| held_out | 0.083333 / 0.717949 | 0.245370 / 0.410256 | 0.325 | 0.112847 / 0.451923 |
+| in_training | 0.161677 / 0.536585 | 0.467066 / 0.341463 | 0.600 | 0.226796 / 0.375000 |
+
+**Splitting reverses the one number that flattered this model.** On the whole
+pool it looked like the continuation traded FPR for FNR (0.625 against the
+base model's 0.6625 at threshold 0.2); on held-out shots alone its final-label
+FNR is 0.717949 against the base model's 0.589744, so it is worse on both
+error rates where it matters. It also fires on far more in-training shots than
+held-out ones (any-row FPR 0.467066 against 0.245370), which is what a model
+that has moved its risks up on rows it has seen looks like. Its AUROC gap to
+the base model widens at every horizon once the in-sample shots are dropped:
+0.129 -> 0.147 at 250 ms, 0.117 -> 0.145 at 500 ms, 0.078 -> 0.113 at 1 s.
+
+The published isotonic maps come from `calibration_study` for this slug,
+fitted on the **held-out** fit half (127 shots, 7,941 all_pre_onset rows) -
+the same shots and rows the base model's map is fitted on, but on this model's
+own scores. Reported on all_pre_onset rows, isotonic ECE at 1 s is 0.021859 on
+held-out shots and 0.015921 on in-training shots, against raw 0.043870 and
+0.074763: isotonic is a real improvement for this model, unlike the base
+model, whose raw scores it makes worse. The onset-only maps are fitted but not
+published, and this model's onset-only isotonic map is degenerate - its
+isotonic AUROC at 1 s is exactly 0.5000 on all three subsets, a single-plateau
+map. Full report:
+`$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm_continued/calibration_study.json`.
 
 The seven Phase 2 figures re-rendered for this model, with the comparison
 table and the CNN panels unchanged, are in
-`outputs/labelmaker/presentation_continued/` in the FusionAIHub checkout.
-
-A `calibration_study` was run for this slug and its report is published, but
-its isotonic maps were **not** installed: the `calibration.json` the study
-writes was removed from the model directory, so the labels on disk and the
-card agree that this model's `*_isotonic` columns are NaN. For the record, the
-study's isotonic ECE on the report half would be 0.025317 (all_pre_onset) and
-0.047409 (onset_shots_only) at 1 s.
+`outputs/labelmaker/presentation_continued/` in the FusionAIHub checkout; the
+held-out-only rendering is in `presentation_continued/held_out/`.
 
 ## Technical specifications
 
