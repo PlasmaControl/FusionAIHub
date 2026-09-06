@@ -14,6 +14,22 @@ Code: `src/labelmaker/`. Tests: `tests/labelmaker/`.
 pixi install -e labelmaker              # once
 pixi run -e labelmaker fdp login        # once per token; only the fdp resolver needs it
 
+pixi run -e labelmaker label 199597     # the one-shot demo: every servable model on one shot
+```
+
+`label` runs the `analyze` stage over every model in `analyze_default.yaml`, then
+leaves four files in `$LABELMAKER_ROOT/demo/<shot>/` (override the root with
+`LABELMAKER_DEMO_OUT`): `<shot>_labels.h5` (the labels file, `<slug>/<label>/{xdata,ydata}`
+plus `_spread`/`_valid`), `<shot>_labels.npz` (`time_s` plus one `"<slug>/<label>"` array
+per label), `<shot>_analysis.json` (per-label summary) and `<shot>_labels.png`, one
+panel per prediction. Pass several shots to
+label them all; set `LABELMAKER_DEMO_FORCE=1` to recompute instead of reusing cached
+features. Shots 199597-199607 (2024) have every input the models need; older shots
+lack the CO2 interferometer channels the AE model reads, and some lack EFIT via fdp.
+
+The full pipeline, stage by stage:
+
+```bash
 pixi run -e labelmaker fdp run python -m labelmaker.run all \
     --models d3d_tearing_onset_cnn1d \
     --overlap --sample 100 --seed 20260903 --workers 8 --timeout 300
