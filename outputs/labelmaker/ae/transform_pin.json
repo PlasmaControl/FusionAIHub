@@ -1,0 +1,25 @@
+{
+  "shot": 198279,
+  "corpus_file": "/scratch/gpfs/EKOLEMEN/foundation_model/198279_processed.h5",
+  "window_s": [
+    0.0,
+    6.0
+  ],
+  "n_samples": 3000000,
+  "fs_hz": 499999.98457475635,
+  "spectrogram_shape": [
+    4,
+    512,
+    23445
+  ],
+  "value_range_stft": [
+    23.596696853637695,
+    29.40142822265625
+  ],
+  "max_abs_diff_stft": 0.0,
+  "max_abs_diff_standardised": 0.0,
+  "max_abs_diff_band": 0.0,
+  "python": "3.13.1",
+  "scipy": "1.18.0",
+  "numpy": "2.5.1"
+}

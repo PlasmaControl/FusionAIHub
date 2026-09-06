@@ -2,9 +2,13 @@
 
 Same layout as the corpus itself - one group per quantity, `xdata` seconds,
 `ydata` (C, T) - so anything that can read a corpus file can read a feature
-file. Files are small (a few MB), so a merge rewrites the whole file and
-renames it into place; a killed run therefore never leaves a half-written
-feature file behind.
+file. A merge rewrites the whole file and renames it into place; a killed run
+therefore never leaves a half-written feature file behind.
+
+Most files are a few MB. One feature is not: `co2` is `(4, ~4.5e6)` float32,
+72 MB, which is why `ydata` above `CHUNK_THRESHOLD` is written chunked and
+read back in float32 rather than promoted to float64. A merge on such a shot
+rewrites those 72 MB, which is the price of the atomic-rename guarantee.
 """
 from __future__ import annotations
 
@@ -38,20 +42,55 @@ class FeatureArray:
             raise ValueError(f"x {np.shape(self.x)} and y {np.shape(self.y)} disagree")
 
 
-def _read_group(g) -> FeatureArray:
-    """One stored group back into a FeatureArray, in float64."""
+#: A `ydata` at least this large is stored chunked rather than contiguous.
+#: The only feature that reaches it is `co2` - `(4, ~4.5e6)` float32, 72 MB -
+#: and chunking is what lets h5py write and read it in pieces instead of
+#: materialising the whole dataset at once. Deliberately no compression: the
+#: record is broadband interferometer noise, which gzip barely shrinks while
+#: costing minutes per shot.
+CHUNK_THRESHOLD = 1 << 20
+
+
+def _dataset_kwargs(y: np.ndarray) -> dict:
+    """`create_dataset` options for one `ydata`, chunked when it is large."""
+    if y.size < CHUNK_THRESHOLD:
+        return {}
+    # One chunk per channel, ~1 M samples wide: a whole-channel read (what
+    # the AE adapter does) touches contiguous chunks, and a time-slice read
+    # touches one chunk per channel.
+    width = min(y.shape[-1], 1 << 20)
+    return {"chunks": (1,) * (y.ndim - 1) + (width,)}
+
+
+def _read_group(g, *, float32: bool = False) -> FeatureArray:
+    """One stored group back into a FeatureArray.
+
+    float64 by default, matching every consumer that samples onto the 25 ms
+    grid. `float32` keeps a waveform in the dtype it was stored in: `co2` is
+    `(4, ~4.5e6)`, which float64 would double to 144 MB per shot for no
+    precision that was ever measured - the corpus itself is float32.
+    """
     return FeatureArray(
         x=np.asarray(g["xdata"], dtype=np.float64),
-        y=np.asarray(g["ydata"], dtype=np.float64),
+        y=np.asarray(g["ydata"], dtype=np.float32 if float32 else np.float64),
         attrs={k: str(v) for k, v in g.attrs.items()},
     )
+
+
+def _is_waveform(name: str) -> bool:
+    try:
+        return ns.by_name(name).kind == "waveform"
+    except KeyError:
+        return False
 
 
 def _load_all(path: Path) -> tuple[dict[str, FeatureArray], dict[str, str]]:
     if not Path(path).exists():
         return {}, {}
     with h5py.File(path, "r") as f:
-        arrays = {name: _read_group(f[name]) for name in f}
+        arrays = {
+            name: _read_group(f[name], float32=_is_waveform(name)) for name in f
+        }
         missing = json.loads(f.attrs.get(MISSING_ATTR, "{}"))
     return arrays, missing
 
@@ -108,7 +147,8 @@ def write_features(
         for name, arr in sorted(arrays.items()):
             g = f.create_group(name)
             g.create_dataset("xdata", data=np.asarray(arr.x, dtype=np.float64))
-            g.create_dataset("ydata", data=np.asarray(arr.y, dtype=np.float32))
+            y = np.asarray(arr.y, dtype=np.float32)
+            g.create_dataset("ydata", data=y, **_dataset_kwargs(y))
             for k, v in arr.attrs.items():
                 g.attrs[k] = v
             if "fetched_at" not in g.attrs:
@@ -128,7 +168,7 @@ def read_feature(path, name: str) -> FeatureArray:
     with h5py.File(path, "r") as f:
         if name not in f:
             raise KeyError(f"{name} not in {path}")
-        return _read_group(f[name])
+        return _read_group(f[name], float32=_is_waveform(name))
 
 
 def present(path) -> set[str]:
