@@ -1,0 +1,53 @@
+{
+  "subset": "all",
+  "subset_note": "every aligned shot of the pool, in-sample and held-out together",
+  "n_shots_in_training": 214,
+  "n_shots": 486,
+  "n_rows_cnn_valid": 31257,
+  "base_rate": 0.084908980388393,
+  "cnn_auroc_archived": 0.9315146853156802,
+  "cnn_auroc_reconstructed": 0.8971832940727098,
+  "cnn_best_f1": {
+    "archived (training) inputs": [
+      0.5748725081131201,
+      0.75
+    ],
+    "labelmaker reconstruction": [
+      0.48970176305816443,
+      0.6
+    ]
+  },
+  "dsm": {
+    "tm_risk_250ms": {
+      "auroc": 0.8100427367226288,
+      "positive_rate": 0.013043478260869565,
+      "n": 28290
+    },
+    "tm_risk_500ms": {
+      "auroc": 0.7868515877676183,
+      "positive_rate": 0.027571580063626724,
+      "n": 28290
+    },
+    "tm_risk_1s": {
+      "auroc": 0.7584409543420891,
+      "positive_rate": 0.05531990102509721,
+      "n": 28290
+    }
+  },
+  "lead_time_median_s": {
+    "cnn": 0.0,
+    "dsm": 0.375
+  },
+  "lead_time_fires_early_fraction": {
+    "cnn": 0.40298507462686567,
+    "dsm": 0.8205128205128205
+  },
+  "coverage_median": {
+    "cnn": 0.3958333333333333,
+    "dsm": 0.5020833333333333
+  },
+  "examples": {
+    "early": 187199,
+    "late": 186545
+  }
+}
