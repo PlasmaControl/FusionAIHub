@@ -17,9 +17,9 @@ models can never drift apart in anything but their weights. The card carries
 the comparison of the two on labelmaker's 500-shot pool.
 
 The base `load` also reads `calibration.json` from the model directory when one
-is there. This directory has none, so this model's three `*_isotonic` columns
-are NaN - the base model's isotonic maps were fitted on the base model's own
-scores and do not transfer.
+is there. This model has its own, fitted on its own scores on held-out shots by
+`validate.calibration_study`; the base model's maps were fitted on the base
+model's scores and never transfer.
 """
 from __future__ import annotations
 
@@ -31,12 +31,13 @@ from ..d3d_tearing_time_to_event_dsm.spec import (
     HORIZONS_MS,
     INPUT_SPEC,
     OUTPUT_SPEC,
+    TRAINING_SHOTS,
     make_load,
     preprocess,
 )
 
 __all__ = ["ADAPTER", "ARTIFACTS", "CARD_ID", "HORIZONS_MS", "INPUT_SPEC", "OUTPUT_SPEC",
-           "SLUG", "UPSTREAM", "load", "preprocess"]
+           "SLUG", "TRAINING_SHOTS", "UPSTREAM", "load", "preprocess"]
 
 SLUG = "d3d_tearing_time_to_event_dsm_continued"
 CARD_ID = "plasmacontrol/d3d-tearing-time-to-event-dsm-continued"
@@ -58,4 +59,7 @@ ADAPTER = ModelAdapter(
     output_spec=OUTPUT_SPEC,
     load=load,
     ensemble_n=1,
+    # The continuation ran on the base checkpoint's own rows, so its training
+    # shots are the base model's: the same file, not a copy of it.
+    training_shots=TRAINING_SHOTS,
 )

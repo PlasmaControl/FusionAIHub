@@ -229,14 +229,128 @@ def test_pooled_rows_and_alarm_quality(wired, monkeypatch, last_horizon):
     report = validate.alarm_quality(slug, [190000, 190001, 99], paths,
                                     archive=wired['archive'], thresholds=(.5,))
     assert 'tm_time_p50' not in report['labels']
-    label = report['labels']['tm_risk_1s']
+    label = report['labels']['tm_risk_1s']['subsets']['all']
+    assert label['n_quiet'] == label['n_tearing'] == 1
     rates = label['thresholds']['0.5']
-    assert rates['n_quiet'] == rates['n_tearing'] == 1
     assert rates['final_label']['fpr'] == rates['final_label']['fnr'] == 0
     assert rates['any_row']['fpr'] == 1 and rates['any_row']['fnr'] == 0
     assert rates['warning_time_s']['median'] == pytest.approx(.075)
     assert label['auroc'] is not None and label['ipcw_auc'] is None  # no T > 1
-    assert report['horizon_integrated']['0.5']['fpr'] == last_horizon - .25
+    assert report['horizon_integrated']['all']['0.5']['fpr'] == last_horizon - .25
+
+
+def _adapter_with_training_shots(monkeypatch, shots):
+    """The `wired` fake adapter, but naming some shots as the model's own.
+
+    Every survival number on the pool is part in-sample - 214 of the 500 pool
+    shots are training shots - so the split has to come from the adapter the
+    report is about, not from a hard-coded list in `validate`.
+    """
+    from dataclasses import replace
+
+    from labelmaker.models import registry
+
+    from .test_run import _fake_adapter
+
+    adapter = replace(_fake_adapter(), training_shots=frozenset(shots))
+    monkeypatch.setattr(registry, "load_adapter", lambda slug: adapter)
+    return adapter
+
+
+def _write_pooled_labels(paths, slug, shots, names):
+    """One published trace per shot: eight steps, one invalid and one NaN."""
+    from labelmaker.labels.schema import LabelSpec
+    from labelmaker.labels.store import write_labels
+    from labelmaker.models.base import Decoded
+
+    specs = tuple(LabelSpec(name=n, task="binary", activation="none", units="",
+                            classes=(), slug=slug, card_id="test/model", time_step_ms=25,
+                            ensemble_n=1, artifact_sha256="abc") for n in names)
+    y = np.array([.1, .8, .8, .2, .1, np.nan, .1, .9])
+    valid = np.ones(8, bool)
+    valid[0] = False
+    for shot in shots:
+        write_labels(paths.labels_file(shot), shot, _FakeBuilt().t,
+                     {n: Decoded(mean=y, lo=y, hi=y) for n in names}, specs, valid,
+                     run_id="test", features_sha256="abc")
+
+
+def test_pooled_rows_and_alarm_quality_split_held_out_from_in_training(wired, monkeypatch):
+    """Two training shots of four: every metric is reported three ways."""
+    slug = "d3d_tearing_time_to_event_dsm"
+    paths = Paths(root=wired["root"], corpus=wired["corpus"])
+    shots = [190000, 190001, 190002, 190003]
+    tearing = {190000, 190002}
+    _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
+    original = validate._matched_shot
+
+    def match(shot, spec, paths, archive):
+        m = original(190000, spec, paths, archive)
+        m.got["y"][:, 1] = [0, 0, 0, 1, 1, 0] if shot in tearing else 0
+        return m
+
+    monkeypatch.setattr(validate, "_matched_shot", match)
+    _adapter_with_training_shots(monkeypatch, {190000, 190001})
+    monkeypatch.setitem(validate.ARCHIVE_TRUTH, f"{slug}/tm_risk_1s",
+                        {"kind": "onset_within", "horizon_s": 1.0})
+    names = ["tm_risk_250ms", "tm_risk_500ms", "tm_risk_1s"]
+    _write_pooled_labels(paths, slug, shots, names)
+
+    pooled = validate._pooled_onset_rows(slug, shots, paths,
+                                         archive=wired["archive"], timeout_s=None)
+    rows = pooled["labels"]["tm_risk_1s"]
+    np.testing.assert_array_equal(
+        rows["shot"], [190000] * 2 + [190001] * 4 + [190002] * 2 + [190003] * 4)
+    np.testing.assert_array_equal(rows["in_training"], [True] * 6 + [False] * 6)
+    assert pooled["shots_in_training"] == [190000, 190001]
+    assert rows["shots_in_training"] == [190000, 190001]
+
+    report = validate.alarm_quality(slug, shots, paths, archive=wired["archive"],
+                                    thresholds=(.5,))
+    assert report["shots_in_training"] == [190000, 190001]
+    label = report["labels"]["tm_risk_1s"]
+    assert set(label["subsets"]) == {"all", "held_out", "in_training"}
+    assert {name: (s["n_shots"], s["n_quiet"], s["n_tearing"], s["n_rows"], s["n_positive"])
+            for name, s in label["subsets"].items()} == {
+        "all": (4, 2, 2, 12, 4), "held_out": (2, 1, 1, 6, 2), "in_training": (2, 1, 1, 6, 2)}
+    for name in ("all", "held_out", "in_training"):
+        rates = label["subsets"][name]["thresholds"]["0.5"]
+        assert rates["final_label"]["fpr"] == rates["final_label"]["fnr"] == 0
+        assert rates["any_row"]["fpr"] == 1 and rates["any_row"]["fnr"] == 0
+        assert rates["warning_time_s"]["median"] == pytest.approx(.075)
+        # The two halves are mirror images here, so the ranking is the same.
+        assert label["subsets"][name]["auroc"] == pytest.approx(.75)
+        assert report["horizon_integrated"][name]["0.5"]["fpr"] == .75
+
+
+@pytest.mark.parametrize("published", [("risk_a", "risk_b"), ("risk_b",)])
+def test_horizon_integral_follows_the_rules_not_one_slug(monkeypatch, published):
+    """Any slug with two published onset_within labels gets the integral.
+
+    A slug that publishes only one of its horizons leaves the integral out
+    rather than raising - the report is about what is on disk.
+    """
+    rows = {name: {"shot": np.ones(2, int), "t": np.array([.0, .1]),
+                   "y": np.array([.9, .9]), "truth": np.ones(2, bool),
+                   "onset_s": np.full(2, .5), "t_end": np.full(2, .5),
+                   "in_training": np.zeros(2, bool), "shots_used": [1],
+                   "shots_with_onset": [1], "shots_in_training": [], "skipped": {},
+                   "row_set": "pre-onset valid rows of every aligned shot"}
+            for name in published}
+    for name, horizon in (("risk_a", .25), ("risk_b", 1.)):
+        monkeypatch.setitem(validate.ARCHIVE_TRUTH, f"other/{name}",
+                            {"kind": "onset_within", "horizon_s": horizon})
+    monkeypatch.setattr(validate, "_pooled_onset_rows", lambda *a, **kw: {
+        "labels": rows, "shots_used": [1], "shots_with_onset": [1],
+        "shots_in_training": [], "skipped": {}})
+    report = validate.alarm_quality("other", [1], Paths.from_env(), thresholds=(.5,))
+    if len(published) == 1:
+        assert "horizon_integrated" not in report
+        return
+    # fnr 0 at both horizons: the integral of a zero rate is zero, and the
+    # point is that it exists at all for a slug that is not the base one.
+    assert set(report["horizon_integrated"]) == {"all", "held_out", "in_training"}
+    assert report["horizon_integrated"]["held_out"]["0.5"]["fnr"] == 0.0
 
 
 def test_pool_isolates_rejected_and_failed_matches(wired, monkeypatch):
@@ -259,10 +373,12 @@ def test_pool_isolates_rejected_and_failed_matches(wired, monkeypatch):
     assert got['labels']['tm_risk_1s']['y'].size == 0
     report = validate.alarm_quality('d3d_tearing_time_to_event_dsm', [], paths,
                                     archive=wired['archive'])
-    rates = report['labels']['tm_risk_1s']['thresholds']['0.5']
-    assert rates['n_quiet'] == rates['n_tearing'] == 0
-    assert rates['final_label']['fpr'] is None
-    assert rates['warning_time_s']['median'] is None
+    for subset in ('all', 'held_out', 'in_training'):
+        empty = report['labels']['tm_risk_1s']['subsets'][subset]
+        assert empty['n_quiet'] == empty['n_tearing'] == empty['n_rows'] == 0
+        rates = empty['thresholds']['0.5']
+        assert rates['final_label']['fpr'] is None
+        assert rates['warning_time_s']['median'] is None
 
 
 def test_column_pool_keeps_archived_positives_and_whole_trace_alarm(wired, monkeypatch):
@@ -289,11 +405,14 @@ def test_column_pool_keeps_archived_positives_and_whole_trace_alarm(wired, monke
                                     archive=wired['archive'], thresholds=(.5,))
     label = report['labels']['tm_prob']
     assert label['row_set'] == 'all valid rows of every aligned shot'
-    assert label['n_positive'] == 2 and label['auroc'] == 1
-    assert label['ipcw_auc'] is None
     assert label['ipcw_auc_reason'] == (
         'column label: the archived tm_label has no horizon, IPCW AUC is undefined')
-    rates = label['thresholds']['0.5']
+    # The fake adapter names no training shots, so every row is held out.
+    assert label['subsets']['in_training']['n_rows'] == 0
+    held = label['subsets']['held_out']
+    assert held['n_positive'] == 2 and held['auroc'] == 1
+    assert held['ipcw_auc'] is None
+    rates = label['subsets']['all']['thresholds']['0.5']
     assert rates['final_label']['counts']['FN'] == 1
     assert rates['any_row']['counts']['TP'] == 1
 
@@ -327,15 +446,18 @@ def test_grid_boundary_truth_is_shared_by_plain_and_ipcw_metrics(monkeypatch):
     # turn the high-scoring boundary case into a control and yield AUC 0.
     rows = {'shot': np.ones(3, int), 't': t, 'y': score, 'truth': target,
             'onset_s': np.full(3, onset), 't_end': np.full(3, onset),
-            'shots_used': [1], 'shots_with_onset': [1], 'skipped': {},
+            'in_training': np.zeros(3, bool), 'shots_used': [1], 'shots_with_onset': [1],
+            'shots_in_training': [], 'skipped': {},
             'row_set': 'pre-onset valid rows of every aligned shot'}
     monkeypatch.setitem(validate.ARCHIVE_TRUTH, 'boundary/risk',
                         {'kind': 'onset_within', 'horizon_s': .25})
     monkeypatch.setattr(validate, '_pooled_onset_rows', lambda *a, **kw: {
-        'labels': {'risk': rows}, 'shots_used': [1], 'shots_with_onset': [1], 'skipped': {}})
+        'labels': {'risk': rows}, 'shots_used': [1], 'shots_with_onset': [1],
+        'shots_in_training': [], 'skipped': {}})
     report = validate.alarm_quality('boundary', [1], Paths.from_env(), thresholds=(.5,))
-    assert report['labels']['risk']['n_positive'] == 2
-    assert report['labels']['risk']['auroc'] == report['labels']['risk']['ipcw_auc'] == .5
+    everything = report['labels']['risk']['subsets']['all']
+    assert everything['n_positive'] == 2
+    assert everything['auroc'] == everything['ipcw_auc'] == .5
 
 
 @pytest.mark.parametrize("onset", [0.1, None])
@@ -386,10 +508,12 @@ def test_calibration_study_splits_shots_and_publishes_only_all_rows(wired, monke
         labels[name] = {"shot": shots, "t": np.tile(np.arange(4) * .1, 8),
                         "y": np.tile([.05, .1, .2, .3], 8), "truth": truth,
                         "onset_s": onset, "t_end": np.full(32, 3.),
+                        "in_training": np.zeros(32, bool),
                         "shots_used": list(range(8)), "shots_with_onset": [0, 2, 4, 6],
-                        "skipped": {}}
+                        "shots_in_training": [], "skipped": {}}
     pooled = {"labels": labels, "shots_used": list(reversed(range(8))),
-              "shots_with_onset": [0, 2, 4, 6], "skipped": {"99": "missing"}}
+              "shots_with_onset": [0, 2, 4, 6], "shots_in_training": [],
+              "skipped": {"99": "missing"}}
     calls = []
 
     def pool(*args, **kwargs):
@@ -411,7 +535,8 @@ def test_calibration_study_splits_shots_and_publishes_only_all_rows(wired, monke
     assert set(report["split"]["report"]).isdisjoint(fit)
     assert report["training"]["files"] == source
     assert report["training"]["n_rows"] == 4
-    assert report["prevalence_source"] == "FIT half of each row set; applied to REPORT half"
+    assert report["prevalence_source"] == ("held-out FIT half of each row set; "
+                                          "applied to every reported subset")
     saved = json.loads((paths.models / slug / "calibration.json").read_text())
     for i, (name, rows) in enumerate(labels.items()):
         item = report["labels"][name]
@@ -422,6 +547,9 @@ def test_calibration_study_splits_shots_and_publishes_only_all_rows(wired, monke
             testing = keep & ~np.isin(shots, fit)
             result = item["row_sets"][row_set]
             assert result["p1"] == rows["truth"][fitting].mean()
+            # No shot is a training shot here, so `all` and `held_out` are the
+            # same population and `in_training` is empty.
+            assert result["subsets"]["in_training"]["n_rows"] == 0
             iso = IsotonicMap.fit(rows["y"][fitting], rows["truth"][fitting])
             values = {"raw": rows["y"][testing],
                       "prior_shift": prior_shift(rows["y"][testing], from_prevalence=item["q1"],
@@ -429,19 +557,76 @@ def test_calibration_study_splits_shots_and_publishes_only_all_rows(wired, monke
                       "isotonic": iso.apply(rows["y"][testing])}
             for method, prob in values.items():
                 want = validate.binary_metrics(prob, rows["truth"][testing])
-                got = result["methods"][method]
-                for key in ("n", "n_positive", "ece", "brier", "auroc", "calibration"):
-                    assert got[key] == want[key]
-                assert len(got["calibration"]) == 10
+                for subset in ("all", "held_out"):
+                    got = result["subsets"][subset]["methods"][method]
+                    for key in ("n", "n_positive", "ece", "brier", "auroc", "calibration"):
+                        assert got[key] == want[key]
+                    assert len(got["calibration"]) == 10
         published = saved["labels"][name]
         fit_on = published["fit_on"]
         assert fit_on["row_set"] == "all_pre_onset"
+        assert fit_on["subset"] == "held_out"
         assert fit_on["shots"] == sorted(fit)
         assert fit_on["n_rows"] == 16
         assert fit_on["prevalence"] == item["row_sets"]["all_pre_onset"]["p1"]
         assert fit_on["date"] and fit_on["git_sha"]
         assert published["map"]["n_fit"] == 16
     assert json.loads((paths.validation / slug / "calibration_study.json").read_text()) == report
+
+
+def test_calibration_fits_on_held_out_shots_and_reports_three_ways(wired, monkeypatch):
+    """The published map may not be fitted on shots the model was trained on.
+
+    An isotonic map fitted on memorised rows is calibrated to memorisation,
+    so the fit half is drawn from the held-out shots alone; the in-training
+    shots are reported beside them, never mixed into the fit.
+    """
+    import json
+
+    from labelmaker.calibrate import IsotonicMap
+
+    slug, name = "d3d_tearing_time_to_event_dsm", "tm_risk_1s"
+    paths = Paths(root=wired["root"], corpus=wired["corpus"])
+    shots = np.repeat(np.arange(8), 4)
+    onset = np.where(shots % 2 == 0, 2., np.nan)
+    in_training = shots < 4
+    truth = (np.tile(np.arange(4), 8) <= 1) & np.isfinite(onset)
+    rows = {"shot": shots, "t": np.tile(np.arange(4) * .1, 8),
+            "y": np.tile([.05, .1, .2, .3], 8), "truth": truth,
+            "onset_s": onset, "t_end": np.full(32, 3.), "in_training": in_training,
+            "shots_used": list(range(8)), "shots_with_onset": [0, 2, 4, 6],
+            "shots_in_training": [0, 1, 2, 3], "skipped": {}}
+    monkeypatch.setattr(validate, "_pooled_onset_rows", lambda *a, **k: {
+        "labels": {name: rows}, "shots_used": list(range(8)),
+        "shots_with_onset": [0, 2, 4, 6], "shots_in_training": [0, 1, 2, 3], "skipped": {}})
+    report = validate.calibration_study(
+        slug, list(range(8)), paths,
+        training_reader=lambda: (np.array([1000., 1.]), np.array([1, 0]), {}))
+
+    held_out = np.random.default_rng(0).permutation([4, 5, 6, 7])
+    fit, reported = held_out[:2].tolist(), held_out[2:].tolist()
+    assert report["split"] == {"fit": fit, "report": reported, "in_training": [0, 1, 2, 3],
+                               "fit_subset": "held_out"}
+    everything = report["labels"][name]["row_sets"]["all_pre_onset"]
+    assert everything["fit_subset"] == "held_out"
+    fitting = np.isin(shots, fit)
+    iso = IsotonicMap.fit(rows["y"][fitting], truth[fitting])
+    assert everything["p1"] == iso.prevalence_fit and everything["n_fit"] == iso.n_fit == 8
+    counts = {key: (s["n_shots"], s["n_rows"]) for key, s in everything["subsets"].items()}
+    # `all` is every shot the fit did not use: the report half plus every
+    # in-training shot.
+    assert counts == {"all": (6, 24), "held_out": (2, 8), "in_training": (4, 16)}
+    for key, subset in everything["subsets"].items():
+        keep = np.isin(shots, {"all": reported + [0, 1, 2, 3], "held_out": reported,
+                               "in_training": [0, 1, 2, 3]}[key])
+        want = validate._calibration_metrics(iso.apply(rows["y"][keep]), truth[keep])
+        assert subset["methods"]["isotonic"] == want
+        assert subset["n_tearing"] + subset["n_quiet"] == subset["n_shots"]
+    onset_only = report["labels"][name]["row_sets"]["onset_shots_only"]
+    assert onset_only["subsets"]["held_out"]["n_quiet"] == 0
+    fit_on = json.loads((paths.models / slug / "calibration.json").read_text())
+    assert fit_on["labels"][name]["fit_on"]["subset"] == "held_out"
+    assert fit_on["labels"][name]["fit_on"]["shots"] == sorted(fit)
 
 
 @pytest.mark.parametrize("truth, brier, ece", [([0, 0], .34, .5), ([1, 1], .34, .5)])
@@ -461,8 +646,9 @@ def test_calibration_empty_fit_preserves_existing_map(wired, monkeypatch):
     saved.parent.mkdir(parents=True)
     saved.write_text("existing map")
     monkeypatch.setattr(validate, "_pooled_onset_rows", lambda *a, **k: {
-        "labels": {}, "shots_used": [], "shots_with_onset": [], "skipped": {}})
-    with pytest.raises(ValueError, match="at least two aligned shots"):
+        "labels": {}, "shots_used": [], "shots_with_onset": [],
+        "shots_in_training": [], "skipped": {}})
+    with pytest.raises(ValueError, match="at least two held-out aligned shots"):
         validate.calibration_study(slug, [], paths,
                                    training_reader=lambda: pytest.fail("must not read training"))
     assert saved.read_text() == "existing map"
@@ -478,9 +664,11 @@ def test_calibration_empty_population_names_label_and_row_set(wired, monkeypatch
     fit, report = np.random.default_rng(0).permutation([1, 2])
     shots = np.array([report]) if row_set == "all_pre_onset" else np.array([fit, report])
     rows = {"shot": shots, "y": np.full(shots.size, .2),
-            "truth": np.zeros(shots.size), "onset_s": np.full(shots.size, np.nan)}
+            "truth": np.zeros(shots.size), "onset_s": np.full(shots.size, np.nan),
+            "in_training": np.zeros(shots.size, bool)}
     monkeypatch.setattr(validate, "_pooled_onset_rows", lambda *a, **k: {
-        "labels": {name: rows}, "shots_used": [1, 2], "skipped": {}})
+        "labels": {name: rows}, "shots_used": [1, 2], "shots_in_training": [],
+        "skipped": {}})
     with pytest.raises(ValueError, match=f"{name}: empty fitting population for {row_set}"):
         validate.calibration_study(slug, [1, 2], paths,
                                    training_reader=lambda: (np.array([1]), np.array([1]), {}))

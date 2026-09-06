@@ -580,3 +580,11 @@ class ModelAdapter:
     output_spec: OutputSpec
     load: Callable[[Any], Callable[[BuiltInputs], np.ndarray]]
     ensemble_n: int = 1
+    #: The shots this model was trained on, where they are known. Empty means
+    #: "not recorded", never "none": a model whose training shots are unknown
+    #: cannot have its pool numbers split into held-out and in-sample halves,
+    #: and `validate` reports every such shot as held out. The survival models
+    #: know theirs (`training_shots.txt` beside their spec); the tearing CNN's
+    #: training store IS the archive labelmaker scores against, which is a
+    #: different problem its own card states.
+    training_shots: frozenset[int] = frozenset()

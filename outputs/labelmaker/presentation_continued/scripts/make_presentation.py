@@ -8,7 +8,11 @@ original is left untouched.
 Reads pool_rows.npz (built by pool_rows.py over the 500-shot pool for the same
 slug) plus the validation JSON, and the label files for the two example shots.
 
-    python make_presentation.py [--dsm-slug <slug>] [--out-dir <dir>] [--rows pool_rows.npz]
+    python make_presentation.py [--dsm-slug <slug>] [--subset {all,held_out,in_training}]
+                                [--out-dir <dir>] [--rows pool_rows.npz]
+
+`--subset` restricts the whole pool to the shots the survival model was or was
+not trained on; see the original for what that does and does not mean.
 """
 import argparse
 import json
@@ -29,9 +33,12 @@ from labelmaker.validate import binary_metrics
 SCR = Path(__file__).resolve().parent
 ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
 ap.add_argument("--dsm-slug", default="d3d_tearing_time_to_event_dsm_continued")
+ap.add_argument("--subset", choices=("all", "held_out", "in_training"), default="all",
+                help="which shots of the pool to draw, by the survival model's training set")
 ap.add_argument("--out-dir", default=str(SCR.parent))
 ap.add_argument("--rows", default=str(SCR / "pool_rows.npz"))
 args = ap.parse_args()
+SUBSET = args.subset
 OUT = Path(args.out_dir)
 OUT.mkdir(parents=True, exist_ok=True)
 paths = Paths.from_env()
@@ -63,17 +70,26 @@ plt.rcParams.update({
 RING = dict(markeredgecolor=SURF, markeredgewidth=1.4)
 LBL_A, LBL_R = "archived (training) inputs", "labelmaker reconstruction"
 
+# ---- the subset: a whole number of shots, by the survival model's training set ----
+TRAIN = d["in_training"].astype(bool)
+KEEP = {"all": np.ones(TRAIN.size, bool), "held_out": ~TRAIN, "in_training": TRAIN}[SUBSET]
+SUBSET_NOTE = {
+    "all": "every aligned shot of the pool, in-sample and held-out together",
+    "held_out": "only the shots the survival model was NOT trained on",
+    "in_training": "only the shots the survival model WAS trained on",
+}[SUBSET]
+
 # ---- CNN rows: published (valid) rows only ----
-v = d["valid"].astype(bool)
+v = d["valid"].astype(bool) & KEEP
 y = d["truth_tm"].astype(bool)[v]
 pa, pr = d["p_arch"][v], d["p_recon"][v]
 ba, br, bt = d["b_arch"][v], d["b_recon"][v], d["truth_bn"][v]
 N, NPOS = y.size, int(y.sum())
 BASE = NPOS / N
-NSHOTS = int(np.unique(d["shot"]).size)
+NSHOTS = int(np.unique(d["shot"][KEEP]).size)
 
 # ---- DSM rows: valid, pre-onset, on shots that have an onset ----
-dv = d["dsm_valid"].astype(bool)
+dv = d["dsm_valid"].astype(bool) & KEEP
 tto = d["time_to_onset"]
 has_onset = d["has_onset"].astype(bool)
 # Two different questions, and they must not be mixed:
@@ -128,7 +144,7 @@ def footer(fig, text):
 
 SUB = (f"500-shot pool: {NSHOTS} shots aligned to their archived training rows, "
        f"{N:,} published CNN rows ({NPOS:,} tearing-positive, {BASE:.1%}); "
-       f"survival model {DSM}")
+       f"survival model {DSM}; subset {SUBSET} - {SUBSET_NOTE}")
 
 # ---------- 1. ROC + PR, both models ----------
 fig, axes = plt.subplots(2, 2, figsize=(11.5, 9))
@@ -229,54 +245,59 @@ footer(fig, SUB + ". The CNN is over-confident on its own inputs and less so thr
        "tuned to the population, not to a shot already known to be heading for a mode.")
 fig.tight_layout(rect=(0, 0, 1, 0.95)); fig.savefig(OUT / "03_calibration.png"); plt.close(fig)
 
-# ---------- 4. reconstruction fidelity ----------
-rec = json.loads((VAL / "reconstruction.json").read_text())["per_feature"]
-groups = [
-    ("ZIPFIT fits standing in for the pipeline's mtanh / csaps fits",
-     ["cer_rot_csaps_1d", "thomson_temp_mtanh_1d", "thomson_density_mtanh_1d"]),
-    ("offline EFIT01 standing in for real-time EFITRT1",
-     ["1/qpsi_EFITRT1", "kappa_EFITRT1", "R0_EFITRT1"]),
-    ("PTDATA through fdp", ["ip", "bt"]),
-    ("served by the archive - the training rows themselves",
-     ["pres_EFIT01", "ech_pwr_total", "EC.RHO_ECH", "gapin_EFIT01", "tribot_EFIT01",
-      "tritop_EFIT01", "tinj", "pinj"]),
-]
-UNPRICED = ["qmin", "li", "aminor", "volume", "pcbcoil", "ti_zipfit"]
-FLOOR = 1e-6
-fig, ax = plt.subplots(figsize=(11.5, 8))
-ypos, labels, ticks = 0, [], []
-for title, names in groups:
+# Figure 04 is pooled over every aligned shot in the CNN's validation report,
+# which has no held-out / in-training split of its own. Rather than publish it
+# inside a subset folder under a population it does not have, it is drawn for
+# `--subset all` alone.
+if SUBSET == "all":
+    # ---------- 4. reconstruction fidelity ----------
+    rec = json.loads((VAL / "reconstruction.json").read_text())["per_feature"]
+    groups = [
+        ("ZIPFIT fits standing in for the pipeline's mtanh / csaps fits",
+         ["cer_rot_csaps_1d", "thomson_temp_mtanh_1d", "thomson_density_mtanh_1d"]),
+        ("offline EFIT01 standing in for real-time EFITRT1",
+         ["1/qpsi_EFITRT1", "kappa_EFITRT1", "R0_EFITRT1"]),
+        ("PTDATA through fdp", ["ip", "bt"]),
+        ("served by the archive - the training rows themselves",
+         ["pres_EFIT01", "ech_pwr_total", "EC.RHO_ECH", "gapin_EFIT01", "tribot_EFIT01",
+          "tritop_EFIT01", "tinj", "pinj"]),
+    ]
+    UNPRICED = ["qmin", "li", "aminor", "volume", "pcbcoil", "ti_zipfit"]
+    FLOOR = 1e-6
+    fig, ax = plt.subplots(figsize=(11.5, 8))
+    ypos, labels, ticks = 0, [], []
+    for title, names in groups:
+        ypos += 0.9
+        ax.text(FLOOR * 0.55, ypos + len(names) - 0.35, title, fontsize=9, color=INK2, va="center", ha="left", clip_on=False)
+        ypos -= 0.2
+        for n in names:
+            vv = rec[n]["median_rel"]; exact = vv == 0.0
+            ax.barh(ypos, FLOOR * 1.6 if exact else max(vv, FLOOR), left=FLOOR, height=0.6,
+                    color=GRAY if exact else ARCH, alpha=0.55 if exact else 1.0, edgecolor=SURF, linewidth=1.4)
+            txt = "exact (0)" if exact else f"{vv:.1e}   corr {rec[n]['corr']:.2f}   {rec[n]['n_shots']} shots"
+            ax.text((FLOOR + (FLOOR * 1.6 if exact else max(vv, FLOOR))) * 1.25, ypos, txt, va="center", fontsize=8.3, color=INK2)
+            labels.append(n); ticks.append(ypos); ypos += 1
     ypos += 0.9
-    ax.text(FLOOR * 0.55, ypos + len(names) - 0.35, title, fontsize=9, color=INK2, va="center", ha="left", clip_on=False)
+    ax.text(FLOOR * 0.55, ypos + len(UNPRICED) - 0.35,
+            "used only by the survival model - no archived column to price against",
+            fontsize=9, color=INK2, va="center", ha="left", clip_on=False)
     ypos -= 0.2
-    for n in names:
-        vv = rec[n]["median_rel"]; exact = vv == 0.0
-        ax.barh(ypos, FLOOR * 1.6 if exact else max(vv, FLOOR), left=FLOOR, height=0.6,
-                color=GRAY if exact else ARCH, alpha=0.55 if exact else 1.0, edgecolor=SURF, linewidth=1.4)
-        txt = "exact (0)" if exact else f"{vv:.1e}   corr {rec[n]['corr']:.2f}   {rec[n]['n_shots']} shots"
-        ax.text((FLOOR + (FLOOR * 1.6 if exact else max(vv, FLOOR))) * 1.25, ypos, txt, va="center", fontsize=8.3, color=INK2)
+    for n in UNPRICED:
+        ax.barh(ypos, FLOOR * 1.6, left=FLOOR, height=0.6, color=SURF, edgecolor=AXIS, linewidth=1.0, hatch="///")
+        ax.text(FLOOR * 3.0, ypos, "unpriced - the survival model's training rows are not on disk",
+                va="center", fontsize=8.3, color=MUTED)
         labels.append(n); ticks.append(ypos); ypos += 1
-ypos += 0.9
-ax.text(FLOOR * 0.55, ypos + len(UNPRICED) - 0.35,
-        "used only by the survival model - no archived column to price against",
-        fontsize=9, color=INK2, va="center", ha="left", clip_on=False)
-ypos -= 0.2
-for n in UNPRICED:
-    ax.barh(ypos, FLOOR * 1.6, left=FLOOR, height=0.6, color=SURF, edgecolor=AXIS, linewidth=1.0, hatch="///")
-    ax.text(FLOOR * 3.0, ypos, "unpriced - the survival model's training rows are not on disk",
-            va="center", fontsize=8.3, color=MUTED)
-    labels.append(n); ticks.append(ypos); ypos += 1
-ax.set_xscale("log"); ax.set_xlim(FLOOR, 1.0); ax.set_ylim(-0.6, ypos + 0.4)
-ax.set_yticks(ticks); ax.set_yticklabels(labels, fontsize=8.6)
-ax.set_xlabel("median relative difference to the model's own training input (log)")
-ax.grid(axis="y", visible=False); ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
-ax.set_title("Reconstruction fidelity, feature by feature - the profile substitutions are the cost")
-ax.legend(handles=[Patch(color=ARCH, label="measured substitution"),
-                   Patch(color=GRAY, alpha=0.55, label="bit-identical to the training input"),
-                   Patch(facecolor=SURF, edgecolor=AXIS, hatch="///", label="no truth to compare against")],
-          loc="upper right")
-footer(fig, f"{NSHOTS} aligned shots of the 500-shot pool. Pooled median of |ours - archived| / |archived| at the aligned rows.")
-fig.tight_layout(); fig.savefig(OUT / "04_reconstruction_fidelity.png"); plt.close(fig)
+    ax.set_xscale("log"); ax.set_xlim(FLOOR, 1.0); ax.set_ylim(-0.6, ypos + 0.4)
+    ax.set_yticks(ticks); ax.set_yticklabels(labels, fontsize=8.6)
+    ax.set_xlabel("median relative difference to the model's own training input (log)")
+    ax.grid(axis="y", visible=False); ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
+    ax.set_title("Reconstruction fidelity, feature by feature - the profile substitutions are the cost")
+    ax.legend(handles=[Patch(color=ARCH, label="measured substitution"),
+                       Patch(color=GRAY, alpha=0.55, label="bit-identical to the training input"),
+                       Patch(facecolor=SURF, edgecolor=AXIS, hatch="///", label="no truth to compare against")],
+              loc="upper right")
+    footer(fig, f"{NSHOTS} aligned shots of the 500-shot pool. Pooled median of |ours - archived| / |archived| at the aligned rows.")
+    fig.tight_layout(); fig.savefig(OUT / "04_reconstruction_fidelity.png"); plt.close(fig)
 
 # ---------- 5. example shots ----------
 def spans(mask, x):
@@ -327,16 +348,19 @@ def example_shot(shot, tag, title, note):
                   ncol=3, borderaxespad=0.2)
     ax3.set_xlim(t_all[0], t_all[-1])
     fig.suptitle(f"Shot {shot} - {title}", x=0.01, ha="left", fontsize=13, fontweight="semibold")
-    footer(fig, note)
+    # The example shots are picked from the drawn subset (`lead_times` filters
+    # by KEEP), so a held-out rendering picks held-out example shots and the
+    # file names differ between subsets. Say so on the figure.
+    footer(fig, f"{note} Subset {SUBSET}: {SUBSET_NOTE}.")
     fig.tight_layout(rect=(0, 0, 1, 0.965)); fig.subplots_adjust(hspace=0.44); fig.savefig(OUT / f"05{tag}_example_shot_{shot}.png"); plt.close(fig)
 
 
 # lead time per shot for each model: first crossing minus archived onset
 def lead_times(prob_key, thresh, valid_key):
     out = {}
-    vv = d[valid_key].astype(bool)
-    for shot in np.unique(d["shot"]):
-        sel = d["shot"] == shot
+    vv = d[valid_key].astype(bool) & KEEP
+    for shot in np.unique(d["shot"][KEEP]):
+        sel = (d["shot"] == shot) & KEEP
         tm = d["truth_tm"][sel].astype(bool)
         if not tm.any():
             continue
@@ -392,7 +416,8 @@ footer(fig, SUB + f". Right: {int(keep.sum()):,} pre-onset valid rows of the {in
 fig.tight_layout(rect=(0, 0, 1, 0.95)); fig.savefig(OUT / "06_prediction_shift.png"); plt.close(fig)
 
 # ---------- 7. coverage and lead time ----------
-ps = d["per_shot"]
+ps = d["per_shot"][{"all": slice(None), "held_out": d["per_shot"][:, 8] < 0.5,
+                    "in_training": d["per_shot"][:, 8] > 0.5}[SUBSET]]
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(11.5, 4.6))
 b = np.linspace(0, 1, 21)
 a1.hist(ps[:, 4], bins=b, histtype="step", color=ARCH, lw=1.9, label=f"tearing CNN - median {np.median(ps[:, 4]):.0%}")
@@ -420,7 +445,9 @@ footer(fig, f"{NSHOTS} aligned shots; lead time on the {int(np.isfinite(ps[:, 6]
 fig.tight_layout(rect=(0, 0, 1, 0.94)); fig.savefig(OUT / "07_coverage_and_lead_time.png"); plt.close(fig)
 
 summary = {
-    "dsm_slug": DSM, "n_shots": NSHOTS, "n_rows_cnn_valid": int(N), "base_rate": float(BASE),
+    "dsm_slug": DSM, "subset": SUBSET, "subset_note": SUBSET_NOTE,
+    "n_shots_in_training": int((d["per_shot"][:, 8] > 0.5).sum()),
+    "n_shots": NSHOTS, "n_rows_cnn_valid": int(N), "base_rate": float(BASE),
     "cnn_auroc_archived": binary_metrics(pa, y)["auroc"],
     "cnn_auroc_reconstructed": binary_metrics(pr, y)["auroc"],
     "cnn_best_f1": {k: [float(v[0]), float(v[1])] for k, v in best.items()},

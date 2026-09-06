@@ -1581,15 +1581,21 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
     top-level lists describe their union. A missing/empty label never turns a
     shot into a TN. The censoring endpoint is the last ARCHIVED time, before
     validity filtering. Stored label and mask time grids must match alignment.
+    `in_training` marks each row's shot as one the model was fitted on, from
+    the adapter's own `training_shots`; an adapter that records none reports
+    every row as held out.
     """
     from .labels.store import read_label
 
     names = [key.split('/')[1] for key in ARCHIVE_TRUTH if key.startswith(f'{slug}/')]
-    columns = ('shot', 't', 'y', 'truth', 'onset_s', 't_end')
+    columns = ('shot', 't', 'y', 'truth', 'onset_s', 't_end', 'in_training')
     rows = {name: {key: [] for key in columns} for name in names}
-    meta = {name: {'shots_used': [], 'shots_with_onset': [], 'skipped': {}} for name in names}
-    used, onset_shots, skipped = [], [], {}
+    meta = {name: {'shots_used': [], 'shots_with_onset': [], 'shots_in_training': [],
+                   'skipped': {}} for name in names}
+    used, onset_shots, training_shots_used, skipped = [], [], [], {}
     spec = registry.load_adapter('d3d_tearing_onset_cnn1d').input_spec
+    # The split belongs to the model the report is about, not to `validate`.
+    training = registry.load_adapter(slug).training_shots
     for shot in dict.fromkeys(map(int, shots)):
         try:
             with _shot_budget(timeout_s):
@@ -1608,6 +1614,7 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
                 tm = np.asarray(match.got['y'])[order, _TRUTH_COLUMNS['tm_prob']] > .5
                 onset = float(t[np.argmax(tm)]) if tm.any() else np.nan
                 before = t < onset - 1e-9 if np.isfinite(onset) else np.ones(t.size, bool)
+                trained_on = shot in training
                 pending = {}
                 for name in names:
                     try:
@@ -1633,7 +1640,8 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
                         n = int(keep.sum())
                         pending[name] = {"shot": np.full(n, shot), "t": t[keep], "y": y[keep],
                                              "truth": target[keep],
-                                             "onset_s": np.full(n, onset), "t_end": np.full(n, t[-1])}
+                                             "onset_s": np.full(n, onset), "t_end": np.full(n, t[-1]),
+                                             "in_training": np.full(n, trained_on)}
                     except (KeyError, ValueError, IndexError) as exc:
                         meta[name]['skipped'][str(shot)] = f'{type(exc).__name__}: {exc}'
                 # Commit only after the entire shot finishes inside its timeout.
@@ -1643,10 +1651,14 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
                 meta[name]['shots_used'].append(shot)
                 if np.isfinite(onset):
                     meta[name]['shots_with_onset'].append(shot)
+                if trained_on:
+                    meta[name]['shots_in_training'].append(shot)
             if pending:
                 used.append(shot)
                 if np.isfinite(onset):
                     onset_shots.append(shot)
+                if trained_on:
+                    training_shots_used.append(shot)
             else:
                 skipped[str(shot)] = 'no usable published labels; see per-label skipped'
         except Exception as exc:  # noqa: BLE001 - isolate unavailable or timed-out shots
@@ -1655,9 +1667,10 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
             for name in names:
                 meta[name]['skipped'][str(shot)] = reason
     labels = {}
+    empty_dtype = {'shot': int, 'in_training': bool}
     for name in names:
         labels[name] = {key: np.concatenate(parts) if parts else np.array(
-            [], dtype=int if key == 'shot' else float) for key, parts in rows[name].items()}
+            [], dtype=empty_dtype.get(key, float)) for key, parts in rows[name].items()}
         labels[name].update(meta[name])
         labels[name]['row_set'] = (
             "pre-onset valid rows of aligned tearing shots only"
@@ -1665,12 +1678,77 @@ def _pooled_onset_rows(slug, shots, paths, *, archive, timeout_s) -> dict:
             'pre-onset valid rows of every aligned shot'
             if ARCHIVE_TRUTH[f'{slug}/{name}']['kind'] == 'onset_within'
             else 'all valid rows of every aligned shot')
-    return {"labels": labels, "shots_used": used, "shots_with_onset": onset_shots, "skipped": skipped}
+    return {"labels": labels, "shots_used": used, "shots_with_onset": onset_shots,
+            "shots_in_training": training_shots_used, "skipped": skipped}
+
+
+#: The three populations every pooled metric is reported on. `held_out` is
+#: what generalisation means for a model whose training shots are known;
+#: `in_training` is the part of the pool it has already seen; `all` is the two
+#: together, which is what every report before Task 3c measured.
+SUBSETS = ("all", "held_out", "in_training")
+
+
+def _subset_masks(in_training) -> dict[str, np.ndarray]:
+    """Row masks for `all`, `held_out` and `in_training`, in that order."""
+    flag = np.asarray(in_training, dtype=bool)
+    return {"all": np.ones(flag.size, bool), "held_out": ~flag, "in_training": flag}
+
+
+def _alarm_subset(rows: dict, mask: np.ndarray, horizon: float | None, thresholds) -> dict:
+    """Shot alarm rates and row ranking over one subset of a label's rows.
+
+    Membership is constant within a shot, so a subset is a whole number of
+    shots and its quiet/tearing counts are its own, never the pool's.
+    """
+    columns = {key: np.asarray(rows[key])[mask]
+               for key in ('shot', 't', 'y', 'truth', 'onset_s', 't_end')}
+    event = np.isfinite(columns['onset_s'])
+    duration = np.where(event, columns['onset_s'], columns['t_end']) - columns['t']
+    groups = [np.flatnonzero(columns['shot'] == shot)
+              for shot in dict.fromkeys(columns['shot'].tolist())]
+    n_tearing = sum(1 for idx in groups if event[idx[0]])
+    out = {'n_shots': len(groups), 'n_quiet': len(groups) - n_tearing, 'n_tearing': n_tearing,
+           'n_rows': int(columns['y'].size),
+           'n_positive': int(np.count_nonzero(columns['truth'] > .5)),
+           'auroc': binary_metrics(columns['y'], columns['truth'])['auroc'],
+           'ipcw_auc': alarm.ipcw_auc(duration, event, columns['y'], horizon,
+                                      cases=columns['truth']) if horizon else None,
+           'thresholds': {}}
+    for threshold in thresholds:
+        final, any_verdicts, warnings, jumps, excursions = [], [], [], [], []
+        for idx in groups:
+            onset = float(columns['onset_s'][idx[0]]) if event[idx[0]] else None
+            t, y = columns['t'][idx], columns['y'][idx]
+            valid = np.ones(idx.size, bool)
+            result = alarm.shot_alarm(t, y, valid, threshold=threshold, onset_s=onset)
+            called = alarm.any_row_call(y, valid, threshold=threshold)
+            final.append(result.verdict)
+            any_verdicts.append(('TP' if called else 'FN') if onset is not None
+                                else ('FP' if called else 'TN'))
+            if result.warning_time_s is not None:
+                warnings.append(result.warning_time_s)
+            jumps.append(result.jumps)
+            excursions.append(result.n_excursions)
+        q = np.quantile(warnings, [.25, .5, .75]) if warnings else [None]*3
+        keys, counts = np.unique(jumps, return_counts=True)
+        out['thresholds'][str(float(threshold))] = {
+            "final_label": alarm.pool_rates(final), "any_row": alarm.pool_rates(any_verdicts),
+            "warning_time_s": {"q25": q[0], "median": q[1], "q75": q[2]},
+            "jumps": {str(int(k)): int(v) for k, v in zip(keys, counts, strict=True)},
+            "n_excursions": float(np.median(excursions)) if excursions else None}
+    return out
 
 
 def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
                   thresholds=(0.05, 0.1, 0.2, 0.3, 0.5, 0.7), timeout_s=None) -> dict:
     """Shot alarm rates and row ranking on one explicitly named population.
+
+    Every metric is reported three ways - over all scored shots, over the
+    shots held out of the model's training set, and over the shots that were
+    in it - because a survival model's pool numbers are otherwise part
+    in-sample without saying so (214 of labelmaker's 500 pool shots are
+    training shots of both survival checkpoints).
 
     Plain AUROC counts quiet rows as negatives even when censored before h;
     IPCW excludes those rows from the pair comparison and estimates censoring
@@ -1681,49 +1759,22 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
     out = {key: value for key, value in pooled.items() if key != 'labels'}
     populations = {rows['row_set'] for rows in pooled['labels'].values()}
     out.update(slug=slug, row_set=next(iter(populations)) if len(populations) == 1
-               else 'label-specific populations; see labels.*.row_set', labels={})
+               else 'label-specific populations; see labels.*.row_set',
+               subsets="each label's metrics over all / held_out / in_training shots, "
+                       "split by the adapter's own training_shots", labels={})
     for name, rows in pooled['labels'].items():
         rule = ARCHIVE_TRUTH[f'{slug}/{name}']
         if rule.get("task") == "regression" or rule["kind"] == "time_to_onset":
             continue
-        event = np.isfinite(rows['onset_s'])
-        duration = np.where(event, rows['onset_s'], rows['t_end']) - rows['t']
         horizon = rule.get('horizon_s')
-        target = rows['truth']
-        label = {key: rows[key] for key in ('shots_used', 'shots_with_onset', 'skipped', 'row_set')}
-        label.update(n_rows=int(event.size), n_positive=int(np.count_nonzero(target > .5)),
-                     horizon_s=horizon,
-                     auroc=binary_metrics(rows['y'], target)['auroc'],
-                     ipcw_auc=alarm.ipcw_auc(duration, event, rows['y'], horizon, cases=target)
-                     if horizon else None, thresholds={})
+        label = {key: rows[key] for key in ('shots_used', 'shots_with_onset',
+                                            'shots_in_training', 'skipped', 'row_set')}
+        label.update(horizon_s=horizon, subsets={})
         if horizon is None:
             label['ipcw_auc_reason'] = (
                 'column label: the archived tm_label has no horizon, IPCW AUC is undefined')
-        groups = [np.flatnonzero(rows['shot'] == shot) for shot in rows['shots_used']]
-        for threshold in thresholds:
-            final, any_verdicts, warnings, jumps, excursions = [], [], [], [], []
-            for idx in groups:
-                onset = float(rows['onset_s'][idx[0]]) if event[idx[0]] else None
-                t, y = rows['t'][idx], rows['y'][idx]
-                valid = np.ones(idx.size, bool)
-                result = alarm.shot_alarm(t, y, valid, threshold=threshold, onset_s=onset)
-                called = alarm.any_row_call(y, valid, threshold=threshold)
-                final.append(result.verdict)
-                any_verdicts.append(('TP' if called else 'FN') if onset is not None
-                                    else ('FP' if called else 'TN'))
-                if result.warning_time_s is not None:
-                    warnings.append(result.warning_time_s)
-                jumps.append(result.jumps)
-                excursions.append(result.n_excursions)
-            q = np.quantile(warnings, [.25, .5, .75]) if warnings else [None]*3
-            keys, counts = np.unique(jumps, return_counts=True)
-            label['thresholds'][str(float(threshold))] = {
-                "n_quiet": len(rows['shots_used']) - len(rows['shots_with_onset']),
-                "n_tearing": len(rows['shots_with_onset']),
-                "final_label": alarm.pool_rates(final), "any_row": alarm.pool_rates(any_verdicts),
-                "warning_time_s": {"q25": q[0], "median": q[1], "q75": q[2]},
-                "jumps": {str(int(k)): int(v) for k, v in zip(keys, counts, strict=True)},
-                "n_excursions": float(np.median(excursions)) if excursions else None}
+        for subset, mask in _subset_masks(rows['in_training']).items():
+            label['subsets'][subset] = _alarm_subset(rows, mask, horizon, thresholds)
         out['labels'][name] = label
     pairs = sorted((rule['horizon_s'], key.split('/')[1])
                    for key, rule in ARCHIVE_TRUTH.items()
@@ -1741,13 +1792,16 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
                    for n in names for key in ('shot', 't'))
         out['horizon_integrated'] = {}
         if same:
-            for threshold in thresholds:
-                key = str(float(threshold))
-                rates = [out['labels'][n]['thresholds'][key]['any_row'] for n in names]
-                out['horizon_integrated'][key] = {
-                    metric: alarm.horizon_integral(horizons, [r[metric] for r in rates])
-                    if all(r[metric] is not None for r in rates) else None
-                    for metric in ('fpr', 'fnr')}
+            for subset in SUBSETS:
+                out['horizon_integrated'][subset] = {}
+                for threshold in thresholds:
+                    key = str(float(threshold))
+                    rates = [out['labels'][n]['subsets'][subset]['thresholds'][key]['any_row']
+                             for n in names]
+                    out['horizon_integrated'][subset][key] = {
+                        metric: alarm.horizon_integral(horizons, [r[metric] for r in rates])
+                        if all(r[metric] is not None for r in rates) else None
+                        for metric in ('fpr', 'fnr')}
         else:
             out['horizon_integrated_reason'] = 'published horizons have different row sets'
     return out
@@ -1766,6 +1820,15 @@ def _read_training_prevalence() -> tuple[np.ndarray, np.ndarray, dict]:
             arrays[key] = np.asarray(pickle.load(fh)).ravel()
         files[key] = {"path": str(path), "sha256": sha256_of(path)}
     return arrays["t"], arrays["e"], files
+
+
+def _subset_shot_counts(shot: np.ndarray, onset_s: np.ndarray) -> dict:
+    """How many shots a row subset covers, and how many of them are tearing."""
+    shot, onset_s = np.asarray(shot), np.asarray(onset_s, dtype=float)
+    ids = np.unique(shot)
+    tearing = sum(1 for one in ids if np.isfinite(onset_s[shot == one]).any())
+    return {"n_shots": int(ids.size), "n_quiet": int(ids.size) - tearing,
+            "n_tearing": tearing}
 
 
 def _calibration_metrics(prob: np.ndarray, truth: np.ndarray) -> dict:
@@ -1797,10 +1860,18 @@ def calibration_study(
     seed: int = 0, timeout_s: float | None = None,
     training_reader: Callable[[], tuple[np.ndarray, np.ndarray, dict]] = _read_training_prevalence,
 ) -> dict:
-    """Fit on half the aligned shots; score the other half in each row set.
+    """Fit on half the HELD-OUT aligned shots; report on the rest, three ways.
+
+    The published map may not be fitted on shots the model was trained on: an
+    isotonic map fitted on memorised rows is calibrated to memorisation, and
+    214 of labelmaker's 500 pool shots are training shots of both survival
+    checkpoints. So the 50/50 seeded shot split is applied WITHIN the held-out
+    shots, and every metric is then reported on three populations - the
+    held-out report half, the in-training shots, and `all`, which is both
+    together and therefore every scored shot the fit did not use.
 
     Only all_pre_onset isotonic maps are published. Prior shift uses the FIT
-    half's prevalence, never the REPORT half's outcomes.
+    half's prevalence, never the reported rows' outcomes.
     """
     from datetime import UTC, datetime
 
@@ -1809,17 +1880,24 @@ def calibration_study(
 
     pooled = _pooled_onset_rows(slug, shots, paths, archive=archive, timeout_s=timeout_s)
     aligned = sorted(pooled["shots_used"])
-    split = np.random.default_rng(seed).permutation(aligned)
+    in_training = sorted(set(pooled["shots_in_training"]) & set(aligned))
+    held_out = [shot for shot in aligned if shot not in set(in_training)]
+    split = np.random.default_rng(seed).permutation(held_out)
     fit, report = split[:len(split) // 2], split[len(split) // 2:]
     if not fit.size or not report.size:
-        raise ValueError("calibration requires at least two aligned shots")
+        raise ValueError("calibration requires at least two held-out aligned shots")
     t_train, e_train, files = training_reader()
     t_train, e_train = np.asarray(t_train), np.asarray(e_train)
     if t_train.shape != e_train.shape or not t_train.size:
         raise ValueError("training times and events must be matching nonempty arrays")
-    result = {"slug": slug, "seed": seed, "split": {"fit": fit.tolist(), "report": report.tolist()},
+    result = {"slug": slug, "seed": seed,
+              "split": {"fit": fit.tolist(), "report": report.tolist(),
+                        "in_training": in_training, "fit_subset": "held_out"},
               "training": {"n_rows": int(t_train.size), "files": files},
-              "prevalence_source": "FIT half of each row set; applied to REPORT half",
+              "prevalence_source": "held-out FIT half of each row set; "
+                                   "applied to every reported subset",
+              "subsets": "all = reported held-out shots plus every in-training shot, "
+                         "i.e. every scored shot the fit did not use",
               "skipped": pooled["skipped"], "labels": {}}
     maps = {}
     date, sha = datetime.now(UTC).isoformat(timespec="seconds"), git_sha()
@@ -1834,25 +1912,33 @@ def calibration_study(
             keep = (np.ones(rows["shot"].size, bool) if row_set == "all_pre_onset"
                     else np.isfinite(rows["onset_s"]))
             fitting = keep & np.isin(rows["shot"], fit)
-            testing = keep & np.isin(rows["shot"], report)
             if not fitting.any():
                 raise ValueError(f"{name}: empty fitting population for {row_set}")
             iso = fit_isotonic(rows["y"][fitting], rows["truth"][fitting])
             p1 = iso.prevalence_fit
-            prob, truth = rows["y"][testing], rows["truth"][testing]
-            methods = {"raw": prob,
-                       "prior_shift": prior_shift(prob, from_prevalence=q1, to_prevalence=p1),
-                       "isotonic": iso.apply(prob)}
-            item["row_sets"][row_set] = {
-                "p1": p1, "n_fit": iso.n_fit,
-                "methods": {method: _calibration_metrics(values, truth)
-                            for method, values in methods.items()},
-            }
+            reported = {"held_out": keep & np.isin(rows["shot"], report),
+                        "in_training": keep & np.asarray(rows["in_training"], bool)}
+            reported["all"] = reported["held_out"] | reported["in_training"]
+            entry = {"p1": p1, "n_fit": iso.n_fit, "fit_subset": "held_out", "subsets": {}}
+            for subset in SUBSETS:
+                testing = reported[subset]
+                prob, truth = rows["y"][testing], rows["truth"][testing]
+                methods = {"raw": prob,
+                           "prior_shift": prior_shift(prob, from_prevalence=q1,
+                                                      to_prevalence=p1),
+                           "isotonic": iso.apply(prob)}
+                entry["subsets"][subset] = {
+                    **_subset_shot_counts(rows["shot"][testing], rows["onset_s"][testing]),
+                    "n_rows": int(prob.size),
+                    "methods": {method: _calibration_metrics(values, truth)
+                                for method, values in methods.items()},
+                }
+            item["row_sets"][row_set] = entry
             if row_set == "all_pre_onset":
                 maps[name] = {"map": iso.to_dict(), "fit_on": {
                     "shots": sorted(np.unique(rows["shot"][fitting]).tolist()),
                     "n_rows": iso.n_fit, "prevalence": p1, "row_set": row_set,
-                    "date": date, "git_sha": sha,
+                    "subset": "held_out", "date": date, "git_sha": sha,
                 }}
         result["labels"][name] = item
     if not maps:

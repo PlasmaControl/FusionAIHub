@@ -36,9 +36,16 @@ DSM = args.dsm_slug
 RISKS = ("tm_risk_250ms", "tm_risk_500ms", "tm_risk_1s")
 HORIZONS = (0.25, 0.5, 1.0)
 
+# Half the pool is in the survival model's own training set (214 of 500
+# shots), so every pooled number needs the flag beside it. `training_shots` is
+# empty for a model that does not record its own, which reports every row as
+# held out - true of the tearing CNN, whose training store is the archive
+# itself, a different problem its card states.
+TRAINING = registry.load_adapter(DSM).training_shots
+
 cols = {k: [] for k in (
     "shot", "t", "valid", "truth_tm", "truth_bn", "p_arch", "p_recon", "b_arch",
-    "b_recon", "dsm_valid", "time_to_onset", "has_onset",
+    "b_recon", "dsm_valid", "time_to_onset", "has_onset", "in_training",
 )}
 for r in RISKS:
     cols[r] = []
@@ -83,6 +90,7 @@ for shot in catalog.read_shot_file(p.root / "shots_500.txt"):
     cols["b_arch"].append(b_a); cols["b_recon"].append(b_r)
     cols["time_to_onset"].append(onset - t if np.isfinite(onset) else np.full(n, np.nan))
     cols["has_onset"].append(np.full(n, np.isfinite(onset)))
+    cols["in_training"].append(np.full(n, shot in TRAINING))
     for r in RISKS:
         cols[r].append(risks[r])
     full_valid = read_label(p.labels_file(shot), SLUG, "tm_prob_valid").y[0].astype(bool)
@@ -92,7 +100,8 @@ for shot in catalog.read_shot_file(p.root / "shots_500.txt"):
         dsm_full = np.zeros_like(full_valid)
     per_shot.append([shot, n, int(cnn_valid.sum()), int(tm.sum()),
                      float(full_valid.mean()), float(dsm_full.mean()),
-                     onset, float(np.nanmax(risks["tm_risk_1s"]) if n else np.nan)])
+                     onset, float(np.nanmax(risks["tm_risk_1s"]) if n else np.nan),
+                     float(shot in TRAINING)])
 
 arrays = {k: np.concatenate(v) for k, v in cols.items()}
 arrays["per_shot"] = np.asarray(per_shot, dtype=np.float64)
@@ -100,6 +109,7 @@ arrays["horizons"] = np.asarray(HORIZONS)
 np.savez_compressed(out, **arrays)
 n = arrays["shot"].size
 print(f"dsm slug {DSM}")
+print(f"in-training shots {int(arrays['per_shot'][:, 8].sum())} of {len(per_shot)}")
 print(f"shots {len(per_shot)} skipped {len(skipped)} rows {n} "
       f"cnn-valid {int(arrays['valid'].sum())} dsm-valid {int(arrays['dsm_valid'].sum())} "
       f"positives {int(arrays['truth_tm'].sum())} shots-with-onset "

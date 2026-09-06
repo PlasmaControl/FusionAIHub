@@ -116,6 +116,18 @@ _RHO_33 = np.linspace(0.0, 1.0, 33)
 _RHO_100 = np.linspace(0.0, 1.0, 100)
 _RHO_65 = np.linspace(0.0, 1.0, 65)
 
+#: The 8,923 DIII-D shots (140444-193373) whose rows this checkpoint was fitted
+#: on, one per line, written from the upstream per-row shot pickle by
+#: `scripts/labelmaker/write_training_shots.py`. It is committed rather than
+#: read from `/projects` because the spec must load wherever labelmaker runs,
+#: and because half of labelmaker's own 500-shot pool is in it: without this
+#: list every pool number silently mixes memorised shots with held-out ones.
+#: `validate` splits every survival metric on it.
+TRAINING_SHOTS = frozenset(
+    int(line)
+    for line in Path(__file__).with_name("training_shots.txt").read_text().split()
+)
+
 
 def preprocess(built, norm: dict) -> np.ndarray:
     """`(T, 38)` model inputs from built arrays, as get_survival_from_shot.py does it."""
@@ -139,7 +151,8 @@ def preprocess(built, norm: dict) -> np.ndarray:
 def with_calibration_attrs(output_spec: OutputSpec, fit_on: dict) -> OutputSpec:
     """Bind per-label fitting records without mutating the module constant."""
     return OutputSpec(tuple(
-        replace(field, attrs=(("calibration", "isotonic, fit on all_pre_onset rows"),
+        replace(field, attrs=(("calibration",
+                               "isotonic, fit on held-out all_pre_onset rows"),
                               ("calibration_fit_on", json.dumps(
                                   fit_on[field.name.removesuffix("_isotonic")], sort_keys=True))))
         if field.name.endswith("_isotonic") else field
@@ -209,4 +222,5 @@ ADAPTER = ModelAdapter(
     output_spec=OUTPUT_SPEC,
     load=load,
     ensemble_n=1,
+    training_shots=TRAINING_SHOTS,
 )

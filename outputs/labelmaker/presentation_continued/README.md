@@ -23,9 +23,11 @@ shipped model was fitted on. Details in
 Row sets, so the columns are not mixed up: **AUROC / IPCW AUC / lead time /
 FPR / FNR** come from `alarm_quality.json` over **all 28,290 pre-onset valid
 rows of the 463 scored shots** (383 quiet, 80 tearing); **ECE** comes from
-`calibration_study.json` over the **report half** of that pool (232 shots;
-14,005 all_pre_onset rows, of which 1,702 belong to onset shots), raw risks,
-no post-hoc map. Both models were scored with the same seed-0 split.
+`calibration_study.json` over the **held-out report half** of that pool (128
+shots; 8,809 all_pre_onset rows, of which 685 belong to onset shots), raw
+risks, no post-hoc map. Both models were scored with the same seed-0 split,
+which since 2026-09-05 is drawn from the 255 pool shots neither checkpoint was
+trained on.
 
 | quantity | shipped | continued | difference |
 |---|---:|---:|---:|
@@ -35,12 +37,12 @@ no post-hoc map. Both models were scored with the same seed-0 split.
 | IPCW AUC `tm_risk_250ms` | 0.808217 | 0.679597 | -0.128620 |
 | IPCW AUC `tm_risk_500ms` | 0.784507 | 0.664393 | -0.120115 |
 | IPCW AUC `tm_risk_1s` | 0.758210 | 0.673280 | -0.084930 |
-| ECE `tm_risk_250ms`, all_pre_onset | 0.004434 | 0.009956 | +0.005522 |
-| ECE `tm_risk_500ms`, all_pre_onset | 0.014819 | 0.027431 | +0.012612 |
-| ECE `tm_risk_1s`, all_pre_onset | 0.024092 | 0.055926 | +0.031834 |
-| ECE `tm_risk_250ms`, onset_shots_only | 0.109420 | 0.104915 | -0.004505 |
-| ECE `tm_risk_500ms`, onset_shots_only | 0.230784 | 0.220567 | -0.010217 |
-| ECE `tm_risk_1s`, onset_shots_only | 0.459990 | 0.438905 | -0.021085 |
+| ECE `tm_risk_250ms`, all_pre_onset | 0.002928 | 0.008132 | +0.005204 |
+| ECE `tm_risk_500ms`, all_pre_onset | 0.005542 | 0.021728 | +0.016186 |
+| ECE `tm_risk_1s`, all_pre_onset | 0.014508 | 0.043870 | +0.029362 |
+| ECE `tm_risk_250ms`, onset_shots_only | 0.093080 | 0.108482 | +0.015402 |
+| ECE `tm_risk_500ms`, onset_shots_only | 0.208588 | 0.230165 | +0.021577 |
+| ECE `tm_risk_1s`, onset_shots_only | 0.420512 | 0.438004 | +0.017492 |
 | median lead time, `tm_risk_1s` at 0.2 (warning time over final-label TPs) | 0.350 s | 0.500 s | +0.150 s |
 | median lead time, first crossing of 0.2 (figure 07) | 0.375 s (39 of 86 shots cross) | 0.950 s (61 of 86 cross) | +0.575 s |
 | final-label FPR at 0.2, `tm_risk_1s` | 0.065274 | 0.117493 | +0.052219 |
@@ -49,17 +51,21 @@ no post-hoc map. Both models were scored with the same seed-0 split.
 **These pool numbers are roughly half in-sample for both models.** The
 survival training set is 8,923 unique DIII-D shots spanning 140444-193373;
 214 of the 500 pool shots, 208 of the 463 aligned scored shots and 41 of the
-80 shots with an archived onset are training shots. Splitting the metrics by
-that membership is a separate task, not something these numbers do.
+80 shots with an archived onset are training shots. Every figure here draws
+all of them. The same figures over the held-out shots alone, and the
+side-by-side all / held-out / in-training table, are in `held_out/`.
 
 ## What the comparison says
 
 The continuation is a large likelihood gain on its own validation split and a
 **loss of ranking power on the pool**: AUROC falls at all three horizons, by
 0.078 to 0.129, and IPCW AUC falls with it. Calibration on all pre-onset rows
-gets worse at all three horizons (ECE 0.0044 -> 0.0100, 0.0148 -> 0.0274,
-0.0241 -> 0.0559); calibration restricted to onset shots gets slightly better,
-which is what a model that simply predicts higher risk everywhere would do.
+gets worse at all three horizons (ECE 0.0029 -> 0.0081, 0.0055 -> 0.0217,
+0.0145 -> 0.0439), and so does calibration restricted to onset shots
+(0.4205 -> 0.4380 at 1 s). Pooled over every scored shot rather than the
+held-out report half, the onset-only figure moves the other way
+(0.4358 -> 0.4290): which sign you get depends on the population, and the
+held-out one is the one that answers the question.
 
 The same picture shows in the alarm rates: the retrained model calls more
 shots at threshold 0.2, so its FNR falls (0.6625 -> 0.6250 at 1 s) while its

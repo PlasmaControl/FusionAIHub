@@ -623,11 +623,29 @@ def test_validate_without_archive_truth_writes_no_alarm_report(wired):
     assert not (directory / 'alarm_quality.json').exists()
 
 
-@pytest.mark.parametrize("broken", [False, True])
-def test_validate_writes_calibration_study_for_survival(wired, monkeypatch, broken):
+def test_validate_writes_no_calibration_study_without_onset_within_truth(wired, monkeypatch):
+    """A slug whose only archive truth is a column has nothing to calibrate."""
     from labelmaker import validate
 
-    slug = "d3d_tearing_time_to_event_dsm"
+    monkeypatch.setitem(validate.ARCHIVE_TRUTH, f"{SLUG}/score",
+                        {"kind": "column", "column": 1, "task": "binary"})
+    monkeypatch.setattr(validate, "alarm_quality", lambda *a, **k: {"row_set": "x"},
+                        raising=False)
+    monkeypatch.setattr(validate, "calibration_study",
+                        lambda *a, **k: pytest.fail("calibration_study must not run"),
+                        raising=False)
+    run.main(_argv(wired, "validate"))
+    directory = wired["root"] / "validation" / SLUG
+    assert (directory / "alarm_quality.json").exists()
+    assert not (directory / "calibration_study.json").exists()
+
+
+@pytest.mark.parametrize("slug", ["d3d_tearing_time_to_event_dsm",
+                                  "d3d_tearing_time_to_event_dsm_continued"])
+@pytest.mark.parametrize("broken", [False, True])
+def test_validate_writes_calibration_study_for_survival(wired, monkeypatch, broken, slug):
+    """Every slug with an `onset_within` truth is calibrated, not just the base one."""
+    from labelmaker import validate
 
     def study(*args, **kwargs):
         if broken:
