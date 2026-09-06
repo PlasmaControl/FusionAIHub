@@ -240,3 +240,41 @@ def test_quantiles_clamp_extreme_row_without_affecting_normal_row():
 def test_gate_entropy_uniform_and_one_hot():
     log_w = np.array([[-np.log(3)] * 3, [0.0, -np.inf, -np.inf]])
     np.testing.assert_allclose(dsm_pickle.gate_entropy(log_w), [np.log(3), 0.0], atol=1e-12)
+
+
+def test_load_dsm_skips_dropout_layers_the_elm_fork_inserts(tmp_path, monkeypatch):
+    """The ELM fork's `create_representation` appends `nn.Dropout(p)` after every
+    ReLU6. Dropout is the identity in eval mode - the only mode a checkpoint is
+    read in - and carries no weights, so the reader skips it and returns the same
+    graph the same weights would give without it."""
+    _register_fake_modules(monkeypatch)
+    plain = _FakeTorch()
+    dropped = _FakeTorch()
+    dropped.embedding = torch.nn.Sequential(
+        plain.embedding[0], torch.nn.ReLU6(), torch.nn.Dropout(p=0.2),
+        plain.embedding[2], torch.nn.ReLU6(), torch.nn.Dropout(p=0.2),
+    ).double()
+    paths = []
+    for i, model in enumerate((plain, dropped)):
+        path = tmp_path / f"m{i}.pkl"
+        path.write_bytes(pickle.dumps([[model]], protocol=4))
+        paths.append(path)
+    without, with_dropout = (dsm_pickle.load_dsm(p) for p in paths)
+    assert [w.shape for w in with_dropout.embedding] == [(100, 38), (1000, 100)]
+    x = np.random.default_rng(0).normal(size=(4, 38))
+    np.testing.assert_array_equal(
+        dsm_pickle.survival(with_dropout, x, horizons_ms=(1000.0,)),
+        dsm_pickle.survival(without, x, horizons_ms=(1000.0,)),
+    )
+
+
+def test_load_dsm_still_refuses_an_embedding_layer_it_cannot_evaluate(tmp_path, monkeypatch):
+    _register_fake_modules(monkeypatch)
+    model = _FakeTorch()
+    model.embedding = torch.nn.Sequential(
+        torch.nn.Linear(38, 100, bias=False), torch.nn.Sigmoid(),
+    ).double()
+    path = tmp_path / "sigmoid.pkl"
+    path.write_bytes(pickle.dumps([[model]], protocol=4))
+    with pytest.raises(dsm_pickle.UnsupportedModel, match="Sigmoid"):
+        dsm_pickle.load_dsm(path)
