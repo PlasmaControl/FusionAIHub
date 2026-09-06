@@ -7,7 +7,8 @@
 #   scripts/labelmaker/label_shot.sh 187199 186545     # several
 #   LABELMAKER_DEMO_OUT=/some/dir scripts/labelmaker/label_shot.sh 199597
 #
-# Output, per shot, under $LABELMAKER_DEMO_OUT (default $LABELMAKER_ROOT/demo):
+# Output, per shot, under $LABELMAKER_DEMO_OUT (default outputs/labelmaker/analysis in
+# this repo; the cached features and the canonical labels file stay under $LABELMAKER_ROOT):
 #   <shot>/<shot>_labels.h5        every label:  <model>/<label>/{xdata,ydata}
 #   <shot>/<shot>_labels.npz       the same as numpy: time_s + "<model>/<label>"
 #   <shot>/<shot>_analysis.json    per label: rows, valid fraction, peak, first
@@ -21,7 +22,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
-OUT="${LABELMAKER_DEMO_OUT:-$ROOT/demo}"
+OUT="${LABELMAKER_DEMO_OUT:-$REPO/outputs/labelmaker/analysis}"
 CONFIG="${LABELMAKER_DEMO_CONFIG:-$REPO/src/labelmaker/analyze_default.yaml}"
 
 if [ "$#" -lt 1 ]; then

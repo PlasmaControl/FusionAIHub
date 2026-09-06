@@ -75,6 +75,5 @@ lead time cleanly, measured on the 86 pool shots with an onset:
 0.10 looks like the better default for this label; the config in
 `src/labelmaker/analyze_default.yaml` currently ships 0.2.
 
-Per-shot analyses for 61 shots - the 50 with archived truth and an onset, plus the 2024
-tearing-mode shots 199597-199607 - are in `../analysis/<shot>/`. `summary.json` here holds
-the numbers quoted above.
+Per-shot views (`pixi run -e labelmaker label <shot>`) go to `../analysis/<shot>/`; the
+committed example is 199597. `summary.json` here holds the numbers quoted above.
