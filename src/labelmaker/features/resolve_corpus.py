@@ -8,8 +8,14 @@ corpus' absent-signal sentinel (see
 tokamak_foundation_model/data/multi_file_dataset.py:845-861).
 
 This resolver covers every corpus shot, which the archive resolver does not,
-but it can only serve the actuator totals: the corpus holds raw diagnostics
-and actuators, no equilibrium and no fitted profiles.
+but it can only serve the actuator totals and raw waveforms: the corpus holds
+raw diagnostics and actuators, no equilibrium and no fitted profiles.
+
+Two shapes come out of here. A `scalar` feature is the group's channels summed
+into the canonical units and decimated onto the feature's `step`. A `waveform`
+feature (`co2`) is the group itself - every channel, native rate, no scale -
+because the model that consumes it does its own transform; see the branch
+below and the `co2` note in `namespace.py`.
 
 Measured on shot 185945 at t = 1.025 s: summed `pinj` = 1.002e7 where the
 model's own training column reads 10,995.6, so the corpus is in W and the
@@ -75,19 +81,51 @@ def resolve(
             if group not in f or "ydata" not in f[group]:
                 missing[name] = "KeyError"
                 continue
-            y = np.asarray(f[group]["ydata"], dtype=np.float64)
-            if y.ndim != 2:
+            # Shape checks off the dataset handle, before anything is read:
+            # a `co2` group is `(4, ~4.5e6)`, and reading that as float64 to
+            # find out it is the wrong shape would cost 144 MB per shot.
+            dset = f[group]["ydata"]
+            if dset.ndim != 2:
                 # Every group measured is (C, T). A 1-D group would make the
                 # per-channel reductions below reduce over time instead.
-                missing[name] = f"ShapeError(ndim={y.ndim})"
+                missing[name] = f"ShapeError(ndim={dset.ndim})"
                 continue
-            if y.shape[-1] < 2:
+            if dset.shape[-1] < 2:
                 missing[name] = "SignalAbsent"
                 continue
             x = np.asarray(f[group]["xdata"], dtype=np.float64)
-            if x.size != y.shape[-1]:
+            if x.size != dset.shape[-1]:
                 missing[name] = "ShapeError"
                 continue
+            if specs[name].kind == "waveform":
+                # A waveform is the raw record itself: no channel sum, no unit
+                # scale, no decimation. The model transforms the signal (the AE
+                # adapter takes its own STFT), so anything done here would have
+                # to be undone there - and summing four CO2 chords would
+                # destroy the very per-chord structure the network reads.
+                # Kept float32, as stored: `(4, ~4e6)` in float64 is 128 MB per
+                # shot for no gain, and the model casts to float32 anyway.
+                wave = np.asarray(dset, dtype=np.float32)
+                arrays[name] = FeatureArray(
+                    x=x,
+                    y=wave,
+                    attrs={
+                        "resolver": SOURCE,
+                        "locator": group,
+                        "corpus_file": str(path),
+                        "n_channels": str(wave.shape[0]),
+                        "nan_channels": str(
+                            int((~np.isfinite(wave)).all(axis=1).sum())
+                        ),
+                        "scale_to_canonical": "1.0",
+                        "native_rate": "1",
+                        # From the span: `xdata` is float32 and a median diff
+                        # quantises (see the namespace note on `co2`).
+                        "sample_rate_hz": f"{(x.size - 1) / (x[-1] - x[0]):.1f}",
+                    },
+                )
+                continue
+            y = np.asarray(dset, dtype=np.float64)
             nan_channels = int((~np.isfinite(y)).all(axis=1).sum())
             total = np.nansum(y, axis=0) * SCALE_TO_CANONICAL[name]
             # A time where every channel is NaN is genuinely unknown; nansum

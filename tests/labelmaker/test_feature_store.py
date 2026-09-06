@@ -204,3 +204,46 @@ def test_the_causes_a_run_launched_without_fdp_run_records_are_transient(tmp_pat
     # A node that genuinely does not exist stays permanent, or nothing would
     # ever be settled.
     assert not is_transient("fdp:TreeNNF")
+
+
+def _waveform(n=1_500_000, channels=4):
+    """`co2`-shaped: over `CHUNK_THRESHOLD` samples, so it is stored chunked."""
+    x = -1.45 + np.arange(n, dtype=np.float64) / 5.0e5
+    y = np.tile(np.arange(channels, dtype=np.float32)[:, None], (1, n))
+    return FeatureArray(x=x, y=y, attrs={"resolver": "corpus", "native_rate": "1"})
+
+
+def test_a_large_waveform_round_trips_chunked_and_in_float32(tmp_path):
+    path = tmp_path / "199000_features.h5"
+    arr = _waveform()
+    write_features(path, 199000, {"co2": arr}, {})
+    with h5py.File(path, "r") as f:
+        dset = f["co2"]["ydata"]
+        assert dset.shape == (4, 1_500_000)
+        assert dset.dtype == np.float32
+        # Chunked, not contiguous: h5py reports `chunks` only when it is.
+        assert dset.chunks is not None
+        assert dset.chunks[0] == 1
+        assert f["co2"].attrs["units"] == "cm^-2"
+    got = read_feature(path, "co2")
+    # float32 on the way back out, unlike every scalar and profile: a
+    # (4, 4.5e6) waveform in float64 is 144 MB per shot for no measured gain.
+    assert got.y.dtype == np.float32
+    np.testing.assert_array_equal(got.y, arr.y)
+    np.testing.assert_allclose(got.x, arr.x)
+
+
+def test_a_merge_keeps_a_waveform_and_a_scalar_side_by_side(tmp_path):
+    path = tmp_path / "199000_features.h5"
+    write_features(path, 199000, {"co2": _waveform(n=1_100_000)}, {})
+    write_features(path, 199000, {"ip": _scalar()}, {}, merge=True)
+    assert present(path) == {"co2", "ip"}
+    assert read_feature(path, "co2").y.shape == (4, 1_100_000)
+    assert read_feature(path, "ip").y.dtype == np.float64
+
+
+def test_a_small_array_is_still_stored_contiguously(tmp_path):
+    path = tmp_path / "1_features.h5"
+    write_features(path, 1, {"ip": _scalar()}, {})
+    with h5py.File(path, "r") as f:
+        assert f["ip"]["ydata"].chunks is None

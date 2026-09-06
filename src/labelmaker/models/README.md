@@ -31,17 +31,20 @@ would be called. Label groups in `<shot>_labels.h5` use the folder name.
 | `d3d_ech_deposition_torbeamnn` | `plasmacontrol/d3d-ech-deposition-torbeamnn` | regression | scaffold |
 | `d3d_kinetic_equilibrium_rtcakenn` | `plasmacontrol/d3d-kinetic-equilibrium-rtcakenn` | profile regression | scaffold |
 | `d3d_inpa_image_cnn` | `plasmacontrol/d3d-inpa-image-cnn` | image regression | scaffold |
-| `d3d_ae_activity_seldnet` | `plasmacontrol/d3d-ae-activity-seldnet` | binary + regression | planned |
+| `d3d_ae_activity_seldnet` | `plasmacontrol/d3d-ae-activity-seldnet` | binary + regression | implemented |
 
 `status: scaffold` means the folder documents a model that labelmaker cannot run
 yet; its card's `blocked_on` list says exactly what is missing, and importing its
 `spec.py` raises `NotImplementedError`.
 
-`planned` is weaker still: there is no folder yet. `d3d_ae_activity_seldnet` is
-the one model labelmaker will **train itself** - no upstream artifact answers
-"is an Alfven eigenmode present now, and at what frequency" - so its
-requirements live in `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
-section 5 until the training data and label construction are settled.
+`d3d_ae_activity_seldnet` is the one model labelmaker **trained itself** - no
+upstream artifact answers "is an Alfven eigenmode present now, and at what
+frequency". Its network is `src/labelmaker/ae/model.py`, its label construction
+`src/labelmaker/ae/labels.py`, its training `scripts/labelmaker/ae_train.py`,
+and its design is `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
+section 5. It is also the only model whose input is a **waveform**: the raw
+4-chord CO2 record at 500 kHz, kept at its native rate through the feature layer
+and transformed by the adapter itself.
 
 ## Deliberately excluded
 

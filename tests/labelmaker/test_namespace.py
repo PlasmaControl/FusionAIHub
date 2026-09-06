@@ -50,8 +50,13 @@ def test_lookup_helpers_and_locators():
     assert ns.by_name("pinj_total").locator_for("corpus") == "pinj"
     assert all("archive" in f.sources for f in ns.by_source("archive"))
     assert {f.name for f in ns.by_source("corpus")} == {
-        "pinj_total", "tinj_total", "ech_power_total"
+        "pinj_total", "tinj_total", "ech_power_total", "co2"
     }
+    # The one waveform: 4 chords, corpus only, kept at the native rate.
+    assert ns.by_name("co2").kind == "waveform"
+    assert ns.by_name("co2").sources == ("corpus",)
+    assert ns.by_name("co2").locator_for("corpus") == "co2"
+    assert ns.by_name("co2").step == 0.0
     assert "ip" in {f.name for f in ns.by_source("fdp")}
     assert "ech_rho" not in {f.name for f in ns.by_source("fdp")}
     with pytest.raises(KeyError):

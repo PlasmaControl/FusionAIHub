@@ -1,0 +1,474 @@
+{
+  "slug": "d3d_ae_activity_seldnet",
+  "checkpoint": "ae_seldnet_threeway_sce.pt",
+  "selection": "sample_shots(corpus_shots, 24, seed=0)",
+  "n_shots": 24,
+  "n_with_co2": 12,
+  "n_labelled": 24,
+  "n_valid_rows": 2880,
+  "n_rows_total": 5760,
+  "notch_rule": "training label only: a (channel, bin) row lit in more than 0.8 of the record was zeroed before the activity decision (labelmaker.ae.labels, task 7a). Not applied at inference - there is no mask to threshold - so the spectrogram the network reads here is un-notched",
+  "notched_bins_at_inference": 0,
+  "shots": [
+    {
+      "shot": 185808,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 186116,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 186749,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 188502,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 190788,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 192390,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 192523,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 193040,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 196534,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 196657,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 197213,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 197489,
+      "co2": false,
+      "n_valid": 0,
+      "missing": {
+        "co2": "corpus:SignalAbsent"
+      },
+      "n_rows": 240,
+      "n_finite": 0,
+      "mean_active": null,
+      "max_active": null,
+      "frac_rows_above_half": null,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 198279,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4000001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {
+        "aminor": "fdp:TreeFOPENR",
+        "betan": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "ech_rho": "archive:ShotNotInArchive",
+        "gapin": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "kappa": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "li": "fdp:TreeFOPENR",
+        "ne_zipfit": "archive:ShotNotInArchive,fdp:TreeNODATA",
+        "pinj_total": "archive:ShotNotInArchive,corpus:SignalAbsent",
+        "pres": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "qmin": "fdp:TreeFOPENR",
+        "qpsi": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "r0": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "rot_zipfit": "archive:ShotNotInArchive,fdp:TreeNODATA",
+        "te_zipfit": "archive:ShotNotInArchive,fdp:TreeNODATA",
+        "ti_zipfit": "fdp:TreeNODATA",
+        "tinj_total": "archive:ShotNotInArchive,corpus:SignalAbsent",
+        "tribot": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "tritop": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "volume": "fdp:TreeFOPENR"
+      },
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.9068513580287496,
+      "max_active": 0.9883788824081421,
+      "frac_rows_above_half": 0.95,
+      "n_frequency": 228,
+      "median_frequency_khz": 123.18795776367188,
+      "notched_bins": 0
+    },
+    {
+      "shot": 198737,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.9592874898264806,
+      "max_active": 0.989143431186676,
+      "frac_rows_above_half": 0.9916666666666667,
+      "n_frequency": 238,
+      "median_frequency_khz": 123.38082504272461,
+      "notched_bins": 0
+    },
+    {
+      "shot": 198807,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.036720669521794966,
+      "max_active": 0.990935206413269,
+      "frac_rows_above_half": 0.025,
+      "n_frequency": 6,
+      "median_frequency_khz": 124.02991104125977,
+      "notched_bins": 0
+    },
+    {
+      "shot": 199025,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.06824135778782268,
+      "max_active": 0.9767889380455017,
+      "frac_rows_above_half": 0.04583333333333333,
+      "n_frequency": 11,
+      "median_frequency_khz": 125.7797622680664,
+      "notched_bins": 0
+    },
+    {
+      "shot": 199421,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.33178951041384913,
+      "max_active": 0.9926795363426208,
+      "frac_rows_above_half": 0.325,
+      "n_frequency": 78,
+      "median_frequency_khz": 123.65155029296875,
+      "notched_bins": 0
+    },
+    {
+      "shot": 200417,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.00963966923688228,
+      "max_active": 0.014061214402318,
+      "frac_rows_above_half": 0.0,
+      "n_frequency": 0,
+      "median_frequency_khz": null,
+      "notched_bins": 0
+    },
+    {
+      "shot": 201828,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.6957712042649897,
+      "max_active": 0.9927479028701782,
+      "frac_rows_above_half": 0.6958333333333333,
+      "n_frequency": 167,
+      "median_frequency_khz": 122.24744415283203,
+      "notched_bins": 0
+    },
+    {
+      "shot": 201881,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.20335801048592353,
+      "max_active": 0.9928030967712402,
+      "frac_rows_above_half": 0.19583333333333333,
+      "n_frequency": 47,
+      "median_frequency_khz": 122.8232192993164,
+      "notched_bins": 0
+    },
+    {
+      "shot": 202453,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {
+        "aminor": "fdp:TreeFOPENR",
+        "betan": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "ech_rho": "archive:ShotNotInArchive",
+        "gapin": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "kappa": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "li": "fdp:TreeFOPENR",
+        "ne_zipfit": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "pinj_total": "archive:ShotNotInArchive,corpus:SignalAbsent",
+        "pres": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "qmin": "fdp:TreeFOPENR",
+        "qpsi": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "r0": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "rot_zipfit": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "te_zipfit": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "ti_zipfit": "fdp:TreeFOPENR",
+        "tinj_total": "archive:ShotNotInArchive,corpus:SignalAbsent",
+        "tribot": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "tritop": "archive:ShotNotInArchive,fdp:TreeFOPENR",
+        "volume": "fdp:TreeFOPENR"
+      },
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.9920139866570632,
+      "max_active": 0.9925773739814758,
+      "frac_rows_above_half": 1.0,
+      "n_frequency": 240,
+      "median_frequency_khz": 124.33637237548828,
+      "notched_bins": 0
+    },
+    {
+      "shot": 203513,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.967457884674271,
+      "max_active": 0.9874780774116516,
+      "frac_rows_above_half": 0.9958333333333333,
+      "n_frequency": 239,
+      "median_frequency_khz": 122.88629150390625,
+      "notched_bins": 0
+    },
+    {
+      "shot": 203898,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        4500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.8868610872887075,
+      "max_active": 0.9888928532600403,
+      "frac_rows_above_half": 0.9125,
+      "n_frequency": 219,
+      "median_frequency_khz": 123.57166290283203,
+      "notched_bins": 0
+    },
+    {
+      "shot": 204496,
+      "co2": true,
+      "n_valid": 240,
+      "co2_shape": [
+        4,
+        5500001
+      ],
+      "sample_rate_hz": "500000.0",
+      "missing": {},
+      "n_rows": 240,
+      "n_finite": 240,
+      "mean_active": 0.9742025989573448,
+      "max_active": 0.990402340888977,
+      "frac_rows_above_half": 0.9875,
+      "n_frequency": 237,
+      "median_frequency_khz": 122.51438903808594,
+      "notched_bins": 0
+    }
+  ]
+}

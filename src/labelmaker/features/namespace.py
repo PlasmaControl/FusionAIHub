@@ -28,7 +28,11 @@ RHO_GRID = np.linspace(0.0, 1.0, 33)
 STEP_S = 0.025
 GRID_S = STEP_S * np.arange(240, dtype=np.float64)
 
-KINDS = ("scalar", "profile")
+#: `waveform` is a raw, native-rate record kept whole - millions of samples,
+#: several channels - for a model that transforms the signal itself rather
+#: than reading a value off the 25 ms grid. `InputSpec.build` hands one
+#: straight to the adapter instead of sampling it (see `models.base`).
+KINDS = ("scalar", "profile", "waveform")
 SOURCES = ("archive", "corpus", "fdp")
 
 #: How a stored array from each source must be sampled at model-input time
@@ -347,6 +351,30 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "Same tree and layout as te_zipfit; not priced against any "
               "archive (the survival model's training data are not on disk "
               "in a form labelmaker reads)",
+    ),
+    # Added for d3d_ae_activity_seldnet (2026-09-06). The first `waveform`
+    # feature: 4 chords at 500 kHz over the whole record, kept at the native
+    # rate because the model's own STFT is what turns it into an input.
+    FeatureSpec(
+        name="co2", kind="waveform", units="cm^-2",
+        sources=("corpus",),
+        locators=("co2",),
+        step=0.0,
+        notes="CO2 interferometer line-integrated density, chords r0/v1/v2/v3 "
+              "in that channel order. MEASURED on the corpus: `(4, 4.0-5.5e6)` "
+              "float32 spanning -1.45 s to 6.55-9.55 s at 500,000.0 Hz "
+              "(shot 198279: 4,000,001 samples over 8.000 s, 499,999.98 Hz "
+              "from the span). Take the rate from the SPAN, never from a "
+              "median `diff`: `xdata` is float32, whose spacing at t ~ 3 s is "
+              "2.4e-7 s, so a 2 us step quantises and a median diff reads "
+              "524,288 Hz. The rate matters - it fixes the frequency axis of "
+              "the AE band, whose 250 kHz ceiling is this record's Nyquist. "
+              "Availability is the real limit: filled on 12 of the 24 corpus "
+              "shots sampled with `sample_shots(corpus, 24, seed=0)` - the "
+              "other 12 carry the `(4, 1)` absent-signal sentinel - and the "
+              "12 filled ones are all above shot 198279. Never scaled or "
+              "decimated: `SCALE_TO_CANONICAL` does not list it and "
+              "`resolve_corpus` skips both steps for a waveform",
     ),
     FeatureSpec(
         name="ech_rho", kind="scalar", units="",

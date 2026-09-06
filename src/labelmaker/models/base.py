@@ -274,7 +274,15 @@ class UnknownWhenActive:
 
 @dataclass(frozen=True)
 class BuiltInputs:
-    """Model-ready arrays for one shot, plus what is trustworthy."""
+    """Model-ready arrays for one shot, plus what is trustworthy.
+
+    `valid` is a plain mutable array on purpose. A `waveform` model decides
+    part of its own validity from the transform it alone performs - the AE
+    adapter cannot say how many STFT frames a 25 ms window holds until it has
+    taken the STFT - so its `predict` narrows this mask in place before
+    `run.infer_for_shot` writes it. Nothing else does, and nothing else may:
+    a scalar or profile model's validity is entirely `_validity`'s business.
+    """
 
     t: np.ndarray                  # (T,) seconds - the label time stamps
     scalars: np.ndarray            # (T, n_scalar)
@@ -282,6 +290,9 @@ class BuiltInputs:
     valid: np.ndarray              # (T,) bool
     missing: tuple[str, ...]
     resolvers: dict[str, str]
+    #: canonical name -> the raw record, untouched, for `waveform` inputs.
+    #: Empty for every model that reads its inputs off the 25 ms grid.
+    waveforms: dict[str, FeatureArray] = field(default_factory=dict)
     #: rows each rule ALONE rejects, keyed "<canonical> <stat>" for a domain
     #: rule, "<canonical> not finite" for a gap, "<unknown> unknown while
     #: <active> active" for a pair rule; only rules that rejected something.
@@ -340,6 +351,10 @@ class InputSpec:
         return tuple(f for f in self.fields if f.kind == "profile")
 
     @property
+    def waveform_fields(self) -> tuple[InputField, ...]:
+        return tuple(f for f in self.fields if f.kind == "waveform")
+
+    @property
     def canonical_names(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(f.canonical for f in self.fields))
 
@@ -358,8 +373,25 @@ class InputSpec:
         unmeasured: dict[str, np.ndarray] = {}
         missing: list[str] = []
         resolvers: dict[str, str] = {}
+        waveforms: dict[str, FeatureArray] = {}
         for f in self.fields:
             arr = features.get(f.canonical)
+            if f.kind == "waveform":
+                # Never sampled onto the grid, never transformed, never
+                # stacked: a waveform is handed to `predict` as it was
+                # stored, because the model's own transform (an STFT, for
+                # the AE adapter) is what turns it into an input. All this
+                # layer decides is whether it is there at all - absence
+                # invalidates every row, since a model with no signal has
+                # nothing to say about any of them.
+                if arr is None:
+                    missing.append(f.canonical)
+                    unmeasured[f.model_name] = np.ones(n, dtype=bool)
+                    continue
+                waveforms[f.canonical] = arr
+                resolvers[f.canonical] = str(arr.attrs.get("resolver", "unknown"))
+                unmeasured[f.model_name] = np.zeros(n, dtype=bool)
+                continue
             if arr is None:
                 missing.append(f.canonical)
                 shape = (n,) if f.kind == "scalar" else (n, self.rho_grid.size)
@@ -443,6 +475,7 @@ class InputSpec:
             valid=valid,
             missing=tuple(sorted(set(missing))),
             resolvers=resolvers,
+            waveforms=waveforms,
             invalid_reasons=invalid_reasons,
         )
 
@@ -466,6 +499,11 @@ class InputSpec:
         for key, v in sampled.items():
             finite = np.isfinite(v) if v.ndim == 1 else np.isfinite(v).all(axis=1)
             reject(f"{canonical_of[key]} not finite", ~finite)
+        for f in self.waveform_fields:
+            # `sampled` has no entry for a waveform, so the loop above cannot
+            # see it. An absent waveform is recorded in `unmeasured` as an
+            # all-True row mask and rejects the whole shot here.
+            reject(f"{f.canonical} absent", unmeasured[f.model_name])
         by_canonical = {f.canonical: f.model_name for f in self.fields}
         # built once and shared with the pair-rule loop below
         for rule in self.domain:

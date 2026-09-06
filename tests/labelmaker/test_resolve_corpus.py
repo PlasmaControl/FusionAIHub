@@ -115,19 +115,29 @@ def test_the_scales_are_the_measured_ones():
     assert rc.SCALE_TO_CANONICAL["ech_power_total"] == 1.0
 
 
-def test_every_corpus_sourced_feature_has_a_scale():
+def test_every_summed_corpus_feature_has_a_scale():
     """A corpus feature with no entry would raise KeyError mid-run, per shot.
 
-    `resolve` indexes SCALE_TO_CANONICAL directly, so the failure would land
-    in a bulk run rather than here. One assertion moves it to test time.
+    `resolve` indexes SCALE_TO_CANONICAL directly on the summing path, so the
+    failure would land in a bulk run rather than here. One assertion moves it
+    to test time.
+
+    A `waveform` feature never reaches that index - it is returned whole, with
+    no channel sum and no unit conversion - so it must be ABSENT from the
+    dict rather than present with a 1.0. An entry there would say a scale had
+    been decided for a path that has none.
     """
     from labelmaker.features import namespace as ns
 
-    declared = {spec.name for spec in ns.by_source("corpus")}
-    assert declared == set(rc.SCALE_TO_CANONICAL), (
-        f"corpus features without a scale: {declared - set(rc.SCALE_TO_CANONICAL)}; "
-        f"scales for non-corpus features: {set(rc.SCALE_TO_CANONICAL) - declared}"
+    corpus_features = ns.by_source("corpus")
+    summed = {s.name for s in corpus_features if s.kind != "waveform"}
+    waveforms = {s.name for s in corpus_features if s.kind == "waveform"}
+    assert summed == set(rc.SCALE_TO_CANONICAL), (
+        f"corpus features without a scale: {summed - set(rc.SCALE_TO_CANONICAL)}; "
+        f"scales for non-corpus features: {set(rc.SCALE_TO_CANONICAL) - summed}"
     )
+    assert waveforms, "expected at least one waveform corpus feature (co2)"
+    assert not (waveforms & set(rc.SCALE_TO_CANONICAL))
 
 
 def test_a_time_with_no_finite_channel_is_unknown_not_zero(tmp_path):
@@ -173,3 +183,70 @@ def test_a_group_that_is_not_channels_by_time_is_recorded(tmp_path):
     got, missing = rc.resolve(190000, ["pinj_total", "tinj_total"], corpus=corpus)
     assert got == {}
     assert missing == {"pinj_total": "ShapeError(ndim=1)", "tinj_total": "ShapeError"}
+
+
+# --- the `co2` waveform feature (task 7c) ------------------------------------
+
+
+def _fake_co2(tmp_path, *, n=200_000, channels=4, absent=False):
+    """A synthetic corpus file carrying a `co2` group at the real 500 kHz.
+
+    Small on purpose - 200,000 samples is 0.4 s, not the corpus' 4.5e6 - so
+    the test is about the SHAPE of the path, not about moving 72 MB.
+    """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir(exist_ok=True)
+    if absent:
+        t = np.array([0.0], dtype=np.float32)
+        y = np.zeros((channels, 1), dtype=np.float32)
+    else:
+        t = (-1.45 + np.arange(n, dtype=np.float64) / 5.0e5).astype(np.float32)
+        y = np.stack([
+            np.sin(2.0 * np.pi * (120.0 + 5.0 * c) * 1e3 * t.astype(np.float64))
+            for c in range(channels)
+        ]).astype(np.float32)
+    with h5py.File(corpus / "199000_processed.h5", "w") as f:
+        g = f.create_group("co2")
+        g.create_dataset("xdata", data=t)
+        g.create_dataset("ydata", data=y)
+    return corpus
+
+
+def test_a_waveform_is_returned_whole_never_summed_or_decimated(tmp_path):
+    corpus = _fake_co2(tmp_path)
+    got, missing = rc.resolve(199000, ["co2"], corpus=corpus)
+    assert missing == {}
+    arr = got["co2"]
+    # Four channels, every sample, native rate: nothing here reduces it.
+    assert arr.y.shape == (4, 200_000)
+    assert arr.y.dtype == np.float32
+    assert arr.x.size == 200_000
+    assert arr.attrs["resolver"] == "corpus"
+    assert arr.attrs["locator"] == "co2"
+    assert arr.attrs["n_channels"] == "4"
+    assert arr.attrs["native_rate"] == "1"
+    assert arr.attrs["scale_to_canonical"] == "1.0"
+    assert "decimated_to_s" not in arr.attrs
+
+
+def test_the_waveform_sample_rate_is_read_off_the_span(tmp_path):
+    # From a median diff of the float32 `xdata` this reads 524,288 Hz; from
+    # the span it reads 500 kHz, which is the number the band depends on.
+    corpus = _fake_co2(tmp_path)
+    got, _ = rc.resolve(199000, ["co2"], corpus=corpus)
+    assert float(got["co2"].attrs["sample_rate_hz"]) == pytest.approx(5.0e5, rel=1e-4)
+
+
+def test_an_absent_co2_group_is_the_standard_miss_not_an_error(tmp_path):
+    corpus = _fake_co2(tmp_path, absent=True)
+    got, missing = rc.resolve(199000, ["co2"], corpus=corpus)
+    assert got == {}
+    assert missing == {"co2": "SignalAbsent"}
+
+
+def test_a_shot_with_no_corpus_file_misses_co2_like_anything_else(tmp_path):
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    got, missing = rc.resolve(199000, ["co2"], corpus=corpus)
+    assert got == {}
+    assert missing == {"co2": "FileNotFoundError"}
