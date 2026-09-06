@@ -101,7 +101,7 @@ def bin_freqs_khz(fs_khz: float) -> np.ndarray:
 
 def read_labels(arrow: Path) -> np.ndarray:
     """(5, n_samples) bool label array from the arrow cache."""
-    import pyarrow.feather as feather
+    from pyarrow import feather
 
     table = feather.read_table(
         arrow, columns=[f"label_{i}" for i in range(N_LABELS)], memory_map=True
@@ -113,7 +113,7 @@ def read_labels(arrow: Path) -> np.ndarray:
 
 def read_signals(arrow: Path) -> np.ndarray:
     """(4, n_samples) float64 CO2 channels from the arrow cache."""
-    import pyarrow.feather as feather
+    from pyarrow import feather
 
     table = feather.read_table(arrow, columns=list(CHANNELS), memory_map=True)
     return np.stack(
@@ -437,6 +437,9 @@ def transform_metrics(out_root: Path, stems: list[str], transform: str) -> dict:
         "n_shots_with_annotation": int(finite_auc.size),
         "auroc_median": float(np.median(finite_auc)) if finite_auc.size else float("nan"),
         "auroc_p10": _pct(auc_vals, 10),
+        # Both cut-offs, because the README quotes both and "worse than a coin
+        # flip" is the one that matters for the verdict.
+        "auroc_below_0.5": int((finite_auc < 0.5).sum()),
         "auroc_below_0.6": int((finite_auc < 0.6).sum()),
         "auroc_min": float(finite_auc.min()) if finite_auc.size else float("nan"),
         "auroc_max": float(finite_auc.max()) if finite_auc.size else float("nan"),

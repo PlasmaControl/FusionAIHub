@@ -39,6 +39,10 @@ N_BINS = 512
 #: AE band, in bins: 164 is 80.57 kHz, 511 is 250.00 kHz (exclusive upper edge).
 BAND_LO_BIN = 164
 BAND_HI_BIN = 512
+#: bins either side of an annotated window's centroid that the notch must not take.
+NOTCH_PROTECT_HALF_WIDTH = 3
+#: a protected BIN removed on more than this many shots fails a notch threshold.
+NOTCH_PROTECT_MAX_SHOTS = 2
 
 
 def clean_mask(coherent, transient, *, threshold: float = PROB_THRESHOLD):
@@ -118,6 +122,46 @@ def apply_notch(mask, notched):
     mask = np.asarray(mask, dtype=bool)
     notched = np.asarray(notched, dtype=bool)
     return mask & ~notched[..., None]
+
+
+def protected_removal_counts(notched_per_shot, protected_per_shot, n_bins=N_BINS):
+    """How many SHOTS each protected bin is notched away on, per bin.
+
+    The notch rule is stated per BIN, not per shot: "no bin inside an annotated
+    window's centroid +-3 bins is removed on more than 2 shots". Counting shots
+    that lose any protected bin is a different (and much stricter) quantity, so
+    the count is accumulated bin by bin here and read by
+    `notch_threshold_passes`.
+
+    `notched_per_shot` is one boolean array per shot, either ``(bins,)`` or
+    ``(..., bins)`` (channels are OR-ed: a bin removed in any channel is
+    removed on that shot). `protected_per_shot` is the matching ``(bins,)``
+    protected mask for the same shot. The result is ``(bins,)`` int64.
+    """
+    counts = np.zeros(int(n_bins), dtype=np.int64)
+    for notched, protected in zip(notched_per_shot, protected_per_shot, strict=True):
+        notched = np.asarray(notched, dtype=bool)
+        if notched.ndim > 1:
+            notched = notched.any(axis=tuple(range(notched.ndim - 1)))
+        protected = np.asarray(protected, dtype=bool)
+        if notched.shape != counts.shape or protected.shape != counts.shape:
+            raise ValueError(
+                f'expected ({n_bins},) per shot, got notched {notched.shape} '
+                f'and protected {protected.shape}'
+            )
+        counts += notched & protected
+    return counts
+
+
+def notch_threshold_passes(counts, max_shots: int = NOTCH_PROTECT_MAX_SHOTS) -> bool:
+    """True when NO protected bin is removed on more than `max_shots` shots.
+
+    `counts` is `protected_removal_counts`' per-bin shot count. One bin over
+    the limit fails the threshold, however many other bins are clean; a bin
+    removed on exactly `max_shots` shots is still allowed ("more than").
+    """
+    counts = np.asarray(counts)
+    return not bool(np.any(counts > max_shots))
 
 
 def power_weights(log_spec):

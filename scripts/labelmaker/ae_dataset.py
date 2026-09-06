@@ -77,6 +77,8 @@ from labelmaker.ae.labels import (  # the sys.path insert above makes this work
     HOP,
     N_BINS,
     N_FFT,
+    NOTCH_PROTECT_HALF_WIDTH,
+    NOTCH_PROTECT_MAX_SHOTS,
     PERSIST_FRAMES,
     PROB_THRESHOLD,
     apply_notch,
@@ -87,8 +89,10 @@ from labelmaker.ae.labels import (  # the sys.path insert above makes this work
     clean_mask,
     contiguous_runs,
     notch_bins,
+    notch_threshold_passes,
     persist_open,
     power_weights,
+    protected_removal_counts,
 )
 
 # --- constants fixed by the spec and the task 7a brief -----------------------
@@ -110,8 +114,26 @@ TRANSFORM = "tokeye"
 PROB_CODE = 51
 
 NOTCH_THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
-PROTECT_HALF_WIDTH = 3  # bins either side of an annotated window's centroid
-PROTECT_MAX_SHOTS = 2  # "removed on more than 2 shots" fails the threshold
+PROTECT_HALF_WIDTH = NOTCH_PROTECT_HALF_WIDTH  # bins either side of a centroid
+PROTECT_MAX_SHOTS = NOTCH_PROTECT_MAX_SHOTS  # per BIN, over shots
+
+#: Notch threshold actually applied to the label. The sweep's rule is kept and
+#: still reported, but it never bound - no protected bin is removed on more than
+#: PROTECT_MAX_SHOTS shots at ANY swept threshold - so it degenerated to "take
+#: the smallest", 0.5. A bin lit in half of a 2 s record can be a real long-lived
+#: mode rather than receiver pickup, so the controller fixed the applied value at
+#: 0.8 (task 6's first-pass value; plan `docs/superpowers/plans/
+#: 2026-09-05-labelmaker-phase3.md`, "Notch decision" under task 7b).
+APPLIED_NOTCH = 0.8
+APPLIED_NOTCH_REASON = (
+    "the sweep's protected-bin rule never bound (zero protected bins removed on "
+    "more than 2 shots at every swept threshold), so it degenerated to 'take the "
+    "smallest', 0.5. A bin lit in more than half of a 2 s record can still be a "
+    "real long-lived mode, so the controller fixed the applied notch at 0.8 - "
+    "task 6's first-pass value - in the phase-3 plan's 'Notch decision' under "
+    "task 7b. The sweep and its table are kept above; only the applied value "
+    "differs, and the withheld-notch review is recomputed at the applied value"
+)
 
 OCC_THRESHOLDS = (0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1)
 MAX_POSITIVE_FRAC = 0.40
@@ -200,7 +222,9 @@ def mask_probs(model, norm: np.ndarray, device: str, batch: int) -> np.ndarray:
 
     The channels are batched into one forward pass when they fit; task 6's run
     was host-I/O bound with the GPU at 20 %, so this is the cheap part of the
-    fix. On OOM the batch is halved, permanently, and the fallback is printed.
+    fix. On OOM the batch is halved for the rest of THIS shot and the fallback
+    is printed; `batch` is a parameter, so the next shot starts from the caller's
+    value again.
     """
     import torch
 
@@ -347,6 +371,17 @@ def run_probs(args) -> None:
         print(f"peak GPU memory: {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB")
 
 
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write a text file through a temporary sibling, as `config.atomic_path` does.
+
+    A reader - the next stage, the README author, git - sees either the whole
+    old file or the whole new one, never a half-written manifest.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
 def save_npz(path: Path, **arrays) -> None:
     """Uncompressed npz written atomically (float16 spectrograms barely compress)."""
     tmp = path.with_suffix(".npz.tmp")
@@ -371,20 +406,48 @@ def select_stems(args) -> list[str]:
 # --- stage 2: thresholds, review and labels ----------------------------------
 
 
+#: keys of `<stem>_clean.npz` the dataset stage keeps in memory for all 180
+#: shots; the two packed masks are ~4 MB each and are read per shot instead.
+CLEAN_SUMMARY_KEYS = (
+    "active_frac_clean",
+    "active_frac_raw",
+    "n_pixels_raw",
+    "n_pixels_no_transient",
+    "n_pixels_clean",
+    "protected",
+    "window_centroids_khz",
+    "ann",
+    "freqs",
+)
+
+
 def load_clean(mask_dir: Path, stem: str) -> dict:
+    """The small per-shot arrays only: the packed masks stay on disk."""
     with np.load(mask_dir / f"{stem}_clean.npz") as z:
-        return {k: z[k] for k in z.files}
+        return {k: z[k] for k in CLEAN_SUMMARY_KEYS if k in z.files}
 
 
 def notch_sweep(shots: dict) -> dict:
-    """Per-threshold notch counts and the protected-bin violations."""
+    """Per-threshold notch counts and the protected-bin rule, counted per BIN.
+
+    The rule is "no BIN inside an annotated window's centroid +-3 bins is
+    removed on more than 2 SHOTS", so the count that decides `passes` is
+    accumulated per bin over the shots (`protected_removal_counts`), not per
+    shot. The per-shot violation list is kept as a record, but it no longer
+    decides anything: 40 shots each losing a different protected bin is not a
+    rule violation, while 3 shots losing the same bin is.
+    """
     rows = []
+    freqs = next(iter(shots.values()))["freqs"]
     for thr in NOTCH_THRESHOLDS:
-        per_channel = []
-        violations = []
+        per_channel, union, removed = [], [], {}
+        notched_all, protected_all, violations = [], [], []
         for stem, d in shots.items():
             notched = notch_bins(d["active_frac_clean"], thr)
             per_channel.append(notched.sum(axis=1))
+            union.append(int(notched.any(axis=0).sum()))
+            notched_all.append(notched)
+            protected_all.append(d["protected"])
             hit = notched & d["protected"][None, :]
             if hit.any():
                 violations.append(
@@ -395,28 +458,16 @@ def notch_sweep(shots: dict) -> dict:
                         ],
                         "bins": [int(b) for b in np.flatnonzero(hit.any(axis=0))],
                         "khz": [
-                            round(float(d["freqs"][b]), 3)
+                            round(float(freqs[b]), 3)
                             for b in np.flatnonzero(hit.any(axis=0))
                         ],
                     }
                 )
-        counts = np.asarray(per_channel, dtype=float)  # (n_shots, 4)
-        union = np.asarray(
-            [
-                int(notch_bins(d["active_frac_clean"], thr).any(axis=0).sum())
-                for d in shots.values()
-            ],
-            dtype=float,
-        )
-        removed = {}
-        for stem, d in shots.items():
-            notched = notch_bins(d["active_frac_clean"], thr)
             entry = {
                 CHANNELS[ci]: {
                     "bins": [int(b) for b in np.flatnonzero(notched[ci])],
                     "khz": [
-                        round(float(d["freqs"][b]), 3)
-                        for b in np.flatnonzero(notched[ci])
+                        round(float(freqs[b]), 3) for b in np.flatnonzero(notched[ci])
                     ],
                 }
                 for ci in range(len(CHANNELS))
@@ -424,18 +475,33 @@ def notch_sweep(shots: dict) -> dict:
             }
             if entry:
                 removed[stem] = entry
+        counts = protected_removal_counts(notched_all, protected_all)
+        failing = np.flatnonzero(counts > PROTECT_MAX_SHOTS)
+        channel_counts = np.asarray(per_channel, dtype=float)  # (n_shots, 4)
+        union_counts = np.asarray(union, dtype=float)
         rows.append(
             {
                 "threshold": thr,
                 "removed_bins_per_shot": removed,
-                "notched_bins_per_channel_mean": float(counts.mean()),
-                "notched_bins_per_channel_max": float(counts.max()),
-                "notched_bins_union_mean": float(union.mean()),
-                "notched_bins_union_max": float(union.max()),
-                "shots_with_any_notch": int((union > 0).sum()),
+                "notched_bins_per_channel_mean": float(channel_counts.mean()),
+                "notched_bins_per_channel_max": float(channel_counts.max()),
+                "notched_bins_union_mean": float(union_counts.mean()),
+                "notched_bins_union_max": float(union_counts.max()),
+                "shots_with_any_notch": int((union_counts > 0).sum()),
                 "shots_with_protected_bin_removed": len(violations),
+                "max_shots_removing_any_one_protected_bin": int(counts.max())
+                if counts.size
+                else 0,
+                "protected_bins_over_the_limit": [
+                    {
+                        "bin": int(b),
+                        "khz": round(float(freqs[b]), 3),
+                        "n_shots": int(counts[b]),
+                    }
+                    for b in failing
+                ],
                 "protected_violations": violations,
-                "passes": len(violations) <= PROTECT_MAX_SHOTS,
+                "passes": notch_threshold_passes(counts, PROTECT_MAX_SHOTS),
             }
         )
     passing = [r["threshold"] for r in rows if r["passes"]]
@@ -444,10 +510,13 @@ def notch_sweep(shots: dict) -> dict:
             "sweep {0.5, 0.6, 0.7, 0.8, 0.9} and take the SMALLEST threshold at "
             "which no bin inside an annotated AE window's centroid +-"
             f"{PROTECT_HALF_WIDTH} bins is removed on more than {PROTECT_MAX_SHOTS} "
-            "shots (a smaller threshold notches more aggressively)"
+            "shots (a smaller threshold notches more aggressively). The count is "
+            "per BIN over shots: a threshold fails only if some one protected bin "
+            f"is removed on more than {PROTECT_MAX_SHOTS} shots"
         ),
         "protect_half_width_bins": PROTECT_HALF_WIDTH,
         "protect_max_shots": PROTECT_MAX_SHOTS,
+        "protect_counted_over": "shots per bin",
         "table": rows,
         "passing": passing,
         "chosen": min(passing) if passing else max(NOTCH_THRESHOLDS),
@@ -525,12 +594,12 @@ def effective_notch(d: dict, review: dict, stem: str, threshold: float) -> np.nd
     return notched
 
 
-def occupancy_of(mask_dir: Path, stem: str, d: dict, notched: np.ndarray, key: str):
+def occupancy_of(mask_dir: Path, stem: str, notched: np.ndarray, key: str):
     """Band occupancy per frame, averaged over the 4 channels."""
     with np.load(mask_dir / f"{stem}_clean.npz") as z:
         packed = z[key]
     mask = np.unpackbits(packed, axis=-1, count=N_FRAMES).astype(bool)
-    return band_occupancy(apply_notch(mask, notched)).mean(axis=0), mask
+    return band_occupancy(apply_notch(mask, notched)).mean(axis=0)
 
 
 def threshold_table(occ: np.ndarray, ann: np.ndarray) -> list[dict]:
@@ -599,7 +668,12 @@ def agreement(active: np.ndarray, annotated: np.ndarray) -> dict:
         "n_frames": int(active.size),
         "active_frac": float(active.mean()),
         "annotated_frac": float(annotated.mean()),
-        "recall_of_annotated": float(active[annotated].mean()),
+        # `annotated` can be all-False on a single shot (172025_train has no
+        # annotated AE frame at all), and the mean of an empty slice is a NaN
+        # plus a RuntimeWarning; say NaN deliberately instead.
+        "recall_of_annotated": float(active[annotated].mean())
+        if annotated.any()
+        else float("nan"),
         "precision_against_annotated": float(annotated[active].mean())
         if active.any()
         else float("nan"),
@@ -611,12 +685,15 @@ def agreement(active: np.ndarray, annotated: np.ndarray) -> dict:
     }
 
 
-def split_balance(members, stems, active_all, ann_all):
-    """`agreement` over one split, or None when the split is empty (smoke runs)."""
+def split_balance(members, active_all, ann_all):
+    """`agreement` over one split, or None when the split is empty (smoke runs).
+
+    `active_all` and `ann_all` are both keyed by stem, so no linear search.
+    """
     if not members:
         return None
     return agreement(
-        np.concatenate([active_all[stems.index(s)] for s in members]),
+        np.concatenate([active_all[s] for s in members]),
         np.concatenate([ann_all[s] for s in members]),
     )
 
@@ -691,8 +768,12 @@ def notch_figure(shots: dict, review: dict, threshold: float, path: Path) -> Non
         "have that channel's notch withheld",
         fontsize=9,
     )
-    fig.savefig(path, dpi=130)
+    # `format` is explicit: matplotlib infers it from the suffix, and the
+    # atomic temporary is called `notch_review.png.tmp`.
+    tmp = path.with_name(path.name + ".tmp")
+    fig.savefig(tmp, dpi=130, format=path.suffix.lstrip("."))
     plt.close(fig)
+    os.replace(tmp, path)
 
 
 def run_dataset(args) -> None:
@@ -702,23 +783,39 @@ def run_dataset(args) -> None:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    stems = [s for s in select_stems(args) if (mask_dir / f"{s}_clean.npz").exists()]
+    wanted = select_stems(args)
+    stems = [s for s in wanted if (mask_dir / f"{s}_clean.npz").exists()]
+    skipped = [s for s in wanted if s not in set(stems)]
+    if skipped:
+        print(f"skipping {len(skipped)} shot(s) with no _clean.npz: {skipped}")
     print(f"dataset over {len(stems)} shots", flush=True)
     shots = {s: load_clean(mask_dir, s) for s in stems}
 
     sweep = notch_sweep(shots)
-    notch_thr = sweep["chosen"]
+    notch_thr = float(args.notch) if args.notch > 0 else sweep["chosen"]
+    applied_reason = (
+        "the sweep's own choice"
+        if notch_thr == sweep["chosen"]
+        else APPLIED_NOTCH_REASON
+    )
+    sweep["applied"] = notch_thr
+    sweep["applied_reason"] = applied_reason
     review = build_review(shots, notch_thr)
-    print(f"notch threshold {notch_thr:g}; review shots {review['shots_needing_review']}")
+    review["sweep_chosen_threshold"] = sweep["chosen"]
+    review["applied_reason"] = applied_reason
+    print(
+        f"notch threshold applied {notch_thr:g} (sweep chose {sweep['chosen']:g}); "
+        f"review shots {review['shots_needing_review']}"
+    )
 
     notch_figure(shots, review, notch_thr, out_dir / "notch_review.png")
-    (out_dir / "notch_review.json").write_text(json.dumps(review, indent=2))
+    write_text_atomic(out_dir / "notch_review.json", json.dumps(review, indent=2))
 
     occ_clean, occ_raw, ann_all = {}, {}, {}
     for stem, d in shots.items():
         notched = effective_notch(d, review, stem, notch_thr)
-        occ_clean[stem], _ = occupancy_of(mask_dir, stem, d, notched, "mask_clean")
-        occ_raw[stem], _ = occupancy_of(mask_dir, stem, d, notched, "mask_raw")
+        occ_clean[stem] = occupancy_of(mask_dir, stem, notched, "mask_clean")
+        occ_raw[stem] = occupancy_of(mask_dir, stem, notched, "mask_raw")
         ann_all[stem] = d["ann"].astype(bool)
 
     occ = np.concatenate([occ_clean[s] for s in stems])
@@ -736,7 +833,12 @@ def run_dataset(args) -> None:
 
     # --- per-shot labels -----------------------------------------------------
     band = slice(BAND_LO_BIN, BAND_HI_BIN)
-    per_shot, active_all = [], []
+    per_shot, active_all = [], {}
+    # Measured, not transcribed: the span of the stored transform values this
+    # dataset actually carries, and their per-(shot, channel) coefficient of
+    # variation, so the manifest's statement about the log weighting is about
+    # THIS dataset rather than about task 6's aemodes tif.
+    log_lo, log_hi, cvs = np.inf, -np.inf, []
     for stem, d in shots.items():
         notched = effective_notch(d, review, stem, notch_thr)
         with np.load(mask_dir / f"{stem}_clean.npz") as z:
@@ -753,6 +855,9 @@ def run_dataset(args) -> None:
         # inverts the log1p and squares, so the centroid weights by linear
         # power, not by the log values.
         raw = spec.astype(np.float64) * std[:, None, None] + mean[:, None, None]
+        log_lo = min(log_lo, float(raw.min()))
+        log_hi = max(log_hi, float(raw.max()))
+        cvs.extend(float(v) for v in (std / mean))
         freq = centroid_khz(
             power_weights(raw), mask[:, band, :], bins_khz
         ).astype(np.float32)
@@ -779,7 +884,7 @@ def run_dataset(args) -> None:
             freq_khz_bins=bins_khz,
             occupancy=occ_clean[stem].astype(np.float32),
         )
-        active_all.append(active.astype(bool))
+        active_all[stem] = active.astype(bool)
         good = np.isfinite(freq)
         per_shot.append(
             {
@@ -801,7 +906,7 @@ def run_dataset(args) -> None:
             }
         )
 
-    active = np.concatenate(active_all)
+    active = np.concatenate([active_all[s] for s in stems])
     splits = {sp: [s for s in stems if split_of(s) == sp] for sp in ("train", "valid")}
     cleaning = {
         stem: {
@@ -819,6 +924,20 @@ def run_dataset(args) -> None:
     }
     total_raw = sum(v["pixels_coherent"] for v in cleaning.values())
     total_clean = sum(v["pixels_after_persistence"] for v in cleaning.values())
+    cv_lo, cv_hi = (min(cvs), max(cvs)) if cvs else (float("nan"), float("nan"))
+    log_stats = {
+        "note": (
+            "measured on THIS dataset's saved arrays: `spec * spec_std + spec_mean` "
+            "over the 348 band bins of all 180 shots for the span, and "
+            "`spec_std / spec_mean` per (shot, channel) - the standardisation was "
+            "taken over the full 512-bin transform - for the coefficient of variation"
+        ),
+        "log1p_value_min": log_lo,
+        "log1p_value_max": log_hi,
+        "cv_min": cv_lo,
+        "cv_max": cv_hi,
+        "n_shot_channels": len(cvs),
+    }
 
     payload = {
         "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -857,9 +976,12 @@ def run_dataset(args) -> None:
                 "LINEAR power: power_weights(x) = expm1(x)**2 applied to the "
                 "tokeye transform's clip(log1p(|STFT|), p1, p99) values, so the "
                 "weight is |STFT|**2 after the percentile clip. Weighting by the "
-                "stored log values is effectively unweighted (they span 46-63, "
-                "CV 0.026) and is what task 6 did"
+                "stored log values instead - what task 6 did - is effectively "
+                f"unweighted: measured on this dataset they span {log_lo:.1f}-"
+                f"{log_hi:.1f} with a per-(shot, channel) coefficient of variation "
+                f"of {cv_lo:.3f}-{cv_hi:.3f}"
             ),
+            "freq_khz_weighting_measured": log_stats,
             "label": (
                 "active[f] = band occupancy of the cleaned, notched coherent mask "
                 ">= the chosen occupancy threshold; annotated[f] = label_1|2|3|4 "
@@ -869,6 +991,8 @@ def run_dataset(args) -> None:
         "notch": sweep,
         "notch_review": {
             "threshold": notch_thr,
+            "sweep_chosen_threshold": sweep["chosen"],
+            "applied_reason": applied_reason,
             "shots_needing_review": review["shots_needing_review"],
             "n_shots_with_any_notch": review["n_shots_with_any_notch"],
             "file": "notch_review.json",
@@ -883,8 +1007,8 @@ def run_dataset(args) -> None:
         },
         "class_balance": {
             "pooled": agreement(active, ann),
-            "train": split_balance(splits["train"], stems, active_all, ann_all),
-            "valid": split_balance(splits["valid"], stems, active_all, ann_all),
+            "train": split_balance(splits["train"], active_all, ann_all),
+            "valid": split_balance(splits["valid"], active_all, ann_all),
         },
         "cleaning_effect": {
             "note": (
@@ -905,7 +1029,27 @@ def run_dataset(args) -> None:
         "jobstats": None,
     }
     out_json = out_dir / "dataset.json"
-    out_json.write_text(json.dumps(payload, indent=2, default=float))
+    # A `dataset`-stage re-run - the notch-0.8 rebuild is one - has no SLURM job
+    # of its own, but the jobstats report already in the manifest describes the
+    # `probs` stage that produced the masks this run just read, and that
+    # provenance is still true. Carry it forward instead of writing a null over
+    # it; a run that IS under SLURM keeps its own id and gets its own report
+    # from the `jobstats` stage.
+    if out_json.exists() and not payload["slurm_job_id"]:
+        try:
+            previous = json.loads(out_json.read_text())
+        except (OSError, ValueError) as exc:  # a truncated or absent manifest
+            print(f"could not read the previous manifest ({exc}); no jobstats carried")
+            previous = {}
+        if previous.get("jobstats"):
+            payload["jobstats"] = previous["jobstats"]
+            payload["slurm_job_id"] = previous.get("slurm_job_id", "")
+            payload["jobstats_note"] = (
+                "carried forward from the previous manifest: it describes the "
+                "`probs` stage that produced the masks this run read, not this "
+                "`dataset` stage, which ran outside SLURM"
+            )
+    write_text_atomic(out_json, json.dumps(payload, indent=2, default=float))
     print(json.dumps(payload["class_balance"]["pooled"], indent=2))
     print(f"wrote {out_json}")
 
@@ -916,7 +1060,7 @@ def run_jobstats(args) -> None:
     payload["jobstats"] = Path(args.jobstats_file).read_text()
     if args.job_id:
         payload["slurm_job_id"] = args.job_id
-    path.write_text(json.dumps(payload, indent=2, default=float))
+    write_text_atomic(path, json.dumps(payload, indent=2, default=float))
     print(f"merged jobstats into {path}")
 
 
@@ -932,6 +1076,15 @@ def main() -> None:
     )
     p.add_argument("--device", default="auto")
     p.add_argument("--batch", type=int, default=4, help="CO2 channels per forward pass")
+    p.add_argument(
+        "--notch",
+        type=float,
+        default=APPLIED_NOTCH,
+        help=(
+            "notch threshold applied to the label; 0 uses the sweep's own choice. "
+            f"Default {APPLIED_NOTCH:g}: {APPLIED_NOTCH_REASON}"
+        ),
+    )
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--shots", default="", help="comma-separated stems, e.g. 176042_train")
     p.add_argument("--overwrite", action="store_true")
