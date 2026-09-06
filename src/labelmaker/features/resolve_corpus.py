@@ -11,11 +11,22 @@ This resolver covers every corpus shot, which the archive resolver does not,
 but it can only serve the actuator totals and raw waveforms: the corpus holds
 raw diagnostics and actuators, no equilibrium and no fitted profiles.
 
-Two shapes come out of here. A `scalar` feature is the group's channels summed
-into the canonical units and decimated onto the feature's `step`. A `waveform`
-feature (`co2`) is the group itself - every channel, native rate, no scale -
-because the model that consumes it does its own transform; see the branch
-below and the `co2` note in `namespace.py`.
+Three shapes come out of here, decided by the feature's `kind` and by whether
+its locator names a channel.
+
+* a `scalar` feature whose locator is a bare group name is the group's channels
+  summed into the canonical units and decimated onto the feature's `step`;
+* a `scalar` feature whose locator ends in `#<k>` is channel `k` of that group
+  ALONE, decimated the same way and never summed. `gas` is PTDATA `gasa`,
+  channel 0 of the 11-channel `gas_raw` group, and summing the other ten valves
+  into it would be a different quantity; the four `co2_<chord>` features are the
+  same story one chord at a time. Only the named channel is read off disk;
+* a `profile` feature is every channel of the group, decimated onto `step` and
+  kept per channel (`ece`, 48 radiometer channels). The "radial" axis is
+  whatever the group's channel order is, so nothing here interpolates it.
+* a `waveform` feature (`co2`) is the group itself - every channel, native rate,
+  no scale - because the model that consumes it does its own transform; see the
+  branch below and the `co2` note in `namespace.py`.
 
 Measured on shot 185945 at t = 1.025 s: summed `pinj` = 1.002e7 where the
 model's own training column reads 10,995.6, so the corpus is in W and the
@@ -43,11 +54,20 @@ from .store import FeatureArray
 SOURCE = "corpus"
 
 #: Multiplier taking a corpus channel sum to the canonical feature's units.
+#: A feature resolved from a single channel or kept per channel needs no entry:
+#: `_scale_for` returns 1.0 for it, since nothing here converts a raw
+#: diagnostic channel into anything but itself.
 SCALE_TO_CANONICAL: dict[str, float] = {
     "pinj_total": 1e-3,        # W -> kW
     "tinj_total": 1.0,         # already N m
     "ech_power_total": 1.0,    # already W; see the namespace note, measured
 }
+
+
+def split_locator(locator: str) -> tuple[str, int | None]:
+    """`"gas_raw#0"` -> `("gas_raw", 0)`; `"ece"` -> `("ece", None)`."""
+    group, sep, channel = locator.partition("#")
+    return (group, int(channel)) if sep else (group, None)
 
 
 def resolve(
@@ -65,7 +85,8 @@ def resolve(
     # any file is touched: asking the corpus for a profile is a programming
     # error, not a per-shot gap.
     specs = {n: ns.by_name(n) for n in names}
-    locators = {n: spec.locator_for(SOURCE) for n, spec in specs.items()}
+    locators = {n: split_locator(spec.locator_for(SOURCE))
+                for n, spec in specs.items()}
     path = Path(corpus) / f"{int(shot)}_processed.h5"
     if not path.exists():
         return {}, dict.fromkeys(names, "FileNotFoundError")
@@ -77,7 +98,7 @@ def resolve(
         # Truncated corpus file; nothing in it is readable for any feature.
         return {}, dict.fromkeys(names, "OSError")
     with f:
-        for name, group in locators.items():
+        for name, (group, channel) in locators.items():
             if group not in f or "ydata" not in f[group]:
                 missing[name] = "KeyError"
                 continue
@@ -96,6 +117,12 @@ def resolve(
             x = np.asarray(f[group]["xdata"], dtype=np.float64)
             if x.size != dset.shape[-1]:
                 missing[name] = "ShapeError"
+                continue
+            if channel is not None and not 0 <= channel < dset.shape[0]:
+                # A locator naming a channel the group does not have is a
+                # per-shot gap, not a programming error: the corpus stores
+                # different channel counts for the same group on some shots.
+                missing[name] = f"ChannelMissing({channel}/{dset.shape[0]})"
                 continue
             if specs[name].kind == "waveform":
                 # A waveform is the raw record itself: no channel sum, no unit
@@ -125,24 +152,38 @@ def resolve(
                     },
                 )
                 continue
-            y = np.asarray(dset, dtype=np.float64)
+            # Only the named channel is read when the locator names one: the
+            # `co2` group is (4, ~4.5e6), and reading all four to keep one
+            # would cost 144 MB per chord.
+            y = (np.asarray(dset[channel], dtype=np.float64)[None, :]
+                 if channel is not None
+                 else np.asarray(dset, dtype=np.float64))
             nan_channels = int((~np.isfinite(y)).all(axis=1).sum())
-            total = np.nansum(y, axis=0) * SCALE_TO_CANONICAL[name]
-            # A time where every channel is NaN is genuinely unknown; nansum
-            # would report 0, which for ECH power is a different claim.
-            total[(~np.isfinite(y)).all(axis=0)] = np.nan
             step = specs[name].step or 0.001
-            xg, yg = decimate_to_step(x, total[None, :], step)
+            if specs[name].kind == "profile" or channel is not None:
+                # Per channel, not summed: `ece`'s 48 radiometer channels are
+                # the model's 48 inputs, and `gas`/`co2_<chord>` are one named
+                # channel of a group whose other channels are other quantities.
+                scale = 1.0
+                xg, yg = decimate_to_step(x, y, step)
+            else:
+                scale = SCALE_TO_CANONICAL[name]
+                total = np.nansum(y, axis=0) * scale
+                # A time where every channel is NaN is genuinely unknown;
+                # nansum would report 0, which for ECH power is a different
+                # claim.
+                total[(~np.isfinite(y)).all(axis=0)] = np.nan
+                xg, yg = decimate_to_step(x, total[None, :], step)
             arrays[name] = FeatureArray(
                 x=xg,
                 y=yg,
                 attrs={
                     "resolver": SOURCE,
-                    "locator": group,
+                    "locator": specs[name].locator_for(SOURCE),
                     "corpus_file": str(path),
                     "n_channels": str(y.shape[0]),
                     "nan_channels": str(nan_channels),
-                    "scale_to_canonical": str(SCALE_TO_CANONICAL[name]),
+                    "scale_to_canonical": str(scale),
                     "decimated_to_s": str(step),
                 },
             )

@@ -24,7 +24,7 @@ would be called. Label groups in `<shot>_labels.h5` use the folder name.
 | Folder | Card id | Task | Status |
 |---|---|---|---|
 | `d3d_tearing_onset_cnn1d` | `plasmacontrol/d3d-tearing-onset-cnn1d` | binary + regression | implemented |
-| `d3d_elm_time_to_event_dsm` | `plasmacontrol/d3d-elm-time-to-event-dsm` | survival | scaffold |
+| `d3d_elm_time_to_event_dsm` | `plasmacontrol/d3d-elm-time-to-event-dsm` | survival (ELM risk at 4 horizons) | implemented |
 | `d3d_tearing_time_to_event_dsm` | `plasmacontrol/d3d-tearing-time-to-event-dsm` | survival (risk at 3 horizons) | implemented |
 | `d3d_tearing_time_to_event_dsm_continued` | `plasmacontrol/d3d-tearing-time-to-event-dsm-continued` | survival (risk at 3 horizons), retrained | implemented |
 | `d3d_ech_beam_fate_mlp` | `plasmacontrol/d3d-ech-beam-fate-mlp` | 3-class + regression | scaffold |
@@ -37,9 +37,15 @@ would be called. Label groups in `<shot>_labels.h5` use the folder name.
 yet; its card's `blocked_on` list says exactly what is missing, and importing its
 `spec.py` raises `NotImplementedError`.
 
-`d3d_ae_activity_seldnet` is the one model labelmaker **trained itself** - no
-upstream artifact answers "is an Alfven eigenmode present now, and at what
-frequency". Its network is `src/labelmaker/ae/model.py`, its label construction
+Two models carry weights labelmaker **fitted itself**.
+`d3d_elm_time_to_event_dsm` is one: upstream's Keras graphs need 64 BES inputs
+the FAITH corpus fills on 2 of 24 sampled shots, so labelmaker refitted the same
+architecture on upstream's own rows using only the 60 columns that are not BES -
+which, measured, is the better model of the two (see its card).
+
+`d3d_ae_activity_seldnet` is the other, and the one whose architecture is ours
+too - no upstream artifact answers "is an Alfven eigenmode present now, and at
+what frequency". Its network is `src/labelmaker/ae/model.py`, its label construction
 `src/labelmaker/ae/labels.py`, its training `scripts/labelmaker/ae_train.py`,
 and its design is `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
 section 5. It is also the only model whose input is a **waveform**: the raw

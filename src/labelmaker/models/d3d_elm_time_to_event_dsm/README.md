@@ -1,7 +1,7 @@
 ---
 language: en
 license: other
-library_name: keras
+library_name: pytorch
 pipeline_tag: time-series-forecasting
 tags:
   - diii-d
@@ -16,197 +16,335 @@ model-index:
   - name: d3d-elm-time-to-event-dsm
     results: []
 labelmaker:
-  status: scaffold
+  status: implemented
   slug: d3d_elm_time_to_event_dsm
   card_id: plasmacontrol/d3d-elm-time-to-event-dsm
-  framework: keras
-  time_step_ms: null
+  framework: dsm_pickle
+  time_step_ms: 25.0
   ensemble_n: 1
   upstream:
-    path: /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/
+    path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm
     artifacts:
-      - wpqh1_embedding_with_norm.keras
-      - wpqh1_gate.keras
-      - wpqh1_scaleg.keras
-      - wpqh1_shapeg.keras
-    sha256: {}
+      - elm_dsm_no_bes.pkl
+      - normalization.json
+    sha256:
+      elm_dsm_no_bes.pkl: 2c28518eb1934c542ba007f7971d6ad2e38543be6f61ce57508b8629443aa9c3
+      normalization.json: 0d3e99e3e2e7f1aee5bb3aa9d40a9393d81e12789428b3e1ae9c23ab1598e45e
     notes:
-      - "2026-09-06: labelmaker fitted its own DSMs on upstream's own split
-        (train_test_split_model10.pkl, 629,023 train / 142,745 test rows,
-        never re-split), same architecture and hyperparameters, once on all 124
-        inputs and once on the 60 non-BES ones. See Evaluation for the ablation
-        table; artifacts in
-        /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/
-        (elm_dsm_all124.pkl, elm_dsm_no_bes.pkl, ablation.json, SLURM 2924069)."
-      - "2026-09-06: BES is NOT droppable. The decision rule (no_bes adopted if
-        its test NLL is within 0.02 and its 20 ms AUROC within 0.02 of all124's)
-        fails on both legs: dNLL +0.0510, d20 ms AUROC -0.0298. Fetching BES is
-        now a separate decision rather than an assumption."
-      - "2026-09-06: `current_diagnostic_order` is NOT stored inside
-        train_test_split_model10.pkl (the pickle holds only the six train_*/test_*
-        arrays). The 124-name order is taken from cell 43 of
-        hiro_scripts/data_processing.ipynb and is pinned in
-        labelmaker.models.elm_inputs, whose tests hold BES at slots 60-123."
-      - "2026-09-06: hiro's auton-survival fork inserts nn.Dropout(0.2) after every
-        embedding ReLU6 (survival_tm_2's does not), so runners/dsm_pickle.load_dsm
-        now skips Dropout layers - identity in eval mode, no weights."
-      - "2026-09-06: at lr 1e-3 both fits reach their best test NLL after ONE epoch
-        and get monotonically worse after it; all124 diverged to NaN at epoch 16.
-        The numbers below are therefore one-epoch models. A useful ELM model needs a
-        lower learning rate and a validation split carved out of the training shots
-        (upstream passes the test split as val_data, so the early stop reads the
-        test rows)."
-  inputs: []
-  outputs: []
-  approximations: []
+      - "2026-09-06: the weights are labelmaker's own, not upstream's Keras
+        graphs. Same architecture and hyperparameters as hiro_scripts/model.cfg,
+        fitted on upstream's own split (train_test_split_model10.pkl, 629,023
+        train / 142,745 test rows, never re-split) on the 60 columns that are
+        not BES. Artifacts and PROVENANCE_no_bes.json in the path above."
+      - "2026-09-06, CORRECTION to the 2026-09-06 note this replaces: the split
+        pickle's columns are in `new_diagnostic_order`, NOT
+        `current_diagnostic_order`. Cell 43 of data_processing.ipynb writes
+        reordered_model10.pkl in the new order and cell 47 builds the split from
+        THAT file. MEASURED: the pickle carries both *_final_x and
+        *_final_x_normalized, so upstream's per-column transform is recoverable
+        exactly; all 124 columns of both sides match new_diagnostic_order to a
+        worst relative error of 1.2e-12, and only 6 of 124 (the shared first
+        six) match current_diagnostic_order. Under the real order BES is slots
+        12-75 and ECE is 76-123."
+      - "2026-09-06: the first no_bes fit (commit 54d201d) took slots 0-59
+        believing them to be the non-BES columns. Under the real order those
+        slots are 12 non-BES columns plus bes_slow_channel_1..48, so that model
+        dropped every ECE channel and required 48 BES ones. It has been
+        refitted on the correct 60 columns; the numbers below are the refit."
+      - "2026-09-06: with the columns identified correctly, dropping BES is not
+        a cost - it is an improvement. no_bes beats all124 on test NLL by 0.101
+        and on 20 ms AUROC by 0.0019 (Evaluation). BES is 64 of 124 inputs and
+        the fit at these hyperparameters overfits from epoch 1, so removing them
+        removes more variance than signal."
+      - "2026-09-06: both fits still reach their best test NLL after ONE epoch
+        and get worse after it, at lr 1e-3 AND at lr 1e-4 (job 2924075,
+        discarded). The optimum lies inside the first pass over 540k rows and a
+        once-per-epoch validation curve cannot see it; the fix is sub-epoch
+        checkpointing, not a smaller step. These are one-epoch models."
+      - "2026-09-06: upstream passes the TEST split as val_data, which this fit
+        reproduces for comparability, so the early stop selects on the test rows
+        and test NLL is a selection-informed number, not a held-out one."
+      - "2026-09-06: hiro's auton-survival fork inserts nn.Dropout(0.2) after
+        every embedding ReLU6 (survival_tm_2's does not), so
+        runners/dsm_pickle.load_dsm skips Dropout layers - identity in eval
+        mode, no weights."
+  inputs:
+    - "ip_downsampled <- ip"
+    - "bt_downsampled <- bt"
+    - "gas_downsampled <- gas"
+    - "pinj_downsampled <- pinj_total"
+    - "tinj_downsampled <- tinj_total"
+    - "ech_downsampled <- ech_power_total"
+    - "co2_density_slow_r0_downsampled <- co2_r0"
+    - "co2_density_slow_v1_downsampled <- co2_v1"
+    - "co2_density_slow_v2_downsampled <- co2_v2"
+    - "co2_density_slow_v3_downsampled <- co2_v3"
+    - "ece_slow_downsampled <- ece"
+  outputs:
+    - name: elm_risk_5ms
+      task: binary
+      activation: none
+    - name: elm_risk_10ms
+      task: binary
+      activation: none
+    - name: elm_risk_20ms
+      task: binary
+      activation: none
+    - name: elm_risk_50ms
+      task: binary
+      activation: none
+  approximations:
+    - "pcphd02 and pcphd03, the two D-alpha photodiodes, are 2 of the 60 columns
+      and have NO corpus group: upstream read them from a hand-built PTDATA
+      pickle (data/dalpha_wpqh.pkl). They are filled at the training mean -
+      exactly 0 after normalisation - on every row of every shot."
+    - "bt: upstream computed 1.69861e-5 * pcbcoil; labelmaker uses the canonical
+      `bt` in tesla for its much wider shot coverage. Measured at t = 2.0 s on
+      shot 185808: -2.0910 T against -2.0306 T, a 3.0% difference."
+    - "ech: upstream took `echpwrc`, column 1 of the staged `ech` group;
+      labelmaker uses ech_power_total (the 12-gyrotron corpus sum, or the
+      archive's EC.PECH). See namespace.py's ech_power_total note for the
+      measured spread between those two."
+    - "gas is channel 0 of the corpus `gas_raw` group (PTDATA `gasa`), matched to
+      the staged `gas` column at correlation +1.0000 and mean ratio 1.000 on
+      shot 185808; no other gas_raw channel exceeds +0.17."
+    - "ece is the corpus `ece` group's 48 channels decimated to 1 ms, matched to
+      the staged `ece_slow` group channel for channel on shot 185808 (0.3-7%
+      over a 100 ms window; the corpus record is ~3 MHz, the staged one 65 kHz)."
+    - "co2_<chord> is the 1 ms mean of the SAME 500 kHz corpus `co2` record the
+      AE model reads as a waveform - the brief's `co2_slow` - not a separate
+      fetch. Chord order r0/v1/v2/v3 confirmed by rank: on shot 199421 the
+      corpus chords order v1 > v2 > r0 > v3, which is upstream's own ordering of
+      those four columns' training means."
+    - "the grid: upstream's rows are 1 ms means, labelmaker's are 25 ms means
+      (the archive's 50 ms boxcar ending at t). A sampling change, not a model
+      change - no weight and no normalisation constant differs."
+    - "upstream's 100 ms boxcar on the raw pinj and tinj columns (NBI is
+      modulated) is reproduced as a 4-tap centred moving average on the 25 ms
+      grid."
   resolved:
     - "2026-09-05: the 124 trained-on names and their order ARE recovered - see Input order below"
-    - "2026-09-05: the embedding does bake in its own normalisation (identity kernel with bias = -mean, then diag(1/std)); the constants need no recovery"
-    - "2026-09-05: the graph is structurally identical to d3d_tearing_time_to_event_dsm (k=3, 100 then 1000 hidden, gate/scaleg/shapeg heads at (1000,3)), so runners/dsm_pickle.survival() applies verbatim"
+    - "2026-09-06: and the order of the SPLIT PICKLE is new_diagnostic_order, measured to 1.2e-12; see upstream.notes"
+    - "2026-09-05: the embedding does bake in its own normalisation in the Keras graphs; labelmaker's own fit uses upstream's normalizations dict instead, written to normalization.json"
+    - "2026-09-05: the graph is structurally identical to d3d_tearing_time_to_event_dsm, so runners/dsm_pickle.survival() applies verbatim"
+    - "2026-09-06: the aggregation from the 1 ms training grid to labelmaker's 25 ms grid is a sampling change; the risk is read at h + 1 ms"
+    - "2026-09-06: the DSM head becomes a label series as 1 - S(h + 1) at four horizons, not as an expected time to event"
+    - "2026-09-06: BES is droppable after all - with the columns identified correctly the 60-column fit BEATS the 124-column one"
   blocked_on:
-    - "BES is 64 of the 124 inputs and the corpus fills it on only 2 of 24 sampled shots; serving this model at corpus scale needs an fdp/toksearch BES fetch plus a 1 ms downsample. MEASURED 2026-09-06: dropping BES costs +0.051 test NLL and -0.030 20 ms AUROC, so the fetch cannot simply be skipped"
-    - "the two labelmaker-trained DSMs both stop at their first epoch (see Evaluation); a model worth serving needs a lower learning rate and a validation split taken from the training shots"
-    - "the upstream grid is 1 ms, labelmaker's is 25 ms; decide the aggregation"
-    - "decide how a deep-survival-machines head becomes a label series: hazard at fixed horizons, or expected time to event"
-    - "DECIDED 2026-09-05: reproducing these exact weights is no longer the goal - labelmaker will train its own model from the same inputs and labels, so this folder may be superseded by a labelmaker-owned slug (phase3-design section 6)"
+    - "the fit is a one-epoch model at lr 1e-3 and at lr 1e-4 alike; a model worth trusting numerically needs sub-epoch checkpointing (validate every N minibatches), which no run has done yet"
+    - "pcphd02 / pcphd03 have no corpus group, so 2 of 60 columns are mean-filled on every row of every shot; serving them would need an fdp/toksearch PTDATA fetch of the two photodiodes"
+    - "labelmaker's own validation (adapter fidelity, reconstruction fidelity, label quality) has not been run for this slug; the numbers below are upstream-population numbers only"
+    - "the training-shot list is not committed, so `validate` reports every pool shot as held out"
+    - "corpus coverage: only 6 of the 24 sampled corpus shots have all 11 inputs, so 18 produce labels with no valid row at all. co2 is corpus:SignalAbsent below shot 198279 (12 of 24) and pinj_total/tinj_total have no fdp source in namespace.py, only archive+corpus (11 of 24). Serving the corpus properly needs an fdp NBI fetch and a decision about pre-198279 CO2"
 ---
 
 # plasmacontrol/d3d-elm-time-to-event-dsm
 
-**Status: scaffold.** Labelmaker cannot run this model yet. Nothing here loads
-weights and no labels are produced; the folder exists so the roster, the naming
-scheme and the known upstream location are recorded in one place.
+**Status: implemented.** Probability that an ELM occurs within 5, 10, 20 and
+50 ms, on labelmaker's 25 ms grid, from a Deep Survival Machines model
+labelmaker fitted itself.
 
 ## Model details
 
-Predicts time to the next ELM from a wide 0-D and diagnostic-channel feature
-vector as a mixture of parametric distributions (deep survival machines). Four
-saved graphs: an embedding network with normalisation, and gate, scale and shape
-heads.
+The weights are **not** upstream's. Upstream's four Keras graphs take 124
+inputs and 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled
+shots, so a model that needs BES cannot be served at corpus scale. Labelmaker
+therefore fitted the same architecture on upstream's own rows twice - once on
+all 124 columns (`all124`) and once on the 60 that are not BES (`no_bes`) - and
+serves the second. Architecture and hyperparameters are `hiro_scripts/model.cfg`
+verbatim: `k = 3`, one 128-unit ReLU6 embedding layer with dropout 0.2,
+LogNormal mixture, Adam at lr 1e-3, batch 1024, seed 0.
 
-The mixture family is **not** decidable from the weights. The only configuration
-in the upstream directory (`hiro_scripts/model.cfg`) says `LogNormal`; an earlier
-version of this card said Weibull, which nothing supports. Treat it as LogNormal
-and confirm before use.
+Inference is `1 - S(h + 1 | x)` through `runners/dsm_pickle.survival`, the same
+reader the tearing survival models use. The `+ 1` ms is upstream's fit-time
+offset (`new_train_elm_model.py` fits on `t + 1`), so a real horizon `h` is
+queried at `h + 1`; each label's `queried_at_ms` attribute records it.
 
-### Input order (measured 2026-09-05)
+### Input order - the trap, and how it was settled
 
-124 columns, in `current_diagnostic_order` from cell 43 of
-`hiro_scripts/data_processing.ipynb` (cell 34 in an earlier reading of the
-notebook; re-checked 2026-09-06). Pinned in `labelmaker.models.elm_inputs`:
+There are two orders and they differ in 118 of 124 columns. Both are written
+out in cell 43 of `hiro_scripts/data_processing.ipynb`:
 
-| slots | contents |
-|---|---|
-| 0-5 | `ip`, `bt`, `gas`, `pinj`, `tinj`, `ech` |
-| 6-53 | `ece_slow_channel_1..48` |
-| 54-55 | `pcphd02`, `pcphd03` |
-| 56-59 | `co2_density_slow_{r0,v1,v2,v3}` |
-| 60-123 | `bes_slow_channel_1..64` |
+| order | layout | where it lives |
+|---|---|---|
+| `current_diagnostic_order` | ip, bt, gas, pinj, tinj, ech, **ece 1-48**, pcphd02, pcphd03, co2 x4, bes 1-64 | `compiled_model10.pkl`, the Keras graphs |
+| `new_diagnostic_order` | ip, bt, gas, pinj, tinj, ech, pcphd02, pcphd03, co2 x4, **bes 1-64**, ece 1-48 | `reordered_model10.pkl`, **`train_test_split_model10.pkl`** |
 
-Proved rather than assumed: slots 56-59 carry baked normalisation means of
-8.6e13 to 1.3e14, which is CO2 line-integrated density. Under the alternative
-order those slots would hold BES volts near -1.
+Cell 47 builds the split pickle from `reordered_model10.pkl`, so the rows
+labelmaker fits on are in the **second** order. That is measured, not read: the
+pickle carries both `*_final_x` (raw) and `*_final_x_normalized`, so upstream's
+per-column transform is recoverable as `s = std(raw)/std(norm)`,
+`m = mean(raw) - s*mean(norm)` and can be matched against the named
+`normalizations` dict in `data/testing_model.pkl`. All 124 columns of both the
+train and the test side match `new_diagnostic_order` to a worst relative error
+of **1.2e-12**; only 6 of 124 - the first six, which the two orders share -
+match `current_diagnostic_order`. Reproduce with
+`python scripts/labelmaker/elm_write_normalization.py --verify-split`.
 
-**There is a second order and it is a trap.** `new_diagnostic_order` puts all 76
-non-ECE columns first and `ece_slow_channel_1..48` last; it is materialised in
-`wpqh_elm_hiro/data/reordered_model10.pkl` and it is what the PCS wants. Feeding
-it to these weights produces silent garbage.
+The first `no_bes` fit (commit `54d201d`) took slots 0-59 of the pickle
+believing them to be the non-BES columns. Under the real order those slots are
+the 12 non-ECE, non-BES columns plus `bes_slow_channel_1..48`: that model
+dropped every ECE channel and *required* 48 BES ones. It has been refitted.
+`labelmaker.models.elm_inputs` now pins both orders and selects a column set by
+name, so the same mistake becomes a `KeyError` rather than a silently wrong
+model.
 
-Upstream also applies `t + 1` at fit time, so a horizon `h` must be queried as
-`S(h + 1)`.
+### The 60 columns, and where each comes from
+
+| slots (of `new_diagnostic_order`) | column | canonical feature | source |
+|---|---|---|---|
+| 0 | `ip` (MA) | `ip` x 1e-6 | archive or fdp |
+| 1 | `bt` (T) | `bt` | archive or fdp |
+| 2 | `gas` (V) | `gas` = corpus `gas_raw` channel 0 | corpus |
+| 3 | `pinj` (W) | `pinj_total` x 1e3 | archive or corpus |
+| 4 | `tinj` (N m) | `tinj_total` | archive or corpus |
+| 5 | `ech` (W) | `ech_power_total` | archive or corpus |
+| 6-7 | `pcphd02`, `pcphd03` | **none** - mean-filled | - |
+| 8-11 | `co2_density_slow_{r0,v1,v2,v3}` | `co2_r0..co2_v3`, 1 ms mean of the corpus `co2` record | corpus |
+| 76-123 | `ece_slow_channel_1..48` | `ece`, 48 channels at 1 ms | corpus |
 
 ## Uses
 
-Intended use is offline label generation over the FAITH shot corpus, for
-comparison against IGNITE and against other models' labels. Not for real-time
-control and not for physics conclusions without the reliability numbers in the
-Evaluation section.
+Offline label generation over the FAITH shot corpus, for comparison against
+IGNITE and against other models' labels. Not for real-time control and not for
+physics conclusions without the reliability numbers below - which, for this
+slug, are upstream-population numbers only.
 
 ## Bias, risks and limitations
 
-Unmeasured. This model has not been run through labelmaker's validation, so
-nothing is known here about how its labels behave on corpus shots.
+**Validity caveats, in the order they will bite:**
+
+1. **Wide-pedestal QH only.** Every training row is inside a wide-pedestal
+   QH-mode phase
+   (`WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1`).
+   The model has never seen an ELMing H-mode, an L-mode or a ramp. Labels on a
+   corpus shot outside that regime are extrapolation, and nothing in the
+   per-row `_valid` mask says so - the regime is a property of the shot, not of
+   a row's inputs.
+2. **Two of 60 columns are always fabricated.** `pcphd02` and `pcphd03` sit at
+   the training mean on every row of every shot. This is deliberately NOT
+   folded into `_valid`: a flag that is 0 everywhere carries no information and
+   would hide the rows that are genuinely untrustworthy. Each label carries it
+   as the `mean_filled_columns` attribute instead.
+3. **CO2 is absent on half the corpus.** `co2_r0..co2_v3` come from a group the
+   corpus fills on 12 of 24 sampled shots. Where it is absent, all four columns
+   are mean-filled and **every row is marked invalid** - the probability is
+   still written, so the series exists and says on its face where not to trust
+   it.
+4. **One-epoch model.** See Evaluation.
+5. **Never validated on labelmaker's own pool.** `validate` has not been run
+   for this slug, so nothing here says how these labels behave on corpus shots.
 
 ## Training details
 
-Upstream, outside this repository:
-`/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/`. Read on 2026-09-05 and
-recorded in full in
-`docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 2.2.
-In brief: rows are restricted to wide-pedestal QH phases
-(`WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1`) on
-a 1 ms grid; `t` is ms to the next ELM as a sawtooth and `e = 1` at an ELM;
-filters are NaN to 0, CO2 outside `[0, 1e15]` dropped, a 100 ms boxcar on `pinj`
-and `tinj` because NBI is modulated, and `|z| > 10` rows dropped on every column
-except the two D-alpha photodiodes; the split is by shot with `seed 0`, 80/20.
-`model.cfg` records `k=3, iters=1000, LogNormal, lr=1e-3, batch=1024,
-layers=[128], dropout=0.2`. No event/censor resampling is applied anywhere.
+Rows are upstream's: 1 ms samples inside wide-pedestal QH phases, `t` is ms to
+the next ELM as a sawtooth and `e = 1` at an ELM; NaN to 0, CO2 outside
+`[0, 1e15]` dropped, a 100 ms boxcar on `pinj` and `tinj`, and `|z| > 10` rows
+dropped on every column except the two photodiodes. The split is upstream's own
+by-shot 80/20 at seed 0, read as-is and never re-split.
 
 Two upstream defects worth knowing: `train_elm_model.py` has train and test
-**swapped** (it trains on the last 10% of shots), and the card's former Weibull
-claim came from nowhere. `new_train_elm_model.py` with
-`data/train_test_split_model10.pkl` is the correct entry point.
+**swapped** (it trains on the last 10% of shots), and an earlier version of
+this card claimed a Weibull mixture, which nothing supports -
+`hiro_scripts/model.cfg` says LogNormal.
+
+The trainer is `scripts/labelmaker/elm_dsm_train.py`. It reproduces the fork's
+loop (`pretrain_dsm`, Adam, per-epoch shuffle at `random_state=i`,
+`conditional_loss(elbo=True)` on minibatches, full-set validation, argmin
+reload, `train_patience = 5`) with three changes, each forced by a measurement
+recorded in its docstring: a wall-clock deadline, a validation pass in `eval()`
+mode, and a stop at the first non-finite loss.
 
 ## Evaluation
 
-### BES ablation, labelmaker's own fits (2026-09-06)
+### BES ablation, refitted on the correct columns (2026-09-06)
 
-Two DSMs, same architecture and hyperparameters as `model.cfg` (`k=3,
-layers=[128]`, LogNormal, lr 1e-3, batch 1024, dropout 0.2, seed 0), fitted on
-**upstream's own split**, read as-is from
-`/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl`: 629,023
-training rows, 142,745 test rows, event rate 51.3% / 44.5%. `all124` is the
-upstream input set; `no_bes` is slots 0-59, everything except
-`bes_slow_channel_1..64`. Rows are 1 ms wide-pedestal-QH samples, not the FAITH
-corpus and not labelmaker's 500-shot pool: these numbers describe upstream's
-population.
-
-Upstream fits on `t + 1` ms, so a horizon `h` is queried as `S(h + 1)`. The
-score below is `1 - S(h + 1)` computed through labelmaker's own
-`runners/dsm_pickle.survival`. AUROC cases are `e == 1 and t <= h` against
-controls `t > h`, with rows censored inside `h` excluded; the IPCW column is
+`all124` is upstream's input set; `no_bes` is the 60 columns of the split
+pickle that are not BES (slots 0-11 and 76-123 of `new_diagnostic_order`).
+Rows are upstream's 1 ms wide-pedestal-QH test rows, **not** the FAITH corpus
+and not labelmaker's 500-shot pool: these numbers describe upstream's
+population. The score is `1 - S(h + 1)` through
+`runners/dsm_pickle.survival`; AUROC cases are `e == 1 and t <= h` against
+controls `t > h`, rows censored inside `h` excluded; IPCW is
 `labelmaker.alarm.ipcw_auc` on the same score.
 
 | set | inputs | test NLL | AUROC 5 ms | 10 ms | 20 ms | 50 ms | IPCW AUC 20 ms |
 |---|---|---|---|---|---|---|---|
-| `all124` | 124 | **1.2553** | 0.7562 | 0.7624 | **0.7680** | 0.7807 | 0.7680 |
-| `no_bes` | 60 | **1.3062** | 0.7381 | 0.7384 | **0.7382** | 0.7446 | 0.7382 |
+| `all124` | 124 | 1.2553 | 0.7562 | 0.7624 | 0.7680 | 0.7807 | 0.7680 |
+| **`no_bes`** | **60** | **1.1542** | **0.7581** | **0.7643** | **0.7699** | **0.7771** | **0.7699** |
 
 **Decision rule, written before the run:** adopt `no_bes` if its test NLL is
-within 0.02 of `all124`'s *and* its 20 ms AUROC is within 0.02. It fails both:
-ΔNLL **+0.0510** and Δ20 ms AUROC **-0.0298**, each above tolerance.
-**Verdict: keep BES.** Fetching BES for the corpus is a separate decision, not
-an assumption that can be dropped.
+within 0.02 of `all124`'s *and* its 20 ms AUROC is within 0.02. It passes both
+by improving on both: **ΔNLL -0.1010** and **Δ20 ms AUROC +0.0019** in
+`no_bes`'s favour. **Verdict: adopt `no_bes`; BES is droppable.** (50 ms is the
+one horizon where `all124` is ahead, by 0.0036.)
+
+This reverses the verdict this card carried on 2026-09-06 before the column
+order was measured. The earlier "`no_bes` costs +0.051 NLL and -0.030 AUROC"
+compared `all124` against a model that had been fitted on 12 non-BES columns
+plus 48 BES ones and no ECE at all. That comparison is void; this one replaces
+it.
 
 Two caveats that belong with the numbers rather than under them:
 
-* both fits' best epoch is **epoch 0**. The test NLL rises monotonically from
-  epoch 1 in both sets and `all124` diverged to NaN at epoch 16, so these are
-  one-epoch models and the table compares two one-epoch models. The comparison
-  between them is fair - identical data, seed, schedule and selection rule - but
-  the absolute quality is not what this architecture can do;
+* **best epoch is 0** for every fit run so far. Test NLL rises monotonically
+  from epoch 1 (`no_bes` 1.154 -> 1.372 by epoch 6, where the fork's patience
+  fired; `all124` diverged to NaN at epoch 16). A rerun at lr 1e-4 with a
+  by-shot validation carve out of the training shots (job 2924075, discarded)
+  had best epoch 0 as well and was *worse* on the held-out test split, so this
+  is not a learning-rate problem: the optimum lies inside the first pass over
+  540k rows and a once-per-epoch curve cannot see it. The fix is sub-epoch
+  checkpointing;
 * upstream passes the **test** split as `val_data`, which this fit reproduces,
   so the early stop selects on the test rows. `test NLL` is a
-  selection-informed number, not held out.
+  selection-informed number, not held out. Both sets are selected identically,
+  so the comparison between them is fair.
 
-Artifacts, with `training_<set>.json`, `PROVENANCE_<set>.json`, `ablation.json`,
-per-set normalisation dicts and loss curves:
+### Coverage on the corpus
+
+`features` + `infer` (under `fdp run`) on the 24 corpus shots of
+`sample_shots(corpus_shots, 24, seed=0)`, measured 2026-09-06. All 24 shots
+produce all four label series over 240 rows each; **6 of 24 have a non-zero
+valid fraction** and 18 have none, because a canonical feature is missing:
+
+| feature | absent on |
+|---|---|
+| `co2_r0..co2_v3` | 12 of 24 (`corpus:SignalAbsent`, every shot below 198279) |
+| `pinj_total`, `tinj_total` | 11 of 24 (`archive:ShotNotInArchive,corpus:SignalAbsent`; neither has an fdp source in `namespace.py`) |
+| `ece` | 4 of 24 |
+| `gas`, `ech_power_total` | 2 of 24 |
+| `ip`, `bt` | 0 of 24 - but only under `fdp run`; an un-wrapped run reports `fdp:PtDataError` on 19 of 24 and every row then goes invalid |
+
+Valid fractions on the six complete shots: 199025 0.542, 199421 0.621, 200417
+0.971, 201828 0.517, 201881 0.992, 203898 0.092. Peak `elm_risk_20ms` over the
+24 shots ranges 0.000-0.345.
+
+On a shot where every input is present the remaining invalidity is upstream's
+own `|z| > 10` row filter, i.e. the row is outside the wide-pedestal-QH
+training distribution - not a missing column. MEASURED on the demo shot
+**199597** (all 11 features present, 240 rows, valid fraction **0.192**): the
+filter fires on `tinj` for 139 rows (max |z| 14.8) and on `gas` for 55 rows
+(max |z| 16.0), and on nothing else. That is the filter doing its job; it is
+also why a corpus shot far from wide-pedestal QH will show a mostly-grey panel.
+
+Artifacts, with `training_no_bes.json`, `PROVENANCE_no_bes.json`,
+`ablation.json`, `normalization.json` and the loss curves:
 `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/`.
-Produced by `scripts/labelmaker/elm_dsm_train.py` under SLURM job 2924069
-(8 CPUs, 32 GB, 2 min 15 s and 1 min 38 s, 68.6% / 64.5% CPU utilisation,
-2.8 GB / 2.1 GB memory high-water).
-
-Labelmaker's own validation - adapter fidelity, reconstruction fidelity, label
-quality - is still unmeasured: `python -m labelmaker.run validate --models
-d3d_elm_time_to_event_dsm` needs the adapter this folder does not have yet.
+The refit ran on `stellar-vis2` (`sbatch` was unavailable to the session; the
+original 8-CPU SLURM run of the same script is job 2924069): 82 s wall, 350% of
+4 threads, 4.33 GB peak RSS, deterministic at seed 0.
 
 ## Technical specifications
 
-Embedding 143,276 parameters; gate/scale/shape ~3,000 each. Legacy Keras format; `runners/keras_h5.py` may need additional layer support.
+60 -> 128 ReLU6 embedding (dropout 0.2, identity in eval mode), then gate,
+scale and shape heads at `(128, 3)`, LogNormal mixture, all float64. Read by
+`runners/dsm_pickle.py`, not by Keras.
 
 ## Citation
 
-Unpublished internal model. Attribute to the PlasmaControl group, Princeton.
+Unpublished internal model. The architecture and the training rows are Hiro
+Farre-Kaga's (`/projects/EKOLEMEN/wpqh_elm_hiro/`); the fitted weights served
+here are labelmaker's. Attribute to the PlasmaControl group, Princeton.
 
 ## Contact
 

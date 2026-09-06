@@ -60,15 +60,17 @@ def test_default_config_names_labels_the_roster_produces():
     assert "d3d_tearing_time_to_event_dsm/tm_risk_1s" in cfg.labels
     assert cfg.labels[2] == "d3d_tearing_time_to_event_dsm/tm_time_p50"
     assert "d3d_tearing_time_to_event_dsm_continued/tm_risk_1s" in cfg.labels
-    assert cfg.labels[-2:] == (
+    assert cfg.labels[-3:] == (
         "d3d_ae_activity_seldnet/ae_active",
         "d3d_ae_activity_seldnet/ae_frequency",
+        "d3d_elm_time_to_event_dsm/elm_risk_20ms",
     )
     assert cfg.slugs == (
         "d3d_tearing_onset_cnn1d",
         "d3d_tearing_time_to_event_dsm",
         "d3d_tearing_time_to_event_dsm_continued",
         "d3d_ae_activity_seldnet",
+        "d3d_elm_time_to_event_dsm",
     )
 
 

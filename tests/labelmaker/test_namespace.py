@@ -50,8 +50,16 @@ def test_lookup_helpers_and_locators():
     assert ns.by_name("pinj_total").locator_for("corpus") == "pinj"
     assert all("archive" in f.sources for f in ns.by_source("archive"))
     assert {f.name for f in ns.by_source("corpus")} == {
-        "pinj_total", "tinj_total", "ech_power_total", "co2"
+        "pinj_total", "tinj_total", "ech_power_total", "co2",
+        "gas", "ece", "co2_r0", "co2_v1", "co2_v2", "co2_v3",
     }
+    # The ELM model's inputs: one channel of a multi-valve group, every
+    # channel of a 48-channel group, and one chord of the CO2 record.
+    assert ns.by_name("gas").locator_for("corpus") == "gas_raw#0"
+    assert ns.by_name("ece").kind == "profile"
+    assert ns.by_name("ece").locator_for("corpus") == "ece"
+    assert [ns.by_name(f"co2_{c}").locator_for("corpus")
+            for c in ("r0", "v1", "v2", "v3")] == ["co2#0", "co2#1", "co2#2", "co2#3"]
     # The one waveform: 4 chords, corpus only, kept at the native rate.
     assert ns.by_name("co2").kind == "waveform"
     assert ns.by_name("co2").sources == ("corpus",)
