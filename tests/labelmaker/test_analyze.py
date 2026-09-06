@@ -154,6 +154,19 @@ def test_config_thresholds_may_be_set_per_label(wired, tmp_path):
         analyze.load_config(_cfg(tmp_path, thresholds={f"{SLUG}/score": 1.5}))
 
 
+def test_config_scatter_names_labels_drawn_as_markers(wired, tmp_path):
+    """`ae_frequency` is NaN wherever no mode is active; a line through its
+    islands would invent a path. `scatter` lists the labels drawn as markers."""
+    cfg = analyze.load_config(_cfg(tmp_path, scatter=[f"{SLUG}/score"]))
+    assert cfg.scatter == (f"{SLUG}/score",)
+    assert cfg.as_dict()["scatter"] == [f"{SLUG}/score"]
+    assert analyze.load_config(_cfg(tmp_path)).scatter == ()
+    with pytest.raises(analyze.ConfigError, match="scatter"):
+        analyze.load_config(_cfg(tmp_path, scatter=[f"{SLUG}/nope"]))
+    with pytest.raises(analyze.ConfigError, match="scatter"):
+        analyze.load_config(_cfg(tmp_path, scatter="not-a-list"))
+
+
 def test_analyze_summary_and_figure_use_the_per_label_threshold(wired, tmp_path):
     out = tmp_path / "analysis"
     cfg = _cfg(tmp_path, thresholds={f"{SLUG}/score": 0.05})
