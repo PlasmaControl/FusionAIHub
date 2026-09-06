@@ -4,7 +4,8 @@ Why a new fit rather than the shipped weights: the upstream ELM model takes 124
 inputs and 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled
 shots. A model that needs BES cannot be served at corpus scale. So labelmaker
 fits the same architecture on the same rows twice - `all124`, the upstream input
-set, and `no_bes`, slots 0-59 - and the ablation decides whether the servable
+set, and `no_bes`, the 60 columns of the split pickle that are not BES (slots
+0-11 and 76-123 of `new_diagnostic_order`) - and the ablation decides whether the servable
 model is good enough to adopt (phase3-design section 6).
 
 What is reused verbatim and what is not:
@@ -197,15 +198,17 @@ def train(args) -> int:
           f"  train {split['train']['x'].shape} test {split['test']['x'].shape}\n"
           f"  events train {split['train']['e'].mean():.4%} "
           f"test {split['test']['e'].mean():.4%}", flush=True)
-    if n_cols != len(elm_inputs.CURRENT_DIAGNOSTIC_ORDER):
+    if n_cols != len(elm_inputs.SPLIT_COLUMN_ORDER):
         raise SystemExit(f"pickle is {n_cols} columns wide, expected 124")
     order = split["order_in_pickle"]
-    order_note = "not stored in the split pickle; taken from data_processing.ipynb cell 43"
+    order_note = ("not stored in the split pickle; it is new_diagnostic_order from "
+                  "data_processing.ipynb cell 43, MEASURED from the pickle's own "
+                  "raw/normalized column pair to 1.2e-12 on all 124 columns")
     if order is not None:
         order = [str(name) for name in order]
-        if tuple(order) != elm_inputs.CURRENT_DIAGNOSTIC_ORDER:
-            raise SystemExit("the pickle's column order is not current_diagnostic_order")
-        order_note = "stored in the split pickle and equal to current_diagnostic_order"
+        if tuple(order) != elm_inputs.SPLIT_COLUMN_ORDER:
+            raise SystemExit("the pickle's column order is not new_diagnostic_order")
+        order_note = "stored in the split pickle and equal to new_diagnostic_order"
     print(f"column order: {order_note}", flush=True)
 
     cols = elm_inputs.column_indices(args.column_set)

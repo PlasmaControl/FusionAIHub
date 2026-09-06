@@ -376,6 +376,62 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "decimated: `SCALE_TO_CANONICAL` does not list it and "
               "`resolve_corpus` skips both steps for a waveform",
     ),
+    # Added for d3d_elm_time_to_event_dsm (2026-09-06). The ELM survival model
+    # was fitted on `/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/<shot>_slow.h5`
+    # groups; each entry below records how the corpus group compares to the
+    # staged one it stands in for, measured on shot 185808, which is in both.
+    FeatureSpec(
+        name="gas", kind="scalar", units="V",
+        sources=("corpus",),
+        locators=("gas_raw#0",),
+        step=0.001,
+        notes="PTDATA `gasa`, the main gas-valve command in volts (NOT the "
+              "Torr L/s `gas_flow` group). Channel 0 of the 11-channel "
+              "`gas_raw` group; the channel is selected, never summed. "
+              "MEASURED on shot 185808 against the staged `gas` group's "
+              "`gasa` column (the upstream ELM model's own input), both "
+              "interpolated onto a 10 ms grid over 0-5 s: correlation "
+              "+1.0000 and mean ratio 1.000 (0.5482 vs 0.5482, peak 3.1493 "
+              "vs 3.1493). No other `gas_raw` channel comes close - the "
+              "next best is channel 1 at correlation +0.17",
+    ),
+    FeatureSpec(
+        name="ece", kind="profile", units="V",
+        sources=("corpus",),
+        locators=("ece",),
+        step=0.001,
+        notes="the 48 slow ECE radiometer channels, in channel order 1..48, "
+              "kept per channel and decimated to 1 ms. A `profile` only in "
+              "the mechanical sense that it is a fixed-length per-channel "
+              "array; the axis is ECE channel number, not rho, so no `rho` "
+              "dataset is written beside it (`store.write_features` only "
+              "attaches one to a 33-point profile). MEASURED on shot 185808 "
+              "against the staged `ece_slow` group the upstream ELM model "
+              "read, 100 ms window at t=2.0-2.1 s: channels 1-6 read "
+              "0.183/0.0622/0.0822/0.5623/0.6059/0.7265 against the staged "
+              "0.177/0.062/0.0817/0.5266/0.5688/0.6868, i.e. the same "
+              "channels in the same order and the same units, agreeing to "
+              "0.3-7% (the corpus record is ~3 MHz where the staged one is "
+              "65 kHz, so the two averages are not the same average)",
+    ),
+    *(
+        FeatureSpec(
+            name=f"co2_{chord}", kind="scalar", units="cm^-2",
+            sources=("corpus",),
+            locators=(f"co2#{i}",),
+            step=0.001,
+            notes="CO2 interferometer line-integrated density, chord "
+                  f"{chord} (channel {i} of the `co2` group), decimated to "
+                  "1 ms. This is the 1 ms mean of the SAME 500 kHz record "
+                  "the `co2` waveform feature hands to the AE model - the "
+                  "brief's `co2_slow` - not a separate fetch. Availability "
+                  "is inherited from that group: filled on 12 of the 24 "
+                  "corpus shots sampled with `sample_shots(corpus, 24, "
+                  "seed=0)`, all of them above shot 198279; the rest carry "
+                  "the `(4, 1)` absent-signal sentinel",
+        )
+        for i, chord in enumerate(("r0", "v1", "v2", "v3"))
+    ),
     FeatureSpec(
         name="ech_rho", kind="scalar", units="",
         sources=("archive",),

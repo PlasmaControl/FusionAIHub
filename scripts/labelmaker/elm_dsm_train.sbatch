@@ -13,8 +13,9 @@
 # the 1.57 GB split pickle plus the float64 copies of it, not for the model.
 #
 # Array task 0 is the `all124` column set (upstream's inputs), task 1 is `no_bes`
-# (slots 0-59, the set the FAITH corpus can actually fill). Same rows, same split,
-# same seed: only the input width differs.
+# (the 60 non-BES columns of the split pickle - slots 0-11 and 76-123 of
+# new_diagnostic_order - the set the FAITH corpus can actually fill). Same rows,
+# same split, same seed: only the input width differs.
 set -euo pipefail
 
 export OMP_NUM_THREADS=8

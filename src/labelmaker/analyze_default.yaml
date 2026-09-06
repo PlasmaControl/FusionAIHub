@@ -10,6 +10,7 @@ labels:
   - d3d_tearing_onset_cnn1d/betan
   - d3d_ae_activity_seldnet/ae_active
   - d3d_ae_activity_seldnet/ae_frequency
+  - d3d_elm_time_to_event_dsm/elm_risk_20ms
 
 # Canonical features (features/namespace.py) drawn above the labels for
 # orientation. They are fetched like model inputs if not already stored.

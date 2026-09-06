@@ -122,22 +122,30 @@ def test_every_summed_corpus_feature_has_a_scale():
     failure would land in a bulk run rather than here. One assertion moves it
     to test time.
 
-    A `waveform` feature never reaches that index - it is returned whole, with
-    no channel sum and no unit conversion - so it must be ABSENT from the
-    dict rather than present with a 1.0. An entry there would say a scale had
-    been decided for a path that has none.
+    Only the SUMMING path indexes it. A `waveform` feature is returned whole,
+    a `profile` feature is kept per channel, and a `scalar` whose locator names
+    a channel (`gas_raw#0`) is that channel alone: none of the three converts
+    units, so each must be ABSENT from the dict rather than present with a 1.0.
+    An entry there would say a scale had been decided for a path that has none.
     """
     from labelmaker.features import namespace as ns
 
     corpus_features = ns.by_source("corpus")
-    summed = {s.name for s in corpus_features if s.kind != "waveform"}
-    waveforms = {s.name for s in corpus_features if s.kind == "waveform"}
+
+    def summing(spec):
+        _, channel = rc.split_locator(spec.locator_for("corpus"))
+        return spec.kind == "scalar" and channel is None
+
+    summed = {s.name for s in corpus_features if summing(s)}
+    unscaled = {s.name for s in corpus_features if not summing(s)}
     assert summed == set(rc.SCALE_TO_CANONICAL), (
         f"corpus features without a scale: {summed - set(rc.SCALE_TO_CANONICAL)}; "
         f"scales for non-corpus features: {set(rc.SCALE_TO_CANONICAL) - summed}"
     )
-    assert waveforms, "expected at least one waveform corpus feature (co2)"
-    assert not (waveforms & set(rc.SCALE_TO_CANONICAL))
+    assert {s.name for s in corpus_features if s.kind == "waveform"}, (
+        "expected at least one waveform corpus feature (co2)"
+    )
+    assert unscaled and not (unscaled & set(rc.SCALE_TO_CANONICAL))
 
 
 def test_a_time_with_no_finite_channel_is_unknown_not_zero(tmp_path):
@@ -250,3 +258,73 @@ def test_a_shot_with_no_corpus_file_misses_co2_like_anything_else(tmp_path):
     got, missing = rc.resolve(199000, ["co2"], corpus=corpus)
     assert got == {}
     assert missing == {"co2": "FileNotFoundError"}
+
+
+# ---- channel-selected and per-channel features (d3d_elm_time_to_event_dsm) ----
+
+
+def _elm_corpus(tmp_path, *, co2_absent=False, ece_channels=48):
+    """A corpus file holding the groups the ELM model's features read."""
+    corpus = tmp_path / "elm_corpus"
+    corpus.mkdir()
+    n = 2000                                  # 2 s at 1 kHz, for speed
+    t = np.linspace(0.0, 2.0, n, dtype=np.float32)
+    with h5py.File(corpus / "190000_processed.h5", "w") as f:
+        g = f.create_group("gas_raw")         # 11 valves; only channel 0 is `gas`
+        g.create_dataset("xdata", data=t)
+        y = np.zeros((11, n), dtype=np.float32)
+        y[0] = 0.5
+        y[1] = 99.0                           # a decoy a channel sum would eat
+        g.create_dataset("ydata", data=y)
+        g = f.create_group("ece")
+        g.create_dataset("xdata", data=t)
+        g.create_dataset("ydata", data=np.arange(
+            ece_channels, dtype=np.float32)[:, None] * np.ones((1, n), np.float32))
+        g = f.create_group("co2")
+        g.create_dataset("xdata", data=np.array([0.0], dtype=np.float32)
+                         if co2_absent else t)
+        chords = np.array([1.0e14, 2.0e14, 3.0e14, 4.0e14], dtype=np.float32)
+        g.create_dataset("ydata", data=chords[:, None] * np.ones(
+            (1, 1 if co2_absent else n), np.float32))
+    return corpus
+
+
+def test_a_channel_selected_feature_takes_that_channel_and_never_the_sum(tmp_path):
+    corpus = _elm_corpus(tmp_path)
+    got, missing = rc.resolve(190000, ["gas", "co2_v2"], corpus=corpus)
+    assert missing == {}
+    np.testing.assert_allclose(np.nanmax(got["gas"].y), 0.5, rtol=1e-5)
+    np.testing.assert_allclose(np.nanmax(got["co2_v2"].y), 3.0e14, rtol=1e-5)
+    assert got["gas"].attrs["locator"] == "gas_raw#0"
+    assert got["gas"].attrs["n_channels"] == "1"
+    assert got["gas"].attrs["scale_to_canonical"] == "1.0"
+
+
+def test_a_profile_feature_keeps_every_channel_in_order(tmp_path):
+    corpus = _elm_corpus(tmp_path)
+    got, _ = rc.resolve(190000, ["ece"], corpus=corpus)
+    y = got["ece"].y
+    assert y.shape == (48, 2001)               # 2 s at the 1 ms declared step
+    np.testing.assert_allclose(y[:, 0], np.arange(48.0))
+    assert got["ece"].attrs["locator"] == "ece"
+
+
+def test_a_locator_naming_a_channel_the_group_lacks_is_a_per_shot_miss(tmp_path):
+    corpus = _elm_corpus(tmp_path)
+    with h5py.File(corpus / "190000_processed.h5", "a") as f:
+        del f["co2"]
+        g = f.create_group("co2")              # only two chords this shot
+        g.create_dataset("xdata", data=np.linspace(0.0, 2.0, 100, dtype=np.float32))
+        g.create_dataset("ydata", data=np.ones((2, 100), dtype=np.float32))
+    got, missing = rc.resolve(190000, ["co2_r0", "co2_v3"], corpus=corpus)
+    assert set(got) == {"co2_r0"}
+    assert missing == {"co2_v3": "ChannelMissing(3/2)"}
+
+
+def test_an_absent_co2_group_misses_every_chord(tmp_path):
+    corpus = _elm_corpus(tmp_path, co2_absent=True)
+    names = ["co2_r0", "co2_v1", "co2_v2", "co2_v3", "gas"]
+    got, missing = rc.resolve(190000, names, corpus=corpus)
+    assert set(got) == {"gas"}
+    assert set(missing) == {"co2_r0", "co2_v1", "co2_v2", "co2_v3"}
+    assert set(missing.values()) == {"SignalAbsent"}
