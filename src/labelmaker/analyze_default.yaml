@@ -6,6 +6,7 @@ labels:
   - d3d_tearing_onset_cnn1d/tm_prob
   - d3d_tearing_time_to_event_dsm/tm_risk_1s
   - d3d_tearing_time_to_event_dsm/tm_time_p50
+  - d3d_tearing_time_to_event_dsm_continued/tm_risk_1s
   - d3d_tearing_onset_cnn1d/betan
 
 # Canonical features (features/namespace.py) drawn above the labels for
@@ -22,3 +23,4 @@ threshold: 0.5
 # mode is already present.
 thresholds:
   d3d_tearing_time_to_event_dsm/tm_risk_1s: 0.2
+  d3d_tearing_time_to_event_dsm_continued/tm_risk_1s: 0.2
