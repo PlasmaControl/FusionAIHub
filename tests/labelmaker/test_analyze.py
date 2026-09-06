@@ -59,7 +59,12 @@ def test_default_config_names_labels_the_roster_produces():
     assert "d3d_tearing_onset_cnn1d/tm_prob" in cfg.labels
     assert "d3d_tearing_time_to_event_dsm/tm_risk_1s" in cfg.labels
     assert cfg.labels[2] == "d3d_tearing_time_to_event_dsm/tm_time_p50"
-    assert cfg.slugs == ("d3d_tearing_onset_cnn1d", "d3d_tearing_time_to_event_dsm")
+    assert "d3d_tearing_time_to_event_dsm_continued/tm_risk_1s" in cfg.labels
+    assert cfg.slugs == (
+        "d3d_tearing_onset_cnn1d",
+        "d3d_tearing_time_to_event_dsm",
+        "d3d_tearing_time_to_event_dsm_continued",
+    )
 
 
 def _labels_file(tmp_path, task, values, valid):
