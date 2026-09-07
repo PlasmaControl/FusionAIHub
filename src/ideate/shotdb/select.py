@@ -754,7 +754,7 @@ def reverify_flattop(
     """
     kept, dropped, pending = _measured(existing, measure)
     final, replacements = _refill(
-        kept, dropped, candidates, quotas, seed, measure, force_kept=True
+        kept, dropped, candidates, quotas, seed, measure, force_kept=True, require_measured=True
     )
     return final, replacements, pending
 
@@ -792,8 +792,16 @@ def _refill(
     measure: Callable[[int], float | None],
     *,
     force_kept: bool = False,
+    require_measured: bool = False,
 ) -> tuple[list[Candidate], list[dict]]:
-    """Fill each hole `dropped` left, from `candidates`, same theme first. Shared by both passes."""
+    """Fill each hole `dropped` left, from `candidates`, same theme first. Shared by both passes.
+
+    `require_measured` refuses a candidate nobody has measured. Pass one takes one (as `pending`:
+    the list is not final yet and there is nothing better on offer), pass two must not -- a
+    finalized list whose replacement row was never measured is a list that has to be finalized
+    again, and the loop this whole path exists to close would not close. A hole nothing measured
+    can fill is left, and named in the replacement record.
+    """
     alloc = _Allocator(quotas)
     for c in kept:
         alloc.add(c, c.reason, force=force_kept)
@@ -809,6 +817,8 @@ def _refill(
             if cand.shot not in verdicts:  # measured once, however many holes it is offered for
                 verdicts[cand.shot] = measure(cand.shot)
             got_c = verdicts[cand.shot]
+            if got_c is None and require_measured:
+                continue
             if got_c is not None and got_c < MIN_FLATTOP_S:
                 continue
             fixed = (
