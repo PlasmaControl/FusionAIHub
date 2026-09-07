@@ -26,6 +26,7 @@ from .retrieval import rank as rank_mod
 from .schema import QueryState, Range, SegName, ShotRecord, to_summary
 from .shotdb import build as build_mod
 from .shotdb import census, legacy_raw, store
+from .shotdb import logs as logs_mod
 from .shotdb import select as select_mod
 
 # sentence_transformers reaches into huggingface_hub on every model load, even though the MiniLM
@@ -820,6 +821,70 @@ def cmd_corpus(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------------ logs
+
+
+def cmd_logs(args) -> int:
+    """`logs missing` says what to run at GA; `logs import` brings a synced runs/ tree back.
+
+    Neither touches the network. The text corpus is d3dlogfetching's output and that tool only
+    runs inside the GA fusion network, so the only honest thing this side can do is name the
+    commands and be byte-compatible with what they produce (see shotdb/logs.py).
+    """
+    paths = None
+    if args.what == "missing":
+        if not (args.text_dir and (args.list or args.census)):
+            paths = config.load_paths()
+        text_dir = Path(args.text_dir) if args.text_dir else paths.per_shot_txt_dir
+        index = Path(args.index) if args.index else (paths.shot_index_json if paths else None)
+        if args.all_corpus:
+            import pandas as pd
+
+            parquet = Path(args.census) if args.census else paths.db_dir / "corpus_coverage.parquet"
+            if not parquet.exists():
+                print(f"no census at {parquet}; run `ideate corpus scan` first", file=sys.stderr)
+                return 1
+            shots = sorted(set(pd.read_parquet(parquet, columns=["shot"])["shot"].astype(int)))
+        else:
+            listed = args.list or "recommender_v1"
+            path = Path(listed)
+            if not path.exists():
+                path = config.CONFIG_DIR / "shot_lists" / f"{listed}.yaml"
+            if not path.exists():
+                print(f"no shot list at {listed}", file=sys.stderr)
+                return 1
+            shots = _shot_file(str(path))
+        print(
+            logs_mod.format_missing(
+                logs_mod.missing(shots, text_dir), n_total=len(shots), index_json=index
+            )
+        )
+        return 0
+
+    runs_dir = Path(args.runs_dir)
+    if not runs_dir.is_dir():
+        print(f"no runs directory at {runs_dir}", file=sys.stderr)
+        return 1
+    if not (args.raw_dir and args.text_dir):
+        paths = config.load_paths()
+    raw_dir = Path(args.raw_dir) if args.raw_dir else paths.shotsummary_raw_dir
+    text_dir = Path(args.text_dir) if args.text_dir else paths.per_shot_txt_dir
+    report = logs_mod.import_runs(
+        runs_dir, raw_dir=raw_dir, txt_dir=text_dir, dry_run=args.dry_run, force=args.force
+    )
+    verb = "would write" if args.dry_run else "wrote"
+    print(f"{len(report.runs)} run(s): {', '.join(report.runs) or 'none'}")
+    if report.skipped:
+        print(f"skipped (no {logs_mod.RUN_MARKER}): {', '.join(report.skipped)}")
+    print(f"{'would copy' if args.dry_run else 'copied'} {report.files_copied} run file(s) -> {raw_dir}")
+    print(f"{verb} {report.bundles_written} bundle(s) -> {text_dir}")
+    if report.bundles_kept:
+        print(f"kept {report.bundles_kept} existing bundle(s) (--force to rewrite)")
+    for name in report.would_write:
+        print(f"  {verb} {name}")
+    return 0
+
+
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
     paths = config.load_paths()
@@ -950,6 +1015,22 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"rule (b) shot-text floor (default {select_mod.MIN_SHOT_CHARS}; see select.py)",
     )
     p.set_defaults(func=cmd_corpus)
+
+    p = sub.add_parser("logs", help="the d3dlogfetching shot-log contract")
+    what = p.add_subparsers(dest="what", required=True)
+    s = what.add_parser("missing", help="shots with no shot_<N>.txt, and how to fetch them")
+    s.add_argument("--list", help="shot-list name or file (default: recommender_v1)")
+    s.add_argument("--all-corpus", action="store_true", help="every shot in the census instead")
+    s.add_argument("--census", help="corpus_coverage.parquet (default: <db_dir>/...)")
+    s.add_argument("--text-dir", help="per_shot_txt directory (default: paths.yaml's)")
+    s.add_argument("--index", help="sql/index.json, shot -> run_id (default: paths.yaml's)")
+    s = what.add_parser("import", help="a synced runs/ tree -> raw/<run_id>/ + per-shot bundles")
+    s.add_argument("runs_dir")
+    s.add_argument("--raw-dir", help="shotsummary/raw (default: paths.yaml's)")
+    s.add_argument("--text-dir", help="per_shot_txt directory (default: paths.yaml's)")
+    s.add_argument("--dry-run", action="store_true", help="print what would be written")
+    s.add_argument("--force", action="store_true", help="rewrite an existing per-shot bundle")
+    p.set_defaults(func=cmd_logs)
 
     p = sub.add_parser("query", help="find similar shots")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")
