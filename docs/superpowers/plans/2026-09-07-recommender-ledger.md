@@ -11,7 +11,7 @@ Per task: command run, output summary, jobstats (for SLURM jobs), reviewer verdi
 
 | id | task | owner model | status |
 |---|---|---|---|
-| I1 | pyproject/pixi: hatch packages + `ideate` feature, envs `ideate`, `ideate-cpu`; `src/ideate/__init__.py` | opus | pending |
+| I1 | pyproject/pixi: hatch packages + `ideate` feature, envs `ideate`, `ideate-cpu`; `src/ideate/__init__.py` | opus | complete (b93ec76, review clean) |
 | I2 | port shotrec → src/ideate (no UI, no fetch/curate/pcslayout) + tests/ideate + configs/ideate, green `-W error` | codex gpt-6-astra | pending |
 | I3 | `shotdb/reader.py` Reader protocol, `CorpusReader`, `build` on Reader, `ideate corpus scan` census CLI | opus | pending |
 | I4 | census SLURM job → `corpus_coverage.parquet` (16,909 rows) + jobstats (CPU/CPU-mem) | controller | pending |
@@ -30,3 +30,4 @@ Per task: command run, output summary, jobstats (for SLURM jobs), reviewer verdi
 
 ## Log
 - 2026-09-07 branch `recommender` created; plan + specs + ledger committed.
+- I1 complete: commit b93ec76. `pixi install -e ideate-cpu` / `-e ideate` ok (torch 2.14.0+cpu / 2.6.0+cu124, cuda True on login V100S); `from mcp.server import MCPServer` (mcp 2.1.1); MiniLM `sentence-transformers/all-MiniLM-L6-v2` loads offline → 384-d; envs 83k inodes. Deviation: `sentence-transformers` on pypi (conda recipe forces torch 2.12 vs feature.cuda <2.11). Reviewer: approved; Minor: comment wording at pyproject "single exception"; test style (`from __future__`); `ideate`/`ideate-mcp` pixi tasks fail until the port lands (expected).
