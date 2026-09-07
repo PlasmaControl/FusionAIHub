@@ -386,8 +386,17 @@ def _step_offsets(env_ms: float, gap_ms: float,
     they need not, because `d * env_ms` lands a bit either side of a bound
     that is `d` bins away exactly - `3 * 0.7 == 2.0999999999999996` is not
     `>= 2.1`, and `8 * 0.7 == 5.6000000000000005` is not `<= 5.6`, so both
-    end bins of a seven-bin window disappear. In bins there is nothing to
-    round.
+    end bins of a seven-bin window disappear.
+
+    The bounds are converted to the NEAREST bin (`round`), not to the
+    nearest bin strictly INSIDE the window (`ceil`/`floor`), which is what
+    the float comparison amounted to. On any grid whose spacing divides
+    both bounds - the pipeline's 1 ms one, and every grid this was written
+    against - the two are the same integers, so nothing about the reference
+    comparison changes. Off such a grid they differ by a bin at each end,
+    and nearest is the one the comparison MEANT. `round` is banker's, so a
+    bound landing exactly on a half-bin resolves to the even bin; that is
+    arbitrary, and it is a half-bin either way.
     """
     env_ms, gap_ms, span_ms = float(env_ms), float(gap_ms), float(span_ms)
     lo = max(1, round(gap_ms / env_ms))

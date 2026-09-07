@@ -41,8 +41,21 @@ DEFAULT_LEXICON = Path(__file__).with_name("lexicons.yaml")
 #: Four independent mentions reach 1.0; nothing else about text does.
 TEXT_ONLY_CEILING = 0.25
 
-#: What ends a sentence: `. ! ? ;` and the newline.
-_TERMINATOR = re.compile(r"[.!?;\n]+")
+#: A `.` BETWEEN two digits is part of the number and not punctuation -
+#: `1.3` is one token. Everywhere else a `.` is punctuation, so this is
+#: written as "a dot with a non-digit on one side or the other" and reused
+#: by both of the patterns below, which have to agree about it.
+_DECIMAL_SAFE_DOT = r"(?<!\d)\.|\.(?!\d)"
+
+#: What ends a sentence: `. ! ? ;` and the newline - except the `.` inside
+#: a decimal number. Splitting "beams 1.3/2.4 MW" on both dots leaves the
+#: middle piece "3/2", which IS the tearing alias, so a power pair read as
+#: a mode number. Measured corpus-wide after the fix: 84 of the 22,950
+#: bundles had a run-scope tearing hit made of nothing but this - "GasA
+#: (1.3/2.5/4V)" and "probe scan width/height 0.6/1.2/1.8kA" are the two
+#: phrasings - and they are gone. (None of the 84 is one of the 500
+#: `recommender_v1` shots, so the shipped table below is unchanged.)
+_TERMINATOR = re.compile(rf"(?:[!?;\n]|{_DECIMAL_SAFE_DOT})+")
 
 #: Everything that is NOT part of a word. `\w` keeps letters, digits and
 #: the underscore; the hyphen and the slash are kept too, so that
@@ -50,8 +63,9 @@ _TERMINATOR = re.compile(r"[.!?;\n]+")
 #: a 2 and a 1. The underscore is kept for the same reason in reverse: the
 #: session text is full of control-system parameter names, and
 #: `RWM_GAINMULT` is an identifier rather than somebody saying an RWM
-#: happened.
-_PUNCTUATION = re.compile(r"[^\w\-/]+")
+#: happened. The decimal point is kept on the same terms as the sentence
+#: split, so that "q95=3.2 at 2.11 s" carries no "3/2" either.
+_PUNCTUATION = re.compile(rf"(?:[^\w\-/.]|{_DECIMAL_SAFE_DOT})+")
 
 #: Stripped from a token's ENDS, where they are punctuation after all - a
 #: trailing dash, a bare slash between two spaces.
@@ -243,10 +257,15 @@ def _glue(sentence: str) -> str:
     """The sentence as `" word word "`, for whole-phrase containment.
 
     Every character that is not part of a word becomes a space, EXCEPT a
-    hyphen or a slash inside a token: "elm-free" is one token and so is
-    "2/1", while a trailing dash or a comma is not part of the word before
-    it. Wrapping the result in spaces is what makes `" nt " in " we want "`
-    false - the whole point of the exercise.
+    hyphen or a slash inside a token and a `.` between two digits:
+    "elm-free" is one token, so is "2/1", and so is "1.3" - while a
+    trailing dash, a comma, or the full stop that ends a sentence is not
+    part of the word before it. Wrapping the result in spaces is what makes
+    `" nt " in " we want "` false - the whole point of the exercise.
+
+    The decimal rule is not a nicety. `.` was a separator everywhere until
+    the L7-fix review, so "beams 1.3/2.4 MW" glued to " beams 1 3/2 4 mw "
+    and a beam power pair produced the tearing alias "3/2".
     """
     flat = _PUNCTUATION.sub(" ", sentence.lower())
     tokens = (token.strip(_IN_TOKEN) for token in flat.split())

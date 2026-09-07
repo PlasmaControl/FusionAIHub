@@ -83,5 +83,9 @@ def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
     p = Paths(root=tmp_path)
     assert p.text_cache == tmp_path / "text"
     assert p.logs_subset == tmp_path / "text" / "logs_subset.jsonl"
+    # Beside the subset, the shots the source was searched for and did not
+    # have. Without it a record-less shot is searched again on every call,
+    # which is a full pass over the 616 MB source for nothing.
+    assert p.logs_subset_missing == tmp_path / "text" / "logs_subset.missing"
     p.mkdirs()
     assert p.text_cache.is_dir()
