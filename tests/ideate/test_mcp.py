@@ -14,6 +14,7 @@ throughout, including in the subprocess's environment.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import sys
@@ -121,6 +122,40 @@ def test_search_shots_filters_on_labels(ideate_db):
 def test_a_reference_shot_the_database_does_not_hold_is_an_error_with_the_hint(ideate_db):
     got = tools.search_shots(ref_shot=999999)
     assert "999999" in got["error"] and "ideate add" in got["error"]
+
+
+def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_report(
+    ideate_db, monkeypatch
+):
+    """`search_report` recomputed the hard filter (and two more column passes) purely to report
+    the candidate count, on top of the pass every channel makes for itself. A query that
+    constrains NOTHING admits every row of its segment, which is one comparison on one column --
+    so the tool adds no pass of its own, and the count it reports is the same number."""
+    from ideate.retrieval import channels
+    from ideate.retrieval import rank as rank_mod
+    from ideate.shotdb.store import ShotDB
+
+    real, calls = channels.hard_filter, []
+
+    def counting(q, db):
+        calls.append(q.segment)
+        return real(q, db)
+
+    monkeypatch.setattr(channels, "hard_filter", counting)
+    monkeypatch.setattr(rank_mod, "hard_filter", counting)
+    got = tools.search_shots(ref_shot=100, n=3)
+    by_the_tool = len(calls)
+
+    calls.clear()
+    db = ShotDB.load(ideate_db / "db")
+    rank_mod.search(
+        __import__("ideate.schema", fromlist=["QueryState"]).QueryState(
+            ref_shot=100, segment="flat_top", n=3
+        ),
+        db,
+    )
+    assert by_the_tool == len(calls)  # the tool itself filters not once more than the search does
+    assert got["query"]["candidates"] == 4  # every flat_top row: nothing was filtered away
 
 
 # ------------------------------------------------------------------------------ describe_shot
@@ -240,14 +275,45 @@ def test_an_unreadable_events_table_is_an_error_dict_not_an_exception(ideate_db)
     assert "error" in got and isinstance(got["caveats"], list)
 
 
+def test_a_row_with_no_recorded_time_is_counted_out_of_a_window_not_dropped_in_silence(ideate_db):
+    """A NaN compares False against both bounds, so a row whose times were never recorded
+    vanishes from a windowed call looking exactly like a row that did not overlap. "We do not
+    know when this happened" is not "this did not happen then", and the difference is the whole
+    reason `search_shots` carries `nan_excluded`; this is the same hole in the other tool."""
+    write_events(
+        ideate_db / "db",
+        [
+            _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
+            _event(100, "tearing", np.nan, np.nan, event_id="100-x-00002"),
+        ],
+    )
+    got = tools.get_events(100, t0_s=0.0, t1_s=5.0)
+    assert [e["event_id"] for e in got["events"]] == ["100-x-00001"]
+    assert got["nan_excluded"] == 1
+    assert any("no recorded time" in c for c in got["caveats"])
+    # No window: the timeless row is not excluded from anything, and says so with a zero.
+    whole = tools.get_events(100)
+    assert whole["n"] == 2 and whole["nan_excluded"] == 0
+    assert not any("no recorded time" in c for c in whole["caveats"])
+
+
+def test_a_missing_value_of_any_pandas_flavour_becomes_null(ideate_db):
+    """`_event_row` mapped non-finite FLOATS to null. A `pd.NaT` or a `pd.NA` -- what a datetime
+    or a nullable-integer column hands back, which the events schema will grow one day -- went
+    through untouched and would raise inside the JSON encoder, i.e. inside the transport."""
+    row = tools._event_row(
+        {"t0_s": np.nan, "written_at": pd.NaT, "channel": pd.NA, "phenomenon": "tearing"}
+    )
+    assert row == {"t0_s": None, "written_at": None, "channel": None, "phenomenon": "tearing"}
+    json.dumps(row)  # the point: it survives the encoder
+
+
 # ------------------------------------------------------------------------------- the registry
 
 
 def test_every_registered_tool_is_a_documented_function_with_annotated_arguments():
     """The docstring and the annotations ARE the tool schema -- an assistant sees nothing else.
     An unannotated argument becomes an untyped schema slot the model has to guess at."""
-    import inspect
-
     assert [fn.__name__ for fn in server_mod.TOOLS] == [
         "search_shots",
         "describe_shot",
@@ -258,6 +324,63 @@ def test_every_registered_tool_is_a_documented_function_with_annotated_arguments
         sig = inspect.signature(fn)
         for name, p in sig.parameters.items():
             assert p.annotation is not inspect.Parameter.empty, f"{fn.__name__}.{name}"
+
+
+def _registered(name):
+    """The tool as the SERVER holds it -- i.e. wrapped in whatever guards registration adds."""
+    return {fn.__name__: fn for fn in server_mod.TOOLS}[name]
+
+
+def test_a_registered_tool_that_raises_anything_at_all_answers_with_an_error_dict():
+    """The module's headline promise, for the exception nobody anticipated. Each tool catches a
+    NAMED set; anything outside it reached the framework, which answered the model
+    `is_error=True, "Error executing tool describe_shot"` -- no `caveats` key, no sentence, and
+    nothing to act on. The guard has to sit at registration so the plain function keeps raising
+    for its own tests, and has to use `functools.wraps` so the signature and docstring -- which
+    ARE the tool schema -- survive it."""
+    from ideate.mcp.tools import never_raises
+
+    @never_raises
+    def boom(shot: int, segment: str = "flat_top") -> dict:
+        """Raise something nobody caught."""
+        raise RuntimeError("the parquet writer was mid-flight")
+
+    got = boom(shot=1)
+    assert got["error"] == "RuntimeError: the parquet writer was mid-flight"
+    assert isinstance(got["caveats"], list)
+    assert boom.__name__ == "boom" and boom.__doc__.startswith("Raise something")
+    # `inspect.signature` follows `__wrapped__`, so the schema mcp builds is the plain
+    # function's: the same parameters, in order, with their defaults. (The annotations are
+    # strings here only because this test module imports `annotations` from `__future__`.)
+    params = inspect.signature(boom).parameters
+    assert list(params) == ["shot", "segment"] and params["segment"].default == "flat_top"
+
+
+def test_a_half_published_database_is_an_error_dict_naming_the_rebuild(tmp_path, monkeypatch):
+    """`db/manifest.json` present, the tables not yet: `ideate build` publishes per file, so a
+    build in flight IS this state. `_db()`'s existence check passes and `ShotDB.load` then
+    raises on `shots.parquet` -- which is the unanticipated exception, on a state the database
+    is really in."""
+    root = tmp_path / "half"
+    (root / "db").mkdir(parents=True)
+    (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
+    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
+    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    got = _registered("describe_shot")(shot=100)
+    assert "FileNotFoundError" in got["error"] and "shots.parquet" in got["error"]
+    assert any("rebuilt" in c and "ideate build" in c for c in got["caveats"])
+
+
+def test_an_events_table_with_the_wrong_columns_is_an_error_dict_not_a_key_error(ideate_db):
+    """`pd.read_parquet` is inside the try; `df["shot"]` is not. A readable table written by
+    something else -- an older schema, another tool's parquet -- raises `KeyError` from a line
+    no `except` covers."""
+    pd.DataFrame({"shot_number": [100], "t_start": [1.0]}).to_parquet(
+        ideate_db / "db" / "events.parquet"
+    )
+    got = _registered("get_events")(shot=100)
+    assert "KeyError" in got["error"] and "shot" in got["error"]
+    assert isinstance(got["caveats"], list)
 
 
 def test_the_server_registers_the_three_tools_and_the_manifest_resource(ideate_db):
@@ -276,6 +399,12 @@ def test_the_server_registers_the_three_tools_and_the_manifest_resource(ideate_d
         assert t.description and t.input_schema["type"] == "object"
     assert [str(r.uri) for r in resources.resources] == ["ideate://manifest"]
     assert json.loads(manifest.contents[0].text)["reader"] == "test"
+    # The guard at registration must not eat the schema: a `*args` wrapper that did would leave
+    # every tool with an empty property set and the model guessing at argument names.
+    by_name = {t.name: t for t in tool_list.tools}
+    assert set(by_name["describe_shot"].input_schema["properties"]) == {"shot", "segment"}
+    assert by_name["describe_shot"].input_schema["required"] == ["shot"]
+    assert "logbook" in by_name["describe_shot"].description
 
 
 def test_the_manifest_resource_carries_the_missing_database_error(tmp_path, monkeypatch):
@@ -298,6 +427,15 @@ def test_the_manifest_resource_carries_the_missing_database_error(tmp_path, monk
 def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     """`python -m ideate.mcp` in a real subprocess, spoken to over stdin/stdout.
 
+    The data root is the state the I7 review reproduced this failure on: `db/manifest.json`
+    published and the tables not (a build writes per file, so a build in flight IS this). Two
+    calls, because the two things that can go wrong here are different. `get_events` is the
+    anticipated failure the tool words itself; `describe_shot` walks into `ShotDB.load`, which
+    raises `FileNotFoundError` on `shots.parquet` -- and before the catch-all that came back as
+    `is_error=True` with the string "Error executing tool describe_shot": no `caveats` key, no
+    sentence, nothing the model could do next. Asserting `is_error is False` HERE, over the real
+    transport, is the only place that distinction is visible at all.
+
     The guard is `asyncio.wait_for`: a server that hangs on start or never answers must fail
     this test in a minute rather than wedge the suite. A subprocess that cannot start at all
     (no interpreter, no package) is a skip, not a failure -- that is an environment fact.
@@ -305,12 +443,11 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     from mcp.client import Client
     from mcp.client.stdio import StdioServerParameters, get_default_environment
 
+    root = tmp_path / "root"
+    (root / "db").mkdir(parents=True)
+    (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
     env = get_default_environment()
-    env.update(
-        IDEATE_DATA_ROOT=str(tmp_path / "root"),
-        HF_HUB_OFFLINE="1",
-        PYTHONUNBUFFERED="1",
-    )
+    env.update(IDEATE_DATA_ROOT=str(root), HF_HUB_OFFLINE="1", PYTHONUNBUFFERED="1")
     env.pop("IDEATE_PATHS", None)
     params = StdioServerParameters(
         command=sys.executable, args=["-m", "ideate.mcp"], cwd=str(REPO), env=env
@@ -319,11 +456,12 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     async def go():
         async with Client(params) as client:
             tool_list = await client.list_tools()
-            result = await client.call_tool("get_events", {"shot": 1})
-            return tool_list, result
+            events = await client.call_tool("get_events", {"shot": 1})
+            half = await client.call_tool("describe_shot", {"shot": 100})
+            return tool_list, events, half
 
     try:
-        tool_list, result = asyncio.run(asyncio.wait_for(go(), timeout=90))
+        tool_list, result, half = asyncio.run(asyncio.wait_for(go(), timeout=90))
     except (FileNotFoundError, PermissionError) as exc:  # pragma: no cover - environment
         pytest.skip(f"cannot spawn the server subprocess: {exc}")
     except TimeoutError:  # pragma: no cover - a hung server
@@ -334,6 +472,11 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     doc = json.loads(result.content[0].text)
     assert doc["events"] == []
     assert doc["caveats"] == ["no events table yet (labelmaker events not joined)"]
+
+    assert not half.is_error  # NOT the framework's "Error executing tool describe_shot"
+    doc = json.loads(half.content[0].text)
+    assert "FileNotFoundError" in doc["error"] and "shots.parquet" in doc["error"]
+    assert any("rebuilt" in c and "ideate build" in c for c in doc["caveats"])
 
 
 def test_the_project_mcp_config_points_at_this_server():

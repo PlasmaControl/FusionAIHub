@@ -14,10 +14,16 @@ import json
 from mcp.server import MCPServer
 
 from .. import __version__, config
-from .tools import describe_shot, get_events, search_shots
+from .tools import describe_shot, get_events, never_raises, search_shots
 
 #: Every tool this server offers, in the order an assistant sees them. Later tasks append.
-TOOLS = [search_shots, describe_shot, get_events]
+#:
+#: `never_raises` is applied HERE rather than at each definition, so that the promise the module
+#: docstring makes -- every failure reaches the model as `{"error", "caveats"}`, never as the
+#: framework's bare "Error executing tool <name>" -- holds for a tool whose author forgot an
+#: `except`, which is the only kind of tool it has ever failed for. `functools.wraps` keeps the
+#: signature and the docstring, so the schema below is still the plain function's.
+TOOLS = [never_raises(fn) for fn in (search_shots, describe_shot, get_events)]
 
 INSTRUCTIONS = """\
 DIII-D shot retrieval over a locally built database of tokamak discharges.

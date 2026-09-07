@@ -1410,6 +1410,42 @@ def test_cli_select_finalize_refuses_to_re_select_over_an_existing_list(
     assert out.read_text(encoding="utf-8") == before  # not touched
 
 
+def test_cli_select_from_list_re_verifies_a_list_that_predates_the_from_list_key(
+    selection_inputs, tmp_path
+):
+    """The committed `recommender_v1.yaml` was stamped `finalized: true` before the invariant
+    that only a `--from-list` run may say so, so it carries no `from_list` key. Re-verifying it
+    must still work: what `--from-list` reads out of a document is its `shots` (and its `seed`),
+    and the summary is the PREVIOUS run's provenance -- an output of that run, never an input to
+    this one. A re-verification that demanded the key would refuse every list written so far.
+    """
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    committed_p = tmp_path / "legacy.yaml"
+    base = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(committed_p), "--features": str(feats)}
+    )
+    committed = _write_list([*base, "--finalize"], committed_p)
+    doc = yaml.safe_load(committed_p.read_text(encoding="utf-8"))
+    doc["summary"].pop("from_list")  # what a list written before this task looks like
+    doc["summary"]["finalized"] = True
+    committed_p.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+
+    out = tmp_path / "final.yaml"
+    argv = [
+        *select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)}),
+        "--finalize", "--from-list", str(committed_p),
+    ]
+    assert cli.main(argv) == 0
+    new = yaml.safe_load(out.read_text(encoding="utf-8"))
+    assert [e["shot"] for e in new["shots"]] == [e["shot"] for e in committed["shots"]]
+    # And the re-verified copy is the one that carries the provenance the legacy list lacked.
+    assert new["summary"]["finalized"] is True
+    assert new["summary"]["from_list"] == str(committed_p)
+
+
 def test_cli_select_from_list_refuses_a_finalized_list_shorter_than_it_asked_for(
     selection_inputs, tmp_path, capsys
 ):
