@@ -64,7 +64,7 @@ def _tra(cols, n_cols: int, *, rows: int = BURST_ROWS, prob: float = 0.9):
     return out
 
 
-def _write_block(path, tra, *, shot=198658, diag="mhr", channel=0):
+def _write_block(path, tra, *, shot=198658, diag="mhr", channel=0, thr=None):
     """One stored `(diag, channel, "wide")` block holding `tra`."""
     zeros = np.zeros_like(tra)
     block = masks.MaskBlock(
@@ -72,8 +72,9 @@ def _write_block(path, tra, *, shot=198658, diag="mhr", channel=0):
         coh=zeros, tra=tra, raw_logpow=zeros, t_s=_times(tra.shape[1]),
         meta={"fs_hz": TRAIN_FS_HZ, "decim": TRAIN_DECIM},
     )
+    extra = {} if thr is None else {"thr": float(thr)}
     return masks.write_masks(
-        path, shot, [masks.block_arrays(block, unet_sha256="c" * 64)]
+        path, shot, [masks.block_arrays(block, unet_sha256="c" * 64, **extra)]
     )
 
 
@@ -429,6 +430,7 @@ def test_an_elm_outside_every_burst_is_confident_of_the_smoothed_activity():
     bare = transients.transients_to_events(
         elms, [], shot=1, diag="mhr", channel=0, pass_name="wide",
         t_s=t_s, t_cov=(float(t_s[0]), float(t_s[-1])), unet_sha256="b" * 64,
+        activity=None,
     )
     assert math.isnan(next(e for e in bare if e.phenomenon == "elm").confidence)
 
@@ -462,11 +464,30 @@ def test_the_events_go_into_the_shots_table(tmp_path):
     assert free.shape == (1, 2)
 
 
+def test_the_activity_the_confidence_comes_from_is_not_optional():
+    # The confidence rule is "the burst you are in, else the trace under
+    # you"; with `activity` defaulted a caller got the NaN fallback by
+    # forgetting an argument rather than by deciding anything. Passing
+    # `activity=None` is still how a caller says there is no trace.
+    t_s = _times(400)
+    common = {
+        "shot": 1, "diag": "mhr", "channel": 0, "pass_name": "wide",
+        "t_s": t_s, "t_cov": (float(t_s[0]), float(t_s[-1])),
+        "unet_sha256": "b" * 64,
+    }
+    with pytest.raises(TypeError, match="activity"):
+        transients.transients_to_events(np.zeros(0), [], **common)
+    assert transients.transients_to_events(
+        np.zeros(0), [], activity=None, **common
+    )
+
+
 def test_events_of_a_channel_with_nothing_on_it():
     t_s = _times(400)
     got = transients.transients_to_events(
         np.zeros(0), [], shot=1, diag="mhr", channel=0, pass_name="wide",
         t_s=t_s, t_cov=(float(t_s[0]), float(t_s[-1])), unet_sha256="b" * 64,
+        activity=None,
     )
     # No ELMs is not no coverage: the whole record is one ELM-free interval.
     assert [e.phenomenon for e in got] == ["elm_free"]
@@ -482,7 +503,10 @@ def test_transients_for_block_reads_a_stored_block(tmp_path):
     got = transients.transients_for_block("mhr_00_wide", path)
     t_s = _times(3600)
     assert np.array_equal(got.t_s, t_s)
-    assert got.t_cov == (float(t_s[0]), float(t_s[-1]))
+    half = 0.5 * float(t_s[1] - t_s[0])
+    assert got.t_cov == pytest.approx(
+        (float(t_s[0]) - half, float(t_s[-1]) + half)
+    )
     # The file's own `_col_act`, which is `column_activity` of what was packed.
     assert got.activity[cols[0]] == pytest.approx(BURST_ACTIVITY)
     assert len(got.bursts) == 30
@@ -491,6 +515,31 @@ def test_transients_for_block_reads_a_stored_block(tmp_path):
     assert got.elm_free_s.shape == (1, 2)
     assert got.clock["rate_hz"].shape == t_s.shape
     assert float(np.nanmax(got.clock["rate_hz"])) == 70.0
+
+
+def test_a_block_thresholded_somewhere_else_is_refused(tmp_path):
+    # `_col_act` is `column_activity` at the file's OWN threshold, which is
+    # the whole reason this path never unpacks a mask. Reading a file cut at
+    # some other threshold would silently return a different trace, so it is
+    # refused - naming both numbers, because which one is wrong depends on
+    # who wrote the file.
+    path = _write_block(tmp_path / "198658_masks.npz", _tra([200], 400), thr=0.5)
+    with pytest.raises(ValueError, match=r"0\.5.*0\.2|0\.2.*0\.5"):
+        transients.transients_for_block("mhr_00_wide", path)
+
+
+def test_the_coverage_of_a_block_is_its_columns_true_span(tmp_path):
+    # `t_s` holds column CENTRES, so the record the block covers runs half a
+    # column either side of the first and last of them: reporting the centres
+    # would give away half a column of coverage at each end and make a
+    # detector claim it had not looked where it had.
+    path = _write_block(tmp_path / "198658_masks.npz", _tra([200], 400))
+    got = transients.transients_for_block("mhr_00_wide", path)
+    t_s = _times(400)
+    half = 0.5 * float(t_s[1] - t_s[0])
+    assert got.t_cov == pytest.approx(
+        (float(t_s[0]) - half, float(t_s[-1]) + half)
+    )
 
 
 def test_transients_for_block_needs_a_block_that_is_there(tmp_path):

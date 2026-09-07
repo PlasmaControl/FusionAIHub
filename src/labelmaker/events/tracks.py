@@ -515,9 +515,9 @@ def _iou(a: Track, b: Track) -> float:
 
     So a zero union falls back to the axis that still has extent: the boxes
     must COINCIDE on the degenerate axis, and the score is the overlap
-    fraction of the other one. When both axes are degenerate - two pixels,
-    or a row crossing a column - there is no such axis, and only identical
-    boxes match.
+    fraction of the other one. When neither box has an axis with extent left
+    - two pixels, or a row crossing a column - there is no such axis, and
+    only identical boxes match.
     """
     dt = min(a.t1_s, b.t1_s) - max(a.t0_s, b.t0_s)
     df = min(a.f1_khz, b.f1_khz) - max(a.f0_khz, b.f0_khz)
@@ -531,8 +531,9 @@ def _iou(a: Track, b: Track) -> float:
     )
     if union > 0.0:
         return inter / union
-    # Zero union: both boxes are degenerate, and on the same axes - a box
-    # with area cannot make the union zero.
+    # Zero union: both boxes are degenerate - a box with area cannot make
+    # the union zero. They need not be degenerate on the SAME axis, which is
+    # why the flat-time branch below still has to check the frequency axis.
     flat_t = a.t0_s == a.t1_s or b.t0_s == b.t1_s
     flat_f = a.f0_khz == a.f1_khz or b.f0_khz == b.f1_khz
     if flat_t and flat_f:
