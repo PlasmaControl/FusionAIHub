@@ -1,4 +1,5 @@
-"""Synthetic fixtures: tiny shots in the d3d_fusion_data layout, written with pandas.to_hdf.
+"""Synthetic fixtures: tiny shots in the d3d_fusion_data layout, written with pandas.to_hdf, and
+-- at the end of this file -- tiny shots in the FAITH corpus layout, written with h5py.
 
 Ported from shot-recommender-system (shotrec) @565d548.
 """
@@ -383,3 +384,56 @@ def write_mp_pdf():
         path.write_bytes(bytes(out))
 
     return write
+
+
+# ------------------------------------------------------------------ the FAITH corpus layout
+
+# The corpus files are `<shot>_processed.h5` with one group per diagnostic, each holding `xdata`
+# (n,) SECONDS and `ydata` (C, n) -- or (C, n, H, W) for a video diagnostic. Shots here are in
+# the 100000 band so they cannot be confused with the 900000 band of the d3d_fusion_data
+# fixtures above; the corpus's own shots are 185601-204999.
+CORPUS_FULL = 100001  # every shape the reader has to tell apart
+CORPUS_TRUNCATED = 100002  # a valid file cut in half: h5py raises OSError on open
+CORPUS_ABSENT = 100003  # no file at all
+CORPUS_SMALL = 100004  # one present group and one placeholder
+
+
+def write_corpus_group(path: Path, group: str, x_s, y) -> None:
+    """One corpus group, written as the real files carry it: contiguous float32 `xdata`/`ydata`
+    and no attributes at all (the real files have none, so nothing may depend on them)."""
+    with h5py.File(path, "a") as f:
+        g = f.create_group(group)
+        g.create_dataset("xdata", data=np.asarray(x_s, dtype=np.float32))
+        g.create_dataset("ydata", data=np.asarray(y, dtype=np.float32))
+
+
+@pytest.fixture
+def corpus_dir(tmp_path: Path) -> Path:
+    """A four-shot corpus: a full file, a truncated one, an absent one and a small one.
+
+    The full file carries, deliberately, one group of each kind the layout has: a plain actuator
+    group, a fast group with the trailing all-channel NaN pad sample (the real ones are 2^k+1
+    long), a group with a channel that recorded nothing, the `(C, 1)` placeholder an absent
+    diagnostic is written as, and a video group whose time axis is the SECOND one.
+    """
+    d = tmp_path / "corpus"
+    d.mkdir()
+    full = d / f"{CORPUS_FULL}_processed.h5"
+    write_corpus_group(full, "pinj", np.arange(5) * 1.0e-3, np.arange(40).reshape(8, 5))
+    mhr = np.arange(18, dtype=np.float64).reshape(2, 9)
+    mhr[:, -1] = np.nan
+    write_corpus_group(full, "mhr", np.arange(9) * 2.0e-6, mhr)
+    gas = np.arange(18, dtype=np.float64).reshape(3, 6)
+    gas[1, :] = np.nan  # a channel that recorded nothing
+    gas[:, -1] = np.nan  # the pad sample
+    write_corpus_group(full, "gas_flow", np.arange(6) * 1.0e-3, gas)
+    write_corpus_group(full, "co2", [0.0], np.full((4, 1), np.nan))
+    write_corpus_group(full, "tangtv", np.arange(3) * 0.02, np.zeros((7, 3, 2, 4)))
+
+    good = full.read_bytes()
+    (d / f"{CORPUS_TRUNCATED}_processed.h5").write_bytes(good[: len(good) // 2])
+
+    small = d / f"{CORPUS_SMALL}_processed.h5"
+    write_corpus_group(small, "pinj", np.arange(5) * 1.0e-3, np.arange(40).reshape(8, 5))
+    write_corpus_group(small, "co2", [0.0], np.full((4, 1), np.nan))
+    return d
