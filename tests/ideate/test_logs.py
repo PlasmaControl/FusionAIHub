@@ -148,7 +148,10 @@ def test_cli_logs_missing_over_the_whole_corpus_reads_the_census(corpus_text, tm
         parquet, index=False
     )
     rc = cli.main(
-        ["logs", "missing", "--all-corpus", "--census", str(parquet), "--text-dir", str(corpus_text)]
+        [
+            "logs", "missing", "--all-corpus", "--census", str(parquet),
+            "--text-dir", str(corpus_text), "--index", str(tmp_path / "no-index.json"),
+        ]
     )
     assert rc == 0 and "1 of 2" in capsys.readouterr().out
 
@@ -156,7 +159,12 @@ def test_cli_logs_missing_over_the_whole_corpus_reads_the_census(corpus_text, tm
 def test_cli_logs_missing_says_so_when_nothing_is_missing(corpus_text, tmp_path, capsys):
     shots = tmp_path / "list.txt"
     shots.write_text("190001\n", encoding="utf-8")
-    rc = cli.main(["logs", "missing", "--list", str(shots), "--text-dir", str(corpus_text)])
+    rc = cli.main(
+        [
+            "logs", "missing", "--list", str(shots),
+            "--text-dir", str(corpus_text), "--index", str(tmp_path / "no-index.json"),
+        ]
+    )
     out = capsys.readouterr().out
     assert rc == 0 and "0 of 1" in out and "uv run" not in out
 

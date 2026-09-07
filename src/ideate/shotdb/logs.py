@@ -80,7 +80,6 @@ FETCH_CHUNK = 200
 # `index.json`; `textprocess.py --run-id <run_id>` then names that same directory. So a run id can
 # only be known here for a shot the corpus's own `sql/index.json` already places -- for a shot it
 # does not, the run id does not exist until `main.py` has run and written its index.
-_RUN_ID = re.compile(r"^\d{8}[A-Za-z]?$")
 
 
 # ------------------------------------------------------------------------------ logs missing
