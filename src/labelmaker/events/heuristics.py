@@ -15,16 +15,29 @@ better ones), and the crash search RESTRUCTURED. The reference computes the
 1 ms envelope inside `crash_times` and then again inside `crash_steps` for
 every candidate, which on shot 198658's 429 candidates is 430 passes over a
 594 MB record - about three and a half minutes. Here the envelope is
-computed ONCE and every candidate reads it: 0.9 s for the same answer. The
+computed ONCE and every candidate reads it: 0.4 s for the same answer. The
 mapping-free design is the reference's too, and is the point - the corpus
 carries no ECE frequency-to-radius conversion, and the inversion test needs
 none.
 
+The acceptance for that port is **47 +/- 3 crashes with a 69 +/- 5 ms
+median period on shot 198658, in under a second**. Those are the
+REFERENCE's own numbers, checked crash-for-crash by
+`scripts/labelmaker/sawtooth_reference_check.py` (its 198658 output is
+committed at `tests/labelmaker/data/sawtooth_198658_reference.json`); the
+plan's "45 sawteeth, 76 ms" was a different measurement of the same shot
+and is not what this detector - or the reference it is a port of -
+produces. The median is not a stable statistic here in any case: the
+inter-crash intervals on 198658 run 11 ms to 897 ms.
+
 **An L->H transition is a coincidence of three signals.** The D-alpha drop
 alone is a gas event, the density rise alone is a fuelling change, and NBI
 alone is a beam. `lh_transitions` requires all three within their own
-windows and reports the drop it measured, so a consumer can weigh a marginal
-one. It reads filterscope channels 0-7, which are the ones that carry real
+windows AND requires the drop to hold - a type-I ELM's D-alpha burst is
+milliseconds wide, so the level really does step down after every ELM, and
+what an ELM does not do is still be down 20 to 50 ms later. It reports the
+drop it measured and the fraction the level held at, so a consumer can weigh
+a marginal one. It reads filterscope channels 0-7, which are the ones that carry real
 D-alpha at 10 kHz; channels 8 and up are NaN on every shot (plan V4) and are
 the caller's to drop - passing them raises rather than quietly taking a
 median of NaN.
@@ -93,16 +106,29 @@ N_DALPHA_CHANNELS = 8
 #: Fractional D-alpha drop, within `LH_DROP_WINDOW_MS`, that is a transition.
 LH_DROP_FRAC = 0.30
 LH_DROP_WINDOW_MS = 5.0
-#: Fractional density rise required over `LH_NE_WINDOW_MS` after it. The
-#: window is longer than the drop's because the pedestal builds over tens of
-#: milliseconds while the recycling light falls in one.
+#: Fractional density rise required over the hold window below - `[t + 20
+#: ms, t + 50 ms]` - rather than at the moment of the drop. The window is
+#: longer than the drop's, and later, because the pedestal builds over tens
+#: of milliseconds while the recycling light falls in one.
 LH_NE_RISE_FRAC = 0.05
-LH_NE_WINDOW_MS = 50.0
 #: NBI power the transition needs, in kW - the canonical `pinj_total` unit.
 LH_MIN_PINJ_KW = 500.0
 #: The drop a full-confidence transition makes. 60% is what a clean L->H
 #: does on a filterscope; a 30% one is half as believable and says so.
 LH_FULL_DROP = 0.6
+#: The window, in ms either side of the step, over which the transition has
+#: to HOLD - and the fraction of the pre-transition level the post window's
+#: median has to stay under. This is what separates a transition from an
+#: ELM: a type-I ELM's D-alpha burst is 2-5 ms wide, most of the 5 ms drop
+#: window, so the LEVEL genuinely steps up and back down at every ELM and
+#: the drop gate alone fires once per ELM (measured on the synthetic shot:
+#: 4 ms bursts every 15 ms give a candidate per ELM, eleven of which pass
+#: the density gate - four `lh_transition` and seven `hl_transition` - in
+#: 0.8 s). An ELM's level is back where it was 20 ms later; a transition's
+#: is not.
+LH_HOLD_LO_MS = 20.0
+LH_HOLD_HI_MS = 50.0
+LH_HOLD_FRAC = 0.70
 
 #: Actuator thresholds, in the canonical units of `features/namespace.py`.
 NBI_ON_KW = 500.0
@@ -271,6 +297,17 @@ def _bin_drops(env: np.ndarray) -> np.ndarray:
     Positive is a fall. A non-finite ratio - a NaN channel, an envelope bin
     that sits at zero - is no change at all, so a dead channel neither votes
     for a crash nor blocks one.
+
+    **This is where the port deviates from the reference, deliberately.**
+    The reference finishes with `np.nan_to_num(d)`, which maps NaN to 0 but
+    -inf to -1.8e308 - so a bin that is EMPTY (a gap in the digitiser
+    record: the envelope of no samples is 0) followed by a bin below zero
+    divides by zero, comes out -inf, and is counted as a channel dropping
+    by 1.8e308. Here `np.where(np.isfinite(d), d, 0.0)` calls the same bin
+    no change. A gap in the record is not a crash, and a detector that
+    fires on the resumption of the digitiser is finding the digitiser. The
+    divergence is reachable only through an empty envelope bin, which no
+    contiguous corpus record has.
     """
     with np.errstate(divide="ignore", invalid="ignore"):
         drop = -np.diff(env, axis=1) / np.abs(env[:, :-1])
@@ -306,18 +343,47 @@ def _crash_bins(drop: np.ndarray, *, env_ms: float, drop_frac: float,
     return sorted(kept)
 
 
-def _crash_step(env: np.ndarray, t_env_s: np.ndarray, tc_s: float, *,
-                gap_ms: float, span_ms: float) -> np.ndarray:
+def _step_offsets(env_ms: float, gap_ms: float,
+                  span_ms: float) -> np.ndarray:
+    """Bin offsets `d` with `gap_ms <= d * env_ms <= span_ms`, ascending.
+
+    The step windows as INTEGER counts of bins, which is what the reference
+    is selecting when it writes `te >= tc - span_ms`: the envelope grid is
+    `env_ms` apart by construction, so the only thing that comparison can
+    say is how many bins away a bin is. Saying it in bins says it exactly.
+    """
+    env_ms, gap_ms, span_ms = float(env_ms), float(gap_ms), float(span_ms)
+    d = np.arange(1, math.floor(span_ms / env_ms) + 2, dtype=np.intp)
+    off = d * env_ms
+    return d[(off >= gap_ms) & (off <= span_ms)]
+
+
+def _crash_step(env: np.ndarray, k: int, *, env_ms: float = ENV_MS,
+                gap_ms: float = STEP_GAP_MS,
+                span_ms: float = STEP_SPAN_MS) -> np.ndarray:
     """Per-channel envelope step across the crash: mean(after) - mean(before).
 
     The reference's `crash_steps`, reading the envelope it is given rather
-    than recomputing it. `nan` for every channel when either window falls
-    off the end of the record, which is the reference's answer too.
+    than recomputing it, and selecting its windows in BIN SPACE - the bins
+    `gap_ms` to `span_ms` either side of bin `k` - rather than by comparing
+    bin centres in seconds against `tc - span`. The two are the same seven
+    bins in exact arithmetic; in floating point the seconds version rounds
+    the centre and the boundary independently, and on a 7000-bin record that
+    dropped one of the seven bins from 86 before-windows and 78 after-
+    windows. A step measured over six bins instead of seven is a different
+    number, and `inversion_block`'s thresholds are relative to it.
+
+    `nan` for every channel when either window falls off the end of the
+    record entirely, which is the reference's answer too; a window that is
+    merely SHORT there keeps the bins it has, as the reference's does.
     """
-    gap_s, span_s = float(gap_ms) * 1e-3, float(span_ms) * 1e-3
-    before = (t_env_s >= tc_s - span_s) & (t_env_s <= tc_s - gap_s)
-    after = (t_env_s >= tc_s + gap_s) & (t_env_s <= tc_s + span_s)
-    if not before.any() or not after.any():
+    d = _step_offsets(env_ms, gap_ms, span_ms)
+    m = env.shape[1]
+    before = int(k) - d[::-1]
+    after = int(k) + d
+    before = before[(before >= 0) & (before < m)]
+    after = after[(after >= 0) & (after < m)]
+    if before.size == 0 or after.size == 0:
         return np.full(env.shape[0], np.nan)
     return env[:, after].mean(axis=1) - env[:, before].mean(axis=1)
 
@@ -350,6 +416,14 @@ def sawtooth_events(
     finite ones - that took part in the inversion, dropping or rising. A
     crash the whole array sees is worth more than one three channels see,
     and a NaN channel is neither evidence for nor against it.
+
+    `attrs["inversion_channel_lo"]` and `attrs["inversion_channel_stop"]`
+    are the dropping block's bounds and are END-EXCLUSIVE, like every other
+    channel range in this package and like `inversion_block`'s return:
+    channels `lo <= c < stop` dropped. The name says `stop` rather than
+    `hi` because a reader who takes `hi` for the last dropping channel is
+    off by one, and the inversion RADIUS - the thing anyone reads this for -
+    sits between `stop - 1` and `stop`.
     """
     ece_y = np.atleast_2d(ece_y)
     if ece_y.shape[0] != N_ECE_CHANNELS:
@@ -368,7 +442,9 @@ def sawtooth_events(
         min_interval_ms=min_interval_ms,
     ):
         tc_s = float(t_env_s[i + 1])
-        steps = _crash_step(env, t_env_s, tc_s, gap_ms=gap_ms, span_ms=span_ms)
+        steps = _crash_step(
+            env, i + 1, env_ms=ENV_MS, gap_ms=gap_ms, span_ms=span_ms
+        )
         block = inversion_block(steps)
         if block is None:
             continue
@@ -390,7 +466,7 @@ def sawtooth_events(
                 channel=-1,
                 attrs={
                     "inversion_channel_lo": int(block[0]),
-                    "inversion_channel_hi": int(block[1]),
+                    "inversion_channel_stop": int(block[1]),
                     "n_channels_dropping": n_dropping,
                     "n_channels_rising": n_rising,
                     "drop_frac_max": float(drop[:, i].max()),
@@ -474,6 +550,18 @@ def _window_max(t_s, y, lo: float, hi: float) -> float:
     """Largest `y` over `[lo, hi]`, or NaN when nothing finite is in it."""
     got = _finite_in(t_s, y, lo, hi)
     return float(got.max()) if got.size else math.nan
+
+
+def _window_median(t_s, y, lo: float, hi: float) -> float:
+    """Median of `y` over `[lo, hi]`, or NaN when nothing finite is in it.
+
+    The median rather than the mean because the windows it is asked for
+    straddle ELMs: the mean of an ELMy phase is its duty cycle times its
+    spikes, which moves when the ELM frequency does, while the median is
+    the inter-ELM level whatever the ELMs are doing.
+    """
+    got = _finite_in(t_s, y, lo, hi)
+    return float(np.median(got)) if got.size else math.nan
 
 
 def _sample_s(t: np.ndarray) -> float:
@@ -594,20 +682,35 @@ def lh_transitions(
 ) -> list[Event]:
     """D-alpha, density and NBI -> the L->H transitions, and the way back.
 
-    An L->H is claimed where all three happen at once: the channel-median
-    D-alpha falls by `drop_frac` of itself within `drop_window_ms`, the
-    line-averaged density rises by `ne_rise_frac` over the `LH_NE_WINDOW_MS`
-    after it, and the NBI is above `min_pinj_kw` in the window before it. No
-    beams, no claim - and `[]` rather than an exception, because a shot with
-    no NBI trace is a shot this heuristic cannot speak about.
+    An L->H is claimed where four things happen at once: the channel-median
+    D-alpha falls by `drop_frac` of itself within `drop_window_ms`, it is
+    STILL down `LH_HOLD_LO_MS` to `LH_HOLD_HI_MS` later, the line-averaged
+    density is higher over that same later window, and the NBI is above
+    `min_pinj_kw` in the window before it. No beams, no claim - and `[]`
+    rather than an exception, because a shot with no NBI trace is a shot
+    this heuristic cannot speak about.
 
-    The H->L back transition is the same step upward with the density
-    falling. Its density test is only that - a direction, not a fraction:
-    the pedestal collapses in a millisecond but the density it built decays
-    over tens, so a symmetric threshold would find no back transitions at
-    all. NBI is required for it too, and measured in the window BEFORE the
-    step, because the commonest back transition in the corpus is the beams
-    turning off.
+    **The hold is the gate that makes this an L->H detector rather than an
+    ELM detector.** A rolling median rejects a SPIKE, but a type-I ELM's
+    D-alpha burst is 2-5 ms wide - most of the 5 ms drop window - so the
+    level itself steps up at the burst and back down after it, and the drop
+    gate fires on the way down from every single ELM. What an ELM does not
+    do is stay: 20 to 50 ms later the level is exactly where it was before,
+    while an L->H's is still down. So the median over `[t + 20 ms, t + 50
+    ms]` must be at most `LH_HOLD_FRAC` of the median over the mirror
+    window `[t - 50 ms, t - 20 ms]`, and the density test is read over that
+    same post window rather than at one point 50 ms out. A transition
+    within 50 ms of either end of the D-alpha record therefore cannot be
+    claimed - the window it would have to hold over is not in the record.
+
+    The H->L back transition is the same step upward, held the same way
+    (the level `LH_HOLD_HI_MS` later at least `1 / LH_HOLD_FRAC` of the
+    level before), with the density falling. Its density test is only a
+    DIRECTION, not a fraction: the pedestal collapses in a millisecond but
+    the density it built decays over tens, so a symmetric threshold would
+    find no back transitions at all. NBI is required for it too, and
+    measured in the window BEFORE the step, because the commonest back
+    transition in the corpus is the beams turning off.
 
     `betan` decides nothing. It goes into `attrs` because a transition with
     betan already at 2 is a different event from one at 0.5, and that is a
@@ -647,7 +750,8 @@ def lh_transitions(
     width = max(1, round(window_s / _sample_s(t)))
     before_level, after_level = _levels(d, width)
     cov = (float(t_cov[0]), float(t_cov[1]))
-    ne_window_s = LH_NE_WINDOW_MS * 1e-3
+    hold_lo_s = LH_HOLD_LO_MS * 1e-3
+    hold_hi_s = LH_HOLD_HI_MS * 1e-3
 
     out: list[Event] = []
     for rising, phenomenon in ((False, LH_PHENOMENON), (True, HL_PHENOMENON)):
@@ -657,9 +761,25 @@ def lh_transitions(
         ):
             before = _window_mean(t, d, when - window_s, when)
             after = _window_mean(t, d, when, when + window_s)
+            # The hold, over the two mirror windows: an ELM's level comes
+            # back and a transition's does not.
+            held0 = _window_median(t, d, when - hold_hi_s, when - hold_lo_s)
+            held1 = _window_median(t, d, when + hold_lo_s, when + hold_hi_s)
+            if not (math.isfinite(held0) and math.isfinite(held1)) or (
+                held0 <= 0.0
+            ):
+                continue
+            hold_frac = held1 / held0
+            if rising:
+                if not hold_frac >= 1.0 / LH_HOLD_FRAC:
+                    continue
+            elif not hold_frac <= LH_HOLD_FRAC:
+                continue
+            # The density over the SAME post window, so the two gates are
+            # asking about one interval rather than two.
             ne0 = _window_mean(ne_t_s, ne_y, when - window_s, when)
             ne1 = _window_mean(
-                ne_t_s, ne_y, when + ne_window_s - window_s, when + ne_window_s
+                ne_t_s, ne_y, when + hold_lo_s, when + hold_hi_s
             )
             if not (math.isfinite(ne0) and math.isfinite(ne1)) or ne0 == 0.0:
                 continue
@@ -689,10 +809,12 @@ def lh_transitions(
                         "dalpha_before": float(before),
                         "dalpha_after": float(after),
                         "ne_change_frac": float(ne_change),
+                        "hold_frac": float(hold_frac),
                         "pinj_kw": float(pinj_kw),
                         "betan": None if not math.isfinite(betan) else float(betan),
                         "window_ms": float(drop_window_ms),
-                        "ne_window_ms": float(LH_NE_WINDOW_MS),
+                        "hold_lo_ms": float(LH_HOLD_LO_MS),
+                        "hold_hi_ms": float(LH_HOLD_HI_MS),
                     },
                     t_cov0_s=cov[0],
                     t_cov1_s=cov[1],
@@ -762,6 +884,18 @@ def _schmitt(level: np.ndarray, thr: float,
     return decisive[last] == 1
 
 
+def _samples_under(span_ms: float, step_s: float) -> int:
+    """How many samples fit STRICTLY inside `span_ms`.
+
+    `n * step < span`, so an exact ratio - which a 1 kHz clock and a 20 ms
+    threshold give constantly - answers one less than the ratio rather than
+    the ratio. The `1 - 1e-12` is what makes the exact case exact: the
+    ratio's own float error is a part in 1e16, and no digitiser rate is
+    within a part in 1e12 of putting a sample on the boundary by accident.
+    """
+    return max(0, math.floor(float(span_ms) * 1e-3 / step_s * (1.0 - 1e-12)))
+
+
 def _mask_intervals(t: np.ndarray, mask: np.ndarray, *, min_ms: float,
                     gap_ms: float) -> list[tuple[int, int]]:
     """True runs of `mask` -> half-open sample bounds, bridged and filtered.
@@ -769,17 +903,28 @@ def _mask_intervals(t: np.ndarray, mask: np.ndarray, *, min_ms: float,
     Gaps first, then durations: a pulse notched in the middle is one pulse
     of its full length, and asking the question the other way round would
     throw away both halves before they could be joined.
+
+    **Both are measured EDGE TO EDGE**, on the convention that a sample
+    owns half a sampling step either side of itself: a run of `n` samples
+    is `n * step` long and a gap of `n` samples is `n * step` wide, which
+    partitions the record with nothing left over. So a gap is bridged when
+    it is STRICTLY under `gap_ms` and an interval is kept when it is at
+    least `min_ms`, and at 1 kHz that is 19 off-samples bridged and 20 not,
+    20 on-samples kept and 19 not. The event's `t0_s`/`t1_s` are still the
+    first and last SAMPLE - half a step inside the measured span at each
+    end - because they are the times something was measured at, and a
+    consumer intersecting two actuator intervals wants sample times.
     """
     if t.size == 0:
         return []
     step_s = float(np.median(np.diff(t))) if t.size > 1 else 0.0
     if not step_s > 0.0:
         return []
-    gap = max(1, round(float(gap_ms) * 1e-3 / step_s))
-    keep_s = float(min_ms) * 1e-3
+    gap = _samples_under(gap_ms, step_s)
+    keep = _samples_under(min_ms, step_s) + 1
     return [
         (a, b) for a, b in _runs(_bridge_mask(mask, gap))
-        if float(t[b - 1]) - float(t[a]) >= keep_s
+        if b - a >= keep
     ]
 
 
@@ -863,20 +1008,25 @@ def actuator_intervals(
     # Both onto the torque's clock: the three come off different digitisers
     # and a sign comparison between two grids is a sign comparison between
     # two different moments.
-    beams = _schmitt(
-        np.interp(
-            t_tinj, np.asarray(pinj_t, dtype=np.float64),
-            _level("pinj_total", pinj_y), left=np.nan, right=np.nan,
-        ),
-        NBI_ON_KW,
+    pinj_on_tinj = np.interp(
+        t_tinj, np.asarray(pinj_t, dtype=np.float64),
+        _level("pinj_total", pinj_y), left=np.nan, right=np.nan,
     )
+    beams = _schmitt(pinj_on_tinj, NBI_ON_KW)
     ip = np.interp(
         t_tinj, np.asarray(ip_t, dtype=np.float64),
         _level("ip", ip_y), left=np.nan, right=np.nan,
     )
+    # Only where all three were actually MEASURED. `_schmitt` holds its
+    # state across a NaN, which is right for a dropout inside a record and
+    # wrong at the end of one: `ip` and `pinj_total` come off other
+    # digitisers than the torque and routinely stop earlier, and holding
+    # the state there is how a beam that stopped being measured goes on
+    # injecting counter-current torque to the end of the shot.
+    covered = np.isfinite(pinj_on_tinj) & np.isfinite(ip) & np.isfinite(tinj)
     with np.errstate(invalid="ignore"):
         counter = (
-            beams & (np.sign(tinj) != 0) & (np.sign(ip) != 0)
+            covered & beams & (np.sign(tinj) != 0) & (np.sign(ip) != 0)
             & (np.sign(tinj) != np.sign(ip))
         )
     out.extend(

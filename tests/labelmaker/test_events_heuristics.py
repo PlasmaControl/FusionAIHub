@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -73,10 +74,9 @@ def _random_record(n=200_000, channels=48, dtype=np.float32, seed=6):
     """A sorted random time axis in seconds and a `(channels, n)` record.
 
     The times are RANDOM rather than a grid on purpose: a uniform grid puts
-    samples exactly on bin edges, where the reference's arithmetic (edges in
-    milliseconds, searched per sample) and this module's (edges in seconds,
-    searched per bin) can round to different sides and disagree about one
-    sample. Random draws never land within 1e-12 of an edge, so the equality
+    samples exactly on bin edges, where the reference's arithmetic (searched
+    per sample) and this module's (searched per bin) can round to different
+    sides and disagree about one sample. Random draws never land within 1e-12 of an edge, so the equality
     below tests the binning rather than the last bit of the clock.
     """
     rng = np.random.default_rng(seed)
@@ -122,8 +122,14 @@ def test_the_envelope_beats_the_references_way_of_computing_it():
     # one is already near memory bandwidth - but it does read it once instead
     # of once per channel, and it never materialises the float64 copy the
     # reference's `asarray(X, float)` makes of a float32 record. Measured
-    # 8.4x on a (48, 200_000) float32 array; asserted at 3x so a loaded
+    # 7.5x on a (48, 200_000) float32 array; asserted at 3x so a loaded
     # machine cannot fail it.
+    #
+    # The controller's decision on plan number 3 (in the ledger): the
+    # binding target is the PER-SHOT one - under a second, measured 0.39 s
+    # against the plan's 1.55 s - and the isolated envelope is memory-bound,
+    # so this 3x assertion and the one-call structural pin below are both
+    # kept and neither is raised to 10x.
     t_s, y = _random_record()
 
     def best_of(fn, n=3):
@@ -196,7 +202,7 @@ def test_a_summary_of_nothing_is_a_count_and_no_period():
 def test_a_crash_says_which_channels_it_inverted_between(synth_shot):
     one = _sawteeth(synth_shot)[0]
     assert one.attrs["inversion_channel_lo"] == SYNTH_CORE_CH[0]
-    assert one.attrs["inversion_channel_hi"] == SYNTH_CORE_CH[1]
+    assert one.attrs["inversion_channel_stop"] == SYNTH_CORE_CH[1]
     assert one.attrs["n_channels_dropping"] == SYNTH_CORE_CH[1] - SYNTH_CORE_CH[0]
     assert one.attrs["n_channels_rising"] == SYNTH_EDGE_CH[1] - SYNTH_EDGE_CH[0]
     assert one.attrs["drop_frac_max"] == pytest.approx(0.05, abs=0.01)
@@ -274,6 +280,47 @@ def test_candidates_exactly_the_minimum_interval_apart_both_survive():
     assert kept(5, 14) == [14]           # 9 bins: the later one wins the tie
 
 
+def test_the_crash_window_is_the_same_seven_bins_everywhere_in_the_record():
+    # The step windows are `gap_ms <= |i - k| * env_ms <= span_ms` in BIN
+    # space, which is the reference's arithmetic in the reference's unit.
+    # Selecting them by comparing bin CENTRES IN SECONDS against `tc_s -
+    # span_s` rounds independently on the two sides, and on a 7000-bin grid
+    # that dropped one of the seven bins from 86 before-windows and 78
+    # after-windows - a 1.2% chance, per crash, of measuring the step over a
+    # window one bin short.
+    #
+    # Every bin here holds its own index, so a seven-bin window either side
+    # of bin `k` has means `k - 5` and `k + 5` and the step is EXACTLY 10.0
+    # wherever it is measured. One bin missing moves it by 1/7 or more.
+    t_s = np.arange(700_000, dtype=np.float64) / 1.0e5
+    _, t_env_s = heuristics.envelope(np.zeros((1, t_s.size)), t_s)
+    assert t_env_s.size == 7000
+    offsets = heuristics._step_offsets(
+        heuristics.ENV_MS, heuristics.STEP_GAP_MS, heuristics.STEP_SPAN_MS
+    )
+    assert offsets.tolist() == [2, 3, 4, 5, 6, 7, 8]
+    env = np.tile(np.arange(t_env_s.size, dtype=np.float64), (2, 1))
+    steps = np.array([
+        heuristics._crash_step(
+            env, k, env_ms=heuristics.ENV_MS, gap_ms=heuristics.STEP_GAP_MS,
+            span_ms=heuristics.STEP_SPAN_MS,
+        )[0]
+        for k in range(int(offsets[-1]), t_env_s.size - int(offsets[-1]))
+    ])
+    assert np.array_equal(steps, np.full(steps.size, 10.0))
+
+
+def test_a_window_that_falls_off_the_end_of_the_record_is_no_step():
+    # The reference's answer: NaN for every channel when either side has
+    # nothing in it, and the bins that ARE there when it is merely short.
+    env = np.tile(np.arange(20.0), (3, 1))
+    assert np.isnan(heuristics._crash_step(env, 0)).all()
+    assert np.isnan(heuristics._crash_step(env, 19)).all()
+    # Bin 3: the before window is bins 1 and 0 only, mean 0.5; the after
+    # window is the full seven, mean 8.
+    assert heuristics._crash_step(env, 3) == pytest.approx(np.full(3, 7.5))
+
+
 def test_a_sawtooth_is_a_point_event_the_table_accepts(synth_shot, tmp_path):
     got = _sawteeth(synth_shot)
     one = got[0]
@@ -298,6 +345,31 @@ def test_a_record_with_no_crash_in_it_is_no_events(synth_shot):
 def test_the_ece_array_has_to_be_the_ece_array(synth_shot):
     with pytest.raises(ValueError, match="48"):
         _sawteeth({**synth_shot, "ece_y": synth_shot["ece_y"][:8]})
+
+
+def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
+    # `scripts/labelmaker/sawtooth_reference_check.py` runs omnimode's own
+    # `find_sawteeth` and this port over the WHOLE of shot 198658 and writes
+    # what it found here. The port is only a port if somebody has compared
+    # the two crash for crash on real data, and this is that comparison's
+    # committed record - which is also where the module docstring's
+    # acceptance band comes from. Re-run the script when the crash search
+    # changes; do not edit the file.
+    record = json.loads(
+        (Path(__file__).parent / "data"
+         / "sawtooth_198658_reference.json").read_text()
+    )
+    assert record["shot"] == 198658
+    assert record["max_seconds"] is None          # the whole record, no prefix
+    assert record["same_count"] and record["agree"]
+    assert record["max_abs_delta_ms"] <= record["agree_tolerance_ms"]
+    assert len(record["crashes"]) == record["reference"]["n"]
+    for side in ("reference", "port"):
+        assert abs(record[side]["n"] - 47) <= 3
+        assert abs(record[side]["median_period_ms"] - 69.0) <= 5.0
+    # The per-shot target of plan number 3, which is the binding one.
+    assert record["port"]["elapsed_s"] < 1.0
+    assert record["reference"]["elapsed_s"] > 10.0 * record["port"]["elapsed_s"]
 
 
 # ------------------------------------------------------------- L->H and H->L
@@ -374,6 +446,42 @@ def test_an_elmy_dalpha_trace_is_not_a_train_of_transitions(synth_shot):
           if e.phenomenon == "lh_transition"]
     assert len(lh) == 1
     assert lh[0].t0_s == pytest.approx(SYNTH_LH_S, abs=2e-3)
+
+
+def test_realistic_elm_bursts_are_not_transitions(synth_shot):
+    # A type-I ELM's D-alpha burst is MILLISECONDS wide, not the tenth of
+    # one the spike test above uses, and a 4 ms burst is most of a 5 ms
+    # median window: the level itself steps up and back down at every ELM,
+    # so the drop gate fires once per ELM. What separates a transition from
+    # an ELM is that the transition STAYS: the level 20-50 ms after it is
+    # still down, and after an ELM it is exactly where it was before.
+    t = synth_shot["dalpha_t_s"]
+    fs = 1.0 / float(t[1] - t[0])
+    burst = np.zeros(t.size, dtype=bool)
+    width = round(0.004 * fs)
+    for start in range(0, t.size, round(0.015 * fs)):
+        burst[start:start + width] = True
+    elmy = np.tile(synth_shot["dalpha_y"][:, :1], (1, t.size)).astype(np.float64)
+    elmy[:, burst] *= 6.0
+    assert _lh({**synth_shot, "dalpha_y": elmy}) == []
+
+
+def test_a_transition_followed_by_an_elm_train_is_one_transition(synth_shot):
+    # The H-mode the transition enters is ELMy 60 ms later, which is the
+    # ordinary case: one transition, and then a burst train that is not a
+    # train of transitions.
+    t = synth_shot["dalpha_t_s"]
+    fs = 1.0 / float(t[1] - t[0])
+    y = synth_shot["dalpha_y"].astype(np.float64).copy()
+    width = round(0.004 * fs)
+    first = int(np.searchsorted(t, SYNTH_LH_S + 0.060))
+    last = int(np.searchsorted(t, SYNTH_HL_S))
+    for start in range(first, last, round(0.015 * fs)):
+        y[:, start:start + width] *= 6.0
+    got = [e for e in _lh({**synth_shot, "dalpha_y": y})
+           if e.phenomenon == "lh_transition"]
+    assert len(got) == 1
+    assert got[0].t0_s == pytest.approx(SYNTH_LH_S, abs=2e-3)
 
 
 def test_a_transition_taken_in_two_stages_is_one_transition(synth_shot):
@@ -511,6 +619,73 @@ def test_an_interval_shorter_than_the_minimum_is_dropped():
     assert len(heuristics.actuator_intervals(
         {"pinj_total": _steps(held)}, shot=1, t_cov=(0.0, 0.124)
     )) == 1
+
+
+def test_the_gyrotrons_are_on_at_a_hundred_kilowatts_of_watts():
+    # `ech_power_total` is WATTS in `features/namespace.py` while
+    # `pinj_total` is kilowatts, and 1e5 of one is a hundred times 1e5 of
+    # the other: a threshold read in the wrong unit is the whole event list.
+    below = np.full(200, 0.9e5)
+    above = np.concatenate([np.zeros(50), np.full(100, 1.0e5), np.zeros(50)])
+    assert heuristics.actuator_intervals(
+        {"ech_power_total": _steps(below)}, shot=1, t_cov=(0.0, 0.199)
+    ) == []
+    got = heuristics.actuator_intervals(
+        {"ech_power_total": _steps(above)}, shot=1, t_cov=(0.0, 0.199)
+    )
+    assert [e.phenomenon for e in got] == ["ech_on"]
+    assert got[0].attrs["units"] == "W"
+    assert got[0].attrs["max_level"] == pytest.approx(1.0e5)
+    # Hysteresis is 2:1 here too: half of 1e5 is still on.
+    notched = above.copy()
+    notched[80:100] = 0.6e5
+    assert len(heuristics.actuator_intervals(
+        {"ech_power_total": _steps(notched)}, shot=1, t_cov=(0.0, 0.199)
+    )) == 1
+
+
+def test_counter_injection_is_not_claimed_where_ip_and_pinj_are_not_measured():
+    # `ip` and `pinj_total` come off other digitisers than the torque and
+    # routinely stop earlier. Interpolation returns NaN there, `_schmitt`
+    # HOLDS the last state across a NaN, and holding it is how a beam that
+    # stopped being measured goes on injecting counter-current torque to the
+    # end of the record.
+    t_tinj = np.arange(600, dtype=np.float64) / 1.0e3
+    tinj = np.full(t_tinj.size, -5.0)
+    t_short = t_tinj[:200]
+    got = heuristics.actuator_intervals(
+        {
+            "tinj_total": (t_tinj, tinj),
+            "pinj_total": (t_short, np.full(t_short.size, 3000.0)),
+            "ip": (t_short, np.full(t_short.size, 1.0e6)),
+        },
+        shot=1, t_cov=(0.0, 0.599),
+    )
+    counter = [e for e in got if e.phenomenon == "nbi_counter"]
+    assert len(counter) == 1
+    assert counter[0].t1_s == pytest.approx(float(t_short[-1]), abs=2e-3)
+
+
+def test_an_interval_and_a_gap_exactly_at_the_boundary():
+    # Measured edge to edge - every sample owns half a step either side - so
+    # 20 samples at 1 kHz is exactly 20 ms and survives, 19 is 19 ms and does
+    # not; and a gap is bridged only when it is STRICTLY under 20 ms, so 19
+    # off-samples are a notch and 20 are the end of the interval.
+    def run(*lengths, level=800.0):
+        parts, on = [], True
+        for n in lengths:
+            parts.append(np.full(n, level if on else 0.0))
+            on = not on
+        return heuristics.actuator_intervals(
+            {"pinj_total": _steps(np.concatenate([np.zeros(50), *parts,
+                                                  np.zeros(50)]))},
+            shot=1, t_cov=(0.0, 1.0),
+        )
+
+    assert len(run(20)) == 1
+    assert run(19) == []
+    assert len(run(30, 19, 30)) == 1
+    assert len(run(30, 20, 30)) == 2
 
 
 def test_a_multi_coil_actuator_is_on_when_any_one_of_them_is():
