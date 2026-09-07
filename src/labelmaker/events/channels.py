@@ -122,10 +122,18 @@ def plan_for(
     maps the key of every skipped spec to one of `REASONS`. Together they
     partition `plan`, so a run can record what it did NOT do as well as what
     it did.
+
+    A fallback's target group is looked up in the FILE, not among the plan's
+    own specs: a plan of nothing but the mirnov fallback - which is what a
+    re-run of the one channel that failed looks like - would otherwise find
+    no `mhr` beside it and promote a duplicate of the channel it exists to
+    replace.
     """
     plan = tuple(plan)
+    diags = {spec.diag for spec in plan}
+    diags |= {spec.fallback_for for spec in plan if spec.fallback_for}
     with h5py.File(corpus_file, "r", locking=False) as f:
-        shapes = {spec.diag: _shape_of(f, spec.diag) for spec in plan}
+        shapes = {diag: _shape_of(f, diag) for diag in sorted(diags)}
     specs: list[ChannelSpec] = []
     reasons: dict[str, str] = {}
     for spec in plan:

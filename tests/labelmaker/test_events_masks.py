@@ -122,6 +122,44 @@ def test_several_trailing_non_finite_samples_all_go(tmp_path):
     assert fs == pytest.approx(10.0)
 
 
+def test_leading_non_finite_samples_are_stripped_too(tmp_path):
+    # `mirnov` on 198658 carries 1,669,828 NaN samples BEFORE the digitiser
+    # is live. The transform cannot tell them from a signal of zero, and a
+    # `t0_s` taken from the file's first sample would put every column of
+    # the spectrogram three seconds early.
+    y = np.full((1, 10), np.nan, dtype=np.float32)
+    y[0, 3:] = np.arange(7)
+    path = _corpus(tmp_path / "a.h5", y=y, x=np.arange(10) / 10.0)
+    got, fs, t0, t1 = masks.read_waveform(path, "mhr", 0)
+    assert got.tolist() == list(range(7))
+    assert (t0, t1) == pytest.approx((0.3, 0.9))
+    assert fs == pytest.approx(10.0)            # (7-1) samples / 0.6 s
+
+
+def test_both_ends_are_stripped_and_the_time_axis_follows(tmp_path):
+    # The returned span has to be the span of the samples that came back,
+    # not of the file: `fs_hz` is derived from it.
+    n = 20
+    y = np.full((1, n), np.nan, dtype=np.float32)
+    y[0, 4:15] = np.arange(11)
+    x = 0.5 + np.arange(n) / 100.0
+    path = _corpus(tmp_path / "a.h5", y=y, x=x)
+    got, fs, t0, t1 = masks.read_waveform(path, "mhr", 0)
+    assert got.tolist() == list(range(11))
+    assert (t0, t1) == pytest.approx((x[4], x[14]))
+    assert fs == pytest.approx(100.0)
+
+
+def test_an_interior_hole_after_a_leading_run_still_raises(tmp_path):
+    # Stripping the ends must not turn a digitiser gap into a silent splice.
+    y = np.full((1, 12), np.nan, dtype=np.float32)
+    y[0, 3:] = 1.0
+    y[0, 7] = np.nan
+    path = _corpus(tmp_path / "a.h5", y=y, x=np.arange(12) / 12.0)
+    with pytest.raises(ValueError, match="non-finite"):
+        masks.read_waveform(path, "mhr", 0)
+
+
 def test_an_interior_non_finite_sample_is_an_error_not_a_hole(tmp_path):
     # A gap in the middle is not the 2^k+1 artefact; it is a record this
     # transform cannot process, and quietly interpolating it would invent
@@ -420,6 +458,28 @@ def test_an_out_of_memory_at_a_batch_of_one_is_raised():
     assert model.seen == [3, 2, 1]              # halved to 1, then given up
 
 
+def test_an_out_of_memory_in_the_host_to_device_copy_is_retried_too(monkeypatch):
+    # The copy allocates the whole batch on the card, so it is as likely a
+    # place to run out as the forward pass. Left outside the `try`, an OOM
+    # there escapes a policy written to survive exactly that.
+    spec = np.zeros((512, 512 + 9 * 448), dtype=np.float32)        # 10 tiles
+    real = masks._to_device
+    moved: list[int] = []
+
+    def greedy(x, device):
+        moved.append(int(x.shape[0]))
+        if x.shape[0] > 2:
+            raise torch.cuda.OutOfMemoryError("fake CUDA out of memory")
+        return real(x, device)
+
+    monkeypatch.setattr(masks, "_to_device", greedy)
+    model = FakeUNet()
+    out = masks.infer(model, spec, "cpu", batch=8)
+    assert moved == [8, 4, 2, 2, 2, 2, 2]
+    assert model.seen == [2, 2, 2, 2, 2]        # the model only ever saw 2
+    assert out.shape == (2, 512, 512 + 9 * 448)
+
+
 def test_amp_is_not_applied_on_a_cpu_device():
     # `torch.autocast("cuda", ...)` on a CPU run would either do nothing or
     # warn; either way the fake model must see plain float32.
@@ -438,6 +498,31 @@ def test_infer_feeds_the_model_one_channel_tiles():
 
     masks.infer(Shape(), np.zeros((512, 600), dtype=np.float32), "cpu")
     assert seen == [(1, 512, 512)]
+
+
+# ----------------------------------------------------------- unstandardise
+
+def test_unstandardise_recovers_the_pre_standardisation_log_power():
+    # `raw_logpow` is what `band_logpow` and the track descriptors want and
+    # what `prep` does not return; this is the one place the recovery is
+    # written, so no caller has to retype the formula out of a docstring.
+    y = _noise(4096)
+    spec, meta = masks.prep(y, fs_hz=5e5)
+    back = masks.unstandardise(spec, meta)
+    assert back.dtype == np.float32
+    assert np.abs(back - transform.compute_stft(y)).max() < 1e-3
+
+
+def test_unstandardise_is_exactly_the_documented_formula():
+    spec = np.arange(512 * 4, dtype=np.float32).reshape(512, 4) / 100.0
+    meta = {"spec_mean": 1.5, "spec_std": 0.25}
+    want = (spec * (0.25 + transform.STD_EPS) + 1.5).astype(np.float32)
+    assert np.array_equal(masks.unstandardise(spec, meta), want)
+
+
+def test_unstandardise_needs_the_statistics_that_were_applied():
+    with pytest.raises(KeyError):
+        masks.unstandardise(np.zeros((512, 4), np.float32), {"spec_mean": 0.0})
 
 
 # ------------------------------------------------------------- band_logpow

@@ -212,3 +212,23 @@ def test_coverage_of_an_all_nan_group_is_two_nans(tmp_path):
         g.create_dataset("xdata", data=np.arange(5, dtype=np.float32))
     t0, t1 = channels.coverage(path, "mhr")
     assert math.isnan(t0) and math.isnan(t1)
+
+
+def test_a_fallback_is_excluded_by_a_target_group_the_plan_never_names(tmp_path):
+    # The presence check reads the FILE for `mhr`, not the plan: a plan of
+    # nothing but the mirnov fallback - which is what a re-run of the one
+    # channel that failed looks like - would otherwise see no `mhr` among
+    # its own specs and promote a duplicate of the channel it exists to
+    # replace.
+    path = _write(tmp_path / "a.h5", {"mhr": 8, "mirnov": 29})
+    plan = (channels.ChannelSpec("mirnov", 0, "magnetics", fallback_for="mhr"),)
+    specs, reasons = channels.plan_for(path, plan)
+    assert specs == []
+    assert reasons == {"mirnov:0": "fallback not needed"}
+
+
+def test_the_same_lone_fallback_plan_runs_when_the_target_is_absent(tmp_path):
+    path = _write(tmp_path / "a.h5", {"mhr": None, "mirnov": 29})
+    plan = (channels.ChannelSpec("mirnov", 0, "magnetics", fallback_for="mhr"),)
+    specs, reasons = channels.plan_for(path, plan)
+    assert [s.key for s in specs] == ["mirnov:0"] and reasons == {}
