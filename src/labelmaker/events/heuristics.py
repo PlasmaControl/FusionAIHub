@@ -128,6 +128,33 @@ LH_FULL_DROP = 0.6
 #: is not.
 LH_HOLD_LO_MS = 20.0
 LH_HOLD_HI_MS = 50.0
+#: 0.70 (and the H->L's `1 / 0.70`) is a CALIBRATION, not a fit: it is what
+#: separated the transitions from the ELMs on a ten-shot look, and nobody
+#: has swept it against labelled transitions. Treat it as a knob with one
+#: measurement behind it.
+#:
+#: What the gate ASSUMES is that the inter-ELM baseline is stationary over
+#: the +/-50 ms it compares, and a shot with a gas puff or a density ramp
+#: under it is not: a baseline falling by ~30% per 70 ms is lower after
+#: every ELM than it was before, so every ELM passes the hold and the gate
+#: becomes an ELM counter again. Measured on the synthetic shot: a half-
+#: life of 100 ms or less under 4 ms bursts every 15 ms gives four false
+#: `lh_transition`s in 0.8 s, one per ELM that also clears the density
+#: gate; at 150 ms and 300 ms it gives none. `test_matrix_a_*` pins that.
+#:
+#: Comparing the post window with the pre window's own TREND instead of its
+#: median cancels the drift out of the ratio, and was tried twice - a
+#: linear extrapolation of two half-window medians, then a geometric one,
+#: both bounded by a drift-like test and a floor. Both were WITHDRAWN. The
+#: pre window of a transition whose fall begins before the detected edge is
+#: not a baseline at all: extrapolating it predicts the rest of the fall,
+#: so the transition explains itself away and the detector reports nothing.
+#: Measured, on a 45% step a third of which is taken in a linear lead-in
+#: before the edge: the linear trend loses it at lead-ins of 40, 50 and 70
+#: ms and the geometric one at 40 and 50 ms, and both lose the H->L mirror
+#: at 40 ms. A dithering or slow transition is not exotic, and a silent
+#: miss is worse than a train of false positives a consumer can see. The
+#: whole matrix is `test_matrix_a_*` through `test_matrix_e_*`.
 LH_HOLD_FRAC = 0.70
 
 #: Actuator thresholds, in the canonical units of `features/namespace.py`.
@@ -351,11 +378,30 @@ def _step_offsets(env_ms: float, gap_ms: float,
     is selecting when it writes `te >= tc - span_ms`: the envelope grid is
     `env_ms` apart by construction, so the only thing that comparison can
     say is how many bins away a bin is. Saying it in bins says it exactly.
+
+    "Exactly" is why the bounds are converted to bins ONCE and compared as
+    integers, rather than each candidate `d * env_ms` being compared with
+    `gap_ms` and `span_ms` in floating point. On the pipeline's 1 ms grid
+    the two agree; on any grid whose spacing does not divide the bounds
+    they need not, because `d * env_ms` lands a bit either side of a bound
+    that is `d` bins away exactly - `3 * 0.7 == 2.0999999999999996` is not
+    `>= 2.1`, and `8 * 0.7 == 5.6000000000000005` is not `<= 5.6`, so both
+    end bins of a seven-bin window disappear.
+
+    The bounds are converted to the NEAREST bin (`round`), not to the
+    nearest bin strictly INSIDE the window (`ceil`/`floor`), which is what
+    the float comparison amounted to. On any grid whose spacing divides
+    both bounds - the pipeline's 1 ms one, and every grid this was written
+    against - the two are the same integers, so nothing about the reference
+    comparison changes. Off such a grid they differ by a bin at each end,
+    and nearest is the one the comparison MEANT. `round` is banker's, so a
+    bound landing exactly on a half-bin resolves to the even bin; that is
+    arbitrary, and it is a half-bin either way.
     """
     env_ms, gap_ms, span_ms = float(env_ms), float(gap_ms), float(span_ms)
-    d = np.arange(1, math.floor(span_ms / env_ms) + 2, dtype=np.intp)
-    off = d * env_ms
-    return d[(off >= gap_ms) & (off <= span_ms)]
+    lo = max(1, round(gap_ms / env_ms))
+    hi = round(span_ms / env_ms)
+    return np.arange(lo, hi + 1, dtype=np.intp)
 
 
 def _crash_step(env: np.ndarray, k: int, *, env_ms: float = ENV_MS,
@@ -703,6 +749,18 @@ def lh_transitions(
     within 50 ms of either end of the D-alpha record therefore cannot be
     claimed - the window it would have to hold over is not in the record.
 
+    That comparison assumes the inter-ELM baseline is STATIONARY over the
+    +/-50 ms, which a shot with a gas puff or a density ramp under it is
+    not: a baseline falling by ~30% per 70 ms is lower after every ELM than
+    it was before, so every ELM passes the hold and the gate becomes an ELM
+    counter again (measured: a 100 ms half-life under 4 ms bursts every 15
+    ms, four false `lh_transition`s in 0.8 s). That is a KNOWN LIMITATION
+    and not an oversight: comparing against the pre window's own trend
+    instead of its median removes it, and was tried twice and withdrawn
+    both times, because the pre window of a transition whose fall starts
+    before the edge is not a baseline and extrapolating it makes the
+    transition explain itself away. See `LH_HOLD_FRAC` for the matrix.
+
     The H->L back transition is the same step upward, held the same way
     (the level `LH_HOLD_HI_MS` later at least `1 / LH_HOLD_FRAC` of the
     level before), with the density falling. Its density test is only a
@@ -810,6 +868,8 @@ def lh_transitions(
                         "dalpha_after": float(after),
                         "ne_change_frac": float(ne_change),
                         "hold_frac": float(hold_frac),
+                        "dalpha_held_before": float(held0),
+                        "dalpha_held_after": float(held1),
                         "pinj_kw": float(pinj_kw),
                         "betan": None if not math.isfinite(betan) else float(betan),
                         "window_ms": float(drop_window_ms),

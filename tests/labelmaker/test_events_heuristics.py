@@ -76,8 +76,9 @@ def _random_record(n=200_000, channels=48, dtype=np.float32, seed=6):
     The times are RANDOM rather than a grid on purpose: a uniform grid puts
     samples exactly on bin edges, where the reference's arithmetic (searched
     per sample) and this module's (searched per bin) can round to different
-    sides and disagree about one sample. Random draws never land within 1e-12 of an edge, so the equality
-    below tests the binning rather than the last bit of the clock.
+    sides and disagree about one sample. Random draws never land within
+    1e-12 of an edge, so the equality below tests the binning rather than
+    the last bit of the clock.
     """
     rng = np.random.default_rng(seed)
     t_ms = np.sort(rng.uniform(0.0, n / 500.0, n))
@@ -310,6 +311,20 @@ def test_the_crash_window_is_the_same_seven_bins_everywhere_in_the_record():
     assert np.array_equal(steps, np.full(steps.size, 10.0))
 
 
+def test_the_step_windows_are_whole_bins_on_a_grid_that_is_not_whole_ms():
+    # The docstring's claim is that the windows are the bins `gap_ms` to
+    # `span_ms` away EXACTLY. Comparing `d * env_ms` against the two bounds
+    # in floating point does not keep it on a grid whose spacing does not
+    # divide them: 3 * 0.7 is 2.0999999999999996, a hair under a `gap_ms`
+    # of 2.1, so the nearest bin is dropped, and 8 * 0.7 is
+    # 5.6000000000000005, a hair over a `span_ms` of 5.6, so the farthest
+    # one is too. Asking the question in bins - how many bins is 2.1 ms -
+    # has no such edge.
+    assert heuristics._step_offsets(0.7, 2.1, 5.6).tolist() == [3, 4, 5, 6, 7, 8]
+    # The pipeline's own grid is unchanged by saying it that way.
+    assert heuristics._step_offsets(1.0, 2.0, 8.0).tolist() == [2, 3, 4, 5, 6, 7, 8]
+
+
 def test_a_window_that_falls_off_the_end_of_the_record_is_no_step():
     # The reference's answer: NaN for every channel when either side has
     # nothing in it, and the bins that ARE there when it is merely short.
@@ -370,6 +385,23 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     # The per-shot target of plan number 3, which is the binding one.
     assert record["port"]["elapsed_s"] < 1.0
     assert record["reference"]["elapsed_s"] > 10.0 * record["port"]["elapsed_s"]
+    # The omnimode side of the record is expensive (about eight minutes) and
+    # is not re-run when the port changes; `--port-only` re-runs the PORT on
+    # the same shot and amends the record, so the crash count the acceptance
+    # rests on is a measurement at the current code and not at whatever the
+    # code was when omnimode last ran.
+    rerun = record["port_rerun"]
+    assert rerun["n"] == record["reference"]["n"]
+    assert abs(rerun["median_ms"] - record["reference"]["median_period_ms"]) < 1e-6
+    assert rerun["max_abs_dt_ms"] <= record["agree_tolerance_ms"]
+    assert rerun["elapsed_s"] < 1.0
+    assert len(rerun["labelmaker_sha"]) == 40
+    # `labelmaker_sha` is HEAD at run time, which is the PARENT of the
+    # commit carrying the record - the script has to run before the commit
+    # its output goes into. That names the tree that was MEASURED only if
+    # nothing under `src/labelmaker` was uncommitted when it ran, so the
+    # stanza says which, and this asserts it was clean.
+    assert rerun["dirty"] is False
 
 
 # ------------------------------------------------------------- L->H and H->L
@@ -482,6 +514,171 @@ def test_a_transition_followed_by_an_elm_train_is_one_transition(synth_shot):
            if e.phenomenon == "lh_transition"]
     assert len(got) == 1
     assert got[0].t0_s == pytest.approx(SYNTH_LH_S, abs=2e-3)
+
+
+# ----------------------------------------- the hold gate's acceptance matrix
+
+# The hold gate compares the D-alpha level 20-50 ms AFTER a step with the
+# level 20-50 ms before it, and what these five cells settle is whether that
+# comparison may be made against the pre window's own TREND rather than its
+# median. A trend cancels a drifting baseline out of the ratio - cells (a)
+# and (b) - but the pre window of a transition whose fall begins before the
+# detected edge is not a baseline at all, and carrying it forward predicts
+# the rest of the fall, so the transition explains itself away - cells (c)
+# and (e). Measured here, `*` marking a wrong answer:
+#
+#   cell                          stationary    linear trend   geometric
+#   (a) drift + ELMs, no step     4* 4* 0 0     0 0 0 0        0 0 0 0
+#   (b) drift + step              1 1 1 1       0* 1 1 1       1 1 1 1
+#   (c) lead-in + step            1 1 1 1 1     1 1 0* 0* 0*   1 1 0* 0* 1
+#   (d) ELMs, no step             0             0              0
+#   (e) H->L lead-in + step       1 1           1 0*           1 0*
+#
+# The stationary gate's wrong answers are a TRAIN OF FALSE transitions,
+# which is noisy and which a consumer can see; both trend gates' are a
+# genuine transition reported as nothing at all. So the trend gate was
+# withdrawn (task L7-fix) and the stationary one stands, with cell (a) as a
+# documented limitation rather than a fixed bug.
+
+#: The lead-in cells below draw a transition whose fall STARTS before the
+#: edge the detector finds: the level slides linearly from `SYNTH_DALPHA_L`
+#: to `LEAD_MID_LH` over the lead-in and then steps the rest of the way to
+#: `SYNTH_DALPHA_H`. A third of the fall before the edge and two thirds at
+#: it, so the step is still 35% - comfortably over `LH_DROP_FRAC`, which is
+#: what makes it a candidate at all - while the lead-in is steep enough to
+#: reach into the `[t - 50 ms, t - 20 ms]` window the hold is measured over.
+#: A dithering or slow L->H does exactly this, and it is not exotic.
+LEAD_MID_LH = 0.85
+#: The H->L mirror: the level climbs a third of the way back and then steps
+#: the rest, a 43% rise at the edge.
+LEAD_MID_HL = 0.70
+
+#: Half-lives of the decaying baseline, in ms, and lead-ins in ms.
+MATRIX_HALF_LIVES = (70.0, 100.0, 150.0, 300.0)
+MATRIX_LEADS = (0.0, 30.0, 40.0, 50.0, 70.0)
+
+
+def _dalpha(synth_shot, level):
+    """The fixture's eight channels, carrying the 1-D trace `level`."""
+    first = synth_shot["dalpha_y"][:, :1].astype(np.float64)
+    return first * (np.asarray(level, dtype=np.float64) / SYNTH_DALPHA_L)
+
+
+def _flat_level(t):
+    return np.full(t.shape, SYNTH_DALPHA_L)
+
+
+def _step_level(t):
+    """L, then H over `[SYNTH_LH_S, SYNTH_HL_S)`, then L again."""
+    return np.where(
+        (t >= SYNTH_LH_S) & (t < SYNTH_HL_S), SYNTH_DALPHA_H, SYNTH_DALPHA_L
+    )
+
+
+def _decayed(level, t, half_ms):
+    """`level` under a baseline decaying with the given half-life."""
+    return level * np.exp(-t * math.log(2.0) / (half_ms * 1e-3))
+
+
+def _elm_train(level, t, *, width_ms=4.0, period_ms=15.0):
+    """`level` with a 4 ms D-alpha burst every 15 ms on top of it."""
+    fs = 1.0 / float(t[1] - t[0])
+    out = level.copy()
+    width = round(width_ms * 1e-3 * fs)
+    for start in range(0, out.size, round(period_ms * 1e-3 * fs)):
+        out[start:start + width] *= 6.0
+    return out
+
+
+def _with_lead_in(level, t, *, edge, lead_ms, mid):
+    """`level` with a linear lead-in of `lead_ms` ending at `edge`."""
+    if lead_ms <= 0.0:
+        return level
+    out = level.copy()
+    lead_s = lead_ms * 1e-3
+    m = (t >= edge - lead_s) & (t < edge)
+    out[m] = out[m] + (mid - out[m]) * (t[m] - (edge - lead_s)) / lead_s
+    return out
+
+
+def _n_lh(synth_shot, level, phenomenon="lh_transition"):
+    got = _lh({**synth_shot, "dalpha_y": _dalpha(synth_shot, level)})
+    return len([e for e in got if e.phenomenon == phenomenon])
+
+
+#: Cell (a)'s measured answer: the number of false `lh_transition`s a
+#: falling baseline under an ELM train produces, per half-life. Four is one
+#: per ELM whose fall also clears the density gate, in 0.8 s.
+MATRIX_A_FALSE = (4, 4, 0, 0)
+
+
+@pytest.mark.parametrize("half_ms, n_false",
+                         list(zip(MATRIX_HALF_LIVES, MATRIX_A_FALSE)))
+def test_matrix_a_a_falling_baseline_under_an_elm_train_is_false_transitions(
+    synth_shot, half_ms, n_false,
+):
+    # THE KNOWN LIMITATION, pinned rather than fixed. The hold assumes the
+    # inter-ELM baseline is stationary over its +/-50 ms; a baseline that is
+    # itself falling is genuinely lower after every ELM than before it, so
+    # every ELM's fall passes the hold and the detector reports one
+    # transition per ELM although no step was drawn. Below a ~30% fall per
+    # 70 ms the drift no longer clears `LH_HOLD_FRAC` and the cell is clean.
+    # Both fixes tried made cells (c) and (e) silently miss a real
+    # transition, which is worse; see the table above and `LH_HOLD_FRAC`.
+    t = synth_shot["dalpha_t_s"]
+    drifting = _decayed(_flat_level(t), t, half_ms)
+    # The drift ALONE is no transition at any half-life: it is smooth, so
+    # the 5 ms drop gate never fires. It takes the ELMs to make candidates.
+    assert _n_lh(synth_shot, drifting) == 0
+    assert _n_lh(synth_shot, _elm_train(drifting, t)) == n_false
+
+
+@pytest.mark.parametrize("half_ms", MATRIX_HALF_LIVES)
+def test_matrix_b_a_transition_under_a_falling_baseline_is_still_found(
+    synth_shot, half_ms,
+):
+    # The other half of (a): whatever the gate does about a drift, the
+    # transition drawn UNDER that drift is still one transition.
+    t = synth_shot["dalpha_t_s"]
+    assert _n_lh(synth_shot, _decayed(_step_level(t), t, half_ms)) == 1
+
+
+@pytest.mark.parametrize("lead_ms", MATRIX_LEADS)
+def test_matrix_c_a_transition_whose_fall_reaches_the_pre_window_is_found(
+    synth_shot, lead_ms,
+):
+    # The transition takes `lead_ms` to fall, so its own fall is INSIDE the
+    # window the hold is measured against. A gate that reads that window as
+    # a baseline and carries it forward predicts the rest of the fall, and
+    # the transition explains itself away - a SILENT miss, which is the one
+    # thing this detector may not do.
+    t = synth_shot["dalpha_t_s"]
+    level = _with_lead_in(_step_level(t), t, edge=SYNTH_LH_S,
+                          lead_ms=lead_ms, mid=LEAD_MID_LH)
+    assert _n_lh(synth_shot, level) == 1
+
+
+def test_matrix_d_a_stationary_baseline_under_an_elm_train_is_no_transition(
+    synth_shot,
+):
+    # The cell the whole hold gate exists for, and the one that is not in
+    # doubt: 4 ms bursts every 15 ms on a level that does not move.
+    t = synth_shot["dalpha_t_s"]
+    assert _n_lh(synth_shot, _elm_train(_flat_level(t), t)) == 0
+    assert _n_lh(synth_shot, _elm_train(_flat_level(t), t),
+                 "hl_transition") == 0
+
+
+@pytest.mark.parametrize("lead_ms", [0.0, 40.0])
+def test_matrix_e_a_back_transition_with_a_lead_in_is_found(
+    synth_shot, lead_ms,
+):
+    # (c)'s mirror: the level climbs before the step up as often as it
+    # falls before the step down, and the same gate has to survive it.
+    t = synth_shot["dalpha_t_s"]
+    level = _with_lead_in(_step_level(t), t, edge=SYNTH_HL_S,
+                          lead_ms=lead_ms, mid=LEAD_MID_HL)
+    assert _n_lh(synth_shot, level, "hl_transition") == 1
 
 
 def test_a_transition_taken_in_two_stages_is_one_transition(synth_shot):

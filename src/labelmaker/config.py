@@ -15,6 +15,21 @@ from pathlib import Path
 
 DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 DEFAULT_CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
+#: The per-shot operator-text bundles `events/text_weak.py` reads. A third
+#: read-only input root beside the corpus, and separate from it because it
+#: is a different group's directory and covers a different set of shots.
+DEFAULT_TEXT = Path(
+    "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
+    "/shotsummary/processed/per_shot_txt"
+)
+#: The logbook dump `events/text_weak.py` takes its SHOT-scope text from:
+#: one 616 MB file, one JSON record per line, every line beginning
+#: `{"shot": <digits>,`. Read-only, like the corpus and the bundles; what
+#: labelmaker writes is the subset of it for the shots in hand, under
+#: `text_cache`.
+DEFAULT_LOGS_JSONL = Path(
+    "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/sql/logs.jsonl"
+)
 
 
 @dataclass(frozen=True)
@@ -23,12 +38,18 @@ class Paths:
 
     root: Path = DEFAULT_ROOT
     corpus: Path = DEFAULT_CORPUS
+    text_root: Path = DEFAULT_TEXT
+    logs_jsonl: Path = DEFAULT_LOGS_JSONL
 
     @classmethod
     def from_env(cls) -> Paths:
         return cls(
             root=Path(os.environ.get("LABELMAKER_ROOT", str(DEFAULT_ROOT))),
             corpus=Path(os.environ.get("LABELMAKER_CORPUS", str(DEFAULT_CORPUS))),
+            text_root=Path(os.environ.get("LABELMAKER_TEXT_ROOT",
+                                          str(DEFAULT_TEXT))),
+            logs_jsonl=Path(os.environ.get("LABELMAKER_LOGS_JSONL",
+                                           str(DEFAULT_LOGS_JSONL))),
         )
 
     @property
@@ -64,6 +85,30 @@ class Paths:
         return self.root / "annotate"
 
     @property
+    def text_cache(self) -> Path:
+        """Where the shots-in-hand slice of `logs_jsonl` is kept.
+
+        An OUTPUT: streaming 616 MB to find five records is a thing to do
+        once, and everything downstream reads the subset instead.
+        """
+        return self.root / "text"
+
+    @property
+    def logs_subset(self) -> Path:
+        return self.text_cache / "logs_subset.jsonl"
+
+    @property
+    def logs_subset_missing(self) -> Path:
+        """The shots `logs_jsonl` was searched for and did not have.
+
+        One shot per line, beside the subset. A shot with no record can
+        never enter the subset, so without this file it is searched for
+        again on every call - a full pass over 616 MB to learn the same
+        nothing, once per record-less shot per pass over a shot list.
+        """
+        return self.text_cache / "logs_subset.missing"
+
+    @property
     def labels_index(self) -> Path:
         return self.root / "labels_index.parquet"
 
@@ -86,9 +131,13 @@ class Paths:
     def corpus_file(self, shot: int) -> Path:
         return self.corpus / f"{shot}_processed.h5"
 
+    def text_file(self, shot: int) -> Path:
+        return self.text_root / f"shot_{shot}.txt"
+
     def mkdirs(self) -> None:
         for d in (self.features, self.labels, self.models, self.runs,
-                  self.validation, self.events, self.masks, self.annotate):
+                  self.validation, self.events, self.masks, self.annotate,
+                  self.text_cache):
             d.mkdir(parents=True, exist_ok=True)
 
 

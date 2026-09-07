@@ -1,0 +1,172 @@
+# The phenomenon lexicon: what a DIII-D operator calls each thing.
+#
+# THIS FILE IS THE SINGLE SOURCE of the round-1 phenomenon ids and their
+# aliases (plan 5.6). ideate reads it too - `configs/ideate/phenomena.yaml`
+# adds the scoring machinery (labels, events, bands, diagnostics, priors)
+# around these ids and does NOT restate the alias lists - so an id renamed
+# here is renamed in both, and an alias added here is added to both.
+#
+# `aliases` are lowercase phrases matched WHOLE, by gluing spaces around
+# them: punctuation becomes whitespace except a hyphen or a slash inside a
+# token, so "elm" does not match "helms" or "elm-free", and "2/1" is one
+# token. That is also why the spellings here are the ones the logbook
+# actually uses, acronyms included, rather than the textbook names.
+#
+# `negatives` are phrases whose presence makes the WHOLE sentence a
+# statement of absence: a sentence carrying one yields `polarity="neg"`
+# hits for that phenomenon and no positive ones. They overlap `aliases` on
+# purpose, and they HAVE to: a negative only marks a sentence some alias
+# already matched, so every hyphenated negative is also an alias -
+# "elm-free" is one token, and " elm " is not inside it. `load_lexicon`
+# runs the matcher on each negative phrase alone and refuses one that
+# fires nothing, because "sawtooth-free", "eho-free" and "ae-free" shipped
+# without their alias and were silently dead. (ideate's `exclude` is the
+# same idea under its own name.) They are otherwise deliberately sparse:
+# only phrasings seen in the corpus, because a missing negative costs a
+# little and one that fires wrongly silences a real mention.
+#
+# `weight` (default 1.0) is for the CONSUMER's scoring, not for
+# `text_weak`, whose confidence is a flat quarter a mention. What deserves
+# a caveat rather than a number nobody measured is the difference between
+# the two SCOPES. Measured on the 500 shots of `recommender_v1.txt`, as
+# the fraction of shots with at least one positive hit:
+#
+#   phenomenon   shot scope (logbook)   run scope (session text)
+#   elm                 11.0 %                  99.4 %
+#   rwm                  1.0 %                  99.4 %
+#   tearing              7.2 %                  49.0 %
+#   lh                   2.4 %                  42.4 %
+#   detachment           2.4 %                  35.0 %
+#   sawtooth             0.6 %                  14.6 %
+#   qcm                  0.0 %                   0.0 %
+#
+# A run-scope hit is a sentence every shot of the session shares - an
+# experiment title ("pedestal and ELM") or a control-system note ("I-coil
+# RWM feedback") - so `elm` and `rwm` at run scope separate almost nothing
+# on this set, while the same words in a shot's own logbook entries are
+# somebody writing about that shot. Whoever scores run-scope evidence
+# should discount it by the size of the run and treat a lone two- or
+# three-letter acronym as weaker than a spelled-out name. `qcm` appears in
+# 15 of 22,950 bundles corpus-wide: text will not find QCM shots.
+version: 1
+phenomena:
+  ae:
+    title: Alfven eigenmode
+    aliases:
+      - ae
+      - tae
+      - rsae
+      - bae
+      - eae
+      - alfven eigenmode
+      - alfven
+      - alfvén
+      - ae-free
+    negatives:
+      - no ae
+      - ae-free
+
+  eho:
+    title: Edge harmonic oscillation
+    aliases:
+      - eho
+      - edge harmonic oscillation
+      - edge harmonic
+      - eho-free
+    negatives:
+      - no eho
+      - eho-free
+
+  elm:
+    title: Edge localised mode
+    aliases:
+      - elm
+      - elms
+      - elmy
+      - elming
+      - elm-free
+    negatives:
+      - elm-free
+      - elm free
+      - no elms
+      - without elms
+
+  tearing:
+    title: Tearing mode
+    aliases:
+      - tearing
+      - ntm
+      - 2/1
+      - 3/2
+      - locked mode
+    negatives:
+      - no tearing
+
+  sawtooth:
+    title: Sawtooth
+    aliases:
+      - sawtooth
+      - sawteeth
+      - sawtooth crash
+      - st crash
+      - sawtooth-free
+    negatives:
+      - no sawteeth
+      - sawtooth-free
+
+  fishbone:
+    title: Fishbone
+    aliases:
+      - fishbone
+      - fishbones
+    negatives: []
+
+  qcm:
+    title: Quasi-coherent mode
+    aliases:
+      - qcm
+      - quasi-coherent
+    negatives: []
+
+  qh:
+    title: Quiescent H-mode
+    aliases:
+      - qh
+      - qh-mode
+      - qh mode
+      - quiescent h-mode
+      - quiescent h mode
+    negatives: []
+
+  lh:
+    title: L-H transition
+    aliases:
+      - l-h transition
+      - lh transition
+      - l to h
+      - h-mode transition
+      - transition to h-mode
+    negatives: []
+
+  detachment:
+    title: Divertor detachment
+    aliases:
+      - detach
+      - detached
+      - detachment
+    negatives: []
+
+  pickup:
+    title: Instrumental pickup
+    aliases:
+      - pickup
+      - pick-up
+      - noise pickup
+    negatives: []
+
+  rwm:
+    title: Resistive wall mode
+    aliases:
+      - rwm
+      - resistive wall mode
+    negatives: []
