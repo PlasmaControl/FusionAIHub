@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import textwrap
+import time
 from collections import Counter
 from pathlib import Path
 from typing import get_args
@@ -22,7 +23,7 @@ from .retrieval import describe as describe_mod
 from .retrieval import rank as rank_mod
 from .schema import QueryState, Range, SegName, ShotRecord, to_summary
 from .shotdb import build as build_mod
-from .shotdb import legacy_raw, store
+from .shotdb import census, legacy_raw, store
 
 # sentence_transformers reaches into huggingface_hub on every model load, even though the MiniLM
 # checkpoint is already in ~/.cache/huggingface/hub. On a compute node with no outbound route that
@@ -645,6 +646,63 @@ def _feature(col: str, delta: float, value: float, want: float | None) -> str:
     return f"{col} {rank_mod.display_pair(col, value, want)} ({delta:.2g} sd)"
 
 
+# ---------------------------------------------------------------------------------- corpus
+
+
+def _shot_file(path: str) -> list[int]:
+    """Shots from a file: a shot-list YAML (the project's own format) or one integer per line,
+    `#` starting a comment. Both because the census is run both ways -- against a curated list
+    and against whatever a job script scraped together."""
+    p = Path(path)
+    if p.suffix in (".yaml", ".yml"):
+        return config.load_shot_list(path=p)
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        head = line.split("#", 1)[0].strip()
+        if head:
+            out.append(int(head))
+    return out
+
+
+def cmd_corpus(args) -> int:
+    """`corpus scan` counts what every corpus file carries; `corpus summary` reads that count
+    back as the availability table."""
+    if args.what == "summary":
+        import pandas as pd
+
+        df = pd.read_parquet(args.parquet)
+        print(census.format_summary(census.summary(df)))
+        return 0
+
+    paths = config.load_paths() if not (args.corpus and args.out) else None
+    corpus_dir = Path(args.corpus) if args.corpus else Path(paths.foundation_model_processed_dir)
+    out = Path(args.out) if args.out else paths.db_dir / "corpus_coverage.parquet"
+    if not corpus_dir.is_dir():
+        print(f"no corpus directory at {corpus_dir}", file=sys.stderr)
+        return 1
+    shots = _shot_file(args.shots) if args.shots else None
+    started = time.perf_counter()
+    df = census.scan(
+        corpus_dir,
+        workers=args.workers,
+        limit=args.limit,
+        shots=shots,
+        progress=sys.stdout.isatty(),
+    )
+    elapsed = time.perf_counter() - started
+    n_files = int(df["shot"].nunique())
+    n_openable = int(df.loc[df["openable"], "shot"].nunique())
+    sidecar = census.write(df, out, corpus_dir=corpus_dir, workers=args.workers, elapsed_s=elapsed)
+    print(
+        f"scanned {n_files:,} files ({n_openable:,} openable, {n_files - n_openable:,} not) "
+        f"in {elapsed:.1f} s -> {len(df):,} rows"
+    )
+    print(f"wrote {out} and {sidecar.name}")
+    print()
+    print(census.format_summary(census.summary(df)))
+    return 0
+
+
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
     paths = config.load_paths()
@@ -746,6 +804,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("coverage", help="present/unavailable/pending per registry field")
     p.set_defaults(func=cmd_coverage)
+
+    p = sub.add_parser("corpus", help="the FAITH corpus: what each shot file actually carries")
+    what = p.add_subparsers(dest="what", required=True)
+    s = what.add_parser("scan", help="census every corpus file (header-only, parallel)")
+    s.add_argument("--corpus", help="corpus directory (default: paths.yaml's)")
+    s.add_argument("--out", help="parquet to write (default: <db_dir>/corpus_coverage.parquet)")
+    s.add_argument("--workers", type=int, default=os.cpu_count())
+    s.add_argument("--limit", type=int, help="only the first N files, in shot order")
+    s.add_argument("--shots", metavar="FILE", help="a shot-list YAML, or one shot per line")
+    s = what.add_parser("summary", help="the availability table from a written census")
+    s.add_argument("parquet")
+    p.set_defaults(func=cmd_corpus)
 
     p = sub.add_parser("query", help="find similar shots")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")
