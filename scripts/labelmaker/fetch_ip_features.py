@@ -24,14 +24,20 @@ where that trap is recorded, and `resolve_fdp`'s module docstring.
 
 HOW IT IS SAFE. `store.write_features(..., merge=True)` keeps every group already in the file and
 drops `ip` from the recorded misses when it resolves; it writes through a temporary file and
-renames, so a file is never left half-written. A shot whose fetch fails keeps everything it had,
-and the cause is recorded in the file's `missing` attribute -- but only if the file already
-exists: this script never creates a feature file that would hold nothing but a miss, because
-`preferred_shots` and the census both read the mere existence of one as "this shot has features".
+renames, so a file is never left half-written.
+
+**This script never CREATES a feature file** -- `preferred_shots` and the census both read the
+mere existence of one as "this shot has features", so a file holding nothing but `ip` (or nothing
+but a recorded miss) would promote a shot labelmaker has never featured. The `path.exists()`
+guard is therefore on EVERY write, the successful one included: a shot with no feature file is
+reported as failed with the cause `no features file`, and nothing is written for it. A shot whose
+fetch fails keeps everything it had and gets the cause recorded in its `missing` attribute --
+again only where the file is already there.
 
 The worker pool is forked before toksearch is imported anywhere (its ptserver reader is not
-fork-safe), which is why every labelmaker import in `_fetch` is inside the function -- the same
-rule `labelmaker.run` follows.
+fork-safe), which is why the labelmaker imports sit inside `_resolver()`/`_store()` and those are
+called from `_fetch` -- the same rule `labelmaker.run` follows. They are functions rather than a
+bare `from ... import` so a test can substitute them without importing labelmaker at all.
 """
 
 from __future__ import annotations
@@ -89,18 +95,42 @@ def _init(features_dir: str, retries: int) -> None:
     _RETRIES = retries
 
 
-def _fetch(shot: int) -> dict:
-    """One shot: fetch `ip` and merge it in. Returns a row for the caller to print and count.
+def _resolver():
+    """labelmaker's fdp resolver, imported HERE and not at module scope.
 
-    Every labelmaker import is deferred into this function so the parent process never imports
-    toksearch (its ptserver reader is not fork-safe) and the pool is forked clean.
+    The parent process must never import toksearch -- its ptserver reader is not fork-safe, and
+    the pool below is forked. Deferring the import into a function called from the worker keeps
+    that true and, as a side effect, lets a test substitute the resolver without labelmaker.
     """
-    from labelmaker.features import resolve_fdp, store
+    from labelmaker.features import resolve_fdp
 
+    return resolve_fdp
+
+
+def _store():
+    """labelmaker's feature-file writer. Deferred for the same reason as `_resolver`."""
+    from labelmaker.features import store
+
+    return store
+
+
+def _fetch(shot: int) -> dict:
+    """One shot: fetch `ip` and merge it in. Returns a row for the caller to print and count."""
     path = _FEATURES_DIR / f"{shot}_features.h5"
     t0 = time.monotonic()
     if has_ip(path):
         return {"shot": shot, "status": "present", "cause": "", "secs": 0.0, "n": 0}
+    if not path.exists():
+        # Checked BEFORE the network call, not just before the write: there is nothing this run
+        # may do for a shot it must not create a file for, so spending a fetch on it is waste.
+        return {
+            "shot": shot,
+            "status": "failed",
+            "cause": "no features file (this script merges, it never creates one)",
+            "secs": 0.0,
+            "n": 0,
+        }
+    resolve_fdp, store = _resolver(), _store()
     try:
         arrays, missing = resolve_fdp.resolve(shot, [FEATURE], retries=_RETRIES)
     except Exception as exc:  # noqa: BLE001 - one shot's failure is not the run's
@@ -114,13 +144,12 @@ def _fetch(shot: int) -> dict:
     secs = time.monotonic() - t0
     if FEATURE not in arrays:
         cause = missing.get(FEATURE, "NoArrayNoCause")
-        if path.exists():
-            # The miss is recorded in the file it belongs to, so a later run can see what was
-            # tried. A file that does not exist is left alone: see the module docstring.
-            try:
-                store.write_features(path, shot, {}, {FEATURE: cause}, merge=True)
-            except Exception as exc:  # noqa: BLE001
-                cause = f"{cause} (+ {type(exc).__name__} recording it)"
+        # The miss is recorded in the file it belongs to, so a later run can see what was tried.
+        # Safe because the guard above already established that the file is there.
+        try:
+            store.write_features(path, shot, {}, {FEATURE: cause}, merge=True)
+        except Exception as exc:  # noqa: BLE001
+            cause = f"{cause} (+ {type(exc).__name__} recording it)"
         return {"shot": shot, "status": "failed", "cause": cause, "secs": secs, "n": 0}
     try:
         store.write_features(path, shot, {FEATURE: arrays[FEATURE]}, {}, merge=True)
