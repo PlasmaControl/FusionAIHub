@@ -441,6 +441,52 @@ def cmd_export(args) -> int:
     return 0
 
 
+def cmd_encode(args) -> int:
+    """IGNITE frame-code caches for a shot list: the seeds a Phase-5 rollout starts from."""
+    from .design import seed as seed_mod
+    from .shotdb.corpus import CorpusReader
+
+    paths = config.load_paths()
+    shots = sorted(_shots(args, "recommender_v1"))
+    if args.n_chunks > 1:
+        shots = seed_mod.chunk_of(shots, args.chunk, args.n_chunks)
+    if args.limit is not None:
+        shots = shots[: args.limit]
+    if not shots:
+        print("nothing to encode", file=sys.stderr)
+        return 1
+    out = Path(args.out) if args.out else Path(paths.data_root) / "frame_codes"
+    report = seed_mod.encode_many(
+        shots,
+        reader=CorpusReader(paths.foundation_model_processed_dir),
+        out_dir=out,
+        device=args.device,
+        include_video=not args.no_video,
+        skip_existing=args.skip_existing,
+        workers=args.workers,
+        paths=paths,
+    )
+    run_dir = Path(paths.data_root) / "runs" / "encode"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
+    manifest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(
+        f"encoded {report['n_encoded']}/{report['n_requested']} shots "
+        f"({report['n_skipped']} already present, {len(report['failed'])} failed) in "
+        f"{report['elapsed_s']:.1f} s -> {out}"
+    )
+    if report["s_per_shot_mean"] is not None:
+        print(
+            f"  {report['s_per_shot_mean']:.2f} s/shot mean, "
+            f"{report['s_per_shot_median']:.2f} s median, {report['s_per_shot_max']:.2f} s max"
+        )
+    for shot, err in report["failed"].items():
+        print(f"  FAILED {shot}: {err}", file=sys.stderr)
+    print(f"  run manifest -> {manifest}")
+    return 0 if report["n_encoded"] or report["n_skipped"] else 1
+
+
 def cmd_coverage(args) -> int:
     db = _open_db(config.load_paths())
     if db is None:
@@ -1195,6 +1241,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--download", action="store_true", help="snapshot the pinned revision once")
     p.add_argument("--full", action="store_true", help="include the 3.5 GB dynamics checkpoint")
     p.set_defaults(func=cmd_model)
+
+    p = sub.add_parser("encode", help="IGNITE frame-code caches for a shot list (needs a GPU)")
+    _add_selection(p)
+    p.add_argument("--out", help="output directory (default: <data_root>/frame_codes)")
+    p.add_argument("--device", help="cuda | cpu (default: cuda when available)")
+    p.add_argument("--workers", type=int, help="CPU dataloader workers per codec (default: 8)")
+    p.add_argument("--limit", type=int, help="encode only the first N shots (pilot runs)")
+    p.add_argument("--skip-existing", action="store_true", help="leave caches already written")
+    p.add_argument("--no-video", action="store_true", help="skip the two tangtv modalities")
+    p.add_argument("--chunk", type=int, default=0, help="which contiguous slice this task takes")
+    p.add_argument("--n-chunks", type=int, default=1, help="how many tasks share the list")
+    p.set_defaults(func=cmd_encode)
 
     p = sub.add_parser("show", help="print one shot's record")
     p.add_argument("shot", type=int)
