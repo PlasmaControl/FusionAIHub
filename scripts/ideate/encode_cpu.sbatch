@@ -4,9 +4,9 @@
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=5
-#SBATCH --mem=10G
-#SBATCH --time=01:10:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=01:50:00
 #SBATCH --array=0-9%10
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
@@ -41,7 +41,7 @@
 #   and 21.6 s/shot (30-shot pilot). So CPU is ~2x the GPU path at 4 threads and ~1.5x at 8 --
 #   inside the 3x that made this worth writing.
 #
-#   cpus-per-task=5  OMP_NUM_THREADS=4 measured 380 % of one core. 380 / 5 = 76 % projected CPU
+#   cpus-per-task=5  OMP_NUM_THREADS=4 measured 380 % of one core. 380 / 5 = 76 % projected CPU (SUPERSEDED by the production measurement below)
 #                    efficiency, over the 75 % target. 4 cpus would project 95 % but leaves the
 #                    8 I/O-blocked dataloader workers nothing to run on; 6 projects 63 %. The
 #                    8-thread point is the alternative: 532 % / 7 cpus = 76 % at 31.5 s/shot,
@@ -89,6 +89,16 @@
 # This job is judged on CPU and CPU-memory efficiency (plan section 13.3), projected 76 % and
 # 72 %. It requests no GPU, so the GPU rows of jobstats do not apply to it.
 
+# MEASURED IN PRODUCTION (array 2925387, 2026-09-07, first submission at 5 cpus / 10G / 70 min):
+#   tasks 1, 4 and 5 OUT_OF_MEMORY with MaxRSS 10.48 GB -- the cgroup charged ~summed RSS (15.4 GB
+#   on the login node), not PSS (7.2 GB): shared library pages are divided among SYSTEM-wide
+#   sharers on the login node, and 2-5 GB of HDF5 page cache is charged to the job's cgroup.
+#   Per-shot wall inside 5 confined cpus: 60.1 s mean (n=57; median 56.3, max 87.8) against the
+#   40.4 s login-node pilot; CPU efficiency on the finished tasks 73 % / 66 % / 54 %.
+#   Re-sized by the controller from those numbers: --mem=16G (10.5 GB peak -> 66 %; 20G would be
+#   52 %), --cpus-per-task=4 (66 % of 5 cpus = 3.3 busy cores -> 82 % of 4), --time = 50 shots x
+#   ~70 s x 2 = 1:50:00. Lesson (same as build.sbatch): size memory from a compute-node pilot, not
+#   from login-node PSS.
 set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller runs the job from one while the
 # branch is under review); the pixi environment always lives in the main checkout.
