@@ -22,7 +22,7 @@ Per task: command run, output summary, jobstats (for SLURM jobs), reviewer verdi
 | L1 | `events/schema.py`, `config.Paths` additions, `labels/store.append_index(keys=)` | opus | complete (4765062 on recommender-L, review clean) |
 | L2 | `events/unet.py` vendored U-Net + `pin_unet.py` golden | opus | complete (8542db3, 9ee4f9b; review approved, Important fix folded into L3 housekeeping) |
 | L3 | `events/channels.py` + `events/masks.py`; smoke on 198658 reproduces A1 constants | opus | complete (e75826c, 309f480; review approved, Important OOM-copy fix folded into L4 housekeeping) |
-| L4 | `events/tracks.py` | opus | pending |
+| L4 | `events/tracks.py` | opus | complete (bd4fedb, 4187a92; 923 tests; review approved, 2 Important → L5 housekeeping) |
 | L5 | `events/transients.py` (ELM clock) | opus | pending |
 | L6 | `events/heuristics.py` (sawtooth, L-H, actuators, qh proxy) | opus | pending |
 | L7 | `events/lexicons.yaml` + `events/text_weak.py` | opus | pending |
@@ -42,3 +42,5 @@ Per task: command run, output summary, jobstats (for SLURM jobs), reviewer verdi
 - 2026-09-07 merged recommender-L @309f480 into recommender (f2d6b1c); labelmaker suite in main: 663 passed, 2 skipped.
 - I4: census job 2924940 submitted (partition remapped to `all`, QOS `stellar-debug`); jobstats pending.
 - I4 complete: census job 2924940 COMPLETED 00:07:51 on stellar-m09n21 (1 cpu, 1500M, 96 workers). jobstats: CPU 72.5 % (05:41/07:51), CPU-mem 72 % (1.0/1.5 GB) — both ≥ 70 %. Raw jobstats/sacct preserved at /scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/2924940.{jobstats,sacct}.txt; output /scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/2924940.out. Product: $IDEATE_DATA_ROOT/db/corpus_coverage.parquet + .json (see json for n_files/n_openable/n_rows).
+- L4 complete: bd4fedb (housekeeping: both-end NaN strip, OOM copy inside try, `unstandardise`, plan_for file lookup) + 4187a92 (tracks). Suite 665 → 923. raddet merge port verified literal (inclusive→half-open); fast path provably equivalent; fishbone −0.7998 kHz/ms (drawn −0.8), R² 0.9998. Review approved; Important → L5 housekeeping: `_iou` zero-union fallback bypasses `iou_min` for thin/point tracks; stored-mask re-analysis reports conf 1.0 (→ NaN/None; pipeline computes tracks in-memory). Minor: `_merge_literal` docstring omits the pre-sort; `as_attrs` NaN policy is raise-not-None; synth tests partly derive expectations from the fixture; `t1_s` = centre of last lit column (one column short of half-open span); `events/__init__` exports none.
+- Census facts: 16,909 files, 16,647 openable (262 unopenable = 1.5 %), 531,993 rows; mhr 82.6 %, ece 82.9 %, filterscopes 79.2 %, mirnov 98.8 %, pinj 58.6 %, bes 34.9 %, co2 (see parquet), tangtv video.
