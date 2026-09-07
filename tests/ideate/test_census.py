@@ -207,3 +207,60 @@ def test_every_scanned_row_is_finite_or_declared_missing(scanned):
         if not r["openable"] or not r["present"]:
             continue
         assert np.isfinite([r["t0_s"], r["t1_s"], r["fs_hz"]]).all()
+
+
+# ---------------------------------------------------------------- odd groups do not kill a scan
+
+
+def test_a_group_with_a_two_dimensional_time_axis_reports_nan_spans(corpus_dir):
+    """`xdata` is `(n,)` in every real corpus group -- but the census may not assume it.
+
+    `CorpusReader.coverage` already guards the shape (not merely the length) because indexing a
+    2-D `xdata` raises `IndexError`, an exception neither interface defines. The census reads the
+    same two scalars and needs the same guard: the shape is still a fact worth recording, the
+    span is not measurable, and NaN is how this table says "not measured".
+    """
+    import h5py
+
+    p = corpus_dir / "100006_processed.h5"
+    with h5py.File(p, "w") as f:
+        g = f.create_group("ece")
+        g.create_dataset("xdata", data=np.zeros((2, 4), dtype=np.float32))
+        g.create_dataset("ydata", data=np.zeros((3, 4), dtype=np.float32))
+    ece = row(census.scan(corpus_dir, workers=2), 100006, "ece")
+    assert bool(ece["openable"]) is True
+    assert ece["n_channels"] == 3 and ece["n_samples"] == 4
+    assert all(math.isnan(ece[c]) for c in ("t0_s", "t1_s", "fs_hz"))
+    assert "xdata" in ece["error"]
+
+
+def test_a_group_that_raises_becomes_its_own_row_and_the_others_are_still_scanned(
+    corpus_dir, monkeypatch
+):
+    """One odd group may cost that group's row, never the rest of the file's.
+
+    `scan_file` wrapped the whole file's groups in one `try`, so any exception raised while
+    describing group three -- a `TypeError` from a shape h5py hands back, an `AttributeError`
+    from a dataset that is not one -- discarded the two groups already measured and reported the
+    shot as unopenable. On a 16,909-file census that turns a single malformed group into a lost
+    shot, which is exactly the kind of silent understatement this table exists to prevent.
+    """
+    import h5py
+
+    real = h5py.Group.__getitem__
+
+    def boom(self, key):
+        if self.name == "/mhr":
+            raise TypeError("no shape for you")
+        return real(self, key)
+
+    monkeypatch.setattr(h5py.Group, "__getitem__", boom)
+    df = census.table(census.scan_file(corpus_dir / f"{CORPUS_FULL}_processed.h5"))
+
+    mhr = row(df, CORPUS_FULL, "mhr")
+    assert bool(mhr["openable"]) is True and bool(mhr["present"]) is False
+    assert mhr["error"] == "TypeError: no shape for you"
+    assert all(math.isnan(mhr[c]) for c in ("t0_s", "t1_s", "fs_hz"))
+    # and the file is still fully reported
+    assert sorted(df["group"]) == ["co2", "gas_flow", "mhr", "pinj", "tangtv"]
+    assert bool(row(df, CORPUS_FULL, "pinj")["present"]) is True
