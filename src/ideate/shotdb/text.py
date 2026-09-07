@@ -456,6 +456,38 @@ _SCOPE_END = re.compile(
 )
 
 
+def other_shot_spans(t: str | None) -> list[tuple[int, int, str]]:
+    """`(start, end, marker)` of every span of `t` that is about a *different* discharge.
+
+    The span runs from the marker ("Last shot:", "Next shot:", ...) to whichever comes first of
+    the next marker, a blank line, one of the logbook's dashed dividers and an outcome heading --
+    the boundaries measured on the corpus in the comments above.
+
+    Public because two callers need the same boundary for opposite reasons: `verdict()` deletes
+    these spans before grading a shot (_own_shot_text below), and `labels.claims` keeps them and
+    dates every claim inside one by its marker instead of `observed`. A previous shot's "strong
+    EHO" is a real claim -- about the previous shot -- and one boundary rule has to serve both, or
+    a span could be graded as another shot's and recorded as this one's.
+    """
+    t = t or ""
+    marks = list(_SHOT_SCOPE.finditer(t))
+    spans: list[tuple[int, int, str]] = []
+    cut = 0
+    for i, m in enumerate(marks):
+        which = m["which"].lower()
+        if which not in _OTHER_SHOT:
+            continue
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(t)
+        brk = _SCOPE_END.search(t, m.end(), end)
+        if brk:
+            end = brk.start()
+        if m.start() < cut:  # already inside a span we took
+            continue
+        spans.append((m.start(), end, which))
+        cut = end
+    return spans
+
+
 def _own_shot_text(t: str | None) -> str:
     """`t` with every span attributed to a different shot replaced by a clause break.
 
@@ -464,20 +496,12 @@ def _own_shot_text(t: str | None) -> str:
     the same bug _CLAUSE_BREAK exists to prevent.
     """
     t = t or ""
-    marks = list(_SHOT_SCOPE.finditer(t))
-    if not marks:
+    spans = other_shot_spans(t)
+    if not spans:
         return t
     out, cut = [], 0
-    for i, m in enumerate(marks):
-        if m["which"].lower() not in _OTHER_SHOT:
-            continue
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(t)
-        brk = _SCOPE_END.search(t, m.end(), end)
-        if brk:
-            end = brk.start()
-        if m.start() < cut:  # already inside a span we dropped
-            continue
-        out.append(t[cut : m.start()])
+    for start, end, _which in spans:
+        out.append(t[cut:start])
         cut = end
     out.append(t[cut:])
     return " . ".join(out)

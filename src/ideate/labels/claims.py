@@ -10,7 +10,10 @@ phenomenon only once three things are recorded with it, and this module's job is
   chief operators write), and a second copy would drift from the first correction onwards.
 * **temporality** `{observed, planned, historical}` -- a pre-shot entry's "plan to get QH next
   shot" is an intention, and "like shot 190090 the EHO" is about a different discharge. Both read
-  as a report of this shot if nothing separates them.
+  as a report of this shot if nothing separates them. A logbook entry also carries whole *spans*
+  about another discharge, headed by "Last shot:" or "Next shot:" on a line of their own, and
+  those are dated by their heading rather than sentence by sentence: `shotdb.text`'s
+  `other_shot_spans()` draws the boundary, the same one `verdict()` grades by.
 * **scope** `{shot, run}` -- Appendix C item 12: 2,302 of 22,950 shots have no shot table row of
   their own and their bundle carries only the session's text. That text is a claim about the run.
   So is everything before the bundle's shot-specific marker, on every shot.
@@ -51,6 +54,15 @@ POLARITIES = ("pos", "neg", "uncertain")
 TEMPORALITIES = ("observed", "planned", "historical")
 SCOPES = ("shot", "run")
 
+#: How a span headed by another shot's marker is dated. `shotdb.text._OTHER_SHOT`'s four
+#: backward markers put the text behind us; "next shot:" puts it ahead. Neither is `observed`:
+#: nothing under either heading is a report of this discharge, which is the whole reason the span
+#: is dated by its heading and not by whatever verbs its sentences happen to use.
+_SPAN_TEMPORALITY: dict[str, str] = {
+    "last": "historical", "previous": "historical", "prev": "historical", "prior": "historical",
+    "next": "planned",
+}
+
 #: How long a stored sentence may be. The snippet is what a reader is shown next to a hit, not the
 #: record: the bundle keeps the whole text.
 SNIPPET_CHARS = 240
@@ -72,9 +84,9 @@ _PLANNED = re.compile(
     r"|intend(?:s|ing)?|next shot|this shot:|request(?:s|ed|ing)?"
     r"|to (?:avoid|prevent|preclude|mitigate|protect against|guard against))\b"
 )
-# Back-references to another discharge. `text._SHOT_SCOPE` recognises the same markers for a
-# different purpose (it deletes those spans before grading a shot); here they are kept, because a
-# claim about a previous shot is a real claim -- about a previous shot.
+# Back-references to another discharge, *inside* one sentence. `text.other_shot_spans()` handles
+# the other shape, a heading over several lines of prose; here they are kept rather than deleted,
+# because a claim about a previous shot is a real claim -- about a previous shot.
 _HISTORICAL = re.compile(
     r"(?i)\b(?:like shot|as in|repeat(?:ed|ing)? (?:of|from)?|previous(?:ly)?|last shot"
     r"|prior shot|earlier shot|same as shot)\b"
@@ -218,6 +230,27 @@ def _log_texts(text_root: Path, shots: list[int]) -> dict[int, str]:
     return out
 
 
+def _dated_spans(body: str) -> list[tuple[str, str | None]]:
+    """One logbook entry as `(text, temporality)` pieces.
+
+    A span headed by another shot's marker carries that heading's date; everything else is undated
+    here and each sentence says for itself. Without this, "Last shot:" followed by two lines of
+    prose yields `observed` rows on *this* shot for what the previous one did -- the entry is this
+    shot's, but those sentences are not.
+    """
+    spans = text_mod.other_shot_spans(body)
+    if not spans:
+        return [(body, None)]
+    out: list[tuple[str, str | None]] = []
+    cut = 0
+    for start, end, which in spans:
+        out.append((body[cut:start], None))
+        out.append((body[start:end], _SPAN_TEMPORALITY.get(which, "historical")))
+        cut = end
+    out.append((body[cut:], None))
+    return [(text, when) for text, when in out if text.strip()]
+
+
 def _segments(
     text_root: Path, shot: int, logs: Mapping[int, str]
 ) -> list[tuple[str, str, str | None]]:
@@ -235,7 +268,9 @@ def _segments(
       and the block is the `SHOT_TABLE_MISSING` sentinel, in which case nothing in the bundle is
       the shot's and the whole thing is the run's (Appendix C item 12).
 
-    The logbook entries are this shot's by definition, so they are shot scope and date themselves.
+    The logbook entries are this shot's by definition, so they are shot scope -- but an entry is
+    not uniformly *about* this shot: `_dated_spans` splits off the spans headed by another
+    discharge's marker and dates those by the heading.
     """
     out: list[tuple[str, str, str | None]] = []
     path = _bundle_path(text_root, shot)
@@ -248,7 +283,7 @@ def _segments(
         scope = "run" if text_mod.SHOT_TABLE_MISSING in specific else "shot"
         out.append((specific, scope, None))
     for entry in text_mod.parse_log_entries(logs.get(shot)):
-        out.append((entry.text, "shot", None))
+        out.extend((body, "shot", when) for body, when in _dated_spans(entry.text))
     return out
 
 

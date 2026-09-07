@@ -994,6 +994,13 @@ def cmd_labels(args) -> int:
     print(f"labels_wide {m['n_labels_wide_rows']:,} rows over {n_models} model(s)")
     for slug, n in sorted(Counter(result.labels_wide["slug"]).items()):
         print(f"  {slug:<45} {n:>7,}")
+    if not result.labels_wide.empty:
+        # Whose threshold each row carries: a card's operating point, ideate's own alarm level, or
+        # none at all. An aggregate count cannot say it per row, but it can say how far it reaches.
+        sources = Counter(result.labels_wide["thr_source"])
+        print("  thr_source " + ", ".join(
+            f"{src or 'none'} {n:,}" for src, n in sorted(sources.items())
+        ))
     print(f"events      {m['n_events']:,} rows, of which {m['n_forecast_events']:,} forecasts")
     for (phen, horizon), n in sorted(
         Counter(
@@ -1007,8 +1014,9 @@ def cmd_labels(args) -> int:
         print(f"  forecast {phen:<12} horizon {horizon:>6.3f} s  {n:>7,}")
     print(f"text_claims {m['n_text_claims']:,} rows from {m['lexicon'] or 'no lexicon'}")
     if not result.claims.empty:
-        print("  " + ", ".join(f"{k} {v:,}" for k, v in
-                               sorted(Counter(result.claims["polarity"]).items())))
+        for col in ("polarity", "temporality"):
+            print("  " + ", ".join(f"{k} {v:,}" for k, v in
+                                   sorted(Counter(result.claims[col]).items())))
     if m["n_shots_missing_labels"]:
         print(f"no labels file: {_brief(m['labels_missing'])}")
     print(f"wrote {db_dir}/{{labels_wide,events,text_claims}}.parquet and manifest.json")
