@@ -13,7 +13,7 @@ import copy
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -98,12 +98,54 @@ def load_yaml(name: str) -> dict[str, Any]:
     return copy.deepcopy(hit[2])
 
 
+class CorpusAddress(BaseModel):
+    """Where a signal lives in the FAITH corpus: a group, some of its channels, one reduction.
+
+    Either `actuator` (an entry of actuators.yaml's `corpus:` block, which already says which
+    group and channels an actuator is) or `group` -- never both spelled out twice. `scale` is the
+    CORPUS's storage convention and is deliberately not `SignalSpec.scale`, which corrects the
+    d3d_fusion_data layout's own conventions and is wrong here by exactly that factor.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    actuator: str | None = None
+    group: str | None = None
+    channels: list[int] | None = None  # None is "all of them"
+    reduce: Literal["sum", "mean", "first"] | None = None
+    scale: float = 1.0
+    units: str | None = None
+
+
+class LabelmakerAddress(BaseModel):
+    """One canonical feature of `$LABELMAKER_ROOT/features/<shot>_features.h5`.
+
+    `reduce` says how a stored `(C, T)` array becomes one series: a scalar feature is `(1, T)` and
+    takes `first`; a profile is `(33 rho, T)` and takes `core` (rho = 0), `edge` (rho = 1) or
+    `peak` (the largest of the 33 at each time).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    feature: str
+    reduce: Literal["first", "core", "edge", "peak", "mean", "sum"] = "first"
+    scale: float = 1.0
+    units: str | None = None
+
+
 class SignalSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str  # DB column prefix, e.g. "ip", "pnbi_15L", "betan"
-    group: str  # d3d_fusion_data group
-    col: str  # column inside the group
+    # The d3d_fusion_data address. Empty for a quantity that layout does not carry at all (a
+    # corpus- or labelmaker-only signal): `legacy_raw` then finds no such group and reports it
+    # `unavailable`, which is what that layout's answer honestly is.
+    group: str = ""
+    col: str = ""
+    # The other two raw layouts. Absent means "this signal has no address there", which is a
+    # coverage fact and not a fetchable gap -- see `corpus_signals` for the status rules.
+    corpus: CorpusAddress | None = None
+    labelmaker: LabelmakerAddress | None = None
     units: str | None = None
     tier: str = "raw"  # "raw" | "derived"
     abs: bool = False
@@ -187,13 +229,32 @@ def expand_registry(shot: int, include_not_installed: bool = False) -> list[Sign
 
 
 class CorpusActuator(BaseModel):
-    """Which FAITH-corpus group carries one actuator, and which of its channels to use."""
+    """Which FAITH-corpus group carries one actuator, which of its channels, and how they add up.
+
+    `system` and `members` are what let a per-member registry spec (`pech_LEIA`) find its channel:
+    `members` lists the registry member ids in the CORPUS's channel order, with None for a channel
+    no registry member names. It is a list and not a positional assumption because the two orders
+    genuinely differ -- the corpus orders its twelve gyrotrons alphabetically and actuators.yaml
+    orders them by installation date.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str  # ideate's name for the actuator, e.g. "nbi_torque"
     group: str  # the corpus group, e.g. "tinj"
     channels: list[int] | None = None  # None is the config's "all"
+    reduce: Literal["sum", "mean", "first"] = "sum"  # what a TOTAL over those channels means
+    system: str | None = None  # the actuators.yaml `systems:` entry this group carries, if any
+    members: list[str | None] | None = None  # registry member ids, in the corpus channel order
+
+    def channel_of(self, member: str) -> int | None:
+        """The corpus channel index carrying `member`, or None when this group does not."""
+        if not self.members:
+            return None
+        for i, m in enumerate(self.members):
+            if m is not None and str(m) == str(member):
+                return i
+        return None
 
 
 def corpus_actuators() -> dict[str, CorpusActuator]:
@@ -211,6 +272,9 @@ def corpus_actuators() -> dict[str, CorpusActuator]:
             name=name,
             group=spec["group"],
             channels=None if channels in (None, "all") else [int(c) for c in channels],
+            reduce=spec.get("reduce", "sum"),
+            system=spec.get("system"),
+            members=spec.get("members"),
         )
     return out
 

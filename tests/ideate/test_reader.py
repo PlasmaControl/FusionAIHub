@@ -30,11 +30,16 @@ def test_legacy_reader_satisfies_both_protocols(paths):
     assert isinstance(r, Reader) and isinstance(r, SignalReader)
 
 
-def test_a_corpus_reader_is_a_reader_but_not_yet_a_signal_reader(tmp_path):
-    # The spec-level half of the interface arrives with the corpus build (Task I6). Until it
-    # does, `isinstance` says so rather than a NotImplementedError saying it at call time.
-    r = CorpusReader(tmp_path)
-    assert isinstance(r, Reader) and not isinstance(r, SignalReader)
+def test_the_file_level_and_spec_level_corpus_readers_are_kept_apart(paths, tmp_path):
+    """`CorpusReader` is the file layer and answers about GROUPS; the spec-level half arrived
+    with the corpus build as a separate class, so a caller holding the plain reader still gets
+    `isinstance` telling it what it has rather than a NotImplementedError at call time."""
+    from ideate.shotdb.corpus_signals import CorpusSignalReader
+
+    plain = CorpusReader(tmp_path)
+    assert isinstance(plain, Reader) and not isinstance(plain, SignalReader)
+    full = CorpusSignalReader(paths)
+    assert isinstance(full, Reader) and isinstance(full, SignalReader)
 
 
 def test_build_reads_through_the_reader_it_is_handed(paths, staged_shot_a, text_fixtures):

@@ -541,3 +541,129 @@ def census_frame(rows, *, openable: bool = True) -> pd.DataFrame:
         for shot, group, t0, t1, present in rows
     ]
     return census.table(made)
+
+
+# ------------------------------------------- a corpus shot addressed through the signal registry
+#
+# `corpus_dir` above is for the FILE layer: it models the shapes `CorpusReader` has to tell apart.
+# The fixtures below are for the SPEC layer -- `CorpusSignalReader` resolving `signals.yaml` and
+# `actuators.yaml` addresses -- so their groups are the real ones the address blocks name and
+# their values are chosen so that every reduction has one exact expected answer.
+
+CORPUS_SIGNAL_SHOT = 100010  # every address kind, resolvable
+CORPUS_BARE_SHOT = 100011  # a corpus file with none of the addressed groups
+
+
+def _flat(y: float, n: int = 5) -> np.ndarray:
+    return np.full(n, y, dtype=np.float64)
+
+
+@pytest.fixture
+def signal_corpus(paths) -> int:
+    """One shot under `paths.foundation_model_processed_dir` carrying every corpus address kind.
+
+    Channel values are constants, distinct per channel, so a wrong channel or a wrong reduction
+    is an arithmetic mismatch rather than a near miss:
+
+    * `pinj` 8 beams at (i+1) * 1e5 W          -> sum 3.6e6 W
+    * `beam_voltage` 8 sources at (i+1) * 1e3 V -> mean 4.5e3 V
+    * `tinj` 8 beams at (i+1) N m               -> sum 36 N m
+    * `ech_power` 12 gyrotrons, only the corpus's LEIA channel (index 5) is on
+    * `gas_raw` 11 valves, only GASA (index 0) is open
+    * `i_coil` 18 coils, C19 (index 0) at +10 A and IU30 (index 6) at -20 A
+    * `rmp` the 12 I-coils, two of them in antiphase: a signed sum is 10 A, a sum of |.| is 30 A
+    * `filterscopes` 10 channels: 0 recorded nothing, 1..7 read 1..7, 8 and 9 read 1000
+      (a mean that includes them is 204.4, one that does not is 4.0)
+    * `co2` 4 chords, V2 (index 2) at 5e13 and the others at 1.0
+    * `neutron_rate` 4 detectors, NEUTRONSRATE (index 3) at 7e14 and the others at 1.0
+    """
+    d = Path(paths.foundation_model_processed_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{CORPUS_SIGNAL_SHOT}_processed.h5"
+    x = np.arange(5) * 1.0e-3  # seconds -> 0..4 ms
+    write_corpus_group(p, "pinj", x, np.stack([_flat((i + 1) * 1.0e5) for i in range(8)]))
+    write_corpus_group(p, "beam_voltage", x, np.stack([_flat((i + 1) * 1.0e3) for i in range(8)]))
+    write_corpus_group(p, "tinj", x, np.stack([_flat(i + 1.0) for i in range(8)]))
+    ech = np.zeros((12, 5))
+    ech[5] = 1.0e6  # LEIA, in the corpus's alphabetical channel order
+    write_corpus_group(p, "ech_power", x, ech)
+    gas = np.zeros((11, 5))
+    gas[0] = 2.0  # GASA
+    write_corpus_group(p, "gas_raw", x, gas)
+    write_corpus_group(p, "gas_flow", x, np.full((11, 5), 3.0))
+    coils = np.zeros((18, 5))
+    coils[0], coils[6] = 10.0, -20.0  # C19, IU30
+    write_corpus_group(p, "i_coil", x, coils)
+    rmp = np.zeros((12, 5))
+    rmp[0], rmp[1] = -20.0, 10.0  # the I-coil subset, driven in antiphase: |sum| 10, sum |.| 30
+    write_corpus_group(p, "rmp", x, rmp)
+    fs = np.stack([_flat(float(i)) for i in range(10)])
+    fs[0] = np.nan
+    fs[8] = fs[9] = 1000.0
+    write_corpus_group(p, "filterscopes", x, fs)
+    co2 = np.ones((4, 5))
+    co2[2] = 5.0e13
+    write_corpus_group(p, "co2", x, co2)
+    neutrons = np.ones((4, 5))
+    neutrons[3] = 7.0e14
+    write_corpus_group(p, "neutron_rate", x, neutrons)
+
+    bare = d / f"{CORPUS_BARE_SHOT}_processed.h5"
+    write_corpus_group(bare, "mhr", x, np.ones((2, 5)))
+    return CORPUS_SIGNAL_SHOT
+
+
+def write_feature_file(features_dir: Path, shot: int, arrays: dict, missing: dict) -> Path:
+    """A `<shot>_features.h5` written by labelmaker's own writer, never by hand.
+
+    `arrays` maps a canonical feature name to `(x_seconds, y (C, T), resolver)`; a hand-written
+    file would be this module's guess at that layout rather than the layout `read_feature` reads.
+    """
+    from labelmaker.features.store import FeatureArray, write_features
+
+    features_dir.mkdir(parents=True, exist_ok=True)
+    write_features(
+        features_dir / f"{shot}_features.h5",
+        shot,
+        {
+            name: FeatureArray(
+                x=np.asarray(x, dtype=np.float64),
+                y=np.atleast_2d(np.asarray(y, dtype=np.float64)),
+                attrs={"resolver": resolver},
+            )
+            for name, (x, y, resolver) in arrays.items()
+        },
+        dict(missing),
+        merge=False,
+    )
+    return features_dir / f"{shot}_features.h5"
+
+
+@pytest.fixture
+def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
+    """`$LABELMAKER_ROOT/features` with one file for `CORPUS_SIGNAL_SHOT`.
+
+    Written to cover all four statuses in one shot: a stored scalar (`bt`), a stored profile
+    (`ne_zipfit`, whose core/edge/peak reductions differ), a stored feature with no finite sample
+    (`kappa`), a transiently missed one (`qmin` -- fdp is worth another attempt), a permanently
+    missed one (`volume`), and one that was never attempted at all (`li`).
+    """
+    root = tmp_path / "labelmaker"
+    monkeypatch.setenv("LABELMAKER_ROOT", str(root))
+    x = np.arange(0, 6.0, 0.025)  # the 25 ms grid, in seconds
+    n = x.size
+    ip = np.clip(np.minimum(x / 0.5, (5.0 - x) / 0.5), 0.0, 1.0) * 1.2e6
+    profile = np.stack([np.full(n, 10.0 - 9.0 * r) for r in np.linspace(0.0, 1.0, 33)])
+    profile[16] = 12.0  # a peak that is neither the core nor the edge
+    write_feature_file(
+        root / "features",
+        CORPUS_SIGNAL_SHOT,
+        {
+            "ip": (x, ip, "fdp"),
+            "bt": (x, np.full(n, -2.05), "archive"),
+            "kappa": (x, np.full(n, np.nan), "archive"),
+            "ne_zipfit": (x, profile, "archive"),
+        },
+        {"qmin": "fdp:TreeFOPENR", "volume": "corpus:SignalAbsent"},
+    )
+    return root / "features"
