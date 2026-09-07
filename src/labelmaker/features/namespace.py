@@ -470,12 +470,18 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "because each column is already a window mean. Units are per "
               "channel and are in the channel's own name (Hz, s, ms, kHz, "
               "or a fraction), so there is no single unit to record here. "
-              "DIAGNOSTICS ONLY: no actuator and no equilibrium scalar, "
-              "because the annotator selects candidate windows partly by "
-              "those conditions and a classifier trained on them would be "
-              "scored against its own selection (plan section 7). A window "
-              "no diagnostic covered is served as NaN in all 46 channels - "
-              "see `resolve_events`",
+              "DIAGNOSTICS ONLY: no channel READS an actuator or an "
+              "equilibrium scalar, because the annotator selects candidate "
+              "windows partly by those conditions and a classifier trained "
+              "on them would be scored against its own selection (plan "
+              "section 7). ONE indirect exception, named rather than "
+              "denied: `lh_recent` counts `lh_transition` events, and "
+              "`events.heuristics.lh_transitions` gates those on NBI power "
+              "(`LH_MIN_PINJ_KW`), so a 1 in that channel entails `pinj` "
+              "above the gate - inherited from the detector, not read "
+              "here; the full statement is in the `events.windows` module "
+              "docstring. A window no diagnostic covered is served as NaN "
+              "in all 46 channels - see `resolve_events`",
     ),
 )
 
