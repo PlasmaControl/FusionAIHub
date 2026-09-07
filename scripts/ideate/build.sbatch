@@ -73,7 +73,10 @@
 
 set -euo pipefail
 
-REPO=/scratch/gpfs/nc1514/FusionAIHub
+# REPO may point at a clean worktree snapshot (the controller does this while another task edits
+# the main checkout); IDEATE_PY is the interpreter, which always lives in the main checkout.
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
+IDEATE_PY="${IDEATE_PY:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python}"
 IDEATE_DATA_ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
 LIST="${LIST:-recommender_v1}"
 
@@ -90,8 +93,10 @@ export LABELMAKER_ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelma
 # threads on 6 allocated cpus is pure contention.
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 export HDF5_USE_FILE_LOCKING=FALSE
+# The env python has the main checkout on its path; put THIS snapshot's src first.
+export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 
-srun "$REPO/.pixi/envs/ideate-cpu/bin/python" -m ideate build \
+srun "$IDEATE_PY" -m ideate build \
     --list "$LIST" \
     --reader corpus \
     --no-encode \
