@@ -91,7 +91,15 @@ class Reader(Protocol):
 
     def groups(self, shot: int) -> list[str]:
         """The groups this shot actually recorded, sorted. Placeholders for a diagnostic that did
-        not record are not groups this shot has, and are not listed."""
+        not record are not groups this shot has, and are not listed.
+
+        This is a coverage answer, not a promise that `read` will serve every name in it. On the
+        corpus the video groups (`bolo`, `irtv`, `tangtv`) are listed here when the shot recorded
+        them -- they are diagnostics that were looking, and a census that hid them would be
+        wrong -- but `read` refuses them with `ValueError`, because their samples are frames and
+        `(C, n)` is not their shape. A caller iterating `groups()` and reading each one must
+        either filter on the census's `kind` column or expect that `ValueError`.
+        """
 
     def read(
         self, shot: int, group: str, channels: Sequence[int] | None = None

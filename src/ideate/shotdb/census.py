@@ -89,16 +89,18 @@ def files(
 def scan_file(path: Path) -> list[dict]:
     """One file's rows: one per group, or a single `openable=False` row if it cannot be read.
 
-    A file that opens and then fails partway through its groups is reported the same way as one
-    that never opened. Its remaining headers are not trustworthy -- the failure means HDF5 could
-    not follow the file's own structures -- and a half-scanned file recorded as a full one would
-    understate that shot's coverage without saying so.
+    Failing to OPEN the file is a fact about the file, and is one row saying so. Failing on one
+    GROUP of a file that opened is a fact about that group: it becomes that group's row with the
+    exception in `error`, and the file's other groups are still measured. The two used to be the
+    same case -- every group in one `try` -- which meant that a single malformed group anywhere in
+    a 16,909-file corpus discarded the whole shot and reported it as unreadable, understating that
+    shot's coverage in exactly the direction this table exists to correct.
     """
     path = Path(path)
     shot = shot_of(path)
     try:
         with h5py.File(path, "r", locking=False) as f:
-            rows = [_group_row(shot, name, f[name]) for name in sorted(f)]
+            rows = [_safe_group_row(shot, name, f) for name in sorted(f)]
     except (OSError, KeyError, RuntimeError) as e:
         return [_row(shot, openable=False, error=f"{type(e).__name__}: {e}")]
     # Every file scanned is at least one row, including one that opens and holds nothing. The
@@ -218,6 +220,21 @@ def _row(shot: int, **over) -> dict:
     return row
 
 
+def _safe_group_row(shot: int, name: str, f: h5py.File) -> dict:
+    """`_group_row`, with any exception it raises turned into that group's row.
+
+    Deliberately `Exception` and not a list: the point is that a group this scan has never seen
+    before cannot cost the file, and the exceptions h5py raises on a malformed member are not a
+    closed set (`TypeError` from a shape it cannot interpret, `AttributeError` from a member that
+    is not a dataset, `ValueError`, `RuntimeError`, ...). The row that comes back names the
+    exception, so an unfamiliar failure is visible in the table rather than absent from it.
+    """
+    try:
+        return _group_row(shot, name, f[name])
+    except Exception as e:  # noqa: BLE001 -- one odd group may not cost the file's other groups
+        return _row(shot, group=name, error=f"{type(e).__name__}: {e}")
+
+
 def _group_row(shot: int, name: str, g) -> dict:
     if not isinstance(g, h5py.Group) or "ydata" not in g or "xdata" not in g:
         return _row(shot, group=name, error="no xdata/ydata")
@@ -229,6 +246,13 @@ def _group_row(shot: int, name: str, g) -> dict:
         # measurement where there is none, so the span stays NaN and only the shape is recorded.
         return row
     x = g["xdata"]
+    # The shape, not merely the length -- the same guard `CorpusReader.coverage` applies, for the
+    # same reason: `float(x[0])` on a 2-D xdata raises rather than answering. The shape stays in
+    # the table because it is still a fact about the file; the span does not, because it was not
+    # measured.
+    if x.ndim != 1 or x.shape[0] < MIN_SAMPLES:
+        row.update(error=f"xdata is {tuple(x.shape)}, not a 1-D time axis")
+        return row
     t0, t1 = float(x[0]), float(x[-1])
     fs_hz = (n_samples - 1) / (t1 - t0) if t1 > t0 else float("nan")
     row.update(present=True, t0_s=t0, t1_s=t1, fs_hz=fs_hz)
