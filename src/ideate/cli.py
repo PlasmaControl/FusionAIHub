@@ -18,12 +18,15 @@ from collections import Counter
 from pathlib import Path
 from typing import get_args
 
+import yaml
+
 from . import config
 from .retrieval import describe as describe_mod
 from .retrieval import rank as rank_mod
 from .schema import QueryState, Range, SegName, ShotRecord, to_summary
 from .shotdb import build as build_mod
 from .shotdb import census, legacy_raw, store
+from .shotdb import select as select_mod
 
 # sentence_transformers reaches into huggingface_hub on every model load, even though the MiniLM
 # checkpoint is already in ~/.cache/huggingface/hub. On a compute node with no outbound route that
@@ -664,9 +667,123 @@ def _shot_file(path: str) -> list[int]:
     return out
 
 
+def cmd_corpus_select(args) -> int:
+    """`corpus select`: the shot list of plan §5.7, written as YAML and as a plain shot-per-line
+    file for the labelmaker mask job."""
+    import pandas as pd
+
+    census_path = Path(args.census) if args.census else None
+    paths = None
+    if not (census_path and args.text_dir and args.frame_codes is not None):
+        paths = config.load_paths()
+        census_path = census_path or paths.db_dir / "corpus_coverage.parquet"
+    if not census_path.exists():
+        print(f"no census at {census_path}; run `ideate corpus scan` first", file=sys.stderr)
+        return 1
+    text_dir = Path(args.text_dir) if args.text_dir else paths.per_shot_txt_dir
+    features_dir = Path(args.features) if args.features else _labelmaker_features()
+    frame_codes_dir = (
+        Path(args.frame_codes) if args.frame_codes else _ignite_frame_codes(paths)
+    )
+
+    group_spans = select_mod.spans(pd.read_parquet(census_path, columns=_SELECT_COLUMNS))
+    corpus_shots = set(pd.read_parquet(census_path, columns=["shot"])["shot"].astype(int))
+    bundles = select_mod.read_bundles(text_dir, sorted(corpus_shots))
+
+    preferred = select_mod.preferred_shots(
+        features_dir=features_dir, frame_codes_dir=frame_codes_dir
+    )
+    themes = select_mod.lexicon_themes()
+    reasons: Counter = Counter()
+    kept: list[select_mod.ShotFacts] = []
+    for shot in sorted(bundles):
+        facts = select_mod.parse_facts(shot, bundles[shot])
+        # The measured flat-top only for shots that already have a feature file -- rule (d)'s
+        # first source. There is no fdp pass: the pool after (a)-(c) is far past the ~900-shot
+        # ceiling the brief set for that path, so every other shot answers (d) by the proxy.
+        if shot in preferred:
+            got = select_mod.measured_flattop(shot, features_dir)
+            if got is not None:
+                facts = select_mod.with_flattop(facts, got, "features_ip")
+        ok, why = select_mod.eligible(
+            facts, group_spans.get(shot, {}), min_shot_chars=args.min_shot_chars
+        )
+        reasons.update(why)
+        if ok:
+            kept.append(facts)
+
+    logs = Path(args.logs) if args.logs else (paths.logs_jsonl if paths else None)
+    if kept and not (logs and logs.exists()):
+        print(f"no logbook at {logs}; the <= 5 per mpid cap is skipped", file=sys.stderr)
+    mpids = select_mod.mpid_index(logs, [f.shot for f in kept])
+    candidates = [
+        select_mod.Candidate(
+            shot=f.shot,
+            run_id=f.run_id,
+            mpid=mpids.get(f.shot),
+            year=f.year,
+            theme=select_mod.assign_theme(f.title, themes),
+            has_co2=group_spans.get(f.shot, {}).get("co2", 0.0) > 0.0,
+            has_bes=group_spans.get(f.shot, {}).get("bes", 0.0) > 0.0,
+            has_tangtv=group_spans.get(f.shot, {}).get("tangtv", 0.0) > 0.0,
+            flattop_s=f.flattop_s,
+            flattop_source=f.flattop_source,
+            preferred=f.shot in preferred,
+        )
+        for f in kept
+    ]
+    quotas = select_mod.Quotas(n=args.n)
+    selected = select_mod.diversify(candidates, quotas, seed=args.seed)
+    summary = select_mod.summarize(
+        n_candidates=len(candidates),
+        reasons=reasons,
+        selected=selected,
+        quotas=quotas,
+        candidates=candidates,
+    )
+    doc = select_mod.document(
+        selected, summary, name=args.name, seed=args.seed, n=len(selected)
+    )
+
+    out = Path(args.out) if args.out else config.CONFIG_DIR / "shot_lists" / f"{args.name}.yaml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100), encoding="utf-8"
+    )
+    print(f"wrote {out}")
+    if args.txt_out:
+        txt_out = Path(args.txt_out)
+        txt_out.parent.mkdir(parents=True, exist_ok=True)
+        txt_out.write_text("".join(f"{c.shot}\n" for c in selected), encoding="utf-8")
+        print(f"wrote {txt_out}")
+    print()
+    print(select_mod.format_summary(summary))
+    return 0
+
+
+# The census columns the selection reads. Named so that a census that stopped writing one of them
+# fails here with a KeyError on this list rather than with a silently empty span mapping.
+_SELECT_COLUMNS = ["shot", "group", "present", "t0_s", "t1_s"]
+
+
+def _labelmaker_features() -> Path | None:
+    """labelmaker's feature store, from $LABELMAKER_ROOT. None when it is not set: the preference
+    for already-featured shots is a convenience, not a rule, and it degrades to "none preferred"
+    rather than to an error."""
+    root = os.environ.get("LABELMAKER_ROOT")
+    return Path(root) / "features" if root else None
+
+
+def _ignite_frame_codes(paths) -> Path | None:
+    """The 10 pre-encoded IGNITE shots (`models/IGNITE/frame_codes/<shot>.pt`)."""
+    return Path(paths.models_dir) / "IGNITE" / "frame_codes" if paths else None
+
+
 def cmd_corpus(args) -> int:
     """`corpus scan` counts what every corpus file carries; `corpus summary` reads that count
-    back as the availability table."""
+    back as the availability table; `corpus select` picks the development shot list."""
+    if args.what == "select":
+        return cmd_corpus_select(args)
     if args.what == "summary":
         import pandas as pd
 
@@ -815,6 +932,23 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--shots", metavar="FILE", help="a shot-list YAML, or one shot per line")
     s = what.add_parser("summary", help="the availability table from a written census")
     s.add_argument("parquet")
+    s = what.add_parser("select", help="the development shot list (plan §5.7)")
+    s.add_argument("--n", type=int, default=500, help="how many shots to select")
+    s.add_argument("--name", default="recommender_v1")
+    s.add_argument("--census", help="corpus_coverage.parquet (default: <db_dir>/...)")
+    s.add_argument("--text-dir", help="per_shot_txt directory (default: paths.yaml's)")
+    s.add_argument("--out", help="shot-list YAML (default: configs/ideate/shot_lists/<name>.yaml)")
+    s.add_argument("--txt-out", help="also write one shot per line here (the mask job reads it)")
+    s.add_argument("--seed", type=int, default=20260907)
+    s.add_argument("--features", help="labelmaker feature store (default: $LABELMAKER_ROOT/features)")
+    s.add_argument("--frame-codes", help="IGNITE frame_codes directory")
+    s.add_argument("--logs", help="sql/logs.jsonl, the source of mpid (default: paths.yaml's)")
+    s.add_argument(
+        "--min-shot-chars",
+        type=int,
+        default=select_mod.MIN_SHOT_CHARS,
+        help=f"rule (b) shot-text floor (default {select_mod.MIN_SHOT_CHARS}; see select.py)",
+    )
     p.set_defaults(func=cmd_corpus)
 
     p = sub.add_parser("query", help="find similar shots")
