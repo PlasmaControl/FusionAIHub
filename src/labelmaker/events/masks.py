@@ -54,7 +54,7 @@ import torch
 from scipy import signal
 
 from ..ae.labels import HOP, N_BINS, N_FFT, PROB_THRESHOLD
-from ..ae.transform import compute_stft, standardise
+from ..ae.transform import STD_EPS, compute_stft, standardise
 from ..config import atomic_path
 from .unet import probabilities
 
@@ -99,12 +99,16 @@ def read_waveform(corpus_file, group: str, channel: int):
     unchunked, so `ydata[ch, :]` costs one seek and the row (measured: 0.02 s
     for three ECE channels against 0.31 s for all 48).
 
-    **Trailing non-finite samples are stripped**, with the matching `xdata`.
-    Every fast group is 2^k+1 samples long and the last one is NaN; left in,
-    the transform's percentile is NaN, the standardisation is NaN, and the
-    U-Net returns a blank mask with no error at all. An **interior**
+    **Non-finite samples are stripped from BOTH ends**, with the matching
+    `xdata`, and `t0_s`/`t1_s` are the span of what is left. Every fast
+    group is 2^k+1 samples long and the last one is NaN; `mirnov` on shot
+    198658 also carries 1,669,828 NaN samples at the FRONT, before the
+    digitiser is live. Left in, the transform's percentile is NaN, the
+    standardisation is NaN, and the U-Net returns a blank mask with no error
+    at all; stripped while keeping the file's own `t[0]`, every column of
+    the spectrogram would be reported 3.3 s early. An **interior**
     non-finite sample is a different animal - a gap in the digitiser record,
-    not the length artefact - and raises, because filling it would invent
+    not an end artefact - and raises, because filling it would invent
     spectral content and dropping it would misplace every later column in
     time.
 
@@ -136,13 +140,14 @@ def read_waveform(corpus_file, group: str, channel: int):
     finite = np.flatnonzero(np.isfinite(y))
     if finite.size == 0:
         raise ValueError(f"{group} channel {channel}: no finite samples")
-    n = int(finite[-1]) + 1
-    y, x = y[:n], x[:n]
+    lo, hi = int(finite[0]), int(finite[-1]) + 1
+    y, x = y[lo:hi], x[lo:hi]
+    n = hi - lo
     if not np.isfinite(y).all():
-        bad = int(np.flatnonzero(~np.isfinite(y))[0])
+        bad = lo + int(np.flatnonzero(~np.isfinite(y))[0])
         raise ValueError(
             f"{group} channel {channel}: interior non-finite sample at "
-            f"index {bad} of {n}"
+            f"index {bad} of the finite span {lo}..{hi}"
         )
     if n < 2 or not np.isfinite(x[[0, -1]]).all() or x[-1] == x[0]:
         raise ValueError(
@@ -206,6 +211,23 @@ def prep(y, *, fs_hz: float, decim: int = 1):
         "clip_hi": float(raw.max()),
     }
     return spec, meta
+
+
+def unstandardise(spec, meta: Mapping[str, Any]) -> np.ndarray:
+    """`prep`'s spectrogram and meta -> the pre-standardisation log-power.
+
+    The inverse of the z-score `prep` applied, and the only place the
+    formula is written: `band_logpow` and `tracks.descriptors` both want the
+    log-power that `prep` does not return, and a caller retyping
+    `spec * (std + eps) + mean` out of a docstring is a caller that can
+    retype it wrongly. The percentile clip is NOT undone - it happened
+    before the z-score and threw information away - so what comes back is
+    `compute_stft`'s output, to float32 rounding.
+    """
+    spec = np.asarray(spec, dtype=np.float32)
+    std = float(meta["spec_std"])
+    mean = float(meta["spec_mean"])
+    return (spec * (std + STD_EPS) + mean).astype(np.float32)
 
 
 def freq_axis_khz(fs_hz: float, decim: int = 1) -> np.ndarray:
@@ -292,6 +314,16 @@ def stitch(pred, meta: Mapping[str, Any]) -> np.ndarray:
     return (total[:, :, :n_cols] / count[:n_cols]).astype(np.float32)
 
 
+def _to_device(x, device):
+    """One batch of tiles, on the device. A seam, and a named one.
+
+    `infer`'s out-of-memory retry has to cover this line, and a test can
+    only prove that by making the transfer itself raise; patching
+    `torch.Tensor.to` would reach every tensor in the process.
+    """
+    return x.to(device)
+
+
 def infer(model, spec, device, *, batch: int = 96, amp: bool = True) -> np.ndarray:
     """`(512, T)` spectrogram -> `(2, 512, T)` float32 probabilities.
 
@@ -311,7 +343,9 @@ def infer(model, spec, device, *, batch: int = 96, amp: bool = True) -> np.ndarr
     with "cuda" on a CPU run would be a no-op with a warning.
 
     The model is expected to be on `device` already (`load_unet(device=...)`);
-    only the tiles are moved, one batch at a time.
+    only the tiles are moved, one batch at a time, and the move is INSIDE
+    the retry: it allocates the whole batch on the card, so it is as likely
+    a place to run out of memory as the forward pass is.
     """
     tiles, meta = tile(spec)
     device = torch.device(device)
@@ -321,8 +355,9 @@ def infer(model, spec, device, *, batch: int = 96, amp: bool = True) -> np.ndarr
     i = 0
     size = max(1, int(batch))
     while i < x.shape[0]:
-        chunk = x[i:i + size].to(device)
+        chunk = None
         try:
+            chunk = _to_device(x[i:i + size], device)
             with (
                 torch.autocast("cuda", dtype=torch.float16)
                 if use_amp else nullcontext()
@@ -332,7 +367,7 @@ def infer(model, spec, device, *, batch: int = 96, amp: bool = True) -> np.ndarr
             if size == 1:
                 raise
             size = max(1, size // 2)
-            del chunk
+            chunk = None
             if device.type == "cuda":
                 torch.cuda.empty_cache()
             continue
