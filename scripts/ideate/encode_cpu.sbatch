@@ -90,14 +90,18 @@
 # 72 %. It requests no GPU, so the GPU rows of jobstats do not apply to it.
 
 set -euo pipefail
-REPO=/scratch/gpfs/nc1514/FusionAIHub
+# REPO may point at a clean worktree snapshot (the controller runs the job from one while the
+# branch is under review); the pixi environment always lives in the main checkout.
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
-ENV="$REPO/.pixi/envs/ideate"
+ENV="${IDEATE_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate}"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export IDEATE_DATA_ROOT="$ROOT"
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
 export CUDA_VISIBLE_DEVICES=""
+# The env python has the main checkout on its path; put THIS snapshot's src first.
+export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$ROOT/runs/slurm" "$ROOT/frame_codes"
 cd "$REPO"
 echo "job ${SLURM_ARRAY_JOB_ID:-none}_${SLURM_ARRAY_TASK_ID:-0} on $(hostname) at $(date -Is)"
