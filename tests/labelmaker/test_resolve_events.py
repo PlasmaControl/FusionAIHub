@@ -74,6 +74,19 @@ def test_the_window_feature_spec_is_registered():
     assert {f.name for f in ns.by_source("events")} == {NAME}
 
 
+def test_the_spec_notes_admit_the_indirect_nbi_gate():
+    """The spec's circularity note has to match the module's.
+
+    "DIAGNOSTICS ONLY" is the rule and it holds for every direct read, but
+    `lh_recent` descends from `heuristics.lh_transitions`, which gates on
+    NBI power. Two documents asserting the opposite is how an audit gets
+    closed on a false premise.
+    """
+    notes = ns.by_name(NAME).notes
+    assert "lh_recent" in notes
+    assert "pinj" in notes
+
+
 def test_the_new_feature_does_not_disturb_the_existing_sources():
     for source in ("archive", "corpus", "fdp"):
         assert NAME not in {f.name for f in ns.by_source(source)}
@@ -229,3 +242,25 @@ def test_the_resolver_has_the_same_shape_as_the_other_two(tmp_path):
     assert set(arrays) == {NAME}
     assert isinstance(arrays[NAME], FeatureArray)
     assert arrays[NAME].y.shape[0] == len(windows.FEATURE_NAMES)
+
+
+def test_two_served_names_do_not_share_one_array(tmp_path, monkeypatch):
+    """No aliasing across served names.
+
+    The source serves one feature today, so this monkeypatches the
+    namespace lookup to ask for two. A caller that narrowed one name's
+    columns in place would otherwise silently narrow the other's.
+    """
+    paths = _shot_files(tmp_path)
+    spec = ns.by_name(NAME)
+    monkeypatch.setattr(resolve_events.ns, "by_name", lambda name: spec)
+    arrays, missing = resolve_events.resolve(SHOT, [NAME, "another"],
+                                             paths=paths)
+    assert missing == {}
+    first, second = arrays[NAME], arrays["another"]
+    assert first.y is not second.y
+    assert first.x is not second.x
+    first.y[0, 0] = 12345.0
+    first.x[0] = 999.0
+    assert second.y[0, 0] != 12345.0
+    assert second.x[0] != 999.0

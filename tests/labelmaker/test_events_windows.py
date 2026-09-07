@@ -95,25 +95,26 @@ def _write_events(paths, events):
     return schema.read_events(paths.events_file(SHOT))
 
 
-def _elm(t: float, diag: str = "mhr") -> schema.Event:
+def _elm(t: float, diag: str = "mhr", channel: int = 0) -> schema.Event:
     return schema.Event(
         shot=SHOT, source="tokeye_transient", phenomenon="elm",
-        t0_s=t, t1_s=t, diag=diag, channel=0, pass_name="wide",
+        t0_s=t, t1_s=t, diag=diag, channel=int(channel), pass_name="wide",
         t_cov0_s=0.0, t_cov1_s=10.0,
     )
 
 
 def _interval(phenomenon: str, t0: float, t1: float, *, source: str,
-              diag: str = "mhr", kind: str = "heuristic") -> schema.Event:
+              diag: str = "mhr", kind: str = "heuristic",
+              channel: int = 0) -> schema.Event:
     return schema.Event(
         shot=SHOT, source=source, evidence_kind=kind, phenomenon=phenomenon,
-        t0_s=t0, t1_s=t1, diag=diag, channel=0,
+        t0_s=t0, t1_s=t1, diag=diag, channel=int(channel),
         t_cov0_s=0.0, t_cov1_s=10.0,
     )
 
 
 def _track(t0, t1, *, diag="mhr", f_centroid=8.0, chirp=0.0, harmonics=0,
-           conf=0.9, phenomenon="coherent_mode") -> schema.Event:
+           conf=0.9, phenomenon="coherent_mode", pickup=False) -> schema.Event:
     return schema.Event(
         shot=SHOT, source="tokeye_track", phenomenon=phenomenon,
         t0_s=t0, t1_s=t1, f0_khz=f_centroid - 1.0, f1_khz=f_centroid + 1.0,
@@ -123,6 +124,9 @@ def _track(t0, t1, *, diag="mhr", f_centroid=8.0, chirp=0.0, harmonics=0,
             "chirp_khz_per_ms": float(chirp),
             "n_harmonics": int(harmonics),
             "duration_ms": float((t1 - t0) * 1e3),
+            # `tracks.as_attrs` writes every Track field, `pickup` among
+            # them; the fixture writes what the real emitter writes.
+            "pickup": bool(pickup),
         },
         t_cov0_s=0.0, t_cov1_s=10.0,
     )
@@ -195,7 +199,15 @@ def test_no_feature_carries_actuator_or_equilibrium_context():
     in H-mode" would be trained on, and then evaluated against, the very
     conditions the annotator used to pick the windows. The 46 are therefore
     diagnostics-only: masks, tracks and the transient/heuristic event
-    families, and nothing from `pinj`, `ech`, the RMP coils or EFIT.
+    families, and no feature reads an actuator or an EFIT array.
+
+    NECESSARY BUT NOT SUFFICIENT. This checks NAMES only. It cannot see
+    where a feature's value came from, and one of the 46 does inherit an
+    actuator bit indirectly: `lh_recent` counts `lh_transition` events, and
+    `heuristics.lh_transitions` gates every candidate on NBI power. See
+    `test_the_circularity_note_admits_the_indirect_nbi_gate` - the honest
+    statement of the audit lives in the module docstring, and this test
+    exists to stop a new name from smuggling in a direct read.
     """
     forbidden = (
         "pinj", "tinj", "ech", "rmp", "gas", "ip", "bt", "betan", "kappa",
@@ -204,6 +216,22 @@ def test_no_feature_carries_actuator_or_equilibrium_context():
     for name in windows.FEATURE_NAMES:
         parts = set(name.split("_"))
         assert not (parts & set(forbidden)), name
+
+
+def test_the_circularity_note_admits_the_indirect_nbi_gate():
+    """The module must not claim an audit it does not pass.
+
+    `windows.py` used to state "nothing from `pinj`", which is false:
+    `lh_recent` is 1 exactly when `heuristics.lh_transitions` wrote an
+    `lh_transition`, and that detector returns `[]` without NBI and gates
+    each candidate on `pinj >= LH_MIN_PINJ_KW`. One indirect bit, on a
+    plasma-state label whose evidence is diagnostic - tolerable, but it has
+    to be written down where a reader auditing circularity will look.
+    """
+    doc = windows.__doc__ or ""
+    assert "lh_recent" in doc
+    assert "pinj" in doc
+    assert "gated" in doc or "gate" in doc
 
 
 # -------------------------------------------------------------- window_grid
@@ -508,7 +536,8 @@ def test_lh_recent_is_the_half_second_before_the_centre_half_open(tmp_path):
 def test_the_pickup_flag_is_any_overlapping_pickup_row(tmp_path):
     paths = _paths(tmp_path)
     events = _write_events(paths, [
-        _track(0.30, 0.90, phenomenon="pickup", f_centroid=1.95, conf=0.95),
+        _track(0.30, 0.90, phenomenon="pickup", f_centroid=1.95, conf=0.95,
+               pickup=True),
     ])
     over = windows.window_features(
         (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
@@ -533,6 +562,143 @@ def test_an_empty_events_table_leaves_every_event_feature_at_zero(tmp_path):
     assert _f(vec, "time_since_last_elm_s") == pytest.approx(1.0)
     assert vec.shape == (46,)
     assert vec.dtype == np.float32
+
+
+# ------------------------------- one physical event, however many blocks
+
+def test_the_dedup_window_is_two_milliseconds():
+    assert windows.DEDUP_S == 0.002
+
+
+def test_two_channels_writing_the_same_elm_rows_are_one_elm(tmp_path):
+    """The reviewer's reproduction, at the numbers they measured.
+
+    `transients.transients_to_events` emits one row set per
+    `(diag, channel, pass)`: a shot whose ELM clock ran on two D-alpha
+    channels writes every crash twice AND a full set of `elm_free`
+    intervals twice. Summing the intervals made `elm_free_frac` 2.0 - a
+    "fraction" outside [0, 1] that a GBDT would happily absorb - and
+    counting the rows doubled `elm_rate_hz` to 5.88 where the physical
+    rate is 2.94.
+    """
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _interval("elm_free", 0.0, 1.0, source="tokeye_transient",
+                  kind="detector", channel=0),
+        _interval("elm_free", 0.0, 1.0, source="tokeye_transient",
+                  kind="detector", channel=1),
+        _elm(0.10, channel=0),
+        _elm(0.10, channel=1),
+    ])
+    vec = windows.window_features(
+        (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
+    )
+    assert _f(vec, "elm_free_frac") == 1.0
+    assert _f(vec, "elm_rate_hz") == pytest.approx(1 / 0.34)
+
+
+def test_elm_times_inside_the_dedup_window_are_one_event(tmp_path):
+    # Two channels see the same crash half a millisecond apart: one ELM.
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _elm(0.10, channel=0), _elm(0.1005, channel=1),
+    ])
+    vec = windows.window_features(
+        (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
+    )
+    assert _f(vec, "elm_rate_hz") == pytest.approx(1 / 0.34)
+
+
+def test_elm_times_outside_the_dedup_window_are_two_events(tmp_path):
+    # Five milliseconds apart is two crashes, not one seen twice: an ELM
+    # train at 200 Hz is real and must not be collapsed.
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _elm(0.10, channel=0), _elm(0.105, channel=1),
+    ])
+    vec = windows.window_features(
+        (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
+    )
+    assert _f(vec, "elm_rate_hz") == pytest.approx(2 / 0.34)
+
+
+def test_overlapping_elm_free_intervals_are_unioned_not_summed(tmp_path):
+    # ch 0 says [0.00, 0.20), ch 1 says [0.10, 0.30): the plasma was
+    # ELM-free for 0.30 s, not 0.40.
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _interval("elm_free", 0.00, 0.20, source="tokeye_transient",
+                  kind="detector", channel=0),
+        _interval("elm_free", 0.10, 0.30, source="tokeye_transient",
+                  kind="detector", channel=1),
+    ])
+    vec = windows.window_features(
+        (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
+    )
+    assert _f(vec, "elm_free_frac") == pytest.approx(0.30 / 0.34)
+
+
+def test_the_same_sawtooth_crash_from_two_blocks_counts_once(tmp_path):
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _interval("sawtooth", t, t, source="ece_sawtooth", diag="ece",
+                  channel=ch)
+        for t in (0.10, 0.18, 0.28, 0.32) for ch in (0, 1)
+    ])
+    vec = windows.window_features(
+        (0.0, 0.34), blocks={}, events=events, cov={"ece": (0.0, 1.0)}
+    )
+    assert _f(vec, "n_sawtooth") == 4.0
+    assert _f(vec, "sawtooth_period_ms") == pytest.approx(80.0)
+
+
+def test_the_parsed_table_clusters_points_and_merges_intervals(tmp_path):
+    """The de-duplication happens once, in `EventTable`, not per window."""
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _elm(0.10, channel=0), _elm(0.1005, channel=1),
+        _interval("sawtooth", 0.5, 0.5, source="ece_sawtooth", diag="ece",
+                  channel=0),
+        _interval("sawtooth", 0.5, 0.5, source="ece_sawtooth", diag="ece",
+                  channel=1),
+        _interval("lh_transition", 1.0, 1.0, source="dalpha_lh", channel=0),
+        _interval("lh_transition", 1.0004, 1.0004, source="dalpha_lh",
+                  channel=1),
+        _interval("elm_free", 0.0, 0.2, source="tokeye_transient",
+                  kind="detector", channel=0),
+        _interval("elm_free", 0.1, 0.3, source="tokeye_transient",
+                  kind="detector", channel=1),
+    ])
+    table = windows.EventTable.of(events)
+    assert table.elm_s.size == 1
+    assert table.sawtooth_s.size == 1
+    assert table.lh_s.size == 1
+    np.testing.assert_allclose(table.elm_free, [[0.0, 0.3]])
+
+
+def test_a_pickup_row_is_not_counted_among_the_tracks(tmp_path):
+    """`pickup_flag` already carries a receiver line; the track stats must not.
+
+    A pickup row is a `tokeye_track` row, so it used to enter `n_tracks`
+    and - with its high confidence and its record-long extent - pin
+    `track_f_centroid_khz` near the receiver frequency in EVERY window of
+    an affected shot.
+    """
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _track(0.0, 1.0, phenomenon="pickup", f_centroid=1.95, conf=0.95,
+               pickup=True),
+        _track(0.05, 0.15, f_centroid=10.0, chirp=0.2, harmonics=2,
+               conf=0.8),
+    ])
+    vec = windows.window_features(
+        (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
+    )
+    assert _f(vec, "mhr_n_tracks") == 1.0
+    assert _f(vec, "mhr_track_f_centroid_khz") == pytest.approx(10.0)
+    assert _f(vec, "mhr_track_duration_max_ms") == pytest.approx(100.0)
+    # The flag is the place a receiver line is reported.
+    assert _f(vec, "pickup_flag") == 1.0
 
 
 # ---------------------------------------------------- shot_window_features
@@ -628,3 +794,88 @@ def test_the_stored_blocks_come_back_with_their_diagnostic_and_pass(masked):
     cov = windows.coverage_from_blocks(blocks)
     assert cov["mhr"] == pytest.approx((0.0, 1.0))
     assert "co2" not in cov
+
+
+def test_blocks_from_masks_skips_a_diagnostic_no_feature_reads(tmp_path):
+    """Only `DIAGS` are unpacked: an unpack is 8.4 MB nothing would read."""
+    paths = _paths(tmp_path)
+    t = _t_grid(0.0, 1.0)
+    _write_masks(paths, [
+        _block("mhr", 0, "wide", t, coh=_lit(t, (0, 8))),
+        _block("bolo", 0, "wide", t, coh=_lit(t, (0, 8))),
+    ])
+    blocks = windows.blocks_from_masks(paths.masks_file(SHOT))
+    assert sorted(blocks) == ["mhr"]
+    assert "bolo" not in windows.coverage_from_blocks(blocks)
+
+
+def test_the_validity_threshold_is_decided_before_the_cast_to_float32(tmp_path):
+    """`cov_frac` is stored float32; the >= 0.5 decision is made in float64.
+
+    `ece` here starts one nanosecond after the midpoint of the window
+    `[0.51, 0.85)`, so it covers 0.4999999970 of it - a miss. Rounded into
+    float32 that is EXACTLY 0.5, and comparing the stored column would call
+    the window valid.
+    """
+    paths = _paths(tmp_path)
+    ece_t = _t_grid(0.681, 1.0)
+    ece_t[0] = 0.68 + 1e-9
+    _write_masks(paths, [
+        _block("mhr", 0, "wide", _t_grid(0.0, 0.2)),
+        _block("ece", 0, "wide", ece_t),
+    ])
+    _write_events(paths, [])
+    _, x, valid = windows.shot_window_features(SHOT, paths)
+    stored = x[windows.FEATURE_NAMES.index("cov_frac_ece"), 3]
+    assert stored == np.float32(0.5)
+    assert not bool(valid[3])
+    assert list(valid) == [True, False, False, False, True]
+
+
+def test_the_realistic_synthetic_channel_runs_end_to_end(synth_mask, tmp_path):
+    """`synth_mask` -> real `write_masks`/`tracks`/`write_events` -> 46 x T.
+
+    The drawn rectangles elsewhere in this module make each definition
+    arithmetic; this one checks the module survives a spectrogram with
+    actual mode structure in it - an EHO with two harmonics, a split mode,
+    a fishbone chirp, salt, and a receiver line across the whole record.
+    """
+    from labelmaker.events import tracks
+
+    prob, raw, _, t_s = synth_mask()
+    paths = _paths(tmp_path)
+    block = masks.MaskBlock(
+        diag="mhr", channel=0, pass_name="zoom",
+        coh=prob, tra=np.zeros_like(prob), raw_logpow=raw, t_s=t_s,
+        meta={
+            "fs_hz": FS_HZ, "decim": masks.ZOOM_DECIM,
+            "n_cols": int(prob.shape[1]),
+        },
+    )
+    _write_masks(paths, [masks.block_arrays(block, unet_sha256=SHA)])
+    found = tracks.tracks_for_block("mhr_00_zoom", paths.masks_file(SHOT))
+    _write_events(paths, tracks.tracks_to_events(
+        found, shot=SHOT, diag="mhr", channel=0, pass_name="zoom",
+        t_cov=(float(t_s[0]), float(t_s[-1])), unet_sha256=SHA,
+    ))
+
+    centres, x, valid = windows.shot_window_features(SHOT, paths)
+    assert centres.size >= 10
+    assert x.shape == (46, centres.size)
+    assert x.dtype == np.float32
+    assert np.isfinite(x).all()
+    # mhr covers every column of the record, so every window is valid and
+    # the two diagnostics that are not there are zero throughout.
+    assert valid.all()
+    np.testing.assert_allclose(x[windows.FEATURE_NAMES.index("cov_frac_mhr")], 1.0)
+    for name in ("co2_coh_lit_frac_zoom", "ece_n_tracks", "cov_frac_co2"):
+        np.testing.assert_allclose(x[windows.FEATURE_NAMES.index(name)], 0.0)
+
+    lit = x[windows.FEATURE_NAMES.index("mhr_coh_lit_frac_zoom")]
+    assert (lit > 0.0).all() and (lit < 0.2).all()
+    # The receiver line spans the record, so it flags every window - and is
+    # excluded from the track statistics of every window.
+    assert (x[windows.FEATURE_NAMES.index("pickup_flag")] == 1.0).all()
+    n_tracks = x[windows.FEATURE_NAMES.index("mhr_n_tracks")]
+    assert n_tracks.max() >= 3.0        # the EHO and its two harmonics
+    assert n_tracks[-1] == 0.0          # past the fishbone: pickup alone

@@ -14,13 +14,41 @@ and short enough that a 5 s shot is ~30 windows, which is what makes a
 every instant is in exactly two windows and a mode near a window edge is
 still whole in its neighbour.
 
-**Diagnostics only, and deliberately.** Plan section 7: no actuator, no
-EFIT scalar, nothing from `pinj`, `ech`, the RMP coils or `betan`. The
-annotator picks candidate windows with those conditions in mind, so a
-classifier trained on them would be scored against its own selection - the
-circularity the plan rules out. What is here is what a diagnostic saw:
-the coherent mask, the transient trace, the band power, the tracks, and the
-ELM/sawtooth/L-H/pickup event families.
+**Diagnostics only - with one indirect bit, named rather than denied.**
+Plan section 7. No feature here READS an actuator or an EFIT array: not
+`pinj`, not `ech`, not the RMP coils, not `betan`, and `windows.py`
+imports nothing from `features/`, so it cannot reach them even by
+accident. What is here is what a diagnostic saw: the coherent mask, the
+transient trace, the band power, the tracks, and the ELM/sawtooth/L-H/
+pickup event families. The annotator picks candidate windows with actuator
+conditions in mind, so a classifier trained on those conditions would be
+scored against its own selection - the circularity the plan rules out.
+
+The exception is `lh_recent`. It counts `lh_transition` events, and
+`heuristics.lh_transitions` is GATED on NBI power (`LH_MIN_PINJ_KW`): it
+returns `[]` without beams and drops any candidate whose preceding window
+is under the gate. So `lh_recent == 1` entails `pinj` above that gate -
+one indirect bit, inherited from the detector rather than read here, on a
+plasma-state label whose evidence (D-alpha, density) is diagnostic and
+whose NBI test is a false-positive filter, not the signal. Anything else
+built on heuristic events (a `qh_proxy`, say) inherits the same caveat and
+must say so here.
+`test_no_feature_carries_actuator_or_equilibrium_context` checks the
+NAMES, which is necessary and not sufficient: this paragraph is the audit.
+
+**One physical event, however many blocks wrote it.** `transients.py`
+emits its rows per `(diag, channel, pass)`, so a shot whose ELM clock ran
+on two D-alpha channels has every crash AND every ELM-free interval in the
+table twice; summing them made `elm_free_frac` 2.0 and doubled
+`elm_rate_hz`. Two policies, applied once when `EventTable` parses the
+frame: INTERVAL phenomena are UNIONED per phenomenon before any overlap is
+measured, and every fraction is clamped to [0, 1]; POINT phenomena (`elm`,
+`sawtooth`, `lh_transition`) are CLUSTERED within `DEDUP_S` and counted as
+clusters, so `elm_rate_hz`, `n_sawtooth`, `time_since_last_elm_s` and
+`sawtooth_period_ms` are about physical events rather than rows. This
+makes a duplicated table safe; it does not make two channels' disagreement
+go away, so the pipeline should still prefer ONE reference D-alpha channel
+for the ELM clock.
 
 **Three diagnostics, twelve features each.** `mhr` (magnetics), `co2`
 (interferometer) and `ece` (electron temperature) are the three that carry
@@ -90,6 +118,13 @@ BAND_HI_KHZ = (100.0, 250.0)
 # band 0 and `hi` stops at the top bin: these are broad power summaries,
 # not filters, and nothing downstream reads a band edge as a cut-off.
 
+#: Point detections this close together are one physical event seen by
+#: more than one block. 2 ms is well under the shortest interval round 1
+#: cares about - an ELM train at 200 Hz is 5 ms apart, a sawtooth train
+#: 20-200 ms - and well over the jitter between two channels' views of the
+#: same crash, which is a column or two of a 0.256 ms grid.
+DEDUP_S = 0.002
+
 #: A window is valid when at least one diagnostic covers this much of it.
 COVERAGE_MIN_FRAC = 0.5
 
@@ -147,8 +182,6 @@ FEATURE_NAMES: tuple[str, ...] = (
 )
 
 N_FEATURES = len(FEATURE_NAMES)
-
-_INDEX = {name: i for i, name in enumerate(FEATURE_NAMES)}
 
 
 # ------------------------------------------------------------------- grid
@@ -240,11 +273,13 @@ def band_indices(
 
 
 def blocks_from_masks(masks_path) -> dict[str, list[WindowBlock]]:
-    """`<shot>_masks.npz` -> its blocks, grouped by diagnostic.
+    """`<shot>_masks.npz` -> its `DIAGS` blocks, grouped by diagnostic.
 
-    Every block in the file is read, including diagnostics that are not one
-    of `DIAGS`: `coverage_from_blocks` and `window_features` select what
-    they need, and a caller inspecting a masks file should see all of it.
+    A block on any other diagnostic is SKIPPED without being read: nothing
+    in `FEATURE_NAMES` names it, and reading it means unpacking a 512-row
+    boolean map - 8.4 MB for a 16,391-column wide pass - only to throw it
+    away. A caller that wants to inspect a whole masks file has
+    `masks.list_blocks`/`masks.read_mask` for that.
     """
     masks_path = Path(masks_path)
     if not masks_path.exists():
@@ -252,6 +287,8 @@ def blocks_from_masks(masks_path) -> dict[str, list[WindowBlock]]:
     out: dict[str, list[WindowBlock]] = {}
     for prefix in list_blocks(masks_path):
         meta = read_mask(masks_path, f"{prefix}_meta")
+        if str(meta["diag"]) not in DIAGS:
+            continue
         n_cols = int(meta["n_cols"])
         packed = read_mask(masks_path, f"{prefix}_coh_packed")
         coh = unpack(packed, (N_BINS, n_cols))
@@ -297,6 +334,59 @@ def coverage_from_blocks(
 
 # ------------------------------------------------------------------ events
 
+def _merge_intervals(t0: np.ndarray, t1: np.ndarray) -> np.ndarray:
+    """`(n, 2)` DISJOINT intervals covering the union of `[t0, t1)`.
+
+    Within one detector block the intervals of a phenomenon are already
+    disjoint - `transients.elm_free_intervals` returns maximal ones - but
+    the block is `(diag, channel, pass)`, so two channels write two full
+    copies of the same quiet stretch. A fraction computed by summing those
+    is not a fraction; the union is.
+
+    Zero-length and non-finite rows are dropped: a point event carries
+    `t1 == t0` and covers no time, and a NaN bound is no interval at all.
+    Touching intervals (`a == previous end`) merge, because a union
+    measured in seconds cannot tell them apart.
+    """
+    lo = np.asarray(t0, dtype=np.float64).ravel()
+    hi = np.asarray(t1, dtype=np.float64).ravel()
+    if lo.size == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    keep = np.isfinite(lo) & np.isfinite(hi) & (hi > lo)
+    lo, hi = lo[keep], hi[keep]
+    order = np.argsort(lo, kind="stable")
+    out: list[list[float]] = []
+    for i in order:
+        a, b = float(lo[i]), float(hi[i])
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return np.asarray(out, dtype=np.float64).reshape(-1, 2)
+
+
+def _cluster_times(t_s: np.ndarray, tol_s: float = DEDUP_S) -> np.ndarray:
+    """Sorted times, ONE per cluster of detections within `tol_s`.
+
+    A cluster is a run of times whose consecutive gaps are all `<= tol_s`,
+    and its time is the mean of the run. The run is what makes N channels'
+    views of one crash collapse to one event however they are staggered;
+    it also means a genuine train faster than `1 / DEDUP_S` would chain,
+    which is why `DEDUP_S` is an order of magnitude under the fastest
+    interval round 1 asks about rather than a nice round tolerance.
+    """
+    t = np.sort(np.asarray(t_s, dtype=np.float64).ravel())
+    t = t[np.isfinite(t)]
+    if t.size == 0:
+        return t
+    starts = np.empty(t.size, dtype=bool)
+    starts[0] = True
+    np.greater(np.diff(t), float(tol_s), out=starts[1:])
+    idx = np.flatnonzero(starts)
+    sizes = np.diff(np.append(idx, t.size))
+    return np.add.reduceat(t, idx) / sizes
+
+
 def _attr(raw: str, key: str) -> float:
     """One numeric field of a stored `attrs` JSON string, or NaN."""
     try:
@@ -313,6 +403,12 @@ class EventTable:
     Parsed once and passed to every window: `attrs` is a JSON string per
     row, and re-parsing a shot's tracks for each of thirty windows is the
     one thing in here that would actually cost something.
+
+    This is also where the per-block duplicates go: `elm_free` reaches
+    `elm_free` UNIONED (`_merge_intervals`) and the three point families
+    reach their arrays CLUSTERED (`_cluster_times`), so every window sees
+    physical events and the window code never has to know that the rows
+    came from more than one `(diag, channel, pass)`.
     """
 
     track_diag: np.ndarray
@@ -323,6 +419,7 @@ class EventTable:
     track_chirp: np.ndarray
     track_harmonics: np.ndarray
     track_duration_ms: np.ndarray
+    track_pickup: np.ndarray
     pickup_t0: np.ndarray
     pickup_t1: np.ndarray
     elm_s: np.ndarray
@@ -345,9 +442,11 @@ class EventTable:
             return np.array([_attr(a, key) for a in attrs], dtype=np.float64)
 
         pickup = df[df["phenomenon"] == PICKUP_PHENOMENON]
-        free = df.loc[df["phenomenon"] == FREE_PHENOMENON, ["t0_s", "t1_s"]]
+        free = df.loc[
+            df["phenomenon"] == FREE_PHENOMENON, ["t0_s", "t1_s"]
+        ].to_numpy(dtype=np.float64).reshape(-1, 2)
         points = {
-            key: np.sort(
+            key: _cluster_times(
                 df.loc[df["phenomenon"] == key, "t0_s"].to_numpy(dtype=np.float64)
             )
             for key in (ELM_PHENOMENON, SAWTOOTH_PHENOMENON, LH_PHENOMENON)
@@ -361,10 +460,13 @@ class EventTable:
             track_chirp=field("chirp_khz_per_ms"),
             track_harmonics=field("n_harmonics"),
             track_duration_ms=field("duration_ms"),
+            # `tracks.as_attrs` writes every `Track` field, `pickup` among
+            # them; NaN (the key absent) is not a pickup row.
+            track_pickup=field("pickup"),
             pickup_t0=pickup["t0_s"].to_numpy(dtype=np.float64),
             pickup_t1=pickup["t1_s"].to_numpy(dtype=np.float64),
             elm_s=points[ELM_PHENOMENON],
-            elm_free=free.to_numpy(dtype=np.float64).reshape(-1, 2),
+            elm_free=_merge_intervals(free[:, 0], free[:, 1]),
             sawtooth_s=points[SAWTOOTH_PHENOMENON],
             lh_s=points[LH_PHENOMENON],
         )
@@ -388,11 +490,14 @@ def _overlaps(t0: np.ndarray, t1: np.ndarray, start: float, end: float) -> np.nd
 
 
 def _overlap_s(t0: np.ndarray, t1: np.ndarray, start: float, end: float) -> float:
-    """Seconds the union of `[t0, t1)` spends inside `[start, end)`.
+    """Seconds the intervals `[t0, t1)` spend inside `[start, end)`.
 
-    The intervals a detector writes for one phenomenon do not overlap each
-    other, so this sums rather than merging - `elm_free_intervals` returns
-    maximal disjoint intervals, and `write_events` replaces a source whole.
+    This SUMS, which is the union only when the intervals are disjoint -
+    so every interval family reaches it through `_merge_intervals`, once,
+    when `EventTable` parses the frame. Within one detector block they are
+    disjoint already (`elm_free_intervals` returns maximal intervals);
+    across two channels' blocks they are not, which is what made
+    `elm_free_frac` 2.0.
     """
     if t0.size == 0:
         return 0.0
@@ -483,8 +588,17 @@ def _diag_features(
             means.append(float(b.band_logpow[idx, cols].mean()))
         return float(np.mean(means)) if means else 0.0
 
-    on = _overlaps(table.track_t0, table.track_t1, start, end) & (
-        table.track_diag == diag
+    # A pickup row IS a `tokeye_track` row (`tracks.tracks_to_events` only
+    # changes its `phenomenon`), and a receiver line spans the whole record
+    # at a fixed low frequency with high confidence: counted as a track it
+    # would pin `track_f_centroid_khz` near the receiver in EVERY window of
+    # an affected shot. It is excluded from all five track statistics here;
+    # `pickup_flag` is where a receiver line is reported, and the test that
+    # pins this is `test_a_pickup_row_is_not_counted_among_the_tracks`.
+    on = (
+        _overlaps(table.track_t0, table.track_t1, start, end)
+        & (table.track_diag == diag)
+        & ~(table.track_pickup > 0.0)
     )
     f_khz = table.track_f_khz[on]
     conf = table.track_conf[on]
@@ -533,18 +647,28 @@ def _global_features(table: EventTable, start: float, end: float) -> list[float]
     ]
     period_ms = float(np.median(np.diff(near)) * 1e3) if near.size >= 2 else 0.0
 
+    # `lh_recent` is the one feature carrying an indirect actuator bit.
+    # Nothing is read from `pinj` here - but `heuristics.lh_transitions`
+    # returns `[]` without beams and drops every candidate whose preceding
+    # window is under `LH_MIN_PINJ_KW`, so a 1 in this column entails NBI
+    # above that gate. Inherited from the detector, stated in the module
+    # docstring, and tolerated because the transition's own evidence
+    # (D-alpha, density) is diagnostic and the NBI test is a
+    # false-positive filter rather than the signal.
     lh = table.lh_s
     recent = bool(((lh > centre - LH_RECENT_S) & (lh <= centre)).any())
 
     pickup = bool(
         _overlaps(table.pickup_t0, table.pickup_t1, start, end).any()
     )
+    # `elm_free` is already the UNION of what every block wrote, so the
+    # clamp is belt and braces - and it is here because a feature named as
+    # a fraction leaving [0, 1] on some shots and not others is exactly the
+    # kind of defect a GBDT absorbs silently.
+    free_s = _overlap_s(table.elm_free[:, 0], table.elm_free[:, 1], start, end)
     return [
         n_elm / width if width > 0.0 else 0.0,
-        (
-            _overlap_s(table.elm_free[:, 0], table.elm_free[:, 1], start, end)
-            / width if width > 0.0 else 0.0
-        ),
+        min(1.0, free_s / width) if width > 0.0 else 0.0,
         age,
         float(int(((saw >= start) & (saw < end)).sum())),
         period_ms,
@@ -619,8 +743,16 @@ def shot_window_features(shot: int, paths):
         x[:, i] = window_features(
             (t0, t1), blocks=blocks, events=table, cov=cov
         )
-    rows = [_INDEX[f"cov_frac_{d}"] for d in DIAGS]
-    valid = x[rows].max(axis=0) >= COVERAGE_MIN_FRAC if centres.size else np.zeros(
-        0, dtype=bool
-    )
+    # The threshold is applied to the float64 fractions, not to the stored
+    # float32 column: a coverage a few nanoseconds under a half rounds UP
+    # to exactly 0.5 in float32 and would call an uncovered window valid.
+    cov_frac = np.array(
+        [
+            [_cov_frac(cov, d, t0, t1)
+             for t0, t1 in zip(starts, ends, strict=True)]
+            for d in DIAGS
+        ],
+        dtype=np.float64,
+    ).reshape(len(DIAGS), centres.size)
+    valid = cov_frac.max(axis=0, initial=0.0) >= COVERAGE_MIN_FRAC
     return centres, x, np.asarray(valid, dtype=bool)

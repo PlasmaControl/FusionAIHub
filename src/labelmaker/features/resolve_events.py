@@ -92,10 +92,14 @@ def resolve(
     y[:, ~valid] = np.nan
     masks_file = Path(paths.masks_file(int(shot)))
     events_file = Path(paths.events_file(int(shot)))
+    # A COPY per served name. One feature is served today, so the aliasing
+    # would be invisible - and it is exactly the kind of thing that stops
+    # being invisible the day a second name is added, when a consumer that
+    # narrows one array's columns in place silently narrows the other's.
     arrays = {
         name: FeatureArray(
-            x=np.asarray(centres, dtype=np.float64),
-            y=y,
+            x=np.array(centres, dtype=np.float64, copy=True),
+            y=np.array(y, dtype=np.float32, copy=True),
             attrs={
                 "resolver": SOURCE,
                 "locator": locators[name],
