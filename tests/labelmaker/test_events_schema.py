@@ -71,7 +71,9 @@ def test_non_finite_times_are_rejected(kw):
 
 
 def test_a_backwards_interval_is_rejected():
-    with pytest.raises(ValueError, match="t1_s"):
+    # Pin the message, not merely the field name: "t1_s" alone also matches
+    # the non-finite complaint, so the loose form passed for the wrong reason.
+    with pytest.raises(ValueError, match="t1_s must not precede t0_s"):
         _event(t0_s=1.5, t1_s=1.0)
 
 
@@ -135,6 +137,15 @@ def test_unserialisable_attrs_are_rejected():
         _event(attrs={"blob": object()})
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_non_finite_attrs_are_rejected(value):
+    # `json.dumps` writes bare `NaN`/`Infinity` by default, which is not JSON
+    # and which no strict reader will take back. An attribute that cannot
+    # round-trip is a bug where it was computed, not where it is read.
+    with pytest.raises(ValueError, match="attrs"):
+        _event(attrs={"chirp": value})
+
+
 def test_event_ids_number_per_source_in_time_order(tmp_path):
     path = tmp_path / f"{SHOT}_events.parquet"
     events = [
@@ -159,7 +170,9 @@ def test_columns_and_dtypes_survive_a_round_trip(tmp_path):
         path, SHOT,
         [_event(f0_khz=2.0, f1_khz=20.0, confidence=0.75, diag="mhr", channel=4,
                 pass_name="zoom", attrs={"n_pix": 812, "chirp": -0.78},
-                t_cov0_s=0.0, t_cov1_s=6.0)],
+                t_cov0_s=0.0, t_cov1_s=6.0),
+         _event(source="label_forecast", phenomenon="disruption", t0_s=4.0,
+                t1_s=4.0, evidence_kind="forecast", horizon_s=0.05)],
         run_id="run-test",
     )
     expected = {name: np.dtype(DTYPES[name]) for name in COLUMNS}
@@ -168,12 +181,20 @@ def test_columns_and_dtypes_survive_a_round_trip(tmp_path):
     assert list(got.columns) == list(COLUMNS)
     assert got.dtypes.to_dict() == expected
     pd.testing.assert_frame_equal(got, written)
-    row = got.iloc[0]
+    row = got[got["source"] == "tokeye_track"].iloc[0]
     assert row["shot"] == SHOT and row["channel"] == 4 and row["pass_name"] == "zoom"
     assert row["attrs"] == '{"chirp": -0.78, "n_pix": 812}'
     assert row["run_id"] == "run-test" and row["git_sha"]
     stamped = datetime.fromisoformat(row["written_at"])
     assert stamped.tzinfo is not None and stamped.microsecond == 0
+    # A forecast keeps its horizon, and the fields it never set stay NaN
+    # through parquet - in float32 as in float64, so a consumer can tell
+    # "no band" from a band at 0 kHz.
+    fc = got[got["source"] == "label_forecast"].iloc[0]
+    assert fc["evidence_kind"] == "forecast"
+    assert fc["horizon_s"] == pytest.approx(0.05)
+    for name in ("f0_khz", "f1_khz", "t_cov0_s", "t_cov1_s"):
+        assert np.isnan(fc[name]), name
 
 
 def test_a_write_leaves_no_temp_file(tmp_path):

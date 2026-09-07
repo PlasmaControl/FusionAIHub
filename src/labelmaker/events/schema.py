@@ -81,9 +81,15 @@ _NAN = float("nan")
 
 
 def _attrs_json(attrs: Mapping[str, Any]) -> str:
-    """`attrs` as the stored JSON string, or ValueError."""
+    """`attrs` as the stored JSON string, or ValueError.
+
+    `allow_nan=False` because the default writes bare `NaN`/`Infinity`, which
+    is not JSON: the string round-trips through python and through nothing
+    else. A non-finite attribute is a bug in the detector that computed it,
+    and this is the earliest place it can be said so.
+    """
     try:
-        return json.dumps(dict(attrs), sort_keys=True)
+        return json.dumps(dict(attrs), sort_keys=True, allow_nan=False)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"attrs must be JSON-serialisable: {exc}") from exc
 
