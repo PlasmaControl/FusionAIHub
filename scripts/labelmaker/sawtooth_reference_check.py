@@ -186,6 +186,11 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
     scoped one. `labelmaker_sha` is HEAD at RUN time, which is the PARENT of
     the commit that carries the amended record - the same convention as the
     full run's.
+
+    RUN THIS ON AN IDLE NODE. `elapsed_s` is wall clock on whatever the
+    node was doing at the time, and the suite asserts the recorded number
+    is under a second (`test_events_heuristics.py`), so a re-run taken on a
+    busy login node commits a timing that has nothing to do with the port.
     """
     record = json.loads(record_path.read_text())
     corpus_file = corpus / Path(record["corpus_file"]).name
@@ -215,7 +220,7 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
           f"median {stats['median_period_ms']:.1f} ms")
     print(f"recorded      {record['reference']['n']:4d} reference crashes   "
           f"max |dt| {record['port_rerun']['max_abs_dt_ms']:.3e} ms")
-    print(f"tree          {git_sha(REPO)[:12]}"
+    print(f"tree          {record['port_rerun']['labelmaker_sha'][:12]}"
           f"{'  DIRTY' if record['port_rerun']['dirty'] else '  clean'}")
     print(f"amended       {record_path}")
     return 0
@@ -242,7 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         "--port-only", action="store_true",
         help="re-run only the port, on the shot the committed record names, "
              "and amend that record with a `port_rerun` stanza; omnimode is "
-             "not imported and not run",
+             "not imported and not run. Run it on an IDLE node: the stanza's "
+             "`elapsed_s` is wall clock and the suite asserts it",
     )
     args = parser.parse_args(argv)
 

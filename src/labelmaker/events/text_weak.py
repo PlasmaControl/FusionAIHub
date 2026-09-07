@@ -30,14 +30,21 @@ TWO SOURCES, and which one a hit came from is the whole of what it means:
   twenty others in the same session too (Appendix C item 12). So the bundle
   is `scope="run"` text and the SPAN (`PULSE-LENGTH`), and nothing else.
 
-Everything above the outputs is reached through four accessors -
-`shot_prose` (with `shot_entries`, its structured form), `run_context` and
-`shot_span_s` - and `weak_labels` and `text_events` use no others. That is
-not tidiness. The shot-scope source WAS the bundle until the L7 review, and
-making the swap found that `text_events` had been taking its span from the
-same block as its text - which the new source has none of, so every event
-would have silently collapsed to a point at zero with no test failing.
-Named accessors are what make the next swap one function each.
+Everything above the outputs is reached through three accessors, and
+`weak_labels` and `text_events` use no others:
+
+* `shot_entries` - THE shot-scope seam, and the one to swap. `shot_prose`
+  is that accessor flattened to a string and not a second source, so a
+  swap that changed only `shot_prose` would move the hits and leave
+  `n_entries` and `roles` reading the old source.
+* `run_context` - the run-scope seam (the bundle's session text).
+* `shot_span_s` - the SPAN, which has its own source on purpose.
+
+That is not tidiness. The shot-scope source WAS the bundle until the L7
+review, and making the swap found that `text_events` had been taking its
+span from the same block as its text - which the new source has none of,
+so every event would have silently collapsed to a point at zero with no
+test failing. Named accessors are what make the next swap one function.
 
 The matching is `lexicon.py`'s and takes text, not a shot: nothing in this
 module decides what a phrase means.
@@ -134,24 +141,80 @@ def _paths(paths: Paths | None) -> Paths:
 
 # ------------------------------------------------- the shot's own logbook
 
+def _read_missing(paths: Paths) -> set[int]:
+    """The shots `logs_jsonl` was searched for and did not have.
+
+    A plain list of integers, one per line, because that is all it is and a
+    person deleting a stale line should not need a parser. A file that is
+    not there is an empty set; an unreadable one is treated the same way,
+    since forgetting a miss costs one pass and refusing to build costs the
+    whole run.
+    """
+    try:
+        text = paths.logs_subset_missing.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    out = set()
+    for line in text.split():
+        try:
+            out.add(int(line))
+        except ValueError:
+            continue
+    return out
+
+
+def _write_missing(paths: Paths, shots: set[int]) -> None:
+    """Replace the missing-shot sidecar, atomically."""
+    out = paths.logs_subset_missing
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(
+            "".join(f"{s}\n" for s in sorted(shots)), encoding="utf-8"
+        )
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def build_logs_subset(shots: Iterable[int], *,
-                      paths: Paths | None = None) -> int:
+                      paths: Paths | None = None,
+                      refresh_missing: bool = False) -> int:
     """Copy the records for `shots` out of `logs_jsonl` into the subset.
 
     One pass over the 616 MB source, selecting lines by their byte prefix,
-    and only for shots the subset does not already hold - so a second call
-    for the same shots reads nothing and returns 0. Returns how many
-    records were added.
+    and only for shots the subset does not already hold AND that a previous
+    pass did not already fail to find - so a second call for the same shots
+    reads nothing and returns 0 whether or not the logbook has a record of
+    them. Returns how many records were added.
+
+    REMEMBERING THE MISSES is the whole of `logs_subset_missing`. A shot the
+    logbook has no record of can never enter the subset, so before the
+    sidecar it stayed wanted forever and every later call re-streamed the
+    source end to end: `text_events` builds for one shot at a time, so a
+    500-shot loop with 20 record-less shots did 12 GB of reads for nothing,
+    silently. `refresh_missing=True` is the one call that pays a pass to ask
+    again - the logbook gains records for today's shots, and a miss is a
+    fact about the source at the time and not forever. A shot found on such
+    a pass is dropped from the sidecar.
 
     The cache is rewritten WHOLE - the existing complete lines, then the
     new records - into a sibling `.tmp` that is fsynced and renamed over
     the old one, so a reader never sees a half-written file and a build
-    killed at any point leaves either the old cache or the new one.
-    (Appending in place is what produces the torn trailing line
+    killed at any point leaves either the old cache or the new one. The
+    `.tmp` carries the pid, because several SLURM array tasks sharing a
+    `LABELMAKER_ROOT` build this cache at once and a fixed name lets them
+    interleave their writes into one file. (This hand-rolls `atomic_path`
+    rather than using it because it needs the fsync, which `atomic_path`
+    does not do. Appending in place is what produces the torn trailing line
     `_subset_records` tolerates; a line of the old file that lacks its
     newline is such a tail, is not carried over, and its shot is fetched
     again.) Mirrors `ideate.shotdb.text.build_logs_subset`, which is where
     the pattern and the failure it fixes were measured.
+
+    A build that finds NOTHING does not touch the subset at all: rewriting
+    it would churn the file and invalidate the parsed-subset memo, which is
+    keyed on its size and mtime, to say the same thing it already said.
 
     A missing or unreadable `logs_jsonl` RAISES rather than reading as no
     text. A shot the logbook has no record of is ordinary and answers
@@ -160,12 +223,17 @@ def build_logs_subset(shots: Iterable[int], *,
     one this module has been burned by once.
     """
     paths = _paths(paths)
-    wanted = {int(s) for s in shots} - set(_read_subset(paths))
+    asked = {int(s) for s in shots}
+    recorded_missing = _read_missing(paths)
+    wanted = asked - set(_read_subset(paths))
+    if not refresh_missing:
+        wanted -= recorded_missing
     if not wanted:
         return 0
     out = paths.logs_subset
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(out.name + ".tmp")
+    tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
+    found: set[int] = set()
     n = 0
     try:
         with open(tmp, "wb") as dst:
@@ -179,12 +247,17 @@ def build_logs_subset(shots: Iterable[int], *,
                     m = _SHOT_PREFIX.match(line)
                     if m and int(m.group(1)) in wanted:
                         dst.write(line.rstrip(b"\n") + b"\n")
+                        found.add(int(m.group(1)))
                         n += 1
             dst.flush()
             os.fsync(dst.fileno())
-        os.replace(tmp, out)
+        if n:
+            os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)
+    now_missing = (recorded_missing | (wanted - found)) - found
+    if now_missing != recorded_missing:
+        _write_missing(paths, now_missing)
     return n
 
 
@@ -203,19 +276,26 @@ def _subset_records(path_str: str, key: tuple[int, int]) -> dict[int, dict]:
     key is what keeps an append-then-read correct anyway.
 
     An undecodable LAST line is dropped with a warning: that is what a
-    build killed mid-write leaves behind, and raising on it would break
-    every later read until somebody deleted the file by hand. Anywhere else
-    it is not that failure mode and is an error.
+    build killed mid-write leaves behind. A bad line ANYWHERE else - two
+    array tasks that raced on the same cache, a person who hand-edited it,
+    a record with no `shot` - is skipped, and all of them together are one
+    warning naming the first. Raising was the old policy and it was the
+    wrong one: this is a cache, it can be rebuilt from the source, and one
+    damaged line must not make every later read fail until somebody deletes
+    the file by hand. The shots those lines carried are simply fetched
+    again by the next build.
 
     The mapping is shared between callers - `load_log_record` copies out of
     it, and nothing else may hand it out.
     """
     out: dict[int, dict] = {}
     lines = [ln for ln in Path(path_str).read_bytes().split(b"\n") if ln.strip()]
+    skipped: list[int] = []
     for i, line in enumerate(lines):
         try:
             rec = json.loads(line)
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            shot = int(rec["shot"])
+        except (json.JSONDecodeError, UnicodeDecodeError):
             if i == len(lines) - 1:
                 warnings.warn(
                     f"{path_str}: dropping an undecodable trailing line "
@@ -224,10 +304,19 @@ def _subset_records(path_str: str, key: tuple[int, int]) -> dict[int, dict]:
                     stacklevel=2,
                 )
                 break
-            raise ValueError(
-                f"{path_str}: undecodable record on line {i + 1}"
-            ) from exc
-        out[int(rec["shot"])] = rec
+            skipped.append(i + 1)
+        except (KeyError, TypeError, ValueError):
+            skipped.append(i + 1)
+        else:
+            out[shot] = rec
+    if skipped:
+        warnings.warn(
+            f"{path_str}: skipping {len(skipped)} unusable line(s), the "
+            f"first on line {skipped[0]} - a record is one JSON object with "
+            "an integer `shot`. The shots they carried are fetched again by "
+            "the next build",
+            stacklevel=2,
+        )
     return out
 
 
@@ -452,10 +541,12 @@ def weak_labels(shots: Iterable[int], lexicon: Lexicon, *,
     a run row as a shot row has claimed the same sentence for every shot of
     the session.
 
-    The subset is built for `shots` before either scope, so that the pass
-    over the source happens once for a shot list rather than once per
-    scope, and so that a `Paths` pointing at a logbook nobody can read says
-    so here rather than by handing back an empty frame.
+    The subset is built for `shots` at SHOT scope only, in one pass for the
+    whole list, and a `Paths` pointing at a logbook nobody can read says so
+    there rather than by handing back an empty frame. Run scope reads the
+    bundles and nothing else, so it neither pays for the logbook nor needs
+    to be able to see it - which is also what makes run scope usable on a
+    machine that has the bundles and not the 616 MB dump.
 
     No row at all for a phenomenon nobody mentioned: an absent row is "not
     mentioned", which is not the same claim as `n_pos == 0`.
@@ -464,7 +555,8 @@ def weak_labels(shots: Iterable[int], lexicon: Lexicon, *,
         raise ValueError(f"scope must be one of {SCOPES}; got {scope!r}")
     paths = _paths(paths)
     shots = [int(s) for s in shots]
-    build_logs_subset(shots, paths=paths)
+    if scope == "shot":
+        build_logs_subset(shots, paths=paths)
     rows = []
     for shot in shots:
         text = (shot_prose(shot, paths=paths) if scope == "shot"
@@ -494,10 +586,10 @@ def text_events(shot, lexicon: Lexicon, *,
                 paths: Paths | None = None) -> list[Event]:
     """One `evidence_kind="text"` event per phenomenon this shot's log names.
 
-    The text is `shot_prose` - what people wrote about THIS shot - and the
-    span is `shot_span_s`, which reads the bundle's table row: two sources
-    and two accessors, because the logbook carries no shot length and the
-    bundle carries no prose. `[0, PULSE-LENGTH)`, or a point at 0 where the
+    The text is `shot_entries` - what people wrote about THIS shot - and
+    the span is `shot_span_s`, which reads the bundle's table row: two
+    sources and two accessors, because the logbook carries no shot length
+    and the bundle carries no prose. `[0, PULSE-LENGTH)`, or a point at 0 where the
     length is not stated; coverage is the same span, so "no `eho` row"
     means nobody wrote it and not that nobody looked.
 
@@ -510,19 +602,27 @@ def text_events(shot, lexicon: Lexicon, *,
     were read), `roles` (the roles whose own entries carry a positive hit
     for this phenomenon - one operator saying "fishbones" and the chief
     operator saying it are not one claim twice), and `text_source`.
+
+    ONE pass over the entries gives the counts, the snippet and the roles
+    together. Matching per entry for the roles and again over the joined
+    prose for the counts gives the same answer - `shot_prose` joins entry
+    bodies with a newline and `sentences` splits on newlines, so the prose
+    hits ARE the union of the per-entry hits, in order - but it is two
+    passes and two places that have to go on agreeing.
     """
     paths = _paths(paths)
     build_logs_subset([shot], paths=paths)
-    prose = shot_prose(shot, paths=paths)
     t0_s, t1_s = shot_span_s(shot, paths=paths)
     entries = shot_entries(shot, paths=paths)
+    found: dict[str, list[Hit]] = {}
     roles: dict[str, set[str]] = {}
     for entry in entries:
-        for pid, found in hits(entry.text, lexicon).items():
-            if any(h.polarity == "pos" for h in found):
+        for pid, hs in hits(entry.text, lexicon).items():
+            found.setdefault(pid, []).extend(hs)
+            if any(h.polarity == "pos" for h in hs):
                 roles.setdefault(pid, set()).add(entry.role)
     out = []
-    for phenomenon, n_pos, n_neg, snippet in _counts(hits(prose, lexicon)):
+    for phenomenon, n_pos, n_neg, snippet in _counts(found):
         if n_pos < 1:
             continue
         out.append(

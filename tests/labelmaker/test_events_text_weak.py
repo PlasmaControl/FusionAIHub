@@ -12,8 +12,10 @@ the task report.
 """
 from __future__ import annotations
 
+import builtins
 import json
 import math
+import os
 
 import pytest
 
@@ -149,6 +151,111 @@ def test_a_shot_the_logbook_has_no_record_of_is_not_an_error(corpus, paths):
     assert tw.build_logs_subset([10, 999999], paths=paths) == 1
     assert tw.load_log_record(999999, paths=paths) is None
     assert tw.shot_prose(999999, paths=paths) == ""
+
+
+def test_a_shot_the_logbook_has_no_record_of_is_remembered(corpus, paths,
+                                                          monkeypatch):
+    # The L7-fix review's Important #1. A shot with no record can never
+    # enter the subset, so it stayed in `wanted` forever and every later
+    # call re-streamed the 616 MB source - one full pass per record-less
+    # shot per pass over the shot list, silently, and `text_events` builds
+    # for one shot at a time. The misses are remembered in a sidecar.
+    assert tw.build_logs_subset([10, 999], paths=paths) == 1
+    assert paths.logs_subset_missing.read_text(encoding="utf-8").split() == [
+        "999"
+    ]
+    before = paths.logs_subset.read_bytes()
+    stat = paths.logs_subset.stat()
+    opened: list[str] = []
+    real_open = builtins.open
+
+    def spy(file, *args, **kwargs):
+        opened.append(str(file))
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", spy)
+    assert tw.build_logs_subset([10, 999], paths=paths) == 0
+    assert str(paths.logs_jsonl) not in opened
+    # And a no-op build leaves the cache alone, so the parsed-subset memo
+    # is not invalidated either.
+    assert paths.logs_subset.read_bytes() == before
+    assert paths.logs_subset.stat().st_mtime_ns == stat.st_mtime_ns
+
+
+def test_the_remembered_miss_is_refreshed_when_the_logbook_catches_up(corpus,
+                                                                      paths):
+    # A miss is a fact about the source AT THE TIME, not forever: the
+    # logbook gains records for today's shots. `refresh_missing=True` is
+    # the one call that pays a pass to find out.
+    tw.build_logs_subset([10, 999], paths=paths)
+    _write_logs(paths, [
+        {"shot": 999, "log_text": _entry("PHYSICS_OPERATOR", "a", "big elms")},
+    ])
+    assert tw.build_logs_subset([999], paths=paths) == 0
+    assert tw.load_log_record(999, paths=paths) is None
+    assert tw.build_logs_subset([999], paths=paths, refresh_missing=True) == 1
+    assert tw.load_log_record(999, paths=paths)["shot"] == 999
+    assert paths.logs_subset_missing.read_text(encoding="utf-8").split() == []
+
+
+def test_a_build_that_finds_nothing_does_not_rewrite_the_subset(corpus, paths):
+    tw.build_logs_subset([10], paths=paths)
+    before = paths.logs_subset.read_bytes()
+    stat = paths.logs_subset.stat()
+    assert tw.build_logs_subset([998], paths=paths) == 0
+    assert paths.logs_subset.read_bytes() == before
+    assert paths.logs_subset.stat().st_mtime_ns == stat.st_mtime_ns
+    assert sorted(p.name for p in paths.text_cache.iterdir()) == [
+        "logs_subset.jsonl", "logs_subset.missing"
+    ]
+
+
+def test_the_temporary_file_carries_the_pid(corpus, paths, monkeypatch):
+    # Two SLURM array tasks sharing a `LABELMAKER_ROOT` build this cache at
+    # once. A fixed sibling `.tmp` lets them interleave their writes into
+    # one file and rename the result into place.
+    seen: list[str] = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(str(src))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", spy)
+    assert tw.build_logs_subset([10, 999], paths=paths) == 1
+    assert seen
+    assert all(s.endswith(f".{os.getpid()}.tmp") for s in seen)
+
+
+def test_a_bad_interior_subset_line_is_skipped_with_one_warning(paths):
+    # The subset is a file on disk that a person can edit and that two
+    # array tasks can race on. One damaged line must not make every later
+    # read raise until somebody deletes the cache by hand - the same
+    # policy the torn trailing line already had.
+    paths.text_cache.mkdir(parents=True, exist_ok=True)
+    paths.logs_subset.write_text(
+        '{"shot": 10, "log_text": "fishbones everywhere"}\n'
+        "{ this line is not json at all\n"
+        '{"shot": 12, "log_text": "detachment late in the shot"}\n',
+        encoding="utf-8",
+    )
+    with pytest.warns(UserWarning, match="unusable") as record:
+        assert tw.load_log_record(10, paths=paths)["shot"] == 10
+    assert len(record) == 1
+    assert tw.load_log_record(12, paths=paths)["shot"] == 12
+
+
+def test_a_subset_record_with_no_shot_key_is_skipped_and_not_a_key_error(
+    paths,
+):
+    paths.text_cache.mkdir(parents=True, exist_ok=True)
+    paths.logs_subset.write_text(
+        '{"log_text": "somebody hand-edited this one"}\n'
+        '{"shot": 12, "log_text": "detachment late in the shot"}\n',
+        encoding="utf-8",
+    )
+    with pytest.warns(UserWarning, match="unusable"):
+        assert tw.load_log_record(12, paths=paths)["shot"] == 12
 
 
 def test_a_torn_trailing_line_is_tolerated_and_the_shot_refetched(corpus,
@@ -301,6 +408,18 @@ def test_the_shot_scope_text_is_the_log_and_not_the_bundle(corpus, paths, lex):
     assert list(run["scope"]) == ["run"]
 
 
+def test_run_scope_never_reads_the_logbook_at_all(paths, lex):
+    # `scope="run"` reads the bundle and nothing else, so it must not pay a
+    # pass over the 616 MB source - nor fail on a machine that cannot see
+    # it. The subset is built for the shot scope, which is the scope that
+    # uses it.
+    _write_bundle(paths, 40, session="sawtooth crashes all afternoon")
+    assert not paths.logs_jsonl.exists()
+    df = tw.weak_labels([40], lex, paths=paths, scope="run")
+    assert list(df["phenomenon"]) == ["sawtooth"]
+    assert not paths.logs_subset.exists()
+
+
 def test_weak_labels_columns_and_dtypes(corpus, paths, lex):
     df = tw.weak_labels([10, 11, 12], lex, paths=paths)
     assert list(df.columns) == list(tw.COLUMNS)
@@ -429,8 +548,37 @@ def test_a_shot_with_no_text_at_all_is_no_events(corpus, paths, lex):
 def test_text_events_reads_text_and_span_only_through_the_accessors(
     corpus, paths, lex, monkeypatch,
 ):
-    monkeypatch.setattr(tw, "shot_prose", lambda shot, **kw: "big elms")
+    # ONE shot-scope seam, `shot_entries`, and swapping it alone moves the
+    # hits, the counts, the snippet and the roles together. `shot_prose` is
+    # that accessor flattened, not a second source, so a swap that changed
+    # only it would leave `roles` and `n_entries` behind.
+    monkeypatch.setattr(tw, "shot_entries", lambda shot, **kw: (
+        tw.LogEntry(role="ANALYSIS", author="a",
+                    time="2024-05-17 13:12:07", text="big elms"),
+    ))
     monkeypatch.setattr(tw, "shot_span_s", lambda shot, **kw: (0.0, 4.5))
     one = tw.text_events(10, lex, paths=paths)[0]
     assert one.phenomenon == "elm"
     assert (one.t0_s, one.t1_s) == (0.0, 4.5)
+    assert one.attrs["roles"] == ["ANALYSIS"]
+    assert one.attrs["n_entries"] == 1
+    assert one.attrs["snippet"] == "big elms"
+
+
+def test_the_entries_are_matched_once_and_not_twice(corpus, paths, lex,
+                                                    monkeypatch):
+    # The counts, the snippet and the roles come from ONE pass over the
+    # entries. Matching per entry for the roles and again over the joined
+    # prose for the counts agrees only by construction, and is two places
+    # that have to go on agreeing.
+    real = lx.hits
+    calls: list[str] = []
+
+    def counting(text, lexicon):
+        calls.append(text)
+        return real(text, lexicon)
+
+    monkeypatch.setattr(tw, "hits", counting)
+    got = tw.text_events(10, lex, paths=paths)
+    assert [e.phenomenon for e in got] == ["fishbone"]
+    assert len(calls) == len(tw.shot_entries(10, paths=paths)) == 2

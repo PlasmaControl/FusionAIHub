@@ -98,6 +98,17 @@ class Paths:
         return self.text_cache / "logs_subset.jsonl"
 
     @property
+    def logs_subset_missing(self) -> Path:
+        """The shots `logs_jsonl` was searched for and did not have.
+
+        One shot per line, beside the subset. A shot with no record can
+        never enter the subset, so without this file it is searched for
+        again on every call - a full pass over 616 MB to learn the same
+        nothing, once per record-less shot per pass over a shot list.
+        """
+        return self.text_cache / "logs_subset.missing"
+
+    @property
     def labels_index(self) -> Path:
         return self.root / "labels_index.parquet"
 

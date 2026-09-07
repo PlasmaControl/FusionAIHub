@@ -281,3 +281,19 @@ def test_the_matchers_are_built_once_per_lexicon(lex):
     assert hash(lex) == hash(lx.load_lexicon())
     first = lx._matchers(lex)
     assert lx._matchers(lx.load_lexicon()) is first
+
+
+def test_a_decimal_number_is_one_token(lex):
+    # The L7-fix review's finding: `.` was a separator everywhere, so
+    # "beams 1.3/2.4 MW" broke into "beams 1", "3/2", "4 mw" and the middle
+    # piece IS the tearing alias. A beam power pair is not a mode number.
+    assert "tearing" not in lx.hits("beams 1.3/2.4 MW", lex)
+    assert "tearing" not in lx.hits("pinj 2.3/2.5 MW", lex)
+    assert "tearing" not in lx.hits("q95=3.2 at 2.11 s", lex)
+    # A `.` anywhere else still ends a sentence, and a real mode number is
+    # still one token.
+    assert lx.sentences("sawtooth. Then") == ["sawtooth", "then"]
+    assert "sawtooth" in lx.hits("sawtooth. Then", lex)
+    assert [h.polarity for h in lx.hits("3/2 mode locked", lex)["tearing"]] == [
+        "pos"
+    ]
