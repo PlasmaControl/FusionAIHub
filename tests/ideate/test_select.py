@@ -121,9 +121,9 @@ def test_rule_a_reads_the_magnitude_of_ip_and_not_its_sign(ip):
 
     `IP-(MA) >= 0.5` on the signed number is not "at least half a mega-amp", it is "at least half
     a mega-amp AND in the forward direction" -- a physics filter nobody wrote down. It rejected
-    all 663 reversed-Ip plasma shots of the pool, including every one of the 386 QH-titled shots
-    over 18 run days, which is why `recommender_v1` v1 had zero `qh_mode` shots in a list whose
-    stated purpose includes EHO/QH.
+    all 663 reversed-Ip plasma shots of the pool, including all 254 whose run title matches the
+    `qh_mode` lexicon, over 13 run days -- which is why `recommender_v1` v1 had zero `qh_mode`
+    shots in a list whose stated purpose includes EHO/QH.
     """
     ok, reasons = select.eligible(facts(row={"IP-(MA)": ip}), GOOD_GROUPS)
     assert ok is True and reasons == ()
@@ -309,7 +309,7 @@ def test_a_physics_theme_wins_over_startup_checkout():
     """`labels.yaml` lists `startup_checkout` first and the assignment used to be first-match, so
     any run day whose title also said "checkout" or "calibration" was filed as machine time.
 
-    Measured on the eligible pool: 499 of the 1,246 checkout-titled shots also match a physics
+    Measured on the eligible pool: 521 of the 1,394 checkout-titled shots also match a physics
     theme, and `startup_checkout` is the one theme §5.7 excludes from the quotas -- so the
     shadowing did not just mislabel them, it took them out of the quota that was reaching for
     them. The title below is a real one (run 20220906, shots 189889 ff).
