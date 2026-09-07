@@ -175,7 +175,7 @@ def test_a_shot_the_logbook_has_no_record_of_is_remembered(corpus, paths,
 
     monkeypatch.setattr(builtins, "open", spy)
     assert tw.build_logs_subset([10, 999], paths=paths) == 0
-    assert str(paths.logs_jsonl) not in opened
+    assert opened == []
     # And a no-op build leaves the cache alone, so the parsed-subset memo
     # is not invalidated either.
     assert paths.logs_subset.read_bytes() == before
@@ -582,3 +582,57 @@ def test_the_entries_are_matched_once_and_not_twice(corpus, paths, lex,
     got = tw.text_events(10, lex, paths=paths)
     assert [e.phenomenon for e in got] == ["fishbone"]
     assert len(calls) == len(tw.shot_entries(10, paths=paths)) == 2
+
+
+def test_a_shot_that_reached_the_subset_is_pruned_from_the_missing_sidecar(
+    corpus, paths,
+):
+    # L7-fix-2 review, Minor #3. `now_missing` was pruned against this
+    # call's `found` alone, so a shot that reached the subset by another
+    # route - a refresh in another process, a hand-restored cache - stayed
+    # listed as missing forever. A shot in the subset can never be a miss.
+    assert tw.build_logs_subset([10, 999], paths=paths) == 1
+    paths.logs_subset_missing.write_text("10\n999\n", encoding="utf-8")
+    assert tw.build_logs_subset([11], paths=paths) == 1
+    assert paths.logs_subset_missing.read_text(encoding="utf-8").split() == [
+        "999"
+    ]
+
+
+def test_a_torn_trailing_line_is_repaired_even_when_nothing_is_found(
+    corpus, paths,
+):
+    # L7-fix-2 review, Minor #4. The repair was conditional on `n >= 1`, so
+    # a build whose shots the logbook has no record of left the torn line in
+    # place - and its warning was re-emitted on every new parse of that
+    # version of the file. One rewrite, then clean, whatever was found.
+    tw.build_logs_subset([10], paths=paths)
+    with paths.logs_subset.open("a", encoding="utf-8") as fh:
+        fh.write('{"shot": 12, "log_text": "detach')
+    with pytest.warns(UserWarning, match="trailing line"):
+        assert tw.load_log_record(10, paths=paths)["shot"] == 10
+    # 999 has no record: nothing is found, and the repair may not wait for
+    # a successful fetch.
+    assert tw.build_logs_subset([999], paths=paths) == 0
+    text = paths.logs_subset.read_text(encoding="utf-8")
+    assert "detach" not in text
+    assert text.endswith("\n")
+    # And the reparsed file is clean: no warning, so this line does not
+    # raise under `-W error`.
+    assert tw.load_log_record(10, paths=paths)["shot"] == 10
+
+
+def test_weak_labels_reads_the_shot_text_only_through_the_accessor(
+    corpus, paths, lex, monkeypatch,
+):
+    # L7-fix-2 review, Minor #6: the `shot_entries` seam was pinned for
+    # `text_events` and asserted for `weak_labels` only by construction.
+    # `shot_prose` is that accessor flattened, so swapping the accessor
+    # moves the row.
+    monkeypatch.setattr(tw, "shot_entries", lambda shot, **kw: (
+        tw.LogEntry(role="ANALYSIS", author="a",
+                    time="2024-05-17 13:12:07", text="big elms"),
+    ))
+    df = tw.weak_labels([10], lex, paths=paths)
+    assert list(df["phenomenon"]) == ["elm"]
+    assert list(df["n_pos"]) == [1]

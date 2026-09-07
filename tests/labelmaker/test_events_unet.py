@@ -24,7 +24,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker.events import unet  # noqa: E402
+from labelmaker.events import unet
 
 GOLDEN = Path(__file__).parent / "data" / "unet_golden.npz"
 CHECKPOINT = unet.default_checkpoint_path()
