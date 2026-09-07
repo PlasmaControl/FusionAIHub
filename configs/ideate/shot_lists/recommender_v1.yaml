@@ -1,10 +1,10 @@
 name: recommender_v1
-created: '2026-09-07T14:14:15+00:00'
-rule: plan §5.7
+created: '2026-09-07T15:19:52+00:00'
+rule: 'plan §5.7 as amended 2026-09-07: abs(Ip), ≥200 shot chars, physics-first themes, two-pass flat-top'
 seed: 20260907
 n: 500
 summary:
-  n_eligible: 5299
+  n_eligible: 5812
   n_selected: 500
   failed:
     census_ece: 2895
@@ -12,80 +12,74 @@ summary:
     census_mhr: 2927
     flattop: 6774
     heating: 5798
-    ip: 6549
+    ip: 5945
     pulse_length: 6702
     session_fallback: 1291
     shot_text: 5637
     shot_type: 5424
     title: 186
   theme:
-    none: 73
-    control: 36
-    current_drive: 24
-    detachment_divertor: 68
-    disruption_runaway: 16
-    fast_ion_ae: 3
-    hybrid_high_beta: 47
-    lh_threshold_isotope: 17
-    neg_tri: 48
-    pedestal: 29
-    rmp_elm: 35
-    startup_checkout: 29
-    tearing_mhd: 38
-    transport: 37
+    none: 53
+    control: 34
+    current_drive: 31
+    detachment_divertor: 70
+    disruption_runaway: 20
+    fast_ion_ae: 6
+    hybrid_high_beta: 46
+    lh_threshold_isotope: 20
+    neg_tri: 37
+    pedestal: 33
+    qh_mode: 26
+    rmp_elm: 34
+    startup_checkout: 15
+    tearing_mhd: 37
+    transport: 38
   theme_quota_unmet:
-    qh_mode:
-      want: 20
-      got: 0
-      available: 0
-    lh_threshold_isotope:
-      want: 20
-      got: 17
-      available: 126
     fast_ion_ae:
       want: 20
-      got: 3
-      available: 12
-    disruption_runaway:
-      want: 20
-      got: 16
-      available: 71
+      got: 6
+      available: 34
   year:
-    2021: 67
-    2022: 115
-    2023: 108
-    2024: 121
-    2025: 89
+    2021: 64
+    2022: 130
+    2023: 94
+    2024: 116
+    2025: 96
   groups:
-    co2: 202
-    bes: 255
-    tangtv: 282
-  preferred: 140
+    co2: 204
+    bes: 256
+    tangtv: 284
+  preferred: 150
   reason:
-    fill: 197
-    preferred: 87
+    fill: 169
+    preferred: 85
     theme:control: 20
     theme:current_drive: 20
     theme:detachment_divertor: 20
-    theme:disruption_runaway: 16
-    theme:fast_ion_ae: 3
+    theme:disruption_runaway: 20
+    theme:fast_ion_ae: 6
     theme:hybrid_high_beta: 20
-    theme:lh_threshold_isotope: 17
+    theme:lh_threshold_isotope: 20
     theme:neg_tri: 20
     theme:pedestal: 20
+    theme:qh_mode: 20
     theme:rmp_elm: 20
     theme:tearing_mhd: 20
     theme:transport: 20
   flattop_source:
-    features_ip: 137
-    pulse_length_proxy: 363
-  runs: 229
-  mpids: 164
+    features_ip: 148
+    pending: 352
+  ip_sign:
+    '-1': 40
+    '+1': 460
+  replacements: []
+  runs: 232
+  mpids: 168
 hand_review:
   drop: []
   add: []
 shots:
-- shot: 185787
+- shot: 185786
   run_id: '20210412'
   mpid: '2021-99-01'
   year: 2021
@@ -94,20 +88,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.76
-  flattop_source: pulse_length_proxy
-- shot: 185863
-  run_id: '20210415'
-  mpid: '2019-63-02'
-  year: 2021
-  theme: detachment_divertor
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.42
-  flattop_source: pulse_length_proxy
-- shot: 185953
+  ip_sign: 1
+  flattop_s: 3.62
+  flattop_source: pending
+- shot: 185955
   run_id: '20210419'
   mpid: '2019-01-01'
   year: 2021
@@ -116,7 +100,8 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 3.125
+  ip_sign: 1
+  flattop_s: 4.275
   flattop_source: features_ip
 - shot: 185956
   run_id: '20210419'
@@ -127,9 +112,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.025
   flattop_source: features_ip
-- shot: 185969
+- shot: 185962
   run_id: '20210419'
   mpid: '2019-01-01'
   year: 2021
@@ -138,7 +124,20 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.075
+  flattop_source: features_ip
+- shot: 185980
+  run_id: '20210420'
+  mpid: '2019-01-02'
+  year: 2021
+  theme: detachment_divertor
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.7
   flattop_source: features_ip
 - shot: 185982
   run_id: '20210420'
@@ -149,17 +148,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 2.7
-  flattop_source: features_ip
-- shot: 185986
-  run_id: '20210420'
-  mpid: '2019-01-02'
-  year: 2021
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.7
   flattop_source: features_ip
 - shot: 185996
@@ -171,9 +160,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.25
   flattop_source: features_ip
-- shot: 186027
+- shot: 186015
   run_id: '20210421'
   mpid: '2019-01-05'
   year: 2021
@@ -182,8 +172,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.7
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.76
+  flattop_source: pending
 - shot: 186034
   run_id: '20210421'
   mpid: '2019-01-05'
@@ -193,8 +184,21 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.74
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
+- shot: 186036
+  run_id: '20210421'
+  mpid: '2019-01-05'
+  year: 2021
+  theme: null
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 3.02
+  flattop_source: pending
 - shot: 186055
   run_id: '20210422'
   mpid: '2019-01-08'
@@ -204,6 +208,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.725
   flattop_source: features_ip
 - shot: 186059
@@ -215,8 +220,21 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.725
   flattop_source: features_ip
+- shot: 186090
+  run_id: '20210423'
+  mpid: '2019-08-04'
+  year: 2021
+  theme: null
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.26
+  flattop_source: pending
 - shot: 186114
   run_id: '20210426'
   mpid: '2019-22-09'
@@ -226,6 +244,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.025
   flattop_source: features_ip
 - shot: 186116
@@ -237,6 +256,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.4
   flattop_source: features_ip
 - shot: 186118
@@ -248,6 +268,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.9
   flattop_source: features_ip
 - shot: 186194
@@ -259,6 +280,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.075
   flattop_source: features_ip
 - shot: 186196
@@ -266,10 +288,11 @@ shots:
   mpid: '2019-01-01'
   year: 2021
   theme: hybrid_high_beta
-  reason: preferred
+  reason: theme:hybrid_high_beta
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.075
   flattop_source: features_ip
 - shot: 186223
@@ -281,6 +304,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.15
   flattop_source: features_ip
 - shot: 186224
@@ -292,39 +316,43 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.85
   flattop_source: features_ip
 - shot: 186254
   run_id: '20210430'
   mpid: '2019-24-50'
   year: 2021
-  theme: control
+  theme: pedestal
   reason: fill
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 6.27
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 186257
   run_id: '20210430'
   mpid: '2019-24-50'
   year: 2021
-  theme: control
-  reason: theme:control
+  theme: pedestal
+  reason: theme:pedestal
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.2
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 186259
   run_id: '20210430'
   mpid: '2019-24-50'
   year: 2021
-  theme: control
-  reason: theme:control
+  theme: pedestal
+  reason: theme:pedestal
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.15
   flattop_source: features_ip
 - shot: 186278
@@ -336,6 +364,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.3
   flattop_source: features_ip
 - shot: 186290
@@ -347,6 +376,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.95
   flattop_source: features_ip
 - shot: 186292
@@ -354,12 +384,25 @@ shots:
   mpid: '2019-24-62'
   year: 2021
   theme: tearing_mhd
-  reason: preferred
+  reason: theme:tearing_mhd
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.825
   flattop_source: features_ip
+- shot: 186389
+  run_id: '20210519'
+  mpid: '2021-99-01'
+  year: 2021
+  theme: startup_checkout
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.75
+  flattop_source: pending
 - shot: 186481
   run_id: '20210524'
   mpid: '2019-22-07'
@@ -369,20 +412,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.125
   flattop_source: features_ip
-- shot: 186508
-  run_id: '20210524'
-  mpid: '2019-22-07'
-  year: 2021
-  theme: hybrid_high_beta
-  reason: preferred
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.125
-  flattop_source: features_ip
-- shot: 186512
+- shot: 186507
   run_id: '20210524'
   mpid: '2019-22-07'
   year: 2021
@@ -391,6 +424,19 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.125
+  flattop_source: features_ip
+- shot: 186512
+  run_id: '20210524'
+  mpid: '2019-22-07'
+  year: 2021
+  theme: hybrid_high_beta
+  reason: preferred
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.125
   flattop_source: features_ip
 - shot: 186528
@@ -402,7 +448,20 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.05
+  flattop_source: features_ip
+- shot: 186535
+  run_id: '20210525'
+  mpid: '2019-22-01'
+  year: 2021
+  theme: hybrid_high_beta
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.1
   flattop_source: features_ip
 - shot: 186563
   run_id: '20210526'
@@ -413,6 +472,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.125
   flattop_source: features_ip
 - shot: 186568
@@ -424,9 +484,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.1
   flattop_source: features_ip
-- shot: 186603
+- shot: 186599
   run_id: '20210527'
   mpid: '2019-24-46'
   year: 2021
@@ -435,7 +496,8 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 4.45
+  ip_sign: 1
+  flattop_s: 4.475
   flattop_source: features_ip
 - shot: 186609
   run_id: '20210527'
@@ -446,18 +508,8 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.45
-  flattop_source: features_ip
-- shot: 186610
-  run_id: '20210527'
-  mpid: '2019-24-46'
-  year: 2021
-  theme: tearing_mhd
-  reason: preferred
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.5
   flattop_source: features_ip
 - shot: 186640
   run_id: '20210528'
@@ -468,19 +520,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.075
   flattop_source: features_ip
-- shot: 186693
-  run_id: '20210602'
-  mpid: '2019-61-07'
-  year: 2021
-  theme: detachment_divertor
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 6.09
-  flattop_source: pulse_length_proxy
 - shot: 186744
   run_id: '20210603'
   mpid: '2019-22-10'
@@ -490,6 +532,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.3
   flattop_source: features_ip
 - shot: 186749
@@ -501,6 +544,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.3
   flattop_source: features_ip
 - shot: 186750
@@ -508,10 +552,11 @@ shots:
   mpid: '2019-22-10'
   year: 2021
   theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.3
   flattop_source: features_ip
 - shot: 186861
@@ -523,19 +568,9 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.91
-  flattop_source: pulse_length_proxy
-- shot: 186863
-  run_id: '20210609'
-  mpid: '2019-53-01'
-  year: 2021
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.26
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 186867
   run_id: '20210609'
   mpid: '2019-53-01'
@@ -545,9 +580,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.89
-  flattop_source: pulse_length_proxy
-- shot: 186907
+  flattop_source: pending
+- shot: 186892
   run_id: '20210610'
   mpid: '2019-02-16'
   year: 2021
@@ -556,8 +592,21 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.44
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.76
+  flattop_source: pending
+- shot: 186904
+  run_id: '20210610'
+  mpid: '2019-02-16'
+  year: 2021
+  theme: pedestal
+  reason: theme:pedestal
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 1.05
+  flattop_source: pending
 - shot: 186921
   run_id: '20210610'
   mpid: '2019-02-16'
@@ -567,19 +616,21 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.96
-  flattop_source: pulse_length_proxy
-- shot: 186924
-  run_id: '20210610'
-  mpid: '2019-02-16'
+  flattop_source: pending
+- shot: 186940
+  run_id: '20210611'
+  mpid: '2019-24-46'
   year: 2021
-  theme: pedestal
-  reason: theme:pedestal
+  theme: tearing_mhd
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.33
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 4.725
+  flattop_source: features_ip
 - shot: 186943
   run_id: '20210611'
   mpid: '2019-24-46'
@@ -589,6 +640,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.725
   flattop_source: features_ip
 - shot: 186944
@@ -596,10 +648,11 @@ shots:
   mpid: '2019-24-46'
   year: 2021
   theme: tearing_mhd
-  reason: theme:tearing_mhd
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.525
   flattop_source: features_ip
 - shot: 186976
@@ -611,6 +664,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.125
   flattop_source: features_ip
 - shot: 186978
@@ -622,20 +676,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.125
   flattop_source: features_ip
-- shot: 186981
-  run_id: '20210614'
-  mpid: '2019-22-01'
-  year: 2021
-  theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.125
-  flattop_source: features_ip
-- shot: 187069
+- shot: 187068
   run_id: '20210616'
   mpid: '2019-24-72'
   year: 2021
@@ -644,9 +688,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 4.78
-  flattop_source: pulse_length_proxy
-- shot: 187074
+  ip_sign: 1
+  flattop_s: 4.79
+  flattop_source: pending
+- shot: 187071
   run_id: '20210616'
   mpid: '2019-24-72'
   year: 2021
@@ -655,9 +700,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.23
-  flattop_source: pulse_length_proxy
-- shot: 187076
+  ip_sign: 1
+  flattop_s: 5.76
+  flattop_source: pending
+- shot: 187075
   run_id: '20210616'
   mpid: '2019-24-72'
   year: 2021
@@ -666,50 +712,19 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 3.79
-  flattop_source: pulse_length_proxy
-- shot: 187106
-  run_id: '20210617'
-  mpid: '2019-51-03'
-  year: 2021
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.69
-  flattop_source: pulse_length_proxy
-- shot: 187112
-  run_id: '20210617'
-  mpid: '2019-51-03'
-  year: 2021
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.31
-  flattop_source: pulse_length_proxy
-- shot: 187117
-  run_id: '20210617'
-  mpid: '2019-51-03'
-  year: 2021
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.26
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.0
+  flattop_source: pending
 - shot: 187143
   run_id: '20210618'
   mpid: '2019-42-01'
   year: 2021
   theme: detachment_divertor
-  reason: preferred
+  reason: theme:detachment_divertor
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.6
   flattop_source: features_ip
 - shot: 187153
@@ -721,19 +736,33 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.35
   flattop_source: features_ip
-- shot: 187155
-  run_id: '20210618'
-  mpid: '2019-42-01'
+- shot: 187168
+  run_id: '20210621'
+  mpid: '2021-99-01'
   year: 2021
-  theme: detachment_divertor
+  theme: current_drive
   reason: fill
   has_co2: false
-  has_bes: true
+  has_bes: false
   has_tangtv: false
-  flattop_s: 3.07
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.74
+  flattop_source: pending
+- shot: 187169
+  run_id: '20210621'
+  mpid: '2021-99-01'
+  year: 2021
+  theme: current_drive
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.04
+  flattop_source: pending
 - shot: 187196
   run_id: '20210622'
   mpid: '2019-52-06'
@@ -743,6 +772,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 1.375
   flattop_source: features_ip
 - shot: 187199
@@ -754,6 +784,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.075
   flattop_source: features_ip
 - shot: 187205
@@ -765,63 +796,57 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.325
   flattop_source: features_ip
 - shot: 187249
   run_id: '20210623'
   mpid: '2019-14-06'
   year: 2021
-  theme: startup_checkout
-  reason: preferred
+  theme: current_drive
+  reason: theme:current_drive
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.475
   flattop_source: features_ip
-- shot: 187252
+- shot: 187253
   run_id: '20210623'
   mpid: '2019-14-06'
   year: 2021
-  theme: startup_checkout
-  reason: preferred
+  theme: current_drive
+  reason: theme:current_drive
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.475
   flattop_source: features_ip
-- shot: 187254
+- shot: 187255
   run_id: '20210623'
   mpid: '2019-14-06'
   year: 2021
-  theme: startup_checkout
-  reason: preferred
+  theme: current_drive
+  reason: theme:current_drive
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.475
   flattop_source: features_ip
-- shot: 187297
+- shot: 187308
   run_id: '20210624'
   mpid: '2019-14-06'
   year: 2021
-  theme: startup_checkout
+  theme: current_drive
   reason: fill
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 4.21
-  flattop_source: pulse_length_proxy
-- shot: 187306
-  run_id: '20210624'
-  mpid: '2019-14-06'
-  year: 2021
-  theme: startup_checkout
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.22
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 188734
   run_id: '20220415'
   mpid: '2022-99-99'
@@ -831,6 +856,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.912
   flattop_source: features_ip
 - shot: 188740
@@ -842,6 +868,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.441
   flattop_source: features_ip
 - shot: 188764
@@ -853,84 +880,56 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.483
   flattop_source: features_ip
-- shot: 188841
-  run_id: '20220420'
-  mpid: '2022-99-99'
-  year: 2022
-  theme: startup_checkout
-  reason: preferred
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 3.413
-  flattop_source: features_ip
-- shot: 188976
-  run_id: '20220426'
-  mpid: '2022-99-99'
-  year: 2022
-  theme: startup_checkout
-  reason: preferred
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.591
-  flattop_source: features_ip
-- shot: 189016
+- shot: 189009
   run_id: '20220427'
   mpid: '2022-36-52'
   year: 2022
-  theme: null
+  theme: detachment_divertor
   reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.171
+  ip_sign: 1
+  flattop_s: 5.146
   flattop_source: features_ip
-- shot: 189017
+- shot: 189012
   run_id: '20220427'
   mpid: '2022-36-52'
   year: 2022
-  theme: null
+  theme: detachment_divertor
   reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.159
+  ip_sign: 1
+  flattop_s: 5.145
   flattop_source: features_ip
-- shot: 189028
+- shot: 189015
   run_id: '20220427'
   mpid: '2022-36-52'
-  year: 2022
-  theme: null
-  reason: preferred
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.176
-  flattop_source: features_ip
-- shot: 189044
-  run_id: '20220428'
-  mpid: '2022-31-02'
   year: 2022
   theme: detachment_divertor
   reason: theme:detachment_divertor
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 4.444
+  ip_sign: 1
+  flattop_s: 5.148
   flattop_source: features_ip
-- shot: 189053
+- shot: 189042
   run_id: '20220428'
   mpid: '2022-31-02'
   year: 2022
   theme: detachment_divertor
-  reason: theme:detachment_divertor
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 4.298
+  ip_sign: 1
+  flattop_s: 4.37
   flattop_source: features_ip
 - shot: 189063
   run_id: '20220428'
@@ -941,9 +940,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.145
   flattop_source: features_ip
-- shot: 189084
+- shot: 189085
   run_id: '20220429'
   mpid: '2022-31-02'
   year: 2022
@@ -952,7 +952,20 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.445
+  ip_sign: 1
+  flattop_s: 4.65
+  flattop_source: features_ip
+- shot: 189089
+  run_id: '20220429'
+  mpid: '2022-31-02'
+  year: 2022
+  theme: detachment_divertor
+  reason: preferred
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.376
   flattop_source: features_ip
 - shot: 189098
   run_id: '20220429'
@@ -963,6 +976,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.14
   flattop_source: features_ip
 - shot: 189139
@@ -974,6 +988,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.726
   flattop_source: features_ip
 - shot: 189181
@@ -985,6 +1000,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.481
   flattop_source: features_ip
 - shot: 189262
@@ -996,6 +1012,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.722
   flattop_source: features_ip
 - shot: 189265
@@ -1007,6 +1024,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.724
   flattop_source: features_ip
 - shot: 189276
@@ -1018,72 +1036,79 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.357
   flattop_source: features_ip
-- shot: 189290
+- shot: 189298
   run_id: '20220509'
   mpid: '2022-02-04'
   year: 2022
-  theme: null
-  reason: preferred
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 5.001
+  ip_sign: 1
+  flattop_s: 4.091
   flattop_source: features_ip
-- shot: 189321
-  run_id: '20220510'
-  mpid: '2022-35-07'
+- shot: 189315
+  run_id: '20220509'
+  mpid: '2022-02-04'
   year: 2022
-  theme: control
-  reason: fill
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 1.05
-  flattop_source: pulse_length_proxy
-- shot: 189324
-  run_id: '20220510'
-  mpid: '2022-35-07'
-  year: 2022
-  theme: control
-  reason: theme:control
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.177
+  ip_sign: 1
+  flattop_s: 4.985
   flattop_source: features_ip
-- shot: 189363
+- shot: 189316
+  run_id: '20220509'
+  mpid: '2022-02-04'
+  year: 2022
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.203
+  flattop_source: features_ip
+- shot: 189370
   run_id: '20220511'
   mpid: '2022-32-01'
   year: 2022
-  theme: null
-  reason: preferred
+  theme: pedestal
+  reason: theme:pedestal
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.091
+  ip_sign: 1
+  flattop_s: 4.094
   flattop_source: features_ip
 - shot: 189371
   run_id: '20220511'
   mpid: '2022-32-01'
   year: 2022
-  theme: null
+  theme: pedestal
   reason: preferred
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.085
   flattop_source: features_ip
 - shot: 189373
   run_id: '20220511'
   mpid: '2022-32-01'
   year: 2022
-  theme: null
-  reason: preferred
+  theme: pedestal
+  reason: theme:pedestal
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.091
   flattop_source: features_ip
 - shot: 189405
@@ -1095,6 +1120,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.14
   flattop_source: features_ip
 - shot: 189413
@@ -1106,8 +1132,21 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.195
   flattop_source: features_ip
+- shot: 189433
+  run_id: '20220513'
+  mpid: '2022-35-07'
+  year: 2022
+  theme: control
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.08
+  flattop_source: pending
 - shot: 189445
   run_id: '20220513'
   mpid: '2022-35-07'
@@ -1117,40 +1156,32 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.017
   flattop_source: features_ip
-- shot: 189463
+- shot: 189470
   run_id: '20220516'
   mpid: '2022-32-04'
   year: 2022
   theme: pedestal
-  reason: theme:pedestal
+  reason: preferred
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.24
+  ip_sign: 1
+  flattop_s: 5.426
   flattop_source: features_ip
-- shot: 189465
+- shot: 189472
   run_id: '20220516'
   mpid: '2022-32-04'
   year: 2022
   theme: pedestal
-  reason: theme:pedestal
+  reason: preferred
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 5.576
-  flattop_source: features_ip
-- shot: 189466
-  run_id: '20220516'
-  mpid: '2022-32-04'
-  year: 2022
-  theme: pedestal
-  reason: theme:pedestal
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.522
+  ip_sign: 1
+  flattop_s: 1.714
   flattop_source: features_ip
 - shot: 189502
   run_id: '20220517'
@@ -1161,20 +1192,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.577
   flattop_source: features_ip
-- shot: 189512
-  run_id: '20220517'
-  mpid: '2022-32-02'
-  year: 2022
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 1.629
-  flattop_source: features_ip
-- shot: 189514
+- shot: 189510
   run_id: '20220517'
   mpid: '2022-32-02'
   year: 2022
@@ -1183,29 +1204,20 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 3.931
+  ip_sign: 1
+  flattop_s: 1.849
   flattop_source: features_ip
-- shot: 189546
-  run_id: '20220518'
-  mpid: '2022-32-03'
+- shot: 189512
+  run_id: '20220517'
+  mpid: '2022-32-02'
   year: 2022
-  theme: pedestal
-  reason: theme:pedestal
+  theme: detachment_divertor
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.792
-  flattop_source: features_ip
-- shot: 189565
-  run_id: '20220518'
-  mpid: '2022-32-03'
-  year: 2022
-  theme: pedestal
-  reason: theme:pedestal
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.603
+  ip_sign: 1
+  flattop_s: 1.629
   flattop_source: features_ip
 - shot: 189570
   run_id: '20220518'
@@ -1216,7 +1228,32 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.293
+  flattop_source: features_ip
+- shot: 189571
+  run_id: '20220518'
+  mpid: '2022-32-03'
+  year: 2022
+  theme: pedestal
+  reason: theme:pedestal
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.303
+  flattop_source: features_ip
+- shot: 189573
+  run_id: '20220518'
+  mpid: '2022-32-03'
+  year: 2022
+  theme: pedestal
+  reason: theme:pedestal
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.299
   flattop_source: features_ip
 - shot: 189582
   run_id: '20220519'
@@ -1227,6 +1264,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.32
   flattop_source: features_ip
 - shot: 189627
@@ -1238,19 +1276,9 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.199
   flattop_source: features_ip
-- shot: 189629
-  run_id: '20220520'
-  mpid: '2022-32-05'
-  year: 2022
-  theme: pedestal
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.75
-  flattop_source: pulse_length_proxy
 - shot: 189636
   run_id: '20220520'
   mpid: '2022-32-05'
@@ -1260,9 +1288,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.197
   flattop_source: features_ip
-- shot: 189676
+- shot: 189685
   run_id: '20220523'
   mpid: '2022-13-02'
   year: 2022
@@ -1271,7 +1300,8 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.823
+  ip_sign: 1
+  flattop_s: 5.829
   flattop_source: features_ip
 - shot: 189689
   run_id: '20220523'
@@ -1282,6 +1312,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.825
   flattop_source: features_ip
 - shot: 189694
@@ -1293,6 +1324,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.826
   flattop_source: features_ip
 - shot: 189719
@@ -1304,6 +1336,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.227
   flattop_source: features_ip
 - shot: 189726
@@ -1315,6 +1348,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.69
   flattop_source: features_ip
 - shot: 189737
@@ -1326,7 +1360,56 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.258
+  flattop_source: features_ip
+- shot: 189836
+  run_id: '20220613'
+  mpid: '2022-99-01'
+  year: 2022
+  theme: startup_checkout
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 5.16
+  flattop_source: features_ip
+- shot: 189867
+  run_id: '20220614'
+  mpid: '2022-35-51'
+  year: 2022
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 1.913
+  flattop_source: features_ip
+- shot: 189869
+  run_id: '20220614'
+  mpid: '2022-35-51'
+  year: 2022
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 1.721
+  flattop_source: features_ip
+- shot: 189890
+  run_id: '20220614'
+  mpid: '2022-35-51'
+  year: 2022
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 5.15
   flattop_source: features_ip
 - shot: 189937
   run_id: '20220616'
@@ -1337,6 +1420,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.722
   flattop_source: features_ip
 - shot: 189938
@@ -1348,6 +1432,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.01
   flattop_source: features_ip
 - shot: 189963
@@ -1359,19 +1444,9 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.712
   flattop_source: features_ip
-- shot: 189969
-  run_id: '20220617'
-  mpid: '2022-12-01'
-  year: 2022
-  theme: transport
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.29
-  flattop_source: pulse_length_proxy
 - shot: 189976
   run_id: '20220617'
   mpid: '2022-12-01'
@@ -1381,20 +1456,34 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.717
   flattop_source: features_ip
-- shot: 190002
+- shot: 189988
   run_id: '20220620'
   mpid: '2022-12-02'
   year: 2022
   theme: transport
-  reason: preferred
+  reason: theme:transport
   has_co2: false
   has_bes: false
-  has_tangtv: true
-  flattop_s: 4.442
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 3.441
   flattop_source: features_ip
-- shot: 190005
+- shot: 189990
+  run_id: '20220620'
+  mpid: '2022-12-02'
+  year: 2022
+  theme: transport
+  reason: theme:transport
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 3.447
+  flattop_source: features_ip
+- shot: 190007
   run_id: '20220620'
   mpid: '2022-12-02'
   year: 2022
@@ -1403,18 +1492,8 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.448
-  flattop_source: features_ip
-- shot: 190009
-  run_id: '20220620'
-  mpid: '2022-12-02'
-  year: 2022
-  theme: transport
-  reason: theme:transport
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 4.446
+  ip_sign: 1
+  flattop_s: 4.443
   flattop_source: features_ip
 - shot: 190035
   run_id: '20220621'
@@ -1425,61 +1504,67 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.176
   flattop_source: features_ip
-- shot: 190071
+- shot: 190065
   run_id: '20220622'
   mpid: '2022-36-03'
   year: 2022
-  theme: null
+  theme: detachment_divertor
   reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.582
+  ip_sign: 1
+  flattop_s: 4.575
   flattop_source: features_ip
-- shot: 190085
+- shot: 190098
   run_id: '20220623'
   mpid: '2022-36-02'
   year: 2022
-  theme: null
-  reason: preferred
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.169
+  ip_sign: 1
+  flattop_s: 5.163
   flattop_source: features_ip
-- shot: 190091
+- shot: 190103
   run_id: '20220623'
   mpid: '2022-36-02'
   year: 2022
-  theme: null
+  theme: detachment_divertor
   reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.171
+  ip_sign: 1
+  flattop_s: 5.174
   flattop_source: features_ip
-- shot: 190092
+- shot: 190104
   run_id: '20220623'
   mpid: '2022-36-02'
   year: 2022
-  theme: null
+  theme: detachment_divertor
   reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.162
+  ip_sign: 1
+  flattop_s: 5.17
   flattop_source: features_ip
 - shot: 190127
   run_id: '20220624'
   mpid: '2022-12-02'
   year: 2022
   theme: transport
-  reason: theme:transport
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.442
   flattop_source: features_ip
 - shot: 190130
@@ -1491,9 +1576,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.434
   flattop_source: features_ip
-- shot: 190178
+- shot: 190170
   run_id: '20220627'
   mpid: '2022-36-03'
   year: 2022
@@ -1502,7 +1588,8 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.28
+  ip_sign: 1
+  flattop_s: 4.568
   flattop_source: features_ip
 - shot: 190180
   run_id: '20220627'
@@ -1513,6 +1600,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.124
   flattop_source: features_ip
 - shot: 190182
@@ -1524,9 +1612,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.374
   flattop_source: features_ip
-- shot: 190206
+- shot: 190201
   run_id: '20220628'
   mpid: '2022-31-03'
   year: 2022
@@ -1535,9 +1624,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.292
+  ip_sign: 1
+  flattop_s: 3.571
   flattop_source: features_ip
-- shot: 190219
+- shot: 190213
   run_id: '20220628'
   mpid: '2022-31-03'
   year: 2022
@@ -1546,7 +1636,8 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.007
+  ip_sign: 1
+  flattop_s: 4.486
   flattop_source: features_ip
 - shot: 190228
   run_id: '20220628'
@@ -1557,6 +1648,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.414
   flattop_source: features_ip
 - shot: 190252
@@ -1568,6 +1660,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.7
   flattop_source: features_ip
 - shot: 190258
@@ -1579,6 +1672,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.687
   flattop_source: features_ip
 - shot: 190267
@@ -1590,43 +1684,47 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 1.658
   flattop_source: features_ip
-- shot: 190438
-  run_id: '20220707'
-  mpid: '2022-36-01'
+- shot: 190366
+  run_id: '20220705'
+  mpid: '2022-00-09'
   year: 2022
-  theme: detachment_divertor
-  reason: preferred
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
   has_co2: false
   has_bes: false
-  has_tangtv: true
-  flattop_s: 5.161
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 6.498
   flattop_source: features_ip
-- shot: 190441
-  run_id: '20220707'
-  mpid: '2022-36-01'
+- shot: 190367
+  run_id: '20220705'
+  mpid: '2022-00-09'
   year: 2022
-  theme: detachment_divertor
-  reason: preferred
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
   has_co2: false
   has_bes: false
-  has_tangtv: true
-  flattop_s: 5.153
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 6.703
   flattop_source: features_ip
-- shot: 190442
-  run_id: '20220707'
-  mpid: '2022-36-01'
+- shot: 190384
+  run_id: '20220705'
+  mpid: '2022-00-09'
   year: 2022
-  theme: detachment_divertor
-  reason: preferred
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
   has_co2: false
   has_bes: false
-  has_tangtv: true
-  flattop_s: 5.133
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.584
   flattop_source: features_ip
-- shot: 190483
-  run_id: '20220708'
+- shot: 190408
+  run_id: '20220706'
   mpid: '2022-36-01'
   year: 2022
   theme: detachment_divertor
@@ -1634,18 +1732,164 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.198
+  ip_sign: 1
+  flattop_s: 5.16
   flattop_source: features_ip
-- shot: 190492
-  run_id: '20220708'
+- shot: 190421
+  run_id: '20220706'
+  mpid: '2022-36-01'
+  year: 2022
+  theme: detachment_divertor
+  reason: preferred
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.056
+  flattop_source: features_ip
+- shot: 190443
+  run_id: '20220707'
+  mpid: '2022-36-01'
+  year: 2022
+  theme: detachment_divertor
+  reason: preferred
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.139
+  flattop_source: features_ip
+- shot: 190449
+  run_id: '20220707'
   mpid: '2022-36-01'
   year: 2022
   theme: detachment_divertor
   reason: theme:detachment_divertor
   has_co2: false
   has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.332
+  flattop_source: features_ip
+- shot: 190454
+  run_id: '20220707'
+  mpid: '2022-36-01'
+  year: 2022
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.133
+  flattop_source: features_ip
+- shot: 190509
+  run_id: '20220711'
+  mpid: '2022-35-02'
+  year: 2022
+  theme: qh_mode
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.47
+  flattop_source: features_ip
+- shot: 190511
+  run_id: '20220711'
+  mpid: '2022-35-02'
+  year: 2022
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.463
+  flattop_source: features_ip
+- shot: 190591
+  run_id: '20220713'
+  mpid: '2022-08-01'
+  year: 2022
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: false
+  has_bes: false
   has_tangtv: false
-  flattop_s: 5.195
+  ip_sign: 1
+  flattop_s: 6.27
+  flattop_source: pending
+- shot: 190592
+  run_id: '20220713'
+  mpid: '2022-08-01'
+  year: 2022
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 6.46
+  flattop_source: pending
+- shot: 190601
+  run_id: '20220713'
+  mpid: '2022-08-01'
+  year: 2022
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 7.46
+  flattop_source: pending
+- shot: 190627
+  run_id: '20220714'
+  mpid: '2022-35-01'
+  year: 2022
+  theme: qh_mode
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.047
+  flattop_source: features_ip
+- shot: 190629
+  run_id: '20220714'
+  mpid: '2022-35-01'
+  year: 2022
+  theme: qh_mode
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.071
+  flattop_source: features_ip
+- shot: 190632
+  run_id: '20220714'
+  mpid: '2022-35-01'
+  year: 2022
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.065
+  flattop_source: features_ip
+- shot: 190730
+  run_id: '20220719'
+  mpid: '2022-24-53'
+  year: 2022
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.241
   flattop_source: features_ip
 - shot: 190732
   run_id: '20220719'
@@ -1656,6 +1900,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.009
   flattop_source: features_ip
 - shot: 190735
@@ -1667,19 +1912,21 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.897
   flattop_source: features_ip
-- shot: 190736
-  run_id: '20220719'
-  mpid: '2022-24-53'
+- shot: 190788
+  run_id: '20220720'
+  mpid: '2022-36-06'
   year: 2022
-  theme: rmp_elm
-  reason: theme:rmp_elm
-  has_co2: true
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.11
-  flattop_source: pulse_length_proxy
+  theme: detachment_divertor
+  reason: preferred
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.093
+  flattop_source: features_ip
 - shot: 190794
   run_id: '20220720'
   mpid: '2022-36-06'
@@ -1689,6 +1936,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.18
   flattop_source: features_ip
 - shot: 190796
@@ -1700,18 +1948,8 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.132
-  flattop_source: features_ip
-- shot: 190804
-  run_id: '20220720'
-  mpid: '2022-36-06'
-  year: 2022
-  theme: detachment_divertor
-  reason: preferred
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.124
   flattop_source: features_ip
 - shot: 190818
   run_id: '20220721'
@@ -1722,19 +1960,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.186
   flattop_source: features_ip
-- shot: 190866
-  run_id: '20220722'
-  mpid: '2022-12-04'
-  year: 2022
-  theme: transport
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.72
-  flattop_source: pulse_length_proxy
 - shot: 190867
   run_id: '20220722'
   mpid: '2022-12-04'
@@ -1744,6 +1972,7 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.66
   flattop_source: features_ip
 - shot: 190869
@@ -1751,10 +1980,11 @@ shots:
   mpid: '2022-12-04'
   year: 2022
   theme: transport
-  reason: theme:transport
+  reason: preferred
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.659
   flattop_source: features_ip
 - shot: 190914
@@ -1766,6 +1996,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.219
   flattop_source: features_ip
 - shot: 190917
@@ -1777,18 +2008,20 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.227
   flattop_source: features_ip
-- shot: 190921
+- shot: 190922
   run_id: '20220726'
   mpid: '2022-03-01'
   year: 2022
   theme: control
-  reason: theme:control
+  reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 2.755
+  ip_sign: 1
+  flattop_s: 2.758
   flattop_source: features_ip
 - shot: 190958
   run_id: '20220727'
@@ -1799,6 +2032,7 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 2.35
   flattop_source: features_ip
 - shot: 190968
@@ -1810,30 +2044,21 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 1.599
   flattop_source: features_ip
 - shot: 190993
   run_id: '20220728'
   mpid: '2022-36-03'
   year: 2022
-  theme: null
+  theme: detachment_divertor
   reason: preferred
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.69
   flattop_source: features_ip
-- shot: 191036
-  run_id: '20220729'
-  mpid: '2022-24-55'
-  year: 2022
-  theme: tearing_mhd
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 1.69
-  flattop_source: pulse_length_proxy
 - shot: 191038
   run_id: '20220729'
   mpid: '2022-24-55'
@@ -1843,8 +2068,153 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.25
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
+- shot: 191213
+  run_id: '20220812'
+  mpid: '2022-13-53'
+  year: 2022
+  theme: current_drive
+  reason: theme:current_drive
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.67
+  flattop_source: pending
+- shot: 191230
+  run_id: '20220812'
+  mpid: '2022-13-53'
+  year: 2022
+  theme: current_drive
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.66
+  flattop_source: pending
+- shot: 191251
+  run_id: '20220812'
+  mpid: '2022-13-53'
+  year: 2022
+  theme: current_drive
+  reason: theme:current_drive
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.67
+  flattop_source: pending
+- shot: 191329
+  run_id: '20220816'
+  mpid: '2022-13-53'
+  year: 2022
+  theme: current_drive
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.67
+  flattop_source: pending
+- shot: 191346
+  run_id: '20220816'
+  mpid: '2022-13-53'
+  year: 2022
+  theme: current_drive
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.67
+  flattop_source: pending
+- shot: 191498
+  run_id: '20220823'
+  mpid: '2022-11-03'
+  year: 2022
+  theme: fast_ion_ae
+  reason: theme:fast_ion_ae
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 3.87
+  flattop_source: pending
+- shot: 191510
+  run_id: '20220823'
+  mpid: '2022-11-03'
+  year: 2022
+  theme: fast_ion_ae
+  reason: theme:fast_ion_ae
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 4.27
+  flattop_source: pending
+- shot: 191515
+  run_id: '20220823'
+  mpid: '2022-11-03'
+  year: 2022
+  theme: fast_ion_ae
+  reason: theme:fast_ion_ae
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 4.3
+  flattop_source: pending
+- shot: 191725
+  run_id: '20220901'
+  mpid: '2022-32-04'
+  year: 2022
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.51
+  flattop_source: pending
+- shot: 191726
+  run_id: '20220901'
+  mpid: '2022-32-04'
+  year: 2022
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.76
+  flattop_source: pending
+- shot: 191727
+  run_id: '20220901'
+  mpid: '2022-32-04'
+  year: 2022
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.38
+  flattop_source: pending
+- shot: 191828
+  run_id: '20220907'
+  mpid: '2022-08-03'
+  year: 2022
+  theme: tearing_mhd
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.38
+  flattop_source: pending
 - shot: 192082
   run_id: '20220916'
   mpid: '2022-14-03'
@@ -1854,8 +2224,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.75
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 192090
   run_id: '20220916'
   mpid: '2022-14-03'
@@ -1865,8 +2236,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.61
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 192092
   run_id: '20220916'
   mpid: '2022-14-03'
@@ -1876,8 +2248,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.45
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 192390
   run_id: '20220928'
   mpid: '2022-36-06'
@@ -1887,152 +2260,106 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.159
   flattop_source: features_ip
+- shot: 192462
+  run_id: '20220930'
+  mpid: '2022-34-04'
+  year: 2022
+  theme: control
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.42
+  flattop_source: pending
+- shot: 192465
+  run_id: '20220930'
+  mpid: '2022-34-04'
+  year: 2022
+  theme: control
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.16
+  flattop_source: pending
 - shot: 192473
   run_id: '20220930'
   mpid: '2022-34-04'
   year: 2022
   theme: control
-  reason: preferred
+  reason: theme:control
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.38
-  flattop_source: pulse_length_proxy
-- shot: 192478
-  run_id: '20220930'
-  mpid: '2022-34-04'
+  flattop_source: pending
+- shot: 192766
+  run_id: '20221109'
+  mpid: '2022-35-01'
+  year: 2022
+  theme: qh_mode
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.32
+  flattop_source: pending
+- shot: 192768
+  run_id: '20221109'
+  mpid: '2022-35-01'
+  year: 2022
+  theme: qh_mode
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.28
+  flattop_source: pending
+- shot: 192954
+  run_id: '20221118'
+  mpid: '2022-12-03'
+  year: 2022
+  theme: transport
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: -1
+  flattop_s: 4.5
+  flattop_source: pending
+- shot: 193038
+  run_id: '20221123'
+  mpid: '2022-00-01'
   year: 2022
   theme: control
   reason: fill
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.72
-  flattop_source: pulse_length_proxy
-- shot: 192480
-  run_id: '20220930'
-  mpid: '2022-34-04'
-  year: 2022
-  theme: control
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.05
-  flattop_source: pulse_length_proxy
-- shot: 192878
-  run_id: '20221116'
-  mpid: '2022-00-09'
-  year: 2022
-  theme: lh_threshold_isotope
-  reason: theme:lh_threshold_isotope
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 6.19
-  flattop_source: pulse_length_proxy
-- shot: 192886
-  run_id: '20221116'
-  mpid: '2022-00-09'
-  year: 2022
-  theme: lh_threshold_isotope
-  reason: theme:lh_threshold_isotope
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.54
-  flattop_source: pulse_length_proxy
-- shot: 192888
-  run_id: '20221116'
-  mpid: '2022-00-09'
-  year: 2022
-  theme: lh_threshold_isotope
-  reason: theme:lh_threshold_isotope
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 6.06
-  flattop_source: pulse_length_proxy
-- shot: 192918
-  run_id: '20221117'
-  mpid: '2022-02-04'
-  year: 2022
-  theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.83
-  flattop_source: pulse_length_proxy
-- shot: 192921
-  run_id: '20221117'
-  mpid: '2022-02-04'
-  year: 2022
-  theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.12
-  flattop_source: pulse_length_proxy
-- shot: 192922
-  run_id: '20221117'
-  mpid: '2022-02-04'
-  year: 2022
-  theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 6.3
-  flattop_source: pulse_length_proxy
-- shot: 192993
-  run_id: '20221122'
-  mpid: '2022-02-01'
-  year: 2022
-  theme: rmp_elm
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.75
-  flattop_source: pulse_length_proxy
-- shot: 193014
-  run_id: '20221122'
-  mpid: '2022-02-01'
-  year: 2022
-  theme: rmp_elm
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.57
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 1.64
+  flattop_source: pending
 - shot: 193040
   run_id: '20221123'
   mpid: '2022-00-01'
   year: 2022
-  theme: startup_checkout
-  reason: preferred
+  theme: control
+  reason: theme:control
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 1.748
   flattop_source: features_ip
-- shot: 193108
-  run_id: '20221129'
-  mpid: '2022-02-01'
-  year: 2022
-  theme: rmp_elm
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.62
-  flattop_source: pulse_length_proxy
-- shot: 193272
+- shot: 193268
   run_id: '20221205'
   mpid: '2022-24-01'
   year: 2022
@@ -2041,108 +2368,94 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.58
-  flattop_source: pulse_length_proxy
-- shot: 193274
-  run_id: '20221205'
-  mpid: '2022-24-01'
-  year: 2022
-  theme: tearing_mhd
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 2.21
-  flattop_source: pulse_length_proxy
-- shot: 193347
-  run_id: '20221207'
-  mpid: '2022-11-05'
-  year: 2022
-  theme: fast_ion_ae
-  reason: theme:fast_ion_ae
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.85
-  flattop_source: pulse_length_proxy
-- shot: 193351
-  run_id: '20221207'
-  mpid: '2022-11-05'
-  year: 2022
-  theme: fast_ion_ae
-  reason: theme:fast_ion_ae
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.7
-  flattop_source: pulse_length_proxy
-- shot: 193355
-  run_id: '20221207'
-  mpid: '2022-11-05'
-  year: 2022
-  theme: fast_ion_ae
-  reason: theme:fast_ion_ae
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.96
-  flattop_source: pulse_length_proxy
-- shot: 193798
-  run_id: '20230113'
-  mpid: '2022-16-05'
-  year: 2023
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 1.96
-  flattop_source: pulse_length_proxy
-- shot: 193803
-  run_id: '20230113'
-  mpid: '2022-16-05'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 2.95
-  flattop_source: pulse_length_proxy
-- shot: 193833
-  run_id: '20230116'
-  mpid: '2022-16-03'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.44
-  flattop_source: pulse_length_proxy
-- shot: 194029
-  run_id: '20230124'
-  mpid: '2022-16-07'
-  year: 2023
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.82
-  flattop_source: pulse_length_proxy
-- shot: 194030
-  run_id: '20230124'
-  mpid: '2022-16-07'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.48
-  flattop_source: pulse_length_proxy
-- shot: 194035
+  flattop_source: pending
+- shot: 193348
+  run_id: '20221207'
+  mpid: '2022-11-05'
+  year: 2022
+  theme: fast_ion_ae
+  reason: theme:fast_ion_ae
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.26
+  flattop_source: pending
+- shot: 193353
+  run_id: '20221207'
+  mpid: '2022-11-05'
+  year: 2022
+  theme: fast_ion_ae
+  reason: theme:fast_ion_ae
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.96
+  flattop_source: pending
+- shot: 193354
+  run_id: '20221207'
+  mpid: '2022-11-05'
+  year: 2022
+  theme: fast_ion_ae
+  reason: theme:fast_ion_ae
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.95
+  flattop_source: pending
+- shot: 193542
+  run_id: '20230104'
+  mpid: '2022-99-99'
+  year: 2023
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.67
+  flattop_source: pending
+- shot: 193586
+  run_id: '20230105'
+  mpid: '2022-99-99'
+  year: 2023
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.79
+  flattop_source: pending
+- shot: 193802
+  run_id: '20230113'
+  mpid: '2022-16-05'
+  year: 2023
+  theme: neg_tri
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.99
+  flattop_source: pending
+- shot: 194024
+  run_id: '20230124'
+  mpid: '2022-16-07'
+  year: 2023
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.01
+  flattop_source: pending
+- shot: 194026
   run_id: '20230124'
   mpid: '2022-16-07'
   year: 2023
@@ -2151,32 +2464,23 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.2
-  flattop_source: pulse_length_proxy
-- shot: 194067
-  run_id: '20230125'
-  mpid: '2022-16-06'
+  ip_sign: 1
+  flattop_s: 3.56
+  flattop_source: pending
+- shot: 194033
+  run_id: '20230124'
+  mpid: '2022-16-07'
   year: 2023
   theme: neg_tri
-  reason: fill
+  reason: theme:neg_tri
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.48
-  flattop_source: pulse_length_proxy
-- shot: 194074
+  ip_sign: 1
+  flattop_s: 5.22
+  flattop_source: pending
+- shot: 194076
   run_id: '20230125'
-  mpid: '2022-16-06'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.55
-  flattop_source: pulse_length_proxy
-- shot: 194102
-  run_id: '20230126'
   mpid: '2022-16-06'
   year: 2023
   theme: neg_tri
@@ -2184,75 +2488,22 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.78
-  flattop_source: pulse_length_proxy
-- shot: 194103
-  run_id: '20230126'
-  mpid: '2022-16-06'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.27
-  flattop_source: pulse_length_proxy
-- shot: 194109
-  run_id: '20230126'
-  mpid: '2022-16-06'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.68
-  flattop_source: pulse_length_proxy
-- shot: 194153
-  run_id: '20230127'
-  mpid: '2022-16-03'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.04
-  flattop_source: pulse_length_proxy
-- shot: 194157
-  run_id: '20230127'
-  mpid: '2022-16-03'
-  year: 2023
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 1.51
-  flattop_source: pulse_length_proxy
-- shot: 194163
-  run_id: '20230127'
-  mpid: '2022-16-03'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 1.24
-  flattop_source: pulse_length_proxy
-- shot: 194202
+  ip_sign: 1
+  flattop_s: 3.38
+  flattop_source: pending
+- shot: 194203
   run_id: '20230130'
   mpid: '2022-16-11'
   year: 2023
   theme: neg_tri
-  reason: theme:neg_tri
+  reason: fill
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 5.31
-  flattop_source: pulse_length_proxy
-- shot: 194209
+  ip_sign: 1
+  flattop_s: 3.67
+  flattop_source: pending
+- shot: 194211
   run_id: '20230130'
   mpid: '2022-16-11'
   year: 2023
@@ -2261,31 +2512,34 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.81
-  flattop_source: pulse_length_proxy
-- shot: 194216
-  run_id: '20230130'
-  mpid: '2022-16-11'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 1.07
-  flattop_source: pulse_length_proxy
-- shot: 194227
+  ip_sign: 1
+  flattop_s: 5.12
+  flattop_source: pending
+- shot: 194238
   run_id: '20230131'
   mpid: '2022-16-08'
   year: 2023
   theme: neg_tri
   reason: theme:neg_tri
   has_co2: false
-  has_bes: true
+  has_bes: false
   has_tangtv: false
-  flattop_s: 5.52
-  flattop_source: pulse_length_proxy
-- shot: 194273
+  ip_sign: 1
+  flattop_s: 3.65
+  flattop_source: pending
+- shot: 194268
+  run_id: '20230201'
+  mpid: '2022-16-01'
+  year: 2023
+  theme: neg_tri
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.56
+  flattop_source: pending
+- shot: 194277
   run_id: '20230201'
   mpid: '2022-16-01'
   year: 2023
@@ -2294,31 +2548,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.5
-  flattop_source: pulse_length_proxy
-- shot: 194277
-  run_id: '20230201'
-  mpid: '2022-16-01'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.36
-  flattop_source: pulse_length_proxy
-- shot: 194278
-  run_id: '20230201'
-  mpid: '2022-16-01'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.38
-  flattop_source: pulse_length_proxy
-- shot: 194349
+  flattop_source: pending
+- shot: 194350
   run_id: '20230206'
   mpid: '2022-16-07'
   year: 2023
@@ -2327,9 +2560,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 1.38
-  flattop_source: pulse_length_proxy
-- shot: 194417
+  ip_sign: 1
+  flattop_s: 5.14
+  flattop_source: pending
+- shot: 194402
   run_id: '20230207'
   mpid: '2022-16-02'
   year: 2023
@@ -2337,42 +2571,34 @@ shots:
   reason: fill
   has_co2: false
   has_bes: true
-  has_tangtv: false
-  flattop_s: 5.58
-  flattop_source: pulse_length_proxy
-- shot: 194420
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.17
+  flattop_source: pending
+- shot: 194407
   run_id: '20230207'
   mpid: '2022-16-02'
-  year: 2023
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 3.67
-  flattop_source: pulse_length_proxy
-- shot: 194421
-  run_id: '20230207'
-  mpid: '2022-16-02'
-  year: 2023
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: false
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.23
-  flattop_source: pulse_length_proxy
-- shot: 194447
-  run_id: '20230208'
-  mpid: '2022-16-08'
   year: 2023
   theme: neg_tri
   reason: fill
   has_co2: false
   has_bes: true
-  has_tangtv: false
-  flattop_s: 5.94
-  flattop_source: pulse_length_proxy
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.09
+  flattop_source: pending
+- shot: 194413
+  run_id: '20230207'
+  mpid: '2022-16-02'
+  year: 2023
+  theme: neg_tri
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.04
+  flattop_source: pending
 - shot: 194449
   run_id: '20230208'
   mpid: '2022-16-08'
@@ -2382,20 +2608,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 1.9
-  flattop_source: pulse_length_proxy
-- shot: 194529
-  run_id: '20230224'
-  mpid: '2022-99-01'
-  year: 2023
-  theme: startup_checkout
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.61
-  flattop_source: pulse_length_proxy
-- shot: 194558
+  flattop_source: pending
+- shot: 194549
   run_id: '20230227'
   mpid: null
   year: 2023
@@ -2404,8 +2620,21 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.62
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.66
+  flattop_source: pending
+- shot: 194554
+  run_id: '20230227'
+  mpid: null
+  year: 2023
+  theme: null
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.78
+  flattop_source: pending
 - shot: 194567
   run_id: '20230227'
   mpid: null
@@ -2415,20 +2644,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 7.06
-  flattop_source: pulse_length_proxy
-- shot: 194569
-  run_id: '20230227'
-  mpid: null
-  year: 2023
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 7.1
-  flattop_source: pulse_length_proxy
-- shot: 194624
+  flattop_source: pending
+- shot: 194614
   run_id: '20230301'
   mpid: '2022-10-01'
   year: 2023
@@ -2437,41 +2656,33 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.14
-  flattop_source: pulse_length_proxy
-- shot: 194633
-  run_id: '20230302'
-  mpid: '2022-10-02'
+  ip_sign: 1
+  flattop_s: 5.26
+  flattop_source: pending
+- shot: 194626
+  run_id: '20230301'
+  mpid: '2022-10-01'
   year: 2023
   theme: null
   reason: fill
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.38
-  flattop_source: pulse_length_proxy
-- shot: 194636
-  run_id: '20230302'
-  mpid: '2022-10-02'
+  ip_sign: 1
+  flattop_s: 2.99
+  flattop_source: pending
+- shot: 194758
+  run_id: '20230322'
+  mpid: '2022-99-01'
   year: 2023
-  theme: null
-  reason: fill
+  theme: neg_tri
+  reason: theme:neg_tri
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.15
-  flattop_source: pulse_length_proxy
-- shot: 194644
-  run_id: '20230302'
-  mpid: '2022-10-02'
-  year: 2023
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 3.92
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.77
+  flattop_source: pending
 - shot: 194789
   run_id: '20230323'
   mpid: '2022-25-01'
@@ -2481,20 +2692,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 1.82
-  flattop_source: pulse_length_proxy
-- shot: 194790
-  run_id: '20230323'
-  mpid: '2022-25-01'
-  year: 2023
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.49
-  flattop_source: pulse_length_proxy
-- shot: 194952
+  flattop_source: pending
+- shot: 194953
   run_id: '20230403'
   mpid: '2022-34-03'
   year: 2023
@@ -2503,9 +2704,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: false
-  flattop_s: 3.89
-  flattop_source: pulse_length_proxy
-- shot: 194958
+  ip_sign: 1
+  flattop_s: 1.61
+  flattop_source: pending
+- shot: 194956
   run_id: '20230403'
   mpid: '2022-34-03'
   year: 2023
@@ -2514,8 +2716,9 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.95
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 4.66
+  flattop_source: pending
 - shot: 194959
   run_id: '20230403'
   mpid: '2022-34-03'
@@ -2525,20 +2728,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.9
-  flattop_source: pulse_length_proxy
-- shot: 195022
-  run_id: '20230405'
-  mpid: '2022-22-02'
-  year: 2023
-  theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.69
-  flattop_source: pulse_length_proxy
-- shot: 195031
+  flattop_source: pending
+- shot: 195037
   run_id: '20230405'
   mpid: '2022-22-02'
   year: 2023
@@ -2547,8 +2740,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.65
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.61
+  flattop_source: pending
 - shot: 195050
   run_id: '20230406'
   mpid: '2022-22-02'
@@ -2558,9 +2752,22 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.07
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 195070
+  run_id: '20230406'
+  mpid: '2022-22-02'
+  year: 2023
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.64
+  flattop_source: pending
+- shot: 195071
   run_id: '20230406'
   mpid: '2022-22-02'
   year: 2023
@@ -2569,141 +2776,94 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.64
-  flattop_source: pulse_length_proxy
-- shot: 195104
-  run_id: '20230407'
-  mpid: '2022-22-02'
-  year: 2023
-  theme: hybrid_high_beta
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.61
-  flattop_source: pulse_length_proxy
-- shot: 195133
+  ip_sign: 1
+  flattop_s: 5.68
+  flattop_source: pending
+- shot: 195122
   run_id: '20230410'
   mpid: '2022-99-01'
   year: 2023
-  theme: startup_checkout
-  reason: fill
+  theme: control
+  reason: theme:control
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 6.1
+  flattop_source: pending
+- shot: 195126
+  run_id: '20230410'
+  mpid: '2022-99-01'
+  year: 2023
+  theme: control
+  reason: theme:control
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.79
+  flattop_source: pending
+- shot: 195131
+  run_id: '20230410'
+  mpid: '2022-99-01'
+  year: 2023
+  theme: control
+  reason: theme:control
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.6
-  flattop_source: pulse_length_proxy
-- shot: 195151
-  run_id: '20230411'
-  mpid: '2022-01-01'
-  year: 2023
-  theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.76
-  flattop_source: pulse_length_proxy
-- shot: 195168
-  run_id: '20230411'
-  mpid: '2022-01-01'
-  year: 2023
-  theme: hybrid_high_beta
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.32
-  flattop_source: pulse_length_proxy
-- shot: 195198
-  run_id: '20230412'
-  mpid: '2022-13-55'
-  year: 2023
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.83
-  flattop_source: pulse_length_proxy
-- shot: 195199
-  run_id: '20230412'
-  mpid: '2022-13-55'
-  year: 2023
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.8
-  flattop_source: pulse_length_proxy
-- shot: 195200
-  run_id: '20230412'
-  mpid: '2022-13-55'
-  year: 2023
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.96
-  flattop_source: pulse_length_proxy
-- shot: 195221
-  run_id: '20230413'
-  mpid: '2022-25-01'
-  year: 2023
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.47
-  flattop_source: pulse_length_proxy
-- shot: 195224
-  run_id: '20230413'
-  mpid: '2022-25-01'
-  year: 2023
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.77
-  flattop_source: pulse_length_proxy
-- shot: 195231
-  run_id: '20230413'
-  mpid: '2022-25-01'
-  year: 2023
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.79
-  flattop_source: pulse_length_proxy
-- shot: 195256
-  run_id: '20230417'
-  mpid: '2022-02-03'
-  year: 2023
-  theme: detachment_divertor
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.62
-  flattop_source: pulse_length_proxy
-- shot: 195268
-  run_id: '20230417'
-  mpid: '2022-02-03'
-  year: 2023
-  theme: detachment_divertor
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.78
-  flattop_source: pulse_length_proxy
-- shot: 195277
+  flattop_source: pending
+- shot: 195190
+  run_id: '20230412'
+  mpid: '2022-13-55'
+  year: 2023
+  theme: current_drive
+  reason: theme:current_drive
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.08
+  flattop_source: pending
+- shot: 195191
+  run_id: '20230412'
+  mpid: '2022-13-55'
+  year: 2023
+  theme: current_drive
+  reason: theme:current_drive
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.97
+  flattop_source: pending
+- shot: 195195
+  run_id: '20230412'
+  mpid: '2022-13-55'
+  year: 2023
+  theme: current_drive
+  reason: theme:current_drive
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.83
+  flattop_source: pending
+- shot: 195217
+  run_id: '20230413'
+  mpid: '2022-25-01'
+  year: 2023
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.11
+  flattop_source: pending
+- shot: 195260
   run_id: '20230417'
   mpid: '2022-02-03'
   year: 2023
@@ -2712,42 +2872,58 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.78
-  flattop_source: pulse_length_proxy
-- shot: 195495
+  flattop_source: pending
+- shot: 195268
+  run_id: '20230417'
+  mpid: '2022-02-03'
+  year: 2023
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.78
+  flattop_source: pending
+- shot: 195279
+  run_id: '20230417'
+  mpid: '2022-02-03'
+  year: 2023
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.25
+  flattop_source: pending
+- shot: 195296
+  run_id: '20230418'
+  mpid: '2022-01-01'
+  year: 2023
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.64
+  flattop_source: pending
+- shot: 195501
   run_id: '20230510'
   mpid: '2022-10-04'
   year: 2023
   theme: neg_tri
-  reason: fill
+  reason: theme:neg_tri
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.73
-  flattop_source: pulse_length_proxy
-- shot: 195496
-  run_id: '20230510'
-  mpid: '2022-10-04'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.87
-  flattop_source: pulse_length_proxy
-- shot: 195498
-  run_id: '20230510'
-  mpid: '2022-10-04'
-  year: 2023
-  theme: neg_tri
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.35
-  flattop_source: pulse_length_proxy
-- shot: 195535
+  ip_sign: 1
+  flattop_s: 3.37
+  flattop_source: pending
+- shot: 195526
   run_id: '20230511'
   mpid: '2022-00-07'
   year: 2023
@@ -2756,9 +2932,46 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.28
-  flattop_source: pulse_length_proxy
-- shot: 195626
+  ip_sign: 1
+  flattop_s: 5.36
+  flattop_source: pending
+- shot: 195536
+  run_id: '20230511'
+  mpid: '2022-00-07'
+  year: 2023
+  theme: detachment_divertor
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.54
+  flattop_source: pending
+- shot: 195625
+  run_id: '20230516'
+  mpid: '2022-22-09'
+  year: 2023
+  theme: hybrid_high_beta
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.77
+  flattop_source: pending
+- shot: 195646
+  run_id: '20230516'
+  mpid: '2022-22-09'
+  year: 2023
+  theme: hybrid_high_beta
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.39
+  flattop_source: pending
+- shot: 195648
   run_id: '20230516'
   mpid: '2022-22-09'
   year: 2023
@@ -2767,41 +2980,21 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 6.33
-  flattop_source: pulse_length_proxy
-- shot: 195652
-  run_id: '20230516'
-  mpid: '2022-22-09'
+  ip_sign: 1
+  flattop_s: 5.65
+  flattop_source: pending
+- shot: 195765
+  run_id: '20230519'
+  mpid: '2022-00-05'
   year: 2023
-  theme: hybrid_high_beta
+  theme: null
   reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.73
-  flattop_source: pulse_length_proxy
-- shot: 195656
-  run_id: '20230516'
-  mpid: '2022-22-09'
-  year: 2023
-  theme: hybrid_high_beta
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.16
-  flattop_source: pulse_length_proxy
-- shot: 195722
-  run_id: '20230518'
-  mpid: '2022-00-09'
-  year: 2023
-  theme: lh_threshold_isotope
-  reason: theme:lh_threshold_isotope
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.3
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 3.83
+  flattop_source: pending
 - shot: 195771
   run_id: '20230519'
   mpid: '2022-00-05'
@@ -2811,9 +3004,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.09
-  flattop_source: pulse_length_proxy
-- shot: 195779
+  flattop_source: pending
+- shot: 195780
   run_id: '20230519'
   mpid: '2022-00-05'
   year: 2023
@@ -2822,118 +3016,165 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.46
-  flattop_source: pulse_length_proxy
-- shot: 195785
-  run_id: '20230519'
-  mpid: '2022-00-05'
+  ip_sign: 1
+  flattop_s: 2.97
+  flattop_source: pending
+- shot: 195859
+  run_id: '20230524'
+  mpid: '2022-35-02'
+  year: 2023
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 2.91
+  flattop_source: pending
+- shot: 195871
+  run_id: '20230524'
+  mpid: '2022-35-02'
+  year: 2023
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 2.13
+  flattop_source: pending
+- shot: 195873
+  run_id: '20230524'
+  mpid: '2022-35-02'
+  year: 2023
+  theme: qh_mode
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.74
+  flattop_source: pending
+- shot: 195896
+  run_id: '20230525'
+  mpid: '2022-23-02'
+  year: 2023
+  theme: tearing_mhd
+  reason: theme:tearing_mhd
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 1.42
+  flattop_source: pending
+- shot: 195902
+  run_id: '20230525'
+  mpid: '2022-23-02'
+  year: 2023
+  theme: tearing_mhd
+  reason: theme:tearing_mhd
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.83
+  flattop_source: pending
+- shot: 195919
+  run_id: '20230525'
+  mpid: '2022-23-02'
+  year: 2023
+  theme: tearing_mhd
+  reason: theme:tearing_mhd
+  has_co2: false
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.68
+  flattop_source: pending
+- shot: 195936
+  run_id: '20230530'
+  mpid: '2022-31-01'
+  year: 2023
+  theme: detachment_divertor
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.63
+  flattop_source: pending
+- shot: 195944
+  run_id: '20230530'
+  mpid: '2022-31-01'
+  year: 2023
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.54
+  flattop_source: pending
+- shot: 195946
+  run_id: '20230530'
+  mpid: '2022-31-01'
+  year: 2023
+  theme: detachment_divertor
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.56
+  flattop_source: pending
+- shot: 196006
+  run_id: '20230531'
+  mpid: '2022-02-02'
   year: 2023
   theme: null
   reason: fill
   has_co2: false
-  has_bes: false
+  has_bes: true
   has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.88
+  flattop_source: pending
+- shot: 196008
+  run_id: '20230531'
+  mpid: '2022-02-02'
+  year: 2023
+  theme: null
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.14
+  flattop_source: pending
+- shot: 196009
+  run_id: '20230531'
+  mpid: '2022-02-02'
+  year: 2023
+  theme: null
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.06
-  flattop_source: pulse_length_proxy
-- shot: 195889
-  run_id: '20230525'
-  mpid: '2022-23-02'
+  flattop_source: pending
+- shot: 196020
+  run_id: '20230601'
+  mpid: '2022-02-06'
   year: 2023
-  theme: tearing_mhd
-  reason: theme:tearing_mhd
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.68
-  flattop_source: pulse_length_proxy
-- shot: 195893
-  run_id: '20230525'
-  mpid: '2022-23-02'
-  year: 2023
-  theme: tearing_mhd
-  reason: theme:tearing_mhd
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 1.0
-  flattop_source: pulse_length_proxy
-- shot: 195910
-  run_id: '20230525'
-  mpid: '2022-23-02'
-  year: 2023
-  theme: tearing_mhd
-  reason: theme:tearing_mhd
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 5.71
-  flattop_source: pulse_length_proxy
-- shot: 195938
-  run_id: '20230530'
-  mpid: '2022-31-01'
-  year: 2023
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
+  theme: rmp_elm
+  reason: theme:rmp_elm
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.77
-  flattop_source: pulse_length_proxy
-- shot: 195953
-  run_id: '20230530'
-  mpid: '2022-31-01'
-  year: 2023
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.24
-  flattop_source: pulse_length_proxy
-- shot: 195960
-  run_id: '20230530'
-  mpid: '2022-31-01'
-  year: 2023
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.16
-  flattop_source: pulse_length_proxy
-- shot: 195990
-  run_id: '20230531'
-  mpid: '2022-02-02'
-  year: 2023
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.11
-  flattop_source: pulse_length_proxy
-- shot: 196013
-  run_id: '20230531'
-  mpid: '2022-02-02'
-  year: 2023
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.29
-  flattop_source: pulse_length_proxy
-- shot: 196015
-  run_id: '20230531'
-  mpid: '2022-02-02'
-  year: 2023
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.3
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.75
+  flattop_source: pending
 - shot: 196028
   run_id: '20230601'
   mpid: '2022-02-06'
@@ -2943,9 +3184,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.77
-  flattop_source: pulse_length_proxy
-- shot: 196029
+  flattop_source: pending
+- shot: 196033
   run_id: '20230601'
   mpid: '2022-02-06'
   year: 2023
@@ -2954,20 +3196,22 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.75
-  flattop_source: pulse_length_proxy
-- shot: 196030
-  run_id: '20230601'
-  mpid: '2022-02-06'
+  ip_sign: 1
+  flattop_s: 3.97
+  flattop_source: pending
+- shot: 196095
+  run_id: '20230605'
+  mpid: '2022-08-07'
   year: 2023
-  theme: rmp_elm
+  theme: tearing_mhd
   reason: fill
   has_co2: false
-  has_bes: true
+  has_bes: false
   has_tangtv: true
-  flattop_s: 5.24
-  flattop_source: pulse_length_proxy
-- shot: 196097
+  ip_sign: 1
+  flattop_s: 4.7
+  flattop_source: pending
+- shot: 196099
   run_id: '20230605'
   mpid: '2022-08-07'
   year: 2023
@@ -2976,9 +3220,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.69
-  flattop_source: pulse_length_proxy
-- shot: 196101
+  ip_sign: 1
+  flattop_s: 3.69
+  flattop_source: pending
+- shot: 196103
   run_id: '20230605'
   mpid: '2022-08-07'
   year: 2023
@@ -2987,42 +3232,34 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.5
-  flattop_source: pulse_length_proxy
-- shot: 196104
-  run_id: '20230605'
-  mpid: '2022-08-07'
+  ip_sign: 1
+  flattop_s: 2.52
+  flattop_source: pending
+- shot: 196141
+  run_id: '20230606'
+  mpid: '2022-13-01'
   year: 2023
-  theme: tearing_mhd
+  theme: current_drive
   reason: fill
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.07
-  flattop_source: pulse_length_proxy
-- shot: 196140
-  run_id: '20230606'
-  mpid: '2022-13-01'
-  year: 2023
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 2.71
-  flattop_source: pulse_length_proxy
-- shot: 196144
-  run_id: '20230606'
-  mpid: '2022-13-01'
-  year: 2023
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.72
-  flattop_source: pulse_length_proxy
-- shot: 196152
+  flattop_source: pending
+- shot: 196142
+  run_id: '20230606'
+  mpid: '2022-13-01'
+  year: 2023
+  theme: current_drive
+  reason: fill
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.71
+  flattop_source: pending
+- shot: 196147
   run_id: '20230606'
   mpid: '2022-13-01'
   year: 2023
@@ -3031,53 +3268,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.73
-  flattop_source: pulse_length_proxy
-- shot: 196182
-  run_id: '20230612'
-  mpid: null
-  year: 2023
-  theme: null
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 3.12
-  flattop_source: pulse_length_proxy
-- shot: 196198
-  run_id: '20230613'
-  mpid: '2022-99-01'
-  year: 2023
-  theme: startup_checkout
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 3.54
-  flattop_source: pulse_length_proxy
-- shot: 196235
-  run_id: '20230614'
-  mpid: '2022-99-01'
-  year: 2023
-  theme: startup_checkout
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 3.24
-  flattop_source: pulse_length_proxy
-- shot: 196293
-  run_id: '20230615'
-  mpid: '2022-99-01'
-  year: 2023
-  theme: startup_checkout
-  reason: fill
-  has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 5.21
-  flattop_source: pulse_length_proxy
-- shot: 196330
+  ip_sign: 1
+  flattop_s: 2.72
+  flattop_source: pending
+- shot: 196336
   run_id: '20230616'
   mpid: '2022-00-11'
   year: 2023
@@ -3086,9 +3280,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 2.06
-  flattop_source: pulse_length_proxy
-- shot: 196340
+  ip_sign: 1
+  flattop_s: 3.08
+  flattop_source: pending
+- shot: 196339
   run_id: '20230616'
   mpid: '2022-00-11'
   year: 2023
@@ -3097,20 +3292,22 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.77
-  flattop_source: pulse_length_proxy
-- shot: 196349
+  ip_sign: 1
+  flattop_s: 1.33
+  flattop_source: pending
+- shot: 196350
   run_id: '20230616'
   mpid: '2022-00-11'
   year: 2023
   theme: rmp_elm
-  reason: theme:rmp_elm
+  reason: fill
   has_co2: false
   has_bes: true
-  has_tangtv: true
-  flattop_s: 3.33
-  flattop_source: pulse_length_proxy
-- shot: 196372
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.34
+  flattop_source: pending
+- shot: 196362
   run_id: '20230619'
   mpid: '2022-00-04'
   year: 2023
@@ -3119,9 +3316,22 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.71
-  flattop_source: pulse_length_proxy
-- shot: 196387
+  ip_sign: 1
+  flattop_s: 5.58
+  flattop_source: pending
+- shot: 196374
+  run_id: '20230619'
+  mpid: '2022-00-04'
+  year: 2023
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.74
+  flattop_source: pending
+- shot: 196380
   run_id: '20230619'
   mpid: '2022-00-04'
   year: 2023
@@ -3130,9 +3340,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.5
-  flattop_source: pulse_length_proxy
-- shot: 196402
+  ip_sign: 1
+  flattop_s: 5.77
+  flattop_source: pending
+- shot: 196399
   run_id: '20230620'
   mpid: '2022-14-04'
   year: 2023
@@ -3141,9 +3352,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.59
-  flattop_source: pulse_length_proxy
-- shot: 196413
+  flattop_source: pending
+- shot: 196405
   run_id: '20230620'
   mpid: '2022-14-04'
   year: 2023
@@ -3152,9 +3364,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.57
-  flattop_source: pulse_length_proxy
-- shot: 196414
+  ip_sign: 1
+  flattop_s: 4.6
+  flattop_source: pending
+- shot: 196407
   run_id: '20230620'
   mpid: '2022-14-04'
   year: 2023
@@ -3163,42 +3376,34 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.39
-  flattop_source: pulse_length_proxy
-- shot: 196446
+  ip_sign: 1
+  flattop_s: 4.52
+  flattop_source: pending
+- shot: 196449
+  run_id: '20230621'
+  mpid: '2022-00-04'
+  year: 2023
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.52
+  flattop_source: pending
+- shot: 196451
   run_id: '20230621'
   mpid: '2022-00-04'
   year: 2023
   theme: rmp_elm
   reason: fill
   has_co2: false
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 5.47
-  flattop_source: pulse_length_proxy
-- shot: 196448
-  run_id: '20230621'
-  mpid: '2022-00-04'
-  year: 2023
-  theme: rmp_elm
-  reason: theme:rmp_elm
-  has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.52
-  flattop_source: pulse_length_proxy
-- shot: 196450
-  run_id: '20230621'
-  mpid: '2022-00-04'
-  year: 2023
-  theme: rmp_elm
-  reason: theme:rmp_elm
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.44
-  flattop_source: pulse_length_proxy
-- shot: 196487
+  ip_sign: 1
+  flattop_s: 5.45
+  flattop_source: pending
+- shot: 196488
   run_id: '20230622'
   mpid: '2022-00-03'
   year: 2023
@@ -3207,19 +3412,9 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.26
-  flattop_source: pulse_length_proxy
-- shot: 196492
-  run_id: '20230622'
-  mpid: '2022-00-03'
-  year: 2023
-  theme: lh_threshold_isotope
-  reason: theme:lh_threshold_isotope
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.21
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.37
+  flattop_source: pending
 - shot: 196503
   run_id: '20230622'
   mpid: '2022-00-03'
@@ -3229,9 +3424,58 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.38
-  flattop_source: pulse_length_proxy
-- shot: 196581
+  flattop_source: pending
+- shot: 196506
+  run_id: '20230622'
+  mpid: '2022-00-03'
+  year: 2023
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.37
+  flattop_source: pending
+- shot: 196541
+  run_id: '20230627'
+  mpid: '2022-35-06'
+  year: 2023
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.75
+  flattop_source: pending
+- shot: 196546
+  run_id: '20230627'
+  mpid: '2022-35-06'
+  year: 2023
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.43
+  flattop_source: pending
+- shot: 196551
+  run_id: '20230627'
+  mpid: '2022-35-06'
+  year: 2023
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.95
+  flattop_source: pending
+- shot: 196583
   run_id: '20230628'
   mpid: '2022-00-09'
   year: 2023
@@ -3240,9 +3484,22 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 6.17
-  flattop_source: pulse_length_proxy
-- shot: 196629
+  ip_sign: 1
+  flattop_s: 4.21
+  flattop_source: pending
+- shot: 196587
+  run_id: '20230628'
+  mpid: '2022-00-09'
+  year: 2023
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
+  has_co2: false
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 6.15
+  flattop_source: pending
+- shot: 196625
   run_id: '20230629'
   mpid: '2022-25-04'
   year: 2023
@@ -3251,9 +3508,10 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.17
-  flattop_source: pulse_length_proxy
-- shot: 196630
+  ip_sign: 1
+  flattop_s: 2.93
+  flattop_source: pending
+- shot: 196631
   run_id: '20230629'
   mpid: '2022-25-04'
   year: 2023
@@ -3262,8 +3520,9 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
-  flattop_s: 1.93
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 1.72
+  flattop_source: pending
 - shot: 196639
   run_id: '20230629'
   mpid: '2022-25-04'
@@ -3273,10 +3532,11 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 1.9
-  flattop_source: pulse_length_proxy
-- shot: 198224
-  run_id: '20240425'
+  flattop_source: pending
+- shot: 198351
+  run_id: '20240503'
   mpid: '2024-99-01'
   year: 2024
   theme: startup_checkout
@@ -3284,10 +3544,11 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 4.38
-  flattop_source: pulse_length_proxy
-- shot: 198408
-  run_id: '20240506'
+  ip_sign: 1
+  flattop_s: 5.62
+  flattop_source: pending
+- shot: 198508
+  run_id: '20240509'
   mpid: '2024-99-01'
   year: 2024
   theme: startup_checkout
@@ -3295,9 +3556,46 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.76
-  flattop_source: pulse_length_proxy
-- shot: 198616
+  ip_sign: 1
+  flattop_s: 3.21
+  flattop_source: pending
+- shot: 198578
+  run_id: '20240515'
+  mpid: '2024-31-02'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 1.63
+  flattop_source: pending
+- shot: 198582
+  run_id: '20240515'
+  mpid: '2024-31-02'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 1.79
+  flattop_source: pending
+- shot: 198584
+  run_id: '20240515'
+  mpid: '2024-31-02'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 1.97
+  flattop_source: pending
+- shot: 198627
   run_id: '20240516'
   mpid: '2024-34-03'
   year: 2024
@@ -3306,53 +3604,94 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 3.07
-  flattop_source: pulse_length_proxy
-- shot: 198618
-  run_id: '20240516'
-  mpid: '2024-34-03'
-  year: 2024
-  theme: tearing_mhd
-  reason: theme:tearing_mhd
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 2.93
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 2.78
+  flattop_source: pending
 - shot: 198628
   run_id: '20240516'
   mpid: '2024-34-03'
   year: 2024
   theme: tearing_mhd
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.14
+  flattop_source: pending
+- shot: 198629
+  run_id: '20240516'
+  mpid: '2024-34-03'
+  year: 2024
+  theme: tearing_mhd
   reason: theme:tearing_mhd
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.14
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 2.71
+  flattop_source: pending
+- shot: 198659
+  run_id: '20240517'
+  mpid: '2024-02-01'
+  year: 2024
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.19
+  flattop_source: pending
+- shot: 198674
+  run_id: '20240517'
+  mpid: '2024-02-01'
+  year: 2024
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.65
+  flattop_source: pending
+- shot: 198798
+  run_id: '20240529'
+  mpid: '2024-99-01'
+  year: 2024
+  theme: startup_checkout
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.68
+  flattop_source: pending
 - shot: 198807
   run_id: '20240530'
   mpid: '2024-12-07'
   year: 2024
-  theme: startup_checkout
-  reason: preferred
+  theme: control
+  reason: theme:control
   has_co2: true
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 6.263
   flattop_source: features_ip
-- shot: 198813
-  run_id: '20240530'
-  mpid: '2024-12-07'
+- shot: 198913
+  run_id: '20240604'
+  mpid: '2024-02-04'
   year: 2024
-  theme: startup_checkout
+  theme: null
   reason: fill
   has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.74
-  flattop_source: pulse_length_proxy
-- shot: 198945
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 7.78
+  flattop_source: pending
+- shot: 198944
   run_id: '20240605'
   mpid: '2024-00-01'
   year: 2024
@@ -3361,9 +3700,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.24
-  flattop_source: pulse_length_proxy
-- shot: 198961
+  ip_sign: 1
+  flattop_s: 5.06
+  flattop_source: pending
+- shot: 198956
   run_id: '20240605'
   mpid: '2024-00-01'
   year: 2024
@@ -3372,9 +3712,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 6.7
-  flattop_source: pulse_length_proxy
-- shot: 198967
+  ip_sign: 1
+  flattop_s: 6.77
+  flattop_source: pending
+- shot: 198972
   run_id: '20240605'
   mpid: '2024-00-01'
   year: 2024
@@ -3383,8 +3724,9 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.83
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 6.75
+  flattop_source: pending
 - shot: 199025
   run_id: '20240610'
   mpid: '2024-00-02'
@@ -3394,9 +3736,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.863
   flattop_source: features_ip
-- shot: 199026
+- shot: 199031
   run_id: '20240610'
   mpid: '2024-00-02'
   year: 2024
@@ -3405,20 +3748,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 6.25
-  flattop_source: pulse_length_proxy
-- shot: 199032
+  flattop_source: pending
+- shot: 199038
   run_id: '20240610'
   mpid: '2024-00-02'
   year: 2024
   theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
+  reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 6.25
-  flattop_source: pulse_length_proxy
-- shot: 199075
+  ip_sign: 1
+  flattop_s: 4.52
+  flattop_source: pending
+- shot: 199054
   run_id: '20240611'
   mpid: '2024-01-02'
   year: 2024
@@ -3427,97 +3772,46 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.9
-  flattop_source: pulse_length_proxy
-- shot: 199100
+  ip_sign: 1
+  flattop_s: 5.85
+  flattop_source: pending
+- shot: 199105
   run_id: '20240613'
   mpid: '2024-00-03'
   year: 2024
   theme: hybrid_high_beta
   reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.28
+  flattop_source: pending
+- shot: 199110
+  run_id: '20240613'
+  mpid: '2024-00-03'
+  year: 2024
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.69
+  flattop_source: pending
+- shot: 199184
+  run_id: '20240618'
+  mpid: '2024-31-02'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 5.76
-  flattop_source: pulse_length_proxy
-- shot: 199102
-  run_id: '20240613'
-  mpid: '2024-00-03'
-  year: 2024
-  theme: hybrid_high_beta
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.74
-  flattop_source: pulse_length_proxy
-- shot: 199106
-  run_id: '20240613'
-  mpid: '2024-00-03'
-  year: 2024
-  theme: hybrid_high_beta
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.34
-  flattop_source: pulse_length_proxy
-- shot: 199123
-  run_id: '20240614'
-  mpid: '2024-01-02'
-  year: 2024
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.28
-  flattop_source: pulse_length_proxy
-- shot: 199128
-  run_id: '20240614'
-  mpid: '2024-01-02'
-  year: 2024
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.93
-  flattop_source: pulse_length_proxy
-- shot: 199208
-  run_id: '20240619'
-  mpid: '2024-16-01'
-  year: 2024
-  theme: startup_checkout
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.96
-  flattop_source: pulse_length_proxy
-- shot: 199251
-  run_id: '20240620'
-  mpid: '2024-01-03'
-  year: 2024
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.7
-  flattop_source: pulse_length_proxy
-- shot: 199286
-  run_id: '20240624'
-  mpid: '2024-13-01'
-  year: 2024
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.4
-  flattop_source: pulse_length_proxy
-- shot: 199291
+  flattop_source: pending
+- shot: 199289
   run_id: '20240624'
   mpid: '2024-13-01'
   year: 2024
@@ -3526,21 +3820,11 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.86
-  flattop_source: pulse_length_proxy
-- shot: 199296
-  run_id: '20240624'
-  mpid: '2024-13-01'
-  year: 2024
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.27
-  flattop_source: pulse_length_proxy
-- shot: 199582
-  run_id: '20240711'
+  ip_sign: 1
+  flattop_s: 4.48
+  flattop_source: pending
+- shot: 199516
+  run_id: '20240709'
   mpid: '2024-12-04'
   year: 2024
   theme: control
@@ -3548,9 +3832,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 3.99
-  flattop_source: pulse_length_proxy
-- shot: 199620
+  ip_sign: 1
+  flattop_s: 2.87
+  flattop_source: pending
+- shot: 199575
+  run_id: '20240710'
+  mpid: '2024-16-02'
+  year: 2024
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.85
+  flattop_source: pending
+- shot: 199617
   run_id: '20240712'
   mpid: '2024-16-03'
   year: 2024
@@ -3559,20 +3856,34 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.46
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 3.45
+  flattop_source: pending
+- shot: 199651
+  run_id: '20240718'
+  mpid: '2024-02-03'
+  year: 2024
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.35
+  flattop_source: pending
 - shot: 199681
   run_id: '20240722'
   mpid: '2024-16-05'
   year: 2024
   theme: rmp_elm
-  reason: fill
+  reason: theme:rmp_elm
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 1.53
-  flattop_source: pulse_length_proxy
-- shot: 199687
+  flattop_source: pending
+- shot: 199691
   run_id: '20240722'
   mpid: '2024-16-05'
   year: 2024
@@ -3581,9 +3892,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.74
-  flattop_source: pulse_length_proxy
-- shot: 199707
+  ip_sign: 1
+  flattop_s: 2.81
+  flattop_source: pending
+- shot: 199697
+  run_id: '20240722'
+  mpid: '2024-16-05'
+  year: 2024
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.71
+  flattop_source: pending
+- shot: 199709
   run_id: '20240723'
   mpid: '2024-34-04'
   year: 2024
@@ -3592,9 +3916,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.88
-  flattop_source: pulse_length_proxy
-- shot: 199712
+  ip_sign: 1
+  flattop_s: 3.04
+  flattop_source: pending
+- shot: 199714
   run_id: '20240723'
   mpid: '2024-34-04'
   year: 2024
@@ -3603,19 +3928,21 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.19
-  flattop_source: pulse_length_proxy
-- shot: 199718
+  ip_sign: 1
+  flattop_s: 2.41
+  flattop_source: pending
+- shot: 199716
   run_id: '20240723'
   mpid: '2024-34-04'
   year: 2024
   theme: rmp_elm
-  reason: theme:rmp_elm
+  reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.17
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 1.82
+  flattop_source: pending
 - shot: 199790
   run_id: '20240726'
   mpid: '2024-16-05'
@@ -3625,9 +3952,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.35
-  flattop_source: pulse_length_proxy
-- shot: 199794
+  flattop_source: pending
+- shot: 199793
   run_id: '20240726'
   mpid: '2024-16-05'
   year: 2024
@@ -3636,31 +3964,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 1.21
-  flattop_source: pulse_length_proxy
-- shot: 199795
-  run_id: '20240726'
-  mpid: '2024-16-05'
+  ip_sign: 1
+  flattop_s: 1.35
+  flattop_source: pending
+- shot: 199915
+  run_id: '20240808'
+  mpid: '2024-36-03'
   year: 2024
-  theme: rmp_elm
-  reason: theme:rmp_elm
+  theme: control
+  reason: theme:control
   has_co2: true
   has_bes: true
-  has_tangtv: true
-  flattop_s: 4.43
-  flattop_source: pulse_length_proxy
-- shot: 199851
-  run_id: '20240806'
-  mpid: '2024-99-01'
-  year: 2024
-  theme: startup_checkout
-  reason: fill
-  has_co2: true
-  has_bes: false
   has_tangtv: false
-  flattop_s: 6.25
-  flattop_source: pulse_length_proxy
-- shot: 199914
+  ip_sign: 1
+  flattop_s: 4.39
+  flattop_source: pending
+- shot: 199921
   run_id: '20240808'
   mpid: '2024-36-03'
   year: 2024
@@ -3669,31 +3988,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.99
-  flattop_source: pulse_length_proxy
-- shot: 199919
-  run_id: '20240808'
-  mpid: '2024-36-03'
-  year: 2024
-  theme: control
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.04
-  flattop_source: pulse_length_proxy
-- shot: 200005
-  run_id: '20240812'
-  mpid: '2024-34-02'
-  year: 2024
-  theme: tearing_mhd
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.04
-  flattop_source: pulse_length_proxy
-- shot: 200006
+  ip_sign: 1
+  flattop_s: 4.15
+  flattop_source: pending
+- shot: 200009
   run_id: '20240812'
   mpid: '2024-34-02'
   year: 2024
@@ -3702,9 +4000,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.38
-  flattop_source: pulse_length_proxy
-- shot: 200014
+  ip_sign: 1
+  flattop_s: 3.88
+  flattop_source: pending
+- shot: 200011
   run_id: '20240812'
   mpid: '2024-34-02'
   year: 2024
@@ -3713,9 +4012,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.98
-  flattop_source: pulse_length_proxy
-- shot: 200073
+  ip_sign: 1
+  flattop_s: 4.88
+  flattop_source: pending
+- shot: 200012
+  run_id: '20240812'
+  mpid: '2024-34-02'
+  year: 2024
+  theme: tearing_mhd
+  reason: theme:tearing_mhd
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.78
+  flattop_source: pending
+- shot: 200072
   run_id: '20240814'
   mpid: '2024-12-05'
   year: 2024
@@ -3724,20 +4036,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.97
-  flattop_source: pulse_length_proxy
-- shot: 200082
-  run_id: '20240814'
-  mpid: '2024-12-05'
-  year: 2024
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.98
-  flattop_source: pulse_length_proxy
-- shot: 200118
+  ip_sign: 1
+  flattop_s: 4.02
+  flattop_source: pending
+- shot: 200111
   run_id: '20240815'
   mpid: '2024-25-02'
   year: 2024
@@ -3746,9 +4048,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.81
-  flattop_source: pulse_length_proxy
-- shot: 200132
+  ip_sign: 1
+  flattop_s: 4.08
+  flattop_source: pending
+- shot: 200131
   run_id: '20240815'
   mpid: '2024-25-02'
   year: 2024
@@ -3757,9 +4060,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.87
-  flattop_source: pulse_length_proxy
-- shot: 200151
+  flattop_source: pending
+- shot: 200133
+  run_id: '20240815'
+  mpid: '2024-25-02'
+  year: 2024
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.04
+  flattop_source: pending
+- shot: 200144
   run_id: '20240819'
   mpid: '2024-24-01'
   year: 2024
@@ -3768,9 +4084,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.78
-  flattop_source: pulse_length_proxy
-- shot: 200201
+  ip_sign: 1
+  flattop_s: 1.62
+  flattop_source: pending
+- shot: 200197
   run_id: '20240820'
   mpid: '2024-14-01'
   year: 2024
@@ -3779,19 +4096,81 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.58
-  flattop_source: pulse_length_proxy
-- shot: 200411
+  ip_sign: 1
+  flattop_s: 5.56
+  flattop_source: pending
+- shot: 200199
+  run_id: '20240820'
+  mpid: '2024-14-01'
+  year: 2024
+  theme: detachment_divertor
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.47
+  flattop_source: pending
+- shot: 200214
+  run_id: '20240820'
+  mpid: '2024-14-01'
+  year: 2024
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.66
+  flattop_source: pending
+- shot: 200380
+  run_id: '20240827'
+  mpid: '2024-16-04'
+  year: 2024
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.35
+  flattop_source: pending
+- shot: 200384
+  run_id: '20240827'
+  mpid: '2024-16-04'
+  year: 2024
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.34
+  flattop_source: pending
+- shot: 200405
   run_id: '20240828'
   mpid: '2024-32-01'
   year: 2024
   theme: transport
-  reason: theme:transport
+  reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.76
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
+- shot: 200412
+  run_id: '20240828'
+  mpid: '2024-32-01'
+  year: 2024
+  theme: transport
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.76
+  flattop_source: pending
 - shot: 200417
   run_id: '20240828'
   mpid: '2024-32-01'
@@ -3801,20 +4180,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.179
   flattop_source: features_ip
-- shot: 200429
-  run_id: '20240828'
-  mpid: '2024-32-01'
-  year: 2024
-  theme: transport
-  reason: theme:transport
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.98
-  flattop_source: pulse_length_proxy
-- shot: 200435
+- shot: 200439
   run_id: '20240829'
   mpid: '2024-14-01'
   year: 2024
@@ -3823,21 +4192,35 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.77
-  flattop_source: pulse_length_proxy
-- shot: 200518
+  flattop_source: pending
+- shot: 200520
   run_id: '20240904'
   mpid: '2024-21-03'
   year: 2024
   theme: neg_tri
   reason: fill
   has_co2: true
-  has_bes: false
+  has_bes: true
   has_tangtv: true
-  flattop_s: 3.31
-  flattop_source: pulse_length_proxy
-- shot: 200545
-  run_id: '20240905'
+  ip_sign: 1
+  flattop_s: 5.26
+  flattop_source: pending
+- shot: 200521
+  run_id: '20240904'
+  mpid: '2024-21-03'
+  year: 2024
+  theme: neg_tri
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.07
+  flattop_source: pending
+- shot: 200596
+  run_id: '20240906'
   mpid: '2024-31-01'
   year: 2024
   theme: control
@@ -3845,75 +4228,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.33
-  flattop_source: pulse_length_proxy
-- shot: 200551
-  run_id: '20240905'
-  mpid: '2024-31-01'
-  year: 2024
-  theme: control
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 5.74
-  flattop_source: pulse_length_proxy
-- shot: 200594
-  run_id: '20240906'
-  mpid: '2024-31-01'
-  year: 2024
-  theme: control
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 2.38
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 4.8
+  flattop_source: pending
 - shot: 200598
   run_id: '20240906'
   mpid: '2024-31-01'
   year: 2024
   theme: control
-  reason: theme:control
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 4.85
-  flattop_source: pulse_length_proxy
-- shot: 200603
-  run_id: '20240906'
-  mpid: '2024-31-01'
-  year: 2024
-  theme: control
-  reason: theme:control
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 4.72
-  flattop_source: pulse_length_proxy
-- shot: 200633
-  run_id: '20240909'
-  mpid: '2024-33-03'
-  year: 2024
-  theme: transport
-  reason: theme:transport
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 1.75
-  flattop_source: pulse_length_proxy
-- shot: 200637
-  run_id: '20240909'
-  mpid: '2024-33-03'
-  year: 2024
-  theme: transport
   reason: fill
   has_co2: true
-  has_bes: true
+  has_bes: false
   has_tangtv: true
-  flattop_s: 2.56
-  flattop_source: pulse_length_proxy
-- shot: 200640
+  ip_sign: 1
+  flattop_s: 4.85
+  flattop_source: pending
+- shot: 200629
   run_id: '20240909'
   mpid: '2024-33-03'
   year: 2024
@@ -3922,9 +4252,34 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.76
-  flattop_source: pulse_length_proxy
-- shot: 200666
+  ip_sign: 1
+  flattop_s: 2.09
+  flattop_source: pending
+- shot: 200636
+  run_id: '20240909'
+  mpid: '2024-33-03'
+  year: 2024
+  theme: transport
+  reason: theme:transport
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.85
+  flattop_source: pending
+- shot: 200642
+  run_id: '20240909'
+  mpid: '2024-33-03'
+  year: 2024
+  theme: transport
+  reason: theme:transport
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.37
+  flattop_source: pending
+- shot: 200670
   run_id: '20240910'
   mpid: '2024-36-04'
   year: 2024
@@ -3933,8 +4288,21 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.34
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 3.39
+  flattop_source: pending
+- shot: 200671
+  run_id: '20240910'
+  mpid: '2024-36-04'
+  year: 2024
+  theme: pedestal
+  reason: theme:pedestal
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.91
+  flattop_source: pending
 - shot: 200672
   run_id: '20240910'
   mpid: '2024-36-04'
@@ -3944,42 +4312,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.93
-  flattop_source: pulse_length_proxy
-- shot: 200674
-  run_id: '20240910'
-  mpid: '2024-36-04'
-  year: 2024
-  theme: pedestal
-  reason: theme:pedestal
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.92
-  flattop_source: pulse_length_proxy
-- shot: 200704
-  run_id: '20240911'
-  mpid: '2024-15-01'
-  year: 2024
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.08
-  flattop_source: pulse_length_proxy
-- shot: 200705
-  run_id: '20240911'
-  mpid: '2024-15-01'
-  year: 2024
-  theme: neg_tri
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 1.06
-  flattop_source: pulse_length_proxy
-- shot: 200740
+  flattop_source: pending
+- shot: 200736
   run_id: '20240912'
   mpid: '2024-23-01'
   year: 2024
@@ -3988,20 +4324,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.48
-  flattop_source: pulse_length_proxy
-- shot: 200834
+  ip_sign: 1
+  flattop_s: 2.66
+  flattop_source: pending
+- shot: 200833
   run_id: '20240918'
   mpid: '2024-15-01'
   year: 2024
   theme: neg_tri
-  reason: theme:neg_tri
+  reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.23
-  flattop_source: pulse_length_proxy
-- shot: 200845
+  flattop_source: pending
+- shot: 200847
   run_id: '20240918'
   mpid: '2024-15-01'
   year: 2024
@@ -4010,9 +4348,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.22
-  flattop_source: pulse_length_proxy
-- shot: 200877
+  ip_sign: 1
+  flattop_s: 1.72
+  flattop_source: pending
+- shot: 200878
   run_id: '20240919'
   mpid: '2024-23-02'
   year: 2024
@@ -4021,42 +4360,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.84
-  flattop_source: pulse_length_proxy
-- shot: 200881
-  run_id: '20240919'
-  mpid: '2024-23-02'
-  year: 2024
-  theme: current_drive
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 3.38
-  flattop_source: pulse_length_proxy
-- shot: 200912
-  run_id: '20240920'
-  mpid: '2024-23-02'
-  year: 2024
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: true
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.23
-  flattop_source: pulse_length_proxy
-- shot: 200919
-  run_id: '20240920'
-  mpid: '2024-23-02'
-  year: 2024
-  theme: current_drive
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 4.35
-  flattop_source: pulse_length_proxy
-- shot: 200926
+  ip_sign: 1
+  flattop_s: 3.21
+  flattop_source: pending
+- shot: 200917
   run_id: '20240920'
   mpid: '2024-23-02'
   year: 2024
@@ -4065,30 +4372,33 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.22
-  flattop_source: pulse_length_proxy
-- shot: 200951
+  ip_sign: 1
+  flattop_s: 4.36
+  flattop_source: pending
+- shot: 200952
   run_id: '20240923'
   mpid: '2024-21-03'
   year: 2024
   theme: neg_tri
-  reason: theme:neg_tri
+  reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.17
-  flattop_source: pulse_length_proxy
-- shot: 200954
+  flattop_source: pending
+- shot: 200957
   run_id: '20240923'
   mpid: '2024-21-03'
   year: 2024
   theme: neg_tri
-  reason: theme:neg_tri
+  reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.69
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.1
+  flattop_source: pending
 - shot: 200962
   run_id: '20240923'
   mpid: '2024-21-03'
@@ -4098,54 +4408,59 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.42
-  flattop_source: pulse_length_proxy
-- shot: 201064
-  run_id: '20240926'
-  mpid: '2024-15-02'
-  year: 2024
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.38
-  flattop_source: pulse_length_proxy
-- shot: 201065
-  run_id: '20240926'
-  mpid: '2024-15-02'
-  year: 2024
-  theme: neg_tri
-  reason: theme:neg_tri
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.55
-  flattop_source: pulse_length_proxy
-- shot: 201100
-  run_id: '20240930'
-  mpid: '2024-13-51'
-  year: 2024
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.6
-  flattop_source: pulse_length_proxy
-- shot: 201149
-  run_id: '20241001'
-  mpid: '2024-12-01'
+  flattop_source: pending
+- shot: 200995
+  run_id: '20240924'
+  mpid: '2024-25-02'
   year: 2024
   theme: control
   reason: fill
   has_co2: true
   has_bes: false
-  has_tangtv: false
-  flattop_s: 3.07
-  flattop_source: pulse_length_proxy
-- shot: 201187
-  run_id: '20241002'
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.59
+  flattop_source: pending
+- shot: 200997
+  run_id: '20240924'
+  mpid: '2024-25-02'
+  year: 2024
+  theme: control
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.87
+  flattop_source: pending
+- shot: 201054
+  run_id: '20240926'
+  mpid: '2024-15-02'
+  year: 2024
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.94
+  flattop_source: pending
+- shot: 201066
+  run_id: '20240926'
+  mpid: '2024-15-02'
+  year: 2024
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.59
+  flattop_source: pending
+- shot: 201068
+  run_id: '20240926'
   mpid: '2024-15-02'
   year: 2024
   theme: neg_tri
@@ -4153,42 +4468,70 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.21
-  flattop_source: pulse_length_proxy
-- shot: 201188
-  run_id: '20241002'
-  mpid: '2024-15-02'
-  year: 2024
-  theme: neg_tri
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.2
-  flattop_source: pulse_length_proxy
-- shot: 201189
-  run_id: '20241002'
-  mpid: '2024-15-02'
-  year: 2024
-  theme: neg_tri
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.77
-  flattop_source: pulse_length_proxy
-- shot: 201221
-  run_id: '20241003'
-  mpid: '2024-14-01'
+  ip_sign: 1
+  flattop_s: 2.69
+  flattop_source: pending
+- shot: 201093
+  run_id: '20240930'
+  mpid: '2024-13-51'
   year: 2024
   theme: detachment_divertor
   reason: fill
   has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.07
+  flattop_source: pending
+- shot: 201098
+  run_id: '20240930'
+  mpid: '2024-13-51'
+  year: 2024
+  theme: detachment_divertor
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.71
+  flattop_source: pending
+- shot: 201179
+  run_id: '20241002'
+  mpid: '2024-15-02'
+  year: 2024
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.3
-  flattop_source: pulse_length_proxy
-- shot: 201267
+  ip_sign: 1
+  flattop_s: 5.15
+  flattop_source: pending
+- shot: 201185
+  run_id: '20241002'
+  mpid: '2024-15-02'
+  year: 2024
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.75
+  flattop_source: pending
+- shot: 201215
+  run_id: '20241003'
+  mpid: '2024-14-01'
+  year: 2024
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.25
+  flattop_source: pending
+- shot: 201265
   run_id: '20241004'
   mpid: '2024-36-05'
   year: 2024
@@ -4197,20 +4540,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.02
-  flattop_source: pulse_length_proxy
-- shot: 201272
-  run_id: '20241004'
-  mpid: '2024-36-05'
-  year: 2024
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.57
-  flattop_source: pulse_length_proxy
-- shot: 201396
+  ip_sign: 1
+  flattop_s: 3.29
+  flattop_source: pending
+- shot: 201395
   run_id: '20241022'
   mpid: '2024-21-05'
   year: 2024
@@ -4219,9 +4552,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.49
-  flattop_source: pulse_length_proxy
-- shot: 201438
+  ip_sign: 1
+  flattop_s: 4.58
+  flattop_source: pending
+- shot: 201425
+  run_id: '20241023'
+  mpid: '2024-11-03'
+  year: 2024
+  theme: control
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.11
+  flattop_source: pending
+- shot: 201448
   run_id: '20241023'
   mpid: '2024-11-03'
   year: 2024
@@ -4230,42 +4576,34 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.88
-  flattop_source: pulse_length_proxy
-- shot: 201443
-  run_id: '20241023'
-  mpid: '2024-11-03'
-  year: 2024
-  theme: control
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 2.34
-  flattop_source: pulse_length_proxy
-- shot: 201448
-  run_id: '20241023'
-  mpid: '2024-11-03'
-  year: 2024
-  theme: control
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.65
-  flattop_source: pulse_length_proxy
-- shot: 201496
-  run_id: '20241028'
-  mpid: '2024-34-05'
+  flattop_source: pending
+- shot: 201453
+  run_id: '20241023'
+  mpid: '2024-11-03'
   year: 2024
-  theme: null
+  theme: control
   reason: fill
   has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.56
-  flattop_source: pulse_length_proxy
-- shot: 201528
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.11
+  flattop_source: pending
+- shot: 201526
+  run_id: '20241029'
+  mpid: '2024-15-01'
+  year: 2024
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.56
+  flattop_source: pending
+- shot: 201527
   run_id: '20241029'
   mpid: '2024-15-01'
   year: 2024
@@ -4274,8 +4612,21 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.98
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 1.57
+  flattop_source: pending
+- shot: 201530
+  run_id: '20241029'
+  mpid: '2024-15-01'
+  year: 2024
+  theme: neg_tri
+  reason: theme:neg_tri
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.1
+  flattop_source: pending
 - shot: 201556
   run_id: '20241030'
   mpid: '2024-16-06'
@@ -4285,8 +4636,9 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.03
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 201568
   run_id: '20241030'
   mpid: '2024-16-06'
@@ -4296,9 +4648,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.87
-  flattop_source: pulse_length_proxy
-- shot: 201572
+  flattop_source: pending
+- shot: 201573
   run_id: '20241030'
   mpid: '2024-16-06'
   year: 2024
@@ -4307,9 +4660,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.06
-  flattop_source: pulse_length_proxy
-- shot: 201583
+  ip_sign: 1
+  flattop_s: 4.94
+  flattop_source: pending
+- shot: 201584
   run_id: '20241031'
   mpid: '2024-33-01'
   year: 2024
@@ -4318,9 +4672,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 1.37
-  flattop_source: pulse_length_proxy
-- shot: 201585
+  ip_sign: 1
+  flattop_s: 1.12
+  flattop_source: pending
+- shot: 201586
   run_id: '20241031'
   mpid: '2024-33-01'
   year: 2024
@@ -4329,74 +4684,93 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.19
-  flattop_source: pulse_length_proxy
-- shot: 201588
+  ip_sign: 1
+  flattop_s: 4.2
+  flattop_source: pending
+- shot: 201587
   run_id: '20241031'
   mpid: '2024-33-01'
   year: 2024
   theme: pedestal
-  reason: theme:pedestal
+  reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.25
-  flattop_source: pulse_length_proxy
-- shot: 201612
-  run_id: '20241101'
-  mpid: '2024-15-03'
+  ip_sign: 1
+  flattop_s: 4.29
+  flattop_source: pending
+- shot: 201673
+  run_id: '20241106'
+  mpid: '2024-16-04'
   year: 2024
-  theme: neg_tri
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.37
+  flattop_source: pending
+- shot: 201676
+  run_id: '20241106'
+  mpid: '2024-16-04'
+  year: 2024
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.39
+  flattop_source: pending
+- shot: 201678
+  run_id: '20241106'
+  mpid: '2024-16-04'
+  year: 2024
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.27
+  flattop_source: pending
+- shot: 201718
+  run_id: '20241107'
+  mpid: '2024-22-04'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.6
+  flattop_source: pending
+- shot: 201721
+  run_id: '20241107'
+  mpid: '2024-22-04'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: true
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.52
+  flattop_source: pending
+- shot: 201873
+  run_id: '20241115'
+  mpid: '2024-23-01'
+  year: 2024
+  theme: current_drive
   reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.96
-  flattop_source: pulse_length_proxy
-- shot: 201703
-  run_id: '20241107'
-  mpid: '2024-22-04'
-  year: 2024
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 2.73
-  flattop_source: pulse_length_proxy
-- shot: 201710
-  run_id: '20241107'
-  mpid: '2024-22-04'
-  year: 2024
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.27
-  flattop_source: pulse_length_proxy
-- shot: 201714
-  run_id: '20241107'
-  mpid: '2024-22-04'
-  year: 2024
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.32
-  flattop_source: pulse_length_proxy
-- shot: 201737
-  run_id: '20241111'
-  mpid: '2024-11-01'
-  year: 2024
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 6.35
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 3.77
+  flattop_source: pending
 - shot: 201875
   run_id: '20241115'
   mpid: '2024-23-01'
@@ -4406,8 +4780,9 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.77
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 201881
   run_id: '20241115'
   mpid: '2024-23-01'
@@ -4417,42 +4792,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.754
   flattop_source: features_ip
-- shot: 201882
-  run_id: '20241115'
-  mpid: '2024-23-01'
-  year: 2024
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 4.46
-  flattop_source: pulse_length_proxy
-- shot: 201913
-  run_id: '20241118'
-  mpid: '2024-01-01'
-  year: 2024
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 5.3
-  flattop_source: pulse_length_proxy
-- shot: 201920
-  run_id: '20241118'
-  mpid: '2024-01-01'
-  year: 2024
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 2.25
-  flattop_source: pulse_length_proxy
-- shot: 201932
+- shot: 201919
   run_id: '20241118'
   mpid: '2024-01-01'
   year: 2024
@@ -4460,9 +4803,22 @@ shots:
   reason: fill
   has_co2: true
   has_bes: true
-  has_tangtv: true
-  flattop_s: 5.27
-  flattop_source: pulse_length_proxy
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.16
+  flattop_source: pending
+- shot: 201945
+  run_id: '20241119'
+  mpid: '2024-22-04'
+  year: 2024
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 5.58
+  flattop_source: pending
 - shot: 201946
   run_id: '20241119'
   mpid: '2024-22-04'
@@ -4472,9 +4828,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.5
-  flattop_source: pulse_length_proxy
-- shot: 201951
+  flattop_source: pending
+- shot: 201953
   run_id: '20241119'
   mpid: '2024-22-04'
   year: 2024
@@ -4483,20 +4840,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 5.92
-  flattop_source: pulse_length_proxy
-- shot: 201971
-  run_id: '20241120'
-  mpid: '2024-16-03'
-  year: 2024
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 3.2
-  flattop_source: pulse_length_proxy
-- shot: 201982
+  ip_sign: 1
+  flattop_s: 6.92
+  flattop_source: pending
+- shot: 202000
   run_id: '20241120'
   mpid: '2024-16-03'
   year: 2024
@@ -4505,20 +4852,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 1.74
-  flattop_source: pulse_length_proxy
-- shot: 201986
-  run_id: '20241120'
-  mpid: '2024-16-03'
-  year: 2024
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.61
-  flattop_source: pulse_length_proxy
-- shot: 202015
+  ip_sign: 1
+  flattop_s: 3.75
+  flattop_source: pending
+- shot: 202013
   run_id: '20241121'
   mpid: '2024-35-05'
   year: 2024
@@ -4527,9 +4864,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.3
-  flattop_source: pulse_length_proxy
-- shot: 202019
+  ip_sign: 1
+  flattop_s: 4.26
+  flattop_source: pending
+- shot: 202017
   run_id: '20241121'
   mpid: '2024-35-05'
   year: 2024
@@ -4538,31 +4876,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.3
-  flattop_source: pulse_length_proxy
-- shot: 202023
+  ip_sign: 1
+  flattop_s: 4.29
+  flattop_source: pending
+- shot: 202034
   run_id: '20241121'
   mpid: '2024-35-05'
   year: 2024
   theme: transport
-  reason: fill
+  reason: theme:transport
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.28
-  flattop_source: pulse_length_proxy
-- shot: 202088
-  run_id: '20241202'
-  mpid: '2024-24-02'
-  year: 2024
-  theme: control
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 2.04
-  flattop_source: pulse_length_proxy
-- shot: 202099
+  ip_sign: -1
+  flattop_s: 4.39
+  flattop_source: pending
+- shot: 202095
   run_id: '20241202'
   mpid: '2024-24-02'
   year: 2024
@@ -4571,20 +4900,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 2.54
-  flattop_source: pulse_length_proxy
-- shot: 202103
-  run_id: '20241202'
-  mpid: '2024-24-02'
+  ip_sign: 1
+  flattop_s: 1.23
+  flattop_source: pending
+- shot: 202131
+  run_id: '20241203'
+  mpid: '2024-23-01'
   year: 2024
-  theme: control
-  reason: fill
+  theme: current_drive
+  reason: theme:current_drive
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 1.0
-  flattop_source: pulse_length_proxy
-- shot: 202188
+  ip_sign: -1
+  flattop_s: 3.51
+  flattop_source: pending
+- shot: 202180
   run_id: '20241204'
   mpid: '2024-13-03'
   year: 2024
@@ -4593,31 +4924,34 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 3.61
-  flattop_source: pulse_length_proxy
-- shot: 202189
-  run_id: '20241204'
-  mpid: '2024-13-03'
-  year: 2024
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.83
-  flattop_source: pulse_length_proxy
-- shot: 202721
-  run_id: '20250408'
+  ip_sign: 1
+  flattop_s: 4.54
+  flattop_source: pending
+- shot: 202726
+  run_id: '20250409'
   mpid: '2025-99-99'
   year: 2025
-  theme: null
+  theme: startup_checkout
   reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 3.91
-  flattop_source: pulse_length_proxy
-- shot: 202969
+  ip_sign: 1
+  flattop_s: 4.03
+  flattop_source: pending
+- shot: 202729
+  run_id: '20250409'
+  mpid: '2025-99-99'
+  year: 2025
+  theme: startup_checkout
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 4.1
+  flattop_source: pending
+- shot: 202955
   run_id: '20250428'
   mpid: '2024-99-01'
   year: 2025
@@ -4626,9 +4960,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.61
-  flattop_source: pulse_length_proxy
-- shot: 202972
+  ip_sign: 1
+  flattop_s: 4.7
+  flattop_source: pending
+- shot: 202956
   run_id: '20250428'
   mpid: '2024-99-01'
   year: 2025
@@ -4637,9 +4972,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.19
-  flattop_source: pulse_length_proxy
-- shot: 202986
+  ip_sign: 1
+  flattop_s: 4.7
+  flattop_source: pending
+- shot: 202987
   run_id: '20250429'
   mpid: '2024-36-08'
   year: 2025
@@ -4648,20 +4984,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.2
-  flattop_source: pulse_length_proxy
-- shot: 203013
-  run_id: '20250430'
-  mpid: '2025-02-06'
+  ip_sign: 1
+  flattop_s: 5.08
+  flattop_source: pending
+- shot: 203033
+  run_id: '20250501'
+  mpid: '2025-02-02'
   year: 2025
-  theme: null
+  theme: transport
   reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.68
-  flattop_source: pulse_length_proxy
-- shot: 203033
+  ip_sign: 1
+  flattop_s: 4.18
+  flattop_source: pending
+- shot: 203036
   run_id: '20250501'
   mpid: '2025-02-02'
   year: 2025
@@ -4670,9 +5008,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.18
-  flattop_source: pulse_length_proxy
-- shot: 203035
+  flattop_source: pending
+- shot: 203041
   run_id: '20250501'
   mpid: '2025-02-02'
   year: 2025
@@ -4681,86 +5020,142 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.17
-  flattop_source: pulse_length_proxy
-- shot: 203038
-  run_id: '20250501'
-  mpid: '2025-02-02'
-  year: 2025
-  theme: transport
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: false
-  flattop_s: 4.18
-  flattop_source: pulse_length_proxy
-- shot: 203055
+  ip_sign: 1
+  flattop_s: 4.15
+  flattop_source: pending
+- shot: 203059
   run_id: '20250502'
   mpid: '2025-26-01'
   year: 2025
-  theme: startup_checkout
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.76
+  flattop_source: pending
+- shot: 203060
+  run_id: '20250502'
+  mpid: '2025-26-01'
+  year: 2025
+  theme: hybrid_high_beta
   reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.29
-  flattop_source: pulse_length_proxy
-- shot: 203063
-  run_id: '20250502'
-  mpid: '2025-26-01'
-  year: 2025
-  theme: startup_checkout
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 3.82
-  flattop_source: pulse_length_proxy
-- shot: 203139
+  ip_sign: 1
+  flattop_s: 1.09
+  flattop_source: pending
+- shot: 203147
   run_id: '20250506'
   mpid: '2025-16-01'
   year: 2025
   theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 1.1
-  flattop_source: pulse_length_proxy
-- shot: 203180
-  run_id: '20250507'
-  mpid: '2025-16-01'
-  year: 2025
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.13
-  flattop_source: pulse_length_proxy
-- shot: 203200
-  run_id: '20250508'
-  mpid: '2025-02-06'
-  year: 2025
-  theme: null
   reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.65
-  flattop_source: pulse_length_proxy
-- shot: 203360
-  run_id: '20250516'
-  mpid: '2025-26-01'
+  ip_sign: 1
+  flattop_s: 5.15
+  flattop_source: pending
+- shot: 203181
+  run_id: '20250507'
+  mpid: '2025-16-01'
+  year: 2025
+  theme: detachment_divertor
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.91
+  flattop_source: pending
+- shot: 203244
+  run_id: '20250512'
+  mpid: '2025-99-99'
   year: 2025
   theme: startup_checkout
   reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.97
-  flattop_source: pulse_length_proxy
-- shot: 203391
+  ip_sign: -1
+  flattop_s: 4.39
+  flattop_source: pending
+- shot: 203254
+  run_id: '20250513'
+  mpid: '2025-99-99'
+  year: 2025
+  theme: startup_checkout
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 3.6
+  flattop_source: pending
+- shot: 203295
+  run_id: '20250514'
+  mpid: '2025-16-02'
+  year: 2025
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.29
+  flattop_source: pending
+- shot: 203300
+  run_id: '20250514'
+  mpid: '2025-16-02'
+  year: 2025
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.4
+  flattop_source: pending
+- shot: 203307
+  run_id: '20250515'
+  mpid: '2025-02-05'
+  year: 2025
+  theme: transport
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.37
+  flattop_source: pending
+- shot: 203313
+  run_id: '20250515'
+  mpid: '2025-02-05'
+  year: 2025
+  theme: transport
+  reason: theme:transport
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.36
+  flattop_source: pending
+- shot: 203332
+  run_id: '20250515'
+  mpid: '2025-02-05'
+  year: 2025
+  theme: transport
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.34
+  flattop_source: pending
+- shot: 203393
   run_id: '20250520'
   mpid: '2025-00-03'
   year: 2025
@@ -4769,30 +5164,45 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.71
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 3.64
+  flattop_source: pending
 - shot: 203395
   run_id: '20250520'
   mpid: '2025-00-03'
   year: 2025
   theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
+  reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.69
-  flattop_source: pulse_length_proxy
-- shot: 203399
+  flattop_source: pending
+- shot: 203403
   run_id: '20250520'
   mpid: '2025-00-03'
   year: 2025
   theme: hybrid_high_beta
-  reason: theme:hybrid_high_beta
+  reason: fill
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.62
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 4.44
+  flattop_source: pending
+- shot: 203409
+  run_id: '20250521'
+  mpid: '2025-16-03'
+  year: 2025
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.13
+  flattop_source: pending
 - shot: 203410
   run_id: '20250521'
   mpid: '2025-16-03'
@@ -4802,31 +5212,34 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.87
-  flattop_source: pulse_length_proxy
-- shot: 203422
+  flattop_source: pending
+- shot: 203426
   run_id: '20250521'
   mpid: '2025-16-03'
   year: 2025
   theme: rmp_elm
-  reason: theme:rmp_elm
+  reason: fill
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.45
-  flattop_source: pulse_length_proxy
-- shot: 203423
-  run_id: '20250521'
-  mpid: '2025-16-03'
+  ip_sign: 1
+  flattop_s: 2.73
+  flattop_source: pending
+- shot: 203444
+  run_id: '20250522'
+  mpid: '2025-01-01'
   year: 2025
-  theme: rmp_elm
-  reason: theme:rmp_elm
+  theme: transport
+  reason: theme:transport
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.12
-  flattop_source: pulse_length_proxy
-- shot: 203447
+  ip_sign: 1
+  flattop_s: 4.35
+  flattop_source: pending
+- shot: 203453
   run_id: '20250522'
   mpid: '2025-01-01'
   year: 2025
@@ -4835,9 +5248,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.01
-  flattop_source: pulse_length_proxy
-- shot: 203449
+  ip_sign: 1
+  flattop_s: 5.09
+  flattop_source: pending
+- shot: 203462
   run_id: '20250522'
   mpid: '2025-01-01'
   year: 2025
@@ -4846,20 +5260,70 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.74
-  flattop_source: pulse_length_proxy
-- shot: 203535
-  run_id: '20250529'
-  mpid: '2025-36-02'
+  ip_sign: 1
+  flattop_s: 5.75
+  flattop_source: pending
+- shot: 203475
+  run_id: '20250527'
+  mpid: '2025-13-02'
   year: 2025
-  theme: pedestal
-  reason: fill
+  theme: rmp_elm
+  reason: theme:rmp_elm
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.16
-  flattop_source: pulse_length_proxy
-- shot: 203540
+  ip_sign: 1
+  flattop_s: 3.82
+  flattop_source: pending
+- shot: 203478
+  run_id: '20250527'
+  mpid: '2025-13-02'
+  year: 2025
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.44
+  flattop_source: pending
+- shot: 203488
+  run_id: '20250527'
+  mpid: '2025-13-02'
+  year: 2025
+  theme: rmp_elm
+  reason: theme:rmp_elm
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.63
+  flattop_source: pending
+- shot: 203496
+  run_id: '20250528'
+  mpid: '2025-26-01'
+  year: 2025
+  theme: hybrid_high_beta
+  reason: theme:hybrid_high_beta
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.36
+  flattop_source: pending
+- shot: 203505
+  run_id: '20250528'
+  mpid: '2025-26-01'
+  year: 2025
+  theme: hybrid_high_beta
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.07
+  flattop_source: pending
+- shot: 203537
   run_id: '20250529'
   mpid: '2025-36-02'
   year: 2025
@@ -4868,9 +5332,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.16
-  flattop_source: pulse_length_proxy
-- shot: 203550
+  ip_sign: 1
+  flattop_s: 3.81
+  flattop_source: pending
+- shot: 203541
   run_id: '20250529'
   mpid: '2025-36-02'
   year: 2025
@@ -4879,20 +5344,34 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.87
-  flattop_source: pulse_length_proxy
-- shot: 203568
-  run_id: '20250530'
-  mpid: '2025-26-01'
+  ip_sign: 1
+  flattop_s: 4.14
+  flattop_source: pending
+- shot: 203551
+  run_id: '20250529'
+  mpid: '2025-36-02'
+  year: 2025
+  theme: pedestal
+  reason: fill
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 1.7
+  flattop_source: pending
+- shot: 203596
+  run_id: '20250602'
+  mpid: '2025-99-99'
   year: 2025
   theme: startup_checkout
   reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.08
-  flattop_source: pulse_length_proxy
-- shot: 203648
+  ip_sign: 1
+  flattop_s: 5.55
+  flattop_source: pending
+- shot: 203641
   run_id: '20250603'
   mpid: '2025-13-01'
   year: 2025
@@ -4901,9 +5380,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.74
-  flattop_source: pulse_length_proxy
-- shot: 203652
+  ip_sign: 1
+  flattop_s: 1.47
+  flattop_source: pending
+- shot: 203643
   run_id: '20250603'
   mpid: '2025-13-01'
   year: 2025
@@ -4912,19 +5392,21 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.41
-  flattop_source: pulse_length_proxy
-- shot: 203654
-  run_id: '20250603'
-  mpid: '2025-13-01'
+  ip_sign: 1
+  flattop_s: 2.64
+  flattop_source: pending
+- shot: 203660
+  run_id: '20250604'
+  mpid: '2025-13-03'
   year: 2025
-  theme: detachment_divertor
-  reason: fill
+  theme: current_drive
+  reason: theme:current_drive
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.65
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 2.75
+  flattop_source: pending
 - shot: 203661
   run_id: '20250604'
   mpid: '2025-13-03'
@@ -4934,9 +5416,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.95
-  flattop_source: pulse_length_proxy
-- shot: 203666
+  flattop_source: pending
+- shot: 203664
   run_id: '20250604'
   mpid: '2025-13-03'
   year: 2025
@@ -4945,20 +5428,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.4
-  flattop_source: pulse_length_proxy
-- shot: 203672
-  run_id: '20250604'
-  mpid: '2025-13-03'
-  year: 2025
-  theme: current_drive
-  reason: theme:current_drive
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.01
-  flattop_source: pulse_length_proxy
-- shot: 203751
+  ip_sign: 1
+  flattop_s: 3.84
+  flattop_source: pending
+- shot: 203746
   run_id: '20250610'
   mpid: '2025-25-01'
   year: 2025
@@ -4967,9 +5440,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.27
-  flattop_source: pulse_length_proxy
-- shot: 203776
+  ip_sign: 1
+  flattop_s: 4.32
+  flattop_source: pending
+- shot: 203752
+  run_id: '20250610'
+  mpid: '2025-25-01'
+  year: 2025
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.03
+  flattop_source: pending
+- shot: 203762
   run_id: '20250611'
   mpid: '2025-25-04'
   year: 2025
@@ -4978,31 +5464,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
+  flattop_s: 3.82
+  flattop_source: pending
+- shot: 203765
+  run_id: '20250611'
+  mpid: '2025-25-04'
+  year: 2025
+  theme: null
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
   flattop_s: 3.83
-  flattop_source: pulse_length_proxy
-- shot: 203785
-  run_id: '20250611'
-  mpid: '2025-25-04'
-  year: 2025
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 2.03
-  flattop_source: pulse_length_proxy
-- shot: 203788
-  run_id: '20250612'
-  mpid: '2025-25-05'
-  year: 2025
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 3.7
-  flattop_source: pulse_length_proxy
-- shot: 203827
+  flattop_source: pending
+- shot: 203828
   run_id: '20250613'
   mpid: '2025-01-01'
   year: 2025
@@ -5011,42 +5488,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.11
-  flattop_source: pulse_length_proxy
-- shot: 203831
-  run_id: '20250613'
-  mpid: '2025-01-01'
-  year: 2025
-  theme: transport
-  reason: theme:transport
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.74
-  flattop_source: pulse_length_proxy
-- shot: 203835
-  run_id: '20250613'
-  mpid: '2025-01-01'
-  year: 2025
-  theme: transport
-  reason: theme:transport
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.74
-  flattop_source: pulse_length_proxy
-- shot: 203866
-  run_id: '20250616'
-  mpid: '2025-34-02'
-  year: 2025
-  theme: tearing_mhd
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.73
-  flattop_source: pulse_length_proxy
-- shot: 203876
+  ip_sign: 1
+  flattop_s: 5.27
+  flattop_source: pending
+- shot: 203872
   run_id: '20250616'
   mpid: '2025-34-02'
   year: 2025
@@ -5055,20 +5500,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.31
-  flattop_source: pulse_length_proxy
-- shot: 203894
-  run_id: '20250617'
-  mpid: '2025-12-05'
+  ip_sign: 1
+  flattop_s: 4.78
+  flattop_source: pending
+- shot: 203876
+  run_id: '20250616'
+  mpid: '2025-34-02'
   year: 2025
-  theme: control
-  reason: theme:control
+  theme: tearing_mhd
+  reason: fill
   has_co2: true
-  has_bes: false
+  has_bes: true
   has_tangtv: true
-  flattop_s: 1.51
-  flattop_source: pulse_length_proxy
-- shot: 203895
+  ip_sign: 1
+  flattop_s: 3.31
+  flattop_source: pending
+- shot: 203904
   run_id: '20250617'
   mpid: '2025-12-05'
   year: 2025
@@ -5077,9 +5524,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 2.97
-  flattop_source: pulse_length_proxy
-- shot: 203906
+  ip_sign: 1
+  flattop_s: 7.2
+  flattop_source: pending
+- shot: 203905
   run_id: '20250617'
   mpid: '2025-12-05'
   year: 2025
@@ -5088,9 +5536,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
+  flattop_s: 7.2
+  flattop_source: pending
+- shot: 203906
+  run_id: '20250617'
+  mpid: '2025-12-05'
+  year: 2025
+  theme: control
+  reason: fill
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
   flattop_s: 7.19
-  flattop_source: pulse_length_proxy
-- shot: 203938
+  flattop_source: pending
+- shot: 203932
   run_id: '20250618'
   mpid: '2025-32-01'
   year: 2025
@@ -5099,9 +5560,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.67
-  flattop_source: pulse_length_proxy
-- shot: 203952
+  ip_sign: 1
+  flattop_s: 5.76
+  flattop_source: pending
+- shot: 203946
   run_id: '20250618'
   mpid: '2025-32-01'
   year: 2025
@@ -5110,8 +5572,9 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.67
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 203957
   run_id: '20250618'
   mpid: '2025-32-01'
@@ -5121,8 +5584,9 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.67
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 203987
   run_id: '20250619'
   mpid: '2025-14-01'
@@ -5132,41 +5596,9 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.44
-  flattop_source: pulse_length_proxy
-- shot: 203990
-  run_id: '20250619'
-  mpid: '2025-14-01'
-  year: 2025
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.8
-  flattop_source: pulse_length_proxy
-- shot: 204003
-  run_id: '20250619'
-  mpid: '2025-14-01'
-  year: 2025
-  theme: detachment_divertor
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.07
-  flattop_source: pulse_length_proxy
-- shot: 204045
-  run_id: '20250624'
-  mpid: '2025-22-01'
-  year: 2025
-  theme: disruption_runaway
-  reason: theme:disruption_runaway
-  has_co2: true
-  has_bes: false
-  has_tangtv: false
-  flattop_s: 4.27
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 204049
   run_id: '20250624'
   mpid: '2025-22-01'
@@ -5176,9 +5608,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 3.32
-  flattop_source: pulse_length_proxy
-- shot: 204052
+  flattop_source: pending
+- shot: 204054
   run_id: '20250624'
   mpid: '2025-22-01'
   year: 2025
@@ -5187,9 +5620,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 2.05
-  flattop_source: pulse_length_proxy
-- shot: 204087
+  ip_sign: 1
+  flattop_s: 2.03
+  flattop_source: pending
+- shot: 204062
+  run_id: '20250624'
+  mpid: '2025-22-01'
+  year: 2025
+  theme: disruption_runaway
+  reason: theme:disruption_runaway
+  has_co2: true
+  has_bes: false
+  has_tangtv: false
+  ip_sign: 1
+  flattop_s: 2.25
+  flattop_source: pending
+- shot: 204085
   run_id: '20250625'
   mpid: '2025-25-03'
   year: 2025
@@ -5198,9 +5644,10 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
-  flattop_s: 3.96
-  flattop_source: pulse_length_proxy
-- shot: 204093
+  ip_sign: 1
+  flattop_s: 3.91
+  flattop_source: pending
+- shot: 204095
   run_id: '20250625'
   mpid: '2025-25-03'
   year: 2025
@@ -5209,8 +5656,9 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.07
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 4.14
+  flattop_source: pending
 - shot: 204107
   run_id: '20250626'
   mpid: '2025-15-01'
@@ -5220,9 +5668,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 1.55
-  flattop_source: pulse_length_proxy
-- shot: 204111
+  flattop_source: pending
+- shot: 204113
   run_id: '20250626'
   mpid: '2025-15-01'
   year: 2025
@@ -5231,9 +5680,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.38
-  flattop_source: pulse_length_proxy
-- shot: 204112
+  ip_sign: 1
+  flattop_s: 4.22
+  flattop_source: pending
+- shot: 204114
   run_id: '20250626'
   mpid: '2025-15-01'
   year: 2025
@@ -5242,20 +5692,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 4.2
-  flattop_source: pulse_length_proxy
-- shot: 204142
+  ip_sign: 1
+  flattop_s: 3.97
+  flattop_source: pending
+- shot: 204157
   run_id: '20250627'
   mpid: '2025-16-05'
   year: 2025
   theme: detachment_divertor
   reason: fill
   has_co2: true
-  has_bes: false
+  has_bes: true
   has_tangtv: true
-  flattop_s: 4.11
-  flattop_source: pulse_length_proxy
-- shot: 204164
+  ip_sign: 1
+  flattop_s: 4.68
+  flattop_source: pending
+- shot: 204163
   run_id: '20250630'
   mpid: '2025-34-02'
   year: 2025
@@ -5264,19 +5716,9 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 5.19
-  flattop_source: pulse_length_proxy
-- shot: 204168
-  run_id: '20250630'
-  mpid: '2025-34-02'
-  year: 2025
-  theme: tearing_mhd
-  reason: theme:tearing_mhd
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 5.52
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.15
+  flattop_source: pending
 - shot: 204170
   run_id: '20250630'
   mpid: '2025-34-02'
@@ -5286,9 +5728,22 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 2.01
-  flattop_source: pulse_length_proxy
-- shot: 204201
+  flattop_source: pending
+- shot: 204173
+  run_id: '20250630'
+  mpid: '2025-34-02'
+  year: 2025
+  theme: tearing_mhd
+  reason: theme:tearing_mhd
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.44
+  flattop_source: pending
+- shot: 204195
   run_id: '20250701'
   mpid: '2025-32-02'
   year: 2025
@@ -5297,19 +5752,9 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.61
-  flattop_source: pulse_length_proxy
-- shot: 204203
-  run_id: '20250701'
-  mpid: '2025-32-02'
-  year: 2025
-  theme: lh_threshold_isotope
-  reason: theme:lh_threshold_isotope
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.44
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 2.2
+  flattop_source: pending
 - shot: 204204
   run_id: '20250701'
   mpid: '2025-32-02'
@@ -5319,9 +5764,22 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.65
-  flattop_source: pulse_length_proxy
-- shot: 204237
+  flattop_source: pending
+- shot: 204207
+  run_id: '20250701'
+  mpid: '2025-32-02'
+  year: 2025
+  theme: lh_threshold_isotope
+  reason: theme:lh_threshold_isotope
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.78
+  flattop_source: pending
+- shot: 204249
   run_id: '20250702'
   mpid: '2025-35-01'
   year: 2025
@@ -5330,9 +5788,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 2.69
-  flattop_source: pulse_length_proxy
-- shot: 204251
+  ip_sign: 1
+  flattop_s: 4.09
+  flattop_source: pending
+- shot: 204259
   run_id: '20250702'
   mpid: '2025-35-01'
   year: 2025
@@ -5341,9 +5800,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.26
-  flattop_source: pulse_length_proxy
-- shot: 204253
+  ip_sign: 1
+  flattop_s: 3.64
+  flattop_source: pending
+- shot: 204261
   run_id: '20250702'
   mpid: '2025-35-01'
   year: 2025
@@ -5352,9 +5812,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 3.57
-  flattop_source: pulse_length_proxy
-- shot: 204271
+  ip_sign: 1
+  flattop_s: 3.02
+  flattop_source: pending
+- shot: 204270
   run_id: '20250703'
   mpid: '2025-32-03'
   year: 2025
@@ -5363,19 +5824,21 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.69
-  flattop_source: pulse_length_proxy
-- shot: 204278
+  ip_sign: 1
+  flattop_s: 5.27
+  flattop_source: pending
+- shot: 204272
   run_id: '20250703'
   mpid: '2025-32-03'
   year: 2025
   theme: transport
-  reason: fill
+  reason: theme:transport
   has_co2: true
   has_bes: true
   has_tangtv: false
-  flattop_s: 4.66
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 4.68
+  flattop_source: pending
 - shot: 204279
   run_id: '20250703'
   mpid: '2025-32-03'
@@ -5385,9 +5848,10 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 4.67
-  flattop_source: pulse_length_proxy
-- shot: 204314
+  flattop_source: pending
+- shot: 204318
   run_id: '20250707'
   mpid: '2025-23-01'
   year: 2025
@@ -5396,19 +5860,9 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: false
+  ip_sign: 1
   flattop_s: 5.18
-  flattop_source: pulse_length_proxy
-- shot: 204343
-  run_id: '20250708'
-  mpid: '2025-31-01'
-  year: 2025
-  theme: control
-  reason: theme:control
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 6.38
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 204346
   run_id: '20250708'
   mpid: '2025-31-01'
@@ -5418,8 +5872,21 @@ shots:
   has_co2: true
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 6.18
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
+- shot: 204348
+  run_id: '20250708'
+  mpid: '2025-31-01'
+  year: 2025
+  theme: control
+  reason: theme:control
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 6.25
+  flattop_source: pending
 - shot: 204355
   run_id: '20250708'
   mpid: '2025-31-01'
@@ -5429,53 +5896,58 @@ shots:
   has_co2: false
   has_bes: false
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.12
-  flattop_source: pulse_length_proxy
-- shot: 204379
-  run_id: '20250709'
-  mpid: '2025-13-05'
-  year: 2025
-  theme: rmp_elm
-  reason: fill
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 5.4
-  flattop_source: pulse_length_proxy
-- shot: 204381
-  run_id: '20250709'
-  mpid: '2025-13-05'
-  year: 2025
-  theme: rmp_elm
-  reason: theme:rmp_elm
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 4.57
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
 - shot: 204382
   run_id: '20250709'
   mpid: '2025-13-05'
   year: 2025
   theme: rmp_elm
-  reason: theme:rmp_elm
+  reason: fill
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 4.58
-  flattop_source: pulse_length_proxy
+  flattop_source: pending
+- shot: 204387
+  run_id: '20250709'
+  mpid: '2025-13-05'
+  year: 2025
+  theme: rmp_elm
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 4.58
+  flattop_source: pending
 - shot: 204416
   run_id: '20250710'
   mpid: '2025-13-04'
   year: 2025
   theme: detachment_divertor
-  reason: fill
+  reason: theme:detachment_divertor
   has_co2: false
   has_bes: true
   has_tangtv: true
+  ip_sign: 1
   flattop_s: 5.18
-  flattop_source: pulse_length_proxy
-- shot: 204420
+  flattop_source: pending
+- shot: 204422
+  run_id: '20250710'
+  mpid: '2025-13-04'
+  year: 2025
+  theme: detachment_divertor
+  reason: fill
+  has_co2: false
+  has_bes: true
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 2.25
+  flattop_source: pending
+- shot: 204426
   run_id: '20250710'
   mpid: '2025-13-04'
   year: 2025
@@ -5484,20 +5956,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 2.41
-  flattop_source: pulse_length_proxy
-- shot: 204425
-  run_id: '20250710'
-  mpid: '2025-13-04'
-  year: 2025
-  theme: detachment_divertor
-  reason: theme:detachment_divertor
-  has_co2: false
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 2.29
-  flattop_source: pulse_length_proxy
-- shot: 204455
+  ip_sign: 1
+  flattop_s: 2.27
+  flattop_source: pending
+- shot: 204449
   run_id: '20250711'
   mpid: '2025-36-02'
   year: 2025
@@ -5506,9 +5968,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.62
-  flattop_source: pulse_length_proxy
-- shot: 204456
+  ip_sign: 1
+  flattop_s: 5.63
+  flattop_source: pending
+- shot: 204454
   run_id: '20250711'
   mpid: '2025-36-02'
   year: 2025
@@ -5517,9 +5980,10 @@ shots:
   has_co2: false
   has_bes: true
   has_tangtv: true
-  flattop_s: 5.76
-  flattop_source: pulse_length_proxy
-- shot: 204601
+  ip_sign: 1
+  flattop_s: 5.64
+  flattop_source: pending
+- shot: 204598
   run_id: '20250721'
   mpid: '2025-16-05'
   year: 2025
@@ -5528,60 +5992,90 @@ shots:
   has_co2: true
   has_bes: true
   has_tangtv: true
-  flattop_s: 3.32
-  flattop_source: pulse_length_proxy
-- shot: 204625
-  run_id: '20250722'
-  mpid: '2025-12-03'
-  year: 2025
-  theme: null
-  reason: fill
-  has_co2: true
-  has_bes: true
-  has_tangtv: true
-  flattop_s: 6.25
-  flattop_source: pulse_length_proxy
-- shot: 204645
+  ip_sign: 1
+  flattop_s: 4.79
+  flattop_source: pending
+- shot: 204657
   run_id: '20250723'
   mpid: '2025-26-01'
   year: 2025
-  theme: startup_checkout
-  reason: fill
-  has_co2: true
-  has_bes: false
-  has_tangtv: true
-  flattop_s: 4.05
-  flattop_source: pulse_length_proxy
-- shot: 204842
-  run_id: '20250806'
-  mpid: '2025-00-01'
-  year: 2025
   theme: hybrid_high_beta
-  reason: fill
+  reason: theme:hybrid_high_beta
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 6.17
-  flattop_source: pulse_length_proxy
-- shot: 204846
-  run_id: '20250806'
-  mpid: '2025-00-01'
+  ip_sign: 1
+  flattop_s: 4.51
+  flattop_source: pending
+- shot: 204881
+  run_id: '20250807'
+  mpid: '2025-16-02'
   year: 2025
-  theme: hybrid_high_beta
-  reason: fill
+  theme: qh_mode
+  reason: theme:qh_mode
   has_co2: true
-  has_bes: false
+  has_bes: true
   has_tangtv: true
-  flattop_s: 6.09
-  flattop_source: pulse_length_proxy
-- shot: 204852
-  run_id: '20250806'
-  mpid: '2025-00-01'
+  ip_sign: -1
+  flattop_s: 5.17
+  flattop_source: pending
+- shot: 204882
+  run_id: '20250807'
+  mpid: '2025-16-02'
   year: 2025
-  theme: hybrid_high_beta
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 4.99
+  flattop_source: pending
+- shot: 204884
+  run_id: '20250807'
+  mpid: '2025-16-02'
+  year: 2025
+  theme: qh_mode
+  reason: theme:qh_mode
+  has_co2: true
+  has_bes: true
+  has_tangtv: true
+  ip_sign: -1
+  flattop_s: 5.39
+  flattop_source: pending
+- shot: 204908
+  run_id: '20250808'
+  mpid: '2025-21-01'
+  year: 2025
+  theme: detachment_divertor
   reason: fill
   has_co2: true
   has_bes: false
   has_tangtv: true
-  flattop_s: 4.76
-  flattop_source: pulse_length_proxy
+  ip_sign: 1
+  flattop_s: 5.68
+  flattop_source: pending
+- shot: 204917
+  run_id: '20250808'
+  mpid: '2025-21-01'
+  year: 2025
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.33
+  flattop_source: pending
+- shot: 204925
+  run_id: '20250808'
+  mpid: '2025-21-01'
+  year: 2025
+  theme: detachment_divertor
+  reason: theme:detachment_divertor
+  has_co2: true
+  has_bes: false
+  has_tangtv: true
+  ip_sign: 1
+  flattop_s: 5.69
+  flattop_source: pending
