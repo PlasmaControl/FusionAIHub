@@ -288,12 +288,20 @@ class BigTFUNetModel(nn.Module):
 # --------------------------------------------------------------------------
 
 
+@torch.inference_mode()
 def probabilities(model: nn.Module, x: torch.Tensor) -> torch.Tensor:
     """`(B, 2, H, W)` sigmoid masks: channel 0 coherent, channel 1 transient.
 
     The head is trained with a per-pixel binary loss on each channel
     independently - the two are not a softmax over classes, and a pixel may
     be lit in both (a burst on top of a track).
+
+    `inference_mode` rather than the caller's discipline: this is called once
+    per tile, tens of thousands of times per shot, and a forgotten `no_grad`
+    would keep every intermediate alive. Nothing downstream differentiates
+    through a mask, so the graph is never wanted. The returned tensor is an
+    inference tensor: read it, copy it (`.numpy()`, `.clone()`), do not put
+    it back into a computation that needs autograd.
     """
     return torch.sigmoid(model(x)[0])
 

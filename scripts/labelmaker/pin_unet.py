@@ -84,9 +84,17 @@ def main(argv: list[str] | None = None) -> int:
     # a test can ask for.
     torch.set_num_threads(1)
 
+    # Both pinned constants are reported - and both "NOTE:" lines given
+    # their chance - BEFORE `load_unet`, whose two guards would otherwise
+    # raise on exactly the runs this script exists for. The parameter count
+    # is a property of the vendored code alone, so counting it needs no
+    # checkpoint; the hash decides whether the hash guard is asked for at
+    # all, so a deliberate re-pin of a NEW checkpoint gets past it.
     sha = sha256_of(args.checkpoint)
-    model = unet.load_unet(args.checkpoint)
-    n_params = sum(p.numel() for p in model.parameters())
+    n_params = sum(
+        p.numel()
+        for p in unet.BigTFUNetModel(unet.BigTFUNetConfig()).parameters()
+    )
     print(f"checkpoint    {args.checkpoint}")
     print(f"sha256        {sha}")
     print(f"n_params      {n_params}")
@@ -95,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"NOTE: unet.CHECKPOINT_SHA256 is {unet.CHECKPOINT_SHA256}")
     if n_params != unet.N_PARAMS:
         print(f"NOTE: unet.N_PARAMS is {unet.N_PARAMS}")
+    model = unet.load_unet(
+        args.checkpoint, verify_sha256=(sha == unet.CHECKPOINT_SHA256)
+    )
 
     x = np.random.default_rng(0).standard_normal((1, 1, 128, 128)).astype(np.float32)
     xt = torch.from_numpy(x)

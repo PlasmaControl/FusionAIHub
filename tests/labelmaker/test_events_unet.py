@@ -46,6 +46,14 @@ def _single_threaded():
     torch.set_num_threads(before)
 
 
+def _version_note(recorded: str) -> str:
+    """Why a golden comparison is likeliest to have moved."""
+    return (
+        f"golden written under torch {recorded}; running torch "
+        f"{torch.__version__}"
+    )
+
+
 @pytest.fixture(scope="module")
 def model():
     if not CHECKPOINT.exists():
@@ -164,8 +172,29 @@ def test_the_golden_records_a_faithful_vendoring():
 @needs_checkpoint
 def test_the_model_reproduces_the_golden_output_exactly(model):
     with np.load(GOLDEN, allow_pickle=False) as z:
-        x, want = z["x"], z["y"]
+        x, want, recorded = z["x"], z["y"], str(z["torch_version"])
     with torch.no_grad():
         got = unet.probabilities(model, torch.from_numpy(x)).numpy()[0]
     assert got.shape == want.shape and got.dtype == want.dtype
-    assert np.abs(got - want).max() == 0.0
+    # The message carries both torch versions: the likeliest cause of a
+    # non-zero difference is an upgrade, and the failure should say so at
+    # the failure site rather than send a reader to the golden's contents.
+    assert np.abs(got - want).max() == 0.0, _version_note(recorded)
+
+
+@needs_golden
+def test_a_golden_mismatch_would_name_both_torch_versions():
+    with np.load(GOLDEN, allow_pickle=False) as z:
+        recorded = str(z["torch_version"])
+    note = _version_note(recorded)
+    assert recorded in note and torch.__version__ in note
+
+
+def test_probabilities_never_builds_a_graph():
+    # `probabilities` is called once per tile over a whole shot; a caller who
+    # forgets `no_grad` must not be able to accumulate a graph over them.
+    built = unet.BigTFUNetModel(unet.BigTFUNetConfig()).eval()
+    x = torch.zeros(1, 1, 64, 64, requires_grad=True)
+    probs = unet.probabilities(built, x)
+    assert not probs.requires_grad
+    assert probs.grad_fn is None
