@@ -833,7 +833,10 @@ def cmd_logs(args) -> int:
     """
     paths = None
     if args.what == "missing":
-        if not (args.text_dir and (args.list or args.census)):
+        # Every path this branch needs, or none: falling back per path would leave `--index`
+        # silently unset when the caller gave the other two, and every missing shot would then be
+        # reported as unplaceable rather than as belonging to a run the corpus already knows.
+        if not (args.text_dir and args.index and (args.list or args.census)):
             paths = config.load_paths()
         text_dir = Path(args.text_dir) if args.text_dir else paths.per_shot_txt_dir
         index = Path(args.index) if args.index else (paths.shot_index_json if paths else None)
@@ -999,12 +1002,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("parquet")
     s = what.add_parser("select", help="the development shot list (plan §5.7)")
     s.add_argument("--n", type=int, default=500, help="how many shots to select")
-    s.add_argument("--name", default="recommender_v1")
+    s.add_argument("--name", default="recommender_v1", help="the list's name in the YAML")
     s.add_argument("--census", help="corpus_coverage.parquet (default: <db_dir>/...)")
     s.add_argument("--text-dir", help="per_shot_txt directory (default: paths.yaml's)")
     s.add_argument("--out", help="shot-list YAML (default: configs/ideate/shot_lists/<name>.yaml)")
     s.add_argument("--txt-out", help="also write one shot per line here (the mask job reads it)")
-    s.add_argument("--seed", type=int, default=20260907)
+    s.add_argument("--seed", type=int, default=20260907, help="the list is a function of it")
     s.add_argument("--features", help="labelmaker feature store (default: $LABELMAKER_ROOT/features)")
     s.add_argument("--frame-codes", help="IGNITE frame_codes directory")
     s.add_argument("--logs", help="sql/logs.jsonl, the source of mpid (default: paths.yaml's)")
