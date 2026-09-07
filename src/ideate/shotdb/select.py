@@ -7,9 +7,9 @@ a diversity quota. This module is the rules; `cli.cmd_corpus` is the I/O around 
 
 **Eligibility** (all four, per §5.7), evaluated per shot with the reason for every rejection kept:
 
-* **(a) the shot table row** -- `SHOT_TYPE == plasma`, `IP-(MA) >= 0.5`, `PULSE-LENGTH >= 2 s`, and
-  heating (`PBEAM-MAX >= 1 MW` or `PECH-MAX > 0`). A missing field is a rejection, not a pass: the
-  2021-2025 corpus has plasma shots whose row carries six columns and no heating at all, and
+* **(a) the shot table row** -- `SHOT_TYPE == plasma`, `abs(IP-(MA)) >= 0.5`, `PULSE-LENGTH >= 2 s`,
+  and heating (`PBEAM-MAX >= 1 MW` or `PECH-MAX > 0`). A missing field is a rejection, not a pass:
+  the 2021-2025 corpus has plasma shots whose row carries six columns and no heating at all, and
   reading absence as "unconstrained" would admit them on evidence that is not there.
 * **(b) the shot's own text** -- the shot-specific block must be the shot's, not the session's
   (`session_fallback`), long enough to carry a table (`shot_text`), and the run title must not name
@@ -17,8 +17,25 @@ a diversity quota. This module is the rules; `cli.cmd_corpus` is the I/O around 
 * **(c) the census** -- `mhr`, `ece` and `filterscopes` all present with >= 2 s of coverage. This is
   the "not empty" half of the user's sentence, and it is read off the fresh census
   (`corpus_coverage.parquet`), never off a group's channel count.
-* **(d) Ip flat-top >= 1 s** -- see `PROXY_RAMP_S` for which of the two sources answers this and
-  why the proxy is the one that answered it for `recommender_v1`.
+* **(d) Ip flat-top >= 1 s** -- in TWO passes. The first estimates it from `PULSE-LENGTH` for
+  every shot of the 13,106-shot pool (`PROXY_RAMP_S`, and the measured Ip trace wherever a
+  labelmaker feature file already exists); the second (`verify_flattop`, `--verify-flattop`) runs
+  over the 500 SELECTED shots only, where the per-shot cost of a real measurement is affordable,
+  replaces every proxy with the measured number it can, drops what the measurement rejects and
+  fills the hole from the same theme. A selected shot with no feature file is `pending`, not
+  `pulse_length_proxy`: it is listed for labelmaker's features stage and a re-run finishes it.
+
+**Amendment (2026-09-07 review).** Four readings of §5.7 are this module's, not the plan text's,
+and each is recorded here and in the generated YAML's `rule:` string because the plan is frozen:
+
+* `abs(IP-(MA)) >= 0.5`, not the signed value. DIII-D runs both polarities and the logbook records
+  a reversed-Ip discharge as a negative `IP-(MA)`; the signed comparison was a direction filter
+  nobody wrote, and it rejected all 663 reversed-Ip plasma shots -- among them every one of the
+  386 QH-titled shots, which is why v1 of the list had zero `qh_mode` shots.
+* `MIN_SHOT_CHARS` 200, not 300 (deviation 1 below).
+* Themes are assigned physics-first and matched against the mini-proposal subject as well as the
+  run-day title (`assign_theme`).
+* Rule (d) is the two-pass verification above.
 
 **Diversity** is `diversify()`: caps (<= 3 per run day, <= 5 per mini-proposal), a floor per lexicon
 theme, floors for the three sparse groups, a ceiling on any one year, and a preference for shots
@@ -48,7 +65,7 @@ import math
 import random
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -75,12 +92,16 @@ __all__ = [
     "replace",
     "spans",
     "summarize",
+    "verify_flattop",
     "with_flattop",
 ]
 
 # ------------------------------------------------------------------------------ the rule's constants
 
-RULE = "plan §5.7"
+RULE = (
+    "plan §5.7 as amended 2026-09-07: abs(Ip), ≥200 shot chars, physics-first themes, "
+    "two-pass flat-top"
+)
 
 MIN_IP_MA = 0.5
 MIN_PULSE_LENGTH_S = 2.0
@@ -93,6 +114,15 @@ MIN_GROUP_SPAN_S = 2.0
 # 43 %, bes 38 %, tangtv 44 % of the corpus -- so without a floor a greedy fill would take the
 # shots that have them only by accident.
 DIVERSITY_GROUPS = ("co2", "bes", "tangtv")
+
+# The one theme that is a statement about the MACHINE and not about the physics, and the only one
+# §5.7 excludes from the quotas. `assign_theme` gives it last (see there); `Quotas.exclude_theme`
+# keeps it out of the floors. It is deliberately NOT moved to the end of `configs/ideate/labels.yaml`
+# instead: `retrieval.scenarios.themes_of` returns every matching theme and `labels.claims` keys a
+# dict by id, so neither depends on the order -- but `labels.yaml` is also read by the parallel
+# labelmaker workstream, and a selection rule is the wrong place from which to renumber a shared
+# lexicon.
+FALLBACK_THEME = "startup_checkout"
 
 # `\b` on each alternative, so "Steps toward a stationary hybrid" is not a PS test and "Detachment
 # ... IRTV heat flux control test" is. That second one is a real title in the pool and a real
@@ -126,6 +156,14 @@ FLATTOP_FRACTION = 0.8
 # that errs by admitting a bad one costs a training set.
 PROXY_RAMP_S = 1.27
 
+# What answered rule (d) for a shot. `pending` is not a measurement and not an estimate: it is a
+# selected shot whose flat-top nobody has measured yet, carrying the proxy number as its estimate
+# and waiting for labelmaker's features stage. A list that still has any is refused by
+# `--finalize` and by `corpus select --verify-flattop` unless `--allow-pending` is given.
+FLATTOP_PROXY = "pulse_length_proxy"
+FLATTOP_MEASURED = "features_ip"
+FLATTOP_PENDING = "pending"
+
 
 # ------------------------------------------------------------------------------ what a shot is
 
@@ -153,6 +191,24 @@ class ShotFacts:
     has_shot_table: bool
     flattop_s: float
     flattop_source: str
+    mp_subject: str | None = None
+
+    @property
+    def ip_sign(self) -> int | None:
+        """+1 forward, -1 reversed, None when the row carried no current at all.
+
+        Rule (a) reads `abs(ip_ma)`, so the polarity does not decide anything -- but it decides a
+        great deal about the plasma, and 663 of the pool's shots have it negative. Carrying it
+        into the YAML is what lets a reader see that a counter-Ip shot is one, instead of finding
+        out from the traces.
+        """
+        return _sign(self.ip_ma)
+
+
+def _sign(x: float | None) -> int | None:
+    if x is None or not math.isfinite(float(x)) or float(x) == 0.0:
+        return None
+    return 1 if float(x) > 0 else -1
 
 
 @dataclass(frozen=True)
@@ -171,6 +227,7 @@ class Candidate:
     flattop_s: float
     flattop_source: str
     preferred: bool
+    ip_sign: int | None = None
     reason: str = ""
 
 
@@ -196,7 +253,7 @@ class Quotas:
     # floor on the shots the list exists to avoid. It is still a theme, and shots carrying it can
     # still arrive through the general fill -- where they compete round-robin with the other
     # thirteen instead of taking the 23 % of the pool they hold.
-    exclude_theme: str = "startup_checkout"
+    exclude_theme: str = FALLBACK_THEME
 
 
 # ------------------------------------------------------------------------------ parsing a bundle
@@ -245,7 +302,11 @@ def parse_facts(shot: int, bundle: str, *, mpid: str | None = None) -> ShotFacts
         shot_chars=len(text.shot_block(bundle)),
         has_shot_table=bool(row),
         flattop_s=flattop_proxy(pulse),
-        flattop_source="pulse_length_proxy",
+        flattop_source=FLATTOP_PROXY,
+        # Every subject line of the mini-proposal block, joined -- see `text.mp_subjects` for why
+        # there are two of them and why both are kept. `assign_theme` matches on it alongside the
+        # run-day title, which is what labels.yaml's header has always promised.
+        mp_subject=" | ".join(text.mp_subjects(bundle)) or None,
     )
 
 
@@ -261,9 +322,12 @@ def flattop_from_ip(t_s, ip) -> float:
     """The longest contiguous stretch, in seconds, of `|ip|` at or above `FLATTOP_FRACTION` of its
     95th percentile. NaN when the trace carries nothing to measure.
 
-    Sign-blind because DIII-D runs both polarities and the shot table's `IP-(MA)` is a magnitude.
-    Non-finite samples are dropped rather than treated as low current, which would cut a flat-top
-    in two at every dropout.
+    Sign-blind because DIII-D runs both polarities: `|Ip|` is what "flat-top" is about, and a
+    reversed-Ip trace is otherwise indistinguishable from one that never got off zero. (The shot
+    table's `IP-(MA)` is signed for the same reason, which rule (a) reads with `abs` -- this
+    docstring used to claim it was a magnitude, and that claim is what the signed comparison in
+    `eligible` was resting on.) Non-finite samples are dropped rather than treated as low current,
+    which would cut a flat-top in two at every dropout.
     """
     t = np.asarray(t_s, dtype=float).ravel()
     y = np.abs(np.asarray(ip, dtype=float).ravel())
@@ -342,7 +406,12 @@ def eligible(
     # (a) the shot table row
     if (facts.shot_type or "").strip().lower() != "plasma":
         bad.append("shot_type")
-    if facts.ip_ma is None or facts.ip_ma < MIN_IP_MA:
+    # `abs`: the logbook's `IP-(MA)` is SIGNED and DIII-D runs both polarities. `>= 0.5` on the
+    # signed number reads as "at least 0.5 MA and forward-going", which is a physics filter the
+    # plan never asked for and which rejected all 663 reversed-Ip plasma shots of the pool --
+    # including every one of the 386 QH-titled shots, the theme §5.7 most wanted. The polarity is
+    # kept (`ShotFacts.ip_sign`) rather than tested.
+    if facts.ip_ma is None or abs(facts.ip_ma) < MIN_IP_MA:
         bad.append("ip")
     if facts.pulse_length_s is None or facts.pulse_length_s < MIN_PULSE_LENGTH_S:
         bad.append("pulse_length")
@@ -381,17 +450,44 @@ def lexicon_themes() -> list[dict]:
     return list(config.load_yaml("labels.yaml").get("themes") or [])
 
 
-def assign_theme(title: str | None, themes: Sequence[Mapping] | None = None) -> str | None:
-    """The first lexicon theme whose keywords appear in `title`, or None.
+def assign_theme(
+    title: str | None,
+    themes: Sequence[Mapping] | None = None,
+    *,
+    subject: str | None = None,
+    fallback: str = FALLBACK_THEME,
+) -> str | None:
+    """The first PHYSICS lexicon theme whose keywords appear in the run title or the mini-proposal
+    subject; `fallback` (`startup_checkout`) only when none does; None when nothing matches.
 
-    The title is lowercased and given a space at each end, which is what makes labels.yaml's
+    Two things here are the 2026-09-07 amendment, both because a theme is what §5.7's quotas
+    allocate on and a shot filed under the wrong one is a shot the quota that wanted it never saw:
+
+    * **Physics themes are tried first.** `labels.yaml` lists `startup_checkout` first and the
+      assignment was first-match, so every run day whose title also said "checkout",
+      "calibration" or "commissioning" was filed as machine time -- 499 of the 1,246
+      checkout-titled eligible shots also match a physics theme, and `startup_checkout` is the
+      one theme §5.7 excludes from the quotas. "Divertor diagnostic checkout for QH/WPQH-Mode" is
+      a real run day, and it is a QH-mode run day. The fallback is still assigned when nothing
+      physical matches, so the summary can still count genuine machine time.
+    * **The mini-proposal subject is matched too**, which is what `labels.yaml`'s own header has
+      said since it was written ("matched against run title + MP title") and what was never
+      implemented. The subject is the experiment's words; the run-day title is the session
+      leader's shorthand for the day, and on ~154 eligible shots it carries no keyword at all
+      while the subject does.
+
+    Everything is lowercased and given a space at each end, which is what makes labels.yaml's
     `" nt "` and `"rt "` anchor on word boundaries -- the same normalisation the label rules use,
-    so a shot's theme here and its theme there cannot disagree.
+    so a shot's theme here and its theme there cannot disagree. Title and subject are joined by
+    `" | "` so no keyword can straddle the two.
     """
-    if not title:
+    parts = [str(p) for p in (title, subject) if p]
+    if not parts:
         return None
-    hay = " " + re.sub(r"\s+", " ", str(title).lower()).strip() + " "
-    for entry in themes if themes is not None else lexicon_themes():
+    hay = " " + re.sub(r"\s+", " ", " | ".join(parts).lower()).strip() + " "
+    entries = list(themes if themes is not None else lexicon_themes())
+    physics = [e for e in entries if str(e.get("id")) != fallback]
+    for entry in physics + [e for e in entries if str(e.get("id")) == fallback]:
         if any(str(k).lower() in hay for k in entry.get("keywords", ())):
             return str(entry["id"])
     return None
@@ -560,6 +656,92 @@ def diversify(
     return sorted(alloc.taken.values(), key=lambda c: c.shot)
 
 
+# ------------------------------------------------------- rule (d), pass two: the verification
+
+
+def verify_flattop(
+    selected: Sequence[Candidate],
+    candidates: Sequence[Candidate],
+    quotas: Quotas,
+    seed: int,
+    measure: Callable[[int], float | None],
+) -> tuple[list[Candidate], list[dict]]:
+    """Re-run rule (d) on the SELECTED shots with a measured Ip trace, and refill what it drops.
+
+    `measure(shot)` returns the measured flat-top in seconds, or None when there is nothing to
+    measure it from (no feature file yet). Returns `(selected, replacements)`, the list in shot
+    order and one replacement record per shot the measurement dropped.
+
+    This is the pass that makes rule (d) bite. The brief allows the expensive source only when the
+    shortlist is small; the whole pool is 5,809 shots and far past that, but the LIST is 500, so
+    the measurement is affordable exactly here -- after the quotas, on the shots that will actually
+    be used. Three outcomes per shot:
+
+    * measured and >= `MIN_FLATTOP_S` -- kept, `flattop_source="features_ip"`, and the estimate is
+      replaced by the number;
+    * measured and short -- DROPPED. The proxy said this shot had a flat-top and the Ip trace says
+      it did not, which is the case rule (d) exists for. A shot from the SAME theme takes its
+      place, through the same `_Allocator` rebuilt from the survivors, so every cap still holds
+      globally and a theme floor that was met before the verification is still met after it. Same
+      theme first and then any theme, because a hole in the list is worse than a hole in one
+      quota; `summary.replacements` records which happened.
+    * not measurable -- kept and marked `pending`. The number stays the proxy estimate (it is the
+      best estimate there is) but the SOURCE says nobody has measured it, which is the difference
+      the CLI's `--allow-pending` gate is about.
+
+    A replacement is itself measured before it is admitted, so the verification cannot fill a hole
+    with a shot that would have failed the same check.
+    """
+    kept: list[Candidate] = []
+    dropped: list[tuple[Candidate, float]] = []
+    for c in sorted(selected, key=lambda c: c.shot):
+        got = measure(c.shot)
+        if got is None:
+            kept.append(replace(c, flattop_source=FLATTOP_PENDING))
+        elif got >= MIN_FLATTOP_S:
+            kept.append(replace(c, flattop_s=float(got), flattop_source=FLATTOP_MEASURED))
+        else:
+            dropped.append((c, float(got)))
+
+    alloc = _Allocator(quotas)
+    for c in kept:
+        alloc.add(c, c.reason)
+    used = {c.shot for c in kept} | {c.shot for c, _ in dropped}
+    spare = [c for c in candidates if c.shot not in used]
+    verdicts: dict[int, float | None] = {}
+    replacements: list[dict] = []
+    for c, got in dropped:
+        same = [x for x in spare if x.theme == c.theme]
+        other = [x for x in spare if x.theme != c.theme]
+        chosen = None
+        for cand in list(_by_year(same, seed)) + list(_by_year(other, seed)):
+            if cand.shot not in verdicts:  # measured once, however many holes it is offered for
+                verdicts[cand.shot] = measure(cand.shot)
+            got_c = verdicts[cand.shot]
+            if got_c is not None and got_c < MIN_FLATTOP_S:
+                continue
+            fixed = (
+                replace(cand, flattop_source=FLATTOP_PENDING)
+                if got_c is None
+                else replace(cand, flattop_s=float(got_c), flattop_source=FLATTOP_MEASURED)
+            )
+            if alloc.add(fixed, f"replaces:{c.shot}"):
+                chosen = alloc.taken[cand.shot]
+                spare = [x for x in spare if x.shot != cand.shot]
+                break
+        replacements.append(
+            {
+                "dropped": int(c.shot),
+                "dropped_flattop_s": round(got, 3),
+                "theme": c.theme,
+                "replacement": None if chosen is None else int(chosen.shot),
+                "replacement_theme": None if chosen is None else chosen.theme,
+                "replacement_flattop_source": None if chosen is None else chosen.flattop_source,
+            }
+        )
+    return sorted(alloc.taken.values(), key=lambda c: c.shot), replacements
+
+
 # ------------------------------------------------------------------------------ the report
 
 
@@ -570,6 +752,7 @@ def summarize(
     selected: Sequence[Candidate],
     quotas: Quotas,
     candidates: Sequence[Candidate] | None = None,
+    replacements: Sequence[Mapping] | None = None,
 ) -> dict:
     """The summary block: how big the pool was, what rejected the rest, and what came out.
 
@@ -605,6 +788,15 @@ def summarize(
         "flattop_source": {
             k: int(v) for k, v in sorted(Counter(c.flattop_source for c in selected).items())
         },
+        # The polarity histogram. Rule (a) does not test it, so the list's counter-Ip content is a
+        # fact about the list a reader has to be able to see without opening 500 traces.
+        "ip_sign": {
+            ("+1" if k == 1 else "-1" if k == -1 else "unknown"): int(v)
+            for k, v in sorted(
+                Counter(c.ip_sign for c in selected).items(), key=lambda kv: (kv[0] is None, kv[0])
+            )
+        },
+        "replacements": [dict(r) for r in (replacements or ())],
         "runs": len({c.run_id for c in selected}),
         "mpids": len({c.mpid for c in selected if c.mpid}),
     }
@@ -643,6 +835,9 @@ def document(
                 "has_co2": bool(c.has_co2),
                 "has_bes": bool(c.has_bes),
                 "has_tangtv": bool(c.has_tangtv),
+                # +1 / -1 / None. Rule (a) reads |Ip|, so a reversed-Ip shot is admitted on its
+                # merits -- and a reader of the list can see which shots those are from here.
+                "ip_sign": None if c.ip_sign is None else int(c.ip_sign),
                 "flattop_s": round(float(c.flattop_s), 3),
                 "flattop_source": c.flattop_source,
             }
@@ -677,6 +872,16 @@ def format_summary(summary: Mapping) -> str:
     lines += [f"  {k:<22}{v:>8,}" for k, v in summary["reason"].items()]
     lines += ["", "flat-top source:"]
     lines += [f"  {k:<22}{v:>8,}" for k, v in summary["flattop_source"].items()]
+    if summary.get("ip_sign"):
+        lines += ["", "Ip polarity:"]
+        lines += [f"  {k:<22}{v:>8,}" for k, v in summary["ip_sign"].items()]
+    repl = summary.get("replacements") or []
+    lines += ["", f"flat-top verification dropped {len(repl)} shot(s):"]
+    lines += [
+        f"  {r['dropped']} ({r['dropped_flattop_s']} s, {r['theme'] or 'no theme'})"
+        f" -> {r['replacement'] or 'no replacement available'}"
+        for r in repl
+    ] or ["  (none)"]
     return "\n".join(lines)
 
 
@@ -690,7 +895,11 @@ def read_bundles(text_dir: Path, shots: Iterable[int]) -> dict[int, str]:
     for shot in shots:
         p = text_dir / f"shot_{int(shot)}.txt"
         if p.exists():
-            out[int(shot)] = p.read_text(errors="replace")
+            # Both arguments spelled out. The corpus is scraped HTML and some bundles carry bytes
+            # that are not valid UTF-8; without `encoding=` this reads under the process locale,
+            # so the same file decodes differently on a machine with LANG unset than on one
+            # without -- and `errors="replace"` would then be papering over the wrong problem.
+            out[int(shot)] = p.read_text(encoding="utf-8", errors="replace")
     return out
 
 

@@ -106,6 +106,16 @@ def test_the_textprocess_commands_are_deduplicated_and_sorted():
     assert len(logs.textprocess_commands(["20220301", "20220301"], base_dir="d", outdir="o")) == 1
 
 
+def test_the_missing_shot_list_is_wrapped_at_twenty_shots_a_line(tmp_path):
+    """3,596 shot numbers on one line is a line no terminal will show and no reader will read;
+    twenty a line is a block a human can scan down and a script can still `tr -s ' ' '\\n'`."""
+    shots = list(range(190000, 190045))
+    got = logs.format_missing(shots, n_total=50, index_json=tmp_path / "nope.json")
+    block = got.split("\n\n")[1].splitlines()
+    assert [len(line.split()) for line in block] == [20, 20, 5]
+    assert " ".join(" ".join(block).split()) == " ".join(str(s) for s in shots)
+
+
 def test_run_ids_come_from_the_shot_index_and_are_none_when_it_does_not_know(tmp_path):
     index = tmp_path / "index.json"
     index.write_text(json.dumps({"190001": "20220301", "bogus": "x"}), encoding="utf-8")

@@ -670,9 +670,25 @@ def _shot_file(path: str) -> list[int]:
 
 def cmd_corpus_select(args) -> int:
     """`corpus select`: the shot list of plan §5.7, written as YAML and as a plain shot-per-line
-    file for the labelmaker mask job."""
+    file for the labelmaker mask job.
+
+    Two passes over rule (d). Pass one estimates the Ip flat-top for the whole 13,106-shot pool;
+    `--verify-flattop` adds pass two, which measures it for the 500 SELECTED shots and refills what
+    the measurement drops (`select.verify_flattop`). A selected shot with no feature file comes out
+    of pass two as `pending` and is written to `--pending-out` for labelmaker's features stage;
+    `--allow-pending` is what lets such a list be written at all, and `--finalize` is the second
+    invocation that will not.
+    """
     import pandas as pd
 
+    if getattr(args, "finalize", False) and args.allow_pending:
+        print(
+            "--finalize and --allow-pending contradict each other: finalize IS the run that "
+            "refuses a list with unmeasured rows",
+            file=sys.stderr,
+        )
+        return 2
+    verify = args.verify_flattop or getattr(args, "finalize", False)
     census_path = Path(args.census) if args.census else None
     paths = None
     if not (census_path and args.text_dir and args.frame_codes is not None):
@@ -702,10 +718,9 @@ def cmd_corpus_select(args) -> int:
         # The measured flat-top only for shots that already have a feature file -- rule (d)'s
         # first source. There is no fdp pass: the pool after (a)-(c) is far past the ~900-shot
         # ceiling the brief set for that path, so every other shot answers (d) by the proxy.
-        if shot in preferred:
-            got = select_mod.measured_flattop(shot, features_dir)
-            if got is not None:
-                facts = select_mod.with_flattop(facts, got, "features_ip")
+        got = select_mod.measured_flattop(shot, features_dir)
+        if got is not None:
+            facts = select_mod.with_flattop(facts, got, select_mod.FLATTOP_MEASURED)
         ok, why = select_mod.eligible(
             facts, group_spans.get(shot, {}), min_shot_chars=args.min_shot_chars
         )
@@ -723,10 +738,11 @@ def cmd_corpus_select(args) -> int:
             run_id=f.run_id,
             mpid=mpids.get(f.shot),
             year=f.year,
-            theme=select_mod.assign_theme(f.title, themes),
+            theme=select_mod.assign_theme(f.title, themes, subject=f.mp_subject),
             has_co2=group_spans.get(f.shot, {}).get("co2", 0.0) > 0.0,
             has_bes=group_spans.get(f.shot, {}).get("bes", 0.0) > 0.0,
             has_tangtv=group_spans.get(f.shot, {}).get("tangtv", 0.0) > 0.0,
+            ip_sign=f.ip_sign,
             flattop_s=f.flattop_s,
             flattop_source=f.flattop_source,
             preferred=f.shot in preferred,
@@ -735,12 +751,43 @@ def cmd_corpus_select(args) -> int:
     ]
     quotas = select_mod.Quotas(n=args.n)
     selected = select_mod.diversify(candidates, quotas, seed=args.seed)
+
+    replacements: list[dict] = []
+    pending: list[int] = []
+    if verify:
+        selected, replacements = select_mod.verify_flattop(
+            selected,
+            candidates,
+            quotas,
+            seed=args.seed,
+            measure=lambda shot: select_mod.measured_flattop(shot, features_dir),
+        )
+        pending = [c.shot for c in selected if c.flattop_source == select_mod.FLATTOP_PENDING]
+        pending_out = _pending_path(args)
+        if pending and pending_out:
+            # Written even when the list itself is refused below: it is the work order that
+            # clears the refusal, and the run that produced it is the only thing that knows
+            # which 500 shots the features stage has to cover.
+            pending_out.parent.mkdir(parents=True, exist_ok=True)
+            pending_out.write_text("".join(f"{s}\n" for s in pending), encoding="utf-8")
+            print(f"wrote {pending_out} ({len(pending)} shot(s) awaiting features)")
+        if pending and not args.allow_pending:
+            print(
+                f"{len(pending)} selected shot(s) have no measured flat-top; refusing to write "
+                f"{args.name}. Run labelmaker's features stage over "
+                f"{pending_out or 'those shots (set $LABELMAKER_ROOT or --pending-out)'} and "
+                "repeat with --finalize, or pass --allow-pending to write the list as it stands.",
+                file=sys.stderr,
+            )
+            return 1
+
     summary = select_mod.summarize(
         n_candidates=len(candidates),
         reasons=reasons,
         selected=selected,
         quotas=quotas,
         candidates=candidates,
+        replacements=replacements,
     )
     doc = select_mod.document(
         selected, summary, name=args.name, seed=args.seed, n=len(selected)
@@ -765,6 +812,21 @@ def cmd_corpus_select(args) -> int:
 # The census columns the selection reads. Named so that a census that stopped writing one of them
 # fails here with a KeyError on this list rather than with a silently empty span mapping.
 _SELECT_COLUMNS = ["shot", "group", "present", "t0_s", "t1_s"]
+
+
+def _pending_path(args) -> Path | None:
+    """Where the selected shots that still need a labelmaker features run are listed.
+
+    `$LABELMAKER_ROOT/<name>_pending_features.txt` by default: the file is a work order for
+    labelmaker's features stage, so it belongs next to the feature store that stage writes into
+    and not in this repo. None when neither `--pending-out` nor `$LABELMAKER_ROOT` says where --
+    in which case the count is still printed and the list is still refused, because not knowing
+    where to file the work order is not a reason to publish an unverified list.
+    """
+    if args.pending_out:
+        return Path(args.pending_out)
+    root = os.environ.get("LABELMAKER_ROOT")
+    return Path(root) / f"{args.name}_pending_features.txt" if root else None
 
 
 def _labelmaker_features() -> Path | None:
@@ -1082,6 +1144,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=select_mod.MIN_SHOT_CHARS,
         help=f"rule (b) shot-text floor (default {select_mod.MIN_SHOT_CHARS}; see select.py)",
+    )
+    s.add_argument(
+        "--verify-flattop",
+        action="store_true",
+        help="pass two of rule (d): measure the Ip flat-top of every SELECTED shot and refill",
+    )
+    s.add_argument(
+        "--allow-pending",
+        action="store_true",
+        help="write the list even though some rows have no measured flat-top yet",
+    )
+    s.add_argument(
+        "--finalize",
+        action="store_true",
+        help="verify and accept nothing less: --verify-flattop with --allow-pending refused",
+    )
+    s.add_argument(
+        "--pending-out",
+        help="where to list the shots awaiting features (default: "
+        "$LABELMAKER_ROOT/<name>_pending_features.txt)",
     )
     p.set_defaults(func=cmd_corpus)
 
