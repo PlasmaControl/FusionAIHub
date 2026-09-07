@@ -297,6 +297,10 @@ def _coverage_table(db: store.ShotDB) -> str:
 def cmd_build(args) -> int:
     paths, cfg = config.load_paths(), build_mod.load_build_cfg()
     wanted = _shots(args, "poc_v1")
+    # `--limit` before anything else, and on the sorted list, so a pilot and the full run agree on
+    # which shots the pilot measured.
+    if args.limit is not None:
+        wanted = wanted[: args.limit]
     reader = build_mod.make_reader(args.reader, paths)
     shots, skipped = (wanted, []) if args.all else _with_ip(wanted, paths, reader)
     if skipped:
@@ -1177,6 +1181,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-encode every shot instead of carrying unchanged shots' IGNITE rows over",
     )
     p.add_argument("--all", action="store_true", help="build shots with no Ip on disk too")
+    p.add_argument(
+        "--limit", type=int, help="build only the first N shots of the selection (pilot runs)"
+    )
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("add", help="incremental upsert of one or more shots")

@@ -434,3 +434,18 @@ def test_no_encode_skips_the_ignite_channel_and_nothing_else(
     for name in ("emb_scalar", "emb_text_mp", "emb_text_log"):
         assert (paths.db_dir / f"{name}.npy").exists(), name
     assert not list(paths.db_dir.glob("emb_ignite_*.npy"))
+
+
+def test_a_rebuild_keeps_the_census_another_command_left_in_the_db_dir(
+    paths, staged_shot_a, text_fixtures, stub_embeddings
+):
+    """`ideate corpus scan` writes corpus_coverage.parquet into db_dir and `build` swaps that
+    whole directory. Without carrying the census across, a build would delete a 16,909-file
+    census as a side effect of writing shots.parquet."""
+    paths.db_dir.mkdir(parents=True, exist_ok=True)
+    (paths.db_dir / "corpus_coverage.parquet").write_bytes(b"census")
+    (paths.db_dir / "corpus_coverage.json").write_text("{}")
+    build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+    assert (paths.db_dir / "corpus_coverage.parquet").read_bytes() == b"census"
+    assert (paths.db_dir / "corpus_coverage.json").exists()
+    assert (paths.db_dir / "shots.parquet").exists()
