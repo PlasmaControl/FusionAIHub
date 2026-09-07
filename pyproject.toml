@@ -48,10 +48,10 @@ build-backend = "hatchling.build"
 path = "src/faith/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-# Three top-level packages live under src/. Without this list hatchling
+# Four top-level packages live under src/. Without this list hatchling
 # autodiscovers only the one matching the project name (faith), so
-# `import labelmaker` fails in every pixi env.
-packages = ["src/faith", "src/tokamak_foundation_model", "src/labelmaker"]
+# `import labelmaker` (and now `import ideate`) fails in every pixi env.
+packages = ["src/faith", "src/tokamak_foundation_model", "src/labelmaker", "src/ideate"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "ga-fdp"]
@@ -170,6 +170,133 @@ protobuf = "<7"
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
 
+[tool.pixi.feature.ideate]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.ideate.tasks]
+# `pixi run -e ideate ideate search --text "..."`: the shot analysis and
+# experiment-design CLI (phenomenon search, events, IGNITE what-if).
+ideate = "python -m ideate"
+# The MCP server, stdio transport, for an assistant to connect to.
+ideate-mcp = "python -m ideate.mcp"
+ideate-test = "pytest tests/ideate -q"
+
+[tool.pixi.feature.ideate.dependencies]
+# ideate is ported from the shot-recommender-system repo
+# (/scratch/gpfs/nc1514/shot-recommender-system), which pins its runtime
+# through a uv.lock. Every range here was checked on 2026-09-07 against the
+# versions that lock actually resolves - pydantic 2.13.5, fastapi 0.141.1,
+# sentence-transformers 6.0.1, httpx 0.28.1, pypdf 6.16.2, scikit-learn
+# 1.9.0 - so none of them had to be widened; a range that excluded the
+# running version would produce a port that passes here and fails there.
+# `mcp` and `duckdb` have no counterpart in that lock (the MCP server and
+# the DuckDB-backed store are new in this port).
+#
+# Everything below is a CONDA dependency: conda-forge carries current builds
+# of the whole set (`mcp` 2.1.1 was published there on 2026-08-26), and the
+# conda solver is the one that also chooses this environment's python. The
+# single exception is `sentence-transformers`, which has to come from pypi -
+# see the [feature.ideate.pypi-dependencies] block below for why.
+
+# shots.parquet and the per-segment tables. Same range as feature.labelmaker
+# so the two packages cannot end up wanting different pyarrow majors in an
+# environment that includes both; shotrec only asks for `pyarrow>=16`.
+pyarrow = ">=17,<22"
+# phenomena.yaml, actuators.yaml and the model cards ideate reads. Declared
+# directly for the same reason feature.labelmaker declares it: `yaml`
+# otherwise arrives only transitively through hydra-core -> omegaconf, which
+# is in [project] for IGNITE's sake and could be tidied away at any time.
+pyyaml = ">=6,<7"
+# The schema layer (PhenomenonHit, DesignReport, CircumstanceReport, ...).
+# >=2.12 is also conda-forge `mcp`'s own floor, so this is not a free choice.
+pydantic = ">=2.12,<3"
+# Signal processing behind the segment finder and the circumstances stats.
+# Unpinned to match [project], which also lists a bare `scipy`.
+scipy = "*"
+scikit-learn = ">=1.5,<2"
+# Corpus reads: the DIII-D shot HDF5 files under $IDEATE_CORPUS.
+h5py = ">=3.15,<4"
+tqdm = ">=4.66,<5"
+# Miniproposal PDFs -> the text that phenomenon search quotes from.
+pypdf = ">=4,<7"
+httpx = ">=0.27,<1"
+# `ideate serve`: the browser UI. Kept in the base feature rather than a
+# separate one because the MCP server and the UI share the same query layer.
+fastapi = ">=0.115,<1"
+uvicorn = ">=0.30,<1"
+# `from mcp.server import MCPServer`. 2.x only: FastMCP, the 1.x entry point,
+# is gone, so a solve that fell back to mcp 1.x would import-error rather
+# than merely behave differently.
+mcp = ">=2.1,<3"
+pytest = ">=9,<10"
+# Same channel-drift pin, and the same reason, as feature.labelmaker: a live
+# conda-forge solve picks up protobuf 7.x, which the shared [project] pin
+# `wandb>=0.25.1,<0.26` (protobuf<7) cannot satisfy. Scoped to this feature;
+# the already-locked environments stay on their own solve.
+protobuf = "<7"
+# The shot/segment/label store ideate queries. conda-forge ships the Python
+# bindings as `duckdb`.
+duckdb = ">=1.1,<2"
+
+[tool.pixi.feature.ideate.pypi-dependencies]
+# MiniLM text embeddings (sentence-transformers/all-MiniLM-L6-v2, 384-d).
+# The 6.x major is what shotrec runs; 5.x renamed enough of the encode path
+# that a lower floor would not be the code that was ported.
+#
+# This is the ONE package of the set that is taken from pypi rather than
+# conda-forge, and it is the fallback the spec anticipated. conda-forge does
+# publish it (6.0.1), but its recipe depends on `pytorch >=1.11.0`, so adding
+# it to [feature.ideate.dependencies] makes the conda solver choose torch -
+# it picks the newest, 2.12.0 - and pixi then hands that as a PINNED version
+# to the pypi solve, where it collides head-on with feature.cuda:
+#
+#   x failed to solve the pypi requirements of environment 'ideate'
+#   `-> Because you require torch>=2.5.1,<2.11 and torch==2.12.0, we can
+#       conclude that your requirements are unsatisfiable.
+#   help: torch==2.12.0 has been pinned by the conda solve.
+#
+# The cu124 range in feature.cuda is not ours to widen (cu124 is what ships
+# sm_70 kernels for the V100S cards these environments run on), and neither
+# environment wants a second copy of torch. Taking sentence-transformers from
+# pypi keeps torch entirely on the pypi side, where feature.cuda and
+# feature.ideate-cpu already decide which wheel each environment gets.
+sentence-transformers = ">=6,<7"
+
+# Absolute paths rather than repo-relative ones: the corpus and the label
+# store live outside this checkout, on /scratch/gpfs/EKOLEMEN, and the same
+# environment is used from a login node, a SLURM job and an MCP client
+# launched by an assistant, none of which share a working directory.
+# HF_HUB_OFFLINE: sentence-transformers reaches into huggingface_hub on every
+# model load even when the MiniLM checkpoint is already cached, and on a
+# compute node with no outbound route that call does not fail - it HANGS,
+# for minutes, inside httpx.connect_tcp (measured in shotrec, see the same
+# note at the top of its cli.py). The checkpoint is in
+# ~/.cache/huggingface/hub, so offline is the correct and much faster mode.
+# TOKENIZERS_PARALLELISM: the corpus build forks worker processes after a
+# tokenizer has been used; without this, every fork prints the HuggingFace
+# deadlock warning and the fast tokenizer disables its own threads anyway.
+[tool.pixi.feature.ideate.target.unix.activation.env]
+IDEATE_DATA_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/ideate"
+LABELMAKER_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"
+IDEATE_CORPUS = "/scratch/gpfs/EKOLEMEN/foundation_model"
+HF_HUB_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[tool.pixi.feature.ideate-cpu]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.ideate-cpu.pypi-dependencies]
+# A CPU-only twin of the `ideate` environment, exactly as feature.labelmaker
+# does it. The workspace installs `faith` editable everywhere, which drags
+# torch in, and the cu124 wheels are ~3 GB that a laptop-shaped run of
+# ideate - phenomenon search, the events tables, the MiniLM encoder - never
+# touches. Only `design_rollout` needs a GPU, and that is what the `ideate`
+# environment is for. Split into its own feature (rather than putting the
+# cpu index on `ideate` itself) so the two environments can differ in the
+# one line that separates them.
+torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
+torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
+
 [tool.pixi.feature.frontier]
 platforms = ["linux-64"]
 
@@ -208,3 +335,5 @@ default = ["cuda"]
 fdp = ["fdp", "cuda"]
 frontier = ["frontier"]
 labelmaker = ["labelmaker", "fdp"]
+ideate = ["ideate", "cuda"]
+ideate-cpu = ["ideate", "ideate-cpu"]
