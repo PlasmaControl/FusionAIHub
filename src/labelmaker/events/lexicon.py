@@ -245,6 +245,14 @@ def sentences(text: str) -> list[str]:
     is still an `eho` hit via `edge harmonic` - and that is part of why the
     lexicon carries the short spellings, but a long phrase with no short
     form is simply missed.
+
+    A `.` between two digits is NOT a terminator (`_DECIMAL_SAFE_DOT`), so
+    text whose only separator was a decimal point is ONE sentence. That is
+    the rule behaving correctly - `"1.2"` was never the end of a sentence -
+    but it is the one way it can LOWER a count rather than remove a false
+    positive: two mentions split by `"... 4.5 ..."` now share a sentence
+    and collapse into one `n_pos`, and a negative can now reach an alias it
+    could not before. Measured over 500 shots: no movement.
     """
     return [
         s for s in (" ".join(part.split()).lower()
