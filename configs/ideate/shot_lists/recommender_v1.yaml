@@ -1,5 +1,5 @@
 name: recommender_v1
-created: '2026-09-07T15:19:52+00:00'
+created: '2026-09-07T15:59:16+00:00'
 rule: 'plan §5.7 as amended 2026-09-07: abs(Ip), ≥200 shot chars, physics-first themes, two-pass flat-top'
 seed: 20260907
 n: 500
@@ -49,7 +49,7 @@ summary:
     co2: 204
     bes: 256
     tangtv: 284
-  preferred: 150
+  preferred: 500
   reason:
     fill: 169
     preferred: 85
@@ -67,14 +67,21 @@ summary:
     theme:tearing_mhd: 20
     theme:transport: 20
   flattop_source:
-    features_ip: 148
-    pending: 352
+    features_ip: 500
   ip_sign:
     '-1': 40
     '+1': 460
   replacements: []
   runs: 232
   mpids: 168
+  finalized: true
+  n_verified: 500
+  n_dropped: 0
+  n_featured: 878
+  n_frame_codes: 10
+  feature_store:
+    n_files: 878
+    max_mtime: '2026-09-07T15:58:28+00:00'
 hand_review:
   drop: []
   add: []
@@ -89,8 +96,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.62
-  flattop_source: pending
+  flattop_s: 1.9
+  flattop_source: features_ip
 - shot: 185955
   run_id: '20210419'
   mpid: '2019-01-01'
@@ -173,8 +180,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.76
-  flattop_source: pending
+  flattop_s: 4.625
+  flattop_source: features_ip
 - shot: 186034
   run_id: '20210421'
   mpid: '2019-01-05'
@@ -185,8 +192,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.74
-  flattop_source: pending
+  flattop_s: 4.725
+  flattop_source: features_ip
 - shot: 186036
   run_id: '20210421'
   mpid: '2019-01-05'
@@ -197,8 +204,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.02
-  flattop_source: pending
+  flattop_s: 3.8
+  flattop_source: features_ip
 - shot: 186055
   run_id: '20210422'
   mpid: '2019-01-08'
@@ -233,8 +240,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.26
-  flattop_source: pending
+  flattop_s: 5.05
+  flattop_source: features_ip
 - shot: 186114
   run_id: '20210426'
   mpid: '2019-22-09'
@@ -329,8 +336,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 6.27
-  flattop_source: pending
+  flattop_s: 5.3
+  flattop_source: features_ip
 - shot: 186257
   run_id: '20210430'
   mpid: '2019-24-50'
@@ -341,8 +348,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.2
-  flattop_source: pending
+  flattop_s: 5.075
+  flattop_source: features_ip
 - shot: 186259
   run_id: '20210430'
   mpid: '2019-24-50'
@@ -401,8 +408,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.75
-  flattop_source: pending
+  flattop_s: 4.7
+  flattop_source: features_ip
 - shot: 186481
   run_id: '20210524'
   mpid: '2019-22-07'
@@ -569,8 +576,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.91
-  flattop_source: pending
+  flattop_s: 4.75
+  flattop_source: features_ip
 - shot: 186867
   run_id: '20210609'
   mpid: '2019-53-01'
@@ -581,8 +588,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.89
-  flattop_source: pending
+  flattop_s: 4.575
+  flattop_source: features_ip
 - shot: 186892
   run_id: '20210610'
   mpid: '2019-02-16'
@@ -593,8 +600,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.76
-  flattop_source: pending
+  flattop_s: 4.55
+  flattop_source: features_ip
 - shot: 186904
   run_id: '20210610'
   mpid: '2019-02-16'
@@ -605,8 +612,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.05
-  flattop_source: pending
+  flattop_s: 1.325
+  flattop_source: features_ip
 - shot: 186921
   run_id: '20210610'
   mpid: '2019-02-16'
@@ -617,8 +624,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.96
-  flattop_source: pending
+  flattop_s: 5.0
+  flattop_source: features_ip
 - shot: 186940
   run_id: '20210611'
   mpid: '2019-24-46'
@@ -689,8 +696,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.79
-  flattop_source: pending
+  flattop_s: 4.575
+  flattop_source: features_ip
 - shot: 187071
   run_id: '20210616'
   mpid: '2019-24-72'
@@ -701,8 +708,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.76
-  flattop_source: pending
+  flattop_s: 4.55
+  flattop_source: features_ip
 - shot: 187075
   run_id: '20210616'
   mpid: '2019-24-72'
@@ -713,8 +720,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.0
-  flattop_source: pending
+  flattop_s: 4.55
+  flattop_source: features_ip
 - shot: 187143
   run_id: '20210618'
   mpid: '2019-42-01'
@@ -749,8 +756,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.74
-  flattop_source: pending
+  flattop_s: 4.5
+  flattop_source: features_ip
 - shot: 187169
   run_id: '20210621'
   mpid: '2021-99-01'
@@ -761,8 +768,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.04
-  flattop_source: pending
+  flattop_s: 4.5
+  flattop_source: features_ip
 - shot: 187196
   run_id: '20210622'
   mpid: '2019-52-06'
@@ -845,8 +852,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.22
-  flattop_source: pending
+  flattop_s: 3.975
+  flattop_source: features_ip
 - shot: 188734
   run_id: '20220415'
   mpid: '2022-99-99'
@@ -1145,8 +1152,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.08
-  flattop_source: pending
+  flattop_s: 3.603
+  flattop_source: features_ip
 - shot: 189445
   run_id: '20220513'
   mpid: '2022-35-07'
@@ -1817,8 +1824,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 6.27
-  flattop_source: pending
+  flattop_s: 5.744
+  flattop_source: features_ip
 - shot: 190592
   run_id: '20220713'
   mpid: '2022-08-01'
@@ -1829,8 +1836,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 6.46
-  flattop_source: pending
+  flattop_s: 7.201
+  flattop_source: features_ip
 - shot: 190601
   run_id: '20220713'
   mpid: '2022-08-01'
@@ -1841,8 +1848,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 7.46
-  flattop_source: pending
+  flattop_s: 6.667
+  flattop_source: features_ip
 - shot: 190627
   run_id: '20220714'
   mpid: '2022-35-01'
@@ -2069,8 +2076,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.25
-  flattop_source: pending
+  flattop_s: 3.33
+  flattop_source: features_ip
 - shot: 191213
   run_id: '20220812'
   mpid: '2022-13-53'
@@ -2081,8 +2088,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.67
-  flattop_source: pending
+  flattop_s: 2.419
+  flattop_source: features_ip
 - shot: 191230
   run_id: '20220812'
   mpid: '2022-13-53'
@@ -2093,8 +2100,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.66
-  flattop_source: pending
+  flattop_s: 2.48
+  flattop_source: features_ip
 - shot: 191251
   run_id: '20220812'
   mpid: '2022-13-53'
@@ -2105,8 +2112,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.67
-  flattop_source: pending
+  flattop_s: 2.479
+  flattop_source: features_ip
 - shot: 191329
   run_id: '20220816'
   mpid: '2022-13-53'
@@ -2117,8 +2124,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.67
-  flattop_source: pending
+  flattop_s: 2.481
+  flattop_source: features_ip
 - shot: 191346
   run_id: '20220816'
   mpid: '2022-13-53'
@@ -2129,8 +2136,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.67
-  flattop_source: pending
+  flattop_s: 2.481
+  flattop_source: features_ip
 - shot: 191498
   run_id: '20220823'
   mpid: '2022-11-03'
@@ -2141,8 +2148,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: -1
-  flattop_s: 3.87
-  flattop_source: pending
+  flattop_s: 4.55
+  flattop_source: features_ip
 - shot: 191510
   run_id: '20220823'
   mpid: '2022-11-03'
@@ -2153,8 +2160,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: -1
-  flattop_s: 4.27
-  flattop_source: pending
+  flattop_s: 4.543
+  flattop_source: features_ip
 - shot: 191515
   run_id: '20220823'
   mpid: '2022-11-03'
@@ -2165,8 +2172,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: -1
-  flattop_s: 4.3
-  flattop_source: pending
+  flattop_s: 4.789
+  flattop_source: features_ip
 - shot: 191725
   run_id: '20220901'
   mpid: '2022-32-04'
@@ -2177,8 +2184,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.51
-  flattop_source: pending
+  flattop_s: 4.153
+  flattop_source: features_ip
 - shot: 191726
   run_id: '20220901'
   mpid: '2022-32-04'
@@ -2189,8 +2196,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.76
-  flattop_source: pending
+  flattop_s: 4.063
+  flattop_source: features_ip
 - shot: 191727
   run_id: '20220901'
   mpid: '2022-32-04'
@@ -2201,8 +2208,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.38
-  flattop_source: pending
+  flattop_s: 4.066
+  flattop_source: features_ip
 - shot: 191828
   run_id: '20220907'
   mpid: '2022-08-03'
@@ -2213,8 +2220,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.38
-  flattop_source: pending
+  flattop_s: 3.183
+  flattop_source: features_ip
 - shot: 192082
   run_id: '20220916'
   mpid: '2022-14-03'
@@ -2225,8 +2232,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.75
-  flattop_source: pending
+  flattop_s: 5.377
+  flattop_source: features_ip
 - shot: 192090
   run_id: '20220916'
   mpid: '2022-14-03'
@@ -2237,8 +2244,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.61
-  flattop_source: pending
+  flattop_s: 5.085
+  flattop_source: features_ip
 - shot: 192092
   run_id: '20220916'
   mpid: '2022-14-03'
@@ -2249,8 +2256,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.45
-  flattop_source: pending
+  flattop_s: 3.894
+  flattop_source: features_ip
 - shot: 192390
   run_id: '20220928'
   mpid: '2022-36-06'
@@ -2273,8 +2280,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.42
-  flattop_source: pending
+  flattop_s: 4.408
+  flattop_source: features_ip
 - shot: 192465
   run_id: '20220930'
   mpid: '2022-34-04'
@@ -2285,8 +2292,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.16
-  flattop_source: pending
+  flattop_s: 1.579
+  flattop_source: features_ip
 - shot: 192473
   run_id: '20220930'
   mpid: '2022-34-04'
@@ -2297,8 +2304,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.38
-  flattop_source: pending
+  flattop_s: 4.264
+  flattop_source: features_ip
 - shot: 192766
   run_id: '20221109'
   mpid: '2022-35-01'
@@ -2309,8 +2316,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.32
-  flattop_source: pending
+  flattop_s: 4.533
+  flattop_source: features_ip
 - shot: 192768
   run_id: '20221109'
   mpid: '2022-35-01'
@@ -2321,8 +2328,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.28
-  flattop_source: pending
+  flattop_s: 4.533
+  flattop_source: features_ip
 - shot: 192954
   run_id: '20221118'
   mpid: '2022-12-03'
@@ -2333,8 +2340,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: -1
-  flattop_s: 4.5
-  flattop_source: pending
+  flattop_s: 4.842
+  flattop_source: features_ip
 - shot: 193038
   run_id: '20221123'
   mpid: '2022-00-01'
@@ -2345,8 +2352,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.64
-  flattop_source: pending
+  flattop_s: 1.954
+  flattop_source: features_ip
 - shot: 193040
   run_id: '20221123'
   mpid: '2022-00-01'
@@ -2369,8 +2376,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.48
-  flattop_source: pending
+  flattop_s: 3.87
+  flattop_source: features_ip
 - shot: 193348
   run_id: '20221207'
   mpid: '2022-11-05'
@@ -2381,8 +2388,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.26
-  flattop_source: pending
+  flattop_s: 3.102
+  flattop_source: features_ip
 - shot: 193353
   run_id: '20221207'
   mpid: '2022-11-05'
@@ -2393,8 +2400,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.96
-  flattop_source: pending
+  flattop_s: 3.096
+  flattop_source: features_ip
 - shot: 193354
   run_id: '20221207'
   mpid: '2022-11-05'
@@ -2405,8 +2412,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.95
-  flattop_source: pending
+  flattop_s: 4.848
+  flattop_source: features_ip
 - shot: 193542
   run_id: '20230104'
   mpid: '2022-99-99'
@@ -2417,8 +2424,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.67
-  flattop_source: pending
+  flattop_s: 4.52
+  flattop_source: features_ip
 - shot: 193586
   run_id: '20230105'
   mpid: '2022-99-99'
@@ -2429,8 +2436,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.79
-  flattop_source: pending
+  flattop_s: 4.508
+  flattop_source: features_ip
 - shot: 193802
   run_id: '20230113'
   mpid: '2022-16-05'
@@ -2441,8 +2448,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.99
-  flattop_source: pending
+  flattop_s: 5.569
+  flattop_source: features_ip
 - shot: 194024
   run_id: '20230124'
   mpid: '2022-16-07'
@@ -2453,8 +2460,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.01
-  flattop_source: pending
+  flattop_s: 3.489
+  flattop_source: features_ip
 - shot: 194026
   run_id: '20230124'
   mpid: '2022-16-07'
@@ -2465,8 +2472,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.56
-  flattop_source: pending
+  flattop_s: 3.969
+  flattop_source: features_ip
 - shot: 194033
   run_id: '20230124'
   mpid: '2022-16-07'
@@ -2477,8 +2484,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.22
-  flattop_source: pending
+  flattop_s: 4.941
+  flattop_source: features_ip
 - shot: 194076
   run_id: '20230125'
   mpid: '2022-16-06'
@@ -2489,8 +2496,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.38
-  flattop_source: pending
+  flattop_s: 3.873
+  flattop_source: features_ip
 - shot: 194203
   run_id: '20230130'
   mpid: '2022-16-11'
@@ -2501,8 +2508,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.67
-  flattop_source: pending
+  flattop_s: 4.331
+  flattop_source: features_ip
 - shot: 194211
   run_id: '20230130'
   mpid: '2022-16-11'
@@ -2513,8 +2520,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.12
-  flattop_source: pending
+  flattop_s: 5.466
+  flattop_source: features_ip
 - shot: 194238
   run_id: '20230131'
   mpid: '2022-16-08'
@@ -2525,8 +2532,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.65
-  flattop_source: pending
+  flattop_s: 4.546
+  flattop_source: features_ip
 - shot: 194268
   run_id: '20230201'
   mpid: '2022-16-01'
@@ -2537,8 +2544,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.56
-  flattop_source: pending
+  flattop_s: 2.534
+  flattop_source: features_ip
 - shot: 194277
   run_id: '20230201'
   mpid: '2022-16-01'
@@ -2549,8 +2556,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.36
-  flattop_source: pending
+  flattop_s: 3.187
+  flattop_source: features_ip
 - shot: 194350
   run_id: '20230206'
   mpid: '2022-16-07'
@@ -2561,8 +2568,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.14
-  flattop_source: pending
+  flattop_s: 4.715
+  flattop_source: features_ip
 - shot: 194402
   run_id: '20230207'
   mpid: '2022-16-02'
@@ -2573,8 +2580,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.17
-  flattop_source: pending
+  flattop_s: 2.123
+  flattop_source: features_ip
 - shot: 194407
   run_id: '20230207'
   mpid: '2022-16-02'
@@ -2585,8 +2592,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.09
-  flattop_source: pending
+  flattop_s: 2.693
+  flattop_source: features_ip
 - shot: 194413
   run_id: '20230207'
   mpid: '2022-16-02'
@@ -2597,8 +2604,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.04
-  flattop_source: pending
+  flattop_s: 1.994
+  flattop_source: features_ip
 - shot: 194449
   run_id: '20230208'
   mpid: '2022-16-08'
@@ -2609,8 +2616,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.9
-  flattop_source: pending
+  flattop_s: 2.587
+  flattop_source: features_ip
 - shot: 194549
   run_id: '20230227'
   mpid: null
@@ -2621,8 +2628,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.66
-  flattop_source: pending
+  flattop_s: 5.483
+  flattop_source: features_ip
 - shot: 194554
   run_id: '20230227'
   mpid: null
@@ -2633,8 +2640,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.78
-  flattop_source: pending
+  flattop_s: 5.496
+  flattop_source: features_ip
 - shot: 194567
   run_id: '20230227'
   mpid: null
@@ -2645,8 +2652,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 7.06
-  flattop_source: pending
+  flattop_s: 6.69
+  flattop_source: features_ip
 - shot: 194614
   run_id: '20230301'
   mpid: '2022-10-01'
@@ -2657,8 +2664,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.26
-  flattop_source: pending
+  flattop_s: 5.362
+  flattop_source: features_ip
 - shot: 194626
   run_id: '20230301'
   mpid: '2022-10-01'
@@ -2669,8 +2676,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.99
-  flattop_source: pending
+  flattop_s: 3.56
+  flattop_source: features_ip
 - shot: 194758
   run_id: '20230322'
   mpid: '2022-99-01'
@@ -2681,8 +2688,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.77
-  flattop_source: pending
+  flattop_s: 5.494
+  flattop_source: features_ip
 - shot: 194789
   run_id: '20230323'
   mpid: '2022-25-01'
@@ -2693,8 +2700,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.82
-  flattop_source: pending
+  flattop_s: 1.663
+  flattop_source: features_ip
 - shot: 194953
   run_id: '20230403'
   mpid: '2022-34-03'
@@ -2705,8 +2712,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.61
-  flattop_source: pending
+  flattop_s: 2.243
+  flattop_source: features_ip
 - shot: 194956
   run_id: '20230403'
   mpid: '2022-34-03'
@@ -2717,8 +2724,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.66
-  flattop_source: pending
+  flattop_s: 4.575
+  flattop_source: features_ip
 - shot: 194959
   run_id: '20230403'
   mpid: '2022-34-03'
@@ -2729,8 +2736,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.9
-  flattop_source: pending
+  flattop_s: 4.576
+  flattop_source: features_ip
 - shot: 195037
   run_id: '20230405'
   mpid: '2022-22-02'
@@ -2741,8 +2748,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.61
-  flattop_source: pending
+  flattop_s: 5.017
+  flattop_source: features_ip
 - shot: 195050
   run_id: '20230406'
   mpid: '2022-22-02'
@@ -2753,8 +2760,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.07
-  flattop_source: pending
+  flattop_s: 5.011
+  flattop_source: features_ip
 - shot: 195070
   run_id: '20230406'
   mpid: '2022-22-02'
@@ -2765,8 +2772,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.64
-  flattop_source: pending
+  flattop_s: 4.766
+  flattop_source: features_ip
 - shot: 195071
   run_id: '20230406'
   mpid: '2022-22-02'
@@ -2777,8 +2784,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.68
-  flattop_source: pending
+  flattop_s: 4.724
+  flattop_source: features_ip
 - shot: 195122
   run_id: '20230410'
   mpid: '2022-99-01'
@@ -2789,8 +2796,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 6.1
-  flattop_source: pending
+  flattop_s: 5.509
+  flattop_source: features_ip
 - shot: 195126
   run_id: '20230410'
   mpid: '2022-99-01'
@@ -2801,8 +2808,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.79
-  flattop_source: pending
+  flattop_s: 5.493
+  flattop_source: features_ip
 - shot: 195131
   run_id: '20230410'
   mpid: '2022-99-01'
@@ -2813,8 +2820,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.78
-  flattop_source: pending
+  flattop_s: 5.499
+  flattop_source: features_ip
 - shot: 195190
   run_id: '20230412'
   mpid: '2022-13-55'
@@ -2825,8 +2832,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.08
-  flattop_source: pending
+  flattop_s: 3.485
+  flattop_source: features_ip
 - shot: 195191
   run_id: '20230412'
   mpid: '2022-13-55'
@@ -2837,8 +2844,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.97
-  flattop_source: pending
+  flattop_s: 3.485
+  flattop_source: features_ip
 - shot: 195195
   run_id: '20230412'
   mpid: '2022-13-55'
@@ -2849,8 +2856,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.83
-  flattop_source: pending
+  flattop_s: 3.486
+  flattop_source: features_ip
 - shot: 195217
   run_id: '20230413'
   mpid: '2022-25-01'
@@ -2861,8 +2868,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.11
-  flattop_source: pending
+  flattop_s: 1.54
+  flattop_source: features_ip
 - shot: 195260
   run_id: '20230417'
   mpid: '2022-02-03'
@@ -2873,8 +2880,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.78
-  flattop_source: pending
+  flattop_s: 5.834
+  flattop_source: features_ip
 - shot: 195268
   run_id: '20230417'
   mpid: '2022-02-03'
@@ -2885,8 +2892,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.78
-  flattop_source: pending
+  flattop_s: 5.844
+  flattop_source: features_ip
 - shot: 195279
   run_id: '20230417'
   mpid: '2022-02-03'
@@ -2897,8 +2904,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.25
-  flattop_source: pending
+  flattop_s: 5.135
+  flattop_source: features_ip
 - shot: 195296
   run_id: '20230418'
   mpid: '2022-01-01'
@@ -2909,8 +2916,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.64
-  flattop_source: pending
+  flattop_s: 2.484
+  flattop_source: features_ip
 - shot: 195501
   run_id: '20230510'
   mpid: '2022-10-04'
@@ -2921,8 +2928,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.37
-  flattop_source: pending
+  flattop_s: 3.031
+  flattop_source: features_ip
 - shot: 195526
   run_id: '20230511'
   mpid: '2022-00-07'
@@ -2933,8 +2940,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.36
-  flattop_source: pending
+  flattop_s: 4.958
+  flattop_source: features_ip
 - shot: 195536
   run_id: '20230511'
   mpid: '2022-00-07'
@@ -2945,8 +2952,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.54
-  flattop_source: pending
+  flattop_s: 2.206
+  flattop_source: features_ip
 - shot: 195625
   run_id: '20230516'
   mpid: '2022-22-09'
@@ -2957,8 +2964,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.77
-  flattop_source: pending
+  flattop_s: 5.075
+  flattop_source: features_ip
 - shot: 195646
   run_id: '20230516'
   mpid: '2022-22-09'
@@ -2969,8 +2976,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.39
-  flattop_source: pending
+  flattop_s: 4.354
+  flattop_source: features_ip
 - shot: 195648
   run_id: '20230516'
   mpid: '2022-22-09'
@@ -2981,8 +2988,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.65
-  flattop_source: pending
+  flattop_s: 4.356
+  flattop_source: features_ip
 - shot: 195765
   run_id: '20230519'
   mpid: '2022-00-05'
@@ -2993,8 +3000,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.83
-  flattop_source: pending
+  flattop_s: 4.581
+  flattop_source: features_ip
 - shot: 195771
   run_id: '20230519'
   mpid: '2022-00-05'
@@ -3005,8 +3012,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.09
-  flattop_source: pending
+  flattop_s: 4.843
+  flattop_source: features_ip
 - shot: 195780
   run_id: '20230519'
   mpid: '2022-00-05'
@@ -3017,8 +3024,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.97
-  flattop_source: pending
+  flattop_s: 3.24
+  flattop_source: features_ip
 - shot: 195859
   run_id: '20230524'
   mpid: '2022-35-02'
@@ -3029,8 +3036,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 2.91
-  flattop_source: pending
+  flattop_s: 3.231
+  flattop_source: features_ip
 - shot: 195871
   run_id: '20230524'
   mpid: '2022-35-02'
@@ -3041,8 +3048,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 2.13
-  flattop_source: pending
+  flattop_s: 2.393
+  flattop_source: features_ip
 - shot: 195873
   run_id: '20230524'
   mpid: '2022-35-02'
@@ -3053,8 +3060,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 5.74
-  flattop_source: pending
+  flattop_s: 4.373
+  flattop_source: features_ip
 - shot: 195896
   run_id: '20230525'
   mpid: '2022-23-02'
@@ -3065,8 +3072,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.42
-  flattop_source: pending
+  flattop_s: 1.611
+  flattop_source: features_ip
 - shot: 195902
   run_id: '20230525'
   mpid: '2022-23-02'
@@ -3077,8 +3084,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.83
-  flattop_source: pending
+  flattop_s: 5.523
+  flattop_source: features_ip
 - shot: 195919
   run_id: '20230525'
   mpid: '2022-23-02'
@@ -3089,8 +3096,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.68
-  flattop_source: pending
+  flattop_s: 5.523
+  flattop_source: features_ip
 - shot: 195936
   run_id: '20230530'
   mpid: '2022-31-01'
@@ -3101,8 +3108,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.63
-  flattop_source: pending
+  flattop_s: 1.709
+  flattop_source: features_ip
 - shot: 195944
   run_id: '20230530'
   mpid: '2022-31-01'
@@ -3113,8 +3120,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.54
-  flattop_source: pending
+  flattop_s: 1.67
+  flattop_source: features_ip
 - shot: 195946
   run_id: '20230530'
   mpid: '2022-31-01'
@@ -3125,8 +3132,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.56
-  flattop_source: pending
+  flattop_s: 1.641
+  flattop_source: features_ip
 - shot: 196006
   run_id: '20230531'
   mpid: '2022-02-02'
@@ -3137,8 +3144,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.88
-  flattop_source: pending
+  flattop_s: 4.069
+  flattop_source: features_ip
 - shot: 196008
   run_id: '20230531'
   mpid: '2022-02-02'
@@ -3149,8 +3156,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.14
-  flattop_source: pending
+  flattop_s: 4.064
+  flattop_source: features_ip
 - shot: 196009
   run_id: '20230531'
   mpid: '2022-02-02'
@@ -3162,7 +3169,7 @@ shots:
   has_tangtv: true
   ip_sign: 1
   flattop_s: 4.06
-  flattop_source: pending
+  flattop_source: features_ip
 - shot: 196020
   run_id: '20230601'
   mpid: '2022-02-06'
@@ -3173,8 +3180,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.75
-  flattop_source: pending
+  flattop_s: 5.549
+  flattop_source: features_ip
 - shot: 196028
   run_id: '20230601'
   mpid: '2022-02-06'
@@ -3185,8 +3192,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.77
-  flattop_source: pending
+  flattop_s: 3.25
+  flattop_source: features_ip
 - shot: 196033
   run_id: '20230601'
   mpid: '2022-02-06'
@@ -3197,8 +3204,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.97
-  flattop_source: pending
+  flattop_s: 4.198
+  flattop_source: features_ip
 - shot: 196095
   run_id: '20230605'
   mpid: '2022-08-07'
@@ -3209,8 +3216,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.7
-  flattop_source: pending
+  flattop_s: 4.753
+  flattop_source: features_ip
 - shot: 196099
   run_id: '20230605'
   mpid: '2022-08-07'
@@ -3221,8 +3228,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.69
-  flattop_source: pending
+  flattop_s: 3.648
+  flattop_source: features_ip
 - shot: 196103
   run_id: '20230605'
   mpid: '2022-08-07'
@@ -3233,8 +3240,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.52
-  flattop_source: pending
+  flattop_s: 2.638
+  flattop_source: features_ip
 - shot: 196141
   run_id: '20230606'
   mpid: '2022-13-01'
@@ -3245,8 +3252,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.72
-  flattop_source: pending
+  flattop_s: 2.92
+  flattop_source: features_ip
 - shot: 196142
   run_id: '20230606'
   mpid: '2022-13-01'
@@ -3257,8 +3264,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.71
-  flattop_source: pending
+  flattop_s: 2.923
+  flattop_source: features_ip
 - shot: 196147
   run_id: '20230606'
   mpid: '2022-13-01'
@@ -3269,8 +3276,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.72
-  flattop_source: pending
+  flattop_s: 2.921
+  flattop_source: features_ip
 - shot: 196336
   run_id: '20230616'
   mpid: '2022-00-11'
@@ -3281,8 +3288,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.08
-  flattop_source: pending
+  flattop_s: 3.26
+  flattop_source: features_ip
 - shot: 196339
   run_id: '20230616'
   mpid: '2022-00-11'
@@ -3293,8 +3300,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.33
-  flattop_source: pending
+  flattop_s: 1.672
+  flattop_source: features_ip
 - shot: 196350
   run_id: '20230616'
   mpid: '2022-00-11'
@@ -3305,8 +3312,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.34
-  flattop_source: pending
+  flattop_s: 4.128
+  flattop_source: features_ip
 - shot: 196362
   run_id: '20230619'
   mpid: '2022-00-04'
@@ -3317,8 +3324,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.58
-  flattop_source: pending
+  flattop_s: 5.203
+  flattop_source: features_ip
 - shot: 196374
   run_id: '20230619'
   mpid: '2022-00-04'
@@ -3329,8 +3336,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.74
-  flattop_source: pending
+  flattop_s: 5.397
+  flattop_source: features_ip
 - shot: 196380
   run_id: '20230619'
   mpid: '2022-00-04'
@@ -3341,8 +3348,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.77
-  flattop_source: pending
+  flattop_s: 5.306
+  flattop_source: features_ip
 - shot: 196399
   run_id: '20230620'
   mpid: '2022-14-04'
@@ -3353,8 +3360,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.59
-  flattop_source: pending
+  flattop_s: 4.381
+  flattop_source: features_ip
 - shot: 196405
   run_id: '20230620'
   mpid: '2022-14-04'
@@ -3365,8 +3372,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.6
-  flattop_source: pending
+  flattop_s: 4.366
+  flattop_source: features_ip
 - shot: 196407
   run_id: '20230620'
   mpid: '2022-14-04'
@@ -3377,8 +3384,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.52
-  flattop_source: pending
+  flattop_s: 4.377
+  flattop_source: features_ip
 - shot: 196449
   run_id: '20230621'
   mpid: '2022-00-04'
@@ -3389,8 +3396,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.52
-  flattop_source: pending
+  flattop_s: 5.379
+  flattop_source: features_ip
 - shot: 196451
   run_id: '20230621'
   mpid: '2022-00-04'
@@ -3401,8 +3408,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.45
-  flattop_source: pending
+  flattop_s: 5.376
+  flattop_source: features_ip
 - shot: 196488
   run_id: '20230622'
   mpid: '2022-00-03'
@@ -3413,8 +3420,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.37
-  flattop_source: pending
+  flattop_s: 5.34
+  flattop_source: features_ip
 - shot: 196503
   run_id: '20230622'
   mpid: '2022-00-03'
@@ -3425,8 +3432,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.38
-  flattop_source: pending
+  flattop_s: 6.088
+  flattop_source: features_ip
 - shot: 196506
   run_id: '20230622'
   mpid: '2022-00-03'
@@ -3437,8 +3444,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.37
-  flattop_source: pending
+  flattop_s: 6.014
+  flattop_source: features_ip
 - shot: 196541
   run_id: '20230627'
   mpid: '2022-35-06'
@@ -3449,8 +3456,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 5.75
-  flattop_source: pending
+  flattop_s: 4.46
+  flattop_source: features_ip
 - shot: 196546
   run_id: '20230627'
   mpid: '2022-35-06'
@@ -3461,8 +3468,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 5.43
-  flattop_source: pending
+  flattop_s: 4.462
+  flattop_source: features_ip
 - shot: 196551
   run_id: '20230627'
   mpid: '2022-35-06'
@@ -3473,8 +3480,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.95
-  flattop_source: pending
+  flattop_s: 4.557
+  flattop_source: features_ip
 - shot: 196583
   run_id: '20230628'
   mpid: '2022-00-09'
@@ -3485,8 +3492,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.21
-  flattop_source: pending
+  flattop_s: 4.471
+  flattop_source: features_ip
 - shot: 196587
   run_id: '20230628'
   mpid: '2022-00-09'
@@ -3497,8 +3504,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 6.15
-  flattop_source: pending
+  flattop_s: 6.021
+  flattop_source: features_ip
 - shot: 196625
   run_id: '20230629'
   mpid: '2022-25-04'
@@ -3509,8 +3516,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.93
-  flattop_source: pending
+  flattop_s: 3.181
+  flattop_source: features_ip
 - shot: 196631
   run_id: '20230629'
   mpid: '2022-25-04'
@@ -3521,8 +3528,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.72
-  flattop_source: pending
+  flattop_s: 1.987
+  flattop_source: features_ip
 - shot: 196639
   run_id: '20230629'
   mpid: '2022-25-04'
@@ -3533,8 +3540,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.9
-  flattop_source: pending
+  flattop_s: 2.159
+  flattop_source: features_ip
 - shot: 198351
   run_id: '20240503'
   mpid: '2024-99-01'
@@ -3545,8 +3552,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.62
-  flattop_source: pending
+  flattop_s: 5.488
+  flattop_source: features_ip
 - shot: 198508
   run_id: '20240509'
   mpid: '2024-99-01'
@@ -3557,8 +3564,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.21
-  flattop_source: pending
+  flattop_s: 3.666
+  flattop_source: features_ip
 - shot: 198578
   run_id: '20240515'
   mpid: '2024-31-02'
@@ -3569,8 +3576,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.63
-  flattop_source: pending
+  flattop_s: 2.23
+  flattop_source: features_ip
 - shot: 198582
   run_id: '20240515'
   mpid: '2024-31-02'
@@ -3581,8 +3588,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.79
-  flattop_source: pending
+  flattop_s: 2.384
+  flattop_source: features_ip
 - shot: 198584
   run_id: '20240515'
   mpid: '2024-31-02'
@@ -3593,8 +3600,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.97
-  flattop_source: pending
+  flattop_s: 2.562
+  flattop_source: features_ip
 - shot: 198627
   run_id: '20240516'
   mpid: '2024-34-03'
@@ -3605,8 +3612,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.78
-  flattop_source: pending
+  flattop_s: 3.631
+  flattop_source: features_ip
 - shot: 198628
   run_id: '20240516'
   mpid: '2024-34-03'
@@ -3617,8 +3624,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.14
-  flattop_source: pending
+  flattop_s: 3.694
+  flattop_source: features_ip
 - shot: 198629
   run_id: '20240516'
   mpid: '2024-34-03'
@@ -3629,8 +3636,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.71
-  flattop_source: pending
+  flattop_s: 2.857
+  flattop_source: features_ip
 - shot: 198659
   run_id: '20240517'
   mpid: '2024-02-01'
@@ -3641,8 +3648,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 5.19
-  flattop_source: pending
+  flattop_s: 4.773
+  flattop_source: features_ip
 - shot: 198674
   run_id: '20240517'
   mpid: '2024-02-01'
@@ -3653,8 +3660,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.65
-  flattop_source: pending
+  flattop_s: 4.569
+  flattop_source: features_ip
 - shot: 198798
   run_id: '20240529'
   mpid: '2024-99-01'
@@ -3665,8 +3672,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.68
-  flattop_source: pending
+  flattop_s: 1.977
+  flattop_source: features_ip
 - shot: 198807
   run_id: '20240530'
   mpid: '2024-12-07'
@@ -3689,8 +3696,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 7.78
-  flattop_source: pending
+  flattop_s: 8.325
+  flattop_source: features_ip
 - shot: 198944
   run_id: '20240605'
   mpid: '2024-00-01'
@@ -3701,8 +3708,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.06
-  flattop_source: pending
+  flattop_s: 5.897
+  flattop_source: features_ip
 - shot: 198956
   run_id: '20240605'
   mpid: '2024-00-01'
@@ -3713,8 +3720,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 6.77
-  flattop_source: pending
+  flattop_s: 6.178
+  flattop_source: features_ip
 - shot: 198972
   run_id: '20240605'
   mpid: '2024-00-01'
@@ -3725,8 +3732,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 6.75
-  flattop_source: pending
+  flattop_s: 5.608
+  flattop_source: features_ip
 - shot: 199025
   run_id: '20240610'
   mpid: '2024-00-02'
@@ -3749,8 +3756,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 6.25
-  flattop_source: pending
+  flattop_s: 5.846
+  flattop_source: features_ip
 - shot: 199038
   run_id: '20240610'
   mpid: '2024-00-02'
@@ -3761,8 +3768,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.52
-  flattop_source: pending
+  flattop_s: 5.019
+  flattop_source: features_ip
 - shot: 199054
   run_id: '20240611'
   mpid: '2024-01-02'
@@ -3773,8 +3780,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.85
-  flattop_source: pending
+  flattop_s: 5.687
+  flattop_source: features_ip
 - shot: 199105
   run_id: '20240613'
   mpid: '2024-00-03'
@@ -3785,8 +3792,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.28
-  flattop_source: pending
+  flattop_s: 5.077
+  flattop_source: features_ip
 - shot: 199110
   run_id: '20240613'
   mpid: '2024-00-03'
@@ -3797,8 +3804,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.69
-  flattop_source: pending
+  flattop_s: 5.182
+  flattop_source: features_ip
 - shot: 199184
   run_id: '20240618'
   mpid: '2024-31-02'
@@ -3809,8 +3816,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.7
-  flattop_source: pending
+  flattop_s: 4.703
+  flattop_source: features_ip
 - shot: 199289
   run_id: '20240624'
   mpid: '2024-13-01'
@@ -3821,8 +3828,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.48
-  flattop_source: pending
+  flattop_s: 4.346
+  flattop_source: features_ip
 - shot: 199516
   run_id: '20240709'
   mpid: '2024-12-04'
@@ -3833,8 +3840,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.87
-  flattop_source: pending
+  flattop_s: 3.271
+  flattop_source: features_ip
 - shot: 199575
   run_id: '20240710'
   mpid: '2024-16-02'
@@ -3845,8 +3852,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.85
-  flattop_source: pending
+  flattop_s: 4.117
+  flattop_source: features_ip
 - shot: 199617
   run_id: '20240712'
   mpid: '2024-16-03'
@@ -3857,8 +3864,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.45
-  flattop_source: pending
+  flattop_s: 3.306
+  flattop_source: features_ip
 - shot: 199651
   run_id: '20240718'
   mpid: '2024-02-03'
@@ -3869,8 +3876,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.35
-  flattop_source: pending
+  flattop_s: 3.539
+  flattop_source: features_ip
 - shot: 199681
   run_id: '20240722'
   mpid: '2024-16-05'
@@ -3881,8 +3888,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.53
-  flattop_source: pending
+  flattop_s: 1.727
+  flattop_source: features_ip
 - shot: 199691
   run_id: '20240722'
   mpid: '2024-16-05'
@@ -3893,8 +3900,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.81
-  flattop_source: pending
+  flattop_s: 1.856
+  flattop_source: features_ip
 - shot: 199697
   run_id: '20240722'
   mpid: '2024-16-05'
@@ -3905,8 +3912,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.71
-  flattop_source: pending
+  flattop_s: 4.216
+  flattop_source: features_ip
 - shot: 199709
   run_id: '20240723'
   mpid: '2024-34-04'
@@ -3917,8 +3924,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.04
-  flattop_source: pending
+  flattop_s: 2.084
+  flattop_source: features_ip
 - shot: 199714
   run_id: '20240723'
   mpid: '2024-34-04'
@@ -3929,8 +3936,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.41
-  flattop_source: pending
+  flattop_s: 2.73
+  flattop_source: features_ip
 - shot: 199716
   run_id: '20240723'
   mpid: '2024-34-04'
@@ -3941,8 +3948,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.82
-  flattop_source: pending
+  flattop_s: 2.4
+  flattop_source: features_ip
 - shot: 199790
   run_id: '20240726'
   mpid: '2024-16-05'
@@ -3953,8 +3960,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.35
-  flattop_source: pending
+  flattop_s: 1.835
+  flattop_source: features_ip
 - shot: 199793
   run_id: '20240726'
   mpid: '2024-16-05'
@@ -3965,8 +3972,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.35
-  flattop_source: pending
+  flattop_s: 1.558
+  flattop_source: features_ip
 - shot: 199915
   run_id: '20240808'
   mpid: '2024-36-03'
@@ -3977,8 +3984,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.39
-  flattop_source: pending
+  flattop_s: 4.949
+  flattop_source: features_ip
 - shot: 199921
   run_id: '20240808'
   mpid: '2024-36-03'
@@ -3989,8 +3996,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.15
-  flattop_source: pending
+  flattop_s: 4.681
+  flattop_source: features_ip
 - shot: 200009
   run_id: '20240812'
   mpid: '2024-34-02'
@@ -4001,8 +4008,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.88
-  flattop_source: pending
+  flattop_s: 4.473
+  flattop_source: features_ip
 - shot: 200011
   run_id: '20240812'
   mpid: '2024-34-02'
@@ -4013,8 +4020,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.88
-  flattop_source: pending
+  flattop_s: 5.066
+  flattop_source: features_ip
 - shot: 200012
   run_id: '20240812'
   mpid: '2024-34-02'
@@ -4025,8 +4032,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.78
-  flattop_source: pending
+  flattop_s: 5.048
+  flattop_source: features_ip
 - shot: 200072
   run_id: '20240814'
   mpid: '2024-12-05'
@@ -4037,8 +4044,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.02
-  flattop_source: pending
+  flattop_s: 3.534
+  flattop_source: features_ip
 - shot: 200111
   run_id: '20240815'
   mpid: '2024-25-02'
@@ -4049,8 +4056,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.08
-  flattop_source: pending
+  flattop_s: 3.531
+  flattop_source: features_ip
 - shot: 200131
   run_id: '20240815'
   mpid: '2024-25-02'
@@ -4061,8 +4068,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.87
-  flattop_source: pending
+  flattop_s: 3.533
+  flattop_source: features_ip
 - shot: 200133
   run_id: '20240815'
   mpid: '2024-25-02'
@@ -4073,8 +4080,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.04
-  flattop_source: pending
+  flattop_s: 3.535
+  flattop_source: features_ip
 - shot: 200144
   run_id: '20240819'
   mpid: '2024-24-01'
@@ -4085,8 +4092,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.62
-  flattop_source: pending
+  flattop_s: 2.144
+  flattop_source: features_ip
 - shot: 200197
   run_id: '20240820'
   mpid: '2024-14-01'
@@ -4097,8 +4104,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.56
-  flattop_source: pending
+  flattop_s: 4.829
+  flattop_source: features_ip
 - shot: 200199
   run_id: '20240820'
   mpid: '2024-14-01'
@@ -4109,8 +4116,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.47
-  flattop_source: pending
+  flattop_s: 3.817
+  flattop_source: features_ip
 - shot: 200214
   run_id: '20240820'
   mpid: '2024-14-01'
@@ -4121,8 +4128,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.66
-  flattop_source: pending
+  flattop_s: 4.803
+  flattop_source: features_ip
 - shot: 200380
   run_id: '20240827'
   mpid: '2024-16-04'
@@ -4133,8 +4140,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.35
-  flattop_source: pending
+  flattop_s: 4.29
+  flattop_source: features_ip
 - shot: 200384
   run_id: '20240827'
   mpid: '2024-16-04'
@@ -4145,8 +4152,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.34
-  flattop_source: pending
+  flattop_s: 4.099
+  flattop_source: features_ip
 - shot: 200405
   run_id: '20240828'
   mpid: '2024-32-01'
@@ -4157,8 +4164,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.76
-  flattop_source: pending
+  flattop_s: 5.171
+  flattop_source: features_ip
 - shot: 200412
   run_id: '20240828'
   mpid: '2024-32-01'
@@ -4169,8 +4176,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.76
-  flattop_source: pending
+  flattop_s: 5.169
+  flattop_source: features_ip
 - shot: 200417
   run_id: '20240828'
   mpid: '2024-32-01'
@@ -4193,8 +4200,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.77
-  flattop_source: pending
+  flattop_s: 5.817
+  flattop_source: features_ip
 - shot: 200520
   run_id: '20240904'
   mpid: '2024-21-03'
@@ -4205,8 +4212,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.26
-  flattop_source: pending
+  flattop_s: 4.482
+  flattop_source: features_ip
 - shot: 200521
   run_id: '20240904'
   mpid: '2024-21-03'
@@ -4217,8 +4224,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.07
-  flattop_source: pending
+  flattop_s: 4.479
+  flattop_source: features_ip
 - shot: 200596
   run_id: '20240906'
   mpid: '2024-31-01'
@@ -4229,8 +4236,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.8
-  flattop_source: pending
+  flattop_s: 4.233
+  flattop_source: features_ip
 - shot: 200598
   run_id: '20240906'
   mpid: '2024-31-01'
@@ -4241,8 +4248,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.85
-  flattop_source: pending
+  flattop_s: 4.247
+  flattop_source: features_ip
 - shot: 200629
   run_id: '20240909'
   mpid: '2024-33-03'
@@ -4253,8 +4260,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.09
-  flattop_source: pending
+  flattop_s: 2.202
+  flattop_source: features_ip
 - shot: 200636
   run_id: '20240909'
   mpid: '2024-33-03'
@@ -4265,8 +4272,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.85
-  flattop_source: pending
+  flattop_s: 2.091
+  flattop_source: features_ip
 - shot: 200642
   run_id: '20240909'
   mpid: '2024-33-03'
@@ -4277,8 +4284,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.37
-  flattop_source: pending
+  flattop_s: 1.861
+  flattop_source: features_ip
 - shot: 200670
   run_id: '20240910'
   mpid: '2024-36-04'
@@ -4289,8 +4296,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.39
-  flattop_source: pending
+  flattop_s: 3.719
+  flattop_source: features_ip
 - shot: 200671
   run_id: '20240910'
   mpid: '2024-36-04'
@@ -4301,8 +4308,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.91
-  flattop_source: pending
+  flattop_s: 4.226
+  flattop_source: features_ip
 - shot: 200672
   run_id: '20240910'
   mpid: '2024-36-04'
@@ -4313,8 +4320,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.93
-  flattop_source: pending
+  flattop_s: 4.232
+  flattop_source: features_ip
 - shot: 200736
   run_id: '20240912'
   mpid: '2024-23-01'
@@ -4325,8 +4332,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.66
-  flattop_source: pending
+  flattop_s: 1.974
+  flattop_source: features_ip
 - shot: 200833
   run_id: '20240918'
   mpid: '2024-15-01'
@@ -4337,8 +4344,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.23
-  flattop_source: pending
+  flattop_s: 1.899
+  flattop_source: features_ip
 - shot: 200847
   run_id: '20240918'
   mpid: '2024-15-01'
@@ -4349,8 +4356,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.72
-  flattop_source: pending
+  flattop_s: 1.896
+  flattop_source: features_ip
 - shot: 200878
   run_id: '20240919'
   mpid: '2024-23-02'
@@ -4361,8 +4368,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.21
-  flattop_source: pending
+  flattop_s: 2.75
+  flattop_source: features_ip
 - shot: 200917
   run_id: '20240920'
   mpid: '2024-23-02'
@@ -4373,8 +4380,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.36
-  flattop_source: pending
+  flattop_s: 3.166
+  flattop_source: features_ip
 - shot: 200952
   run_id: '20240923'
   mpid: '2024-21-03'
@@ -4385,8 +4392,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.17
-  flattop_source: pending
+  flattop_s: 4.482
+  flattop_source: features_ip
 - shot: 200957
   run_id: '20240923'
   mpid: '2024-21-03'
@@ -4397,8 +4404,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.1
-  flattop_source: pending
+  flattop_s: 4.476
+  flattop_source: features_ip
 - shot: 200962
   run_id: '20240923'
   mpid: '2024-21-03'
@@ -4409,8 +4416,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.42
-  flattop_source: pending
+  flattop_s: 4.47
+  flattop_source: features_ip
 - shot: 200995
   run_id: '20240924'
   mpid: '2024-25-02'
@@ -4421,8 +4428,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.59
-  flattop_source: pending
+  flattop_s: 3.15
+  flattop_source: features_ip
 - shot: 200997
   run_id: '20240924'
   mpid: '2024-25-02'
@@ -4433,8 +4440,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.87
-  flattop_source: pending
+  flattop_s: 3.53
+  flattop_source: features_ip
 - shot: 201054
   run_id: '20240926'
   mpid: '2024-15-02'
@@ -4445,8 +4452,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.94
-  flattop_source: pending
+  flattop_s: 3.395
+  flattop_source: features_ip
 - shot: 201066
   run_id: '20240926'
   mpid: '2024-15-02'
@@ -4457,8 +4464,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.59
-  flattop_source: pending
+  flattop_s: 4.158
+  flattop_source: features_ip
 - shot: 201068
   run_id: '20240926'
   mpid: '2024-15-02'
@@ -4469,8 +4476,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.69
-  flattop_source: pending
+  flattop_s: 3.026
+  flattop_source: features_ip
 - shot: 201093
   run_id: '20240930'
   mpid: '2024-13-51'
@@ -4481,8 +4488,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.07
-  flattop_source: pending
+  flattop_s: 3.361
+  flattop_source: features_ip
 - shot: 201098
   run_id: '20240930'
   mpid: '2024-13-51'
@@ -4493,8 +4500,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.71
-  flattop_source: pending
+  flattop_s: 3.653
+  flattop_source: features_ip
 - shot: 201179
   run_id: '20241002'
   mpid: '2024-15-02'
@@ -4505,8 +4512,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.15
-  flattop_source: pending
+  flattop_s: 5.396
+  flattop_source: features_ip
 - shot: 201185
   run_id: '20241002'
   mpid: '2024-15-02'
@@ -4517,8 +4524,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.75
-  flattop_source: pending
+  flattop_s: 3.276
+  flattop_source: features_ip
 - shot: 201215
   run_id: '20241003'
   mpid: '2024-14-01'
@@ -4529,8 +4536,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.25
-  flattop_source: pending
+  flattop_s: 4.342
+  flattop_source: features_ip
 - shot: 201265
   run_id: '20241004'
   mpid: '2024-36-05'
@@ -4541,8 +4548,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.29
-  flattop_source: pending
+  flattop_s: 3.692
+  flattop_source: features_ip
 - shot: 201395
   run_id: '20241022'
   mpid: '2024-21-05'
@@ -4553,8 +4560,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.58
-  flattop_source: pending
+  flattop_s: 5.07
+  flattop_source: features_ip
 - shot: 201425
   run_id: '20241023'
   mpid: '2024-11-03'
@@ -4565,8 +4572,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.11
-  flattop_source: pending
+  flattop_s: 2.632
+  flattop_source: features_ip
 - shot: 201448
   run_id: '20241023'
   mpid: '2024-11-03'
@@ -4577,8 +4584,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.65
-  flattop_source: pending
+  flattop_s: 2.802
+  flattop_source: features_ip
 - shot: 201453
   run_id: '20241023'
   mpid: '2024-11-03'
@@ -4589,8 +4596,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.11
-  flattop_source: pending
+  flattop_s: 2.637
+  flattop_source: features_ip
 - shot: 201526
   run_id: '20241029'
   mpid: '2024-15-01'
@@ -4601,8 +4608,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.56
-  flattop_source: pending
+  flattop_s: 2.234
+  flattop_source: features_ip
 - shot: 201527
   run_id: '20241029'
   mpid: '2024-15-01'
@@ -4613,8 +4620,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.57
-  flattop_source: pending
+  flattop_s: 2.236
+  flattop_source: features_ip
 - shot: 201530
   run_id: '20241029'
   mpid: '2024-15-01'
@@ -4625,8 +4632,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.1
-  flattop_source: pending
+  flattop_s: 1.546
+  flattop_source: features_ip
 - shot: 201556
   run_id: '20241030'
   mpid: '2024-16-06'
@@ -4637,8 +4644,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.03
-  flattop_source: pending
+  flattop_s: 2.171
+  flattop_source: features_ip
 - shot: 201568
   run_id: '20241030'
   mpid: '2024-16-06'
@@ -4649,8 +4656,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.87
-  flattop_source: pending
+  flattop_s: 1.559
+  flattop_source: features_ip
 - shot: 201573
   run_id: '20241030'
   mpid: '2024-16-06'
@@ -4661,8 +4668,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.94
-  flattop_source: pending
+  flattop_s: 4.06
+  flattop_source: features_ip
 - shot: 201584
   run_id: '20241031'
   mpid: '2024-33-01'
@@ -4673,8 +4680,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.12
-  flattop_source: pending
+  flattop_s: 1.823
+  flattop_source: features_ip
 - shot: 201586
   run_id: '20241031'
   mpid: '2024-33-01'
@@ -4685,8 +4692,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.2
-  flattop_source: pending
+  flattop_s: 4.587
+  flattop_source: features_ip
 - shot: 201587
   run_id: '20241031'
   mpid: '2024-33-01'
@@ -4697,8 +4704,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.29
-  flattop_source: pending
+  flattop_s: 2.674
+  flattop_source: features_ip
 - shot: 201673
   run_id: '20241106'
   mpid: '2024-16-04'
@@ -4709,8 +4716,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.37
-  flattop_source: pending
+  flattop_s: 4.214
+  flattop_source: features_ip
 - shot: 201676
   run_id: '20241106'
   mpid: '2024-16-04'
@@ -4721,8 +4728,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.39
-  flattop_source: pending
+  flattop_s: 4.212
+  flattop_source: features_ip
 - shot: 201678
   run_id: '20241106'
   mpid: '2024-16-04'
@@ -4733,8 +4740,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.27
-  flattop_source: pending
+  flattop_s: 4.216
+  flattop_source: features_ip
 - shot: 201718
   run_id: '20241107'
   mpid: '2024-22-04'
@@ -4745,8 +4752,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.6
-  flattop_source: pending
+  flattop_s: 6.173
+  flattop_source: features_ip
 - shot: 201721
   run_id: '20241107'
   mpid: '2024-22-04'
@@ -4757,8 +4764,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.52
-  flattop_source: pending
+  flattop_s: 6.093
+  flattop_source: features_ip
 - shot: 201873
   run_id: '20241115'
   mpid: '2024-23-01'
@@ -4769,8 +4776,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.77
-  flattop_source: pending
+  flattop_s: 2.747
+  flattop_source: features_ip
 - shot: 201875
   run_id: '20241115'
   mpid: '2024-23-01'
@@ -4781,8 +4788,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.77
-  flattop_source: pending
+  flattop_s: 2.747
+  flattop_source: features_ip
 - shot: 201881
   run_id: '20241115'
   mpid: '2024-23-01'
@@ -4805,8 +4812,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.16
-  flattop_source: pending
+  flattop_s: 5.153
+  flattop_source: features_ip
 - shot: 201945
   run_id: '20241119'
   mpid: '2024-22-04'
@@ -4817,8 +4824,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.58
-  flattop_source: pending
+  flattop_s: 6.142
+  flattop_source: features_ip
 - shot: 201946
   run_id: '20241119'
   mpid: '2024-22-04'
@@ -4829,8 +4836,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.5
-  flattop_source: pending
+  flattop_s: 6.064
+  flattop_source: features_ip
 - shot: 201953
   run_id: '20241119'
   mpid: '2024-22-04'
@@ -4841,8 +4848,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 6.92
-  flattop_source: pending
+  flattop_s: 7.481
+  flattop_source: features_ip
 - shot: 202000
   run_id: '20241120'
   mpid: '2024-16-03'
@@ -4853,8 +4860,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.75
-  flattop_source: pending
+  flattop_s: 3.06
+  flattop_source: features_ip
 - shot: 202013
   run_id: '20241121'
   mpid: '2024-35-05'
@@ -4865,8 +4872,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.26
-  flattop_source: pending
+  flattop_s: 4.073
+  flattop_source: features_ip
 - shot: 202017
   run_id: '20241121'
   mpid: '2024-35-05'
@@ -4877,8 +4884,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.29
-  flattop_source: pending
+  flattop_s: 3.14
+  flattop_source: features_ip
 - shot: 202034
   run_id: '20241121'
   mpid: '2024-35-05'
@@ -4889,8 +4896,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: -1
-  flattop_s: 4.39
-  flattop_source: pending
+  flattop_s: 4.54
+  flattop_source: features_ip
 - shot: 202095
   run_id: '20241202'
   mpid: '2024-24-02'
@@ -4901,8 +4908,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 1.23
-  flattop_source: pending
+  flattop_s: 1.763
+  flattop_source: features_ip
 - shot: 202131
   run_id: '20241203'
   mpid: '2024-23-01'
@@ -4913,8 +4920,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: -1
-  flattop_s: 3.51
-  flattop_source: pending
+  flattop_s: 2.56
+  flattop_source: features_ip
 - shot: 202180
   run_id: '20241204'
   mpid: '2024-13-03'
@@ -4925,8 +4932,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.54
-  flattop_source: pending
+  flattop_s: 4.827
+  flattop_source: features_ip
 - shot: 202726
   run_id: '20250409'
   mpid: '2025-99-99'
@@ -4937,8 +4944,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.03
-  flattop_source: pending
+  flattop_s: 4.774
+  flattop_source: features_ip
 - shot: 202729
   run_id: '20250409'
   mpid: '2025-99-99'
@@ -4949,8 +4956,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.1
-  flattop_source: pending
+  flattop_s: 4.776
+  flattop_source: features_ip
 - shot: 202955
   run_id: '20250428'
   mpid: '2024-99-01'
@@ -4961,8 +4968,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.7
-  flattop_source: pending
+  flattop_s: 4.317
+  flattop_source: features_ip
 - shot: 202956
   run_id: '20250428'
   mpid: '2024-99-01'
@@ -4973,8 +4980,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.7
-  flattop_source: pending
+  flattop_s: 4.316
+  flattop_source: features_ip
 - shot: 202987
   run_id: '20250429'
   mpid: '2024-36-08'
@@ -4985,8 +4992,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.08
-  flattop_source: pending
+  flattop_s: 4.213
+  flattop_source: features_ip
 - shot: 203033
   run_id: '20250501'
   mpid: '2025-02-02'
@@ -4997,8 +5004,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.18
-  flattop_source: pending
+  flattop_s: 4.002
+  flattop_source: features_ip
 - shot: 203036
   run_id: '20250501'
   mpid: '2025-02-02'
@@ -5009,8 +5016,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.18
-  flattop_source: pending
+  flattop_s: 4.001
+  flattop_source: features_ip
 - shot: 203041
   run_id: '20250501'
   mpid: '2025-02-02'
@@ -5021,8 +5028,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.15
-  flattop_source: pending
+  flattop_s: 4.173
+  flattop_source: features_ip
 - shot: 203059
   run_id: '20250502'
   mpid: '2025-26-01'
@@ -5033,8 +5040,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.76
-  flattop_source: pending
+  flattop_s: 3.742
+  flattop_source: features_ip
 - shot: 203060
   run_id: '20250502'
   mpid: '2025-26-01'
@@ -5045,8 +5052,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.09
-  flattop_source: pending
+  flattop_s: 1.763
+  flattop_source: features_ip
 - shot: 203147
   run_id: '20250506'
   mpid: '2025-16-01'
@@ -5057,8 +5064,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.15
-  flattop_source: pending
+  flattop_s: 3.243
+  flattop_source: features_ip
 - shot: 203181
   run_id: '20250507'
   mpid: '2025-16-01'
@@ -5069,8 +5076,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.91
-  flattop_source: pending
+  flattop_s: 1.663
+  flattop_source: features_ip
 - shot: 203244
   run_id: '20250512'
   mpid: '2025-99-99'
@@ -5081,8 +5088,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.39
-  flattop_source: pending
+  flattop_s: 4.232
+  flattop_source: features_ip
 - shot: 203254
   run_id: '20250513'
   mpid: '2025-99-99'
@@ -5093,8 +5100,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 3.6
-  flattop_source: pending
+  flattop_s: 3.96
+  flattop_source: features_ip
 - shot: 203295
   run_id: '20250514'
   mpid: '2025-16-02'
@@ -5105,8 +5112,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.29
-  flattop_source: pending
+  flattop_s: 4.353
+  flattop_source: features_ip
 - shot: 203300
   run_id: '20250514'
   mpid: '2025-16-02'
@@ -5117,8 +5124,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.4
-  flattop_source: pending
+  flattop_s: 4.351
+  flattop_source: features_ip
 - shot: 203307
   run_id: '20250515'
   mpid: '2025-02-05'
@@ -5129,8 +5136,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.37
-  flattop_source: pending
+  flattop_s: 4.473
+  flattop_source: features_ip
 - shot: 203313
   run_id: '20250515'
   mpid: '2025-02-05'
@@ -5141,8 +5148,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.36
-  flattop_source: pending
+  flattop_s: 4.471
+  flattop_source: features_ip
 - shot: 203332
   run_id: '20250515'
   mpid: '2025-02-05'
@@ -5153,8 +5160,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.34
-  flattop_source: pending
+  flattop_s: 4.575
+  flattop_source: features_ip
 - shot: 203393
   run_id: '20250520'
   mpid: '2025-00-03'
@@ -5165,8 +5172,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.64
-  flattop_source: pending
+  flattop_s: 3.549
+  flattop_source: features_ip
 - shot: 203395
   run_id: '20250520'
   mpid: '2025-00-03'
@@ -5177,8 +5184,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.69
-  flattop_source: pending
+  flattop_s: 3.556
+  flattop_source: features_ip
 - shot: 203403
   run_id: '20250520'
   mpid: '2025-00-03'
@@ -5189,8 +5196,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.44
-  flattop_source: pending
+  flattop_s: 3.69
+  flattop_source: features_ip
 - shot: 203409
   run_id: '20250521'
   mpid: '2025-16-03'
@@ -5201,8 +5208,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.13
-  flattop_source: pending
+  flattop_s: 3.636
+  flattop_source: features_ip
 - shot: 203410
   run_id: '20250521'
   mpid: '2025-16-03'
@@ -5213,8 +5220,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.87
-  flattop_source: pending
+  flattop_s: 3.452
+  flattop_source: features_ip
 - shot: 203426
   run_id: '20250521'
   mpid: '2025-16-03'
@@ -5225,8 +5232,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.73
-  flattop_source: pending
+  flattop_s: 2.505
+  flattop_source: features_ip
 - shot: 203444
   run_id: '20250522'
   mpid: '2025-01-01'
@@ -5237,8 +5244,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.35
-  flattop_source: pending
+  flattop_s: 5.036
+  flattop_source: features_ip
 - shot: 203453
   run_id: '20250522'
   mpid: '2025-01-01'
@@ -5249,8 +5256,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.09
-  flattop_source: pending
+  flattop_s: 5.165
+  flattop_source: features_ip
 - shot: 203462
   run_id: '20250522'
   mpid: '2025-01-01'
@@ -5261,8 +5268,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.75
-  flattop_source: pending
+  flattop_s: 5.16
+  flattop_source: features_ip
 - shot: 203475
   run_id: '20250527'
   mpid: '2025-13-02'
@@ -5273,8 +5280,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.82
-  flattop_source: pending
+  flattop_s: 4.027
+  flattop_source: features_ip
 - shot: 203478
   run_id: '20250527'
   mpid: '2025-13-02'
@@ -5285,8 +5292,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.44
-  flattop_source: pending
+  flattop_s: 2.664
+  flattop_source: features_ip
 - shot: 203488
   run_id: '20250527'
   mpid: '2025-13-02'
@@ -5297,8 +5304,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.63
-  flattop_source: pending
+  flattop_s: 4.174
+  flattop_source: features_ip
 - shot: 203496
   run_id: '20250528'
   mpid: '2025-26-01'
@@ -5309,8 +5316,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.36
-  flattop_source: pending
+  flattop_s: 4.261
+  flattop_source: features_ip
 - shot: 203505
   run_id: '20250528'
   mpid: '2025-26-01'
@@ -5321,8 +5328,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.07
-  flattop_source: pending
+  flattop_s: 4.279
+  flattop_source: features_ip
 - shot: 203537
   run_id: '20250529'
   mpid: '2025-36-02'
@@ -5333,8 +5340,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.81
-  flattop_source: pending
+  flattop_s: 3.328
+  flattop_source: features_ip
 - shot: 203541
   run_id: '20250529'
   mpid: '2025-36-02'
@@ -5345,8 +5352,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.14
-  flattop_source: pending
+  flattop_s: 2.579
+  flattop_source: features_ip
 - shot: 203551
   run_id: '20250529'
   mpid: '2025-36-02'
@@ -5357,8 +5364,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.7
-  flattop_source: pending
+  flattop_s: 2.146
+  flattop_source: features_ip
 - shot: 203596
   run_id: '20250602'
   mpid: '2025-99-99'
@@ -5369,8 +5376,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.55
-  flattop_source: pending
+  flattop_s: 4.143
+  flattop_source: features_ip
 - shot: 203641
   run_id: '20250603'
   mpid: '2025-13-01'
@@ -5381,8 +5388,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.47
-  flattop_source: pending
+  flattop_s: 1.586
+  flattop_source: features_ip
 - shot: 203643
   run_id: '20250603'
   mpid: '2025-13-01'
@@ -5393,8 +5400,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.64
-  flattop_source: pending
+  flattop_s: 2.327
+  flattop_source: features_ip
 - shot: 203660
   run_id: '20250604'
   mpid: '2025-13-03'
@@ -5405,8 +5412,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.75
-  flattop_source: pending
+  flattop_s: 2.976
+  flattop_source: features_ip
 - shot: 203661
   run_id: '20250604'
   mpid: '2025-13-03'
@@ -5417,8 +5424,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.95
-  flattop_source: pending
+  flattop_s: 3.282
+  flattop_source: features_ip
 - shot: 203664
   run_id: '20250604'
   mpid: '2025-13-03'
@@ -5429,8 +5436,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.84
-  flattop_source: pending
+  flattop_s: 4.064
+  flattop_source: features_ip
 - shot: 203746
   run_id: '20250610'
   mpid: '2025-25-01'
@@ -5441,8 +5448,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.32
-  flattop_source: pending
+  flattop_s: 3.53
+  flattop_source: features_ip
 - shot: 203752
   run_id: '20250610'
   mpid: '2025-25-01'
@@ -5453,8 +5460,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.03
-  flattop_source: pending
+  flattop_s: 3.526
+  flattop_source: features_ip
 - shot: 203762
   run_id: '20250611'
   mpid: '2025-25-04'
@@ -5465,8 +5472,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.82
-  flattop_source: pending
+  flattop_s: 3.531
+  flattop_source: features_ip
 - shot: 203765
   run_id: '20250611'
   mpid: '2025-25-04'
@@ -5477,8 +5484,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.83
-  flattop_source: pending
+  flattop_s: 3.533
+  flattop_source: features_ip
 - shot: 203828
   run_id: '20250613'
   mpid: '2025-01-01'
@@ -5489,8 +5496,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.27
-  flattop_source: pending
+  flattop_s: 5.168
+  flattop_source: features_ip
 - shot: 203872
   run_id: '20250616'
   mpid: '2025-34-02'
@@ -5501,8 +5508,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.78
-  flattop_source: pending
+  flattop_s: 5.22
+  flattop_source: features_ip
 - shot: 203876
   run_id: '20250616'
   mpid: '2025-34-02'
@@ -5513,8 +5520,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.31
-  flattop_source: pending
+  flattop_s: 3.735
+  flattop_source: features_ip
 - shot: 203904
   run_id: '20250617'
   mpid: '2025-12-05'
@@ -5525,8 +5532,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 7.2
-  flattop_source: pending
+  flattop_s: 6.197
+  flattop_source: features_ip
 - shot: 203905
   run_id: '20250617'
   mpid: '2025-12-05'
@@ -5537,8 +5544,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 7.2
-  flattop_source: pending
+  flattop_s: 6.202
+  flattop_source: features_ip
 - shot: 203906
   run_id: '20250617'
   mpid: '2025-12-05'
@@ -5549,8 +5556,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 7.19
-  flattop_source: pending
+  flattop_s: 6.201
+  flattop_source: features_ip
 - shot: 203932
   run_id: '20250618'
   mpid: '2025-32-01'
@@ -5561,8 +5568,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.76
-  flattop_source: pending
+  flattop_s: 5.832
+  flattop_source: features_ip
 - shot: 203946
   run_id: '20250618'
   mpid: '2025-32-01'
@@ -5573,8 +5580,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.67
-  flattop_source: pending
+  flattop_s: 5.808
+  flattop_source: features_ip
 - shot: 203957
   run_id: '20250618'
   mpid: '2025-32-01'
@@ -5585,8 +5592,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.67
-  flattop_source: pending
+  flattop_s: 5.809
+  flattop_source: features_ip
 - shot: 203987
   run_id: '20250619'
   mpid: '2025-14-01'
@@ -5597,8 +5604,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.44
-  flattop_source: pending
+  flattop_s: 5.319
+  flattop_source: features_ip
 - shot: 204049
   run_id: '20250624'
   mpid: '2025-22-01'
@@ -5609,8 +5616,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.32
-  flattop_source: pending
+  flattop_s: 1.722
+  flattop_source: features_ip
 - shot: 204054
   run_id: '20250624'
   mpid: '2025-22-01'
@@ -5621,8 +5628,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.03
-  flattop_source: pending
+  flattop_s: 1.721
+  flattop_source: features_ip
 - shot: 204062
   run_id: '20250624'
   mpid: '2025-22-01'
@@ -5633,8 +5640,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 2.25
-  flattop_source: pending
+  flattop_s: 1.716
+  flattop_source: features_ip
 - shot: 204085
   run_id: '20250625'
   mpid: '2025-25-03'
@@ -5645,8 +5652,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.91
-  flattop_source: pending
+  flattop_s: 3.53
+  flattop_source: features_ip
 - shot: 204095
   run_id: '20250625'
   mpid: '2025-25-03'
@@ -5657,8 +5664,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.14
-  flattop_source: pending
+  flattop_s: 3.527
+  flattop_source: features_ip
 - shot: 204107
   run_id: '20250626'
   mpid: '2025-15-01'
@@ -5669,8 +5676,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 1.55
-  flattop_source: pending
+  flattop_s: 2.109
+  flattop_source: features_ip
 - shot: 204113
   run_id: '20250626'
   mpid: '2025-15-01'
@@ -5681,8 +5688,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.22
-  flattop_source: pending
+  flattop_s: 4.745
+  flattop_source: features_ip
 - shot: 204114
   run_id: '20250626'
   mpid: '2025-15-01'
@@ -5693,8 +5700,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 3.97
-  flattop_source: pending
+  flattop_s: 4.503
+  flattop_source: features_ip
 - shot: 204157
   run_id: '20250627'
   mpid: '2025-16-05'
@@ -5705,8 +5712,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.68
-  flattop_source: pending
+  flattop_s: 4.151
+  flattop_source: features_ip
 - shot: 204163
   run_id: '20250630'
   mpid: '2025-34-02'
@@ -5717,8 +5724,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.15
-  flattop_source: pending
+  flattop_s: 5.53
+  flattop_source: features_ip
 - shot: 204170
   run_id: '20250630'
   mpid: '2025-34-02'
@@ -5729,8 +5736,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.01
-  flattop_source: pending
+  flattop_s: 2.601
+  flattop_source: features_ip
 - shot: 204173
   run_id: '20250630'
   mpid: '2025-34-02'
@@ -5741,8 +5748,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.44
-  flattop_source: pending
+  flattop_s: 3.028
+  flattop_source: features_ip
 - shot: 204195
   run_id: '20250701'
   mpid: '2025-32-02'
@@ -5753,8 +5760,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.2
-  flattop_source: pending
+  flattop_s: 2.641
+  flattop_source: features_ip
 - shot: 204204
   run_id: '20250701'
   mpid: '2025-32-02'
@@ -5765,8 +5772,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.65
-  flattop_source: pending
+  flattop_s: 5.37
+  flattop_source: features_ip
 - shot: 204207
   run_id: '20250701'
   mpid: '2025-32-02'
@@ -5777,8 +5784,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.78
-  flattop_source: pending
+  flattop_s: 5.228
+  flattop_source: features_ip
 - shot: 204249
   run_id: '20250702'
   mpid: '2025-35-01'
@@ -5789,8 +5796,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.09
-  flattop_source: pending
+  flattop_s: 1.725
+  flattop_source: features_ip
 - shot: 204259
   run_id: '20250702'
   mpid: '2025-35-01'
@@ -5801,8 +5808,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.64
-  flattop_source: pending
+  flattop_s: 2.942
+  flattop_source: features_ip
 - shot: 204261
   run_id: '20250702'
   mpid: '2025-35-01'
@@ -5813,8 +5820,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 3.02
-  flattop_source: pending
+  flattop_s: 2.307
+  flattop_source: features_ip
 - shot: 204270
   run_id: '20250703'
   mpid: '2025-32-03'
@@ -5825,8 +5832,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.27
-  flattop_source: pending
+  flattop_s: 4.281
+  flattop_source: features_ip
 - shot: 204272
   run_id: '20250703'
   mpid: '2025-32-03'
@@ -5837,8 +5844,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.68
-  flattop_source: pending
+  flattop_s: 4.256
+  flattop_source: features_ip
 - shot: 204279
   run_id: '20250703'
   mpid: '2025-32-03'
@@ -5849,8 +5856,8 @@ shots:
   has_bes: true
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 4.67
-  flattop_source: pending
+  flattop_s: 4.277
+  flattop_source: features_ip
 - shot: 204318
   run_id: '20250707'
   mpid: '2025-23-01'
@@ -5861,8 +5868,8 @@ shots:
   has_bes: false
   has_tangtv: false
   ip_sign: 1
-  flattop_s: 5.18
-  flattop_source: pending
+  flattop_s: 5.759
+  flattop_source: features_ip
 - shot: 204346
   run_id: '20250708'
   mpid: '2025-31-01'
@@ -5873,8 +5880,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 6.18
-  flattop_source: pending
+  flattop_s: 6.253
+  flattop_source: features_ip
 - shot: 204348
   run_id: '20250708'
   mpid: '2025-31-01'
@@ -5885,8 +5892,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 6.25
-  flattop_source: pending
+  flattop_s: 6.246
+  flattop_source: features_ip
 - shot: 204355
   run_id: '20250708'
   mpid: '2025-31-01'
@@ -5897,8 +5904,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.12
-  flattop_source: pending
+  flattop_s: 4.25
+  flattop_source: features_ip
 - shot: 204382
   run_id: '20250709'
   mpid: '2025-13-05'
@@ -5909,8 +5916,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.58
-  flattop_source: pending
+  flattop_s: 4.233
+  flattop_source: features_ip
 - shot: 204387
   run_id: '20250709'
   mpid: '2025-13-05'
@@ -5921,8 +5928,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.58
-  flattop_source: pending
+  flattop_s: 4.23
+  flattop_source: features_ip
 - shot: 204416
   run_id: '20250710'
   mpid: '2025-13-04'
@@ -5933,8 +5940,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.18
-  flattop_source: pending
+  flattop_s: 4.761
+  flattop_source: features_ip
 - shot: 204422
   run_id: '20250710'
   mpid: '2025-13-04'
@@ -5945,8 +5952,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.25
-  flattop_source: pending
+  flattop_s: 3.063
+  flattop_source: features_ip
 - shot: 204426
   run_id: '20250710'
   mpid: '2025-13-04'
@@ -5957,8 +5964,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 2.27
-  flattop_source: pending
+  flattop_s: 3.091
+  flattop_source: features_ip
 - shot: 204449
   run_id: '20250711'
   mpid: '2025-36-02'
@@ -5969,8 +5976,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.63
-  flattop_source: pending
+  flattop_s: 5.733
+  flattop_source: features_ip
 - shot: 204454
   run_id: '20250711'
   mpid: '2025-36-02'
@@ -5981,8 +5988,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.64
-  flattop_source: pending
+  flattop_s: 5.727
+  flattop_source: features_ip
 - shot: 204598
   run_id: '20250721'
   mpid: '2025-16-05'
@@ -5993,8 +6000,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.79
-  flattop_source: pending
+  flattop_s: 4.166
+  flattop_source: features_ip
 - shot: 204657
   run_id: '20250723'
   mpid: '2025-26-01'
@@ -6005,8 +6012,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 4.51
-  flattop_source: pending
+  flattop_s: 3.355
+  flattop_source: features_ip
 - shot: 204881
   run_id: '20250807'
   mpid: '2025-16-02'
@@ -6017,8 +6024,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 5.17
-  flattop_source: pending
+  flattop_s: 5.235
+  flattop_source: features_ip
 - shot: 204882
   run_id: '20250807'
   mpid: '2025-16-02'
@@ -6029,8 +6036,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 4.99
-  flattop_source: pending
+  flattop_s: 5.211
+  flattop_source: features_ip
 - shot: 204884
   run_id: '20250807'
   mpid: '2025-16-02'
@@ -6041,8 +6048,8 @@ shots:
   has_bes: true
   has_tangtv: true
   ip_sign: -1
-  flattop_s: 5.39
-  flattop_source: pending
+  flattop_s: 4.649
+  flattop_source: features_ip
 - shot: 204908
   run_id: '20250808'
   mpid: '2025-21-01'
@@ -6053,8 +6060,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.68
-  flattop_source: pending
+  flattop_s: 5.591
+  flattop_source: features_ip
 - shot: 204917
   run_id: '20250808'
   mpid: '2025-21-01'
@@ -6065,8 +6072,8 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.33
-  flattop_source: pending
+  flattop_s: 5.581
+  flattop_source: features_ip
 - shot: 204925
   run_id: '20250808'
   mpid: '2025-21-01'
@@ -6077,5 +6084,5 @@ shots:
   has_bes: false
   has_tangtv: true
   ip_sign: 1
-  flattop_s: 5.69
-  flattop_source: pending
+  flattop_s: 5.593
+  flattop_source: features_ip
