@@ -45,7 +45,10 @@ the PORT re-run, or the record's numbers are a measurement of code that no
 longer exists. `--port-only` is that: it re-runs step 2 alone on the shot and
 the record the file already names, and amends it with a `port_rerun` stanza -
 the crash count, the median period, the elapsed time, the largest distance
-from the crashes the record already holds, and the sha it was measured at.
+from the crashes the record already holds, the sha it was measured at, and
+whether anything under `src/labelmaker` was uncommitted when it ran (`dirty`;
+a dirty record names a tree that is not the tree that was measured, so re-run
+it once the change is committed).
 `tests/labelmaker/test_events_heuristics.py` then checks that count against
 the reference's, so a port that drifts away from omnimode fails the suite
 rather than waiting for somebody to spend the eight minutes.
@@ -155,6 +158,25 @@ def git_sha(repo: Path) -> str:
     return out.stdout.strip()
 
 
+def git_dirty(repo: Path, pathspec: str) -> bool:
+    """Is anything under `pathspec` uncommitted? True where git cannot say.
+
+    `labelmaker_sha` alone is a claim the record cannot back: HEAD names a
+    tree, and the code that actually ran is HEAD plus whatever was sitting
+    in the working tree. So the stanza carries both, and a `dirty` record
+    is a measurement of code nobody can get back. Unknown counts as dirty:
+    a record that cannot prove it was clean is not clean.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain", "--", pathspec],
+            capture_output=True, text=True, check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return True
+    return bool(out.stdout.strip())
+
+
 def port_rerun(record_path: Path, corpus: Path) -> int:
     """Re-run the port on the record's own shot and amend the record.
 
@@ -181,6 +203,7 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
     deltas = np.array([r["delta_ms"] for r in rows], dtype=np.float64)
     record["port_rerun"] = {
         "labelmaker_sha": git_sha(REPO),
+        "dirty": git_dirty(REPO, "src/labelmaker"),
         "n": stats["n"],
         "median_ms": stats["median_period_ms"],
         "elapsed_s": elapsed,
@@ -192,6 +215,8 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
           f"median {stats['median_period_ms']:.1f} ms")
     print(f"recorded      {record['reference']['n']:4d} reference crashes   "
           f"max |dt| {record['port_rerun']['max_abs_dt_ms']:.3e} ms")
+    print(f"tree          {git_sha(REPO)[:12]}"
+          f"{'  DIRTY' if record['port_rerun']['dirty'] else '  clean'}")
     print(f"amended       {record_path}")
     return 0
 
