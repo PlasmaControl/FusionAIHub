@@ -105,6 +105,12 @@ class Paths:
         never enter the subset, so without this file it is searched for
         again on every call - a full pass over 616 MB to learn the same
         nothing, once per record-less shot per pass over a shot list.
+
+        A miss is a fact about the source at the time, not forever, so
+        there are two ways back: `text_weak.build_logs_subset(
+        refresh_missing=True)` - which `python -m labelmaker.run events
+        --refresh-text` is the production owner of - re-asks for the shots
+        listed here, and DELETING this file forgets every recorded miss.
         """
         return self.text_cache / "logs_subset.missing"
 

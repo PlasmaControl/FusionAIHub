@@ -591,7 +591,8 @@ def _skip_category(reason: str) -> str:
     return f"{exc_type}: {prefix}" if prefix else exc_type
 
 
-def _skip_report(skipped: dict[str, str], resolvers: dict[str, set]) -> dict:
+def _skip_report(skipped: dict[str, str], resolvers: dict[str, set],
+                 *, requested=None) -> dict:
     """A histogram of *why* shots were skipped, plus a warning when the run
     looks broken rather than merely gappy.
 
@@ -600,6 +601,15 @@ def _skip_report(skipped: dict[str, str], resolvers: dict[str, set]) -> dict:
     JSON instead of needing a separate investigation: one cause accounting
     for most of the skips, or a whole feature source contributing nothing
     across every shot the run touched.
+
+    `requested` is the canonical feature names the run actually asked for,
+    and it narrows the second trigger to the sources those names DECLARE. A
+    source nobody asked anything of has not failed: `events` serves exactly
+    one feature (`phenomenon_window_features`), so before this every
+    validate run of every model that does not consume window features
+    reported it as having "served nothing at all" - noise on the one report
+    whose warnings are supposed to mean something. `None` keeps the old
+    behaviour of checking every source in `ns.SOURCES`.
     """
     histogram: dict[str, int] = {}
     for reason in skipped.values():
@@ -618,8 +628,12 @@ def _skip_report(skipped: dict[str, str], resolvers: dict[str, set]) -> dict:
     from .features import namespace as ns
 
     served = {s for sources in resolvers.values() for s in sources}
+    if requested is None:
+        asked_of = set(ns.SOURCES)
+    else:
+        asked_of = {s for n in requested for s in ns.by_name(n).sources}
     for source in ns.SOURCES:
-        if source not in served:
+        if source in asked_of and source not in served:
             warnings.append(
                 f"no shot resolved any feature through {source!r} this run - "
                 "that source served nothing at all, which is either an empty "
@@ -877,7 +891,8 @@ def reconstruction_fidelity(
         # The per-shot diagnosis, plus the histogram/warning a reader would
         # otherwise have to re-derive by hand from `skipped`.
         "skip_diagnosis": skip_diagnosis,
-        "skip_reasons": _skip_report(skipped, resolvers),
+        "skip_reasons": _skip_report(skipped, resolvers,
+                                    requested=spec.canonical_names),
         "incomplete_features": {k: v for k, v in incomplete.items() if v},
         "match": match_info,
         "per_feature": per_feature,
@@ -1229,7 +1244,8 @@ def label_quality(
         "shots_used": used,
         "skipped": skipped,
         "skip_diagnosis": skip_diagnosis,
-        "skip_reasons": _skip_report(skipped, resolvers),
+        "skip_reasons": _skip_report(skipped, resolvers,
+                                    requested=spec.canonical_names),
         "resolvers": {k: sorted(v) for k, v in resolvers.items()},
         "selection_effect_note": (
             "shots skip when their archived rows cannot be aligned to the "
