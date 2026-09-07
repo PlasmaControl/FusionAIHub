@@ -337,3 +337,6 @@ frontier = ["frontier"]
 labelmaker = ["labelmaker", "fdp"]
 ideate = ["ideate", "cuda"]
 ideate-cpu = ["ideate", "ideate-cpu"]
+
+[tool.pytest.ini_options]
+markers = ["real_data: requires the read-only EKOLEMEN stores and/or local model weights"]

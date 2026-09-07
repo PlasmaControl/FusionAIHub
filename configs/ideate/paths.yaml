@@ -1,0 +1,22 @@
+# Every absolute path the project touches. ${var} refers to another key here or to an env var.
+# Override the root for tests/other users with IDEATE_DATA_ROOT, or point IDEATE_PATHS at another file.
+data_root: /scratch/gpfs/EKOLEMEN/nc1514/ideate
+raw_dir: ${data_root}/raw                       # our fetched per-shot files (d3d_fusion_data layout)
+db_dir: ${data_root}/db
+text_cache_dir: ${data_root}/text_cache
+ignite_inputs_dir: ${data_root}/ignite_inputs
+models_dir: /scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models                 # local copy of the IGNITE checkpoint bundle
+eval_dir: ${data_root}/eval
+sessions_dir: ${data_root}/sessions
+actuations_dir: ${data_root}/actuations       # saved actuator waveform sets (POST /api/actuation)
+llm_cache_dir: ${data_root}/llm_cache
+staged_raw_dir: /scratch/gpfs/EKOLEMEN/d3d_fusion_data              # read-only, owned by ps9551
+text_root: /scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text
+logs_jsonl: ${text_root}/sql/logs.jsonl
+shot_index_json: ${text_root}/sql/index.json
+shotsummary_raw_dir: ${text_root}/shotsummary/raw
+per_shot_txt_dir: ${text_root}/shotsummary/processed/per_shot_txt
+qh_database_csv: /scratch/gpfs/EKOLEMEN/big_d3d_data/0labeled_data/QH_Database.csv
+foundation_model_processed_dir: /scratch/gpfs/EKOLEMEN/foundation_model   # <shot>_processed.h5 (IGNITE inputs)
+fdp_project_dir: /scratch/gpfs/nc1514/fdp
+sentence_transformers_model: sentence-transformers/all-MiniLM-L6-v2
