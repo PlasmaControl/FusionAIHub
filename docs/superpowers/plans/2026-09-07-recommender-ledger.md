@@ -23,7 +23,7 @@ Per task: command run, output summary, jobstats (for SLURM jobs), reviewer verdi
 | L2 | `events/unet.py` vendored U-Net + `pin_unet.py` golden | opus | complete (8542db3, 9ee4f9b; review approved, Important fix folded into L3 housekeeping) |
 | L3 | `events/channels.py` + `events/masks.py`; smoke on 198658 reproduces A1 constants | opus | complete (e75826c, 309f480; review approved, Important OOM-copy fix folded into L4 housekeeping) |
 | L4 | `events/tracks.py` | opus | complete (bd4fedb, 4187a92; 923 tests; review approved, 2 Important → L5 housekeeping) |
-| L5 | `events/transients.py` (ELM clock) | opus | pending |
+| L5 | `events/transients.py` (ELM clock) | opus | complete (c02e763, f008a94; 958 tests; review approved) |
 | L6 | `events/heuristics.py` (sawtooth, L-H, actuators, qh proxy) | opus | pending |
 | L7 | `events/lexicons.yaml` + `events/text_weak.py` | opus | pending |
 | L8 | `events/windows.py`, `features/resolve_events.py`, namespace/run/config edits | opus | pending |
@@ -46,3 +46,4 @@ Per task: command run, output summary, jobstats (for SLURM jobs), reviewer verdi
 - Census facts: 16,909 files, 16,647 openable (262 unopenable = 1.5 %), 531,993 rows; mhr 82.6 %, ece 82.9 %, filterscopes 79.2 %, mirnov 98.8 %, pinj 58.6 %, bes 34.9 %, co2 (see parquet), tangtv video.
 - 2026-09-07 ~06:00 EDT: I5 and L5 implementers (opus) were killed by an API rate limit (session limit, reset 06:10 EDT) mid-task; partial work left uncommitted in both trees (I5: select.py + tests + cli/text/conftest edits + beautifulsoup4 dependency for `logs import`; L5: transients module + RED tests). Both resumed at 10:03 EDT with context intact via SendMessage.
 - L5 implemented: c02e763 (tracks housekeeping: degenerate-box IoU, NaN conf from stored masks) + f008a94 (transients). Suite 923 → 958. Synthetic: 30/30 ELMs on the drawn column, period 15.36 ms / 65.10 Hz, ELM-free interval bounded at last ELM +50 ms / next −50 ms. Deviations: `transients_to_events` takes optional `activity`/`smooth_ms` and ELM-free knobs; `elm_free` attrs carry `max_rate_hz` (threshold) and `max_rate_inside_hz` (measured); rate quantised to 10 Hz by the 100 ms window. Review pending.
+- L5 review approved: tokeye port faithful under inclusive→half-open; `elm_free_intervals` solved exactly via rate breakpoints; `_iou` fix closes both cases. Minor → L6 housekeeping: `activity` optional (→ required), `_meta["thr"]` unchecked, `t_cov` from column centres, `_iou` comment lemma, smoothing width rounding tie 2.5→2. Remaining Minor: two assertions echo the implementation; `phase` NaN at exactly the last ELM (accepted).
