@@ -47,7 +47,7 @@
 # s/shot) at unchanged CPU%, i.e. the read path is already at its ceiling. The plan's iteration-0
 # criterion is jobstats (CPU and memory efficiency), and that is what the sizing below targets.
 #
-#   cpus-per-task  4.0 cores of demand / 5 = 81 % projected CPU efficiency. 8 would project 50 %
+#   cpus-per-task  4.0 cores of demand / 5 = 80 % projected CPU efficiency. 8 would project 50 %
 #                  and fail the jobstats gate; 6 projects 67 %, still under it. `--workers 8` is
 #                  kept because it was the fastest point of the sweep and the workers are
 #                  I/O-blocked, so they oversubscribe 5 cores without adding CPU time.
@@ -57,8 +57,33 @@
 #                  concurrent tasks -> 3 h. The allocation's A100s are faster than the login
 #                  V100S, but on an I/O-bound job that buys nothing, so it is not counted.
 #
+#   OMP pin       The pilot above was measured WITHOUT the `OMP_NUM_THREADS=1` this script
+#                  exports, so it was re-measured on one shot (185786, login V100S, GPU 1 idle,
+#                  2026-09-07) in both environments:
+#
+#                      unpinned            19.38 s/shot   332 % CPU   89.4 CPU-s   26.9 s wall
+#                      OMP_NUM_THREADS=1   17.25 s/shot   345 % CPU   77.6 CPU-s   22.5 s wall
+#
+#                  The pin lowers CPU-time AND wall clock together, so the ratio the jobstats
+#                  gate reads is flat to slightly up (332 -> 345 %), not down: the feared
+#                  "wall grows while cpu-time shrinks, efficiency falls" does not happen here,
+#                  because the work is in the 8 dataloader worker processes and in GPFS reads,
+#                  not in a threaded BLAS call. Both figures are single-shot runs whose wall
+#                  clock still carries the ~5.6 s codec load, so the CPU % is if anything
+#                  understated against a 250-shot task; the 4.0 cores / 21.6 s per shot the
+#                  sizing above rests on come from the 30-shot pilot and are kept unchanged
+#                  (they are the conservative pair: more cores, more seconds). The script runs
+#                  the pinned environment, which is the faster of the two measured.
+#
 # Re-runnable: `--skip-existing` leaves a cache already written, so a task that hits the wall
 # clock can simply be resubmitted.
+#
+# THE CPU-ONLY ALTERNATIVE. `scripts/ideate/encode_cpu.sbatch` runs the same command with
+# `--device cpu` on the `pppl` partition. Measured 40.4 s/shot at OMP_NUM_THREADS=4 against
+# 17-22 s/shot here, i.e. ~2x, for no GPU at all -- and plan section 13.3 judges a CPU-only job
+# on CPU and CPU-memory alone, which is the gate this workload can actually meet. Read the
+# capital-letter note there before choosing: the two devices do NOT always produce identical
+# tokens, so a corpus should be encoded entirely on one or the other.
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub

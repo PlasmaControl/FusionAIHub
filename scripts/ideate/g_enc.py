@@ -34,15 +34,33 @@ below is a statement about our own arithmetic and about the SHAPE of the disagre
 deliberately weaker than the first draft of this docstring, which asserted a cause it had not
 measured.
 
-*Our arithmetic is stable to 1e-5 for the spectro codecs, and not stable at all for video.*
-ece / mhr / co2 give IDENTICAL codes on cuda and on cpu, identical codes in float32 and in
-float64, and not one flipped token when the codec input is perturbed by 1e-6 or 1e-5 relative.
-The video codecs give none of that: float64 instead of float32 moves 0.39 % of tangtv_lower's
-tokens on one GPU, cuda versus cpu moves 0.42 % / 0.88 %, and batch sizes 1 / 2 / 4 / 32 give
-four different code sets. |f64 - f32| on the pre-FSQ features reaches 0.061 where the features
-themselves are ~3.06: a deep 3-D conv stack into a 64000-code quantiser puts tokens on bin
-boundaries, and a code that flips when the arithmetic is made MORE accurate cannot be
-bit-reproduced across GPU vendors by any means available here.
+*The video codecs are wildly unstable and the spectro codecs are stable ONLY ON SOME SHOTS.*
+Video first: float64 instead of float32 moves 0.39 % of tangtv_lower's tokens on one GPU, cuda
+versus cpu moves 0.42 % / 0.88 %, and batch sizes 1 / 2 / 4 / 32 give four different code sets.
+|f64 - f32| on the pre-FSQ features reaches 0.061 where the features themselves are ~3.06: a
+deep 3-D conv stack into a 64000-code quantiser puts tokens on bin boundaries, and a code that
+flips when the arithmetic is made MORE accurate cannot be bit-reproduced across GPU vendors by
+any means available here.
+
+The spectro codecs looked stable -- on 190090 / 202537 / 204346, ece / mhr / co2 give identical
+codes on cuda and on cpu, identical codes in float32 and float64, and not one flipped token when
+the codec input is perturbed by 1e-6 or 1e-5 relative (1e-4 moves <= 0.03 %). That invariance is
+SHOT-SPECIFIC, and this was measured afterwards on two other shots (2026-09-07, same login
+node):
+
+    185786   cuda == cpu(4 threads) == cpu(8 threads)      14/14 modalities bit-identical
+    185955   cuda vs cpu(4 threads)   bes 1 token, mhr 4 tokens   (one per affected frame)
+             cuda vs cpu(8 threads)   bes 4 tokens, mhr 4 tokens
+             cpu(4)  vs cpu(8)        bes 3 tokens  -- SAME machine, SAME device, SAME input;
+                                                       only OMP_NUM_THREADS changed
+
+Changing a BLAS thread count reorders a reduction at the 1e-7 level and flips spectro tokens.
+So the spectro codes are marginal in exactly the way the video codes are, just more rarely --
+and the eliminative argument that once concluded "the spectro residual cannot be our arithmetic,
+therefore it is the input" does not survive its own test being run on a second pair of shots.
+(The 88 actuator channels are bit-identical in every one of those pairings; they are NumPy
+arithmetic with no codec, which is why they are the half of this gate that can be trusted to
+reproduce.)
 
 *The spectro disagreement is a scatter of ISOLATED SINGLE TOKENS -- the bin-boundary signature.*
 Diffing our re-encoded 204346 against the shipped file, token by token:
@@ -54,8 +72,9 @@ Diffing our re-encoded 204346 against the shipped file, token by token:
     190090 tangtv_lower 145 tokens / 63 frames, tangtv_upper 161 / 45 -- the same scatter
 
 A differently fetched signal perturbs contiguous regions or whole frames; four isolated tokens
-spread over eleven seconds of shot do not look like that. And the perturbation sweep locates the
-scale rather than excluding it: 1e-4 relative moves <= 0.03 % of tokens, i.e. ~14 of 45888 --
+spread over eleven seconds of shot do not look like that. It is the same shape as the 185955
+thread-count flips above, which are unambiguously arithmetic. And the perturbation sweep locates
+the scale rather than excluding it: 1e-4 relative moves <= 0.03 % of tokens, i.e. ~14 of 45888 --
 the same order as the 4 and 9 actually observed. So the margin sits at ~1e-4, comfortably inside
 what an MI250X/ROCm FFT and conv stack differs from a V100S/CUDA one. That is CONSISTENT WITH a
 cross-vendor numerics difference. It is not a demonstration of one, and no claim stronger than
