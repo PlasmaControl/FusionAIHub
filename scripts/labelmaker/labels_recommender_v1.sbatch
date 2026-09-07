@@ -10,9 +10,9 @@
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 
-# Task I6b: `labelmaker.run all` over the 500 recommender_v1 shots -- features, infer for the four
-# shipped models, then validate. Stage `all` and not `features` because `ideate labels join` wants
-# the LABELS, and the features stage alone writes none.
+# Task I6b: labelmaker over the 500 recommender_v1 shots -- features, then infer for the four
+# shipped models (`ideate labels join` wants the LABELS; the features stage alone writes none).
+# Validate is deliberately NOT run: see the model-card note at the bottom of this header.
 #
 # All 500 shots already have a <shot>_features.h5 (Task I5 wrote them and back-filled `ip` through
 # fdp): 0 of 500 lack one, checked 2026-09-07. What this run still does per shot is retry the
@@ -94,9 +94,15 @@ echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 
 # `fdp run` for the device configuration and bearer token; without it every fdp fetch fails per
 # signal (see the note above). It execs the command, so `srun` still owns the process tree.
-srun "$ENV/bin/fdp" run "$ENV/bin/python" -m labelmaker.run all \
-    --models $MODELS \
-    --shot-file "${SHOT_FILE:-$ROOT/recommender_v1.txt}" \
-    --workers 12 --timeout 600
+# Controller decision (2026-09-07): stages `features` then `infer`, NEVER `all` -- the validate
+# stage rewrites the committed model cards (see above) and `ideate labels join` needs only the
+# labels. The EFIT/plasma scalars ideate reads (betan, kappa, ... ne_zipfit) are not inputs of these
+# four models and are fetched separately on the login node (scripts/labelmaker/fetch_features.py).
+for STAGE in features infer; do
+    srun "$ENV/bin/fdp" run "$ENV/bin/python" -m labelmaker.run "$STAGE" \
+        --models $MODELS \
+        --shot-file "${SHOT_FILE:-$ROOT/recommender_v1.txt}" \
+        --workers 12 --timeout 600
+done
 
 echo "finished at $(date -Is)"
