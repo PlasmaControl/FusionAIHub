@@ -974,3 +974,30 @@ def test_verdict_a_negation_does_not_reach_into_the_next_operators_entry():
         "bad shot; multiple beam failures.  Dropping 210R to 65 keV swapping in for 210L.\n"
     )
     assert text.verdict(entries) == "bad"
+
+
+def test_bundle_blocks_splits_the_three_sections_and_loses_nothing():
+    """The three sections of a per-shot bundle, verbatim and concatenating back to the whole.
+
+    Which section a sentence is in is what it means -- a record of the run, an intention, or a
+    fact about this discharge -- so the split has to be exact and it has to be lossless.
+    """
+    from .conftest import text_bundle
+
+    bundle = text_bundle(900001, row={"SHOT_TYPE": "plasma"}, title="Tearing mode avoidance")
+    session, planned, specific = text.bundle_blocks(bundle)
+
+    assert session + planned + specific == bundle
+    assert session.startswith("# DIII-D per-shot text bundle")
+    assert "GENERAL SESSION INFO" in session
+    assert planned.startswith("## Planned context (mini-proposal)")
+    assert "Hypothesis to be tested" in planned
+    assert specific.startswith(text.SHOT_BLOCK_MARKER)
+    assert specific.strip().endswith(text.shot_block(bundle))
+
+
+def test_bundle_blocks_tolerates_a_bundle_with_no_mini_proposal():
+    bundle = f"# DIII-D per-shot text bundle\n\nrun stuff\n\n{text.SHOT_BLOCK_MARKER}\nSHOT: 1\n"
+    session, planned, specific = text.bundle_blocks(bundle)
+    assert planned == ""
+    assert session + specific == bundle

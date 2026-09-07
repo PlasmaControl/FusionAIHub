@@ -888,6 +888,72 @@ def cmd_logs(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------------ labels
+
+
+def cmd_labels(args) -> int:
+    """`labels join`: labelmaker's per-time labels and events become the DB's three label tables.
+
+    Succeeds with `n_shots_with_events = 0` when `$LABELMAKER_ROOT/events/` does not exist -- it
+    does not until the mask job has run, and the labels are useful before then.
+    """
+    from labelmaker.config import Paths as LabelmakerPaths
+
+    from .labels import join as join_mod
+
+    paths = config.load_paths()
+    shots = _shots(args, "recommender_v1")
+    if not shots:
+        print("no shots selected", file=sys.stderr)
+        return 1
+    root = Path(args.labelmaker_root) if args.labelmaker_root else LabelmakerPaths.from_env().root
+    if not (root / "labels").is_dir():
+        print(f"no labels directory at {root / 'labels'}", file=sys.stderr)
+        return 1
+    db_dir = Path(args.db) if args.db else paths.db_dir
+    text_root = None if args.no_text else Path(args.text_root or paths.text_root)
+    if text_root is not None and not text_root.is_dir():
+        print(f"no text corpus at {text_root}; joining without claims", file=sys.stderr)
+        text_root = None
+
+    started = time.perf_counter()
+    result = join_mod.join(
+        shots, labelmaker_root=root, text_root=text_root, lexicon_path=args.lexicon
+    )
+    block = join_mod.write_tables(
+        db_dir, result.labels_wide, result.events, result.claims, result.manifest
+    )
+    m = result.manifest
+    print(
+        f"joined {m['n_shots']:,} shots in {time.perf_counter() - started:.1f} s "
+        f"({m['n_shots_with_labels']:,} labelled, {m['n_shots_with_events']:,} with events)"
+    )
+    n_models = len(set(result.labels_wide["slug"]))
+    print(f"labels_wide {m['n_labels_wide_rows']:,} rows over {n_models} model(s)")
+    for slug, n in sorted(Counter(result.labels_wide["slug"]).items()):
+        print(f"  {slug:<45} {n:>7,}")
+    print(f"events      {m['n_events']:,} rows, of which {m['n_forecast_events']:,} forecasts")
+    for (phen, horizon), n in sorted(
+        Counter(
+            zip(
+                result.events.loc[result.events["evidence_kind"] == "forecast", "phenomenon"],
+                result.events.loc[result.events["evidence_kind"] == "forecast", "horizon_s"],
+                strict=True,
+            )
+        ).items()
+    ):
+        print(f"  forecast {phen:<12} horizon {horizon:>6.3f} s  {n:>7,}")
+    print(f"text_claims {m['n_text_claims']:,} rows from {m['lexicon'] or 'no lexicon'}")
+    if not result.claims.empty:
+        print("  " + ", ".join(f"{k} {v:,}" for k, v in
+                               sorted(Counter(result.claims["polarity"]).items())))
+    if m["n_shots_missing_labels"]:
+        print(f"no labels file: {_brief(m['labels_missing'])}")
+    print(f"wrote {db_dir}/{{labels_wide,events,text_claims}}.parquet and manifest.json")
+    print(f"manifest labels block: {json.dumps(block, default=str)}")
+    return 0
+
+
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
     paths = config.load_paths()
@@ -1034,6 +1100,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dry-run", action="store_true", help="print what would be written")
     s.add_argument("--force", action="store_true", help="rewrite an existing per-shot bundle")
     p.set_defaults(func=cmd_logs)
+
+    p = sub.add_parser("labels", help="labelmaker's labels and events -> the ideate DB")
+    what = p.add_subparsers(dest="what", required=True)
+    s = what.add_parser("join", help="labels_wide.parquet, events.parquet, text_claims.parquet")
+    s.add_argument("--list", help="configs/ideate/shot_lists/<name>.yaml (default: recommender_v1)")
+    s.add_argument("--list-file", help="a shot-list YAML at an explicit path")
+    s.add_argument("--shots", type=int, nargs="*", help="explicit shot numbers")
+    s.add_argument("--labelmaker-root", help="$LABELMAKER_ROOT (default: labelmaker's own)")
+    s.add_argument("--db", help="database directory (default: paths.yaml's db_dir)")
+    s.add_argument("--text-root", help="the text corpus root (default: paths.yaml's)")
+    s.add_argument("--lexicon", help="phenomenon aliases (default: labelmaker's lexicons.yaml)")
+    s.add_argument("--no-text", action="store_true", help="skip the text claims entirely")
+    p.set_defaults(func=cmd_labels)
 
     p = sub.add_parser("query", help="find similar shots")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")

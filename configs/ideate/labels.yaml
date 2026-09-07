@@ -26,3 +26,37 @@ neg_tri_mean_delta: -0.2          # (tritop_mean + tribot_mean)/2 below this = n
 operational_text:
   elm_suppressed: ["elm suppress", "suppressed elms", "elm-free", "elm free"]
   detached: ["detached", "detachment"]
+# Forecast rules (Task I6): which label series are RISKS rather than detections, and at what
+# operating point a run of one becomes an `evidence_kind="forecast"` event in events.parquet.
+# A forecast never becomes an observed event (plan section 2; Appendix C item 7), so every rule
+# here must carry a horizon.
+#
+# `horizon_s` is the model card's own: the DSM head is read as `1 - S(h | x)`, and the label name
+# IS the h it was queried at (`tm_risk_250ms` -> 0.25 s; the ELM card's `queried_at_ms` attribute
+# records the +1 ms grid offset it applies internally, which is the model's business, not the
+# horizon it answers about).
+#
+# `thr` is a CHOICE OF THIS PROJECT, not a card recommendation -- neither DSM card recommends an
+# operating point, and the tearing card says so in as many words ("These are descriptive pool
+# results, not a new held-out evaluation or a threshold recommendation"). 0.2 is the level both
+# tearing cards actually evaluate at: on the 500-shot pool at `tm_risk_1s >= 0.2` the final-label
+# rule scores FPR 0.065 / FNR 0.663 with a median 0.35 s of warning, and at 0.3 it calls almost
+# nothing (FNR 0.987). The ELM card records no sweep at all; 0.2 is the same nominal alarm level,
+# and it is a level the model can actually reach -- peak `elm_risk_20ms` over the card's 24 corpus
+# shots is 0.000-0.345, so 0.5 would fire on nothing. `labels_wide.thr` prefers a card's own
+# `threshold:` over these whenever a card starts recording one.
+#
+# Only the raw risks are listed, never the `*_isotonic` variants: the tearing card measures the
+# isotonic maps as making calibration WORSE at every horizon on held-out rows, so an alarm built
+# on them would be an alarm on a known-worse number.
+forecasts:
+  - {slug: d3d_tearing_time_to_event_dsm, label: tm_risk_250ms, thr: 0.2, horizon_s: 0.25, phenomenon: tearing}
+  - {slug: d3d_tearing_time_to_event_dsm, label: tm_risk_500ms, thr: 0.2, horizon_s: 0.5, phenomenon: tearing}
+  - {slug: d3d_tearing_time_to_event_dsm, label: tm_risk_1s, thr: 0.2, horizon_s: 1.0, phenomenon: tearing}
+  - {slug: d3d_tearing_time_to_event_dsm_continued, label: tm_risk_250ms, thr: 0.2, horizon_s: 0.25, phenomenon: tearing}
+  - {slug: d3d_tearing_time_to_event_dsm_continued, label: tm_risk_500ms, thr: 0.2, horizon_s: 0.5, phenomenon: tearing}
+  - {slug: d3d_tearing_time_to_event_dsm_continued, label: tm_risk_1s, thr: 0.2, horizon_s: 1.0, phenomenon: tearing}
+  - {slug: d3d_elm_time_to_event_dsm, label: elm_risk_5ms, thr: 0.2, horizon_s: 0.005, phenomenon: elm}
+  - {slug: d3d_elm_time_to_event_dsm, label: elm_risk_10ms, thr: 0.2, horizon_s: 0.01, phenomenon: elm}
+  - {slug: d3d_elm_time_to_event_dsm, label: elm_risk_20ms, thr: 0.2, horizon_s: 0.02, phenomenon: elm}
+  - {slug: d3d_elm_time_to_event_dsm, label: elm_risk_50ms, thr: 0.2, horizon_s: 0.05, phenomenon: elm}
