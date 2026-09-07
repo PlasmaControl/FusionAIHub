@@ -24,6 +24,9 @@ from .schema import LabelSpec
 #: Every label group has two of these beside it; they are not labels.
 COMPANION_SUFFIXES = ("_spread", "_valid")
 
+#: What identifies a row of `labels_index.parquet`.
+INDEX_KEYS = ("shot", "slug", "label")
+
 
 @dataclass(frozen=True)
 class LabelArray:
@@ -164,27 +167,31 @@ def index_rows(path) -> list[dict]:
     return rows
 
 
-def append_index(index_path, rows) -> None:
+def append_index(index_path, rows, *, keys=INDEX_KEYS) -> None:
     """Merge rows into the parquet index, replacing any (shot, slug, label).
 
     Rewritten whole and renamed into place: the index is small (one row per
     shot per label) and an interrupted run must never leave it truncated.
+
+    `keys` is the identity of a row - which rows a re-run replaces and how the
+    file is sorted. The default is the label index's; the events index passes
+    `["shot", "source", "phenomenon"]` and gets the same merge for free.
     """
     import pandas as pd
 
     index_path = Path(index_path)
     index_path.parent.mkdir(parents=True, exist_ok=True)
+    keys = list(keys)
     new = pd.DataFrame(rows)
     if new.empty:
         return
     if index_path.exists():
         old = pd.read_parquet(index_path)
-        keys = ["shot", "slug", "label"]
         merged = pd.concat([old, new], ignore_index=True)
         merged = merged.drop_duplicates(subset=keys, keep="last")
     else:
         merged = new
-    merged = merged.sort_values(["shot", "slug", "label"]).reset_index(drop=True)
+    merged = merged.sort_values(keys).reset_index(drop=True)
     tmp = index_path.with_name(index_path.name + ".tmp")
     merged.to_parquet(tmp, index=False)
     tmp.replace(index_path)
