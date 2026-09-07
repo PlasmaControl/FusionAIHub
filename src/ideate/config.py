@@ -1,7 +1,7 @@
 """Configuration loading: paths, YAML configs, and the signal/actuator registry.
 
 This is the only module that reads YAML. Everything per-campaign (actuator members, signal
-node names, thresholds) lives in configs/ so adding a gyrotron is a config change.
+node names, thresholds) lives in configs/ideate/ so adding a gyrotron is a config change.
 
 
 Ported from shot-recommender-system (shotrec) @565d548.
@@ -81,7 +81,8 @@ _YAML_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
 
 
 def load_yaml(name: str) -> dict[str, Any]:
-    """A parsed config from configs/, cached on (path, size, mtime_ns), returned as a deep copy.
+    """A parsed config from configs/ideate/, cached on (path, size, mtime_ns), returned as a
+    deep copy.
 
     Measured on the 105-shot database: signals.yaml parses in 24 ms and actuators.yaml in 9 ms,
     and one `ideate query` read them dozens of times -- once per result for the unit lookup, twice
@@ -200,7 +201,7 @@ def actuator_systems(shot: int) -> dict[str, SystemSpec]:
 
 
 def load_shot_list(name: str = "poc_v1", path: Path | None = None) -> list[int]:
-    """Shots from configs/shot_lists/<name>.yaml with the hand_review block applied.
+    """Shots from configs/ideate/shot_lists/<name>.yaml with the hand_review block applied.
 
     hand_review is the human gate on a generated list: `drop` removes a shot the reviewer
     rejected, `add` pins one the greedy allocator missed. Drops are applied before adds, so a

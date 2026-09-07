@@ -569,9 +569,9 @@ def _query_header(state: QueryState, report: dict, fired: dict[str, int]) -> Non
 
 
 def _print_proposal(state: QueryState, flags) -> None:
-    """The user's own `--actuator` settings checked against configs/flags.yaml, printed before
-    the results. "Can DIII-D do this at all" is a separate answer from "what has it done like
-    this", and it was not being given: the rules ran on the result rows only, so
+    """The user's own `--actuator` settings checked against configs/ideate/flags.yaml, printed
+    before the results. "Can DIII-D do this at all" is a separate answer from "what has it done
+    like this", and it was not being given: the rules ran on the result rows only, so
     `--actuator nbi.total=5e7` (2.5x the installed beam power) printed no flag."""
     if not state.actuators:
         return
@@ -812,9 +812,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ideate: {e}", file=sys.stderr)
         return 1
     except SystemExit as e:
-        # scripts/fetch_shots.py refuses a read-only raw_dir with `raise SystemExit("refusing to
-        # write into ...")` -- a message, not a code. `int()` on that raised ValueError and the
-        # message was never shown; the interpreter's own convention is: print it, exit 1.
+        # No `cmd_*` raises SystemExit itself, but a library one calls can, and with either shape:
+        # an exit status (`SystemExit(3)`) or a message (`raise SystemExit("refusing to write
+        # into ...")`). `int()` on a message raised ValueError out of main and the message was
+        # never shown; the interpreter's own convention is: print it, exit 1.
         if e.code is None or isinstance(e.code, int):
             return int(e.code or 0)
         print(e.code, file=sys.stderr)

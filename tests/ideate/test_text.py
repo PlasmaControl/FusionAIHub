@@ -552,7 +552,8 @@ def test_pdf_text_replaces_the_unpaired_surrogates_pypdf_returns(tmp_path, monke
     """A symbol-font glyph a PDF maps outside Unicode comes out of pypdf as a lone surrogate, and
     a lone surrogate cannot be encoded -- `ShotRecord.model_dump_json()` raises on it, in
     `records_to_tables`, after every shot of the build has already been read. Measured on
-    configs/shot_lists/poc_v1.yaml: 8 of its 200 shots, from 4 run days, carry them in mp_purpose.
+    configs/ideate/shot_lists/poc_v1.yaml: 8 of its 200 shots, from 4 run days, carry them in
+    mp_purpose.
     """
     import json
 
@@ -848,12 +849,12 @@ def test_embed_texts_width_follows_the_model(monkeypatch):
 
 
 def test_fault_strings_and_verdict_ignore_a_planned_mitigation_and_a_back_reference():
-    """Shot 175676 (run 20180227) shipped into configs/shot_lists/poc_v1.yaml as `verdict: bad,
-    fault: locked mode;dud trip`. Its chief operator wrote "10:32 Plasma shot ok." and its session
-    leader wrote "Postshot: Density increased a little too high, but should still have usable
-    data." -- nothing in the record says the shot failed. Every fault word came from the physics
-    operator's pre-shot plan: "kills us" grades the *previous* shot under a "Last shot:" heading,
-    and "locked mode dud trip" is a protection being installed *to avoid* a disruption."""
+    """Shot 175676 (run 20180227) shipped into configs/ideate/shot_lists/poc_v1.yaml as `verdict:
+    bad, fault: locked mode;dud trip`. Its chief operator wrote "10:32 Plasma shot ok." and its
+    session leader wrote "Postshot: Density increased a little too high, but should still have
+    usable data." -- nothing in the record says the shot failed. Every fault word came from the
+    physics operator's pre-shot plan: "kills us" grades the *previous* shot under a "Last shot:"
+    heading, and "locked mode dud trip" is a protection being installed *to avoid* a disruption."""
     entries = text.parse_log_entries(
         "### [SESSION_LEADER] x 2018-02-27 10:24:00\n"
         "Preshot:\nELMy plasma. RMPs off at 2 s. Edge CER to view C and Al in edge. Decrease beam "

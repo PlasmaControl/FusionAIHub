@@ -81,9 +81,9 @@ def nan_excluded(q: QueryState, db: ShotDB) -> dict[str, int]:
 def _actuator_column(name: str, db: ShotDB) -> str | None:
     """`nbi.total` / `ech.LUKE` -> the segments column that holds it, or a column name as given.
 
-    `flags.rules.actuator_columns` is the one resolver, built from configs/actuators.yaml, so a
-    new actuator system is reachable from a query the moment it is in the registry -- and so the
-    value after `--actuator` names the same column here as in the operating-limit rules. This
+    `flags.rules.actuator_columns` is the one resolver, built from configs/ideate/actuators.yaml,
+    so a new actuator system is reachable from a query the moment it is in the registry -- and so
+    the value after `--actuator` names the same column here as in the operating-limit rules. This
     used to try `_mean` first while the rules took `_peak`, making one flag two quantities. A key
     the registry knows whose column this database lacks is None, never silently another stat.
     """
@@ -473,7 +473,8 @@ def modality_cosine(M: np.ndarray, qvec: np.ndarray, dims: list[int]) -> np.ndar
 
 
 # The registry. One function, one line here, and rank.py picks it up; weights live in
-# configs/retrieval.yaml under `retrieval.weights` and default to 1.0 for a channel not named.
+# configs/ideate/retrieval.yaml under `retrieval.weights` and default to 1.0 for a channel not
+# named.
 CHANNELS = {
     "scalar_knn": scalar_knn,
     "text_knn": text_knn,

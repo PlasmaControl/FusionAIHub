@@ -92,7 +92,7 @@ def test_the_header_carries_date_run_and_mini_proposal():
 
 def test_the_segment_line_prints_every_number_through_rank_display():
     """One renderer. `ideate show` prints this same line as its headline, and the units and k/M
-    prefixes are `rank.display`'s -- read from configs/, chosen from the magnitude -- not a
+    prefixes are `rank.display`'s -- read from configs/ideate/, chosen from the magnitude -- not a
     hardcoded `/1e6 -> MA` table. (Two such tables, with different precisions, used to make
     `show` and `query` print the same shot differently: `q95 3.38` vs `q95 3.4`.)"""
     got = line(D.describe(record()), "Flat top")

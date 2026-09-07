@@ -4,16 +4,16 @@ The template is the source of truth. `describe` renders only fields the record a
 a missing number is an omitted clause, never the string "None" and never a plausible default --
 and it is the ONE renderer: `ideate show` prints `segment_line`, `ideate export` stores
 `describe`, and every `ideate query` result carries `describe`. Units and k/M prefixes come from
-`rank.display`, which reads them from configs/, so a physicist reading a search result and a
+`rank.display`, which reads them from configs/ideate/, so a physicist reading a search result and a
 physicist reading `ideate show` are reading the same numbers in the same units.
 
 `polish` is the seam where a language model may rewrite that paragraph, and `check_facts` is the
 gate it has to pass: every number and every shot number in the candidate must match the template
 as a multiset, in both directions, or the template is returned unchanged -- a fluent paraphrase
 that quietly changes 1.21 MA into 1.2 MA is worse than no paraphrase at all. The call goes
-through `ideate.llm.client`, which opens no socket when `configs/llm.yaml` says `provider: off`
-and none when no endpoint file has been published; with no model running the template is simply
-the answer, silently.
+through `ideate.llm.client`, which opens no socket when `configs/ideate/llm.yaml` says
+`provider: off` and none when no endpoint file has been published; with no model running the
+template is simply the answer, silently.
 
 **The operator quote is the fabrication risk in this file.** It is taken from
 `HumanTier.log_entries` -- the output of `text.parse_log_entries`, one entry by one author at one

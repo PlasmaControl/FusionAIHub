@@ -1,9 +1,9 @@
 """One client for every model call in the project.
 
 OpenAI chat-completions shape over httpx, so Ollama today and a hosted provider later are the
-same code path. Discovery goes through configs/llm.yaml: an explicit base_url, else the endpoint
-file the serving script writes under the data root (so moving Ollama between the vis node and a
-Slurm GPU changes nothing here). Deterministic requests (temperature 0) are cached on disk by
+same code path. Discovery goes through configs/ideate/llm.yaml: an explicit base_url, else the
+endpoint file the serving script writes under the data root (so moving Ollama between the vis node
+and a Slurm GPU changes nothing here). Deterministic requests (temperature 0) are cached on disk by
 request hash; sampled ones never are. Every failure surfaces as LLMUnavailable carrying the
 command that would fix it, and `provider: off` opens no socket at all.
 
@@ -104,7 +104,7 @@ class LLMClient:
 
     def available(self) -> tuple[bool, str]:
         if self.off:
-            return False, "configs/llm.yaml has provider: off"
+            return False, "configs/ideate/llm.yaml has provider: off"
         ep = self.endpoint()
         if ep is None:
             return False, start_hint(self.paths)
@@ -153,7 +153,7 @@ class LLMClient:
         cache: bool | None = None,
     ) -> Reply:
         if self.off:
-            raise LLMUnavailable("configs/llm.yaml has provider: off")
+            raise LLMUnavailable("configs/ideate/llm.yaml has provider: off")
         ep = self.endpoint()
         if ep is None:
             raise LLMUnavailable(start_hint(self.paths))
@@ -170,7 +170,8 @@ class LLMClient:
         if tools:
             body["tools"] = tools
         # A reasoning model otherwise spends the whole max_tokens budget thinking and returns
-        # empty content (configs/llm.yaml says what was measured); absent or null, nothing is sent.
+        # empty content (configs/ideate/llm.yaml says what was measured); absent or null,
+        # nothing is sent.
         if self.cfg.get("reasoning_effort") is not None:
             body["reasoning_effort"] = self.cfg["reasoning_effort"]
         use_cache = (self.cfg.get("cache", True) if cache is None else cache) and temperature == 0.0

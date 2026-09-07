@@ -193,11 +193,6 @@ def test_coverage_recomputes_from_the_records(built, capsys):
     assert "fields over 2 shots" in out and "present" in out
 
 
-# ------------------------------------------------------------------------------------- fetch
-
-
-
-
 def test_query_arguments_become_one_query_state():
     """The parser's whole job: every flag lands in the right QueryState field. Retrieval itself
     is tested in test_retrieval.py, against a database; this needs none."""
@@ -279,8 +274,9 @@ def test_query_rejects_an_unknown_segment_before_touching_the_database(capsys):
 
 
 def test_a_string_system_exit_is_printed_not_turned_into_a_valueerror(monkeypatch, capsys):
-    """scripts/fetch_shots.py refuses a read-only raw_dir with SystemExit("refusing ...");
-    `int()` on that message raised ValueError out of main."""
+    """A library a command calls may exit with a message rather than a status -- a staging
+    script refusing a read-only raw_dir with `SystemExit("refusing ...")` is the shape this was
+    written against. `int()` on that message raised ValueError out of main."""
 
     def refuse(args):
         raise SystemExit("refusing to write into the read-only store /x: raw_dir=/x/raw")
