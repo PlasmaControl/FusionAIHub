@@ -132,6 +132,55 @@ def test_a_sentence_can_carry_two_phenomena(text_root, lexicon_path):
     assert claim_rows(df, "tearing") == [("neg", "observed", "shot")]
 
 
+# ------------------------------------------------------------- text about a different shot
+
+
+def test_a_last_shot_block_is_historical_and_the_rest_of_the_entry_is_not(text_root, lexicon_path):
+    """A "Last shot:" heading opens a span about a *previous* discharge, and the corpus writes it
+    as a heading on its own line with the prose under it, terminated by a blank line. Every
+    sentence of that span is a claim about the other shot; nothing in it may be dated `observed`,
+    which would make this shot's row report what the previous one did. `shotdb.text._SHOT_SCOPE`
+    is what draws the span, so the boundary here is the one `verdict()` already grades by."""
+    write_log(text_root, {900001: (
+        "Last shot: strong EHO all through the flat top.\n"
+        "The tearing mode locked at 3 s.\n"
+        "\n"
+        "QH sustained here from 2 s."
+    )})
+
+    df = claims.text_claims([900001], text_root=text_root, lexicon_path=lexicon_path)
+
+    assert claim_rows(df, "eho") == [("pos", "historical", "shot")]
+    assert claim_rows(df, "tearing") == [("pos", "historical", "shot")]
+    assert claim_rows(df, "qh") == [("pos", "observed", "shot")]
+
+
+def test_a_next_shot_block_is_planned_not_observed(text_root, lexicon_path):
+    """The same machinery, the other direction: what is written under "Next shot:" has not
+    happened either, and calling it `historical` would be as wrong as calling it `observed`."""
+    write_log(text_root, {900001: (
+        "EHO clean here.\n"
+        "Next shot: raise the torque.\n"
+        "Give the tearing mode room to grow.\n"
+    )})
+
+    df = claims.text_claims([900001], text_root=text_root, lexicon_path=lexicon_path)
+
+    assert claim_rows(df, "eho") == [("pos", "observed", "shot")]
+    assert claim_rows(df, "tearing") == [("pos", "planned", "shot")]
+
+
+def test_a_current_shot_heading_is_still_this_shots(text_root, lexicon_path):
+    """`_SHOT_SCOPE` matches "Current shot:"/"This shot:" too, and those are not back-references:
+    the text under them is exactly what the entry is reporting. Only the four markers
+    `shotdb.text._OTHER_SHOT` calls another discharge's may move a claim off this shot."""
+    write_log(text_root, {900001: "Current shot: EHO through the flat top."})
+
+    df = claims.text_claims([900001], text_root=text_root, lexicon_path=lexicon_path)
+
+    assert claim_rows(df, "eho") == [("pos", "observed", "shot")]
+
+
 # ---------------------------------------------------------------------------------- scope
 
 

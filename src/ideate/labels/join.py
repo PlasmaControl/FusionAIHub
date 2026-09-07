@@ -10,6 +10,11 @@ are the reason this module exists at all rather than a `pd.concat`:
   null, never zero: "nobody chose a threshold" and "the alarm never fired" are different facts and
   a stored 0.0 destroys the difference. Every statistic is over the samples labelmaker marked
   valid, because an invalid sample is not a measurement of a low probability.
+* **A threshold says whose it is.** `thr_source` is `card` when the number is the model card's own
+  operating point and `config` when it is the alarm level `configs/ideate/labels.yaml` chose, and
+  `""` where there is no threshold at all. One map (`_threshold_map`, card over config) feeds both
+  `labels_wide` and the forecast events, so the two tables cannot disagree about the number an
+  alarm was raised at, and each forecast event repeats the pair in its `attrs`.
 * **A forecast is not an observation.** The DSM risk heads answer "will this happen within h?", so
   a run of one above its threshold becomes an event with `evidence_kind="forecast"`, a finite
   `horizon_s` and `source="label_forecast"` -- and never `evidence_kind="detector"`. Which label
@@ -32,6 +37,7 @@ that measures a forecast's duration measures it this way.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Iterable, Mapping, Sequence
@@ -69,6 +75,7 @@ LABELS_WIDE_DTYPES: dict[str, str] = {
     "mean_valid": "float32",
     "p95_valid": "float32",
     "thr": "float32",
+    "thr_source": "object",
     "frac_above": "float32",
     "first_above_t_s": "float32",
     "n_intervals": "Int32",
@@ -84,8 +91,17 @@ MANIFEST_KEYS: tuple[str, ...] = (
     "labelmaker_root", "n_shots", "n_shots_with_labels", "n_shots_with_events",
     "n_labels_wide_rows", "n_events", "n_forecast_events", "n_text_claims",
     "n_shots_missing_labels", "n_shots_missing_events", "labelmaker_git_sha",
-    "thresholds_from_card", "thresholds_from_config", "lexicon",
+    "thresholds_from_card", "thresholds_from_config", "thresholds", "forecast_rules", "lexicon",
 )
+
+#: Where a `thr` came from. `""` is the third value `labels_wide.thr_source` takes and means
+#: "there is no threshold", which is not a source.
+THR_SOURCES: tuple[str, ...] = ("card", "config")
+
+#: The file the `forecasts:` block lives in.
+FORECASTS_CONFIG = "labels.yaml"
+
+_NO_THRESHOLD: tuple[float, str] = (_NAN, "")
 
 
 @dataclass(frozen=True)
@@ -218,10 +234,66 @@ def forecast_rules(rules: Sequence[Mapping] | None = None) -> tuple[ForecastRule
     )
 
 
-def _threshold_map(rules: Sequence[ForecastRule], from_card: Mapping[str, float]) -> dict[str, float]:
-    """What `labels_wide.thr` reads. A card's own operating point wins over the config's alarm
-    level, because a card is the model's word about its own model."""
-    return {**{r.key: r.thr for r in rules}, **from_card}
+def _threshold_map(
+    rules: Sequence[ForecastRule], from_card: Mapping[str, float]
+) -> dict[str, tuple[float, str]]:
+    """`"<slug>/<label>" -> (threshold, source)` for every label anyone has named a level for.
+
+    A card's own operating point wins over the config's alarm level, because a card is the model's
+    word about its own model. One map, built once per join and read by both `labels_wide` and
+    `label_forecast_events`, is what makes the two tables incapable of disagreeing: if a card ever
+    starts recording a `threshold:` on a label the `forecasts:` block also names, the events move
+    to it in the same call the `labels_wide` row does.
+    """
+    return {
+        **{r.key: (float(r.thr), "config") for r in rules},
+        **{key: (float(thr), "card") for key, thr in from_card.items()},
+    }
+
+
+def _normalise_thresholds(
+    thresholds: Mapping[str, tuple[float, str]] | None,
+) -> dict[str, tuple[float, str]]:
+    """`thresholds` as `{key: (thr, source)}`, or ValueError.
+
+    A bare number is refused rather than defaulted to a source. Silently calling an unattributed
+    number a card's operating point is exactly the confusion `thr_source` was added to end, and a
+    caller with a threshold in hand always knows where it came from.
+    """
+    if thresholds is None:
+        return _threshold_map((), card_thresholds())
+    out: dict[str, tuple[float, str]] = {}
+    for key, value in thresholds.items():
+        if isinstance(value, str) or not isinstance(value, Sequence) or len(value) != 2:
+            raise ValueError(
+                f"threshold for {key!r} is {value!r}; a threshold must name its source as "
+                f"(thr, source) with source in {THR_SOURCES}"
+            )
+        thr, source = value
+        if source not in THR_SOURCES:
+            raise ValueError(f"threshold for {key!r} has source {source!r}, not one of "
+                             f"{THR_SOURCES}")
+        out[key] = (float(thr), str(source))
+    return out
+
+
+def forecast_rules_path() -> Path:
+    """The file the `forecasts:` block is read from."""
+    return config.CONFIG_DIR / FORECASTS_CONFIG
+
+
+def rules_sha256(rules: Sequence[ForecastRule]) -> str:
+    """A digest of the rule set itself, in canonical order.
+
+    Of the *rules*, not of the file's bytes: a comment rewrite in `labels.yaml` must not read as a
+    changed alarm, and a rule set passed in by a caller with no file behind it still has to be
+    identifiable. Two joins whose forecast events could differ have different digests here.
+    """
+    payload = json.dumps(
+        sorted([r.slug, r.label, r.thr, r.horizon_s, r.phenomenon] for r in rules),
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 # ------------------------------------------------------------------------------- labels_wide
@@ -239,8 +311,11 @@ def _labels_wide_frame(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(cols, columns=list(LABELS_WIDE_COLUMNS))
 
 
-def _summary(shot: int, slug: str, label: str, t, y, valid, thr: float, sha: str) -> dict:
+def _summary(
+    shot: int, slug: str, label: str, t, y, valid, threshold: tuple[float, str], sha: str
+) -> dict:
     """One `labels_wide` row. Every statistic is over `valid`; see the module docstring."""
+    thr, thr_source = threshold
     n_valid = int(valid.sum())
     yv = y[valid]
     row = {
@@ -253,13 +328,19 @@ def _summary(shot: int, slug: str, label: str, t, y, valid, thr: float, sha: str
         "mean_valid": float(yv.mean()) if n_valid else _NAN,
         "p95_valid": float(np.percentile(yv, 95)) if n_valid else _NAN,
         "thr": float(thr),
+        "thr_source": thr_source if np.isfinite(thr) else "",
         "frac_above": _NAN,
         "first_above_t_s": _NAN,
         "n_intervals": None,
         "longest_interval_s": _NAN,
         "artifact_sha256": sha,
     }
-    if not (np.isfinite(thr) and n_valid):
+    # A non-finite valid sample stops the alarm columns the same way it stops `max/mean/p95`
+    # above, which come out NaN by propagation. A `frac_above` computed by skipping the NaNs would
+    # be an alarm rate over a population the row's own summary refuses to describe, and one
+    # computed with them would silently read `nan >= thr` as False -- "the alarm did not fire" for
+    # a sample where the model emitted a non-number while claiming its inputs were fine.
+    if not (np.isfinite(thr) and n_valid and bool(np.isfinite(yv).all())):
         return row
     above = valid & (y >= thr)
     runs = _runs(above)
@@ -274,7 +355,8 @@ def _summary(shot: int, slug: str, label: str, t, y, valid, thr: float, sha: str
 
 
 def labels_wide(
-    shots: Iterable[int], *, labelmaker_root, thresholds: Mapping[str, float] | None = None
+    shots: Iterable[int], *, labelmaker_root,
+    thresholds: Mapping[str, tuple[float, str]] | None = None,
 ) -> pd.DataFrame:
     """One row per (shot, slug, label) of every shot that has a labels file.
 
@@ -282,12 +364,13 @@ def labels_wide(
     shots in `manifest["labels_missing"]`, which is where "we never labelled this shot" belongs;
     a zero in a table is indistinguishable from a measurement.
 
-    `thresholds` maps `"<slug>/<label>"` to an operating threshold and defaults to whatever the
-    model cards record (`card_thresholds()`); `join()` passes the cards' plus the `forecasts:`
-    block's, so the risk labels an alarm is actually built on carry the alarm's own threshold.
+    `thresholds` maps `"<slug>/<label>"` to `(threshold, source)` and defaults to whatever the
+    model cards record (`card_thresholds()`, all `card`); `join()` passes the cards' plus the
+    `forecasts:` block's, so the risk labels an alarm is actually built on carry the alarm's own
+    threshold -- and `thr_source` says, row by row, which of the two the number is.
     """
     paths = _paths(labelmaker_root)
-    thr_by_key = dict(card_thresholds() if thresholds is None else thresholds)
+    thr_by_key = _normalise_thresholds(thresholds)
     rows: list[dict] = []
     for shot in _shots(shots):
         path = paths.labels_file(shot)
@@ -298,7 +381,8 @@ def labels_wide(
             t, y, valid, attrs = _series(path, slug, label)
             sha = str(attrs.get("artifact_sha256", ""))
             rows.append(
-                _summary(shot, slug, label, t, y, valid, thr_by_key.get(key, _NAN), sha)
+                _summary(shot, slug, label, t, y, valid,
+                         thr_by_key.get(key, _NO_THRESHOLD), sha)
             )
     return _labels_wide_frame(rows)
 
@@ -312,6 +396,7 @@ def _run_id() -> str:
 
 def label_forecast_events(
     shots: Iterable[int], *, labelmaker_root, rules: Sequence[ForecastRule],
+    thresholds: Mapping[str, tuple[float, str]] | None = None,
     run_id: str | None = None,
 ) -> pd.DataFrame:
     """Every maximal run of `p >= thr` in a risk label, as a `forecast` event.
@@ -319,8 +404,14 @@ def label_forecast_events(
     `confidence` is the largest probability in the run and `horizon_s` the rule's horizon, so a
     reader can tell "0.9 that a tearing mode starts within 250 ms" from "0.9 that one is present",
     which is the whole point of keeping these out of the detector rows.
+
+    `thresholds` is the join's `{key: (thr, source)}` map and overrides the rule's own level where
+    it names the rule's label -- the same map `labels_wide` reads, so an event and its row can
+    never be raised at two different numbers. Without it every rule stands at its own `thr`, which
+    is `config`'s by definition. Both the number and its source go into the event's `attrs`.
     """
     paths = _paths(labelmaker_root)
+    thresholds = dict(thresholds or {})
     run_id = run_id or _run_id()
     frames: list[pd.DataFrame] = []
     for shot in _shots(shots):
@@ -335,11 +426,15 @@ def label_forecast_events(
             t, y, valid, attrs = _series(path, rule.slug, rule.label)
             if not valid.any():
                 continue
+            thr, thr_source = thresholds.get(rule.key, (float(rule.thr), "config"))
             dt = _step(t)
             cov0 = float(t[valid][0])
             cov1 = float(t[valid][-1] + dt)
             sha = str(attrs.get("artifact_sha256", ""))
-            for a, b in _runs(valid & (y >= rule.thr)):
+            # The DSM heads are queried one step past their horizon and the label records which
+            # millisecond that was; a risk with no "as of when" beside it is not interpretable.
+            queried = attrs.get("queried_at_ms")
+            for a, b in _runs(valid & (y >= thr)):
                 events.append(
                     events_schema.Event(
                         shot=shot,
@@ -356,9 +451,11 @@ def label_forecast_events(
                         attrs={
                             "slug": rule.slug,
                             "label": rule.label,
-                            "thr": rule.thr,
+                            "thr": thr,
+                            "thr_source": thr_source,
                             "n_samples": int(b - a + 1),
                             "artifact_sha256": sha,
+                            **({"queried_at_ms": str(queried)} if queried is not None else {}),
                         },
                         t_cov0_s=cov0,
                         t_cov1_s=cov1,
@@ -382,9 +479,17 @@ def events_union(
 
     Sorted by `(shot, t0_s)`, with `event_id` as the tie-break so the file is a function of its
     inputs and not of the order the directory happened to list.
+
+    `label_forecast` rows already on disk are dropped: they are this join's to compute, out of the
+    labels and this join's threshold map, and keeping a file's copy as well would put two rows
+    raised at two different thresholds over the same stretch of the same shot into one table --
+    with `event_id`s that collide, since the schema numbers per source.
     """
     paths = _paths(labelmaker_root)
-    parts = [events_schema.read_events(paths.events_file(s)) for s in _shots(shots)]
+    parts = []
+    for shot in _shots(shots):
+        disk = events_schema.read_events(paths.events_file(shot))
+        parts.append(disk[disk["source"] != "label_forecast"] if not disk.empty else disk)
     parts.append(forecasts)
     kept = [p for p in parts if not p.empty]
     out = pd.concat(kept, ignore_index=True) if kept else empty_events()
@@ -426,12 +531,15 @@ def join(
     """
     shots = _shots(shots)
     paths = _paths(labelmaker_root)
+    rules_path = forecast_rules_path() if rules is None else None
     rules = forecast_rules() if rules is None else tuple(rules)
     from_card = card_thresholds()
     thresholds = _threshold_map(rules, from_card)
 
     wide = labels_wide(shots, labelmaker_root=labelmaker_root, thresholds=thresholds)
-    forecasts = label_forecast_events(shots, labelmaker_root=labelmaker_root, rules=rules)
+    forecasts = label_forecast_events(
+        shots, labelmaker_root=labelmaker_root, rules=rules, thresholds=thresholds
+    )
     events = events_union(shots, labelmaker_root=labelmaker_root, forecasts=forecasts)
 
     lexicon = None
@@ -457,8 +565,18 @@ def join(
         "labels_missing": missing_labels,
         "events_missing": missing_events,
         "labelmaker_git_sha": _git_sha_of(events),
-        "thresholds_from_card": len(from_card),
-        "thresholds_from_config": len([r for r in rules if r.key not in from_card]),
+        "thresholds_from_card": sum(1 for _, src in thresholds.values() if src == "card"),
+        "thresholds_from_config": sum(1 for _, src in thresholds.values() if src == "config"),
+        # Per key, not just the two counts: a `frac_above` is only readable beside the number it
+        # was computed at and the name of whoever chose that number.
+        "thresholds": {key: [thr, src] for key, (thr, src) in sorted(thresholds.items())},
+        # Which rule set raised the forecasts. `labels.yaml` is a file that will be edited, and a
+        # table built from it has to say which version of it it was built from.
+        "forecast_rules": {
+            "path": str(rules_path) if rules_path else None,
+            "sha256": rules_sha256(rules),
+            "n_rules": len(rules),
+        },
         "lexicon": str(lexicon.source) if lexicon else None,
     }
     return JoinResult(labels_wide=wide, events=events, claims=claims, manifest=manifest)
@@ -507,18 +625,22 @@ def write_tables(
 __all__ = [
     "CLAIMS_COLUMNS",
     "CLAIMS_DTYPES",
+    "FORECASTS_CONFIG",
     "LABELS_WIDE_COLUMNS",
     "LABELS_WIDE_DTYPES",
     "MANIFEST_KEYS",
+    "THR_SOURCES",
     "ForecastRule",
     "JoinResult",
     "card_thresholds",
     "empty_events",
     "events_union",
     "forecast_rules",
+    "forecast_rules_path",
     "join",
     "label_forecast_events",
     "labels_wide",
+    "rules_sha256",
     "thresholds_from_card",
     "write_tables",
 ]

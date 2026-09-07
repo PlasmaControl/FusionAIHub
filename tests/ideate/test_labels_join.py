@@ -37,10 +37,14 @@ T = np.arange(0.0, 0.6, 0.1)
 DT = 0.1
 
 
-def _spec(slug: str, name: str, *, sha: str = "deadbeef", task: str = "binary") -> LabelSpec:
+def _spec(
+    slug: str, name: str, *, sha: str = "deadbeef", task: str = "binary",
+    attrs: tuple[tuple[str, str], ...] = (),
+) -> LabelSpec:
     return LabelSpec(
         name=name,
         task=task,
+        attrs=attrs,
         activation="none",
         units="",
         classes=("quiet", "active"),
@@ -61,11 +65,12 @@ def write_labels(
     *,
     t: np.ndarray = T,
     sha: str = "deadbeef",
+    attrs: tuple[tuple[str, str], ...] = (),
 ) -> Path:
     """One model's labels for one shot, through labelmaker's own writer."""
     path = Path(root) / "labels" / f"{shot}_labels.h5"
     path.parent.mkdir(parents=True, exist_ok=True)
-    specs = [_spec(slug, name, sha=sha) for name in series]
+    specs = [_spec(slug, name, sha=sha, attrs=attrs) for name in series]
     decoded = {
         name: Decoded(mean=np.asarray(y, float), lo=np.asarray(y, float), hi=np.asarray(y, float))
         for name, y in series.items()
@@ -99,7 +104,9 @@ def test_statistics_are_over_the_valid_samples_only(tmp_path):
     v = np.array([1, 1, 1, 1, 0, 1], bool)
     write_labels(tmp_path, 900001, "slug_a", {"p": y}, v)
 
-    df = join.labels_wide([900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": 0.5})
+    df = join.labels_wide(
+        [900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
+    )
 
     assert len(df) == 1
     row = df.iloc[0]
@@ -136,12 +143,33 @@ def test_a_threshold_free_label_leaves_the_alarm_columns_nan(tmp_path):
 def test_a_label_with_no_valid_sample_summarises_to_nan_not_zero(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": np.full(T.size, 0.9)}, np.zeros(T.size, bool))
 
-    row = join.labels_wide([900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": 0.5}).iloc[0]
+    row = join.labels_wide(
+        [900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
+    ).iloc[0]
 
     assert row["n_valid"] == 0
     assert row["valid_frac"] == pytest.approx(0.0)
     for col in ("max_valid", "mean_valid", "p95_valid", "frac_above", "first_above_t_s"):
         assert np.isnan(row[col]), col
+
+
+def test_a_non_finite_valid_sample_nulls_the_alarm_columns(tmp_path):
+    """A model that emits NaN where its own validity mask says the inputs were fine has not
+    measured a low probability there. `max/mean/p95_valid` already come out NaN by propagation;
+    `frac_above` and its companions must too, or the row would report an alarm rate computed over
+    a population its own summary refuses to describe."""
+    y = np.array([0.9, np.nan, 0.9, 0.9, 0.9, 0.9])
+    write_labels(tmp_path, 900001, "slug_a", {"p": y}, np.ones(T.size, bool))
+
+    row = join.labels_wide(
+        [900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
+    ).iloc[0]
+
+    assert row["n_valid"] == 6
+    for col in ("max_valid", "mean_valid", "p95_valid", "frac_above", "first_above_t_s",
+                "longest_interval_s"):
+        assert np.isnan(row[col]), col
+    assert pd.isna(row["n_intervals"])
 
 
 def test_a_shot_with_no_labels_file_produces_no_rows_and_is_named(tmp_path):
@@ -253,6 +281,21 @@ def test_forecast_rows_carry_the_labels_provenance(tmp_path):
     assert attrs["n_samples"] == 6
 
 
+def test_forecast_attrs_carry_the_labels_queried_at_ms_when_it_has_one(tmp_path):
+    """The DSM heads are queried one step past their horizon and the label records at which
+    millisecond. A forecast event that dropped it would be a risk with no answer to "as of when"."""
+    y = np.full(T.size, 0.9)
+    write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm", {"tm_risk_250ms": y},
+                 np.ones(T.size, bool), attrs=(("queried_at_ms", "251"),))
+    write_labels(tmp_path, 900002, "d3d_tearing_time_to_event_dsm", {"tm_risk_250ms": y},
+                 np.ones(T.size, bool))
+
+    df = join.label_forecast_events([900001, 900002], labelmaker_root=tmp_path, rules=[rule()])
+
+    assert json.loads(df["attrs"].iloc[0])["queried_at_ms"] == "251"
+    assert "queried_at_ms" not in json.loads(df["attrs"].iloc[1])
+
+
 # --------------------------------------------------------------------------- the events union
 
 
@@ -293,6 +336,28 @@ def test_union_sorts_by_shot_then_time(tmp_path):
         (900001, 1.0), (900001, 2.0), (900002, 1.0), (900002, 2.0)
     ]
     assert list(df.index) == [0, 1, 2, 3]
+
+
+def test_a_forecast_row_on_disk_is_replaced_by_this_joins_own(tmp_path):
+    """`label_forecast` rows are ideate's to compute: they come out of the labels and this join's
+    threshold map. If labelmaker ever writes some of its own into `events/`, keeping both would
+    put two rows with different thresholds over the same stretch of the same shot into one table."""
+    write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
+                 {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
+    (tmp_path / "events").mkdir()
+    stale = ev.Event(
+        shot=900001, source="label_forecast", evidence_kind="forecast", phenomenon="tearing",
+        t0_s=0.0, t1_s=0.6, confidence=0.9, horizon_s=0.25, t_cov0_s=0.0, t_cov1_s=0.6,
+    )
+    ev.write_events(tmp_path / "events" / "900001_events.parquet", 900001,
+                    [stale, _detector_event(900001, 1.0)], run_id="test-run")
+
+    forecasts = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.events_union([900001], labelmaker_root=tmp_path, forecasts=forecasts)
+
+    assert len(df) == 2
+    assert sorted(df["source"]) == ["label_forecast", "tokeye_track"]
+    assert list(df.loc[df["source"] == "label_forecast", "event_id"]) == list(forecasts["event_id"])
 
 
 def test_no_events_directory_at_all_is_an_empty_typed_frame(tmp_path):
@@ -396,6 +461,94 @@ def test_the_configured_forecast_rules_name_real_models_and_real_labels():
         assert np.isfinite(r.horizon_s) and r.horizon_s > 0.0
         assert r.phenomenon
     assert {r.phenomenon for r in rules} == {"tearing", "elm"}
+
+
+TM = "d3d_tearing_time_to_event_dsm/tm_risk_250ms"
+
+
+def test_a_card_threshold_and_a_config_threshold_are_told_apart(tmp_path):
+    """`thr` alone cannot say whose number it is. A card's operating point is the model authors'
+    word about their own model; the `forecasts:` block's level is ideate's alarm choice, and a
+    consumer weighing an alarm has to be able to tell one from the other row by row."""
+    y = np.full(T.size, 0.9)
+    write_labels(tmp_path, 900001, "slug_a", {"p": y, "q": y, "r": y}, np.ones(T.size, bool))
+
+    df = join.labels_wide(
+        [900001], labelmaker_root=tmp_path,
+        thresholds={"slug_a/p": (0.7, "card"), "slug_a/q": (0.2, "config")},
+    ).set_index("label")
+
+    assert (df.loc["p", "thr"], df.loc["p", "thr_source"]) == (pytest.approx(0.7), "card")
+    assert (df.loc["q", "thr"], df.loc["q", "thr_source"]) == (pytest.approx(0.2), "config")
+    assert np.isnan(df.loc["r", "thr"]) and df.loc["r", "thr_source"] == ""
+
+
+def test_a_threshold_must_name_its_source(tmp_path):
+    """A bare number would be recorded as a card's operating point whatever it really was, which
+    is the confusion `thr_source` exists to end."""
+    write_labels(tmp_path, 900001, "slug_a", {"p": T}, np.ones(T.size, bool))
+    with pytest.raises(ValueError, match="source"):
+        join.labels_wide([900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": 0.5})
+
+
+def test_a_card_threshold_beats_the_config_in_both_tables_at_once(tmp_path, monkeypatch):
+    """One map feeds `labels_wide` and the forecast events, so the two tables cannot disagree
+    about the number an alarm was raised at. The card's 0.25 and the rule's 0.2 pick different
+    runs out of this series, so a table still reading the rule's would show it."""
+    y = np.array([0.1, 0.22, 0.3, 0.1, 0.1, 0.1])
+    write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm", {"tm_risk_250ms": y},
+                 np.ones(T.size, bool))
+    monkeypatch.setattr(join, "card_thresholds", lambda: {TM: 0.25})
+
+    result = join.join([900001], labelmaker_root=tmp_path, rules=[rule(thr=0.2)])
+
+    row = result.labels_wide.iloc[0]
+    assert (row["thr"], row["thr_source"]) == (pytest.approx(0.25), "card")
+    assert row["frac_above"] == pytest.approx(1 / 6, rel=1e-6)   # the rule's 0.2 would say 2/6
+    assert row["n_intervals"] == 1
+    assert len(result.events) == 1
+    event = result.events.iloc[0]
+    assert event["t0_s"] == pytest.approx(0.2)                   # the rule's 0.2 would start at 0.1
+    attrs = json.loads(event["attrs"])
+    assert attrs["thr"] == pytest.approx(0.25)
+    assert attrs["thr_source"] == "card"
+    assert attrs["n_samples"] == 1
+
+
+def test_the_manifest_records_every_threshold_with_its_source(tmp_path, monkeypatch):
+    write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
+                 {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
+    monkeypatch.setattr(join, "card_thresholds", lambda: {"slug_a/p": 0.7})
+
+    result = join.join([900001], labelmaker_root=tmp_path, rules=[rule(thr=0.2)])
+
+    assert result.manifest["thresholds"] == {
+        "slug_a/p": [pytest.approx(0.7), "card"],
+        TM: [pytest.approx(0.2), "config"],
+    }
+    assert result.manifest["thresholds_from_card"] == 1
+    assert result.manifest["thresholds_from_config"] == 1
+
+    db = tmp_path / "db"
+    join.write_tables(db, result.labels_wide, result.events, result.claims, result.manifest)
+    block = json.loads((db / "manifest.json").read_text())["labels"]
+    assert block["thresholds"][TM] == [pytest.approx(0.2), "config"]
+
+
+def test_the_manifest_records_which_forecast_rules_were_applied(tmp_path):
+    """The rule set is a file that will be edited. A table built from it has to say which version
+    of it it was built from, or a `frac_above` from last week is unattributable."""
+    from_config = join.join([], labelmaker_root=tmp_path).manifest["forecast_rules"]
+    assert from_config["path"].endswith("labels.yaml")
+    assert len(from_config["sha256"]) == 64
+    assert from_config["n_rules"] == len(join.forecast_rules())
+
+    explicit = join.join([], labelmaker_root=tmp_path, rules=[rule()]).manifest["forecast_rules"]
+    assert explicit["path"] is None                 # no file said so
+    assert explicit["n_rules"] == 1
+    assert explicit["sha256"] != from_config["sha256"]
+    changed = join.join([], labelmaker_root=tmp_path, rules=[rule(thr=0.3)])
+    assert changed.manifest["forecast_rules"]["sha256"] != explicit["sha256"]
 
 
 # -------------------------------------------------------------------------------------- CLI
