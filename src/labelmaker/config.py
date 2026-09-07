@@ -22,6 +22,14 @@ DEFAULT_TEXT = Path(
     "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
     "/shotsummary/processed/per_shot_txt"
 )
+#: The logbook dump `events/text_weak.py` takes its SHOT-scope text from:
+#: one 616 MB file, one JSON record per line, every line beginning
+#: `{"shot": <digits>,`. Read-only, like the corpus and the bundles; what
+#: labelmaker writes is the subset of it for the shots in hand, under
+#: `text_cache`.
+DEFAULT_LOGS_JSONL = Path(
+    "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/sql/logs.jsonl"
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +39,7 @@ class Paths:
     root: Path = DEFAULT_ROOT
     corpus: Path = DEFAULT_CORPUS
     text_root: Path = DEFAULT_TEXT
+    logs_jsonl: Path = DEFAULT_LOGS_JSONL
 
     @classmethod
     def from_env(cls) -> Paths:
@@ -39,6 +48,8 @@ class Paths:
             corpus=Path(os.environ.get("LABELMAKER_CORPUS", str(DEFAULT_CORPUS))),
             text_root=Path(os.environ.get("LABELMAKER_TEXT_ROOT",
                                           str(DEFAULT_TEXT))),
+            logs_jsonl=Path(os.environ.get("LABELMAKER_LOGS_JSONL",
+                                           str(DEFAULT_LOGS_JSONL))),
         )
 
     @property
@@ -74,6 +85,19 @@ class Paths:
         return self.root / "annotate"
 
     @property
+    def text_cache(self) -> Path:
+        """Where the shots-in-hand slice of `logs_jsonl` is kept.
+
+        An OUTPUT: streaming 616 MB to find five records is a thing to do
+        once, and everything downstream reads the subset instead.
+        """
+        return self.root / "text"
+
+    @property
+    def logs_subset(self) -> Path:
+        return self.text_cache / "logs_subset.jsonl"
+
+    @property
     def labels_index(self) -> Path:
         return self.root / "labels_index.parquet"
 
@@ -101,7 +125,8 @@ class Paths:
 
     def mkdirs(self) -> None:
         for d in (self.features, self.labels, self.models, self.runs,
-                  self.validation, self.events, self.masks, self.annotate):
+                  self.validation, self.events, self.masks, self.annotate,
+                  self.text_cache):
             d.mkdir(parents=True, exist_ok=True)
 
 

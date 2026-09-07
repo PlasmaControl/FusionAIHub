@@ -2,8 +2,10 @@
 
 DIII-D's logbook is the only place some phenomena are ever named: nobody
 runs a detector for a fishbone, but somebody typed "fishbones on this one"
-at 3 pm. `lexicons.yaml` is the list of what they call each thing, and this
-module is the matcher over the per-shot text bundles.
+at 3 pm. `lexicon.py` is the list of what they call each thing and the
+matcher over it; this module is where the text comes FROM, and the two
+outputs it feeds - `weak_labels` (a frame over many shots) and
+`text_events` (rows against one).
 
 **Text is never a label by itself** (plan 2). A lexicon hit is a claim that
 a human wrote a word, not that the phenomenon happened: the same sentence
@@ -13,46 +15,51 @@ about a different shot entirely. So a hit's confidence is capped at
 and its place in the pipeline is to PRIORITISE - which chunks a human is
 asked to annotate, which shots ideate ranks - never to decide.
 
-Two scopes, and the difference matters. A bundle is a run's session text,
-the marker line `## Shot-specific context (from summary.html)`, and then
-the shot's own block. The session text is shared by every shot of the run,
-so a sawtooth mentioned there is evidence about the RUN; attaching it to
-this shot attaches it to the twenty others in the same session too
-(Appendix C item 12). `weak_labels` will read either and says which in the
-`scope` column; `text_events`, which writes rows against one shot, reads
-the shot's own block and nothing else.
+TWO SOURCES, and which one a hit came from is the whole of what it means:
 
-The matching is deliberately dumb - space-glued phrases, no stemming, no
-model - because the failure mode of a clever matcher here is a confident
-wrong claim, and the failure mode of this one is a missed mention that the
-detectors were going to have to find anyway. See A7 "text word-boundary".
+* `sql/logs.jsonl` - one JSON record per shot, whose `log_text` is that
+  shot's own logbook entries, each headed `### [ROLE] user timestamp` on
+  its own line. This is SHOT scope: somebody wrote it about this shot. It
+  is 616 MB and 53,179 records, so it is read once into a subset of the
+  shots in hand (`build_logs_subset`) and never scanned again.
+* the per-shot bundle (`shotsummary/.../shot_<N>.txt`) - whose text before
+  the marker line is the RUN's session context, shared by every shot of the
+  session, and whose block after the marker is, in this corpus, the
+  `SHOT TABLE ROW` and nothing else. A sawtooth named in the session text
+  is evidence about the run: attaching it to this shot attaches it to the
+  twenty others in the same session too (Appendix C item 12). So the bundle
+  is `scope="run"` text and the SPAN (`PULSE-LENGTH`), and nothing else.
+
+Everything above the outputs is reached through four accessors -
+`shot_prose` (with `shot_entries`, its structured form), `run_context` and
+`shot_span_s` - and `weak_labels` and `text_events` use no others. That is
+not tidiness. The shot-scope source WAS the bundle until the L7 review, and
+making the swap found that `text_events` had been taking its span from the
+same block as its text - which the new source has none of, so every event
+would have silently collapsed to a point at zero with no test failing.
+Named accessors are what make the next swap one function each.
+
+The matching is `lexicon.py`'s and takes text, not a shot: nothing in this
+module decides what a phrase means.
 """
 from __future__ import annotations
 
+import copy
+import functools
+import json
 import math
+import os
 import re
-from collections.abc import Iterable, Mapping, Sequence
+import warnings
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-import yaml
 
 from ..config import Paths
+from .lexicon import TEXT_ONLY_CEILING, Hit, Lexicon, hits
 from .schema import Event
-
-#: Plan 5.6's round-1 ids. The lexicon may not name anything else: a
-#: phenomenon id is a join key against labels, events and ideate's
-#: `phenomena.yaml`, and a typo that loads silently is a phenomenon that
-#: quietly has no evidence.
-PHENOMENON_IDS = (
-    "ae", "eho", "elm", "tearing", "sawtooth", "fishbone", "qcm", "qh",
-    "lh", "detachment", "pickup", "rwm",
-)
-
-#: The alias lists themselves. Shipped beside this module because ideate
-#: reads it too - one file, two readers.
-LEXICON_PATH = Path(__file__).with_name("lexicons.yaml")
 
 #: The line that separates a run's session text from this shot's own.
 MARKER = "## Shot-specific context (from summary.html)"
@@ -60,13 +67,13 @@ MARKER = "## Shot-specific context (from summary.html)"
 #: The header of the `- KEY: value` block at the end of a shot's block.
 TABLE_HEADER = "SHOT TABLE ROW"
 
-#: What one mention is worth, and so what a single mention is capped at.
-#: Four independent mentions reach 1.0; nothing else about text does.
-TEXT_ONLY_CEILING = 0.25
-
-#: Where a hit's text came from. `run` is the session text every shot of
-#: the run shares; `shot` is this shot's own block.
+#: Where a hit's text came from. `run` is the bundle's session text, which
+#: every shot of the run shares; `shot` is this shot's own logbook entries.
 SCOPES = ("shot", "run")
+
+#: What `text_events` records as the source of its text, so a row can be
+#: told from one written before the source was swapped.
+TEXT_SOURCE = "logs.jsonl"
 
 #: How much of the first positive sentence a row carries.
 SNIPPET_CHARS = 200
@@ -84,158 +91,267 @@ DTYPES = {
     "snippet": "object",
 }
 
-#: What ends a sentence: `. ! ? ;` and the newline.
-_TERMINATOR = re.compile(r"[.!?;\n]+")
+#: Every line of `logs.jsonl` begins exactly like this. Selecting lines on
+#: the raw BYTES is what makes one pass over 616 MB affordable: parsing all
+#: 53,179 records to keep 500 of them is a minute of JSON, matching a
+#: prefix is seconds of memchr.
+_SHOT_PREFIX = re.compile(rb'^\{"shot":\s*(\d+)')
 
-#: Everything that is NOT part of a word. `\w` keeps letters, digits and
-#: the underscore; the hyphen and the slash are kept too, so that
-#: "elm-free" is one word and not an ELM and "2/1" is a mode number and not
-#: a 2 and a 1. The underscore is kept for the same reason in reverse: the
-#: session text is full of control-system parameter names, and
-#: `RWM_GAINMULT` is an identifier rather than somebody saying an RWM
-#: happened.
-_PUNCTUATION = re.compile(r"[^\w\-/]+")
+#: The head of one logbook entry inside `log_text`: `### [PHYSICS_OPERATOR]
+#: someone 2024-05-17 13:12:07`, alone on its line.
+_ENTRY_HEADER = re.compile(
+    r"^###\s*\[(?P<role>[A-Za-z_]+)\]\s+(?P<author>\S+)\s+"
+    r"(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*$",
+    re.MULTILINE,
+)
 
-#: Stripped from a token's ENDS, where they are punctuation after all - a
-#: trailing dash, a bare slash between two spaces.
-_IN_TOKEN = "-/"
+#: The five HTML tags that turn up inside `log_text` - the mini-proposal
+#: link and some hand formatting. Named one by one on purpose: `<[^>]*>`
+#: would also eat `<ne>=4.2e13`, which is a measurement, and the sentences
+#: with measurements in them are the ones worth reading.
+_HTML_TAG = re.compile(r"</?(?:a|b|pre|font|del)(?:\s[^>]*)?>", re.IGNORECASE)
 
-
-class LexiconError(ValueError):
-    """The lexicon file says something `text_weak` cannot use."""
-
-
-@dataclass(frozen=True)
-class Phenomenon:
-    """One phenomenon's names, and the phrases that deny it."""
-
-    id: str
-    title: str
-    aliases: tuple[str, ...]
-    negatives: tuple[str, ...] = ()
-    weight: float = 1.0
+#: Roles whose entries are a machine dump rather than something a person
+#: wrote. `[PCS]` is one per shot - `PCS CHANGES: ... set vertices ...` -
+#: and it is where `RWM_GAINMULT` and every other identifier that reads
+#: like a phenomenon lives.
+MACHINE_ROLES = ("PCS",)
 
 
 @dataclass(frozen=True)
-class Lexicon:
-    """Every phenomenon the text layer knows how to look for."""
+class LogEntry:
+    """One logbook entry: who wrote it, when, and what it says."""
 
-    version: int
-    phenomena: tuple[Phenomenon, ...]
-
-    @property
-    def ids(self) -> tuple[str, ...]:
-        return tuple(p.id for p in self.phenomena)
-
-    def __getitem__(self, phenomenon_id: str) -> Phenomenon:
-        for p in self.phenomena:
-            if p.id == phenomenon_id:
-                return p
-        raise KeyError(phenomenon_id)
+    role: str
+    author: str
+    time: str
+    text: str
 
 
-@dataclass(frozen=True)
-class Hit:
-    """One phenomenon named in one sentence.
+def _paths(paths: Paths | None) -> Paths:
+    return Paths.from_env() if paths is None else paths
 
-    `polarity` is `"neg"` when that sentence also carries one of the
-    phenomenon's `negatives`: "no elms" names ELMs and denies them, and a
-    counter that could not tell the two apart would rank the shots where
-    somebody wrote that a phenomenon was ABSENT.
+
+# ------------------------------------------------- the shot's own logbook
+
+def build_logs_subset(shots: Iterable[int], *,
+                      paths: Paths | None = None) -> int:
+    """Copy the records for `shots` out of `logs_jsonl` into the subset.
+
+    One pass over the 616 MB source, selecting lines by their byte prefix,
+    and only for shots the subset does not already hold - so a second call
+    for the same shots reads nothing and returns 0. Returns how many
+    records were added.
+
+    The cache is rewritten WHOLE - the existing complete lines, then the
+    new records - into a sibling `.tmp` that is fsynced and renamed over
+    the old one, so a reader never sees a half-written file and a build
+    killed at any point leaves either the old cache or the new one.
+    (Appending in place is what produces the torn trailing line
+    `_subset_records` tolerates; a line of the old file that lacks its
+    newline is such a tail, is not carried over, and its shot is fetched
+    again.) Mirrors `ideate.shotdb.text.build_logs_subset`, which is where
+    the pattern and the failure it fixes were measured.
+
+    A missing or unreadable `logs_jsonl` RAISES rather than reading as no
+    text. A shot the logbook has no record of is ordinary and answers
+    `None`; a source that is not there is a misconfigured `Paths`, and the
+    failure it would otherwise make - every shot silently textless - is the
+    one this module has been burned by once.
     """
-
-    phenomenon: str
-    alias: str
-    sentence: str
-    polarity: str
-
-
-def load_lexicon(path=None) -> Lexicon:
-    """Parse and check the lexicon; every problem is a `LexiconError`.
-
-    Checked rather than trusted because this file is edited by hand, is
-    read by two packages, and its mistakes are silent: an alias with a
-    capital in it can never match (the matcher lowercases the text and not
-    the alias), and an unknown id produces evidence rows that join to
-    nothing.
-    """
-    path = Path(LEXICON_PATH if path is None else path)
+    paths = _paths(paths)
+    wanted = {int(s) for s in shots} - set(_read_subset(paths))
+    if not wanted:
+        return 0
+    out = paths.logs_subset
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + ".tmp")
+    n = 0
     try:
-        raw = yaml.safe_load(path.read_text()) or {}
-    except OSError as exc:
-        raise LexiconError(f"lexicon not readable: {exc}") from exc
-    if not isinstance(raw, Mapping):
-        raise LexiconError(f"{path}: the lexicon is a mapping, not {type(raw)}")
-    version = raw.get("version")
-    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        raise LexiconError(f"{path}: `version` must be a positive integer")
-    entries = raw.get("phenomena")
-    if not isinstance(entries, Mapping) or not entries:
-        raise LexiconError(f"{path}: `phenomena` must be a non-empty mapping")
+        with open(tmp, "wb") as dst:
+            if out.exists():
+                with open(out, "rb") as old:
+                    for line in old:
+                        if line.endswith(b"\n"):
+                            dst.write(line)
+            with open(paths.logs_jsonl, "rb") as src:
+                for line in src:
+                    m = _SHOT_PREFIX.match(line)
+                    if m and int(m.group(1)) in wanted:
+                        dst.write(line.rstrip(b"\n") + b"\n")
+                        n += 1
+            dst.flush()
+            os.fsync(dst.fileno())
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return n
+
+
+def _stat_key(path: Path) -> tuple[int, int]:
+    st = path.stat()
+    return (st.st_size, st.st_mtime_ns)
+
+
+@functools.lru_cache(maxsize=2)
+def _subset_records(path_str: str, key: tuple[int, int]) -> dict[int, dict]:
+    """The parsed subset, memoised on `(path, size, mtime_ns)`.
+
+    Parsed once per VERSION of the file rather than once per shot: the
+    access pattern is build-then-read-every-shot, and re-reading a 7 MB
+    cache to answer each of 500 questions is 20 ms a shot of nothing. The
+    key is what keeps an append-then-read correct anyway.
+
+    An undecodable LAST line is dropped with a warning: that is what a
+    build killed mid-write leaves behind, and raising on it would break
+    every later read until somebody deleted the file by hand. Anywhere else
+    it is not that failure mode and is an error.
+
+    The mapping is shared between callers - `load_log_record` copies out of
+    it, and nothing else may hand it out.
+    """
+    out: dict[int, dict] = {}
+    lines = [ln for ln in Path(path_str).read_bytes().split(b"\n") if ln.strip()]
+    for i, line in enumerate(lines):
+        try:
+            rec = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if i == len(lines) - 1:
+                warnings.warn(
+                    f"{path_str}: dropping an undecodable trailing line "
+                    f"({len(line)} bytes; a build was killed mid-write) - "
+                    "its shot is fetched again by the next build",
+                    stacklevel=2,
+                )
+                break
+            raise ValueError(
+                f"{path_str}: undecodable record on line {i + 1}"
+            ) from exc
+        out[int(rec["shot"])] = rec
+    return out
+
+
+def _read_subset(paths: Paths) -> dict[int, dict]:
+    path = paths.logs_subset
+    if not path.exists():
+        return {}
+    return _subset_records(str(path), _stat_key(path))
+
+
+def load_log_record(shot, *, paths: Paths | None = None) -> dict | None:
+    """One shot's logbook record from the SUBSET, or `None`.
+
+    Never the 616 MB source: a lookup that could fall back to scanning it
+    would do so once per shot, and the 500-shot loop that looks fine in a
+    test would take an hour on the real corpus. `build_logs_subset` is the
+    only thing that reads the source; a shot nobody built is `None`.
+
+    A copy, because the parsed subset is memoised and shared and two of the
+    record's fields (`topics`, `keywords`) are lists.
+    """
+    rec = _read_subset(_paths(paths)).get(int(shot))
+    return None if rec is None else copy.deepcopy(rec)
+
+
+def log_entries(log_text: str) -> list[LogEntry]:
+    """`log_text` split into the entries its headers announce.
+
+    Text before the first header - there usually is none - is dropped
+    rather than guessed at: an entry with no header has no author and no
+    role, and who wrote a sentence is half of what this module claims.
+    """
+    if not log_text:
+        return []
+    heads = list(_ENTRY_HEADER.finditer(log_text))
     out = []
-    for pid, body in entries.items():
-        if pid not in PHENOMENON_IDS:
-            raise LexiconError(
-                f"{path}: {pid!r} is not one of the round-1 phenomena "
-                f"{PHENOMENON_IDS}"
-            )
-        if not isinstance(body, Mapping):
-            raise LexiconError(f"{path}: {pid} must be a mapping")
-        title = body.get("title")
-        if not isinstance(title, str) or not title.strip():
-            raise LexiconError(f"{path}: {pid} needs a non-empty `title`")
-        aliases = _phrases(path, pid, body.get("aliases"), "aliases")
-        if not aliases:
-            raise LexiconError(f"{path}: {pid} needs at least one of `aliases`")
-        negatives = _phrases(path, pid, body.get("negatives") or [], "negatives")
-        weight = body.get("weight", 1.0)
-        if not isinstance(weight, (int, float)) or isinstance(weight, bool) \
-                or not (math.isfinite(weight) and weight > 0.0):
-            raise LexiconError(
-                f"{path}: {pid} `weight` must be a finite positive number"
-            )
+    for i, head in enumerate(heads):
+        stop = heads[i + 1].start() if i + 1 < len(heads) else len(log_text)
         out.append(
-            Phenomenon(id=pid, title=title, aliases=aliases,
-                       negatives=negatives, weight=float(weight))
+            LogEntry(
+                role=head.group("role"),
+                author=head.group("author"),
+                time=head.group("ts"),
+                text=_HTML_TAG.sub("", log_text[head.end():stop]).strip(),
+            )
         )
-    return Lexicon(version=int(version), phenomena=tuple(out))
+    return out
 
 
-def _phrases(path, pid: str, value, field: str) -> tuple[str, ...]:
-    """A checked list of lowercase, non-empty, matchable phrases."""
-    if not isinstance(value, Sequence) or isinstance(value, str):
-        raise LexiconError(f"{path}: {pid} `{field}` must be a list of phrases")
-    seen: list[str] = []
-    for phrase in value:
-        if not isinstance(phrase, str) or not phrase.strip():
-            raise LexiconError(f"{path}: {pid} `{field}` holds an empty phrase")
-        if phrase != phrase.lower():
-            raise LexiconError(
-                f"{path}: {pid} `{field}` phrase {phrase!r} is not lowercase; "
-                "the matcher lowercases the TEXT, so a capital never matches"
-            )
-        if _glue(phrase).strip() == "":
-            raise LexiconError(
-                f"{path}: {pid} `{field}` phrase {phrase!r} is all punctuation"
-            )
-        if phrase in seen:
-            raise LexiconError(f"{path}: {pid} `{field}` repeats {phrase!r}")
-        seen.append(phrase)
-    return tuple(seen)
+# ----------------------------------------------------- the four accessors
+
+def shot_entries(shot, *, paths: Paths | None = None,
+                 exclude_roles: tuple[str, ...] = MACHINE_ROLES,
+                 ) -> tuple[LogEntry, ...]:
+    """This shot's logbook entries, the machine dump left out.
+
+    THE shot-scope text accessor in its structured form - `shot_prose` is
+    the same thing flattened, and nothing else in this module reads a
+    shot's own text. `()` for a shot with no record, which is ordinary.
+    """
+    rec = load_log_record(shot, paths=paths)
+    if rec is None:
+        return ()
+    skip = {r.upper() for r in exclude_roles}
+    return tuple(
+        e for e in log_entries(rec.get("log_text") or "")
+        if e.role.upper() not in skip
+    )
 
 
-# --------------------------------------------------------- reading a bundle
+def shot_prose(shot, *, paths: Paths | None = None,
+               exclude_roles: tuple[str, ...] = MACHINE_ROLES) -> str:
+    """What people wrote about this shot: the `scope="shot"` text.
 
-def _read(shot: int, root=None) -> str:
+    The entry bodies, newline-joined - which is also what keeps a phrase
+    from spanning two ENTRIES, since `sentences` breaks on newlines: a
+    phrase made of the end of one person's note and the start of another's
+    is a sentence nobody wrote.
+
+    `MACHINE_ROLES` are excluded by default, and by default only: a caller
+    who wants the PCS dump asks for it with `exclude_roles=()`.
+    """
+    return "\n".join(
+        e.text for e in shot_entries(shot, paths=paths,
+                                     exclude_roles=exclude_roles)
+    )
+
+
+def run_context(shot, *, paths: Paths | None = None) -> str:
+    """The session text of the run this shot belongs to: `scope="run"`.
+
+    The bundle's text BEFORE the marker. Shared by every shot of the
+    session, so what it names is a property of the run and never of this
+    shot alone (Appendix C item 12).
+    """
+    return _split(_read_bundle(shot, paths))[0]
+
+
+def shot_span_s(shot, *, paths: Paths | None = None) -> tuple[float, float]:
+    """`[0, PULSE-LENGTH)` for this shot, or `(0.0, 0.0)`.
+
+    The span has its OWN source, deliberately: it comes from the bundle's
+    `SHOT TABLE ROW`, the only place the corpus states a shot's length,
+    while the text comes from the logbook, which has no such row. They were
+    one call until the L7 review, and swapping the text source under that
+    would have collapsed every text event to a point at zero with nothing
+    failing.
+    """
+    return (0.0, _pulse_length_s(shot_table_row(shot_block(shot, paths=paths))))
+
+
+# ------------------------------------------------------ reading a bundle
+
+def _read_bundle(shot, paths: Paths | None) -> str:
     """One shot's whole text bundle, or "" where there is no file.
 
-    Missing is ordinary: the corpus has text for about 13,000 of the 17,000
-    shots, and a caller joining text to features must not have to care.
+    Missing is ordinary: the corpus has bundles for about 13,000 of the
+    17,000 shots, and a caller joining text to features must not have to
+    care. UTF-8 with `replace`, because these are scraped from HTML and a
+    stray byte in one bundle may not stop a 500-shot run.
     """
-    paths = Paths.from_env() if root is None else Paths(text_root=Path(root))
-    path = paths.text_file(int(shot))
+    path = _paths(paths).text_file(int(shot))
     try:
-        return path.read_text(errors="replace")
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
 
@@ -246,26 +362,23 @@ def _split(text: str) -> tuple[str, str]:
     No marker means no shot block - not "the whole file is the shot's" -
     because the run's text is the thing that is always there. Both sides
     are stripped, so that a bundle which ENDS at the marker - the
-    session-fallback case, where the summary had nothing for this shot -
-    reads as an empty block rather than as a newline.
+    session-fallback case, where the summary carried nothing for this shot
+    - reads as an empty block rather than as a newline.
     """
     head, sep, tail = text.partition(MARKER)
     return (head.strip(), tail.strip()) if sep else (text.strip(), "")
 
 
-def run_context(shot, *, root=None) -> str:
-    """The session text of the run this shot belongs to."""
-    return _split(_read(shot, root))[0]
+def shot_block(shot, *, paths: Paths | None = None) -> str:
+    """The bundle's block after the marker: the TABLE ROW, in this corpus.
 
-
-def shot_block(shot, *, root=None) -> str:
-    """This shot's own text: everything after the marker.
-
-    `""` for a shot with no file, and for the session-fallback case where
-    the summary carried nothing for the shot and the bundle ends at the
-    marker.
+    A source accessor for `shot_span_s` and nothing more. It is NOT the
+    shot's prose: measured over a 400-bundle sample, the largest block
+    after the marker is 379 bytes and none of them carries a sentence -
+    they are `SHOT: N`, `- BTOR: ...`, `- PULSE-LENGTH: ...`. What people
+    wrote about the shot is in the logbook, and `shot_prose` is that.
     """
-    return _split(_read(shot, root))[1]
+    return _split(_read_bundle(shot, paths))[1]
 
 
 def shot_table_row(text: str) -> dict[str, str]:
@@ -294,76 +407,20 @@ def shot_table_row(text: str) -> dict[str, str]:
     return out
 
 
-# ------------------------------------------------------------ the matching
+def _pulse_length_s(table: Mapping[str, str]) -> float:
+    """`PULSE-LENGTH` in seconds, or 0.0 where the table does not say.
 
-def sentences(text: str) -> list[str]:
-    """Lowercased, whitespace-collapsed sentences.
-
-    Split on `. ! ? ;` and on newlines, because a logbook entry is as often
-    a list of lines as it is prose. The sentence is the unit the matcher
-    works in: it is the span over which a negation ("no elms") plausibly
-    applies, and small enough that two phenomena named in one are named
-    together.
+    The table row is the only shot duration the text corpus carries, and it
+    is a string somebody's HTML scraper produced: "(none)" and "" both
+    happen. A text claim is about the whole shot, so a shot whose length is
+    unknown gets the point event at 0 - `Event` requires finite times, and
+    inventing a span would be inventing a claim about when.
     """
-    return [
-        s for s in (" ".join(part.split()).lower()
-                    for part in _TERMINATOR.split(text))
-        if s
-    ]
-
-
-def _glue(sentence: str) -> str:
-    """The sentence as `" word word "`, for whole-phrase containment.
-
-    Every character that is not part of a word becomes a space, EXCEPT a
-    hyphen or a slash inside a token: "elm-free" is one token and so is
-    "2/1", while a trailing dash or a comma is not part of the word before
-    it. Wrapping the result in spaces is what makes `" nt " in " we want "`
-    false - the whole point of the exercise.
-    """
-    flat = _PUNCTUATION.sub(" ", sentence.lower())
-    tokens = (token.strip(_IN_TOKEN) for token in flat.split())
-    return f" {' '.join(t for t in tokens if t)} "
-
-
-def _matchers(lexicon: Lexicon):
-    """Per phenomenon, its glued aliases longest first and its negatives.
-
-    Longest first so that a sentence saying "edge harmonic oscillation" is
-    one mention of the EHO and not also one of "edge harmonic": a lexicon
-    that spells out its own acronym would otherwise count double, and the
-    count is what the confidence is made of.
-    """
-    out = []
-    for p in lexicon.phenomena:
-        glued = [(_glue(a), a) for a in p.aliases]
-        glued.sort(key=lambda pair: (-len(pair[0]), pair[1]))
-        out.append((p.id, glued, [_glue(n) for n in p.negatives]))
-    return out
-
-
-def hits(text: str, lexicon: Lexicon) -> dict[str, list[Hit]]:
-    """Every phenomenon named in `text`, by id, in the order it was named.
-
-    At most one hit per phenomenon per sentence - `n_pos` counts MENTIONS,
-    which is sentences, not the number of ways the lexicon happens to spell
-    the thing. Phenomena with no hit are absent from the mapping rather
-    than present with an empty list.
-    """
-    matchers = _matchers(lexicon)
-    out: dict[str, list[Hit]] = {}
-    for sentence in sentences(text):
-        glued = _glue(sentence)
-        for pid, aliases, negatives in matchers:
-            found = next((a for g, a in aliases if g in glued), None)
-            if found is None:
-                continue
-            polarity = "neg" if any(n in glued for n in negatives) else "pos"
-            out.setdefault(pid, []).append(
-                Hit(phenomenon=pid, alias=found, sentence=sentence,
-                    polarity=polarity)
-            )
-    return out
+    try:
+        value = float(table.get("PULSE-LENGTH", ""))
+    except (TypeError, ValueError):
+        return 0.0
+    return value if math.isfinite(value) and value > 0.0 else 0.0
 
 
 # -------------------------------------------------------------- the outputs
@@ -384,30 +441,38 @@ def _counts(found: Mapping[str, list[Hit]]) -> list[tuple[str, int, int, str]]:
     return rows
 
 
-def weak_labels(shots: Iterable[int], lexicon: Lexicon, *, root=None,
+def weak_labels(shots: Iterable[int], lexicon: Lexicon, *,
+                paths: Paths | None = None,
                 scope: str = "shot") -> pd.DataFrame:
     """One row per (shot, phenomenon) named in the shots' text.
 
-    `scope="shot"` reads each shot's own block; `scope="run"` reads the
-    session text it shares with the rest of its run, which is evidence
-    about the run and is labelled as such - a consumer that treats a run
-    row as a shot row has claimed the same sentence for every shot of the
-    session.
+    `scope="shot"` reads each shot's own logbook entries; `scope="run"`
+    reads the session text it shares with the rest of its run, which is
+    evidence about the RUN and is labelled as such - a consumer that treats
+    a run row as a shot row has claimed the same sentence for every shot of
+    the session.
 
-    One file read per shot either way, and no row at all for a phenomenon
-    nobody mentioned: an absent row is "not mentioned", which is not the
-    same claim as `n_pos == 0`.
+    The subset is built for `shots` before either scope, so that the pass
+    over the source happens once for a shot list rather than once per
+    scope, and so that a `Paths` pointing at a logbook nobody can read says
+    so here rather than by handing back an empty frame.
+
+    No row at all for a phenomenon nobody mentioned: an absent row is "not
+    mentioned", which is not the same claim as `n_pos == 0`.
     """
     if scope not in SCOPES:
         raise ValueError(f"scope must be one of {SCOPES}; got {scope!r}")
+    paths = _paths(paths)
+    shots = [int(s) for s in shots]
+    build_logs_subset(shots, paths=paths)
     rows = []
     for shot in shots:
-        run, block = _split(_read(shot, root))
-        text = block if scope == "shot" else run
+        text = (shot_prose(shot, paths=paths) if scope == "shot"
+                else run_context(shot, paths=paths))
         for phenomenon, n_pos, n_neg, snippet in _counts(hits(text, lexicon)):
             rows.append(
                 {
-                    "shot": int(shot),
+                    "shot": shot,
                     "phenomenon": phenomenon,
                     "n_pos": n_pos,
                     "n_neg": n_neg,
@@ -425,40 +490,39 @@ def weak_labels(shots: Iterable[int], lexicon: Lexicon, *, root=None,
     )
 
 
-def _pulse_length_s(table: Mapping[str, str]) -> float:
-    """`PULSE-LENGTH` in seconds, or 0.0 where the table does not say.
+def text_events(shot, lexicon: Lexicon, *,
+                paths: Paths | None = None) -> list[Event]:
+    """One `evidence_kind="text"` event per phenomenon this shot's log names.
 
-    The table row is the only shot duration the text bundle carries, and it
-    is a string somebody's HTML scraper produced: "(none)" and "" both
-    happen. A text claim is about the whole shot, so a shot whose length is
-    unknown gets the point event at 0 - `Event` requires finite times, and
-    inventing a span would be inventing a claim about when.
+    The text is `shot_prose` - what people wrote about THIS shot - and the
+    span is `shot_span_s`, which reads the bundle's table row: two sources
+    and two accessors, because the logbook carries no shot length and the
+    bundle carries no prose. `[0, PULSE-LENGTH)`, or a point at 0 where the
+    length is not stated; coverage is the same span, so "no `eho` row"
+    means nobody wrote it and not that nobody looked.
+
+    The session text is NOT read here. It is the run's (Appendix C item
+    12); `weak_labels(..., scope="run")` is where it goes, and a consumer
+    that wants to fold it in has to decide what a run-scope claim is worth
+    for one of its twenty shots.
+
+    `attrs` says where the row came from: `n_entries` (how many entries
+    were read), `roles` (the roles whose own entries carry a positive hit
+    for this phenomenon - one operator saying "fishbones" and the chief
+    operator saying it are not one claim twice), and `text_source`.
     """
-    try:
-        value = float(table.get("PULSE-LENGTH", ""))
-    except (TypeError, ValueError):
-        return 0.0
-    return value if math.isfinite(value) and value > 0.0 else 0.0
-
-
-def text_events(shot, lexicon: Lexicon, *, root=None) -> list[Event]:
-    """One `evidence_kind="text"` event per phenomenon this shot's text names.
-
-    The span is the whole shot - text says THAT, almost never when - so
-    `[0, PULSE-LENGTH)` from the table row, and a point at 0 where the
-    table does not give one. Coverage is the same span: the text was read
-    for the whole shot, so "no `eho` row" means nobody wrote it, not that
-    nobody looked.
-
-    Only the shot's own block is read. The session text is the run's
-    (Appendix C item 12); `weak_labels(..., scope="run")` is where it goes,
-    and a consumer that wants to fold it in has to decide what a run-scope
-    claim is worth for one of its twenty shots.
-    """
-    block = _split(_read(shot, root))[1]
-    span = _pulse_length_s(shot_table_row(block))
+    paths = _paths(paths)
+    build_logs_subset([shot], paths=paths)
+    prose = shot_prose(shot, paths=paths)
+    t0_s, t1_s = shot_span_s(shot, paths=paths)
+    entries = shot_entries(shot, paths=paths)
+    roles: dict[str, set[str]] = {}
+    for entry in entries:
+        for pid, found in hits(entry.text, lexicon).items():
+            if any(h.polarity == "pos" for h in found):
+                roles.setdefault(pid, set()).add(entry.role)
     out = []
-    for phenomenon, n_pos, n_neg, snippet in _counts(hits(block, lexicon)):
+    for phenomenon, n_pos, n_neg, snippet in _counts(hits(prose, lexicon)):
         if n_pos < 1:
             continue
         out.append(
@@ -467,17 +531,20 @@ def text_events(shot, lexicon: Lexicon, *, root=None) -> list[Event]:
                 source="text",
                 evidence_kind="text",
                 phenomenon=phenomenon,
-                t0_s=0.0,
-                t1_s=span,
+                t0_s=t0_s,
+                t1_s=t1_s,
                 confidence=min(1.0, TEXT_ONLY_CEILING * n_pos),
                 attrs={
                     "n_pos": n_pos,
                     "n_neg": n_neg,
                     "snippet": snippet,
                     "scope": "shot",
+                    "n_entries": len(entries),
+                    "roles": sorted(roles.get(phenomenon, ())),
+                    "text_source": TEXT_SOURCE,
                 },
-                t_cov0_s=0.0,
-                t_cov1_s=span,
+                t_cov0_s=t0_s,
+                t_cov1_s=t1_s,
             )
         )
     return out
