@@ -652,6 +652,179 @@ def test_a_shot_with_no_replacement_available_is_reported_as_such():
     assert len(out) == 6 and repl[0]["replacement"] is None
 
 
+
+# ------------------------------- rule (d), pass three: re-verifying a COMMITTED list
+
+
+def listed(cands, *, reason: str = "fill") -> list[select.Candidate]:
+    """`cands` as a committed list comes back: written into the YAML rows and read out again.
+
+    Round-tripped rather than passed straight through, because that is what `--from-list` does
+    and the row is the only thing the second invocation has -- a field the document does not
+    carry is a field the re-verification cannot use.
+    """
+    doc = select.document(
+        [select.replace(c, reason=reason) for c in cands],
+        select.summarize(
+            n_candidates=len(cands), reasons=Counter(), selected=cands, quotas=quotas()
+        ),
+        name="x",
+        seed=3,
+        n=len(cands),
+    )
+    return select.candidates_from_rows(doc["shots"])
+
+
+def test_a_committed_list_survives_the_round_trip_through_its_own_rows():
+    pool = candidates(4, per_run=1, groups=frozenset({"co2", "tangtv"}))
+    back = listed(pool, reason="theme:rmp_elm")
+    assert [c.shot for c in back] == [c.shot for c in pool]
+    for a, b in zip(pool, back, strict=True):
+        assert (b.run_id, b.mpid, b.year, b.theme) == (a.run_id, a.mpid, a.year, a.theme)
+        assert (b.has_co2, b.has_bes, b.has_tangtv) == (a.has_co2, a.has_bes, a.has_tangtv)
+        assert (b.flattop_s, b.flattop_source, b.ip_sign) == (a.flattop_s, a.flattop_source, a.ip_sign)
+        assert b.reason == "theme:rmp_elm"
+
+
+def test_the_committed_list_is_re_verified_and_never_re_selected():
+    """The whole point of `--from-list`. The pool the second invocation sees is not the pool the
+    first one saw -- the features stage has run since, so more shots are `preferred` and more have
+    a measured flat-top -- and re-running the selection on it returns a different 500. These five
+    shots are not in the pool at all, and they all come back."""
+    pool = candidates(40, per_run=10)
+    committed = listed(candidates(5, start=195000, per_run=1))
+    out, repl, pending = select.reverify_flattop(
+        committed, pool, quotas(n=5), seed=3, measure=lambda s: 2.4
+    )
+    assert [c.shot for c in out] == [c.shot for c in committed]
+    assert repl == [] and pending == []
+    assert {c.flattop_source for c in out} == {"features_ip"}
+    assert {c.flattop_s for c in out} == {2.4}
+
+
+def test_only_the_listed_shots_the_measurement_rejects_are_replaced():
+    pool = candidates(20, per_run=1)
+    committed = listed(pool[:5])
+    doomed = committed[0].shot
+    out, repl, pending = select.reverify_flattop(
+        committed, pool, quotas(n=5), seed=3,
+        measure=lambda s: 0.4 if s == doomed else 2.4,
+    )
+    shots = [c.shot for c in out]
+    assert len(out) == 5 and doomed not in shots and pending == []
+    # Every other listed shot is still there, and only one row is new.
+    assert {c.shot for c in committed[1:]} < set(shots)
+    assert len(repl) == 1 and repl[0]["dropped"] == doomed
+    assert repl[0]["replacement"] in shots and repl[0]["replacement"] not in {c.shot for c in committed}
+    assert repl[0]["replacement_flattop_source"] == "features_ip"
+
+
+def test_a_listed_shot_that_still_has_no_features_is_kept_pending_and_named():
+    """The refusal the CLI turns into exit 1: the caller has to be told WHICH shots, because the
+    pending file it rewrites is the work order for them."""
+    pool = candidates(20, per_run=1)
+    committed = listed(pool[:5])
+    waiting = committed[2].shot
+    out, repl, pending = select.reverify_flattop(
+        committed, pool, quotas(n=5), seed=3,
+        measure=lambda s: None if s == waiting else 2.4,
+    )
+    assert pending == [waiting]
+    assert next(c for c in out if c.shot == waiting).flattop_source == "pending"
+    assert repl == []
+
+
+def test_a_kept_shot_is_kept_even_where_it_would_now_break_a_cap():
+    """The committed list IS the eligibility snapshot. Re-imposing the caps on shots that are
+    already in it would let a re-verification quietly shrink the list -- and the caps were
+    satisfied by the run that made it, once, on the pool it saw."""
+    pool = candidates(40, per_run=10)          # ten shots share every run day
+    committed = listed(pool[:5])               # five of one run day, past the per_run=3 cap
+    out, repl, pending = select.reverify_flattop(
+        committed, pool, quotas(n=5, per_run=3), seed=3, measure=lambda s: 2.4
+    )
+    assert [c.shot for c in out] == [c.shot for c in committed] and repl == [] and pending == []
+
+
+def test_a_replacement_for_a_committed_shot_still_obeys_the_caps():
+    pool = candidates(40, per_run=10)
+    committed = listed(pool[0:3] + pool[10:13])   # three from run A, three from run B
+    doomed = pool[12].shot
+    out, repl, _pending = select.reverify_flattop(
+        committed, pool, quotas(n=6, per_run=3), seed=3,
+        measure=lambda s: 0.4 if s == doomed else 2.4,
+    )
+    assert len(out) == 6
+    assert max(Counter(c.run_id for c in out).values()) <= 3
+    # Run A is full at three and stays full; the freed slot is run B's, so run B may have it back.
+    assert next(c for c in out if c.shot == repl[0]["replacement"]).run_id != pool[0].run_id
+
+
+def test_the_re_verification_is_deterministic_and_comes_back_in_shot_order():
+    pool = candidates(40, per_run=10)
+    committed = listed(pool[:10])
+    doomed = {committed[0].shot, committed[4].shot}
+    runs = [
+        select.reverify_flattop(
+            committed, pool, quotas(n=10), seed=7,
+            measure=lambda s: 0.4 if s in doomed else 2.4,
+        )
+        for _ in range(2)
+    ]
+    assert [c.shot for c in runs[0][0]] == [c.shot for c in runs[1][0]]
+    assert [c.shot for c in runs[0][0]] == sorted(c.shot for c in runs[0][0])
+    assert runs[0][1] == runs[1][1]
+
+
+def test_the_summary_says_whether_the_list_is_final_and_which_store_verified_it():
+    """Two invocations of the same command produce the same file with different meanings. The
+    summary has to carry which one this was, and against which feature store -- the number of
+    files and the newest mtime, so a list can be told apart from one verified an hour later."""
+    got = candidates(5, per_run=1)
+    store = {"n_featured": 878, "n_frame_codes": 10, "max_mtime": "2026-09-07T11:28:00+00:00"}
+    s = select.summarize(
+        n_candidates=9, reasons=Counter(), selected=got, quotas=quotas(n=5),
+        replacements=[{"dropped": 190001, "dropped_flattop_s": 0.4, "theme": "rmp_elm",
+                       "replacement": 190009, "replacement_theme": "rmp_elm",
+                       "replacement_flattop_source": "features_ip"}],
+        finalized=True, n_verified=4, store=store,
+    )
+    assert s["finalized"] is True and s["n_verified"] == 4 and s["n_dropped"] == 1
+    assert s["n_featured"] == 878 and s["n_frame_codes"] == 10
+    assert s["feature_store"] == {"n_files": 878, "max_mtime": "2026-09-07T11:28:00+00:00"}
+    assert "finalized" in select.format_summary(s)
+
+
+def test_an_unfinalized_summary_still_carries_the_keys_with_nothing_in_them():
+    got = candidates(5, per_run=1)
+    s = select.summarize(n_candidates=9, reasons=Counter(), selected=got, quotas=quotas(n=5))
+    assert s["finalized"] is False and s["n_dropped"] == 0
+    assert s["n_featured"] is None and s["feature_store"] == {"n_files": None, "max_mtime": None}
+    # `n_verified` counts the measured rows when the caller does not say.
+    assert s["n_verified"] == 0
+
+
+def test_the_store_fingerprint_counts_the_files_and_takes_the_newest_mtime(tmp_path):
+    import os
+
+    feats, codes = tmp_path / "features", tmp_path / "frame_codes"
+    _write_features(feats, 190001, 3.0)
+    _write_features(feats, 190002, 3.0)
+    codes.mkdir()
+    (codes / "190001.pt").write_bytes(b"")
+    os.utime(feats / "190001_features.h5", (1.0e9, 1.0e9))
+    os.utime(feats / "190002_features.h5", (2.0e9, 2.0e9))
+    got = select.store_fingerprint(feats, codes)
+    assert got["n_featured"] == 2 and got["n_frame_codes"] == 1
+    # The NEWER of the two, in UTC: 2e9 seconds after the epoch.
+    assert got["max_mtime"].startswith("2033-05-18")
+
+
+def test_the_fingerprint_of_a_store_that_is_not_there_is_empty(tmp_path):
+    assert select.store_fingerprint(tmp_path / "nope", None) == {
+        "n_featured": 0, "n_frame_codes": 0, "max_mtime": None
+    }
+
 # ------------------------------------------------------------------------------ the document
 
 
@@ -887,6 +1060,186 @@ def test_cli_select_records_the_polarity_of_every_selected_shot(selection_inputs
     doc = yaml.safe_load(out.read_text(encoding="utf-8"))
     assert {e["ip_sign"] for e in doc["shots"]} == {1}
     assert doc["summary"]["ip_sign"] == {"+1": 12}
+
+
+# ------------------------------------------- the CLI, second invocation (`--finalize --from-list`)
+
+
+def _write_list(argv, out) -> dict:
+    """One selection run that writes `out`, and the document it wrote."""
+    assert cli.main(argv) == 0
+    return yaml.safe_load(out.read_text(encoding="utf-8"))
+
+
+def test_cli_select_from_list_re_verifies_the_committed_list_instead_of_re_selecting(
+    selection_inputs, tmp_path
+):
+    """The finding this fix is for. Between the two invocations the feature store grows -- that is
+    what the first one asked for -- and the enlarged store changes both `eligible` (a measured
+    flat-top replaces the proxy) and the `preferred` tie-break, so a plain re-run selects a
+    DIFFERENT list and the loop never converges. `--from-list` re-verifies the 500 that were
+    committed."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    _write_features(feats, 190003, 3.0)
+    committed_p = tmp_path / "v.yaml"
+    base = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(committed_p), "--features": str(feats)}
+    )
+    committed = _write_list(
+        [*base, "--verify-flattop", "--allow-pending", "--pending-out", str(tmp_path / "p.txt")],
+        committed_p,
+    )
+    for i in range(60):  # the features stage has now run over the pending list
+        _write_features(feats, 190000 + i, 3.0)
+
+    out = tmp_path / "final.yaml"
+    doc = _write_list(
+        [*select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)}),
+         "--finalize", "--from-list", str(committed_p)],
+        out,
+    )
+    assert [e["shot"] for e in doc["shots"]] == [e["shot"] for e in committed["shots"]]
+    assert {e["flattop_source"] for e in doc["shots"]} == {"features_ip"}
+    assert doc["summary"]["finalized"] is True
+    assert doc["summary"]["n_verified"] == 12 and doc["summary"]["n_dropped"] == 0
+    assert doc["summary"]["n_featured"] == 60
+    # The store the second invocation saw is the enlarged one, and it is recorded as such: 60
+    # files against the 1 the committed list was drawn with. That the enlarged store would have
+    # produced a different SELECTION is what `test_the_committed_list_is_re_verified_and_never_
+    # re_selected` pins (its five listed shots are not in the pool at all and all come back); on
+    # this fixture every shot is interchangeable, so a re-selection happens to agree.
+    assert committed["summary"]["n_featured"] == 1
+
+
+def test_cli_select_from_list_refuses_while_a_listed_shot_has_no_features(
+    selection_inputs, tmp_path, capsys
+):
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    committed_p, pending = tmp_path / "v.yaml", tmp_path / "p.txt"
+    base = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(committed_p), "--features": str(feats)}
+    )
+    committed = _write_list(
+        [*base, "--verify-flattop", "--allow-pending", "--pending-out", str(pending)], committed_p
+    )
+    shots = [e["shot"] for e in committed["shots"]]
+    for shot in shots[:-1]:  # every listed shot but one now has a feature file
+        _write_features(feats, shot, 3.0)
+
+    out = tmp_path / "final.yaml"
+    argv = [
+        *select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)}),
+        "--finalize", "--from-list", str(committed_p), "--pending-out", str(pending),
+    ]
+    assert cli.main(argv) == 1
+    assert not out.exists()
+    assert "1 listed shot(s) have no measured flat-top" in capsys.readouterr().err
+    # The pending file is rewritten for exactly the shots still waiting, not for the original 352.
+    assert pending.read_text(encoding="utf-8").split() == [str(shots[-1])]
+
+
+def test_cli_select_from_list_replaces_a_listed_shot_the_measurement_rejects(
+    selection_inputs, tmp_path
+):
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    committed_p = tmp_path / "v.yaml"
+    base = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(committed_p), "--features": str(feats)}
+    )
+    committed = _write_list(
+        [*base, "--verify-flattop", "--allow-pending", "--pending-out", str(tmp_path / "p.txt")],
+        committed_p,
+    )
+    doomed = committed["shots"][0]["shot"]
+    for i in range(60):
+        _write_features(feats, 190000 + i, 0.4 if 190000 + i == doomed else 3.0)
+
+    out = tmp_path / "final.yaml"
+    doc = _write_list(
+        [*select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)}),
+         "--finalize", "--from-list", str(committed_p)],
+        out,
+    )
+    shots = [e["shot"] for e in doc["shots"]]
+    assert len(shots) == 12 and doomed not in shots
+    repl = doc["summary"]["replacements"]
+    assert len(repl) == 1 and repl[0]["dropped"] == doomed and repl[0]["replacement"] in shots
+    assert doc["summary"]["n_dropped"] == 1 and doc["summary"]["finalized"] is True
+
+
+def test_cli_select_from_list_carries_the_hand_review_block_forward(selection_inputs, tmp_path):
+    """`hand_review` is the human gate on the list. A second invocation that reset it to empty
+    would throw away a reviewer's decisions without saying so."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    committed_p = tmp_path / "v.yaml"
+    base = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(committed_p), "--features": str(feats)}
+    )
+    committed = _write_list([*base, "--finalize"], committed_p)
+    committed["hand_review"] = {"drop": [190003], "add": [190999]}
+    committed_p.write_text(yaml.safe_dump(committed, sort_keys=False), encoding="utf-8")
+
+    out = tmp_path / "final.yaml"
+    doc = _write_list(
+        [*select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)}),
+         "--finalize", "--from-list", str(committed_p)],
+        out,
+    )
+    assert doc["hand_review"] == {"drop": [190003], "add": [190999]}
+
+
+def test_cli_select_from_list_takes_the_seed_the_list_recorded(selection_inputs, tmp_path):
+    """The replacements have to be reproducible from the list itself, so the seed comes off the
+    document unless the caller overrides it."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    committed_p = tmp_path / "v.yaml"
+    committed = _write_list(
+        [*select_argv(txt_dir, parquet, tmp_path,
+                      **{"--out": str(committed_p), "--features": str(feats), "--seed": "4242"}),
+         "--finalize"],
+        committed_p,
+    )
+    assert committed["seed"] == 4242
+    out = tmp_path / "final.yaml"
+    argv = ["corpus", "select", "--n", "12", "--census", str(parquet), "--text-dir", str(txt_dir),
+            "--features", str(feats), "--frame-codes", str(tmp_path / "no-frame-codes"),
+            "--logs", str(tmp_path / "no-logs.jsonl"), "--out", str(out),
+            "--finalize", "--from-list", str(committed_p)]
+    doc = _write_list(argv, out)
+    assert doc["seed"] == 4242
+
+
+def test_cli_select_records_a_reversed_current_shot_end_to_end(tmp_path):
+    """`abs(Ip)` all the way through the CLI: a run day recorded at negative `IP-(MA)` is
+    selected, and every row of it says so."""
+    txt = tmp_path / "per_shot_txt"
+    txt.mkdir()
+    rows = []
+    for i in range(20):
+        shot = 190000 + i
+        row = {**GOOD_ROW, "IP-(MA)": "-1.10" if i % 2 else "1.45"}
+        txt.joinpath(f"shot_{shot}.txt").write_text(
+            text_bundle(shot, row=row, title="QH-mode access", run_id=f"{2021 + i % 5}{i // 4:04d}"),
+            encoding="utf-8",
+        )
+        for g, span in (("mhr", 5.0), ("ece", 5.0), ("filterscopes", 5.0)):
+            rows.append((shot, g, 0.0, span, True))
+    parquet = tmp_path / "census.parquet"
+    census_frame(rows).to_parquet(parquet, index=False)
+    out = tmp_path / "v.yaml"
+    doc = _write_list(select_argv(txt, parquet, tmp_path, **{"--out": str(out), "--n": "10"}), out)
+    signs = Counter(e["ip_sign"] for e in doc["shots"])
+    assert signs[-1] > 0 and signs[1] > 0
+    assert doc["summary"]["ip_sign"]["-1"] == signs[-1]
 
 
 def test_the_census_columns_this_module_reads_are_the_ones_the_census_writes():

@@ -23,7 +23,10 @@ a diversity quota. This module is the rules; `cli.cmd_corpus` is the I/O around 
   over the 500 SELECTED shots only, where the per-shot cost of a real measurement is affordable,
   replaces every proxy with the measured number it can, drops what the measurement rejects and
   fills the hole from the same theme. A selected shot with no feature file is `pending`, not
-  `pulse_length_proxy`: it is listed for labelmaker's features stage and a re-run finishes it.
+  `pulse_length_proxy`: it is listed for labelmaker's features stage, and the run that finishes
+  it is `--finalize --from-list <the committed yaml>` (`reverify_flattop`), which re-measures
+  EXACTLY the committed shots and never re-selects -- a plain re-run sees a bigger feature store
+  than the selection did and returns a different list, so the loop would never converge.
 
 **Amendment (2026-09-07 review).** Four readings of §5.7 are this module's, not the plan text's,
 and each is recorded here and in the generated YAML's `rule:` string because the plan is frozen:
@@ -81,6 +84,7 @@ __all__ = [
     "Quotas",
     "ShotFacts",
     "assign_theme",
+    "candidates_from_rows",
     "diversify",
     "document",
     "eligible",
@@ -91,7 +95,9 @@ __all__ = [
     "mpid_index",
     "parse_facts",
     "replace",
+    "reverify_flattop",
     "spans",
+    "store_fingerprint",
     "summarize",
     "verify_flattop",
     "with_flattop",
@@ -103,6 +109,11 @@ RULE = (
     "plan §5.7 as amended 2026-09-07: abs(Ip), ≥200 shot chars, physics-first themes, "
     "two-pass flat-top"
 )
+
+# The seed the committed `recommender_v1` was drawn with. Named here rather than only in the CLI's
+# `--seed` default because `--from-list` takes the seed off the document it is re-verifying, and
+# the two have to be the same number when neither the caller nor the document says otherwise.
+DEFAULT_SEED = 20260907
 
 MIN_IP_MA = 0.5
 MIN_PULSE_LENGTH_S = 2.0
@@ -516,8 +527,21 @@ class _Allocator:
     def full(self) -> bool:
         return len(self.taken) >= self.q.n
 
-    def add(self, c: Candidate, reason: str) -> bool:
-        if c.shot in self.taken or self.full():
+    def add(self, c: Candidate, reason: str, *, force: bool = False) -> bool:
+        """Admit `c` if every cap allows it. `force` admits it anyway and still counts it.
+
+        `force` is for `reverify_flattop`, and for nothing else: the shots of an already committed
+        list were allocated once, by the run that made the list and against the pool it saw, and
+        re-imposing the caps on them at re-verification time would let the second invocation
+        quietly shrink the list. They are still COUNTED, so a replacement drawn afterwards sees
+        the run day, mini-proposal and year they occupy.
+        """
+        if c.shot in self.taken:
+            return False
+        if force:
+            self._count(c, reason)
+            return True
+        if self.full():
             return False
         if c.run_id is not None and self._runs[c.run_id] >= self.q.per_run:
             return False
@@ -533,6 +557,10 @@ class _Allocator:
         # be undone by the general fill picking up the other 376 of them.
         if c.preferred and self._preferred >= self.q.preferred_cap:
             return False
+        self._count(c, reason)
+        return True
+
+    def _count(self, c: Candidate, reason: str) -> None:
         self.taken[c.shot] = replace(c, reason=reason)
         self._preferred += bool(c.preferred)
         if c.run_id is not None:
@@ -541,7 +569,6 @@ class _Allocator:
             self._mpids[c.mpid] += 1
         if c.year is not None:
             self._years[c.year] += 1
-        return True
 
 
 def _shuffled(candidates: Iterable[Candidate], seed: int) -> list[Candidate]:
@@ -693,20 +720,83 @@ def verify_flattop(
     A replacement is itself measured before it is admitted, so the verification cannot fill a hole
     with a shot that would have failed the same check.
     """
+    kept, dropped, _pending = _measured(selected, measure)
+    return _refill(kept, dropped, candidates, quotas, seed, measure)
+
+
+def reverify_flattop(
+    existing: Sequence[Candidate],
+    candidates: Sequence[Candidate],
+    quotas: Quotas,
+    seed: int,
+    measure: Callable[[int], float | None],
+) -> tuple[list[Candidate], list[dict], list[int]]:
+    """Re-run rule (d) on an ALREADY COMMITTED list. Returns `(list, replacements, pending)`.
+
+    This is the second invocation (`corpus select --finalize --from-list <yaml>`), and it exists
+    because the first one changes the world it ran in. `--verify-flattop` writes a pending file;
+    labelmaker's features stage runs over it; and the store that comes back is BIGGER than the one
+    the selection saw -- which moves `eligible` (a measured flat-top replaces the proxy for those
+    shots) and moves the `preferred` tie-break in `diversify`. Re-running the whole selection on
+    the new store therefore returns a DIFFERENT list -- measured on the real corpus: 78 of 500
+    shots changed after 17 new feature files, and 350 shots newly pending after the full store --
+    so the features-then-finalize loop would never converge, and the list committed to git would
+    never be the list that was verified.
+
+    So the committed list is the eligibility snapshot and is not re-selected. Exactly the listed
+    shots are re-measured; each one is kept (measured >= `MIN_FLATTOP_S`), dropped, or reported
+    `pending` because nothing can measure it yet. The kept shots go back through the allocator
+    with `force=True` -- their caps were satisfied once, when the list was made -- and only the
+    replacements for the dropped ones are allocated against those counts, same theme first, the
+    replacement itself measured. `pending` is returned rather than raised on: the caller decides
+    whether an unfinished list may be written, and it needs the shot numbers to rewrite the
+    features work order for exactly the shots still waiting.
+    """
+    kept, dropped, pending = _measured(existing, measure)
+    final, replacements = _refill(
+        kept, dropped, candidates, quotas, seed, measure, force_kept=True
+    )
+    return final, replacements, pending
+
+
+def _measured(
+    selected: Sequence[Candidate], measure: Callable[[int], float | None]
+) -> tuple[list[Candidate], list[tuple[Candidate, float]], list[int]]:
+    """`selected` split three ways by the measurement: kept, `(dropped, its flat-top)`, pending.
+
+    A pending shot is KEPT, carrying its proxy estimate and a `flattop_source` that says nobody
+    has measured it; its shot number is also returned, which is what the work order is written
+    from.
+    """
     kept: list[Candidate] = []
     dropped: list[tuple[Candidate, float]] = []
+    pending: list[int] = []
     for c in sorted(selected, key=lambda c: c.shot):
         got = measure(c.shot)
         if got is None:
             kept.append(replace(c, flattop_source=FLATTOP_PENDING))
+            pending.append(int(c.shot))
         elif got >= MIN_FLATTOP_S:
             kept.append(replace(c, flattop_s=float(got), flattop_source=FLATTOP_MEASURED))
         else:
             dropped.append((c, float(got)))
+    return kept, dropped, pending
 
+
+def _refill(
+    kept: Sequence[Candidate],
+    dropped: Sequence[tuple[Candidate, float]],
+    candidates: Sequence[Candidate],
+    quotas: Quotas,
+    seed: int,
+    measure: Callable[[int], float | None],
+    *,
+    force_kept: bool = False,
+) -> tuple[list[Candidate], list[dict]]:
+    """Fill each hole `dropped` left, from `candidates`, same theme first. Shared by both passes."""
     alloc = _Allocator(quotas)
     for c in kept:
-        alloc.add(c, c.reason)
+        alloc.add(c, c.reason, force=force_kept)
     used = {c.shot for c in kept} | {c.shot for c, _ in dropped}
     spare = [c for c in candidates if c.shot not in used]
     verdicts: dict[int, float | None] = {}
@@ -754,12 +844,23 @@ def summarize(
     quotas: Quotas,
     candidates: Sequence[Candidate] | None = None,
     replacements: Sequence[Mapping] | None = None,
+    finalized: bool = False,
+    n_verified: int | None = None,
+    store: Mapping | None = None,
 ) -> dict:
     """The summary block: how big the pool was, what rejected the rest, and what came out.
 
     `reasons` counts rule failures over the whole pool and a shot may appear in several of its
     entries -- `eligible` reports every clause that fired, so these are counts of REJECTIONS BY
     RULE and not a partition of the rejected shots.
+
+    `finalized`, `n_verified`, `n_dropped` and `store` are the provenance of the SECOND pass. A
+    list written by `--verify-flattop --allow-pending` and one written by `--finalize` are the
+    same file under the same name with different standing, and the difference has to be readable
+    off the document rather than off whoever remembers which command was run. `store` is
+    `store_fingerprint()`: how many feature files existed and how new the newest was, which is
+    what says WHICH store verified these rows -- the store grows between the two invocations, by
+    design, and two runs a day apart are not the same verification.
     """
     themes = Counter(c.theme for c in selected)
     have = Counter(c.theme for c in candidates or ())
@@ -800,6 +901,24 @@ def summarize(
         "replacements": [dict(r) for r in (replacements or ())],
         "runs": len({c.run_id for c in selected}),
         "mpids": len({c.mpid for c in selected if c.mpid}),
+        "finalized": bool(finalized),
+        # Counted from the rows when the caller does not say, so the number can never disagree
+        # with the `flattop_source` histogram above it.
+        "n_verified": int(
+            n_verified
+            if n_verified is not None
+            else sum(c.flattop_source == FLATTOP_MEASURED for c in selected)
+        ),
+        "n_dropped": len(replacements or ()),
+        "n_featured": None if store is None else int(store.get("n_featured", 0)),
+        "n_frame_codes": None if store is None else int(store.get("n_frame_codes", 0)),
+        # The fingerprint, flat so it can be diffed between two runs. `n_files` repeats
+        # `n_featured` deliberately: the pair (count, newest mtime) is the identity of the store
+        # and belongs together, and `n_featured` alone is what a reader greps for.
+        "feature_store": {
+            "n_files": None if store is None else int(store.get("n_featured", 0)),
+            "max_mtime": None if store is None else store.get("max_mtime"),
+        },
     }
 
 
@@ -811,11 +930,14 @@ def document(
     seed: int,
     n: int,
     rule: str = RULE,
+    hand_review: Mapping | None = None,
 ) -> dict:
     """The shot-list YAML document, in `config.load_shot_list`'s format.
 
-    `hand_review` is always written empty: it is the human gate on a generated list, and the
-    generator's job is to leave the block there, not to fill it in.
+    `hand_review` is written empty for a fresh list: it is the human gate on a generated list, and
+    the generator's job is to leave the block there, not to fill it in. A re-verification
+    (`--from-list`) passes the block of the list it verified, because resetting a reviewer's
+    decisions to empty is a silent loss of exactly the judgement the block exists to record.
     """
     return {
         "name": name,
@@ -824,7 +946,11 @@ def document(
         "seed": int(seed),
         "n": int(n),
         "summary": dict(summary),
-        "hand_review": {"drop": [], "add": []},
+        "hand_review": (
+            {"drop": [], "add": []}
+            if hand_review is None
+            else {"drop": list(hand_review.get("drop") or []), "add": list(hand_review.get("add") or [])}
+        ),
         "shots": [
             {
                 "shot": int(c.shot),
@@ -876,6 +1002,19 @@ def format_summary(summary: Mapping) -> str:
     if summary.get("ip_sign"):
         lines += ["", "Ip polarity:"]
         lines += [f"  {k:<22}{v:>8,}" for k, v in summary["ip_sign"].items()]
+    store = summary.get("feature_store") or {}
+    n_files = store.get("n_files")
+    fingerprint = (
+        f"  {'feature store':<22}{n_files if n_files is not None else '?':>8} files, "
+        f"newest {store.get('max_mtime') or '?'}"
+    )
+    lines += ["", "verification:"]
+    lines += [
+        f"  {'finalized':<22}{str(bool(summary.get('finalized'))).lower():>8}",
+        f"  {'verified':<22}{summary.get('n_verified', 0):>8,}",
+        f"  {'dropped':<22}{summary.get('n_dropped', 0):>8,}",
+        fingerprint,
+    ]
     repl = summary.get("replacements") or []
     lines += ["", f"flat-top verification dropped {len(repl)} shot(s):"]
     lines += [
@@ -896,12 +1035,87 @@ def read_bundles(text_dir: Path, shots: Iterable[int]) -> dict[int, str]:
     for shot in shots:
         p = text_dir / f"shot_{int(shot)}.txt"
         if p.exists():
-            # Both arguments spelled out. The corpus is scraped HTML and some bundles carry bytes
-            # that are not valid UTF-8; without `encoding=` this reads under the process locale,
-            # so the same file decodes differently on a machine with LANG unset than on one
-            # without -- and `errors="replace"` would then be papering over the wrong problem.
+            # Both arguments spelled out, and they do different jobs. `encoding=` pins the
+            # decoding: without it the file reads under the process locale, so the same bundle
+            # decodes differently on a machine with LANG unset than on one without.
+            # `errors="replace"` then handles what is genuinely there -- the corpus is scraped
+            # HTML and some bundles carry bytes that are not valid UTF-8 -- and it is safe only
+            # BECAUSE the encoding is pinned; on the locale path it would have been papering over
+            # a decoding bug instead. A bundle is read for a shot table and a title, and one
+            # replacement character costs neither.
             out[int(shot)] = p.read_text(encoding="utf-8", errors="replace")
     return out
+
+
+def candidates_from_rows(
+    rows: Iterable[Mapping], *, preferred: Iterable[int] = ()
+) -> list[Candidate]:
+    """The `shots:` rows of a committed list, back as `Candidate`s, in shot order.
+
+    The row is the whole record: run day, mini-proposal, year, theme, the group flags, the
+    polarity, the flat-top and what measured it, and the quota that admitted the shot. Rebuilding
+    them from the document rather than re-deriving them from the corpus is the point of
+    `--from-list` -- the committed list is the eligibility snapshot, and re-deriving would be
+    re-selecting under another name.
+
+    `preferred` is the ONE fact the document does not carry, because it is not a property of the
+    shot: it is "this shot already had labelmaker features when the list was made", and by the
+    time a list is finalized the features stage has run over the list itself, so it is true of
+    nearly every row. It is passed in from today's store and used for one thing only -- counting
+    the preferred cap against any REPLACEMENT drawn now (the kept rows are forced in, caps and
+    all), which is the same reading the cap has everywhere else: a ceiling on how many
+    already-featured shots a fill may take.
+    """
+    want = {int(s) for s in preferred}
+    out = []
+    for row in rows:
+        shot = int(row["shot"])
+        out.append(
+            Candidate(
+                shot=shot,
+                run_id=row.get("run_id"),
+                mpid=row.get("mpid"),
+                year=None if row.get("year") is None else int(row["year"]),
+                theme=row.get("theme"),
+                has_co2=bool(row.get("has_co2")),
+                has_bes=bool(row.get("has_bes")),
+                has_tangtv=bool(row.get("has_tangtv")),
+                flattop_s=float(row.get("flattop_s") or 0.0),
+                flattop_source=str(row.get("flattop_source") or FLATTOP_PROXY),
+                preferred=shot in want,
+                ip_sign=None if row.get("ip_sign") is None else int(row["ip_sign"]),
+                reason=str(row.get("reason") or ""),
+            )
+        )
+    return sorted(out, key=lambda c: c.shot)
+
+
+def store_fingerprint(
+    features_dir: Path | None, frame_codes_dir: Path | None = None
+) -> dict:
+    """Which feature store a run saw: `{n_featured, n_frame_codes, max_mtime}`.
+
+    Two invocations of `corpus select` write the same file under the same name and mean different
+    things, and what changed between them is this store -- the features stage ran over the pending
+    list. The count and the newest mtime are cheap, need no file opened, and are enough to tell a
+    verification done before that job from one done after it.
+    """
+    n_features, newest = 0, None
+    if features_dir and Path(features_dir).is_dir():
+        for p in Path(features_dir).glob("*_features.h5"):
+            n_features += 1
+            mtime = p.stat().st_mtime
+            newest = mtime if newest is None else max(newest, mtime)
+    n_codes = 0
+    if frame_codes_dir and Path(frame_codes_dir).is_dir():
+        n_codes = sum(1 for p in Path(frame_codes_dir).glob("*.pt") if p.stem.isdigit())
+    return {
+        "n_featured": n_features,
+        "n_frame_codes": n_codes,
+        "max_mtime": None
+        if newest is None
+        else dt.datetime.fromtimestamp(newest, dt.UTC).isoformat(timespec="seconds"),
+    }
 
 
 def preferred_shots(*, features_dir: Path | None, frame_codes_dir: Path | None) -> set[int]:

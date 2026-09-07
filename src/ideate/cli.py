@@ -672,12 +672,21 @@ def cmd_corpus_select(args) -> int:
     """`corpus select`: the shot list of plan §5.7, written as YAML and as a plain shot-per-line
     file for the labelmaker mask job.
 
-    Two passes over rule (d). Pass one estimates the Ip flat-top for the whole 13,106-shot pool;
+    Two passes over rule (d). Pass one estimates the Ip flat-top for the whole 13,313-shot pool;
     `--verify-flattop` adds pass two, which measures it for the 500 SELECTED shots and refills what
     the measurement drops (`select.verify_flattop`). A selected shot with no feature file comes out
     of pass two as `pending` and is written to `--pending-out` for labelmaker's features stage;
     `--allow-pending` is what lets such a list be written at all, and `--finalize` is the second
     invocation that will not.
+
+    `--from-list <yaml>` is how that second invocation must be run, and the reason is that the
+    first one changes its own inputs: it asks for features, the features arrive, and the enlarged
+    store moves both rule (d)'s first pass and the `preferred` tie-break -- so a plain re-run
+    SELECTS A DIFFERENT LIST (measured: 78 of 500 shots changed after 17 new feature files) and
+    the features-then-finalize loop never converges. With `--from-list` the committed 500 are the
+    eligibility snapshot: exactly those shots are re-measured, the pool is consulted only to
+    replace what the measurement rejects, and the seed comes off the document
+    (`select.reverify_flattop`).
     """
     import pandas as pd
 
@@ -688,7 +697,23 @@ def cmd_corpus_select(args) -> int:
             file=sys.stderr,
         )
         return 2
-    verify = args.verify_flattop or getattr(args, "finalize", False)
+    from_list = Path(args.from_list) if getattr(args, "from_list", None) else None
+    listed: list[select_mod.Candidate] | None = None
+    source_doc: dict = {}
+    if from_list is not None:
+        if not from_list.exists():
+            print(f"no shot list at {from_list}", file=sys.stderr)
+            return 1
+        source_doc = yaml.safe_load(from_list.read_text(encoding="utf-8")) or {}
+        if not source_doc.get("shots"):
+            print(f"{from_list} carries no shots: to select a new list, omit --from-list",
+                  file=sys.stderr)
+            return 1
+    # The seed is the document's when it has one, so the replacements a re-verification draws are
+    # reproducible from the list itself and not from whoever remembers the flag.
+    seed = args.seed if args.seed is not None else int(source_doc.get("seed", select_mod.DEFAULT_SEED))
+    # `--from-list` is a verification by definition: there is nothing else it could do.
+    verify = args.verify_flattop or getattr(args, "finalize", False) or from_list is not None
     census_path = Path(args.census) if args.census else None
     paths = None
     if not (census_path and args.text_dir and args.frame_codes is not None):
@@ -710,6 +735,8 @@ def cmd_corpus_select(args) -> int:
     preferred = select_mod.preferred_shots(
         features_dir=features_dir, frame_codes_dir=frame_codes_dir
     )
+    if source_doc:
+        listed = select_mod.candidates_from_rows(source_doc["shots"], preferred=preferred)
     themes = select_mod.lexicon_themes()
     reasons: Counter = Counter()
     kept: list[select_mod.ShotFacts] = []
@@ -749,19 +776,29 @@ def cmd_corpus_select(args) -> int:
         )
         for f in kept
     ]
-    quotas = select_mod.Quotas(n=args.n)
-    selected = select_mod.diversify(candidates, quotas, seed=args.seed)
+    def measure(shot: int) -> float | None:
+        return select_mod.measured_flattop(shot, features_dir)
 
     replacements: list[dict] = []
     pending: list[int] = []
-    if verify:
-        selected, replacements = select_mod.verify_flattop(
-            selected,
-            candidates,
-            quotas,
-            seed=args.seed,
-            measure=lambda shot: select_mod.measured_flattop(shot, features_dir),
+    if listed is not None:
+        # The committed list, re-measured. `diversify` is deliberately NOT run: re-selecting on
+        # today's store is what makes the loop non-convergent (see the docstring).
+        quotas = select_mod.Quotas(n=len(listed))
+        print(f"re-verifying the {len(listed)} shot(s) of {from_list}")
+        selected, replacements, _ = select_mod.reverify_flattop(
+            listed, candidates, quotas, seed=seed, measure=measure
         )
+    else:
+        quotas = select_mod.Quotas(n=args.n)
+        selected = select_mod.diversify(candidates, quotas, seed=seed)
+        if verify:
+            selected, replacements = select_mod.verify_flattop(
+                selected, candidates, quotas, seed=seed, measure=measure
+            )
+    if verify:
+        # Read off the rows rather than off `reverify_flattop`'s own list, so that a REPLACEMENT
+        # that is itself unmeasurable is in the work order too.
         pending = [c.shot for c in selected if c.flattop_source == select_mod.FLATTOP_PENDING]
         pending_out = _pending_path(args)
         if pending and pending_out:
@@ -772,8 +809,9 @@ def cmd_corpus_select(args) -> int:
             pending_out.write_text("".join(f"{s}\n" for s in pending), encoding="utf-8")
             print(f"wrote {pending_out} ({len(pending)} shot(s) awaiting features)")
         if pending and not args.allow_pending:
+            noun = "listed" if listed is not None else "selected"
             print(
-                f"{len(pending)} selected shot(s) have no measured flat-top; refusing to write "
+                f"{len(pending)} {noun} shot(s) have no measured flat-top; refusing to write "
                 f"{args.name}. Run labelmaker's features stage over "
                 f"{pending_out or 'those shots (set $LABELMAKER_ROOT or --pending-out)'} and "
                 "repeat with --finalize, or pass --allow-pending to write the list as it stands.",
@@ -788,9 +826,18 @@ def cmd_corpus_select(args) -> int:
         quotas=quotas,
         candidates=candidates,
         replacements=replacements,
+        # A written document can only be finalized if this run was a `--finalize` run: one that
+        # still had a pending row returned 1 above without writing anything.
+        finalized=bool(getattr(args, "finalize", False)),
+        store=select_mod.store_fingerprint(features_dir, frame_codes_dir),
     )
     doc = select_mod.document(
-        selected, summary, name=args.name, seed=args.seed, n=len(selected)
+        selected,
+        summary,
+        name=args.name,
+        seed=seed,
+        n=len(selected),
+        hand_review=source_doc.get("hand_review"),
     )
 
     out = Path(args.out) if args.out else config.CONFIG_DIR / "shot_lists" / f"{args.name}.yaml"
@@ -1143,7 +1190,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--text-dir", help="per_shot_txt directory (default: paths.yaml's)")
     s.add_argument("--out", help="shot-list YAML (default: configs/ideate/shot_lists/<name>.yaml)")
     s.add_argument("--txt-out", help="also write one shot per line here (the mask job reads it)")
-    s.add_argument("--seed", type=int, default=20260907, help="the list is a function of it")
+    s.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=f"the list is a function of it (default {select_mod.DEFAULT_SEED}, or the seed "
+        "--from-list's document recorded)",
+    )
     s.add_argument("--features", help="labelmaker feature store (default: $LABELMAKER_ROOT/features)")
     s.add_argument("--frame-codes", help="IGNITE frame_codes directory")
     s.add_argument("--logs", help="sql/logs.jsonl, the source of mpid (default: paths.yaml's)")
@@ -1167,6 +1220,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--finalize",
         action="store_true",
         help="verify and accept nothing less: --verify-flattop with --allow-pending refused",
+    )
+    s.add_argument(
+        "--from-list",
+        metavar="YAML",
+        help="re-verify the shots of an existing list instead of selecting a new one: the "
+        "second invocation of the two-pass rule (d). --n and --seed come off that document",
     )
     s.add_argument(
         "--pending-out",
