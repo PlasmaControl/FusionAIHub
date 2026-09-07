@@ -91,11 +91,11 @@ def test_build_record_from_the_staged_store(real_paths):
     assert rec.coverage["pnbi_15L"] == "present"
     assert rec.coverage["q95"] == "pending"
     # The five corpus/labelmaker-only signals (nbi_torque_total, nbi_voltage_mean,
-    # gas_flow_total, rmp_total, pcbcoil) have no d3d_fusion_data address at all, so on this
+    # gasflow_total, rmp_total, pcbcoil) have no d3d_fusion_data address at all, so on this
     # reader they are `unavailable` -- not `pending`, which would promise a fetch could get them.
     assert set(rec.coverage.values()) == {"present", "pending", "unavailable"}
     assert {n for n, v in rec.coverage.items() if v == "unavailable"} == {
-        "nbi_torque_total", "nbi_voltage_mean", "gas_flow_total", "rmp_total", "pcbcoil",
+        "nbi_torque_total", "nbi_voltage_mean", "gasflow_total", "rmp_total", "pcbcoil",
     }  # fmt: skip
     assert set(rec.raw_sources.values()) == {"staged"}  # nothing fetched into this tmp raw_dir
 

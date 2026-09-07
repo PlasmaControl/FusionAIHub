@@ -94,7 +94,11 @@ signals:
   # legacy reader they read `unavailable`, which is what that layout's answer is.
   nbi_torque_total: {units: "N m", tier: raw, stats: [mean, peak], fetch: null, corpus: {actuator: nbi_torque}}
   nbi_voltage_mean: {units: V, tier: raw, stats: [mean, peak], fetch: null, corpus: {actuator: nbi_voltage}}
-  gas_flow_total:   {units: "Torr.L/s", tier: raw, stats: [mean, peak], fetch: null, corpus: {actuator: gas}}
+  # NOT named gas_flow_total: `format_coverage` and `retrieval.describe` group a field into an
+  # actuator system by its name prefix, and a `gas_`-prefixed name is rendered as if it were
+  # an eleventh valve of the gas system -- in the valves' volts, next to their raw commands,
+  # when it is the calibrated flow of all of them in Torr.L/s.
+  gasflow_total:    {units: "Torr.L/s", tier: raw, stats: [mean, peak], fetch: null, corpus: {actuator: gas}}
   # abs: true is applied per channel BEFORE the sum -- the RMP coils are driven in antiphase and a
   # signed sum of an n = 3 pattern is ~0 by construction, so it would read "no RMP" on every shot.
   rmp_total:        {units: A, tier: raw, abs: true, stats: [mean, peak], fetch: null, corpus: {actuator: rmp}}
