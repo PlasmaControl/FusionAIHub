@@ -911,6 +911,33 @@ def shot_table_row(bundle: str) -> dict[str, str]:
     return out
 
 
+def mp_subjects(bundle: str) -> tuple[str, ...]:
+    """Every `Subject:` line of the bundle's mini-proposal block, in file order, deduplicated.
+
+    Anchored on the planned block for the reason `bundle_blocks` exists: "Subject" appears in the
+    logbook text too, and a run-level intention read out of an operator's entry is not the
+    experiment's subject.
+
+    ALL of the lines, not the first. A real block is three renderings of one mini-proposal -- the
+    PDF text, the markdown export and the HTML page -- and the two that carry a `Subject:` line
+    disagree: measured over 400 random bundles, 194 have two subject lines and 106 have one, and
+    the PDF's is routinely both truncated at the page's line break and mangled by the font
+    mapping (`Diagno'tic checkout fo' QH/WPQH-Mode`), while the markdown's `**Subject**:` is
+    clean. Which of the two is readable is a property of that run day's PDF, so a caller that
+    matches keywords wants both; `_subject` (first match only) stays what `mp_text` uses, where a
+    single title is what is being served.
+    """
+    _, planned, _ = bundle_blocks(bundle)
+    if not planned:
+        return ()
+    out: list[str] = []
+    for m in _SUBJECT.finditer(planned):
+        got = re.sub(r"\s+", " ", m.group(1)).strip()
+        if got and got not in out:
+            out.append(got)
+    return tuple(out)
+
+
 def session_metadata(bundle: str) -> dict:
     """The `METADATA (selected)` JSON of the general session context (`run_id`, `shot_range`,
     `title`), or `{}`.

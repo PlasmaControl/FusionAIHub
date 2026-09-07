@@ -46,6 +46,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -138,6 +139,22 @@ def textprocess_commands(
     ]
 
 
+SHOTS_PER_LINE = 20
+
+
+def _wrapped(shots: Sequence[int], per_line: int = SHOTS_PER_LINE) -> list[str]:
+    """`shots` as lines of at most `per_line` numbers.
+
+    `--all-corpus` prints 3,596 of them. On one line that is a 25,000-column line no terminal
+    will show and no reviewer will read; twenty to a line is a block that can be scanned down a
+    column and still pasted straight into anything that splits on whitespace.
+    """
+    got = list(shots)
+    return [
+        " ".join(str(s) for s in got[i : i + per_line]) for i in range(0, len(got), per_line)
+    ] or [""]
+
+
 def format_missing(
     shots: list[int],
     *,
@@ -151,7 +168,7 @@ def format_missing(
     lines = [f"{len(shots):,} of {n_total:,} shots have no shot_<N>.txt"]
     if not shots:
         return lines[0]
-    lines += ["", " ".join(str(s) for s in shots), ""]
+    lines += ["", *_wrapped(shots), ""]
     lines += [
         "These can only be fetched on a machine inside the GA fusion network (VPN on; not the",
         "DIII-D HPC machines). In a PlasmaControl/d3dlogfetching checkout with .env set:",
@@ -166,7 +183,8 @@ def format_missing(
     if unplaced:
         lines += [
             "",
-            "run id not yet known for: " + " ".join(str(s) for s in unplaced),
+            "run id not yet known for: " + _wrapped(unplaced)[0],
+            *_wrapped(unplaced)[1:],
             "  (read it out of the index.json main.py writes, then one textprocess.py per run)",
         ]
     lines += [

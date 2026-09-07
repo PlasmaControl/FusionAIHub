@@ -458,10 +458,17 @@ def text_bundle(
     title: str | None = "Tearing mode avoidance",
     run_id: str = "20220301",
     pre_blocks: str = "",
+    subjects: tuple[str, ...] | None = None,
 ) -> str:
     """One per-shot text bundle. `row=None` is the session-fallback case: the summary page had
     no shot table row for this shot, so the bundle carries the session's text and nothing of the
-    shot's own."""
+    shot's own.
+
+    `subjects` is the mini-proposal block's `Subject:` lines. A real block carries up to two --
+    the PDF extraction's (often truncated, sometimes with its glyphs mangled) and the markdown
+    export's `**Subject**:` (clean) -- and both are matched for a theme, so the fixture can write
+    both. The default is one line repeating the run title, which is what most bundles look like.
+    """
     meta = {"run_id": run_id, "shot_range": f"{shot - 4} - {shot + 4}"}
     if title is not None:
         meta["title"] = title
@@ -488,15 +495,22 @@ def text_bundle(
     specific = "\n".join([f"SHOT: {shot}", "", "SHOT TABLE ROW (name -> value)", table])
     if pre_blocks:
         specific += "\n\nIMPORTANT <pre> BLOCKS (e.g., PCS CHANGES)\n\n" + pre_blocks
+    subs = (title or "an experiment",) if subjects is None else tuple(subjects)
+    planned = ["\n## Planned context (mini-proposal)\nMini-proposal PDF"]
+    planned += [
+        f"Subject: {s}" if i == 0 else f"**Subject**: {s}" for i, s in enumerate(subs)
+    ]
+    planned += [
+        "1. Purpose of Experiment",
+        "Hypothesis to be tested: that this fixture reads like the real thing.",
+    ]
     return "\n\n".join(
         [
             "# DIII-D per-shot text bundle",
             f"RUN_ID: {run_id}",
             f"SHOT: {shot}",
             "\n## General session context\n" + general,
-            "\n## Planned context (mini-proposal)\nMini-proposal PDF\n"
-            "Subject: " + (title or "an experiment") + "\n1. Purpose of Experiment\n"
-            "Hypothesis to be tested: that this fixture reads like the real thing.",
+            "\n".join(planned),
             "\n## Shot-specific context (from summary.html)\n" + specific,
         ]
     )

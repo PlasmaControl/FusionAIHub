@@ -115,6 +115,36 @@ def test_rule_a_rejects_each_clause_on_its_own(row, reason):
     assert ok is False and reason in reasons
 
 
+@pytest.mark.parametrize("ip", ["1.10", "-1.10"])
+def test_rule_a_reads_the_magnitude_of_ip_and_not_its_sign(ip):
+    """DIII-D logs a reversed-polarity discharge with a NEGATIVE `IP-(MA)`.
+
+    `IP-(MA) >= 0.5` on the signed number is not "at least half a mega-amp", it is "at least half
+    a mega-amp AND in the forward direction" -- a physics filter nobody wrote down. It rejected
+    all 663 reversed-Ip plasma shots of the pool, including every one of the 386 QH-titled shots
+    over 18 run days, which is why `recommender_v1` v1 had zero `qh_mode` shots in a list whose
+    stated purpose includes EHO/QH.
+    """
+    ok, reasons = select.eligible(facts(row={"IP-(MA)": ip}), GOOD_GROUPS)
+    assert ok is True and reasons == ()
+
+
+@pytest.mark.parametrize("ip", ["0.3", "-0.3"])
+def test_a_current_under_the_floor_is_rejected_at_either_polarity(ip):
+    """The magnitude is the rule, so it has to bite in both directions -- `abs()` must not turn
+    the clause into "any plasma at all"."""
+    ok, reasons = select.eligible(facts(row={"IP-(MA)": ip}), GOOD_GROUPS)
+    assert ok is False and "ip" in reasons
+
+
+def test_the_polarity_is_recorded_even_though_the_rule_ignores_it():
+    """A counter-Ip discharge is a different plasma, so the list has to say which shots are one --
+    the rule admits them, the reader decides what to do about them."""
+    assert facts(row={"IP-(MA)": "-1.10"}).ip_sign == -1
+    assert facts(row={"IP-(MA)": "1.10"}).ip_sign == 1
+    assert facts(row={"IP-(MA)": ""}).ip_sign is None
+
+
 def test_a_missing_shot_table_field_is_a_rejection_not_a_pass():
     """`IP-(MA)` absent is not `IP-(MA)` large. The 2021-2025 corpus has plasma shots whose row
     carries only SHOT/SHOT_TYPE/BTOR/TIME/PULSE-LENGTH/IP -- a rule that read a missing field as
@@ -273,6 +303,53 @@ def test_assign_theme_takes_the_first_matching_lexicon_entry(title, theme):
 def test_the_real_lexicon_is_the_default_and_has_fourteen_themes():
     assert select.assign_theme("RMP ELM suppression") == "rmp_elm"
     assert len(select.lexicon_themes()) == 14
+
+
+def test_a_physics_theme_wins_over_startup_checkout():
+    """`labels.yaml` lists `startup_checkout` first and the assignment used to be first-match, so
+    any run day whose title also said "checkout" or "calibration" was filed as machine time.
+
+    Measured on the eligible pool: 499 of the 1,246 checkout-titled shots also match a physics
+    theme, and `startup_checkout` is the one theme §5.7 excludes from the quotas -- so the
+    shadowing did not just mislabel them, it took them out of the quota that was reaching for
+    them. The title below is a real one (run 20220906, shots 189889 ff).
+    """
+    got = select.assign_theme("Divertor diagnostic checkout for QH/WPQH-Mode", THEMES)
+    assert got == "qh_mode"
+
+
+def test_startup_checkout_is_still_assigned_when_no_physics_theme_matches():
+    """It is a fallback, not a deletion: a run day that really is only machine time keeps the
+    label, so the summary can still count how much of the pool is checkout time."""
+    assert select.assign_theme("Systems checkout and diagnostic cal", THEMES) == "startup_checkout"
+
+
+def test_the_mini_proposal_subject_is_matched_when_the_title_has_no_keyword():
+    """`labels.yaml:2` promises "run title + MP title" and only the title was ever read. The
+    subject is the experiment's own words and the run-day title is the session leader's."""
+    assert select.assign_theme("Tuesday day session", THEMES) is None
+    assert select.assign_theme("Tuesday day session", THEMES, subject="NTM control") == "tearing_mhd"
+
+
+def test_a_bundle_carries_every_subject_line_of_its_mini_proposal_block():
+    """Two `Subject:` lines is the common real shape -- the PDF extraction's, whose glyphs the
+    font mapping often mangles, and the markdown export's, which is clean. Both are kept, because
+    which of the two is readable is a property of that run day's PDF and not of the physics.
+    """
+    b = text_bundle(
+        190000, row=GOOD_ROW, title="Tuesday day session",
+        subjects=("QH-mode acce’’ at low to‘que", "QH-mode access at low torque"),
+    )
+    assert text.mp_subjects(b) == ("QH-mode acce’’ at low to‘que", "QH-mode access at low torque")
+    f = select.parse_facts(190000, b)
+    assert f.mp_subject and "QH-mode access at low torque" in f.mp_subject
+    assert select.assign_theme(f.title, THEMES, subject=f.mp_subject) == "qh_mode"
+
+
+def test_the_subject_lines_come_from_the_planned_block_and_nowhere_else():
+    b = text_bundle(190000, row=GOOD_ROW, title="Tearing mode avoidance")
+    assert text.mp_subjects(b) == ("Tearing mode avoidance",)
+    assert text.mp_subjects("no mini-proposal here at all") == ()
 
 
 # ------------------------------------------------------------------------------ diversify
@@ -465,6 +542,116 @@ def test_a_pool_smaller_than_n_returns_what_there_is():
     assert len(got) == 7
 
 
+# ------------------------------------------------- rule (d), pass two: measured flat-top
+
+
+def test_a_selected_shot_with_no_feature_file_is_kept_and_marked_pending():
+    """`pulse_length_proxy` on a selected shot is an estimate that was never checked. Saying
+    `pending` instead is the difference between "measured >= 1 s" and "nobody has looked" -- and
+    it is what puts the shot on the list the features stage has to be run for."""
+    pool = candidates(20, per_run=1)
+    sel = select.diversify(pool, quotas(n=5), seed=3)
+    out, repl = select.verify_flattop(sel, pool, quotas(n=5), seed=3, measure=lambda s: None)
+    assert [c.shot for c in out] == [c.shot for c in sel]
+    assert {c.flattop_source for c in out} == {"pending"}
+    assert [c.flattop_s for c in out] == [c.flattop_s for c in sel]  # the proxy is kept as the estimate
+    assert repl == []
+
+
+def test_a_measured_flattop_replaces_the_proxy_on_every_verified_shot():
+    pool = candidates(20, per_run=1)
+    sel = select.diversify(pool, quotas(n=5), seed=3)
+    out, repl = select.verify_flattop(sel, pool, quotas(n=5), seed=3, measure=lambda s: 2.4)
+    assert {c.flattop_source for c in out} == {"features_ip"}
+    assert {c.flattop_s for c in out} == {2.4} and repl == []
+
+
+def test_a_shot_whose_measured_flattop_is_short_is_dropped_and_replaced():
+    """This is rule (d) biting for real. The proxy said the shot had a flat-top; the Ip trace says
+    it did not, and a list of 500 has to still be 500."""
+    pool = candidates(20, per_run=1)
+    sel = select.diversify(pool, quotas(n=5), seed=3)
+    doomed = sel[0].shot
+    out, repl = select.verify_flattop(
+        sel, pool, quotas(n=5), seed=3, measure=lambda s: 0.4 if s == doomed else None
+    )
+    shots = [c.shot for c in out]
+    assert len(out) == 5 and doomed not in shots
+    assert len(repl) == 1
+    assert repl[0]["dropped"] == doomed and repl[0]["dropped_flattop_s"] == 0.4
+    assert repl[0]["replacement"] in shots and repl[0]["replacement"] not in [c.shot for c in sel]
+
+
+def test_a_replacement_carries_the_theme_of_the_shot_it_replaces():
+    """A quota that was met before the verification has to be met after it. Replacing a
+    `tearing_mhd` shot with whatever came next would quietly undo the theme floor."""
+    pool = candidates(10, theme="rmp_elm") + candidates(10, start=191000, theme="tearing_mhd")
+    sel = select.diversify(pool, quotas(n=6, per_theme=3), seed=5)
+    doomed = next(c for c in sel if c.theme == "tearing_mhd")
+    out, repl = select.verify_flattop(
+        sel, pool, quotas(n=6, per_theme=3), seed=5,
+        measure=lambda s: 0.4 if s == doomed.shot else None,
+    )
+    got = next(c for c in out if c.shot == repl[0]["replacement"])
+    assert got.theme == "tearing_mhd"
+    assert Counter(c.theme for c in out) == Counter(c.theme for c in sel)
+
+
+def test_a_candidate_whose_own_measured_flattop_is_short_is_not_used_as_a_replacement():
+    pool = candidates(20, per_run=1)
+    sel = select.diversify(pool, quotas(n=5), seed=3)
+    doomed = sel[0].shot
+    chosen = {c.shot for c in sel}
+    first_spare = next(
+        c.shot for c in select._by_year([c for c in pool if c.shot not in chosen], 3)
+    )
+    out, _repl = select.verify_flattop(
+        sel, pool, quotas(n=5), seed=3,
+        measure=lambda s: 0.4 if s in (doomed, first_spare) else None,
+    )
+    shots = [c.shot for c in out]
+    assert doomed not in shots and first_spare not in shots and len(out) == 5
+
+
+def test_a_replacement_still_obeys_the_caps():
+    """The freed slot is the dropped shot's, so its run day gets it back -- but no other run day
+    may go over three because of a replacement."""
+    pool = candidates(40, per_run=10)
+    sel = select.diversify(pool, quotas(n=10), seed=7)
+    doomed = {c.shot for c in sel[:3]}
+    out, _ = select.verify_flattop(
+        sel, pool, quotas(n=10), seed=7, measure=lambda s: 0.4 if s in doomed else None
+    )
+    assert len(out) == 10
+    assert max(Counter(c.run_id for c in out).values()) <= 3
+
+
+def test_the_verification_is_deterministic_and_comes_back_in_shot_order():
+    pool = candidates(40, per_run=10)
+    sel = select.diversify(pool, quotas(n=10), seed=7)
+    doomed = {sel[0].shot}
+    runs = [
+        select.verify_flattop(
+            sel, pool, quotas(n=10), seed=7, measure=lambda s: 0.4 if s in doomed else None
+        )
+        for _ in range(2)
+    ]
+    assert [c.shot for c in runs[0][0]] == [c.shot for c in runs[1][0]]
+    assert [c.shot for c in runs[0][0]] == sorted(c.shot for c in runs[0][0])
+    assert runs[0][1] == runs[1][1]
+
+
+def test_a_shot_with_no_replacement_available_is_reported_as_such():
+    """Seven candidates, seven selected, one fails the measured rule: the list is short by one and
+    the summary has to say so rather than quietly returning 6 of 7."""
+    pool = candidates(7, per_run=1)
+    sel = select.diversify(pool, quotas(n=7), seed=3)
+    out, repl = select.verify_flattop(
+        sel, pool, quotas(n=7), seed=3, measure=lambda s: 0.4 if s == sel[0].shot else None
+    )
+    assert len(out) == 6 and repl[0]["replacement"] is None
+
+
 # ------------------------------------------------------------------------------ the document
 
 
@@ -476,7 +663,9 @@ def test_the_yaml_document_carries_every_key_the_spec_names():
     )
     doc = select.document(got, summary, name="recommender_v1", seed=99, n=10)
     assert doc["name"] == "recommender_v1"
-    assert doc["rule"] == "plan §5.7"
+    # The rule string names its own amendments, because the plan text is frozen and a reader of
+    # the YAML has no other way to know which reading of §5.7 produced these 500 shots.
+    assert doc["rule"].startswith("plan §5.7") and "abs(Ip)" in doc["rule"]
     assert doc["seed"] == 99 and doc["n"] == 10 and doc["created"]
     assert doc["hand_review"] == {"drop": [], "add": []}
     assert set(doc["shots"][0]) == {
@@ -489,6 +678,7 @@ def test_the_yaml_document_carries_every_key_the_spec_names():
         "has_co2",
         "has_bes",
         "has_tangtv",
+        "ip_sign",
         "flattop_s",
         "flattop_source",
     }
@@ -612,6 +802,91 @@ def test_cli_select_reads_mpid_out_of_a_logbook_when_there_is_one(
     # One mini-proposal for all 60 shots, so the cap alone decides the size of the list.
     assert len(doc["shots"]) == 5
     assert {e["mpid"] for e in doc["shots"]} == {"2022-11-05"}
+
+
+def _write_features(dirpath, shot: int, flattop_s: float) -> None:
+    """A labelmaker-shaped `<shot>_features.h5` whose `ip` group has a flat-top of `flattop_s`."""
+    import h5py
+
+    dirpath.mkdir(parents=True, exist_ok=True)
+    t = np.arange(0.0, flattop_s + 2.0, 0.025)
+    ip = np.where((t >= 1.0) & (t <= 1.0 + flattop_s), 1.0e6, 1.0e5)
+    with h5py.File(dirpath / f"{shot}_features.h5", "w") as f:
+        g = f.create_group("ip")
+        g["xdata"] = t
+        g["ydata"] = ip
+
+
+def test_cli_select_verify_flattop_marks_the_unmeasured_rows_and_lists_them(
+    selection_inputs, tmp_path, capsys
+):
+    """The pending list is the point of the pass: it is the exact input to labelmaker's features
+    stage, so the second invocation can measure what the first could only estimate."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    # A `pedestal` shot: the theme floors run alphabetically and pedestal is the first theme the
+    # fixture carries, so this shot is selected -- and a shot with a feature file is `preferred`,
+    # which puts it first inside its own year bucket. The point of the test is the two SOURCES.
+    _write_features(feats, 190003, 3.0)
+    out, pending = tmp_path / "v.yaml", tmp_path / "pending.txt"
+    argv = select_argv(
+        txt_dir, parquet, tmp_path,
+        **{"--out": str(out), "--features": str(feats), "--pending-out": str(pending)},
+    ) + ["--verify-flattop", "--allow-pending"]
+    assert cli.main(argv) == 0
+    doc = yaml.safe_load(out.read_text(encoding="utf-8"))
+    sources = Counter(e["flattop_source"] for e in doc["shots"])
+    assert sources["pending"] == 11 and sources["features_ip"] == 1
+    assert doc["summary"]["flattop_source"]["pending"] == 11
+    assert doc["summary"]["replacements"] == []
+    assert pending.read_text(encoding="utf-8").split() == [
+        str(e["shot"]) for e in doc["shots"] if e["flattop_source"] == "pending"
+    ]
+
+
+def test_cli_select_refuses_a_list_with_pending_rows_unless_it_is_allowed(
+    selection_inputs, tmp_path, capsys
+):
+    """A list whose rule (d) was never measured is a list that does not satisfy §5.7, and writing
+    it under the same name as one that does is how an unverified list becomes the record."""
+    txt_dir, parquet = selection_inputs
+    out, pending = tmp_path / "v.yaml", tmp_path / "pending.txt"
+    argv = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(out), "--pending-out": str(pending)}
+    ) + ["--verify-flattop"]
+    assert cli.main(argv) == 1
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "12 selected shot(s) have no measured flat-top" in err and str(pending) in err
+    # The pending list IS written: it is the work order that clears the refusal.
+    assert len(pending.read_text(encoding="utf-8").split()) == 12
+
+
+def test_cli_select_finalize_verifies_and_will_not_take_allow_pending(
+    selection_inputs, tmp_path, capsys
+):
+    """`--finalize` is the second invocation: verify, and accept nothing less than a measured
+    flat-top for every row."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    out = tmp_path / "v.yaml"
+    base = select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)})
+    assert cli.main([*base, "--finalize"]) == 0
+    doc = yaml.safe_load(out.read_text(encoding="utf-8"))
+    assert {e["flattop_source"] for e in doc["shots"]} == {"features_ip"}
+    assert cli.main([*base, "--finalize", "--allow-pending"]) == 2
+    assert "--finalize and --allow-pending" in capsys.readouterr().err
+
+
+def test_cli_select_records_the_polarity_of_every_selected_shot(selection_inputs, tmp_path):
+    txt_dir, parquet = selection_inputs
+    out = tmp_path / "v.yaml"
+    assert cli.main(select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out)})) == 0
+    doc = yaml.safe_load(out.read_text(encoding="utf-8"))
+    assert {e["ip_sign"] for e in doc["shots"]} == {1}
+    assert doc["summary"]["ip_sign"] == {"+1": 12}
 
 
 def test_the_census_columns_this_module_reads_are_the_ones_the_census_writes():
