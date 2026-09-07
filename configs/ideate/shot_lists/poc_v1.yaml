@@ -1,0 +1,4000 @@
+# How this list was built, and the one judgement call in it.
+#
+# All sizes below are decimal GB (1e9 bytes), and every one of them was re-measured for this
+# regeneration. An earlier version of this header quoted the same cost table in GiB while calling
+# it GB, which is a 7 % understatement.
+#
+# Every shot below needs its raw signals on disk before the database can be built, and what that
+# costs depends entirely on which campaign the shot is from. Measured group by group on staged shot
+# 161172 (3.037 GB on disk, 2.829 GiB): the four high-rate diagnostics -- BES 1.363, calibrated ECE
+# 0.980, high-resolution magnetics 0.151 and the CO2 interferometer 0.297 -- are 2.791 GB of that
+# file, and the remaining 0.246 GB is every other group in it, the equilibrium scalars and profiles
+# included. So:
+#
+#   * 2014-2015 staged shots cost nothing. /scratch/gpfs/EKOLEMEN/d3d_fusion_data holds the whole
+#     file for 936 of them already, high-rate raws included (median 2.922 GB, mean 2.140 GB, 2.00 TB
+#     in total).
+#   * 2019-2025 shots inside 185601-204999 cost at most about 0.25 GB each. The high-rate raws are
+#     already on disk as /scratch/gpfs/EKOLEMEN/foundation_model/<shot>_processed.h5 (16,909 shots,
+#     median 3.350 GB, mean 3.430 GB, 58 TB in total); only the groups those files do not carry
+#     still have to be pulled.
+#   * 2016-2018 shots cost the full ~3.0 GB each. Neither store holds anything between 165000 and
+#     176999, so every channel has to be fetched from scratch.
+#
+# Two caveats on those per-shot figures, both of which make the headline an upper bound rather
+# than an estimate:
+#
+#   * The 0.25 GB processed-tier cost is charged as if a processed file held only the four
+#     high-rate diagnostics. It holds far more than that: 200443_processed.h5 already carries
+#     gas_flow, gas_raw, pinj, tinj, ech_power, rmp, i_coil, the Thomson ts_* groups and the
+#     cer_* groups, all of which the database needs. What is genuinely missing from it is Ip, the
+#     equilibrium magnetics and the EFIT scalars and profiles -- a fraction of the 0.25 GB.
+#   * Both non-zero tier costs are extrapolated from a *single* 2015 shot, 161172, because that is
+#     the only era where a complete file exists locally to measure. There is no 2016-2018 file
+#     anywhere on this filesystem to check the ~3.0 GB against. The two store medians above are the
+#     only cross-era evidence there is, and they bracket it (2.922 GB staged, 3.350 GB processed).
+#
+# That is still a factor of twelve between the tiers, and it is why the breadth allocation below is
+# deliberately uneven. The default 24 / 36 / 70 split across 2016-2018 / 2019-2021 / 2022-2025 buys
+# 19 % of the breadth shots from the era that costs 74 % of the fetch volume. Zeroing 2016-2018
+# out would cut the fetch from roughly 99 GB to 26 GB.
+#
+# What we would lose by zeroing it out, measured on the candidate pool rather than assumed:
+#
+#   * Not a single theme. All fourteen curation themes have at least nine distinct runs in the
+#     already-processed 2019-2025 pool, so no line of physics disappears from the database.
+#   * The era itself. 2016-2018 is a contiguous three-year hole between the staged shots and the
+#     processed store, so every retrieval for a 2016-2018 query would have to answer from a
+#     different campaign, on a differently configured machine.
+#   * The strongest source of fast-ion / Alfven-eigenmode runs: 14 distinct runs in 2016-2018
+#     against 9 in the whole processed pool. It is the one theme where the cheap eras are thinner
+#     than the expensive one.
+#
+# So 2016-2018 is kept, but thin and wide: 24 shots spread over 12 runs, one run per theme cell,
+# which represents the era across as many distinct experiments as the budget allows. What it gives
+# up is depth inside any one 2016-2018 experiment, not the era.
+#
+# Reading the rows below, six things are worth knowing:
+#
+#   * `targets.breadth_by_era` and the per-shot `era` strata do not agree, on purpose. The budget
+#     is spent per *run*, and a run is assigned to the campaign holding most of its shots, but each
+#     shot carries its own era. Three runs straddle a boundary; run 20220620 (metadata shot_range
+#     "189985 - 190020", logbook records 189987-190018) is the one that shows here, so the
+#     2019_2021 / 2022_2025 budget of 36 / 70 lands as 38 / 68 shots.
+#   * **Which shots inside a run were picked is close to arbitrary.** The differentiators the
+#     allocator uses -- mini-proposal step and the requested Ip/PNBI bins -- are mostly absent from
+#     the logbook: `mp_step` is filled in for 17.2 % of the eligible staged rows and the requested
+#     bins for 9.0 %, and only 9 of the 34 staged runs (61 of the 99 runs in this list) have two
+#     distinct keys to tell their shots apart at all. Where they do not, the tie-break is shot
+#     order. Over these 200 shots: 72 are their run's first eligible shot, 143 are in the first
+#     three, 185 are in the first half, and the median rank is 2 inside runs that average 19.6
+#     eligible shots. The largest run in this list, 20170418, has 41 eligible shots and
+#     contributes its 1st and its 9th -- the setup shots, not the scan the mini-proposal
+#     describes. If you care about a particular run, name later shots of it under
+#     `hand_review: add:` -- that is what the block is for.
+#   * The 2019-2021 shots can only come from 185601-189999, because that is where the processed
+#     store starts. They are the late part of that campaign, not a sample across it. Drawing from
+#     the earlier part of 2019-2021 costs the full ~3.0 GB per shot, exactly like 2016-2018.
+#   * Two shots are taken from each run wherever the run has two, because the mini-proposal ->
+#     shots evaluation cannot score a mini-proposal that has only one shot in the database.
+#   * `evidence:` on a failed shot is one log entry, copied word for word from what that operator
+#     wrote (whitespace collapsed, cut at 200 characters around the fault it names, with an
+#     ellipsis on whichever side was cut). It is there so the verdict can be checked rather than
+#     trusted -- if it does not read like a failed shot, drop the shot in `hand_review`.
+#   * Failed shots (operator verdict bad or mixed) are held near 12 % on purpose. They are what
+#     lets the recommender warn about a setting, but 18 % of the 586 eligible staged shots and
+#     22 % of the 17,258 eligible breadth shots are bad or mixed, so taking one from every run would
+#     put the list past a third failed.
+
+version: poc_v1
+generated: '2026-09-04'
+seed: 0
+pool: hybrid
+targets:
+  staged: 70
+  breadth: 130
+  breadth_by_era:
+    '2016_2018': 24
+    '2019_2021': 36
+    '2022_2025': 70
+  failed_fraction: 0.12
+  per_run: 3
+  min_per_run: 2
+shots:
+- shot: 160904
+  run_id: 20141219A
+  mpid: '2014-33-16'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: rmp_elm
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2014_2015/LSN; raw already on disk (staged)
+- shot: 160906
+  run_id: 20141219A
+  mpid: '2014-33-16'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: rmp_elm
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2014_2015/LSN; raw already on disk (staged)
+- shot: 160994
+  run_id: '20150107'
+  mpid: '2014-32-17'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 160995
+  run_id: '20150107'
+  mpid: '2014-32-17'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161016
+  run_id: 20150107A
+  mpid: '2014-32-13'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: locked mode
+  evidence: '[SESSION_LEADER] Locked mode terminated discharge early caused by high density and beta.'
+  reason: 'fills detachment_divertor/2014_2015/LSN; MP text (pdf); failed shot (verdict bad: locked mode);
+    raw already on disk (staged)'
+- shot: 161018
+  run_id: 20150107A
+  mpid: '2014-32-13'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161026
+  run_id: '20150108'
+  mpid: '2014-14-04'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disrupted
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161027
+  run_id: '20150108'
+  mpid: '2014-14-04'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161064
+  run_id: '20150109'
+  mpid: '2014-14-04'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161066
+  run_id: '20150109'
+  mpid: '2014-14-04'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161080
+  run_id: 20150109A
+  mpid: '2014-11-11'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/DN; MP text (pdf); raw already on disk (staged)
+- shot: 161081
+  run_id: 20150109A
+  mpid: '2014-11-11'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/DN; MP text (pdf); raw already on disk (staged)
+- shot: 161103
+  run_id: '20150112'
+  mpid: '2014-14-04'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161105
+  run_id: '20150112'
+  mpid: '2014-14-04'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161115
+  run_id: 20150112A
+  mpid: '2014-11-13'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161117
+  run_id: 20150112A
+  mpid: '2014-11-13'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161136
+  run_id: '20150113'
+  mpid: '2014-32-17'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161137
+  run_id: '20150113'
+  mpid: '2014-32-17'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161163
+  run_id: 20150113A
+  mpid: '2014-21-19'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/DN; MP text (pdf); raw already on disk (staged)
+- shot: 161164
+  run_id: 20150113A
+  mpid: '2014-21-19'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/DN; MP text (pdf); raw already on disk (staged)
+- shot: 161180
+  run_id: '20150114'
+  mpid: '2014-11-13'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: '>1.6'
+    bt_bin: 1.8-2.1
+    pnbi_bin: <3
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; requested ip 1.6 MA, bt 2 T, pnbi 1.7 MW; MP text (pdf); raw
+    already on disk (staged)
+- shot: 161186
+  run_id: '20150114'
+  mpid: '2014-11-13'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161196
+  run_id: 20150114A
+  mpid: '2014-02-05'
+  source: staged
+  store: staged
+  mp_source: md_header
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/other; raw already on disk (staged)
+- shot: 161200
+  run_id: 20150114A
+  mpid: '2014-02-05'
+  source: staged
+  store: staged
+  mp_source: md_header
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/other; raw already on disk (staged)
+- shot: 161214
+  run_id: '20150115'
+  mpid: '2014-12-02'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2014_2015'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2014_2015/LSN; requested ip 1 MA, bt -2 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (staged)
+- shot: 161215
+  run_id: '20150115'
+  mpid: '2014-12-02'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2014_2015'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2014_2015/LSN; requested ip 1 MA, bt -2 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (staged)
+- shot: 161219
+  run_id: '20150115'
+  mpid: '2014-12-02'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: locked mode
+  evidence: '[SESSION_LEADER] No H-mode, locked mode at 630ms.'
+  reason: 'fills lh_threshold_isotope/2014_2015/LSN; MP text (pdf); failed shot (verdict bad: locked mode);
+    raw already on disk (staged)'
+- shot: 161240
+  run_id: 20150115A
+  mpid: '2014-24-81'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: mixed
+  fault: disrupted;dud trip
+  evidence: '[SESSION_LEADER] Postshot: disrupted ,'
+  reason: 'fills tearing_mhd/2014_2015/LSN; MP text (pdf); failed shot (verdict mixed: disrupted;dud trip);
+    raw already on disk (staged)'
+- shot: 161241
+  run_id: 20150115A
+  mpid: '2014-24-81'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: dud trip
+  evidence: '[PHYSICS_OPERATOR] Remove the MHD trip test and repeat. Result: Dud trips at about 2.9 s,
+    but the LM starts at about 2.3 seconds and triggers the standard RWM feedback which as pickup causes
+    DUSBRADIAL to follow the Ic…'
+  reason: 'fills tearing_mhd/2014_2015/LSN; MP text (pdf); failed shot (verdict bad: dud trip); raw already
+    on disk (staged)'
+- shot: 161252
+  run_id: '20150116'
+  mpid: '2014-02-06'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161258
+  run_id: '20150116'
+  mpid: '2014-02-06'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: mixed
+  fault: ''
+  evidence: '[PHYSICS_OPERATOR] NBI: Put 30R into timcon for mse and more power during flattop -- 30R
+    drops out early 21s PHD trip again bN tracks target early but need more counter torque at 2s'
+  reason: fills other/2014_2015/LSN; MP text (pdf); failed shot (verdict mixed); raw already on disk (staged)
+- shot: 161273
+  run_id: '20150119'
+  mpid: '2014-33-15'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161274
+  run_id: '20150119'
+  mpid: '2014-33-15'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: mixed
+  fault: dud trip
+  evidence: '[PHYSICS_OPERATOR] …F supply category from 159554. Outcome: runs. Core n = 1 mode causes
+    a dud trip. Strange drop in dRsep at 2.8 s and then it resumes the ramp. This is happening when the
+    target value passes through 0.'
+  reason: 'fills pedestal/2014_2015/LSN; MP text (pdf); failed shot (verdict mixed: dud trip); raw already
+    on disk (staged)'
+- shot: 161306
+  run_id: 20150119A
+  mpid: '2014-24-76'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161310
+  run_id: 20150119A
+  mpid: '2014-24-76'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161315
+  run_id: '20150120'
+  mpid: '2014-21-20'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161318
+  run_id: '20150120'
+  mpid: '2014-21-20'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161346
+  run_id: '20150121'
+  mpid: '2014-21-20'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161351
+  run_id: '20150121'
+  mpid: '2014-21-20'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: locked mode
+  evidence: '[PHYSICS_OPERATOR] …to 400 Hz constant - Set FreqMinimum to 3000 Hz Result: - Trip all the
+    coils around t=4.1 s, following plasma locked mode - Issue was that Error field category switched
+    to RWM FB on dud'
+  reason: 'fills qh_mode/2014_2015/LSN; MP text (pdf); failed shot (verdict bad: locked mode); raw already
+    on disk (staged)'
+- shot: 161361
+  run_id: 20150121A
+  mpid: '2014-21-20'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161362
+  run_id: 20150121A
+  mpid: '2014-21-20'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161381
+  run_id: '20150122'
+  mpid: '2014-24-78'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161382
+  run_id: '20150122'
+  mpid: '2014-24-78'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161383
+  run_id: '20150122'
+  mpid: '2014-24-78'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161388
+  run_id: 20150122B
+  mpid: '2014-33-17'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2014_2015'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2014_2015/other; requested ip 0.95 MA, bt 1.9 T, pnbi 0 MW; MP text (pdf); raw
+    already on disk (staged)
+- shot: 161391
+  run_id: 20150122B
+  mpid: '2014-33-17'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2014_2015'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '>7'
+    pech: 'off'
+    config: other
+  failed: true
+  verdict: bad
+  fault: locked mode
+  evidence: '[SESSION_LEADER] Preshot: Keep I-coil = 3 kA to achieve ELM suppression without excessive
+    pumpout. Plasma displaced in by 1.5 cm inward to avoid heating of outer limiter. Post shot: Locked
+    mode at 2.5 s.'
+  reason: 'fills rmp_elm/2014_2015/other; requested ip 0.95 MA, bt 1.9 T, pnbi 9 MW; MP text (pdf); failed
+    shot (verdict bad: locked mode); raw already on disk (staged)'
+- shot: 161432
+  run_id: '20150123'
+  mpid: '2014-33-16'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161433
+  run_id: '20150123'
+  mpid: '2014-33-16'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills rmp_elm/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161468
+  run_id: '20150126'
+  mpid: '2014-32-18'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161469
+  run_id: '20150126'
+  mpid: '2014-32-18'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161491
+  run_id: '20150127'
+  mpid: '2014-32-18'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161492
+  run_id: '20150127'
+  mpid: '2014-32-18'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2014_2015/LSN; MP text (pdf); raw already on disk (staged)
+- shot: 161505
+  run_id: 20150127A
+  mpid: '2014-11-11'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/DN; raw already on disk (staged)
+- shot: 161506
+  run_id: 20150127A
+  mpid: '2014-11-11'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/DN; raw already on disk (staged)
+- shot: 161524
+  run_id: 20150127B
+  mpid: '2014-24-79'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; raw already on disk (staged)
+- shot: 161525
+  run_id: 20150127B
+  mpid: '2014-24-79'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; raw already on disk (staged)
+- shot: 161535
+  run_id: '20150128'
+  mpid: '2014-02-05'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/LSN; raw already on disk (staged)
+- shot: 161537
+  run_id: '20150128'
+  mpid: '2014-02-05'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/LSN; raw already on disk (staged)
+- shot: 161552
+  run_id: 20150128A
+  mpid: '2014-32-19'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; raw already on disk (staged)
+- shot: 161553
+  run_id: 20150128A
+  mpid: '2014-32-19'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; raw already on disk (staged)
+- shot: 161569
+  run_id: 20150128B
+  mpid: '2014-24-77'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: tearing_mhd
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: disrupts
+  evidence: ''
+  reason: fills tearing_mhd/2014_2015/USN; raw already on disk (staged)
+- shot: 161571
+  run_id: 20150128B
+  mpid: '2014-24-77'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: tearing_mhd
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2014_2015/USN; raw already on disk (staged)
+- shot: 161583
+  run_id: '20150129'
+  mpid: '2014-11-12'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/other; raw already on disk (staged)
+- shot: 161584
+  run_id: '20150129'
+  mpid: '2014-11-12'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: hybrid_high_beta
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2014_2015/other; raw already on disk (staged)
+- shot: 161623
+  run_id: '20150130'
+  mpid: '2014-34-04'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; raw already on disk (staged)
+- shot: 161624
+  run_id: '20150130'
+  mpid: '2014-34-04'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: detachment_divertor
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2014_2015/LSN; raw already on disk (staged)
+- shot: 161641
+  run_id: 20150130A
+  mpid: '2014-34-06'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/LSN; raw already on disk (staged)
+- shot: 161642
+  run_id: 20150130A
+  mpid: '2014-34-06'
+  source: staged
+  store: staged
+  mp_source: none
+  strata:
+    theme: other
+    era: '2014_2015'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2014_2015/LSN; raw already on disk (staged)
+- shot: 163110
+  run_id: '20150721'
+  mpid: '2015-11-03'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2014_2015/LSN; requested ip 1.1 MA, bt -2.1 T, pnbi 0 MW; MP text (pdf); raw
+    already on disk (staged)
+- shot: 163116
+  run_id: '20150721'
+  mpid: '2015-11-03'
+  source: staged
+  store: staged
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2014_2015'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: ''
+  evidence: '[SESSION_LEADER] Postshot: Lots of tearing mode activity, not a good case for our analysis.'
+  reason: fills transport/2014_2015/LSN; requested ip 1.5 MA, bt -2.1 T, pnbi 0 MW; MP text (pdf); failed
+    shot (verdict bad); raw already on disk (staged)
+- shot: 165197
+  run_id: '20160122'
+  mpid: '2016-31-01'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2016_2018'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'on'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2016_2018/limiter; requested ip 1.3 MA, bt -1.9 T, pnbi 1.6 MW; MP text (pdf)
+- shot: 165204
+  run_id: '20160122'
+  mpid: '2016-31-01'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2016_2018'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'on'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2016_2018/limiter; requested ip 1.3 MA, bt -1.9 T, pnbi 1.6 MW; MP text (pdf)
+- shot: 166392
+  run_id: 20160331A
+  mpid: '2016-24-91'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2016_2018'
+    ip_bin: <0.8
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2016_2018/limiter; requested ip 0 MA, bt 0 T, pnbi 3 MW; MP text (pdf)
+- shot: 166393
+  run_id: 20160331A
+  mpid: '2016-24-91'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2016_2018'
+    ip_bin: <0.8
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2016_2018/limiter; requested ip 0 MA, bt 0 T, pnbi 6 MW; MP text (pdf)
+- shot: 169363
+  run_id: '20170307'
+  mpid: '2017-36-07'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2016_2018/DN; MP text (pdf)
+- shot: 169364
+  run_id: '20170307'
+  mpid: '2017-36-07'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2016_2018'
+    ip_bin: <0.8
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2016_2018/DN; requested ip -1.1 MA, bt -2.06 T, pnbi 4 MW; MP text (pdf)
+- shot: 169953
+  run_id: '20170410'
+  mpid: '2017-09-01'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: mixed
+  fault: ''
+  evidence: '[PHYSICS_OPERATOR] Raise current to 1.73MA to get q95 to 3.5 ---------------------- F8b trip'
+  reason: fills rmp_elm/2016_2018/LSN; MP text (pdf); failed shot (verdict mixed)
+- shot: 169954
+  run_id: '20170410'
+  mpid: '2017-09-01'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2016_2018'
+    ip_bin: '>1.6'
+    bt_bin: <1.8
+    pnbi_bin: '>7'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills rmp_elm/2016_2018/LSN; requested ip 1.73 MA, bt -2.06 T, pnbi 7.75 MW; MP text (pdf)
+- shot: 170187
+  run_id: '20170418'
+  mpid: '2017-26-03'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: other
+    era: '2016_2018'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: locked mode;disruption
+  evidence: '[SESSION_LEADER] Postshot: 3D: 4kA n=1 offset in lower I-coils came up @2.2s, made a big
+    locked mode and destroyed the plasma by 2.68s. NBI: Got about 2.8Nm with no torque control. Front
+    end seemed ok actually.'
+  reason: 'fills other/2016_2018/LSN; requested ip 1.15 MA, bt -1.53 T, pnbi 4 MW; MP text (pdf); failed
+    shot (verdict bad: locked mode;disruption)'
+- shot: 170195
+  run_id: '20170418'
+  mpid: '2017-26-03'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: other
+    era: '2016_2018'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2016_2018/LSN; requested ip 1.15 MA, bt -1.53 T, pnbi 4 MW; MP text (pdf)
+- shot: 170314
+  run_id: '20170421'
+  mpid: '2017-27-01'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2016_2018/DN; MP text (pdf)
+- shot: 170318
+  run_id: '20170421'
+  mpid: '2017-27-01'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2016_2018/DN; MP text (pdf)
+- shot: 170427
+  run_id: '20170426'
+  mpid: '2017-15-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2016_2018/LSN; MP text (pdf)
+- shot: 170429
+  run_id: '20170426'
+  mpid: '2017-15-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2016_2018/LSN; MP text (pdf)
+- shot: 170790
+  run_id: '20170510'
+  mpid: '2017-09-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: fast_ion_ae
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills fast_ion_ae/2016_2018/LSN; MP text (pdf)
+- shot: 170795
+  run_id: '20170510'
+  mpid: '2017-09-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: fast_ion_ae
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills fast_ion_ae/2016_2018/LSN; MP text (pdf)
+- shot: 171640
+  run_id: 20170620A
+  mpid: '2017-11-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2016_2018'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'off'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills neg_tri/2016_2018/limiter; requested ip 0.9 MA, bt -2 T, pnbi 1.8 MW; MP text (pdf)
+- shot: 171647
+  run_id: 20170620A
+  mpid: '2017-11-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2016_2018'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'on'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: disrupts
+  evidence: ''
+  reason: fills neg_tri/2016_2018/limiter; requested ip 0.9 MA, bt -2 T, pnbi 1.8 MW; MP text (pdf)
+- shot: 174316
+  run_id: '20171208'
+  mpid: '2018-25-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2016_2018/limiter; MP text (pdf)
+- shot: 174317
+  run_id: '20171208'
+  mpid: '2018-25-02'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2016_2018'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2016_2018/limiter; MP text (pdf)
+- shot: 175669
+  run_id: '20180227'
+  mpid: '2018-02-04'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2016_2018'
+    ip_bin: '>1.6'
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2016_2018/LSN; requested ip 1.6 MA, bt -2 T, pnbi 0 MW; MP text (pdf)
+- shot: 175697
+  run_id: '20180227'
+  mpid: '2018-02-04'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: pedestal
+    era: '2016_2018'
+    ip_bin: '>1.6'
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: ''
+  evidence: '[SESSION_LEADER] Postshot: W injection killed the shot'
+  reason: fills pedestal/2016_2018/LSN; requested ip 1.6 MA, bt -2 T, pnbi 0 MW; MP text (pdf); failed
+    shot (verdict bad)
+- shot: 176462
+  run_id: 20180328A
+  mpid: '2018-61-09'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2016_2018'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2016_2018/USN; requested ip 1 MA, bt 2 T, pnbi 0 MW; MP text (pdf)
+- shot: 176464
+  run_id: 20180328A
+  mpid: '2018-61-09'
+  source: fetch
+  store: none
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2016_2018'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2016_2018/USN; requested ip 1 MA, bt 2 T, pnbi 0 MW; MP text (pdf)
+- shot: 185800
+  run_id: '20210413'
+  mpid: '2019-52-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2019_2021/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 185803
+  run_id: '20210413'
+  mpid: '2019-52-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2019_2021/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 186262
+  run_id: 20210430A
+  mpid: '2019-25-15'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2019_2021/USN; MP text (pdf); raw already on disk (processed)
+- shot: 186263
+  run_id: 20210430A
+  mpid: '2019-25-15'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2019_2021/USN; MP text (pdf); raw already on disk (processed)
+- shot: 186276
+  run_id: '20210503'
+  mpid: '2019-24-62'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: tearing_mhd
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2019_2021/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 186279
+  run_id: '20210503'
+  mpid: '2019-24-62'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: tearing_mhd
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: disruption
+  evidence: '[PHYSICS_OPERATOR] Repeat with betan stepped up (Logan). Result: LM->disruption; starts at
+    3.1 secs. The 30s trip off at 1.8 secs and the rest struggle to maintain feedback control of betan.'
+  reason: 'fills tearing_mhd/2019_2021/LSN; MP text (bundle); failed shot (verdict bad: disruption); raw
+    already on disk (processed)'
+- shot: 186466
+  run_id: 20210521A
+  mpid: '2019-24-43'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills neg_tri/2019_2021/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 186467
+  run_id: 20210521A
+  mpid: '2019-24-43'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills neg_tri/2019_2021/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 186598
+  run_id: '20210527'
+  mpid: '2019-24-46'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: tearing_mhd
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2019_2021/USN; MP text (bundle); raw already on disk (processed)
+- shot: 186599
+  run_id: '20210527'
+  mpid: '2019-24-46'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: tearing_mhd
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2019_2021/USN; MP text (bundle); raw already on disk (processed)
+- shot: 186692
+  run_id: '20210602'
+  mpid: '2019-61-07'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2019_2021/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 186693
+  run_id: '20210602'
+  mpid: '2019-61-07'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2019_2021/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 186892
+  run_id: '20210610'
+  mpid: '2019-02-16'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2019_2021/DN; MP text (bundle); raw already on disk (processed)
+- shot: 186893
+  run_id: '20210610'
+  mpid: '2019-02-16'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2019_2021/DN; MP text (bundle); raw already on disk (processed)
+- shot: 186974
+  run_id: '20210614'
+  mpid: '2019-22-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: hybrid_high_beta
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2019_2021/DN; MP text (bundle); raw already on disk (processed)
+- shot: 186975
+  run_id: '20210614'
+  mpid: '2019-22-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: hybrid_high_beta
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2019_2021/DN; MP text (bundle); raw already on disk (processed)
+- shot: 187174
+  run_id: 20210621A
+  mpid: '2019-52-04'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2019_2021'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2019_2021/LSN; requested ip 1.4 MA, bt -2 T, pnbi 4 MW; MP text (pdf);
+    raw already on disk (processed)
+- shot: 187182
+  run_id: 20210621A
+  mpid: '2019-52-04'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2019_2021'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2019_2021/LSN; requested ip 1.4 MA, bt -2 T, pnbi 4.9 MW; MP text
+    (pdf); raw already on disk (processed)
+- shot: 189011
+  run_id: '20220427'
+  mpid: '2022-36-52'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2019_2021'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2019_2021/USN; requested ip 1 MA, bt 2 T, pnbi 0 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 189013
+  run_id: '20220427'
+  mpid: '2022-36-52'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2019_2021'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: true
+  verdict: bad
+  fault: ''
+  evidence: '[PHYSICS_OPERATOR] Repeat with power increase. Tweak the strike location some more for the
+    added power - appx the smae tweaks as the last time added in again. Result: Bummer. the integrators
+    screwed up at 1.5 seconds.…'
+  reason: fills detachment_divertor/2019_2021/USN; requested ip 1 MA, bt 2 T, pnbi 0 MW; MP text (bundle);
+    failed shot (verdict bad); raw already on disk (processed)
+- shot: 189282
+  run_id: '20220509'
+  mpid: '2022-02-04'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: true
+  verdict: mixed
+  fault: ''
+  evidence: '[SESSION_LEADER] Postshot: Plasma but no beams except 150-L; try again'
+  reason: fills other/2019_2021/DN; MP text (bundle); failed shot (verdict mixed); raw already on disk
+    (processed)
+- shot: 189284
+  run_id: '20220509'
+  mpid: '2022-02-04'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2019_2021'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '>7'
+    pech: 'on'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2019_2021/DN; requested ip 1 MA, bt 2 T, pnbi 14 MW; MP text (bundle); raw already
+    on disk (processed)
+- shot: 189322
+  run_id: '20220510'
+  mpid: '2022-35-07'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: control
+    era: '2019_2021'
+    ip_bin: 1.2-1.6
+    bt_bin: '>2.1'
+    pnbi_bin: 3-7
+    pech: 'on'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2019_2021/LSN; requested ip 1.24 MA, bt 2.5 T, pnbi 5 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 189324
+  run_id: '20220510'
+  mpid: '2022-35-07'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: control
+    era: '2019_2021'
+    ip_bin: 1.2-1.6
+    bt_bin: '>2.1'
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2019_2021/LSN; requested ip 1.24 MA, bt 2.5 T, pnbi 5 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 189433
+  run_id: '20220513'
+  mpid: '2022-35-07'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: control
+    era: '2019_2021'
+    ip_bin: 1.2-1.6
+    bt_bin: '>2.1'
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: abort
+  evidence: ''
+  reason: fills control/2019_2021/USN; requested ip 1.25 MA, bt 2.15 T, pnbi 5 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 189442
+  run_id: '20220513'
+  mpid: '2022-35-07'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: control
+    era: '2019_2021'
+    ip_bin: 1.2-1.6
+    bt_bin: '>2.1'
+    pnbi_bin: '>7'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: disrupted
+  evidence: ''
+  reason: fills control/2019_2021/USN; requested ip 1.25 MA, bt 2.15 T, pnbi 12 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 189546
+  run_id: '20220518'
+  mpid: '2022-32-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2019_2021'
+    ip_bin: '>1.6'
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2019_2021/LSN; requested ip 1.6 MA, bt 2 T, pnbi 0 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 189567
+  run_id: '20220518'
+  mpid: '2022-32-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2019_2021'
+    ip_bin: '>1.6'
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2019_2021/LSN; requested ip 1.6 MA, bt 2 T, pnbi 0 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 189577
+  run_id: '20220519'
+  mpid: '2022-02-04'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: rmp_elm
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disrupted;disrupts;disruption
+  evidence: ''
+  reason: fills rmp_elm/2019_2021/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 189578
+  run_id: '20220519'
+  mpid: '2022-02-04'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: rmp_elm
+    era: '2019_2021'
+    ip_bin: '>1.6'
+    bt_bin: '>2.1'
+    pnbi_bin: '>7'
+    pech: 'off'
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: disruption
+  evidence: '[SESSION_LEADER] Postshot: did not help... huge n=1 mode again, leading to disruption'
+  reason: 'fills rmp_elm/2019_2021/LSN; requested ip 1.8 MA, bt 2.17 T, pnbi 11 MW; MP text (bundle);
+    failed shot (verdict bad: disruption); raw already on disk (processed)'
+- shot: 189670
+  run_id: '20220523'
+  mpid: '2022-13-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: current_drive
+    era: '2019_2021'
+    ip_bin: <0.8
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills current_drive/2019_2021/other; requested ip 0.6 MA, bt 1.61 T, pnbi 0 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 189679
+  run_id: '20220523'
+  mpid: '2022-13-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: current_drive
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills current_drive/2019_2021/other; MP text (bundle); raw already on disk (processed)
+- shot: 189895
+  run_id: 20220614B
+  mpid: '2022-35-52'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2019_2021/DN; MP text (pdf); raw already on disk (processed)
+- shot: 189898
+  run_id: 20220614B
+  mpid: '2022-35-52'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2019_2021/DN; MP text (pdf); raw already on disk (processed)
+- shot: 189937
+  run_id: '20220616'
+  mpid: '2022-12-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2019_2021/DN; MP text (bundle); raw already on disk (processed)
+- shot: 189938
+  run_id: '20220616'
+  mpid: '2022-12-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2019_2021'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2019_2021/DN; MP text (bundle); raw already on disk (processed)
+- shot: 189988
+  run_id: '20220620'
+  mpid: '2022-12-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2019_2021'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'on'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2019_2021/LSN; requested ip 0.9 MA, bt -1.9 T, pnbi 2.8 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 189991
+  run_id: '20220620'
+  mpid: '2022-12-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2019_2021'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2019_2021/LSN; requested ip 0.9 MA, bt -1.8 T, pnbi 0 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 190154
+  run_id: '20220627'
+  mpid: '2022-36-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: rmp_elm
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: true
+  verdict: bad
+  fault: ''
+  evidence: '[CHIEF_OPERATOR] 190154 8:39 AM Plasma shot. PCS System trip.'
+  reason: fills rmp_elm/2022_2025/USN; MP text (bundle); failed shot (verdict bad); raw already on disk
+    (processed)
+- shot: 190156
+  run_id: '20220627'
+  mpid: '2022-36-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: rmp_elm
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: disrupt
+  evidence: ''
+  reason: fills rmp_elm/2022_2025/USN; MP text (bundle); raw already on disk (processed)
+- shot: 190252
+  run_id: '20220629'
+  mpid: '2022-23-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: tearing_mhd
+    era: '2022_2025'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: dud trip
+  evidence: ''
+  reason: fills tearing_mhd/2022_2025/LSN; requested ip 1.35 MA, bt -1.75 T, pnbi 0 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 190255
+  run_id: '20220629'
+  mpid: '2022-23-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: tearing_mhd
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: true
+  verdict: bad
+  fault: locked mode
+  evidence: '[SESSION_LEADER] Postshot: Shot terminated at ~4s from locked mode (born locked or quickly
+    locking). Do have 3/2 and 1/1 activity present (maybe not at same time, however?). No sign of 2/1
+    from 3-wave coupling.'
+  reason: 'fills tearing_mhd/2022_2025/LSN; MP text (bundle); failed shot (verdict bad: locked mode);
+    raw already on disk (processed)'
+- shot: 190313
+  run_id: 20220630A
+  mpid: '2022-12-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2022_2025/LSN; requested ip 0.9 MA, bt -1.8 T, pnbi 2.5 MW; MP text (pdf); raw
+    already on disk (processed)
+- shot: 190314
+  run_id: 20220630A
+  mpid: '2022-12-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: transport
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: <3
+    pech: 'on'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2022_2025/LSN; requested ip 0.9 MA, bt -1.8 T, pnbi 2.7 MW; MP text (pdf); raw
+    already on disk (processed)
+- shot: 190557
+  run_id: 20220712A
+  mpid: '2022-35-04'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2022_2025/DN; requested ip 1 MA, bt 2 T, pnbi 4 MW; MP text (pdf); raw already
+    on disk (processed)
+- shot: 190558
+  run_id: 20220712A
+  mpid: '2022-35-04'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2022_2025/DN; requested ip 1 MA, bt 2 T, pnbi 4 MW; MP text (pdf); raw already
+    on disk (processed)
+- shot: 190661
+  run_id: 20220715A
+  mpid: '2022-35-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2022_2025'
+    ip_bin: <0.8
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills qh_mode/2022_2025/other; requested ip -1.1 MA, bt -2.05 T, pnbi 0 MW; MP text (pdf); raw
+    already on disk (processed)
+- shot: 190665
+  run_id: 20220715A
+  mpid: '2022-35-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: qh_mode
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills qh_mode/2022_2025/other; MP text (pdf); raw already on disk (processed)
+- shot: 190763
+  run_id: 20220719B
+  mpid: '2022-01-05'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2022_2025'
+    ip_bin: <0.8
+    bt_bin: '>2.1'
+    pnbi_bin: '>7'
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2022_2025/other; requested ip 0.75 MA, bt 2.15 T, pnbi 8 MW; MP text
+    (pdf); raw already on disk (processed)
+- shot: 190764
+  run_id: 20220719B
+  mpid: '2022-01-05'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: detachment_divertor
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2022_2025/other; MP text (pdf); raw already on disk (processed)
+- shot: 190774
+  run_id: '20220720'
+  mpid: '2022-36-06'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: true
+  verdict: mixed
+  fault: disrupted
+  evidence: '[SESSION_LEADER] Postshot: Accidental Ne injection disrupted shot'
+  reason: 'fills detachment_divertor/2022_2025/USN; MP text (bundle); failed shot (verdict mixed: disrupted);
+    raw already on disk (processed)'
+- shot: 190784
+  run_id: '20220720'
+  mpid: '2022-36-06'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2022_2025/USN; requested ip 1 MA, bt 2 T, pnbi 0 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 190936
+  run_id: 20220726B
+  mpid: '2022-25-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills disruption_runaway/2022_2025/USN; MP text (pdf); raw already on disk (processed)
+- shot: 190938
+  run_id: 20220726B
+  mpid: '2022-25-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2022_2025/USN; MP text (pdf); raw already on disk (processed)
+- shot: 191496
+  run_id: '20220823'
+  mpid: '2022-11-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: fast_ion_ae
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills fast_ion_ae/2022_2025/USN; MP text (bundle); raw already on disk (processed)
+- shot: 191497
+  run_id: '20220823'
+  mpid: '2022-11-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: fast_ion_ae
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills fast_ion_ae/2022_2025/USN; MP text (bundle); raw already on disk (processed)
+- shot: 191765
+  run_id: 20220902A
+  mpid: '2022-16-51'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills neg_tri/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 191766
+  run_id: 20220902A
+  mpid: '2022-16-51'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2022_2025'
+    ip_bin: <0.8
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills neg_tri/2022_2025/LSN; requested ip 0.5 MA, bt -2 T, pnbi 0 MW; MP text (pdf); raw already
+    on disk (processed)
+- shot: 191780
+  run_id: '20220906'
+  mpid: '2022-15-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2022_2025'
+    ip_bin: <0.8
+    bt_bin: 1.8-2.1
+    pnbi_bin: <3
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2022_2025/other; requested ip 0 MA, bt 2 T, pnbi 1 MW; MP text (bundle); raw already
+    on disk (processed)
+- shot: 191783
+  run_id: '20220906'
+  mpid: '2022-15-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2022_2025'
+    ip_bin: <0.8
+    bt_bin: 1.8-2.1
+    pnbi_bin: <3
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills other/2022_2025/other; requested ip 0 MA, bt 2 T, pnbi 1 MW; MP text (bundle); raw already
+    on disk (processed)
+- shot: 191867
+  run_id: 20220908A
+  mpid: '2022-08-03'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2022_2025'
+    ip_bin: '>1.6'
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2022_2025/USN; requested ip 1.8 MA, bt -1.76 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (processed)
+- shot: 191868
+  run_id: 20220908A
+  mpid: '2022-08-03'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2022_2025'
+    ip_bin: '>1.6'
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2022_2025/USN; requested ip 1.8 MA, bt -1.76 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (processed)
+- shot: 192193
+  run_id: '20220921'
+  mpid: '2022-25-06'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: disruption_runaway
+    era: '2022_2025'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'on'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2022_2025/limiter; requested ip 1.2 MA, bt -2.1 T, pnbi 0 MW; MP text
+    (bundle); raw already on disk (processed)
+- shot: 192194
+  run_id: '20220921'
+  mpid: '2022-25-06'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: disruption_runaway
+    era: '2022_2025'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'on'
+    config: limiter
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2022_2025/limiter; requested ip 1.2 MA, bt -2.1 T, pnbi 0 MW; MP text
+    (bundle); raw already on disk (processed)
+- shot: 192368
+  run_id: 20220927A
+  mpid: '2022-25-06'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2022_2025/DN; MP text (pdf); raw already on disk (processed)
+- shot: 192371
+  run_id: 20220927A
+  mpid: '2022-25-06'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: disruption_runaway
+    era: '2022_2025'
+    ip_bin: 1.2-1.6
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'on'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills disruption_runaway/2022_2025/DN; requested ip 1.2 MA, bt -2.2 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (processed)
+- shot: 193750
+  run_id: 20230112A
+  mpid: '2022-16-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '>7'
+    pech: 'off'
+    config: DN
+  failed: true
+  verdict: bad
+  fault: disrupts
+  evidence: '[PHYSICS_OPERATOR] Restore Shape and IP of 193727 (1.0, 2 T) then continue IP ramp to 1.2
+    MA. Result: Crappy after the first carbon flake falls in at 700 msec. Disrupts at about 2.1 sec...'
+  reason: 'fills neg_tri/2022_2025/DN; requested ip 1 MA, bt 2 T, pnbi 8 MW; MP text (pdf); failed shot
+    (verdict bad: disrupts); raw already on disk (processed)'
+- shot: 193770
+  run_id: 20230112A
+  mpid: '2022-16-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: neg_tri
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills neg_tri/2022_2025/DN; requested ip 1 MA, bt 2 T, pnbi 5 MW; MP text (pdf); raw already
+    on disk (processed)
+- shot: 194629
+  run_id: '20230302'
+  mpid: '2022-10-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: <1.8
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills other/2022_2025/USN; requested ip 0.8 MA, bt -1 T, pnbi 0 MW; MP text (bundle); raw already
+    on disk (processed)
+- shot: 194631
+  run_id: '20230302'
+  mpid: '2022-10-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: other
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: true
+  verdict: bad
+  fault: disrupted;disruption
+  evidence: '[PHYSICS_OPERATOR] # Setup: - Qiming adding n=2 ramps - PS folks take a look at spa4 and
+    adjusted PIDs - Set Ip to be flat target # Result: - Strange, very early disruption at about 1s -'
+  reason: 'fills other/2022_2025/USN; MP text (bundle); failed shot (verdict bad: disrupted;disruption);
+    raw already on disk (processed)'
+- shot: 195563
+  run_id: 20230511B
+  mpid: '2022-00-54'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2022_2025/USN; MP text (pdf); raw already on disk (processed)
+- shot: 195565
+  run_id: 20230511B
+  mpid: '2022-00-54'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: control
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills control/2022_2025/USN; MP text (pdf); raw already on disk (processed)
+- shot: 196482
+  run_id: '20230622'
+  mpid: '2022-00-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: lh_threshold_isotope
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2022_2025/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 196484
+  run_id: '20230622'
+  mpid: '2022-00-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: lh_threshold_isotope
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2022_2025/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 196592
+  run_id: 20230628A
+  mpid: '2022-00-06'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 196593
+  run_id: 20230628A
+  mpid: '2022-00-06'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: lh_threshold_isotope
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills lh_threshold_isotope/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 199319
+  run_id: 20240626B
+  mpid: '2024-34-03'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2022_2025/limiter; requested ip 0.8 MA, bt 1.9 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (processed)
+- shot: 199322
+  run_id: 20240626B
+  mpid: '2024-34-03'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: tearing_mhd
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills tearing_mhd/2022_2025/limiter; requested ip 0.8 MA, bt 2 T, pnbi 0 MW; MP text (pdf);
+    raw already on disk (processed)
+- shot: 199346
+  run_id: 20240627A
+  mpid: '2024-13-52'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: other
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills other/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 199352
+  run_id: 20240627A
+  mpid: '2024-13-52'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: other
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills other/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 199965
+  run_id: 20240809A
+  mpid: '2024-35-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: fast_ion_ae
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: limiter
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills fast_ion_ae/2022_2025/limiter; MP text (pdf); raw already on disk (processed)
+- shot: 199966
+  run_id: 20240809A
+  mpid: '2024-35-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: fast_ion_ae
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: limiter
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills fast_ion_ae/2022_2025/limiter; MP text (pdf); raw already on disk (processed)
+- shot: 200244
+  run_id: 20240821A
+  mpid: '2024-23-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: current_drive
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills current_drive/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 200245
+  run_id: 20240821A
+  mpid: '2024-23-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: current_drive
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills current_drive/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 200401
+  run_id: '20240828'
+  mpid: '2024-32-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: 3-7
+    pech: 'off'
+    config: DN
+  failed: true
+  verdict: mixed
+  fault: ''
+  evidence: '[SESSION_LEADER] Postshot: Density higher and more stable. 30RT did not fire. Total NBI power
+    lower, that could be the reason why the mode almost disappeared?'
+  reason: fills transport/2022_2025/DN; requested ip 0.89 MA, bt 1.92 T, pnbi 6 MW; MP text (bundle);
+    failed shot (verdict mixed); raw already on disk (processed)
+- shot: 200404
+  run_id: '20240828'
+  mpid: '2024-32-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: 3-7
+    pech: 'on'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2022_2025/DN; requested ip 0.89 MA, bt 1.92 T, pnbi 6 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 200664
+  run_id: '20240910'
+  mpid: '2024-36-04'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills pedestal/2022_2025/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 200669
+  run_id: '20240910'
+  mpid: '2024-36-04'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2022_2025/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 202011
+  run_id: '20241121'
+  mpid: '2024-35-05'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2022_2025/USN; MP text (bundle); raw already on disk (processed)
+- shot: 202013
+  run_id: '20241121'
+  mpid: '2024-35-05'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: transport
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills transport/2022_2025/USN; MP text (bundle); raw already on disk (processed)
+- shot: 202085
+  run_id: '20241202'
+  mpid: '2024-24-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: control
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: DN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills control/2022_2025/DN; requested ip 0.9 MA, bt 2 T, pnbi 0 MW; MP text (bundle); raw already
+    on disk (processed)
+- shot: 202090
+  run_id: '20241202'
+  mpid: '2024-24-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: control
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: DN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills control/2022_2025/DN; requested ip 0.9 MA, bt 2 T, pnbi 0 MW; MP text (bundle); raw already
+    on disk (processed)
+- shot: 203382
+  run_id: '20250520'
+  mpid: '2025-00-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: hybrid_high_beta
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: <3
+    pech: 'off'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: disruption
+  evidence: ''
+  reason: fills hybrid_high_beta/2022_2025/LSN; requested ip 0.8 MA, bt 2.05 T, pnbi 2 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 203384
+  run_id: '20250520'
+  mpid: '2025-00-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: hybrid_high_beta
+    era: '2022_2025'
+    ip_bin: 0.8-1.2
+    bt_bin: 1.8-2.1
+    pnbi_bin: 3-7
+    pech: 'on'
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2022_2025/LSN; requested ip 0.8 MA, bt 2.05 T, pnbi 3 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 203407
+  run_id: '20250521'
+  mpid: '2025-16-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: rmp_elm
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: disrupts
+  evidence: ''
+  reason: fills rmp_elm/2022_2025/DN; MP text (bundle); raw already on disk (processed)
+- shot: 203409
+  run_id: '20250521'
+  mpid: '2025-16-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: rmp_elm
+    era: '2022_2025'
+    ip_bin: '>1.6'
+    bt_bin: '>2.1'
+    pnbi_bin: '>7'
+    pech: 'on'
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2022_2025/DN; requested ip 1.6 MA, bt 2.1 T, pnbi 8 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 203662
+  run_id: '20250604'
+  mpid: '2025-13-03'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: current_drive
+    era: '2022_2025'
+    ip_bin: 1.2-1.6
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: other
+  failed: true
+  verdict: bad
+  fault: locked mode
+  evidence: '[SESSION_LEADER] go to squareness that worked better before with lower outer squareness of
+    0 but still keep the q95 scan shot lasted, locked mode at the very end'
+  reason: 'fills current_drive/2022_2025/other; requested ip 1.56 MA, bt 1.9 T, pnbi 0 MW; MP text (pdf);
+    failed shot (verdict bad: locked mode); raw already on disk (processed)'
+- shot: 203663
+  run_id: '20250604'
+  mpid: '2025-13-03'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: current_drive
+    era: '2022_2025'
+    ip_bin: 1.2-1.6
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: other
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills current_drive/2022_2025/other; requested ip 1.56 MA, bt 1.9 T, pnbi 0 MW; MP text (bundle);
+    raw already on disk (processed)
+- shot: 204284
+  run_id: 20250703A
+  mpid: '2025-33-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 204287
+  run_id: 20250703A
+  mpid: '2025-33-02'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: rmp_elm
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills rmp_elm/2022_2025/LSN; MP text (pdf); raw already on disk (processed)
+- shot: 204447
+  run_id: '20250711'
+  mpid: '2025-36-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2022_2025'
+    ip_bin: <0.8
+    bt_bin: 1.8-2.1
+    pnbi_bin: '0'
+    pech: 'off'
+    config: USN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2022_2025/USN; requested ip 0.6 MA, bt 2 T, pnbi 0 MW; MP text (bundle); raw
+    already on disk (processed)
+- shot: 204449
+  run_id: '20250711'
+  mpid: '2025-36-02'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: pedestal
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: USN
+  failed: false
+  verdict: unknown
+  fault: ''
+  evidence: ''
+  reason: fills pedestal/2022_2025/USN; MP text (bundle); raw already on disk (processed)
+- shot: 204907
+  run_id: '20250808'
+  mpid: '2025-21-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2022_2025/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 204909
+  run_id: '20250808'
+  mpid: '2025-21-01'
+  source: fetch
+  store: processed
+  mp_source: bundle
+  strata:
+    theme: detachment_divertor
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: LSN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills detachment_divertor/2022_2025/LSN; MP text (bundle); raw already on disk (processed)
+- shot: 204960
+  run_id: 20250812A
+  mpid: '2025-11-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: false
+  verdict: good
+  fault: ''
+  evidence: ''
+  reason: fills hybrid_high_beta/2022_2025/DN; MP text (pdf); raw already on disk (processed)
+- shot: 204988
+  run_id: 20250812A
+  mpid: '2025-11-01'
+  source: fetch
+  store: processed
+  mp_source: pdf
+  strata:
+    theme: hybrid_high_beta
+    era: '2022_2025'
+    ip_bin: na
+    bt_bin: na
+    pnbi_bin: na
+    pech: na
+    config: DN
+  failed: true
+  verdict: bad
+  fault: ''
+  evidence: '[PHYSICS_OPERATOR] Set 330R solid on from 0.5 sec to 1.0 sec; Result: Both 150s stop at around
+    3.4 sec due to photodiode trip'
+  reason: fills hybrid_high_beta/2022_2025/DN; MP text (pdf); failed shot (verdict bad); raw already on
+    disk (processed)
+hand_review:
+  drop: []
+  # 161172 (2015-01-13, MP 2014-21-19 "Optimizing pedestal height in hybrid regimes") is the shot
+  # every measurement in this repo was calibrated on -- unit validation of the fetch, the IGNITE
+  # conversion, the retrieval walk-throughs in docs/CLI.md -- and the curation did not draw it.
+  add:
+    - shot: 161172
+      reason: the calibration shot for every measurement in this repo; not drawn by the allocator

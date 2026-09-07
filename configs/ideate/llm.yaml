@@ -1,0 +1,36 @@
+version: 2
+# The local language model behind the design chat, the offline shot blurbs and describe.polish.
+# Ollama serves Gemma 4 through its OpenAI-compatible endpoint; the client (ideate.llm.client)
+# speaks chat completions with tool calling over httpx. A hosted provider later is a base_url and
+# a key in the environment (LLM_API_KEY), never a code change.
+provider: "off"      # "off" disables every model call; templates are the answer
+base_url: null                   # set to e.g. http://127.0.0.1:11434 to bypass the endpoint file
+endpoint_file: llm/endpoint.json # relative to paths.data_root; written by scripts/serve_llm.sh
+models:
+  quality: gemma4:26b            # Gemma-4-26B-A4B-it, 4-bit; measured 19444 MiB on one V100S 32 GB
+                                  # at OLLAMA_CONTEXT_LENGTH=16384 (scripts/serve_llm.sh's default;
+                                  # Ollama's own 262144 default made it span two cards)
+  fast: gemma4:e4b               # Gemma-4-E4B-it, 9.6 GB
+default: quality
+timeout_s: 120                   # per model call
+max_tool_rounds: 8               # per chat turn
+temperature: 0.0
+max_tokens: 600
+cache: true                      # deterministic (temperature 0) requests are cached under llm_cache_dir
+# gemma4:26b is a reasoning model: measured through /v1/chat/completions it spends the whole
+# max_tokens budget on a `reasoning` field and returns content "" (max_tokens 20 -> content "",
+# finish_reason "length"); "reasoning_effort": "none" turns that off (content "ready", 2 completion
+# tokens) where "think": false is ignored. Remove the key for a provider that rejects it.
+reasoning_effort: "none"
+blurb:
+  model: quality
+  max_words: 70
+  prompt_version: 4              # part of the prompt: bump to invalidate every cached blurb
+                                  # v2: states the word cap explicitly and targets 40-60 words,
+                                  # so a reply naturally lands under gate's max_words cutoff
+                                  # v3: owner decision -- exactly two sentences, no quotation
+                                  # marks at all; the gate no longer checks quotes (removed)
+                                  # v4: reviewer found a bad ending ("performing as expected")
+                                  # dressed up a fast current quench; gate now rejects quotation
+                                  # marks and the prompt requires naming a disruption/quench/
+                                  # early termination plainly in the second sentence

@@ -1,0 +1,38 @@
+version: 1
+segments:
+  t_min_ms: -100.0
+  t_max_ms: 8000.0
+  window_ms: [0.0, 6000.0]     # legacy notebook convention for ip_ref and "peak"
+  median_ms: 10.0              # median filter on |Ip| before thresholding
+  min_ip_a: 1.0e+5             # below this 95th-percentile Ip there was no plasma
+  flat_top_frac: 0.85          # flat top = longest run with Ip >= frac * ip_ref
+  plasma_frac: 0.10            # plasma exists while Ip >= frac * ip_ref
+  target_tolerance: 0.15       # |measured/target - 1| <= this counts as "hit target"
+  quench_ms: 50.0              # >50% -> <10% of ip_ref within this = fast current quench
+scalar_embedding:
+  n_components: 24
+  waveform_points: 20
+
+# Phase 2 retrieval. `weights` is per channel in ideate.retrieval.channels.CHANNELS; a channel
+# not named here votes with weight 1.0, so registering a new channel needs no config change.
+retrieval:
+  k0: 60                       # RRF damping: sum_c w_c / (k0 + rank_c)
+  weights:
+    scalar_knn: 1.0
+    text_knn: 1.0
+    bm25: 0.6                  # lexical backstop for exact terms; the dense channel leads
+    ignite_knn: 1.0            # IGNITE codec embeddings, needs --ref; empty on a db built --no-encode
+  dedup_threshold: 0.97        # cosine in text_log space above which two hits are the same shot
+  # The m-th hit from one run day is multiplied by this^(m-1). Measured on the real 105-shot DB
+  # with `--ref 161172`: RRF scores are tightly packed (rank 1 = 0.03151, rank 20 = 0.02201), so
+  # one 0.7 factor moves a shot about 18 places. Shot 161163 is a genuine repeat of 161172 -- Ip
+  # 0.987 vs 0.985 MA, betaN 2.38 vs 2.28, same Bt, same run day -- and it fuses at rank 3, then
+  # lands at rank 3 / 3 / 4 / 9 / 21 for decay 1.0 / 0.95 / 0.90 / 0.80 / 0.70. At 0.7 the single
+  # most useful answer to "find shots like this one" fell off the first page, so 0.9: enough to
+  # stop one run day filling every slot, not enough to bury its best member.
+  #
+  # A per-run CAP would be the structurally better fix -- a multiplicative decay on RRF scores is
+  # scale-mismatched, since RRF spacing depends on the number of channels, not on similarity --
+  # but that is a Phase 2.1 change, not a demo blocker.
+  run_diversity_decay: 0.9
+  outcome_penalty: 0.5         # --prefer-outcome success: factor on a bad verdict / missed Ip target

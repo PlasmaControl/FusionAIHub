@@ -1,0 +1,825 @@
+"""The ideate CLI: build, add, show, export, coverage, query, model, llm and actuation.
+
+Build from legacy raw signals and operator text, retrieve similar shots, and inspect
+saved actuator sets. Thresholds, node names and units live in configs/ideate/.
+
+Ported from shot-recommender-system (shotrec) @565d548.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import textwrap
+from collections import Counter
+from pathlib import Path
+from typing import get_args
+
+from . import config
+from .retrieval import describe as describe_mod
+from .retrieval import rank as rank_mod
+from .schema import QueryState, Range, SegName, ShotRecord, to_summary
+from .shotdb import build as build_mod
+from .shotdb import legacy_raw, store
+
+# sentence_transformers reaches into huggingface_hub on every model load, even though the MiniLM
+# checkpoint is already in ~/.cache/huggingface/hub. On a compute node with no outbound route that
+# call does not fail -- it hangs, for minutes, inside httpx.connect_tcp (measured during Task 12;
+# the same load takes ~5 s with HF_HUB_OFFLINE=1). Set here rather than in the Makefile so that
+# `uv run ideate build` behaves the same however it is invoked, and at import time so the build's
+# worker processes inherit it. Below the imports is early enough -- huggingface_hub reads this
+# variable when IT is imported, which is lazily, inside text._load_model. IDEATE_HF_ONLINE=1 opts
+# out, which is what a first run on a machine with no cached checkpoint needs.
+if os.environ.get("IDEATE_HF_ONLINE") != "1":
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
+WIDTH = 98
+
+# Reading order for the non-actuator scalars in `show`. Presentation only -- a quantity that is
+# not listed still prints, after these, in alphabetical order.
+HEADLINE = (
+    "ip", "bt", "q95", "qmin", "q0", "betan", "betap", "li", "wmhd", "ne_line", "ne0", "te0",
+    "kappa", "tritop", "tribot", "aminor", "r0", "volume", "drsep", "zxpt1", "gapin", "gapout",
+    "vloop", "dalpha", "neutrons", "n1rms", "n2rms",
+)  # fmt: skip
+
+
+# ------------------------------------------------------------------------------- shot selection
+
+
+def _shots(args, default_list: str | None = None) -> list[int]:
+    """--shots, --list and --list-file, unioned.
+    `default_list` applies only if none of the three was given.
+
+    Not `elif`: `ideate build --list poc_v1 --list-file extra.yaml` silently built only the
+    extra file's shots and dropped all 200 of poc_v1's when these were exclusive branches.
+    """
+    shots = set(getattr(args, "shots", None) or [])
+    list_file, list_name = getattr(args, "list_file", None), getattr(args, "list", None)
+    if list_file:
+        shots |= set(config.load_shot_list(path=Path(list_file)))
+    if list_name:
+        shots |= set(config.load_shot_list(list_name))
+    if not (shots or list_file or list_name) and default_list:
+        shots = set(config.load_shot_list(default_list))
+    return sorted(shots)
+
+
+def _ip_spec() -> config.SignalSpec:
+    """Ip's registry entry. It is a fixed signal, so it does not depend on the shot."""
+    return config.SignalSpec(name="ip", **config.load_yaml("signals.yaml")["signals"]["ip"])
+
+
+def _with_ip(shots: list[int], paths: config.Paths) -> tuple[list[int], list[int]]:
+    """Split a shot list into (has an Ip trace on disk, does not).
+
+    `build_record` does not fail on a shot with no raw file: it returns a record with zero
+    segments and an `end_reason` of "no_ip_signal", which is the right answer for one shot and the
+    wrong thing to put in a database for ninety. Ip is the discriminator because it is what
+    `find_segments` needs -- a file that exists but is still being written by a bulk fetch has no
+    usable Ip yet and belongs on the skipped side too.
+    """
+    spec = _ip_spec()
+    have = [s for s in shots if legacy_raw.signal_status(s, spec, paths) == "present"]
+    return have, [s for s in shots if s not in set(have)]
+
+
+def _brief(shots: list[int], n: int = 8) -> str:
+    head = ", ".join(str(s) for s in shots[:n])
+    return head if len(shots) <= n else f"{head}, ... (+{len(shots) - n})"
+
+
+# --------------------------------------------------------------------------------- db plumbing
+
+
+def _open_db(paths: config.Paths) -> store.ShotDB | None:
+    if not (paths.db_dir / "manifest.json").exists():
+        print(
+            f"no database at {paths.db_dir} -- run `ideate build --list poc_v1` first",
+            file=sys.stderr,
+        )
+        return None
+    return store.ShotDB.load(paths.db_dir)
+
+
+def _record(db: store.ShotDB, shot: int) -> ShotRecord | None:
+    if shot not in db.shots.index:
+        held = sorted(int(s) for s in db.shots.index)
+        span = f"{held[0]}-{held[-1]}" if held else "(empty)"
+        print(
+            f"shot {shot} is not in the database ({len(held)} shots, {span}). "
+            f"Add it with `ideate add {shot}`.",
+            file=sys.stderr,
+        )
+        return None
+    return db.get(shot)
+
+
+# ------------------------------------------------------------------------------------ printing
+
+
+def _fill(text: str, indent: str = "  ", hang: str = "    ") -> str:
+    return textwrap.fill(text, width=WIDTH, initial_indent=indent, subsequent_indent=hang)
+
+
+def _num(v: float) -> str:
+    return f"{v:.4g}"
+
+
+def _system_line(prefix: str, vals: dict[str, float | None], units: dict[str, str]) -> str:
+    """One actuator system on one line: the total, the members that ran, the ones that did not,
+    and -- kept separate on purpose -- the ones nothing was recorded for.
+
+    "recorded and reading zero" (an idle gyrotron) and "not recorded" (no data for that channel)
+    are different facts everywhere else in this codebase; collapsing them here would be the one
+    place a reader could not tell them apart.
+    """
+    stat = "peak" if f"{prefix}_total_peak" in vals else "mean"
+    unit = units.get(f"{prefix}_total", "")
+    members: dict[str, float | None] = {}
+    for col, v in vals.items():
+        base, s = rank_mod.split_stat(col)
+        if s == stat and base.startswith(f"{prefix}_") and base != f"{prefix}_total":
+            members[base[len(prefix) + 1 :]] = v
+    on = {m: v for m, v in members.items() if v is not None and v > 0}
+    idle = sorted(m for m, v in members.items() if v == 0)
+    unknown = sorted(m for m, v in members.items() if v is None)
+    total = vals.get(f"{prefix}_total_{stat}")
+    parts = [f"total {_num(total) if total is not None else '[not recorded]'} {unit} ({stat})"]
+    parts.append(
+        "on: " + ", ".join(f"{m} {_num(v)}" for m, v in sorted(on.items())) if on else "on: none"
+    )
+    if idle:
+        parts.append(f"idle ({len(idle)}): {' '.join(idle)}")
+    if unknown:
+        parts.append(f"not recorded ({len(unknown)}): {' '.join(unknown)}")
+    return "; ".join(parts)
+
+
+def _print_segment(seg, units: dict[str, str], systems: dict[str, str], full: bool) -> None:
+    vals = {**seg.raw, **seg.derived}
+    recorded = {k: v for k, v in vals.items() if v is not None}
+    print(
+        f"[{seg.name}] {seg.t0_ms:.0f}-{seg.t1_ms:.0f} ms "
+        f"({seg.t1_ms - seg.t0_ms:.0f} ms), {len(recorded)}/{len(vals)} scalars recorded"
+    )
+    if full:
+        print(_fill(", ".join(f"{k}={_num(v)}" for k, v in sorted(recorded.items()))))
+        return
+    plasma: dict[str, dict[str, float]] = {}
+    for col, v in recorded.items():
+        base, stat = rank_mod.split_stat(col)
+        if any(base.startswith(f"{p}_") for p in systems):
+            continue
+        plasma.setdefault(base, {})[stat or "value"] = v
+    order = {name: i for i, name in enumerate(HEADLINE)}
+    items = sorted(plasma.items(), key=lambda kv: (order.get(kv[0], len(order)), kv[0]))
+    if items:
+        shown = []
+        for base, stats in items:
+            v = stats.get("mean", stats.get("peak", next(iter(stats.values()))))
+            shown.append(f"{base} {_num(v)} {units.get(base, '')}".strip())
+        print(_fill(", ".join(shown)))
+    for prefix, name in sorted(systems.items(), key=lambda kv: kv[1]):
+        if any(c.startswith(f"{prefix}_") for c in vals):
+            print(_fill(f"{name:<5} {_system_line(prefix, vals, units)}"))
+
+
+def _print_record(rec: ShotRecord, segment: str, full: bool) -> None:
+    h, units = rec.human, rank_mod.units()
+    systems = {s.prefix: n for n, s in config.actuator_systems(rec.shot).items()}
+    print(
+        f"Shot {rec.shot}   {rec.shot_date or 'date [?]'}   run {h.run_id or '[?]'}   "
+        f"campaign {rec.campaign}"
+    )
+    if h.mpid or h.mp_title:
+        print(_fill(f"MP {h.mpid or '[?]'}  {h.mp_title or ''}".strip()))
+    # The headline is retrieval.describe's segment line -- the same text a query result prints
+    # for this shot -- so `show` and `query` cannot disagree about a number or its unit.
+    headline = describe_mod.segment_line(rec, "flat_top" if segment == "all" else segment)
+    if headline is None:
+        headline = describe_mod.segment_line(rec, "full")
+    print(_fill(headline or "no segment scalars recorded"))
+    print()
+
+    ops = ", ".join(sorted(rec.labels.operational)) or "none"
+    print(f"labels    regime {rec.labels.regime} (source: {rec.labels.regime_source})")
+    print(_fill(f"operational: {ops}"))
+    print(f"verdict   {h.verdict}")
+    if h.chief_operator_status:
+        print(_fill(f"chief operator: {h.chief_operator_status}"))
+    outcome = {
+        k: _num(v) if isinstance(v, float) else v
+        for k, v in rec.outcome.model_dump(exclude_none=True).items()
+    }
+    print(
+        _fill(
+            ", ".join(f"{k}={v}" for k, v in outcome.items()) or "(nothing derived)",
+            indent="outcome   ",
+            hang="  ",
+        )
+    )
+    print()
+
+    print(
+        "segments  " + " | ".join(f"{s.name} {s.t0_ms:.0f}-{s.t1_ms:.0f} ms" for s in rec.segments)
+    )
+    wanted = [s for s in rec.segments if segment in ("all", s.name)]
+    if not wanted and rec.segments:
+        print(f"  (no segment named {segment!r})")
+    for seg in wanted:
+        _print_segment(seg, units, systems, full)
+    print()
+
+    by_status: dict[str, list[str]] = {}
+    for name, status in rec.coverage.items():
+        by_status.setdefault(status, []).append(name)
+    n_present = len(by_status.get("present", []))
+    print(f"coverage  {n_present}/{len(rec.coverage)} registry fields present")
+    for status in ("pending", "unavailable", "not_installed"):
+        names = sorted(by_status.get(status, []))
+        if names:
+            print(_fill(f"{status} ({len(names)}): {' '.join(names)}"))
+
+    groups: dict[str, list[str]] = {}
+    for name, p in rec.derived_provenance.items():
+        key = " ".join(
+            filter(
+                None,
+                [
+                    f"{p.tool}{p.version or ''}",
+                    f"tree={p.tree}" if p.tree else "",
+                    "(run id assumed: staged files do not record it)" if p.assumed else "",
+                ],
+            )
+        )
+        groups.setdefault(key, []).append(name)
+    print("provenance")
+    for key, names in sorted(groups.items()):
+        print(_fill(f"{key}: {' '.join(sorted(names))}"))
+    src = Counter(rec.raw_sources.values())
+    print(
+        f"raw       {', '.join(f'{n} {s}' for s, n in sorted(src.items())) or 'nothing read'}"
+        f"   built {rec.built_at:%Y-%m-%d %H:%M} UTC by {rec.builder_sha}"
+    )
+
+
+# ------------------------------------------------------------------------------------ commands
+
+
+def _coverage_table(db: store.ShotDB) -> str:
+    """Recomputed from the records rather than read from manifest["coverage"], which `add()`
+    does not update -- after an incremental add the manifest's copy describes the previous
+    build's shot set."""
+    records = [db.get(int(s)) for s in db.shots.index]
+    return build_mod.format_coverage(build_mod.coverage_report(records))
+
+
+def cmd_build(args) -> int:
+    paths, cfg = config.load_paths(), build_mod.load_build_cfg()
+    wanted = _shots(args, "poc_v1")
+    shots, skipped = (wanted, []) if args.all else _with_ip(wanted, paths)
+    if skipped:
+        print(
+            _fill(
+                f"{len(skipped)} of {len(wanted)} shots have no Ip signal on disk yet and are "
+                f"skipped (fetch them first, or pass --all to build them as empty records): "
+                f"{_brief(skipped)}",
+                indent="",
+                hang="  ",
+            )
+        )
+    if not shots:
+        print("nothing to build", file=sys.stderr)
+        return 1
+    report = build_mod.build(
+        shots, paths, cfg, workers=args.workers, encode=not args.no_encode, reuse=not args.reencode
+    )
+    print(
+        f"built {len(report.shots)} shots / {report.n_segments} segments in "
+        f"{report.elapsed_s:.1f} s -> {report.db_dir}"
+    )
+    for shot, err in sorted(report.failed.items()):
+        print(f"  FAILED {shot}: {err}")
+    db = _open_db(paths)
+    if db is None:
+        return 1
+    ignite = db.manifest.get("ignite", {})
+    print(f"ignite embeddings: {ignite.get('status')} -- {ignite.get('reason')}")
+    print()
+    print(_coverage_table(db))
+    return 0 if report.shots else 1
+
+
+def cmd_model(args) -> int:
+    """Where the IGNITE bundle is, what it holds, and -- with --download -- fetch it."""
+    from .shotdb import ignite
+
+    paths = config.load_paths()
+    mcfg = ignite.model_cfg()
+    target = ignite.bundle_dir(paths)
+    if args.download:
+        print(f"downloading {mcfg['repo_id']} @ {mcfg['revision'][:12]} -> {target}")
+        try:
+            ignite.download_bundle(paths, full=args.full)
+        except Exception as e:  # noqa: BLE001 — optional operation; preserve the fallback contract
+            print(f"download failed: {type(e).__name__}: {e}", file=sys.stderr)
+            print(
+                "the repo is private: `uv run hf auth login` (or HF_TOKEN) with an account that "
+                "can read it, then retry",
+                file=sys.stderr,
+            )
+            return 1
+    manifest = ignite.codec_manifest(target)
+    if not manifest.exists():
+        print(f"no bundle at {target} -- run `ideate model --download`")
+        return 1
+    entries = json.loads(manifest.read_text())["modalities"]
+    have = [n for n in entries if (target / "codecs" / n / "codec_best.pt").exists()]
+    dyn = target / mcfg["dynamics_file"]
+    print(f"bundle: {target}  ({mcfg['repo_id']} @ {mcfg['revision'][:12]})")
+    print(f"codecs: {len(have)}/{len(entries)} present -- {', '.join(have)}")
+    print(
+        f"dynamics model: {'present' if dyn.exists() else 'not downloaded (--download --full)'} "
+        f"({mcfg['dynamics_file']})"
+    )
+    for n, e in entries.items():
+        mark = " " if n in have else "!"
+        print(
+            f"  {mark} {n:24s} {e['family']:8s} {e['channels']:3d} ch  vocab {e['codebook_size']}"
+        )
+    return 0
+
+
+def cmd_add(args) -> int:
+    paths, cfg = config.load_paths(), build_mod.load_build_cfg()
+    if not (paths.db_dir / "manifest.json").exists():
+        print(
+            f"no database at {paths.db_dir} -- `ideate build` before `ideate add`", file=sys.stderr
+        )
+        return 1
+    report = build_mod.add(args.shots, paths, cfg, workers=args.workers)
+    print(
+        f"added {len(report.shots)} shot{'s' if len(report.shots) != 1 else ''}: "
+        f"{_brief(report.shots)}; database now holds {report.n_segments} segments "
+        f"({report.elapsed_s:.1f} s)"
+    )
+    for shot, err in sorted(report.failed.items()):
+        print(f"  FAILED {shot}: {err}")
+    return 0 if report.shots else 1
+
+
+def cmd_show(args) -> int:
+    db = _open_db(config.load_paths())
+    if db is None:
+        return 1
+    rec = _record(db, args.shot)
+    if rec is None:
+        return 1
+    if args.json:
+        print(rec.model_dump_json(indent=1))
+        return 0
+    _print_record(rec, args.segment, args.full)
+    return 0
+
+
+def cmd_export(args) -> int:
+    db = _open_db(config.load_paths())
+    if db is None:
+        return 1
+    if args.format == "parquet" and not args.out:
+        print("--format parquet needs --out PATH", file=sys.stderr)
+        return 2
+    rows = []
+    for shot in args.shots:
+        rec = _record(db, shot)
+        if rec is None:
+            return 1
+        rows.append(to_summary(rec, describe_mod.describe(rec)).model_dump(mode="json"))
+    if args.format == "json":
+        blob = json.dumps(rows, indent=1, default=str)
+        if not args.out:
+            print(blob)
+            return 0
+        Path(args.out).write_text(blob)
+    else:
+        import pandas as pd
+
+        pd.json_normalize(rows).to_parquet(args.out)
+    print(f"wrote {len(rows)} ShotSummary rows -> {args.out}", file=sys.stderr)
+    return 0
+
+
+def cmd_coverage(args) -> int:
+    db = _open_db(config.load_paths())
+    if db is None:
+        return 1
+    print(_coverage_table(db))
+    return 0
+
+
+def cmd_llm(args) -> int:
+    from .llm.client import LLMClient
+
+    client = LLMClient()
+    ok, hint = client.available()
+    if not ok:
+        print(hint)
+        return 1
+    ep = client.endpoint()
+    print(
+        f"{ep.url}  models {', '.join(ep.models) or '?'}  host {ep.host or '?'}"
+        + (f"  job {ep.job_id}" if ep.job_id else "")
+        + (f"  since {ep.started}" if ep.started else "")
+    )
+    return 0
+
+
+def cmd_blurb(args) -> int:
+    from .llm.client import LLMClient
+    from .shotdb.build import write_blurbs
+
+    client = LLMClient()
+    ok, hint = client.available()
+    if not ok:
+        print(hint)
+        return 1
+    n = write_blurbs(config.load_paths(), client, only_missing=not args.all)
+    print(f"{n} blurbs written by {client.model(client.cfg['blurb']['model'])}")
+    return 0
+
+
+def cmd_actuation(args) -> int:
+    from .retrieval import actuation
+
+    paths = config.load_paths()
+    if args.what == "list":
+        items = actuation.list_sets(paths)
+        if not items:
+            print(f"no saved actuation sets in {paths.actuations_dir}")
+            return 0
+        for it in items:
+            print(
+                f"{it['id']}  {it['created']}  shot {it['source_shot']}  "
+                f"{it['n_waveforms']} waveforms"
+            )
+        return 0
+    try:
+        aset = actuation.load(args.id, paths)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        return 2
+    if aset is None:
+        print(f"no actuation set {args.id} in {paths.actuations_dir}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(aset.model_dump_json(indent=1))
+        return 0
+    print(
+        f"{aset.id}  created {aset.created}  source shot {aset.source_shot}  segment {aset.segment}"
+    )
+    for key, w in aset.waveforms.items():
+        pts = ", ".join(f"({v.t_s:g} s, {_num(v.y)})" for v in w.vertices)
+        print(f"  {key} [{w.units or '?'}] seed={w.seed}: {pts}")
+    if aset.gas_species:
+        print(
+            "  gas species: " + ", ".join(f"{v}={s}" for v, s in sorted(aset.gas_species.items()))
+        )
+    for f in aset.flags:
+        print(f"  {f.severity}: {f.message}")
+    if aset.notes:
+        print(f"  notes: {aset.notes}")
+    return 0
+
+
+# --------------------------------------------------------------------------- phase 2 (wired)
+
+
+def _constraint(text: str) -> tuple[str, Range]:
+    """COLUMN=LO:HI, or COLUMN:LO:HI -- the same thing with a colon, which is how --where reads."""
+    col, sep, span = text.partition("=") if "=" in text else text.partition(":")
+    lo, colon, hi = span.partition(":")
+    if not col or not sep or not colon:
+        raise argparse.ArgumentTypeError(
+            f"expected COLUMN=LO:HI (either bound may be empty), got {text!r}"
+        )
+    try:
+        return col, Range(lo=float(lo) if lo else None, hi=float(hi) if hi else None)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"{text!r}: {e}") from e
+
+
+def _actuator(text: str) -> tuple[str, float]:
+    name, sep, value = text.partition("=")
+    if not name or not sep:
+        raise argparse.ArgumentTypeError(f"expected NAME=VALUE, got {text!r}")
+    try:
+        return name, float(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"{text!r}: {e}") from e
+
+
+def _query_state(args) -> QueryState:
+    return QueryState(
+        text=args.text,
+        negatives=args.negative,
+        ref_shot=args.ref_shot,
+        ref_window_ms=tuple(args.ref_window) if args.ref_window else None,
+        segment=args.segment,
+        constraints=dict(args.constraint),
+        actuators=dict(args.actuator),
+        require_labels=set(args.require),
+        avoid_labels=set(args.avoid),
+        exclude_shots=set(args.exclude_shot),
+        exclude_runs=set(args.exclude_run),
+        prefer_outcome=args.prefer_outcome,
+        n=args.n,
+    )
+
+
+def _query_header(state: QueryState, report: dict, fired: dict[str, int]) -> None:
+    """What the query asked, what survived the hard filter, and which channels had anything to
+    say -- printed before the results because a top-5 out of three candidates is a different
+    answer from a top-5 out of three thousand, and the reader cannot tell them apart otherwise."""
+    asked = []
+    if state.ref_shot:
+        asked.append(f"ref {state.ref_shot}")
+    if state.text:
+        asked.append(f"text {state.text!r}")
+    for col, rng in state.constraints.items():
+        asked.append(
+            f"{col} in [{rng.lo if rng.lo is not None else ''}, {rng.hi if rng.hi is not None else ''}]"
+        )
+    for name, value in state.actuators.items():
+        asked.append(f"{name}={_num(value)}")
+    if state.require_labels:
+        asked.append("require " + ",".join(sorted(state.require_labels)))
+    if state.avoid_labels:
+        asked.append("avoid " + ",".join(sorted(state.avoid_labels)))
+    print(f"query     {'; '.join(asked) or '(nothing specified)'}   segment {state.segment}")
+    print(f"candidates {report['candidates']} of {report['segment_rows']} {state.segment} rows")
+    for col, n in report["nan_excluded"].items():
+        print(
+            f"  note    {n} of them were dropped because {col} was never recorded, not because of its value"
+        )
+    print("channels  " + ", ".join(f"{k} {v}" for k, v in fired.items()))
+    print()
+
+
+def _print_proposal(state: QueryState, flags) -> None:
+    """The user's own `--actuator` settings checked against configs/flags.yaml, printed before
+    the results. "Can DIII-D do this at all" is a separate answer from "what has it done like
+    this", and it was not being given: the rules ran on the result rows only, so
+    `--actuator nbi.total=5e7` (2.5x the installed beam power) printed no flag."""
+    if not state.actuators:
+        return
+    print("proposal  " + ", ".join(f"{k}={_num(v)}" for k, v in state.actuators.items()))
+    loud = [f for f in flags if f.severity != "info"]
+    for f in loud:
+        print(_fill(f"{f.severity:<9} {f.message}", indent="  ", hang="            "))
+    if not loud:
+        print("  ok        no configured limit violated")
+    # The rules that had nothing to check: with one actuator proposed, most of them. Listed by id
+    # so "no limit violated" is never read as "every limit checked".
+    skipped = [f.rule_id for f in flags if f.severity == "info"]
+    if skipped:
+        print(
+            _fill(
+                f"info      {len(skipped)} rules had no input to check: {', '.join(skipped)}",
+                indent="  ",
+                hang="            ",
+            )
+        )
+    print()
+
+
+def _print_results(results, db, state: QueryState) -> None:
+    # What the query itself asks for, so each similar/differs line can show the pair it compared
+    # rather than a lone number and a z-distance the reader cannot check.
+    qvals = rank_mod.query_values(state, db)
+    for i, r in enumerate(results, start=1):
+        head = f"{i:2d}. {r.shot}  score {r.score:.4f}  run {r.run_id or '[?]'}"
+        if r.labels.regime != "unknown":
+            head += f"  regime {r.labels.regime}"
+        print(head)
+        print(_fill(r.description, indent="    ", hang="    "))
+        e = r.explanation
+        for line in e.matched_constraints:
+            print(_fill(f"met       {line}", indent="    ", hang="              "))
+        for label, feats in (("similar", e.top_similar), ("differs", e.top_different)):
+            if feats:
+                shown = ", ".join(_feature(c, d, v, qvals.get(c)) for c, d, v in feats)
+                print(_fill(f"{label:<9} {shown}", indent="    ", hang="              "))
+        if e.channel_ranks:
+            print(
+                "    ranked    "
+                + ", ".join(f"{k} #{v}" for k, v in sorted(e.channel_ranks.items()))
+            )
+        if e.text_highlight:
+            print(_fill(f'log       "{e.text_highlight}"', indent="    ", hang="              "))
+        for f in r.flags:
+            if f.severity != "info":
+                print(_fill(f"{f.severity:<9} {f.message}", indent="    ", hang="              "))
+        # Every info-level flag on this database is one rule reporting that it could not run for
+        # want of an input, and there are five of them on most shots. They are the same five on
+        # every result, so listing them in full under each one buries the results it is meant to
+        # annotate; --json still carries each flag with its message.
+        skipped = [f.rule_id for f in r.flags if f.severity == "info"]
+        if skipped:
+            print(
+                _fill(
+                    f"info      {len(skipped)} rules did not run: {', '.join(skipped)}",
+                    indent="    ",
+                    hang="              ",
+                )
+            )
+        print()
+
+
+def _feature(col: str, delta: float, value: float, want: float | None) -> str:
+    """Example: `irmp_IL210_peak 958 vs 12 A (29 sd)` -- this result, then the query, one unit."""
+    if want is None:
+        return f"{col} {rank_mod.display(col, value)}"
+    return f"{col} {rank_mod.display_pair(col, value, want)} ({delta:.2g} sd)"
+
+
+def cmd_query(args) -> int:
+    """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
+    paths = config.load_paths()
+    db = _open_db(paths)
+    if db is None:
+        return 1
+    state = _query_state(args)
+    if state.ref_shot is not None and f"{state.ref_shot}:{state.segment}" not in db.segments.index:
+        if _record(db, state.ref_shot) is None:
+            return 1
+        print(f"shot {state.ref_shot} has no {state.segment} segment", file=sys.stderr)
+        return 1
+    try:
+        report = rank_mod.search_report(state, db)
+    except KeyError as e:
+        print(
+            f"{e.args[0]}. Columns are the ones `ideate show SHOT --full` prints.", file=sys.stderr
+        )
+        return 2
+    # One pass: the per-channel counts on the "channels" line come from the same rankings the
+    # results were fused from. Running every channel once more for the counts doubled the cost of
+    # a --text query, which embeds its text with MiniLM on each pass (~1.9 s each, measured).
+    found = rank_mod.search(state, db)
+    fired = {name: len(ranking) for name, ranking in found.rankings.items()}
+    if args.json:
+        doc = {
+            "proposal_flags": [f.model_dump(mode="json") for f in found.proposal_flags],
+            "results": [r.model_dump(mode="json") for r in found.items],
+        }
+        print(json.dumps(doc, indent=1, default=str))
+        return 0 if any(fired.values()) else 2
+    _query_header(state, report, fired)
+    _print_proposal(state, found.proposal_flags)  # answered even when nothing resembles it
+    if not any(fired.values()):
+        print(
+            "no channel had anything to search on -- give --ref SHOT, --text, --where or "
+            "--actuator (`ideate query --help`).",
+            file=sys.stderr,
+        )
+        return 2
+    results = found.items
+    _print_results(results, db, state)
+    if not results:
+        print("nothing passed the filters.", file=sys.stderr)
+    return 0
+
+
+# ---------------------------------------------------------------------------------------- main
+
+
+def _add_selection(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--list", help="configs/ideate/shot_lists/<name>.yaml")
+    p.add_argument("--list-file", help="a shot-list YAML at an explicit path")
+    p.add_argument("--shots", type=int, nargs="*", help="explicit shot numbers")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="ideate",
+        description="DIII-D shot database: build from local signals, retrieve and inspect shots.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("build", help="full rebuild of the database (atomic: writes db.tmp, swaps)")
+    _add_selection(p)
+    p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--no-encode", action="store_true", help="skip the optional IGNITE channel")
+    p.add_argument(
+        "--reencode",
+        action="store_true",
+        help="re-encode every shot instead of carrying unchanged shots' IGNITE rows over",
+    )
+    p.add_argument("--all", action="store_true", help="build shots with no Ip on disk too")
+    p.set_defaults(func=cmd_build)
+
+    p = sub.add_parser("add", help="incremental upsert of one or more shots")
+    p.add_argument("shots", type=int, nargs="+")
+    p.add_argument("--workers", type=int, default=1)
+    p.set_defaults(func=cmd_add)
+
+    p = sub.add_parser("model", help="IGNITE bundle status; --download copies it from the Hub")
+    p.add_argument("--download", action="store_true", help="snapshot the pinned revision once")
+    p.add_argument("--full", action="store_true", help="include the 3.5 GB dynamics checkpoint")
+    p.set_defaults(func=cmd_model)
+
+    p = sub.add_parser("show", help="print one shot's record")
+    p.add_argument("shot", type=int)
+    p.add_argument("--segment", default="flat_top", help="segment name, or 'all'")
+    p.add_argument("--full", action="store_true", help="every scalar, by column name")
+    p.add_argument("--json", action="store_true", help="the whole ShotRecord as JSON")
+    p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("export", help="ShotSummary rows as JSON or Parquet")
+    p.add_argument("shots", type=int, nargs="+")
+    p.add_argument("--format", choices=["json", "parquet"], default="json")
+    p.add_argument("--out", help="output path (JSON goes to stdout when omitted)")
+    p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("coverage", help="present/unavailable/pending per registry field")
+    p.set_defaults(func=cmd_coverage)
+
+    p = sub.add_parser("query", help="find similar shots")
+    p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")
+    p.add_argument("--negative", action="append", default=[], help="text to move away from")
+    p.add_argument("--ref-shot", "--ref", type=int, help="use this shot as the reference")
+    p.add_argument("--ref-window", type=float, nargs=2, metavar=("T0_MS", "T1_MS"))
+    # The schema's own literal, so a typo (`--segment flattop`) is an argparse message here rather
+    # than a pydantic traceback after the database has loaded. `show --segment` also takes 'all'.
+    p.add_argument("--segment", default="flat_top", choices=get_args(SegName))
+    p.add_argument(
+        "--constraint",
+        "--where",
+        action="append",
+        default=[],
+        type=_constraint,
+        metavar="COLUMN=LO:HI",
+        help="hard range filter; either bound may be empty; COLUMN:LO:HI also accepted",
+    )
+    p.add_argument(
+        "--actuator",
+        action="append",
+        default=[],
+        type=_actuator,
+        metavar="NAME=VALUE",
+        help="target actuator setting, e.g. nbi.total=5e6",
+    )
+    p.add_argument("--require", action="append", default=[], metavar="LABEL")
+    p.add_argument("--avoid", action="append", default=[], metavar="LABEL")
+    p.add_argument("--exclude-shot", action="append", default=[], type=int)
+    p.add_argument("--exclude-run", action="append", default=[])
+    p.add_argument("--prefer-outcome", choices=["any", "success"], default="any")
+    p.add_argument("-n", "--n", type=int, default=10, help="how many results")
+    p.add_argument("--json", action="store_true", help="results as JSON, explanations included")
+    p.set_defaults(func=cmd_query)
+
+    p = sub.add_parser(
+        "llm", help="is a language model reachable? prints the endpoint or how to start one"
+    )
+    p.set_defaults(func=cmd_llm)
+
+    p = sub.add_parser(
+        "blurb", help="write the model's per-shot blurbs into shots.parquet (needs a running model)"
+    )
+    p.add_argument(
+        "--all", action="store_true", help="rewrite every blurb, not only the template ones"
+    )
+    p.set_defaults(func=cmd_blurb)
+
+    p = sub.add_parser("actuation", help="inspect saved actuator waveform sets")
+    what = p.add_subparsers(dest="what", required=True)
+    what.add_parser("list", help="every saved set, newest first")
+    s = what.add_parser("show", help="one saved set")
+    s.add_argument("id")
+    s.add_argument("--json", action="store_true", help="the stored JSON verbatim")
+    p.set_defaults(func=cmd_actuation)
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        return args.func(args)
+    except (OSError, ValueError) as e:
+        print(f"ideate: {e}", file=sys.stderr)
+        return 1
+    except SystemExit as e:
+        # scripts/fetch_shots.py refuses a read-only raw_dir with `raise SystemExit("refusing to
+        # write into ...")` -- a message, not a code. `int()` on that raised ValueError and the
+        # message was never shown; the interpreter's own convention is: print it, exit 1.
+        if e.code is None or isinstance(e.code, int):
+            return int(e.code or 0)
+        print(e.code, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

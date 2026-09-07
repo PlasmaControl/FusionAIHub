@@ -1,0 +1,28 @@
+version: 1
+# Curation/eval themes: first matching entry wins; matched against run title + MP title (lowercased,
+# with a space glued to each end so " nt " and "rt " can be anchored on word boundaries).
+themes:
+  - {id: startup_checkout, keywords: ["startup", "checkout", "calibration", "commissioning", "systems checkout", "diagnostic cal"]}
+  - {id: rmp_elm, keywords: ["rmp", "elm suppression", "elm control", "n=3", "n=2 rmp", "resonant magnetic"]}
+  - {id: qh_mode, keywords: ["qh-mode", "qh mode", "wpqh", "eho", "wide pedestal", "wide-pedestal"]}
+  - {id: neg_tri, keywords: ["negative triangularity", "neg-tri", "neg tri", "neg-d", " nt "]}
+  - {id: detachment_divertor, keywords: ["detach", "radiative divertor", "xpr", "x-point radiator", "impurity seed", "nitrogen", "neon", "heat flux", "divertor"]}
+  - {id: hybrid_high_beta, keywords: ["hybrid", "betan", "high beta", "steady state", "steady-state", "qmin", "itb", "advanced tokamak"]}
+  - {id: pedestal, keywords: ["pedestal", "eped", "super-h", "super h", "peeling"]}
+  - {id: lh_threshold_isotope, keywords: ["l-h", "power threshold", "isotope", "hydrogen", "h-mode access"]}
+  - {id: fast_ion_ae, keywords: ["alfven", "alfvén", "fast ion", "fast-ion", "fida", "energetic particle", "cae", "beam ion"]}
+  - {id: tearing_mhd, keywords: ["tearing", "ntm", "island", "locked mode", "rwm", "mhd", "sawtooth"]}
+  - {id: disruption_runaway, keywords: ["runaway", "spi", "disruption", "current quench", "mitigation"]}
+  - {id: current_drive, keywords: ["eccd", "top launch", "helicon", "lhcd", "lower hybrid", "off-axis", "current drive"]}
+  - {id: transport, keywords: ["transport", "rho*", "torque", "rotation", "turbulence", "confinement", "momentum", "particle"]}
+  - {id: control, keywords: ["control", "controller", "reinforcement", "real-time", "rt ", "machine learning", "ml/ai"]}
+# Regime labels (Task 12): database > explicit text > geometry heuristic > unknown.
+regime_text:
+  QH: ["qh-mode", "qh mode", "wpqh"]
+  neg_tri: ["negative triangularity", "neg-tri", "neg tri", "neg-d"]
+  L: ["l-mode", "ohmic"]
+  H: ["h-mode", "elm"]
+neg_tri_mean_delta: -0.2          # (tritop_mean + tribot_mean)/2 below this = negative triangularity
+operational_text:
+  elm_suppressed: ["elm suppress", "suppressed elms", "elm-free", "elm free"]
+  detached: ["detached", "detachment"]

@@ -1,0 +1,133 @@
+version: 1
+# Campaign ids are keyed by shot number (monotone in time). Used for eras, envelopes and labels.
+campaigns:
+  - {id: "2014_2015", shots: [158000, 164999]}
+  - {id: "2016_2018", shots: [165000, 176999]}
+  - {id: "2019_2021", shots: [177000, 189999]}
+  - {id: "2022_2025", shots: [190000, 209999]}
+# Templates: {id} member id, {id_lower}, {code}, {code_upper}. A member is "installed" for a shot
+# when since <= shot <= until; missing bounds are open (unknown windows are treated as installed so
+# the fetch measures availability instead of the registry assuming it).
+systems:
+  nbi:
+    description: "Neutral beam injection: injected power per source (W); nbi.total is the sum of the installed sources"
+    prefix: pnbi
+    units: W
+    stats: [mean, peak, on_frac]
+    staged: {group: p_inj, col: "pinjf_{id_lower}"}
+    # NOT a PTDATA pointname: pinjf_15l/15r/21l all raise PtDataError. Per-beam injected power is
+    # an MDSplus leaf, and the tree matters twice over. \NB::TOP.NB15L:PINJF_15L opened through
+    # tree "nb" reproduces the staged p_inj column exactly (median staged/fetched over 0-6000 ms
+    # = 1 on 161172 for every one of 15L/15R/30L/30R/33L/33R; 21L and 21R were not fired on that
+    # shot and are all-zero on both sides). The same leaf spelled \D3D::TOP.NB.NB15L:PINJF_15L
+    # through tree "d3d" returns the identical array but takes 60-100 s instead of 6-9 s, because
+    # "d3d" is the cross-subsystem mega-tree; \D3D::... through tree "nb" is TreeNNF. PINJ_15L
+    # (10 kHz) and PABS are the same power at a tenth the rate; PINJF (100 kHz) is what the
+    # staged files carry, so PINJF is what we write.
+    fetch: {kind: mds, tree: nb, node: "\\NB::TOP.NB{id}:PINJF_{id}"}
+    max: null                          # [?] per-beam cap (W)
+    members:
+      - {id: 15L, description: "150-degree beamline, left source (co-current)"}
+      - {id: 15R, description: "150-degree beamline, right source (co-current)"}
+      - {id: 21L, description: "210-degree beamline, left source (counter-current since the 2006 beamline reversal)"}
+      - {id: 21R, description: "210-degree beamline, right source (counter-current since the 2006 beamline reversal)"}
+      - {id: 30L, description: "30-degree beamline, left source (co-current)"}
+      - {id: 30R, description: "30-degree beamline, right source (co-current)"}
+      - {id: 33L, description: "330-degree beamline, left source (co-current)"}
+      - {id: 33R, description: "330-degree beamline, right source (co-current)"}
+  ech:
+    description: "Electron cyclotron heating: injected power per gyrotron (W); ech.total sums the installed gyrotrons"
+    prefix: pech
+    units: W
+    stats: [mean, peak, on_frac]
+    staged: {group: ech, col: "ec{code}fpwrc"}
+    # Same mega-tree trap as nbi, but here the \D3D::... spelling does not merely run slowly, it
+    # raises TreeNNF through tree "rf". The rf-native spelling reproduces the staged column
+    # exactly (161172, median staged/fetched over 0-6000 ms = 1 for LEIA and LUKE; R2D2's
+    # ECR2DPOLANG returns all zeros on both sides). code_upper covers HAN, whose leaf prefix is
+    # ECHANDL rather than ECHAN.
+    fetch: {kind: mds, tree: rf, node: "\\RF::TOP.ECH.{id}:EC{code_upper}FPWRC"}
+    max: null                          # [?] per-gyrotron cap (W)
+    members:                           # 2015 files carry LEIA/LUKE/R2D2 only; later campaigns up to 12 gyrotrons
+      - {id: LEIA, code: lei, description: "gyrotron LEIA"}
+      - {id: LUKE, code: luk, description: "gyrotron LUKE"}
+      - {id: R2D2, code: r2d, description: "gyrotron R2D2"}
+      - {id: BORIS, code: bor, since: null, description: "gyrotron BORIS"}          # [?] installation shot
+      - {id: CHEWBACCA, code: che, since: null, description: "gyrotron CHEWBACCA"}  # [?]
+      - {id: DOROTHY, code: dor, since: null, description: "gyrotron DOROTHY"}      # [?]
+      - {id: HAN, code: handl, since: null, description: "gyrotron HAN"}            # [?]  (FPWRC absent for HAN in the 2011 files)
+      - {id: KATYA, code: kat, since: null, description: "gyrotron KATYA"}          # [?]
+      - {id: LION, code: lio, since: null, description: "gyrotron LION"}            # [?]
+      - {id: NASA, code: nas, since: null, description: "gyrotron NASA"}            # [?]
+      - {id: NATASHA, code: nat, since: null, description: "gyrotron NATASHA"}      # [?]
+      - {id: SCARECROW, code: sca, since: null, description: "gyrotron SCARECROW"}  # [?]
+  gas:
+    description: "Gas injection: raw valve command per valve (V, not calibrated flow); gas.total is their sum"
+    prefix: gas
+    # NOT Torr-L/s. The PTDATA node declares "volt" and a fetched 160904 gas group reproduces the
+    # staged one at ratio 1 with that unit, so the staged `gas` columns are the raw valve command
+    # voltage. The calibrated flow is a different leaf (\\NEUTRALS::TOP.GASFLOW.GASA:FLOW, units
+    # Torr.L/s, 14.4x larger on 161172) which no staged file carries.
+    units: "V (raw valve command)"
+    stats: [mean, peak]
+    staged: {group: gas, col: "{id_lower}"}
+    # PTDATA, not the MDSplus \NEUTRALS::TOP.GASFLOW.GASA:FLOW leaf. They are different
+    # quantities: on 161172 the PTDATA pointname reproduces the staged gas column at median
+    # staged/fetched = 1, while the MDS leaf is 14.4x larger (ratio 0.115) and declares
+    # Torr.L/s, so the staged `gas` group is NOT calibrated flow. Hence the [?] on units below.
+    fetch: {kind: ptdata, node: "{id_lower}"}
+    max: null
+    # A selection, not a waveform: what a valve feeds (ActuationSet.gas_species). First = default.
+    species: [D2, H2, He, N2, Ne, Ar, Kr, Xe, CD4]
+    members:
+      - {id: GASA, description: "main-chamber gas valve A"}
+      - {id: GASB, description: "main-chamber gas valve B"}
+      - {id: GASC, description: "main-chamber gas valve C"}
+      - {id: GASD, description: "main-chamber gas valve D"}
+      - {id: GASE, description: "main-chamber gas valve E"}
+      - {id: LOB1, since: null, description: "lower outer baffle valve 1"}   # [?]
+      - {id: LOB2, since: null, description: "lower outer baffle valve 2"}   # [?]
+      - {id: PFX1, since: null, description: "private-flux region valve 1"}  # [?]
+      - {id: PFX2, since: null, description: "private-flux region valve 2"}  # [?]
+      - {id: PFX3, since: null, description: "private-flux region valve 3"}  # [?]
+      - {id: UOB, since: null, description: "upper outer baffle valve"}      # [?]
+  coil_rmp:
+    description: "Non-axisymmetric coils: C-coil (6 external, midplane) and I-coil (12 internal, upper and lower rows) currents (A)"
+    prefix: irmp
+    units: A
+    stats: [peak]
+    staged: {group: rmp_current, col: "{id_lower}"}
+    # The trailing F is WRONG for every one of the 18, measured on 161172 against the staged
+    # rmp_current columns. The bare pointname reproduces the staged column exactly: all six
+    # C-coils at median staged/fetched = 1 (n = 4096, the staged group's finite-sample count for
+    # those columns) and all twelve I-coils at 1.000-1.002, the residual being interpolation onto
+    # the staged grid -- their |max| agrees with the staged column to six significant figures.
+    # The F names fail three different ways: c259f, c319f and all twelve i*f raise PtDataError on
+    # this shot; c19f returns C79F's array BIT FOR BIT (verified independently in
+    # big_d3d_data/d3d_time_series_data/161172.h5, where PTDATA/C19F and PTDATA/C79F are the same
+    # 204800 samples), which is what made C19 look like a broken coil rather than a broken name;
+    # c79f/c139f/c199f are the real 20 kHz versions of the right coils, which is why sampling only
+    # those three suggested the convention worked. Later campaigns do define i*f (present on
+    # 165197 onward), so the bare name is chosen because it is the one form that exists in every
+    # era -- confirmed on 160904, 165197, 172000, 178000, 185800, 190154, 196000 and 204988.
+    fetch: {kind: ptdata, node: "{id_lower}"}
+    max: null                          # [?] coil current cap (A)
+    members:
+      - {id: C19, description: "C-coil at 19 degrees toroidal"}
+      - {id: C79, description: "C-coil at 79 degrees toroidal"}
+      - {id: C139, description: "C-coil at 139 degrees toroidal"}
+      - {id: C199, description: "C-coil at 199 degrees toroidal"}
+      - {id: C259, description: "C-coil at 259 degrees toroidal"}
+      - {id: C319, description: "C-coil at 319 degrees toroidal"}
+      - {id: IU30, description: "upper I-coil at 30 degrees"}
+      - {id: IU90, description: "upper I-coil at 90 degrees"}
+      - {id: IU150, description: "upper I-coil at 150 degrees"}
+      - {id: IU210, description: "upper I-coil at 210 degrees"}
+      - {id: IU270, description: "upper I-coil at 270 degrees"}
+      - {id: IU330, description: "upper I-coil at 330 degrees"}
+      - {id: IL30, description: "lower I-coil at 30 degrees"}
+      - {id: IL90, description: "lower I-coil at 90 degrees"}
+      - {id: IL150, description: "lower I-coil at 150 degrees"}
+      - {id: IL210, description: "lower I-coil at 210 degrees"}
+      - {id: IL270, description: "lower I-coil at 270 degrees"}
+      - {id: IL330, description: "lower I-coil at 330 degrees"}
