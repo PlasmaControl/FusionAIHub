@@ -230,6 +230,14 @@ def _resolve_one_source(source, shot, want, ctx):
         return resolve_archive.resolve(shot, want, files=tuple(ctx.archive_files))
     if source == "corpus":
         return resolve_corpus.resolve(shot, want, corpus=ctx.paths.corpus)
+    if source == "events":
+        # Deferred like `resolve_fdp` below, and for a second reason: it
+        # imports `events.windows`, which imports torch through
+        # `events.masks`, and a features run that wants no window feature
+        # must not pay for that.
+        from .features import resolve_events
+
+        return resolve_events.resolve(shot, want, paths=ctx.paths)
     from .features import resolve_fdp  # deferred: keeps the parent fork-safe
 
     return resolve_fdp.resolve(shot, want)

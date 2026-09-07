@@ -13,4 +13,9 @@ reads this very file rather than keeping a second list (plan 5.6).
 text and nothing else - and `text_weak.py` is where the text comes from:
 a shot's own logbook entries out of `sql/logs.jsonl` (shot scope) and its
 run's session context out of the per-shot bundle (run scope).
+
+`windows.py` is the other end of the table: masks and events reduced onto a
+0.34 s window every 0.17 s, as the 46 diagnostics-only features a prior
+scores and a classifier is trained on (`features/resolve_events.py` serves
+them as the canonical `phenomenon_window_features`).
 """
