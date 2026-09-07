@@ -396,9 +396,12 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     assert rerun["max_abs_dt_ms"] <= record["agree_tolerance_ms"]
     assert rerun["elapsed_s"] < 1.0
     assert len(rerun["labelmaker_sha"]) == 40
-    # The `dirty` flag arrives with the re-run that is this task's last
-    # commit; asserting it here before that re-run would fail the suite the
-    # two commits in between have to keep green.
+    # `labelmaker_sha` is HEAD at run time, which is the PARENT of the
+    # commit carrying the record - the script has to run before the commit
+    # its output goes into. That names the tree that was MEASURED only if
+    # nothing under `src/labelmaker` was uncommitted when it ran, so the
+    # stanza says which, and this asserts it was clean.
+    assert rerun["dirty"] is False
 
 
 # ------------------------------------------------------------- L->H and H->L

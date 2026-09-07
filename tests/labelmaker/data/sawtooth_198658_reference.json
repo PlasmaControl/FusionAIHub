@@ -266,10 +266,11 @@
   "omnimode_sha": "8bbe10d53710c5154d93e8480671762204516a9f",
   "script": "sawtooth_reference_check.py",
   "port_rerun": {
-    "labelmaker_sha": "50b287ab769a7bcef04e29b05b0058524fcffa03",
+    "labelmaker_sha": "f6f30e811a316cfb110e805d4b607b43fbf20b65",
+    "dirty": false,
     "n": 47,
     "median_ms": 68.99999999999976,
-    "elapsed_s": 0.33428551396355033,
+    "elapsed_s": 0.9033124623820186,
     "max_abs_dt_ms": 0.0
   }
 }
