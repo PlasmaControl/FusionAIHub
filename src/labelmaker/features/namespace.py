@@ -33,7 +33,15 @@ GRID_S = STEP_S * np.arange(240, dtype=np.float64)
 #: than reading a value off the 25 ms grid. `InputSpec.build` hands one
 #: straight to the adapter instead of sampling it (see `models.base`).
 KINDS = ("scalar", "profile", "waveform")
-SOURCES = ("archive", "corpus", "fdp")
+#: APPEND ONLY. `run.features_for_shot` and `validate` both walk this in
+#: order, and `test_every_feature_lists_its_sources_in_global_preference_
+#: order` reads a feature's own preference off these indices - so inserting
+#: a source anywhere but the end reorders every existing feature's
+#: cheapest-first resolution. `events` is last, and would be even if order
+#: were free: it is not an alternative to the other three but the only
+#: source of one derived feature, computed off labelmaker's own mask and
+#: event files rather than fetched from anywhere.
+SOURCES = ("archive", "corpus", "fdp", "events")
 
 #: How a stored array from each source must be sampled at model-input time
 #: An archive-served field is already the archive's own 50 ms boxcar
@@ -54,6 +62,12 @@ SAMPLING_BY_SOURCE: dict[str, str] = {
     "archive": "nearest",
     "corpus": "window",
     "fdp": "window",
+    # An events-served field is already a window mean - 0.34 s of mask and
+    # events reduced to one column, every 0.17 s - so a 50 ms boxcar over
+    # it would average four already-overlapping windows into a fifth
+    # quantity nobody defined. Nearest-sample, like the archive, for the
+    # same reason: the windowing has been done.
+    "events": "nearest",
 }
 
 
@@ -438,6 +452,30 @@ FEATURES: tuple[FeatureSpec, ...] = (
         locators=("EC.RHO_ECH",),
         notes="TORBEAM deposition location; 0 where unavailable, which the "
               "upstream training filter admitted (x0[:, 10] >= 0)",
+    ),
+    # Added for the phenomenon recommender (2026-09-07). The first feature
+    # labelmaker COMPUTES rather than fetches: its source is the package's
+    # own `masks/<shot>_masks.npz` and `events/<shot>_events.parquet`.
+    FeatureSpec(
+        name="phenomenon_window_features", kind="waveform", units="",
+        sources=("events",),
+        locators=("windows",),
+        step=0.17,
+        notes="46 channels, named IN ORDER by `events.windows.FEATURE_NAMES`, "
+              "one column per 0.34 s window on a 0.17 s stride (`step` is "
+              "that stride; the record is the window grid, not the 25 ms "
+              "grid). A `waveform` for the same reason `co2` is one - the "
+              "consumer is a classifier over the record, not a reader of a "
+              "value at t - and `SAMPLING_BY_SOURCE['events']` is nearest "
+              "because each column is already a window mean. Units are per "
+              "channel and are in the channel's own name (Hz, s, ms, kHz, "
+              "or a fraction), so there is no single unit to record here. "
+              "DIAGNOSTICS ONLY: no actuator and no equilibrium scalar, "
+              "because the annotator selects candidate windows partly by "
+              "those conditions and a classifier trained on them would be "
+              "scored against its own selection (plan section 7). A window "
+              "no diagnostic covered is served as NaN in all 46 channels - "
+              "see `resolve_events`",
     ),
 )
 
