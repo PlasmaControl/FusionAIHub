@@ -437,3 +437,93 @@ def corpus_dir(tmp_path: Path) -> Path:
     write_corpus_group(small, "pinj", np.arange(5) * 1.0e-3, np.arange(40).reshape(8, 5))
     write_corpus_group(small, "co2", [0.0], np.full((4, 1), np.nan))
     return d
+
+
+# ------------------------------------------------- the per-shot text bundles and census frames
+#
+# `text_bundle` writes the layout d3dlogfetching's `compose_per_shot_bundle` produces, which is
+# the layout of all 22,950 real `shot_<N>.txt` files: the RUN_ID/SHOT header, the general session
+# context with its own `- Run:`-style bullets and a `METADATA (selected)` JSON block, the
+# mini-proposal, and then the shot-specific block with the `SHOT TABLE ROW` the selection rule
+# reads. The JSON is written with SINGLE-space indentation because the tool runs its output
+# through `re.sub(r"[ \t]+", " ", ...)`, which collapses `json.dumps(indent=2)` to exactly that.
+
+SHOT_TABLE_MISSING = "(Shot table key/value mapping not found.)"
+
+
+def text_bundle(
+    shot: int,
+    *,
+    row: dict[str, str] | None,
+    title: str | None = "Tearing mode avoidance",
+    run_id: str = "20220301",
+    pre_blocks: str = "",
+) -> str:
+    """One per-shot text bundle. `row=None` is the session-fallback case: the summary page had
+    no shot table row for this shot, so the bundle carries the session's text and nothing of the
+    shot's own."""
+    meta = {"run_id": run_id, "shot_range": f"{shot - 4} - {shot + 4}"}
+    if title is not None:
+        meta["title"] = title
+    general = "\n".join(
+        [
+            f"RUN_ID: {run_id}",
+            "",
+            "GENERAL SESSION INFO",
+            "- Run: ",
+            f"- Shot Range: {shot - 4} - {shot + 4}",
+            "- Session Leader: ",
+            "- Physics Operator: ",
+            "",
+            "METADATA (selected)",
+            json.dumps(meta, indent=1),
+            "",
+            "SESSION-WIDE SUMMARIES (filtered to exclude other shots)",
+        ]
+    )
+    if row is None:
+        table = SHOT_TABLE_MISSING
+    else:
+        table = "\n".join([f"- SHOT: {shot}"] + [f"- {k}: {v}" for k, v in row.items()])
+    specific = "\n".join([f"SHOT: {shot}", "", "SHOT TABLE ROW (name -> value)", table])
+    if pre_blocks:
+        specific += "\n\nIMPORTANT <pre> BLOCKS (e.g., PCS CHANGES)\n\n" + pre_blocks
+    return "\n\n".join(
+        [
+            "# DIII-D per-shot text bundle",
+            f"RUN_ID: {run_id}",
+            f"SHOT: {shot}",
+            "\n## General session context\n" + general,
+            "\n## Planned context (mini-proposal)\nMini-proposal PDF\n"
+            "Subject: " + (title or "an experiment") + "\n1. Purpose of Experiment\n"
+            "Hypothesis to be tested: that this fixture reads like the real thing.",
+            "\n## Shot-specific context (from summary.html)\n" + specific,
+        ]
+    )
+
+
+def census_frame(rows, *, openable: bool = True) -> pd.DataFrame:
+    """A census table from `(shot, group, t0_s, t1_s, present)` tuples, in census.COLUMNS dtypes.
+
+    Built through `census.table` rather than by hand so that a change to the census's own columns
+    breaks the selection tests here instead of silently giving them a table the real one is not.
+    """
+    from ideate.shotdb import census
+
+    made = [
+        {
+            "shot": shot,
+            "group": group,
+            "kind": "signal" if group else "",
+            "n_channels": 1 if group else 0,
+            "n_samples": 100 if present else 1,
+            "t0_s": t0,
+            "t1_s": t1,
+            "fs_hz": float("nan"),
+            "present": present,
+            "openable": openable,
+            "error": "" if openable else "OSError: truncated",
+        }
+        for shot, group, t0, t1, present in rows
+    ]
+    return census.table(made)

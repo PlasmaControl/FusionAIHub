@@ -815,6 +815,85 @@ def run_metadata(run_id: str | None, paths: Paths) -> dict | None:
     return json.loads(p.read_text()) if p.exists() else None
 
 
+# ---- the per-shot bundle's own three blocks ---------------------------------------------------
+#
+# A bundle is `# DIII-D per-shot text bundle`, then three `## ` sections: the general session
+# context (the run's header fields and a `METADATA (selected)` JSON object), the mini-proposal,
+# and the shot-specific block scraped out of that run day's summary.html. The three helpers below
+# read the third and the metadata of the first; `mp_text` above reads the second.
+#
+# Scope matters more than it looks. The general session context carries `- Run:`,
+# `- Shot Range:`, `- Session Leader:` bullets in the same `- KEY: value` shape as the shot
+# table row, so a `- (\w+): (.*)` sweep of the whole bundle silently mixes a RUN-level field into
+# a per-shot fact. Every helper here is anchored on its own section for that reason.
+SHOT_BLOCK_MARKER = "## Shot-specific context (from summary.html)"
+SHOT_TABLE_HEADER = "SHOT TABLE ROW (name -> value)"
+# What the tool writes when summary.html had no row for this shot -- the "session fallback" case:
+# the bundle exists, but everything in it is the session's and none of it is the shot's.
+SHOT_TABLE_MISSING = "(Shot table key/value mapping not found.)"
+_METADATA = re.compile(r"^METADATA \(selected\)\s*\n(\{.*?\n\s*\})", re.MULTILINE | re.DOTALL)
+_KV_LINE = re.compile(r"^- ([^:\n]+): ?(.*)$")
+
+
+def shot_block(bundle: str) -> str:
+    """The bundle's shot-specific block: everything after the marker, stripped.
+
+    Empty when the bundle has no such section at all. Measured over the 13,106 bundles that are
+    also in the FAITH corpus: this block runs 138-302 characters for a well-formed plasma shot
+    (median 252) -- it is a table, not prose -- so a length threshold on it is a threshold on
+    how many columns that run day's summary page filled in.
+    """
+    i = bundle.find(SHOT_BLOCK_MARKER)
+    return bundle[i + len(SHOT_BLOCK_MARKER) :].strip() if i >= 0 else ""
+
+
+def shot_table_row(bundle: str) -> dict[str, str]:
+    """The `SHOT TABLE ROW (name -> value)` block as `{KEY: value}`, in the file's own order.
+
+    Empty for the session-fallback case and for a bundle with no shot-specific block: an absent
+    row is absent evidence, and this returns nothing rather than something a caller could read as
+    a measurement. Keys are exactly as the summary page spelled them (`IP-(MA)`,
+    `PBEAM-MAX-(MW)`), because the page is what the next campaign will change.
+
+    Only the run of `- ` lines that follows the header is read. The block continues into
+    `IMPORTANT <pre> BLOCKS` on some shots, and PCS-change lines there are not table columns.
+    """
+    block = shot_block(bundle)
+    i = block.find(SHOT_TABLE_HEADER)
+    if i < 0:
+        return {}
+    out: dict[str, str] = {}
+    for line in block[i + len(SHOT_TABLE_HEADER) :].splitlines():
+        if not line.strip():
+            if out:  # a blank line ends the row; leading blanks before it do not
+                break
+            continue
+        m = _KV_LINE.match(line)
+        if not m:
+            break
+        out[m.group(1).strip()] = m.group(2).strip()
+    return out
+
+
+def session_metadata(bundle: str) -> dict:
+    """The `METADATA (selected)` JSON of the general session context (`run_id`, `shot_range`,
+    `title`), or `{}`.
+
+    The tool writes it with `json.dumps(indent=2)` and then collapses every run of spaces, so
+    what is on disk is one-space-indented JSON; `json.loads` does not care, and nothing here may
+    depend on the indentation. A block that does not parse is `{}` rather than an exception --
+    this is scraped text, and one malformed run day may not stop a corpus-wide selection.
+    """
+    m = _METADATA.search(bundle)
+    if not m:
+        return {}
+    try:
+        got = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
 _BUNDLE_MP = re.compile(r"^## Planned context \(mini-proposal\)\s*$", re.MULTILINE)
 # The bundle's own header line, used only to check that the bundle is about the run we asked for
 # (see mp_text). It sits in the first ~40 bytes of every real bundle that has one.
