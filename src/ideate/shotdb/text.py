@@ -145,7 +145,7 @@ def fault_strings(*texts: str | None) -> list[str]:
     field is null in every record), so a false "this shot faulted" is a wrongly-labelled shot in
     the curated set.
 
-    Task-10 fix wave 1: the two scope guards defined below -- _own_shot_text() and _mitigated() --
+    Task-10 fix wave 1: the two scope guards defined below -- _own_shot_text() and mitigated() --
     are applied here too, and for the same reason. Shot 175676's only fault language is a pre-shot
     plan ("Implement locked mode dud trip to avoid disruption") sitting under a "Last shot:"
     heading, and it shipped into the curated list as `fault: locked mode;dud trip` on a shot the
@@ -162,7 +162,7 @@ def fault_strings(*texts: str | None) -> list[str]:
     for t in texts:
         t = _own_shot_text(t)
         for m in _FAULT.finditer(t):
-            if _mitigated(t, m.start(), m.end()):
+            if mitigated(t, m.start(), m.end()):
                 continue
             if not _SELF_NEGATING_FAULT.match(m.group(1)):
                 before, _ = _clause(t, m.start(), m.end())
@@ -391,7 +391,7 @@ def _clause(
     side looks before that truncation is applied; every caller but _guarded_trip() takes the
     default 16, unchanged from before this parameter existed. Pass None for a backward scan bounded
     only by the clause itself, however far back that is -- see _guarded_trip() for why bare "trip"
-    needs that. `after_window` is the same knob forwards, and only _mitigated() passes None for it:
+    needs that. `after_window` is the same knob forwards, and only mitigated() passes None for it:
     the purpose clause it looks for ("... dud trip to avoid disruption") routinely sits further
     ahead than 16 characters, while _DISRUPT_AVERTED keeps the original 16-char forward window it
     was measured on. Returns (before, after)."""
@@ -503,8 +503,23 @@ _MITIGATION = re.compile(
 )
 
 
-def _mitigated(text: str, start: int, end: int) -> bool:
-    """True if text[start:end] is followed, within its own clause, by a purpose clause."""
+def negated(text: str, start: int, end: int) -> bool:
+    """True if text[start:end] is preceded, within its own clause, by a negation cue.
+
+    Public because it is not only the verdict's business: `labels.claims` asks the same question
+    of one phenomenon mention to decide a claim's polarity, and the answer has to be the same one
+    `_guarded()` gives -- the clause bound, the 16-character window and the negation vocabulary
+    below were all measured against the real 53,179-record logbook, and a second copy of that
+    judgement would drift from this one on the first correction.
+    """
+    return bool(_NEGATION.search(_clause(text, start, end)[0]))
+
+
+def mitigated(text: str, start: int, end: int) -> bool:
+    """True if text[start:end] is followed, within its own clause, by a purpose clause.
+
+    Public for the same reason as negated(): "locked mode dud trip to avoid disruption" is a plan,
+    not a report, whether the reader is grading the shot or recording a claim about tearing."""
     return bool(_MITIGATION.search(_clause(text, start, end, after_window=None)[1]))
 
 
@@ -516,7 +531,7 @@ def _guarded(pattern: re.Pattern[str], text: str, *, mitigation: bool = False) -
     "good", and symmetrically a negated positive like "not ok" yields no signal rather than
     becoming a vote for "bad".
 
-    `mitigation=True` additionally applies _mitigated() -- the forward "to avoid/to prevent"
+    `mitigation=True` additionally applies mitigated() -- the forward "to avoid/to prevent"
     purpose clause. It is passed only for the fault lexicons, never for _POS: a positive word is
     not neutralised by a plan ("good, to avoid ..." is still a good shot), and the whole point of
     the guard is that a fault named inside a plan to avoid it has not happened.
@@ -524,8 +539,8 @@ def _guarded(pattern: re.Pattern[str], text: str, *, mitigation: bool = False) -
     return sum(
         1
         for m in pattern.finditer(text)
-        if not _NEGATION.search(_clause(text, m.start(), m.end())[0])
-        and not (mitigation and _mitigated(text, m.start(), m.end()))
+        if not negated(text, m.start(), m.end())
+        and not (mitigation and mitigated(text, m.start(), m.end()))
     )
 
 
@@ -548,7 +563,7 @@ def _guarded_trip(text: str) -> int:
     """
     n = 0
     for m in _TRIP.finditer(text):
-        if _mitigated(text, m.start(), m.end()):
+        if mitigated(text, m.start(), m.end()):
             continue
         before, _ = _clause(text, m.start(), m.end(), before_window=None)
         neg = _NEGATION.search(before)
@@ -587,7 +602,7 @@ def _guarded_disrupt(text: str) -> int:
         before, after = _clause(text, m.start(), m.end())
         if _NEGATION.search(before) or _DISRUPT_AVERTED.search(after):
             continue
-        if _mitigated(text, m.start(), m.end()):
+        if mitigated(text, m.start(), m.end()):
             continue
         if _ROUTINE_DISRUPT_CTX.search(text[max(0, m.start() - 16) : m.end() + 16]):
             continue
@@ -611,7 +626,7 @@ def verdict(entries: list[LogEntry], extra: str = "") -> str:
     #   * a *phrase* spliced out of two authors' text: "... Same, bad" followed by "Plasma shot;
     #     short" matched _STRONG_NEG_UNCONDITIONAL's "bad plasma" on shot 152216, and shot
     #     178493's "doesn't look half-bad" + "Plasma shot  ok." did the same (bad -> good).
-    #   * the forward window of _mitigated() reaching a "to avoid" in the *next* entry, which is
+    #   * the forward window of mitigated() reaching a "to avoid" in the *next* entry, which is
     #     what made shot 208177's real "still tripped density limit" and shot 125470's "n=1 at
     #     2900 => dud trip" read as plans.
     text = (
@@ -833,6 +848,27 @@ SHOT_TABLE_HEADER = "SHOT TABLE ROW (name -> value)"
 SHOT_TABLE_MISSING = "(Shot table key/value mapping not found.)"
 _METADATA = re.compile(r"^METADATA \(selected\)\s*\n(\{.*?\n\s*\})", re.MULTILINE | re.DOTALL)
 _KV_LINE = re.compile(r"^- ([^:\n]+): ?(.*)$")
+
+
+def bundle_blocks(bundle: str) -> tuple[str, str, str]:
+    """The bundle's three sections verbatim: `(session, planned, shot_specific)`.
+
+    Each may be empty -- a run with no mini-proposal has no planned block, and a bundle from
+    before the summary page had a row for the shot has no shot-specific one -- and the three
+    concatenate back to the whole bundle, so nothing is silently dropped by reading it this way.
+
+    The split is worth having as one function rather than three searches at the call sites,
+    because *which section a sentence came from is what the sentence means*: the same words are a
+    record of the run in the first block, an intention in the second and a fact about this
+    discharge in the third. `labels.claims` reads all three and scopes and dates them by which one
+    they were in; `shot_block()` below is the third alone, which is what the older readers want.
+    """
+    mp = _BUNDLE_MP.search(bundle)
+    i = bundle.find(SHOT_BLOCK_MARKER)
+    end = len(bundle) if i < 0 else i
+    if mp is None or mp.start() > end:
+        return bundle[:end], "", bundle[end:]
+    return bundle[: mp.start()], bundle[mp.start() : end], bundle[end:]
 
 
 def shot_block(bundle: str) -> str:
