@@ -4,8 +4,8 @@
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=6
-#SBATCH --mem=4600M
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=2800M
 #SBATCH --time=00:15:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
@@ -73,6 +73,16 @@
 
 set -euo pipefail
 
+# MEASURED (job 2925318, 2026-09-07, stellar-i07n8, 6 cpus / 4600M, the sizing above this note):
+#   COMPLETED in 3:44; jobstats CPU 49.8 % (11:09 cpu-time / 22:24 cpu-wall), CPU-mem 47 %
+#   (2.1 / 4.5 GB) -- BOTH below the 70 % gate. Diagnosis: the login-node pilot ran WARM (the same
+#   500 corpus files had just been read twice), so it finished in 148 s at 552 % cpu; the compute
+#   node read them cold from GPFS and took 224 s for ~the same cpu work (669 vs ~817 cpu-s), i.e.
+#   the job is I/O-bound cold and 3.0 cores were busy on average. SLURM's sampled memory (2.1 GB)
+#   is also below the sampler's process-tree peak (3.2 GiB), as the earlier review warned.
+#   Re-sized for the next run: 4 cpus (3.0 busy / 4 = 75 %), --mem=2800M (2.1 / 2.8 = 75 %).
+#   Lesson recorded in the ledger: size from a COLD pilot (drop_caches is not available; use shots
+#   not read in the last hour, or a compute-node pilot).
 # REPO may point at a clean worktree snapshot (the controller does this while another task edits
 # the main checkout); IDEATE_PY is the interpreter, which always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
