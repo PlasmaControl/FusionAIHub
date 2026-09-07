@@ -4,7 +4,7 @@
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=3
 #SBATCH --mem=2800M
 #SBATCH --time=00:15:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
@@ -81,6 +81,10 @@ set -euo pipefail
 #   the job is I/O-bound cold and 3.0 cores were busy on average. SLURM's sampled memory (2.1 GB)
 #   is also below the sampler's process-tree peak (3.2 GiB), as the earlier review warned.
 #   Re-sized for the next run: 4 cpus (3.0 busy / 4 = 75 %), --mem=2800M (2.1 / 2.8 = 75 %).
+# MEASURED AGAIN (job 2925356, stellar-i02n8, 4 cpus / 2800M): COMPLETED 5:00 (build 285.7 s);
+#   jobstats CPU 65.9 % (13:10 / 20:00 -> 2.6 cores busy), CPU-mem 77 % (2.1 / 2.7 GB). Memory gate
+#   met; CPU missed by 4 points: cold GPFS reads dominate and the busy-core count varies with the
+#   node (3.0 then 2.6). Re-sized to 3 cpus (2.6 / 3 = 88 %); memory unchanged.
 #   Lesson recorded in the ledger: size from a COLD pilot (drop_caches is not available; use shots
 #   not read in the last hour, or a compute-node pilot).
 # REPO may point at a clean worktree snapshot (the controller does this while another task edits
