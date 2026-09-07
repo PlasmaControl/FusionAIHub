@@ -42,8 +42,9 @@ track's columns that are lit at all.
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -197,8 +198,11 @@ def _merge_literal(
     """The reference merge, transliterated. Used by the test that pins it.
 
     Ported from `raddet_map_probe.py::merge_boxes_time(comps, max_gap,
-    freq_overlap)` in the TokEye probe: repeatedly, every box that is still
-    free is taken as a seed and every other free box that shares at least
+    freq_overlap)` in the TokEye probe. Components are put in `_sorted`
+    order first, exactly as `merge` does - the predicate is applied against
+    a growing box, so the seed order is part of the answer and the two
+    would not otherwise be comparable. Then, repeatedly, every box that is
+    still free is taken as a seed and every other free box that shares at least
     `freq_overlap` of the SMALLER frequency extent and is within `max_gap`
     columns is absorbed into it, until a whole pass absorbs nothing. The
     predicate is applied against the GROWING box, not pairwise, so the
@@ -341,8 +345,8 @@ def descriptors(
 
     `prob` is the coherent probability map the mask came from, `raw_logpow`
     the pre-standardisation log-power under it (`masks.unstandardise`, or
-    `_band_logpow` stretched back to 512 rows when all that survives is the
-    stored block). The two weight different things, on purpose:
+    `masks.band_logpow`'s bands stretched back to 512 rows when all that
+    survives is the stored block). The two weight different things, on purpose:
 
     * `f_centroid_khz` is weighted by PROBABILITY - it answers "where is
       this detection", and a detection is what the network says it is;
@@ -487,12 +491,33 @@ def n_harmonics(
     return [len(found[i]) for i in range(len(tracks))]
 
 
+def _span_iou(a0: float, a1: float, b0: float, b1: float) -> float:
+    """Overlap over union of two 1-D extents; 0.0 for extents that touch.
+
+    What `_iou` degrades to when one axis has no extent to share.
+    """
+    inter = min(a1, b1) - max(a0, b0)
+    union = max(a1, b1) - min(a0, b0)
+    if inter <= 0.0 or union <= 0.0:
+        return 0.0
+    return inter / union
+
+
 def _iou(a: Track, b: Track) -> float:
     """Intersection over union of two tracks' time-frequency boxes.
 
-    Degenerate boxes are the reason for the last branch: a one-column or
-    one-row track has no area, so it can only ever match another box that is
-    degenerate in the same way and in the same place.
+    A one-column or a one-row track has NO AREA, and two of them have no
+    union either - which an area ratio cannot score at all. Scoring that
+    case 1.0, as this did, made every pair of degenerate boxes that so much
+    as touched a coincidence, whatever `iou_min` said: two one-row tracks
+    sharing 1 ms of 100 were grouped, and so were two point tracks on
+    adjacent bands that share nothing.
+
+    So a zero union falls back to the axis that still has extent: the boxes
+    must COINCIDE on the degenerate axis, and the score is the overlap
+    fraction of the other one. When both axes are degenerate - two pixels,
+    or a row crossing a column - there is no such axis, and only identical
+    boxes match.
     """
     dt = min(a.t1_s, b.t1_s) - max(a.t0_s, b.t0_s)
     df = min(a.f1_khz, b.f1_khz) - max(a.f0_khz, b.f0_khz)
@@ -504,7 +529,24 @@ def _iou(a: Track, b: Track) -> float:
         + (b.t1_s - b.t0_s) * (b.f1_khz - b.f0_khz)
         - inter
     )
-    return inter / union if union > 0.0 else 1.0
+    if union > 0.0:
+        return inter / union
+    # Zero union: both boxes are degenerate, and on the same axes - a box
+    # with area cannot make the union zero.
+    flat_t = a.t0_s == a.t1_s or b.t0_s == b.t1_s
+    flat_f = a.f0_khz == a.f1_khz or b.f0_khz == b.f1_khz
+    if flat_t and flat_f:
+        return float(
+            (a.t0_s, a.t1_s, a.f0_khz, a.f1_khz)
+            == (b.t0_s, b.t1_s, b.f0_khz, b.f1_khz)
+        )
+    if flat_t:
+        if (a.t0_s, a.t1_s) != (b.t0_s, b.t1_s):
+            return 0.0
+        return _span_iou(a.f0_khz, a.f1_khz, b.f0_khz, b.f1_khz)
+    if (a.f0_khz, a.f1_khz) != (b.f0_khz, b.f1_khz):
+        return 0.0
+    return _span_iou(a.t0_s, a.t1_s, b.t0_s, b.t1_s)
 
 
 def cooccurrence(
@@ -556,7 +598,13 @@ def cooccurrence(
 # ------------------------------------------------------------------ events
 
 def as_attrs(track: Track) -> dict[str, Any]:
-    """A Track as a JSON-safe dict: python scalars, no NaN."""
+    """A Track as a JSON-safe dict: python scalars, no NaN.
+
+    A non-finite field becomes `None`, which is what JSON has for "not
+    known": a track read back from a packed mask has no probabilities
+    behind it, so its `conf` and `mean_prob` are NaN, and `schema` refuses
+    a bare `NaN` in an attrs string on purpose.
+    """
     out: dict[str, Any] = {}
     for name, value in asdict(track).items():
         if isinstance(value, bool):
@@ -564,7 +612,8 @@ def as_attrs(track: Track) -> dict[str, Any]:
         elif isinstance(value, (int, np.integer)):
             out[name] = int(value)
         else:
-            out[name] = float(value)
+            number = float(value)
+            out[name] = number if math.isfinite(number) else None
     return out
 
 
@@ -627,11 +676,14 @@ def tracks_for_block(
 
     The whole path in one call, for the script that walks a masks file.
     What the file kept is a BOOLEAN mask and a 16-band power summary, so
-    `prob` here is 1 on every lit pixel - `mean_prob` and `conf` of a track
-    read back from disk are 1.0, and the confidence that means anything is
-    the one computed while the probabilities were still in memory. The
-    bands are stretched back over their 32 rows each, which is enough to
-    weight a centroid inside a band and not enough to place a mode.
+    `prob` here is 1 on every lit pixel - which is a geometry, not a
+    probability. `mean_prob` and `conf` therefore come back NaN, not 1.0:
+    the file has no probabilities in it, and a track whose confidence is
+    unknown must not outrank one whose confidence was measured. The
+    confidence that means anything is the one computed while the
+    probabilities were still in memory. The bands are stretched back over
+    their 32 rows each, which is enough to weight a centroid inside a band
+    and not enough to place a mode.
     """
     meta = read_mask(masks_path, f"{block_prefix}_meta")
     n_cols = int(meta["n_cols"])
@@ -651,8 +703,13 @@ def tracks_for_block(
         freq_overlap=freq_overlap,
     )
     return [
-        descriptors(
-            group, prob=prob, raw_logpow=raw_logpow, freq_khz=freq_khz, t_s=t_s
+        replace(
+            descriptors(
+                group, prob=prob, raw_logpow=raw_logpow,
+                freq_khz=freq_khz, t_s=t_s,
+            ),
+            mean_prob=math.nan,
+            conf=math.nan,
         )
         for group in groups
     ]

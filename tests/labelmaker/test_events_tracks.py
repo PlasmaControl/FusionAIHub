@@ -16,6 +16,7 @@ path's early break has to be an optimisation and nothing else.
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -519,6 +520,61 @@ def test_cooccurrence_of_nothing():
     assert tracks.cooccurrence({"a": []}) == []
 
 
+def test_degenerate_boxes_that_merely_touch_do_not_co_occur():
+    # Two one-row tracks on the same row, sharing 1 ms of 100. Both boxes
+    # have zero area, so the union is zero - which used to score 1.0 and
+    # group them whatever `iou_min` said.
+    by_channel = {
+        "a": [_track(1.0, 1.1, 8.0, 8.0)],
+        "b": [_track(1.099, 1.199, 8.0, 8.0)],
+    }
+    assert tracks.cooccurrence(by_channel) == []
+
+
+def test_point_tracks_on_adjacent_bands_do_not_co_occur():
+    # Two one-column tracks at the same instant whose bands touch at 9 kHz
+    # and share nothing. Zero union again, and no coincidence.
+    by_channel = {
+        "a": [_track(1.0, 1.0, 8.0, 9.0)],
+        "b": [_track(1.0, 1.0, 9.0, 10.0)],
+    }
+    assert tracks.cooccurrence(by_channel) == []
+
+
+def test_genuinely_coincident_degenerate_boxes_still_co_occur():
+    # The fix must not cost the case it is guarding: a degenerate box that
+    # really is another channel's box is still one event seen twice.
+    for a, b in (
+        (_track(1.0, 1.0, 8.0, 9.0), _track(1.0, 1.0, 8.0, 9.0)),   # points
+        (_track(1.0, 1.1, 8.0, 8.0), _track(1.0, 1.1, 8.0, 8.0)),   # one row
+        (_track(1.0, 1.0, 8.0, 8.0), _track(1.0, 1.0, 8.0, 8.0)),   # a pixel
+    ):
+        assert tracks.cooccurrence({"a": [a], "b": [b]}) == [
+            {("a", 0), ("b", 0)}
+        ]
+
+
+def test_the_iou_of_a_zero_union_pair_is_a_one_dimensional_one():
+    # One-row tracks: the frequency axis has no extent to share, so the
+    # score is the overlap fraction of the time axis alone.
+    a = _track(1.0, 1.1, 8.0, 8.0)
+    assert tracks._iou(a, _track(1.05, 1.15, 8.0, 8.0)) == pytest.approx(
+        0.05 / 0.15
+    )
+    # Point tracks: the time axis is the degenerate one, frequency scores.
+    c = _track(1.0, 1.0, 8.0, 9.0)
+    assert tracks._iou(c, _track(1.0, 1.0, 8.5, 9.5)) == pytest.approx(0.5 / 1.5)
+    # The degenerate axis has to agree: a point 200 ms later is elsewhere.
+    assert tracks._iou(c, _track(1.2, 1.2, 8.0, 9.0)) == 0.0
+    # Both axes degenerate - a single pixel - matches itself and nothing else.
+    e = _track(1.0, 1.0, 8.0, 8.0)
+    assert tracks._iou(e, _track(1.0, 1.0, 8.0, 8.0)) == 1.0
+    assert tracks._iou(e, _track(1.0, 1.0, 9.0, 9.0)) == 0.0
+    # A row crossing a column has no axis on which both boxes have extent;
+    # there is no overlap fraction to take, and touching is not matching.
+    assert tracks._iou(c, _track(0.9, 1.1, 8.5, 8.5)) == 0.0
+
+
 # -------------------------------------------------------------- the events
 
 def _events(got):
@@ -595,14 +651,41 @@ def test_tracks_for_block_reads_a_stored_block(synth_mask, tmp_path):
     assert len(got) == 7
     assert [t.n_components for t in got] == [1, 2, 1, 1, 1, 1, 1]
     assert got[PICKUP].pickup is True
-    # Only the boolean mask survives the packing, so every lit pixel is one.
-    assert got[EHO].mean_prob == 1.0 and got[EHO].conf == 1.0
+    # Only the boolean mask survives the packing, so there are no
+    # probabilities to be confident with: unknown, not certain.
+    assert math.isnan(got[EHO].mean_prob) and math.isnan(got[EHO].conf)
     assert got[EHO].f_centroid_khz == pytest.approx(
         freq_khz[_synth_band(freq_khz, SYNTH_EHO_KHZ)[0] + 1]
     )
     assert got[FISHBONE].chirp_khz_per_ms == pytest.approx(
         SYNTH_CHIRP_KHZ_PER_MS, abs=0.05
     )
+
+
+def test_a_stored_blocks_unknown_confidence_survives_to_the_events_table(
+    synth_mask, tmp_path
+):
+    # A track read back from a packed mask has no probability behind it, so
+    # `conf` is NaN, `as_attrs` writes it as JSON null, and the event row
+    # carries the NaN rather than a 1.0 nobody measured.
+    prob, raw, _, t_s = synth_mask()
+    block = masks.MaskBlock(
+        diag="mhr", channel=0, pass_name="zoom",
+        coh=prob, tra=np.zeros_like(prob), raw_logpow=raw, t_s=t_s,
+        meta={"fs_hz": 5e5, "decim": 4, "n_cols": prob.shape[1]},
+    )
+    path = tmp_path / "198658_masks.npz"
+    masks.write_masks(
+        path, 198658, [masks.block_arrays(block, unet_sha256="c" * 64)]
+    )
+    got = tracks.tracks_for_block("mhr_00_zoom", path)
+    attrs = tracks.as_attrs(got[EHO])
+    assert attrs["conf"] is None and attrs["mean_prob"] is None
+    assert attrs["duty"] == pytest.approx(got[EHO].duty)
+    assert json.loads(json.dumps(attrs, allow_nan=False))["conf"] is None
+    event = _events(got)[EHO]
+    assert math.isnan(event.confidence)
+    assert event.attrs["conf"] is None
 
 
 def test_tracks_for_block_needs_a_block_that_is_there(tmp_path):
