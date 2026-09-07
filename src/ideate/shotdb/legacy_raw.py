@@ -19,15 +19,20 @@ Ported from shot-recommender-system (shotrec) @565d548.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import h5py
 import numpy as np
 
 from ..config import Paths, SignalSpec
 from ..schema import Status
+
+# `Signal` is defined in reader.py, where the interface that hands it around is defined, and is
+# imported here under its old name because it has always been `legacy_raw.Signal` to every caller
+# (features.py, build.py, the tests) and it is the same class either way.
+from .reader import ShotFailed, Signal, Unavailable
 
 _log = logging.getLogger(__name__)
 
@@ -63,16 +68,6 @@ def _warn_once(path: Path, error: OSError | KeyError | RuntimeError) -> None:
         return
     _warned_paths.add(path)
     _log.warning("could not read %s: %s", path, error)
-
-
-@dataclass
-class Signal:
-    t_ms: np.ndarray
-    y: np.ndarray
-    units: str | None
-    source: Literal["staged", "fetched"]  # who PRODUCED the file (is_ours), not where it was found
-    group: str
-    col: str
 
 
 def staged_path(shot: int, paths: Paths) -> Path:
@@ -434,3 +429,144 @@ def list_groups(path: Path) -> dict[str, list[str]]:
                     cols += _decode(g[f"block{k}_items"][()])
             out[name] = cols
     return out
+
+
+class LegacyReader:
+    """This module as a `SignalReader`: the same functions with `paths` bound, plus the file-level
+    half of the protocol.
+
+    An adapter and nothing more. Every spec-level answer is the module function's answer, byte
+    for byte -- the point is that `build` can be handed a corpus reader instead without a single
+    behaviour of the legacy path changing meanwhile. The file-level half (`groups`, `read`,
+    `coverage`) is new API, not a rename of anything, and is written on top of `frame()` so the
+    two locations, the torn-write rule and the precedence order are the ones this module already
+    applies everywhere else.
+
+    Where the protocol says "raise", this class raises: `Unavailable` when no location carries
+    the group, `ShotFailed` when no location could be read at all. That is a different discipline
+    from `read_signal`, which warns once and returns None, and it is deliberate -- the spec-level
+    half answers for a registry of dozens of signals at once, where one damaged file must not
+    abort the other thirty, while the file-level half answers about one named group and has no
+    other way to say "the file is broken" than to say it.
+    """
+
+    def __init__(self, paths: Paths):
+        self.paths = paths
+
+    def __repr__(self) -> str:
+        return f"LegacyReader({str(self.paths.raw_dir)!r})"
+
+    # ---------------------------------------------------------------------- the spec level
+
+    def read_shot(
+        self, shot: int, specs: list[SignalSpec]
+    ) -> tuple[dict[str, Signal | None], dict[str, Status]]:
+        return read_shot(shot, specs, self.paths)
+
+    def read_signal(self, shot: int, spec: SignalSpec) -> Signal | None:
+        return read_signal(shot, spec, self.paths)
+
+    def signal_status(self, shot: int, spec: SignalSpec) -> Status:
+        return signal_status(shot, spec, self.paths)
+
+    # ---------------------------------------------------------------------- the file level
+
+    def path(self, shot: int) -> Path:
+        """The location this shot reads from: ours if it exists, else the staged copy, else
+        where ours would be written."""
+        found = source_paths(shot, self.paths)
+        return found[0] if found else our_path(shot, self.paths)
+
+    def available(self, shot: int) -> bool:
+        for p in source_paths(shot, self.paths):
+            try:
+                with open_h5(p):
+                    return True
+            except (OSError, KeyError, RuntimeError) as e:
+                _warn_once(p, e)
+        return False
+
+    def groups(self, shot: int) -> list[str]:
+        """Every group either location carries with a real time axis, sorted. A placeholder group
+        -- the (1,1) NaN frame the staged producer writes for a modality it did not record -- has
+        no usable time axis and is not one this shot has."""
+        found, error = set(), None
+        for p in self._locations(shot):
+            try:
+                with open_h5(p) as f:
+                    for name in f:
+                        fr = frame(f, name)
+                        if fr is not None and fr.t is not None:
+                            found.add(name)
+            except (OSError, KeyError, RuntimeError) as e:
+                error = e
+        if not found and error is not None:
+            raise ShotFailed(f"shot {shot}: {error}") from error
+        return sorted(found)
+
+    def read(
+        self, shot: int, group: str, channels: Sequence[int] | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`group` as `(t_ms float64 (n,), y float32 (C, n))`.
+
+        `channels` index into the group's own column order (the order `list_groups` reports),
+        which is what the protocol's unnamed-channel vocabulary means here. A column the group
+        carries but that holds no finite sample comes back as a row of NaN rather than being
+        dropped, so the returned row order always matches the indices asked for.
+        """
+        return self._one_group(shot, group, lambda fr: self._rows(fr, group, channels))
+
+    def coverage(self, shot: int, group: str) -> tuple[float, float]:
+        return self._one_group(shot, group, lambda fr: (float(fr.t[0]), float(fr.t[-1])))
+
+    # ---------------------------------------------------------------------- internals
+
+    def _locations(self, shot: int) -> list[Path]:
+        found = source_paths(shot, self.paths)
+        if not found:
+            raise ShotFailed(
+                f"shot {shot}: no file in {self.paths.raw_dir} or {self.paths.staged_raw_dir}"
+            )
+        return found
+
+    def _one_group(self, shot: int, group: str, fn):
+        """`fn` applied to `group`'s frame at the first location that has it, ours first.
+
+        A location that fails to open or read does not end the search -- that is the same
+        fall-through `_read_specs` does, and it is what keeps a torn file of ours from hiding the
+        staged copy -- but if no location ends up answering and one of them failed, the failure
+        is what the caller hears about, not "not recorded".
+        """
+        error = None
+        for p in self._locations(shot):
+            try:
+                with open_h5(p) as f:
+                    fr = frame(f, group)
+                    if fr is None or fr.t is None:
+                        continue
+                    return fn(fr)
+            except (OSError, KeyError, RuntimeError) as e:
+                _warn_once(p, e)
+                error = e
+        if error is not None:
+            raise ShotFailed(f"shot {shot}: {group}: {error}") from error
+        raise Unavailable(f"shot {shot} has no group {group!r}")
+
+    @staticmethod
+    def _rows(fr: Frame, group: str, channels: Sequence[int] | None) -> tuple:
+        names = [c for items, _ in fr.blocks for c in items]
+        if channels is None:
+            idx = list(range(len(names)))
+        else:
+            idx = [int(c) for c in channels]
+            bad = [c for c in idx if not 0 <= c < len(names)]
+            if bad:
+                raise IndexError(f"{group} has {len(names)} columns, asked for {bad}")
+        want = [names[i] for i in idx]
+        got = fr.columns(want)
+        n = fr.t.size
+        y = np.empty((len(want), n), dtype=DTYPE)
+        for i, name in enumerate(want):
+            col = got.get(name)
+            y[i] = np.full(n, np.nan, DTYPE) if col is None else col
+        return np.asarray(fr.t, dtype=np.float64), y

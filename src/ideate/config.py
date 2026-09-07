@@ -186,6 +186,35 @@ def expand_registry(shot: int, include_not_installed: bool = False) -> list[Sign
     return specs
 
 
+class CorpusActuator(BaseModel):
+    """Which FAITH-corpus group carries one actuator, and which of its channels to use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str  # ideate's name for the actuator, e.g. "nbi_torque"
+    group: str  # the corpus group, e.g. "tinj"
+    channels: list[int] | None = None  # None is the config's "all"
+
+
+def corpus_actuators() -> dict[str, CorpusActuator]:
+    """The `corpus:` block of actuators.yaml: ideate's actuator names -> corpus groups.
+
+    A mapping and not a lookup table in code, because it is a claim about someone else's data
+    that we may have to correct: the corpus groups are unnamed channel arrays with no units and
+    no attributes, so which group is "the beam power" was established by comparison, not by
+    reading a label, and a correction should be a config edit.
+    """
+    out: dict[str, CorpusActuator] = {}
+    for name, spec in (load_yaml("actuators.yaml").get("corpus") or {}).items():
+        channels = spec.get("channels", "all")
+        out[name] = CorpusActuator(
+            name=name,
+            group=spec["group"],
+            channels=None if channels in (None, "all") else [int(c) for c in channels],
+        )
+    return out
+
+
 def actuator_systems(shot: int) -> dict[str, SystemSpec]:
     out: dict[str, SystemSpec] = {}
     for sys_name, sysdef in load_yaml("actuators.yaml")["systems"].items():

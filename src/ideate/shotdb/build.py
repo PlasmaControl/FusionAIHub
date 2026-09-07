@@ -41,7 +41,7 @@ import pandas as pd
 from .. import config
 from ..schema import Labels, Outcome, Provenance, Segment, ShotRecord, Status
 from . import features, legacy_raw, text
-from .legacy_raw import Signal
+from .reader import Signal, SignalReader
 
 _log = logging.getLogger(__name__)
 
@@ -237,19 +237,25 @@ def _provenance(specs, signals: dict[str, Signal | None]) -> dict[str, Provenanc
 
 
 def build_record(
-    shot: int, paths: config.Paths, cfg: dict
+    shot: int, paths: config.Paths, cfg: dict, reader: SignalReader | None = None
 ) -> tuple[ShotRecord, dict[str, np.ndarray]]:
     """One shot: every registry signal, its segments, their scalars, the human tier, and labels.
 
     Returns the record and, separately, the per-segment waveform-shape vectors -- they are a
     fixed-width float matrix that belongs next to the scalar features in the embedding, not in a
     record a human reads.
+
+    `reader` is where the raw signals come from, and it is an argument rather than an import so
+    that building from another raw layout (the FAITH corpus, via `corpus.CorpusReader`) is a
+    caller's decision. It defaults to the d3d_fusion_data layout this database was first built
+    from; nothing below knows which layout answered.
     """
+    reader = reader or legacy_raw.LegacyReader(paths)
     specs = config.expand_registry(shot, include_not_installed=True)
     systems = config.actuator_systems(shot)
     # One pass over the raw files for both: `present` is the read that succeeded, so the two
     # dicts cannot disagree and nothing is read twice (legacy_raw.read_shot has the measurement).
-    signals, coverage = legacy_raw.read_shot(shot, specs, paths)
+    signals, coverage = reader.read_shot(shot, specs)
     totals = features.system_totals(signals, systems)
     ip = signals.get("ip")
     segs = features.find_segments(ip, cfg["segments"]) if ip is not None else []

@@ -5,6 +5,23 @@ campaigns:
   - {id: "2016_2018", shots: [165000, 176999]}
   - {id: "2019_2021", shots: [177000, 189999]}
   - {id: "2022_2025", shots: [190000, 209999]}
+# Which group of the FAITH corpus (<shot>_processed.h5) carries each actuator, for builds that
+# read the corpus instead of the d3d_fusion_data layout the `systems` block below describes.
+# These are two different raw layouts, not two spellings of one: a corpus group is an unnamed
+# (C, n) channel array with no units and no attributes, so the pairing was established by
+# comparing waveforms against the staged columns, not by reading a label -- which is exactly why
+# it lives in config, where a correction is an edit rather than a release. `channels: all` uses
+# every channel of the group (an actuator total is the sum over its channels); a list of indices
+# selects, e.g. the first eight filterscope channels.
+corpus:
+  nbi:         {group: pinj,         channels: all}   # injected beam power per source (W)
+  nbi_voltage: {group: beam_voltage, channels: all}   # accelerating voltage per source (V)
+  nbi_torque:  {group: tinj,         channels: all}   # injected torque per source (N m)
+  ech:         {group: ech_power,    channels: all}   # injected gyrotron power (W)
+  gas:         {group: gas_flow,     channels: all}   # calibrated valve flow
+  gas_raw:     {group: gas_raw,      channels: all}   # raw valve command voltage
+  rmp:         {group: rmp,          channels: all}   # C-coil currents (A)
+  icoil:       {group: i_coil,       channels: all}   # I-coil currents (A)
 # Templates: {id} member id, {id_lower}, {code}, {code_upper}. A member is "installed" for a shot
 # when since <= shot <= until; missing bounds are open (unknown windows are treated as installed so
 # the fetch measures availability instead of the registry assuming it).
