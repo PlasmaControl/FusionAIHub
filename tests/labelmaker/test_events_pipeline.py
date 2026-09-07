@@ -1,0 +1,533 @@
+"""One shot end to end: `events.pipeline.process_shot` and `run events`.
+
+Hermetic, and deliberately so. The corpus file is written into `tmp_path`
+from the `synth_shot` fixture's own arrays - the ten sawtooth crashes, the
+L->H at 0.30 s, the beams and the counter-current torque - so a test asserts
+what was PUT in the file, and the network is a nine-line stand-in that
+paints a rectangle and an ELM comb instead of the vendored U-Net.
+
+Why a stand-in rather than the real network with a random state dict: the
+mask path is already pinned against the real weights by
+`test_events_unet.py`'s golden array and by `test_events_masks.py`, and what
+is under test HERE is the orchestration - which channels are planned, which
+step's failure is a skip and which is an error, what reaches the masks file,
+the events file and the index. A 7.8M-parameter forward pass over seven
+channels' tiles costs seconds of CPU per test and would pin none of that; a
+model whose output is drawn by hand pins all of it, and lets a test say
+"this track is at these columns" rather than "some track appeared".
+
+The stand-in's geometry is chosen so every record here is ONE tile wide
+(320 columns on the wide pass, 86 on the zoom, both under `masks.TILE`), so
+a painted column index is the column index of the stitched mask.
+"""
+from __future__ import annotations
+
+import json
+
+import h5py
+import numpy as np
+import pandas as pd
+import pytest
+
+torch = pytest.importorskip("torch")
+
+from labelmaker import run
+from labelmaker.config import Paths
+from labelmaker.events import heuristics, masks, schema, text_weak, unet
+from labelmaker.events import lexicon as lx
+from labelmaker.events import pipeline as pl
+
+SHOT = 199999
+#: A stand-in sha, so nothing here needs the pinned checkpoint on disk.
+FAKE_SHA = "0" * 64
+
+#: What the stand-in paints. Rows 100-139 of 512 are 4.93-6.83 kHz on this
+#: fixture's 50 kHz record; 200 lit columns of 320 is under
+#: `tracks.PICKUP_ROW_FRACTION`, so the band is a `coherent_mode` and not a
+#: pickup line, and 40 x 200 pixels is well over `tracks.MIN_AREA`.
+TRACK_ROWS = (100, 140)
+TRACK_COLS = (40, 240)
+#: Five columns where every row is transient: the ELM comb. Interior, so
+#: `find_peaks` sees a neighbour on both sides of each.
+ELM_COLS = (60, 100, 140, 180, 220)
+#: sigmoid(8) = 0.99966 and sigmoid(-8) = 3.4e-4, either side of
+#: `ae.labels.PROB_THRESHOLD` by a wide margin.
+LOGIT = 8.0
+
+
+class PaintedNet(torch.nn.Module):
+    """A U-Net-shaped stand-in: `forward` -> a 1-tuple of `(B, 2, H, W)` logits.
+
+    Same contract as the vendored `BigTFUNetModel` (`unet.probabilities`
+    takes `model(x)[0]` and applies the sigmoid), and its output does not
+    depend on the input at all: what a test wants to know is where the
+    orchestration put the mask it was given, not what the network thinks.
+    """
+
+    def forward(self, x):
+        b, _, h, w = x.shape
+        logits = torch.full((b, 2, h, w), -LOGIT, dtype=torch.float32)
+        logits[:, 0, TRACK_ROWS[0]:TRACK_ROWS[1], TRACK_COLS[0]:TRACK_COLS[1]] = (
+            LOGIT
+        )
+        for col in ELM_COLS:
+            if col < w:
+                logits[:, 1, :, col] = LOGIT
+        return (logits,)
+
+
+def _noise(shape, seed):
+    return np.random.default_rng(seed).normal(0.0, 1e-4, shape)
+
+
+def _write_corpus(corpus_dir, shot, s, *, groups=("all",)):
+    """The synthetic shot as a corpus file: `<shot>_processed.h5`.
+
+    Flat groups of `xdata` (seconds) and `ydata` `(C, T)` float32 and no
+    attributes anywhere, which is the corpus' own layout
+    (`features/resolve_corpus.py`). `bes` is written as the corpus'
+    absent-signal sentinel - a `(64, 1)` placeholder - because that is what
+    an absent group looks like on 67% of real shots, and `mirnov` is left
+    out entirely because `mhr` is here to stand in for.
+    """
+    corpus_dir.mkdir(parents=True, exist_ok=True)
+    path = corpus_dir / f"{shot}_processed.h5"
+    ece_t, ece_y = s["ece_t_s"], np.asarray(s["ece_y"], dtype=np.float64)
+    scalar_t = s["pinj_t_s"]
+    n_fast, n_slow = ece_t.size, scalar_t.size
+    ne_fast = np.interp(ece_t, s["ne_t_s"], s["ne_y"])
+
+    mhr = np.sin(2 * np.pi * 5.0e3 * ece_t)[None, :] + _noise((8, n_fast), 1)
+    mhr[:, -1] = np.nan                      # every fast group ends in NaN
+    co2 = np.tile(ne_fast, (4, 1)) + _noise((4, n_fast), 2)
+    co2[:, -1] = np.nan
+
+    fscope = np.full((104, s["dalpha_t_s"].size), np.nan)
+    fscope[:8] = np.asarray(s["dalpha_y"], dtype=np.float64)
+
+    want = set(groups)
+
+    def keep(name):
+        return "all" in want or name in want
+
+    with h5py.File(path, "w") as f:
+        def put(name, x, y):
+            if not keep(name):
+                return
+            g = f.create_group(name)
+            g.create_dataset("xdata", data=np.asarray(x, dtype=np.float32))
+            g.create_dataset("ydata", data=np.asarray(y, dtype=np.float32))
+
+        put("mhr", ece_t, mhr)
+        put("ece", ece_t, ece_y + _noise((48, n_fast), 3))
+        put("co2", ece_t, co2)
+        put("bes", [0.0], np.zeros((64, 1)))
+        put("filterscopes", s["dalpha_t_s"], fscope)
+        # The corpus holds the eight beams in W and the eight torques in
+        # N m; `pipeline` sums them into the canonical kW and N m.
+        put("pinj", scalar_t, np.tile(s["pinj_y"] * 1e3 / 8.0, (8, 1)))
+        put("tinj", scalar_t, np.tile(s["tinj_y"] / 8.0, (8, 1)))
+        put("ech_power", scalar_t, np.zeros((12, n_slow)))
+        gas = np.zeros((11, n_slow))
+        # The puff on channel 0 - namespace's `gas` IS `gas_raw#0` - and a
+        # dead valve idling above the threshold on channel 3, which is what
+        # 198658's channel 3 does for its whole 105 s record.
+        gas[0] = np.where((scalar_t >= 0.1) & (scalar_t <= 0.7), 2.0, 0.0)
+        gas[3] = 0.8
+        put("gas_raw", scalar_t, gas)
+        rmp = np.zeros((12, n_slow))
+        rmp[5] = np.where((scalar_t >= 0.2) & (scalar_t <= 0.5), 800.0, 0.0)
+        put("rmp", scalar_t, rmp)
+    return path
+
+
+@pytest.fixture
+def paths(tmp_path):
+    return Paths(
+        root=tmp_path / "root",
+        corpus=tmp_path / "corpus",
+        text_root=tmp_path / "bundles",
+        logs_jsonl=tmp_path / "logs.jsonl",
+    )
+
+
+@pytest.fixture
+def shot_file(paths, synth_shot):
+    return _write_corpus(paths.corpus, SHOT, synth_shot)
+
+
+@pytest.fixture
+def model():
+    return PaintedNet().eval()
+
+
+def _run(paths, model, **kw):
+    kw.setdefault("passes", ("wide",))
+    kw.setdefault("tile_batch", 4)
+    kw.setdefault("run_id", "test-run")
+    kw.setdefault("unet_sha256", FAKE_SHA)
+    return pl.process_shot(SHOT, paths, model=model, device="cpu", **kw)
+
+
+# --------------------------------------------------------------- the masks
+
+
+def test_every_runnable_channel_becomes_a_block_and_the_rest_a_reason(
+    shot_file, paths, model,
+):
+    res = _run(paths, model)
+    assert res.error == ""
+    assert res.n_blocks == 7
+    assert masks.list_blocks(paths.masks_file(SHOT)) == [
+        "co2_00_wide", "co2_02_wide", "ece_08_wide", "ece_20_wide",
+        "ece_40_wide", "mhr_00_wide", "mhr_04_wide",
+    ]
+    # `bes` is the corpus' (64, 1) placeholder; `mirnov` is `mhr`'s stand-in
+    # and `mhr` is here. Neither is an error.
+    assert res.skipped["channel bes:26"] == "group absent"
+    assert res.skipped["channel mirnov:0"] == "fallback not needed"
+
+
+def test_both_passes_write_their_own_blocks(shot_file, paths, model):
+    res = _run(paths, model, passes=("wide", "zoom"))
+    assert res.n_blocks == 14
+    blocks = masks.list_blocks(paths.masks_file(SHOT))
+    assert "mhr_00_zoom" in blocks and "mhr_00_wide" in blocks
+    meta = masks.read_mask(paths.masks_file(SHOT), "mhr_00_zoom_meta")
+    assert meta["decim"] == masks.ZOOM_DECIM
+
+
+# -------------------------------------------------------------- the events
+
+
+def test_the_track_transient_and_clock_sources_all_reach_the_file(
+    shot_file, paths, model,
+):
+    _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT))
+    assert {"tokeye_track", "tokeye_transient", "elm_clock"} <= set(df["source"])
+    tracks = df[df["source"] == "tokeye_track"]
+    assert len(tracks) == 7                       # one painted band per block
+    assert set(tracks["phenomenon"]) == {"coherent_mode"}
+    # The band is rows 100-139 of a 0.048828 kHz/bin axis.
+    assert tracks["f0_khz"].min() == pytest.approx(101 * 0.048828125, rel=1e-3)
+
+
+def test_the_tracks_are_measured_on_the_probabilities_not_the_packed_mask(
+    shot_file, paths, model,
+):
+    # Task L4's note: a stored mask is boolean, so `tracks_for_block` reads
+    # `conf`/`mean_prob` of 1.0 (or NaN) off it. The pipeline must describe
+    # the track while the probabilities are still in memory - here 0.99966,
+    # which is neither.
+    _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT), source="tokeye_track")
+    attrs = json.loads(df.iloc[0]["attrs"])
+    assert attrs["mean_prob"] == pytest.approx(0.99966, abs=1e-4)
+    assert 0.0 < float(df.iloc[0]["confidence"]) < 1.0
+
+
+def test_the_elm_clock_runs_on_one_reference_channel(shot_file, paths, model):
+    # Every magnetics block carries the same comb, and writing an ELM per
+    # channel puts every crash in the table N times - which is what
+    # `windows.EventTable`'s de-duplication exists to survive, not what it
+    # should be fed. One reference channel, named in the result.
+    res = _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT), source="tokeye_transient")
+    assert set(zip(df["diag"], df["channel"], df["pass_name"], strict=True)) == {
+        ("mhr", 0, "wide")
+    }
+    assert res.elm_reference == "mhr_00_wide"
+    assert res.n_elms == len(ELM_COLS)
+
+
+def test_the_cooccurring_tracks_name_each_other(shot_file, paths, model):
+    _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT), source="tokeye_track")
+    row = df[df["diag"] == "mhr"].iloc[0]
+    assert json.loads(row["attrs"])["cooccurrent_with"] == ["mhr:4:wide#0"]
+
+
+def test_the_heuristics_add_their_own_sources(shot_file, paths, model):
+    res = _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT))
+    assert {"ece_sawtooth", "dalpha_lh", "actuator"} <= set(df["source"])
+    assert res.n_sawteeth == 10                   # the fixture's ten crashes
+    assert set(df[df["source"] == "dalpha_lh"]["phenomenon"]) == {
+        "lh_transition", "hl_transition"
+    }
+    on = set(df[df["source"] == "actuator"]["phenomenon"])
+    assert {"nbi_on", "rmp_on", "gas_on"} <= on
+
+
+def test_the_gas_valve_is_channel_0_and_not_the_group_maximum(shot_file,
+                                                              paths, model):
+    # `features/namespace.py`'s `gas` IS `gas_raw#0` (PTDATA `gasa`), and
+    # taking the loudest of the eleven valves instead is defeated by one
+    # idling channel: on shot 198658 channel 3 sits at 0.675-0.876 V for the
+    # whole 105 s record, so `gas_on` came back as one interval covering it.
+    # The fixture reproduces that - channel 3 flat at 0.8 V - and the puff
+    # on channel 0 is what must be reported.
+    _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT), source="actuator")
+    gas = df[df["phenomenon"] == "gas_on"]
+    assert len(gas) == 1
+    assert float(gas.iloc[0]["t0_s"]) == pytest.approx(0.1, abs=0.01)
+    assert float(gas.iloc[0]["t1_s"]) == pytest.approx(0.7, abs=0.01)
+
+
+def test_nbi_counter_is_a_recorded_skip_because_ip_is_not_in_the_corpus(
+    shot_file, paths, model,
+):
+    res = _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT), source="actuator")
+    assert "nbi_counter" not in set(df["phenomenon"])
+    assert "ip" in res.skipped["nbi_counter"]
+
+
+def test_the_index_gets_one_row_per_source_and_phenomenon(shot_file, paths,
+                                                          model):
+    _run(paths, model)
+    index = pd.read_parquet(paths.events_index)
+    df = schema.read_events(paths.events_file(SHOT))
+    assert len(index) == df.groupby(["source", "phenomenon"]).ngroups
+    assert set(index["shot"]) == {SHOT}
+    assert index["n_events"].sum() == len(df)
+
+
+# ------------------------------------------------------- failure isolation
+
+
+def test_a_missing_group_is_a_skip_and_not_an_error(paths, synth_shot, model):
+    # No `ece` at all: no mask blocks for it, no sawtooth, and everything
+    # else still runs.
+    _write_corpus(paths.corpus, SHOT, synth_shot,
+                  groups=("mhr", "co2", "filterscopes", "pinj", "tinj"))
+    res = _run(paths, model)
+    assert res.error == ""
+    assert res.n_blocks == 4
+    assert res.n_sawteeth == 0
+    assert "sawtooth" in res.skipped
+    assert res.n_tracks == 4
+
+
+def test_a_failing_step_is_recorded_and_the_shot_carries_on(
+    shot_file, paths, model, monkeypatch,
+):
+    def boom(*a, **kw):
+        raise RuntimeError("the envelope exploded")
+
+    monkeypatch.setattr(heuristics, "sawtooth_events", boom)
+    res = _run(paths, model)
+    assert res.error == ""
+    assert "RuntimeError" in res.skipped["sawtooth"]
+    assert res.n_blocks == 7
+    df = schema.read_events(paths.events_file(SHOT))
+    assert "ece_sawtooth" not in set(df["source"])
+    assert "tokeye_track" in set(df["source"])
+
+
+def test_an_unreadable_corpus_file_is_an_error_and_writes_nothing(paths,
+                                                                  model):
+    paths.corpus.mkdir(parents=True, exist_ok=True)
+    paths.corpus_file(SHOT).write_bytes(b"not an hdf5 file at all")
+    res = _run(paths, model)
+    assert res.error
+    assert res.n_blocks == 0
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+
+
+def test_write_false_computes_everything_and_stores_nothing(shot_file, paths,
+                                                            model):
+    res = _run(paths, model, write=False)
+    assert res.n_blocks == 7 and res.n_tracks == 7 and res.n_sawteeth == 10
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+    assert not paths.events_index.exists()
+
+
+# ------------------------------------------------------------- the text end
+
+
+def _write_text(paths, shot, prose):
+    paths.text_cache.mkdir(parents=True, exist_ok=True)
+    paths.logs_subset.write_text(
+        json.dumps({"shot": shot, "log_text":
+                    f"### [PHYSICS_OPERATOR] smithj 2024-05-17 13:12:07\n{prose}\n"})
+        + "\n",
+        encoding="utf-8",
+    )
+    paths.text_root.mkdir(parents=True, exist_ok=True)
+    paths.text_file(shot).write_text(
+        "## Shot-specific context (from summary.html)\n"
+        f"SHOT: {shot}\n\nSHOT TABLE ROW (name -> value)\n"
+        "- SHOT_TYPE: plasma\n- PULSE-LENGTH: 0.80\n",
+        encoding="utf-8",
+    )
+
+
+def test_the_shot_scope_text_becomes_events_when_the_subset_has_a_record(
+    shot_file, paths, model,
+):
+    _write_text(paths, SHOT, "fishbones through the current ramp")
+    res = _run(paths, model, lexicon=lx.load_lexicon())
+    df = schema.read_events(paths.events_file(SHOT), source="text")
+    assert list(df["phenomenon"]) == ["fishbone"]
+    assert res.n_text == 1
+    assert set(df["evidence_kind"]) == {"text"}
+
+
+def test_a_shot_with_no_logbook_record_is_not_an_error(shot_file, paths,
+                                                       model):
+    # And the 616 MB source is never opened for it: the subset says no.
+    res = _run(paths, model, lexicon=lx.load_lexicon())
+    assert res.error == ""
+    assert res.n_text == 0
+    assert "no logbook record" in res.skipped["text"]
+
+
+# ---------------------------------------------------------- the norm switch
+
+
+def test_plasma_norm_restandardises_inside_the_coverage_intersection(
+    shot_file, paths, model,
+):
+    _run(paths, model, norm="plasma")
+    meta = masks.read_mask(paths.masks_file(SHOT), "mhr_00_wide_meta")
+    assert meta["norm"] == "plasma"
+    # The statistics are the ones a z-score over exactly those columns
+    # gives, and the window really is a subset: column 0 sits three hops
+    # BEFORE the first sample (`masks.COL_ORIGIN`), outside every group's
+    # coverage, so the padded head is not in it.
+    y, fs_hz, t0_s, _ = masks.read_waveform(paths.corpus_file(SHOT), "mhr", 0)
+    spectrogram, own = masks.prep(y, fs_hz=fs_hz)
+    raw = masks.unstandardise(spectrogram, own)
+    t_s = masks.col_times_s(own["n_cols"], fs_hz, 1, t0_s)
+    inside = (t_s >= meta["norm_t0_s"]) & (t_s <= meta["norm_t1_s"])
+    assert 0 < inside.sum() < own["n_cols"]
+    assert meta["spec_mean"] == pytest.approx(float(raw[:, inside].mean()),
+                                              rel=1e-6)
+    assert meta["spec_mean"] != pytest.approx(own["spec_mean"], rel=1e-9)
+
+
+def test_record_norm_is_the_default_and_is_the_ae_paths_own(shot_file, paths,
+                                                            model):
+    _run(paths, model)
+    meta = masks.read_mask(paths.masks_file(SHOT), "mhr_00_wide_meta")
+    assert meta["norm"] == "record"
+    y, fs_hz, _, _ = masks.read_waveform(paths.corpus_file(SHOT), "mhr", 0)
+    _, own = masks.prep(y, fs_hz=fs_hz)
+    assert meta["spec_mean"] == pytest.approx(own["spec_mean"])
+    assert meta["spec_std"] == pytest.approx(own["spec_std"])
+
+
+# ------------------------------------------------------------ the run stage
+
+
+@pytest.fixture
+def staged(paths, monkeypatch, model):
+    """`run events` with the network and the logbook stubbed out."""
+    monkeypatch.setattr(unet, "load_unet",
+                        lambda path=None, device="cpu", **kw: model)
+    return paths
+
+
+def _only_run(paths):
+    """The one `runs/events/<run_id>.json` this run wrote."""
+    written = list((paths.runs / "events").glob("*.json"))
+    assert len(written) == 1, written
+    return written[0]
+
+
+def _argv(paths, *extra):
+    return [
+        "events", "--shots", str(SHOT), "--root", str(paths.root),
+        "--corpus-dir", str(paths.corpus), *extra,
+    ]
+
+
+def test_the_events_stage_writes_the_masks_and_the_events(shot_file, staged,
+                                                          paths):
+    assert run.main(_argv(paths, "--passes", "wide")) == 0
+    assert paths.masks_file(SHOT).exists()
+    assert schema.read_events(paths.events_file(SHOT))["source"].nunique() >= 4
+
+
+def test_the_events_stage_calls_process_shot_per_shot_and_honours_limit(
+    staged, paths, monkeypatch,
+):
+    seen: list[int] = []
+
+    def fake(shot, paths_, **kw):
+        seen.append(shot)
+        return pl.ShotResult(shot=shot, n_blocks=2, n_tracks=1)
+
+    monkeypatch.setattr(pl, "process_shot", fake)
+    assert run.main(_argv(paths, "--shots", "11", "22", "33",
+                          "--limit", "2")) == 0
+    assert seen == [11, 22]
+
+
+def test_the_events_stage_writes_a_json_summary(staged, paths, monkeypatch):
+    monkeypatch.setattr(pl, "process_shot",
+                        lambda shot, p, **kw: pl.ShotResult(shot=shot,
+                                                            n_blocks=3))
+    assert run.main(_argv(paths)) == 0
+    payload = json.loads(_only_run(paths).read_text())
+    assert payload["settings"]["device"] == "cpu"
+    assert payload["git_sha"]
+    assert [r["shot"] for r in payload["shots"]] == [SHOT]
+    assert payload["shots"][0]["n_blocks"] == 3
+
+
+def test_the_log_subset_is_built_once_for_the_whole_run(staged, paths,
+                                                        monkeypatch):
+    calls: list[tuple] = []
+
+    def fake_build(shots, *, paths=None, refresh_missing=False):
+        calls.append((sorted(shots), refresh_missing))
+        return 7
+
+    monkeypatch.setattr(text_weak, "build_logs_subset", fake_build)
+    monkeypatch.setattr(pl, "process_shot",
+                        lambda shot, p, **kw: pl.ShotResult(shot=shot))
+    assert run.main(_argv(paths, "--shots", "11", "22", "33")) == 0
+    assert calls == [([11, 22, 33], False)]
+    payload = json.loads(_only_run(paths).read_text())
+    assert payload["n_log_records_added"] == 7
+    assert payload["logs_subset"] == str(paths.logs_subset)
+
+
+def test_refresh_text_is_how_a_recorded_miss_is_re_asked(staged, paths,
+                                                         monkeypatch):
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        text_weak, "build_logs_subset",
+        lambda shots, *, paths=None, refresh_missing=False: (
+            calls.append(refresh_missing) or 0
+        ),
+    )
+    monkeypatch.setattr(pl, "process_shot",
+                        lambda shot, p, **kw: pl.ShotResult(shot=shot))
+    assert run.main(_argv(paths, "--refresh-text")) == 0
+    assert calls == [True]
+
+
+def test_a_shot_that_runs_over_its_budget_is_recorded_and_the_run_goes_on(
+    staged, paths, monkeypatch, capsys,
+):
+    def slow(shot, p, **kw):
+        if shot == 11:
+            while True:
+                pass
+        return pl.ShotResult(shot=shot, n_blocks=1)
+
+    monkeypatch.setattr(pl, "process_shot", slow)
+    assert run.main(_argv(paths, "--shots", "11", "22", "--timeout", "1")) == 0
+    out = capsys.readouterr().out
+    assert "1 error" in out and "1 ok" in out
+    payload = json.loads(_only_run(paths).read_text())
+    rows = {r["shot"]: r for r in payload["shots"]}
+    assert rows[11]["status"] == "error"
+    assert rows[22]["status"] == "ok"
