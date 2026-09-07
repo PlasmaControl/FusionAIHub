@@ -17,8 +17,9 @@ So the contract is split in two, deliberately:
   registry entry naming a group, a column, a scale, a null sentinel. That vocabulary is the
   legacy layout's, and mapping it onto the corpus's unnamed channels is a design decision with
   real content (which corpus group is the beam power, and what a "total" means over its channels)
-  that belongs to the corpus build, not here. `CorpusReader` therefore implements `Reader` now
-  and grows into `SignalReader` when the corpus build does.
+  that belongs to the corpus build, not here. `corpus.CorpusReader` therefore implements `Reader`
+  only, and `corpus_signals.CorpusSignalReader` -- which is the one that reads `actuators.yaml`'s
+  `corpus:` block and labelmaker's feature store -- implements `SignalReader` on top of it.
 
 Both protocols are `runtime_checkable`, which for a Protocol means `isinstance` checks method
 NAMES only -- not signatures. That is enough for what it is used for here: an assertion in the
@@ -69,9 +70,17 @@ class Signal:
     t_ms: np.ndarray
     y: np.ndarray
     units: str | None
-    source: Literal["staged", "fetched"]  # who PRODUCED the file (is_ours), not where it was found
+    # Which layer produced the samples. "staged"/"fetched" are the two d3d_fusion_data locations
+    # (who WROTE the file, per `legacy_raw.is_ours`, not where it was found); "corpus" is a FAITH
+    # <shot>_processed.h5 group and "labelmaker" a canonical feature of <shot>_features.h5.
+    source: Literal["staged", "fetched", "corpus", "labelmaker"]
     group: str
     col: str
+    # Finer provenance, when the layer has more than one source of its own: labelmaker resolves a
+    # feature per shot from the archive, the corpus or fdp and records which, and those three do
+    # not agree to better than a few percent (see labelmaker.features.namespace). None on the
+    # legacy layout, where `source` is already the whole answer.
+    resolver: str | None = None
 
 
 @runtime_checkable

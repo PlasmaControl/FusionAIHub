@@ -102,7 +102,18 @@ class ShotRecord(BaseModel):
     campaign: str
     segments: list[Segment]
     derived_provenance: dict[str, Provenance] = Field(default_factory=dict)
-    raw_sources: dict[str, Literal["staged", "fetched"]] = Field(default_factory=dict)
+    raw_sources: dict[str, Literal["staged", "fetched", "corpus", "labelmaker"]] = Field(
+        default_factory=dict
+    )
+    # Which raw layer answered, per signal, when that layer has more than one source of its own
+    # ("labelmaker:archive", "labelmaker:fdp", "corpus"). Empty on a legacy build, where
+    # `raw_sources` is already the whole answer.
+    feature_resolvers: dict[str, str] = Field(default_factory=dict)
+    # The raw groups the reader saw for this shot -- a coverage fact about the shot, not about a
+    # signal, and the one `has_<group>`/`groups_filled` in shots.parquet are derived from.
+    raw_groups: list[str] = Field(default_factory=list)
+    reader: str = "legacy"  # which reader built this record
+    has_frame_codes: bool = False  # <data_root>/frame_codes/<shot>.pt exists
     human: HumanTier = Field(default_factory=HumanTier)
     labels: Labels = Field(default_factory=Labels)
     outcome: Outcome = Field(default_factory=Outcome)

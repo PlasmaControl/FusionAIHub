@@ -13,15 +13,43 @@ campaigns:
 # it lives in config, where a correction is an edit rather than a release. `channels: all` uses
 # every channel of the group (an actuator total is the sum over its channels); a list of indices
 # selects, e.g. the first eight filterscope channels.
+#
+# `reduce` is what a TOTAL over the group's channels means -- eight beams add up, eight
+# accelerating voltages average. `system` names the `systems:` entry below whose per-member specs
+# this group carries, and `members` lists those member ids IN THE CORPUS'S CHANNEL ORDER (null for
+# a channel no member names), which is what a per-member read indexes with. The orders genuinely
+# differ: the corpus lists its twelve gyrotrons alphabetically and `systems.ech` lists them by
+# installation date, so a positional assumption would have read LEIA's power off BORIS's channel.
+#
+# The channel identities are the corpus producer's own, not inferred: they are the `input_key`
+# lists of src/tokamak_foundation_model/data/config/modalities/modalities.yaml, the config that
+# wrote these files (e.g. pinj = [\D3D::TOP.NB.NB15L:PINJ_15L ... NB33R:PINJ_33R], ech_power =
+# [ECBOR..., ECCHE..., ECDOR..., ECHANDL..., ECKAT..., ECLEI..., ECLIO..., ECLUK..., ECNAS...,
+# ECNAT..., ECR2D..., ECSCA...], i_coil = [C19F, C79F, C139F, C199F, C259F, C319F, IU30F ...
+# IL330F]). The trailing F of the coil pointnames is the corpus's choice of the 20 kHz version and
+# is not part of the registry member id.
 corpus:
-  nbi:         {group: pinj,         channels: all}   # injected beam power per source (W)
-  nbi_voltage: {group: beam_voltage, channels: all}   # accelerating voltage per source (V)
-  nbi_torque:  {group: tinj,         channels: all}   # injected torque per source (N m)
-  ech:         {group: ech_power,    channels: all}   # injected gyrotron power (W)
-  gas:         {group: gas_flow,     channels: all}   # calibrated valve flow
-  gas_raw:     {group: gas_raw,      channels: all}   # raw valve command voltage
-  rmp:         {group: rmp,          channels: all}   # C-coil currents (A)
-  icoil:       {group: i_coil,       channels: all}   # I-coil currents (A)
+  nbi:         {group: pinj,         channels: all, reduce: sum,  system: nbi,
+                members: [15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R]}                # per source (W)
+  nbi_voltage: {group: beam_voltage, channels: all, reduce: mean}                  # per source (V)
+  nbi_torque:  {group: tinj,         channels: all, reduce: sum}                   # per source (N m)
+  ech:         {group: ech_power,    channels: all, reduce: sum,  system: ech,
+                members: [BORIS, CHEWBACCA, DOROTHY, HAN, KATYA, LEIA, LION, LUKE, NASA, NATASHA,
+                          R2D2, SCARECROW]}                                        # per gyrotron (W)
+  gas:         {group: gas_flow,     channels: all, reduce: sum}                   # calibrated flow
+  # `systems.gas` is the RAW valve command in volts (its own units field says so, and the staged
+  # `gas` columns it was built from are that node), so the registry's per-valve specs read the
+  # corpus's `gas_raw` group and NOT its calibrated `gas_flow` -- the two differ by ~14x.
+  gas_raw:     {group: gas_raw,      channels: all, reduce: sum,  system: gas,
+                members: [GASA, GASB, GASC, GASD, GASE, LOB1, LOB2, PFX1, PFX2, PFX3, UOB]}
+  # `rmp` is the twelve I-coils only; `i_coil` is all eighteen (six C-coils then the same twelve),
+  # which is the set `systems.coil_rmp` enumerates, so the per-coil specs read `i_coil`. The RMP
+  # total is a sum of MAGNITUDES (the coils are driven in antiphase; a signed sum of an n = 3
+  # pattern is ~0 by construction), which `rmp_total`'s `abs: true` in signals.yaml expresses.
+  rmp:         {group: rmp,          channels: all, reduce: sum}                   # I-coils (A)
+  icoil:       {group: i_coil,       channels: all, reduce: sum,  system: coil_rmp,
+                members: [C19, C79, C139, C199, C259, C319, IU30, IU90, IU150, IU210, IU270, IU330,
+                          IL30, IL90, IL150, IL210, IL270, IL330]}                 # all coils (A)
 # Templates: {id} member id, {id_lower}, {code}, {code_upper}. A member is "installed" for a shot
 # when since <= shot <= until; missing bounds are open (unknown windows are treated as installed so
 # the fetch measures availability instead of the registry assuming it).

@@ -90,7 +90,13 @@ def test_build_record_from_the_staged_store(real_paths):
     # is `pending` (a fetch to-do), never `unavailable`.
     assert rec.coverage["pnbi_15L"] == "present"
     assert rec.coverage["q95"] == "pending"
-    assert set(rec.coverage.values()) == {"present", "pending"}
+    # The five corpus/labelmaker-only signals (nbi_torque_total, nbi_voltage_mean,
+    # gas_flow_total, rmp_total, pcbcoil) have no d3d_fusion_data address at all, so on this
+    # reader they are `unavailable` -- not `pending`, which would promise a fetch could get them.
+    assert set(rec.coverage.values()) == {"present", "pending", "unavailable"}
+    assert {n for n, v in rec.coverage.items() if v == "unavailable"} == {
+        "nbi_torque_total", "nbi_voltage_mean", "gas_flow_total", "rmp_total", "pcbcoil",
+    }  # fmt: skip
     assert set(rec.raw_sources.values()) == {"staged"}  # nothing fetched into this tmp raw_dir
 
     assert rec.human.run_id == "20150113A" and rec.human.mpid == "2014-21-19"
@@ -146,7 +152,7 @@ def test_cli_coverage_table_over_the_real_build(real_db, capsys):
     capsys.readouterr()
     assert cli.main(["coverage"]) == 0
     out = capsys.readouterr().out
-    assert "80 fields over 2 shots" in out
+    assert "85 fields over 2 shots" in out
     assert "[nbi]" in out and "[ech]" in out and "[gas]" in out and "[coil_rmp]" in out
     assert "q95" in out
 
