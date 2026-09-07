@@ -38,6 +38,22 @@ Re-run it when the port's crash search changes. The acceptance it exists to
 justify is in `heuristics`'s module docstring: 47 +/- 3 crashes with a
 69 +/- 5 ms median period on 198658, which are the REFERENCE's own numbers
 on that shot rather than the plan's remembered "45 sawteeth, 76 ms".
+
+The reference side costs about eight minutes, so a change to the port that
+plainly cannot move the reference does not need it re-run - but it does need
+the PORT re-run, or the record's numbers are a measurement of code that no
+longer exists. `--port-only` is that: it re-runs step 2 alone on the shot and
+the record the file already names, and amends it with a `port_rerun` stanza -
+the crash count, the median period, the elapsed time, the largest distance
+from the crashes the record already holds, and the sha it was measured at.
+`tests/labelmaker/test_events_heuristics.py` then checks that count against
+the reference's, so a port that drifts away from omnimode fails the suite
+rather than waiting for somebody to spend the eight minutes.
+
+    PYTHONPATH=$PWD/src \\
+        pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
+        -e labelmaker python scripts/labelmaker/sawtooth_reference_check.py \\
+        --port-only
 """
 from __future__ import annotations
 
@@ -139,6 +155,47 @@ def git_sha(repo: Path) -> str:
     return out.stdout.strip()
 
 
+def port_rerun(record_path: Path, corpus: Path) -> int:
+    """Re-run the port on the record's own shot and amend the record.
+
+    The shot, the corpus file and the `--max-seconds` prefix come from the
+    record rather than from the command line, so the re-run is the same
+    measurement as the one it is amending and not a second, differently
+    scoped one. `labelmaker_sha` is HEAD at RUN time, which is the PARENT of
+    the commit that carries the amended record - the same convention as the
+    full run's.
+    """
+    record = json.loads(record_path.read_text())
+    corpus_file = corpus / Path(record["corpus_file"]).name
+    shot = int(record["shot"])
+    t_s, y = read_ece(corpus_file, record["max_seconds"])
+    span = (float(t_s[0]), float(t_s[-1]))
+    start = time.perf_counter()
+    events = heuristics.sawtooth_events(y, t_s, shot=shot, t_cov=span)
+    elapsed = time.perf_counter() - start
+    ours_ms = np.array([e.t0_s for e in events], dtype=np.float64) * 1e3
+    stats = periods_ms(ours_ms * 1e-3)
+    was_ms = np.array([r["port_ms"] for r in record["crashes"]],
+                      dtype=np.float64)
+    rows = pair(was_ms, ours_ms)
+    deltas = np.array([r["delta_ms"] for r in rows], dtype=np.float64)
+    record["port_rerun"] = {
+        "labelmaker_sha": git_sha(REPO),
+        "n": stats["n"],
+        "median_ms": stats["median_period_ms"],
+        "elapsed_s": elapsed,
+        "max_abs_dt_ms": float(np.abs(deltas).max()) if deltas.size else float("nan"),
+    }
+    record_path.write_text(json.dumps(record, indent=2) + "\n")
+    print(f"shot          {shot}  {corpus_file}")
+    print(f"port re-run   {stats['n']:4d} crashes in {elapsed:8.3f} s   "
+          f"median {stats['median_period_ms']:.1f} ms")
+    print(f"recorded      {record['reference']['n']:4d} reference crashes   "
+          f"max |dt| {record['port_rerun']['max_abs_dt_ms']:.3e} ms")
+    print(f"amended       {record_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--shot", type=int, default=198658)
@@ -156,7 +213,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--json", nargs="?", type=Path, const=OUT, default=None,
                         help=f"write the record (default {OUT})")
+    parser.add_argument(
+        "--port-only", action="store_true",
+        help="re-run only the port, on the shot the committed record names, "
+             "and amend that record with a `port_rerun` stanza; omnimode is "
+             "not imported and not run",
+    )
     args = parser.parse_args(argv)
+
+    if args.port_only:
+        return port_rerun(args.json or OUT, args.corpus)
 
     corpus_file = args.corpus / f"{args.shot}_processed.h5"
     t_s, y = read_ece(corpus_file, args.max_seconds)
