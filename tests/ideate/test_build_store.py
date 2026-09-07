@@ -13,6 +13,7 @@ Ported from shot-recommender-system (shotrec) @565d548.
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
 
@@ -21,7 +22,9 @@ import pandas as pd
 import pytest
 
 from ideate.schema import Range
-from ideate.shotdb import build, store, text
+from ideate.shotdb import build, corpus_signals, store, text
+
+from .conftest import CORPUS_BARE_SHOT
 
 
 @pytest.fixture
@@ -165,7 +168,7 @@ def test_idle_actuator_is_zero_not_missing(paths, staged_shot_a, text_fixtures, 
 
 def test_encoder_absent_is_the_default_path(paths, staged_shot_a, text_fixtures, stub_embeddings):
     """`encode=True` (the default) with no shotdb.ignite module: scalar-only build, said out loud."""
-    assert build.build.__defaults__[-1] is True  # encode defaults to True
+    assert inspect.signature(build.build).parameters["encode"].default is True
     report = build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1)
     assert report.encoded is False
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
@@ -202,10 +205,10 @@ def test_build_records_a_failed_shot_without_losing_the_others(
 ):
     real = build.build_record
 
-    def boom(shot, paths_, cfg):
+    def boom(shot, paths_, cfg, reader=None):
         if shot == staged_shot_b:
             raise ValueError("synthetic explosion")
-        return real(shot, paths_, cfg)
+        return real(shot, paths_, cfg, reader)
 
     monkeypatch.setattr(build, "build_record", boom)
     report = build.build(
@@ -317,3 +320,117 @@ def test_a_rebuild_has_nothing_to_reuse_without_a_previous_encoded_database(path
     paths.db_dir.mkdir(parents=True, exist_ok=True)
     (paths.db_dir / "manifest.json").write_text(json.dumps({"ignite": {"status": "not_installed"}}))
     assert build._reuse_encodings(tmp_path, [], pd.DataFrame(), paths, 1) is None
+
+
+# ------------------------------------------------------------------ building from the corpus
+
+
+def test_build_record_from_the_corpus_reader(
+    paths, signal_corpus, labelmaker_features, stub_embeddings
+):
+    """The whole record, built through `CorpusSignalReader`: segments off a labelmaker `ip`,
+    actuator totals off the corpus's channel arrays, and the provenance of both written down."""
+    rec, _ = build.build_record(
+        signal_corpus,
+        paths,
+        build.load_build_cfg(),
+        reader=corpus_signals.CorpusSignalReader(paths),
+    )
+    flat = rec.segment("flat_top")
+    assert flat is not None and flat.raw["pnbi_total_peak"] == pytest.approx(3.6e6)
+    assert rec.reader == "corpus"
+    assert rec.feature_resolvers["ip"] == "labelmaker:fdp"
+    assert rec.feature_resolvers["bt"] == "labelmaker:archive"
+    assert rec.feature_resolvers["pnbi_15L"] == "corpus"
+    assert rec.raw_sources["dalpha"] == "corpus" and rec.raw_sources["bt"] == "labelmaker"
+    assert "pinj" in rec.raw_groups and "co2" in rec.raw_groups
+    assert rec.has_frame_codes is False
+
+
+def test_an_efit_scalar_from_the_archive_is_flagged_assumed(
+    paths, signal_corpus, labelmaker_features, stub_embeddings
+):
+    """A labelmaker feature resolved from the archive store carries no EFIT run id either -- the
+    same claim the staged files' `assumed_for_staged` makes, and the same answer."""
+    rec, _ = build.build_record(
+        signal_corpus,
+        paths,
+        build.load_build_cfg(),
+        reader=corpus_signals.CorpusSignalReader(paths),
+    )
+    assert rec.derived_provenance["betan"].assumed is True
+
+
+def test_build_many_constructs_the_corpus_reader_inside_each_worker(
+    paths, signal_corpus, labelmaker_features, stub_embeddings
+):
+    """The reader is not pickled and shipped -- an open HDF5 handle must never be forked -- so
+    what crosses the process boundary is `reader_kind` plus `paths`."""
+    report = build.BuildReport(shots=[])
+    records, _ = build._build_many(
+        [signal_corpus, CORPUS_BARE_SHOT],
+        paths,
+        build.load_build_cfg(),
+        workers=2,
+        report=report,
+        reader_kind="corpus",
+    )
+    assert sorted(report.shots) == sorted([signal_corpus, CORPUS_BARE_SHOT])
+    assert {r.reader for r in records} == {"corpus"}
+    bare = next(r for r in records if r.shot == CORPUS_BARE_SHOT)
+    assert bare.coverage["ip"] == "pending"  # no feature file: fdp can still fetch it
+    assert bare.coverage["dalpha"] == "unavailable"  # the corpus did not record it
+
+
+def test_shots_parquet_carries_the_corpus_coverage_columns(
+    paths, signal_corpus, labelmaker_features, text_fixtures, stub_embeddings
+):
+    report = build.build(
+        [signal_corpus],
+        paths,
+        build.load_build_cfg(),
+        workers=1,
+        encode=False,
+        reader_kind="corpus",
+        list_name="unit_test_list",
+    )
+    assert report.shots == [signal_corpus]
+    row = pd.read_parquet(paths.db_dir / "shots.parquet").iloc[0]
+    assert row["reader"] == "corpus"
+    assert row["has_filterscopes"] and row["has_co2"] and not row["has_ece"]
+    assert row["groups_filled"] == 11  # every group `signal_corpus` wrote, counted once
+    assert json.loads(row["feature_resolvers"])["bt"] == "labelmaker:archive"
+    assert row["has_frame_codes"] is False or row["has_frame_codes"] == 0
+    manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+    assert manifest["reader"] == "corpus" and manifest["list"] == "unit_test_list"
+    assert manifest["git_sha"] and manifest["config_sha"]
+
+
+def test_has_frame_codes_is_the_file_on_disk(
+    paths, signal_corpus, labelmaker_features, stub_embeddings
+):
+    (paths.data_root / "frame_codes").mkdir(parents=True, exist_ok=True)
+    (paths.data_root / "frame_codes" / f"{signal_corpus}.pt").write_bytes(b"")
+    rec, _ = build.build_record(
+        signal_corpus,
+        paths,
+        build.load_build_cfg(),
+        reader=corpus_signals.CorpusSignalReader(paths),
+    )
+    assert rec.has_frame_codes is True
+
+
+def test_no_encode_skips_the_ignite_channel_and_nothing_else(
+    paths, staged_shot_a, text_fixtures, stub_embeddings
+):
+    """`--no-encode` is about the IGNITE channel only: the scalar and text embeddings are part of
+    the database itself and are still written, and the manifest says exactly that rather than a
+    bare "encode=False" a reader has to interpret."""
+    build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+    manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+    assert manifest["ignite"]["status"] == "disabled"
+    assert "--no-encode" in manifest["ignite"]["reason"]
+    assert "scalar and text embeddings" in manifest["ignite"]["reason"]
+    for name in ("emb_scalar", "emb_text_mp", "emb_text_log"):
+        assert (paths.db_dir / f"{name}.npy").exists(), name
+    assert not list(paths.db_dir.glob("emb_ignite_*.npy"))

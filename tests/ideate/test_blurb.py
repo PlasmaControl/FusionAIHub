@@ -108,7 +108,7 @@ def test_shots_parquet_has_blurb_columns_after_build(
 ):
     build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
     df = pd.read_parquet(paths.db_dir / "shots.parquet")
-    assert list(df.columns[-2:]) == ["blurb", "blurb_source"]
+    assert {"blurb", "blurb_source"} <= set(df.columns)
     assert df["blurb_source"].iloc[0] == "template" and df["blurb"].iloc[0]
 
 

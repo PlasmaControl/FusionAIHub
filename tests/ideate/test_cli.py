@@ -72,6 +72,27 @@ def test_build_all_overrides_the_skip(paths, text_fixtures, stub_embeddings, cap
     assert "built 1 shots / 0 segments" in capsys.readouterr().out
 
 
+def test_build_reader_corpus_reads_the_corpus_and_says_so(
+    paths, signal_corpus, labelmaker_features, text_fixtures, stub_embeddings, capsys
+):
+    """`--reader corpus` has to reach the Ip-on-disk filter too: that check is what decides
+    whether a shot is built at all, and asking the legacy layout about a corpus shot would skip
+    every one of the 500."""
+    assert (
+        cli.main(["build", "--shots", str(signal_corpus), "--workers", "1", "--reader", "corpus",
+                  "--no-encode"]) == 0
+    )  # fmt: skip
+    out = capsys.readouterr().out
+    assert "built 1 shots" in out and "no Ip signal on disk" not in out
+    manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+    assert manifest["reader"] == "corpus"
+
+
+def test_build_defaults_to_the_legacy_reader(tmp_path):
+    args = cli.build_parser().parse_args(["build"])
+    assert args.reader == "legacy"
+
+
 # -------------------------------------------------------------------------------------- show
 
 

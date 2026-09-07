@@ -52,7 +52,7 @@ def test_an_actuator_member_reads_its_own_named_channel(paths, signal_corpus):
     assert first is not None and last is not None
     assert np.allclose(first.y, 1.0e5) and np.allclose(last.y, 8.0e5)
     # seconds on disk (float32, as the real files are), milliseconds here
-    assert first.t_ms[0] == 0.0 and abs(first.t_ms[-1] - 4.0) < 1e-3
+    assert first.t_ms[0] == 0.0 and abs(first.t_ms[-1] - 6000.0) < 1e-2
 
 
 def test_a_member_is_found_by_name_even_when_the_channel_order_differs(paths, signal_corpus):

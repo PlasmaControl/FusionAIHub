@@ -554,7 +554,13 @@ CORPUS_SIGNAL_SHOT = 100010  # every address kind, resolvable
 CORPUS_BARE_SHOT = 100011  # a corpus file with none of the addressed groups
 
 
-def _flat(y: float, n: int = 5) -> np.ndarray:
+#: Samples per corpus fixture group, on a 0-6 s axis at 500 ms. Real actuator groups run at
+#: 100 kHz for six seconds; what matters here is only that the axis SPANS the discharge, so that
+#: a segment cut from a labelmaker `ip` (0-6 s) actually contains samples of it.
+CORPUS_N = 13
+
+
+def _flat(y: float, n: int = CORPUS_N) -> np.ndarray:
     return np.full(n, y, dtype=np.float64)
 
 
@@ -580,36 +586,36 @@ def signal_corpus(paths) -> int:
     d = Path(paths.foundation_model_processed_dir)
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"{CORPUS_SIGNAL_SHOT}_processed.h5"
-    x = np.arange(5) * 1.0e-3  # seconds -> 0..4 ms
+    x = np.arange(CORPUS_N) * 0.5  # seconds -> 0..6000 ms
     write_corpus_group(p, "pinj", x, np.stack([_flat((i + 1) * 1.0e5) for i in range(8)]))
     write_corpus_group(p, "beam_voltage", x, np.stack([_flat((i + 1) * 1.0e3) for i in range(8)]))
     write_corpus_group(p, "tinj", x, np.stack([_flat(i + 1.0) for i in range(8)]))
-    ech = np.zeros((12, 5))
+    ech = np.zeros((12, CORPUS_N))
     ech[5] = 1.0e6  # LEIA, in the corpus's alphabetical channel order
     write_corpus_group(p, "ech_power", x, ech)
-    gas = np.zeros((11, 5))
+    gas = np.zeros((11, CORPUS_N))
     gas[0] = 2.0  # GASA
     write_corpus_group(p, "gas_raw", x, gas)
-    write_corpus_group(p, "gas_flow", x, np.full((11, 5), 3.0))
-    coils = np.zeros((18, 5))
+    write_corpus_group(p, "gas_flow", x, np.full((11, CORPUS_N), 3.0))
+    coils = np.zeros((18, CORPUS_N))
     coils[0], coils[6] = 10.0, -20.0  # C19, IU30
     write_corpus_group(p, "i_coil", x, coils)
-    rmp = np.zeros((12, 5))
+    rmp = np.zeros((12, CORPUS_N))
     rmp[0], rmp[1] = -20.0, 10.0  # the I-coil subset, driven in antiphase: |sum| 10, sum |.| 30
     write_corpus_group(p, "rmp", x, rmp)
     fs = np.stack([_flat(float(i)) for i in range(10)])
     fs[0] = np.nan
     fs[8] = fs[9] = 1000.0
     write_corpus_group(p, "filterscopes", x, fs)
-    co2 = np.ones((4, 5))
+    co2 = np.ones((4, CORPUS_N))
     co2[2] = 5.0e13
     write_corpus_group(p, "co2", x, co2)
-    neutrons = np.ones((4, 5))
+    neutrons = np.ones((4, CORPUS_N))
     neutrons[3] = 7.0e14
     write_corpus_group(p, "neutron_rate", x, neutrons)
 
     bare = d / f"{CORPUS_BARE_SHOT}_processed.h5"
-    write_corpus_group(bare, "mhr", x, np.ones((2, 5)))
+    write_corpus_group(bare, "mhr", x, np.ones((2, CORPUS_N)))
     return CORPUS_SIGNAL_SHOT
 
 
@@ -643,7 +649,7 @@ def write_feature_file(features_dir: Path, shot: int, arrays: dict, missing: dic
 def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
     """`$LABELMAKER_ROOT/features` with one file for `CORPUS_SIGNAL_SHOT`.
 
-    Written to cover all four statuses in one shot: a stored scalar (`bt`), a stored profile
+    Written to cover all four statuses in one shot: stored scalars (`bt`, `betan`), a profile
     (`ne_zipfit`, whose core/edge/peak reductions differ), a stored feature with no finite sample
     (`kappa`), a transiently missed one (`qmin` -- fdp is worth another attempt), a permanently
     missed one (`volume`), and one that was never attempted at all (`li`).
@@ -661,6 +667,7 @@ def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
         {
             "ip": (x, ip, "fdp"),
             "bt": (x, np.full(n, -2.05), "archive"),
+            "betan": (x, np.full(n, 1.9), "archive"),
             "kappa": (x, np.full(n, np.nan), "archive"),
             "ne_zipfit": (x, profile, "archive"),
         },
