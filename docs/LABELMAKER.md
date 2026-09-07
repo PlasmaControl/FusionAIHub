@@ -44,8 +44,9 @@ retries exactly them.
 
 Shot selection is one of `--shots N N`, `--shot-file PATH`, `--corpus`, or
 `--overlap` (shots present in both the corpus and the tearing model's training
-archive), with `--sample N --seed S` to take a reproducible subset. Stages are
-`features`, `infer`, `validate`, `all` and `analyze`; each is independently
+archive), with `--sample N --seed S` to take a reproducible subset and
+`--limit N` to keep the first N of it. Stages are
+`features`, `infer`, `validate`, `all`, `analyze` and `events`; each is independently
 rerunnable and skips work that is already complete unless given `--force`. The
 100-shot proof-of-concept pool is `$LABELMAKER_ROOT/poc_shots.txt`; the
 500-shot pool the reliability numbers below come from is `shots_500.txt` (the
@@ -109,6 +110,11 @@ corpus location):
 | `labels/<shot>_labels.h5` | `<slug>/<label>` plus `_spread` (ensemble min/max) and `_valid` companions |
 | `labels_index.parquet` | one row per shot, model and label - the "which shots have labels" query |
 | `models/<slug>/` | the weights, copied once; verified against the card's sha256 before every load |
+| `masks/<shot>_masks.npz` | one `(diag, channel, pass)` block per planned channel: packed coherent/transient masks, their row and column summaries, 16-band log-power, the column times, a `_meta` JSON |
+| `events/<shot>_events.parquet` | discrete events - one row per thing that happened, and the source that says so |
+| `events_index.parquet` | one row per (shot, source, phenomenon) - the "which shots have EHOs" query |
+| `text/logs_subset.jsonl` | the shots-in-hand slice of the 616 MB logbook dump, beside `logs_subset.missing` |
+| `runs/events/<run_id>.json` | one mask run: settings, per-shot rows, per-source event totals |
 | `runs/<run_id>/` | `manifest.json` (config, git sha, shot list), `log.txt` (one JSON row per shot), `summary.json` |
 | `validation/<slug>/` | reliability reports (below) |
 | `validation/<slug>/alarm_quality.json` | per-shot final-label and any-row FPR/FNR, warning times, jumps, and IPCW AUC for labels with archive truth |
@@ -121,6 +127,64 @@ stamped at `t` is computed from inputs averaged over `[t - 50 ms, t]`, the
 convention the archive the model trained on was built with, uniformly across
 sources; for the tearing model the 0-D inputs are read one step ahead, so the
 label answers "is a mode present at t + 25 ms".
+
+## Events: what happened, and on whose word
+
+A label is a probability at every time step. An **event** is a single thing
+with a start, an end, an optional frequency band and a named source, and the
+`events` stage is what produces them:
+
+```bash
+pixi run -e labelmaker python -m labelmaker.run events \
+    --shot-file $LABELMAKER_ROOT/recommender_v1.txt --limit 5 \
+    --device cpu --tile-batch 8 --passes wide --timeout 900
+```
+
+No `--models`: the stage reads the corpus and one pinned U-Net checkpoint
+(`models/tokeye/big_tf_unet_251210.pt`, refused unless its sha256 matches).
+For each shot it plans eleven channels (`events/channels.py` - two magnetics,
+three ECE, two CO2 chords, two BES, and two `mirnov` that stand in for `mhr`
+where `mhr` is absent), runs the network over each channel's spectrogram, and
+turns what it sees into rows:
+
+| source | evidence_kind | what it claims |
+|---|---|---|
+| `tokeye_track` | detector | a coherent mode (or a `pickup` line) with a band, a chirp and a confidence |
+| `tokeye_transient` | detector | one point event per ELM, from **one** reference channel |
+| `elm_clock` | heuristic | the ELM-free intervals implied by those ELMs |
+| `ece_sawtooth` | heuristic | one point per sawtooth crash, with the inversion radius |
+| `dalpha_lh` | heuristic | L->H and H->L transitions |
+| `actuator` | heuristic | the intervals NBI, ECH, the RMP coils and the gas valves were on for |
+| `qh_proxy` | heuristic | an EHO inside an ELM-free NBI-heated flat-top - a proxy, and its `attrs` say so |
+| `text` | text | a phenomenon this shot's own logbook entries name |
+
+Flags: `--passes {wide,zoom}` (wide is 0.49 kHz/bin and 0.256 ms/column, zoom
+is four times finer in frequency and four times coarser in time),
+`--tile-batch` (tiles per forward pass; about memory, not speed),
+`--amp` (fp16, CUDA only), `--norm {record,plasma}`, `--limit N`,
+`--refresh-text`, `--run-id`. The stage runs one shot at a time whatever
+`--workers` says - the network is one large torch module and the parallelism
+that matters is inside the batched forward pass - and each shot still gets its
+own SIGALRM budget, so a hung read costs one shot.
+
+Three things worth knowing before reading a row:
+
+- **A skip is ordinary.** `bes` is absent on 67% of shots and `mirnov` is not
+  planned where `mhr` is present, so every shot's row carries a `skipped` dict
+  saying which channel or step did not run and why. It is the answer to "was
+  there no ELM here, or did nobody look" - which is also what every row's
+  `t_cov0_s`/`t_cov1_s` are for.
+- **The corpus has no `ip` and no `betan`.** So `actuator` never claims
+  `nbi_counter` (it is a comparison of the injected torque's sign with the
+  current's), `qh_proxy` has no flat-top to intersect and claims nothing, and
+  an L->H row's `attrs["betan"]` is `null`. All three are recorded as skips
+  rather than left looking like an absence of the phenomenon.
+- **Text is never a label by itself.** A `text` row's confidence is capped at
+  `TEXT_ONLY_CEILING`, and only the shot's OWN logbook entries are read - the
+  session context is the run's, not this shot's. The shot-scope text comes
+  from a subset of the logbook dump that the stage builds once per run;
+  `--refresh-text` re-asks about shots a previous run found no record for
+  (deleting `text/logs_subset.missing` forgets all of them).
 
 ## Reading a label
 

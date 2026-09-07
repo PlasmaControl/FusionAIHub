@@ -1,6 +1,6 @@
 """The labelmaker CLI: `python -m labelmaker.run <stage>`.
 
-Four stages, each independently rerunnable, with a per-shot HDF5 file
+Stages, each independently rerunnable, with a per-shot HDF5 file
 between the first two:
 
     features  resolve the union of canonical features the requested models
@@ -12,6 +12,12 @@ between the first two:
               JSON reports under <root>/validation/<slug>/, and fold the
               headline numbers into the model card's `model-index`
     all       features, then infer, then validate
+    events    a different pipeline over the same shots and no model at all:
+              run the pinned TokEye U-Net over the planned spectrogram
+              channels, and write <root>/masks/<shot>_masks.npz and the
+              discrete things every detector, heuristic and logbook entry
+              claims into <root>/events/<shot>_events.parquet
+              (see `events/pipeline.py`)
 
 Every shot is isolated: one try/except and one SIGALRM timeout per shot, so
 a corrupt HDF5 or a hung read costs one shot and not the run (IGNITE
@@ -91,7 +97,12 @@ from .labels.store import (
 )
 from .models import registry
 
-STAGES = ("features", "infer", "validate", "all", "analyze")
+STAGES = ("features", "infer", "validate", "all", "analyze", "events")
+
+#: Stages that need no model at all. `events` reads the corpus and one
+#: pinned U-Net checkpoint and writes masks and event rows; `--models` is a
+#: flag it could do nothing with, so it is not required and not accepted.
+MODEL_FREE_STAGES = ("events",)
 
 #: Exit codes. Anything non-zero means no labels should be trusted from this
 #: run; 3 and 4 mean nothing ran at all.
@@ -189,6 +200,9 @@ def build_parser() -> ArgumentParser:
                              "tearing-mode training archive")
     parser.add_argument("--sample", type=int, default=0,
                         help="take a seeded sample of the selected shots")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="keep only the first N of the selected shots, "
+                             "after --sample; 0 means all")
     parser.add_argument("--seed", type=int, default=20260903)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=300,
@@ -198,7 +212,48 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--corpus-dir", type=Path, default=None)
     parser.add_argument("--archive", nargs="+", type=Path, default=None)
+    events = parser.add_argument_group(
+        "events", "the TokEye mask run: masks/<shot>_masks.npz and "
+                  "events/<shot>_events.parquet"
+    )
+    events.add_argument("--device", default="cpu", choices=("cpu", "cuda"))
+    events.add_argument("--tile-batch", type=int, default=32,
+                        help="512-column tiles per forward pass; about "
+                             "memory, not speed (measured flat 8-32)")
+    events.add_argument("--amp", action="store_true",
+                        help="fp16 autocast; CUDA only, ignored on cpu")
+    events.add_argument("--norm", default="record", choices=list(pipeline_norms()),
+                        help="record: z-score over the whole record, as the "
+                             "AE path; plasma: over the fast groups' "
+                             "coverage intersection")
+    events.add_argument("--passes", nargs="+", default=list(masks_pass_names()),
+                        choices=list(masks_pass_names()))
+    events.add_argument("--unet", type=Path, default=None,
+                        help="checkpoint; default "
+                             "<root>/models/tokeye/big_tf_unet_251210.pt")
+    events.add_argument("--run-id", default=None,
+                        help="name this run instead of "
+                             "<stage>-<timestamp>-<pid>")
+    events.add_argument("--refresh-text", action="store_true",
+                        help="re-ask the logbook about the shots recorded in "
+                             "text/logs_subset.missing; a miss is a fact "
+                             "about the source at the time, not forever")
     return parser
+
+
+def masks_pass_names() -> tuple[str, ...]:
+    """`("wide", "zoom")` without importing `events.masks` (and torch).
+
+    `build_parser` is called by `--help` and by every test that parses
+    argv, and `events.masks` imports torch at module scope. The values are
+    pinned against their owners by `test_events_pipeline.py`.
+    """
+    return ("wide", "zoom")
+
+
+def pipeline_norms() -> tuple[str, ...]:
+    """`("record", "plasma")`, for the same reason as `masks_pass_names`."""
+    return ("record", "plasma")
 
 
 def shot_list(args, paths: Paths) -> list[int]:
@@ -212,6 +267,10 @@ def shot_list(args, paths: Paths) -> list[int]:
         shots = overlap_shots(paths)
     if args.sample:
         shots = sample_shots(shots, args.sample, args.seed)
+    # After the sample, so `--sample 200 --limit 5` is five of the same two
+    # hundred a full run would do and not five of a different draw.
+    if getattr(args, "limit", 0):
+        shots = shots[:int(args.limit)]
     return shots
 
 
@@ -525,6 +584,92 @@ def _analyze_worker(payload):
     return _guarded(analyze_for_shot, shot, ctx, cfg, out_dir)
 
 
+def events_stage(shots, ctx: RunContext, args) -> tuple[list[dict], dict]:
+    """The `events` stage: one U-Net, one logbook pass, then shot by shot.
+
+    Sequential on purpose. The other stages fan out over a `Pool`, and this
+    one must not: the network is a 7.8M-parameter torch module that would be
+    pickled to every worker (or, on CUDA, inherited across a fork into a
+    context that cannot use it), and the work per shot is already a batched
+    GPU job whose parallelism lives inside `masks.infer`. `--workers` is
+    ignored here and the SLURM script parallelises over shot CHUNKS instead
+    (spec A5).
+
+    The logbook subset is built ONCE, here, before the loop: `logs.jsonl` is
+    616 MB and `text_events` would otherwise stream it per shot. The count of
+    records added and the subset's path go into the run's JSON, so a run that
+    found no text can be told from one that never looked.
+
+    Every shot gets the same per-shot SIGALRM and try/except as every other
+    stage: a hung corpus read costs one shot.
+    """
+    # Deferred, like every other framework-specific import in this module:
+    # `events.masks` loads torch at module scope, and `features`/`infer`
+    # runs must not pay for it.
+    from .events import lexicon as lx
+    from .events import pipeline, text_weak, unet
+
+    model = unet.load_unet(args.unet, device=args.device)
+    n_added = 0
+    text_note = ""
+    try:
+        n_added = text_weak.build_logs_subset(
+            shots, paths=ctx.paths, refresh_missing=args.refresh_text
+        )
+    except OSError as exc:
+        # A misconfigured or unmounted logbook is not a reason to lose the
+        # masks: the text is one of eight sources and the only one that is
+        # not in the corpus.
+        text_note = f"{type(exc).__name__}: {exc}"
+        print(f"events: no shot-scope text this run - {text_note}",
+              file=sys.stderr)
+    lexicon = lx.load_lexicon()
+
+    rows: list[dict] = []
+    for shot in shots:
+        started = time.monotonic()
+        try:
+            with time_limit(ctx.timeout_s):
+                result = pipeline.process_shot(
+                    shot, ctx.paths, model=model, device=args.device,
+                    passes=tuple(args.passes), tile_batch=args.tile_batch,
+                    amp=args.amp, norm=args.norm, lexicon=lexicon,
+                    run_id=ctx.run_id,
+                )
+            row = result.as_row()
+            print(result.line())
+        except Exception as exc:  # noqa: BLE001 - per-shot isolation
+            row = {"shot": shot, "status": "error", "error": type(exc).__name__,
+                   "detail": str(exc)[:200]}
+            print(f"{shot}: ERROR {type(exc).__name__}: {str(exc)[:120]}")
+        row["seconds"] = round(time.monotonic() - started, 2)
+        rows.append(row)
+
+    totals = pipeline.summarise(rows)
+    totals.update(
+        n_log_records_added=int(n_added),
+        logs_subset=str(ctx.paths.logs_subset),
+        text_note=text_note,
+    )
+    return rows, totals
+
+
+def write_events_run(paths: Paths, run_id: str, payload: dict) -> Path:
+    """`runs/events/<run_id>.json`: the settings, the shots and the totals.
+
+    Beside the stage-agnostic `runs/<run_id>/{manifest,summary}.json` every
+    run writes, and not instead of it: this one is per-shot and per-source,
+    which is what the pilot and the production gate read, and it is in one
+    directory so that a hundred mask runs can be compared without walking a
+    hundred run directories.
+    """
+    out = paths.runs / "events"
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"{run_id}.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n")
+    return path
+
+
 def write_manifest(paths: Paths, run_id: str, payload: dict) -> Path:
     run_dir = paths.runs / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -628,10 +773,19 @@ def main(argv=None) -> int:
         except analyze.ConfigError as exc:
             parser.error(str(exc))
         args.models = list(cfg.slugs)
+    elif args.stage in MODEL_FREE_STAGES:
+        if args.models:
+            parser.error(f"{args.stage} takes no --models")
+        args.models = []
     elif not args.models:
         parser.error("--models is required")
     base = Paths.from_env()
-    paths = Paths(
+    # `replace` and not a fresh `Paths`: `text_root` and `logs_jsonl` have no
+    # flag of their own and are read from the environment, and building a
+    # bare `Paths(root=..., corpus=...)` here silently put them back to their
+    # defaults - which the `events` stage's shot-scope text comes out of.
+    paths = replace(
+        base,
         root=args.root or base.root,
         corpus=args.corpus_dir or base.corpus,
     )
@@ -678,7 +832,7 @@ def main(argv=None) -> int:
     # The pid disambiguates two runs of the same stage started in the same
     # second, which would otherwise share a run directory and interleave
     # their log lines under one manifest.
-    run_id = f"{args.stage}-{stamp}-{os.getpid()}"
+    run_id = args.run_id or f"{args.stage}-{stamp}-{os.getpid()}"
     ctx = RunContext(
         paths=paths,
         archive_files=archive_files,
@@ -718,6 +872,43 @@ def main(argv=None) -> int:
     )
 
     summaries = []
+    if args.stage == "events":
+        rows, totals = events_stage(shots, ctx, args)
+        _log(paths, run_id, rows)
+        summary = _stage_summary("events", rows)
+        _summarise(summary)
+        summaries.append(summary)
+        print("events by source: " + (", ".join(
+            f"{s}={n}" for s, n in totals["events_by_source"].items()
+        ) or "none"))
+        out = write_events_run(paths, run_id, {
+            "run_id": run_id,
+            "stage": "events",
+            "git_sha": git_sha(),
+            "labelmaker_version": __version__,
+            "hostname": socket.gethostname(),
+            "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "settings": {
+                "device": args.device,
+                "passes": list(args.passes),
+                "tile_batch": args.tile_batch,
+                "amp": bool(args.amp),
+                "norm": args.norm,
+                "timeout_s": args.timeout,
+                "limit": args.limit,
+                "refresh_text": bool(args.refresh_text),
+                "unet": str(args.unet) if args.unet else "",
+                "root": str(paths.root),
+                "corpus": str(paths.corpus),
+            },
+            "n_log_records_added": totals["n_log_records_added"],
+            "logs_subset": totals["logs_subset"],
+            "text_note": totals["text_note"],
+            "totals": totals,
+            "shots": rows,
+        })
+        print(f"events: {out}")
+
     if args.stage == "analyze":
         out_dir = args.out or paths.root / "analysis"
         rows = _run_pool(

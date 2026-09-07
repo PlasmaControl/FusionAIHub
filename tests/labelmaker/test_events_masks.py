@@ -25,9 +25,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker.ae import labels as ae_labels  # noqa: E402
-from labelmaker.ae import transform  # noqa: E402
-from labelmaker.events import masks, schema  # noqa: E402
+from labelmaker.ae import labels as ae_labels
+from labelmaker.ae import transform
+from labelmaker.events import masks, schema
 
 #: Shot 198658, the pilot shot the A1 constants were measured on.
 REAL_SHOT = 198658
