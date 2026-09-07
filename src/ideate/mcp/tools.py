@@ -11,9 +11,13 @@ the CLI being wrapped:
   whose caveats were dropped look identical, and the second is how "no shot matched" becomes
   "there are no such shots". Every return carries the key, possibly empty.
 * **nothing raises to the transport.** An exception on an MCP call reaches the model as a
-  protocol error with a stack trace it cannot act on. Every failure comes back as
+  protocol error -- in practice `is_error=True` and the string "Error executing tool <name>",
+  with no `caveats` key and nothing to act on. Every failure comes back as
   `{"error": <a sentence the caller can act on>, "caveats": [...]}` -- the same sentences the CLI
-  prints, because they are the ones that say what to run next.
+  prints, because they are the ones that say what to run next. Each tool turns the failures it
+  ANTICIPATES into their own sentence; `never_raises`, applied where the tools are registered,
+  is what makes the promise hold for the ones nobody anticipated (a database caught mid-publish,
+  an `events.parquet` written to some other schema).
 
 The database is loaded once per directory and cached (`_load_db`), because `ShotDB.load` reads
 every table and embedding matrix and a server answers many calls. A rebuild under a running
@@ -23,10 +27,13 @@ for a process whose whole job is answering questions about a database that chang
 
 from __future__ import annotations
 
+import functools
 import json
+import math
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from .. import config
 
@@ -46,6 +53,60 @@ _FORECAST_CAVEAT = (
     "{n} forecast row(s) are in `forecasts`, not in `events`: a forecast is a model's claim "
     "about what was about to happen, not an observation of what did"
 )
+
+_TIMELESS_CAVEAT = (
+    "{n} row(s) have no recorded time and were not considered for the window: unknown when, "
+    "which is not the same as outside it"
+)
+
+#: What `ShotDB.load` opens once `_db()` has seen the manifest. A build publishes per file, so a
+#: manifest sitting next to a missing table is a database mid-rebuild, not a broken one -- and
+#: that is the difference between "wait and retry" and "something is wrong".
+DB_FILES = ("shots.parquet", "segments.parquet", "pca.json")
+
+F = TypeVar("F", bound=Callable[..., dict])
+
+
+def _incomplete_db() -> list[str]:
+    """A caveat naming the likely cause when the database is half-published, else nothing."""
+    try:
+        db_dir = config.load_paths().db_dir
+        if not (db_dir / "manifest.json").exists():
+            return []
+        missing = [name for name in DB_FILES if not (db_dir / name).exists()]
+    except Exception:  # noqa: BLE001 - a guard may not raise on its way to reporting a failure
+        return []
+    if not missing:
+        return []
+    return [
+        (
+            f"the database at {db_dir} has a manifest but no {', '.join(missing)}: it is being "
+            f"rebuilt or is incomplete -- retry, or run `ideate build`"
+        )
+    ]
+
+
+def never_raises(fn: F) -> F:
+    """`fn` with every escaping exception turned into this module's error dict.
+
+    Applied where the tools are REGISTERED (`server.TOOLS`), not at definition, for two reasons:
+    the functions stay plain functions that raise for their own tests, and there is one place
+    that says the promise holds rather than one `except` per tool that a new tool can forget.
+
+    `functools.wraps` is load-bearing, not tidiness: the signature and the docstring ARE the tool
+    schema, and a bare `*args` wrapper would register every tool with no arguments and no
+    description. The message names the exception TYPE rather than guessing at a cause; when the
+    state is one we can recognise -- a database caught mid-publish -- the caveat says so.
+    """
+
+    @functools.wraps(fn)
+    def guarded(*args, **kwargs) -> dict:
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - catching everything is the whole point
+            return _error(f"{type(exc).__name__}: {exc}", _incomplete_db())
+
+    return guarded
 
 
 def reset_cache() -> None:
@@ -183,8 +244,8 @@ def search_shots(
             f"shot {state.ref_shot} has no {seg} segment, so the reference channel is not ranking"
         )
     try:
-        report = rank_mod.search_report(state, db)
         found = rank_mod.search(state, db)
+        report = _pool_report(state, db)
     except KeyError as exc:
         return _error(
             f"{exc.args[0]}. Columns are the ones describe_shot returns for a shot.", caveats
@@ -310,6 +371,7 @@ def get_events(
             "n": 0,
             "forecasts": [],
             "n_forecasts": 0,
+            "nan_excluded": 0,
             "caveats": [NO_EVENTS],
         }
     try:
@@ -320,6 +382,18 @@ def get_events(
     df = df[df["shot"] == int(shot)]
     if phenomenon:
         df = df[df["phenomenon"] == phenomenon]
+    caveats: list[str] = []
+    nan_excluded = 0
+    if t0_s is not None or t1_s is not None:
+        # A NaN compares False against either bound, so a row whose times were never recorded
+        # falls out of a windowed call looking exactly like a row that did not overlap. Count
+        # them and say so: "we do not know when this happened" is not "it did not happen then",
+        # and the caller cannot tell the two apart from an absence.
+        timeless = df["t0_s"].isna() | df["t1_s"].isna()
+        nan_excluded = int(timeless.sum())
+        df = df[~timeless]
+        if nan_excluded:
+            caveats.append(_TIMELESS_CAVEAT.format(n=nan_excluded))
     # Overlap, not containment: an event that straddles the edge of the window happened in the
     # window, and a point event (t1 == t0, an L-H transition) is inside a window that touches it.
     if t0_s is not None:
@@ -331,13 +405,15 @@ def get_events(
     rows = [_event_row(rec) for rec in df.to_dict("records")]
     events = [r for r in rows if r.get("evidence_kind") != "forecast"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
-    caveats = [_FORECAST_CAVEAT.format(n=len(forecasts))] if forecasts else []
+    if forecasts:
+        caveats.append(_FORECAST_CAVEAT.format(n=len(forecasts)))
     return {
         "shot": int(shot),
         "events": events,
         "n": len(events),
         "forecasts": forecasts,
         "n_forecasts": len(forecasts),
+        "nan_excluded": nan_excluded,
         "caveats": caveats,
     }
 
@@ -349,15 +425,11 @@ def _event_row(rec: dict) -> dict:
     per-detector shape); handing that string on would make every caller parse it, and one of
     them would forget.
     """
-    import math
-
     out: dict[str, Any] = {}
     for key, value in rec.items():
         if hasattr(value, "item"):
             value = value.item()
-        if isinstance(value, float) and not math.isfinite(value):
-            value = None
-        out[key] = value
+        out[key] = None if _missing(value) else value
     raw = out.get("attrs")
     if isinstance(raw, str):
         try:
@@ -365,3 +437,47 @@ def _event_row(rec: dict) -> dict:
         except json.JSONDecodeError:
             out["attrs"] = {"_unparsed": raw}
     return out
+
+
+
+def _missing(value: Any) -> bool:
+    """True for anything JSON has no word for: NaN, `pd.NA`, `NaT`, `None`.
+
+    Non-finite floats were the reachable case (`f0_khz`/`horizon_s` are NaN on most rows) and
+    were the only one handled; a `pd.NA` or a `NaT` -- what a nullable-integer or a datetime
+    column hands back, which this schema will grow -- went through untouched and would raise
+    inside the JSON encoder, which is to say inside the transport.
+    """
+    import pandas as pd
+
+    if value is None:
+        return True
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):  # an array or a list: not a missing scalar
+        return False
+
+
+def _pool_report(q, db) -> dict:
+    """`candidates` and `nan_excluded` for one query, without a second pass over the table.
+
+    `rank.search_report` computes the hard-filter mask, walks the constrained columns again for
+    the NaN counts, and compares the segment column a third time for a `segment_rows` this tool
+    never used -- all on top of the pass each channel inside `search` makes for itself (which is
+    deliberate; see `channels.py`: filtering after fusion would let masked rows eat a channel's
+    k budget). A query that constrains NOTHING admits every row of its segment, so the mask it
+    would build is knowable without building one, and the common call -- a text or reference
+    search -- now costs the channels' passes and no more.
+    """
+    from ..retrieval import channels
+
+    in_segment = (db.segments["segment"] == q.segment).to_numpy(dtype=bool)
+    filtering = (
+        q.constraints or q.require_labels or q.avoid_labels or q.exclude_shots or q.exclude_runs
+    )
+    candidates = (
+        int(channels.hard_filter(q, db).sum()) if filtering else int(in_segment.sum())
+    )
+    return {"candidates": candidates, "nan_excluded": channels.nan_excluded(q, db)}
