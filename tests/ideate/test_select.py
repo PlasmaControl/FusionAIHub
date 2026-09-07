@@ -760,6 +760,40 @@ def test_a_replacement_for_a_committed_shot_still_obeys_the_caps():
     assert next(c for c in out if c.shot == repl[0]["replacement"]).run_id != pool[0].run_id
 
 
+def test_a_replacement_on_a_committed_list_must_itself_be_measured():
+    """`--finalize` means every row has been measured, replacements included. On the first pass a
+    replacement with no feature file is admitted as `pending` (there is nothing better and the
+    list is not final yet); on a re-verification that would put a shot on the list that the run
+    finalizing it has never measured, and would keep the loop going for one more round."""
+    pool = candidates(20, per_run=1)
+    committed = listed(pool[:5])
+    doomed = committed[0].shot
+    chosen = {c.shot for c in committed}
+    first_spare, second_spare = (
+        c.shot for c in list(select._by_year([c for c in pool if c.shot not in chosen], 3))[:2]
+    )
+    out, repl, pending = select.reverify_flattop(
+        committed, pool, quotas(n=5), seed=3,
+        measure=lambda s: 0.4 if s == doomed else (None if s == first_spare else 2.4),
+    )
+    assert repl[0]["replacement"] == second_spare
+    assert first_spare not in {c.shot for c in out} and pending == []
+    assert {c.flattop_source for c in out} == {"features_ip"}
+
+
+def test_a_committed_list_with_no_measured_replacement_available_keeps_the_hole():
+    """Six candidates, five listed, one rejected and the only spare unmeasurable: the list comes
+    back short by one, with the hole named, rather than silently gaining an unverified row."""
+    pool = candidates(6, per_run=1)
+    committed = listed(pool[:5])
+    doomed = committed[0].shot
+    out, repl, _pending = select.reverify_flattop(
+        committed, pool, quotas(n=5), seed=3,
+        measure=lambda s: 0.4 if s == doomed else (None if s == pool[5].shot else 2.4),
+    )
+    assert len(out) == 4 and repl[0]["replacement"] is None
+
+
 def test_the_re_verification_is_deterministic_and_comes_back_in_shot_order():
     pool = candidates(40, per_run=10)
     committed = listed(pool[:10])
