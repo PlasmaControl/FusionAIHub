@@ -4,9 +4,9 @@
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=4G
-#SBATCH --time=01:15:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1500M
+#SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 
@@ -52,6 +52,21 @@
 #                                     row-dict, plus the DataFrame built from them at the end)
 #   1.3 * (1.09 + 0.11 + 0.70) = 2.5 GiB -> --mem=4G, rounded up to a whole GB.
 
+# ---------------------------------------------------------------- re-sizing (controller, 2026-09-07)
+#
+# The job is GPFS-metadata bound, so CPUs must be allocated for the CPU actually consumed, not
+# for the number of workers, or the fairshare gate (CPU and CPU-mem utilisation >= 70 %) fails:
+#   8 workers,  300 files (above):       53 % of ONE cpu
+#   32 workers, 603 spread files:  28.7 s, 0.048 s/file, 47 % of one cpu, 125 MB max RSS
+#   64 workers, 604 spread files:  19.0 s, 0.031 s/file, 72 % of one cpu, 125 MB max RSS,
+#                                  process-tree peak 116 MB (sampled every 0.5 s)
+# Throughput still scales with concurrency at 64, so production runs 96 workers on ONE allocated
+# cpu (I/O wait, not compute), projected 16,909 * 0.031 s ~= 9 min -> --time=00:30:00.
+# Memory: the workers are small; the main process accumulates ~540k row dicts (~0.5 GB) and then
+# builds the DataFrame (transient double) -> ~1.1 GB peak -> --mem=1500M. The `pixi run` launcher
+# (1.09 GiB by itself) is bypassed: the environment's python is called directly with the same
+# activation variables, so the memory jobstats reports is the census, not the launcher.
+
 set -euo pipefail
 
 REPO=/scratch/gpfs/nc1514/FusionAIHub
@@ -60,8 +75,10 @@ IDEATE_DATA_ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
 cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 
-srun pixi run -e ideate-cpu python -m ideate corpus scan \
-    --workers 16 \
+export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false IDEATE_CORPUS="${IDEATE_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
+export LABELMAKER_ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+srun "$REPO/.pixi/envs/ideate-cpu/bin/python" -m ideate corpus scan \
+    --workers 96 \
     --out "$IDEATE_DATA_ROOT/db/corpus_coverage.parquet"
 
 echo "finished at $(date -Is)"
