@@ -106,7 +106,8 @@ def test_build_record_from_the_staged_store(real_paths):
 def test_the_qh_database_cannot_label_this_era(real_paths):
     """`regime_source: "database"` is unreachable for these shots and the test says so out loud:
     QH_Database.csv covers 173694-175544, which does not intersect the 2014-15 staged store or
-    configs/shot_lists/poc_v1.yaml. Regimes here come from the logbook text or from geometry."""
+    configs/ideate/shot_lists/poc_v1.yaml. Regimes here come from the logbook text or from
+    geometry."""
     qh = build._qh_shots(str(real_paths.qh_database_csv))
     assert (min(qh), max(qh)) == (173694, 175544)
     assert not qh & set(config.load_shot_list("poc_v1"))

@@ -152,7 +152,7 @@ class Vertex(BaseModel):
     """A breakpoint of a piecewise-linear actuator waveform: PCS's Vertex(x, y) shape."""
 
     t_s: float  # seconds from shot time 0 (the IGNITE/PCS convention)
-    y: float  # in the actuator's units (configs/actuators.yaml)
+    y: float  # in the actuator's units (configs/ideate/actuators.yaml)
 
 
 class ActuatorWaveform(BaseModel):

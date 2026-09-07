@@ -122,7 +122,9 @@ def test_provider_off_raises_without_opening_a_socket(paths):
         transport=httpx.MockTransport(handler),
     )
     assert c.endpoint() is None
-    with pytest.raises(LLMUnavailable):
+    # the hint names the config file the reader has to edit, at its real path
+    assert c.available() == (False, "configs/ideate/llm.yaml has provider: off")
+    with pytest.raises(LLMUnavailable, match=r"configs/ideate/llm\.yaml has provider: off"):
         c.chat([{"role": "user", "content": "x"}])
 
 

@@ -448,3 +448,170 @@ remain untracked and excluded.
 4. Ported shot lists/registry metadata still describe the legacy campaigns. A corpus reader,
    new shot selection, event joins, MCP and UI belong to subsequent tasks. The I2 CLI build uses
    the retained legacy reader; IGNITE encoding consumes existing processed corpus files only.
+
+---
+
+# Fix report (review findings on 684880c)
+
+Branch `recommender`. Commit: `ideate: finish config-path rename, restore trace-helper tests`.
+Method: red/green for every finding that a test could express — three assertions on the stamped
+strings and one on the `__main__` guard were written and observed failing before the fix.
+
+## Important 1 — `configs/` → `configs/ideate/` finished in user-facing strings
+
+Every message, exception text, stamped `source` field, comment and docstring under `src/ideate`
+and `tests/ideate` that names a config path now names `configs/ideate/...`. Applied with
+`perl -pi -e 's{configs/(?!ideate/)}{configs/ideate/}g'` over the 19 files that mentioned one, so
+the bare-directory references (`reads them from configs/`) moved too, not only the four sites the
+brief listed by line. `config.CONFIG_DIR` itself was already correct (`parents[2] / "configs" /
+"ideate"`) — no functional path was touched, only the strings a reader sees.
+
+Tests written first, all three red before the change:
+
+- `tests/ideate/test_flags.py::test_member_caps_expand_from_the_actuator_registry` — the expanded
+  per-member cap rule now asserts `cap["source"] == "configs/ideate/actuators.yaml"`, the same
+  path inside `cap["message"]`, and that it survives onto the emitted `Flag.source`.
+- `tests/ideate/test_retrieval.py::test_the_run_day_decay_has_one_source_the_yaml` — the missing
+  knob's `KeyError` is matched against the full
+  `configs/ideate/retrieval\.yaml: retrieval\.dedup_threshold is missing`, not the bare tail.
+- `tests/ideate/test_llm_client.py::test_provider_off_raises_without_opening_a_socket` — asserts
+  `available() == (False, "configs/ideate/llm.yaml has provider: off")` and matches the same text
+  on the `LLMUnavailable` raised by `chat`.
+
+The brief's proof grep, run after the change:
+
+```
+$ grep -rn "configs/[a-z_]*\.yaml\|configs/shot_lists" src/ideate tests/ideate
+$ echo $?
+1
+```
+
+No output: no old path remains. The complementary listing of what is there now:
+
+```
+$ grep -rho "configs/[A-Za-z_/]*" src/ideate tests/ideate | sort -u
+configs/ideate/
+configs/ideate/actuators
+configs/ideate/flags
+configs/ideate/ignite_modalities
+configs/ideate/llm
+configs/ideate/retrieval
+configs/ideate/shot_lists/
+configs/ideate/shot_lists/poc_v
+configs/ideate/signals
+```
+
+The seven extra characters pushed 28 prose lines past the width this codebase actually wraps at
+(the peak of the length histogram is 95-99; ruff's `line-length = 88` is not enforced because
+`E501` is not in the selected rule set). Those lines were re-wrapped so the file count of lines
+over 99 columns is unchanged at 125 — the same set as before the fix. The re-wraps move words
+between lines only; no wording changed. `src/ideate/config.py:21` (114 columns) was left alone: it
+is pre-existing and already on the reviewer's Minor list.
+
+## Important 2 — trace-helper tests restored
+
+New file `tests/ideate/test_actuation_traces.py` (13 tests), attribution line
+`Ported from shot-recommender-system (shotrec) @565d548.`, covering `Trace`, `decimate`, `_clip`,
+`_json_values`, `_trace`, `_empty_trace`, `_specs`, `_total` and `read_traces` in
+`src/ideate/retrieval/actuation.py`. The upstream fixtures these need (`paths`, `staged_shot_a`,
+`staged_shot_b`, `BEAMS`, `write_frame`) were already ported into `tests/ideate/conftest.py`
+byte-identically, so the assertions are the upstream ones with `waveforms.` → `actuation.` and
+`from conftest import` → `from .conftest import` (this package has an `__init__.py`).
+
+Ported from upstream `tests/test_waveforms.py` (9):
+
+| upstream test | kept as |
+|---|---|
+| `test_decimate_keeps_every_buckets_min_and_max` | same name |
+| `test_decimate_leaves_short_series_alone` | same name |
+| `test_decimate_survives_all_nan_buckets` | same name |
+| `test_read_traces_registry_total_and_unknown` | same name |
+| `test_read_traces_raw_channel_and_window` | same name |
+| `test_read_traces_missing_group_reports_status` | same name |
+| `test_read_traces_actuator_member_keys` | same name |
+| `test_total_is_none_where_no_member_recorded` | same name |
+| `test_read_traces_window_outside_the_signal` | same name |
+
+Added to cover the four items the brief named that upstream only exercised indirectly (4):
+
+- `test_clip_keeps_the_closed_window_and_returns_the_inputs_when_unbounded` — `_clip` directly:
+  both ends inclusive, one-sided `t0`/`t1`, an empty result, and the same-object return when no
+  window is given.
+- `test_json_values_turns_every_non_finite_sample_into_none` — NaN and both infinities → `None`.
+- `test_an_absent_trace_names_no_source_shot` — `_empty_trace` leaves `source` at `None` for all
+  four absent statuses, against a present trace that does carry `source == "staged"`. This is the
+  invariant of upstream HEAD 565d548 ("absent traces carry no source shot"), which had no test of
+  its own in the trace layer.
+- `test_a_single_member_actuator_is_not_a_total` — `gas.GASA` reads through the member branch with
+  an empty `members` list, while `gas.total` goes through `_total` and names what it summed.
+
+Dropped from upstream `tests/test_waveforms.py` (9), all of them tests of functions that were not
+ported because they render the browser page rather than serve a seed — `waveforms.groups` (the
+channel picker), `waveforms.spectrogram` (the MHD spectrogram panel) and `waveforms.profile` (the
+profile-slice panel) have no counterpart anywhere in `src/ideate`:
+
+- `test_groups_lists_channels_and_rates`
+- `test_groups_marks_the_placeholder`
+- `test_spectrogram_decimates_a_1mhz_channel_to_a_250khz_axis`
+- `test_spectrogram_leaves_a_500khz_channel_alone`
+- `test_spectrogram_reports_absence`
+- `test_spectrogram_window_too_short_is_unavailable`
+- `test_profile_nearest_slice_sorted_by_rho`
+- `test_profile_absent_kind`
+- `test_profile_reads_a_transposed_block`
+
+Their helper `_fast_group` / `_profile_group` builders and the `h5py` import went with them; no
+HTTP-endpoint test existed in this module to drop.
+
+## Minor items
+
+1. `src/ideate/__main__.py` — `raise SystemExit(main())` is now under `if __name__ == "__main__":`.
+   Two tests added to `tests/ideate/test_package.py`, the first red before the fix (importing the
+   module under pytest ran the CLI on pytest's own argv and exited 2):
+   `test_importing_the_module_entry_point_does_not_run_the_cli` (import and reload are not
+   invocations) and `test_python_dash_m_ideate_still_runs_the_cli` (`python -m ideate --help`
+   still exits 0 with `usage: ideate`).
+2. `src/ideate/cli.py` — the `except SystemExit` comment no longer claims `scripts/fetch_shots.py`
+   (never ported) is the caller. The branch is kept, not removed: no `cmd_*` raises SystemExit
+   today, but a library one calls can, with either shape, and `int()` on a message shape raised
+   ValueError out of `main` — which is the bug the branch exists for and which
+   `test_a_string_system_exit_is_printed_not_turned_into_a_valueerror` still covers. That test's
+   docstring lost the same stale filename.
+3. `tests/ideate/test_cli.py` — the orphan `# ---- fetch` section header and its trailing blank
+   lines are gone.
+
+Nothing under `frame_codes()` in `shotdb/ignite.py`, `src/labelmaker`, `tests/labelmaker`,
+`src/tokamak_foundation_model` or `pyproject.toml` was touched.
+
+## Verification
+
+```
+$ HF_HUB_OFFLINE=1 .pixi/envs/ideate-cpu/bin/python -m pytest tests/ideate -q -W error
+422 passed in 69.83s (0:01:09)
+```
+
+407 → 422: +13 in `tests/ideate/test_actuation_traces.py`, +2 in `tests/ideate/test_package.py`.
+The four assertion-only strengthenings (flags source, rank KeyError, llm client message, and the
+`_clip`/`_json_values`/absent-source coverage) added no test count of their own beyond those.
+
+```
+$ .pixi/envs/labelmaker/bin/ruff check src/ideate tests/ideate
+All checks passed!
+```
+
+## Concerns
+
+1. `configs/ideate/` now appears in ~50 doc/comment lines that upstream `shotrec` writes as
+   `configs/`. A future re-sync against `shot-recommender-system` will see all of them as
+   conflicts. This is inherent to the rename the brief asked for, not avoidable; the mechanical
+   `perl` substitution at least makes the delta trivially reproducible.
+2. The 28 line re-wraps are diff noise on top of that, for the same reason. They were made
+   because the alternative was leaving 28 lines at 100-113 columns in files otherwise wrapped at
+   99, and the reviewer had already raised one such line as a Minor.
+3. `src/ideate/cli.py`'s `except SystemExit` branch is now documented as defensive rather than as
+   guarding a known caller. If the eventual `ideate fetch`/staging command never raises SystemExit
+   either, the honest end state is to delete both the branch and its test — deferred rather than
+   done here, since removing a tested behaviour is outside a fix pass.
+4. `docs/superpowers/plans/2026-09-07-recommender-ledger.md` carried an uncommitted edit (the I2
+   review entry) when this fix started. It was left uncommitted and out of this commit, as it
+   belongs to the reviewing session.

@@ -226,7 +226,8 @@ def test_the_scalar_channel_and_the_flag_rules_resolve_an_actuator_to_one_column
 
 def test_search_checks_the_proposal_itself_against_the_operating_limits(db):
     """QueryState.actuators was never handed to evaluate_flags: the rules ran on the RESULT rows
-    only, so a 50 MW beam request -- 2.5x configs/flags.yaml's nbi_total_max -- raised nothing."""
+    only, so a 50 MW beam request -- 2.5x configs/ideate/flags.yaml's nbi_total_max -- raised
+    nothing."""
     found = rank.search(QueryState(actuators={"nbi.total": 5e7}, n=3), db)
     errors = [f for f in found.proposal_flags if f.severity == "error"]
     assert [f.rule_id for f in errors] == ["nbi_total_max"]
@@ -398,7 +399,7 @@ def test_rerank_spreads_results_across_run_days(db):
 
 
 def test_the_run_day_decay_has_one_source_the_yaml(db, monkeypatch):
-    """configs/retrieval.yaml says 0.9 (tuned, with its reasoning in a comment); load_cfg's
+    """configs/ideate/retrieval.yaml says 0.9 (tuned, with its reasoning in a comment); load_cfg's
     fallback and rerank's default both still said 0.7, so a direct rerank() call silently used a
     number the config had abandoned."""
     import inspect
@@ -418,7 +419,9 @@ def test_the_run_day_decay_has_one_source_the_yaml(db, monkeypatch):
     assert out["101:flat_top"] == pytest.approx(0.99 * yaml_value)
     # a config that lacks the knob is an error naming it, not a second value
     monkeypatch.setattr(config, "load_yaml", lambda name: {"retrieval": {"k0": 60}})
-    with pytest.raises(KeyError, match="retrieval.dedup_threshold is missing"):
+    with pytest.raises(
+        KeyError, match=r"configs/ideate/retrieval\.yaml: retrieval\.dedup_threshold is missing"
+    ):
         rank.load_cfg()
 
 
@@ -443,7 +446,7 @@ def test_values_print_in_the_units_the_registry_declares():
 
 
 def test_the_si_prefix_comes_from_the_magnitude_not_the_unit_name():
-    """configs/actuators.yaml declares the RMP coils in amps, the same unit as Ip. A blanket
+    """configs/ideate/actuators.yaml declares the RMP coils in amps, the same unit as Ip. A blanket
     /1e6 printed a 14.6 A coil current as "1.46e-05 MA" -- right number, useless label."""
     assert rank.display("irmp_C19_peak", 14.6) == "14.6 A"
     assert rank.display("irmp_IL210_peak", 958.25) == "958 A"
@@ -463,8 +466,9 @@ def test_the_prefix_is_chosen_after_rounding_to_the_printed_precision():
 
 
 def test_an_unverified_unit_never_gets_a_prefix_invented_for_it():
-    """neutrons' unit is honestly "[?]" in configs/signals.yaml. 1.11e14 of an unknown thing is
-    not 111 T-of-that-thing. (ne_line used to be the example until its unit was confirmed.)"""
+    """neutrons' unit is honestly "[?]" in configs/ideate/signals.yaml. 1.11e14 of an unknown
+    thing is not 111 T-of-that-thing. (ne_line used to be the example until its unit was
+    confirmed.)"""
     assert rank.display("neutrons_mean", 1.11e14).startswith("1.11e+14 [?]")
     assert rank.display("gas_GASA_peak", 1.88) == "1.88 V (raw valve command)"
 

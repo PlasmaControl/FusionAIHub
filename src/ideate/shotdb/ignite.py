@@ -57,8 +57,8 @@ def download_bundle(paths: Paths, full: bool = False, revision: str | None = Non
     reads the local directory only. By default the 3.5 GB dynamics checkpoint is left out -- the
     retrieval embedding needs the 14 codecs (453 MB) and `ignite_min`; `full=True` adds the
     dynamics model for the Phase-5 rollout. `snapshot_download` skips files already present, so
-    re-running is a no-op check. The revision is pinned in configs/ignite_modalities.yaml so a
-    re-upload cannot silently change every embedding in the database.
+    re-running is a no-op check. The revision is pinned in configs/ideate/ignite_modalities.yaml so
+    a re-upload cannot silently change every embedding in the database.
     """
     from huggingface_hub import snapshot_download
 

@@ -1,8 +1,8 @@
 """Operating-limit rules: "can DIII-D actually do this?"
 
-Two entry points. `load_rules` reads configs/flags.yaml (plus the per-member caps that
-configs/actuators.yaml declares) into a plain dict; `evaluate_flags` runs that dict against a
-flat mapping of numbers and returns `schema.Flag`s. The same call answers both questions the
+Two entry points. `load_rules` reads configs/ideate/flags.yaml (plus the per-member caps that
+configs/ideate/actuators.yaml declares) into a plain dict; `evaluate_flags` runs that dict against
+a flat mapping of numbers and returns `schema.Flag`s. The same call answers both questions the
 demo asks: hand it a database row's flat-top values and it says whether that shot was near a
 limit, hand it a user's proposed `QueryState.actuators` and it says whether the proposal is
 possible at all.
@@ -17,9 +17,10 @@ Three things this module refuses to do, all of them deliberate:
   missing and, when known, why it could not be computed. "No flags" then means "checked and
   clean", never "checked nothing" -- which is the difference between a useful screen and a
   dangerous one.
-* **No unearned authority.** Every limit in configs/flags.yaml today was chosen from published
-  DIII-D practice rather than measured or supplied by the machine's operators, and is marked
-  `provisional: true`. Messages built from such a rule carry a trailing "[provisional limit]".
+* **No unearned authority.** Every limit in configs/ideate/flags.yaml today was chosen from
+  published DIII-D practice rather than measured or supplied by the machine's operators, and is
+  marked `provisional: true`. Messages built from such a rule carry a trailing
+  "[provisional limit]".
 
 
 Ported from shot-recommender-system (shotrec) @565d548.
@@ -151,8 +152,9 @@ def _limit_stat(sysdef: Mapping[str, Any]) -> str:
 def actuator_columns() -> dict[str, str]:
     """`nbi.total` / `ech.LUKE` (what a person types) -> the ONE database column it means.
 
-    Built from configs/actuators.yaml so it cannot drift from the registry. `.total` is included
-    explicitly because a user proposing "20 MW of NBI" is proposing a system total, not a member.
+    Built from configs/ideate/actuators.yaml so it cannot drift from the registry. `.total` is
+    included explicitly because a user proposing "20 MW of NBI" is proposing a system total, not
+    a member.
 
     This is the only resolver: `retrieval.channels._actuator_column` reads it too, so the scalar
     channel and the operating-limit rules agree on which column `--actuator nbi.total=5e6` names.
@@ -169,7 +171,7 @@ def actuator_columns() -> dict[str, str]:
 
 
 def _member_cap_rules() -> list[dict[str, Any]]:
-    """One rule per actuator system that declares a `max:` in configs/actuators.yaml.
+    """One rule per actuator system that declares a `max:` in configs/ideate/actuators.yaml.
 
     Expanded rather than written out in flags.yaml so that adding a gyrotron stays a one-line
     registry edit, the way the rest of this codebase treats actuator members. Every `max:` is
@@ -195,8 +197,10 @@ def _member_cap_rules() -> list[dict[str, Any]]:
                 "limit": float(cap),
                 "severity": "error",
                 "provisional": False,
-                "source": "configs/actuators.yaml",
-                "message": f"above the per-member {name} cap declared in configs/actuators.yaml",
+                "source": "configs/ideate/actuators.yaml",
+                "message": (
+                    f"above the per-member {name} cap declared in configs/ideate/actuators.yaml"
+                ),
             }
         )
     return out
@@ -248,7 +252,7 @@ def _alias_targets(name: str, v: Any, where: str) -> list[str]:
 def load_rules(paths: Any = None) -> dict[str, Any]:
     """The rule set, ready for `evaluate_flags`.
 
-    `paths` is None (configs/flags.yaml), one path, or several. Several are merged in order:
+    `paths` is None (configs/ideate/flags.yaml), one path, or several. Several are merged in order:
     later files replace an earlier rule with the same `id` and extend the alias table, which is
     how a campaign- or user-specific overlay is meant to be applied without editing the shipped
     config. A rule that cannot run -- no id, unknown op or severity, non-numeric limit -- is
@@ -273,7 +277,7 @@ def load_rules(paths: Any = None) -> dict[str, Any]:
             _check_rule(r, where)
             by_id[str(r["id"])] = r
     for r in _member_cap_rules():
-        _check_rule(r, "configs/actuators.yaml")
+        _check_rule(r, "configs/ideate/actuators.yaml")
         by_id.setdefault(r["id"], r)
     merged["rules"] = list(by_id.values())
     merged["actuator_keys"] = _actuator_key_map()
