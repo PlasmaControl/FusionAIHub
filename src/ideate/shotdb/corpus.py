@@ -155,7 +155,10 @@ class CorpusReader:
         path = self.path(shot)
         with open_h5(path) as f:
             x, _ = self._datasets(f, path, group)
-            if x.shape[0] < MIN_SAMPLES:
+            # ndim as well as length: every corpus xdata is (n,), and indexing one that is not
+            # would raise IndexError -- an exception this interface does not define -- rather
+            # than the "this shot has nothing here" the caller is asking about.
+            if x.ndim != 1 or x.shape[0] < MIN_SAMPLES:
                 raise Unavailable(f"{path}: {group} has a {x.shape} time axis (placeholder)")
             return float(x[0]) * 1000.0, float(x[-1]) * 1000.0
 
