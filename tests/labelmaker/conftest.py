@@ -210,3 +210,172 @@ def synth_mask():
         return prob, raw_logpow, freq_khz, t_s
 
     return build
+
+
+# ------------------------------------------------- the synthetic shot fixture
+
+#: The ECE array `synth_shot` draws: 48 channels at 50 kHz over 0.8 s, which
+#: is 800 bins of the 1 ms envelope every heuristic here runs on.
+SYNTH_ECE_FS_HZ = 5.0e4
+SYNTH_ECE_N = 40001
+SYNTH_ECE_CHANNELS = 48
+
+#: The sawtooth train: ten crashes 76 ms apart - the period measured on shot
+#: 198658 - each sitting `SYNTH_CRASH_LEAD_MS` BEFORE a 1 ms envelope edge.
+#: That offset is deliberate. A crash exactly on an edge lands in whichever
+#: bin the last bit of the time axis rounds it into, and a crash in the
+#: middle of a bin splits its drop over two bin differences and so over two
+#: candidates; a tenth of a millisecond early puts five of the fifty samples
+#: of the last pre-crash bin on the far side of the crash, which moves that
+#: bin's mean by 0.5% - far under `DROP_FRAC` - and leaves exactly one
+#: candidate per crash whichever way the arithmetic rounds.
+SYNTH_SAWTOOTH_PERIOD_MS = 76.0
+SYNTH_SAWTOOTH_N = 10
+SYNTH_CRASH_LEAD_MS = 0.1
+
+#: Half-open channel ranges: 4-20 lose Te at the crash, 21-40 gain it, and
+#: 0-3 and 41-47 see nothing. The inversion is therefore BETWEEN channels 20
+#: and 21, and the dropping block is interior to the array - which is what
+#: `inversion_block` demands and what an ELM cannot produce.
+SYNTH_CORE_CH = (4, 21)
+SYNTH_EDGE_CH = (21, 41)
+#: The crash drops the core by 5% of its pre-crash value and lifts the edge
+#: by 2% of its own. Both baselines are 1.0, so the heat pulse is 40% of the
+#: drop in ABSOLUTE terms and clears `REL_POS` (30%) - the displaced heat has
+#: to arrive somewhere, and on unequal baselines it would not have to.
+SYNTH_CORE_DROP = 0.05
+SYNTH_EDGE_RISE = 0.02
+
+#: The impostor: at 114 ms EVERY channel drops 5% together for 10 ms, which
+#: is what an ELM or a gas puff looks like on the array. It is a crash
+#: candidate and must not be a sawtooth.
+SYNTH_ELM_MS = 114.0
+SYNTH_ELM_WIDTH_MS = 10.0
+SYNTH_ELM_DROP = 0.05
+
+#: D-alpha: filterscopes 0-7 at 10 kHz. The L->H at 0.30 s drops it 45% (so
+#: the confidence is 0.45/0.6 = 0.75, a number a test can tell from 1.0) and
+#: the H->L at 0.60 s puts it back.
+SYNTH_DALPHA_FS_HZ = 1.0e4
+SYNTH_DALPHA_CHANNELS = 8
+SYNTH_LH_S = 0.30
+SYNTH_HL_S = 0.60
+SYNTH_DALPHA_L = 1.0
+SYNTH_DALPHA_H = 0.55
+
+#: Line-averaged density, 1 kHz: flat, then +20% over the 50 ms after the
+#: L->H and back down over the 50 ms after the H->L.
+SYNTH_SCALAR_FS_HZ = 1.0e3
+SYNTH_NE_L = 2.0
+SYNTH_NE_H = 2.4
+SYNTH_NE_RAMP_S = 0.05
+
+#: Actuators. The beams are on 0.10-0.70 s at 3 MW; the torque is co-current
+#: except over 0.30-0.50 s, where it flips against a positive Ip.
+SYNTH_PINJ_KW = 3000.0
+SYNTH_PINJ_ON_S = (0.10, 0.70)
+SYNTH_TINJ_NM = 5.0
+SYNTH_COUNTER_S = (0.30, 0.50)
+SYNTH_IP_A = 1.0e6
+SYNTH_BETAN_L = 1.0
+SYNTH_BETAN_H = 2.0
+
+SYNTH_T_COV = (0.0, 0.8)
+
+
+def _synth_ece():
+    """`(t_s, y, crash_times_s)`: the 48-channel array with ten crashes in it.
+
+    Between crashes the core ramps back up and the edge decays back down by
+    exactly the amount the crash moved them, so the train is periodic and
+    every crash is the same size - no drift a detector could mistake for a
+    trend. The ELM impostor is a multiplicative dip applied to the whole
+    array on top of that.
+    """
+    period_s = SYNTH_SAWTOOTH_PERIOD_MS * 1e-3
+    t = np.arange(SYNTH_ECE_N, dtype=np.float64) / SYNTH_ECE_FS_HZ
+    crash0 = period_s - SYNTH_CRASH_LEAD_MS * 1e-3
+    crashes = crash0 + np.arange(SYNTH_SAWTOOTH_N) * period_s
+    phase = np.mod(t - crash0, period_s) / period_s
+
+    # A crash that takes `1 - drop` of the level must be undone by a ramp of
+    # `drop / (1 - drop)`, or the train would walk down the record.
+    core_ramp = SYNTH_CORE_DROP / (1.0 - SYNTH_CORE_DROP)
+    edge_decay = 1.0 - 1.0 / (1.0 + SYNTH_EDGE_RISE)
+    y = np.ones((SYNTH_ECE_CHANNELS, t.size), dtype=np.float64)
+    y[slice(*SYNTH_CORE_CH)] = 1.0 + core_ramp * phase
+    y[slice(*SYNTH_EDGE_CH)] = 1.0 - edge_decay * phase
+
+    elm0 = (SYNTH_ELM_MS - SYNTH_CRASH_LEAD_MS) * 1e-3
+    elm1 = elm0 + SYNTH_ELM_WIDTH_MS * 1e-3
+    y[:, (t >= elm0) & (t < elm1)] *= 1.0 - SYNTH_ELM_DROP
+    return t, y.astype(np.float32), crashes
+
+
+def _synth_dalpha():
+    """`(t_s, y)`: eight filterscope channels, high in L-mode and low in H."""
+    n = round(SYNTH_T_COV[1] * SYNTH_DALPHA_FS_HZ) + 1
+    t = np.arange(n, dtype=np.float64) / SYNTH_DALPHA_FS_HZ
+    level = np.where(
+        (t >= SYNTH_LH_S) & (t < SYNTH_HL_S), SYNTH_DALPHA_H, SYNTH_DALPHA_L
+    )
+    # Per-channel gains, because the detector takes the channel MEDIAN and a
+    # median of eight identical traces would not prove it took one.
+    gains = 1.0 + 0.05 * np.arange(SYNTH_DALPHA_CHANNELS, dtype=np.float64)
+    return t, (gains[:, None] * level[None, :]).astype(np.float32)
+
+
+def _synth_scalars():
+    """The 1 kHz scalars: `ne`, `betan`, `pinj` (kW), `tinj` (N m), `ip` (A)."""
+    n = round(SYNTH_T_COV[1] * SYNTH_SCALAR_FS_HZ) + 1
+    t = np.arange(n, dtype=np.float64) / SYNTH_SCALAR_FS_HZ
+    up = np.clip((t - SYNTH_LH_S) / SYNTH_NE_RAMP_S, 0.0, 1.0)
+    down = np.clip((t - SYNTH_HL_S) / SYNTH_NE_RAMP_S, 0.0, 1.0)
+    shape = up - down
+    ne = SYNTH_NE_L + (SYNTH_NE_H - SYNTH_NE_L) * shape
+    betan = SYNTH_BETAN_L + (SYNTH_BETAN_H - SYNTH_BETAN_L) * shape
+    on = (t >= SYNTH_PINJ_ON_S[0]) & (t <= SYNTH_PINJ_ON_S[1])
+    pinj = np.where(on, SYNTH_PINJ_KW, 0.0)
+    counter = (t >= SYNTH_COUNTER_S[0]) & (t <= SYNTH_COUNTER_S[1])
+    tinj = np.where(on, np.where(counter, -SYNTH_TINJ_NM, SYNTH_TINJ_NM), 0.0)
+    ip = np.full(t.shape, SYNTH_IP_A)
+    return t, ne, betan, pinj, tinj, ip
+
+
+@pytest.fixture
+def synth_shot():
+    """One synthetic shot's ECE, D-alpha, density, betan and actuators.
+
+    Everything a `events.heuristics` detector reads, drawn from the constants
+    above so that a test asserts what was PUT there: ten sawtooth crashes 76
+    ms apart with the inversion between channels 20 and 21, one ELM impostor
+    that drops the whole array together, an L->H at 0.30 s and an H->L at
+    0.60 s with the density following, beams on 0.10-0.70 s and their torque
+    counter-current over 0.30-0.50 s.
+
+    A dict rather than a dataclass because a test routinely wants one of
+    these arrays altered - a NaN channel, a flat density, no beams - and
+    `{**synth_shot, "ne_y": ...}` is how it says so.
+    """
+    ece_t, ece_y, crashes = _synth_ece()
+    dalpha_t, dalpha_y = _synth_dalpha()
+    scalar_t, ne, betan, pinj, tinj, ip = _synth_scalars()
+    return {
+        "ece_t_s": ece_t,
+        "ece_y": ece_y,
+        "crash_times_s": crashes,
+        "elm_impostor_s": (SYNTH_ELM_MS - SYNTH_CRASH_LEAD_MS) * 1e-3,
+        "dalpha_t_s": dalpha_t,
+        "dalpha_y": dalpha_y,
+        "ne_t_s": scalar_t,
+        "ne_y": ne,
+        "betan_t_s": scalar_t,
+        "betan_y": betan,
+        "pinj_t_s": scalar_t,
+        "pinj_y": pinj,
+        "tinj_t_s": scalar_t,
+        "tinj_y": tinj,
+        "ip_t_s": scalar_t,
+        "ip_y": ip,
+        "t_cov": SYNTH_T_COV,
+    }
