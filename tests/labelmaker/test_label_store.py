@@ -145,6 +145,41 @@ def test_append_index_is_idempotent_per_shot_and_label(tmp_path):
     assert list(tmp_path.iterdir()).count(idx) == 1
 
 
+def test_append_index_keeps_the_run_id_of_the_last_write(tmp_path):
+    # The default keys are (shot, slug, label): a re-run replaces its own row.
+    p = tmp_path / "190000_labels.h5"
+    _write(p)
+    idx = tmp_path / "labels_index.parquet"
+    append_index(idx, index_rows(p))
+    rows = [dict(r, run_id="run-2") for r in index_rows(p)]
+    append_index(idx, rows)
+    df = pd.read_parquet(idx)
+    assert df["run_id"].tolist() == ["run-2", "run-2"]
+    assert df[["shot", "slug", "label"]].values.tolist() == [
+        [190000, SLUG, "betan"], [190000, SLUG, "tm_prob"],
+    ]                                          # sorted by the key columns
+
+
+def test_append_index_takes_other_key_columns(tmp_path):
+    # The events index is keyed by (shot, source, phenomenon) instead.
+    idx = tmp_path / "events_index.parquet"
+    keys = ["shot", "source", "phenomenon"]
+    first = [
+        {"shot": 190000, "source": "tokeye_track", "phenomenon": "eho",
+         "n_events": 3},
+        {"shot": 190000, "source": "ece_sawtooth", "phenomenon": "sawtooth",
+         "n_events": 45},
+    ]
+    append_index(idx, first, keys=keys)
+    append_index(idx, [dict(first[0], n_events=7)], keys=keys)
+    df = pd.read_parquet(idx)
+    assert len(df) == 2
+    assert df["source"].tolist() == ["ece_sawtooth", "tokeye_track"]  # key sort
+    assert df.set_index("source")["n_events"].to_dict() == {
+        "ece_sawtooth": 45, "tokeye_track": 7,
+    }
+
+
 def test_a_failed_write_leaves_no_temp_file(tmp_path):
     # decoded is missing the spec's label, so the loop raises after the temp
     # file is open. See the features-store counterpart for why this matters.

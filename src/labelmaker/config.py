@@ -52,8 +52,24 @@ class Paths:
         return self.root / "validation"
 
     @property
+    def events(self) -> Path:
+        return self.root / "events"
+
+    @property
+    def masks(self) -> Path:
+        return self.root / "masks"
+
+    @property
+    def annotate(self) -> Path:
+        return self.root / "annotate"
+
+    @property
     def labels_index(self) -> Path:
         return self.root / "labels_index.parquet"
+
+    @property
+    def events_index(self) -> Path:
+        return self.root / "events_index.parquet"
 
     def features_file(self, shot: int) -> Path:
         return self.features / f"{shot}_features.h5"
@@ -61,11 +77,18 @@ class Paths:
     def labels_file(self, shot: int) -> Path:
         return self.labels / f"{shot}_labels.h5"
 
+    def events_file(self, shot: int) -> Path:
+        return self.events / f"{shot}_events.parquet"
+
+    def masks_file(self, shot: int) -> Path:
+        return self.masks / f"{shot}_masks.npz"
+
     def corpus_file(self, shot: int) -> Path:
         return self.corpus / f"{shot}_processed.h5"
 
     def mkdirs(self) -> None:
-        for d in (self.features, self.labels, self.models, self.runs, self.validation):
+        for d in (self.features, self.labels, self.models, self.runs,
+                  self.validation, self.events, self.masks, self.annotate):
             d.mkdir(parents=True, exist_ok=True)
 
 

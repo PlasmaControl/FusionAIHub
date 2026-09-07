@@ -30,6 +30,19 @@ def test_per_shot_paths_and_mkdirs(tmp_path):
     p.mkdirs()  # idempotent
 
 
+def test_event_paths_and_mkdirs(tmp_path):
+    p = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    assert p.events == tmp_path / "events"
+    assert p.masks == tmp_path / "masks"
+    assert p.annotate == tmp_path / "annotate"
+    assert p.events_file(190000) == tmp_path / "events" / "190000_events.parquet"
+    assert p.masks_file(190000) == tmp_path / "masks" / "190000_masks.npz"
+    assert p.events_index == tmp_path / "events_index.parquet"
+    p.mkdirs()
+    for sub in ("events", "masks", "annotate"):
+        assert (tmp_path / sub).is_dir()
+
+
 def test_git_sha_is_a_string():
     sha = git_sha()
     assert isinstance(sha, str) and sha
