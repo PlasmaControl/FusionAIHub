@@ -674,3 +674,108 @@ def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
         {"qmin": "fdp:TreeFOPENR", "volume": "corpus:SignalAbsent"},
     )
     return root / "features"
+
+
+# ------------------------------------------------- a built database under $IDEATE_DATA_ROOT
+
+
+def shot_record(shot: int, run: str, ip: float, pnbi: float, text: str, **over):
+    """One synthetic `ShotRecord` with a flat top and a ramp-up, so `segment` has to select."""
+    import datetime as dt
+
+    from ideate.schema import HumanTier, Labels, LogEntry, Outcome, Segment, ShotRecord
+
+    flat = Segment(
+        name="flat_top",
+        t0_ms=1000.0,
+        t1_ms=5000.0,
+        raw={
+            "ip_mean": ip,
+            "pnbi_total_mean": pnbi,
+            "pnbi_total_peak": pnbi * 1.1,
+            "pnbi_15L_peak": pnbi * 0.4,
+            "bt_mean": 2.0,
+        },
+        derived={"q95_mean": over.pop("q95", 4.0), "betan_mean": over.pop("betan", 1.8)},
+    )
+    ramp = Segment(
+        name="ramp_up",
+        t0_ms=0.0,
+        t1_ms=1000.0,
+        raw={"ip_mean": ip / 2, "pnbi_total_mean": 0.0, "bt_mean": 2.0},
+        derived={"q95_mean": 8.0, "betan_mean": 0.3},
+    )
+    return ShotRecord(
+        shot=shot,
+        shot_date=dt.date(2015, 1, 13),
+        campaign="2014_2015",
+        segments=[flat, ramp],
+        human=HumanTier(
+            run_id=run,
+            mp_title=over.pop("mp_title", "a mini proposal"),
+            log_entries=[LogEntry(role="SESSION_LEADER", author="hyatt", text=text)],
+        ),
+        labels=Labels(
+            regime=over.pop("regime", "H"), operational=over.pop("operational", set())
+        ),
+        outcome=Outcome(ip_target_hit=over.pop("ip_target_hit", True)),
+        built_at=dt.datetime(2026, 9, 4, tzinfo=dt.UTC),
+        builder_sha="test",
+    )
+
+
+def write_db(db_dir: Path, records) -> None:
+    """`records` written to `db_dir` through the production path, ready for `ShotDB.load`.
+
+    `build.records_to_tables` -> `fit_scalar_embedding` -> `project_scalar` -> `_write_tables`,
+    the same four calls `build.build` makes, so a change to how a segment row or an embedding is
+    laid out breaks whatever reads this rather than sliding past it. The text embeddings are
+    hand-written unit vectors and not MiniLM: nothing that reads this fixture is a statement
+    about the encoder, and loading one would cost every test that uses it several seconds.
+    """
+    from ideate.shotdb import build
+
+    shapes = {r.shot: {s.name: np.zeros(0, np.float32) for s in r.segments} for r in records}
+    shots_df, segments_df, shape_mat = build.records_to_tables(records, shapes)
+    X, cols = build._scalar_matrix(segments_df, shape_mat)
+    pca = build.fit_scalar_embedding(X, 4)
+    pca["feature_cols"], pca["n_shape"] = cols, 0
+    dim = 3
+    log = np.zeros((len(shots_df), dim), np.float32)
+    mp = np.zeros((len(shots_df), dim), np.float32)
+    for i in range(len(shots_df)):
+        # Adjacent shots sit 0.5 rad apart (cos 0.88), below the 0.97 dedup threshold, so a test
+        # about ranking is not silently a test about deduplication.
+        log[i] = mp[i] = [float(np.cos(0.5 * i)), float(np.sin(0.5 * i)), 0.0]
+    emb = {"scalar": build.project_scalar(X, pca), "text_log": log, "text_mp": mp}
+    build._write_tables(
+        db_dir, shots_df, segments_df, shape_mat, emb, pca,
+        {"n_shots": len(records), "reader": "test", "shot_source": "fixture"},
+    )
+
+
+@pytest.fixture
+def ideate_db(tmp_path: Path, monkeypatch) -> Path:
+    """A four-shot database under `$IDEATE_DATA_ROOT/db`, and the env pointing at it.
+
+    Six shots over three run days would be a retrieval fixture; four over two is a fixture for
+    anything that has to LOAD a database -- the MCP tools, a client roundtrip -- where what
+    matters is that `ShotDB.load` finds every file it needs, not what ranks above what.
+    """
+    root = tmp_path / "ideate"
+    (root / "db").mkdir(parents=True)
+    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
+    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    write_db(
+        root / "db",
+        [
+            shot_record(100, "r1", 1.0e6, 5.0e6, "QH-mode at low torque, n=2 rmp"),
+            shot_record(101, "r1", 1.05e6, 5.2e6, "repeat of 100, still QH-mode"),
+            shot_record(200, "r2", 1.4e6, 2.0e6, "L-mode ohmic reference", regime="L"),
+            shot_record(
+                201, "r2", 1.42e6, 2.1e6, "another ohmic shot", regime="L",
+                operational={"dud"}, ip_target_hit=False,
+            ),
+        ],
+    )
+    return root

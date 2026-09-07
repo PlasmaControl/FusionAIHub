@@ -1,0 +1,367 @@
+"""The tools themselves: plain functions in, JSON-serialisable dicts out.
+
+Three rules hold for every function here, and they are the reason this module exists rather than
+the CLI being wrapped:
+
+* **the signature and the docstring are the schema.** An assistant sees the argument names, their
+  types, their defaults and the docstring, and nothing else. So the annotations are real (a
+  missing one becomes a slot the model has to guess at, and `test_mcp` asserts against that) and
+  the docstrings are written for the caller, not for the maintainer.
+* **`caveats` is always present.** A retrieval result with no caveats and a retrieval result
+  whose caveats were dropped look identical, and the second is how "no shot matched" becomes
+  "there are no such shots". Every return carries the key, possibly empty.
+* **nothing raises to the transport.** An exception on an MCP call reaches the model as a
+  protocol error with a stack trace it cannot act on. Every failure comes back as
+  `{"error": <a sentence the caller can act on>, "caveats": [...]}` -- the same sentences the CLI
+  prints, because they are the ones that say what to run next.
+
+The database is loaded once per directory and cached (`_load_db`), because `ShotDB.load` reads
+every table and embedding matrix and a server answers many calls. A rebuild under a running
+server is therefore not seen until `reset_cache()`; that is the trade, and it is the right one
+for a process whose whole job is answering questions about a database that changes daily at most.
+"""
+
+from __future__ import annotations
+
+import json
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+from .. import config
+
+#: The segment names `schema.SegName` allows. Named here so an error can list them.
+SEGMENTS = ("full", "ramp_up", "flat_top", "ramp_down")
+
+#: What a model is likely to type, and what it means. `flattop` is the common one -- the CLI
+#: refuses it with an argparse error, which is right for a person at a terminal and useless to an
+#: assistant that cannot see the error before it has already spent the call.
+SEGMENT_ALIASES = {"flattop": "flat_top", "flat-top": "flat_top", "rampup": "ramp_up",
+                   "ramp-up": "ramp_up", "rampdown": "ramp_down", "ramp-down": "ramp_down"}
+
+#: Said when there is no `events.parquet`. Exact, because a caller keys on it.
+NO_EVENTS = "no events table yet (labelmaker events not joined)"
+
+_FORECAST_CAVEAT = (
+    "{n} forecast row(s) are in `forecasts`, not in `events`: a forecast is a model's claim "
+    "about what was about to happen, not an observation of what did"
+)
+
+
+def reset_cache() -> None:
+    """Forget every loaded database. Call after a rebuild, and between tests."""
+    _load_db.cache_clear()
+
+
+@lru_cache(maxsize=4)
+def _load_db(db_dir: str):
+    from ..shotdb.store import ShotDB
+
+    return ShotDB.load(Path(db_dir))
+
+
+def _db():
+    """`(db, None)` or `(None, error_dict)` -- the loaded database, or why there isn't one.
+
+    The error is the sentence `ideate query` prints for the same condition, so an assistant that
+    relays it to a person gives them the command that fixes it.
+    """
+    paths = config.load_paths()
+    if not (paths.db_dir / "manifest.json").exists():
+        return None, _error(
+            f"no database at {paths.db_dir} -- run `ideate build --list poc_v1` first"
+        )
+    return _load_db(str(paths.db_dir)), None
+
+
+def _error(message: str, caveats: list[str] | None = None) -> dict:
+    return {"error": message, "caveats": list(caveats or [])}
+
+
+def _segment(name: str, caveats: list[str]) -> str | None:
+    """`name` as a `SegName`, appending a caveat when it had to be corrected. None if unknown."""
+    got = SEGMENT_ALIASES.get(name.strip().lower(), name.strip())
+    if got not in SEGMENTS:
+        return None
+    if got != name:
+        caveats.append(f"segment {name!r} read as {got!r}")
+    return got
+
+
+def _range(value: Any):
+    """One constraint as a `Range`. `{"lo": x, "hi": y}`, or a two-element `[lo, hi]`.
+
+    Both, because a model writes both and neither is wrong; either bound may be null for a
+    one-sided constraint.
+    """
+    from ..schema import Range
+
+    if isinstance(value, dict):
+        return Range(lo=value.get("lo"), hi=value.get("hi"))
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return Range(lo=value[0], hi=value[1])
+    raise ValueError(
+        f"constraint {value!r} is neither {{'lo': .., 'hi': ..}} nor a two-element [lo, hi]"
+    )
+
+
+# --------------------------------------------------------------------------------- the tools
+
+
+def search_shots(
+    text: str = "",
+    ref_shot: int | None = None,
+    segment: str = "flat_top",
+    constraints: dict | None = None,
+    actuators: dict | None = None,
+    require_labels: list[str] | None = None,
+    avoid_labels: list[str] | None = None,
+    n: int = 10,
+) -> dict:
+    """Find DIII-D shots resembling a description, a reference shot, or a set of conditions.
+
+    Every argument is optional but at least one of `text`, `ref_shot`, `constraints` and
+    `actuators` must say something: they are the search channels, and with none of them the
+    search has nothing to rank on (the reply then says so in `caveats`).
+
+    Args:
+        text: free text about the physics wanted -- "QH-mode at low torque", "locked mode after
+            an RMP ramp". Matched against the operator logbook and the mini-proposal titles.
+        ref_shot: a shot number to find neighbours of. It is never returned as its own neighbour.
+        segment: which part of the discharge to compare, one of "full", "ramp_up", "flat_top",
+            "ramp_down". "flattop" is understood and corrected.
+        constraints: hard filters on segment scalars, `{"ip_mean": {"lo": 1.0e6, "hi": 1.5e6}}`
+            (a two-element `[lo, hi]` works too, and either bound may be null). Column names are
+            the ones `describe_shot` returns under `record.segments[].raw`/`.derived`. A shot
+            whose value was never recorded never satisfies a constraint.
+        actuators: a proposed actuator setting, `{"nbi.total": 5.0e6, "ech.total": 8.0e5}`, in SI
+            units. Used both to rank and to check the proposal against DIII-D's operating limits,
+            which is answered in `proposal_flags` even when no shot resembles it.
+        require_labels: labels every result must carry ("QH", "H", "L", or an operational label).
+        avoid_labels: labels no result may carry ("dud", "disrupted").
+        n: how many results to return.
+
+    Returns:
+        `{"results": [...], "n": int, "proposal_flags": [...], "caveats": [str], "query": {...}}`
+        or `{"error": str, "caveats": [str]}`. Each result carries the shot, its score, a
+        one-paragraph description, the labels, the outcome and an `explanation` naming which
+        channel found it and how far each constraint was from the query.
+    """
+    from ..retrieval import rank as rank_mod
+    from ..schema import QueryState
+
+    caveats: list[str] = []
+    seg = _segment(segment, caveats)
+    if seg is None:
+        return _error(f"unknown segment {segment!r}; the segments are {', '.join(SEGMENTS)}")
+    db, err = _db()
+    if err:
+        return err
+    try:
+        state = QueryState(
+            text=text or None,
+            ref_shot=ref_shot,
+            segment=seg,
+            constraints={k: _range(v) for k, v in (constraints or {}).items()},
+            actuators={k: float(v) for k, v in (actuators or {}).items()},
+            require_labels=set(require_labels or ()),
+            avoid_labels=set(avoid_labels or ()),
+            n=int(n),
+        )
+    except (ValueError, TypeError) as exc:
+        return _error(str(exc), caveats)
+    if state.ref_shot is not None and state.ref_shot not in db.shots.index:
+        held = sorted(int(s) for s in db.shots.index)
+        span = f"{held[0]}-{held[-1]}" if held else "(empty)"
+        return _error(
+            f"shot {state.ref_shot} is not in the database ({len(held)} shots, {span}). "
+            f"Add it with `ideate add {state.ref_shot}`.",
+            caveats,
+        )
+    if state.ref_shot is not None and f"{state.ref_shot}:{seg}" not in db.segments.index:
+        caveats.append(
+            f"shot {state.ref_shot} has no {seg} segment, so the reference channel is not ranking"
+        )
+    try:
+        report = rank_mod.search_report(state, db)
+        found = rank_mod.search(state, db)
+    except KeyError as exc:
+        return _error(
+            f"{exc.args[0]}. Columns are the ones describe_shot returns for a shot.", caveats
+        )
+    except (ValueError, TypeError) as exc:  # a bad query is a message, not a crash
+        return _error(f"{type(exc).__name__}: {exc}", caveats)
+
+    fired = {name: len(ranking) for name, ranking in found.rankings.items()}
+    if not any(fired.values()):
+        # Not the same as "nothing matched": no channel had anything to search ON. A model told
+        # only that the list is empty will rephrase, which cannot help.
+        caveats.append(
+            "no channel had anything to search on -- give ref_shot, text, constraints or "
+            "actuators"
+        )
+    elif not found.items:
+        caveats.append(f"{report['candidates']} candidate(s) passed the filters, none ranked")
+    if report["nan_excluded"]:
+        caveats.append(
+            "excluded for having no recorded value: "
+            + ", ".join(f"{col} ({k} shots)" for col, k in sorted(report["nan_excluded"].items()))
+        )
+    return {
+        "query": {
+            "text": state.text,
+            "ref_shot": state.ref_shot,
+            "segment": state.segment,
+            "n": state.n,
+            "candidates": report["candidates"],
+            "channels": fired,
+        },
+        "results": [item.model_dump(mode="json") for item in found.items],
+        "n": len(found.items),
+        "proposal_flags": [f.model_dump(mode="json") for f in found.proposal_flags],
+        "caveats": caveats,
+    }
+
+
+def describe_shot(shot: int, segment: str = "flat_top") -> dict:
+    """Everything the database holds about one shot: the prose description and the full record.
+
+    Args:
+        shot: the DIII-D shot number.
+        segment: which part of the discharge the description leads with, one of "full",
+            "ramp_up", "flat_top", "ramp_down". "flattop" is understood and corrected.
+
+    Returns:
+        `{"shot": int, "segment": str, "description": str, "record": {...}, "caveats": [str]}`
+        or `{"error": str, "caveats": [str]}`. `description` is the same paragraph a search
+        result carries. `record` is the whole stored record: the segments with every scalar, the
+        labels and their source, the outcome, and the operator logbook entries verbatim.
+
+    Quote the logbook from `record.human.log_entries` only, and verbatim. The description is
+    generated text about the numbers; it is not something anyone said.
+    """
+    caveats: list[str] = []
+    seg = _segment(segment, caveats)
+    if seg is None:
+        return _error(f"unknown segment {segment!r}; the segments are {', '.join(SEGMENTS)}")
+    db, err = _db()
+    if err:
+        return err
+    shot = int(shot)
+    if shot not in db.shots.index:
+        held = sorted(int(s) for s in db.shots.index)
+        span = f"{held[0]}-{held[-1]}" if held else "(empty)"
+        return _error(
+            f"shot {shot} is not in the database ({len(held)} shots, {span}). "
+            f"Add it with `ideate add {shot}`.",
+            caveats,
+        )
+    from ..retrieval import describe as describe_mod
+
+    rec = db.get(shot)
+    if rec.segment(seg) is None:
+        caveats.append(f"shot {shot} has no {seg} segment; the description falls back to `full`")
+    return {
+        "shot": shot,
+        "segment": seg,
+        "description": describe_mod.describe(rec, seg),
+        "record": rec.model_dump(mode="json"),
+        "caveats": caveats,
+    }
+
+
+def get_events(
+    shot: int,
+    phenomenon: str | None = None,
+    t0_s: float | None = None,
+    t1_s: float | None = None,
+) -> dict:
+    """Time-resolved events for one shot: what a detector saw, and separately what a model forecast.
+
+    Args:
+        shot: the DIII-D shot number.
+        phenomenon: keep only this phenomenon ("tearing", "elm", "sawtooth", "disruption", ...).
+        t0_s: keep only events overlapping the window starting here (seconds from shot start).
+        t1_s: ... and ending here. Either bound may be given alone.
+
+    Returns:
+        `{"shot": int, "events": [...], "n": int, "forecasts": [...], "n_forecasts": int,
+        "caveats": [str]}` or `{"error": str, "caveats": [str]}`.
+
+    `events` and `forecasts` are kept apart and must stay apart when you report them. An event
+    with `evidence_kind == "forecast"` is a model's estimate of what was ABOUT to happen,
+    computed from a risk curve and a threshold; every other row is somebody's claim about what a
+    diagnostic actually showed, with `source` saying who and `confidence` how sure. Reporting a
+    forecast as an observation is how "shot 190591 disrupted at 3.2 s" gets written from a
+    probability. Each row carries `t_cov0_s`/`t_cov1_s`, the coverage of the diagnostic that was
+    looked at, so "nothing was seen here" can be told from "nobody looked here".
+
+    An empty `events` with the caveat "no events table yet" means the labels join has not run --
+    not that the shot was quiet.
+    """
+    import pandas as pd
+
+    paths = config.load_paths()
+    path = paths.db_dir / "events.parquet"
+    if not path.exists():
+        return {
+            "shot": int(shot),
+            "events": [],
+            "n": 0,
+            "forecasts": [],
+            "n_forecasts": 0,
+            "caveats": [NO_EVENTS],
+        }
+    try:
+        df = pd.read_parquet(path)
+    except Exception as exc:  # noqa: BLE001 - a corrupt table is a message, not a stack trace
+        return _error(f"could not read {path}: {type(exc).__name__}: {exc}")
+
+    df = df[df["shot"] == int(shot)]
+    if phenomenon:
+        df = df[df["phenomenon"] == phenomenon]
+    # Overlap, not containment: an event that straddles the edge of the window happened in the
+    # window, and a point event (t1 == t0, an L-H transition) is inside a window that touches it.
+    if t0_s is not None:
+        df = df[df["t1_s"] >= float(t0_s)]
+    if t1_s is not None:
+        df = df[df["t0_s"] <= float(t1_s)]
+    df = df.sort_values(["t0_s", "event_id"], kind="stable")
+
+    rows = [_event_row(rec) for rec in df.to_dict("records")]
+    events = [r for r in rows if r.get("evidence_kind") != "forecast"]
+    forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
+    caveats = [_FORECAST_CAVEAT.format(n=len(forecasts))] if forecasts else []
+    return {
+        "shot": int(shot),
+        "events": events,
+        "n": len(events),
+        "forecasts": forecasts,
+        "n_forecasts": len(forecasts),
+        "caveats": caveats,
+    }
+
+
+def _event_row(rec: dict) -> dict:
+    """One events row as JSON: numpy scalars unwrapped, NaN as null, `attrs` decoded.
+
+    `attrs` is stored as a JSON string (the schema's own choice, so a parquet column can hold a
+    per-detector shape); handing that string on would make every caller parse it, and one of
+    them would forget.
+    """
+    import math
+
+    out: dict[str, Any] = {}
+    for key, value in rec.items():
+        if hasattr(value, "item"):
+            value = value.item()
+        if isinstance(value, float) and not math.isfinite(value):
+            value = None
+        out[key] = value
+    raw = out.get("attrs")
+    if isinstance(raw, str):
+        try:
+            out["attrs"] = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            out["attrs"] = {"_unparsed": raw}
+    return out
