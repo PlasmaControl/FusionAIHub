@@ -219,6 +219,12 @@ h5py = ">=3.15,<4"
 tqdm = ">=4.66,<5"
 # Miniproposal PDFs -> the text that phenomenon search quotes from.
 pypdf = ">=4,<7"
+# summary.html -> the per-shot text bundles. `ideate logs import` re-runs
+# d3dlogfetching's own composition (shotdb/logs.py) over a synced runs/ tree,
+# and that composition parses the session summary with BeautifulSoup; the
+# output has to be byte-identical to the 22,950 bundles already in the
+# corpus, so the parser is not a free choice. 4.x is what the tool pins.
+beautifulsoup4 = ">=4.12,<5"
 httpx = ">=0.27,<1"
 # `ideate serve`: the browser UI. Kept in the base feature rather than a
 # separate one because the MCP server and the UI share the same query layer.
