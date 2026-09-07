@@ -43,6 +43,49 @@ def test_event_paths_and_mkdirs(tmp_path):
         assert (tmp_path / sub).is_dir()
 
 
+def test_the_text_root_is_a_third_input_root(monkeypatch, tmp_path):
+    # The operator-text bundles: read-only, a different group's directory,
+    # and named `shot_<N>.txt` rather than `<N>_something`.
+    assert Paths().text_root == Path(
+        "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
+        "/shotsummary/processed/per_shot_txt"
+    )
+    # Not `tmp_path / "text"`: that is `text_cache`, which labelmaker owns
+    # and `mkdirs` does create.
+    bundles = tmp_path / "bundles"
+    monkeypatch.setenv("LABELMAKER_TEXT_ROOT", str(bundles))
+    assert Paths.from_env().text_root == bundles
+    p = Paths(root=tmp_path, corpus=tmp_path, text_root=bundles)
+    assert p.text_file(198658) == bundles / "shot_198658.txt"
+    # It is an input, so `mkdirs` does not create it - as with the corpus.
+    p.mkdirs()
+    assert not bundles.exists()
+
+
 def test_git_sha_is_a_string():
     sha = git_sha()
     assert isinstance(sha, str) and sha
+
+
+def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
+    monkeypatch, tmp_path,
+):
+    # The shot-scope text source: one 616 MB file with a JSON record per
+    # line, read-only like the corpus. What labelmaker writes is the SUBSET
+    # of it for the shots in hand, under our own root, so the cache is a
+    # thing we own and can delete and the source is a thing we never touch.
+    assert Paths().logs_jsonl == Path(
+        "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
+        "/sql/logs.jsonl"
+    )
+    monkeypatch.setenv("LABELMAKER_LOGS_JSONL", str(tmp_path / "logs.jsonl"))
+    assert Paths.from_env().logs_jsonl == tmp_path / "logs.jsonl"
+    p = Paths(root=tmp_path)
+    assert p.text_cache == tmp_path / "text"
+    assert p.logs_subset == tmp_path / "text" / "logs_subset.jsonl"
+    # Beside the subset, the shots the source was searched for and did not
+    # have. Without it a record-less shot is searched again on every call,
+    # which is a full pass over the 616 MB source for nothing.
+    assert p.logs_subset_missing == tmp_path / "text" / "logs_subset.missing"
+    p.mkdirs()
+    assert p.text_cache.is_dir()
