@@ -228,6 +228,11 @@ def smooth_activity(activity, t_s, *, smooth_ms: float = SMOOTH_MS) -> np.ndarra
         raise ValueError(
             f"activity is {activity.shape}, its column times are {t.shape}"
         )
+    # `round`, and banker's rounding at that: the wide pass' 0.64 / 0.256 is
+    # exactly 2.5 and rounds to 2, an EVEN width, which `uniform_filter1d`
+    # centres asymmetrically (one column back, two forward). That is
+    # elmcycle's own arithmetic and the width every threshold here was set
+    # against - do not "fix" it to 3 without re-measuring `PROMINENCE`.
     width = max(1, round(float(smooth_ms) / (_frame_s(t) * 1e3)))
     return uniform_filter1d(activity, size=width)
 
@@ -426,7 +431,7 @@ def transients_to_events(
     t_s,
     t_cov: tuple[float, float],
     unet_sha256: str,
-    activity=None,
+    activity,
     smooth_ms: float = SMOOTH_MS,
     max_rate_hz: float = ELM_FREE_MAX_RATE_HZ,
     min_duration_s: float = ELM_FREE_MIN_S,
@@ -442,7 +447,9 @@ def transients_to_events(
     falls inside, which is the fraction of the spectrum that lit up; an ELM
     that fell outside every burst - a peak too faint to reach
     `ACTIVITY_MIN` - is worth the smoothed trace under it instead, and NaN
-    if the trace was not passed.
+    if the trace was not passed. `activity` has no default because that
+    fallback is the exception: a caller reaches it by passing `None` and
+    saying so, not by forgetting an argument.
 
     An ELM-free interval is a `heuristic` claim by `elm_clock`, derived
     from the same times by `elm_free_intervals`, and carries no confidence:
@@ -569,13 +576,28 @@ def transients_for_block(
     packed, so the ELM path costs a masks file two small arrays where
     `tracks.tracks_for_block` costs it a whole `(512, T)` unpack. `t_cov`
     is the block's own column span - the coverage of the diagnostic that
-    was looked at, which is what tells "no ELMs here" from "nobody looked".
+    was looked at, which is what tells "no ELMs here" from "nobody looked" -
+    and it runs half a column either side of the first and last column
+    CENTRE, because a column is a span of record and not an instant.
+
+    That equality is checked rather than assumed: `_meta["thr"]` must be
+    `ACTIVITY_THR`, or the stored trace is `column_activity` of something
+    else and every threshold in this module is being applied to the wrong
+    numbers.
     """
+    meta = read_mask(masks_path, f"{block_prefix}_meta")
+    thr = float(meta["thr"])
+    if thr != float(ACTIVITY_THR):
+        raise ValueError(
+            f"{block_prefix}: _col_act was cut at thr={thr}, but this module "
+            f"reads it as column_activity at ACTIVITY_THR={float(ACTIVITY_THR)}"
+        )
     activity = np.asarray(
         read_mask(masks_path, f"{block_prefix}_col_act"), dtype=np.float64
     )
     t_s = np.asarray(read_mask(masks_path, f"{block_prefix}_t_s"), dtype=np.float64)
-    t_cov = (float(t_s[0]), float(t_s[-1]))
+    half = 0.5 * _frame_s(t_s)
+    t_cov = (float(t_s[0]) - half, float(t_s[-1]) + half)
     elm = elm_events(
         activity, t_s, smooth_ms=smooth_ms,
         prominence=prominence, min_distance_ms=min_distance_ms,
