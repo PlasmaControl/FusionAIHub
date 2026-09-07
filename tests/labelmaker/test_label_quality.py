@@ -655,3 +655,37 @@ def test_penalty_carries_the_best_f1_gap_for_a_binary_label():
     reg = validate._penalty({"rmse": 0.12}, {"rmse": 0.15}, n_rows=10)
     assert reg["rmse"] == pytest.approx(0.03) and "f1_max" not in reg
     assert validate._penalty({"auroc": None}, {"auroc": 0.9}, n_rows=1) is None
+
+
+def test_a_source_no_requested_feature_names_is_not_warned_about(tmp_path,
+                                                                 monkeypatch):
+    """`events` serves one feature - `phenomenon_window_features` - and a
+    model that does not ask for it has not failed to resolve anything
+    through that source. Warning about it on every run that requests no
+    window feature is noise on the one report whose warnings are supposed
+    to mean something (task L8's review).
+    """
+    import h5py
+
+    n = 3
+    fake_archive = {
+        "x0": np.zeros((n, 11)), "x1": np.zeros((n, 33, 5)),
+        "y": np.zeros((n, 2)), "rows": np.arange(n),
+    }
+    monkeypatch.setattr(validate, "archive_rows",
+                        lambda shot, archive=TM_ARCHIVE: fake_archive)
+    monkeypatch.setattr(registry, "load_adapter",
+                        lambda slug: _fake_tearing_adapter())
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    with h5py.File(features_dir / "111_features.h5", "w"):
+        pass
+
+    report = validate.label_quality(
+        "d3d_tearing_onset_cnn1d", [111], Paths(root=tmp_path)
+    )
+    warnings_ = report["skip_reasons"]["warnings"]
+    assert not any("'events'" in w for w in warnings_)
+    # The sources the model DOES name still say they served nothing.
+    assert any("'archive'" in w for w in warnings_)
+    assert any("'fdp'" in w for w in warnings_)

@@ -214,7 +214,18 @@ def build_logs_subset(shots: Iterable[int], *,
 
     A build that finds NOTHING does not touch the subset at all: rewriting
     it would churn the file and invalidate the parsed-subset memo, which is
-    keyed on its size and mtime, to say the same thing it already said.
+    keyed on its size and mtime, to say the same thing it already said. The
+    one exception is a TORN line: a pass that had to drop one rewrites the
+    file whether or not it found anything, because the alternative is a
+    repair that waits for an unrelated successful fetch while every fresh
+    parse of that version of the file re-emits the warning.
+
+    The misses are pruned against the subset as well as against this call's
+    `found`, so a shot that reached the cache by some other route - a
+    refresh in another process, a hand-restored file - does not stay listed
+    as missing over a fact that is no longer true. The blunt recovery is the
+    sidecar itself: DELETING `logs_subset.missing` forgets every recorded
+    miss, and the next build re-asks the source about all of them.
 
     A missing or unreadable `logs_jsonl` RAISES rather than reading as no
     text. A shot the logbook has no record of is ordinary and answers
@@ -225,7 +236,8 @@ def build_logs_subset(shots: Iterable[int], *,
     paths = _paths(paths)
     asked = {int(s) for s in shots}
     recorded_missing = _read_missing(paths)
-    wanted = asked - set(_read_subset(paths))
+    have = set(_read_subset(paths))
+    wanted = asked - have
     if not refresh_missing:
         wanted -= recorded_missing
     if not wanted:
@@ -235,6 +247,7 @@ def build_logs_subset(shots: Iterable[int], *,
     tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
     found: set[int] = set()
     n = 0
+    torn = False
     try:
         with open(tmp, "wb") as dst:
             if out.exists():
@@ -242,6 +255,11 @@ def build_logs_subset(shots: Iterable[int], *,
                     for line in old:
                         if line.endswith(b"\n"):
                             dst.write(line)
+                        elif line.strip():
+                            # The tail of a build killed mid-write. Dropped
+                            # here, and remembered so the rename happens
+                            # even if this pass finds nothing to add.
+                            torn = True
             with open(paths.logs_jsonl, "rb") as src:
                 for line in src:
                     m = _SHOT_PREFIX.match(line)
@@ -251,11 +269,13 @@ def build_logs_subset(shots: Iterable[int], *,
                         n += 1
             dst.flush()
             os.fsync(dst.fileno())
-        if n:
+        if n or torn:
             os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)
-    now_missing = (recorded_missing | (wanted - found)) - found
+    # `have | found` and not `found` alone: a shot already in the subset is
+    # not a miss, whoever put it there.
+    now_missing = (recorded_missing | (wanted - found)) - found - have
     if now_missing != recorded_missing:
         _write_missing(paths, now_missing)
     return n
