@@ -90,7 +90,16 @@ def test_build_reader_corpus_reads_the_corpus_and_says_so(
 
 def test_build_defaults_to_the_legacy_reader(tmp_path):
     args = cli.build_parser().parse_args(["build"])
-    assert args.reader == "legacy"
+    assert args.reader == "legacy" and args.limit is None
+
+
+def test_build_limit_takes_the_first_n_of_the_list(paths, shot_list_file, staged_shot_a,
+                                                   text_fixtures, stub_embeddings, capsys):
+    """A pilot builds the first N shots of the real list, so its timing is measured against the
+    same shots, the same reader and the same code the full run will use."""
+    assert cli.main(["build", "--list-file", str(shot_list_file), "--workers", "1",
+                     "--limit", "1", "--no-encode"]) == 0  # fmt: skip
+    assert "built 1 shots" in capsys.readouterr().out
 
 
 # -------------------------------------------------------------------------------------- show

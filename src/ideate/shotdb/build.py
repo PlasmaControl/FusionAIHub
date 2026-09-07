@@ -797,9 +797,22 @@ def _tmp_dir(db_dir: Path) -> Path:
     return db_dir.parent / f"{db_dir.name}.tmp"
 
 
+#: Files that live in db_dir and that `build` does not write: `ideate corpus scan` puts its
+#: census there (`--out` defaults to <db_dir>/corpus_coverage.parquet). A full rebuild swaps the
+#: whole directory, so they are carried across explicitly. Explicitly, and by name, rather than
+#: "keep anything the new build did not write": that rule would also resurrect an emb_ignite_*.npy
+#: from a previous encode beside a database that has no such embedding, which is worse than
+#: losing a file -- it is a database that lies about what it holds.
+FOREIGN_FILES = ("corpus_coverage.parquet", "corpus_coverage.json")
+
+
 def _publish(tmp: Path, db_dir: Path) -> None:
     """Swap `tmp` into place. The old directory is moved aside first and deleted afterwards, so
     the window in which no database exists at `db_dir` is one rename, not a recursive delete."""
+    for name in FOREIGN_FILES:
+        src = db_dir / name
+        if src.exists() and not (tmp / name).exists():
+            shutil.copy2(src, tmp / name)
     old = db_dir.parent / f"{db_dir.name}.old"
     if old.exists():
         shutil.rmtree(old)
