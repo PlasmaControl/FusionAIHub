@@ -67,6 +67,16 @@
 # A re-run over shots whose features are already complete costs ~1 s per shot (measured: a second
 # `all` over the same ten shots reported "features: 10 skipped" and finished in 10.8 s), so a
 # resubmission after a partial run is cheap.
+#
+# ---------------------------------------------------------------- stage `all` REWRITES model cards
+#
+# The validate stage writes its results into the model card in the REPO
+# (src/labelmaker/models/<slug>/README.md, `model-index`), keyed by nothing but the run: the
+# 10-shot pilot for this script replaced d3d_tearing_onset_cnn1d's committed 486-shot metrics with
+# 3-shot ones and dropped its tm_prob AUROC entry outright. That revert was made by hand.
+# So: run stage `all` at FULL scale only. A small-N smoke test of this pipeline should use
+# `features` + `infer`, never `all`, and `git status src/labelmaker` is worth a look after any run
+# of it.
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
