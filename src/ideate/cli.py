@@ -28,6 +28,7 @@ from .shotdb import build as build_mod
 from .shotdb import census, legacy_raw, store
 from .shotdb import logs as logs_mod
 from .shotdb import select as select_mod
+from .shotdb.reader import ShotFailed
 
 # sentence_transformers reaches into huggingface_hub on every model load, even though the MiniLM
 # checkpoint is already in ~/.cache/huggingface/hub. On a compute node with no outbound route that
@@ -77,7 +78,7 @@ def _ip_spec() -> config.SignalSpec:
     return config.SignalSpec(name="ip", **config.load_yaml("signals.yaml")["signals"]["ip"])
 
 
-def _with_ip(shots: list[int], paths: config.Paths) -> tuple[list[int], list[int]]:
+def _with_ip(shots: list[int], paths: config.Paths, reader=None) -> tuple[list[int], list[int]]:
     """Split a shot list into (has an Ip trace on disk, does not).
 
     `build_record` does not fail on a shot with no raw file: it returns a record with zero
@@ -85,9 +86,20 @@ def _with_ip(shots: list[int], paths: config.Paths) -> tuple[list[int], list[int
     wrong thing to put in a database for ninety. Ip is the discriminator because it is what
     `find_segments` needs -- a file that exists but is still being written by a bulk fetch has no
     usable Ip yet and belongs on the skipped side too.
+
+    Asked of the SAME reader the build will use. Asking the d3d_fusion_data layout about a corpus
+    shot answers "no Ip" for every one of them -- the two layouts hold disjoint shot ranges -- and
+    the build would then skip its entire list.
     """
     spec = _ip_spec()
-    have = [s for s in shots if legacy_raw.signal_status(s, spec, paths) == "present"]
+    reader = reader or legacy_raw.LegacyReader(paths)
+    have = []
+    for s in shots:
+        try:
+            if reader.signal_status(s, spec) == "present":
+                have.append(s)
+        except ShotFailed:  # an unopenable raw file is not a shot with an Ip trace
+            continue
     return have, [s for s in shots if s not in set(have)]
 
 
@@ -285,7 +297,8 @@ def _coverage_table(db: store.ShotDB) -> str:
 def cmd_build(args) -> int:
     paths, cfg = config.load_paths(), build_mod.load_build_cfg()
     wanted = _shots(args, "poc_v1")
-    shots, skipped = (wanted, []) if args.all else _with_ip(wanted, paths)
+    reader = build_mod.make_reader(args.reader, paths)
+    shots, skipped = (wanted, []) if args.all else _with_ip(wanted, paths, reader)
     if skipped:
         print(
             _fill(
@@ -300,7 +313,14 @@ def cmd_build(args) -> int:
         print("nothing to build", file=sys.stderr)
         return 1
     report = build_mod.build(
-        shots, paths, cfg, workers=args.workers, encode=not args.no_encode, reuse=not args.reencode
+        shots,
+        paths,
+        cfg,
+        workers=args.workers,
+        encode=not args.no_encode,
+        reuse=not args.reencode,
+        reader_kind=args.reader,
+        list_name=args.list,
     )
     print(
         f"built {len(report.shots)} shots / {report.n_segments} segments in "
@@ -1138,7 +1158,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("build", help="full rebuild of the database (atomic: writes db.tmp, swaps)")
     _add_selection(p)
     p.add_argument("--workers", type=int, default=8)
-    p.add_argument("--no-encode", action="store_true", help="skip the optional IGNITE channel")
+    p.add_argument(
+        "--reader",
+        choices=("legacy", "corpus"),
+        default="legacy",
+        help="raw layer to build from: the d3d_fusion_data layout (default) or the FAITH corpus "
+        "plus $LABELMAKER_ROOT/features",
+    )
+    p.add_argument(
+        "--no-encode",
+        action="store_true",
+        help="skip the optional IGNITE waveform channel (the scalar and text embeddings are "
+        "part of the database and are built either way)",
+    )
     p.add_argument(
         "--reencode",
         action="store_true",

@@ -41,7 +41,7 @@ import pandas as pd
 from .. import config
 from ..schema import Labels, Outcome, Provenance, Segment, ShotRecord, Status
 from . import features, legacy_raw, text
-from .reader import Signal, SignalReader
+from .reader import ShotFailed, Signal, SignalReader, Unavailable
 
 _log = logging.getLogger(__name__)
 
@@ -55,7 +55,15 @@ SHOT_COLS = (
     "shot", "shot_date", "campaign", "run_id", "mpid", "mp_title", "verdict", "regime",
     "regime_source", "operational", "ip_target_hit", "end_reason", "n_segments",
     "coverage_fraction", "text_mp", "text_log", "record_json", "blurb", "blurb_source",
+    "reader", "groups_filled", "has_bes", "has_co2", "has_ece", "has_filterscopes", "has_mhr",
+    "has_mirnov", "feature_resolvers", "has_frame_codes",
 )  # fmt: skip
+# The raw groups whose presence gets its own `has_<group>` column in shots.parquet: the corpus's
+# five 500 kHz groups plus filterscopes. They are the ones a phenomenon query filters on before
+# anything else -- there is no point ranking a shot for an ELM if nothing was watching D-alpha --
+# and `groups_filled` (how many groups the reader saw at all) is the same fact at one number.
+# A reader that has no such groups (the d3d_fusion_data layout) simply reports them all False.
+FAST_GROUPS = ("bes", "co2", "ece", "filterscopes", "mhr", "mirnov")
 # The two text embeddings, one per shots.parquet text column: emb_<key>.npy is the MiniLM row
 # for shots_df[key], and every place that builds, concatenates or reorders them loops over this.
 TEXT_KEYS = ("text_mp", "text_log")
@@ -227,10 +235,60 @@ def _provenance(specs, signals: dict[str, Signal | None]) -> dict[str, Provenanc
         for k in ("tool", "version", "tree", "run_id"):
             if fields.get(k) is not None:
                 fields[k] = str(fields[k])
+        # A labelmaker feature resolved from the archive store carries no EFIT run id either
+        # (its `archive_file` attr names the store, not the run), so it makes exactly the claim
+        # `assumed_for_staged` describes: the value is real, its provenance is inferred.
         prov[s.name] = Provenance(
-            **fields, assumed=assumed and sig is not None and sig.source == "staged"
+            **fields,
+            assumed=assumed and sig is not None and sig.source in ("staged", "labelmaker"),
         )
     return prov
+
+
+def make_reader(kind: str, paths: config.Paths) -> SignalReader:
+    """The reader named by a picklable string.
+
+    A worker process is handed `reader_kind` and `paths`, never a constructed reader: an HDF5
+    handle must not be forked, and a reader is cheap to build. `corpus_signals` is imported here
+    rather than at module scope so that a legacy build does not import labelmaker.
+    """
+    if kind == "legacy":
+        return legacy_raw.LegacyReader(paths)
+    if kind == "corpus":
+        from .corpus_signals import CorpusSignalReader
+
+        return CorpusSignalReader(paths)
+    raise ValueError(f"unknown reader {kind!r}; expected 'legacy' or 'corpus'")
+
+
+def frame_codes_path(shot: int, paths: config.Paths) -> Path | None:
+    """This shot's IGNITE frame codes, if either location has them, else None.
+
+    Two locations because there are two producers: `design.encode_frame_codes` writes
+    <data_root>/frame_codes/<shot>.pt, and the ten shots that shipped with the IGNITE bundle live
+    under <models_dir>/IGNITE/frame_codes/. A build records whether the shot has codes at all,
+    not which of the two wrote them.
+    """
+    for p in (
+        Path(paths.data_root) / "frame_codes" / f"{int(shot)}.pt",
+        Path(paths.models_dir) / "IGNITE" / "frame_codes" / f"{int(shot)}.pt",
+    ):
+        if p.exists():
+            return p
+    return None
+
+
+def _raw_groups(reader: SignalReader, shot: int) -> list[str]:
+    """Every raw group this reader sees for the shot, or [] when it cannot say.
+
+    One extra call per shot. On the corpus it is one open of a file that is about to be opened
+    anyway; on the d3d_fusion_data layout it decodes each group's header, which is the price of
+    the same coverage columns being answerable from either reader rather than only from one.
+    """
+    try:
+        return list(reader.groups(shot))
+    except (ShotFailed, Unavailable, OSError, KeyError, RuntimeError):
+        return []
 
 
 # ------------------------------------------------------------------------------------ one record
@@ -313,6 +371,14 @@ def build_record(
         ShotRecord(
             shot=shot,
             shot_date=_shot_date(human.run_id),
+            raw_groups=_raw_groups(reader, shot),
+            reader=str(getattr(reader, "kind", "legacy")),
+            has_frame_codes=frame_codes_path(shot, paths) is not None,
+            # Only the signals whose reader has more than one source of its own carry a resolver;
+            # on the legacy layout `raw_sources` is already the whole answer and this is empty.
+            feature_resolvers={
+                n: s.resolver for n, s in signals.items() if s is not None and s.resolver
+            },
             # A shot-number band from actuators.yaml, NOT a date range: the bands disagree with
             # the run folders (1,102 logbook records in the 2019_2021 band have 2022 run folders,
             # 53 have 2018 ones; shot 189013 sits in 2019_2021 with run id 20220427). Use
@@ -333,23 +399,31 @@ def build_record(
 
 
 def _safe_build(args: tuple) -> tuple[int, ShotRecord | None, dict | None, str | None]:
-    shot, paths, cfg = args
+    shot, paths, cfg, reader_kind = args
     try:
-        rec, shapes = build_record(shot, paths, cfg)
+        rec, shapes = build_record(shot, paths, cfg, make_reader(reader_kind, paths))
         return shot, rec, shapes, None
     except Exception as e:  # noqa: BLE001 — one broken file must not abort the build; the report lists it
         return shot, None, None, f"{type(e).__name__}: {e}"
 
 
 def _build_many(
-    shots: list[int], paths: config.Paths, cfg: dict, workers: int, report: BuildReport
+    shots: list[int],
+    paths: config.Paths,
+    cfg: dict,
+    workers: int,
+    report: BuildReport,
+    reader_kind: str = "legacy",
 ):
     """Records for `shots`, in order, with failures diverted into `report.failed`.
 
     workers <= 1 runs in-process rather than forking a pool of one: it keeps a monkeypatched
     build_record (and any other test-time patch) visible, and a pool is pure overhead there.
+
+    `reader_kind` is a string and not a reader because this is what crosses a process boundary:
+    each worker calls `make_reader` for itself, so no HDF5 handle is ever inherited by a fork.
     """
-    args = [(s, paths, cfg) for s in shots]
+    args = [(s, paths, cfg, reader_kind) for s in shots]
     if workers <= 1:
         results = (_safe_build(a) for a in args)
     else:
@@ -441,6 +515,16 @@ def _shot_row(rec: ShotRecord, blurb_client=None) -> dict:
         "record_json": rec.model_dump_json(),
         "blurb": b.text,
         "blurb_source": b.source,
+        # Which raw layer this row was built from, and what it saw there. `groups_filled` counts
+        # every group the reader listed, not only the six that get a column of their own.
+        "reader": rec.reader,
+        "groups_filled": len(rec.raw_groups),
+        **{f"has_{g}": g in set(rec.raw_groups) for g in FAST_GROUPS},
+        # JSON, not a column per signal: the set of resolvers is per shot and per signal (one
+        # shot's file legitimately mixes archive, corpus and fdp), and a wide table of eighty
+        # nullable string columns would be unreadable and mostly empty.
+        "feature_resolvers": json.dumps(rec.feature_resolvers, sort_keys=True),
+        "has_frame_codes": rec.has_frame_codes,
     }
     if tuple(row) != SHOT_COLS:
         raise RuntimeError(f"shots.parquet row keys {tuple(row)} != SHOT_COLS {SHOT_COLS}")
@@ -765,13 +849,21 @@ def build(
     workers: int = 8,
     encode: bool = True,
     reuse: bool = True,
+    reader_kind: str = "legacy",
+    list_name: str | None = None,
 ) -> BuildReport:
-    """Full rebuild into <db_dir>, via <db_dir>.tmp so a crash leaves the old database intact."""
+    """Full rebuild into <db_dir>, via <db_dir>.tmp so a crash leaves the old database intact.
+
+    `reader_kind` picks the raw layer ("legacy" -- the d3d_fusion_data layout this database was
+    first built from -- or "corpus"), and `list_name` is the shot list the caller selected, both
+    recorded in the manifest: two databases at the same path built from different layers or
+    different lists are different databases and have to say which they are.
+    """
     t_start = time.perf_counter()
     shots = sorted(set(shots))
     text.build_logs_subset(paths, set(shots))
     report = BuildReport(shots=[])
-    records, shapes = _build_many(shots, paths, cfg, workers, report)
+    records, shapes = _build_many(shots, paths, cfg, workers, report, reader_kind)
     shots_df, segments_df, shape_mat = records_to_tables(records, shapes, _blurb_client())
     X, feature_cols = _scalar_matrix(segments_df, shape_mat)
     # PCA needs more rows than components to mean anything; below that the embedding is a single
@@ -785,6 +877,8 @@ def build(
         "built_at": dt.datetime.now(dt.UTC).isoformat(),
         "git_sha": _git_sha(),
         "config_sha": _config_sha(),
+        "reader": reader_kind,
+        "list": list_name,
         "shots": report.shots,
         "n_shots": len(records),
         "n_segments": len(segments_df),
@@ -801,7 +895,16 @@ def build(
         "blurbs": _blurb_counts(shots_df),
         "campaign_note": "campaign is a shot-number band from actuators.yaml, not a date range",
         "coverage": cov.to_dict(orient="index"),
-        "ignite": {"status": "disabled", "reason": "encode=False", "channels": []},
+        # What --no-encode actually skips, said in full: the IGNITE waveform channel and nothing
+        # else. The scalar and MiniLM text embeddings below are part of the database itself and
+        # are written either way, so a reader of this manifest does not have to guess whether an
+        # emb_*.npy is missing because of this flag.
+        "ignite": {
+            "status": "disabled",
+            "reason": "--no-encode: the IGNITE waveform channel was skipped; "
+            "scalar and text embeddings are built as usual",
+            "channels": [],
+        },
     }
     tmp = _tmp_dir(paths.db_dir)
     if tmp.exists():
@@ -930,15 +1033,28 @@ def _reuse_encodings(
         return None
 
 
-def add(shots: list[int], paths: config.Paths, cfg: dict, workers: int = 1) -> BuildReport:
-    """Incremental upsert: new records, frozen PCA projection, embeddings only for the new texts."""
+def add(
+    shots: list[int],
+    paths: config.Paths,
+    cfg: dict,
+    workers: int = 1,
+    reader_kind: str | None = None,
+) -> BuildReport:
+    """Incremental upsert: new records, frozen PCA projection, embeddings only for the new texts.
+
+    `reader_kind` defaults to the one the existing database's manifest records, so an add into a
+    corpus-built database does not silently produce legacy-built rows beside corpus ones.
+    """
     from .store import ShotDB
 
     t_start = time.perf_counter()
     db = ShotDB.load(paths.db_dir)
+    reader_kind = reader_kind or str(db.manifest.get("reader") or "legacy")
     text.build_logs_subset(paths, set(shots))
     report = BuildReport(shots=[])
-    new_records, shapes = _build_many(sorted(set(shots)), paths, cfg, workers, report)
+    new_records, shapes = _build_many(
+        sorted(set(shots)), paths, cfg, workers, report, reader_kind
+    )
     n_shots, n_segs, shape_mat = records_to_tables(new_records, shapes, _blurb_client())
     if shape_mat.size and shape_mat.shape[1] != db.pca["n_shape"]:
         raise ValueError(
