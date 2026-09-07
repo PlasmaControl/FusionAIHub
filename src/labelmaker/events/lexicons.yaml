@@ -1,0 +1,150 @@
+# The phenomenon lexicon: what a DIII-D operator calls each thing.
+#
+# THIS FILE IS THE SINGLE SOURCE of the round-1 phenomenon ids and their
+# aliases (plan 5.6). ideate reads it too - `configs/ideate/phenomena.yaml`
+# adds the scoring machinery (labels, events, bands, diagnostics, priors)
+# around these ids and does NOT restate the alias lists - so an id renamed
+# here is renamed in both, and an alias added here is added to both.
+#
+# `aliases` are lowercase phrases matched WHOLE, by gluing spaces around
+# them: punctuation becomes whitespace except a hyphen or a slash inside a
+# token, so "elm" does not match "helms" or "elm-free", and "2/1" is one
+# token. That is also why the spellings here are the ones the logbook
+# actually uses, acronyms included, rather than the textbook names.
+#
+# `negatives` are phrases whose presence makes the WHOLE sentence a
+# statement of absence: a sentence carrying one yields `polarity="neg"`
+# hits for that phenomenon and no positive ones. They overlap `aliases` on
+# purpose - "elm-free" is both the phrase the operator wrote and the reason
+# it is not an ELM. (ideate's `exclude` is the same idea under its own
+# name.) They are deliberately sparse: only phrasings seen in the corpus,
+# because a negative that never fires costs nothing and one that fires
+# wrongly silences a real mention.
+#
+# `weight` (default 1.0) is for the CONSUMER's scoring, not for
+# `text_weak`, whose confidence is a flat quarter a mention. Two entries
+# deserve a caveat rather than a number nobody measured: `ae` and `rwm` are
+# two- and three-letter acronyms that also name PCS parameters, and on the
+# 172 shots of the acceptance run nearly every run-scope "rwm" was
+# "RWM_GAINMULT" or "RWM feedback" - the control system, not an observed
+# resistive wall mode. Whoever scores these should treat a lone acronym as
+# weaker than a spelled-out name.
+version: 1
+phenomena:
+  ae:
+    title: Alfven eigenmode
+    aliases:
+      - ae
+      - tae
+      - rsae
+      - bae
+      - eae
+      - alfven eigenmode
+      - alfven
+      - alfvén
+    negatives:
+      - no ae
+      - ae-free
+
+  eho:
+    title: Edge harmonic oscillation
+    aliases:
+      - eho
+      - edge harmonic oscillation
+      - edge harmonic
+    negatives:
+      - no eho
+      - eho-free
+
+  elm:
+    title: Edge localised mode
+    aliases:
+      - elm
+      - elms
+      - elmy
+      - elming
+      - elm-free
+    negatives:
+      - elm-free
+      - elm free
+      - no elms
+      - without elms
+
+  tearing:
+    title: Tearing mode
+    aliases:
+      - tearing
+      - ntm
+      - 2/1
+      - 3/2
+      - locked mode
+    negatives:
+      - no tearing
+
+  sawtooth:
+    title: Sawtooth
+    aliases:
+      - sawtooth
+      - sawteeth
+      - sawtooth crash
+      - st crash
+    negatives:
+      - no sawteeth
+      - sawtooth-free
+
+  fishbone:
+    title: Fishbone
+    aliases:
+      - fishbone
+      - fishbones
+    negatives: []
+
+  qcm:
+    title: Quasi-coherent mode
+    aliases:
+      - qcm
+      - quasi-coherent
+    negatives: []
+
+  qh:
+    title: Quiescent H-mode
+    aliases:
+      - qh
+      - qh-mode
+      - qh mode
+      - quiescent h-mode
+      - quiescent h mode
+    negatives: []
+
+  lh:
+    title: L-H transition
+    aliases:
+      - l-h transition
+      - lh transition
+      - l to h
+      - h-mode transition
+      - transition to h-mode
+    negatives: []
+
+  detachment:
+    title: Divertor detachment
+    aliases:
+      - detach
+      - detached
+      - detachment
+    negatives: []
+
+  pickup:
+    title: Instrumental pickup
+    aliases:
+      - pickup
+      - pick-up
+      - noise pickup
+    negatives: []
+
+  rwm:
+    title: Resistive wall mode
+    aliases:
+      - rwm
+      - resistive wall mode
+    negatives: []
