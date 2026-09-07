@@ -15,6 +15,13 @@ from pathlib import Path
 
 DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 DEFAULT_CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
+#: The per-shot operator-text bundles `events/text_weak.py` reads. A third
+#: read-only input root beside the corpus, and separate from it because it
+#: is a different group's directory and covers a different set of shots.
+DEFAULT_TEXT = Path(
+    "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
+    "/shotsummary/processed/per_shot_txt"
+)
 
 
 @dataclass(frozen=True)
@@ -23,12 +30,15 @@ class Paths:
 
     root: Path = DEFAULT_ROOT
     corpus: Path = DEFAULT_CORPUS
+    text_root: Path = DEFAULT_TEXT
 
     @classmethod
     def from_env(cls) -> Paths:
         return cls(
             root=Path(os.environ.get("LABELMAKER_ROOT", str(DEFAULT_ROOT))),
             corpus=Path(os.environ.get("LABELMAKER_CORPUS", str(DEFAULT_CORPUS))),
+            text_root=Path(os.environ.get("LABELMAKER_TEXT_ROOT",
+                                          str(DEFAULT_TEXT))),
         )
 
     @property
@@ -85,6 +95,9 @@ class Paths:
 
     def corpus_file(self, shot: int) -> Path:
         return self.corpus / f"{shot}_processed.h5"
+
+    def text_file(self, shot: int) -> Path:
+        return self.text_root / f"shot_{shot}.txt"
 
     def mkdirs(self) -> None:
         for d in (self.features, self.labels, self.models, self.runs,

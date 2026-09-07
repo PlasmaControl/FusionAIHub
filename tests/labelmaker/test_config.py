@@ -43,6 +43,22 @@ def test_event_paths_and_mkdirs(tmp_path):
         assert (tmp_path / sub).is_dir()
 
 
+def test_the_text_root_is_a_third_input_root(monkeypatch, tmp_path):
+    # The operator-text bundles: read-only, a different group's directory,
+    # and named `shot_<N>.txt` rather than `<N>_something`.
+    assert Paths().text_root == Path(
+        "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
+        "/shotsummary/processed/per_shot_txt"
+    )
+    monkeypatch.setenv("LABELMAKER_TEXT_ROOT", str(tmp_path / "text"))
+    assert Paths.from_env().text_root == tmp_path / "text"
+    p = Paths(root=tmp_path, corpus=tmp_path, text_root=tmp_path / "text")
+    assert p.text_file(198658) == tmp_path / "text" / "shot_198658.txt"
+    # It is an input, so `mkdirs` does not create it - as with the corpus.
+    p.mkdirs()
+    assert not (tmp_path / "text").exists()
+
+
 def test_git_sha_is_a_string():
     sha = git_sha()
     assert isinstance(sha, str) and sha
