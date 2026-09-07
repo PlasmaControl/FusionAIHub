@@ -1293,3 +1293,154 @@ def test_the_two_commands_ask_one_definition_where_frame_codes_live(paths):
     assert build.frame_codes_path(190123, paths) is not None
     assert select.preferred_shots(features_dir=None, frame_codes_dirs=dirs) == {190123}
     assert select.store_fingerprint(None, dirs)["n_frame_codes"] == 1
+
+
+# ------------------------------ re-verification: the preferred cap must not close the door
+
+
+def preferred_list(cands) -> list[select.Candidate]:
+    """`cands` as a committed list comes back AFTER the features stage has run over it.
+
+    The difference from `listed()` is the one fact the document does not carry: by the time a
+    list is finalized every listed shot has a feature file, so `preferred` is true of all of
+    them. That is the state `--finalize --from-list` actually runs in.
+    """
+    doc = select.document(
+        [select.replace(c, reason="fill") for c in cands],
+        select.summarize(
+            n_candidates=len(cands), reasons=Counter(), selected=cands, quotas=quotas()
+        ),
+        name="x",
+        seed=3,
+        n=len(cands),
+    )
+    return select.candidates_from_rows(doc["shots"], preferred=[c.shot for c in cands])
+
+
+def test_a_replacement_is_reachable_when_every_listed_shot_is_preferred():
+    """The latent Important the I5 re-review left for I7.
+
+    On a re-verification the 500 kept rows are forced in, and forcing counted each of them
+    against the preferred cap (150) -- so `_preferred` stood at 500 before a single replacement
+    was considered. Every candidate a re-verification may draw is `require_measured`, and a
+    measured shot is one with a feature file, which is exactly what makes it `preferred`: the
+    cap therefore refused every possible replacement. A dropped shot yielded a 499-row list
+    that still called itself finalized, and exited 0.
+    """
+    pool = candidates(501, per_run=10, preferred=True)
+    committed = preferred_list(pool[:500])
+    doomed = committed[0].shot
+    out, repl, pending = select.reverify_flattop(
+        committed, pool, quotas(n=500, per_run=10, preferred_cap=150), seed=3,
+        measure=lambda s: 0.4 if s == doomed else 2.4,
+    )
+    assert pending == []
+    assert len(repl) == 1 and repl[0]["dropped"] == doomed
+    assert repl[0]["replacement"] == pool[500].shot  # the one shot not on the list
+    assert len(out) == 500 and doomed not in {c.shot for c in out}
+
+
+def test_a_fresh_selection_still_caps_the_preferred_shots():
+    """The cap is only vacuous where "measured" already implies "featured". Pass one -- a fresh
+    `diversify` over a pool where most shots have no features -- still enforces it, and this
+    test is here so the fix above cannot quietly turn it off everywhere."""
+    pool = candidates(100, per_run=10, preferred=True) + candidates(
+        100, start=195000, per_run=10, preferred=False
+    )
+    got = select.diversify(pool, quotas(n=50, per_run=10, preferred_cap=5), seed=3)
+    assert sum(c.preferred for c in got) == 5
+
+
+def test_the_summary_records_which_list_a_re_verification_verified():
+    """`finalized: true` is a claim about a specific document. Which one it was is not derivable
+    from anything else in the file, and a summary that says a list is final without saying what
+    it was re-measured from cannot be checked."""
+    got = candidates(5, per_run=1)
+    s = select.summarize(
+        n_candidates=9, reasons=Counter(), selected=got, quotas=quotas(n=5),
+        finalized=True, from_list="configs/ideate/shot_lists/recommender_v1.yaml",
+    )
+    assert s["from_list"] == "configs/ideate/shot_lists/recommender_v1.yaml"
+    assert "recommender_v1.yaml" in select.format_summary(s)
+
+
+def test_a_summary_that_verified_no_list_says_so_with_none():
+    s = select.summarize(n_candidates=9, reasons=Counter(), selected=[], quotas=quotas(n=5))
+    assert s["from_list"] is None and s["finalized"] is False
+
+
+# ------------------------- the CLI: what may call itself finalized, and how short it may be
+
+
+def test_cli_select_finalize_without_from_list_does_not_call_the_list_final(
+    selection_inputs, tmp_path
+):
+    """`--finalize` alone re-SELECTS: it runs `eligible()` and `diversify()` over today's store,
+    which is the non-convergence `--from-list` exists to stop. Such a run may still write a
+    list -- every row of it is measured -- but it is a first invocation, and stamping it
+    `finalized: true` would make the un-re-verified list indistinguishable from the verified one.
+    """
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    out = tmp_path / "v.yaml"
+    argv = select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)})
+    assert cli.main([*argv, "--finalize"]) == 0
+    doc = yaml.safe_load(out.read_text(encoding="utf-8"))
+    assert doc["summary"]["finalized"] is False and doc["summary"]["from_list"] is None
+    assert {e["flattop_source"] for e in doc["shots"]} == {"features_ip"}
+
+
+def test_cli_select_finalize_refuses_to_re_select_over_an_existing_list(
+    selection_inputs, tmp_path, capsys
+):
+    """The dangerous case: the file it would overwrite is the committed list. Re-selecting over
+    it silently replaces the eligibility snapshot with a different 500."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    out = tmp_path / "v.yaml"
+    argv = select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)})
+    assert cli.main([*argv, "--finalize"]) == 0
+    before = out.read_text(encoding="utf-8")
+    assert cli.main([*argv, "--finalize"]) == 2
+    assert "--from-list" in capsys.readouterr().err
+    assert out.read_text(encoding="utf-8") == before  # not touched
+
+
+def test_cli_select_from_list_refuses_a_finalized_list_shorter_than_it_asked_for(
+    selection_inputs, tmp_path, capsys
+):
+    """A hole nothing measured can fill leaves the list short. Writing it anyway published a
+    499-row `recommender_v1` stamped `finalized: true` and exited 0, and every downstream count
+    would have been read as 500."""
+    txt_dir, parquet = selection_inputs
+    feats = tmp_path / "features"
+    committed_p = tmp_path / "v.yaml"
+    base = select_argv(
+        txt_dir, parquet, tmp_path, **{"--out": str(committed_p), "--features": str(feats)}
+    )
+    for i in range(60):
+        _write_features(feats, 190000 + i, 3.0)
+    committed = _write_list([*base, "--finalize"], committed_p)
+    doomed = committed["shots"][0]["shot"]
+    # Only the listed shots keep a feature file, and the doomed one now measures short: there is
+    # nothing measured left to replace it with.
+    kept = {e["shot"] for e in committed["shots"]}
+    for i in range(60):
+        shot = 190000 + i
+        if shot not in kept:
+            (feats / f"{shot}_features.h5").unlink()
+    _write_features(feats, doomed, 0.4)
+
+    out = tmp_path / "final.yaml"
+    argv = [
+        *select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out), "--features": str(feats)}),
+        "--finalize", "--from-list", str(committed_p),
+    ]
+    assert cli.main(argv) == 1
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "11 of 12" in err

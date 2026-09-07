@@ -734,6 +734,12 @@ def cmd_corpus_select(args) -> int:
     eligibility snapshot: exactly those shots are re-measured, the pool is consulted only to
     replace what the measurement rejects, and the seed comes off the document
     (`select.reverify_flattop`).
+
+    Three things a run may not do, each of them a way an unverified list could take the verified
+    one's place: `--finalize` without `--from-list` may not overwrite an existing target (it
+    would re-select over it); a document may only carry `finalized: true` -- and the `from_list`
+    that makes the claim checkable -- when `--from-list` was given; and a `--from-list --finalize`
+    run whose replacements could not fill every hole is refused rather than written short.
     """
     import pandas as pd
 
@@ -747,6 +753,19 @@ def cmd_corpus_select(args) -> int:
     from_list = Path(args.from_list) if getattr(args, "from_list", None) else None
     listed: list[select_mod.Candidate] | None = None
     source_doc: dict = {}
+    out = Path(args.out) if args.out else config.CONFIG_DIR / "shot_lists" / f"{args.name}.yaml"
+    if getattr(args, "finalize", False) and from_list is None and out.exists():
+        # `--finalize` without `--from-list` re-SELECTS: `eligible()` and `diversify()` run over
+        # today's store, which is bigger than the one the existing file was drawn against, so it
+        # returns a DIFFERENT list -- and it would overwrite the committed one with it. Refused
+        # where the target already exists, which is exactly the case where the damage is silent.
+        print(
+            f"{out} already exists: `--finalize` without `--from-list` would RE-SELECT over it "
+            f"and overwrite the committed list with a different one. Pass "
+            f"--from-list {out} to re-verify it, or --out somewhere else to select afresh.",
+            file=sys.stderr,
+        )
+        return 2
     if from_list is not None:
         if not from_list.exists():
             print(f"no shot list at {from_list}", file=sys.stderr)
@@ -869,6 +888,21 @@ def cmd_corpus_select(args) -> int:
                 file=sys.stderr,
             )
             return 1
+    # A finalized list shorter than the number it was drawn for is not a finalized list. It
+    # happens when the measurement drops a shot and nothing measured is left to replace it
+    # (`_refill` leaves the hole rather than admitting an unverified row), and writing it anyway
+    # published a 499-row `recommender_v1` stamped `finalized: true`, exit 0 -- after which every
+    # downstream count reads 500 because that is what the name says.
+    if listed is not None and getattr(args, "finalize", False) and len(selected) < quotas.n:
+        holes = [r["dropped"] for r in replacements if r["replacement"] is None]
+        print(
+            f"refusing to finalize a short list: {len(selected)} of {quotas.n} shot(s). "
+            f"{len(holes)} dropped shot(s) had no measured replacement available "
+            f"({_brief(holes)}). Fetch features for more of the eligible pool "
+            "(scripts/labelmaker/fetch_features.py) and repeat.",
+            file=sys.stderr,
+        )
+        return 1
 
     summary = select_mod.summarize(
         n_candidates=len(candidates),
@@ -877,9 +911,13 @@ def cmd_corpus_select(args) -> int:
         quotas=quotas,
         candidates=candidates,
         replacements=replacements,
-        # A written document can only be finalized if this run was a `--finalize` run: one that
-        # still had a pending row returned 1 above without writing anything.
-        finalized=bool(getattr(args, "finalize", False)),
+        # A written document can only be finalized if this run was a `--finalize --from-list`
+        # run: one that still had a pending row, or came back short, returned 1 above without
+        # writing anything. `--finalize` alone re-selects (`diversify` over today's store), so
+        # whatever it writes is a FIRST invocation however measured its rows are, and stamping
+        # it `finalized` would make it indistinguishable from the list that was re-verified.
+        finalized=bool(getattr(args, "finalize", False)) and from_list is not None,
+        from_list=from_list,
         store=select_mod.store_fingerprint(features_dir, code_dirs),
     )
     doc = select_mod.document(
@@ -891,7 +929,8 @@ def cmd_corpus_select(args) -> int:
         hand_review=source_doc.get("hand_review"),
     )
 
-    out = Path(args.out) if args.out else config.CONFIG_DIR / "shot_lists" / f"{args.name}.yaml"
+    # `out` was resolved at the top of this function, before anything was read: the `--finalize`
+    # refusal there has to know which file this run would overwrite.
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100), encoding="utf-8"

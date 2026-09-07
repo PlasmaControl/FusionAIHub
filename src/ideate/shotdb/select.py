@@ -515,8 +515,15 @@ class _Allocator:
     counter -- so the phases below cannot each keep their own idea of how full a run day is.
     """
 
-    def __init__(self, quotas: Quotas) -> None:
+    def __init__(self, quotas: Quotas, *, cap_preferred: bool = True) -> None:
         self.q = quotas
+        # `cap_preferred=False` turns the preferred ceiling off for the whole allocation. The
+        # only caller that asks for it is `_refill(require_measured=True)` -- the re-verification
+        # of a committed list -- where the cap is vacuous by construction: a candidate is
+        # admissible there only if somebody has MEASURED it, a shot is measurable only if it has
+        # a `<shot>_features.h5`, and having one is exactly what makes it `preferred`. Left on,
+        # the ceiling refuses the only kind of candidate the pass may draw.
+        self.cap_preferred = cap_preferred
         self.year_cap = max(1, int(quotas.n * quotas.max_year_frac))
         self.taken: dict[int, Candidate] = {}
         self._runs: Counter[str] = Counter()
@@ -533,13 +540,16 @@ class _Allocator:
         `force` is for `reverify_flattop`, and for nothing else: the shots of an already committed
         list were allocated once, by the run that made the list and against the pool it saw, and
         re-imposing the caps on them at re-verification time would let the second invocation
-        quietly shrink the list. They are still COUNTED, so a replacement drawn afterwards sees
-        the run day, mini-proposal and year they occupy.
+        quietly shrink the list. They are still COUNTED against the run day, mini-proposal and
+        year they occupy, so a replacement drawn afterwards sees them -- but NOT against the
+        preferred ceiling, which is a budget for what a FILL may take and not a property of a
+        list somebody already committed. Counting 500 forced rows against a ceiling of 150 is
+        what made every replacement unreachable (see `cap_preferred`).
         """
         if c.shot in self.taken:
             return False
         if force:
-            self._count(c, reason)
+            self._count(c, reason, preferred=False)
             return True
         if self.full():
             return False
@@ -555,14 +565,14 @@ class _Allocator:
         # The preferred cap is global, not a budget for phase 1. §5.7 caps these shots so they
         # cannot dominate the list, and a cap that only bound the phase that seeks them out would
         # be undone by the general fill picking up the other 376 of them.
-        if c.preferred and self._preferred >= self.q.preferred_cap:
+        if self.cap_preferred and c.preferred and self._preferred >= self.q.preferred_cap:
             return False
         self._count(c, reason)
         return True
 
-    def _count(self, c: Candidate, reason: str) -> None:
+    def _count(self, c: Candidate, reason: str, *, preferred: bool = True) -> None:
         self.taken[c.shot] = replace(c, reason=reason)
-        self._preferred += bool(c.preferred)
+        self._preferred += bool(c.preferred) and preferred
         if c.run_id is not None:
             self._runs[c.run_id] += 1
         if c.mpid is not None:
@@ -801,8 +811,13 @@ def _refill(
     finalized list whose replacement row was never measured is a list that has to be finalized
     again, and the loop this whole path exists to close would not close. A hole nothing measured
     can fill is left, and named in the replacement record.
+
+    It also turns the preferred ceiling off, for the same reason and only where that reason
+    holds: on this pass "measured" implies "has a feature file" implies "preferred", so the
+    ceiling can only refuse -- there is no such thing as an admissible non-preferred candidate
+    for it to prefer instead. Pass one, where most of the pool has no features, still has it.
     """
-    alloc = _Allocator(quotas)
+    alloc = _Allocator(quotas, cap_preferred=not require_measured)
     for c in kept:
         alloc.add(c, c.reason, force=force_kept)
     used = {c.shot for c in kept} | {c.shot for c, _ in dropped}
@@ -855,6 +870,7 @@ def summarize(
     candidates: Sequence[Candidate] | None = None,
     replacements: Sequence[Mapping] | None = None,
     finalized: bool = False,
+    from_list: str | Path | None = None,
     n_verified: int | None = None,
     store: Mapping | None = None,
 ) -> dict:
@@ -871,6 +887,11 @@ def summarize(
     `store_fingerprint()`: how many feature files existed and how new the newest was, which is
     what says WHICH store verified these rows -- the store grows between the two invocations, by
     design, and two runs a day apart are not the same verification.
+
+    `from_list` is the document that was re-measured, and it is what makes `finalized` checkable:
+    only a `--from-list` run may set `finalized`, because only that run keeps the committed
+    eligibility snapshot instead of re-selecting over today's store, and the reader has to be
+    able to see WHICH list was verified rather than take the claim on trust.
     """
     themes = Counter(c.theme for c in selected)
     have = Counter(c.theme for c in candidates or ())
@@ -912,6 +933,7 @@ def summarize(
         "runs": len({c.run_id for c in selected}),
         "mpids": len({c.mpid for c in selected if c.mpid}),
         "finalized": bool(finalized),
+        "from_list": None if from_list is None else str(from_list),
         # Counted from the rows when the caller does not say, so the number can never disagree
         # with the `flattop_source` histogram above it.
         "n_verified": int(
@@ -1021,6 +1043,7 @@ def format_summary(summary: Mapping) -> str:
     lines += ["", "verification:"]
     lines += [
         f"  {'finalized':<22}{str(bool(summary.get('finalized'))).lower():>8}",
+        f"  {'from list':<22}{summary.get('from_list') or '(a fresh selection)':>8}",
         f"  {'verified':<22}{summary.get('n_verified', 0):>8,}",
         f"  {'dropped':<22}{summary.get('n_dropped', 0):>8,}",
         fingerprint,
@@ -1071,10 +1094,10 @@ def candidates_from_rows(
     `preferred` is the ONE fact the document does not carry, because it is not a property of the
     shot: it is "this shot already had labelmaker features when the list was made", and by the
     time a list is finalized the features stage has run over the list itself, so it is true of
-    nearly every row. It is passed in from today's store and used for one thing only -- counting
-    the preferred cap against any REPLACEMENT drawn now (the kept rows are forced in, caps and
-    all), which is the same reading the cap has everywhere else: a ceiling on how many
-    already-featured shots a fill may take.
+    nearly every row. It is passed in from today's store and reported (`summary.preferred`); it
+    does not gate anything on this path. The preferred CEILING is off for a re-verification --
+    every candidate such a pass may draw has to be measured, so all of them are preferred and a
+    ceiling could only refuse them all (see `_Allocator.cap_preferred`).
     """
     want = {int(s) for s in preferred}
     out = []
@@ -1119,6 +1142,13 @@ def store_fingerprint(
     things, and what changed between them is this store -- the features stage ran over the pending
     list. The count and the newest mtime are cheap, need no file opened, and are enough to tell a
     verification done before that job from one done after it.
+
+    **This is a cheap IDENTITY, not a content hash.** It opens nothing and reads no bytes, so it
+    answers "is this the same store I saw last time?" and nothing stronger: a file rewritten with
+    different data and the same mtime, or two stores that happen to hold the same number of files
+    with the same newest mtime, are indistinguishable here. What actually verified a row is the
+    row's own `flattop_source`, and what a feature file holds is its own `written_at`/`git_sha`
+    attributes. Use those to audit a number; use this to tell two RUNS apart.
     """
     n_features, newest = 0, None
     if features_dir and Path(features_dir).is_dir():
