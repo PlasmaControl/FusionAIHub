@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --mem=14G
 #SBATCH --time=01:50:00
 #SBATCH --array=0-9%10
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
@@ -99,6 +99,16 @@
 #   52 %), --cpus-per-task=4 (66 % of 5 cpus = 3.3 busy cores -> 82 % of 4), --time = 50 shots x
 #   ~70 s x 2 = 1:50:00. Lesson (same as build.sbatch): size memory from a compute-node pilot, not
 #   from login-node PSS.
+# MEASURED AGAIN (resubmissions at 4 cpus / 16G, 2026-09-07; jobstats CPU / CPU-mem, sacct MaxRSS):
+#   2925412_1 72.2 % / 62.5 % (10.0 GB)   2925412_4 71.4 % / 66 % (10.6 GB)
+#   2925412_5 70.6 % / 65.6 % (10.49 GiB from sacct; jobstats' memory line read ">100 %" erroneously)
+#   2925416_8 70.5 % / 58 % (9.2 GB)      remainders: 2925445_6 (1 shot) 33.9 % / 37 %, 2925446_7 (9 shots) 77.8 % / 47 %
+#   CPU gate MET on every full chunk at 4 cpus; CPU-mem MISSED on every one -- the 16G request was a
+#   1.6x margin over an OOM whose true peak was unknown. The sampled peak is 9.2-10.6 GB, so the
+#   request is now --mem=14G (10.6 / 14 = 76 %, 1.32x headroom over the largest sampled peak).
+#   Per-shot wall at 4 cpus: 57-68 s mean per task (vs 60 s at 5 cpus): the work is I/O-bound and
+#   the fifth core was idle. The 500 recommender_v1 caches were completed by these runs; 14G is for
+#   the next corpus (iteration 4), where a cold pilot on a compute node should confirm it first.
 set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller runs the job from one while the
 # branch is under review); the pixi environment always lives in the main checkout.
