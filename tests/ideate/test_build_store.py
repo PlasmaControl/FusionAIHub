@@ -449,3 +449,60 @@ def test_a_rebuild_keeps_the_census_another_command_left_in_the_db_dir(
     assert (paths.db_dir / "corpus_coverage.parquet").read_bytes() == b"census"
     assert (paths.db_dir / "corpus_coverage.json").exists()
     assert (paths.db_dir / "shots.parquet").exists()
+
+
+def test_a_rebuild_removes_only_the_files_the_build_owns(
+    paths, staged_shot_a, text_fixtures, stub_embeddings
+):
+    """db_dir has more than one producer. `ideate labels join` writes three tables into it and
+    `ideate corpus scan` a census, and a build that swapped the whole directory took all of them
+    with it -- silently. The rule is inverted: `build` names the files it writes and may delete
+    nothing else, so a stale IGNITE matrix from a previous encode still goes (a database that
+    kept it would lie about what it holds) and everything else stays byte for byte."""
+    db = paths.db_dir
+    db.mkdir(parents=True, exist_ok=True)
+    foreign = {
+        "labels_wide.parquet": b"labels",
+        "events.parquet": b"events",
+        "text_claims.parquet": b"claims",
+        "corpus_coverage.parquet": b"census",
+        "foo.txt": b"foo",
+    }
+    for name, blob in foreign.items():
+        (db / name).write_bytes(blob)
+    (db / "emb_ignite_seg.npy").write_bytes(b"stale")
+    build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+    for name, blob in foreign.items():
+        assert (db / name).read_bytes() == blob, name
+    assert not (db / "emb_ignite_seg.npy").exists()
+    assert (db / "shots.parquet").exists() and (db / "manifest.json").exists()
+
+
+def test_a_group_narrower_than_its_address_costs_one_signal_not_the_shot(
+    paths, signal_corpus, stub_embeddings
+):
+    """A corpus file whose `co2` holds two chords cannot serve `ne_line` (the V2 chord, channel
+    2). That is one signal `unavailable` with the reason in the record -- not a shot in
+    `manifest.failed`, which is what an IndexError out of the reader made of it."""
+    from .conftest import write_corpus_group
+
+    shot = 100014
+    d = paths.foundation_model_processed_dir
+    d.mkdir(parents=True, exist_ok=True)
+    x = np.arange(13) * 0.5
+    write_corpus_group(d / f"{shot}_processed.h5", "co2", x, np.ones((2, 13)))
+    write_corpus_group(
+        d / f"{shot}_processed.h5",
+        "pinj",
+        x,
+        np.stack([np.full(13, (i + 1) * 1.0e5) for i in range(8)]),
+    )
+    rec, _ = build.build_record(
+        shot,
+        paths,
+        build.load_build_cfg(),
+        reader=corpus_signals.CorpusSignalReader(paths),
+    )
+    assert rec.coverage["ne_line"] == "unavailable"
+    assert "co2" in rec.coverage_reasons["ne_line"]
+    assert rec.coverage["pnbi_15L"] == "present"

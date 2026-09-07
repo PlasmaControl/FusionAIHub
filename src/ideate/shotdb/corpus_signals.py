@@ -22,6 +22,14 @@ read through `labelmaker.features.store`, not through h5py here, so that the res
 `labelmaker.features.namespace`) and the recorded miss causes are the ones labelmaker itself
 records rather than this module's reading of them.
 
+**The order of the two layers, for a spec that carries both addresses: the corpus first, the
+feature store as the fallback.** The corpus is the raw instrument channel at its own rate; a
+labelmaker feature is a resolved quantity on the 25 ms grid, from whichever of three sources
+answered that day. So the corpus wins where it has the signal, and a corpus MISS falls through to
+the feature store rather than ending as `unavailable` -- reporting "no source has this" while the
+value sits on disk is the worst of the four answers. No shipped spec carries both today; the rule
+is written down (and tested) so that the first one to do so behaves predictably.
+
 **The status rules, which are the point of the module.** A build over 500 shots produces a
 coverage table that people plan work from, so the difference between "DIII-D did not record this"
 and "we have not fetched it yet" has to survive all the way into that table:
@@ -30,6 +38,7 @@ and "we have not fetched it yet" has to survive all the way into that table:
 |---|---|
 | the group / feature is there | `present` |
 | the corpus group is absent or is a `(C, 1)` placeholder | `unavailable` |
+| the group has fewer channels than the address names, or is stored 3-D | `unavailable` + reason |
 | the signal has no corpus and no labelmaker address at all | `unavailable` |
 | the stored feature holds no finite sample | `unavailable` |
 | labelmaker recorded a miss that will fail again identically | `unavailable` |
@@ -42,7 +51,12 @@ so it must not be spent on a quantity no source has.
 
 A corpus file that does not open at all (~2.3 % of them, truncated writes) raises `ShotFailed`
 and fails the whole shot rather than being reported as a shot with no diagnostics: the build
-records it in `manifest.failed`, where it reads as the file-level fault it is.
+records it in `manifest.failed`, where it reads as the file-level fault it is. That is the ONLY
+fault with that blast radius. Everything narrower -- a group with fewer channels than an address
+names, a group stored 3-D -- costs the signals addressed to that group and nothing else, with the
+reason kept in `reader.reasons` (and, through `build_record`, in the record's `coverage_reasons`).
+The corpus is heterogeneous across campaigns, and losing a shot's thirty diagnostics because one
+address was too wide is a much worse answer than losing the one.
 """
 
 from __future__ import annotations
@@ -107,6 +121,13 @@ class CorpusSignalReader(CorpusReader):
         super().__init__(Path(paths.foundation_model_processed_dir))
         self.paths = paths
         self.features_dir = Path(features_dir) if features_dir else default_features_dir()
+        # Why a signal of the LAST `read_shot` came back unavailable, when the reason is anything
+        # but the ordinary "the corpus did not record this group": an address wider than the file,
+        # a group stored 3-D. Reset at the top of every `read_shot`, so it describes one shot and
+        # never leaks into the next one; `build_record` copies it into the record's
+        # `coverage_reasons`. Not part of the `SignalReader` contract -- a caller reads it through
+        # `getattr(reader, "reasons", {})`.
+        self.reasons: dict[str, str] = {}
 
     def __repr__(self) -> str:
         return f"CorpusSignalReader({str(self.corpus_dir)!r}, features_dir={self.features_dir!r})"
@@ -126,20 +147,23 @@ class CorpusSignalReader(CorpusReader):
         # labelmaker miss that is worth retrying moves a name to `pending`. The default is the
         # conservative one: `pending` is a promise that a fetch would help.
         status: dict[str, Status] = {}
+        self.reasons = reasons = {}
         installed = [s for s in specs if s.installed]
 
         by_group: dict[str, list[tuple[SignalSpec, Address]]] = {}
-        labelmaker: list[SignalSpec] = []
         for spec in installed:
             addr = self.address(spec)
             if addr is not None:
                 by_group.setdefault(addr.group, []).append((spec, addr))
-            elif spec.labelmaker is not None:
-                labelmaker.append(spec)
 
         for group, items in by_group.items():
-            for name, sig in self._read_group(shot, group, items).items():
-                signals[name] = sig
+            got, why = self._read_group(shot, group, items)
+            signals.update(got)
+            reasons.update(why)
+        # Corpus first, feature store second -- for a spec that carries BOTH addresses as well as
+        # for one that carries only the labelmaker's. A corpus miss must not shadow a feature that
+        # is on disk: `unavailable` where the value exists is the worst of the four answers.
+        labelmaker = [s for s in installed if s.labelmaker is not None and signals[s.name] is None]
         for name, sig, st in self._read_features(shot, labelmaker):
             signals[name] = sig
             if sig is None:
@@ -203,15 +227,22 @@ class CorpusSignalReader(CorpusReader):
 
     def _read_group(
         self, shot: int, group: str, items: list[tuple[SignalSpec, Address]]
-    ) -> dict[str, Signal | None]:
-        """One read of `group` serving every spec addressed to it.
+    ) -> tuple[dict[str, Signal | None], dict[str, str]]:
+        """One read of `group` serving every spec addressed to it, and why any of them missed.
 
         The union of the wanted channels is read once and each spec is served by slicing that
         selection, so `pinj`'s eight beams cost one open and one read, not eight of each.
-        `Unavailable` (the group is absent, or is the corpus's `(C, 1)` placeholder) leaves every
-        spec of the group unread; `ShotFailed` propagates, because a file that will not open is
-        not a diagnostic that was not recorded.
+
+        **Everything a group can do wrong costs that group and no more.** `Unavailable` (absent,
+        or the corpus's `(C, 1)` placeholder) leaves every spec of the group unread; a group with
+        fewer channels than an address names, or one stored 3-D, reports the specs it cannot serve
+        `unavailable` with the reason written down. None of them fails the shot: the corpus is
+        heterogeneous -- the I3 census found 2.3 % of the files unopenable and group shapes that
+        vary by campaign -- and losing thirty diagnostics because one address was too wide is a
+        far worse answer than losing one. Only `ShotFailed` (the file itself will not open) still
+        propagates, because that is a fact about the shot and not about a diagnostic.
         """
+        names = [s.name for s, _ in items]
         wants_all = any(a.channels is None for _, a in items)
         wanted: list[int] | None = None
         if not wants_all:
@@ -219,19 +250,41 @@ class CorpusSignalReader(CorpusReader):
         try:
             t_ms, vals = self.read(shot, group, wanted)
         except Unavailable:
-            return {}
-        except ValueError:
-            # A video group addressed as a waveform: a configuration error, not a coverage fact.
-            raise
+            # The ordinary miss: DIII-D did not record this group on this shot. No reason string
+            # -- `unavailable` already says all there is to say.
+            return dict.fromkeys(names), {}
+        except IndexError:
+            # An address names a channel this file does not have. Re-read the group whole so the
+            # specs that ARE in range are still served from one read, and let the loop below put
+            # only the out-of-range ones `unavailable`.
+            try:
+                t_ms, vals = self.read(shot, group, None)
+            except (Unavailable, ValueError, IndexError) as e2:
+                return dict.fromkeys(names), dict.fromkeys(names, f"{group}: {e2}")
+            wanted, wants_all = None, True
+        except ValueError as e:
+            # Stored 3-D: a video group, or a spectrogram (the producer declares `co2`
+            # `stft: true`). `read` returns waveforms, so this group is unreadable here -- for
+            # these specs, on this shot, and for nothing else.
+            return dict.fromkeys(names), dict.fromkeys(names, f"{group}: {e}")
+        # Absolute channel -> row of `vals`. `read(None)` returns the group's channels in order,
+        # so when ANY spec wants them all the index is the identity -- which is what makes a group
+        # addressed both ways (a total and one channel) answer both. Indexing through `wanted`
+        # unconditionally emptied it for the channel-specific specs and dropped them silently.
+        index = {c: i for i, c in enumerate(range(vals.shape[0]) if wants_all else wanted or [])}
         out: dict[str, Signal | None] = {}
+        reasons: dict[str, str] = {}
         for spec, addr in items:
             if addr.channels is None:
                 rows = vals
             else:
-                index = {c: i for i, c in enumerate(wanted or [])}
                 take = [index[c] for c in addr.channels if c in index]
                 if len(take) != len(addr.channels):
+                    absent = [c for c in addr.channels if c not in index]
                     out[spec.name] = None
+                    reasons[spec.name] = (
+                        f"{group}: channels {absent} not among the {vals.shape[0]} this file has"
+                    )
                     continue
                 rows = vals[take]
             y = _reduce(_prepare(rows, spec, addr.scale), addr.reduce)
@@ -243,7 +296,7 @@ class CorpusSignalReader(CorpusReader):
             out[spec.name] = Signal(
                 t_ms, y.astype(DTYPE), addr.units, "corpus", group, spec.col or spec.name, "corpus"
             )
-        return out
+        return out, reasons
 
     # ------------------------------------------------------------------------ labelmaker
 
