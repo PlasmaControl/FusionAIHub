@@ -24,8 +24,11 @@
 # ------------------------------------------------------------------ sizing (measured 2026-09-07)
 #
 # Login node (stellar-vis2, load average 1-7), `/usr/bin/time -v` plus a 0.5 s process-tree RSS
-# sampler, `.pixi/envs/ideate-cpu/bin/python` called directly (the `pixi run` launcher, ~1 GiB by
-# itself, is bypassed so the memory measured is the build's):
+# sampler (`ps -eo pid,ppid,rss` summed over the subtree; `ps` reports rss in KiB, and the
+# sampler divided by 1e6 -- so every "GB" in the last two columns is 1e6 KiB = 0.954 GiB, which
+# is the conversion the --mem arithmetic below uses), `.pixi/envs/ideate-cpu/bin/python` called
+# directly (the `pixi run` launcher, ~1 GiB by itself, is bypassed so the memory measured is the
+# build's):
 #
 #   shots  workers   build s   s/shot   wall     CPU     max RSS (main)   tree peak RSS
 #      20        4       8.8    0.44    10.6 s   348 %        733 MB          1.00 GB
@@ -47,11 +50,23 @@
 #   workers block on GPFS as much as they compute; asking for 8 cpus to run them would fail the
 #   fairshare gate on a job that is partly I/O.
 #
-# --mem: 1.3 x the measured process-tree peak, 3.32 GB -> 4.31 GB -> 4600M (measured/requested =
-#   72 %, above the 70 % gate). The tree peak is what matters and not the 1.39 GB `time -v`
-#   reports: that is the MAIN process alone, which peaks at the end (PCA + embeddings + parquet)
-#   while the eight workers peak earlier, each holding one shot's channel arrays -- i_coil alone
-#   is (18, 563k) float32 = 40 MB, co2 one channel of 4.5 M samples = 18 MB.
+# --mem: 1.3 x the measured process-tree peak. THE UNIT MATTERS AND IS KiB: the sampler summed
+#   `ps -eo rss`, which reports KiB, and divided by 1e6, so the "3.32 GB" in the table above is
+#   3.32e6 KiB = 3,242 MiB = 3.166 GiB. 1.3 x 3,242 MiB = 4,215 MiB -> --mem=4600M (which SLURM
+#   reads as 4600 MiB), i.e. measured/requested = 3,242 / 4,600 = 70.5 %. That is half a point
+#   above the plan section 13 gate, not the 72 % an earlier version of this comment claimed by
+#   mixing GB and MiB in one ratio. Do not shrink the request on the strength of that margin.
+#
+#   Expect jobstats to report LESS. SLURM samples MaxRSS periodically (tens of seconds) and this
+#   job runs ~150 s: the eight workers' tree peak is short-lived (each holds one shot's channel
+#   arrays while it builds it) and may fall between two samples entirely, so a sub-70 % CPU-mem
+#   line on this job is a sampling artefact of a short job and not evidence of an over-request.
+#   The number to compare against is the sampled peak above, measured every 0.5 s.
+#
+#   The tree peak is what matters and not the 1.39 GB `time -v` reports: that is the MAIN process
+#   alone, which peaks at the end (PCA + embeddings + parquet) while the eight workers peak
+#   earlier, each holding one shot's channel arrays -- i_coil alone is (18, 563k) float32 = 40 MB,
+#   co2 one channel of 4.5 M samples = 18 MB.
 #
 # --time: 148.7 s measured, cold. 6x margin for a colder corpus (the I3 census measured 0.123 s
 #   per FILE of pure GPFS metadata latency on a cold cache) -> 00:15:00.

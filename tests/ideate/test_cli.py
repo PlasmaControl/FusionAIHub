@@ -426,3 +426,36 @@ def test_actuation_list_and_show(paths, capsys):
     assert json.loads(capsys.readouterr().out)["id"] == stored.id
     assert cli.main(["actuation", "show", "nope"]) == 2
     assert cli.main(["actuation", "show", actuation.new_id(5)]) == 1
+
+
+def test_the_manifest_records_where_the_shot_list_came_from(
+    paths, shot_list_file, staged_shot_a, text_fixtures, stub_embeddings
+):
+    """`list: args.list` was null for a --list-file or --shots build and named the whole list for
+    a `--limit 20` one, so the field either said nothing or overstated. The source, how many shots
+    it named, how many were built and the limit that was applied are four separate facts."""
+    assert cli.main(["build", "--list-file", str(shot_list_file), "--workers", "1",
+                     "--limit", "1", "--no-encode"]) == 0  # fmt: skip
+    m = json.loads((paths.db_dir / "manifest.json").read_text())
+    assert m["shot_source"] == f"list-file:{shot_list_file}"
+    assert m["n_requested"] == 2 and m["limit"] == 1 and m["n_built"] == 1
+
+
+def test_the_manifest_names_an_explicit_shot_list_as_its_source(
+    paths, staged_shot_a, text_fixtures, stub_embeddings
+):
+    assert cli.main(["build", "--shots", str(staged_shot_a), "--workers", "1", "--no-encode"]) == 0
+    m = json.loads((paths.db_dir / "manifest.json").read_text())
+    assert m["shot_source"] == "shots:1" and m["n_requested"] == 1 and m["limit"] is None
+
+
+def test_the_no_encode_flag_is_named_by_the_cli_and_not_by_the_library(
+    paths, staged_shot_a, text_fixtures, stub_embeddings, capsys
+):
+    """`build(..., encode=False)` is a library call: writing "--no-encode" into the manifest of a
+    database nobody passed a flag to is the library speaking for a caller it does not have. The
+    manifest says what was skipped; the CLI adds the flag that skipped it."""
+    assert cli.main(["build", "--shots", str(staged_shot_a), "--workers", "1", "--no-encode"]) == 0
+    assert "--no-encode" in capsys.readouterr().out
+    reason = json.loads((paths.db_dir / "manifest.json").read_text())["ignite"]["reason"]
+    assert "IGNITE waveform channel" in reason and "--no-encode" not in reason

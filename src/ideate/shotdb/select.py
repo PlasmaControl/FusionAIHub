@@ -1100,8 +1100,18 @@ def candidates_from_rows(
     return sorted(out, key=lambda c: c.shot)
 
 
+def _code_dirs(frame_codes_dirs: Path | Iterable[Path] | None) -> list[Path]:
+    """One directory or several, as a list. `build.frame_codes_dirs` is the caller that has more
+    than one -- there are two producers of frame codes and both count."""
+    if frame_codes_dirs is None:
+        return []
+    if isinstance(frame_codes_dirs, str | Path):
+        return [Path(frame_codes_dirs)]
+    return [Path(d) for d in frame_codes_dirs]
+
+
 def store_fingerprint(
-    features_dir: Path | None, frame_codes_dir: Path | None = None
+    features_dir: Path | None, frame_codes_dirs: Path | Iterable[Path] | None = None
 ) -> dict:
     """Which feature store a run saw: `{n_featured, n_frame_codes, max_mtime}`.
 
@@ -1116,9 +1126,11 @@ def store_fingerprint(
             n_features += 1
             mtime = p.stat().st_mtime
             newest = mtime if newest is None else max(newest, mtime)
-    n_codes = 0
-    if frame_codes_dir and Path(frame_codes_dir).is_dir():
-        n_codes = sum(1 for p in Path(frame_codes_dir).glob("*.pt") if p.stem.isdigit())
+    codes: set[int] = set()
+    for d in _code_dirs(frame_codes_dirs):
+        if d.is_dir():
+            codes |= {int(p.stem) for p in d.glob("*.pt") if p.stem.isdigit()}
+    n_codes = len(codes)  # a shot both producers wrote is one shot, not two
     return {
         "n_featured": n_features,
         "n_frame_codes": n_codes,
@@ -1128,7 +1140,9 @@ def store_fingerprint(
     }
 
 
-def preferred_shots(*, features_dir: Path | None, frame_codes_dir: Path | None) -> set[int]:
+def preferred_shots(
+    *, features_dir: Path | None, frame_codes_dirs: Path | Iterable[Path] | None
+) -> set[int]:
     """Shots whose labelmaker features or IGNITE frame codes already exist.
 
     §5.7 prefers them because they are the shots a training run can use today: their features are
@@ -1140,10 +1154,9 @@ def preferred_shots(*, features_dir: Path | None, frame_codes_dir: Path | None) 
             stem = p.stem.split("_")[0]
             if stem.isdigit():
                 out.add(int(stem))
-    if frame_codes_dir and Path(frame_codes_dir).is_dir():
-        for p in Path(frame_codes_dir).glob("*.pt"):
-            if p.stem.isdigit():
-                out.add(int(p.stem))
+    for d in _code_dirs(frame_codes_dirs):
+        if d.is_dir():
+            out |= {int(p.stem) for p in d.glob("*.pt") if p.stem.isdigit()}
     return out
 
 

@@ -61,6 +61,7 @@ address was too wide is a much worse answer than losing the one.
 
 from __future__ import annotations
 
+import functools
 import os
 import warnings
 from dataclasses import dataclass
@@ -68,7 +69,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..config import CorpusActuator, Paths, SignalSpec, corpus_actuators
+from ..config import CONFIG_DIR, CorpusActuator, Paths, SignalSpec, corpus_actuators
 from ..schema import Status
 from .corpus import CorpusReader
 from .reader import ShotFailed, Signal, Unavailable
@@ -89,6 +90,25 @@ def default_features_dir(root: str | os.PathLike | None = None) -> Path | None:
     """
     root = root or os.environ.get("LABELMAKER_ROOT")
     return Path(root) / "features" if root else None
+
+
+@functools.lru_cache(maxsize=2)
+def _corpus_actuators_cached(_key: tuple) -> dict[str, CorpusActuator]:
+    """`corpus_actuators()` for one state of actuators.yaml. Never called directly -- `_actuators`
+    computes the key. The returned mapping is SHARED: read it, never mutate it."""
+    return corpus_actuators()
+
+
+def _actuators() -> dict[str, CorpusActuator]:
+    """The `corpus:` block of actuators.yaml, parsed once per process per state of the file.
+
+    `address()` is called once per spec, i.e. ~85 times per shot, and `corpus_actuators()` deep
+    copies the parsed YAML and constructs a dozen pydantic models every time -- work this module
+    otherwise takes care to do once per group. Keyed on the file's size and mtime, the same way
+    `config.load_yaml` caches, so an edited config is still picked up on the next call.
+    """
+    st = (CONFIG_DIR / "actuators.yaml").stat()
+    return _corpus_actuators_cached((st.st_size, st.st_mtime_ns))
 
 
 @dataclass(frozen=True)
@@ -194,7 +214,7 @@ class CorpusSignalReader(CorpusReader):
         it: an explicit `corpus:` block on the signal (which may name an `actuator:` instead of a
         group), and a per-member actuator spec, whose system names one of those entries.
         """
-        actuators = corpus_actuators()
+        actuators = _actuators()
         block = spec.corpus
         if block is not None:
             act = actuators.get(block.actuator) if block.actuator else None

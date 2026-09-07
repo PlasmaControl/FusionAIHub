@@ -1279,3 +1279,17 @@ def test_cli_select_records_a_reversed_current_shot_end_to_end(tmp_path):
 def test_the_census_columns_this_module_reads_are_the_ones_the_census_writes():
     assert {"shot", "group", "present", "t0_s", "t1_s"} <= set(census.COLUMNS)
     assert isinstance(census_frame([(1, "mhr", 0.0, 1.0, True)]), pd.DataFrame)
+
+
+def test_the_two_commands_ask_one_definition_where_frame_codes_live(paths):
+    """`build` counted <data_root>/frame_codes AND <models_dir>/IGNITE/frame_codes; `corpus
+    select` was handed only the second, so the two commands could disagree about whether the same
+    shot has codes. One function names the locations and both call sites take it."""
+    from ideate.shotdb import build
+
+    (paths.data_root / "frame_codes").mkdir(parents=True, exist_ok=True)
+    (paths.data_root / "frame_codes" / "190123.pt").write_bytes(b"")
+    dirs = build.frame_codes_dirs(paths)
+    assert build.frame_codes_path(190123, paths) is not None
+    assert select.preferred_shots(features_dir=None, frame_codes_dirs=dirs) == {190123}
+    assert select.store_fingerprint(None, dirs)["n_frame_codes"] == 1
