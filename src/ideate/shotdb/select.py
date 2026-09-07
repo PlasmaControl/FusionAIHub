@@ -18,7 +18,7 @@ a diversity quota. This module is the rules; `cli.cmd_corpus` is the I/O around 
   the "not empty" half of the user's sentence, and it is read off the fresh census
   (`corpus_coverage.parquet`), never off a group's channel count.
 * **(d) Ip flat-top >= 1 s** -- in TWO passes. The first estimates it from `PULSE-LENGTH` for
-  every shot of the 13,106-shot pool (`PROXY_RAMP_S`, and the measured Ip trace wherever a
+  every shot of the 13,313-bundle pool (`PROXY_RAMP_S`, and the measured Ip trace wherever a
   labelmaker feature file already exists); the second (`verify_flattop`, `--verify-flattop`) runs
   over the 500 SELECTED shots only, where the per-shot cost of a real measurement is affordable,
   replaces every proxy with the measured number it can, drops what the measurement rejects and
@@ -30,8 +30,9 @@ and each is recorded here and in the generated YAML's `rule:` string because the
 
 * `abs(IP-(MA)) >= 0.5`, not the signed value. DIII-D runs both polarities and the logbook records
   a reversed-Ip discharge as a negative `IP-(MA)`; the signed comparison was a direction filter
-  nobody wrote, and it rejected all 663 reversed-Ip plasma shots -- among them every one of the
-  386 QH-titled shots, which is why v1 of the list had zero `qh_mode` shots.
+  nobody wrote, and it rejected all 663 reversed-Ip plasma shots of the pool -- among them all 254
+  whose run title matches the `qh_mode` lexicon, over 13 run days, which is why v1 of the list had
+  zero `qh_mode` shots. Eligible pool 5,299 -> 5,812; `qh_mode` 185 -> 206 eligible.
 * `MIN_SHOT_CHARS` 200, not 300 (deviation 1 below).
 * Themes are assigned physics-first and matched against the mini-proposal subject as well as the
   run-day title (`assign_theme`).
@@ -409,8 +410,8 @@ def eligible(
     # `abs`: the logbook's `IP-(MA)` is SIGNED and DIII-D runs both polarities. `>= 0.5` on the
     # signed number reads as "at least 0.5 MA and forward-going", which is a physics filter the
     # plan never asked for and which rejected all 663 reversed-Ip plasma shots of the pool --
-    # including every one of the 386 QH-titled shots, the theme §5.7 most wanted. The polarity is
-    # kept (`ShotFacts.ip_sign`) rather than tested.
+    # including all 254 whose title matches the `qh_mode` lexicon, over 13 run days, which is the
+    # theme §5.7 most wanted. The polarity is kept (`ShotFacts.ip_sign`) rather than tested.
     if facts.ip_ma is None or abs(facts.ip_ma) < MIN_IP_MA:
         bad.append("ip")
     if facts.pulse_length_s is None or facts.pulse_length_s < MIN_PULSE_LENGTH_S:
@@ -465,7 +466,7 @@ def assign_theme(
 
     * **Physics themes are tried first.** `labels.yaml` lists `startup_checkout` first and the
       assignment was first-match, so every run day whose title also said "checkout",
-      "calibration" or "commissioning" was filed as machine time -- 499 of the 1,246
+      "calibration" or "commissioning" was filed as machine time -- 521 of the 1,394
       checkout-titled eligible shots also match a physics theme, and `startup_checkout` is the
       one theme §5.7 excludes from the quotas. "Divertor diagnostic checkout for QH/WPQH-Mode" is
       a real run day, and it is a QH-mode run day. The fallback is still assigned when nothing
@@ -473,8 +474,8 @@ def assign_theme(
     * **The mini-proposal subject is matched too**, which is what `labels.yaml`'s own header has
       said since it was written ("matched against run title + MP title") and what was never
       implemented. The subject is the experiment's words; the run-day title is the session
-      leader's shorthand for the day, and on ~154 eligible shots it carries no keyword at all
-      while the subject does.
+      leader's shorthand for the day, and for 294 of the 1,084 eligible shots the title alone
+      leaves without a theme, the subject supplies one.
 
     Everything is lowercased and given a space at each end, which is what makes labels.yaml's
     `" nt "` and `"rt "` anchor on word boundaries -- the same normalisation the label rules use,
@@ -673,7 +674,7 @@ def verify_flattop(
     order and one replacement record per shot the measurement dropped.
 
     This is the pass that makes rule (d) bite. The brief allows the expensive source only when the
-    shortlist is small; the whole pool is 5,809 shots and far past that, but the LIST is 500, so
+    shortlist is small; the whole pool is 5,812 shots and far past that, but the LIST is 500, so
     the measurement is affordable exactly here -- after the quotas, on the shots that will actually
     be used. Three outcomes per shot:
 
