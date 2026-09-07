@@ -1,0 +1,268 @@
+{
+  "shot": 198658,
+  "corpus_file": "/scratch/gpfs/EKOLEMEN/foundation_model/198658_processed.h5",
+  "span_s": [
+    -0.05000000074505806,
+    6.1431498527526855
+  ],
+  "max_seconds": null,
+  "n_samples": 3096576,
+  "port": {
+    "n": 47,
+    "median_period_ms": 68.99999999999976,
+    "mean_period_ms": 130.93478260869568,
+    "elapsed_s": 0.3801792273297906
+  },
+  "reference": {
+    "n": 47,
+    "median_period_ms": 68.99999999999976,
+    "mean_period_ms": 130.93478260869568,
+    "elapsed_s": 456.20098306192085
+  },
+  "speedup": 1199.9629392328277,
+  "same_count": true,
+  "agree": true,
+  "agree_tolerance_ms": 1e-09,
+  "bitwise_identical": false,
+  "max_abs_delta_ms": 9.094947017729282e-13,
+  "crashes": [
+    {
+      "reference_ms": 75.49999925494194,
+      "port_ms": 75.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 118.49999925494194,
+      "port_ms": 118.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 178.49999925494194,
+      "port_ms": 178.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 190.49999925494194,
+      "port_ms": 190.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 205.49999925494194,
+      "port_ms": 205.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 237.49999925494194,
+      "port_ms": 237.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 251.49999925494194,
+      "port_ms": 251.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 266.49999925494194,
+      "port_ms": 266.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 355.49999925494194,
+      "port_ms": 355.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 431.49999925494194,
+      "port_ms": 431.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 504.49999925494194,
+      "port_ms": 504.49999925494194,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1401.499999254942,
+      "port_ms": 1401.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1557.499999254942,
+      "port_ms": 1557.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1647.499999254942,
+      "port_ms": 1647.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1759.499999254942,
+      "port_ms": 1759.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1772.499999254942,
+      "port_ms": 1772.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1865.499999254942,
+      "port_ms": 1865.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1878.499999254942,
+      "port_ms": 1878.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1893.499999254942,
+      "port_ms": 1893.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 1908.499999254942,
+      "port_ms": 1908.4999992549422,
+      "delta_ms": 2.2737367544323206e-13
+    },
+    {
+      "reference_ms": 2716.499999254942,
+      "port_ms": 2716.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 2734.499999254942,
+      "port_ms": 2734.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 2754.499999254942,
+      "port_ms": 2754.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 2765.499999254942,
+      "port_ms": 2765.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 2783.499999254942,
+      "port_ms": 2783.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 3000.499999254942,
+      "port_ms": 3000.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 3171.499999254942,
+      "port_ms": 3171.4999992549424,
+      "delta_ms": 4.547473508864641e-13
+    },
+    {
+      "reference_ms": 3381.499999254942,
+      "port_ms": 3381.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 3468.499999254942,
+      "port_ms": 3468.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 4036.499999254942,
+      "port_ms": 4036.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 4083.499999254942,
+      "port_ms": 4083.4999992549415,
+      "delta_ms": -4.547473508864641e-13
+    },
+    {
+      "reference_ms": 4115.499999254942,
+      "port_ms": 4115.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 4518.499999254942,
+      "port_ms": 4518.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 4550.499999254942,
+      "port_ms": 4550.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 4900.499999254942,
+      "port_ms": 4900.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5001.499999254942,
+      "port_ms": 5001.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5016.499999254942,
+      "port_ms": 5016.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5133.499999254942,
+      "port_ms": 5133.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5212.499999254942,
+      "port_ms": 5212.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5277.499999254942,
+      "port_ms": 5277.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5310.499999254942,
+      "port_ms": 5310.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5357.499999254942,
+      "port_ms": 5357.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5505.499999254942,
+      "port_ms": 5505.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5671.499999254942,
+      "port_ms": 5671.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 5995.499999254942,
+      "port_ms": 5995.499999254943,
+      "delta_ms": 9.094947017729282e-13
+    },
+    {
+      "reference_ms": 6071.499999254942,
+      "port_ms": 6071.499999254942,
+      "delta_ms": 0.0
+    },
+    {
+      "reference_ms": 6098.499999254942,
+      "port_ms": 6098.499999254942,
+      "delta_ms": 0.0
+    }
+  ],
+  "labelmaker_sha": "a416837b98a5988191820ae071990f04c4393877",
+  "omnimode_sha": "8bbe10d53710c5154d93e8480671762204516a9f",
+  "script": "sawtooth_reference_check.py"
+}
