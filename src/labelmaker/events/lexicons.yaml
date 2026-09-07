@@ -15,20 +15,39 @@
 # `negatives` are phrases whose presence makes the WHOLE sentence a
 # statement of absence: a sentence carrying one yields `polarity="neg"`
 # hits for that phenomenon and no positive ones. They overlap `aliases` on
-# purpose - "elm-free" is both the phrase the operator wrote and the reason
-# it is not an ELM. (ideate's `exclude` is the same idea under its own
-# name.) They are deliberately sparse: only phrasings seen in the corpus,
-# because a negative that never fires costs nothing and one that fires
-# wrongly silences a real mention.
+# purpose, and they HAVE to: a negative only marks a sentence some alias
+# already matched, so every hyphenated negative is also an alias -
+# "elm-free" is one token, and " elm " is not inside it. `load_lexicon`
+# runs the matcher on each negative phrase alone and refuses one that
+# fires nothing, because "sawtooth-free", "eho-free" and "ae-free" shipped
+# without their alias and were silently dead. (ideate's `exclude` is the
+# same idea under its own name.) They are otherwise deliberately sparse:
+# only phrasings seen in the corpus, because a missing negative costs a
+# little and one that fires wrongly silences a real mention.
 #
 # `weight` (default 1.0) is for the CONSUMER's scoring, not for
-# `text_weak`, whose confidence is a flat quarter a mention. Two entries
-# deserve a caveat rather than a number nobody measured: `ae` and `rwm` are
-# two- and three-letter acronyms that also name PCS parameters, and on the
-# 172 shots of the acceptance run nearly every run-scope "rwm" was
-# "RWM_GAINMULT" or "RWM feedback" - the control system, not an observed
-# resistive wall mode. Whoever scores these should treat a lone acronym as
-# weaker than a spelled-out name.
+# `text_weak`, whose confidence is a flat quarter a mention. What deserves
+# a caveat rather than a number nobody measured is the difference between
+# the two SCOPES. Measured on the 500 shots of `recommender_v1.txt`, as
+# the fraction of shots with at least one positive hit:
+#
+#   phenomenon   shot scope (logbook)   run scope (session text)
+#   elm                 11.0 %                  99.4 %
+#   rwm                  1.0 %                  99.4 %
+#   tearing              7.2 %                  49.0 %
+#   lh                   2.4 %                  42.4 %
+#   detachment           2.4 %                  35.0 %
+#   sawtooth             0.6 %                  14.6 %
+#   qcm                  0.0 %                   0.0 %
+#
+# A run-scope hit is a sentence every shot of the session shares - an
+# experiment title ("pedestal and ELM") or a control-system note ("I-coil
+# RWM feedback") - so `elm` and `rwm` at run scope separate almost nothing
+# on this set, while the same words in a shot's own logbook entries are
+# somebody writing about that shot. Whoever scores run-scope evidence
+# should discount it by the size of the run and treat a lone two- or
+# three-letter acronym as weaker than a spelled-out name. `qcm` appears in
+# 15 of 22,950 bundles corpus-wide: text will not find QCM shots.
 version: 1
 phenomena:
   ae:
@@ -42,6 +61,7 @@ phenomena:
       - alfven eigenmode
       - alfven
       - alfvén
+      - ae-free
     negatives:
       - no ae
       - ae-free
@@ -52,6 +72,7 @@ phenomena:
       - eho
       - edge harmonic oscillation
       - edge harmonic
+      - eho-free
     negatives:
       - no eho
       - eho-free
@@ -88,6 +109,7 @@ phenomena:
       - sawteeth
       - sawtooth crash
       - st crash
+      - sawtooth-free
     negatives:
       - no sawteeth
       - sawtooth-free
