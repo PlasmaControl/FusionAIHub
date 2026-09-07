@@ -14,6 +14,8 @@ Three things are pinned here, and they are the three ways a corpus build can qui
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -276,3 +278,102 @@ def test_a_feature_file_written_for_another_shot_is_not_read(paths, signal_corpu
     write_feature_file(features_dir, 999999, {"bt": ([0.0, 0.025], [[1.0, 1.0]], "archive")}, {})
     r = CorpusSignalReader(paths, features_dir=features_dir)
     assert r.signal_status(signal_corpus, spec_named(signal_corpus, "bt")) == "pending"
+
+
+# --------------------------------------------- mixed addressing, and a narrow group's blast radius
+
+
+def total_and_channel_specs() -> tuple[config.SignalSpec, config.SignalSpec]:
+    """One group addressed twice: every channel of `pinj`, and its channel 2 alone."""
+    return (
+        config.SignalSpec(
+            name="pnbi_all", units="W", corpus=config.CorpusAddress(group="pinj", reduce="sum")
+        ),
+        config.SignalSpec(
+            name="pnbi_ch2",
+            units="W",
+            corpus=config.CorpusAddress(group="pinj", channels=[2], reduce="first"),
+        ),
+    )
+
+
+def test_a_group_addressed_all_and_by_channel_answers_both(paths, signal_corpus):
+    """`channels: all` on one spec used to empty the channel index every OTHER spec of the group
+    was served through, so the channel-specific ones came back `unavailable` -- a silent hole one
+    YAML line away (`pnbi_total: {corpus: {actuator: nbi}}` would have done it to all eight
+    beams). Both addresses are answerable from one read and both must be answered."""
+    total, one = total_and_channel_specs()
+    signals, coverage = CorpusSignalReader(paths).read_shot(signal_corpus, [total, one])
+    assert np.allclose(signals["pnbi_all"].y, 3.6e6)  # (1+..+8) * 1e5
+    assert np.allclose(signals["pnbi_ch2"].y, 3.0e5)  # channel 2 alone, not a shifted one
+    assert coverage["pnbi_all"] == "present" and coverage["pnbi_ch2"] == "present"
+
+
+def test_a_channel_the_group_does_not_have_costs_that_signal_only(paths, signal_corpus):
+    """`co2` has four chords. An address on channel 99 of it raised IndexError out of `read`,
+    which `_safe_build` recorded as a FAILED SHOT -- every diagnostic of that shot lost because
+    one address was too wide. It is one signal's coverage fact, with the reason written down."""
+    wide = config.SignalSpec(
+        name="ne_line_ch99",
+        units="m^-2",
+        corpus=config.CorpusAddress(group="co2", channels=[99], reduce="first"),
+    )
+    r = CorpusSignalReader(paths)
+    signals, coverage = r.read_shot(signal_corpus, [*registry(signal_corpus), wide])
+    assert signals["ne_line_ch99"] is None and coverage["ne_line_ch99"] == "unavailable"
+    assert "99" in r.reasons["ne_line_ch99"]
+    # the shot is not lost: the same group's other address, and every other group, still read
+    assert signals["ne_line"] is not None and coverage["ne_line"] == "present"
+    assert signals["pnbi_15L"] is not None and signals["dalpha"] is not None
+
+
+def test_a_group_stored_three_dimensional_is_unavailable_not_a_failed_shot(paths, tmp_path):
+    """The producer declares `co2` `stft: true`, so a file may hold it as (C, F, T). `read`
+    raises ValueError on that, and re-raising it lost the whole shot; the full-corpus build is
+    where group heterogeneity is the rule."""
+    from .conftest import write_corpus_group
+
+    shot = 100013
+    d = Path(paths.foundation_model_processed_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{shot}_processed.h5"
+    x = np.arange(13) * 0.5
+    write_corpus_group(p, "co2", x, np.ones((4, 13, 5)))
+    write_corpus_group(p, "pinj", x, np.stack([np.full(13, (i + 1) * 1.0e5) for i in range(8)]))
+    r = CorpusSignalReader(paths)
+    signals, coverage = r.read_shot(shot, registry(shot))
+    assert signals["ne_line"] is None and coverage["ne_line"] == "unavailable"
+    assert "co2" in r.reasons["ne_line"]
+    assert np.allclose(signals["pnbi_15L"].y, 1.0e5)
+
+
+# ------------------------------------------------- the order of the two layers on one signal
+
+
+def test_the_corpus_answers_first_when_a_spec_carries_both_addresses(
+    paths, signal_corpus, labelmaker_features
+):
+    """The documented rule: corpus first, labelmaker as the fallback."""
+    spec = config.SignalSpec(
+        name="ip",
+        units="A",
+        corpus=config.CorpusAddress(group="pinj", channels=[0], reduce="first"),
+        labelmaker=config.LabelmakerAddress(feature="ip"),
+    )
+    sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
+    assert sig is not None and sig.source == "corpus" and np.allclose(sig.y, 1.0e5)
+
+
+def test_a_corpus_miss_falls_back_to_the_feature_store(paths, signal_corpus, labelmaker_features):
+    """Same rule, other half: a corpus address that misses must not shadow a feature the store
+    has -- `unavailable` where the value is on disk is the worst answer of the four."""
+    spec = config.SignalSpec(
+        name="ip",
+        units="A",
+        corpus=config.CorpusAddress(group="not_a_corpus_group", reduce="first"),
+        labelmaker=config.LabelmakerAddress(feature="ip"),
+    )
+    r = CorpusSignalReader(paths)
+    sig = r.read_signal(signal_corpus, spec)
+    assert sig is not None and sig.source == "labelmaker"
+    assert r.signal_status(signal_corpus, spec) == "present"

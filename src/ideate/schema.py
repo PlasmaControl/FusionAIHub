@@ -118,6 +118,11 @@ class ShotRecord(BaseModel):
     labels: Labels = Field(default_factory=Labels)
     outcome: Outcome = Field(default_factory=Outcome)
     coverage: dict[str, Status] = Field(default_factory=dict)
+    # Why a signal is `unavailable`, for the reasons that are not the ordinary "DIII-D did not
+    # record it": an address naming a channel the file does not have, a group stored 3-D. Only
+    # the reader that can say (the corpus one) fills it in, and only for the signals it applies
+    # to -- an empty dict is the normal case, not a gap.
+    coverage_reasons: dict[str, str] = Field(default_factory=dict)
     built_at: datetime
     builder_sha: str
 

@@ -391,6 +391,9 @@ def build_record(
             labels=labels,
             outcome=outcome,
             coverage=coverage,
+            # Optional and read defensively: only a reader that can narrow a miss below "the
+            # group is not there" has anything to say, and `SignalReader` does not require it.
+            coverage_reasons=dict(getattr(reader, "reasons", None) or {}),
             built_at=dt.datetime.now(dt.UTC),
             builder_sha=f"{_git_sha()}+{_config_sha()}",
         ),
@@ -797,30 +800,70 @@ def _tmp_dir(db_dir: Path) -> Path:
     return db_dir.parent / f"{db_dir.name}.tmp"
 
 
-#: Files that live in db_dir and that `build` does not write: `ideate corpus scan` puts its
-#: census there (`--out` defaults to <db_dir>/corpus_coverage.parquet). A full rebuild swaps the
-#: whole directory, so they are carried across explicitly. Explicitly, and by name, rather than
-#: "keep anything the new build did not write": that rule would also resurrect an emb_ignite_*.npy
-#: from a previous encode beside a database that has no such embedding, which is worse than
-#: losing a file -- it is a database that lies about what it holds.
-FOREIGN_FILES = ("corpus_coverage.parquet", "corpus_coverage.json")
+#: Every name `build`/`add` write into db_dir -- the two tables, the shape matrix, the embedding
+#: matrices, the PCA and the manifest. `_write_tables` and `ignite.encode_db` between them write
+#: exactly these, and `store.ShotDB.load` reads exactly these back.
+#:
+#: This list is the ONLY thing a publish is allowed to delete. The rule is that way round on
+#: purpose: db_dir has more than one producer -- `ideate corpus scan` writes its census there and
+#: `ideate labels join` writes labels_wide/events/text_claims.parquet -- and a rule phrased as
+#: "carry the foreign files across" has to name every one of them correctly or it deletes a
+#: table, which is what happened to the join's three. Phrased as "delete only what I write", a
+#: producer this module has never heard of is safe by default, and the failure mode of getting
+#: THIS list wrong is a stale file left behind rather than someone else's work destroyed.
+#:
+#: Stale build-owned files must still go: an emb_ignite_*.npy left beside a database built with
+#: --no-encode is worse than a missing file, it is a database that lies about what it holds.
+BUILD_FILES = (
+    "shots.parquet",
+    "segments.parquet",
+    "shapes.npy",
+    "pca.json",
+    "manifest.json",
+    "windows.parquet",
+)
+#: Same set, for the matrices whose names depend on what was encoded (emb_scalar, emb_text_mp,
+#: emb_text_log, emb_ignite_seg, emb_ignite_win).
+BUILD_GLOBS = ("emb_*.npy",)
+
+
+def _build_owned(db_dir: Path) -> set[str]:
+    """The build-owned files that exist in `db_dir` right now."""
+    names = {n for n in BUILD_FILES if (db_dir / n).exists()}
+    for pattern in BUILD_GLOBS:
+        names |= {p.name for p in db_dir.glob(pattern)}
+    return names
 
 
 def _publish(tmp: Path, db_dir: Path) -> None:
-    """Swap `tmp` into place. The old directory is moved aside first and deleted afterwards, so
-    the window in which no database exists at `db_dir` is one rename, not a recursive delete."""
-    for name in FOREIGN_FILES:
-        src = db_dir / name
-        if src.exists() and not (tmp / name).exists():
-            shutil.copy2(src, tmp / name)
-    old = db_dir.parent / f"{db_dir.name}.old"
-    if old.exists():
-        shutil.rmtree(old)
-    if db_dir.exists():
-        db_dir.rename(old)
-    tmp.rename(db_dir)
-    if old.exists():
-        shutil.rmtree(old)
+    """Move what the build wrote into `db_dir`, then delete the build-owned files it did NOT
+    write. Nothing else in the directory is read, moved or removed.
+
+    Per file rather than one directory swap: the swap was atomic for the database as a whole but
+    could only preserve foreign files it was told about by name, and the names went stale. Each
+    `os.replace` here is itself atomic (tmp is a sibling of db_dir, so same filesystem), the new
+    tables land before the stale ones are pruned, and a crash mid-publish leaves a directory whose
+    files are each whole -- never a half-written one.
+    """
+    db_dir.mkdir(parents=True, exist_ok=True)
+    written: set[str] = set()
+    for src in sorted(tmp.iterdir()):
+        dst = db_dir / src.name
+        if src.is_dir():  # no producer writes one today; handled so one would not be silently lost
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.move(str(src), str(dst))
+        else:
+            os.replace(src, dst)
+        written.add(src.name)
+    unclaimed = written - _build_owned(db_dir)
+    if unclaimed:
+        # Not fatal, but it means BUILD_FILES no longer enumerates what this module writes, and
+        # the next rebuild will leave these behind rather than replacing them.
+        _log.warning("published files BUILD_FILES does not claim: %s", ", ".join(sorted(unclaimed)))
+    for name in sorted(_build_owned(db_dir) - written):
+        (db_dir / name).unlink()
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _embeddings(shots_df: pd.DataFrame, X: np.ndarray, pca: dict) -> dict[str, np.ndarray]:
