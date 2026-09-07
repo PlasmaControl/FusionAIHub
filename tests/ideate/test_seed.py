@@ -11,6 +11,7 @@ without a 3 GB spectro read.
 
 from __future__ import annotations
 
+import importlib.util
 from itertools import chain
 from pathlib import Path
 
@@ -201,3 +202,63 @@ def test_wanted_modalities_drops_video_on_request_and_rejects_an_unknown_name():
     assert seed.wanted_modalities(modalities=["mse", "mse"]) == ("mse",)
     with pytest.raises(ValueError, match="not IGNITE modalities"):
         seed.wanted_modalities(modalities=["ip"])
+
+
+# ------------------------------------------------------------------- re-runnability
+
+def test_encode_many_skips_a_shot_whose_cache_is_already_written(tmp_path, monkeypatch):
+    """`--skip-existing` is what makes the encode job re-runnable: a task that hits the wall
+    clock is resubmitted rather than restarted, so the flag has to actually skip -- not
+    re-encode and overwrite, and not count a skipped shot as encoded."""
+    calls: list[int] = []
+    monkeypatch.setattr(seed.ignite, "bundle_dir", lambda paths: tmp_path / "bundle")
+    monkeypatch.setattr(seed.ignite, "load_codecs", lambda ckpt, names, device: {"mse": None})
+    monkeypatch.setattr(
+        seed,
+        "encode_frame_codes",
+        lambda shot, **kw: calls.append(int(shot)) or _touch(kw["out_dir"], shot),
+    )
+    out = tmp_path / "frame_codes"
+    out.mkdir()
+    _touch(out, 111)  # already there from an earlier task
+
+    report = seed.encode_many(
+        [111, 222], reader=None, out_dir=out, device="cpu", skip_existing=True,
+        paths=object(), log=lambda *_: None,
+    )
+    assert calls == [222]
+    assert (report["n_encoded"], report["n_skipped"]) == (1, 1)
+
+    calls.clear()
+    report = seed.encode_many(
+        [111, 222], reader=None, out_dir=out, device="cpu", skip_existing=False,
+        paths=object(), log=lambda *_: None,
+    )
+    assert calls == [111, 222]
+    assert (report["n_encoded"], report["n_skipped"]) == (2, 0)
+
+
+def _touch(out_dir, shot):
+    path = Path(out_dir) / f"{shot}.pt"
+    path.write_bytes(b"")
+    return path
+
+
+# ------------------------------------------------------------------- the G-ENC gate's compare
+
+def _g_enc():
+    """`scripts/ideate/g_enc.py`, imported by path -- it is a script, not a package module."""
+    path = Path(__file__).resolve().parents[2] / "scripts" / "ideate" / "g_enc.py"
+    spec = importlib.util.spec_from_file_location("g_enc_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_g_enc_compare_refuses_two_different_frame_counts():
+    """Truncating both sides to the shorter one lets a SHORT encode compare its prefix and pass:
+    a cache with 4 of 239 frames would agree with the shipped file on all four and be declared
+    bit-identical. The gate has to fail loudly instead."""
+    g_enc = _g_enc()
+    with pytest.raises(ValueError, match="frame"):
+        g_enc.compare({"n_frames": 4, "codes": {}}, {"n_frames": 239, "codes": {}})

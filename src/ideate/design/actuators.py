@@ -20,7 +20,11 @@ Three properties of that layout are load-bearing and each is a silent failure if
 **Group order and width.** `ech_power 12 | pinj 8 | beam_voltage 8 | tinj 8 | gas_flow 11 |
 gas_raw 11 | rmp 12 | i_coil 18`, in that order, offsets 0/12/20/28/36/47/58/70. A group the
 shot does not have is not dropped -- it is ZERO-filled to its full width, so channel 70 is
-`i_coil[0]` for every shot whether or not the coils were energised.
+`i_coil[0]` for every shot whether or not the coils were energised. That is measured, not
+assumed: every one of the ten shipped caches carries at least one all-zero group at exactly
+these offsets (190090/201885/202537/202793 zero `ech_power`+`pinj`+`beam_voltage`+`tinj`,
+200241 zeroes those three without `ech_power`, and the remaining five zero `ech_power`), and
+they reproduce bit-identically here.
 
 **The time base.** A frame's window is resolved in SHOT time, `round((t - xdata[0]) * fs)` with
 `fs = (n - 1) / (xdata[-1] - xdata[0])`, not by counting samples from the array start. The
@@ -34,6 +38,19 @@ idle. And `xdata` is float32, so `1 / median(diff(x))` loses the step to cancell
 re-z-scoring it against ITS OWN statistics is an exact no-op -- a +20 % NBI edit disappears. Only
 re-z-scoring against the REFERENCE shot's statistics keeps the edit (`policy="reference_stats"`,
 the default). `policy="self_stats"` exists so a test can demonstrate the trap.
+
+**A PRODUCTION QUIRK IS REPRODUCED HERE ON PURPOSE, AND NEW SHOTS INHERIT IT.** The corpus
+writes a trailing all-NaN pad sample on nearly every actuator group; production averaged it in
+as a zero, so whichever frame straddles the end of a record comes out divided by a window that
+is longer than the samples it contains -- the end-of-record frame reads low, and a frame that is
+only half recorded reads at half amplitude. `_record_length` recovers the untrimmed length and
+divides by it deliberately, because bit-compatibility with the ten shipped caches is what makes
+a Phase-5 seed mean anything (getting it wrong costs ~0.04 z on all twelve `rmp` channels; see
+`_record_length`). The consequence is that EVERY shot encoded from now on carries production's
+zero-averaged end-of-record frame, by design. `frame_means` is therefore the right function for
+building a model input and the WRONG one to hand to anyone doing physics on the last frame of a
+record -- for that, average over the samples that exist. `tests/ideate/test_design_actuators.py`
+pins the quirk with an exact 100 * 200 / 201 case so it cannot be "simplified" away silently.
 """
 
 from __future__ import annotations
@@ -332,7 +349,14 @@ class ApplyReport:
     policy: str
     edited_channels: tuple[str, ...] = ()
     z_shift: dict[str, float] = field(default_factory=dict)  # channel -> max |dz| vs the reference
-    extrapolation_warnings: tuple[str, ...] = ()
+    #: V10's warning, scoped to the EDIT: channels this actuation set wrote that end up beyond
+    #: |z| = EXTRAPOLATION_Z. This is the list a caller has to act on.
+    edited_extrapolated: tuple[str, ...] = ()
+    #: Informational, and deliberately not mixed in with the above: channels of the REFERENCE
+    #: shot that were already beyond the limit before the edit. Real reference shots are full of
+    #: them -- 22/88 on 190090 (max 9.88 z), 2/88 on 202537, 26/88 on 204346 -- so reporting
+    #: them as edit warnings buries the one warning that is about the caller's own change.
+    reference_extrapolated: tuple[str, ...] = ()
     unresolved_keys: tuple[str, ...] = ()
 
     @property
@@ -390,6 +414,12 @@ def apply(
     mean and std -- the ones `stats` carries -- so a +20 % NBI edit moves the z traces the model
     reads. `policy="self_stats"` recomputes the statistics from the edited traces, which cancels
     any pure scale or offset exactly; it is kept only so a test can show that it does.
+
+    The report's two extrapolation lists are deliberately separate. `edited_extrapolated` is
+    V10's warning -- channels THIS actuation set wrote that end past |z| = 3 -- and is the list
+    to act on. `reference_extrapolated` is the reference shot's own baseline, which on a real
+    shot is most of what a whole-vector check would report (22/88 channels on 190090, 26/88 on
+    204346) and none of which the caller did.
     """
     if policy not in ("reference_stats", "self_stats"):
         raise ValueError(f"unknown policy {policy!r} (reference_stats | self_stats)")
@@ -407,7 +437,8 @@ def apply(
         policy=policy,
         edited_channels=tuple(CHANNEL_NAMES[i] for i in rows),
         z_shift={CHANNEL_NAMES[i]: float(shift[i]) for i in rows},
-        extrapolation_warnings=_extrapolation_warnings(z),
+        edited_extrapolated=_extrapolated(z, rows),
+        reference_extrapolated=_extrapolated(reference_z),
         unresolved_keys=tuple(unresolved),
     )
     if report.unresolved_keys:
@@ -420,10 +451,23 @@ def apply(
     return z, report
 
 
-def _extrapolation_warnings(z: np.ndarray, limit: float = EXTRAPOLATION_Z) -> tuple[str, ...]:
+def _extrapolated(
+    z: np.ndarray, rows: Sequence[int] | None = None, limit: float = EXTRAPOLATION_Z
+) -> tuple[str, ...]:
+    """Channels of `z` (restricted to `rows` when given) whose peak |z| is past `limit`.
+
+    `rows` is what makes the warning V10's rather than the shot's. Computed over all 88 rows it
+    is dominated by the reference shot's own baseline -- 22 of 88 channels on 190090 -- and the
+    one line that says "your edit left the envelope" is indistinguishable from twenty-one that
+    say "this shot always was outside it". `apply` calls this twice: once over the edited rows
+    of the edited z, once over every row of the unedited reference z.
+    """
     peak = np.abs(z).max(axis=1)
+    idx = np.flatnonzero(peak > limit)
+    if rows is not None:
+        idx = idx[np.isin(idx, np.asarray(rows, dtype=np.int64))]
     return tuple(
         f"{CHANNEL_NAMES[i]} reaches |z| = {peak[i]:.2f} (> {limit:g}): outside the range the "
         f"dynamics model was trained on, so its response there is extrapolation"
-        for i in np.flatnonzero(peak > limit)
+        for i in idx
     )
