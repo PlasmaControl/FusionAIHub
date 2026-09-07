@@ -38,10 +38,13 @@ VERIFIED. `scripts/ideate/g_enc.py` compares freshly encoded shots with the cach
 the bundle. Over all ten, on a V100S against production's MI250X: nine of the fourteen
 modalities are bit-identical on every shot, `mhr` on 8/10, `co2` on 4/10 and `ece` on 3/10 (the
 misses agree on >= 99.2 % of tokens), the two video modalities on 8/10 and 6/10, and the 88
-actuator channels are bit-identical in float16 on 8/10 (78/88 and 77/88 within 2e-3 z on 190735
-and 190736, whose corpus files are demonstrably not the ones production read). The gate's
-docstring separates the two causes -- the video codec's tokens sit on quantiser bin boundaries,
-while the spectro residual is an input difference, not arithmetic -- with the measurements.
+actuator channels are bit-identical in float16 on 8/10. The two exceptions are 190735 and
+190736, at 78/88 and 77/88 within 2e-3 z; on those two shots the actuator block is pure NumPy
+arithmetic that disagrees by 1.8-2.4 z, which is the one place a corpus-file difference is
+actually DEMONSTRATED. Everywhere else the residual is a scatter of isolated single tokens at
+the quantiser's bin boundaries, consistent with a cross-vendor numerics difference and not
+attributed to anything stronger -- no production input was ever compared. The gate's docstring
+carries the measurements and the limits of what they support.
 """
 
 from __future__ import annotations
@@ -81,6 +84,15 @@ MODALITIES: tuple[str, ...] = (
 VIDEO_MODALITIES: tuple[str, ...] = ("tangtv_lower", "tangtv_upper")
 #: `shotdb.ignite.frame_codes` hard-codes this; the placeholder top-up has to match it exactly.
 _BATCH_SIZE = 32
+
+#: The two `shotdb.ignite` symbols this module needs that carry a leading underscore, aliased
+#: once here rather than reached for at every call site. `frame_codes` is the sanctioned entry
+#: point and is what `encode_frame_codes` uses; the engine underneath it is needed for exactly
+#: one thing (`_placeholder_codes`, see below), and naming that dependency in one place means a
+#: refactor of `ignite` breaks an import at module load rather than a call deep in a 250-shot
+#: SLURM task. `shotdb/ignite.py` is not modified by this module.
+encode_frames = ignite._frames
+default_workers = ignite._default_workers
 
 
 def wanted_modalities(
@@ -203,7 +215,7 @@ def _placeholder_codes(
     if not todo:
         return {}
     _log.debug("shot %s: encoding placeholder modalities %s", shot, ", ".join(todo))
-    return ignite._frames(
+    return encode_frames(
         shot,
         todo,
         data_dir,
@@ -211,7 +223,7 @@ def _placeholder_codes(
         t0_start,
         n_frames,
         device or _default_device(),
-        ignite._default_workers() if workers is None else workers,
+        default_workers() if workers is None else workers,
         _BATCH_SIZE,
         want_codes=True,
     )

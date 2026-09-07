@@ -27,24 +27,47 @@ torch 2.6.0, against production's MI250X / ROCm 7.1 / torch 2.10):
     actuators, 88/88 bit-identical in float16 on 8/10; 78/88 and 77/88 within 2e-3 z on
     190735 and 190736, the residual on rmp[11] and i_coil[0:6]
 
-Two different causes, and they were separated by measurement rather than assumed.
+WHAT WAS MEASURED ABOUT THE RESIDUAL -- AND WHAT WAS NOT. No production INPUT was ever compared
+against anything. The corpus production encoded from lives on Frontier and is not reachable from
+here; no hash and no value comparison of an input file is part of this evidence. Everything
+below is a statement about our own arithmetic and about the SHAPE of the disagreement, and it is
+deliberately weaker than the first draft of this docstring, which asserted a cause it had not
+measured.
 
-*The video codes are numerically marginal.* On one GPU, encoding the same frames in float64
-instead of float32 moves 0.39 % of tangtv_lower's tokens, and cuda versus cpu on the same
-machine moves 0.42 % / 0.88 % -- the same size as the 0.60 % / 0.54 % against the shipped cache.
-|f64 - f32| on the pre-FSQ features reaches 0.061 where the features themselves are ~3.06, so a
-deep 3-D conv stack into a 64000-code quantiser puts tokens on bin boundaries. A code that flips
-when the arithmetic is made MORE accurate cannot be bit-reproduced across GPU vendors by any
-means available here.
+*Our arithmetic is stable to 1e-5 for the spectro codecs, and not stable at all for video.*
+ece / mhr / co2 give IDENTICAL codes on cuda and on cpu, identical codes in float32 and in
+float64, and not one flipped token when the codec input is perturbed by 1e-6 or 1e-5 relative.
+The video codecs give none of that: float64 instead of float32 moves 0.39 % of tangtv_lower's
+tokens on one GPU, cuda versus cpu moves 0.42 % / 0.88 %, and batch sizes 1 / 2 / 4 / 32 give
+four different code sets. |f64 - f32| on the pre-FSQ features reaches 0.061 where the features
+themselves are ~3.06: a deep 3-D conv stack into a 64000-code quantiser puts tokens on bin
+boundaries, and a code that flips when the arithmetic is made MORE accurate cannot be
+bit-reproduced across GPU vendors by any means available here.
 
-*The spectro codes are not.* ece / mhr / co2 give IDENTICAL codes on cuda and cpu, identical
-codes in float32 and float64, and no flipped token at all when their input is perturbed by 1e-6
-or 1e-5 relative (1e-4 moves <= 0.03 %). So the residual against the shipped cache is not
-arithmetic on our side: it is the input. The shipped caches were built on Frontier from
-`/lustre/orion/.../ignite_prod_v2/`, and this corpus is a separate fetch of the same shots.
-Shots 190735 and 190736 show that at full strength -- their `tangtv_upper` agrees on 0.04 % and
-0.10 % of tokens, i.e. a different recording, and they are the same two shots whose actuator
-block disagrees. Those two files are not what production read.
+*The spectro disagreement is a scatter of ISOLATED SINGLE TOKENS -- the bin-boundary signature.*
+Diffing our re-encoded 204346 against the shipped file, token by token:
+
+    ece      4 mismatched tokens of 45888, in  4 frames of 239   (one per frame: 17/115/139/221)
+    mhr      9 mismatched tokens of 45888, in  9 frames of 239   (one per frame)
+    co2    367 mismatched tokens of 45888, in 88 frames of 239   (median 2 per affected frame,
+                                                                  75 of the 88 at <= 4)
+    190090 tangtv_lower 145 tokens / 63 frames, tangtv_upper 161 / 45 -- the same scatter
+
+A differently fetched signal perturbs contiguous regions or whole frames; four isolated tokens
+spread over eleven seconds of shot do not look like that. And the perturbation sweep locates the
+scale rather than excluding it: 1e-4 relative moves <= 0.03 % of tokens, i.e. ~14 of 45888 --
+the same order as the 4 and 9 actually observed. So the margin sits at ~1e-4, comfortably inside
+what an MI250X/ROCm FFT and conv stack differs from a V100S/CUDA one. That is CONSISTENT WITH a
+cross-vendor numerics difference. It is not a demonstration of one, and no claim stronger than
+that is supported by anything measured here.
+
+*An input difference IS demonstrated -- for 190735 and 190736, and only for them.* On those two
+shots the ACTUATOR block disagrees by 1.8-2.4 z on rmp[11]. That block is pure NumPy arithmetic
+on raw HDF5 values: no codec, no GPU, no quantiser, nothing a vendor difference can reach. Their
+tangtv_upper agrees on 0.04 % / 0.10 % of tokens as well. Those two corpus files are not what
+production read. The inference does NOT transfer to 204346: its actuator block is 88/88
+bit-identical to the shipped cache, which is evidence AGAINST that file being a different fetch,
+and nothing measured here justifies distrusting 204346's data.
 
 One real bug did surface here and is fixed in `design.actuators`: `CorpusReader.read` strips the
 corpus's trailing all-NaN pad sample, production averaged it in as a zero, and the shortened
@@ -85,10 +108,20 @@ ACT_MIN_PASS = 82  # of 88; the known residuals are i_coil[0:6]-shaped and shot-
 
 
 def compare(got: dict, ref: dict) -> dict:
-    """One shot's verdict: per-modality equality plus the actuator channel tally."""
+    """One shot's verdict: per-modality equality plus the actuator channel tally.
+
+    Raises `ValueError` when the two caches do not cover the same number of frames. Comparing
+    `min(got, ref)` frames would let a SHORT encode compare its own prefix: a cache holding 4 of
+    239 frames agrees with the shipped file on all four and would be declared bit-identical.
+    """
     import torch
 
-    frames = min(int(got["n_frames"]), int(ref["n_frames"]))
+    if int(got["n_frames"]) != int(ref["n_frames"]):
+        raise ValueError(
+            f"frame count mismatch: encoded {int(got['n_frames'])} frames, "
+            f"the shipped cache has {int(ref['n_frames'])} -- refusing to compare a prefix"
+        )
+    frames = int(ref["n_frames"])
     modalities = {}
     for name, want in ref["codes"].items():
         have = got["codes"].get(name)
@@ -98,9 +131,18 @@ def compare(got: dict, ref: dict) -> dict:
             modalities[name] = {"equal": None, "agreement": None, "note": "not encoded"}
             continue
         a, b = have[:frames], want[:frames]
+        # The SHAPE of a disagreement is the evidence, not just its size: isolated single tokens
+        # scattered one per frame and a contiguous block of frames both show up as ">= 99 % of
+        # tokens agree", and they mean different things. Recorded per modality so the next reader
+        # does not have to re-derive it from the saved caches (the reviewer of I8 did).
+        diff = a.ne(b)
+        per_frame = diff.sum(dim=tuple(range(1, diff.dim())))
         modalities[name] = {
             "equal": bool(torch.equal(a, b)),
             "agreement": float((a == b).float().mean()),
+            "n_mismatched_tokens": int(diff.sum()),
+            "n_frames_affected": int((per_frame > 0).sum()),
+            "max_per_frame": int(per_frame.max()) if per_frame.numel() else 0,
             "note": "",
         }
 
@@ -126,7 +168,11 @@ def verdict(result: dict, video: tuple[str, ...]) -> tuple[bool, list[str]]:
     reasons = []
     for name, m in result["modalities"].items():
         if m["equal"] is False:
-            reasons.append(f"{name} not bit-identical ({m['agreement']:.4%} of tokens agree)")
+            reasons.append(
+                f"{name} not bit-identical ({m['agreement']:.4%} of tokens agree; "
+                f"{m['n_mismatched_tokens']} tokens in {m['n_frames_affected']} frames, "
+                f"max {m['max_per_frame']} per frame)"
+            )
     n_ok = result["actuators"]["within_tol"]
     if n_ok < ACT_MIN_PASS:
         reasons.append(f"actuators within {ACT_TOL:g} z on {n_ok}/88 channels (< {ACT_MIN_PASS})")
@@ -226,7 +272,13 @@ def main(argv: list[str] | None = None) -> int:
             continue
         ref = torch.load(ref_path, weights_only=False, map_location="cpu")
         got, elapsed = encode_one(shot, args, codecs, paths, out_dir, ref)
-        result = compare(got, ref)
+        try:
+            result = compare(got, ref)
+        except ValueError as exc:
+            print(f"\n=== {shot}   FAIL   {exc}", file=sys.stderr)
+            report["shots"][str(shot)] = {"passed": False, "reasons": [str(exc)]}
+            failures.append(shot)
+            continue
         ok, reasons = verdict(result, video)
         result["passed"], result["reasons"], result["elapsed_s"] = ok, reasons, round(elapsed, 1)
         report["shots"][str(shot)] = result

@@ -65,6 +65,59 @@ def act_corpus(tmp_path: Path) -> CorpusReader:
     return CorpusReader(d)
 
 
+PAD_SHOT = 990089
+#: 10 kHz over [0.0, 0.22] s -- 2201 samples, so `fs = (n - 1) / span` is exactly 10 kHz and a
+#: 50 ms frame is exactly 500 samples. The record therefore ends 200 samples into frame 4, and
+#: the LAST of those 2201 samples is the corpus's all-NaN pad, which `CorpusReader.read` strips.
+PAD_N = 2201
+PAD_LEVEL = 100.0
+PAD_FRAMES = 5
+
+
+@pytest.fixture
+def pad_corpus(tmp_path: Path) -> CorpusReader:
+    """A shot whose record ends MID-FRAME behind a trailing all-NaN pad sample.
+
+    This is the shape of every real actuator group in the corpus (rmp, gas_flow, i_coil and
+    beam_voltage each carry a one-sample pad on 190090/202537/204346) and it is the one case the
+    step fixture above cannot reach: its NaN burst is interior, so `CorpusReader.read` returns
+    the full array and `_record_length` is never asked for anything.
+    """
+    d = tmp_path / "pad"
+    d.mkdir()
+    p = d / f"{PAD_SHOT}_processed.h5"
+    y = np.full((8, PAD_N), PAD_LEVEL, dtype=np.float64)
+    y[:, -1] = np.nan  # the pad: production averaged it in as a zero, the reader drops it
+    _write(p, "pinj", np.arange(PAD_N) / 10000.0, y)
+    return CorpusReader(d)
+
+
+SPIKE_SHOT = 990090
+
+
+@pytest.fixture
+def spike_corpus(tmp_path: Path) -> CorpusReader:
+    """A reference shot that is ALREADY outside the training envelope before any edit.
+
+    Real reference shots are: the shipped caches carry 22/88 channels at |z| > 3 on 190090
+    (max 9.88), 2/88 on 202537 and 26/88 on 204346. `rmp[0]` here is at full current for exactly
+    one of the thirty frames and at zero for the other twenty-nine, which puts its peak at
+    sqrt(29) = 5.39 z -- the same shape, in a fixture whose arithmetic is exact. `pinj` and
+    `ech_power` step as in `act_corpus`, so an edit can be aimed at either of them and `rmp` is
+    addressed by no waveform key at all (actuators.yaml gives it no `system:`).
+    """
+    d = tmp_path / "spike"
+    d.mkdir()
+    p = d / f"{SPIKE_SHOT}_processed.h5"
+    x = np.linspace(-0.5, 2.0, N_SAMPLES)
+    _write(p, "pinj", x, _step(8))
+    _write(p, "ech_power", x, _step(12))
+    rmp = np.zeros((12, N_SAMPLES), dtype=np.float64)
+    rmp[0, 12500:13000] = 1000.0  # frame 15 only (sample 5000 is shot time 0.0)
+    _write(p, "rmp", x, rmp)
+    return CorpusReader(d)
+
+
 # ------------------------------------------------------------------------------- the layout
 
 
@@ -143,6 +196,38 @@ def test_frame_means_past_the_record_are_zero_not_an_error(act_corpus):
     raw = act.frame_means(SHOT, act_corpus, n_frames=60)
     row = raw[act.channel_index("pinj", 0)]
     assert row[59] == 0.0
+
+
+def test_frame_means_divide_the_straddling_frame_by_the_untrimmed_window(pad_corpus):
+    """The trailing-pad quirk, pinned to exact arithmetic.
+
+    Frame 4 of `pad_corpus` covers samples 2000..2201 of a 2201-sample record whose last sample
+    is the corpus's all-NaN pad. Production divided that frame by the full 201-sample window
+    (the pad counted as a zero); `CorpusReader.read` hands us only the 2200 finite samples, so
+    dividing by what survives would give 100.0 instead. 200 samples of 100.0 over a 201-sample
+    window is 100 * 200 / 201 = 99.502487... exactly, and getting this wrong is worth ~0.04 z on
+    all twelve `rmp` channels of a real shot -- the single measurement that turns 77/88 actuator
+    channels bit-identical to the shipped cache into 88/88.
+    """
+    raw = act.frame_means(PAD_SHOT, pad_corpus, n_frames=PAD_FRAMES, dtype=np.float64)
+    row = raw[act.channel_index("pinj", 0)]
+    np.testing.assert_allclose(row[:4], PAD_LEVEL, rtol=0, atol=0)
+    assert row[4] == pytest.approx(PAD_LEVEL * 200 / 201, rel=1e-12)
+    assert row[4] != pytest.approx(PAD_LEVEL, rel=1e-6), "the pad must not be dropped"
+
+
+def test_record_length_recovers_the_untrimmed_sample_count(pad_corpus, act_corpus):
+    """`coverage()` spans the pad, `read()` does not: the two together give the real length."""
+    t_ms, _ = pad_corpus.read(PAD_SHOT, "pinj")
+    assert t_ms.size == PAD_N - 1, "the reader is expected to strip the trailing all-NaN sample"
+    t0_ms, t1_ms = pad_corpus.coverage(PAD_SHOT, "pinj")
+    assert act._record_length(t_ms, t1_ms - t0_ms) == PAD_N
+
+    # ... and a group with no pad is returned whole, so the untrimmed length is what was read.
+    t_ms, _ = act_corpus.read(SHOT, "pinj")
+    lo, hi = act_corpus.coverage(SHOT, "pinj")
+    assert t_ms.size == N_SAMPLES
+    assert act._record_length(t_ms, hi - lo) == N_SAMPLES
 
 
 # ------------------------------------------------------------------------------- z_score
@@ -229,11 +314,47 @@ def test_self_stats_policy_is_the_no_op_trap(act_corpus):
 def test_apply_warns_when_the_edit_leaves_the_training_envelope(act_corpus):
     ref = act.build_actuators(SHOT, act_corpus, N_FRAMES)
     small = act.apply(aset := _nbi_total(ref, 1.2), ref.raw, ref.stats)[1]
-    assert small.extrapolation_warnings == ()
+    assert small.edited_extrapolated == ()
     big = act.apply(_nbi_total(ref, 4.0), ref.raw, ref.stats)[1]
-    assert big.extrapolation_warnings, "|z| > 3 on an edited channel must be reported"
-    assert any("pinj" in w for w in big.extrapolation_warnings)
+    assert big.edited_extrapolated, "|z| > 3 on an edited channel must be reported"
+    assert all("pinj" in w for w in big.edited_extrapolated)
     assert aset.waveforms["nbi.total"].key == "nbi.total"
+
+
+def test_apply_does_not_blame_the_edit_for_the_reference_shot_s_own_excursions(spike_corpus):
+    """V10 is about the EDIT. A reference channel that was already past |z| = 3 before anyone
+    touched it is reported separately and informationally, not as a warning about the edit --
+    otherwise the one warning that matters arrives twenty-second in a list of twenty-two."""
+    ref = act.build_actuators(SPIKE_SHOT, spike_corpus, N_FRAMES)
+    assert np.abs(ref.z[act.channel_index("rmp", 0)]).max() == pytest.approx(np.sqrt(29.0))
+
+    _, report = act.apply(_nbi_total(ref, 1.2), ref.raw, ref.stats)
+    assert report.edited_channels == tuple(f"pinj[{i}]" for i in range(8))
+    assert report.edited_extrapolated == (), "the edit moved nothing past |z| = 3"
+    assert len(report.reference_extrapolated) == 1
+    assert "rmp[0]" in report.reference_extrapolated[0]
+
+
+def test_apply_warns_about_the_edited_channel_and_only_that_one(spike_corpus):
+    """The other half: a single-member edit that does leave the envelope produces exactly one
+    edit warning, with the pre-existing `rmp[0]` excursion still in its own list."""
+    ref = act.build_actuators(SPIKE_SHOT, spike_corpus, N_FRAMES)
+    aset = ActuationSet(
+        source_shot=SPIKE_SHOT,
+        waveforms={
+            "ech.LUKE": ActuatorWaveform(
+                key="ech.LUKE",
+                vertices=[Vertex(t_s=0.0, y=4000.0), Vertex(t_s=2.0, y=4000.0)],
+            )
+        },
+    )
+    _, report = act.apply(aset, ref.raw, ref.stats)
+    assert report.edited_channels == ("ech_power[7]",)
+    assert len(report.edited_extrapolated) == 1
+    assert "ech_power[7]" in report.edited_extrapolated[0]
+    assert not any("rmp" in w for w in report.edited_extrapolated)
+    assert len(report.reference_extrapolated) == 1
+    assert "rmp[0]" in report.reference_extrapolated[0]
 
 
 def test_apply_rejects_an_unknown_policy(act_corpus):
