@@ -128,6 +128,21 @@ LH_FULL_DROP = 0.6
 #: is not.
 LH_HOLD_LO_MS = 20.0
 LH_HOLD_HI_MS = 50.0
+#: 0.70 (and the H->L's `1 / 0.70`) is a CALIBRATION, not a fit: it is what
+#: separated the transitions from the ELMs on a ten-shot look, and nobody
+#: has swept it against labelled transitions. Treat it as a knob with one
+#: measurement behind it.
+#:
+#: What the gate assumes is that the inter-ELM baseline is STATIONARY over
+#: the +/-50 ms it compares, and `_held_expected` is what keeps that from
+#: being an assumption: the post window is compared with the pre window's
+#: own trend carried forward, not with its median. Measured on the
+#: synthetic shot, comparing with the median alone: a baseline decaying
+#: with a half-life of 100 ms - about 30% per 70 ms, which a puff or a
+#: density ramp does - under 4 ms ELM bursts every 15 ms gives one
+#: `lh_transition` per ELM, because the post window really is lower than
+#: the pre window at every one of them. With the trend it gives none, and
+#: the drawn step is still found where it was drawn.
 LH_HOLD_FRAC = 0.70
 
 #: Actuator thresholds, in the canonical units of `features/namespace.py`.
@@ -351,11 +366,21 @@ def _step_offsets(env_ms: float, gap_ms: float,
     is selecting when it writes `te >= tc - span_ms`: the envelope grid is
     `env_ms` apart by construction, so the only thing that comparison can
     say is how many bins away a bin is. Saying it in bins says it exactly.
+
+    "Exactly" is why the bounds are converted to bins ONCE and compared as
+    integers, rather than each candidate `d * env_ms` being compared with
+    `gap_ms` and `span_ms` in floating point. On the pipeline's 1 ms grid
+    the two agree; on any grid whose spacing does not divide the bounds
+    they need not, because `d * env_ms` lands a bit either side of a bound
+    that is `d` bins away exactly - `3 * 0.7 == 2.0999999999999996` is not
+    `>= 2.1`, and `8 * 0.7 == 5.6000000000000005` is not `<= 5.6`, so both
+    end bins of a seven-bin window disappear. In bins there is nothing to
+    round.
     """
     env_ms, gap_ms, span_ms = float(env_ms), float(gap_ms), float(span_ms)
-    d = np.arange(1, math.floor(span_ms / env_ms) + 2, dtype=np.intp)
-    off = d * env_ms
-    return d[(off >= gap_ms) & (off <= span_ms)]
+    lo = max(1, round(gap_ms / env_ms))
+    hi = round(span_ms / env_ms)
+    return np.arange(lo, hi + 1, dtype=np.intp)
 
 
 def _crash_step(env: np.ndarray, k: int, *, env_ms: float = ENV_MS,
@@ -564,6 +589,35 @@ def _window_median(t_s, y, lo: float, hi: float) -> float:
     return float(np.median(got)) if got.size else math.nan
 
 
+def _held_expected(t_s, y, when: float, lo_s: float, hi_s: float) -> float:
+    """What the pre-window's own trend says the post window should sit at.
+
+    The hold gate asks whether the level after a step is still down, and
+    "still down" is only meaningful against what the level was GOING to be.
+    Against the pre-window median that is the level before the step, which
+    assumes a stationary inter-ELM baseline; against this it is the pre
+    window's median extrapolated forward, which does not.
+
+    Two medians rather than a least-squares line because the windows
+    straddle ELMs and a fit is dominated by the spikes: the pre window is
+    halved, each half's median is the inter-ELM level at that half's
+    centre, and the line through the two is carried to the centre of the
+    post window. NaN where either half is empty - the caller falls back to
+    the plain pre-window median there.
+    """
+    mid_s = 0.5 * (lo_s + hi_s)
+    first = _window_median(t_s, y, when - hi_s, when - mid_s)
+    second = _window_median(t_s, y, when - mid_s, when - lo_s)
+    if not (math.isfinite(first) and math.isfinite(second)):
+        return math.nan
+    # Centres of the two halves and of the post window, relative to `when`.
+    t_first = -0.5 * (hi_s + mid_s)
+    t_second = -0.5 * (mid_s + lo_s)
+    t_post = 0.5 * (lo_s + hi_s)
+    slope = (second - first) / (t_second - t_first)
+    return second + slope * (t_post - t_second)
+
+
 def _sample_s(t: np.ndarray) -> float:
     """Seconds between samples, from the axis itself."""
     step = float(t[-1] - t[0]) / max(t.size - 1, 1)
@@ -703,6 +757,17 @@ def lh_transitions(
     within 50 ms of either end of the D-alpha record therefore cannot be
     claimed - the window it would have to hold over is not in the record.
 
+    That comparison assumes the inter-ELM baseline is STATIONARY over the
+    +/-50 ms, which a shot with a gas puff or a density ramp under it is
+    not: a baseline falling by ~30% per 70 ms is lower after every ELM than
+    it was before, so every ELM passes the hold and the gate becomes an ELM
+    counter again (measured: a 100 ms half-life under 4 ms bursts every 15
+    ms, one `lh_transition` per ELM). So the post window is compared not
+    with the pre window's median but with `_held_expected` - that median
+    carried forward along the pre window's own trend - and a drift steep
+    enough to matter cancels out of the ratio. `LH_HOLD_FRAC` itself came
+    from a ten-shot look rather than a fit; see its note.
+
     The H->L back transition is the same step upward, held the same way
     (the level `LH_HOLD_HI_MS` later at least `1 / LH_HOLD_FRAC` of the
     level before), with the density falling. Its density test is only a
@@ -765,11 +830,14 @@ def lh_transitions(
             # back and a transition's does not.
             held0 = _window_median(t, d, when - hold_hi_s, when - hold_lo_s)
             held1 = _window_median(t, d, when + hold_lo_s, when + hold_hi_s)
-            if not (math.isfinite(held0) and math.isfinite(held1)) or (
-                held0 <= 0.0
+            expected = _held_expected(t, d, when, hold_lo_s, hold_hi_s)
+            if not math.isfinite(expected):
+                expected = held0
+            if not (math.isfinite(expected) and math.isfinite(held1)) or (
+                expected <= 0.0
             ):
                 continue
-            hold_frac = held1 / held0
+            hold_frac = held1 / expected
             if rising:
                 if not hold_frac >= 1.0 / LH_HOLD_FRAC:
                     continue
@@ -810,6 +878,9 @@ def lh_transitions(
                         "dalpha_after": float(after),
                         "ne_change_frac": float(ne_change),
                         "hold_frac": float(hold_frac),
+                        "dalpha_held_before": float(held0),
+                        "dalpha_held_after": float(held1),
+                        "dalpha_held_expected": float(expected),
                         "pinj_kw": float(pinj_kw),
                         "betan": None if not math.isfinite(betan) else float(betan),
                         "window_ms": float(drop_window_ms),

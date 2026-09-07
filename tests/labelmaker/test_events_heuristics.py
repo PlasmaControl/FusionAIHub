@@ -76,8 +76,9 @@ def _random_record(n=200_000, channels=48, dtype=np.float32, seed=6):
     The times are RANDOM rather than a grid on purpose: a uniform grid puts
     samples exactly on bin edges, where the reference's arithmetic (searched
     per sample) and this module's (searched per bin) can round to different
-    sides and disagree about one sample. Random draws never land within 1e-12 of an edge, so the equality
-    below tests the binning rather than the last bit of the clock.
+    sides and disagree about one sample. Random draws never land within
+    1e-12 of an edge, so the equality below tests the binning rather than
+    the last bit of the clock.
     """
     rng = np.random.default_rng(seed)
     t_ms = np.sort(rng.uniform(0.0, n / 500.0, n))
@@ -310,6 +311,20 @@ def test_the_crash_window_is_the_same_seven_bins_everywhere_in_the_record():
     assert np.array_equal(steps, np.full(steps.size, 10.0))
 
 
+def test_the_step_windows_are_whole_bins_on_a_grid_that_is_not_whole_ms():
+    # The docstring's claim is that the windows are the bins `gap_ms` to
+    # `span_ms` away EXACTLY. Comparing `d * env_ms` against the two bounds
+    # in floating point does not keep it on a grid whose spacing does not
+    # divide them: 3 * 0.7 is 2.0999999999999996, a hair under a `gap_ms`
+    # of 2.1, so the nearest bin is dropped, and 8 * 0.7 is
+    # 5.6000000000000005, a hair over a `span_ms` of 5.6, so the farthest
+    # one is too. Asking the question in bins - how many bins is 2.1 ms -
+    # has no such edge.
+    assert heuristics._step_offsets(0.7, 2.1, 5.6).tolist() == [3, 4, 5, 6, 7, 8]
+    # The pipeline's own grid is unchanged by saying it that way.
+    assert heuristics._step_offsets(1.0, 2.0, 8.0).tolist() == [2, 3, 4, 5, 6, 7, 8]
+
+
 def test_a_window_that_falls_off_the_end_of_the_record_is_no_step():
     # The reference's answer: NaN for every channel when either side has
     # nothing in it, and the bins that ARE there when it is merely short.
@@ -370,6 +385,17 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     # The per-shot target of plan number 3, which is the binding one.
     assert record["port"]["elapsed_s"] < 1.0
     assert record["reference"]["elapsed_s"] > 10.0 * record["port"]["elapsed_s"]
+    # The omnimode side of the record is expensive (about eight minutes) and
+    # is not re-run when the port changes; `--port-only` re-runs the PORT on
+    # the same shot and amends the record, so the crash count the acceptance
+    # rests on is a measurement at the current code and not at whatever the
+    # code was when omnimode last ran.
+    rerun = record["port_rerun"]
+    assert rerun["n"] == record["reference"]["n"]
+    assert abs(rerun["median_ms"] - record["reference"]["median_period_ms"]) < 1e-6
+    assert rerun["max_abs_dt_ms"] <= record["agree_tolerance_ms"]
+    assert rerun["elapsed_s"] < 1.0
+    assert len(rerun["labelmaker_sha"]) == 40
 
 
 # ------------------------------------------------------------- L->H and H->L
@@ -482,6 +508,30 @@ def test_a_transition_followed_by_an_elm_train_is_one_transition(synth_shot):
            if e.phenomenon == "lh_transition"]
     assert len(got) == 1
     assert got[0].t0_s == pytest.approx(SYNTH_LH_S, abs=2e-3)
+
+
+def test_a_falling_baseline_under_an_elm_train_is_not_a_train_of_transitions(
+    synth_shot,
+):
+    # The hold gate compares the level 20-50 ms AFTER a step with the level
+    # 20-50 ms before it, which assumes the inter-ELM baseline is stationary
+    # over that +/-50 ms. A baseline that is itself falling defeats it: the
+    # post window is genuinely lower than the pre window whatever the ELM
+    # did, so every ELM's fall passes the hold and the detector reports one
+    # transition per ELM. Measured on this fixture: a half-life of 100 ms
+    # under 4 ms bursts every 15 ms gives four `lh_transition`s and no step
+    # was drawn.
+    t = synth_shot["dalpha_t_s"]
+    fs = 1.0 / float(t[1] - t[0])
+    tau = 0.100 / math.log(2.0)
+    flat = np.tile(synth_shot["dalpha_y"][:, :1], (1, t.size)).astype(np.float64)
+    drifting = flat * np.exp(-t / tau)[None, :]
+    elmy = drifting.copy()
+    width = round(0.004 * fs)
+    for start in range(0, t.size, round(0.015 * fs)):
+        elmy[:, start:start + width] *= 6.0
+    assert _lh({**synth_shot, "dalpha_y": drifting}) == []   # the drift alone
+    assert _lh({**synth_shot, "dalpha_y": elmy}) == []
 
 
 def test_a_transition_taken_in_two_stages_is_one_transition(synth_shot):
