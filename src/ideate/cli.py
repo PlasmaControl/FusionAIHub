@@ -25,7 +25,7 @@ from .retrieval import describe as describe_mod
 from .retrieval import rank as rank_mod
 from .schema import QueryState, Range, SegName, ShotRecord, to_summary
 from .shotdb import build as build_mod
-from .shotdb import census, legacy_raw, store
+from .shotdb import census, corpus_signals, legacy_raw, store
 from .shotdb import logs as logs_mod
 from .shotdb import select as select_mod
 from .shotdb.reader import ShotFailed
@@ -71,6 +71,23 @@ def _shots(args, default_list: str | None = None) -> list[int]:
     if not (shots or list_file or list_name) and default_list:
         shots = set(config.load_shot_list(default_list))
     return sorted(shots)
+
+
+def _shot_source(args, default_list: str | None = None) -> str:
+    """How `_shots` chose this build's shots, as one recordable string.
+
+    `list:<name>`, `list-file:<path>`, `shots:<n>` -- joined with `+` when more than one selector
+    was given, because `_shots` unions them. The manifest keeps this instead of `args.list`, which
+    was null for two of the three ways to select shots.
+    """
+    parts = []
+    if getattr(args, "list", None):
+        parts.append(f"list:{args.list}")
+    if getattr(args, "list_file", None):
+        parts.append(f"list-file:{args.list_file}")
+    if getattr(args, "shots", None):
+        parts.append(f"shots:{len(args.shots)}")
+    return "+".join(parts) if parts else (f"list:{default_list}" if default_list else "none")
 
 
 def _ip_spec() -> config.SignalSpec:
@@ -297,6 +314,7 @@ def _coverage_table(db: store.ShotDB) -> str:
 def cmd_build(args) -> int:
     paths, cfg = config.load_paths(), build_mod.load_build_cfg()
     wanted = _shots(args, "poc_v1")
+    source, n_requested = _shot_source(args, "poc_v1"), len(wanted)
     # `--limit` before anything else, and on the sorted list, so a pilot and the full run agree on
     # which shots the pilot measured.
     if args.limit is not None:
@@ -324,7 +342,9 @@ def cmd_build(args) -> int:
         encode=not args.no_encode,
         reuse=not args.reencode,
         reader_kind=args.reader,
-        list_name=args.list,
+        shot_source=source,
+        n_requested=n_requested,
+        limit=args.limit,
     )
     print(
         f"built {len(report.shots)} shots / {report.n_segments} segments in "
@@ -336,7 +356,10 @@ def cmd_build(args) -> int:
     if db is None:
         return 1
     ignite = db.manifest.get("ignite", {})
-    print(f"ignite embeddings: {ignite.get('status')} -- {ignite.get('reason')}")
+    # The flag belongs to this layer: `build()` records what was skipped, and the CLI names the
+    # flag that skipped it, so a programmatic build's manifest never claims a flag was passed.
+    flag = " (--no-encode)" if args.no_encode and ignite.get("status") == "disabled" else ""
+    print(f"ignite embeddings: {ignite.get('status')} -- {ignite.get('reason')}{flag}")
     print()
     print(_coverage_table(db))
     return 0 if report.shots else 1
@@ -747,18 +770,22 @@ def cmd_corpus_select(args) -> int:
         print(f"no census at {census_path}; run `ideate corpus scan` first", file=sys.stderr)
         return 1
     text_dir = Path(args.text_dir) if args.text_dir else paths.per_shot_txt_dir
-    features_dir = Path(args.features) if args.features else _labelmaker_features()
-    frame_codes_dir = (
-        Path(args.frame_codes) if args.frame_codes else _ignite_frame_codes(paths)
+    # Both of these have exactly one definition, and it is not here: the feature store is
+    # `corpus_signals.default_features_dir` (the same directory the corpus build reads) and the
+    # frame-code locations are `build.frame_codes_dirs` (the same ones `has_frame_codes` counts),
+    # so `corpus select` and `build` cannot disagree about the same shot.
+    features_dir = Path(args.features) if args.features else corpus_signals.default_features_dir()
+    code_dirs = (
+        [Path(args.frame_codes)]
+        if args.frame_codes
+        else (build_mod.frame_codes_dirs(paths) if paths else [])
     )
 
     group_spans = select_mod.spans(pd.read_parquet(census_path, columns=_SELECT_COLUMNS))
     corpus_shots = set(pd.read_parquet(census_path, columns=["shot"])["shot"].astype(int))
     bundles = select_mod.read_bundles(text_dir, sorted(corpus_shots))
 
-    preferred = select_mod.preferred_shots(
-        features_dir=features_dir, frame_codes_dir=frame_codes_dir
-    )
+    preferred = select_mod.preferred_shots(features_dir=features_dir, frame_codes_dirs=code_dirs)
     if source_doc:
         listed = select_mod.candidates_from_rows(source_doc["shots"], preferred=preferred)
     themes = select_mod.lexicon_themes()
@@ -853,7 +880,7 @@ def cmd_corpus_select(args) -> int:
         # A written document can only be finalized if this run was a `--finalize` run: one that
         # still had a pending row returned 1 above without writing anything.
         finalized=bool(getattr(args, "finalize", False)),
-        store=select_mod.store_fingerprint(features_dir, frame_codes_dir),
+        store=select_mod.store_fingerprint(features_dir, code_dirs),
     )
     doc = select_mod.document(
         selected,
@@ -898,19 +925,6 @@ def _pending_path(args) -> Path | None:
         return Path(args.pending_out)
     root = os.environ.get("LABELMAKER_ROOT")
     return Path(root) / f"{args.name}_pending_features.txt" if root else None
-
-
-def _labelmaker_features() -> Path | None:
-    """labelmaker's feature store, from $LABELMAKER_ROOT. None when it is not set: the preference
-    for already-featured shots is a convenience, not a rule, and it degrades to "none preferred"
-    rather than to an error."""
-    root = os.environ.get("LABELMAKER_ROOT")
-    return Path(root) / "features" if root else None
-
-
-def _ignite_frame_codes(paths) -> Path | None:
-    """The 10 pre-encoded IGNITE shots (`models/IGNITE/frame_codes/<shot>.pt`)."""
-    return Path(paths.models_dir) / "IGNITE" / "frame_codes" if paths else None
 
 
 def cmd_corpus(args) -> int:

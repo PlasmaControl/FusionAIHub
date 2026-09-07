@@ -261,18 +261,26 @@ def make_reader(kind: str, paths: config.Paths) -> SignalReader:
     raise ValueError(f"unknown reader {kind!r}; expected 'legacy' or 'corpus'")
 
 
-def frame_codes_path(shot: int, paths: config.Paths) -> Path | None:
-    """This shot's IGNITE frame codes, if either location has them, else None.
+def frame_codes_dirs(paths: config.Paths) -> tuple[Path, ...]:
+    """Where IGNITE frame codes live, in one place, because two commands ask.
 
     Two locations because there are two producers: `design.encode_frame_codes` writes
     <data_root>/frame_codes/<shot>.pt, and the ten shots that shipped with the IGNITE bundle live
-    under <models_dir>/IGNITE/frame_codes/. A build records whether the shot has codes at all,
-    not which of the two wrote them.
+    under <models_dir>/IGNITE/frame_codes/. `build` (the `has_frame_codes` column) and
+    `corpus select` (§5.7's preference for shots that are already encoded) both need the answer,
+    and when they each kept their own list the two commands disagreed about the same shot.
     """
-    for p in (
-        Path(paths.data_root) / "frame_codes" / f"{int(shot)}.pt",
-        Path(paths.models_dir) / "IGNITE" / "frame_codes" / f"{int(shot)}.pt",
-    ):
+    return (
+        Path(paths.data_root) / "frame_codes",
+        Path(paths.models_dir) / "IGNITE" / "frame_codes",
+    )
+
+
+def frame_codes_path(shot: int, paths: config.Paths) -> Path | None:
+    """This shot's IGNITE frame codes, if either location has them, else None. A build records
+    whether the shot has codes at all, not which of the two producers wrote them."""
+    for d in frame_codes_dirs(paths):
+        p = d / f"{int(shot)}.pt"
         if p.exists():
             return p
     return None
@@ -906,14 +914,19 @@ def build(
     encode: bool = True,
     reuse: bool = True,
     reader_kind: str = "legacy",
-    list_name: str | None = None,
+    shot_source: str | None = None,
+    n_requested: int | None = None,
+    limit: int | None = None,
 ) -> BuildReport:
     """Full rebuild into <db_dir>, via <db_dir>.tmp so a crash leaves the old database intact.
 
     `reader_kind` picks the raw layer ("legacy" -- the d3d_fusion_data layout this database was
-    first built from -- or "corpus"), and `list_name` is the shot list the caller selected, both
-    recorded in the manifest: two databases at the same path built from different layers or
-    different lists are different databases and have to say which they are.
+    first built from -- or "corpus"). The other three say where the shots came from:
+    `shot_source` is how they were selected (`list:<name>`, `list-file:<path>`, `shots:<n>`),
+    `n_requested` how many that selection named and `limit` the `--limit` applied to it, if any.
+    All four go in the manifest, because two databases at the same path built from different
+    layers or different selections are different databases and have to say which they are -- and
+    "the shots are in the manifest's `shots` array" is a reconstruction, not a record.
     """
     t_start = time.perf_counter()
     shots = sorted(set(shots))
@@ -934,7 +947,14 @@ def build(
         "git_sha": _git_sha(),
         "config_sha": _config_sha(),
         "reader": reader_kind,
-        "list": list_name,
+        # How the shot list was chosen, how many shots it named, how many were built, and the
+        # limit that cut it down. Four facts, because one field cannot carry them: `list` alone
+        # was null for a `--list-file`/`--shots` build and named a 500-shot list for a
+        # `--limit 20` database.
+        "shot_source": shot_source,
+        "n_requested": n_requested,
+        "n_built": len(records),
+        "limit": limit,
         "shots": report.shots,
         "n_shots": len(records),
         "n_segments": len(segments_df),
@@ -951,13 +971,16 @@ def build(
         "blurbs": _blurb_counts(shots_df),
         "campaign_note": "campaign is a shot-number band from actuators.yaml, not a date range",
         "coverage": cov.to_dict(orient="index"),
-        # What --no-encode actually skips, said in full: the IGNITE waveform channel and nothing
-        # else. The scalar and MiniLM text embeddings below are part of the database itself and
-        # are written either way, so a reader of this manifest does not have to guess whether an
-        # emb_*.npy is missing because of this flag.
+        # What `encode=False` actually skips, said in full: the IGNITE waveform channel and
+        # nothing else. The scalar and MiniLM text embeddings below are part of the database
+        # itself and are written either way, so a reader of this manifest does not have to guess
+        # whether an emb_*.npy is missing because of it. Said WITHOUT naming a CLI flag: this is
+        # a library call, and a programmatic build nobody passed a flag to would otherwise get
+        # "--no-encode" written into its manifest. `cli.cmd_build` adds the flag when a flag is
+        # what did it.
         "ignite": {
             "status": "disabled",
-            "reason": "--no-encode: the IGNITE waveform channel was skipped; "
+            "reason": "encoding disabled: the IGNITE waveform channel was skipped; "
             "scalar and text embeddings are built as usual",
             "channels": [],
         },

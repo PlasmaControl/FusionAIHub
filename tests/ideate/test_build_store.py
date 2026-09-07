@@ -392,7 +392,8 @@ def test_shots_parquet_carries_the_corpus_coverage_columns(
         workers=1,
         encode=False,
         reader_kind="corpus",
-        list_name="unit_test_list",
+        shot_source="list:unit_test_list",
+        n_requested=1,
     )
     assert report.shots == [signal_corpus]
     row = pd.read_parquet(paths.db_dir / "shots.parquet").iloc[0]
@@ -402,7 +403,8 @@ def test_shots_parquet_carries_the_corpus_coverage_columns(
     assert json.loads(row["feature_resolvers"])["bt"] == "labelmaker:archive"
     assert row["has_frame_codes"] is False or row["has_frame_codes"] == 0
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
-    assert manifest["reader"] == "corpus" and manifest["list"] == "unit_test_list"
+    assert manifest["reader"] == "corpus" and manifest["shot_source"] == "list:unit_test_list"
+    assert manifest["n_requested"] == 1 and manifest["n_built"] == 1 and manifest["limit"] is None
     assert manifest["git_sha"] and manifest["config_sha"]
 
 
@@ -423,14 +425,16 @@ def test_has_frame_codes_is_the_file_on_disk(
 def test_no_encode_skips_the_ignite_channel_and_nothing_else(
     paths, staged_shot_a, text_fixtures, stub_embeddings
 ):
-    """`--no-encode` is about the IGNITE channel only: the scalar and text embeddings are part of
+    """`encode=False` is about the IGNITE channel only: the scalar and text embeddings are part of
     the database itself and are still written, and the manifest says exactly that rather than a
-    bare "encode=False" a reader has to interpret."""
+    bare "encode=False" a reader has to interpret. It does not name a CLI flag -- this is a
+    library call, and `cli.cmd_build` is where `--no-encode` is spoken."""
     build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     assert manifest["ignite"]["status"] == "disabled"
-    assert "--no-encode" in manifest["ignite"]["reason"]
+    assert "IGNITE waveform channel was skipped" in manifest["ignite"]["reason"]
     assert "scalar and text embeddings" in manifest["ignite"]["reason"]
+    assert "--no-encode" not in manifest["ignite"]["reason"]
     for name in ("emb_scalar", "emb_text_mp", "emb_text_log"):
         assert (paths.db_dir / f"{name}.npy").exists(), name
     assert not list(paths.db_dir.glob("emb_ignite_*.npy"))

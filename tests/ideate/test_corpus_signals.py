@@ -377,3 +377,19 @@ def test_a_corpus_miss_falls_back_to_the_feature_store(paths, signal_corpus, lab
     sig = r.read_signal(signal_corpus, spec)
     assert sig is not None and sig.source == "labelmaker"
     assert r.signal_status(signal_corpus, spec) == "present"
+
+
+def test_the_corpus_actuator_map_is_built_once_not_once_per_spec(
+    paths, signal_corpus, monkeypatch
+):
+    """`address()` rebuilt it per spec -- a deep copy of actuators.yaml plus a dozen pydantic
+    constructions, ~85 times per shot, in a module that is otherwise careful to do each piece of
+    work once per group."""
+    from ideate.shotdb import corpus_signals as mod
+
+    mod._corpus_actuators_cached.cache_clear()
+    calls = []
+    real = mod.corpus_actuators
+    monkeypatch.setattr(mod, "corpus_actuators", lambda: (calls.append(1), real())[1])
+    CorpusSignalReader(paths).read_shot(signal_corpus, registry(signal_corpus))
+    assert len(calls) == 1
