@@ -822,6 +822,11 @@ def _tmp_dir(db_dir: Path) -> Path:
 #:
 #: Stale build-owned files must still go: an emb_ignite_*.npy left beside a database built with
 #: --no-encode is worse than a missing file, it is a database that lies about what it holds.
+#:
+#: manifest.json IS build-owned, so a rebuild still drops the `labels` block `ideate labels join`
+#: merges into it while keeping the join's three tables. That asymmetry is deliberate and is the
+#: marker: tables with no `labels` block in the manifest were not written for THIS build, and the
+#: join has to be re-run before they are quoted against it.
 BUILD_FILES = (
     "shots.parquet",
     "segments.parquet",
