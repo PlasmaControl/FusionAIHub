@@ -255,10 +255,297 @@ def _g_enc():
     return module
 
 
+#: The 202537 reference cache's own structure, read off the shipped file (see
+#: `test_the_synthetic_reference_matches_the_shipped_202537_cache`, which fails if it drifts).
+#: Every G-ENC test below builds its payloads from this table, so a test that says "one changed
+#: token" changes one token of a cache the checkpoint would actually accept.
+REF_SHOT = 202537
+REF_FRAMES = 239
+REF_TOKENS = {
+    "ece": 192, "bes": 192, "mhr": 192, "co2": 192,
+    "tangtv_lower": 108, "tangtv_upper": 108,
+    "ts_core_density": 4, "ts_core_temp": 4, "ts_tangential_density": 4,
+    "ts_tangential_temp": 4, "cer_ti": 4, "cer_rot": 4, "mse": 4,
+    "filterscopes": 5,
+}
+REF_VOCABS = {
+    "ece": 32768, "bes": 64000, "mhr": 32768, "co2": 32768,
+    "tangtv_lower": 64000, "tangtv_upper": 64000,
+    "ts_core_density": 1000, "ts_core_temp": 1000, "ts_tangential_density": 1000,
+    "ts_tangential_temp": 1000, "cer_ti": 1000, "cer_rot": 1000, "mse": 1000,
+    "filterscopes": 1000,
+}
+
+
+def _synthetic_reference(frames: int = REF_FRAMES, seed_value: int = 202537) -> dict:
+    """A faithful copy of the shipped 202537 cache: same keys, modalities, widths, vocabs, dtypes.
+
+    Values are random rather than the shipped file's, because none of these tests is about the
+    values -- they are about what `compare`/`verdict` do with a cache whose STRUCTURE is the
+    shipped one and whose contents have been perturbed in one named way.
+    """
+    import torch
+
+    rng = np.random.default_rng(seed_value)
+    codes = {
+        name: torch.from_numpy(
+            rng.integers(0, REF_VOCABS[name], size=(frames, width), dtype=np.int64)
+        ).to(torch.int32)
+        for name, width in REF_TOKENS.items()
+    }
+    act = rng.standard_normal((frames, 88)).astype(np.float16)
+    return {
+        "codes": codes,
+        "actuators": torch.from_numpy(act),
+        "n_frames": int(frames),
+        "vocabs": dict(REF_VOCABS),
+    }
+
+
+def _copy(payload: dict) -> dict:
+    return {
+        "codes": {k: v.clone() for k, v in payload["codes"].items()},
+        "actuators": payload["actuators"].clone(),
+        "n_frames": int(payload["n_frames"]),
+        "vocabs": dict(payload["vocabs"]),
+    }
+
+
+@pytest.mark.real_data
+def test_the_synthetic_reference_matches_the_shipped_202537_cache():
+    """The tables above are a transcription of a real file; this is what keeps them one.
+
+    Read-only: the shipped cache is opened, its structure compared, and nothing written. If the
+    bundle ever ships a different revision, every G-ENC test below is testing the wrong contract
+    and this test is the one that says so.
+    """
+    import torch
+
+    paths = load_paths()
+    ref_path = ignite.bundle_dir(paths) / "frame_codes" / f"{REF_SHOT}.pt"
+    if not ref_path.is_file():
+        pytest.skip(f"no shipped cache at {ref_path}")
+    real = torch.load(ref_path, weights_only=False, map_location="cpu")
+    synth = _synthetic_reference()
+    assert set(real) == set(synth) == {"codes", "actuators", "n_frames", "vocabs"}
+    assert int(real["n_frames"]) == REF_FRAMES
+    assert real["vocabs"] == REF_VOCABS
+    assert real["actuators"].shape == synth["actuators"].shape == (REF_FRAMES, 88)
+    assert real["actuators"].dtype == synth["actuators"].dtype == torch.float16
+    for name, width in REF_TOKENS.items():
+        assert tuple(real["codes"][name].shape) == (REF_FRAMES, width), name
+        assert real["codes"][name].dtype == torch.int32, name
+        assert tuple(synth["codes"][name].shape) == tuple(real["codes"][name].shape), name
+
+
 def test_g_enc_compare_refuses_two_different_frame_counts():
     """Truncating both sides to the shorter one lets a SHORT encode compare its prefix and pass:
     a cache with 4 of 239 frames would agree with the shipped file on all four and be declared
     bit-identical. The gate has to fail loudly instead."""
     g_enc = _g_enc()
-    with pytest.raises(ValueError, match="frame"):
-        g_enc.compare({"n_frames": 4, "codes": {}}, {"n_frames": 239, "codes": {}})
+    ref = _synthetic_reference()
+    got = _synthetic_reference(frames=4)
+    with pytest.raises(ValueError, match="frame count"):
+        g_enc.compare(got, ref)
+
+
+def test_g_enc_compare_refuses_a_cache_whose_n_frames_lies_about_its_tensors():
+    """`n_frames` is a separate int from the tensors' own first dimension, so it can disagree
+    with them -- and every downstream slice is taken at `n_frames`."""
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    got["n_frames"] = 200
+    with pytest.raises(ValueError, match="n_frames"):
+        g_enc.compare(got, ref)
+
+
+def test_g_enc_compare_refuses_a_short_shot_against_the_gates_239_frames():
+    """A full shot is 239 frames. Two caches that agree with each other at 8 frames agree about
+    nothing the gate is asking about."""
+    g_enc = _g_enc()
+    short = _synthetic_reference(frames=8)
+    with pytest.raises(ValueError, match="239"):
+        g_enc.compare(_copy(short), short, expect_frames=g_enc.FULL_SHOT_FRAMES)
+
+
+def test_g_enc_compare_refuses_a_dtype_that_is_not_the_shipped_one():
+    """int32 codes and float16 actuators are what `validate_shot` accepts; an int64 code array
+    compares equal to its int32 twin and is a cache the checkpoint would refuse."""
+    g_enc = _g_enc()
+    import torch
+
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    got["codes"]["mse"] = got["codes"]["mse"].to(torch.int64)
+    with pytest.raises(ValueError, match="int32"):
+        g_enc.compare(got, ref)
+
+    got = _copy(ref)
+    got["actuators"] = got["actuators"].to(torch.float32)
+    with pytest.raises(ValueError, match="float16"):
+        g_enc.compare(got, ref)
+
+
+def test_g_enc_compare_refuses_a_token_outside_its_own_vocabulary():
+    """`vocabs` is the field that tells a v2 cache from a v3 one. A token at or past the codebook
+    size is read by the model as some other codebook's entry, silently."""
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    got["codes"]["ece"][0, 0] = REF_VOCABS["ece"]
+    with pytest.raises(ValueError, match="vocab"):
+        g_enc.compare(got, ref)
+
+    got = _copy(ref)
+    got["vocabs"]["ece"] = 16384
+    with pytest.raises(ValueError, match="vocab"):
+        g_enc.compare(got, ref)
+
+
+def test_g_enc_compare_refuses_a_token_width_that_is_not_the_shipped_one():
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    got["codes"]["mse"] = got["codes"]["mse"][:, :2].contiguous()
+    with pytest.raises(ValueError, match="shape"):
+        g_enc.compare(got, ref)
+
+
+def test_g_enc_fails_when_a_requested_modality_was_never_encoded():
+    """THE DEFECT. A modality missing from the encoded side used to get `equal=None`, and
+    `verdict` rejected only `equal is False` -- so dropping `ece` from an otherwise identical
+    cache PASSED the gate. A requested modality that produced nothing is a failure."""
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    del got["codes"]["ece"]
+    del got["vocabs"]["ece"]
+
+    result = g_enc.compare(got, ref, requested=tuple(ref["codes"]))
+    assert result["modalities"]["ece"] == {
+        "requested": True, "equal": None, "agreement": None, "note": "not encoded"
+    }
+    ok, reasons = g_enc.verdict(result, ())
+    assert ok is False
+    assert any("ece" in r and "not encoded" in r for r in reasons)
+
+
+def test_g_enc_does_not_fail_for_a_modality_nobody_asked_for():
+    """`--no-video` is a legitimate narrower run: the two video modalities are absent because
+    they were not requested, and that is recorded as such rather than as a missing encode. The
+    header says in as many words that such a run is not the three-shot gate."""
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    for name in ("tangtv_lower", "tangtv_upper"):
+        del got["codes"][name]
+        del got["vocabs"][name]
+
+    requested = tuple(n for n in ref["codes"] if n not in ("tangtv_lower", "tangtv_upper"))
+    result = g_enc.compare(got, ref, requested=requested)
+    assert result["modalities"]["tangtv_lower"]["requested"] is False
+    ok, _ = g_enc.verdict(result, ())
+    assert ok is True
+
+
+def test_g_enc_fails_for_a_single_changed_token():
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    got["codes"]["co2"][17, 3] = (int(got["codes"]["co2"][17, 3]) + 1) % REF_VOCABS["co2"]
+
+    result = g_enc.compare(got, ref, requested=tuple(ref["codes"]))
+    assert result["modalities"]["co2"]["equal"] is False
+    assert result["modalities"]["co2"]["n_mismatched_tokens"] == 1
+    assert result["modalities"]["co2"]["n_frames_affected"] == 1
+    ok, reasons = g_enc.verdict(result, ())
+    assert ok is False
+    assert any(r.startswith("co2 not bit-identical") for r in reasons)
+
+
+def test_g_enc_fails_at_81_of_88_actuator_channels_and_passes_at_82():
+    """The gate's number is 82/88 within 2e-3 z. 81 is a failure and has to read as one."""
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+
+    def with_n_failing(n: int) -> dict:
+        got = _copy(ref)
+        act = got["actuators"].float().numpy().copy()
+        act[0, :n] += 1.0  # far outside 2e-3 z
+        import torch
+
+        got["actuators"] = torch.from_numpy(act).to(torch.float16)
+        return got
+
+    seven = g_enc.compare(with_n_failing(7), ref, requested=tuple(ref["codes"]))
+    assert seven["actuators"]["within_tol"] == 81
+    ok, reasons = g_enc.verdict(seven, ())
+    assert ok is False
+    assert any("81/88" in r for r in reasons)
+
+    six = g_enc.compare(with_n_failing(6), ref, requested=tuple(ref["codes"]))
+    assert six["actuators"]["within_tol"] == 82
+    assert g_enc.verdict(six, ())[0] is True
+
+
+def test_g_enc_passes_only_when_every_requested_modality_is_bit_identical():
+    g_enc = _g_enc()
+    ref = _synthetic_reference()
+    result = g_enc.compare(_copy(ref), ref, requested=tuple(ref["codes"]))
+    assert all(m["equal"] for m in result["modalities"].values())
+    assert result["actuators"]["within_tol"] == 88
+    assert g_enc.verdict(result, ())[0] is True
+
+
+def test_g_enc_header_does_not_claim_a_demonstrated_input_difference():
+    """The 190735/190736 residual demonstrates OUTPUT disagreement. Calling it a demonstrated
+    input difference asserts a cause nothing here measured -- no input file was ever hashed."""
+    g_enc = _g_enc()
+    doc = " ".join(g_enc.__doc__.split())
+    assert "output disagreement; input difference not established without matched input hashes" in doc
+    for phrase in ("An input difference IS demonstrated", "is actually DEMONSTRATED"):
+        assert phrase not in doc
+    assert "is actually DEMONSTRATED" not in " ".join(seed.__doc__.split())
+
+
+def test_encode_frame_codes_refuses_to_silently_drop_a_requested_modality(tmp_path, monkeypatch):
+    """THE OTHER HALF OF THE DEFECT. The encoder reduced `names` to whatever codecs the loader
+    handed back and then checked completeness against the reduction, so a bundle missing a codec
+    produced a cache that was complete by its own definition."""
+    monkeypatch.setattr(seed.ignite, "bundle_dir", lambda paths: tmp_path / "bundle")
+    with pytest.raises(seed.ignite.CheckpointMissing, match="ece"):
+        seed.encode_frame_codes(
+            999002,
+            reader=None,
+            out_dir=tmp_path,
+            modalities=["ece", "mse"],
+            codecs={"mse": None},
+            paths=object(),
+        )
+
+
+def test_encode_frame_codes_allows_a_named_partial_run_for_diagnostics(tmp_path, monkeypatch):
+    """`allow_partial=True` is the diagnostic escape hatch: the run proceeds without the codec,
+    the cache simply lacks that modality, and G-ENC's `compare`/`verdict` then fail on it
+    because it was requested. It is never the three-shot gate."""
+    calls: dict = {}
+
+    def fake_frame_codes(shot, codecs, paths, **kw):
+        calls["codecs"] = tuple(codecs)
+        raise RuntimeError("stop here: the codec set is what this test is about")
+
+    monkeypatch.setattr(seed.ignite, "bundle_dir", lambda paths: tmp_path / "bundle")
+    monkeypatch.setattr(seed.ignite, "frame_codes", fake_frame_codes)
+    monkeypatch.setattr(seed.ignite, "model_cfg", lambda: {"t0_start_s": 0.0})
+    with pytest.raises(RuntimeError, match="stop here"):
+        seed.encode_frame_codes(
+            999002,
+            reader=type("R", (), {"corpus_dir": tmp_path})(),
+            out_dir=tmp_path,
+            modalities=["ece", "mse"],
+            codecs={"mse": None},
+            paths=object(),
+            allow_partial=True,
+        )
+    assert calls["codecs"] == ("mse",)

@@ -80,13 +80,18 @@ what an MI250X/ROCm FFT and conv stack differs from a V100S/CUDA one. That is CO
 cross-vendor numerics difference. It is not a demonstration of one, and no claim stronger than
 that is supported by anything measured here.
 
-*An input difference IS demonstrated -- for 190735 and 190736, and only for them.* On those two
-shots the ACTUATOR block disagrees by 1.8-2.4 z on rmp[11]. That block is pure NumPy arithmetic
-on raw HDF5 values: no codec, no GPU, no quantiser, nothing a vendor difference can reach. Their
-tangtv_upper agrees on 0.04 % / 0.10 % of tokens as well. Those two corpus files are not what
-production read. The inference does NOT transfer to 204346: its actuator block is 88/88
-bit-identical to the shipped cache, which is evidence AGAINST that file being a different fetch,
-and nothing measured here justifies distrusting 204346's data.
+*The 190735 / 190736 residual is OUTPUT disagreement that no vendor difference explains -- and
+that is as far as it goes.* On those two shots the ACTUATOR block disagrees by 1.8-2.4 z on
+rmp[11]. That block is pure NumPy arithmetic on raw HDF5 values: no codec, no GPU, no quantiser,
+nothing a cross-vendor FFT can reach, so whatever moved it is upstream of this module's
+arithmetic. Their tangtv_upper agrees on only 0.04 % / 0.10 % of tokens as well. A different
+corpus file is the readiest explanation and it is the one this docstring used to assert; the
+assertion is withdrawn. It is output disagreement; input difference not established
+without matched input hashes and the preprocessing provenance of both sides, and neither exists
+-- production's corpus is on Frontier and no input file was ever hashed or compared (see the
+paragraph above). What the residual DOES rule out is this module's own codec arithmetic. The
+observation does not transfer to 204346 either way: its actuator block is 88/88 bit-identical to
+the shipped cache, and nothing measured here justifies distrusting 204346's data.
 
 One real bug did surface here and is fixed in `design.actuators`: `CorpusReader.read` strips the
 corpus's trailing all-NaN pad sample, production averaged it in as a zero, and the shortened
@@ -95,6 +100,18 @@ without this comparison -- which is the argument for the gate.
 
 `--no-video` restricts the run to the twelve non-video modalities. The default keeps the
 criterion as written, so a shot that does not reproduce fails visibly.
+
+WHAT COUNTS AS THE GATE, AND WHAT DOES NOT. The G-ENC gate is the three shots 190090 / 202537 /
+204346 with all fourteen modalities and the 88 actuator channels. Anything narrower -- one shot,
+`--no-video`, `--allow-partial` -- is a DIAGNOSTIC: it is useful, it is cheap, and it can PASS
+while the gate fails, which is exactly how a one-shot CPU smoke run gets quoted as if it were
+the gate. Such a run marks its report `"diagnostic": true` and says so on stdout. The gate's
+standing verdict is `gates/g_enc.json`, which is FAILED (190090, 204346) and stays failed until
+those two shots reproduce or a separately justified acceptance criterion replaces the current
+one; a diagnostic run must never overwrite it (use `--json` to send it somewhere else).
+
+Every REQUESTED modality must be present on both sides and bit-identical. A modality that was
+asked for and produced nothing is a FAILURE, not an abstention -- see `compare`/`verdict`.
 """
 
 from __future__ import annotations
@@ -126,29 +143,132 @@ ACT_TOL = 2e-3
 ACT_MIN_PASS = 82  # of 88; the known residuals are i_coil[0:6]-shaped and shot-specific
 
 
-def compare(got: dict, ref: dict) -> dict:
-    """One shot's verdict: per-modality equality plus the actuator channel tally.
+#: A full DIII-D shot is 239 frames. The gate is about full shots: two caches that agree with
+#: each other over the first 8 frames agree about nothing this gate asks. `main` passes this to
+#: `compare`; a diagnostic call may pass `expect_frames=None` and get only internal consistency.
+FULL_SHOT_FRAMES = 239
+N_ACTUATOR_CHANNELS = 88
+#: The four keys `ignite_infer.validate_shot` requires, and the dtypes it requires them in.
+CACHE_KEYS = ("codes", "actuators", "n_frames", "vocabs")
 
-    Raises `ValueError` when the two caches do not cover the same number of frames. Comparing
-    `min(got, ref)` frames would let a SHORT encode compare its own prefix: a cache holding 4 of
-    239 frames agrees with the shipped file on all four and would be declared bit-identical.
+
+def validate_cache(payload: dict, side: str, expect_frames: int | None = None) -> int:
+    """`payload`'s frame count, after checking it IS a frame-code cache. Raises `ValueError`.
+
+    `compare` used to trust everything except the frame count, so a cache with int64 codes, a
+    `n_frames` that disagreed with its own tensors, tokens past the end of their codebook or an
+    88-channel block that had become 87 compared perfectly well against the shipped file and was
+    declared bit-identical. None of those is a cache the dynamics checkpoint would load. The
+    gate's claim is "our encoder is the production encoder", and a structural check is the half
+    of that claim `torch.equal` cannot make.
     """
     import torch
 
-    if int(got["n_frames"]) != int(ref["n_frames"]):
+    if set(payload) != set(CACHE_KEYS):
+        raise ValueError(
+            f"{side}: a frame-code cache has exactly {CACHE_KEYS}, this one has "
+            f"{tuple(sorted(payload))}"
+        )
+    frames = int(payload["n_frames"])
+    if frames < 1:
+        raise ValueError(f"{side}: n_frames is {frames}")
+    if expect_frames is not None and frames != expect_frames:
+        raise ValueError(
+            f"{side}: {frames} frames, and this gate compares full shots of {expect_frames} "
+            f"-- a shorter run is a diagnostic, not the gate"
+        )
+    act = payload["actuators"]
+    if act.dtype != torch.float16:
+        raise ValueError(f"{side}: actuators are {act.dtype}, the shipped layout is float16")
+    if tuple(act.shape) != (frames, N_ACTUATOR_CHANNELS):
+        raise ValueError(
+            f"{side}: actuators are {tuple(act.shape)}, expected "
+            f"({frames}, {N_ACTUATOR_CHANNELS}) -- n_frames and the tensors disagree"
+        )
+    vocabs = payload["vocabs"]
+    for name, codes in payload["codes"].items():
+        if codes.dtype != torch.int32:
+            raise ValueError(f"{side}: {name} codes are {codes.dtype}, the shipped layout is int32")
+        if codes.dim() != 2:
+            raise ValueError(f"{side}: {name} codes have shape {tuple(codes.shape)}, expected (F, n_tok)")
+        if int(codes.shape[0]) != frames:
+            raise ValueError(
+                f"{side}: {name} has {int(codes.shape[0])} frames but n_frames says {frames}"
+            )
+        vocab = vocabs.get(name)
+        if vocab is None:
+            raise ValueError(f"{side}: {name} has codes but no vocab size")
+        lo, hi = int(codes.min()), int(codes.max())
+        if lo < 0 or hi >= int(vocab):
+            raise ValueError(
+                f"{side}: {name} tokens run {lo}..{hi}, outside its vocab of {int(vocab)} "
+                f"-- the model would read them as another codebook's entries"
+            )
+    extra = set(vocabs) - set(payload["codes"])
+    if extra:
+        raise ValueError(f"{side}: vocabs name modalities with no codes: {', '.join(sorted(extra))}")
+    return frames
+
+
+def compare(
+    got: dict,
+    ref: dict,
+    requested: tuple[str, ...] | None = None,
+    expect_frames: int | None = None,
+) -> dict:
+    """One shot's verdict: per-modality equality plus the actuator channel tally.
+
+    `requested` is the modality set the run ASKED for. Every one of them must be present on both
+    sides and bit-identical; a modality of the shipped cache that was not requested (`--no-video`)
+    is recorded as `requested: False` and judged by nobody. Defaults to the shipped cache's own
+    modality list, which is the full gate.
+
+    Raises `ValueError` when either side is not a well-formed frame-code cache, or when the two
+    do not cover the same number of frames. Comparing `min(got, ref)` frames would let a SHORT
+    encode compare its own prefix: a cache holding 4 of 239 frames agrees with the shipped file
+    on all four and would be declared bit-identical.
+    """
+    import torch
+
+    frames = validate_cache(ref, "the shipped cache", expect_frames)
+    if validate_cache(got, "the re-encoded cache", expect_frames) != frames:
         raise ValueError(
             f"frame count mismatch: encoded {int(got['n_frames'])} frames, "
-            f"the shipped cache has {int(ref['n_frames'])} -- refusing to compare a prefix"
+            f"the shipped cache has {frames} -- refusing to compare a prefix"
         )
-    frames = int(ref["n_frames"])
+    asked = set(tuple(ref["codes"]) if requested is None else requested)
+    unknown = asked - set(ref["codes"]) - set(got["codes"])
+    if unknown:
+        raise ValueError(f"requested modalities nobody has: {', '.join(sorted(unknown))}")
+
     modalities = {}
-    for name, want in ref["codes"].items():
-        have = got["codes"].get(name)
-        if have is None:
-            # Not encoded on purpose (`--no-video`). A modality that was ASKED for and produced
-            # nothing never reaches here -- `encode_frame_codes` raises instead.
-            modalities[name] = {"equal": None, "agreement": None, "note": "not encoded"}
+    for name in dict.fromkeys((*ref["codes"], *got["codes"])):
+        want, have = ref["codes"].get(name), got["codes"].get(name)
+        if name not in asked:
+            modalities[name] = {
+                "requested": False, "equal": None, "agreement": None,
+                "note": "not requested",
+            }
             continue
+        if have is None or want is None:
+            # THE DEFECT this gate shipped with: a requested modality that produced nothing used
+            # to land here with `equal=None`, and `verdict` rejected only `equal is False`, so
+            # removing `ece` from an otherwise identical cache PASSED. It is a failure.
+            modalities[name] = {
+                "requested": True, "equal": None, "agreement": None,
+                "note": "not encoded" if have is None else "not in the shipped cache",
+            }
+            continue
+        if tuple(have.shape) != tuple(want.shape):
+            raise ValueError(
+                f"{name}: encoded shape {tuple(have.shape)} against the shipped "
+                f"{tuple(want.shape)}"
+            )
+        if int(got["vocabs"][name]) != int(ref["vocabs"][name]):
+            raise ValueError(
+                f"{name}: encoded vocab {int(got['vocabs'][name])} against the shipped "
+                f"{int(ref['vocabs'][name])} -- these are two different codebooks"
+            )
         a, b = have[:frames], want[:frames]
         # The SHAPE of a disagreement is the evidence, not just its size: isolated single tokens
         # scattered one per frame and a contiguous block of frames both show up as ">= 99 % of
@@ -157,6 +277,7 @@ def compare(got: dict, ref: dict) -> dict:
         diff = a.ne(b)
         per_frame = diff.sum(dim=tuple(range(1, diff.dim())))
         modalities[name] = {
+            "requested": True,
             "equal": bool(torch.equal(a, b)),
             "agreement": float((a == b).float().mean()),
             "n_mismatched_tokens": int(diff.sum()),
@@ -172,6 +293,7 @@ def compare(got: dict, ref: dict) -> dict:
     within = delta <= ACT_TOL
     return {
         "n_frames": frames,
+        "requested": sorted(asked),
         "modalities": modalities,
         "actuators": {
             "within_tol": int(within.sum()),
@@ -183,10 +305,15 @@ def compare(got: dict, ref: dict) -> dict:
 
 
 def verdict(result: dict, video: tuple[str, ...]) -> tuple[bool, list[str]]:
-    """`(passed, reasons)`; video modalities are only judged when they were encoded."""
+    """`(passed, reasons)`. Every REQUESTED modality must be bit-identical -- including one that
+    was not encoded at all, which is the failure this gate used to pass."""
     reasons = []
     for name, m in result["modalities"].items():
-        if m["equal"] is False:
+        if not m.get("requested", True):
+            continue
+        if m["equal"] is None:
+            reasons.append(f"{name} was requested and {m['note'] or 'is missing'}")
+        elif m["equal"] is False:
             reasons.append(
                 f"{name} not bit-identical ({m['agreement']:.4%} of tokens agree; "
                 f"{m['n_mismatched_tokens']} tokens in {m['n_frames_affected']} frames, "
@@ -214,6 +341,7 @@ def encode_one(shot: int, args, codecs, paths, out_dir: Path, ref) -> tuple[dict
         codecs=codecs,
         paths=paths,
         workers=args.workers,
+        allow_partial=args.allow_partial,
     )
     elapsed = time.perf_counter() - started
     return torch.load(path, weights_only=False, map_location="cpu"), elapsed
@@ -224,7 +352,12 @@ def print_table(shot: int, result: dict, elapsed: float, ok: bool, reasons: list
           f"{'PASS' if ok else 'FAIL'}")
     print(f"{'modality':24s} {'bit-identical':>13s} {'token agreement':>16s}")
     for name, m in result["modalities"].items():
-        mark = "-" if m["equal"] is None else ("yes" if m["equal"] else "NO")
+        if not m.get("requested", True):
+            mark = "-"
+        elif m["equal"] is None:
+            mark = "MISSING"
+        else:
+            mark = "yes" if m["equal"] else "NO"
         agree = "" if m["agreement"] is None else f"{m['agreement']:.4%}"
         print(f"{name:24s} {mark:>13s} {agree:>16s}  {m['note']}".rstrip())
     a = result["actuators"]
@@ -248,6 +381,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="skip tangtv_lower/tangtv_upper, whose codes are not reproducible across float "
         "precisions or GPU vendors (see the module docstring)",
+    )
+    ap.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="proceed when the bundle has no codec for a requested modality (DIAGNOSTIC ONLY: "
+        "the modality is then recorded as not encoded and the shot fails)",
     )
     ap.add_argument("--out-dir", type=Path, default=None, help="where the re-encoded caches go")
     ap.add_argument("--json", type=Path, default=None, help="gate report (default: gates/g_enc.json)")
@@ -280,6 +419,14 @@ def main(argv: list[str] | None = None) -> int:
         "include_video": not args.no_video,
         "actuator_tolerance_z": ACT_TOL,
         "actuator_min_pass": ACT_MIN_PASS,
+        "requested_modalities": list(names),
+        "full_shot_frames": FULL_SHOT_FRAMES,
+        # A run that asked for fewer than all fourteen modalities, or fewer than the three gate
+        # shots, is a DIAGNOSTIC. It can pass and say nothing about the gate; the header says so
+        # and the report has to as well, because the report is what gets quoted.
+        "diagnostic": bool(
+            args.no_video or args.allow_partial or sorted(args.shots) != sorted(DEFAULT_SHOTS)
+        ),
         "shots": {},
     }
     failures = []
@@ -292,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
         ref = torch.load(ref_path, weights_only=False, map_location="cpu")
         got, elapsed = encode_one(shot, args, codecs, paths, out_dir, ref)
         try:
-            result = compare(got, ref)
+            result = compare(got, ref, requested=names, expect_frames=FULL_SHOT_FRAMES)
         except ValueError as exc:
             print(f"\n=== {shot}   FAIL   {exc}", file=sys.stderr)
             report["shots"][str(shot)] = {"passed": False, "reasons": [str(exc)]}
@@ -311,6 +458,12 @@ def main(argv: list[str] | None = None) -> int:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"\nG-ENC {'PASS' if not failures else 'FAIL'} -> {dest}")
+    if report["diagnostic"]:
+        print(
+            "  DIAGNOSTIC RUN, NOT THE GATE: the G-ENC gate is the three shots "
+            f"{', '.join(str(s) for s in DEFAULT_SHOTS)} with all fourteen modalities. "
+            "This run's verdict does not replace the gate's."
+        )
     return 0 if not failures else 1
 
 
