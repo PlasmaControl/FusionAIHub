@@ -40,8 +40,9 @@ modalities are bit-identical on every shot, `mhr` on 8/10, `co2` on 4/10 and `ec
 misses agree on >= 99.2 % of tokens), the two video modalities on 8/10 and 6/10, and the 88
 actuator channels are bit-identical in float16 on 8/10. The two exceptions are 190735 and
 190736, at 78/88 and 77/88 within 2e-3 z; on those two shots the actuator block is pure NumPy
-arithmetic that disagrees by 1.8-2.4 z, which is the one place a corpus-file difference is
-actually DEMONSTRATED. Everywhere else the residual is a scatter of isolated single tokens at
+arithmetic that disagrees by 1.8-2.4 z, which is the one place the disagreement cannot be this
+module's codec arithmetic -- output disagreement, not a demonstrated input difference, which
+would need matched input hashes nobody has. Everywhere else the residual is a scatter of isolated single tokens at
 the quantiser's bin boundaries, consistent with a cross-vendor numerics difference and not
 attributed to anything stronger -- no production input was ever compared. The gate's docstring
 carries the measurements and the limits of what they support.
@@ -122,6 +123,7 @@ def encode_frame_codes(
     codecs: dict[str, tuple[Any, Any, str]] | None = None,
     paths: Paths | None = None,
     workers: int | None = None,
+    allow_partial: bool = False,
 ) -> Path:
     """Encode `shot` into `<out_dir>/<shot>.pt` in the shipped layout; return that path.
 
@@ -131,21 +133,42 @@ def encode_frame_codes(
     every modality is encoded to the end of its own record and the cache is trimmed to the
     SHORTEST, which is production's rule and the only one that keeps the frame index meaning the
     same instant in every modality.
+
+    A requested modality the bundle has no codec for RAISES. It used to be dropped silently --
+    `codecs` was reduced to whatever the loader returned and the completeness check below then
+    ran against that reduction, so the cache came out complete by its own definition, and G-ENC,
+    whose only notion of "missing" was the same reduced dictionary, passed it. `allow_partial=True`
+    is the diagnostic escape hatch: the run proceeds without the codec and the cache simply lacks
+    that modality, which the gate then FAILS on because it was requested. It is never the gate.
     """
     import torch
 
     paths = paths or config.load_paths()
     names = wanted_modalities(include_video, modalities)
-    data_dir = Path(reader.corpus_dir)
-    t0_start = float(ignite.model_cfg()["t0_start_s"])
-    started = time.perf_counter()
-
+    # The codec set is settled BEFORE anything is read: a run that cannot answer what it was
+    # asked for should say so in the first second, not after the first 3 GB HDF5 read.
     if codecs is None:
         codecs = ignite.load_codecs(ignite.bundle_dir(paths), names=list(names), device=device)
+    absent = [n for n in names if n not in codecs]
+    if absent and not allow_partial:
+        raise ignite.CheckpointMissing(
+            f"{shot}: no codec for requested modalities {', '.join(absent)} -- the loaded set is "
+            f"{', '.join(sorted(codecs)) or '(empty)'}. Pass allow_partial=True for a diagnostic "
+            f"run that skips them; such a run fails the G-ENC gate, which is the point."
+        )
+    if absent:
+        _log.warning(
+            "shot %s: PARTIAL encode, no codec for %s -- this cache is not a gate artifact",
+            shot,
+            ", ".join(absent),
+        )
     codecs = {n: codecs[n] for n in names if n in codecs}
     if not codecs:
         raise ignite.CheckpointMissing(f"no codec for any of {', '.join(names)}")
 
+    data_dir = Path(reader.corpus_dir)
+    t0_start = float(ignite.model_cfg()["t0_start_s"])
+    started = time.perf_counter()
     per = ignite.frame_codes(
         shot,
         codecs,
