@@ -36,3 +36,28 @@ retrieval:
   # but that is a Phase 2.1 change, not a demo blocker.
   run_diversity_decay: 0.9
   outcome_penalty: 0.5         # --prefer-outcome success: factor on a bad verdict / missed Ip target
+
+# Phenomenon retrieval (`ideate phenomenon`, ideate.retrieval.phenomena.locate). One score per
+# shot out of four evidence classes:
+#
+#   score = label * max_p + event * (1 - exp(-n_events / saturation_n)) + text * tanh(hits / 2)
+#           + database (when a curated list names the shot)
+#
+# The weights are DELIBERATELY not tuned: there is no labelled "does this shot have an EHO" set
+# to tune them against, and a fitted number would claim an accuracy nobody measured. They are
+# chosen so that no one class can outrank another on its own, and the CLASS ORDER does the real
+# work: an observed hit outranks a forecast-only hit, which outranks a label-only hit, which
+# outranks a text-only hit, whatever the arithmetic says (plan §7). Text alone is additionally
+# capped at labelmaker's `TEXT_ONLY_CEILING` (0.25, four independent mentions) and carries the
+# caveat "TEXT ONLY".
+#
+# `saturation_n` is the count at which the event term reaches 1 - 1/e = 0.63: three detections is
+# already "this shot has them", and the difference between 30 and 300 ELMs is not ten times the
+# evidence that ELMs happened.
+phenomenon:
+  weights:
+    label: 1.0
+    event: 1.0
+    text: 0.5
+    database: 1.0
+  saturation_n: 3.0
