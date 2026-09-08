@@ -293,10 +293,14 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
             "ramp_up", "flat_top", "ramp_down". "flattop" is understood and corrected.
 
     Returns:
-        `{"shot": int, "segment": str, "description": str, "record": {...}, "caveats": [str]}`
-        or `{"error": str, "caveats": [str]}`. `description` is the same paragraph a search
-        result carries. `record` is the whole stored record: the segments with every scalar, the
-        labels and their source, the outcome, and the operator logbook entries verbatim.
+        `{"shot": int, "segment": str, "description": str, "record": {...},
+        "frame_codes": {...}, "caveats": [str]}` or `{"error": str, "caveats": [str]}`.
+        `description` is the same paragraph a search result carries. `record` is the whole stored
+        record: the segments with every scalar, the labels and their source, the outcome, and the
+        operator logbook entries verbatim. `frame_codes` says whether this shot has an IGNITE
+        frame-code cache and, from its provenance sidecar, which device and thread count encoded
+        it -- the codes are not bit-identical across either, so two shots encoded differently are
+        not necessarily comparable.
 
     Quote the logbook from `record.human.log_entries` only, and verbatim. The description is
     generated text about the numbers; it is not something anyone said.
@@ -322,13 +326,54 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
     rec = db.get(shot)
     if rec.segment(seg) is None:
         caveats.append(f"shot {shot} has no {seg} segment; the description falls back to `full`")
+    codes = _frame_codes(shot, caveats)
     return {
         "shot": shot,
         "segment": seg,
         "description": describe_mod.describe(rec, seg),
         "record": rec.model_dump(mode="json"),
+        "frame_codes": codes,
         "caveats": caveats,
     }
+
+
+def _frame_codes(shot: int, caveats: list[str]) -> dict:
+    """What the IGNITE frame-code cache for this shot is, and what made it.
+
+    The device belongs in the answer because the codes are not device-independent: measured on
+    two shots, cuda and cpu -- and cpu at four threads against cpu at eight, same machine, same
+    input -- give one to four different tokens. Two caches encoded on different devices are
+    therefore not necessarily comparable, and the cache file itself records nothing about how it
+    was made (the payload is four keys the checkpoint validates; provenance is the JSON sibling).
+    """
+    from ..design import provenance
+    from ..shotdb.build import frame_codes_dirs
+
+    try:
+        dirs = frame_codes_dirs(config.load_paths())
+    except Exception:  # noqa: BLE001 - a provenance lookup may not break the description
+        return {"present": False, "device": None, "path": None}
+    for d in dirs:
+        path = d / f"{int(shot)}.pt"
+        if not path.exists():
+            continue
+        side = provenance.read_sidecar(d, shot) or {}
+        if not side.get("device"):
+            caveats.append(
+                f"the frame-code cache for shot {shot} has no provenance sidecar: the device and "
+                f"thread count it was encoded on are not recorded, and the codes are not "
+                f"bit-reproducible across either"
+            )
+        return {
+            "present": True,
+            "path": str(path),
+            "device": side.get("device"),
+            "torch_threads": side.get("torch_threads"),
+            "encoded_at": side.get("encoded_at"),
+            "ignite_revision": side.get("ignite_revision"),
+            "provenance_backfilled": side.get("backfilled"),
+        }
+    return {"present": False, "device": None, "path": None}
 
 
 def get_events(

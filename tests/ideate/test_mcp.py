@@ -187,6 +187,35 @@ def test_describe_shot_on_a_shot_that_is_not_there_is_an_error_dict(ideate_db):
     assert "999999" in got["error"] and got["caveats"] == []
 
 
+def test_describe_shot_says_which_device_encoded_the_frame_codes(ideate_db, monkeypatch):
+    """The four-key cache payload records no device, and the codes are not bit-identical across
+    devices or across BLAS thread counts. A description that says "this shot is encoded" without
+    saying how is the state the encode product shipped in."""
+    from ideate import config
+    from ideate.design import provenance
+
+    codes = Path(config.load_paths().data_root) / "frame_codes"
+    codes.mkdir(parents=True, exist_ok=True)
+    (codes / "100.pt").write_bytes(b"")
+    provenance.write_sidecar(
+        codes, 100, provenance.build_sidecar(100, device="cuda", input_file=None, bundle=None)
+    )
+    (codes / "101.pt").write_bytes(b"")  # encoded, but nobody recorded how
+
+    got = tools.describe_shot(100)
+    assert got["frame_codes"]["present"] is True
+    assert got["frame_codes"]["device"] == "cuda"
+    assert not [c for c in got["caveats"] if "provenance sidecar" in c]
+
+    unknown = tools.describe_shot(101)
+    assert unknown["frame_codes"]["present"] is True
+    assert unknown["frame_codes"]["device"] is None
+    assert any("no provenance sidecar" in c for c in unknown["caveats"])
+
+    none_at_all = tools.describe_shot(200)
+    assert none_at_all["frame_codes"] == {"present": False, "device": None, "path": None}
+
+
 def test_a_missing_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)

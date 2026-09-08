@@ -123,6 +123,21 @@ def test_encode_frame_codes_writes_the_shipped_dict_structure(bundle, tmp_path):
         assert got["codes"][name].dtype == codes.dtype, name
         assert got["codes"][name].shape == (4, codes.shape[1]), name
 
+    # ... and the provenance goes BESIDE it, not into it. The payload above is the compatibility
+    # contract; the sidecar is where device/threads/revision/input identity live.
+    from ideate.design import provenance
+
+    side = provenance.read_sidecar(tmp_path, SHIPPED)
+    assert set(side) == set(provenance.SIDECAR_KEYS)
+    assert side["device"] == device
+    assert side["backfilled"] is False
+    assert side["shot"] == SHIPPED
+    assert side["n_frames"] == 4
+    assert side["input_file"].endswith(f"{SHIPPED}_processed.h5")
+    assert side["input_fingerprint"]["kind"] == "mtime+size"
+    assert side["ignite_bundle"] and side["ignite_revision"]
+    assert set(side["modalities"]) == set(ref["codes"])
+
 
 @pytest.mark.real_data
 def test_encode_frame_codes_is_deterministic(bundle, synth_corpus, tmp_path):

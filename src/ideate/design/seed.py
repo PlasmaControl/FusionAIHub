@@ -62,6 +62,7 @@ from .. import config
 from ..config import Paths
 from ..shotdb import ignite
 from . import actuators as act
+from . import provenance as prov
 
 _log = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ def encode_frame_codes(
     paths: Paths | None = None,
     workers: int | None = None,
     allow_partial: bool = False,
+    run_manifest: Path | None = None,
 ) -> Path:
     """Encode `shot` into `<out_dir>/<shot>.pt` in the shipped layout; return that path.
 
@@ -203,6 +205,26 @@ def encode_frame_codes(
         "vocabs": {n: int(codecs[n][0].quantizer.fsq.codebook_size) for n in codecs},
     }
     out = _save(payload, Path(out_dir), shot)
+    # A fifth key in `payload` would break byte-comparability with the bundle's own caches, so
+    # the provenance goes in a JSON sibling. Written AFTER the cache and never allowed to fail
+    # the encode: a cache with no sidecar is a provenance gap, a lost cache is 40 s of GPU time.
+    try:
+        prov.write_sidecar(
+            Path(out_dir),
+            shot,
+            prov.build_sidecar(
+                shot,
+                device=device or _default_device(),
+                input_file=getattr(reader, "path", lambda s: None)(shot),
+                bundle=ignite.bundle_dir(paths),
+                n_frames=frames,
+                modalities=list(codecs),
+                include_video=include_video,
+                run_manifest=run_manifest,
+            ),
+        )
+    except Exception:  # noqa: BLE001 - provenance must not lose the artifact it describes
+        _log.exception("shot %s: could not write the provenance sidecar", shot)
     _log.info(
         "shot %s: %d frames, %d modalities, %d absent actuator groups, %.1f s",
         shot,
@@ -303,6 +325,7 @@ def encode_many(
     skip_existing: bool = False,
     workers: int | None = None,
     paths: Paths | None = None,
+    run_manifest: Path | None = None,
     log=print,
 ) -> dict:
     """Encode every shot into `out_dir`, one process, codecs loaded once.
@@ -339,6 +362,7 @@ def encode_many(
                 codecs=codecs,
                 paths=paths,
                 workers=workers,
+                run_manifest=run_manifest,
             )
         except Exception as e:  # noqa: BLE001 -- one bad shot must not end a 250-shot task
             failed[int(shot)] = f"{type(e).__name__}: {e}"
