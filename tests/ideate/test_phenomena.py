@@ -345,6 +345,18 @@ def test_a_detector_that_found_nothing_still_records_that_it_looked(phen_db):
     assert ph.NO_COVERAGE not in quiet.caveats
 
 
+def test_a_phenomenon_nothing_detects_never_claims_coverage(phen_db):
+    """No detector writes `rwm` or `detachment`. Their coverage must stay unknown however many
+    rows off however many diagnostics the shot has: "we looked and it was not there" is a claim
+    nothing in this database is entitled to make about them."""
+    for pid in ("rwm", "detachment"):
+        assert ph.registry()[pid].covering_sources == ()
+        for shot in (OBSERVED_SHOT, TEXT_SHOT):
+            got = ph.evidence(shot, pid, phen_db)
+            assert got.coverage is None, (pid, shot)
+            assert ph.NO_COVERAGE in got.caveats
+
+
 def test_min_confidence_drops_the_weakly_scored_events(phen_db):
     got = ph.evidence(OBSERVED_SHOT, "tearing", phen_db, min_confidence=0.5)
     assert [iv.event_id for iv in got.intervals] == [

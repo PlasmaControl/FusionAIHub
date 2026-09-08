@@ -93,7 +93,11 @@ can key on them:
 
 `--avoid phenomenon:elm` drops the shots an ELM detector fired on and **keeps**, with that
 caveat, the shots no ELM detector ran on. Dropping those would read a gap in the diagnostic
-coverage as a physics result.
+coverage as a physics result. What separates the two is `coverage_sources` in the registry: a
+detector that finds nothing writes no rows, so on a quiet shot the only record that the mhr data
+was read for ELMs at all is `elm_clock`'s `elm_free` interval — a *different* source from the one
+that would have reported an ELM. A phenomenon nothing detects (`rwm`, `detachment`) declares
+none, so its coverage stays unknown and every hit for it says so.
 
 One field name is a promise it cannot yet keep: `actuators_at_onset` holds the **segment's** own
 summary columns (`pnbi_total_mean`, `pech_total_mean`, `gas_total_mean`, `irmp_total_peak`), not

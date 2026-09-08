@@ -203,6 +203,14 @@ class Phenomenon:
     labels: tuple[LabelRef, ...] = ()
     events: tuple[EventRule, ...] = ()
     forecasts: tuple[str, ...] = ()
+    #: Sources whose rows establish that someone LOOKED for this phenomenon, beyond its own
+    #: detectors. Declared and not inferred: a detector that finds nothing writes no rows, so on
+    #: a quiet shot the only record that the mhr data was read for ELMs at all is `elm_clock`'s
+    #: `elm_free` interval -- a different source from the one that would have reported an ELM.
+    #: Inferring this from the `diag` string instead would have let any row off any diagnostic
+    #: donate coverage to a phenomenon nothing detects (`rwm`, `detachment`), which would turn
+    #: "nobody has ever looked for this" into "we looked and it was not there".
+    coverage_sources: tuple[str, ...] = ()
     band_khz: tuple[float | None, float | None] | None = None
     diags: tuple[str, ...] = ()
     requires_group: tuple[str, ...] = ()
@@ -211,8 +219,14 @@ class Phenomenon:
 
     @property
     def sources(self) -> tuple[str, ...]:
-        """The detectors whose coverage says whether anyone looked for this phenomenon."""
+        """The detectors that can claim this phenomenon."""
         return tuple(dict.fromkeys(r.source for r in self.events))
+
+    @property
+    def covering_sources(self) -> tuple[str, ...]:
+        """Every source whose rows say someone looked. Empty when nothing detects this at all,
+        which is exactly the case whose coverage must stay unknown."""
+        return tuple(dict.fromkeys((*self.sources, *self.coverage_sources)))
 
 
 @dataclass(frozen=True)
@@ -326,6 +340,9 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
             labels=_labels(source, pid, body.get("labels")),
             events=_events(source, pid, body.get("events")),
             forecasts=tuple(str(s) for s in body.get("forecasts") or ()),
+            coverage_sources=tuple(
+                str(x) for x in _seq(source, pid, body.get("coverage_sources"), "coverage_sources")
+            ),
             band_khz=_band(source, pid, body.get("band_khz")),
             diags=tuple(str(d) for d in body.get("diags") or ()),
             requires_group=groups,
@@ -569,21 +586,14 @@ def evidence(
     cov0: list[float] = []
     cov1: list[float] = []
     n_unscored = 0
-    sources, diags = set(ph.sources), set(ph.diags)
+    covering = set(ph.covering_sources)
     for row in rows:
         attrs = _attrs(row.get("attrs"))
         is_forecast = str(row.get("evidence_kind")) == "forecast"
-        if not is_forecast and (
-            str(row.get("source")) in sources or str(row.get("diag") or "") in diags
-        ):
-            # Coverage is about whether anyone LOOKED, so it is taken from every row that any of
-            # this phenomenon's own detectors wrote AND from every row written off one of its
-            # diagnostics. The second half is not padding: a detector that finds nothing writes no
-            # rows, so on a shot with no ELM the only thing that records that the mhr data was
-            # read at all is `elm_clock`'s `elm_free` interval. Without it "the detector ran and
-            # saw none" would be indistinguishable from "nobody looked", and `avoid` would drop
-            # every quiet shot for want of a coverage window. Forecast rows are excluded: a
-            # label's validity window is not a diagnostic's coverage.
+        if not is_forecast and str(row.get("source")) in covering:
+            # Coverage is about whether anyone LOOKED -- see `Phenomenon.coverage_sources` for why
+            # that is a wider set than the detectors that can claim the phenomenon. Forecast rows
+            # never count: a label's validity window is not a diagnostic's coverage.
             a, b = _f(row.get("t_cov0_s")), _f(row.get("t_cov1_s"))
             if a is not None and b is not None:
                 cov0.append(a)
