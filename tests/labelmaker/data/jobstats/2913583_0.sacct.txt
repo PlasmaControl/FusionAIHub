@@ -1,0 +1,5 @@
+JobID|State|Elapsed|ExitCode|MaxRSS|TotalCPU|AllocCPUS|ReqMem|AllocTRES|NodeList
+2913583_0|COMPLETED|00:02:14|0:0||02:54.449|4|48G|billing=256,cpu=4,gres/gpu=1,mem=48G,node=1|stellar-m01g3
+2913583_0.batch|COMPLETED|00:02:14|0:0|5932K|00:00.015|4||cpu=4,gres/gpu=1,mem=48G,node=1|stellar-m01g3
+2913583_0.extern|COMPLETED|00:02:14|0:0||00:00:00|4||billing=256,cpu=4,gres/gpu=1,mem=48G,node=1|stellar-m01g3
+2913583_0.0|COMPLETED|00:02:14|0:0|3414772K|02:54.434|4||cpu=4,gres/gpu=1,mem=48G,node=1|stellar-m01g3
