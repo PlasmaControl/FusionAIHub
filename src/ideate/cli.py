@@ -466,6 +466,7 @@ def cmd_export(args) -> int:
 
 def cmd_encode(args) -> int:
     """IGNITE frame-code caches for a shot list: the seeds a Phase-5 rollout starts from."""
+    from .design import provenance
     from .design import seed as seed_mod
     from .shotdb.corpus import CorpusReader
 
@@ -479,6 +480,13 @@ def cmd_encode(args) -> int:
         print("nothing to encode", file=sys.stderr)
         return 1
     out = Path(args.out) if args.out else Path(paths.data_root) / "frame_codes"
+    # The manifest's path is settled BEFORE the run, not after, so every `frame_codes/<shot>.json`
+    # sidecar this run writes can name the manifest that will hold the run's own report. The two
+    # point at each other, which is what makes a cache traceable to a job.
+    run_dir = Path(paths.data_root) / "runs" / "encode"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
     report = seed_mod.encode_many(
         shots,
         reader=CorpusReader(paths.foundation_model_processed_dir),
@@ -488,11 +496,13 @@ def cmd_encode(args) -> int:
         skip_existing=args.skip_existing,
         workers=args.workers,
         paths=paths,
+        run_manifest=manifest,
     )
-    run_dir = Path(paths.data_root) / "runs" / "encode"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
+    # The commit the encode ran at, in the run manifest as well as in every sidecar: the
+    # manifests written before this change carry none, and their shots' sidecars can only be
+    # backfilled with a null (see `scripts/ideate/frame_codes_provenance.py`).
+    report["git_sha"] = provenance.build_sidecar(0, device="", input_file=None, bundle=None)["git_sha"]
+    report["run_manifest"] = str(manifest)
     manifest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         f"encoded {report['n_encoded']}/{report['n_requested']} shots "
@@ -510,11 +520,45 @@ def cmd_encode(args) -> int:
     return 0 if report["n_encoded"] or report["n_skipped"] else 1
 
 
+def _frame_codes_census(paths) -> str:
+    """One line per device the encoded caches were written on, plus what has no sidecar.
+
+    The product is device-mixed and the codes are NOT bit-reproducible across devices or even
+    across BLAS thread counts (see `design.provenance`), so "500 shots are encoded" is not a
+    statement anybody can act on without the split. A cache with no provenance sidecar is counted
+    separately rather than folded into a device: unknown is not the majority answer.
+    """
+    from collections import Counter
+
+    from .design import provenance
+
+    dirs = build_mod.frame_codes_dirs(paths)
+    by_device: Counter[str] = Counter()
+    shots: set[int] = set()
+    for d in dirs:
+        for cache in sorted(Path(d).glob("*.pt")):
+            try:
+                shot = int(cache.stem)
+            except ValueError:
+                continue
+            if shot in shots:  # the same shot in two locations is one shot
+                continue
+            shots.add(shot)
+            side = provenance.read_sidecar(d, shot)
+            by_device[str((side or {}).get("device") or "no sidecar")] += 1
+    if not shots:
+        return "frame codes  none found in " + ", ".join(str(d) for d in dirs)
+    parts = ", ".join(f"{dev} {n}" for dev, n in sorted(by_device.items()))
+    return f"frame codes  {len(shots)} shot(s) encoded: {parts}"
+
+
 def cmd_coverage(args) -> int:
-    db = _open_db(config.load_paths())
+    paths = config.load_paths()
+    db = _open_db(paths)
     if db is None:
         return 1
     print(_coverage_table(db))
+    print(_frame_codes_census(paths))
     return 0
 
 

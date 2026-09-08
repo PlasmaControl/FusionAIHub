@@ -223,6 +223,30 @@ def test_coverage_recomputes_from_the_records(built, capsys):
     assert "fields over 2 shots" in out and "present" in out
 
 
+def test_coverage_splits_the_encoded_shots_by_the_device_that_encoded_them(built, paths, capsys):
+    """"500 shots are encoded" is not actionable on its own: the codes differ between cuda and
+    cpu, and between cpu at four threads and cpu at eight. The census has to show the split, and
+    show a cache with no provenance sidecar as unknown rather than folding it into a device."""
+    from ideate.design import provenance
+    from ideate.shotdb import build as build_mod
+
+    codes = build_mod.frame_codes_dirs(paths)[0]
+    codes.mkdir(parents=True, exist_ok=True)
+    for shot, device in ((190001, "cuda"), (190002, "cpu"), (190003, None)):
+        (codes / f"{shot}.pt").write_bytes(b"")
+        if device:
+            provenance.write_sidecar(
+                codes,
+                shot,
+                provenance.build_sidecar(shot, device=device, input_file=None, bundle=None),
+            )
+
+    assert cli.main(["coverage"]) == 0
+    out = capsys.readouterr().out
+    assert "frame codes  3 shot(s) encoded" in out
+    assert "cuda 1" in out and "cpu 1" in out and "no sidecar 1" in out
+
+
 def test_query_arguments_become_one_query_state():
     """The parser's whole job: every flag lands in the right QueryState field. Retrieval itself
     is tested in test_retrieval.py, against a database; this needs none."""
