@@ -38,7 +38,12 @@ being inferred is dropped as soon as the network has read it. The prep
 workers add one such pair each while they work.
 
 **Isolation.** Per shot: one `SIGALRM` (`--timeout`) and one try/except, as
-`run.py`'s stages. A block whose prep raised - a `co2` channel whose
+`run.py`'s stages. The alarm ends the shot wherever the driver itself is
+waiting - on a prepared block, in the network, in a describe step. Inside
+`pipeline.finish_shot` it behaves as it does under `run.py`: that step's own
+guard turns it into that step's skip and the shot finishes without a timer,
+which is `process_shot`'s long-standing behaviour and not something a
+scheduler may quietly change. A block whose prep raised - a `co2` channel whose
 digitiser gapped, a worker that ran out of memory - is a `skipped` entry and
 the shot goes on, exactly as in `process_shot`. A prep worker that DIES
 (the OOM killer, a segfault) breaks the pool: the block in flight is
@@ -66,7 +71,13 @@ from typing import Any
 from .. import __version__
 from ..catalog import read_shot_file
 from ..config import Paths, git_sha
-from ..run import EXIT_NO_SHOTS, EXIT_OK, time_limit, write_events_run
+from ..run import (
+    EXIT_NO_SHOTS,
+    EXIT_OK,
+    StageTimeout,
+    time_limit,
+    write_events_run,
+)
 from . import channels, masks, pipeline, text_weak, unet
 from .lexicon import load_lexicon
 from .unet import CHECKPOINT_SHA256
@@ -272,14 +283,26 @@ class PrepPool:
             )
 
     def submit(self, job) -> Future:
+        """A future for `job`, ALWAYS - a dead pool included.
+
+        `ProcessPoolExecutor.submit` raises `BrokenProcessPool` in the
+        caller once a worker has died, and a driver that let that out of
+        `in_order` would only know that some job could not be submitted,
+        not which. Carried on the future instead, the failure arrives at
+        the job it belongs to and is recorded against that block.
+        """
+        future: Future = Future()
         if self._pool is None:
-            future: Future = Future()
             try:
                 future.set_result(run_job(job))
             except BaseException as exc:  # noqa: BLE001 - carried, not raised
                 future.set_exception(exc)
             return future
-        return self._pool.submit(run_job, job)
+        try:
+            return self._pool.submit(run_job, job)
+        except BrokenExecutor as exc:
+            future.set_exception(exc)
+            return future
 
     def restart(self) -> None:
         """Replace a pool a dead worker broke, or one an aborted shot left.
@@ -414,48 +437,55 @@ def _one_shot(
     done = 0
     while done < len(jobs):
         broken = False
-        try:
-            for job, future in in_order(jobs[done:], pool.submit,
-                                        prefetch=prefetch):
-                waited = time.monotonic()
-                try:
-                    prepared = future.result()
-                except BlockFailed as exc:
-                    timing.prep_wait_s += time.monotonic() - waited
-                    done += 1
-                    key = (f"read {job.spec.key}" if exc.stage == "read"
-                           else f"mask {job.key}")
-                    res.skipped[key] = exc.cause
-                    continue
+        for job, future in in_order(jobs[done:], pool.submit,
+                                    prefetch=prefetch):
+            waited = time.monotonic()
+            try:
+                prepared = future.result()
+            except BlockFailed as exc:
                 timing.prep_wait_s += time.monotonic() - waited
                 done += 1
-                try:
-                    at = time.monotonic()
-                    probs = pipeline.infer_block(
-                        prepared, model=model, device=device,
-                        tile_batch=tile_batch, amp=amp,
-                    )
-                    timing.infer_s += time.monotonic() - at
-                    timing.n_tiles += prepared.n_tiles
-                    # 131 MB, and `describe_block` wants `raw`, not this.
-                    prepared.spectrogram = None
-                    at = time.monotonic()
-                    runs.append(pipeline.describe_block(
-                        prepared, probs, unet_sha256=unet_sha256
-                    ))
-                    timing.describe_s += time.monotonic() - at
-                except Exception as exc:  # noqa: BLE001 - per-pass isolation
-                    res.skipped[f"mask {job.key}"] = pipeline._cause(exc)
-                if prepared.norm_note:
-                    res.skipped[f"norm {prepared.key}"] = prepared.norm_note
-        except BrokenExecutor as exc:
-            # A worker died - the OOM killer, a segfault - and took the
-            # block in flight with it. That block is a skip, like any other
-            # failed block; the pool is replaced and the rest of the shot's
-            # blocks are submitted to the new one.
-            res.skipped[f"mask {jobs[done].key}"] = pipeline._cause(exc)
+                key = (f"read {job.spec.key}" if exc.stage == "read"
+                       else f"mask {job.key}")
+                res.skipped[key] = exc.cause
+                continue
+            except BrokenExecutor as exc:
+                # A worker died - the OOM killer, a segfault - and took
+                # this block with it. It is a skip, like any other failed
+                # block; the pool is replaced below and the shot's
+                # remaining blocks are submitted to the new one.
+                timing.prep_wait_s += time.monotonic() - waited
+                done += 1
+                res.skipped[f"mask {job.key}"] = pipeline._cause(exc)
+                broken = True
+                break
+            timing.prep_wait_s += time.monotonic() - waited
             done += 1
-            broken = True
+            try:
+                at = time.monotonic()
+                probs = pipeline.infer_block(
+                    prepared, model=model, device=device,
+                    tile_batch=tile_batch, amp=amp,
+                )
+                timing.infer_s += time.monotonic() - at
+                timing.n_tiles += prepared.n_tiles
+                # 131 MB, and `describe_block` wants `raw`, not this.
+                prepared.spectrogram = None
+                at = time.monotonic()
+                runs.append(pipeline.describe_block(
+                    prepared, probs, unet_sha256=unet_sha256
+                ))
+                timing.describe_s += time.monotonic() - at
+            except StageTimeout:
+                # The shot's own alarm, not this block's failure: it is the
+                # driver's to report as an error row, and a per-block guard
+                # that swallowed it would leave the shot running with no
+                # timer left.
+                raise
+            except Exception as exc:  # noqa: BLE001 - per-pass isolation
+                res.skipped[f"mask {job.key}"] = pipeline._cause(exc)
+            if prepared.norm_note:
+                res.skipped[f"norm {prepared.key}"] = prepared.norm_note
         if broken:
             pool.restart()
     res.n_blocks = len(runs)

@@ -15,16 +15,20 @@ columns that record when and under which run id it was written.
 """
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 
+import h5py
 import numpy as np
+import pandas as pd
 import pytest
 
 torch = pytest.importorskip("torch")
 
 from labelmaker.config import Paths
-from labelmaker.events import channels, driver, masks
+from labelmaker.events import channels, driver, masks, schema, text_weak, unet
 from labelmaker.events import pipeline as pl
 
 from .test_events_pipeline import FAKE_SHA, SHOT, PaintedNet, _write_corpus
@@ -284,3 +288,386 @@ def test_the_flags_win_over_the_environment(monkeypatch):
         ["--shots", "1", "--rank", "0", "--world", "1", "--prep-workers", "3"]
     ))
     assert (args.rank, args.world, args.prep_workers) == (0, 1, 3)
+
+
+# --------------------------------------------------------------- the identity
+
+
+def _paths_under(tmp_path, name, corpus):
+    out = Paths(root=tmp_path / name, corpus=corpus,
+                text_root=tmp_path / "bundles",
+                logs_jsonl=tmp_path / "logs.jsonl")
+    out.mkdirs()
+    return out
+
+
+def _mask_keys(path):
+    with np.load(path, allow_pickle=False) as z:
+        return {key: z[key] for key in z.files}
+
+
+def _events(paths, shot):
+    """The shot's events, without the two columns that say WHEN it ran."""
+    df = schema.read_events(paths.events_file(shot))
+    return df.drop(columns=["run_id", "written_at"])
+
+
+def _silently(*args, **kwargs):
+    return None
+
+
+@pytest.mark.parametrize(("workers", "prefetch"), [(0, 1), (1, 4), (2, 2)])
+def test_the_driver_writes_exactly_what_process_shot_writes(
+    tmp_path, synth_shot, model, workers, prefetch,
+):
+    """The requirement the whole task turns on.
+
+    Same shot, same network, same flags, two schedules: `process_shot`'s
+    sequential loop and the driver's pool. Every array of the masks file and
+    every event row has to be the same, because the driver is a re-ordering
+    of when the CPU work happens and nothing else. Run over both passes, so
+    the decimated zoom transform is in it, and over three
+    (`--prep-workers`, `--prefetch`) settings, including the in-process one.
+    """
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    sequential = _paths_under(tmp_path, "sequential", corpus)
+    driven = _paths_under(tmp_path, "driven", corpus)
+
+    ref = pl.process_shot(
+        SHOT, sequential, model=model, device="cpu", passes=("wide", "zoom"),
+        tile_batch=4, run_id="test-run", unet_sha256=FAKE_SHA,
+    )
+    got = driver.run_shots(
+        [SHOT], paths=driven, model=model, device="cpu",
+        passes=("wide", "zoom"), tile_batch=4, prep_workers=workers,
+        prefetch=prefetch, run_id="test-run", unet_sha256=FAKE_SHA,
+        echo=_silently,
+    )
+
+    assert ref.error == "" and ref.n_blocks == 14
+    row = dict(got.rows[0])
+    # The two timings and the wall clock are the only rows that may differ:
+    # they are what the driver exists to change.
+    for key in ("seconds", "prep_wait_s", "infer_s", "describe_s", "n_tiles"):
+        row.pop(key, None)
+    assert row == {k: v for k, v in ref.as_row().items() if k != "seconds"}
+
+    mine, theirs = _mask_keys(driven.masks_file(SHOT)), _mask_keys(
+        sequential.masks_file(SHOT))
+    assert list(mine) == list(theirs)               # the same keys, in order
+    for key, value in theirs.items():
+        assert np.array_equal(mine[key], value), key
+
+    pd.testing.assert_frame_equal(_events(driven, SHOT),
+                                  _events(sequential, SHOT))
+    assert len(_events(driven, SHOT)) == ref.n_events
+
+
+def test_a_block_whose_prep_fails_in_a_worker_is_a_skip_and_not_a_hang(
+    tmp_path, synth_shot, model,
+):
+    """A prep worker that raises costs its block, and only its block.
+
+    `co2` truncated to three samples is a real version of what a gapped
+    digitiser does: `plan_for` accepts the group (it has more than the
+    absent-signal sentinel's one sample), `read_waveform` returns a
+    waveform, and the transform is what raises - in the WORKER, where the
+    parent can only see it as a returned failure. Both channels of both
+    passes are lost and the other five blocks are not, exactly as in
+    `process_shot`, and the run reaches the end rather than waiting for a
+    result that is never coming.
+    """
+    corpus = tmp_path / "corpus"
+    path = _write_corpus(corpus, SHOT, synth_shot)
+    with h5py.File(path, "a") as f:
+        del f["co2"]
+        g = f.create_group("co2")
+        g.create_dataset("xdata", data=np.arange(3, dtype=np.float32))
+        g.create_dataset("ydata", data=np.zeros((4, 3), dtype=np.float32))
+
+    sequential = _paths_under(tmp_path, "sequential", corpus)
+    driven = _paths_under(tmp_path, "driven", corpus)
+    ref = pl.process_shot(SHOT, sequential, model=model, device="cpu",
+                          passes=("wide",), tile_batch=4, run_id="test-run",
+                          unet_sha256=FAKE_SHA)
+    got = driver.run_shots([SHOT], paths=driven, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4, prep_workers=1,
+                           prefetch=2, run_id="test-run",
+                           unet_sha256=FAKE_SHA, echo=_silently)
+
+    assert ref.n_blocks == 5                        # mhr 0/4, ece 8/20/40
+    assert got.rows[0]["n_blocks"] == 5
+    assert got.rows[0]["status"] == "ok"
+    assert got.rows[0]["skipped"] == ref.as_row()["skipped"]
+    assert [k for k in got.rows[0]["skipped"] if k.startswith(("read co2",
+                                                               "mask co2"))]
+    for key, value in _mask_keys(sequential.masks_file(SHOT)).items():
+        assert np.array_equal(_mask_keys(driven.masks_file(SHOT))[key], value)
+
+
+def test_an_unreadable_corpus_file_is_one_error_row_and_the_run_goes_on(
+    tmp_path, synth_shot, model,
+):
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    corpus.mkdir(parents=True, exist_ok=True)
+    (corpus / f"{SHOT + 1}_processed.h5").write_bytes(b"not an hdf5 file")
+    paths = _paths_under(tmp_path, "root", corpus)
+
+    got = driver.run_shots([SHOT, SHOT + 1], paths=paths, model=model,
+                           device="cpu", passes=("wide",), tile_batch=4,
+                           prep_workers=0, unet_sha256=FAKE_SHA,
+                           echo=_silently)
+    rows = {row["shot"]: row for row in got.rows}
+    assert rows[SHOT]["status"] == "ok"
+    assert rows[SHOT + 1]["status"] == "error"
+    assert not paths.masks_file(SHOT + 1).exists()
+    assert got.totals["counts"] == {"error": 1, "ok": 1}
+
+
+def test_a_shot_over_its_timeout_is_recorded_and_the_next_one_runs(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    _write_corpus(corpus, SHOT + 1, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    real = pl.infer_block
+
+    def slow(prepared, **kw):
+        if prepared.spec.diag == "ece" and prepared.spec.channel == 20:
+            while True:
+                pass
+        return real(prepared, **kw)
+
+    monkeypatch.setattr(pl, "infer_block", slow)
+    got = driver.run_shots([SHOT, SHOT + 1], paths=paths, model=model,
+                           device="cpu", passes=("wide",), tile_batch=4,
+                           prep_workers=0, timeout_s=1, unet_sha256=FAKE_SHA,
+                           echo=_silently)
+    rows = {row["shot"]: row for row in got.rows}
+    assert rows[SHOT]["status"] == "error"
+    assert "exceeded" in rows[SHOT]["detail"]
+    assert rows[SHOT + 1]["status"] == "error"      # the same hang, twice
+
+
+# --------------------------------------------------------- skip-existing/force
+
+
+def test_skip_existing_leaves_a_finished_shot_alone_and_force_redoes_it(
+    tmp_path, synth_shot, model,
+):
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    common = {"paths": paths, "model": model, "device": "cpu",
+              "passes": ("wide",), "tile_batch": 4, "prep_workers": 0,
+              "unet_sha256": FAKE_SHA, "echo": _silently}
+    driver.run_shots([SHOT], **common)
+    stamp = paths.masks_file(SHOT).stat().st_mtime_ns
+
+    again = driver.run_shots([SHOT], skip_existing=True, **common)
+    assert again.rows[0]["status"] == "skipped"
+    assert again.rows[0]["n_blocks"] == 0
+    assert paths.masks_file(SHOT).stat().st_mtime_ns == stamp
+
+    forced = driver.run_shots([SHOT], skip_existing=True, force=True, **common)
+    assert forced.rows[0]["status"] == "ok"
+    assert forced.rows[0]["n_blocks"] == 7
+    assert paths.masks_file(SHOT).stat().st_mtime_ns != stamp
+
+
+def test_skip_existing_does_not_skip_a_shot_with_masks_but_no_events(
+    tmp_path, synth_shot, model,
+):
+    # Half a shot is not a done shot: the events file is what a consumer
+    # reads, and a run killed between the two writes must be redone.
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                     passes=("wide",), tile_batch=4, prep_workers=0,
+                     unet_sha256=FAKE_SHA, echo=_silently)
+    paths.events_file(SHOT).unlink()
+    again = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                             passes=("wide",), tile_batch=4, prep_workers=0,
+                             skip_existing=True, unet_sha256=FAKE_SHA,
+                             echo=_silently)
+    assert again.rows[0]["status"] == "ok"
+    assert paths.events_file(SHOT).exists()
+
+
+def test_no_write_computes_everything_and_stores_nothing(tmp_path, synth_shot,
+                                                          model):
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4, prep_workers=0,
+                           write=False, unet_sha256=FAKE_SHA, echo=_silently)
+    assert got.rows[0]["n_blocks"] == 7
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+
+
+# ------------------------------------------------------------- the run record
+
+
+def _only_run(paths):
+    written = list((paths.runs / "events").glob("*.json"))
+    assert len(written) == 1, written
+    return written[0]
+
+
+@pytest.fixture
+def staged(tmp_path, monkeypatch, model, synth_shot):
+    """The driver's `main`, with the network and the checkpoint stubbed."""
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    monkeypatch.setattr(unet, "load_unet",
+                        lambda path=None, device="cpu", **kw: model)
+    monkeypatch.setattr(text_weak, "build_logs_subset",
+                        lambda shots, **kw: 0)
+    return paths
+
+
+def _argv(paths, *extra):
+    return ["--root", str(paths.root), "--corpus", str(paths.corpus),
+            "--passes", "wide", "--tile-batch", "4", "--prep-workers", "0",
+            *extra]
+
+
+def test_main_writes_one_run_json_per_chunk_and_rank(staged, capsys):
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--chunk", "1", "--n-chunks", "2",
+                             "--rank", "0", "--world", "1",
+                             "--run-id", "smoke")) == 0
+    path = _only_run(staged)
+    assert path.name == "smoke_c1of2_r0.json"
+    payload = json.loads(path.read_text())
+
+    assert payload["run_id"] == "smoke"
+    assert payload["driver"] == "tokeye_masks"
+    assert payload["shots_selected"] == SHOTS[1:]
+    assert [row["shot"] for row in payload["shots"]] == SHOTS[1:]
+    settings = payload["settings"]
+    assert settings["chunk"] == 1 and settings["n_chunks"] == 2
+    assert settings["rank"] == 0 and settings["world"] == 1
+    assert settings["device"] == "cpu" and settings["plan"] == "round1"
+    assert settings["passes"] == ["wide"]
+    assert settings["prep_workers"] == 0 and settings["prefetch"] == 4
+    totals = payload["totals"]
+    for key in ("n_shots", "n_blocks", "n_events", "elapsed_s",
+                "seconds_per_shot", "blocks_per_s", "tiles_per_s", "n_tiles",
+                "prep_wait_s", "infer_s", "describe_s", "peak_rss_gib",
+                "peak_worker_rss_gib", "cuda_max_alloc_gib", "counts",
+                "events_by_source", "shots_skipping"):
+        assert key in totals, key
+    assert totals["n_shots"] == 2
+    assert totals["n_tiles"] > 0
+    assert totals["cuda_max_alloc_gib"] is None     # cpu run
+    assert payload["logs_subset"] == str(staged.logs_subset)
+    out = capsys.readouterr().out
+    assert f"{SHOTS[1]}: 7 blocks" in out
+    assert "tokeye_masks: 2 shots" in out
+
+
+def test_main_still_writes_a_run_json_when_the_rank_has_nothing_to_do(staged):
+    assert driver.main(_argv(staged, "--shots", "1", "--rank", "3",
+                             "--world", "4", "--run-id", "empty")) == 0
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["shots_selected"] == []
+    assert payload["shots"] == []
+    assert payload["totals"]["counts"] == {}
+
+
+def test_main_refuses_an_empty_shot_list(staged, tmp_path):
+    empty = tmp_path / "none.txt"
+    empty.write_text("# nothing here\n")
+    assert driver.main(_argv(staged, "--shot-file", str(empty))) == 1
+
+
+def test_main_builds_the_log_subset_once_for_its_own_shots(staged, monkeypatch):
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        text_weak, "build_logs_subset",
+        lambda shots, *, paths=None, refresh_missing=False: (
+            calls.append((sorted(shots), refresh_missing)) or 0
+        ),
+    )
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--rank", "0", "--world", "3",
+                             "--refresh-text")) == 0
+    assert calls == [([SHOTS[0]], True)]
+
+
+class _DeadPool:
+    """A `ProcessPoolExecutor` whose workers are gone: it refuses new work."""
+
+    def submit(self, *args, **kwargs):
+        raise BrokenProcessPool("the pool is broken")
+
+    def shutdown(self, **kwargs) -> None:
+        return None
+
+
+def test_a_dead_prep_worker_costs_its_block_and_the_pool_is_replaced(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    """A worker that DIES is a skip, not a hang, and not a lost shot.
+
+    `BrokenProcessPool` is how a killed worker reaches this process - the
+    OOM killer on a `--mem-per-cpu` that was too tight, a segfault in a
+    codec - and it arrives two ways: on the future of the job the dead
+    worker held, and, once the executor is poisoned, out of `submit` itself.
+    Both are faked here because neither can be provoked reliably; what is
+    real is what the driver does with them - the block is skipped, the pool
+    is replaced, and the blocks that had not been submitted yet are run on
+    the new one.
+    """
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+
+    killed = {"mhr:4:wide": "on the future", "co2:0:wide": "out of submit"}
+    seen: list[str] = []
+    restarts: list[int] = []
+    real_submit = driver.PrepPool.submit
+    real_restart = driver.PrepPool.restart
+
+    def flaky(self, job):
+        key = getattr(job, "key", "")
+        if key in killed and key not in seen:
+            seen.append(key)
+            if killed[key] == "out of submit":
+                # A poisoned executor refuses the work in the CALLER, and
+                # `PrepPool.submit`'s own conversion of that into a failed
+                # future is what is under test here.
+                self._pool = _DeadPool()
+                return real_submit(self, job)
+            future = Future()
+            future.set_exception(BrokenProcessPool("a worker was killed"))
+            return future
+        return real_submit(self, job)
+
+    monkeypatch.setattr(driver.PrepPool, "submit", flaky)
+    monkeypatch.setattr(driver.PrepPool, "restart",
+                        lambda self: (restarts.append(1), real_restart(self)))
+    got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4, prep_workers=0,
+                           prefetch=2, unet_sha256=FAKE_SHA, echo=_silently)
+
+    row = got.rows[0]
+    assert row["status"] == "ok"                    # not an error, and not a hang
+    assert row["n_blocks"] == 5                     # seven, less the two killed
+    assert sorted(seen) == ["co2:0:wide", "mhr:4:wide"]
+    assert restarts == [1, 1]                       # one per death
+    for key in ("mask mhr:4:wide", "mask co2:0:wide"):
+        assert "BrokenProcessPool" in row["skipped"][key]
+    assert masks.list_blocks(paths.masks_file(SHOT)) == [
+        "co2_02_wide", "ece_08_wide", "ece_20_wide", "ece_40_wide",
+        "mhr_00_wide",
+    ]
