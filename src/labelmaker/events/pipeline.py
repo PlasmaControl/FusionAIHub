@@ -56,7 +56,16 @@ from ..ae.labels import PROB_THRESHOLD
 from ..ae.transform import STD_EPS
 from ..config import Paths
 from ..labels.store import append_index
-from . import channels, heuristics, masks, schema, text_weak, tracks, transients
+from . import (
+    channels,
+    coverage,
+    heuristics,
+    masks,
+    schema,
+    text_weak,
+    tracks,
+    transients,
+)
 from .lexicon import Lexicon
 from .schema import Event
 from .unet import CHECKPOINT_SHA256
@@ -424,15 +433,6 @@ def _elm_reference(runs: Sequence[_BlockRun]) -> _BlockRun | None:
     return None
 
 
-def _span(*axes) -> tuple[float, float]:
-    """`(min t0, max t1)` over the time axes given; NaN for none."""
-    lo = [float(t[0]) for t in axes if t is not None and len(t)]
-    hi = [float(t[-1]) for t in axes if t is not None and len(t)]
-    if not lo:
-        return (float("nan"), float("nan"))
-    return (min(lo), max(hi))
-
-
 def process_shot(
     shot: int,
     paths: Paths | None = None,
@@ -465,6 +465,17 @@ def process_shot(
     alone, and every source that RAN is named in the write even when it
     found nothing - "the tracker ran and saw no mode" is a different claim
     from "the tracker has not run".
+
+    That claim is also written out on its own, as
+    `events/<shot>_sources.parquet`: one row per `(source, diag, channel,
+    pass)` that ran or was skipped, with the coverage it ran over and how
+    many events it produced. An events file cannot carry it - a detector
+    that found nothing writes no row to one - and without it a query for a
+    shot's ELMs cannot tell an ELM-free shot from an unprocessed one.
+    Coverage there is per source and per quantity, computed over FINITE
+    samples: the gas valves' 105 s axis is not the NBI digitiser's
+    coverage, and the L-H detector covers only where the D-alpha, the line
+    density AND the injected power were all measured.
     """
     started = time.monotonic()
     res = ShotResult(shot=int(shot))
@@ -524,6 +535,11 @@ def process_shot(
 
     events: list[Event] = []
     sources: set[str] = set()
+    # `(source, diag, channel, pass_name)` -> the coverage it ran over.
+    # EVERY key that ran, event or no event: `events/<shot>_sources.parquet`
+    # is what tells "the tracker looked and saw nothing" from "the tracker
+    # never ran", and an events file states neither.
+    ran: dict[tuple[str, str, int, str], tuple[float, float]] = {}
 
     # --------------------------------------------------------- the tracks
     if runs:
@@ -531,6 +547,9 @@ def process_shot(
         partners = _cooccurrence(runs)
         for run in runs:
             res.n_tracks += len(run.tracks)
+            ran[(tracks.SOURCE, run.diag, run.channel, run.pass_name)] = (
+                run.t_cov
+            )
             rows = tracks.tracks_to_events(
                 run.tracks, shot=shot, diag=run.diag, channel=run.channel,
                 pass_name=run.pass_name, t_cov=run.t_cov,
@@ -562,20 +581,24 @@ def process_shot(
             res.n_elms = int(np.size(elm_times))
             res.elm_reference = reference.prefix
             sources |= {transients.SOURCE, transients.FREE_SOURCE}
+            key = (reference.diag, reference.channel, reference.pass_name)
+            ran[(transients.SOURCE, *key)] = reference.t_cov
+            ran[(transients.FREE_SOURCE, *key)] = reference.t_cov
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["elm_clock"] = _cause(exc)
 
     # ------------------------------------------------------- the sawteeth
     try:
         ece_t_s, ece_y = _read_group(corpus_file, "ece")
+        ece_cov = coverage.finite_span(ece_t_s, ece_y)
         found = heuristics.sawtooth_events(
-            ece_y, ece_t_s, shot=shot,
-            t_cov=(float(ece_t_s[0]), float(ece_t_s[-1])),
+            ece_y, ece_t_s, shot=shot, t_cov=ece_cov,
         )
         del ece_y
         events.extend(found)
         res.n_sawteeth = len(found)
         sources.add(heuristics.SAWTOOTH_SOURCE)
+        ran[(heuristics.SAWTOOTH_SOURCE, "ece", -1, "")] = ece_cov
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["sawtooth"] = _cause(exc)
 
@@ -586,6 +609,11 @@ def process_shot(
         )
         ne_t_s, ne_y = _read_group(corpus_file, "co2", stop=1)
         pinj_t_s, pinj_y = _read_group(corpus_file, "pinj")
+        lh_cov = coverage.intersect([
+            coverage.finite_span(dalpha_t_s, dalpha_y),
+            coverage.finite_span(ne_t_s, ne_y[0]),
+            coverage.finite_span(pinj_t_s, pinj_y),
+        ])
         found = heuristics.lh_transitions(
             dalpha_t_s, dalpha_y,
             ne_t_s=ne_t_s, ne_y=ne_y[0],
@@ -595,11 +623,14 @@ def process_shot(
             pinj_t_s=pinj_t_s,
             pinj_y=np.asarray(pinj_y, dtype=np.float64).sum(axis=0) * 1e-3,
             shot=shot,
-            t_cov=(float(dalpha_t_s[0]), float(dalpha_t_s[-1])),
+            # Three inputs, one answer: the transition is claimed where
+            # ALL THREE were measured, not over the D-alpha alone.
+            t_cov=lh_cov,
         )
         events.extend(found)
         res.n_lh = len(found)
         sources.add(heuristics.LH_SOURCE)
+        ran[(heuristics.LH_SOURCE, "filterscopes", -1, "")] = lh_cov
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["lh"] = _cause(exc)
 
@@ -608,10 +639,16 @@ def process_shot(
     features = _actuator_features(corpus_file, res.skipped)
     res.skipped["nbi_counter"] = NO_IP
     if features:
+        # PER FEATURE, over finite samples: the gas recorder's -10 to
+        # 94.86 s axis is not the NBI digitiser's coverage (task Lfix-C1).
+        spans = coverage.feature_spans(features)
+        ran.update(
+            ((heuristics.ACTUATOR_SOURCE, name, -1, ""), span)
+            for name, span in spans.items()
+        )
         try:
             found = heuristics.actuator_intervals(
-                features, shot=shot,
-                t_cov=_span(*[t for t, _ in features.values()]),
+                features, shot=shot, t_cov=spans,
             )
             events.extend(found)
             nbi_on = [(e.t0_s, e.t1_s) for e in found if e.phenomenon == "nbi_on"]
@@ -628,9 +665,14 @@ def process_shot(
         events.extend(heuristics.qh_candidates(
             [t for run in runs for t in run.tracks], elm_free, nbi_on, [],
             shot=shot,
-            t_cov=reference.t_cov if reference else (float("nan"),) * 2,
+            t_cov=reference.t_cov if reference else coverage.UNKNOWN,
         ))
         sources.add(heuristics.QH_SOURCE)
+        # `qh_candidates` stamps its rows `pass_name="zoom"`, so that is
+        # the key its completion record has to carry.
+        ran[(heuristics.QH_SOURCE, "", -1, "zoom")] = (
+            reference.t_cov if reference else coverage.UNKNOWN
+        )
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["qh"] = _cause(exc)
 
@@ -647,6 +689,7 @@ def process_shot(
             events.extend(found)
             res.n_text = len(found)
             sources.add("text")
+            ran[("text", "", -1, "")] = text_weak.shot_span_s(shot, paths=paths)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["text"] = _cause(exc)
 
@@ -663,6 +706,13 @@ def process_shot(
             events_file = paths.events_file(shot)
             schema.write_events(events_file, shot, events, run_id=run_id,
                                 merge=True, sources=sorted(sources))
+            schema.write_sources(
+                paths.sources_file(shot), shot,
+                coverage.source_records(
+                    shot, ran=ran, skipped=res.skipped, events=events,
+                ),
+                run_id=run_id, merge=True,
+            )
             append_index(paths.events_index, schema.index_rows(events_file),
                          keys=["shot", "source", "phenomenon"])
         except Exception as exc:  # noqa: BLE001 - see below
