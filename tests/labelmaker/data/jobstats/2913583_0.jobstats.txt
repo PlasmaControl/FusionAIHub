@@ -1,0 +1,47 @@
+
+================================================================================
+                              Slurm Job Statistics                              
+================================================================================
+         Job ID: 2913583_0
+   User/Account: nc1514/pppl
+       Job Name: loso_lowm
+          State: COMPLETED
+          Nodes: 1
+      CPU Cores: 4
+     CPU Memory: 48GB (12GB per CPU-core)
+           GPUs: 1
+  QOS/Partition: gpu-stellar/gpu
+        Cluster: stellar
+     Start Time: Tue Aug 25, 2026 at 2:03 PM
+       Run Time: 00:02:14
+     Time Limit: 01:00:00
+
+                              Overall Utilization                               
+================================================================================
+  CPU utilization  [|||||||||||||                                  27%]
+  CPU memory usage [||                                              5%]
+  GPU utilization  [|||||||||||||||||||||||||||||||||||||||||      83%]
+  GPU memory usage [|||||||||||||||                                31%]
+
+                              Detailed Utilization                              
+================================================================================
+  CPU utilization per node (CPU time used/run time)
+      stellar-m01g3: 00:02:25/00:08:56 (efficiency=27.1%)
+
+  CPU memory usage per node - used/allocated
+      stellar-m01g3: 2.6GB/48GB (672.9MB/12GB per core of 4)
+
+  GPU utilization per node
+      stellar-m01g3 (GPU 1): 83.1%
+
+  GPU memory usage per node - maximum used/total
+      stellar-m01g3 (GPU 1): 12.4GB/40GB (30.9%)
+
+                                     Notes                                      
+================================================================================
+  * See the URL below for various job metrics plotted as a function of time:
+      https://mystellar.princeton.edu/pun/sys/jobstats/2913583_0  (VPN required off-campus)
+
+  * Have a nice day!
+
+
