@@ -29,6 +29,17 @@ re-ordered so the card is busy, and nothing else:
   batches across blocks would change which batch a tile is run in, which is
   the one thing that could make these outputs differ in the last bits.
 
+**`--prefetch` is also the concurrency.** A job is submitted only when
+fewer than `--prefetch` are outstanding, so at most
+`min(--prefetch, --prep-workers)` workers are ever busy: the plan's pairing
+of 18 workers with `--prefetch 4` would leave fourteen of them idle and cap
+prep throughput at four cores against the ~18 the GPU needs to stay fed
+(15.2 core-s of prep per shot against 0.84 s of A100). A production run
+wants `--prefetch` at least `--prep-workers`, and its queue is then that
+many prepared blocks - which is the memory below, multiplied. Task L11's
+pilot is where the pair is sized; the knob is here, and the bound is not
+raised behind the caller's back.
+
 **Memory.** At most `--prefetch` prepared blocks are held at once, plus the
 one in the network. A prepared block is two `(512, T)` float32 arrays - the
 standardised spectrogram and the pre-standardisation log-power - which on
@@ -699,8 +710,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "$SLURM_CPUS_PER_TASK - 2, else "
                              f"{CUDA_WORKERS_FALLBACK}")
     parser.add_argument("--prefetch", type=int, default=4,
-                        help="prepared blocks held ahead of the network "
-                             "(default 4; ~262 MB each on the widest channel)")
+                        help="blocks in flight ahead of the network (default "
+                             "4; ~262 MB each on the widest channel). Also "
+                             "the concurrency: at most min(prefetch, "
+                             "prep-workers) workers are ever busy")
     parser.add_argument("--amp", action="store_true",
                         help="fp16 autocast; CUDA only, ignored on cpu")
     parser.add_argument("--norm", default="record",
