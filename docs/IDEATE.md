@@ -26,6 +26,7 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 | `corpus` | the FAITH corpus: what each shot file carries; `corpus select` draws the shot list |
 | `logs` | the shot-log contract (`logs missing`, `logs import`) |
 | `labels` | labelmaker's labels and events → `labels_wide.parquet`, `events.parquet` |
+| `phenomenon` | which shots show a phenomenon, and what kind of evidence says so (`--list` prints the registry) |
 | `export` | `ShotSummary` rows as JSON or Parquet |
 | `actuation`, `blurb`, `llm`, `model` | actuator waveform sets, per-shot blurbs, LLM reachability, the IGNITE bundle |
 
@@ -34,6 +35,71 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 The development universe is `configs/ideate/shot_lists/recommender_v1.yaml` — 500 shots drawn by
 `ideate corpus select` under the rule in `src/ideate/shotdb/select.py`'s module docstring. The
 database built from it is what the MCP server below serves.
+
+## Phenomena: the evidence classes and the caveat vocabulary
+
+```bash
+ideate phenomenon "edge harmonic oscillation" --n 20            # ranked shots + caveats
+ideate phenomenon "tearing mode" --avoid phenomenon:elm --json  # the hits as JSON
+ideate phenomenon --list                                        # the registry
+```
+
+`ideate phenomenon` answers "which shots had one of these?" — and the answer is only usable
+because it says *who claims so*. Four classes of evidence can name a phenomenon on a shot, and
+they are not interchangeable:
+
+| class | where it comes from | what it is |
+| --- | --- | --- |
+| **observed** | `events.parquet` rows with `evidence_kind` ≠ `forecast` — a `tokeye_track` in the right band, an `ece_sawtooth` crash, a `dalpha_lh` transition | a diagnostic showed it. The only class that is a measurement, and the only one that can rule the phenomenon *out* — inside the window the diagnostic covered |
+| **label** | `labels_wide.max_valid` for a detection head named in the registry | a model's opinion about the present. `None`, never `0`, where the model was not run or had no valid samples |
+| **forecast** | `events.parquet` rows with `evidence_kind == "forecast"` — a risk curve crossed at a threshold, with a `horizon_s` | a model's estimate of what was about to happen. It arrives in `PhenomenonHit.forecasts`, never in `intervals`, and it is never reported as an observation |
+| **text** | `text_claims.parquet`, `polarity=pos` and `temporality=observed` | an operator wrote it down. Never a label by itself: a hit resting on nothing else is capped at 0.25 and carries **TEXT ONLY** |
+
+Ranking is the class order first and the score second: an observed hit outranks a label-only hit,
+which outranks a forecast-only hit, which outranks a text-only hit, whatever the weights in
+`configs/ideate/retrieval.yaml` say. **On the `recommender_v1` database today every one of the
+1,037 event rows is a forecast**, so `ideate phenomenon` returns forecast-, label- and text-class
+hits and no observed ones at all until the production masks land and `ideate labels join` ingests
+labelmaker's detector output.
+
+The registry is `configs/ideate/phenomena.yaml` — one entry per phenomenon, saying which
+`labels_wide` series, which event sources, which frequency band and which descriptors count.
+It states **no aliases**: the ids and the phrases that name them live in
+`src/labelmaker/events/lexicons.yaml`, which both packages read, and an `aliases:` key in
+ideate's file is an error rather than a second vocabulary.
+
+### The caveat vocabulary
+
+Every hit carries `caveats`, and a hit with none is a hit that lacks nothing — which is what
+makes the others mean something. They are constants in `ideate.retrieval.phenomena`, so a caller
+can key on them:
+
+| caveat | what it tells you |
+| --- | --- |
+| `TEXT ONLY` | nothing but operator text; the score is capped at labelmaker's `TEXT_ONLY_CEILING` |
+| `ranked on forecasts: ...` | the strongest evidence is a model's estimate of what was about to happen; no diagnostic saw anything |
+| `ranked on model labels: ...` | the strongest evidence is a model's score, not a diagnostic |
+| `ranked on a curated human list: ...` | a human list names the shot and nothing else does |
+| `no diagnostic coverage recorded; absence is not evidence` | nobody looked. **Not** "it did not happen" |
+| `no observed evidence: ...` | no detector claims it on this shot |
+| `no label evidence: ...` | no model in the registry emits a label for this phenomenon at all |
+| `label not run on this shot, or no valid samples: unavailable, not 0` | the label row is missing or `n_valid == 0` |
+| `no operator text names this phenomenon on this shot` | the logbook is silent |
+| `text evidence is run scope: ...` | the sentence is the session's, shared by every shot of the run. Measured over 500 shots: `elm` fires on 99.4 % of shots at run scope and 11.0 % at shot scope |
+| `operator log says NOT <title>` | somebody wrote that it was absent |
+| `no <segment> segment on this shot; the whole record was searched` | the window was widened, and you are told |
+| `kept despite --avoid <token>: ...` | the shot survived an `--avoid` filter because nothing looked for the avoided phenomenon — no data is not a negative |
+| `<n> event(s) not shown: ...` | events the source never scored, dropped by `--min-confidence` |
+
+`--avoid phenomenon:elm` drops the shots an ELM detector fired on and **keeps**, with that
+caveat, the shots no ELM detector ran on. Dropping those would read a gap in the diagnostic
+coverage as a physics result.
+
+One field name is a promise it cannot yet keep: `actuators_at_onset` holds the **segment's** own
+summary columns (`pnbi_total_mean`, `pech_total_mean`, `gas_total_mean`, `irmp_total_peak`), not
+the values at the phenomenon's first interval. A per-onset lookup needs the raw waveform, which
+the database does not carry; the keys are the column names, so the field cannot misdescribe
+itself in the meantime.
 
 ## The MCP server
 

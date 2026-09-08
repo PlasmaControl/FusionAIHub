@@ -1194,6 +1194,102 @@ def cmd_labels(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------- phenomenon
+
+
+def _phenomenon_table(hits, resolved_id: str) -> None:
+    """One line per hit: the shot, the score, WHICH classes of evidence there are, the first
+    interval and a shortened quote. The evidence column is the point of the table -- two hits with
+    the same score are not the same claim if one is `obs` and the other `text`."""
+    from .retrieval import phenomena as ph_mod
+
+    print(f"{'shot':>7}  {'score':>6}  {'evidence':<26}  {'first interval':<22}  quote")
+    for hit in hits:
+        classes = []
+        if hit.intervals:
+            classes.append(f"obs x{len(hit.intervals)}")
+        if any(v is not None for v in hit.label_evidence.values()):
+            classes.append("label")
+        if hit.forecasts:
+            classes.append(f"forecast x{len(hit.forecasts)}")
+        if hit.text_snippets:
+            classes.append("text")
+        # The span is labelled by WHICH list it came from. An unlabelled time range beside a
+        # forecast-only hit reads as "the mode was there then", which is the one thing it is not.
+        if hit.intervals:
+            first, kind = hit.intervals[0], "seen"
+        elif hit.forecasts:
+            first, kind = hit.forecasts[0], "forecast"
+        else:
+            first, kind = None, ""
+        span = "-" if first is None else f"{kind} {first.t0_s:.3f}-{first.t1_s:.3f} s"
+        quote = "" if hit.quote is None else describe_mod.shorten(hit.quote)
+        print(
+            f"{hit.shot:>7}  {hit.score:>6.3f}  {', '.join(classes) or 'none':<26}  "
+            f"{span:<22}  {quote[:60]}"
+        )
+        for caveat in hit.caveats:
+            print(f"{'':>7}  {'':>6}  ! {caveat}")
+    if not hits:
+        print(
+            f"no shot in the database carries evidence of {ph_mod.registry()[resolved_id].title}.",
+            file=sys.stderr,
+        )
+
+
+def cmd_phenomenon(args) -> int:
+    """`ideate phenomenon TEXT`: which shots show a phenomenon, and what kind of evidence says so.
+
+    Exit 2 on text that resolves to no phenomenon, with the registry's titles listed: an empty
+    table would read as "no shot has one", and the two are opposite answers.
+    """
+    from .retrieval import phenomena as ph_mod
+
+    reg = ph_mod.registry()
+    if args.list:
+        for pid, ph in reg.items():
+            band = "" if ph.band_khz is None else f"  band {ph.band_khz[0]}-{ph.band_khz[1]} kHz"
+            print(f"{pid:<12} {ph.title}{band}")
+            print(f"{'':<12} aliases: {', '.join(ph.aliases)}")
+            print(
+                f"{'':<12} labels: {len(ph.labels)}, event rules: {len(ph.events)}, "
+                f"forecast sources: {', '.join(ph.forecasts) or 'none'}, prior {ph.prior:.3f}"
+            )
+        return 0
+    if not args.text:
+        print("give some text, or --list", file=sys.stderr)
+        return 2
+    resolved = ph_mod.resolve(args.text)
+    if not resolved:
+        titles = ", ".join(f"{pid} ({ph.title})" for pid, ph in reg.items())
+        print(f"no phenomenon resolved; try one of: {titles}", file=sys.stderr)
+        return 2
+    paths = config.load_paths()
+    db_dir = Path(args.db) if args.db else paths.db_dir
+    if not (db_dir / "manifest.json").exists():
+        print(f"no database at {db_dir} -- run `ideate build` first", file=sys.stderr)
+        return 1
+    db = store.ShotDB.load(db_dir)
+    top = resolved[0][0]
+    hits = ph_mod.locate(
+        top,
+        db,
+        args.n,
+        segment=args.segment,
+        min_confidence=args.min_confidence,
+        avoid=args.avoid or (),
+    )
+    if args.json:
+        print(json.dumps([h.model_dump(mode="json") for h in hits], indent=1, default=str))
+        return 0
+    print(
+        "resolved: "
+        + ", ".join(f"{pid} ({reg[pid].title}) {w:.2f}" for pid, w in resolved)
+    )
+    _phenomenon_table(hits, top)
+    return 0
+
+
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
     paths = config.load_paths()
@@ -1412,6 +1508,27 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lexicon", help="phenomenon aliases (default: labelmaker's lexicons.yaml)")
     s.add_argument("--no-text", action="store_true", help="skip the text claims entirely")
     p.set_defaults(func=cmd_labels)
+
+    p = sub.add_parser(
+        "phenomenon",
+        help="which shots show a phenomenon, and what kind of evidence says so",
+    )
+    p.add_argument("text", nargs="?", help='what to look for, e.g. "edge harmonic oscillation"')
+    p.add_argument("--list", action="store_true", help="print the registry instead of searching")
+    p.add_argument("--n", type=int, default=20, help="how many shots (default 20)")
+    p.add_argument("--segment", default="flat_top", choices=list(get_args(SegName)))
+    p.add_argument("--json", action="store_true", help="the hits as JSON")
+    p.add_argument(
+        "--avoid", nargs="*", metavar="TOKEN", default=[],
+        help="drop shots with OBSERVED evidence of another phenomenon, e.g. phenomenon:elm; "
+             "a shot nothing looked at is kept, with a caveat",
+    )
+    p.add_argument(
+        "--min-confidence", type=float, default=0.0, dest="min_confidence",
+        help="drop events below this confidence (and events the source never scored)",
+    )
+    p.add_argument("--db", help="database directory (default: paths.yaml's db_dir)")
+    p.set_defaults(func=cmd_phenomenon)
 
     p = sub.add_parser("query", help="find similar shots")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")
