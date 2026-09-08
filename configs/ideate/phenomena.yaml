@@ -30,9 +30,19 @@
 #   forecasts        event SOURCES whose rows for this phenomenon are forecasts. A forecast is
 #                    never an observation (plan §2, §7, Appendix C item 7): these rows land in
 #                    `PhenomenonHit.forecasts`, in their own field, and rank below any observation.
+#   coverage_sources extra sources whose rows prove someone LOOKED, beyond the detectors above.
+#                    Only `elm` needs one, and it is the reason the key exists: a detector that
+#                    finds nothing writes no rows, so on a quiet shot the only record that the mhr
+#                    data was read for ELMs at all is `elm_clock`'s `elm_free` interval -- written
+#                    by a different source from the one that would have reported an ELM. Without
+#                    it every quiet shot would look like "nobody looked" and `--avoid
+#                    phenomenon:elm` could never establish a real negative. A phenomenon with no
+#                    detector at all (`rwm`, `detachment`) declares none, so its coverage stays
+#                    unknown -- which is the honest answer.
 #   band_khz         where the mode lives, for display and for a frequency caveat. Physics, not a
 #                    filter: `events.band_khz` is what actually selects rows.
-#   diags            the `diag` strings labelmaker writes on the rows above.
+#   diags            the `diag` strings labelmaker writes on this phenomenon's own rows.
+#                    Documentation; coverage is decided by `coverage_sources`, not by these.
 #   requires_group   corpus groups a shot needs before its silence is informative (the `has_*`
 #                    columns of shots.parquet).
 #   prior            the fraction of the 500 `recommender_v1` shots whose OWN logbook carries a
@@ -71,7 +81,7 @@ phenomena:
          attrs: {min_harmonics: 2}}
     forecasts: []
     band_khz: [2.0, 20.0]
-    diags: [mhr, co2]
+    diags: [mhr, ece, co2]   # the passes tokeye_track writes tracks on
     requires_group: [mhr, co2]
     prior: 0.008
 
@@ -85,8 +95,9 @@ phenomena:
       # `phenomenon="elm"` row per detected ELM.
       - {source: tokeye_transient, phenomenon: elm}
     forecasts: [label_forecast]
+    coverage_sources: [elm_clock]   # the elm-FREE intervals: proof the mhr data was read
     band_khz: null
-    diags: [mhr, filterscopes]
+    diags: [mhr]
     requires_group: [mhr]
     prior: 0.110
 
@@ -100,7 +111,7 @@ phenomena:
       - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [null, 30.0]}
     forecasts: [label_forecast]
     band_khz: [0.0, 30.0]
-    diags: [mhr]
+    diags: [mhr, ece, co2]
     requires_group: [mhr]
     prior: 0.062
 
@@ -126,7 +137,7 @@ phenomena:
          attrs: {chirp_sign: -1}}
     forecasts: []
     band_khz: [5.0, 40.0]
-    diags: [mhr]
+    diags: [mhr, ece, co2]
     requires_group: [mhr]
     prior: 0.004
 
@@ -137,7 +148,7 @@ phenomena:
       - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [40.0, 120.0]}
     forecasts: []
     band_khz: [40.0, 120.0]
-    diags: [mhr, co2]
+    diags: [mhr, ece, co2]
     requires_group: [mhr, co2]
     prior: 0.000
 
@@ -148,7 +159,7 @@ phenomena:
       - {source: qh_proxy, phenomenon: qh}
     forecasts: []
     band_khz: null
-    diags: [mhr, filterscopes]
+    diags: []      # qh_proxy writes no diag: it is derived from tracks and elm_free
     requires_group: [mhr]
     prior: 0.018
     database:
@@ -201,6 +212,6 @@ phenomena:
     events: []          # no detector writes rwm; text is the only route (see the caveats)
     forecasts: []
     band_khz: [0.0, 10.0]
-    diags: [mirnov, mhr]
+    diags: []      # nothing detects rwm, so nothing writes a diag for it
     requires_group: [mhr]
     prior: 0.012
