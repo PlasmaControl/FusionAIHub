@@ -131,6 +131,16 @@ class Paths:
     def events_file(self, shot: int) -> Path:
         return self.events / f"{shot}_events.parquet"
 
+    def sources_file(self, shot: int) -> Path:
+        """Which sources RAN on this shot, and over what coverage.
+
+        Beside the events file and not inside it, because it is a
+        different claim: an events file says what was found, and a shot on
+        which every detector ran and found nothing has an EMPTY one. This
+        is what tells that apart from a shot nothing has been run on.
+        """
+        return self.events / f"{shot}_sources.parquet"
+
     def masks_file(self, shot: int) -> Path:
         return self.masks / f"{shot}_masks.npz"
 

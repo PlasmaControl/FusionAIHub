@@ -17,11 +17,16 @@ from labelmaker.events.schema import (
     EVIDENCE_KINDS,
     KNOWN_SOURCES,
     PASS_NAMES,
+    SOURCE_COLUMNS,
+    SOURCE_DTYPES,
+    SOURCE_STATUSES,
     Event,
     index_rows,
     intervals,
     read_events,
+    read_sources,
     write_events,
+    write_sources,
 )
 
 SHOT = 190000
@@ -346,3 +351,122 @@ def test_intervals_accept_a_frame_and_return_an_empty_pair_array(tmp_path):
     np.testing.assert_array_equal(intervals(df, "eho"), [[1.0, 1.5], [2.0, 2.5]])
     for empty in (intervals(df, "sawtooth"), intervals([], "eho")):
         assert empty.shape == (0, 2) and empty.dtype == np.float64
+
+
+# ----------------------------------------- the per-source completion record
+
+
+def _source(**kw) -> dict:
+    base = {"source": "tokeye_track", "status": "ok", "reason": "",
+            "t_cov0_s": 0.0, "t_cov1_s": 6.0, "n_events": 3,
+            "diag": "mhr", "channel": 4, "pass_name": "wide"}
+    return {**base, **kw}
+
+
+def test_the_sources_contract_is_the_documented_columns_and_dtypes():
+    # CONTRACT: ideate's consumer is built against this list. A column may
+    # be appended; none may be renamed, reordered or dropped.
+    assert SOURCE_COLUMNS == (
+        "shot", "source", "status", "reason", "t_cov0_s", "t_cov1_s",
+        "n_events", "diag", "channel", "pass_name", "run_id", "git_sha",
+        "written_at",
+    )
+    assert SOURCE_STATUSES == ("ok", "skipped", "error")
+    assert [SOURCE_DTYPES[c] for c in SOURCE_COLUMNS] == [
+        "int32", "object", "object", "object", "float64", "float64",
+        "int32", "object", "int16", "object", "object", "object", "object",
+    ]
+
+
+def test_a_source_that_ran_and_found_nothing_is_a_row(tmp_path):
+    # The whole point of the file: an events file holds no row for a
+    # detector that found nothing, and this is what tells that from a
+    # detector that never ran.
+    path = tmp_path / f"{SHOT}_sources.parquet"
+    out = write_sources(
+        path, SHOT,
+        [_source(diag="mhr", channel=0, n_events=0),
+         _source(diag="mhr", channel=4, n_events=7)],
+        run_id="r1",
+    )
+    assert list(out["n_events"]) == [0, 7]
+    assert set(out["status"]) == {"ok"}
+    back = read_sources(path)
+    assert list(back.columns) == list(SOURCE_COLUMNS)
+    assert back.dtypes.to_dict() == {
+        c: np.dtype(SOURCE_DTYPES[c]) for c in SOURCE_COLUMNS
+    }
+    quiet = back[back["channel"] == 0].iloc[0]
+    assert (quiet["n_events"], quiet["status"], quiet["reason"]) == (0, "ok", "")
+    assert (quiet["t_cov0_s"], quiet["t_cov1_s"]) == (0.0, 6.0)
+    assert quiet["run_id"] == "r1" and quiet["git_sha"]
+    datetime.fromisoformat(str(quiet["written_at"]))
+
+
+def test_a_skipped_step_is_a_row_carrying_its_reason(tmp_path):
+    path = tmp_path / f"{SHOT}_sources.parquet"
+    out = write_sources(
+        path, SHOT,
+        [_source(source="ece_sawtooth", diag="ece", channel=-1,
+                 pass_name="", status="skipped", reason="KeyError: no group 'ece'",
+                 t_cov0_s=float("nan"), t_cov1_s=float("nan"), n_events=0)],
+        run_id="r1",
+    )
+    row = out.iloc[0]
+    assert row["status"] == "skipped"
+    assert row["reason"] == "KeyError: no group 'ece'"
+    # Unknown, not zero: "nobody looked" is a third answer.
+    assert np.isnan(row["t_cov0_s"]) and np.isnan(row["t_cov1_s"])
+
+
+def test_a_merge_replaces_one_key_and_keeps_the_others(tmp_path):
+    path = tmp_path / f"{SHOT}_sources.parquet"
+    write_sources(path, SHOT, [
+        _source(diag="mhr", channel=0, n_events=1),
+        _source(diag="mhr", channel=4, n_events=2),
+        _source(source="ece_sawtooth", diag="ece", channel=-1, pass_name="",
+                n_events=47),
+    ], run_id="r1")
+    out = write_sources(
+        path, SHOT, [_source(diag="mhr", channel=4, n_events=99)],
+        run_id="r2",
+    )
+    got = {
+        (r["source"], r["diag"], r["channel"]): (r["n_events"], r["run_id"])
+        for _, r in out.iterrows()
+    }
+    assert got == {
+        ("tokeye_track", "mhr", 0): (1, "r1"),
+        ("tokeye_track", "mhr", 4): (99, "r2"),
+        ("ece_sawtooth", "ece", -1): (47, "r1"),
+    }
+
+
+def test_the_same_key_may_not_be_written_twice_in_one_call(tmp_path):
+    with pytest.raises(ValueError, match="two records for one"):
+        write_sources(tmp_path / "s.parquet", SHOT,
+                      [_source(), _source(n_events=9)], run_id="r")
+
+
+def test_read_sources_of_a_missing_file_is_an_empty_typed_frame(tmp_path):
+    got = read_sources(tmp_path / "nothing.parquet")
+    assert got.empty and list(got.columns) == list(SOURCE_COLUMNS)
+    assert got.dtypes.to_dict() == {
+        c: np.dtype(SOURCE_DTYPES[c]) for c in SOURCE_COLUMNS
+    }
+    assert read_sources(tmp_path / "nothing.parquet", source="text").empty
+
+
+@pytest.mark.parametrize("bad,match", [
+    ({"status": "partial"}, "status"),
+    ({"source": ""}, "source must not be empty"),
+    ({"reason": "why"}, "an ok source carries no reason"),
+    ({"status": "skipped", "reason": ""}, "must say why"),
+    ({"pass_name": "medium"}, "pass_name"),
+    ({"n_events": -1}, "n_events"),
+    ({"t_cov0_s": 3.0, "t_cov1_s": 1.0}, "t_cov1_s must not precede"),
+])
+def test_a_record_that_cannot_be_true_is_refused(tmp_path, bad, match):
+    with pytest.raises(ValueError, match=match):
+        write_sources(tmp_path / "s.parquet", SHOT, [_source(**bad)],
+                      run_id="r")
