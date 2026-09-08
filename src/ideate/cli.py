@@ -1196,8 +1196,13 @@ def cmd_labels(args) -> int:
     result = join_mod.join(
         shots, labelmaker_root=root, text_root=text_root, lexicon_path=args.lexicon
     )
+    # The join is the step that runs AFTER the long jobs and republishes, so it is where a
+    # `has_frame_codes` column set at build time -- 13 true while all 500 caches existed -- gets
+    # brought back in line with the directory. A rebuild to fix one boolean costs an hour.
+    codes = build_mod.refresh_frame_codes(db_dir, paths)
     block = join_mod.write_tables(
-        db_dir, result.labels_wide, result.events, result.claims, result.manifest
+        db_dir, result.labels_wide, result.events, result.claims, result.manifest,
+        sources_df=result.sources, join_block={"frame_codes": codes},
     )
     m = result.manifest
     print(
@@ -1231,9 +1236,27 @@ def cmd_labels(args) -> int:
         for col in ("polarity", "temporality"):
             print("  " + ", ".join(f"{k} {v:,}" for k, v in
                                    sorted(Counter(result.claims[col]).items())))
+    # Which detectors RAN, not what they found: an events table with no rows for a shot is
+    # "nobody looked" until this says otherwise, and that is what `get_events` reports.
+    print(
+        f"event_sources {m['n_event_source_rows']:,} rows over "
+        f"{m['n_shots_with_source_rows']:,} shot(s): {m['n_sources_ok']:,} ok, "
+        f"{m['n_sources_skipped']:,} skipped, {m['n_sources_error']:,} error"
+    )
+    print(
+        f"  {m['n_shots_with_observed_products']:,} shot(s) have an observed-event product; "
+        f"{m['n_shots_unprocessed']:,} are unprocessed (their empty event list is not evidence)"
+    )
+    print(
+        f"has_frame_codes refreshed: {codes['n_has_frame_codes']:,}/{codes['n_shots']:,} shots "
+        f"({codes['n_changed']:,} changed, was {codes.get('n_was_true', 0):,})"
+    )
     if m["n_shots_missing_labels"]:
         print(f"no labels file: {_brief(m['labels_missing'])}")
-    print(f"wrote {db_dir}/{{labels_wide,events,text_claims}}.parquet and manifest.json")
+    print(
+        f"wrote {db_dir}/{{labels_wide,events,text_claims,event_sources}}.parquet "
+        f"and manifest.json"
+    )
     print(f"manifest labels block: {json.dumps(block, default=str)}")
     return 0
 
