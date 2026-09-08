@@ -254,6 +254,19 @@ def col_times_s(n_cols: int, fs_hz: float, decim: int, t0_s: float) -> np.ndarra
 
 # ------------------------------------------------------------ tile / stitch
 
+def n_tiles(n_cols: int) -> int:
+    """How many tiles `tile` cuts `n_cols` columns into.
+
+    The formula, named, because the batch driver (`events/driver.py`)
+    reports tiles per second and has to count a block's tiles WITHOUT
+    building the `(n, 512, 512)` array to count them: a `mirnov` wide pass
+    is 143 tiles and 150 MB, and counting that way would double the memory
+    the driver exists to bound.
+    """
+    n_cols = int(n_cols)
+    return 1 + max(0, -(-(n_cols - TILE) // STRIDE))
+
+
 def tile(spec):
     """`(512, T)` -> `((n_tiles, 512, 512) float32, meta)`, last one padded.
 
@@ -267,15 +280,15 @@ def tile(spec):
     if spec.ndim != 2 or spec.shape[0] != N_BINS:
         raise ValueError(f"expected ({N_BINS}, T), got {spec.shape}")
     n_cols = int(spec.shape[1])
-    n_tiles = 1 + max(0, -(-(n_cols - TILE) // STRIDE))
-    starts = [i * STRIDE for i in range(n_tiles)]
-    tiles = np.zeros((n_tiles, N_BINS, TILE), dtype=np.float32)
+    count = n_tiles(n_cols)
+    starts = [i * STRIDE for i in range(count)]
+    tiles = np.zeros((count, N_BINS, TILE), dtype=np.float32)
     for i, start in enumerate(starts):
         chunk = spec[:, start:start + TILE]
         tiles[i, :, :chunk.shape[1]] = chunk
     meta = {
         "n_cols": n_cols,
-        "n_tiles": n_tiles,
+        "n_tiles": count,
         "starts": starts,
         "tile": TILE,
         "overlap": OVERLAP,
