@@ -1,0 +1,58 @@
+
+================================================================================
+                              Slurm Job Statistics                              
+================================================================================
+         Job ID: 2923913
+   User/Account: nc1514/pppl
+       Job Name: ae-dataset
+          State: COMPLETED
+          Nodes: 1
+      CPU Cores: 4
+     CPU Memory: 32GB (8GB per CPU-core)
+           GPUs: 1
+  QOS/Partition: gpu-stellar/gpu
+        Cluster: stellar
+     Start Time: Sat Sep 5, 2026 at 6:07 PM
+       Run Time: 00:27:10
+     Time Limit: 02:00:00
+
+                              Overall Utilization                               
+================================================================================
+  CPU utilization  [|||||||||||                                    23%]
+  CPU memory usage [|||                                             6%]
+  GPU utilization  [                                                1%]
+  GPU memory usage [|||||||||||||||||||||||||||||||||||||||||||||||97%]
+
+                              Detailed Utilization                              
+================================================================================
+  CPU utilization per node (CPU time used/run time)
+      stellar-m01g4: 00:25:58/01:48:40 (efficiency=23.9%)
+
+  CPU memory usage per node - used/allocated
+      stellar-m01g4: 1.9GB/32GB (494.4MB/8GB per core of 4)
+
+  GPU utilization per node
+      stellar-m01g4 (GPU 0): 0.6%
+
+  GPU memory usage per node - maximum used/total
+      stellar-m01g4 (GPU 0): 38.6GB/40GB (96.6%)
+
+                                     Notes                                      
+================================================================================
+  * The overall GPU utilization of this job is only 1%. This value is low
+    compared to the cluster mean value of 50%. Please investigate the reason
+    for the low utilization. For more info:
+      https://researchcomputing.princeton.edu/support/knowledge-base/gpu-computing#util
+
+  * This job only needed 23% of the requested time which was 02:00:00. For
+    future jobs, please request less time by modifying the --time Slurm
+    directive. This will lower your queue times and allow the Slurm job
+    scheduler to work more effectively for all users. For more info:
+      https://researchcomputing.princeton.edu/support/knowledge-base/slurm
+
+  * See the URL below for various job metrics plotted as a function of time:
+      https://mystellar.princeton.edu/pun/sys/jobstats/2923913  (VPN required off-campus)
+
+  * Have a nice day!
+
+

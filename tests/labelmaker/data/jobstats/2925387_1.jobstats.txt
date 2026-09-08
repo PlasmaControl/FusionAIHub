@@ -1,0 +1,50 @@
+
+================================================================================
+                              Slurm Job Statistics                              
+================================================================================
+         Job ID: 2925387_1
+   User/Account: nc1514/pppl
+       Job Name: ideate-encode-cpu
+          State: FAILED
+          Nodes: 1
+      CPU Cores: 5
+     CPU Memory: 10GB (2GB per CPU-core)
+  QOS/Partition: pppl-short-stellar/serial
+        Cluster: stellar
+     Start Time: Mon Sep 7, 2026 at 5:05 PM
+       Run Time: 00:04:41
+     Time Limit: 01:10:00
+
+                              Overall Utilization                               
+================================================================================
+  CPU utilization  [||||||||||||||||||||||||||||||||               64%]
+  CPU memory usage [|||||||||||||||||||||||||||||||||||||          74%]
+
+                              Detailed Utilization                              
+================================================================================
+  CPU utilization per node (CPU time used/run time)
+      stellar-k09n1: 00:15:07/00:23:25 (efficiency=64.6%)
+
+  CPU memory usage per node - used/allocated
+      stellar-k09n1: 7.4GB/10GB (1.5GB/2GB per core of 5)
+
+                                     Notes                                      
+================================================================================
+  * The overall CPU utilization of this job is 64.6%. This value is low
+    compared to the target range of 90% and above. Please investigate the
+    reason for the low efficiency. For instance, have you conducted a scaling
+    analysis? For more info:
+      https://researchcomputing.princeton.edu/get-started/cpu-utilization
+
+  * The Stellar cluster is intended for jobs that require multiple nodes. This
+    job ran in the "serial" partition where jobs are assigned the lowest
+    priority. On Stellar, a job will run in the "serial" partition if it
+    requires 1 node and less than 48 CPU-cores. Please consider carrying out
+    this work elsewhere.
+
+  * See the URL below for various job metrics plotted as a function of time:
+      https://mystellar.princeton.edu/pun/sys/jobstats/2925387_1  (VPN required off-campus)
+
+  * Have a nice day!
+
+
