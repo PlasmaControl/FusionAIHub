@@ -33,7 +33,8 @@ from labelmaker.events import pipeline as pl
 
 from .test_events_pipeline import FAKE_SHA, SHOT, PaintedNet, _write_corpus
 
-#: A second synthetic shot, so a split has something to split.
+#: Three copies of the synthetic shot, so a chunk and a rank have
+#: something to split. The corpus files differ only in their names.
 SHOTS = [SHOT, SHOT + 1, SHOT + 2]
 
 

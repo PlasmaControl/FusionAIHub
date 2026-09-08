@@ -37,6 +37,20 @@ the widest block (`mirnov` wide, 64,000 columns) is 131 MB each, so
 being inferred is dropped as soon as the network has read it. The prep
 workers add one such pair each while they work.
 
+**One file this driver does NOT own.** `masks/<shot>_masks.npz` and
+`events/<shot>_events.parquet` are per shot, so sixteen tasks writing sixteen
+shots never meet. `events_index.parquet` is one file for the whole root, and
+`labels.store.append_index` rewrites it whole through a fixed `.tmp`
+sibling: two processes finishing a shot at the same moment can interleave
+that temporary and can lose each other's rows. `run.py` avoids this by
+having the PARENT write the index while the workers only return rows; a
+SLURM array of these drivers has no such parent. The index is derivable -
+`schema.index_rows(events_file)` per shot rebuilds it exactly - so the
+production run (task L12) must either rebuild it in one pass after the array
+or shard it per task, and this module leaves the per-shot write where
+`process_shot` has it rather than writing a different file from the one the
+sequential path writes.
+
 **Isolation.** Per shot: one `SIGALRM` (`--timeout`) and one try/except, as
 `run.py`'s stages. The alarm ends the shot wherever the driver itself is
 waiting - on a prepared block, in the network, in a describe step. Inside
