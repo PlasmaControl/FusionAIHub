@@ -376,90 +376,287 @@ def _frame_codes(shot: int, caveats: list[str]) -> dict:
     return {"present": False, "device": None, "path": None}
 
 
+#: The four states a `get_events` reply can be in. They are not degrees of the same thing: the
+#: first three say the database cannot answer the question asked, and only the last is an answer.
+EVENT_STATES = ("unindexed", "unprocessed", "uncovered", "observed")
+
+_UNPROCESSED_CAVEAT = (
+    "no observed-event product for shot {shot}: no detector is recorded as having run over it "
+    "and it has no non-forecast rows. Absence is not evidence -- this is not a quiet shot, it "
+    "is an unexamined one"
+)
+
+_NO_DETECTION_CAVEAT = (
+    "{n} source(s) ran over shot {shot} and reported 0 detections inside their coverage"
+    "{window}. This IS an observation of nothing happening, unlike an unprocessed shot"
+)
+
+_TEXT_CAVEAT = (
+    "{n} row(s) are in `text_mentions`, not in `events`: a text row is a LEXICON HIT in the "
+    "operator logbook -- somebody wrote a word -- and is not an assertion that the phenomenon "
+    "occurred, nor a claim about what any diagnostic showed"
+)
+
+
 def get_events(
     shot: int,
     phenomenon: str | None = None,
     t0_s: float | None = None,
     t1_s: float | None = None,
 ) -> dict:
-    """Time-resolved events for one shot: what a detector saw, and separately what a model forecast.
+    """Time-resolved events for one shot: what a detector saw, what a logbook mentioned, and separately what a model forecast.
 
     Args:
         shot: the DIII-D shot number.
         phenomenon: keep only this phenomenon ("tearing", "elm", "sawtooth", "disruption", ...).
         t0_s: keep only events overlapping the window starting here (seconds from shot start).
-        t1_s: ... and ending here. Either bound may be given alone.
+        t1_s: ... and ending here. Either bound may be given alone. `t0_s` must be less than
+            `t1_s` and both must be finite; a reversed or non-finite window is an error, never a
+            silently empty result.
 
     Returns:
-        `{"shot": int, "events": [...], "n": int, "forecasts": [...], "n_forecasts": int,
-        "caveats": [str]}` or `{"error": str, "caveats": [str]}`.
+        `{"shot": int, "status": str, "events": [...], "n": int, "text_mentions": [...],
+        "n_text_mentions": int, "forecasts": [...], "n_forecasts": int, "coverage": {...},
+        "caveats": [str]}` or `{"error": str, "status": "unindexed", "caveats": [str]}`.
 
-    `events` and `forecasts` are kept apart and must stay apart when you report them. An event
-    with `evidence_kind == "forecast"` is a model's estimate of what was ABOUT to happen,
-    computed from a risk curve and a threshold; every other row is somebody's claim about what a
-    diagnostic actually showed, with `source` saying who and `confidence` how sure. Reporting a
-    forecast as an observation is how "shot 190591 disrupted at 3.2 s" gets written from a
-    probability. Each row carries `t_cov0_s`/`t_cov1_s`, the coverage of the diagnostic that was
-    looked at, so "nothing was seen here" can be told from "nobody looked here".
+    READ `status` FIRST. It is one of four, and an empty `events` means something different in
+    each:
 
-    An empty `events` with the caveat "no events table yet" means the labels join has not run --
-    not that the shot was quiet.
+    * `unindexed` -- the shot is not in the database at all. Nothing was ever loaded for it.
+    * `unprocessed` -- the shot is in the database, but no detector is recorded as having run
+      over it. Its empty event list is not evidence that the shot was quiet.
+    * `uncovered` -- detectors ran, but none of them covered the window you asked about. The
+      caveat names the span that IS covered.
+    * `observed` -- detectors ran over (part of) the window. An empty `events` here is a real
+      observation of nothing, and the caveats say how many sources reported it.
+
+    `events`, `text_mentions` and `forecasts` are three different kinds of claim and must stay
+    apart when you report them. An `events` row is somebody's claim about what a DIAGNOSTIC
+    showed, with `source` saying who and `confidence` how sure. A `forecasts` row (evidence_kind
+    `forecast`) is a model's estimate of what was ABOUT to happen, computed from a risk curve and
+    a threshold; reporting one as an observation is how "shot 190591 disrupted at 3.2 s" gets
+    written from a probability. A `text_mentions` row (evidence_kind `text`) is a lexicon hit in
+    the operator logbook -- somebody wrote a word at some point in a shift -- which is evidence
+    that the word was written and not that the phenomenon occurred.
+
+    Each row carries `t_cov0_s`/`t_cov1_s`, the coverage of the diagnostic that was looked at, and
+    `coverage` carries the per-source table, so "nothing was seen here" can be told from "nobody
+    looked here".
     """
     import pandas as pd
+
+    caveats: list[str] = []
+    shot = int(shot)
+    window, err = _window(t0_s, t1_s)
+    if err:
+        return err
+    t0_s, t1_s = window
+
+    db, err = _db()
+    if err:
+        return err
+    if shot not in db.shots.index:
+        held = sorted(int(s) for s in db.shots.index)
+        span = f"{held[0]}-{held[-1]}" if held else "(empty)"
+        # The same sentence `describe_shot` gives, and the same shape of reply: the reviewer's
+        # 198658 call got `n: 0` with no caveats from this tool while `describe_shot` correctly
+        # said the shot was absent, and an assistant reading the two together learnt that the
+        # shot was in the database and quiet.
+        return {
+            **_error(
+                f"shot {shot} is not in the database ({len(held)} shots, {span}). "
+                f"Add it with `ideate add {shot}`.",
+                caveats,
+            ),
+            "status": "unindexed",
+        }
+
+    sources = _event_sources(shot)
+    summary = _sources_summary(sources, shot)
 
     paths = config.load_paths()
     path = paths.db_dir / "events.parquet"
     if not path.exists():
-        return {
-            "shot": int(shot),
-            "events": [],
-            "n": 0,
-            "forecasts": [],
-            "n_forecasts": 0,
-            "nan_excluded": 0,
-            "caveats": [NO_EVENTS],
-        }
-    try:
-        df = pd.read_parquet(path)
-    except Exception as exc:  # noqa: BLE001 - a corrupt table is a message, not a stack trace
-        return _error(f"could not read {path}: {type(exc).__name__}: {exc}")
+        caveats.append(NO_EVENTS)
+        df = None
+    else:
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:  # noqa: BLE001 - a corrupt table is a message, not a stack trace
+            return _error(f"could not read {path}: {type(exc).__name__}: {exc}")
+        df = df[df["shot"] == shot]
 
-    df = df[df["shot"] == int(shot)]
-    if phenomenon:
-        df = df[df["phenomenon"] == phenomenon]
-    caveats: list[str] = []
+    all_rows = df if df is not None else None
+    n_observed_rows = 0 if all_rows is None else int(
+        (~all_rows["evidence_kind"].isin(("forecast", "text"))).sum()
+    )
+
+    if phenomenon and all_rows is not None:
+        all_rows = all_rows[all_rows["phenomenon"] == phenomenon]
+
     nan_excluded = 0
-    if t0_s is not None or t1_s is not None:
+    if all_rows is not None and (t0_s is not None or t1_s is not None):
         # A NaN compares False against either bound, so a row whose times were never recorded
         # falls out of a windowed call looking exactly like a row that did not overlap. Count
         # them and say so: "we do not know when this happened" is not "it did not happen then",
         # and the caller cannot tell the two apart from an absence.
-        timeless = df["t0_s"].isna() | df["t1_s"].isna()
+        timeless = all_rows["t0_s"].isna() | all_rows["t1_s"].isna()
         nan_excluded = int(timeless.sum())
-        df = df[~timeless]
+        all_rows = all_rows[~timeless]
         if nan_excluded:
             caveats.append(_TIMELESS_CAVEAT.format(n=nan_excluded))
-    # Overlap, not containment: an event that straddles the edge of the window happened in the
-    # window, and a point event (t1 == t0, an L-H transition) is inside a window that touches it.
-    if t0_s is not None:
-        df = df[df["t1_s"] >= float(t0_s)]
-    if t1_s is not None:
-        df = df[df["t0_s"] <= float(t1_s)]
-    df = df.sort_values(["t0_s", "event_id"], kind="stable")
+    if all_rows is not None:
+        # Overlap, not containment: an event that straddles the edge of the window happened in
+        # the window, and a point event (t1 == t0, an L-H transition) is inside a window that
+        # touches it.
+        if t0_s is not None:
+            all_rows = all_rows[all_rows["t1_s"] >= float(t0_s)]
+        if t1_s is not None:
+            all_rows = all_rows[all_rows["t0_s"] <= float(t1_s)]
+        all_rows = all_rows.sort_values(["t0_s", "event_id"], kind="stable")
+        rows = [_event_row(rec) for rec in all_rows.to_dict("records")]
+    else:
+        rows = []
 
-    rows = [_event_row(rec) for rec in df.to_dict("records")]
-    events = [r for r in rows if r.get("evidence_kind") != "forecast"]
+    events = [r for r in rows if r.get("evidence_kind") not in ("forecast", "text")]
+    text_mentions = [r for r in rows if r.get("evidence_kind") == "text"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
+
+    status = _event_status(summary, n_observed_rows, sources, t0_s, t1_s)
+    coverage = _coverage_block(sources, summary)
+    if status == "unprocessed":
+        caveats.append(_UNPROCESSED_CAVEAT.format(shot=shot))
+    elif status == "uncovered":
+        span = coverage["t_cov0_s"], coverage["t_cov1_s"]
+        caveats.append(
+            f"the window [{t0_s}, {t1_s}] s is outside every source's coverage of shot {shot}, "
+            f"which runs {span[0]} to {span[1]} s -- nobody looked there, so an empty result "
+            f"says nothing about the window you asked about"
+        )
+    elif status == "observed" and not events:
+        caveats.append(
+            _NO_DETECTION_CAVEAT.format(
+                n=summary["n_sources_ok"] or "an unrecorded number of",
+                shot=shot,
+                window="" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s",
+            )
+        )
+    if summary["n_sources_error"]:
+        caveats.append(
+            f"{summary['n_sources_error']} source(s) FAILED on shot {shot}: whatever they would "
+            f"have seen is missing from this reply"
+        )
     if forecasts:
         caveats.append(_FORECAST_CAVEAT.format(n=len(forecasts)))
+    if text_mentions:
+        caveats.append(_TEXT_CAVEAT.format(n=len(text_mentions)))
     return {
-        "shot": int(shot),
+        "shot": shot,
+        "status": status,
         "events": events,
         "n": len(events),
+        "text_mentions": text_mentions,
+        "n_text_mentions": len(text_mentions),
         "forecasts": forecasts,
         "n_forecasts": len(forecasts),
+        "coverage": coverage,
         "nan_excluded": nan_excluded,
         "caveats": caveats,
+    }
+
+
+def _window(t0_s, t1_s) -> tuple[tuple[float | None, float | None], dict | None]:
+    """`((t0, t1), None)` or `((None, None), error)`. A reversed window is a mistake, not a query.
+
+    A reversed or NaN window used to come back as a successful empty result, which reads exactly
+    like "nothing happened in that interval" -- for an interval that does not exist.
+    """
+    for name, value in (("t0_s", t0_s), ("t1_s", t1_s)):
+        if value is None:
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return (None, None), _error(f"{name}={value!r} is not a number of seconds")
+        if not math.isfinite(value):
+            return (None, None), _error(
+                f"{name}={value} is not finite; give a time in seconds from shot start",
+                ["a non-finite window is not an empty window: nothing was searched"],
+            )
+    if t0_s is not None and t1_s is not None and float(t0_s) >= float(t1_s):
+        return (None, None), _error(
+            f"the window [{t0_s}, {t1_s}] s is empty or reversed: t0_s must be less than t1_s. "
+            f"For events at one instant give a window around it, or one bound alone.",
+            ["no rows were searched, so this is not a report that the window was quiet"],
+        )
+    return (
+        (None if t0_s is None else float(t0_s), None if t1_s is None else float(t1_s)),
+        None,
+    )
+
+
+def _event_sources(shot: int):
+    """This shot's rows of `db/event_sources.parquet`, or an empty typed frame.
+
+    An absent table is a database whose join predates the source contract, and is treated the
+    same as a shot with no rows: unprocessed until something says otherwise.
+    """
+    from ..labels import event_sources as es
+
+    path = config.load_paths().db_dir / "event_sources.parquet"
+    if not path.exists():
+        return es.empty_sources()
+    try:
+        import pandas as pd
+
+        df = pd.read_parquet(path)
+        return df[df["shot"] == int(shot)]
+    except Exception:  # noqa: BLE001 - a broken coverage table must not lose the events
+        return es.empty_sources()
+
+
+def _sources_summary(sources, shot: int) -> dict:
+    from ..labels import event_sources as es
+
+    return es.shot_summary(sources, shot)
+
+
+def _event_status(summary, n_observed_rows: int, sources, t0_s, t1_s) -> str:
+    """Which of the four states this reply is in. See `EVENT_STATES`."""
+    from ..labels import event_sources as es
+
+    if not summary["has_observed_products"] and n_observed_rows == 0:
+        return "unprocessed"
+    if t0_s is None and t1_s is None:
+        return "observed"
+    covered = es.covers(sources, t0_s, t1_s)
+    # `None` -- nothing recorded coverage -- is not "uncovered": there are observed rows on this
+    # shot (the branch above), the database simply predates the coverage table.
+    return "uncovered" if covered is False else "observed"
+
+
+def _coverage_block(sources, summary) -> dict:
+    from ..labels import event_sources as es
+
+    span = es.coverage_span(sources)
+    return {
+        **summary,
+        "t_cov0_s": None if span is None else span[0],
+        "t_cov1_s": None if span is None else span[1],
+        "sources": [
+            {
+                "source": str(r["source"]),
+                "status": str(r["status"]),
+                "reason": str(r["reason"]),
+                "diag": str(r["diag"]),
+                "channel": int(r["channel"]),
+                "pass_name": str(r["pass_name"]),
+                "t_cov0_s": None if _missing(r["t_cov0_s"]) else float(r["t_cov0_s"]),
+                "t_cov1_s": None if _missing(r["t_cov1_s"]) else float(r["t_cov1_s"]),
+                "n_events": int(r["n_events"]),
+            }
+            for r in sources.to_dict("records")
+        ],
     }
 
 
