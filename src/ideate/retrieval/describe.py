@@ -254,6 +254,12 @@ def quotable(entry: schema.LogEntry) -> str | None:
     return _WS.sub(" ", html.unescape(entry.text)).strip() or None
 
 
+#: The public name for `_shorten`. `cli`'s phenomenon table cuts its quotes by the same rule the
+#: description does -- a verbatim prefix, at a sentence boundary where there is one -- rather than
+#: by a second `[:60]` that would cut mid-word and read like a truncation bug.
+shorten = _shorten
+
+
 def best_quote(rec: schema.ShotRecord) -> tuple[schema.LogEntry, str] | None:
     """The most informative single logbook entry and its display text, or None.
 

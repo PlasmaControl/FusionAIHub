@@ -241,6 +241,74 @@ class ResultItem(BaseModel):
     run_id: str | None = None
 
 
+class Interval(BaseModel):
+    """One stretch of one shot that one source claims a phenomenon occupied.
+
+    `evidence_kind` is labelmaker's (`detector`, `heuristic`, `forecast`, `text`, ...) and is what
+    separates the two lists a `PhenomenonHit` keeps: an observation and a forecast are both
+    intervals and are never the same claim. A point event -- an ELM, an L-H transition -- has
+    `t1_s == t0_s`; a spectrogram track carries its frequency extent and a transient carries none.
+    `confidence` is None where the source recorded none, never 0.0: "nobody scored it" and "scored
+    it zero" are different facts (plan §2).
+    """
+
+    t0_s: float
+    t1_s: float
+    f0_khz: float | None = None
+    f1_khz: float | None = None
+    source: str
+    evidence_kind: str
+    confidence: float | None = None
+    event_id: str
+
+
+class EventRef(BaseModel):
+    """The identity of one `events.parquet` row: enough to fetch it again, and no interpretation.
+
+    Returned beside the intervals so a caller that wants the whole row -- the attrs the detector
+    wrote, its coverage window, the run that produced it -- goes back to the table rather than
+    being handed a summary that quietly became the record.
+    """
+
+    shot: int
+    event_id: str
+    source: str
+    phenomenon: str  # the SOURCE's own string ("coherent_mode", "elm_free"), not ideate's id
+    t0_s: float
+    t1_s: float
+
+
+class PhenomenonHit(BaseModel):
+    """One shot's evidence for one phenomenon, with every class of it kept apart.
+
+    The separation is the point. `intervals` is what a diagnostic showed; `forecasts` is what a
+    model estimated was about to happen, and it never merges into the first (plan §2, §7).
+    `label_evidence` holds probabilities from `labels_wide` and uses None -- never 0.0 -- for a
+    label that was not run or had no valid samples. `text_snippets` is what the operators wrote,
+    which is a claim and not a label by itself, so a hit resting on nothing else is capped and
+    carries the caveat "TEXT ONLY". `caveats` is not decoration: every hit missing an evidence
+    class says so there, and a reader who drops them is reading a different claim.
+    """
+
+    shot: int
+    phenomenon: str
+    score: float
+    intervals: list[Interval] = Field(default_factory=list)
+    total_duration_s: float = 0.0
+    # The union of the coverage windows of the diagnostics this phenomenon's detectors looked at.
+    # None means nobody looked, which is not the same as "it did not happen".
+    coverage: tuple[float, float] | None = None
+    quote: str | None = None
+    quote_role: str | None = None
+    text_snippets: list[str] = Field(default_factory=list)
+    actuators_at_onset: dict[str, float | None] = Field(default_factory=dict)
+    label_evidence: dict[str, float | None] = Field(default_factory=dict)
+    forecasts: list[Interval] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+    run_id: str | None = None
+    mp_title: str | None = None
+
+
 class Session(BaseModel):
     session_id: str
     created: datetime

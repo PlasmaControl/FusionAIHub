@@ -1,0 +1,206 @@
+# The phenomenon registry: what counts as EVIDENCE for each of plan §5.6's round-1 phenomena.
+#
+# The ids and the alias lists are NOT here. `src/labelmaker/events/lexicons.yaml` is the single
+# source of both (plan §5.6, and that file's own header says so); `ideate.retrieval.phenomena`
+# reads it and merges the aliases onto these entries. An `aliases:` or `exclude:` key in this file
+# is a `PhenomenaError`, not a second opinion -- a test pins that.
+#
+# What lives here is the scoring machinery around each id:
+#
+#   title            display name (kept equal to the lexicon's; the lexicon's is the matcher's)
+#   labels           labels_wide rows that are EVIDENCE OF THE PHENOMENON, per (slug, label).
+#                    `thr: null` means no operating point has been published for that label --
+#                    `labels_wide.thr` is NaN for every row of both detection labels today -- so
+#                    what is read is `max_valid`, reported as a probability and never thresholded
+#                    into a fake yes/no. `weight` scales that number inside one phenomenon.
+#                    Only slugs/labels that EXIST in the built labels_wide (16,800 rows over five
+#                    model slugs) or are named in `labels.yaml` are listed. Ten of the twelve
+#                    phenomena have no label model at all: that is a gap in the label corpus, and
+#                    an empty list is how it is stated.
+#   events           which labelmaker event rows count as OBSERVED evidence. `source` is the
+#                    detector; `phenomenon` is the string THAT DETECTOR writes, which is not
+#                    ideate's id -- `tokeye_track` writes "coherent_mode" for every track and
+#                    "pickup" for a receiver line, `elm_clock` writes "elm_free", `dalpha_lh`
+#                    writes "lh_transition"/"hl_transition". `band_khz` is matched against the
+#                    track's `attrs.f_centroid_khz` (the probability-weighted centre; `f0/f1_khz`
+#                    is the track's full extent and spans 0.5-248 kHz on a real row, so it
+#                    separates nothing). `attrs` adds descriptor predicates:
+#                    `min_harmonics` -> `attrs.n_harmonics >= n`, `chirp_sign: -1` ->
+#                    `attrs.chirp_khz_per_ms < 0`, `pickup: true` -> `attrs.pickup is true`.
+#   forecasts        event SOURCES whose rows for this phenomenon are forecasts. A forecast is
+#                    never an observation (plan §2, §7, Appendix C item 7): these rows land in
+#                    `PhenomenonHit.forecasts`, in their own field, and rank below any observation.
+#   band_khz         where the mode lives, for display and for a frequency caveat. Physics, not a
+#                    filter: `events.band_khz` is what actually selects rows.
+#   diags            the `diag` strings labelmaker writes on the rows above.
+#   requires_group   corpus groups a shot needs before its silence is informative (the `has_*`
+#                    columns of shots.parquet).
+#   prior            the fraction of the 500 `recommender_v1` shots whose OWN logbook carries a
+#                    positive, observed mention (`text_claims`, scope=shot). Measured, not
+#                    assumed, and metadata only: no term of the score reads it. 0.000 for qcm and
+#                    pickup means the operators never write them down -- the detectors are the
+#                    only route to those two.
+#   database         a curated shot list, when one exists. `path_key` names a key of paths.yaml
+#                    rather than repeating an absolute path.
+#
+# Round-1 ids, all twelve, in the lexicon's order.
+version: 1
+phenomena:
+  ae:
+    title: Alfven eigenmode
+    labels:
+      - {slug: d3d_ae_activity_seldnet, label: ae_active, thr: null, weight: 1.0}
+    events:
+      # A track at or above 40 kHz. TAE/RSAE sit well above the EHO band and below the
+      # ~250 kHz top of the wide pass; the AE label above is the other half of the claim.
+      - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [40.0, null]}
+    forecasts: []
+    band_khz: [40.0, 250.0]
+    diags: [mhr, ece, co2]
+    requires_group: [mhr, ece]
+    prior: 0.006
+
+  eho:
+    title: Edge harmonic oscillation
+    labels: []
+    events:
+      # The EHO is a low-frequency mode with a harmonic comb: 2-20 kHz AND >= 2 harmonics.
+      # Without the harmonic count this band is also where every slow drift and the co2 pickup
+      # line at 1.7-2.3 kHz sits.
+      - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [2.0, 20.0],
+         attrs: {min_harmonics: 2}}
+    forecasts: []
+    band_khz: [2.0, 20.0]
+    diags: [mhr, co2]
+    requires_group: [mhr, co2]
+    prior: 0.008
+
+  elm:
+    title: Edge localised mode
+    labels: []          # the only ELM model is the DSM risk head, which is a forecast (below)
+    events:
+      # `tokeye_transient`, not `elm_clock`: elm_clock's rows are `elm_free` INTERVALS -- the
+      # stretches with no ELM in them -- and counting an absence as observed evidence of the
+      # thing it denies is exactly the error plan §2 is about. tokeye_transient writes one
+      # `phenomenon="elm"` row per detected ELM.
+      - {source: tokeye_transient, phenomenon: elm}
+    forecasts: [label_forecast]
+    band_khz: null
+    diags: [mhr, filterscopes]
+    requires_group: [mhr]
+    prior: 0.110
+
+  tearing:
+    title: Tearing mode
+    labels:
+      - {slug: d3d_tearing_onset_cnn1d, label: tm_prob, thr: null, weight: 1.0}
+    events:
+      # Low-frequency rotating island; a locked mode is at 0 kHz. 30 kHz is the top of the band
+      # the 2/1 and 3/2 are seen rotating in on these shots.
+      - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [null, 30.0]}
+    forecasts: [label_forecast]
+    band_khz: [0.0, 30.0]
+    diags: [mhr]
+    requires_group: [mhr]
+    prior: 0.062
+
+  sawtooth:
+    title: Sawtooth
+    labels: []
+    events:
+      - {source: ece_sawtooth, phenomenon: sawtooth}
+    forecasts: []
+    band_khz: null
+    diags: [ece]
+    requires_group: [ece]
+    prior: 0.006
+
+  fishbone:
+    title: Fishbone
+    labels: []
+    events:
+      # A fishbone chirps DOWN. `chirp_khz_per_ms` is the least-squares slope of the per-column
+      # centroid, so the sign is the whole discriminator; 174 of 454 tracks on shot 198658 are
+      # down-chirping, which is why the band matters too.
+      - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [5.0, 40.0],
+         attrs: {chirp_sign: -1}}
+    forecasts: []
+    band_khz: [5.0, 40.0]
+    diags: [mhr]
+    requires_group: [mhr]
+    prior: 0.004
+
+  qcm:
+    title: Quasi-coherent mode
+    labels: []
+    events:
+      - {source: tokeye_track, phenomenon: coherent_mode, band_khz: [40.0, 120.0]}
+    forecasts: []
+    band_khz: [40.0, 120.0]
+    diags: [mhr, co2]
+    requires_group: [mhr, co2]
+    prior: 0.000
+
+  qh:
+    title: Quiescent H-mode
+    labels: []
+    events:
+      - {source: qh_proxy, phenomenon: qh}
+    forecasts: []
+    band_khz: null
+    diags: [mhr, filterscopes]
+    requires_group: [mhr]
+    prior: 0.018
+    database:
+      name: QH_Database
+      path_key: qh_database_csv    # paths.yaml -> .../0labeled_data/QH_Database.csv
+      note: >-
+        134 rows, 107 distinct shots, all between 173694 and 175544 -- and 0 of the 107 are in
+        the 500-shot recommender_v1 database, so this term contributes nothing today. It is
+        wired because the list is the only human-curated QH evidence there is, and a database
+        built over the 2016-2017 campaigns would light it up.
+
+  lh:
+    title: L-H transition
+    labels: []
+    events:
+      # `lh_transition` only. `hl_transition` is the way back out and is a different claim.
+      - {source: dalpha_lh, phenomenon: lh_transition}
+    forecasts: []
+    band_khz: null
+    diags: [filterscopes]
+    requires_group: [filterscopes]
+    prior: 0.016
+
+  detachment:
+    title: Divertor detachment
+    labels: []
+    events: []          # no detector writes detachment; text is the only route (see the caveats)
+    forecasts: []
+    band_khz: null
+    diags: []
+    requires_group: []
+    prior: 0.022
+
+  pickup:
+    title: Instrumental pickup
+    labels: []
+    events:
+      # A descriptor, not a plasma phenomenon: a row lit for most of the record is a receiver
+      # line. Kept in the registry so "which shots does the ece pickup move on" is answerable.
+      - {source: tokeye_track, phenomenon: pickup, attrs: {pickup: true}}
+    forecasts: []
+    band_khz: null
+    diags: [mhr, ece, co2]
+    requires_group: [mhr]
+    prior: 0.000
+
+  rwm:
+    title: Resistive wall mode
+    labels: []
+    events: []          # no detector writes rwm; text is the only route (see the caveats)
+    forecasts: []
+    band_khz: [0.0, 10.0]
+    diags: [mirnov, mhr]
+    requires_group: [mhr]
+    prior: 0.012
