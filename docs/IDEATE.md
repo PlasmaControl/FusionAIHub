@@ -113,6 +113,28 @@ Three things hold for the replies and are worth knowing before reading one:
   observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
   is the truth the old empty list hid.)
 
+## Frame-code provenance
+
+Each `frame_codes/<shot>.pt` has a JSON sibling saying how it was made — device, thread count,
+encode clock, run manifest — because the encoder is not device-independent (185955's `bes` and
+`mhr` codes differ between cuda and cpu, and between cpu at four threads and at eight). The 500
+production caches predate the sidecar and were reconstructed by
+`scripts/ideate/frame_codes_provenance.py --backfill` from the run manifests under `runs/encode/`.
+
+**A backfilled sidecar carries `device`/`device_source`, `torch_threads`/`torch_threads_source`
+(the `OMP_NUM_THREADS` the sbatch exports, not a measurement of the run), `encoded_at` (the cache
+file's mtime), `run_manifest` where one names the shot, and `backfilled: true`. It carries NO
+input fingerprint — `input_file` null and `input_fingerprint.kind` `"unknown"`, with
+`size_bytes`, `mtime_ns` and `sha256` null — and null `torch_version`, `git_sha`,
+`ignite_bundle`, `ignite_bundle_sha`, `ignite_revision`, `n_frames`, `modalities` and
+`include_video`, because the run manifests record none of them and stat-ing the corpus file now
+would describe it today rather than at encode time.** So "every cache has a sidecar" is true and
+"every cache's encode is reproducible from its sidecar" is not.
+
+`--audit` is the read-only form of that claim: it prints the census — caches, sidecars, missing
+sidecars, `input_fingerprint.kind`, device, `backfilled`, and the null count per field — so a
+reader checks the counts instead of trusting the sentence.
+
 Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` and
 `ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
 `ideate query` cannot disagree about a shot. `src/ideate/mcp/tools.py` is the whole contract —
