@@ -22,7 +22,8 @@ src = Path(sys.argv[1])
 horizons = [250.0, 500.0, 1000.0]
 rng = np.random.default_rng(20260905)
 x = rng.normal(size=(256, 38))
-models = pickle.load(open(src, "rb"))
+with src.open("rb") as stream:
+    models = pickle.load(stream)
 sm = models[0][0]
 # The DeepSurvivalMachines level, as `get_survival_from_shot.py` reaches it
 # through SurvivalModel; the estimator wrapper's DataFrame path trips on a
@@ -34,4 +35,6 @@ np.savez_compressed(
     meta=np.array([f"source={src}", f"sha256={hashlib.sha256(src.read_bytes()).hexdigest()}",
                    f"torch={torch.__version__}", "fork=/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/auton-survival"]),
 )
-print("wrote", out, s.shape, "S(1000) mean %.4f min %.4f max %.4f" % (s[:, 2].mean(), s[:, 2].min(), s[:, 2].max()))
+print("wrote", out, s.shape,
+      f"S(1000) mean {s[:, 2].mean():.4f} min {s[:, 2].min():.4f} "
+      f"max {s[:, 2].max():.4f}")
