@@ -716,3 +716,16 @@ def test_the_project_mcp_config_points_at_this_server():
     assert entry["args"][-2:] == ["-m", "ideate.mcp"]
     assert Path(entry["cwd"]).resolve() == REPO
     assert os.path.isabs(entry["cwd"])
+
+
+def test_an_unreadable_optional_table_is_recorded_by_the_store_not_raised(ideate_db):
+    """`ShotDB.load` reads the label tables eagerly since I9a; a torn `events.parquet` used to
+    raise there, turning every MCP call into a protocol error. The core tables load, the
+    failure is on `load_errors`, and the events reader reports it in its own words."""
+    from ideate.shotdb.store import ShotDB
+
+    (ideate_db / "db" / "events.parquet").write_bytes(b"not parquet")
+    db = ShotDB.load(ideate_db / "db")
+    assert set(db.load_errors) == {"events"}
+    assert "ArrowInvalid" in db.load_errors["events"] or "Parquet" in db.load_errors["events"]
+    assert db.events is not None and len(db.events) == 0  # the empty typed frame, not None
