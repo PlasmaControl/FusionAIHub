@@ -216,20 +216,51 @@ Four things hold for the replies and are worth knowing before reading one:
   calibrated probability, and its coverage (`t_cov0_s`/`t_cov1_s`) is `null`, because nobody
   recorded which interval of the shot was examined. That second null is the load-bearing one — a
   shot's **absence** from a curated list is not a negative, and nothing downstream may read it as
-  one. A curated row is excluded from `n_observed_rows` too, so a shot whose only rows come from
-  a spreadsheet never answers `status: observed`. `ideate labels join` needs no rule for these
-  rows: `events_union` reads each shot's `events/<shot>_events.parquet` wholesale, so they reach
-  `db/events.parquet` as they are.
+  one. `database` is outside `OBSERVED_KINDS`, so a shot whose only rows come from a spreadsheet
+  never answers `status: observed`, and labelmaker's own `database:<stem>` source row — `ok`,
+  coverage NaN — matches `event_sources.NON_DIAGNOSTIC_SOURCE_PREFIXES`, so it is not counted
+  as a diagnostic having looked and cannot donate coverage either. `ideate labels join` needs no rule for these rows: `events_union` reads each
+  shot's `events/<shot>_events.parquet` wholesale, so they reach `db/events.parquet` as they
+  are.
 * **`status` says what an empty `events` means**, and the four values are not degrees of one
   thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
   `unprocessed`: it is indexed, but `db/event_sources.parquet` records no detector as having
   completed over it — absence is not evidence. `uncovered`: detectors ran, but not over the
-  window asked about; the caveat names the covered span. `observed`: detectors ran over (part
-  of) the window, and an empty list is a real finding of nothing, said in as many words. A
+  window asked about; the caveat names the covered span. `observed`: some one detector's *own*
+  finite coverage overlaps the window, and an empty list is a real finding of nothing, said in as
+  many words — and the caveat counts only the sources that covered the window, not everything
+  that ran. **A source that completed without recording its coverage (`ok` with NaN `t_cov`, as
+  real shot 198658's `actuator/ech_power_total` is) can neither cover nor un-cover a window: it
+  keeps the shot out of `unprocessed` because it did run, it can never make a window `observed`,
+  and a shot whose every completed source has unknown coverage answers `uncovered` with a caveat
+  naming each one.** A `text` row, a `database:<stem>` row and an `evidence_kind="database"` row
+  are not diagnostics having looked either, and none of them can make a shot `observed`. A
   reversed, zero-width or non-finite window is an error dict, never a silent empty. (On the
   `recommender_v1` database today *all* 1,037 event rows are forecasts and no shot has an
   observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
   is the truth the old empty list hid.)
+
+## Frame-code provenance
+
+Each `frame_codes/<shot>.pt` has a JSON sibling saying how it was made — device, thread count,
+encode clock, run manifest — because the encoder is not device-independent (185955's `bes` and
+`mhr` codes differ between cuda and cpu, and between cpu at four threads and at eight). The 500
+production caches predate the sidecar and were reconstructed by
+`scripts/ideate/frame_codes_provenance.py --backfill` from the run manifests under `runs/encode/`.
+
+**A backfilled sidecar carries `device`/`device_source`, `torch_threads`/`torch_threads_source`
+(the `OMP_NUM_THREADS` the sbatch exports, not a measurement of the run), `encoded_at` (the cache
+file's mtime), `run_manifest` where one names the shot, and `backfilled: true`. It carries NO
+input fingerprint — `input_file` null and `input_fingerprint.kind` `"unknown"`, with
+`size_bytes`, `mtime_ns` and `sha256` null — and null `torch_version`, `git_sha`,
+`ignite_bundle`, `ignite_bundle_sha`, `ignite_revision`, `n_frames`, `modalities` and
+`include_video`, because the run manifests record none of them and stat-ing the corpus file now
+would describe it today rather than at encode time.** So "every cache has a sidecar" is true and
+"every cache's encode is reproducible from its sidecar" is not.
+
+`--audit` is the read-only form of that claim: it prints the census — caches, sidecars, missing
+sidecars, `input_fingerprint.kind`, device, `backfilled`, and the null count per field — so a
+reader checks the counts instead of trusting the sentence.
 
 Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` and
 `ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and

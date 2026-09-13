@@ -286,6 +286,57 @@ def test_backfill_leaves_the_payload_byte_identical(tmp_path):
     assert set(payload) == {"codes", "actuators", "n_frames", "vocabs"}
 
 
+def test_the_audit_is_a_read_only_census_of_what_the_sidecars_actually_say(tmp_path):
+    """What the 500 delivered sidecars CONTAIN was asserted in prose and never counted: the
+    report said the input fingerprint was size+mtime, which is true of a live encode and false of
+    every backfilled file, where it is `unknown` with `torch_version`, `git_sha` and
+    `ignite_bundle_sha` all null. `audit` counts it instead of describing it, and writes
+    nothing."""
+    codes = tmp_path / "frame_codes"
+    runs = tmp_path / "runs" / "encode"
+    for shot in (185786, 190090, 204346):
+        _cache(codes, shot)
+    _run_manifest(runs, "20260907T154930", codes, "cuda", [185786])
+    provenance.backfill(codes_dir=codes, runs_dir=runs)
+    # one sidecar from a real encode, with a real fingerprint and a real torch version
+    h5 = tmp_path / "204346.h5"
+    h5.write_bytes(b"x" * 11)
+    provenance.write_sidecar(
+        codes, 204346,
+        provenance.build_sidecar(204346, device="cuda", input_file=h5, bundle=None,
+                                 torch_version="2.5.1", git_sha="deadbee"),
+    )
+    before = {p.name: p.stat().st_mtime_ns for p in sorted(codes.iterdir())}
+
+    report = provenance.audit(codes_dir=codes)
+
+    assert report["n_caches"] == 3
+    assert report["n_sidecars"] == 3
+    assert report["n_missing_sidecars"] == 0
+    assert report["by_fingerprint_kind"] == {"unknown": 2, "mtime+size": 1}
+    assert report["by_device"] == {"cuda": 2, "cpu": 1}
+    assert report["backfilled"] == {"true": 2, "false": 1}
+    assert report["n_null"]["torch_version"] == 2
+    assert report["n_null"]["git_sha"] == 2
+    assert report["n_null"]["ignite_bundle_sha"] == 3
+    assert report["n_null"]["run_manifest"] == 2  # 190090 had none; the live sidecar has none
+    assert {p.name: p.stat().st_mtime_ns for p in sorted(codes.iterdir())} == before, \
+        "an audit reads"
+
+
+def test_the_audit_says_when_a_cache_has_no_sidecar_at_all(tmp_path):
+    codes = tmp_path / "frame_codes"
+    for shot in (1, 2):
+        _cache(codes, shot)
+    provenance.write_sidecar(
+        codes, 1, provenance.build_sidecar(1, device="cpu", input_file=None, bundle=None)
+    )
+    report = provenance.audit(codes_dir=codes)
+    assert report["n_caches"] == 2 and report["n_sidecars"] == 1
+    assert report["n_missing_sidecars"] == 1
+    assert report["missing_sidecars"] == [2]
+
+
 def test_the_backfill_script_is_a_thin_wrapper_over_the_module():
     """The script exists so the backfill can be run once from a shell; the behaviour under test
     is the module's, and this is what keeps the two from being two implementations."""
@@ -296,5 +347,29 @@ def test_the_backfill_script_is_a_thin_wrapper_over_the_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert module.provenance.backfill is provenance.backfill
+    assert module.provenance.audit is provenance.audit
     with pytest.raises(SystemExit):
-        module.main([])  # --backfill is not optional: the script does one thing on purpose
+        module.main([])  # one of --backfill/--audit is required: the script does not guess
+
+
+def test_the_audit_flag_writes_nothing_and_prints_the_census(tmp_path, capsys):
+    """`--audit` is the reproducible form of a claim about the delivered sidecars, so it must be
+    safe to run against the production store: it opens files and writes none."""
+    import importlib.util
+
+    codes = tmp_path / "frame_codes"
+    _cache(codes, 190090)
+    provenance.write_sidecar(
+        codes, 190090, provenance.build_sidecar(190090, device="cpu", input_file=None, bundle=None)
+    )
+    before = sorted((p.name, p.stat().st_mtime_ns) for p in codes.iterdir())
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "ideate" / "frame_codes_provenance.py"
+    spec = importlib.util.spec_from_file_location("frame_codes_provenance_audit", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.main(["--audit", "--codes-dir", str(codes)]) == 0
+
+    got = json.loads(capsys.readouterr().out)
+    assert got["n_caches"] == 1 and got["by_fingerprint_kind"] == {"unknown": 1}
+    assert sorted((p.name, p.stat().st_mtime_ns) for p in codes.iterdir()) == before

@@ -19,6 +19,12 @@ columns. A shot whose file is absent contributes NO ROWS, and that absence is wh
 reports as `unprocessed`: nobody has run a detector over this shot, so its empty event list is
 not evidence of a quiet shot.
 
+TWO ROWS THAT ARE NOT COVERAGE. An `ok` row whose `t_cov` pair is NaN ran and recorded no span
+(`unknown_coverage_rows`), and an `ok` row from a non-diagnostic source -- `text`, `database`,
+`database:<stem>` -- is a logbook hit or a curated listing rather than a measurement
+(`is_non_diagnostic`). Neither can make a window observed, and a reply has to say which of the
+two it is holding instead of counting either as "a source that looked".
+
 `write_sources` is the fixture writer for the contract: labelmaker's tests and ideate's build the
 same table through it, so the two sides cannot drift into two shapes of the same file.
 """
@@ -60,9 +66,22 @@ STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 #: shot's own logbook entries and labelmaker records that it ran, over the shot's span -- but
 #: "the word was looked for" says nothing about what any diagnostic showed, which is the same
 #: policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
-#: source that writes them. Excluded from `has_observed_products` and from coverage: a shot with
-#: a logbook and no detector run is `unprocessed`, not "0 detections inside coverage".
-NON_DIAGNOSTIC_SOURCES: tuple[str, ...] = ("text",)
+#: source that writes them. `database` is the same kind of claim from the other direction: a
+#: curated table is a list somebody published of shots that had a thing, and a listing is not a
+#: measurement of this shot -- its rows carry NaN coverage for exactly that reason. Excluded from
+#: `has_observed_products` and from coverage: a shot with a logbook, a curated entry and no
+#: detector run is `unprocessed`, not "0 detections inside coverage".
+NON_DIAGNOSTIC_SOURCES: tuple[str, ...] = ("text", "database")
+
+#: The same rule for the per-table sources labelmaker writes as `database:<stem>` (one row per
+#: curated file). A PREFIX, not a substring: `databases_of_rwm` would be somebody's detector.
+NON_DIAGNOSTIC_SOURCE_PREFIXES: tuple[str, ...] = ("database:",)
+
+
+def is_non_diagnostic(source: str) -> bool:
+    """Is this source's `ok` row something other than a diagnostic having looked at the plasma?"""
+    name = str(source)
+    return name in NON_DIAGNOSTIC_SOURCES or name.startswith(NON_DIAGNOSTIC_SOURCE_PREFIXES)
 
 SUFFIX = "_sources.parquet"
 
@@ -171,10 +190,16 @@ def shot_summary(sources: pd.DataFrame, shot: int) -> dict:
     """`{n_sources, n_sources_ok, n_sources_skipped, n_sources_error, has_observed_products}`.
 
     `has_observed_products` is "somebody ran a detector over this shot and it completed" -- at
-    least one `ok` row from a source that is not in `NON_DIAGNOSTIC_SOURCES`. A shot whose every
-    source is `skipped` has been considered and not examined, which is nearer to unprocessed than
-    to observed and is counted as such; so is a shot on which only the `text` lexicon ran.
-    `n_sources_ok` still counts every `ok` row, `text` included: it is a count of what ran.
+    least one `ok` row from a source `is_non_diagnostic` rejects. A shot whose every source is
+    `skipped` has been considered and not examined, which is nearer to unprocessed than to
+    observed and is counted as such; so is a shot on which only the `text` lexicon ran or only a
+    curated table lists it. `n_sources_ok` still counts every `ok` row, `text` included: it is a
+    count of what ran.
+
+    `n_sources_unknown_coverage` counts the diagnostic `ok` rows whose `t_cov` pair is NaN: they
+    RAN and nothing records over what span, so they can neither cover nor un-cover any window
+    (`covers`). They are not a gap in the coverage, they are the absence of a coverage claim, and
+    the number is here so a reply can say so instead of counting them as observation.
     """
     rows = sources[sources["shot"] == int(shot)] if len(sources) else sources
     counts = {s: int((rows["status"] == s).sum()) for s in STATUSES}
@@ -183,55 +208,94 @@ def shot_summary(sources: pd.DataFrame, shot: int) -> dict:
         "n_sources_ok": counts["ok"],
         "n_sources_skipped": counts["skipped"],
         "n_sources_error": counts["error"],
+        "n_sources_unknown_coverage": len(unknown_coverage_rows(rows)),
         "has_observed_products": bool(len(_observing(rows))),
     }
 
 
 def _observing(sources: pd.DataFrame) -> pd.DataFrame:
-    """The rows that completed AND are a diagnostic's: `ok`, and not `NON_DIAGNOSTIC_SOURCES`."""
+    """The rows that completed AND are a diagnostic's: `ok`, and not `is_non_diagnostic`."""
     if not len(sources):
         return sources
-    keep = (sources["status"] == "ok") & ~sources["source"].isin(NON_DIAGNOSTIC_SOURCES)
+    keep = (sources["status"] == "ok") & ~sources["source"].map(is_non_diagnostic)
     return sources[keep]
 
 
-def coverage_span(sources: pd.DataFrame) -> tuple[float, float] | None:
-    """The `(min t_cov0, max t_cov1)` of the `ok` DIAGNOSTIC rows, or None when nothing ran.
+def _finite(sources: pd.DataFrame) -> np.ndarray:
+    lo = sources["t_cov0_s"].to_numpy(dtype=float)
+    hi = sources["t_cov1_s"].to_numpy(dtype=float)
+    return np.isfinite(lo) & np.isfinite(hi)
 
-    The OUTER span of what ran, used to answer "was this window looked at at all". It is
-    deliberately not offered per event: handing one source's span to another source's rows is the
-    defect this module exists to fix, and a caller that needs per-source coverage has the rows.
-    A `text` row's span is the shot's own duration and is not a diagnostic having looked, so it
-    does not count (`NON_DIAGNOSTIC_SOURCES`).
+
+def unknown_coverage_rows(sources: pd.DataFrame) -> pd.DataFrame:
+    """The diagnostic `ok` rows whose coverage is NaN: they ran, over nothing anybody recorded.
+
+    This is not an empty span and not a skipped source. Real shot 198658 wrote one --
+    `actuator / ech_power_total / ok / NaN / NaN / 0 events`, the actuator's trace being all-NaN
+    -- and a reply that counted it as coverage would assert an observation over a window nothing
+    is recorded as having looked at. A caller reports these rows by name.
     """
     ok = _observing(sources)
+    if not len(ok):
+        return ok
+    return ok[~_finite(ok)]
+
+
+def observing_rows(
+    sources: pd.DataFrame, t0_s: float | None = None, t1_s: float | None = None
+) -> pd.DataFrame:
+    """The diagnostic `ok` rows with FINITE coverage overlapping `[t0_s, t1_s]`. Either bound may
+    be None, meaning unbounded; both None is "every source that recorded a span".
+
+    Per source, never the hull of all of them: two passes over [1,2] and [5,6] have not looked at
+    3-4 s, and answering that from their outer span is the borrowed-coverage defect this table
+    exists to fix. `retrieval.phenomena` clips per source for the same reason.
+    """
+    ok = _observing(sources)
+    if not len(ok):
+        return ok
+    keep = _finite(ok)
+    if t0_s is not None:
+        keep &= ok["t_cov1_s"].to_numpy(dtype=float) >= float(t0_s)
+    if t1_s is not None:
+        keep &= ok["t_cov0_s"].to_numpy(dtype=float) <= float(t1_s)
+    return ok[keep]
+
+
+def coverage_span(sources: pd.DataFrame) -> tuple[float, float] | None:
+    """The HULL `(min t_cov0, max t_cov1)` of the `ok` DIAGNOSTIC rows, or None when no such row
+    recorded a span.
+
+    The outer span of what ran, for reporting ("the covered stretch runs 0 to 6 s"). It is
+    deliberately not offered per event, and it is not what `covers` asks: handing one source's
+    span to another source's rows is the defect this module exists to fix, and the hull would
+    hand every source the union of all of them. A `text` or `database:` row's span is not a
+    diagnostic having looked, so it does not count (`is_non_diagnostic`).
+    """
+    ok = observing_rows(sources)
     if ok.empty:
         return None
-    lo = ok["t_cov0_s"].to_numpy(dtype=float)
-    hi = ok["t_cov1_s"].to_numpy(dtype=float)
-    good = np.isfinite(lo) & np.isfinite(hi)
-    if not good.any():
-        return None
-    return float(lo[good].min()), float(hi[good].max())
+    return float(ok["t_cov0_s"].min()), float(ok["t_cov1_s"].max())
 
 
 def covers(sources: pd.DataFrame, t0_s: float | None, t1_s: float | None) -> bool | None:
-    """Does any `ok` source's coverage overlap `[t0_s, t1_s]`? None when nothing ran.
+    """Does SOME ONE `ok` diagnostic source's own coverage overlap `[t0_s, t1_s]`?
+
+    None when no such source recorded a span at all -- which is not False: a source that ran and
+    recorded no coverage says nothing either way, and the caller has to report that rather than
+    turn it into an observation (see `unknown_coverage_rows`).
 
     Overlap, not containment -- the same rule `get_events` filters rows by, so a window the
     filter would return an event from is never reported as uncovered.
     """
-    span = coverage_span(sources)
-    if span is None:
+    if observing_rows(sources).empty:
         return None
-    lo, hi = span
-    after_window = t0_s is not None and hi < float(t0_s)
-    before_window = t1_s is not None and lo > float(t1_s)
-    return not (after_window or before_window)
+    return not observing_rows(sources, t0_s, t1_s).empty
 
 
 __all__ = [
     "NON_DIAGNOSTIC_SOURCES",
+    "NON_DIAGNOSTIC_SOURCE_PREFIXES",
     "SOURCES_COLUMNS",
     "SOURCES_DTYPES",
     "STATUSES",
@@ -239,10 +303,13 @@ __all__ = [
     "coverage_span",
     "covers",
     "empty_sources",
+    "is_non_diagnostic",
+    "observing_rows",
     "read_sources",
     "shot_summary",
     "source_row",
     "sources_file",
     "sources_union",
+    "unknown_coverage_rows",
     "write_sources",
 ]

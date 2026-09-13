@@ -403,6 +403,12 @@ def write_sources(
     is the observed silence; `status == "skipped"` with a `reason` is the
     absence of an observation; no row at all is "not processed".
 
+    An `ok` row carries `reason=""` and a `skipped` or `error` row must
+    carry one, and `_source_row` REFUSES the other two combinations: a
+    reason on an `ok` row would be a caveat hidden in a field consumers
+    read as provenance, and a curated table's "a listing is not a coverage
+    claim" belongs in its NaN `t_cov` pair and the docs, not there.
+
     Merged and atomic like `write_events`, on the same reasoning and with
     the same key: a re-run of one channel replaces that channel's rows and
     leaves every other source's alone.
