@@ -665,7 +665,7 @@ def _actuator(text: str) -> tuple[str, float]:
 
 def _query_state(args) -> QueryState:
     return QueryState(
-        text=args.text,
+        text=args.text or getattr(args, "query_text", None),
         negatives=args.negative,
         ref_shot=args.ref_shot,
         ref_window_ms=tuple(args.ref_window) if args.ref_window else None,
@@ -1403,7 +1403,7 @@ def cmd_query(args) -> int:
         return 1
     try:
         report = rank_mod.search_report(state, db)
-    except KeyError as e:
+    except (KeyError, ValueError) as e:
         print(
             f"{e.args[0]}. Columns are the ones `ideate show SHOT --full` prints.", file=sys.stderr
         )
@@ -1420,11 +1420,14 @@ def cmd_query(args) -> int:
             "results": [r.model_dump(mode="json") for r in found.items],
         }
         print(json.dumps(doc, indent=1, default=str))
-        return 0 if any(fired.values()) else 2
+        return 0 if any(fired.values()) or report["candidates"] == 0 else 2
     _query_header(state, report, fired)
     for caveat in report["caveats"]:
         print(caveat)
     _print_proposal(state, found.proposal_flags)  # answered even when nothing resembles it
+    if report["candidates"] == 0:
+        print("nothing passed the filters.", file=sys.stderr)
+        return 0
     if not any(fired.values()):
         print(
             "no channel had anything to search on -- give --ref SHOT, --text, --where or "
@@ -1638,6 +1641,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_phenomenon)
 
     p = sub.add_parser("query", help="find similar shots")
+    p.add_argument("query_text", nargs="?", metavar="TEXT", help="free text; resolves phenomenon aliases")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")
     p.add_argument("--negative", action="append", default=[], help="text to move away from")
     p.add_argument("--ref-shot", "--ref", type=int, help="use this shot as the reference")
@@ -1662,8 +1666,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME=VALUE",
         help="target actuator setting, e.g. nbi.total=5e6",
     )
-    p.add_argument("--require", action="append", default=[], metavar="LABEL")
-    p.add_argument("--avoid", action="append", default=[], metavar="LABEL")
+    p.add_argument(
+        "--require", action="append", default=[], metavar="TOKEN",
+        help="require every token: regime/operational, phenomenon:<id> (observed), "
+             "label:<slug>/<name> (above operating point), source:<kind or producer>",
+    )
+    p.add_argument(
+        "--avoid", action="append", default=[], metavar="TOKEN",
+        help="exclude matching tokens; phenomenon:<id> requires observed source coverage of "
+             "the segment, and excludes unprocessed/uncovered shots with caveats",
+    )
     p.add_argument("--exclude-shot", action="append", default=[], type=int)
     p.add_argument("--exclude-run", action="append", default=[])
     p.add_argument("--prefer-outcome", choices=["any", "success"], default="any")

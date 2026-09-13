@@ -261,7 +261,9 @@ def search_shots(
 
     fired = {name: len(ranking) for name, ranking in found.rankings.items()}
     caveats.extend(db.label_filter_caveats(state.segment, state.avoid_labels))
-    if not any(fired.values()):
+    if report["candidates"] == 0:
+        caveats.append("nothing passed the filters")
+    elif not any(fired.values()):
         # Not the same as "nothing matched": no channel had anything to search ON. A model told
         # only that the list is empty will rephrase, which cannot help.
         caveats.append(
