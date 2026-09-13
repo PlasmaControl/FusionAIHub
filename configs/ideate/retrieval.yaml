@@ -22,6 +22,7 @@ retrieval:
     text_knn: 1.0
     bm25: 0.6                  # lexical backstop for exact terms; the dense channel leads
     ignite_knn: 1.0            # IGNITE codec embeddings, needs --ref; empty on a db built --no-encode
+    phenomenon: 1.2            # resolved phenomenon evidence, ordered by evidence tier then score
   dedup_threshold: 0.97        # cosine in text_log space above which two hits are the same shot
   # The m-th hit from one run day is multiplied by this^(m-1). Measured on the real 105-shot DB
   # with `--ref 161172`: RRF scores are tightly packed (rank 1 = 0.03151, rank 20 = 0.02201), so
