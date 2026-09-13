@@ -332,8 +332,9 @@ def _phenomenon_line(ev, rec: schema.ShotRecord) -> str:
     parts.append(f"coverage: {ev.coverage_state}")
     for caveat in ev.caveats:
         if (caveat in ph.EVENT_CAVEATS.values() or caveat.startswith((
-            "no detector registered", "required corpus group", "could not read", "no flat_top",
-        )) or "coverage unknown" in caveat or "covered only" in caveat or "coverage of" in caveat):
+            "no detector registered", "required corpus group", "could not read", "operator log says NOT",
+        )) or caveat == ph.RUN_SCOPE_TEXT or "whole record was searched" in caveat
+            or "coverage unknown" in caveat or "covered only" in caveat or "coverage of" in caveat):
             parts.append(caveat)
     found = best_quote(rec, where=lambda text: ph._mentions(text, ev.phenomenon))
     if found is not None:

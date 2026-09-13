@@ -62,3 +62,19 @@ def test_mcp_and_cli_describe_include_each_evidenced_phenomenon_once(ideate_db, 
     assert cli.main(['describe', '100']) == 0
     assert capsys.readouterr().out.strip() == prose
     tools.reset_cache()
+
+
+def test_description_retains_run_scope_and_operator_denial_caveats(ideate_db):
+    db = _db_with(ideate_db, [], claims=[
+        _claim(100, 'tearing', scope='run'),
+        _claim(100, 'tearing', polarity='neg'),
+    ])
+    line = describe._phenomenon_line(ph.evidence(100, 'tearing', db), db.get(100))
+    assert ph.RUN_SCOPE_TEXT in line
+    assert ph.NEGATIVE_CLAIM.format(title='Tearing mode') in line
+
+
+def test_description_reports_when_a_missing_segment_widens_the_search(ideate_db):
+    db = _db_with(ideate_db, [_event(100, 'seen')])
+    ev = ph.evidence(100, 'tearing', db, segment='ramp_down')
+    assert ph.NO_SEGMENT.format(segment='ramp_down') in describe._phenomenon_line(ev, db.get(100))
