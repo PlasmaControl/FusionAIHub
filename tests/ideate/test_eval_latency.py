@@ -15,7 +15,6 @@ import pytest
 
 from ideate.eval import latency as lat
 from ideate.schema import LatencyRow
-from ideate.shotdb import store
 
 from .conftest import shot_record, write_db
 

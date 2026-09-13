@@ -29,6 +29,7 @@ Nothing here is tuned to pass. If a row says FAIL it is a finding, and the repor
 from __future__ import annotations
 
 import datetime as dt
+import math
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -162,7 +163,7 @@ def measure(
     return LatencyReport(
         db_dir=str(db_dir),
         n_shots=len(shots),
-        n_segment_rows=int(len(db.segments)),
+        n_segment_rows=len(db.segments),
         repeats=repeats,
         warm=True,
         rows=rows,
@@ -177,13 +178,15 @@ def _first_with_segment(db, shots: list[int], segment: str) -> int | None:
 
 
 def _ms(seconds: float) -> str:
-    return "n/a" if seconds != seconds else f"{1000.0 * seconds:.1f} ms"
+    return "n/a" if math.isnan(seconds) else f"{1000.0 * seconds:.1f} ms"
 
 
 def markdown(report: LatencyReport) -> str:
     lines = [
-        f"### latency, warm, N={report.repeats} "
-        f"({report.n_shots} shots, {report.n_segment_rows} segment rows)",
+        (
+            f"### latency, warm, N={report.repeats} "
+            f"({report.n_shots} shots, {report.n_segment_rows} segment rows)"
+        ),
         "",
         f"database `{report.db_dir}`",
         "",
