@@ -187,6 +187,35 @@ def test_describe_shot_on_a_shot_that_is_not_there_is_an_error_dict(ideate_db):
     assert "999999" in got["error"] and got["caveats"] == []
 
 
+def test_describe_shot_says_which_device_encoded_the_frame_codes(ideate_db, monkeypatch):
+    """The four-key cache payload records no device, and the codes are not bit-identical across
+    devices or across BLAS thread counts. A description that says "this shot is encoded" without
+    saying how is the state the encode product shipped in."""
+    from ideate import config
+    from ideate.design import provenance
+
+    codes = Path(config.load_paths().data_root) / "frame_codes"
+    codes.mkdir(parents=True, exist_ok=True)
+    (codes / "100.pt").write_bytes(b"")
+    provenance.write_sidecar(
+        codes, 100, provenance.build_sidecar(100, device="cuda", input_file=None, bundle=None)
+    )
+    (codes / "101.pt").write_bytes(b"")  # encoded, but nobody recorded how
+
+    got = tools.describe_shot(100)
+    assert got["frame_codes"]["present"] is True
+    assert got["frame_codes"]["device"] == "cuda"
+    assert not [c for c in got["caveats"] if "provenance sidecar" in c]
+
+    unknown = tools.describe_shot(101)
+    assert unknown["frame_codes"]["present"] is True
+    assert unknown["frame_codes"]["device"] is None
+    assert any("no provenance sidecar" in c for c in unknown["caveats"])
+
+    none_at_all = tools.describe_shot(200)
+    assert none_at_all["frame_codes"] == {"present": False, "device": None, "path": None}
+
+
 def test_a_missing_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
@@ -198,12 +227,150 @@ def test_a_missing_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------------- get_events
 
 
-def test_get_events_without_a_table_says_the_join_has_not_run(tmp_path, monkeypatch):
+def write_sources(db_dir: Path, rows: list[dict]) -> None:
+    """`db/event_sources.parquet` -- what `ideate labels join` ingests from labelmaker."""
+    from ideate.labels import event_sources as es
+
+    es.write_sources(db_dir / "event_sources.parquet", rows)
+
+
+def _source(shot: int, name: str = "tokeye_track", **over) -> dict:
+    from ideate.labels import event_sources as es
+
+    over.setdefault("t_cov0_s", 0.0)
+    over.setdefault("t_cov1_s", 6.0)
+    return es.source_row(shot, name, **over)
+
+
+def test_get_events_without_a_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
+    """The tool now needs the shot index to tell an unindexed shot from an unexamined one, so a
+    missing database is the same error `describe_shot` and `search_shots` give."""
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "root"))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     got = tools.get_events(shot=1)
+    assert "error" in got and "ideate build" in got["error"]
+
+
+def test_get_events_without_an_events_table_says_the_join_has_not_run(ideate_db):
+    got = tools.get_events(shot=100)
     assert got["events"] == [] and got["n"] == 0 and got["forecasts"] == []
-    assert got["caveats"] == ["no events table yet (labelmaker events not joined)"]
+    assert "no events table yet (labelmaker events not joined)" in got["caveats"]
+
+
+# --------------------------------------------------------- the four states of an empty answer
+
+
+def test_a_shot_the_database_does_not_hold_is_unindexed_not_quiet(ideate_db):
+    """THE DEFECT. `get_events(198658)` returned `{"n": 0, "caveats": []}` for a shot that is not
+    in the 500-shot database at all, while `describe_shot(198658)` correctly said so. An
+    assistant reading the two together learns that the shot is in the database and was quiet."""
+    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+    got = tools.get_events(198658)
+    assert got["status"] == "unindexed"
+    assert "error" in got and "not in the database" in got["error"]
+
+
+def test_an_indexed_shot_nobody_processed_is_unprocessed(ideate_db):
+    """No source rows and no non-forecast events: nobody ran a detector over this shot, so its
+    empty event list is not a report that the shot was quiet."""
+    write_events(
+        ideate_db / "db",
+        [
+            _event(
+                100, "disruption", 3.0, 3.0, event_id="100-f-00001",
+                source="label_forecast", evidence_kind="forecast", horizon_s=0.2,
+            )
+        ],
+    )
+    got = tools.get_events(100)
+    assert got["status"] == "unprocessed"
+    assert got["n"] == 0 and got["n_forecasts"] == 1
+    assert any("Absence is not evidence" in c for c in got["caveats"])
+    assert got["coverage"]["n_sources_ok"] == 0
+    assert got["coverage"]["has_observed_products"] is False
+
+
+def test_a_window_outside_every_sources_coverage_is_uncovered_and_names_the_span(ideate_db):
+    write_sources(ideate_db / "db", [_source(100, t_cov0_s=1.0, t_cov1_s=4.0)])
+    write_events(ideate_db / "db", [_event(100, "tearing", 1.5, 2.0)])
+
+    got = tools.get_events(100, t0_s=8.0, t1_s=9.0)
+    assert got["status"] == "uncovered"
+    assert got["n"] == 0
+    assert any("outside every source's coverage" in c and "1.0 to 4.0" in c for c in got["caveats"])
+    assert got["coverage"]["t_cov0_s"] == 1.0 and got["coverage"]["t_cov1_s"] == 4.0
+
+    inside = tools.get_events(100, t0_s=1.5, t1_s=2.5)
+    assert inside["status"] == "observed" and inside["n"] == 1
+
+
+def test_a_source_that_ran_and_saw_nothing_says_so_in_as_many_words(ideate_db):
+    """The state the whole contract exists for: somebody looked, over a known span, and there was
+    nothing to see. That is an observation, and it must not read like an unexamined shot."""
+    write_sources(
+        ideate_db / "db",
+        [_source(100, "tokeye_track", n_events=0), _source(100, "ece_sawtooth", n_events=0)],
+    )
+    got = tools.get_events(100)
+    assert got["status"] == "observed"
+    assert got["n"] == 0
+    assert got["coverage"]["n_sources_ok"] == 2
+    assert any("0 detections inside their coverage" in c for c in got["caveats"])
+
+
+def test_a_source_that_failed_is_reported_rather_than_counted_as_coverage(ideate_db):
+    write_sources(
+        ideate_db / "db",
+        [
+            _source(100, "tokeye_track", n_events=0),
+            _source(100, "ece_sawtooth", status="error", reason="ece read failed",
+                    t_cov0_s=float("nan"), t_cov1_s=float("nan")),
+            _source(100, "dalpha_lh", status="skipped", reason="no d_alpha on this shot",
+                    t_cov0_s=float("nan"), t_cov1_s=float("nan")),
+        ],
+    )
+    got = tools.get_events(100)
+    assert got["coverage"]["n_sources_ok"] == 1
+    assert got["coverage"]["n_sources_error"] == 1
+    assert got["coverage"]["n_sources_skipped"] == 1
+    assert any("FAILED on shot 100" in c for c in got["caveats"])
+    reasons = {s["source"]: s["reason"] for s in got["coverage"]["sources"]}
+    assert reasons["dalpha_lh"] == "no d_alpha on this shot"
+
+
+def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(ideate_db):
+    """A reversed window used to come back as a successful empty result, which reads exactly like
+    "nothing happened in that interval" -- for an interval that does not exist."""
+    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+
+    reversed_ = tools.get_events(100, t0_s=5.0, t1_s=1.0)
+    assert "error" in reversed_ and "reversed" in reversed_["error"]
+    assert any("not a report that the window was quiet" in c for c in reversed_["caveats"])
+
+    assert "error" in tools.get_events(100, t0_s=0.0, t1_s=0.0)
+    nan = tools.get_events(100, t0_s=float("nan"), t1_s=2.0)
+    assert "error" in nan and "not finite" in nan["error"]
+    assert "error" in tools.get_events(100, t1_s=float("inf"))
+
+
+def test_a_text_row_is_a_lexicon_hit_and_never_lands_in_events(ideate_db):
+    """The API documentation claimed every non-forecast row describes what a diagnostic showed.
+    A text row describes what somebody WROTE, which is not the same claim and not the same
+    evidence."""
+    write_sources(ideate_db / "db", [_source(100)])
+    write_events(
+        ideate_db / "db",
+        [
+            _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
+            _event(100, "tearing", 1.0, 2.0, event_id="100-t-00001",
+                   source="text", evidence_kind="text"),
+        ],
+    )
+    got = tools.get_events(100)
+    assert [e["event_id"] for e in got["events"]] == ["100-x-00001"]
+    assert [e["event_id"] for e in got["text_mentions"]] == ["100-t-00001"]
+    assert got["n"] == 1 and got["n_text_mentions"] == 1
+    assert any("not an assertion that the phenomenon occurred" in c for c in got["caveats"])
 
 
 def test_get_events_filters_by_shot_and_decodes_attrs(ideate_db):
@@ -235,7 +402,10 @@ def test_get_events_filters_by_phenomenon_and_by_time_overlap(ideate_db):
     # Overlap, not containment: an event straddling the window edge is in the window.
     window = tools.get_events(100, t0_s=1.8, t1_s=4.2)["events"]
     assert [e["event_id"] for e in window] == ["100-x-00001", "100-x-00002"]
-    assert [e["event_id"] for e in tools.get_events(100, t0_s=1.5, t1_s=1.5)["events"]] == [
+    # ... and a POINT EVENT (t1 == t0, an L-H transition) is in a window whose edge touches it.
+    # The window itself may not be a point -- `t0_s < t1_s` is validated, because a zero-width
+    # window and a reversed one are the same typo and neither can be answered honestly.
+    assert [e["event_id"] for e in tools.get_events(100, t0_s=1.5, t1_s=2.5)["events"]] == [
         "100-x-00001",
         "100-y-00001",
     ]
@@ -265,8 +435,9 @@ def test_a_forecast_is_never_returned_as_an_observed_event(ideate_db):
 
 def test_a_shot_with_no_events_in_the_table_is_not_an_error(ideate_db):
     write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
-    got = tools.get_events(999999)
+    got = tools.get_events(101)
     assert got["events"] == [] and got["n"] == 0 and "error" not in got
+    assert got["status"] == "unprocessed"
 
 
 def test_an_unreadable_events_table_is_an_error_dict_not_an_exception(ideate_db):
@@ -449,6 +620,12 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     env = get_default_environment()
     env.update(IDEATE_DATA_ROOT=str(root), HF_HUB_OFFLINE="1", PYTHONUNBUFFERED="1")
     env.pop("IDEATE_PATHS", None)
+    # THIS checkout's src first, exactly as the suite is run. Without it the subprocess imports
+    # whichever `ideate` is installed in the environment -- the main checkout -- and the test
+    # silently exercises somebody else's code, which is how a worktree passes a test it breaks.
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(REPO / "src"), *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])]
+    )
     params = StdioServerParameters(
         command=sys.executable, args=["-m", "ideate.mcp"], cwd=str(REPO), env=env
     )
@@ -458,25 +635,59 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
             tool_list = await client.list_tools()
             events = await client.call_tool("get_events", {"shot": 1})
             half = await client.call_tool("describe_shot", {"shot": 100})
-            return tool_list, events, half
+            try:
+                malformed = await client.call_tool("describe_shot", {"shot": "one hundred"})
+            except Exception as exc:  # noqa: BLE001 - what the framework does IS the finding
+                malformed = exc
+            return tool_list, events, half, malformed
 
     try:
-        tool_list, result, half = asyncio.run(asyncio.wait_for(go(), timeout=90))
+        tool_list, result, half, malformed = asyncio.run(asyncio.wait_for(go(), timeout=90))
     except (FileNotFoundError, PermissionError) as exc:  # pragma: no cover - environment
         pytest.skip(f"cannot spawn the server subprocess: {exc}")
     except TimeoutError:  # pragma: no cover - a hung server
         pytest.fail("the stdio server did not answer within 90 s")
 
     assert [t.name for t in tool_list.tools] == ["search_shots", "describe_shot", "get_events"]
-    assert not result.is_error
-    doc = json.loads(result.content[0].text)
-    assert doc["events"] == []
-    assert doc["caveats"] == ["no events table yet (labelmaker events not joined)"]
+    # Both tools now walk into `ShotDB.load` -- `get_events` needs the shot index to tell an
+    # unindexed shot from an unexamined one -- and both come back as the SAME application error
+    # rather than the framework's bare "Error executing tool <name>".
+    for outcome in (result, half):
+        assert not outcome.is_error
+        doc = json.loads(outcome.content[0].text)
+        assert "FileNotFoundError" in doc["error"] and "shots.parquet" in doc["error"]
+        assert any("rebuilt" in c and "ideate build" in c for c in doc["caveats"])
 
-    assert not half.is_error  # NOT the framework's "Error executing tool describe_shot"
-    doc = json.loads(half.content[0].text)
-    assert "FileNotFoundError" in doc["error"] and "shots.parquet" in doc["error"]
-    assert any("rebuilt" in c and "ideate build" in c for c in doc["caveats"])
+    # ... and the documented LIMIT of that promise, exercised rather than asserted in prose: an
+    # argument of the wrong TYPE never reaches the function, so it cannot carry `caveats`. The
+    # framework rejects it -- as a raised error or as `is_error` -- and `INSTRUCTIONS` says so.
+    if isinstance(malformed, Exception):
+        assert "shot" in str(malformed) or "valid" in str(malformed).lower()
+    else:
+        assert malformed.is_error or "caveats" not in json.loads(malformed.content[0].text)
+
+
+def test_the_instructions_do_not_promise_a_caveat_the_transport_cannot_deliver(ideate_db):
+    """The server told models "every reply carries caveats". Application errors do; a call whose
+    ARGUMENTS fail the tool schema is rejected by the framework before the function runs, and
+    comes back with no `caveats` key at all. Documenting the limit is the fix that was chosen
+    over normalising it -- normalising would mean loosening every annotation to `str | int`, and
+    the annotations ARE the schema an assistant reads."""
+    text = " ".join(server_mod.INSTRUCTIONS.split())
+    assert "Every reply the tools THEMSELVES produce carries `caveats`" in text
+    assert "does NOT cover a call whose arguments do not match the tool's schema" in text
+    assert "no `caveats` field" in text
+    # The four states and the three lists, named where a model will actually read them.
+    for word in tools.EVENT_STATES:
+        assert word in text
+    for word in ("events", "text_mentions", "forecasts", "status"):
+        assert word in text
+
+    # ... and the promise that IS made holds for a failure nobody anticipated.
+    guarded = server_mod.never_raises(
+        lambda shot: (_ for _ in ()).throw(RuntimeError("something nobody wrote an except for"))
+    )
+    assert "caveats" in guarded(shot=100)
 
 
 def test_the_project_mcp_config_points_at_this_server():
