@@ -170,3 +170,35 @@ phenomena:
       - rwm
       - resistive wall mode
     negatives: []
+
+  # A TOPIC, not a mode. Everything above names something a diagnostic can
+  # show; this names the population of ions a dozen different experiments
+  # are about. It is here because the words below are what the
+  # mini-proposals and the logbook actually use for that work - "Transport
+  # of passing and trapped fast ions by static 3D fields", "beam ion losses
+  # measured with FIDA" - and before it existed those sentences resolved to
+  # NOTHING, or (worse, and the I11 review caught it before it shipped) were
+  # about to be aliased into `ae`, which would have turned a diagnostic name
+  # into a claim about an Alfven eigenmode.
+  #
+  # The mode names stay with the mode: `tae`, `rsae`, `bae`, `eae` and
+  # `alfven*` are `ae`'s and are not repeated here. A sentence naming both
+  # ("TAE-induced ITG turbulence in a fast-ion experiment") resolves to both,
+  # which is correct - they are different claims about the same shot.
+  fast_ion:
+    title: Fast-ion physics
+    aliases:
+      - fast ion
+      - fast-ion
+      - fast ions
+      - fast-ions
+      - energetic particle
+      - energetic particles
+      - energetic ion
+      - energetic ions
+      - beam ion
+      - beam ions
+      - fida
+      - epm
+      - fast ion transport
+    negatives: []

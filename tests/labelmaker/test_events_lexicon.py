@@ -25,12 +25,13 @@ def _lexicon(tmp_path, body: str, name: str = "lex.yaml"):
 
 # --------------------------------------------------------- the shipped file
 
-def test_the_shipped_lexicon_carries_the_twelve_round_one_ids(lex):
-    # Plan 5.6's round-1 ids. This file is the SINGLE source of them: ideate
-    # reads it too, so an id renamed here is renamed there.
+def test_the_shipped_lexicon_carries_the_twelve_round_one_ids_and_fast_ion(lex):
+    # Plan 5.6's round-1 ids, plus `fast_ion` (added by the I11 review). This
+    # file is the SINGLE source of them: ideate reads it too, so an id renamed
+    # here is renamed there.
     assert lex.version == 1
     assert set(lex.ids) == set(lx.PHENOMENON_IDS)
-    assert len(lex.ids) == 12
+    assert len(lex.ids) == 13
     for p in lex.phenomena:
         assert p.title and p.aliases and p.weight > 0.0
         assert all(a == a.lower() and a.strip() for a in p.aliases)
@@ -38,6 +39,22 @@ def test_the_shipped_lexicon_carries_the_twelve_round_one_ids(lex):
     assert "edge harmonic oscillation" in lex["eho"].aliases
     assert "sawteeth" in lex["sawtooth"].aliases
     assert "elm-free" in lex["elm"].negatives
+
+
+def test_fast_ion_is_a_topic_id_and_is_kept_out_of_ae(lex):
+    """`ae` is the Alfven eigenmode MODE -- it has a detector band, a label head and an
+    `--avoid` path, so `resolve("beam ion losses measured with FIDA") -> ae` would turn a
+    diagnostic name into a mode observation. The fast-ion words get their own id instead, and
+    this test is what stops them from being folded back into `ae`.
+    """
+    topic = {"fast ion", "fast-ion", "fast ions", "energetic particle", "beam ion", "fida"}
+    assert topic <= set(lex["fast_ion"].aliases)
+    assert topic.isdisjoint(set(lex["ae"].aliases))
+    # And the mode names stay with the mode.
+    assert {"tae", "rsae", "alfven eigenmode"} <= set(lex["ae"].aliases)
+    assert {"tae", "rsae"}.isdisjoint(set(lex["fast_ion"].aliases))
+    found = lx.hits("beam ion losses measured with FIDA", lex)
+    assert set(found) == {"fast_ion"}
 
 
 def test_the_shipped_lexicon_is_read_as_utf_8_whatever_the_locale(lex):

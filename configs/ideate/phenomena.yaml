@@ -53,7 +53,8 @@
 #   database         a curated shot list, when one exists. `path_key` names a key of paths.yaml
 #                    rather than repeating an absolute path.
 #
-# Round-1 ids, all twelve, in the lexicon's order.
+# Round-1 ids, all twelve, in the lexicon's order -- plus `fast_ion`, added by the I11
+# review and last because it is not one of them.
 version: 1
 phenomena:
   ae:
@@ -215,3 +216,34 @@ phenomena:
     diags: []      # nothing detects rwm, so nothing writes a diag for it
     requires_group: [mhr]
     prior: 0.012
+
+  # A TOPIC, not a mode, and the entry that says so in machine-readable form: no label head, no
+  # event rule, no coverage source, no band, no diagnostic, no required group. `locate("fast_ion")`
+  # can therefore only ever return TEXT ONLY hits, which is exactly the claim the corpus supports
+  # -- somebody wrote "fast ion" in this shot's logbook -- and it can never be mistaken for a
+  # detector having seen something.
+  #
+  # It exists because the I11 evalset asked 16 fast-ion questions and seven of them resolved to
+  # nothing, and the tempting fix -- aliasing `fida`, `beam ion`, `fast ion` and `energetic
+  # particle` onto `ae` -- would have been much worse than the gap: `ae` has a >= 40 kHz detector
+  # band, a label head and an `--avoid phenomenon:ae` path read as "the AE detector looked and saw
+  # nothing", so a diagnostic name resolving to it would turn a topic match into a mode
+  # observation. See lexicons.yaml's own note.
+  #
+  # `coverage_sources: []` is stated rather than omitted: nothing looks for fast-ion physics as
+  # such, so coverage stays unknown, which is the honest answer (same as `rwm` and `detachment`).
+  fast_ion:
+    title: Fast-ion physics
+    labels: []
+    events: []
+    forecasts: []
+    coverage_sources: []
+    band_khz: null
+    diags: []
+    requires_group: []
+    # Measured 2026-09-13 over the 500 recommender_v1 shots, as the fraction whose OWN logbook
+    # text (`shots.parquet.text_log`) carries a positive lexicon hit: 2 of 500. The same
+    # measurement gives ae 0.004, tearing 0.070, elm 0.110 against the registry's 0.006 / 0.062 /
+    # 0.110, so it is the same number to within the `text_claims` temporality filter. Metadata
+    # only: no term of the score reads it.
+    prior: 0.004

@@ -24,13 +24,24 @@ from pathlib import Path
 
 import yaml
 
-#: Plan 5.6's round-1 ids. The lexicon may not name anything else: a
-#: phenomenon id is a join key against labels, events and ideate's
-#: `phenomena.yaml`, and a typo that loads silently is a phenomenon that
-#: quietly has no evidence.
+#: Plan 5.6's round-1 ids, plus `fast_ion`. The lexicon may not name
+#: anything else: a phenomenon id is a join key against labels, events and
+#: ideate's `phenomena.yaml`, and a typo that loads silently is a
+#: phenomenon that quietly has no evidence.
+#:
+#: `fast_ion` was added by the I11 review and is deliberately NOT an alias
+#: list bolted onto `ae`. `ae` is one specific MHD mode: it has a detector
+#: band (>= 40 kHz tracks), a label head, and an `--avoid phenomenon:ae`
+#: path that is read as "the AE detector looked and saw nothing". Folding
+#: `fida`, `beam ion`, `fast ion` and `energetic particle` into it would
+#: make a diagnostic name and a transport topic resolve to a mode
+#: observation, and every consumer that reads an `ae` hit as "this shot had
+#: an Alfven eigenmode" would then be reading a topic match. `fast_ion` is
+#: a TOPIC: no detector writes it, no model scores it, and ideate's
+#: registry gives it text evidence only.
 PHENOMENON_IDS = (
     "ae", "eho", "elm", "tearing", "sawtooth", "fishbone", "qcm", "qh",
-    "lh", "detachment", "pickup", "rwm",
+    "lh", "detachment", "pickup", "rwm", "fast_ion",
 )
 
 #: The alias lists themselves. Shipped beside this module because ideate
