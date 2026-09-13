@@ -16,6 +16,8 @@ columns that record when and under which run id it was written.
 from __future__ import annotations
 
 import json
+import multiprocessing
+import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -672,3 +674,102 @@ def test_a_dead_prep_worker_costs_its_block_and_the_pool_is_replaced(
         "co2_02_wide", "ece_08_wide", "ece_20_wide", "ece_40_wide",
         "mhr_00_wide",
     ]
+
+
+# ------------------------------------------------------- the wedged worker
+
+
+def _fifo_corpus(tmp_path, shot=SHOT):
+    """A corpus file that never answers: a FIFO with no writer.
+
+    The cheapest faithful stand-in for the failure `--timeout` exists for -
+    a GPFS read that has gone away - because `open()` on it blocks in the
+    kernel, uninterruptibly as far as the reading process is concerned, and
+    a worker in that state never takes the pool's shutdown sentinel.
+    """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir(parents=True, exist_ok=True)
+    os.mkfifo(corpus / f"{int(shot)}_processed.h5")
+    return corpus
+
+
+def test_closing_a_pool_kills_a_worker_that_is_wedged(tmp_path):
+    """`close()` must not leave a live worker behind - at all.
+
+    `shutdown(wait=False)` asks politely: it drops a sentinel on the call
+    queue and returns. A worker blocked in an uninterruptible read never
+    reads that sentinel, and CPython's own `_python_exit` atexit hook then
+    joins the executor's manager thread at interpreter shutdown - so the
+    process hangs AFTER `main()` has returned, which on SLURM is a finished
+    job recorded as a wall-clock TIMEOUT still holding its GPU.
+    """
+    corpus = _fifo_corpus(tmp_path)
+    pool = driver.PrepPool(1)
+    try:
+        spec = channels.ChannelSpec("mhr", 0, "magnetics")
+        pool.submit(driver.PrepJob(corpus / f"{SHOT}_processed.h5", spec,
+                                   "wide"))
+        deadline = time.monotonic() + 60
+        while not pool.processes() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        procs = pool.processes()
+        assert procs, "the pool never started a worker"
+        at = time.monotonic()
+        pool.close()
+        assert time.monotonic() - at < 30       # close does not wait forever
+        assert [p for p in procs if p.is_alive()] == []
+    finally:
+        pool.close()
+
+
+def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(tmp_path):
+    """The same thing end to end, through `run_shots`.
+
+    The shot is one error row after its `--timeout`, which the driver
+    already did; what is under test is what is left behind afterwards. No
+    child of this process may still be alive once `run_shots` has returned
+    and its pool has been closed, because every one of them would be joined
+    at interpreter exit.
+    """
+    corpus = _fifo_corpus(tmp_path)
+    paths = _paths_under(tmp_path, "root", corpus)
+    before = set(multiprocessing.active_children())
+
+    at = time.monotonic()
+    got = driver.run_shots([SHOT], paths=paths, model=None, device="cpu",
+                           corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                           prep_workers=1, prefetch=2, timeout_s=4,
+                           unet_sha256=FAKE_SHA, echo=_silently)
+    elapsed = time.monotonic() - at
+
+    assert got.rows[0]["status"] == "error"
+    assert elapsed < 120
+    deadline = time.monotonic() + 30
+    while (set(multiprocessing.active_children()) - before
+           and time.monotonic() < deadline):
+        time.sleep(0.1)
+    assert set(multiprocessing.active_children()) - before == set()
+
+
+def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(tmp_path,
+                                                            synth_shot, model):
+    """`peak_worker_rss_gib` must measure a prep worker.
+
+    It used to be `getrusage(RUSAGE_CHILDREN)`, which on a pool shut down
+    with `wait=False` reads either zero (nothing was waited for) or the
+    parent's own peak (a spawned child's fork-before-exec inherits its
+    resident pages). Both are the wrong number to size `--mem-per-cpu`
+    from, and the second is wrong in a way that looks right.
+    """
+    assert driver._vmhwm_gib(os.getpid()) > 0.0
+    assert driver._vmhwm_gib(2 ** 30) == 0.0        # no such process
+
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4, prep_workers=1,
+                           prefetch=2, unet_sha256=FAKE_SHA, echo=_silently)
+    worker = got.totals["peak_worker_rss_gib"]
+    assert worker > 0.0
+    assert worker != got.totals["peak_rss_gib"]
