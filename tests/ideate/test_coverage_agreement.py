@@ -84,3 +84,17 @@ def test_a_broken_sources_table_is_reported_by_both_readers(ideate_db):
     for caveats in (ph.evidence(100, 'elm', db).caveats, tools.get_events(100)['caveats']):
         assert any('event_sources' in c and 'could not read' in c for c in caveats)
     tools.reset_cache()
+
+
+def test_legacy_event_coverage_agrees_and_counts_one_source_once(ideate_db):
+    from .test_phenomena import _db_with, _elm_clock
+
+    db = _db_with(ideate_db, [
+        _elm_clock(100, 'quiet-a', (0, 6)),
+        _elm_clock(100, 'quiet-b', (0, 6)),
+    ])
+    tools.reset_cache()
+    result = tools.get_events(100, 'elm', 1, 5)
+    assert result['status'] == ph.evidence(100, 'elm', db).coverage_state == 'observed'
+    assert result['coverage']['n_sources_ok'] == 1
+    tools.reset_cache()
