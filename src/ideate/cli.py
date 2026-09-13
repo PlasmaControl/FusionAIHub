@@ -1255,7 +1255,12 @@ def cmd_eval(args) -> int:
     report = prompts_mod.run(db, evalset, split=args.split, n=args.n)
     print(json.dumps(report.model_dump(mode="json"), indent=1, default=str)
           if args.json else prompts_mod.markdown(report))
-    return 0 if report.coverage >= prompts_mod.COVERAGE_BAR else 3
+    # BOTH of the plan's bars, not just coverage: `prompts.failed_bars` is the one place they are
+    # decided, so the table's FAIL marks and the exit code cannot disagree.
+    missed = prompts_mod.failed_bars(report)
+    if missed and not args.json:
+        print(f"\nbars missed: {'; '.join(missed)}", file=sys.stderr)
+    return 3 if missed else 0
 
 
 # ------------------------------------------------------------------------------- phenomenon
