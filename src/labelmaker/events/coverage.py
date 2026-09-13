@@ -33,7 +33,11 @@ overrun is transform-edge support, not plasma, so `clip_to_coverage`
 trims the extent back into the coverage and says `attrs["clipped"] = true`
 where it had to - and `schema.Event.__post_init__` now REFUSES a row that
 ends after its own coverage, so the invariant is enforced at the point the
-row is built rather than repaired later by whoever notices.
+row is built rather than repaired later by whoever notices. A POINT that
+the detector's own grid or gate window put past the bound - an ELM on the
+transform's edge column, an L-H transition within 5 ms of the beam record's
+end - is moved onto the bound by `clip_point_to_coverage` and says so, since
+refusing it would cost the shot the whole step and not the one row.
 
 Nothing here opens a file or knows a locator; it takes arrays and spans.
 """
@@ -143,6 +147,44 @@ def clip_to_coverage(
     if hi < lo:
         return (t0, t1, False)
     return (lo, hi, lo != t0 or hi != t1)
+
+
+def clip_point_to_coverage(
+    t_s: float, cov: tuple[float, float],
+) -> tuple[float, bool]:
+    """`(t, clipped)`: a POINT moved onto the coverage bound it overran.
+
+    `clip_to_coverage` leaves an extent lying wholly outside its coverage
+    alone, to be refused: an interval nobody measured is a detector claiming
+    a stretch it did not look at. A point event is a different case when it
+    is the detector's OWN grid or gate window that put it past the bound:
+
+    * an ELM's time is its column's centre (`transients.elm_events`), and a
+      stitched transform's first and last columns lie outside the record
+      they were computed from - `masks.COL_ORIGIN` padding, measured at up
+      to 2.052 ms on the pilot shots. Every column of the grid came from
+      THIS record, so a centre outside the sample span cannot be a
+      measurement made anywhere else;
+    * an L-H transition clears its beam gate on `[when - 5 ms, when]`, so a
+      `when` up to 5 ms after the NBI record's last finite sample is a
+      claim whose every input WAS measured - and it lies past the
+      intersection coverage all the same.
+
+    In both the overrun is bounded by the detector's own time resolution,
+    and `pipeline.finish_shot` isolates per STEP, not per row: refusing the
+    one point would cost the shot the whole ELM clock, or its every L-H
+    claim, over a millisecond. So the point is moved onto the bound and the
+    row says so; the caller keeps the measured instant in `attrs` (`col`
+    for an ELM, `t_measured_s` for a transition). An unknown bound moves
+    nothing on its side.
+    """
+    t = float(t_s)
+    cov0, cov1 = float(cov[0]), float(cov[1])
+    if math.isfinite(cov0) and t < cov0:
+        return (cov0, True)
+    if math.isfinite(cov1) and t > cov1:
+        return (cov1, True)
+    return (t, False)
 
 
 def clipped_attrs(attrs: Mapping[str, Any], clipped: bool) -> dict[str, Any]:
@@ -301,6 +343,7 @@ def _row(shot: int, key, status: str, reason: str, span, n_events: int) -> dict:
 
 __all__ = [
     "UNKNOWN",
+    "clip_point_to_coverage",
     "clip_to_coverage",
     "clipped_attrs",
     "feature_spans",

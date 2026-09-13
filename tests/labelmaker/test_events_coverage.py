@@ -24,7 +24,14 @@ import math
 import numpy as np
 import pytest
 
-from labelmaker.events import coverage, heuristics, masks, schema, tracks
+from labelmaker.events import (
+    coverage,
+    heuristics,
+    masks,
+    schema,
+    tracks,
+    transients,
+)
 
 SHOT = 198658
 SHA = "0" * 64
@@ -295,3 +302,61 @@ def test_a_block_with_no_known_coverage_clips_nothing():
     )
     assert (rows[0].t0_s, rows[0].t1_s) == (0.0, 1.0)
     assert "clipped" not in rows[0].attrs
+
+
+# ------------------------------------------ point events on the grid's edge
+
+def test_a_point_is_moved_onto_the_bound_it_overran_and_says_so():
+    assert coverage.clip_point_to_coverage(1.002, (0.0, 1.0)) == (1.0, True)
+    assert coverage.clip_point_to_coverage(-0.001, (0.0, 1.0)) == (0.0, True)
+    assert coverage.clip_point_to_coverage(0.5, (0.0, 1.0)) == (0.5, False)
+    assert coverage.clip_point_to_coverage(1.0, (0.0, 1.0)) == (1.0, False)
+    # An unknown bound moves nothing on its side.
+    assert coverage.clip_point_to_coverage(1.002, (0.0, math.nan)) == (1.002, False)
+    assert coverage.clip_point_to_coverage(-1.0, coverage.UNKNOWN) == (-1.0, False)
+
+
+def test_an_elm_on_the_transforms_edge_column_would_otherwise_be_refused():
+    # The defect, stated. `transients.elm_events` returns COLUMN times, and
+    # the stitched transform's last column centre is past the last sample
+    # (above), so a peak found there fails the schema's coverage invariant
+    # - and `pipeline.finish_shot` isolates per STEP, so the one row would
+    # cost the shot its whole ELM clock, `tokeye_transient` and `elm_clock`
+    # both, and the sources file would say both were skipped.
+    t_s, t_cov = _stitched_block()
+    with pytest.raises(ValueError, match="t_cov1_s"):
+        schema.Event(
+            shot=SHOT, source=transients.SOURCE, evidence_kind="detector",
+            phenomenon=transients.PHENOMENON, t0_s=float(t_s[-1]),
+            t1_s=float(t_s[-1]), t_cov0_s=t_cov[0], t_cov1_s=t_cov[1],
+        )
+
+
+def test_an_elm_on_an_edge_column_is_moved_into_coverage_and_says_so():
+    # 0.4 s of record, so the clock also has room for an `elm_free`
+    # interval (`ELM_FREE_MIN_S` is 50 ms) between the second ELM and the last.
+    t_s, t_cov = _stitched_block(n_samples=200_000)
+    inside = float(t_s[40])
+    rows = transients.transients_to_events(
+        [t_s[-1], t_s[0], inside], [], shot=SHOT, diag="mhr", channel=0,
+        pass_name="wide", t_s=t_s, t_cov=t_cov, unet_sha256=SHA,
+        activity=None,
+    )
+    elms = sorted(
+        (e for e in rows if e.phenomenon == transients.PHENOMENON),
+        key=lambda e: e.attrs["col"],
+    )
+    # The column the peak was found in is kept, whichever way the time went.
+    assert [e.attrs["col"] for e in elms] == [0, 40, t_s.size - 1]
+    first, mid, last = elms
+    assert (first.t0_s, first.t1_s) == (t_cov[0], t_cov[0])
+    assert first.attrs["clipped"] is True
+    assert (last.t0_s, last.t1_s) == (t_cov[1], t_cov[1])
+    assert last.attrs["clipped"] is True
+    # The ordinary row is untouched and carries no key at all.
+    assert (mid.t0_s, mid.t1_s) == (inside, inside)
+    assert "clipped" not in mid.attrs
+    # And the invariant holds for every row the clock wrote, quiet included.
+    assert any(e.phenomenon == transients.FREE_PHENOMENON for e in rows)
+    for e in rows:
+        assert t_cov[0] <= e.t0_s <= e.t1_s <= t_cov[1]

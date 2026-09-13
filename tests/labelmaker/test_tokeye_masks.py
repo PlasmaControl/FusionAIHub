@@ -313,6 +313,12 @@ def _events(paths, shot):
     return df.drop(columns=["run_id", "written_at"])
 
 
+def _sources(paths, shot):
+    """The shot's per-source record, without the two columns that say WHEN."""
+    df = schema.read_sources(paths.sources_file(shot))
+    return df.drop(columns=["run_id", "written_at"])
+
+
 def _silently(*args, **kwargs):
     return None
 
@@ -363,6 +369,12 @@ def test_the_driver_writes_exactly_what_process_shot_writes(
     pd.testing.assert_frame_equal(_events(driven, SHOT),
                                   _events(sequential, SHOT))
     assert len(_events(driven, SHOT)) == ref.n_events
+    # And the per-source completion record: `finish_shot` writes it for
+    # both, so which sources ran, over what coverage, and how many rows
+    # each produced has to read the same off either schedule.
+    pd.testing.assert_frame_equal(_sources(driven, SHOT),
+                                  _sources(sequential, SHOT))
+    assert not _sources(driven, SHOT).empty
 
 
 def test_a_block_whose_prep_fails_in_a_worker_is_a_skip_and_not_a_hang(

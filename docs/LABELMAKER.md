@@ -234,7 +234,13 @@ built, with `attrs["clipped"] = true` where it had to be: a track stitched
 across tile boundaries carries the transform's edge support and ran up to
 2 ms past the record on the pilot shots. `schema.Event` refuses a row whose
 `t1_s` is after its own `t_cov1_s`, so the invariant is enforced rather
-than repaired.
+than repaired. A POINT event the detector's own grid or gate window put past
+the bound - an ELM found on the transform's edge column, an L→H transition
+within 5 ms of the beam record's end - is written at the bound with
+`attrs["clipped"] = true` and the measured column or instant kept in
+`attrs` (`col`, `t_measured_s`): the pipeline isolates failures per step,
+so refusing the one row would cost the shot its whole ELM clock or its
+every L→H claim.
 
 ### `events/<shot>_sources.parquet`: did anybody look
 
