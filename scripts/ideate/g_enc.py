@@ -136,6 +136,19 @@ from ideate.shotdb import ignite
 from ideate.shotdb.corpus import CorpusReader
 
 DEFAULT_SHOTS = (190090, 202537, 204346)
+
+
+def is_diagnostic(shots, *, no_video: bool, allow_partial: bool) -> bool:
+    """Whether a run is narrower than the gate - and so may PASS while the gate fails.
+
+    The G-ENC gate is `DEFAULT_SHOTS`, all fourteen modalities, no codec skipped. A run over a
+    different shot set, without the video codecs, or allowed to proceed with a codec missing is
+    a DIAGNOSTIC: useful, cheap, and not a verdict on the gate. One rule, here, so the report's
+    `"diagnostic"` field, the stdout notice and the tests cannot drift on what counts.
+    """
+    return bool(
+        no_video or allow_partial or sorted(int(s) for s in shots) != sorted(DEFAULT_SHOTS)
+    )
 #: float16 holds ~3 decimal digits, so two z traces that round to the same float16 differ by at
 #: most this in the units the model reads. The threshold is absolute because the criterion is
 #: about the model's input, not about relative precision.
@@ -424,8 +437,8 @@ def main(argv: list[str] | None = None) -> int:
         # A run that asked for fewer than all fourteen modalities, or fewer than the three gate
         # shots, is a DIAGNOSTIC. It can pass and say nothing about the gate; the header says so
         # and the report has to as well, because the report is what gets quoted.
-        "diagnostic": bool(
-            args.no_video or args.allow_partial or sorted(args.shots) != sorted(DEFAULT_SHOTS)
+        "diagnostic": is_diagnostic(
+            args.shots, no_video=args.no_video, allow_partial=args.allow_partial
         ),
         "shots": {},
     }

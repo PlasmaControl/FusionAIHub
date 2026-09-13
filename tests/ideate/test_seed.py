@@ -513,6 +513,23 @@ def test_g_enc_passes_only_when_every_requested_modality_is_bit_identical():
     assert g_enc.verdict(result, ())[0] is True
 
 
+def test_g_enc_marks_anything_narrower_than_the_three_shot_gate_as_a_diagnostic():
+    """A one-shot CPU smoke run, `--no-video` or `--allow-partial` can PASS while the gate fails,
+    and its report is what gets quoted - so the report says which kind of run it was, from ONE
+    rule. The rule lives here rather than inline in `main`, where no test reaches it and where
+    the critic's "one-shot smoke result does not satisfy the three-shot gate" was a sentence and
+    not a field."""
+    g = _g_enc()
+    gate = list(g.DEFAULT_SHOTS)
+    assert g.is_diagnostic(gate, no_video=False, allow_partial=False) is False
+    # Order is not a narrowing.
+    assert g.is_diagnostic(list(reversed(gate)), no_video=False, allow_partial=False) is False
+    # Each of the three ways a run is narrower than the gate is, on its own, a diagnostic.
+    assert g.is_diagnostic([202537], no_video=False, allow_partial=False) is True
+    assert g.is_diagnostic(gate, no_video=True, allow_partial=False) is True
+    assert g.is_diagnostic(gate, no_video=False, allow_partial=True) is True
+
+
 def test_g_enc_header_does_not_claim_a_demonstrated_input_difference():
     """The 190735/190736 residual demonstrates OUTPUT disagreement. Calling it a demonstrated
     input difference asserts a cause nothing here measured -- no input file was ever hashed."""
