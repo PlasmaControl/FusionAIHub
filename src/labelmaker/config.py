@@ -30,6 +30,14 @@ DEFAULT_TEXT = Path(
 DEFAULT_LOGS_JSONL = Path(
     "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/sql/logs.jsonl"
 )
+#: The curated label tables `events/databases.py` reads: a `tables.yaml`
+#: manifest and one directory of CSVs per phenomenon. Label DATA, so it
+#: lives under `data/labels/` and never under `src/`, and the default
+#: resolves relative to this FILE rather than to the caller's cwd - a run
+#: from a SLURM scratch directory finds the committed manifest the same way
+#: a run from the repo does. Overridable, because a table too large or too
+#: restricted to commit lives on /scratch instead.
+DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "labels"
 
 
 @dataclass(frozen=True)
@@ -40,6 +48,7 @@ class Paths:
     corpus: Path = DEFAULT_CORPUS
     text_root: Path = DEFAULT_TEXT
     logs_jsonl: Path = DEFAULT_LOGS_JSONL
+    label_tables: Path = DEFAULT_LABEL_TABLES
 
     @classmethod
     def from_env(cls) -> Paths:
@@ -50,6 +59,8 @@ class Paths:
                                           str(DEFAULT_TEXT))),
             logs_jsonl=Path(os.environ.get("LABELMAKER_LOGS_JSONL",
                                            str(DEFAULT_LOGS_JSONL))),
+            label_tables=Path(os.environ.get("LABELMAKER_LABEL_TABLES",
+                                             str(DEFAULT_LABEL_TABLES))),
         )
 
     @property
