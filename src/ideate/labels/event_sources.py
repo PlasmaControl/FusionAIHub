@@ -109,11 +109,13 @@ def for_shot(db, shot: int, sources: Iterable[str] | None = None) -> pd.DataFram
         observed = events[
             (events['shot'] == shot) & events['evidence_kind'].isin(('detector', 'heuristic'))
         ]
+        keys = ['source', 'diag', 'channel', 'pass_name', 't_cov0_s', 't_cov1_s']
+        spans = observed.groupby(keys, dropna=False).size().reset_index(name='n_events')
         frame = _frame([
             source_row(
                 shot, r['source'], t_cov0_s=r['t_cov0_s'], t_cov1_s=r['t_cov1_s'],
-                n_events=1, diag=r['diag'], channel=r['channel'], pass_name=r['pass_name'],
-            ) for r in observed.to_dict('records')
+                n_events=r['n_events'], diag=r['diag'], channel=r['channel'], pass_name=r['pass_name'],
+            ) for r in spans.to_dict('records')
         ])
     keep = frame['shot'] == int(shot)
     if sources is not None:
