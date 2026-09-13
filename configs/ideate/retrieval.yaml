@@ -36,3 +36,41 @@ retrieval:
   # but that is a Phase 2.1 change, not a demo blocker.
   run_diversity_decay: 0.9
   outcome_penalty: 0.5         # --prefer-outcome success: factor on a bad verdict / missed Ip target
+
+# Phenomenon retrieval (`ideate phenomenon`, ideate.retrieval.phenomena.locate). One score per
+# shot out of four evidence classes:
+#
+#   score = label * max_p + event * (1 - exp(-n_events / saturation_n)) + text * tanh(hits / 2)
+#           + database (when a curated list names the shot)
+#
+# The weights are DELIBERATELY not tuned: there is no labelled "does this shot have an EHO" set
+# to tune them against, and a fitted number would claim an accuracy nobody measured. They are
+# chosen so that no one class can outrank another on its own, and the CLASS ORDER does the real
+# work: an observed hit outranks a label-only hit, which outranks a forecast-only hit, which
+# outranks a curated-list hit, which outranks a text-only hit, whatever the arithmetic says
+# (plan §7; the order is `phenomena.OBSERVED > LABELLED > FORECAST > DATABASE > TEXTUAL`, and a
+# test asserts this sentence appears here and in docs/IDEATE.md). A label is a model's claim
+# about the PRESENT and a forecast is a claim about the FUTURE, which is why the present-tense
+# one ranks higher. Text alone is additionally capped at labelmaker's `TEXT_ONLY_CEILING` (0.25,
+# four independent mentions) and carries the caveat "TEXT ONLY".
+#
+# `saturation_n` is the count at which the event term reaches 1 - 1/e = 0.63: three detections is
+# already "this shot has them", and the difference between 30 and 300 ELMs is not ten times the
+# evidence that ELMs happened. The count is the summed rule WEIGHT, not the row count, so a
+# detector that does not classify the phenomenon it is registered under (`phenomena.yaml`'s elm
+# rule, weight 0.4) contributes less than a row from one that does.
+#
+# `label_floor` is how high a detection label has to score before it is EVIDENCE rather than a
+# number. Below it the probability is reported, with a caveat naming it, and the shot does not
+# enter the label tier -- measured on the 500-shot database, 60 of the 163 scored tearing shots
+# are at or below max_valid 0.05, i.e. the model saying no. 0.5 is a declared default, not a
+# fitted operating point: a `thr:` on a registry entry (from a model card) overrides it for that
+# label, and no card publishes one today.
+phenomenon:
+  weights:
+    label: 1.0
+    event: 1.0
+    text: 0.5
+    database: 1.0
+  saturation_n: 3.0
+  label_floor: 0.5

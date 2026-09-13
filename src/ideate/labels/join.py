@@ -21,6 +21,12 @@ are the reason this module exists at all rather than a `pd.concat`:
   series are risks, at what threshold and horizon, is `configs/ideate/labels.yaml`'s `forecasts:`
   block, and the labels.yaml comment there says which numbers are the card's and which are ours.
 
+`db/event_sources.parquet` is the fourth table and the one that makes an empty answer readable:
+labelmaker writes `events/<shot>_sources.parquet` saying which detector RAN over which shot, span
+and channel -- including the ones that completed with zero detections -- and this join ingests
+every file that exists. A shot with no file contributes no rows, which is how the database says
+"nobody looked here" rather than returning a silent empty list. See `labels.event_sources`.
+
 The event schema is labelmaker's, imported and reused: `COLUMNS`, `DTYPES`, `Event` (whose
 `__post_init__` is what rejects a forecast with no horizon) and `read_events`, which already reads
 an absent file as an empty typed frame -- `events/` does not exist until the mask job has run, and
@@ -56,7 +62,9 @@ from labelmaker.models import registry
 
 from .. import config
 from . import claims as claims_mod
+from . import event_sources as es
 from .claims import CLAIMS_COLUMNS, CLAIMS_DTYPES
+from .event_sources import SOURCES_COLUMNS
 
 _NAN = float("nan")
 
@@ -92,6 +100,8 @@ MANIFEST_KEYS: tuple[str, ...] = (
     "n_labels_wide_rows", "n_events", "n_forecast_events", "n_text_claims",
     "n_shots_missing_labels", "n_shots_missing_events", "labelmaker_git_sha",
     "thresholds_from_card", "thresholds_from_config", "thresholds", "forecast_rules", "lexicon",
+    "n_event_source_rows", "n_shots_with_source_rows", "n_shots_with_observed_products",
+    "n_shots_unprocessed", "n_sources_ok", "n_sources_skipped", "n_sources_error",
 )
 
 #: Where a `thr` came from. `""` is the third value `labels_wide.thr_source` takes and means
@@ -126,6 +136,10 @@ class JoinResult:
     labels_wide: pd.DataFrame
     events: pd.DataFrame
     claims: pd.DataFrame
+    #: `db/event_sources.parquet`: which detector RAN over which shot and span, including the
+    #: ones that emitted nothing. Empty for a shot labelmaker has not processed, which is what
+    #: lets `get_events` say "unprocessed" instead of returning a silent empty list.
+    sources: pd.DataFrame = field(default_factory=lambda: es.empty_sources())
     manifest: dict = field(default_factory=dict)
 
 
@@ -549,6 +563,12 @@ def join(
         lexicon = claims_mod.load_lexicon(lexicon_path)
         claims = claims_mod.text_claims(shots, text_root=text_root, lexicon_path=lexicon.source)
 
+    # Which detectors RAN, as opposed to what they found. A shot with no source file gets no
+    # rows and is `unprocessed`; see `labels.event_sources`.
+    sources = es.sources_union(shots, events_dir=paths.events)
+    by_shot = {int(s): es.shot_summary(sources, s) for s in shots}
+    observed = [s for s in shots if by_shot[s]["has_observed_products"]]
+
     missing_labels = [s for s in shots if not paths.labels_file(s).exists()]
     missing_events = [s for s in shots if not paths.events_file(s).exists()]
     manifest = {
@@ -578,8 +598,23 @@ def join(
             "n_rules": len(rules),
         },
         "lexicon": str(lexicon.source) if lexicon else None,
+        "n_event_source_rows": len(sources),
+        "n_shots_with_source_rows": sum(1 for s in shots if by_shot[s]["n_sources"]),
+        "n_shots_with_observed_products": len(observed),
+        # The count that matters when a reply says "no events": these shots have no observed-event
+        # product at all, so their emptiness is not evidence of a quiet shot.
+        "n_shots_unprocessed": len(shots) - len(observed),
+        "n_sources_ok": sum(v["n_sources_ok"] for v in by_shot.values()),
+        "n_sources_skipped": sum(v["n_sources_skipped"] for v in by_shot.values()),
+        "n_sources_error": sum(v["n_sources_error"] for v in by_shot.values()),
+        # Per shot in the RETURNED manifest only. The file keeps the counts: at full corpus this
+        # is 17,000 entries, and the module's rule is that the manifest file holds numbers a
+        # person reads, not lists nobody does. `db/event_sources.parquet` is the per-shot answer.
+        "sources_by_shot": by_shot,
     }
-    return JoinResult(labels_wide=wide, events=events, claims=claims, manifest=manifest)
+    return JoinResult(
+        labels_wide=wide, events=events, claims=claims, sources=sources, manifest=manifest
+    )
 
 
 # ------------------------------------------------------------------------------- the tables
@@ -598,25 +633,41 @@ def _write_parquet(path: Path, df: pd.DataFrame) -> None:
 
 def write_tables(
     db_dir, labels_wide_df: pd.DataFrame, events_df: pd.DataFrame, claims_df: pd.DataFrame,
-    manifest: Mapping,
+    manifest: Mapping, sources_df: pd.DataFrame | None = None,
+    join_block: Mapping | None = None,
 ) -> dict:
-    """Write the three tables and merge the join's counts into `db/manifest.json`.
+    """Write the four tables and merge the join's counts into `db/manifest.json`.
 
     The manifest is *merged*, never replaced: a database's manifest is written by `build`, and a
     join that clobbered it would take the shot counts, the PCA and the IGNITE block with it.
     Returns the block that was written.
+
+    `join_block` is written under `labels_join` beside it and holds what the join did to the
+    database rather than what it read out of labelmaker -- today the refreshed `has_frame_codes`
+    count. Two blocks rather than one because `labels` is a description of labelmaker's product
+    and a reader comparing two databases' `labels` blocks must not see it move because an encode
+    job finished in between.
     """
     db_dir = Path(db_dir)
     db_dir.mkdir(parents=True, exist_ok=True)
     _write_parquet(db_dir / "labels_wide.parquet", labels_wide_df)
     _write_parquet(db_dir / "events.parquet", events_df)
     _write_parquet(db_dir / "text_claims.parquet", claims_df)
+    _write_parquet(
+        db_dir / "event_sources.parquet",
+        es.empty_sources() if sources_df is None else sources_df,
+    )
 
     block = {k: manifest[k] for k in MANIFEST_KEYS if k in manifest}
     block["written_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     path = db_dir / "manifest.json"
     whole = json.loads(path.read_text()) if path.exists() else {}
     whole["labels"] = block
+    if join_block is not None:
+        whole["labels_join"] = {
+            **dict(join_block),
+            "written_at": block["written_at"],
+        }
     with atomic_path(path) as tmp:
         tmp.write_text(json.dumps(whole, indent=2, default=str))
     return block
@@ -629,6 +680,7 @@ __all__ = [
     "LABELS_WIDE_COLUMNS",
     "LABELS_WIDE_DTYPES",
     "MANIFEST_KEYS",
+    "SOURCES_COLUMNS",
     "THR_SOURCES",
     "ForecastRule",
     "JoinResult",

@@ -944,6 +944,12 @@ def summarize(
         "n_dropped": len(replacements or ()),
         "n_featured": None if store is None else int(store.get("n_featured", 0)),
         "n_frame_codes": None if store is None else int(store.get("n_frame_codes", 0)),
+        # Per directory, because `n_frame_codes` is a UNION over the production store and the
+        # shipped bundle (507 today: 500 + 10 with 3 in both) and reads as "507 production shots
+        # encoded" to anyone who is not told otherwise.
+        "frame_codes_by_dir": (
+            None if store is None else dict(store.get("frame_codes_by_dir") or {})
+        ),
         # The fingerprint, flat so it can be diffed between two runs. `n_files` repeats
         # `n_featured` deliberately: the pair (count, newest mtime) is the identity of the store
         # and belongs together, and `n_featured` alone is what a reader greps for.
@@ -1040,6 +1046,13 @@ def format_summary(summary: Mapping) -> str:
         f"  {'feature store':<22}{n_files if n_files is not None else '?':>8} files, "
         f"newest {store.get('max_mtime') or '?'}"
     )
+    n_codes = summary.get("n_frame_codes")
+    by_dir = summary.get("frame_codes_by_dir") or {}
+    codes_line = (
+        f"  {'frame codes':<22}{n_codes if n_codes is not None else '?':>8} shots, the union "
+        "over the frame-code directories (production store + shipped bundle), a shot in both "
+        "counted once:"
+    )
     lines += ["", "verification:"]
     lines += [
         f"  {'finalized':<22}{str(bool(summary.get('finalized'))).lower():>8}",
@@ -1047,6 +1060,20 @@ def format_summary(summary: Mapping) -> str:
         f"  {'verified':<22}{summary.get('n_verified', 0):>8,}",
         f"  {'dropped':<22}{summary.get('n_dropped', 0):>8,}",
         fingerprint,
+        codes_line,
+        *(f"    {n:>6,}  {d}" for d, n in by_dir.items()),
+        # What is and is not deterministic about the file two runs write. The rows are a pure
+        # function of the census, the store and the seed; the header carries the clock and the
+        # store's fingerprint. Measured by the iteration-0 critic on the finalized list: bytes
+        # from `shots:` onward identical, `created`/`summary.from_list`/`feature_store` not.
+        (
+            f"  {'rows':<22}deterministic: `shots:` is byte-identical run to run over the "
+            "same census, store and seed"
+        ),
+        (
+            f"  {'header':<22}regenerated each run: `created`, `summary.from_list`, "
+            "`summary.feature_store` -- diff the rows, not the file"
+        ),
     ]
     repl = summary.get("replacements") or []
     lines += ["", f"flat-top verification dropped {len(repl)} shot(s):"]
@@ -1136,7 +1163,7 @@ def _code_dirs(frame_codes_dirs: Path | Iterable[Path] | None) -> list[Path]:
 def store_fingerprint(
     features_dir: Path | None, frame_codes_dirs: Path | Iterable[Path] | None = None
 ) -> dict:
-    """Which feature store a run saw: `{n_featured, n_frame_codes, max_mtime}`.
+    """Which feature store a run saw: `{n_featured, n_frame_codes, max_mtime, frame_codes_by_dir}`.
 
     Two invocations of `corpus select` write the same file under the same name and mean different
     things, and what changed between them is this store -- the features stage ran over the pending
@@ -1157,9 +1184,13 @@ def store_fingerprint(
             mtime = p.stat().st_mtime
             newest = mtime if newest is None else max(newest, mtime)
     codes: set[int] = set()
+    by_dir: dict[str, int] = {}
     for d in _code_dirs(frame_codes_dirs):
-        if d.is_dir():
-            codes |= {int(p.stem) for p in d.glob("*.pt") if p.stem.isdigit()}
+        here = (
+            {int(p.stem) for p in d.glob("*.pt") if p.stem.isdigit()} if d.is_dir() else set()
+        )
+        by_dir[str(d)] = len(here)
+        codes |= here
     n_codes = len(codes)  # a shot both producers wrote is one shot, not two
     return {
         "n_featured": n_features,
@@ -1167,6 +1198,9 @@ def store_fingerprint(
         "max_mtime": None
         if newest is None
         else dt.datetime.fromtimestamp(newest, dt.UTC).isoformat(timespec="seconds"),
+        # The per-directory counts behind the union, so `n_frame_codes` can be read for what it
+        # is: on the real store, 500 production caches + 10 shipped bundle caches = 507 shots.
+        "frame_codes_by_dir": by_dir,
     }
 
 

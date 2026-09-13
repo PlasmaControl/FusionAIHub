@@ -20,6 +20,15 @@ Two consequences of it being derived rather than fetched:
   `run.features_for_shot` records `FileNotFoundError` against the feature
   and moves on, exactly as it does for a corpus file that is not there.
 
+**Diagnostic rows only.** `windows.EventTable` selects the rows it
+reduces with `windows.DIAGNOSTIC_EVIDENCE` and `windows.FAMILY_SOURCES` -
+a `detector` or `heuristic` row from the source that family's detector
+actually writes - so a text mention and a `label_forecast` in the same
+file reach none of the 46 numbers. The policy is stamped into every
+served array's `attrs` (`evidence_kinds`, `evidence_sources`), because a
+feature whose provenance is "some rows of an events file" cannot be
+re-checked when the policy changes.
+
 **The validity mask is expressed as NaN**, in all 46 channels of a window
 no diagnostic covered at least half of. A resolver cannot narrow
 `BuiltInputs.valid` - it does not see it, and `models.base` builds that
@@ -110,6 +119,16 @@ def resolve(
                 "n_valid_windows": str(int(valid.sum())),
                 "window_s": str(windows.WINDOW_S),
                 "stride_s": str(windows.STRIDE_S),
+                # The evidence policy the 46 numbers were computed under,
+                # stamped on the array rather than left implicit: a stored
+                # feature whose provenance is "some rows of an events
+                # file" cannot be re-checked when the policy changes.
+                "evidence_kinds": "|".join(windows.DIAGNOSTIC_EVIDENCE),
+                "evidence_sources": "|".join(
+                    f"{phenomenon}<-{'|'.join(sources)}"
+                    for phenomenon, sources
+                    in sorted(windows.FAMILY_SOURCES.items())
+                ),
             },
         )
         for name in names

@@ -34,7 +34,14 @@ torch = pytest.importorskip("torch")
 
 from labelmaker import run
 from labelmaker.config import Paths
-from labelmaker.events import heuristics, masks, schema, text_weak, unet
+from labelmaker.events import (
+    heuristics,
+    masks,
+    schema,
+    text_weak,
+    transients,
+    unet,
+)
 from labelmaker.events import lexicon as lx
 from labelmaker.events import pipeline as pl
 
@@ -294,6 +301,128 @@ def test_the_index_gets_one_row_per_source_and_phenomenon(shot_file, paths,
     assert len(index) == df.groupby(["source", "phenomenon"]).ngroups
     assert set(index["shot"]) == {SHOT}
     assert index["n_events"].sum() == len(df)
+
+
+# ------------------------------------------- the per-source completion record
+
+
+def test_every_source_that_ran_is_a_row_even_with_no_events(shot_file, paths,
+                                                            model):
+    # An events file says what was FOUND. `ech_power_total` is zero for
+    # this whole shot and `qh_proxy` claims nothing without an Ip
+    # flat-top, so neither writes an event row - and both ran.
+    _run(paths, model)
+    src = schema.read_sources(paths.sources_file(SHOT))
+    ev = schema.read_events(paths.events_file(SHOT))
+    assert set(src.columns) == set(schema.SOURCE_COLUMNS)
+    ok = src[src["status"] == "ok"]
+    quiet = ok[ok["n_events"] == 0]
+    assert {("actuator", "ech_power_total"), ("qh_proxy", "")} <= set(
+        zip(quiet["source"], quiet["diag"], strict=True)
+    )
+    assert set(quiet["reason"]) == {""}
+    # Every row that ran and DID produce events agrees with the file.
+    counted = ev.groupby(
+        ["source", "diag", "channel", "pass_name"], dropna=False
+    ).size()
+    for _, row in ok.iterrows():
+        key = (row["source"], row["diag"], row["channel"], row["pass_name"])
+        assert int(row["n_events"]) == int(counted.get(key, 0)), key
+
+
+def test_a_skipped_step_reaches_the_sources_file_with_its_reason(shot_file,
+                                                                 paths, model):
+    _run(paths, model)
+    src = schema.read_sources(paths.sources_file(SHOT))
+    rows = {
+        (r["source"], r["diag"], r["channel"]): (r["status"], r["reason"])
+        for _, r in src.iterrows()
+    }
+    # A planned channel the corpus does not serve.
+    assert rows[("tokeye_track", "bes", 26)] == ("skipped", "group absent")
+    # And the two caveats that fire while the run succeeds get rows of
+    # their own rather than colliding with the step they qualify.
+    assert rows[("nbi_counter", "", -1)][0] == "skipped"
+    assert "not a corpus group" in rows[("qh_flattop", "", -1)][1]
+    assert rows[("text", "", -1)] == ("skipped", "no lexicon passed")
+    assert set(src["shot"]) == {SHOT}
+
+
+def test_a_failed_step_leaves_both_of_its_sources_visible(shot_file, paths,
+                                                          model, monkeypatch):
+    def boom(*a, **kw):
+        raise RuntimeError("no transient trace")
+
+    monkeypatch.setattr(transients, "elm_events", boom)
+    _run(paths, model)
+    src = schema.read_sources(paths.sources_file(SHOT))
+    got = src[src["source"].isin(["tokeye_transient", "elm_clock"])]
+    assert len(got) == 2                       # one step, two sources, two rows
+    assert set(got["status"]) == {"skipped"}
+    assert all("RuntimeError" in r for r in got["reason"])
+
+
+def test_each_actuator_source_records_its_own_axis(shot_file, paths, model,
+                                                   synth_shot):
+    # Defect 2a at the pipeline end: one row per canonical feature, each
+    # with the coverage of the group it was read off, over finite samples.
+    _run(paths, model)
+    src = schema.read_sources(paths.sources_file(SHOT))
+    act = src[src["source"] == "actuator"].set_index("diag")
+    assert set(act.index) == {
+        "pinj_total", "tinj_total", "ech_power_total", "rmp", "gas"
+    }
+    scalar_t = synth_shot["pinj_t_s"]
+    for name in act.index:
+        assert act.loc[name, "t_cov0_s"] == pytest.approx(float(scalar_t[0]))
+        assert act.loc[name, "t_cov1_s"] == pytest.approx(float(scalar_t[-1]))
+    # And every actuator EVENT carries the axis it was measured on.
+    ev = schema.read_events(paths.events_file(SHOT), source="actuator")
+    assert dict(zip(ev["phenomenon"], ev["diag"], strict=True)) == {
+        "gas_on": "gas", "nbi_on": "pinj_total", "rmp_on": "rmp",
+    }
+
+
+def test_the_lh_detector_covers_only_where_all_three_inputs_were_measured(
+    shot_file, paths, model, synth_shot,
+):
+    # D-alpha AND the line density AND the injected power. The fixture's
+    # `co2` ends in a NaN column, as every real fast group does, so the
+    # intersection stops one sample short of the D-alpha's own axis.
+    _run(paths, model)
+    src = schema.read_sources(paths.sources_file(SHOT))
+    lh = src[src["source"] == "dalpha_lh"].iloc[0]
+    ece_t = synth_shot["ece_t_s"]
+    dalpha_t = synth_shot["dalpha_t_s"]
+    assert lh["t_cov1_s"] == pytest.approx(float(ece_t[-2]))
+    assert lh["t_cov1_s"] < float(dalpha_t[-1])
+    ev = schema.read_events(paths.events_file(SHOT), source="dalpha_lh")
+    assert ev["t_cov1_s"].to_numpy() == pytest.approx(float(ece_t[-2]))
+
+
+def test_a_rerun_of_one_channel_replaces_only_that_channels_rows(shot_file,
+                                                                 paths, model):
+    _run(paths, model)
+    before = schema.read_sources(paths.sources_file(SHOT))
+    schema.write_sources(
+        paths.sources_file(SHOT), SHOT,
+        [{"source": "tokeye_track", "diag": "mhr", "channel": 0,
+          "pass_name": "wide", "status": "ok", "reason": "",
+          "t_cov0_s": 0.0, "t_cov1_s": 9.0, "n_events": 42}],
+        run_id="rerun",
+    )
+    after = schema.read_sources(paths.sources_file(SHOT))
+    assert len(after) == len(before)
+    row = after[(after["source"] == "tokeye_track") & (after["diag"] == "mhr")
+                & (after["channel"] == 0)].iloc[0]
+    assert (row["n_events"], row["run_id"]) == (42, "rerun")
+    assert set(after[after["run_id"] == "rerun"]["diag"]) == {"mhr"}
+
+
+def test_write_false_writes_no_sources_file(shot_file, paths, model):
+    _run(paths, model, write=False)
+    assert not paths.sources_file(SHOT).exists()
+    assert schema.read_sources(paths.sources_file(SHOT)).empty
 
 
 # ------------------------------------------------------- failure isolation
@@ -584,13 +713,28 @@ def test_a_table_that_names_the_shot_adds_its_rows_and_one_source_record(
     assert df["t_cov0_s"].isna().all() and df["t_cov1_s"].isna().all()
     assert df["confidence"].isna().all()
     assert res.by_source["database:rwm_fixture"] == 2
-    # One record per table that named this shot, carried on the result
-    # until the sources file exists on this branch.
+    # One record per table that named this shot, on the result...
     (record,) = res.database_sources
     assert record["source"] == "database:rwm_fixture"
     assert record["status"] == "ok" and record["n_events"] == 2
-    assert "coverage unknown" in record["reason"]
+    assert record["reason"] == ""
     assert np.isnan(record["t_cov0_s"]) and np.isnan(record["t_cov1_s"])
+    # ...and written to the sources file with every other source's, on the
+    # same contract: ok, no reason, NaN coverage. `ok` + NaN coverage is
+    # what identifies a curated source, because no detector writes that.
+    srcs = schema.read_sources(paths.sources_file(SHOT))
+    curated = srcs[srcs["source"] == "database:rwm_fixture"]
+    assert len(curated) == 1
+    (row,) = curated.to_dict("records")
+    assert row["status"] == "ok" and row["reason"] == ""
+    assert row["n_events"] == 2
+    assert np.isnan(row["t_cov0_s"]) and np.isnan(row["t_cov1_s"])
+    assert (row["diag"], row["channel"], row["pass_name"]) == ("", -1, "")
+    # And no detector's row looks like that.
+    others = srcs[srcs["source"] != "database:rwm_fixture"]
+    assert not (
+        (others["status"] == "ok") & others["t_cov0_s"].isna()
+    ).any()
 
 
 def test_a_shot_no_table_names_gets_no_database_row_and_no_source_record(
@@ -605,6 +749,9 @@ def test_a_shot_no_table_names_gets_no_database_row_and_no_source_record(
     df = schema.read_events(paths.events_file(SHOT))
     assert (df["evidence_kind"] == "database").sum() == 0
     assert not any(s.startswith("database:") for s in df["source"])
+    # And NO source row either - the shot was not looked at by any table.
+    srcs = schema.read_sources(paths.sources_file(SHOT))
+    assert not any(str(s).startswith("database:") for s in srcs["source"])
 
 
 def test_a_broken_manifest_is_a_skip_and_not_a_lost_shot(shot_file, paths,
@@ -704,7 +851,42 @@ def test_databases_only_writes_the_run_json_with_the_per_table_totals(
     (row,) = payload["shots"]
     assert row["n_events"] == 2 and row["status"] == "ok"
     assert row["sources"] == ["database:rwm_fixture"]
-    assert row["source_records"][0]["reason"].startswith("curated list")
+    (record,) = row["source_records"]
+    assert record["status"] == "ok" and record["reason"] == ""
+    assert record["n_events"] == 2
+    # `null`, not a bare `NaN` literal: the run JSON has to be JSON.
+    assert record["t_cov0_s"] is None and record["t_cov1_s"] is None
+    raw = _only_run(paths).read_text()
+    assert "NaN" not in raw
+    json.loads(raw, parse_constant=_no_constants)
+
+
+def _no_constants(name):
+    raise AssertionError(f"non-standard JSON literal: {name}")
+
+
+def test_databases_only_writes_the_sources_file_too(
+    paths, tmp_path, monkeypatch, no_network,
+):
+    """The standalone mode is on the same sources contract as the GPU path.
+
+    Otherwise a table ingested here would reach `events.parquet` with no
+    row saying anybody consulted it, and a consumer asking "did any table
+    look at this shot" would get the same silence as for a shot nothing
+    has run on.
+    """
+    root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0),
+                                    (SHOT + 1, 100.0)])
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main(_argv(paths, "--databases-only")) == 0
+    (row,) = schema.read_sources(paths.sources_file(SHOT)).to_dict("records")
+    assert row["source"] == "database:rwm_fixture"
+    assert row["status"] == "ok" and row["reason"] == ""
+    assert row["n_events"] == 2
+    assert np.isnan(row["t_cov0_s"]) and np.isnan(row["t_cov1_s"])
+    assert (row["diag"], row["channel"], row["pass_name"]) == ("", -1, "")
+    # The shot no table names gets no file at all.
+    assert not paths.sources_file(SHOT + 2).exists()
 
 
 def test_databases_only_leaves_another_sources_rows_alone(

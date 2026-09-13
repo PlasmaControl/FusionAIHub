@@ -57,6 +57,7 @@ Two things this stage reports that are easy to miss:
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import signal
@@ -64,6 +65,7 @@ import socket
 import sys
 import time
 from argparse import ArgumentParser
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -666,15 +668,41 @@ def events_stage(shots, ctx: RunContext, args) -> tuple[list[dict], dict]:
     return rows, totals
 
 
+def _jsonable(record: Mapping[str, object]) -> dict:
+    """One source record with its NaNs as `None`, for the run JSON.
+
+    `json.dumps` writes a bare `NaN` literal, which RFC 8259 has no word
+    for: Python and `jq` read it, a strict parser does not, and a curated
+    table's record is two NaNs (`t_cov0_s`, `t_cov1_s`) out of ten fields.
+    The parquet keeps the NaN - it is a float column and `null` there would
+    be a different dtype - so this is the JSON boundary only, and `null`
+    means exactly what the NaN means: nobody recorded a coverage.
+    """
+    return {
+        key: (None
+              if isinstance(value, float) and not math.isfinite(value)
+              else value)
+        for key, value in record.items()
+    }
+
+
 def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
     """`events --databases-only`: the curated tables over a shot list.
 
     No corpus, no network, no masks - a table is a list somebody made, and
     reading it is a CSV lookup per shot. That is what makes it a separate
     mode rather than a step of the GPU path: a new table has to be
-    ingestible over 16,909 shots in seconds, and it has to reach the shots
-    whose corpus files we do not hold (all 33 of the RWM tables' shots, as
-    it happens).
+    ingestible over a whole shot list without a GPU, and it has to reach
+    the shots whose corpus files we do not hold (all 33 of the RWM tables'
+    shots, as it happens).
+
+    The cost is per NAMED shot, not per shot in the list. An unnamed shot
+    is a lookup; a named one is ~0.11 s (write the events, read them back,
+    append the index, write the sources row), flat, measured over 2000
+    synthetic shots. So the 33 RWM shots take about 4 s, `recommender_v1`'s
+    500 unnamed shots about 1.7 s, and a table naming all 16,909 corpus
+    shots would take roughly half an hour - serially, since this ignores
+    `--workers`, which at this cost is a choice.
 
     The summary line is the point of the mode. "0 of 500 shots are named by
     any table" is an ANSWER - the RWM tables stop at 176092 and the corpus
@@ -713,6 +741,12 @@ def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
             path = paths.events_file(shot)
             schema.write_events(path, shot, events, run_id=ctx.run_id,
                                 merge=True)
+            # Beside the events, and on the same contract as the GPU path:
+            # one `ok` row per table that named the shot, `reason=""`, and
+            # coverage NaN - the table says nothing about which interval
+            # of the shot anybody examined.
+            schema.write_sources(paths.sources_file(shot), shot, records,
+                                 run_id=ctx.run_id, merge=True)
             append_index(paths.events_index, schema.index_rows(path),
                          keys=["shot", "source", "phenomenon"])
             print(f"{shot}: {len(events)} events from "
@@ -728,7 +762,7 @@ def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
             # `_stage_summary` groups shots by, `source_records` is the
             # sources-file contract's own rows, kept whole.
             "sources": [str(r["source"]) for r in records],
-            "source_records": records,
+            "source_records": [_jsonable(r) for r in records],
             "seconds": round(time.monotonic() - started, 2),
         })
     totals = {

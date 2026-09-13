@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from labelmaker.events import heuristics, schema
+from labelmaker.events import coverage, heuristics, schema
 from labelmaker.events.tracks import Track
 
 from .conftest import (
@@ -432,6 +432,48 @@ def test_the_drawn_transition_is_found_where_it_was_drawn(synth_shot):
     assert one.attrs["pinj_kw"] == pytest.approx(SYNTH_PINJ_KW)
     assert one.attrs["betan"] == pytest.approx(1.0, abs=0.05)
     assert json.loads(json.dumps(one.attrs, allow_nan=False)) == dict(one.attrs)
+
+
+def test_a_transition_just_after_the_beam_record_ends_is_kept_and_clipped(
+    synth_shot,
+):
+    # The beam gate reads `[when - 5 ms, when]`, so a transition up to 5 ms
+    # after the NBI digitiser's last finite sample clears it with every
+    # input measured - and `when` then lies past the INTERSECTION coverage
+    # the pipeline hands this detector (task Lfix-C1, deliverable 2). The
+    # schema would refuse that row, and `finish_shot` isolates per step, so
+    # one 5 ms coincidence would cost the shot every L-H claim it has. The
+    # point is moved onto the bound instead, says so, and keeps the
+    # measured instant.
+    t = synth_shot["pinj_t_s"]
+    keep = t <= SYNTH_LH_S - 0.002
+    pinj_t, pinj_y = t[keep], synth_shot["pinj_y"][keep]
+    cov = coverage.intersect([
+        coverage.finite_span(synth_shot["dalpha_t_s"], synth_shot["dalpha_y"]),
+        coverage.finite_span(synth_shot["ne_t_s"], synth_shot["ne_y"]),
+        coverage.finite_span(pinj_t, pinj_y),
+    ])
+    assert cov[1] == pytest.approx(float(pinj_t[-1])) and cov[1] < SYNTH_LH_S
+    got = heuristics.lh_transitions(
+        synth_shot["dalpha_t_s"], synth_shot["dalpha_y"],
+        ne_t_s=synth_shot["ne_t_s"], ne_y=synth_shot["ne_y"],
+        betan_t_s=synth_shot["betan_t_s"], betan_y=synth_shot["betan_y"],
+        pinj_t_s=pinj_t, pinj_y=pinj_y, shot=198658, t_cov=cov,
+    )
+    lh = [e for e in got if e.phenomenon == "lh_transition"]
+    assert len(lh) == 1
+    one = lh[0]
+    assert one.t0_s == one.t1_s == cov[1] == one.t_cov1_s
+    assert one.attrs["clipped"] is True
+    assert one.attrs["t_measured_s"] == pytest.approx(SYNTH_LH_S, abs=1e-3)
+    # The back transition at 0.60 s has no beam record under its gate at
+    # all, and is (rightly) not claimed rather than clipped.
+    assert not [e for e in got if e.phenomenon == "hl_transition"]
+
+
+def test_a_transition_inside_its_coverage_is_not_marked_clipped(synth_shot):
+    one = next(e for e in _lh(synth_shot) if e.phenomenon == "lh_transition")
+    assert "clipped" not in one.attrs and "t_measured_s" not in one.attrs
 
 
 def test_the_reverse_step_is_a_back_transition(synth_shot):

@@ -26,6 +26,7 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 | `corpus` | the FAITH corpus: what each shot file carries; `corpus select` draws the shot list |
 | `logs` | the shot-log contract (`logs missing`, `logs import`) |
 | `labels` | labelmaker's labels and events → `labels_wide.parquet`, `events.parquet` |
+| `phenomenon` | which shots show a phenomenon, and what kind of evidence says so (`--list` prints the registry) |
 | `export` | `ShotSummary` rows as JSON or Parquet |
 | `actuation`, `blurb`, `llm`, `model` | actuator waveform sets, per-shot blurbs, LLM reachability, the IGNITE bundle |
 
@@ -34,6 +35,118 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 The development universe is `configs/ideate/shot_lists/recommender_v1.yaml` — 500 shots drawn by
 `ideate corpus select` under the rule in `src/ideate/shotdb/select.py`'s module docstring. The
 database built from it is what the MCP server below serves.
+
+## Phenomena: the evidence classes and the caveat vocabulary
+
+```bash
+ideate phenomenon "edge harmonic oscillation" --n 20            # ranked shots + caveats
+ideate phenomenon "tearing mode" --avoid phenomenon:elm --json  # the hits as JSON
+ideate phenomenon --list                                        # the registry
+```
+
+`ideate phenomenon` answers "which shots had one of these?" — and the answer is only usable
+because it says *who claims so*. Four classes of evidence can name a phenomenon on a shot, and
+they are not interchangeable:
+
+| class | where it comes from | what it is |
+| --- | --- | --- |
+| **observed** | `events.parquet` rows whose `evidence_kind` is `detector` or `heuristic` — a `tokeye_track` in the right band, an `ece_sawtooth` crash, a `dalpha_lh` transition | a diagnostic showed it. The only class that is a measurement, and the only one that can rule the phenomenon *out* — inside the window the diagnostic covered. An allow-list, not "anything that is not a forecast": a `text` or `model` row that matches a registry rule is counted as neither, and says so |
+| **label** | `labels_wide.max_valid` for a detection head named in the registry, **at or above its floor** | a model's opinion about the present. `None`, never `0`, where the model was not run or had no valid samples. A score *below* the floor (`thr` from the model card, else `retrieval.yaml`'s `label_floor`, 0.5) is reported with a caveat naming it and is not evidence: "the model ran" and "the model said yes" are different facts, and a quarter of this database's scored tearing shots are at or under 0.010 |
+| **forecast** | `events.parquet` rows with `evidence_kind == "forecast"` — a risk curve crossed at a threshold, with a `horizon_s` | a model's estimate of what was about to happen. It arrives in `PhenomenonHit.forecasts`, never in `intervals`, and it is never reported as an observation |
+| **text** | `text_claims.parquet`, `polarity=pos` and `temporality=observed` | an operator wrote it down. Never a label by itself: a hit resting on nothing else is capped at 0.25 and carries **TEXT ONLY** |
+
+Ranking is the class order first and the score second: an observed hit outranks a label-only hit,
+which outranks a forecast-only hit, which outranks a curated-list hit, which outranks a text-only
+hit, whatever the weights in `configs/ideate/retrieval.yaml` say. **On the `recommender_v1`
+database today every one of the 1,037 event rows is a forecast**, so `ideate phenomenon` returns
+forecast-, label- and text-class hits and no observed ones at all until the production masks land
+and `ideate labels join` ingests labelmaker's detector output — and the command prints that fact
+under its `resolved:` line rather than leaving it here.
+
+### Coverage: the four states
+
+`coverage` answers "did anyone look, over the window I asked about?", and `coverage_state` says
+which of four situations a `null` is. Only the last makes an empty `intervals` a negative:
+
+| `coverage_state` | what it means | `--avoid` |
+| --- | --- | --- |
+| `unindexed` | nothing in the pipeline looks for this phenomenon at all (`rwm`, `detachment`) | keeps the shot, with a caveat |
+| `unprocessed` | its detectors exist and none of them has run on this shot | keeps the shot, with a caveat |
+| `uncovered` | they ran, but elsewhere in the record — not over the segment searched | keeps the shot, with a caveat |
+| `observed` | they covered the window, or part of it; `coverage` is that intersection | drops only on an observed interval; caveats anything short of full cover |
+
+Coverage is **clipped to the window searched** before any of this is decided. On labelmaker's own
+shots the ELM clock's coverage ends at ~4.3 s while other detectors run to 6-7 s, so a flat top
+extending past 4.3 s is partly unlooked-at for ELMs — and a `coverage` that reported the clock's
+own window would have made that shot a clean ELM negative. `coverage_windows` is the real union
+(gaps and all) and `coverage` is its hull; a hull spanning a gap says so in a caveat.
+
+### The ELM case: a transient detector is not an ELM detector
+
+`elm` has no classified observed source today. `elm_clock` writes only `elm_free` intervals — the
+stretches with *no* ELM in them — and `tokeye_transient` writes `phenomenon="elm"` for any burst.
+labelmaker's own module is explicit that "nothing here decides that a burst IS an ELM… a sawtooth
+crash and a disruption precursor are transient too". So ideate reads it, at 0.4 of a classified
+detection's weight, and every hit it produces carries the caveat
+`observed via tokeye_transient, a class-agnostic transient detector: …`. An `--avoid
+phenomenon:elm` drop that rests on it says so in the run's notes.
+
+**What labelmaker must publish for a true observed-ELM class** (a labelmaker task, recorded here
+and in `phenomena.yaml` because this is where the gap shows): an `elm` **point-event family**
+written by the ELM clock itself — `transients.elm_events`' peaks, which are already computed —
+published as its own source rather than folded into the class-agnostic transient family. When it
+exists it becomes the `elm` rule at weight 1.0 with no caveat.
+
+The registry is `configs/ideate/phenomena.yaml` — one entry per phenomenon, saying which
+`labels_wide` series, which event sources, which frequency band and which descriptors count.
+It states **no aliases**: the ids and the phrases that name them live in
+`src/labelmaker/events/lexicons.yaml`, which both packages read, and an `aliases:` key in
+ideate's file is an error rather than a second vocabulary.
+
+### The caveat vocabulary
+
+Every hit carries `caveats`, and a hit with none is a hit that lacks nothing — which is what
+makes the others mean something. They are constants in `ideate.retrieval.phenomena`, so a caller
+can key on them:
+
+| caveat | what it tells you |
+| --- | --- |
+| `TEXT ONLY` | nothing but operator text; the score is capped at labelmaker's `TEXT_ONLY_CEILING` |
+| `ranked on forecasts: ...` | the strongest evidence is a model's estimate of what was about to happen; no diagnostic saw anything |
+| `ranked on model labels: ... (<p>) ...` | the strongest evidence is a model's score, and the caveat says what the score was |
+| `ranked on a curated human list: ...` | a human list names the shot and nothing else does |
+| `no diagnostic coverage recorded; absence is not evidence` | `unindexed`: nothing looks for this phenomenon at all. **Not** "it did not happen" |
+| `no detector for <title> has run on this shot; ...` | `unprocessed`: its detectors exist and none ran here |
+| `the <title> detectors ran on this shot but not over the <segment> window; ...` | `uncovered`: they looked somewhere else in the record |
+| `the <title> detectors covered only <windows> of the <segment> window; ...` | partial cover: outside those stretches, absence is unmeasured |
+| `the <title> coverage of the <segment> window has <n> gap(s): ...` | `coverage` is a hull over stretches nobody read; `coverage_windows` has the union |
+| `observed via tokeye_transient, a class-agnostic transient detector: ...` | the detector that fired does not classify this phenomenon (see the ELM case above) |
+| `<n> row(s) of evidence_kind <kinds> match this phenomenon's rules and are counted as neither observation nor forecast` | a `text`/`model`/`human` row matched a rule; it is not a sighting |
+| `<key> scored <p>, below the <floor> evidence floor: ...` | the model ran and said no; the number is reported and does not count |
+| `the quote is this shot's most informative logbook entry and does not mention <title>` | the quotation beside the hit is not the reason for the hit |
+| `no observed evidence: ...` | no detector claims it on this shot |
+| `no label evidence: ...` | no model in the registry emits a label for this phenomenon at all |
+| `label not run on this shot, or no valid samples: unavailable, not 0` | the label row is missing or `n_valid == 0` |
+| `no operator text names this phenomenon on this shot` | the logbook is silent |
+| `text evidence is run scope: ...` | the sentence is the session's, shared by every shot of the run. Measured over 500 shots: `elm` fires on 99.4 % of shots at run scope and 11.0 % at shot scope |
+| `operator log says NOT <title>` | somebody wrote that it was absent |
+| `no <segment> segment on this shot; the whole record was searched` | the window was widened, and you are told |
+| `kept despite --avoid <token>: ...` | the shot survived an `--avoid` filter because the avoided phenomenon's coverage is not a full cover of the window — one variant per coverage state, and no caveat at all in the one case that is a real negative |
+| `<n> event(s) not shown: ...` | events the source never scored, dropped by `--min-confidence` |
+
+`--avoid phenomenon:elm` drops the shots an ELM detector fired on and **keeps**, with the caveat
+for that shot's coverage state, the shots no ELM detector covered. Dropping those would read a gap in the diagnostic
+coverage as a physics result. What separates the two is `coverage_sources` in the registry: a
+detector that finds nothing writes no rows, so on a quiet shot the only record that the mhr data
+was read for ELMs at all is `elm_clock`'s `elm_free` interval — a *different* source from the one
+that would have reported an ELM. A phenomenon nothing detects (`rwm`, `detachment`) declares
+none, so its coverage stays unknown and every hit for it says so.
+
+One field name is a promise it cannot yet keep: `actuators_at_onset` holds the **segment's** own
+summary columns (`pnbi_total_mean`, `pech_total_mean`, `gas_total_mean`, `irmp_total_peak`), not
+the values at the phenomenon's first interval. A per-onset lookup needs the raw waveform, which
+the database does not carry; the keys are the column names, so the field cannot misdescribe
+itself in the meantime.
 
 ## The MCP server
 
@@ -74,23 +187,27 @@ client works — the transport is stdio and the command above is the whole contr
 | --- | --- | --- |
 | `search_shots` | `text`, `ref_shot`, `segment`, `constraints`, `actuators`, `require_labels`, `avoid_labels`, `n` | ranked shots with a description, an explanation naming which channel found each one, and the operating-limit flags for the proposed actuators |
 | `describe_shot` | `shot`, `segment` | the prose description and the whole stored record: segments and their scalars, labels and their source, outcome, and the operator logbook verbatim |
-| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | the shot's events, filtered by phenomenon and by time overlap — and, in separate lists, the forecasts and the curated-table rows |
+| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and four lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `database_intervals` (a curated table's rows), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
 
 Plus one resource, `ideate://manifest`: the built database's manifest, which is how a caller
 finds out which shots the tools can see at all.
 
-Two things hold for every reply and are worth knowing before reading one:
+Four things hold for the replies and are worth knowing before reading one:
 
-* **`caveats` is always there, and it changes what the reply means.** An empty result carrying
-  "no channel had anything to search on" means the query was empty — not that no such shot
-  exists. A result whose constraint excluded shots for having no recorded value says so, because
-  "not measured" is not "out of range".
-* **`get_events` never mixes forecasts into `events`.** A row with `evidence_kind == "forecast"`
-  is a model's estimate of what was about to happen, raised from a risk curve at a threshold;
-  every other row is a claim about what a diagnostic showed. They arrive in different lists and
-  must stay in different sentences. (On the `recommender_v1` database today, *all* 1,037 event
-  rows are forecasts — so a tool that concatenated them would report nothing but model output as
-  observation.)
+* **`caveats` is on every reply the tools themselves produce, and it changes what the reply
+  means.** An empty result carrying "no channel had anything to search on" means the query was
+  empty — not that no such shot exists. A result whose constraint excluded shots for having no
+  recorded value says so, because "not measured" is not "out of range". The promise is scoped:
+  a call whose *arguments* fail the tool schema (a string where a shot number belongs) is
+  rejected by the MCP framework before any tool code runs, and comes back as a protocol
+  validation error with no `caveats` field.
+* **`get_events` keeps four kinds of claim in four lists.** An `events` row is a detector's or
+  a heuristic's claim about what a diagnostic showed, with `source` saying who. A `forecasts`
+  row (`evidence_kind == "forecast"`) is a model's estimate of what was about to happen, raised
+  from a risk curve at a threshold. A `text_mentions` row (`evidence_kind == "text"`) is a
+  lexicon hit in the operator logbook — somebody wrote the word — and is *not* evidence that the
+  phenomenon occurred: shot 185980's "Updated ELM detector tuning." is a positive ELM hit about
+  the detector. They arrive in different lists and must stay in different sentences.
 * **`get_events` keeps a curated list out of `events` too.** A row with
   `evidence_kind == "database"` comes from a table somebody sent us — the first two are Jeremy
   Hansen's RWM onset databases, under `data/labels/resistive_wall_mode/` and declared in
@@ -99,8 +216,20 @@ Two things hold for every reply and are worth knowing before reading one:
   calibrated probability, and its coverage (`t_cov0_s`/`t_cov1_s`) is `null`, because nobody
   recorded which interval of the shot was examined. That second null is the load-bearing one — a
   shot's **absence** from a curated list is not a negative, and nothing downstream may read it as
-  one. `ideate labels join` needs no rule for these rows: `events_union` reads each shot's
-  `events/<shot>_events.parquet` wholesale, so they reach `db/events.parquet` as they are.
+  one. A curated row is excluded from `n_observed_rows` too, so a shot whose only rows come from
+  a spreadsheet never answers `status: observed`. `ideate labels join` needs no rule for these
+  rows: `events_union` reads each shot's `events/<shot>_events.parquet` wholesale, so they reach
+  `db/events.parquet` as they are.
+* **`status` says what an empty `events` means**, and the four values are not degrees of one
+  thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
+  `unprocessed`: it is indexed, but `db/event_sources.parquet` records no detector as having
+  completed over it — absence is not evidence. `uncovered`: detectors ran, but not over the
+  window asked about; the caveat names the covered span. `observed`: detectors ran over (part
+  of) the window, and an empty list is a real finding of nothing, said in as many words. A
+  reversed, zero-width or non-finite window is an error dict, never a silent empty. (On the
+  `recommender_v1` database today *all* 1,037 event rows are forecasts and no shot has an
+  observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
+  is the truth the old empty list hid.)
 
 Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` and
 `ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and

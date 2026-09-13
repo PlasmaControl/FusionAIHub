@@ -9,7 +9,19 @@ confidence of 3.4 fails where the mistake was made, not a stage later.
 Provenance is per row, not per file: `source` and `evidence_kind` say who
 claims the event and what kind of claim it is, and `run_id`/`git_sha`/
 `written_at` say which run wrote it. A forecast is not an observation, so it
-carries a `horizon_s` and nothing else may.
+carries a `horizon_s` and nothing else may. `evidence_kind` is not
+decoration: `events/windows.py` refuses to compute a diagnostic feature
+from anything but a `detector` or `heuristic` row of the family's own
+source, which is what keeps an operator's logbook line and a model's
+forecast out of the ELM count.
+
+`events/<shot>_sources.parquet` is the second file, written by the same
+`Paths.events` directory and read by `read_sources`: one row per
+`(source, diag, channel, pass)` that RAN or was SKIPPED, with the coverage
+it ran over and how many events it produced. An events file states what
+was found; a detector that ran and found nothing writes nothing to it, and
+without the sources file "observed silence" and "never processed" are the
+same empty query.
 """
 from __future__ import annotations
 
@@ -133,6 +145,23 @@ class Event:
         if self.t1_s < self.t0_s:
             raise ValueError(
                 f"t1_s must not precede t0_s; got {self.t0_s}, {self.t1_s}"
+            )
+        # An event that ends after its own coverage is a claim about a
+        # stretch nobody measured. On the three pilot shots 9, 11 and 15
+        # track rows did exactly that, by up to 2.052 ms, because a
+        # stitched transform's support runs past the record it was
+        # computed from. That is edge padding, not plasma, and the fix is
+        # `coverage.clip_to_coverage` at the point the row is built -
+        # which is why this is a refusal here rather than a repair in the
+        # writer: a row nobody clipped must fail where it was made.
+        if (
+            math.isfinite(self.t1_s)
+            and math.isfinite(self.t_cov1_s)
+            and self.t1_s > self.t_cov1_s
+        ):
+            raise ValueError(
+                f"t1_s must not exceed t_cov1_s; got {self.t1_s} against "
+                f"{self.t_cov1_s} (clip with events.coverage.clip_to_coverage)"
             )
         if self.evidence_kind not in EVIDENCE_KINDS:
             raise ValueError(
@@ -266,6 +295,165 @@ def read_events(path, *, source: str | None = None,
         out = out[out["source"] == source]
     if phenomenon is not None:
         out = out[out["phenomenon"] == phenomenon]
+    return out.reset_index(drop=True)
+
+
+# ------------------------------------------------- the per-source record
+
+#: What a source's run came to. `ok` is "it ran to completion", however
+#: many events that turned out to be - zero included.
+SOURCE_STATUSES = ("ok", "skipped", "error")
+
+#: Column order of `events/<shot>_sources.parquet`. CONTRACT: ideate's
+#: consumer is built against this list, so a column may be appended and
+#: none may be renamed, reordered or dropped.
+SOURCE_COLUMNS = (
+    "shot", "source", "status", "reason", "t_cov0_s", "t_cov1_s",
+    "n_events", "diag", "channel", "pass_name", "run_id", "git_sha",
+    "written_at",
+)
+
+#: Dtype of every column of the sources file.
+SOURCE_DTYPES = {
+    "shot": "int32",
+    "source": "object",
+    "status": "object",
+    "reason": "object",
+    "t_cov0_s": "float64",
+    "t_cov1_s": "float64",
+    "n_events": "int32",
+    "diag": "object",
+    "channel": "int16",
+    "pass_name": "object",
+    "run_id": "object",
+    "git_sha": "object",
+    "written_at": "object",
+}
+
+#: What makes two rows the same record. A source is not enough: the
+#: tracker runs once per `(diag, channel, pass)` block and each of those
+#: has its own coverage and its own answer.
+SOURCE_KEY = ("source", "diag", "channel", "pass_name")
+
+
+def _empty_sources() -> pd.DataFrame:
+    return pd.DataFrame(
+        {name: pd.Series(dtype=SOURCE_DTYPES[name]) for name in SOURCE_COLUMNS}
+    )
+
+
+def _source_row(shot: int, record: Mapping[str, Any], *, run_id: str,
+                sha: str, now: str) -> dict:
+    """One validated row, provenance filled in."""
+    status = str(record.get("status", "ok"))
+    if status not in SOURCE_STATUSES:
+        raise ValueError(f"status {status!r} not in {SOURCE_STATUSES}")
+    source = str(record.get("source", ""))
+    if not source:
+        raise ValueError("source must not be empty")
+    reason = str(record.get("reason", "") or "")
+    if status == "ok" and reason:
+        raise ValueError(
+            f"an ok source carries no reason; got {reason!r} for {source!r}"
+        )
+    if status != "ok" and not reason:
+        raise ValueError(f"a {status} source must say why; {source!r} does not")
+    pass_name = str(record.get("pass_name", "") or "")
+    if pass_name not in PASS_NAMES:
+        raise ValueError(f"pass_name {pass_name!r} not in {PASS_NAMES}")
+    n_events = int(record.get("n_events", 0))
+    if n_events < 0:
+        raise ValueError(f"n_events must not be negative; got {n_events}")
+    t0 = float(record.get("t_cov0_s", _NAN))
+    t1 = float(record.get("t_cov1_s", _NAN))
+    if math.isfinite(t0) and math.isfinite(t1) and t1 < t0:
+        raise ValueError(f"t_cov1_s must not precede t_cov0_s; got {t0}, {t1}")
+    return {
+        "shot": int(shot),
+        "source": source,
+        "status": status,
+        "reason": reason,
+        "t_cov0_s": t0,
+        "t_cov1_s": t1,
+        "n_events": n_events,
+        "diag": str(record.get("diag", "") or ""),
+        "channel": int(record.get("channel", -1)),
+        "pass_name": pass_name,
+        "run_id": run_id,
+        "git_sha": sha,
+        "written_at": now,
+    }
+
+
+def write_sources(
+    path,
+    shot: int,
+    records: Sequence[Mapping[str, Any]],
+    *,
+    run_id: str,
+    merge: bool = True,
+) -> pd.DataFrame:
+    """Write one shot's per-source completion record; return the new file.
+
+    One row per `(source, diag, channel, pass_name)` that RAN or was
+    SKIPPED. This is the file that answers "did anybody look", which an
+    events file cannot: a detector that ran and found nothing writes no
+    event row, and is indistinguishable in `events/<shot>_events.parquet`
+    from a detector that never ran. `status == "ok"` with `n_events == 0`
+    is the observed silence; `status == "skipped"` with a `reason` is the
+    absence of an observation; no row at all is "not processed".
+
+    Merged and atomic like `write_events`, on the same reasoning and with
+    the same key: a re-run of one channel replaces that channel's rows and
+    leaves every other source's alone.
+    """
+    path = Path(path)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    sha = git_sha()
+    rows = [
+        _source_row(shot, r, run_id=run_id, sha=sha, now=now) for r in records
+    ]
+    keys = {tuple(r[k] for k in SOURCE_KEY) for r in rows}
+    if len(keys) != len(rows):
+        raise ValueError("two records for one (source, diag, channel, pass)")
+    new = (
+        pd.DataFrame(rows, columns=list(SOURCE_COLUMNS)).astype(SOURCE_DTYPES)
+        if rows else _empty_sources()
+    )
+    parts = [new]
+    if merge and path.exists():
+        old = read_sources(path)
+        if not old.empty:
+            keep = ~pd.MultiIndex.from_frame(old[list(SOURCE_KEY)]).isin(keys)
+            parts.insert(0, old[keep])
+    kept = [p for p in parts if not p.empty]
+    out = pd.concat(kept, ignore_index=True) if kept else _empty_sources()
+    out = (
+        out.sort_values(list(SOURCE_KEY), kind="stable")
+        .reset_index(drop=True)
+        .astype(SOURCE_DTYPES)
+    )
+    with atomic_path(path) as tmp:
+        out.to_parquet(tmp, index=False)
+    return out
+
+
+def read_sources(path, *, source: str | None = None) -> pd.DataFrame:
+    """A shot's per-source record, or an empty typed frame where there is none.
+
+    Missing reads as empty for the same reason `read_events` does: most of
+    a campaign has not been processed yet, and a caller joining coverage to
+    events must not have to care. An empty frame here means "no source has
+    been recorded for this shot", which is exactly the "not processed"
+    state the file exists to distinguish.
+    """
+    path = Path(path)
+    if not path.exists():
+        out = _empty_sources()
+    else:
+        out = pd.read_parquet(path)[list(SOURCE_COLUMNS)].astype(SOURCE_DTYPES)
+    if source is not None:
+        out = out[out["source"] == source]
     return out.reset_index(drop=True)
 
 

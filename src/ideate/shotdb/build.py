@@ -804,6 +804,50 @@ def write_blurbs(paths: config.Paths, client, only_missing: bool = True) -> int:
     return n
 
 
+def refresh_frame_codes(db_dir: Path, paths: config.Paths) -> dict:
+    """Recompute `shots.parquet`'s `has_frame_codes` from the directories on disk. Returns counts.
+
+    The column is set at BUILD time from the caches that existed then, and encoding is a separate,
+    later job -- so a database built before the encode says false for every shot the encode has
+    since written. It said 13 true / 487 false while all 500 production caches existed, and a
+    reader has no way to tell a stale flag from a shot that really has no codes. `ideate labels
+    join` calls this because the join is the step that runs after the long jobs and republishes,
+    and because a rebuild to fix one boolean costs an hour.
+
+    The flag lives twice -- as a column and inside `record_json`, which is what `describe_shot`
+    reads back -- so both are refreshed, and only the rows that changed are re-serialised.
+    """
+    path = Path(db_dir) / "shots.parquet"
+    if not path.exists():
+        return {"n_shots": 0, "n_has_frame_codes": 0, "n_changed": 0, "refreshed": False,
+                "reason": f"no {path}", "frame_codes_dirs": []}
+    df = pd.read_parquet(path)
+    shots = [int(s) for s in df.index]
+    now = [frame_codes_path(shot, paths) is not None for shot in shots]
+    was = [bool(v) for v in df["has_frame_codes"]] if "has_frame_codes" in df.columns else \
+        [False] * len(shots)
+    changed = [i for i, (a, b) in enumerate(zip(was, now, strict=True)) if a != b]
+    if changed:
+        df["has_frame_codes"] = now
+        records = df["record_json"].to_list()
+        for i in changed:
+            rec = ShotRecord.model_validate_json(records[i])
+            rec.has_frame_codes = now[i]
+            records[i] = rec.model_dump_json()
+        df["record_json"] = records
+        tmp = Path(db_dir) / "shots.parquet.part"
+        df.to_parquet(tmp)
+        os.replace(tmp, path)
+    return {
+        "n_shots": len(shots),
+        "n_has_frame_codes": int(sum(now)),
+        "n_was_true": int(sum(was)),
+        "n_changed": len(changed),
+        "refreshed": bool(changed),
+        "frame_codes_dirs": [str(d) for d in frame_codes_dirs(paths)],
+    }
+
+
 def _tmp_dir(db_dir: Path) -> Path:
     return db_dir.parent / f"{db_dir.name}.tmp"
 

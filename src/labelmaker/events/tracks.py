@@ -51,6 +51,7 @@ import numpy as np
 from scipy import ndimage
 
 from ..ae.labels import N_BINS
+from .coverage import clip_to_coverage, clipped_attrs
 from .masks import freq_axis_khz, read_mask, unpack
 from .schema import Event
 
@@ -636,21 +637,38 @@ def tracks_to_events(
     descriptors know goes into `attrs`, whole, beside the checkpoint that
     produced the mask - an event that cannot say which weights found it
     cannot be re-checked when the weights change.
+
+    The extent is CLIPPED into `t_cov`, with `attrs["clipped"] = true`
+    where it had to be. A track stitched across tiles carries the
+    transform's edge support, which on the three pilot shots put 9, 11 and
+    15 rows up to 2.052 ms past their own coverage; the descriptors in
+    `attrs` are the untrimmed measurement, and `t0_s`/`t1_s` are what was
+    observed.
     """
     counts = n_harmonics(tracks)
+    cov = (float(t_cov[0]), float(t_cov[1]))
     out: list[Event] = []
     for i, track in enumerate(tracks):
         attrs = as_attrs(track)
         attrs["n_harmonics"] = int(counts[i])
         attrs["unet_sha256"] = str(unet_sha256)
+        # A stitched track's support runs a column or two past the record
+        # it was computed from - measured at up to 2.052 ms on the three
+        # pilot shots, on 9, 11 and 15 rows. That is transform edge
+        # padding, not a mode that outlived the digitiser, so the EXTENT
+        # is trimmed back into the coverage and the row says it was.
+        # `attrs` keeps the untrimmed `duration_ms` the descriptors
+        # measured, which is what a re-analysis of the mask would find.
+        t0_s, t1_s, clipped = clip_to_coverage(track.t0_s, track.t1_s, cov)
+        attrs = clipped_attrs(attrs, clipped)
         out.append(
             Event(
                 shot=int(shot),
                 source=SOURCE,
                 evidence_kind="detector",
                 phenomenon=PICKUP_PHENOMENON if track.pickup else PHENOMENON,
-                t0_s=track.t0_s,
-                t1_s=track.t1_s,
+                t0_s=t0_s,
+                t1_s=t1_s,
                 f0_khz=track.f0_khz,
                 f1_khz=track.f1_khz,
                 confidence=track.conf,
@@ -658,8 +676,8 @@ def tracks_to_events(
                 channel=int(channel),
                 pass_name=str(pass_name),
                 attrs=attrs,
-                t_cov0_s=float(t_cov[0]),
-                t_cov1_s=float(t_cov[1]),
+                t_cov0_s=cov[0],
+                t_cov1_s=cov[1],
             )
         )
     return out

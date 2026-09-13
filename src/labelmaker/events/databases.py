@@ -64,9 +64,14 @@ UNITS = {"ms": 1e-3, "s": 1.0}
 #: column can be.
 ATTR_TYPES = ("int", "float", "str")
 
-#: Why the source record's coverage is NaN. It is a `reason` on an `ok`
-#: row, which is unusual and is the point: the table ran, it found what it
-#: found, and the interval it examined is unknown rather than empty.
+#: Why the source record's coverage is NaN, in one sentence, for the docs
+#: and for whoever reads a curated row back. It is NOT written to the
+#: sources file: `schema._source_row` refuses a `reason` on an `ok` row
+#: (task Lfix-C1's contract, and it is right - a reason is what a non-`ok`
+#: row owes), so the record carries `reason=""` and the NaN COVERAGE is
+#: the signal. That is unambiguous on the wire because no detector writes
+#: `ok` with NaN coverage: a curated source is `status="ok"`, coverage
+#: NaN, and a `source` beginning `database:`.
 COVERAGE_REASON = (
     "curated list; coverage unknown (a listing is not a coverage claim)"
 )
@@ -336,6 +341,11 @@ def events_for_shot(
     per table that CONSULTED this shot - which is to say, per table that
     lists it. A table that does not list the shot contributes neither, so
     the sources file never claims coverage nobody has.
+
+    The records are `schema.write_sources` rows minus the `shot` the writer
+    fills in: `status="ok"`, `reason=""`, `n_events`, NaN coverage, and
+    `(diag, channel, pass_name) = ("", -1, "")`, which is the key a curated
+    table owns since it reads no diagnostic.
     """
     shot = int(shot)
     specs = load_manifest(root) if specs is None else tuple(specs)
@@ -369,7 +379,9 @@ def events_for_shot(
         records.append({
             "source": spec.source,
             "status": "ok",
-            "reason": COVERAGE_REASON,
+            # Empty by contract - see COVERAGE_REASON. The NaN coverage
+            # below is what says the examined interval is unknown.
+            "reason": "",
             "n_events": len(rows),
             "t_cov0_s": _NAN,
             "t_cov1_s": _NAN,
