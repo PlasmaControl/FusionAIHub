@@ -93,6 +93,8 @@ class ShotDB:
         self.events = empty_events() if events is None else events
         self.labels_wide = empty_labels_wide() if labels_wide is None else labels_wide
         self.text_claims = empty_text_claims() if text_claims is None else text_claims
+        #: name -> message for an optional label table that exists but could not be read.
+        self.load_errors: dict[str, str] = {}
         meta = shots[["shot", "run_id", "regime", "verdict", "operational"]].set_index("shot")
         # A left join preserves row order, which is what keeps self.segments aligned row-for-row
         # with emb["scalar"]; every lookup in this class relies on that.
@@ -110,14 +112,24 @@ class ShotDB:
         shapes = np.load(shape_path) if shape_path.exists() else None
         win_path = db_dir / "windows.parquet"
         windows = pd.read_parquet(win_path) if win_path.exists() else None
-        label_tables = {
-            name: pd.read_parquet(p)
-            for name in ("events", "labels_wide", "text_claims")
-            if (p := db_dir / f"{name}.parquet").exists()
-        }
-        return cls(
-            db_dir, shots, segments, emb, pca, manifest, shapes, windows, **label_tables
-        )
+        # The label tables are optional AND may be unreadable (a torn or foreign parquet). An
+        # unreadable one is recorded, not fatal: the core tables still load, and the reader
+        # that needs the table (`mcp.tools.get_events`, `retrieval.phenomena`) reports the
+        # failure in its own words -- an eager raise here turned a corrupt `events.parquet`
+        # into a protocol error on every MCP call, including ones that never touch events.
+        label_tables: dict[str, pd.DataFrame] = {}
+        load_errors: dict[str, str] = {}
+        for name in ("events", "labels_wide", "text_claims"):
+            p = db_dir / f"{name}.parquet"
+            if not p.exists():
+                continue
+            try:
+                label_tables[name] = pd.read_parquet(p)
+            except Exception as exc:  # noqa: BLE001 - reported to the caller, never swallowed
+                load_errors[name] = f"{type(exc).__name__}: {exc}"
+        db = cls(db_dir, shots, segments, emb, pca, manifest, shapes, windows, **label_tables)
+        db.load_errors = load_errors
+        return db
 
     # ------------------------------------------------------------------ single-row access
 
