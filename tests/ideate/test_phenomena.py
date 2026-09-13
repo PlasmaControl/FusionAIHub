@@ -8,6 +8,7 @@ four different claims, and this module's job is to never let one be reported as 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -163,7 +164,18 @@ def phen_db(ideate_db: Path) -> store.ShotDB:
         _claim(TEXT_SHOT, "tearing", snippet="the tearing mode locked"),
     ]
     _write_tables(ideate_db / "db", events, labels, claims)
-    return store.ShotDB.load(ideate_db / "db")
+    db = store.ShotDB.load(ideate_db / "db")
+    # Shot 100's logbook says what its detector saw. That is what makes it the hit that lacks
+    # NOTHING -- no missing evidence class, and a quote that is about the phenomenon rather than
+    # the shot's best sentence on some other subject.
+    from ideate.schema import LogEntry
+
+    rec = db.get(OBSERVED_SHOT)
+    rec.human.log_entries.append(
+        LogEntry(role="PHYSICS_OPERATOR", text="Postshot: clear 2/1 tearing mode from 2 s.")
+    )
+    db.shots.loc[OBSERVED_SHOT, "record_json"] = rec.model_dump_json()
+    return db
 
 
 # -------------------------------------------------------------------------- registry validation
@@ -331,9 +343,12 @@ def test_a_negative_claim_becomes_a_caveat_in_the_operators_own_frame(ideate_db)
 
 
 def test_no_coverage_is_a_caveat_because_absence_is_not_evidence(phen_db):
-    assert ph.NO_COVERAGE in ph.evidence(FORECAST_SHOT, "tearing", phen_db).caveats
-    # Shot 100 has tokeye_track rows, so the tearing detector's window is on the record.
-    assert ph.evidence(OBSERVED_SHOT, "tearing", phen_db).coverage == (0.0, 6.0)
+    # Nothing tearing-shaped ran on shot 101: its detectors exist, and not on this shot.
+    got = ph.evidence(FORECAST_SHOT, "tearing", phen_db)
+    assert got.coverage is None and got.coverage_state == "unprocessed"
+    assert ph.COVERAGE_UNPROCESSED.format(title="Tearing mode") in got.caveats
+    # Shot 100 has tokeye_track rows covering 0-6 s, clipped to the window that was searched.
+    assert ph.evidence(OBSERVED_SHOT, "tearing", phen_db).coverage == (1.0, 5.0)
 
 
 def test_a_detector_that_found_nothing_still_records_that_it_looked(phen_db):
@@ -341,7 +356,8 @@ def test_a_detector_that_found_nothing_still_records_that_it_looked(phen_db):
     "the detector ran and saw no ELM" from "nobody looked"."""
     quiet = ph.evidence(TEXT_SHOT, "elm", phen_db)
     assert quiet.intervals == ()
-    assert quiet.coverage == (0.0, 6.0)
+    assert quiet.coverage == (1.0, 5.0)  # the 1.0-4.0 row's own t_cov is 0-6 s
+    assert quiet.coverage_state == "observed" and quiet.coverage_partial is False
     assert ph.NO_COVERAGE not in quiet.caveats
 
 
@@ -479,7 +495,10 @@ def test_every_hit_names_the_evidence_classes_it_lacks_and_only_those(phen_db):
         if not hit.text_snippets:
             assert ph.NO_TEXT in hit.caveats, shot
         if hit.coverage is None:
-            assert ph.NO_COVERAGE in hit.caveats, shot
+            assert hit.coverage_state != "observed", shot
+            assert any(
+                c.endswith("absence is not evidence") or "unmeasured" in c for c in hit.caveats
+            ), shot
 
 
 def test_the_hit_carries_the_shots_identity_for_a_reader_to_follow_up(phen_db):
@@ -552,3 +571,387 @@ def test_the_cli_passes_avoid_through(phen_db, capsys):
     ) == 0
     doc = json.loads(capsys.readouterr().out)
     assert OBSERVED_SHOT not in [h["shot"] for h in doc]
+
+
+# ===================================================================== fix loop 1 (review I9a)
+#
+# One section per numbered finding of `.superpowers/sdd/task-I9a-review.md`. They are all the
+# same shape as the tests above: a claim this module must not make, and the fixture that would
+# have let it make one.
+
+
+def _db_with(ideate_db: Path, events: list[dict], labels=(), claims=()) -> store.ShotDB:
+    _write_tables(ideate_db / "db", events, list(labels), list(claims))
+    return store.ShotDB.load(ideate_db / "db")
+
+
+def _elm_clock(shot: int, event_id: str, cov: tuple[float, float]) -> dict:
+    """One `elm_free` row: the ELM clock saying it READ the mhr data over `cov`, and found no
+    ELM in it. The row's own span and its coverage span are the same stretch."""
+    return _event(
+        shot, event_id, source="elm_clock", evidence_kind="heuristic", phenomenon="elm_free",
+        t0_s=cov[0], t1_s=cov[1], confidence=np.nan, attrs={"n_elms_inside": 0},
+        t_cov0_s=cov[0], t_cov1_s=cov[1],
+    )
+
+
+# ------------------------------------------------------- finding 1: coverage and the window
+
+
+def test_coverage_that_misses_the_window_is_not_coverage_of_the_window(ideate_db):
+    """The ELM clock read 0.0-0.9 s. The question is about the flat top, 1.0-5.0 s. Nobody
+    looked at the flat top for ELMs, and a coverage number that says otherwise turns a gap in
+    the data into "we looked and there were none"."""
+    db = _db_with(ideate_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
+    got = ph.evidence(TEXT_SHOT, "elm", db)
+    assert got.coverage is None
+    assert got.coverage_state == "uncovered"
+    assert ph.COVERAGE_OUTSIDE_WINDOW.format(
+        title="Edge localised mode", segment="flat_top"
+    ) in got.caveats
+
+
+def test_avoid_keeps_and_caveats_a_shot_whose_coverage_missed_the_window(ideate_db):
+    db = _db_with(
+        ideate_db,
+        [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))],
+        claims=[_claim(TEXT_SHOT, "tearing")],
+    )
+    hit = next(h for h in ph.locate("tearing", db, 10, avoid=["phenomenon:elm"])
+               if h.shot == TEXT_SHOT)
+    assert ph.AVOID_UNCOVERED.format(
+        token="phenomenon:elm", title="Edge localised mode"
+    ) in hit.caveats
+
+
+def test_partial_coverage_of_the_window_is_reported_as_partial(ideate_db):
+    db = _db_with(
+        ideate_db,
+        [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (1.0, 3.0))],
+        claims=[_claim(TEXT_SHOT, "tearing")],
+    )
+    got = ph.evidence(TEXT_SHOT, "elm", db)
+    assert got.coverage == (1.0, 3.0)
+    assert got.coverage_state == "observed"
+    assert got.coverage_partial is True
+    hit = next(h for h in ph.locate("tearing", db, 10, avoid=["phenomenon:elm"])
+               if h.shot == TEXT_SHOT)
+    assert any("--avoid phenomenon:elm" in c for c in hit.caveats)
+
+
+def test_coverage_of_the_whole_window_is_a_real_negative_and_says_nothing(ideate_db):
+    db = _db_with(
+        ideate_db,
+        [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 6.0))],
+        claims=[_claim(TEXT_SHOT, "tearing")],
+    )
+    got = ph.evidence(TEXT_SHOT, "elm", db)
+    assert got.coverage == (1.0, 5.0)  # clipped to the window the question is about
+    assert got.coverage_state == "observed" and got.coverage_partial is False
+    hit = next(h for h in ph.locate("tearing", db, 10, avoid=["phenomenon:elm"])
+               if h.shot == TEXT_SHOT)
+    assert not any("--avoid" in c for c in hit.caveats)
+
+
+def test_the_four_coverage_states_are_distinguished(ideate_db):
+    db = _db_with(ideate_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
+    assert ph.COVERAGE_STATES == ("unindexed", "unprocessed", "uncovered", "observed")
+    # nothing in the pipeline looks for an rwm at all
+    assert ph.evidence(TEXT_SHOT, "rwm", db).coverage_state == "unindexed"
+    # the elm detectors exist but never ran on this shot
+    assert ph.evidence(OBSERVED_SHOT, "elm", db).coverage_state == "unprocessed"
+    assert ph.evidence(TEXT_SHOT, "elm", db).coverage_state == "uncovered"
+
+
+# ------------------------------------------------------- finding 7: the union, not the hull
+
+
+def test_two_disjoint_coverage_stretches_are_not_one_long_one(ideate_db):
+    db = _db_with(ideate_db, [
+        _elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 1.5)),
+        _elm_clock(TEXT_SHOT, "200-elm_clock-00001", (4.0, 6.0)),
+    ])
+    got = ph.evidence(TEXT_SHOT, "elm", db)
+    assert got.coverage_windows == ((1.0, 1.5), (4.0, 5.0))
+    assert got.coverage == (1.0, 5.0)  # the hull, and it is labelled as one
+    assert ph.COVERAGE_GAPS.format(
+        title="Edge localised mode", segment="flat_top", n=1
+    ) in got.caveats
+    assert got.coverage_partial is True
+
+
+# --------------------------- finding 1 / cross-workstream: db/event_sources.parquet
+
+
+def test_coverage_comes_from_the_source_table_when_the_database_has_one(ideate_db):
+    """`db/event_sources.parquet` (branch `recommender-fix`) records what RAN, including the
+    detectors that emitted nothing. When it is there it is the answer; a `skipped` row is not
+    coverage, it is a detector that was not run."""
+    db = _db_with(ideate_db, [])
+    db.event_sources = pd.DataFrame(
+        [
+            {"shot": TEXT_SHOT, "source": "elm_clock", "status": "ok",
+             "t_cov0_s": 0.0, "t_cov1_s": 6.0},
+            {"shot": OBSERVED_SHOT, "source": "elm_clock", "status": "skipped",
+             "t_cov0_s": np.nan, "t_cov1_s": np.nan},
+        ]
+    )
+    assert ph.evidence(TEXT_SHOT, "elm", db).coverage == (1.0, 5.0)
+    assert ph.evidence(OBSERVED_SHOT, "elm", db).coverage_state == "unprocessed"
+
+
+def test_the_hit_carries_the_coverage_state(phen_db):
+    hits = {h.shot: h for h in ph.locate("tearing", phen_db, 10)}
+    assert hits[OBSERVED_SHOT].coverage_state == "observed"
+    assert hits[FORECAST_SHOT].coverage_state == "unprocessed"
+
+
+# ---------------------------------- finding 2: a transient detector is not an ELM detector
+
+
+def test_a_transient_detection_is_reported_as_a_transient_and_not_as_an_elm(phen_db):
+    """`tokeye_transient` is a burst detector. labelmaker's own module says a sawtooth crash and
+    a disruption precursor are transient too, so its `phenomenon="elm"` is a claim to weigh, not
+    an ELM sighting to repeat."""
+    seen = ph.evidence(OBSERVED_SHOT, "elm", phen_db)
+    assert [iv.source for iv in seen.intervals] == ["tokeye_transient"]
+    assert ph.TRANSIENT_NOT_CLASSIFIED in seen.caveats
+    # A class-specific detector says nothing of the kind.
+    assert ph.TRANSIENT_NOT_CLASSIFIED not in ph.evidence(
+        OBSERVED_SHOT, "tearing", phen_db
+    ).caveats
+
+
+def test_the_transient_rule_weighs_less_than_a_class_specific_detector():
+    reg = ph.registry()
+    (elm_rule,) = reg["elm"].events
+    (saw_rule,) = reg["sawtooth"].events
+    assert elm_rule.source == "tokeye_transient"
+    assert elm_rule.weight < saw_rule.weight == 1.0
+    assert elm_rule.caveat == ph.TRANSIENT_NOT_CLASSIFIED
+
+
+def test_the_event_term_counts_the_rules_weight_not_the_row_count(phen_db):
+    ev = ph.evidence(OBSERVED_SHOT, "elm", phen_db)
+    (rule,) = ph.registry()["elm"].events
+    assert len(ev.intervals) == 1
+    assert ev.event_weight == pytest.approx(rule.weight)
+    assert ph.score(ev, ph.DEFAULT_WEIGHTS, 3.0) == pytest.approx(
+        1.0 - math.exp(-rule.weight / 3.0)
+    )
+
+
+def test_an_avoid_drop_says_what_the_evidence_it_dropped_on_was(phen_db):
+    notes: list[str] = []
+    kept = ph.locate("tearing", phen_db, 10, avoid=["phenomenon:elm"], notes=notes)
+    assert OBSERVED_SHOT not in [h.shot for h in kept]
+    assert any("dropped 1 shot" in n for n in notes)
+    assert any(ph.TRANSIENT_NOT_CLASSIFIED in n for n in notes)
+
+
+def test_the_registry_and_the_docs_say_what_a_classified_elm_would_need():
+    """ideate cannot fix this: labelmaker has to publish an `elm` point family from the ELM
+    clock's own peaks. Naming the requirement where the rule is, and in the docs, is the part
+    that is ideate's."""
+    yaml_text = (REPO / "configs" / "ideate" / "phenomena.yaml").read_text()
+    docs = (REPO / "docs" / "IDEATE.md").read_text()
+    for text in (yaml_text, docs):
+        assert "point-event family" in text.lower()
+        assert "elm_clock" in text
+
+
+# ----------------------------------------------------- finding 3: the saturation is pinned
+
+
+def test_the_saturation_curve_is_one_minus_exp_and_not_a_step():
+    assert ph.sat(0) == 0.0
+    assert ph.sat(1) == pytest.approx(1.0 - math.exp(-1.0 / 3.0))
+    assert ph.sat(3) == pytest.approx(1.0 - math.exp(-1.0))
+    assert ph.sat(6) == pytest.approx(1.0 - math.exp(-2.0))
+    assert ph.sat(1) < ph.sat(2) < ph.sat(3) < ph.sat(30) < 1.0
+    assert ph.sat(2, 1.0) == pytest.approx(1.0 - math.exp(-2.0))
+
+
+def test_the_score_is_the_four_terms_the_config_documents(phen_db):
+    """Written out in `math.exp`, not in `ph.sat`, so a stubbed saturation fails it."""
+    ev = ph.evidence(OBSERVED_SHOT, "tearing", phen_db)
+    assert ev.max_label_p == pytest.approx(0.8)
+    assert ev.event_weight == pytest.approx(4.0)
+    assert ev.text_hits == 1
+    expected = 0.8 + (1.0 - math.exp(-4.0 / 3.0)) + 0.5 * math.tanh(0.5)
+    assert ph.score(ev, ph.DEFAULT_WEIGHTS, 3.0) == pytest.approx(expected)
+
+
+# ------------------------------------ findings 4 and 5: what a label has to say to be evidence
+
+
+def test_a_label_the_model_scored_below_the_floor_is_reported_and_not_counted(ideate_db):
+    db = _db_with(ideate_db, [], labels=[_label_row(OBSERVED_SHOT, "tm_prob", max_valid=0.0104)])
+    ev = ph.evidence(OBSERVED_SHOT, "tearing", db)
+    assert ev.label_evidence["d3d_tearing_onset_cnn1d/tm_prob.max_valid"] == pytest.approx(0.0104)
+    assert ev.max_label_p is None  # the model ran and said no; that is not evidence of a yes
+    assert ph.LABEL_BELOW_FLOOR.format(
+        key="d3d_tearing_onset_cnn1d/tm_prob", p=0.0104, floor=ph.DEFAULT_LABEL_FLOOR
+    ) in ev.caveats
+
+
+def test_the_model_saying_no_does_not_outrank_a_shot_the_operators_described(ideate_db):
+    db = _db_with(
+        ideate_db,
+        [],
+        labels=[_label_row(FORECAST_SHOT, "tm_prob", max_valid=0.0104)],
+        claims=[_claim(TEXT_SHOT, "tearing")],
+    )
+    assert [h.shot for h in ph.locate("tearing", db, 10)] == [TEXT_SHOT]
+
+
+def test_a_published_operating_point_is_that_labels_floor(ideate_db, tmp_path):
+    def raise_thr(doc):
+        doc["phenomena"]["tearing"]["labels"][0]["thr"] = 0.9
+
+    entry = ph.registry(_registry_file(tmp_path, raise_thr))["tearing"]
+    db = _db_with(ideate_db, [], labels=[_label_row(OBSERVED_SHOT, "tm_prob", max_valid=0.8)])
+    assert ph.evidence(OBSERVED_SHOT, entry, db).max_label_p is None
+    # the shipped registry publishes no operating point, so the declared floor decides
+    assert ph.evidence(OBSERVED_SHOT, "tearing", db).max_label_p == pytest.approx(0.8)
+
+
+def test_the_label_only_caveat_says_what_the_model_actually_scored(ideate_db):
+    db = _db_with(ideate_db, [], labels=[_label_row(FORECAST_SHOT, "tm_prob", max_valid=0.62)])
+    hit = next(h for h in ph.locate("tearing", db, 10) if h.shot == FORECAST_SHOT)
+    assert ph.LABEL_ONLY.format(p=0.62) in hit.caveats
+    assert any("0.620" in c for c in hit.caveats)  # the number, not just "a model's score"
+
+
+# ------------------------------------- finding 6: the config states the order the code sorts by
+
+
+def test_the_config_and_the_docs_state_the_ranking_the_code_implements():
+    assert ph.OBSERVED > ph.LABELLED > ph.FORECAST > ph.DATABASE > ph.TEXTUAL
+    for path in (REPO / "configs" / "ideate" / "retrieval.yaml", REPO / "docs" / "IDEATE.md"):
+        text = " ".join(path.read_text().replace("#", " ").split())
+        assert ph.RANKING_SENTENCE in text, path
+
+
+# -------------------------------------- finding 8: "observed" is an allow-list, not a default
+
+
+def test_a_row_of_an_unrecognised_evidence_kind_is_neither_observed_nor_forecast(ideate_db):
+    db = _db_with(
+        ideate_db, [_event(OBSERVED_SHOT, "100-tokeye_track-09999", evidence_kind="model")]
+    )
+    ev = ph.evidence(OBSERVED_SHOT, "tearing", db)
+    assert ph.OBSERVED_KINDS == frozenset({"detector", "heuristic"})
+    assert ev.intervals == () and ev.forecasts == ()
+    assert ph.UNCLASSIFIED_KIND.format(n=1, kinds="model") in ev.caveats
+    assert ev.coverage_state == "unprocessed"  # and it donates no coverage either
+
+
+# ---------------------------------------------- finding 9: a broadband smear is not a mode
+
+
+def test_a_broadband_smear_is_not_a_mode_in_the_band(ideate_db):
+    db = _db_with(ideate_db, [
+        _event(OBSERVED_SHOT, "100-tokeye_track-00000",
+               attrs={"f_centroid_khz": 10.0, "bandwidth_khz": 2.0}),
+        _event(OBSERVED_SHOT, "100-tokeye_track-00001", t0_s=3.0, t1_s=3.2,
+               attrs={"f_centroid_khz": 10.0, "bandwidth_khz": 60.0}),
+    ])
+    ids = [iv.event_id for iv in ph.evidence(OBSERVED_SHOT, "tearing", db).intervals]
+    assert ids == ["100-tokeye_track-00000"]
+    assert ph.registry()["tearing"].events[0].max_bandwidth_khz == 30.0
+
+
+def test_a_track_that_records_no_bandwidth_is_not_rejected_for_not_recording_one(ideate_db):
+    db = _db_with(ideate_db, [_event(OBSERVED_SHOT, "100-tokeye_track-00000")])
+    assert len(ph.evidence(OBSERVED_SHOT, "tearing", db).intervals) == 1
+
+
+# ------------------------------------ finding 10: a forecast is not present-tense label evidence
+
+
+def test_a_forecast_label_may_not_be_listed_as_label_evidence(tmp_path):
+    def add(doc):
+        doc["phenomena"]["tearing"]["labels"].append(
+            {"slug": "d3d_tearing_time_to_event_dsm", "label": "tm_risk_1s",
+             "thr": None, "weight": 1.0}
+        )
+
+    with pytest.raises(ph.PhenomenaError, match="forecast"):
+        ph.registry(_registry_file(tmp_path, add))
+
+
+# ---------------------------------------------- finding 11: what a quote beside a hit claims
+
+
+def _with_log(db: store.ShotDB, shot: int, texts: list[str]) -> None:
+    from ideate.schema import LogEntry
+
+    rec = db.get(shot)
+    rec.human.log_entries = [LogEntry(role="PHYSICS_OPERATOR", text=t) for t in texts]
+    db.shots.loc[shot, "record_json"] = rec.model_dump_json()
+
+
+def test_the_quote_prefers_a_logbook_entry_that_names_the_phenomenon(ideate_db):
+    db = _db_with(ideate_db, [], claims=[_claim(TEXT_SHOT, "tearing")])
+    _with_log(db, TEXT_SHOT, [
+        "Restore 184833 Result: Dud trip on LM at appx 2.5 sec.",
+        "clear 2/1 tearing mode from 3 s onwards, locked by 4",
+    ])
+    hit = next(h for h in ph.locate("tearing", db, 10) if h.shot == TEXT_SHOT)
+    assert "tearing mode" in hit.quote
+    assert not any("does not mention" in c for c in hit.caveats)
+
+
+def test_a_quote_that_does_not_mention_the_phenomenon_says_so(ideate_db):
+    db = _db_with(ideate_db, [], claims=[_claim(TEXT_SHOT, "tearing")])
+    _with_log(db, TEXT_SHOT, ["Restore 184833 Result: Dud trip on LM at appx 2.5 sec."])
+    hit = next(h for h in ph.locate("tearing", db, 10) if h.shot == TEXT_SHOT)
+    assert hit.quote.startswith("Restore 184833")
+    assert ph.QUOTE_UNRELATED.format(title="Tearing mode") in hit.caveats
+
+
+# ------------------------------------------------------------------------------- the nits
+
+
+def test_shorten_takes_a_width_so_the_table_does_not_cut_mid_word():
+    from ideate.retrieval import describe as describe_mod
+
+    text = ("Alex restores all GPU feedback settings from 186533 Error field correction "
+            "enabled at 2 s")
+    got = describe_mod.shorten(text, 60)
+    kept = got.removesuffix(" ...")
+    assert len(got) <= 64
+    assert text.split()[: len(kept.split())] == kept.split()  # whole words, verbatim
+
+
+def test_the_table_says_when_every_event_row_in_the_database_is_a_forecast(phen_db, capsys):
+    assert cli.main(["phenomenon", "tearing mode", "--n", "5"]) == 0
+    out = capsys.readouterr().out
+    # phen_db's events are not all forecasts, so the line must NOT be there
+    assert ph.ALL_FORECASTS.format(n=10) not in out
+
+
+def test_a_database_of_nothing_but_forecasts_says_so_on_screen(ideate_db, capsys):
+    _write_tables(ideate_db / "db", [
+        _event(FORECAST_SHOT, "101-label_forecast-00000", source="label_forecast",
+               evidence_kind="forecast", phenomenon="tearing", horizon_s=1.0, diag="",
+               confidence=0.35, attrs={"label": "tm_risk_1s"}),
+    ], [], [])
+    assert cli.main(["phenomenon", "tearing mode", "--n", "5"]) == 0
+    assert ph.ALL_FORECASTS.format(n=1) in capsys.readouterr().out
+
+
+def test_the_same_phenomenon_named_twice_is_one_constraint(phen_db, monkeypatch):
+    seen: list[tuple[int, str]] = []
+    real = ph.evidence
+
+    def counted(shot, entry, db, segment="flat_top", **kw):
+        seen.append((int(shot), entry if isinstance(entry, str) else entry.id))
+        return real(shot, entry, db, segment, **kw)
+
+    monkeypatch.setattr(ph, "evidence", counted)
+    kept = ph.locate("tearing", phen_db, 10, avoid=["elm", "phenomenon:elm"])
+    assert OBSERVED_SHOT not in [h.shot for h in kept]
+    assert len(seen) == len(set(seen))  # each (shot, phenomenon) read once, not once per token
+    assert sum(1 for c in kept[0].caveats if "--avoid phenomenon:elm" in c) == 1

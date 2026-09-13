@@ -1197,6 +1197,10 @@ def cmd_labels(args) -> int:
 # ------------------------------------------------------------------------------- phenomenon
 
 
+#: The quote column's width. Passed to `describe.shorten` so the cut lands on a word boundary.
+PHENOMENON_QUOTE_WIDTH = 60
+
+
 def _phenomenon_table(hits, resolved_id: str) -> None:
     """One line per hit: the shot, the score, WHICH classes of evidence there are, the first
     interval and a shortened quote. The evidence column is the point of the table -- two hits with
@@ -1223,10 +1227,13 @@ def _phenomenon_table(hits, resolved_id: str) -> None:
         else:
             first, kind = None, ""
         span = "-" if first is None else f"{kind} {first.t0_s:.3f}-{first.t1_s:.3f} s"
-        quote = "" if hit.quote is None else describe_mod.shorten(hit.quote)
+        quote = (
+            "" if hit.quote is None
+            else describe_mod.shorten(hit.quote, PHENOMENON_QUOTE_WIDTH)
+        )
         print(
             f"{hit.shot:>7}  {hit.score:>6.3f}  {', '.join(classes) or 'none':<26}  "
-            f"{span:<22}  {quote[:60]}"
+            f"{span:<22}  {quote}"
         )
         for caveat in hit.caveats:
             print(f"{'':>7}  {'':>6}  ! {caveat}")
@@ -1271,6 +1278,7 @@ def cmd_phenomenon(args) -> int:
         return 1
     db = store.ShotDB.load(db_dir)
     top = resolved[0][0]
+    notes: list[str] = []
     hits = ph_mod.locate(
         top,
         db,
@@ -1278,14 +1286,26 @@ def cmd_phenomenon(args) -> int:
         segment=args.segment,
         min_confidence=args.min_confidence,
         avoid=args.avoid or (),
+        notes=notes,
     )
     if args.json:
+        # The notes are about shots that are NOT in the payload, so they go to stderr rather
+        # than into a list of hits whose schema is `PhenomenonHit`.
+        for note in notes:
+            print(note, file=sys.stderr)
         print(json.dumps([h.model_dump(mode="json") for h in hits], indent=1, default=str))
         return 0
     print(
         "resolved: "
         + ", ".join(f"{pid} ({reg[pid].title}) {w:.2f}" for pid, w in resolved)
     )
+    # The fact that changes what every row below means, on the screen where the rows are, and
+    # not only in the docs: a database with no observation in it cannot return an observed hit.
+    n_events = len(db.events)
+    if n_events and not (db.events["evidence_kind"] != "forecast").any():
+        print(ph_mod.ALL_FORECASTS.format(n=n_events))
+    for note in notes:
+        print(note)
     _phenomenon_table(hits, top)
     return 0
 
