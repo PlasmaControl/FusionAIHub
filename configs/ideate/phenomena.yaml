@@ -62,11 +62,10 @@
 #                    filter: `events.band_khz` is what actually selects rows.
 #   diags            the `diag` strings labelmaker writes on this phenomenon's own rows.
 #                    Documentation; coverage is decided by `coverage_sources`, not by these.
-#   requires_group   corpus groups a shot needs before its silence is informative (the `has_*`
-#                    columns of shots.parquet). Declared metadata, like `prior`: it is validated
-#                    against the real group names and READ BY NOTHING in ideate today. I9b's
-#                    shot filter is where it becomes a predicate; until then it documents which
-#                    diagnostic a phenomenon needs, and says so rather than looking live.
+#   requires_group   corpus groups a shot needs before its silence is informative. Missing
+#                    has_* flags produce a caveat when the corpus was inventoried. Legacy
+#                    all-false defaults without an inventory remain unknown; recorded detector
+#                    evidence is retained even when the inventory disagrees.
 #   prior            the fraction of the 500 `recommender_v1` shots whose OWN logbook carries a
 #                    positive, observed mention (`text_claims`, scope=shot). Measured, not
 #                    assumed, and metadata only: no term of the score reads it. 0.000 for qcm and
