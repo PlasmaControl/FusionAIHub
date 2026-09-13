@@ -587,4 +587,5 @@ def search_report(q: QueryState, db: ShotDB) -> dict:
         "candidates": int(mask.sum()),
         "segment_rows": int((db.segments["segment"] == q.segment).sum()),
         "nan_excluded": nan_excluded(q, db),
+        "caveats": db.label_filter_caveats(q.segment, q.avoid_labels),
     }

@@ -260,6 +260,7 @@ def search_shots(
         return _error(f"{type(exc).__name__}: {exc}", caveats)
 
     fired = {name: len(ranking) for name, ranking in found.rankings.items()}
+    caveats.extend(db.label_filter_caveats(state.segment, state.avoid_labels))
     if not any(fired.values()):
         # Not the same as "nothing matched": no channel had anything to search ON. A model told
         # only that the list is empty will rephrase, which cannot help.

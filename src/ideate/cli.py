@@ -1403,12 +1403,15 @@ def cmd_query(args) -> int:
     fired = {name: len(ranking) for name, ranking in found.rankings.items()}
     if args.json:
         doc = {
+            "caveats": report["caveats"],
             "proposal_flags": [f.model_dump(mode="json") for f in found.proposal_flags],
             "results": [r.model_dump(mode="json") for r in found.items],
         }
         print(json.dumps(doc, indent=1, default=str))
         return 0 if any(fired.values()) else 2
     _query_header(state, report, fired)
+    for caveat in report["caveats"]:
+        print(caveat)
     _print_proposal(state, found.proposal_flags)  # answered even when nothing resembles it
     if not any(fired.values()):
         print(

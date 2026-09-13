@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
@@ -104,6 +105,7 @@ class ShotDB:
         # A left join preserves row order, which is what keeps self.segments aligned row-for-row
         # with emb["scalar"]; every lookup in this class relies on that.
         self.segments = segments.join(meta, on="shot", rsuffix="_shot")
+        self._phenomenon_evidence: dict = {}
 
     @classmethod
     def load(cls, db_dir: Path) -> ShotDB:
@@ -157,6 +159,102 @@ class ShotDB:
 
     # ------------------------------------------------------------------------- hard filters
 
+    @cached_property
+    def _phenomenon_config(self):
+        from ..retrieval import phenomena as ph
+
+        return ph._config()
+
+    def phenomenon_evidence(self, shot: int, phenomenon: str, segment: str):
+        """Evidence cached for this loaded snapshot, shared by masks and retrieval channels."""
+        from ..retrieval import phenomena as ph
+
+        key = (int(shot), phenomenon, segment)
+        if key not in self._phenomenon_evidence:
+            self._phenomenon_evidence[key] = ph.evidence(
+                shot, phenomenon, self, segment, label_floor=self._phenomenon_config[2],
+            )
+        return self._phenomenon_evidence[key]
+
+    @cached_property
+    def _label_tokens(self) -> list[frozenset[str]]:
+        """One token set per segment, built once on first use of a label filter.
+
+        Phenomena require observed intervals. Sources name both the event producer and evidence
+        kind within the segment. Label summaries are shot scoped; their operating point is the
+        published table threshold, a registered threshold, or the detection label floor.
+        """
+        from ..retrieval import phenomena as ph
+
+        registry = ph.registry()
+        floor = self._phenomenon_config[2]
+        thresholds = {
+            ref.key: floor if ref.thr is None else ref.thr
+            for entry in registry.values() for ref in entry.labels
+        }
+        labels: dict[int, set[str]] = {}
+        for row in self.labels_wide.to_dict("records"):
+            key = f"{row['slug']}/{row['label']}"
+            threshold = ph._f(row.get("thr"))
+            if threshold is None:
+                threshold = thresholds.get(key)
+            p = ph._f(row.get("max_valid"))
+            if threshold is not None and p is not None and row["n_valid"] > 0 and p >= threshold:
+                labels.setdefault(int(row["shot"]), set()).add(f"label:{key}")
+        events = {int(shot): frame.to_dict("records") for shot, frame in self.events.groupby("shot")}
+        out = []
+        for row in self.segments[["shot", "segment", "t0_ms", "t1_ms", "operational", "regime"]].itertuples():
+            tokens = set(row.operational) | {row.regime} | labels.get(int(row.shot), set())
+            window = (row.t0_ms / 1000.0, row.t1_ms / 1000.0)
+            rows = [r for r in events.get(int(row.shot), ()) if ph._overlaps(r, window)]
+            for event in rows:
+                tokens.update((f"source:{event['source']}", f"source:{event['evidence_kind']}"))
+            observed_sources = {r["source"] for r in rows if r["evidence_kind"] in ph.OBSERVED_KINDS}
+            for pid, entry in registry.items():
+                if observed_sources.intersection(entry.sources):
+                    ev = self.phenomenon_evidence(row.shot, pid, row.segment)
+                    if ev.intervals:
+                        tokens.add(f"phenomenon:{pid}")
+            out.append(frozenset(tokens))
+        return out
+
+    def _avoid_coverage(self, segment: str, avoid: Iterable[str], notes=None) -> np.ndarray:
+        """Require relevant observed coverage, explaining excluded states at report time."""
+        from ..retrieval import phenomena as ph
+
+        keep = np.ones(len(self.segments), dtype=bool)
+        for token in sorted(set(avoid)):
+            if not token.startswith("phenomenon:"):
+                continue
+            pid = ph._avoid_ids([token])[0]
+            counts: dict[str, int] = {}
+            details: set[str] = set()
+            for i, row in enumerate(self.segments[["shot", "segment"]].itertuples(index=False)):
+                if row.segment != segment:
+                    continue
+                ev = self.phenomenon_evidence(row.shot, pid, segment)
+                if ev.coverage_state != "observed":
+                    keep[i] = False
+                    counts[ev.coverage_state] = counts.get(ev.coverage_state, 0) + 1
+                    details.update(c for c in ev.caveats if (
+                        "coverage unknown" in c or "no detector registered" in c or "could not read" in c
+                    ))
+                elif ev.coverage_partial and f"phenomenon:{pid}" not in self._label_tokens[i]:
+                    details.update(c for c in ev.caveats if "coverage" in c or "covered only" in c)
+            if notes is not None:
+                notes.extend(
+                    f"--avoid {token}: excluded {n} {segment} segment(s) with {state} coverage; "
+                    "absence is not evidence"
+                    for state, n in sorted(counts.items())
+                )
+                notes.extend(sorted(details))
+        return keep
+
+    def label_filter_caveats(self, segment: str, avoid: Iterable[str]) -> list[str]:
+        notes: list[str] = []
+        self._avoid_coverage(segment, avoid, notes)
+        return notes
+
     def mask(
         self,
         segment: str,
@@ -186,13 +284,12 @@ class ShotDB:
         if req or avoid:
             # The regime joins the operational set here so a caller can require "QH" or avoid
             # "L" with the same vocabulary it uses for "dud".
-            labels = [
-                set(ops) | {reg} for ops, reg in zip(s["operational"], s["regime"], strict=True)
-            ]
+            labels = self._label_tokens
             if req:
                 m &= np.array([req <= lab for lab in labels], dtype=bool)
             if avoid:
                 m &= np.array([not (avoid & lab) for lab in labels], dtype=bool)
+                m &= self._avoid_coverage(segment, avoid)
         if exclude_shots:
             m &= ~s["shot"].isin(set(exclude_shots)).to_numpy()
         if exclude_runs:
