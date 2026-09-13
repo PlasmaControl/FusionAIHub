@@ -157,6 +157,7 @@ turns what it sees into rows:
 | `actuator` | heuristic | the intervals NBI, ECH, the RMP coils and the gas valves were on for |
 | `qh_proxy` | heuristic | an EHO inside an ELM-free NBI-heated flat-top - a proxy, and its `attrs` say so |
 | `text` | text | a phenomenon this shot's own logbook entries name |
+| `database:<table>` | database | a row of a curated table somebody sent us, e.g. `database:rwm_onsets_2017` |
 
 Flags: `--passes {wide,zoom}` (wide is 0.49 kHz/bin and 0.256 ms/column, zoom
 is four times finer in frequency and four times coarser in time),
@@ -185,6 +186,42 @@ Three things worth knowing before reading a row:
   from a subset of the logbook dump that the stage builds once per run;
   `--refresh-text` re-asks about shots a previous run found no record for
   (deleting `text/logs_subset.missing` forgets all of them).
+
+### Curated label tables
+
+Some knowledge arrives as a spreadsheet rather than a signal: Jeremy Hansen's
+RWM onsets, and every curated list after them. The CSVs live under
+`data/labels/<phenomenon>/`, exactly as their author sent them, and
+`data/labels/tables.yaml` is the manifest that says what their columns mean —
+so adding a table is a YAML entry and never a code edit
+(`data/labels/README.md` is the how-to). `events/databases.py` reads them;
+`config.Paths.label_tables` is the root, and `LABELMAKER_LABEL_TABLES` moves
+it for a table too large or too restricted to commit.
+
+**A listing is not a coverage claim**: every row a table produces has
+`t_cov0_s = t_cov1_s = NaN` and `confidence = NaN`, and a shot no table names
+gets no event row *and* no source record — so a shot's absence from a curated
+list is never a negative, and nothing downstream may read it as one.
+
+The events stage reads the tables as one more guarded step, but the usual way
+to ingest one is the standalone mode, which needs no corpus file, no U-Net and
+no GPU and runs over a shot list in seconds:
+
+```bash
+pixi run -e labelmaker python -m labelmaker.run events --databases-only \
+    --shot-file $LABELMAKER_ROOT/recommender_v1.txt
+```
+
+It prints `N of M shots are named by any table`. Zero is a normal answer and
+exits 0: the two RWM tables span 156785–176092, the corpus starts at 185601,
+and `0 of 500 shots are named by any table` is what an honest run says. A
+`tables.yaml` or CSV that cannot be believed stops the run before any shot,
+with exit code 7.
+
+Curated rows can never become window features: `windows.py` reads rows by
+source and phenomenon and `database` is outside every family it counts, which
+`test_a_database_row_inside_the_window_changes_no_feature` pins.
+
 
 ## Reading a label
 
