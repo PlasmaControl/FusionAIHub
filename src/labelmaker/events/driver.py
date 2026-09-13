@@ -123,6 +123,11 @@ TILE_BATCH_DEFAULT = {"cuda": 96, "cpu": 8}
 #: `--prep-workers` on a card when `SLURM_CPUS_PER_TASK` says nothing.
 CUDA_WORKERS_FALLBACK = 4
 
+#: Seconds `PrepPool.close` waits for a worker to die, in each of its two
+#: rounds (`terminate`, then `kill`). Short on purpose: this is the path a
+#: shot that timed out goes through, and the run is already late.
+WORKER_EXIT_GRACE_S = 5.0
+
 #: Cores left to this process when the workers are sized from
 #: `SLURM_CPUS_PER_TASK`: one for the parent's own describe steps and one
 #: for the CUDA driver's spinning.
@@ -276,6 +281,30 @@ def _init_worker() -> None:
         pass
 
 
+def _vmhwm_gib(pid) -> float:
+    """A LIVE process's peak resident set, in GiB, from `/proc/<pid>/status`.
+
+    `getrusage(RUSAGE_CHILDREN)` cannot answer this: it counts only children
+    that have been WAITED FOR, and it counts the fork-before-exec of a
+    spawned child - which inherits this process's resident pages - so on a
+    pool that is shut down without waiting it reads either zero or the
+    parent's own peak. Neither is the prep worker. `VmHWM` is the kernel's
+    own high-water mark for the process, so it can be read at any moment
+    while the worker is alive and still reports the worst it ever was.
+
+    Best effort by construction: a worker that has already exited has no
+    `/proc` entry, and this is a report field, not a control input.
+    """
+    try:
+        with open(f"/proc/{int(pid)}/status", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("VmHWM:"):
+                    return float(line.split()[1]) / (1024.0 * 1024.0)
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0.0
+
+
 class PrepPool:
     """`--prep-workers` processes doing the CPU half of a block, or none.
 
@@ -296,8 +325,28 @@ class PrepPool:
 
     def __init__(self, workers: int):
         self.workers = max(0, int(workers))
+        #: The worst `VmHWM` seen in any worker of any of this pool's
+        #: incarnations - sampled per shot and again as each pool is closed,
+        #: because a worker that is gone cannot be asked.
+        self.peak_worker_rss_gib = 0.0
         self._pool: ProcessPoolExecutor | None = None
         self._start()
+
+    def _note_worker_rss(self, procs) -> None:
+        for proc in procs:
+            if proc.pid:
+                self.peak_worker_rss_gib = max(self.peak_worker_rss_gib,
+                                               _vmhwm_gib(proc.pid))
+
+    def sample(self) -> float:
+        """Read the live workers' high-water marks; the worst so far.
+
+        Called once per shot by `run_shots`: four `/proc` reads against
+        hours of run, and the only way the number survives a worker that
+        the OOM killer takes before the pool is closed.
+        """
+        self._note_worker_rss(self.processes())
+        return self.peak_worker_rss_gib
 
     def _start(self) -> None:
         if self.workers > 0:
@@ -329,6 +378,16 @@ class PrepPool:
             future.set_exception(exc)
             return future
 
+    def processes(self) -> list:
+        """The pool's live worker processes, for `close` and for tests.
+
+        `ProcessPoolExecutor._processes` is private and is read here
+        deliberately: it is the only handle on the children, and `close`
+        cannot guarantee that a wedged worker dies without one.
+        """
+        pool = self._pool
+        return list(getattr(pool, "_processes", {}).values()) if pool else []
+
     def restart(self) -> None:
         """Replace a pool a dead worker broke, or one an aborted shot left.
 
@@ -341,9 +400,38 @@ class PrepPool:
         self._start()
 
     def close(self) -> None:
+        """Shut the pool down and leave NO worker of it alive.
+
+        `shutdown(wait=False)` asks politely - it drops a sentinel on the
+        call queue and returns - and that is not enough. A worker wedged in
+        an uninterruptible read (the GPFS failure `--timeout` exists for)
+        never reads the sentinel, and CPython's own `_python_exit` atexit
+        hook joins the executor's manager thread at interpreter shutdown:
+        the process then hangs AFTER `main` has returned, which on SLURM is
+        a finished task recorded as a wall-clock TIMEOUT still holding its
+        GPU. So the children are taken by the handle - `terminate`, a
+        bounded `join`, then `kill` - and only then is this pool forgotten.
+
+        Waiting is bounded at `WORKER_EXIT_GRACE_S` per worker in each of
+        the two rounds: a process nothing can kill is a hung node, and a
+        driver that joined it forever would be one too.
+        """
         pool, self._pool = self._pool, None
-        if pool is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
+        if pool is None:
+            return
+        # Private API, deliberately: `_processes` is the only handle on the
+        # children, and without it `close` cannot promise the run can exit.
+        procs = list(getattr(pool, "_processes", {}).values())
+        self._note_worker_rss(procs)
+        pool.shutdown(wait=False, cancel_futures=True)
+        for proc in procs:
+            if proc.is_alive():
+                proc.terminate()
+        for proc in procs:
+            proc.join(timeout=WORKER_EXIT_GRACE_S)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(timeout=WORKER_EXIT_GRACE_S)
 
 
 def in_order(jobs, submit, *, prefetch: int = 4):
@@ -531,12 +619,13 @@ class DriverRun:
 
 
 def _rss_gib(who: int) -> float:
-    """Peak resident set of this process (or of its children), in GiB.
+    """Peak resident set of this process, in GiB (`ru_maxrss` is in KiB).
 
-    `ru_maxrss` is in kibibytes on Linux. For `RUSAGE_CHILDREN` it is the
-    largest peak of any ONE waited-for child, which is what sizing
-    `--mem-per-cpu` off a prep worker wants - not the sum, which nobody
-    ever holds at once.
+    `RUSAGE_SELF` only. The prep workers are measured by `_vmhwm_gib`
+    instead: `RUSAGE_CHILDREN` counts only children this process has waited
+    for, and a spawned child's fork-before-exec inherits the parent's
+    resident pages, so asking it about a pool shut down with `wait=False`
+    returns either zero or this process's own peak wearing a worker's name.
     """
     return resource.getrusage(who).ru_maxrss / (1024.0 * 1024.0)
 
@@ -636,6 +725,9 @@ def run_shots(
             row.update(timing.as_row())
             totals.add(timing)
             rows.append(row)
+            # Four `/proc` reads: the workers' high-water marks while they
+            # are still alive to be asked (see `_vmhwm_gib`).
+            pool.sample()
     finally:
         pool.close()
 
@@ -649,7 +741,7 @@ def run_shots(
         blocks_per_s=round(summary["n_blocks"] / elapsed, 3) if elapsed else 0.0,
         tiles_per_s=round(totals.n_tiles / elapsed, 2) if elapsed else 0.0,
         peak_rss_gib=round(_rss_gib(resource.RUSAGE_SELF), 3),
-        peak_worker_rss_gib=round(_rss_gib(resource.RUSAGE_CHILDREN), 3),
+        peak_worker_rss_gib=round(pool.peak_worker_rss_gib, 3),
         cuda_max_alloc_gib=_cuda_peak_gib(device),
         prep_workers=int(prep_workers),
         prefetch=int(prefetch),
