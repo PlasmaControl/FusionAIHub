@@ -320,12 +320,110 @@ def _standardise_within(raw: np.ndarray, t_s: np.ndarray,
     return spec, mean, std, float(t_s[inside[0]]), float(t_s[inside[-1]])
 
 
-def _one_block(
+#: The sentence `prep_block` carries out when `--norm plasma` had no window
+#: to standardise inside. `_one_block` and the batch driver both record it
+#: under `skipped[f"norm {key}:{pass}"]`, so it is written once.
+NO_NORM_WINDOW = (
+    "no usable coverage intersection; standardised over the whole record "
+    "instead"
+)
+
+
+@dataclass(eq=False)
+class PreparedBlock:
+    """The CPU half of one `(channel, pass)`, ready for the network.
+
+    The unit `events/driver.py` moves between processes, which is why it is
+    a dataclass here rather than four locals inside `_one_block`: a prep
+    worker returns one of these and the parent runs `infer_block` and
+    `describe_block` on it. Two `(512, T)` float32 arrays - 131 MB each on
+    a `mirnov` wide pass - so a driver holding `prefetch` of them holds
+    `prefetch` x 262 MB, and `spectrogram` is dropped the moment the
+    network has read it.
+
+    `norm_note` is `NO_NORM_WINDOW` when `--norm plasma` found no window and
+    empty otherwise: a stage function has no `skipped` dict to write into,
+    so the reason travels with the block and its caller records it.
+    """
+
+    spec: Any
+    pass_name: str
+    spectrogram: np.ndarray | None
+    raw: np.ndarray
+    t_s: np.ndarray
+    meta: dict
+    fs_hz: float
+    t_cov: tuple[float, float]
+    norm_note: str = ""
+
+    @property
+    def key(self) -> str:
+        """`"mhr:0:wide"` - how this block is named in `skipped`."""
+        return f"{self.spec.key}:{self.pass_name}"
+
+    @property
+    def n_tiles(self) -> int:
+        """The tiles the network will be run on, counted before they exist."""
+        return masks.n_tiles(self.meta["n_cols"])
+
+
+def prep_block(
     y, fs_hz: float, t0_s: float, t1_s: float, spec, pass_name: str, *,
-    model, device, tile_batch: int, amp: bool, norm: str,
-    window, unet_sha256: str, skipped: dict[str, str],
-) -> _BlockRun:
-    """One `(channel, pass)`: transform, infer, describe, then let go.
+    norm: str = "record", window=None,
+) -> PreparedBlock:
+    """The CPU part of one `(channel, pass)`: STFT, standardise, time axis.
+
+    Everything `_one_block` does before the network and nothing else, so
+    that a driver can run it somewhere other than where the network is
+    (`events/driver.py` runs it in a pool of prep processes while the GPU
+    is busy with the block before). No torch, no device, no model.
+
+    The pre-standardisation log-power is carried out beside the spectrogram
+    rather than recovered later with `unstandardise`: under `--norm plasma`
+    the spectrogram and the statistics in `meta` are BOTH replaced, and
+    inverting the second z-score would return `raw` only to float32
+    rounding - which is exactly the identity the driver has to keep.
+    """
+    decim = 1 if pass_name == "wide" else masks.ZOOM_DECIM
+    spectrogram, meta = masks.prep(y, fs_hz=fs_hz, decim=decim)
+    t_s = masks.col_times_s(meta["n_cols"], fs_hz, decim, t0_s)
+    raw = masks.unstandardise(spectrogram, meta)
+    meta["norm"] = "record"
+    note = ""
+    if norm == "plasma":
+        got = None if window is None else _standardise_within(raw, t_s, window)
+        if got is None:
+            note = NO_NORM_WINDOW
+        else:
+            spectrogram, meta["spec_mean"], meta["spec_std"] = got[:3]
+            meta["norm"] = "plasma"
+            meta["norm_t0_s"], meta["norm_t1_s"] = got[3], got[4]
+    return PreparedBlock(
+        spec=spec, pass_name=pass_name, spectrogram=spectrogram, raw=raw,
+        t_s=t_s, meta=meta, fs_hz=float(fs_hz),
+        t_cov=(float(t0_s), float(t1_s)), norm_note=note,
+    )
+
+
+def infer_block(prepared: PreparedBlock, *, model, device, tile_batch: int,
+                amp: bool) -> np.ndarray:
+    """The GPU part: `(2, 512, T)` float32 probabilities for one block.
+
+    A thin call, named so that a driver's `infer_s` measures the same thing
+    `_one_block` spends on the network and nothing else. Tiles are pooled to
+    `tile_batch` WITHIN the block: `masks.infer` is the one definition of
+    how a spectrogram reaches the network, and pooling tiles from two blocks
+    into one forward pass would change the batch a tile is run in - the one
+    thing that could make a driver's output differ from `process_shot`'s in
+    the last bits.
+    """
+    return masks.infer(model, prepared.spectrogram, device, batch=tile_batch,
+                       amp=amp)
+
+
+def describe_block(prepared: PreparedBlock, probs, *,
+                   unet_sha256: str) -> _BlockRun:
+    """The CPU part after the network: pack, track, and the activity trace.
 
     Everything that needs the float32 probability maps happens here -
     `block_arrays` (which packs them), the tracks and the column activity -
@@ -333,31 +431,16 @@ def _one_block(
     is read. On the widest group that is 144 MB per block that would
     otherwise be held until the file is written.
     """
-    decim = 1 if pass_name == "wide" else masks.ZOOM_DECIM
-    spectrogram, meta = masks.prep(y, fs_hz=fs_hz, decim=decim)
-    t_s = masks.col_times_s(meta["n_cols"], fs_hz, decim, t0_s)
-    raw = masks.unstandardise(spectrogram, meta)
-    meta["norm"] = "record"
-    if norm == "plasma":
-        got = None if window is None else _standardise_within(raw, t_s, window)
-        if got is None:
-            skipped[f"norm {spec.key}:{pass_name}"] = (
-                "no usable coverage intersection; standardised over the "
-                "whole record instead"
-            )
-        else:
-            spectrogram, meta["spec_mean"], meta["spec_std"] = got[:3]
-            meta["norm"] = "plasma"
-            meta["norm_t0_s"], meta["norm_t1_s"] = got[3], got[4]
-    probs = masks.infer(model, spectrogram, device, batch=tile_batch, amp=amp)
-    del spectrogram
+    spec, pass_name = prepared.spec, prepared.pass_name
+    raw, t_s = prepared.raw, prepared.t_s
     block = masks.MaskBlock(
         diag=spec.diag, channel=spec.channel, pass_name=pass_name,
-        coh=probs[0], tra=probs[1], raw_logpow=raw, t_s=t_s, meta=meta,
+        coh=probs[0], tra=probs[1], raw_logpow=raw, t_s=t_s,
+        meta=prepared.meta,
     )
     arrays = masks.block_arrays(block, unet_sha256=unet_sha256)
     coh_mask = probs[0] >= PROB_THRESHOLD
-    freq_khz = masks.freq_axis_khz(fs_hz, decim)
+    freq_khz = masks.freq_axis_khz(prepared.fs_hz, int(prepared.meta["decim"]))
     found = [
         tracks.descriptors(group, prob=probs[0], raw_logpow=raw,
                            freq_khz=freq_khz, t_s=t_s)
@@ -369,8 +452,32 @@ def _one_block(
         prefix=block.prefix, arrays=arrays, tracks=found,
         activity=activity,
         bursts=transients.extract_bursts(activity),
-        t_s=t_s, t_cov=(float(t0_s), float(t1_s)),
+        t_s=t_s, t_cov=prepared.t_cov,
     )
+
+
+def _one_block(
+    y, fs_hz: float, t0_s: float, t1_s: float, spec, pass_name: str, *,
+    model, device, tile_batch: int, amp: bool, norm: str,
+    window, unet_sha256: str, skipped: dict[str, str],
+) -> _BlockRun:
+    """One `(channel, pass)`: transform, infer, describe, then let go.
+
+    The three stages above, composed, and the ONE place the composition is
+    written: `events/driver.py` runs the same three on three different
+    schedules, and a step that lived here rather than in a stage function
+    would be a step the driver silently did not do.
+    """
+    prepared = prep_block(y, fs_hz, t0_s, t1_s, spec, pass_name, norm=norm,
+                          window=window)
+    if prepared.norm_note:
+        skipped[f"norm {prepared.key}"] = prepared.norm_note
+    probs = infer_block(prepared, model=model, device=device,
+                        tile_batch=tile_batch, amp=amp)
+    # As soon as the network has read it: 131 MB on the widest block, and
+    # `describe_block` wants `raw`, not the standardised copy.
+    prepared.spectrogram = None
+    return describe_block(prepared, probs, unet_sha256=unet_sha256)
 
 
 def _cooccurrence(runs: Sequence[_BlockRun]) -> dict[tuple[str, int], list[str]]:
@@ -433,6 +540,36 @@ def _span(*axes) -> tuple[float, float]:
     return (min(lo), max(hi))
 
 
+def plan_shot(
+    corpus_file,
+    *,
+    plan: Sequence[channels.ChannelSpec] = channels.ROUND1_PLAN,
+    norm: str = "record",
+) -> tuple[list[channels.ChannelSpec], dict[str, str], tuple[float, float] | None]:
+    """`(specs, skipped, window)`: what this shot can run, before any of it.
+
+    The header-only half of a shot - `channels.plan_for` plus, under
+    `--norm plasma`, the coverage intersection `prep_block` standardises
+    inside - separated out because it is the first thing a batch driver
+    hands to a prep worker and the last thing that should happen in the
+    process that holds the GPU.
+
+    Raises only what `plan_for` raises, which is the one failure that ends a
+    shot: a corpus file that cannot be opened. Everything else is recorded -
+    the planner's own reasons under `channel <key>`, a coverage read that
+    failed under `norm`, exactly as `process_shot` records them.
+    """
+    specs, reasons = channels.plan_for(corpus_file, plan)
+    skipped = {f"channel {key}": why for key, why in reasons.items()}
+    window = None
+    if norm == "plasma" and specs:
+        try:
+            window = _norm_window(corpus_file, [s.diag for s in specs])
+        except Exception as exc:  # noqa: BLE001 - per-step isolation
+            skipped["norm"] = _cause(exc)
+    return specs, skipped, window
+
+
 def process_shot(
     shot: int,
     paths: Paths | None = None,
@@ -485,19 +622,12 @@ def process_shot(
         return res
 
     try:
-        specs, reasons = channels.plan_for(corpus_file, plan)
+        specs, planned_skips, window = plan_shot(corpus_file, plan=plan,
+                                                 norm=norm)
     except Exception as exc:  # noqa: BLE001 - the one run-ending failure
         res.error = _cause(exc)
         return finish()
-    for key, why in reasons.items():
-        res.skipped[f"channel {key}"] = why
-
-    window = None
-    if norm == "plasma" and specs:
-        try:
-            window = _norm_window(corpus_file, [s.diag for s in specs])
-        except Exception as exc:  # noqa: BLE001 - per-step isolation
-            res.skipped["norm"] = _cause(exc)
+    res.skipped.update(planned_skips)
 
     # ---------------------------------------------------------- the masks
     runs: list[_BlockRun] = []
@@ -522,6 +652,38 @@ def process_shot(
         del y
     res.n_blocks = len(runs)
 
+    finish_shot(res, paths, corpus_file, runs, unet_sha256=unet_sha256,
+                lexicon=lexicon, run_id=run_id, write=write)
+    return finish()
+
+
+def finish_shot(
+    res: ShotResult,
+    paths: Paths,
+    corpus_file,
+    runs: Sequence[_BlockRun],
+    *,
+    unet_sha256: str = CHECKPOINT_SHA256,
+    lexicon: Lexicon | None = None,
+    run_id: str = "manual",
+    write: bool = True,
+) -> ShotResult:
+    """Everything a shot does AFTER its mask blocks, on `res` in place.
+
+    The tracks and their co-occurrences, the ELM clock, the three
+    heuristics, the QH proxy, the text, and the two writes - in this order,
+    each guarded, because the order is the thing this module exists to own.
+    Split out of `process_shot` so that `events/driver.py`, which produces
+    the same `_BlockRun`s on a different schedule, finishes a shot through
+    the same code rather than through a copy of it: a heuristic added here
+    is a heuristic the batch runs get.
+
+    `runs` are this shot's blocks in PLAN ORDER. The order reaches disk -
+    `_elm_reference` breaks a tie by block name, `write_masks` writes the
+    keys in the order given - so a caller that reorders them writes a
+    different file.
+    """
+    shot = int(res.shot)
     events: list[Event] = []
     sources: set[str] = set()
 
@@ -672,7 +834,7 @@ def process_shot(
             # shot is not done and a re-run has to redo it - which is what
             # `status == "error"` tells a run summary.
             res.error = f"write failed: {_cause(exc)}"
-    return finish()
+    return res
 
 
 def summarise(rows: Sequence[dict]) -> dict[str, Any]:
@@ -702,4 +864,14 @@ def summarise(rows: Sequence[dict]) -> dict[str, Any]:
     }
 
 
-__all__ = ["ShotResult", "process_shot", "summarise"]
+__all__ = [
+    "PreparedBlock",
+    "ShotResult",
+    "describe_block",
+    "finish_shot",
+    "infer_block",
+    "plan_shot",
+    "prep_block",
+    "process_shot",
+    "summarise",
+]
