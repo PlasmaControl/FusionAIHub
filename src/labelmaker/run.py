@@ -123,6 +123,11 @@ EXIT_FIDELITY_FAILED = 5
 #: exited 0 - `fidelity.get("passed") is False` is false for an error dict
 #: just as it is for a real pass.
 EXIT_VALIDATE_ERRORED = 6
+#: `--databases-only`: the `tables.yaml` manifest, or a CSV it names, cannot
+#: be believed. Run-level like a bad model and for the same reason - it is
+#: one file, it is wrong for every shot, and discovering it per shot would
+#: bury the cause under N identical errors.
+EXIT_BAD_LABEL_TABLE = 7
 
 #: Faults that make a requested model unusable before any shot is touched:
 #: a scaffold spec (NotImplementedError), a spec with no ADAPTER
@@ -234,6 +239,13 @@ def build_parser() -> ArgumentParser:
     events.add_argument("--run-id", default=None,
                         help="name this run instead of "
                              "<stage>-<timestamp>-<pid>")
+    events.add_argument("--databases-only", action="store_true",
+                        help="ingest the curated label tables "
+                             "(data/labels/tables.yaml) over the shot list "
+                             "and write nothing else: no corpus read, no "
+                             "U-Net, no masks. Seconds over 10,000 shots, "
+                             "and the only way a table reaches a shot whose "
+                             "corpus file we do not have")
     events.add_argument("--refresh-text", action="store_true",
                         help="re-ask the logbook about the shots recorded in "
                              "text/logs_subset.missing; a miss is a fact "
@@ -654,6 +666,85 @@ def events_stage(shots, ctx: RunContext, args) -> tuple[list[dict], dict]:
     return rows, totals
 
 
+def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
+    """`events --databases-only`: the curated tables over a shot list.
+
+    No corpus, no network, no masks - a table is a list somebody made, and
+    reading it is a CSV lookup per shot. That is what makes it a separate
+    mode rather than a step of the GPU path: a new table has to be
+    ingestible over 16,909 shots in seconds, and it has to reach the shots
+    whose corpus files we do not hold (all 33 of the RWM tables' shots, as
+    it happens).
+
+    The summary line is the point of the mode. "0 of 500 shots are named by
+    any table" is an ANSWER - the RWM tables stop at 176092 and the corpus
+    starts at 185601 - and a run that says it exits 0. Failing there would
+    teach the next person to expect a table to overlap, which is exactly
+    the assumption a curated list is not allowed to make.
+    """
+    from .events import databases, schema
+
+    paths = ctx.paths
+    try:
+        specs = databases.load_manifest(paths.label_tables)
+    except databases.DatabaseError as exc:
+        print(f"events --databases-only: refusing to run - {exc}",
+              file=sys.stderr)
+        raise
+    rows: list[dict] = []
+    n_named = 0
+    by_source: dict[str, int] = {}
+    for shot in shots:
+        started = time.monotonic()
+        try:
+            events, records = databases.events_for_shot(shot, specs,
+                                                        paths.label_tables)
+        except Exception as exc:  # noqa: BLE001 - per-shot isolation
+            rows.append({"shot": int(shot), "status": "error",
+                         "error": type(exc).__name__, "detail": str(exc)[:200],
+                         "seconds": round(time.monotonic() - started, 2)})
+            print(f"{shot}: ERROR {type(exc).__name__}: {str(exc)[:120]}")
+            continue
+        if records:
+            # No rows and no file for a shot no table names: an events file
+            # written here would say a run looked at this shot, and nothing
+            # did.
+            n_named += 1
+            path = paths.events_file(shot)
+            schema.write_events(path, shot, events, run_id=ctx.run_id,
+                                merge=True)
+            append_index(paths.events_index, schema.index_rows(path),
+                         keys=["shot", "source", "phenomenon"])
+            print(f"{shot}: {len(events)} events from "
+                  f"{len(records)} table(s)")
+        for event in events:
+            by_source[event.source] = by_source.get(event.source, 0) + 1
+        rows.append({
+            "shot": int(shot),
+            "status": "ok",
+            "n_events": len(events),
+            "n_tables": len(records),
+            # Two spellings on purpose: `sources` is the list of names
+            # `_stage_summary` groups shots by, `source_records` is the
+            # sources-file contract's own rows, kept whole.
+            "sources": [str(r["source"]) for r in records],
+            "source_records": records,
+            "seconds": round(time.monotonic() - started, 2),
+        })
+    totals = {
+        "n_shots": len(rows),
+        "n_shots_named": n_named,
+        "n_events": sum(int(r.get("n_events", 0)) for r in rows),
+        "n_source_records": sum(int(r.get("n_tables", 0)) for r in rows),
+        "events_by_source": dict(sorted(by_source.items())),
+        "tables": [spec.source for spec in specs],
+        "summary_line": (
+            f"{n_named} of {len(rows)} shots are named by any table"
+        ),
+    }
+    return rows, totals
+
+
 def write_events_run(paths: Paths, run_id: str, payload: dict) -> Path:
     """`runs/events/<run_id>.json`: the settings, the shots and the totals.
 
@@ -779,6 +870,8 @@ def main(argv=None) -> int:
         args.models = []
     elif not args.models:
         parser.error("--models is required")
+    if args.databases_only and args.stage != "events":
+        parser.error("--databases-only belongs to the events stage")
     base = Paths.from_env()
     # `replace` and not a fresh `Paths`: `text_root` and `logs_jsonl` have no
     # flag of their own and are read from the environment, and building a
@@ -872,7 +965,39 @@ def main(argv=None) -> int:
     )
 
     summaries = []
-    if args.stage == "events":
+    if args.stage == "events" and args.databases_only:
+        from .events.databases import DatabaseError
+
+        try:
+            rows, totals = databases_stage(shots, ctx)
+        except DatabaseError:
+            return EXIT_BAD_LABEL_TABLE
+        _log(paths, run_id, rows)
+        summary = _stage_summary("events --databases-only", rows)
+        _summarise(summary)
+        summaries.append(summary)
+        print(totals["summary_line"])
+        print("events by source: " + (", ".join(
+            f"{s}={n}" for s, n in totals["events_by_source"].items()
+        ) or "none"))
+        out = write_events_run(paths, run_id, {
+            "run_id": run_id,
+            "stage": "events",
+            "git_sha": git_sha(),
+            "labelmaker_version": __version__,
+            "hostname": socket.gethostname(),
+            "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "settings": {
+                "databases_only": True,
+                "label_tables": str(paths.label_tables),
+                "limit": args.limit,
+                "root": str(paths.root),
+            },
+            "totals": totals,
+            "shots": rows,
+        })
+        print(f"events: {out}")
+    elif args.stage == "events":
         rows, totals = events_stage(shots, ctx, args)
         _log(paths, run_id, rows)
         summary = _stage_summary("events", rows)
