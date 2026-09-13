@@ -93,6 +93,11 @@ file - the damage a pid-suffixed temporary does not prevent:
   subset per shot, which under `readonly` is always a no-op: it is only
   reached for a shot whose record is already there, and
   `build_logs_subset` returns without writing when it has nothing to add.)
+  **The pre-pass is REQUIRED for multi-rank or multi-chunk runs** to match
+  `python -m labelmaker.run events`: without it, `readonly` adds a `text`
+  skip and omits `text` from an uncovered shot's declared sources. A
+  covered record with no matches still declares `text` with zero events.
+  Check that every run JSON's `text_subset_missing` is empty.
 
 **Isolation.** Per shot: one `SIGALRM` (`--timeout`) and one try/except, as
 `run.py`'s stages. The alarm ends the shot wherever the driver itself is
@@ -104,7 +109,10 @@ scheduler may quietly change. With `--tail-workers 1` the tail is in
 another process, where this process's alarm cannot reach it; it is
 collected with a `--timeout` of its own instead, and a tail that overran or
 whose worker died is that shot's error row and a fresh tail pool for the
-next shot. A block whose prep raised - a `co2` channel whose
+next shot. The next shot's `FinishJob` is retained and re-submitted if
+that restart destroyed its future, preserving the blocks already inferred.
+Ordinary tail exceptions leave the pool running. A block whose prep raised -
+a `co2` channel whose
 digitiser gapped, a worker that ran out of memory - is a `skipped` entry and
 the shot goes on, exactly as in `process_shot`. A prep worker that DIES
 (the OOM killer, a segfault) breaks the pool: the block in flight is
@@ -533,7 +541,7 @@ class PrepPool:
     def sample(self) -> float:
         """Read the live workers' high-water marks; the worst so far.
 
-        Called once per shot by `run_shots`: four `/proc` reads against
+        Called once per shot by `run_shots`: one `/proc` read per worker against
         hours of run, and the only way the number survives a worker that
         the OOM killer takes before the pool is closed.
         """
@@ -829,13 +837,15 @@ class _Unfinished:
 
     At most one of these exists at a time: shot i's tail is collected as
     soon as shot i+1's blocks are, which is what bounds the overlap at one
-    shot and keeps `rows` in shot order.
+    shot and keeps `rows` in shot order. Keep the job so its inferred
+    blocks survive a pool restart while the previous tail is collected.
     """
 
     shot: int
     timing: ShotTiming
     blocks_s: float
     future: Future
+    job: FinishJob
 
 
 @dataclass
@@ -914,7 +924,8 @@ def run_shots(
 
     Nothing in here raises for one shot: a shot over its `--timeout` or one
     that failed in a way `process_shot` does not guard is one row with an
-    `error`, the pool is replaced, and the run goes on.
+    `error`, and the run goes on. A hung or broken tail pool is replaced;
+    an ordinary tail exception does not require a restart.
     """
     if str(norm) not in pipeline.NORMS:
         raise ValueError(f"norm must be one of {pipeline.NORMS}; got {norm!r}")
@@ -954,9 +965,22 @@ def run_shots(
                    "error": type(exc).__name__, "detail": str(exc)[:200]}
             echo(f"{unfinished.shot}: ERROR {type(exc).__name__}: "
                  f"{str(exc)[:120]}")
-            # A tail that hung or whose worker died leaves nothing this
-            # process can use; the next shot gets a fresh pool.
-            tails.restart()
+            # A payload or task exception leaves the executor usable. Only
+            # a hung tail or a dead worker requires replacing the pool.
+            wait_expired = (isinstance(exc, TimeoutError)
+                            and not unfinished.future.done())
+            if isinstance(exc, BrokenExecutor) or wait_expired:
+                tails.restart()
+                # The next shot was submitted before this flush. Preserve
+                # its GPU work when close() cancels or breaks its future,
+                # including a future already marked BrokenProcessPool.
+                # A completed result or ordinary task error is still valid;
+                # neither that tail nor the failing shot should run again.
+                if pending is not None and pending is not unfinished:
+                    future = pending.future
+                    if (not future.done() or future.cancelled()
+                            or isinstance(future.exception(), BrokenExecutor)):
+                        pending.future = tails.submit(pending.job)
         row["seconds"] = round(unfinished.blocks_s + timing.finish_s, 2)
         row.update(timing.as_row())
         totals.add(timing)
@@ -999,13 +1023,14 @@ def run_shots(
                         # own timer, exactly as `process_shot` has it. With
                         # a worker the submit returns at once.
                         submitted = time.monotonic()
-                        handed_off = tails.submit(FinishJob(
+                        job = FinishJob(
                             res=res, paths=paths, corpus_file=corpus_file,
                             runs=runs, unet_sha256=unet_sha256,
                             lexicon=lexicon, run_id=run_id, write=write,
                             index=index,
                             text_missing=int(shot) in absent_text,
-                        ))
+                        )
+                        handed_off = tails.submit(job)
                         timing.tail_wait_s += time.monotonic() - submitted
                         del runs, res
             except Exception as exc:  # noqa: BLE001 - per-shot isolation
@@ -1022,6 +1047,7 @@ def run_shots(
                 totals.add(timing)
                 rows.append(row)
                 pool.sample()
+                tails.sample()
                 continue
             if handed_off is None:
                 # The plan failed: one error row, no tail, as `process_shot`.
@@ -1037,15 +1063,18 @@ def run_shots(
             else:
                 previous, pending = pending, _Unfinished(
                     shot=int(shot), timing=timing,
-                    blocks_s=time.monotonic() - at, future=handed_off,
+                    blocks_s=time.monotonic() - at, future=handed_off, job=job,
                 )
+                del job  # pending now owns the payload, including its blocks
                 # The PREVIOUS shot's tail has been running beside this
                 # shot's blocks; collecting it here is what keeps the rows
                 # in shot order without ever waiting in front of the GPU.
                 flush(previous)
-            # Four `/proc` reads: the workers' high-water marks while they
-            # are still alive to be asked (see `_vmhwm_gib`).
+                del previous  # release the completed shot before the next blocks
+            # Both pools' high-water marks while their workers are still
+            # alive to be asked (see `_vmhwm_gib`).
             pool.sample()
+            tails.sample()
         flush(pending)
         pending = None
     finally:
@@ -1063,7 +1092,8 @@ def run_shots(
         blocks_per_s=round(summary["n_blocks"] / elapsed, 3) if elapsed else 0.0,
         tiles_per_s=round(totals.n_tiles / elapsed, 2) if elapsed else 0.0,
         peak_rss_gib=round(_rss_gib(resource.RUSAGE_SELF), 3),
-        peak_worker_rss_gib=round(pool.peak_worker_rss_gib, 3),
+        peak_worker_rss_gib=round(max(pool.peak_worker_rss_gib,
+                                     tails.peak_worker_rss_gib), 3),
         cuda_max_alloc_gib=_cuda_peak_gib(device),
         prep_workers=int(prep_workers),
         tail_workers=int(tail_workers),
@@ -1171,7 +1201,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--build-text-subset", action="store_true",
                         help="the pre-pass: build text/logs_subset.jsonl "
                              "for the WHOLE shot list (not this chunk) and "
-                             "exit. Run it once before submitting an array")
+                             "exit. REQUIRED before multi-rank/multi-chunk "
+                             "runs to preserve declared text sources; check "
+                             "text_subset_missing in each run JSON")
     parser.add_argument("--refresh-text", action="store_true",
                         help="re-ask the logbook about the shots recorded in "
                              "text/logs_subset.missing")

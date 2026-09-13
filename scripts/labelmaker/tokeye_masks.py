@@ -3,7 +3,11 @@
 
 Three commands, in this order. Once, before the array - the shared logbook
 subset, which no array task may write (a whole-file rewrite loses the other
-tasks' records):
+tasks' records). This pre-pass is REQUIRED for multi-rank or multi-chunk
+runs to match `python -m labelmaker.run events`. Without it, `readonly`
+adds a `text` skip for uncovered shots and omits `text` from their declared
+sources; a covered logbook record with no matches still declares `text`
+with zero events. Check that each run JSON's `text_subset_missing` is empty:
 
     PYTHONPATH=$REPO/src python scripts/labelmaker/tokeye_masks.py \
         --build-text-subset --shot-file $LABELMAKER_ROOT/recommender_v1.txt \
