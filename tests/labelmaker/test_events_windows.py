@@ -97,10 +97,27 @@ def _write_events(paths, events):
 
 def _elm(t: float, diag: str = "mhr", channel: int = 0) -> schema.Event:
     return schema.Event(
-        shot=SHOT, source="tokeye_transient", phenomenon="elm",
+        shot=SHOT, source="elm_clock", phenomenon="elm", evidence_kind="heuristic",
         t0_s=t, t1_s=t, diag=diag, channel=int(channel), pass_name="wide",
         t_cov0_s=0.0, t_cov1_s=10.0,
     )
+
+
+def test_transient_rows_do_not_change_any_elm_window_feature(tmp_path):
+    from dataclasses import replace
+
+    paths = _paths(tmp_path)
+    baseline = _write_events(paths, [_elm(0.1), _elm(0.2), _elm(0.3)])
+    table = windows.EventTable.of(baseline)
+    rows = [_elm(0.1), _elm(0.2), _elm(0.3)]
+    rows += [
+        replace(_elm(0.25), source="tokeye_transient", phenomenon="transient",
+                evidence_kind="detector"),
+        replace(_elm(0.27), source="tokeye_transient", evidence_kind="detector"),
+    ]
+    augmented = windows.EventTable.of(_write_events(paths, rows))
+    np.testing.assert_array_equal(table.elm_s, [0.1, 0.2, 0.3])
+    np.testing.assert_array_equal(augmented.elm_s, table.elm_s)
 
 
 def _interval(phenomenon: str, t0: float, t1: float, *, source: str,

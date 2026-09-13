@@ -83,19 +83,18 @@ own window would have made that shot a clean ELM negative. `coverage_windows` is
 
 ### The ELM case: a transient detector is not an ELM detector
 
-`elm` has no classified observed source today. `elm_clock` writes only `elm_free` intervals — the
-stretches with *no* ELM in them — and `tokeye_transient` writes `phenomenon="elm"` for any burst.
-labelmaker's own module is explicit that "nothing here decides that a burst IS an ELM… a sawtooth
-crash and a disruption precursor are transient too". So ideate reads it, at 0.4 of a classified
-detection's weight, and every hit it produces carries the caveat
-`observed via tokeye_transient, a class-agnostic transient detector: …`. An `--avoid
-phenomenon:elm` drop that rests on it says so in the run's notes.
+`elm` now resolves observed `elm_clock` point events with `evidence_kind="heuristic"`.
+The clock reads D-alpha filterscopes 0-7 and publishes a point-event family beside
+its `elm_free` intervals. These points are measured peak-picking results, not a
+trained ELM classifier; manual validation remains a follow-up. The rule has weight
+1.0 and does not carry the class-agnostic transient caveat.
 
-**What labelmaker must publish for a true observed-ELM class** (a labelmaker task, recorded here
-and in `phenomena.yaml` because this is where the gap shows): an `elm` **point-event family**
-written by the ELM clock itself — `transients.elm_events`' peaks, which are already computed —
-published as its own source rather than folded into the class-agnostic transient family. When it
-exists it becomes the `elm` rule at weight 1.0 with no caveat.
+`tokeye_transient` publishes `phenomenon="transient"`, with its own lexicon and
+registry entry. It cannot count as ELM evidence, including legacy rows whose
+phenomenon is still `elm`. Re-run labelmaker's events stage and the labels join to
+publish new products; a code change alone cannot populate the database. L-A's
+read-only census found zero observed events on the 500 recommender shots, and
+its CPU demonstrations under `/tmp` do not change that production count.
 
 The registry is `configs/ideate/phenomena.yaml` — one entry per phenomenon, saying which
 `labels_wide` series, which event sources, which frequency band and which descriptors count.
@@ -120,7 +119,7 @@ can key on them:
 | `the <title> detectors ran on this shot but not over the <segment> window; ...` | `uncovered`: they looked somewhere else in the record |
 | `the <title> detectors covered only <windows> of the <segment> window; ...` | partial cover: outside those stretches, absence is unmeasured |
 | `the <title> coverage of the <segment> window has <n> gap(s): ...` | `coverage` is a hull over stretches nobody read; `coverage_windows` has the union |
-| `observed via tokeye_transient, a class-agnostic transient detector: ...` | the detector that fired does not classify this phenomenon (see the ELM case above) |
+| `observed via tokeye_transient, a class-agnostic transient detector: ...` | retained caveat vocabulary for custom/legacy rules; the shipped ELM rule uses the D-alpha clock |
 | `<n> row(s) of evidence_kind <kinds> match this phenomenon's rules and are counted as neither observation nor forecast` | a `text`/`model`/`human` row matched a rule; it is not a sighting |
 | `<key> scored <p>, below the <floor> evidence floor: ...` | the model ran and said no; the number is reported and does not count |
 | `the quote is this shot's most informative logbook entry and does not mention <title>` | the quotation beside the hit is not the reason for the hit |
@@ -136,11 +135,10 @@ can key on them:
 
 `--avoid phenomenon:elm` drops the shots an ELM detector fired on and **keeps**, with the caveat
 for that shot's coverage state, the shots no ELM detector covered. Dropping those would read a gap in the diagnostic
-coverage as a physics result. What separates the two is `coverage_sources` in the registry: a
-detector that finds nothing writes no rows, so on a quiet shot the only record that the mhr data
-was read for ELMs at all is `elm_clock`'s `elm_free` interval — a *different* source from the one
-that would have reported an ELM. A phenomenon nothing detects (`rwm`, `detachment`) declares
-none, so its coverage stays unknown and every hit for it says so.
+coverage as a physics result. The clock's source record states whether it ran and
+over which filterscope span, even when it found no points. Its `elm_free` intervals
+also provide coverage evidence through `coverage_sources`; a missing clock remains
+unknown. A phenomenon without a detector declares no diagnostic coverage.
 
 One field name is a promise it cannot yet keep: `actuators_at_onset` holds the **segment's** own
 summary columns (`pnbi_total_mean`, `pech_total_mean`, `gas_total_mean`, `irmp_total_peak`), not

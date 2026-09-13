@@ -813,6 +813,10 @@ def _looked_windows(db, shot: int, ph: Phenomenon) -> list[tuple[float, float]]:
         ]
     out = []
     for r in rows:
+        # Old elm_clock rows came from magnetics masks, including persisted
+        # source keys a rerun leaves behind. They did not inspect D-alpha.
+        if ph.id == "elm" and r.get("diag") != "filterscopes":
+            continue
         a, b = _f(r.get("t_cov0_s")), _f(r.get("t_cov1_s"))
         if a is not None and b is not None and b >= a:
             out.append((a, b))
