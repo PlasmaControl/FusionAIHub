@@ -14,6 +14,13 @@ text and nothing else - and `text_weak.py` is where the text comes from:
 a shot's own logbook entries out of `sql/logs.jsonl` (shot scope) and its
 run's session context out of the per-shot bundle (run scope).
 
+`coverage.py` is what makes the table answerable: coverage computed per
+source and per quantity over FINITE samples, the intersection a
+multi-input heuristic actually observed, and the per-source completion
+record `events/<shot>_sources.parquet` - one row per `(source, diag,
+channel, pass)` that ran or was skipped, so that "the tracker ran and saw
+no mode" is distinguishable from "nobody ran the tracker".
+
 `windows.py` is the other end of the table: masks and events reduced onto a
 0.34 s window every 0.17 s, as the 46 diagnostics-only features a prior
 scores and a classifier is trained on (`features/resolve_events.py` serves

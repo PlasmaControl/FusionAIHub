@@ -69,6 +69,13 @@ import numpy as np
 from scipy.ndimage import median_filter
 from scipy.signal import medfilt
 
+from .coverage import (
+    UNKNOWN,
+    clip_point_to_coverage,
+    clip_to_coverage,
+    clipped_attrs,
+    intersect,
+)
 from .schema import Event
 from .tracks import Track
 
@@ -776,6 +783,13 @@ def lh_transitions(
 
     Every measured quantity is in the `attrs`, so a marginal transition can
     be re-weighed without re-running anything.
+
+    `t_cov` is the coverage the row declares - the pipeline passes the
+    INTERSECTION of the D-alpha, the density and the beams, since the
+    claim needs all three. A `when` past it by no more than the gate
+    window (the beam record ended within `drop_window_ms` of the step) is
+    written AT the bound with `attrs["clipped"] = true` and the measured
+    instant in `attrs["t_measured_s"]`; see `coverage.clip_point_to_coverage`.
     """
     y = np.atleast_2d(np.asarray(dalpha_y, dtype=np.float64))
     if y.shape[0] != N_DALPHA_CHANNELS:
@@ -851,18 +865,26 @@ def lh_transitions(
             if not (math.isfinite(pinj_kw) and pinj_kw >= float(min_pinj_kw)):
                 continue
             betan = _at(betan_t_s, betan_y, when)
+            # The gates above read windows AROUND `when`, so a transition up
+            # to `drop_window_ms` after the beam record's last sample clears
+            # them with every input measured - and lies past the
+            # intersection coverage the pipeline hands in. Moved onto the
+            # bound, said so, the measured instant kept; see
+            # `coverage.clip_point_to_coverage`.
+            at, clipped = clip_point_to_coverage(when, cov)
             out.append(
                 Event(
                     shot=int(shot),
                     source=LH_SOURCE,
                     evidence_kind="heuristic",
                     phenomenon=phenomenon,
-                    t0_s=when,
-                    t1_s=when,
+                    t0_s=at,
+                    t1_s=at,
                     confidence=float(min(1.0, measured / LH_FULL_DROP)),
                     diag="filterscopes",
                     channel=-1,
-                    attrs={
+                    attrs=clipped_attrs({
+                        **({"t_measured_s": float(when)} if clipped else {}),
                         "drop_frac": float(measured),
                         "dalpha_before": float(before),
                         "dalpha_after": float(after),
@@ -875,7 +897,7 @@ def lh_transitions(
                         "window_ms": float(drop_window_ms),
                         "hold_lo_ms": float(LH_HOLD_LO_MS),
                         "hold_hi_ms": float(LH_HOLD_HI_MS),
-                    },
+                    }, clipped),
                     t_cov0_s=cov[0],
                     t_cov1_s=cov[1],
                 )
@@ -990,27 +1012,39 @@ def _mask_intervals(t: np.ndarray, mask: np.ndarray, *, min_ms: float,
 
 def _actuator_event(shot: int, phenomenon: str, t: np.ndarray,
                     level: np.ndarray, bounds: tuple[int, int], units: str,
-                    cov: tuple[float, float]) -> Event:
-    """One interval of one actuator, with the level it held inside it."""
+                    cov: tuple[float, float], *, name: str = "") -> Event:
+    """One interval of one actuator, with the level it held inside it.
+
+    `name` is the canonical feature the interval was measured on and goes
+    into `diag`, so the row says WHICH axis its `t_cov` is the coverage of.
+    An `nbi_on` row and a `gas_on` row are read off different digitisers
+    with different spans - 0 to 13.10 s and -10 to 94.86 s on shot 198658 -
+    and a table in which both said only "actuator" could not be asked
+    whether the beams were off after 13 s or simply not measured.
+    """
     a, b = bounds
     inside = level[a:b]
     inside = inside[np.isfinite(inside)]
     mean = float(inside.mean()) if inside.size else math.nan
     top = float(inside.max()) if inside.size else math.nan
+    # The trigger holds its state across a NaN, which is right for a
+    # dropout inside a record and turns into an overrun at the end of one;
+    # the coverage is the finite span, so the extent is trimmed into it.
+    t0_s, t1_s, clipped = clip_to_coverage(float(t[a]), float(t[b - 1]), cov)
     return Event(
         shot=int(shot),
         source=ACTUATOR_SOURCE,
         evidence_kind="heuristic",
         phenomenon=phenomenon,
-        t0_s=float(t[a]),
-        t1_s=float(t[b - 1]),
-        diag="",
+        t0_s=t0_s,
+        t1_s=t1_s,
+        diag=str(name),
         channel=-1,
-        attrs={
+        attrs=clipped_attrs({
             "mean_level": 0.0 if not math.isfinite(mean) else mean,
             "max_level": 0.0 if not math.isfinite(top) else top,
             "units": units,
-        },
+        }, clipped),
         t_cov0_s=cov[0],
         t_cov1_s=cov[1],
     )
@@ -1020,7 +1054,7 @@ def actuator_intervals(
     features: Mapping[str, tuple[Any, Any]],
     *,
     shot: int,
-    t_cov: tuple[float, float],
+    t_cov: tuple[float, float] | Mapping[str, tuple[float, float]],
 ) -> list[Event]:
     """Canonical actuator features -> the intervals each one was on for.
 
@@ -1028,6 +1062,16 @@ def actuator_intervals(
     resolved by the caller: this module opens nothing and knows no locators.
     A feature that is absent produces no events, because a shot without RMP
     coils is the common case and is not an error.
+
+    `t_cov` is PER FEATURE - `{name: (t0, t1)}`, as
+    `coverage.feature_spans` builds it - and each row gets the coverage of
+    the axis it was measured on. A single `(t0, t1)` is still accepted and
+    is given to every row, which is what the old callers did and what the
+    iteration-0 critic found wrong on shot 198658: the gas recorder's
+    -10 to 94.86 s axis became the declared coverage of an `nbi_on` row
+    whose digitiser stopped at 13.10 s. `nbi_counter` needs the torque,
+    the injected power and the current at once, so it takes the
+    INTERSECTION of those three rather than any one of them.
 
     Every interval is a 2:1 Schmitt trigger on the feature's own threshold,
     with gaps under `ACTUATOR_GAP_MS` bridged and intervals under
@@ -1039,7 +1083,13 @@ def actuator_intervals(
     is the circumstance a QH-mode is usually found in - and it needs `ip`,
     so without `ip` it is simply not claimed rather than guessed.
     """
-    cov = (float(t_cov[0]), float(t_cov[1]))
+    def cov_of(*names: str) -> tuple[float, float]:
+        """The coverage of one input, or the intersection of several."""
+        if not isinstance(t_cov, Mapping):
+            return (float(t_cov[0]), float(t_cov[1]))
+        spans = [t_cov.get(name, UNKNOWN) for name in names]
+        return spans[0] if len(spans) == 1 else intersect(spans)
+
     out: list[Event] = []
     for phenomenon, name, thr, units, absolute, multi in _ACTUATORS:
         if name not in features:
@@ -1052,8 +1102,10 @@ def actuator_intervals(
                 f"{name}: {level.size} samples against {t.size} times"
             )
         on = _schmitt(level, thr)
+        cov = cov_of(name)
         out.extend(
-            _actuator_event(shot, phenomenon, t, level, bounds, units, cov)
+            _actuator_event(shot, phenomenon, t, level, bounds, units, cov,
+                            name=name)
             for bounds in _mask_intervals(
                 t, on, min_ms=ACTUATOR_MIN_MS, gap_ms=ACTUATOR_GAP_MS
             )
@@ -1089,9 +1141,11 @@ def actuator_intervals(
             covered & beams & (np.sign(tinj) != 0) & (np.sign(ip) != 0)
             & (np.sign(tinj) != np.sign(ip))
         )
+    counter_cov = cov_of("tinj_total", "pinj_total", "ip")
     out.extend(
         _actuator_event(
-            shot, "nbi_counter", t_tinj, np.abs(tinj), bounds, "N m", cov
+            shot, "nbi_counter", t_tinj, np.abs(tinj), bounds, "N m",
+            counter_cov, name="tinj_total",
         )
         for bounds in _mask_intervals(
             t_tinj, counter, min_ms=ACTUATOR_MIN_MS, gap_ms=ACTUATOR_GAP_MS

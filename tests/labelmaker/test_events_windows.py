@@ -583,9 +583,9 @@ def test_two_channels_writing_the_same_elm_rows_are_one_elm(tmp_path):
     """
     paths = _paths(tmp_path)
     events = _write_events(paths, [
-        _interval("elm_free", 0.0, 1.0, source="tokeye_transient",
+        _interval("elm_free", 0.0, 1.0, source="elm_clock",
                   kind="detector", channel=0),
-        _interval("elm_free", 0.0, 1.0, source="tokeye_transient",
+        _interval("elm_free", 0.0, 1.0, source="elm_clock",
                   kind="detector", channel=1),
         _elm(0.10, channel=0),
         _elm(0.10, channel=1),
@@ -627,9 +627,9 @@ def test_overlapping_elm_free_intervals_are_unioned_not_summed(tmp_path):
     # ELM-free for 0.30 s, not 0.40.
     paths = _paths(tmp_path)
     events = _write_events(paths, [
-        _interval("elm_free", 0.00, 0.20, source="tokeye_transient",
+        _interval("elm_free", 0.00, 0.20, source="elm_clock",
                   kind="detector", channel=0),
-        _interval("elm_free", 0.10, 0.30, source="tokeye_transient",
+        _interval("elm_free", 0.10, 0.30, source="elm_clock",
                   kind="detector", channel=1),
     ])
     vec = windows.window_features(
@@ -664,9 +664,9 @@ def test_the_parsed_table_clusters_points_and_merges_intervals(tmp_path):
         _interval("lh_transition", 1.0, 1.0, source="dalpha_lh", channel=0),
         _interval("lh_transition", 1.0004, 1.0004, source="dalpha_lh",
                   channel=1),
-        _interval("elm_free", 0.0, 0.2, source="tokeye_transient",
+        _interval("elm_free", 0.0, 0.2, source="elm_clock",
                   kind="detector", channel=0),
-        _interval("elm_free", 0.1, 0.3, source="tokeye_transient",
+        _interval("elm_free", 0.1, 0.3, source="elm_clock",
                   kind="detector", channel=1),
     ])
     table = windows.EventTable.of(events)

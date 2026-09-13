@@ -56,7 +56,16 @@ from ..ae.labels import PROB_THRESHOLD
 from ..ae.transform import STD_EPS
 from ..config import Paths
 from ..labels.store import append_index
-from . import channels, heuristics, masks, schema, text_weak, tracks, transients
+from . import (
+    channels,
+    coverage,
+    heuristics,
+    masks,
+    schema,
+    text_weak,
+    tracks,
+    transients,
+)
 from .lexicon import Lexicon
 from .schema import Event
 from .unet import CHECKPOINT_SHA256
@@ -320,12 +329,110 @@ def _standardise_within(raw: np.ndarray, t_s: np.ndarray,
     return spec, mean, std, float(t_s[inside[0]]), float(t_s[inside[-1]])
 
 
-def _one_block(
+#: The sentence `prep_block` carries out when `--norm plasma` had no window
+#: to standardise inside. `_one_block` and the batch driver both record it
+#: under `skipped[f"norm {key}:{pass}"]`, so it is written once.
+NO_NORM_WINDOW = (
+    "no usable coverage intersection; standardised over the whole record "
+    "instead"
+)
+
+
+@dataclass(eq=False)
+class PreparedBlock:
+    """The CPU half of one `(channel, pass)`, ready for the network.
+
+    The unit `events/driver.py` moves between processes, which is why it is
+    a dataclass here rather than four locals inside `_one_block`: a prep
+    worker returns one of these and the parent runs `infer_block` and
+    `describe_block` on it. Two `(512, T)` float32 arrays - 131 MB each on
+    a `mirnov` wide pass - so a driver holding `prefetch` of them holds
+    `prefetch` x 262 MB, and `spectrogram` is dropped the moment the
+    network has read it.
+
+    `norm_note` is `NO_NORM_WINDOW` when `--norm plasma` found no window and
+    empty otherwise: a stage function has no `skipped` dict to write into,
+    so the reason travels with the block and its caller records it.
+    """
+
+    spec: Any
+    pass_name: str
+    spectrogram: np.ndarray | None
+    raw: np.ndarray
+    t_s: np.ndarray
+    meta: dict
+    fs_hz: float
+    t_cov: tuple[float, float]
+    norm_note: str = ""
+
+    @property
+    def key(self) -> str:
+        """`"mhr:0:wide"` - how this block is named in `skipped`."""
+        return f"{self.spec.key}:{self.pass_name}"
+
+    @property
+    def n_tiles(self) -> int:
+        """The tiles the network will be run on, counted before they exist."""
+        return masks.n_tiles(self.meta["n_cols"])
+
+
+def prep_block(
     y, fs_hz: float, t0_s: float, t1_s: float, spec, pass_name: str, *,
-    model, device, tile_batch: int, amp: bool, norm: str,
-    window, unet_sha256: str, skipped: dict[str, str],
-) -> _BlockRun:
-    """One `(channel, pass)`: transform, infer, describe, then let go.
+    norm: str = "record", window=None,
+) -> PreparedBlock:
+    """The CPU part of one `(channel, pass)`: STFT, standardise, time axis.
+
+    Everything `_one_block` does before the network and nothing else, so
+    that a driver can run it somewhere other than where the network is
+    (`events/driver.py` runs it in a pool of prep processes while the GPU
+    is busy with the block before). No torch, no device, no model.
+
+    The pre-standardisation log-power is carried out beside the spectrogram
+    rather than recovered later with `unstandardise`: under `--norm plasma`
+    the spectrogram and the statistics in `meta` are BOTH replaced, and
+    inverting the second z-score would return `raw` only to float32
+    rounding - which is exactly the identity the driver has to keep.
+    """
+    decim = 1 if pass_name == "wide" else masks.ZOOM_DECIM
+    spectrogram, meta = masks.prep(y, fs_hz=fs_hz, decim=decim)
+    t_s = masks.col_times_s(meta["n_cols"], fs_hz, decim, t0_s)
+    raw = masks.unstandardise(spectrogram, meta)
+    meta["norm"] = "record"
+    note = ""
+    if norm == "plasma":
+        got = None if window is None else _standardise_within(raw, t_s, window)
+        if got is None:
+            note = NO_NORM_WINDOW
+        else:
+            spectrogram, meta["spec_mean"], meta["spec_std"] = got[:3]
+            meta["norm"] = "plasma"
+            meta["norm_t0_s"], meta["norm_t1_s"] = got[3], got[4]
+    return PreparedBlock(
+        spec=spec, pass_name=pass_name, spectrogram=spectrogram, raw=raw,
+        t_s=t_s, meta=meta, fs_hz=float(fs_hz),
+        t_cov=(float(t0_s), float(t1_s)), norm_note=note,
+    )
+
+
+def infer_block(prepared: PreparedBlock, *, model, device, tile_batch: int,
+                amp: bool) -> np.ndarray:
+    """The GPU part: `(2, 512, T)` float32 probabilities for one block.
+
+    A thin call, named so that a driver's `infer_s` measures the same thing
+    `_one_block` spends on the network and nothing else. Tiles are pooled to
+    `tile_batch` WITHIN the block: `masks.infer` is the one definition of
+    how a spectrogram reaches the network, and pooling tiles from two blocks
+    into one forward pass would change the batch a tile is run in - the one
+    thing that could make a driver's output differ from `process_shot`'s in
+    the last bits.
+    """
+    return masks.infer(model, prepared.spectrogram, device, batch=tile_batch,
+                       amp=amp)
+
+
+def describe_block(prepared: PreparedBlock, probs, *,
+                   unet_sha256: str) -> _BlockRun:
+    """The CPU part after the network: pack, track, and the activity trace.
 
     Everything that needs the float32 probability maps happens here -
     `block_arrays` (which packs them), the tracks and the column activity -
@@ -333,31 +440,16 @@ def _one_block(
     is read. On the widest group that is 144 MB per block that would
     otherwise be held until the file is written.
     """
-    decim = 1 if pass_name == "wide" else masks.ZOOM_DECIM
-    spectrogram, meta = masks.prep(y, fs_hz=fs_hz, decim=decim)
-    t_s = masks.col_times_s(meta["n_cols"], fs_hz, decim, t0_s)
-    raw = masks.unstandardise(spectrogram, meta)
-    meta["norm"] = "record"
-    if norm == "plasma":
-        got = None if window is None else _standardise_within(raw, t_s, window)
-        if got is None:
-            skipped[f"norm {spec.key}:{pass_name}"] = (
-                "no usable coverage intersection; standardised over the "
-                "whole record instead"
-            )
-        else:
-            spectrogram, meta["spec_mean"], meta["spec_std"] = got[:3]
-            meta["norm"] = "plasma"
-            meta["norm_t0_s"], meta["norm_t1_s"] = got[3], got[4]
-    probs = masks.infer(model, spectrogram, device, batch=tile_batch, amp=amp)
-    del spectrogram
+    spec, pass_name = prepared.spec, prepared.pass_name
+    raw, t_s = prepared.raw, prepared.t_s
     block = masks.MaskBlock(
         diag=spec.diag, channel=spec.channel, pass_name=pass_name,
-        coh=probs[0], tra=probs[1], raw_logpow=raw, t_s=t_s, meta=meta,
+        coh=probs[0], tra=probs[1], raw_logpow=raw, t_s=t_s,
+        meta=prepared.meta,
     )
     arrays = masks.block_arrays(block, unet_sha256=unet_sha256)
     coh_mask = probs[0] >= PROB_THRESHOLD
-    freq_khz = masks.freq_axis_khz(fs_hz, decim)
+    freq_khz = masks.freq_axis_khz(prepared.fs_hz, int(prepared.meta["decim"]))
     found = [
         tracks.descriptors(group, prob=probs[0], raw_logpow=raw,
                            freq_khz=freq_khz, t_s=t_s)
@@ -369,8 +461,32 @@ def _one_block(
         prefix=block.prefix, arrays=arrays, tracks=found,
         activity=activity,
         bursts=transients.extract_bursts(activity),
-        t_s=t_s, t_cov=(float(t0_s), float(t1_s)),
+        t_s=t_s, t_cov=prepared.t_cov,
     )
+
+
+def _one_block(
+    y, fs_hz: float, t0_s: float, t1_s: float, spec, pass_name: str, *,
+    model, device, tile_batch: int, amp: bool, norm: str,
+    window, unet_sha256: str, skipped: dict[str, str],
+) -> _BlockRun:
+    """One `(channel, pass)`: transform, infer, describe, then let go.
+
+    The three stages above, composed, and the ONE place the composition is
+    written: `events/driver.py` runs the same three on three different
+    schedules, and a step that lived here rather than in a stage function
+    would be a step the driver silently did not do.
+    """
+    prepared = prep_block(y, fs_hz, t0_s, t1_s, spec, pass_name, norm=norm,
+                          window=window)
+    if prepared.norm_note:
+        skipped[f"norm {prepared.key}"] = prepared.norm_note
+    probs = infer_block(prepared, model=model, device=device,
+                        tile_batch=tile_batch, amp=amp)
+    # As soon as the network has read it: 131 MB on the widest block, and
+    # `describe_block` wants `raw`, not the standardised copy.
+    prepared.spectrogram = None
+    return describe_block(prepared, probs, unet_sha256=unet_sha256)
 
 
 def _cooccurrence(runs: Sequence[_BlockRun]) -> dict[tuple[str, int], list[str]]:
@@ -424,13 +540,34 @@ def _elm_reference(runs: Sequence[_BlockRun]) -> _BlockRun | None:
     return None
 
 
-def _span(*axes) -> tuple[float, float]:
-    """`(min t0, max t1)` over the time axes given; NaN for none."""
-    lo = [float(t[0]) for t in axes if t is not None and len(t)]
-    hi = [float(t[-1]) for t in axes if t is not None and len(t)]
-    if not lo:
-        return (float("nan"), float("nan"))
-    return (min(lo), max(hi))
+def plan_shot(
+    corpus_file,
+    *,
+    plan: Sequence[channels.ChannelSpec] = channels.ROUND1_PLAN,
+    norm: str = "record",
+) -> tuple[list[channels.ChannelSpec], dict[str, str], tuple[float, float] | None]:
+    """`(specs, skipped, window)`: what this shot can run, before any of it.
+
+    The header-only half of a shot - `channels.plan_for` plus, under
+    `--norm plasma`, the coverage intersection `prep_block` standardises
+    inside - separated out because it is the first thing a batch driver
+    hands to a prep worker and the last thing that should happen in the
+    process that holds the GPU.
+
+    Raises only what `plan_for` raises, which is the one failure that ends a
+    shot: a corpus file that cannot be opened. Everything else is recorded -
+    the planner's own reasons under `channel <key>`, a coverage read that
+    failed under `norm`, exactly as `process_shot` records them.
+    """
+    specs, reasons = channels.plan_for(corpus_file, plan)
+    skipped = {f"channel {key}": why for key, why in reasons.items()}
+    window = None
+    if norm == "plasma" and specs:
+        try:
+            window = _norm_window(corpus_file, [s.diag for s in specs])
+        except Exception as exc:  # noqa: BLE001 - per-step isolation
+            skipped["norm"] = _cause(exc)
+    return specs, skipped, window
 
 
 def process_shot(
@@ -465,6 +602,17 @@ def process_shot(
     alone, and every source that RAN is named in the write even when it
     found nothing - "the tracker ran and saw no mode" is a different claim
     from "the tracker has not run".
+
+    That claim is also written out on its own, as
+    `events/<shot>_sources.parquet`: one row per `(source, diag, channel,
+    pass)` that ran or was skipped, with the coverage it ran over and how
+    many events it produced. An events file cannot carry it - a detector
+    that found nothing writes no row to one - and without it a query for a
+    shot's ELMs cannot tell an ELM-free shot from an unprocessed one.
+    Coverage there is per source and per quantity, computed over FINITE
+    samples: the gas valves' 105 s axis is not the NBI digitiser's
+    coverage, and the L-H detector covers only where the D-alpha, the line
+    density AND the injected power were all measured.
     """
     started = time.monotonic()
     res = ShotResult(shot=int(shot))
@@ -485,19 +633,12 @@ def process_shot(
         return res
 
     try:
-        specs, reasons = channels.plan_for(corpus_file, plan)
+        specs, planned_skips, window = plan_shot(corpus_file, plan=plan,
+                                                 norm=norm)
     except Exception as exc:  # noqa: BLE001 - the one run-ending failure
         res.error = _cause(exc)
         return finish()
-    for key, why in reasons.items():
-        res.skipped[f"channel {key}"] = why
-
-    window = None
-    if norm == "plasma" and specs:
-        try:
-            window = _norm_window(corpus_file, [s.diag for s in specs])
-        except Exception as exc:  # noqa: BLE001 - per-step isolation
-            res.skipped["norm"] = _cause(exc)
+    res.skipped.update(planned_skips)
 
     # ---------------------------------------------------------- the masks
     runs: list[_BlockRun] = []
@@ -522,8 +663,45 @@ def process_shot(
         del y
     res.n_blocks = len(runs)
 
+    finish_shot(res, paths, corpus_file, runs, unet_sha256=unet_sha256,
+                lexicon=lexicon, run_id=run_id, write=write)
+    return finish()
+
+
+def finish_shot(
+    res: ShotResult,
+    paths: Paths,
+    corpus_file,
+    runs: Sequence[_BlockRun],
+    *,
+    unet_sha256: str = CHECKPOINT_SHA256,
+    lexicon: Lexicon | None = None,
+    run_id: str = "manual",
+    write: bool = True,
+) -> ShotResult:
+    """Everything a shot does AFTER its mask blocks, on `res` in place.
+
+    The tracks and their co-occurrences, the ELM clock, the three
+    heuristics, the QH proxy, the text, and the two writes - in this order,
+    each guarded, because the order is the thing this module exists to own.
+    Split out of `process_shot` so that `events/driver.py`, which produces
+    the same `_BlockRun`s on a different schedule, finishes a shot through
+    the same code rather than through a copy of it: a heuristic added here
+    is a heuristic the batch runs get.
+
+    `runs` are this shot's blocks in PLAN ORDER. The order reaches disk -
+    `_elm_reference` breaks a tie by block name, `write_masks` writes the
+    keys in the order given - so a caller that reorders them writes a
+    different file.
+    """
+    shot = int(res.shot)
     events: list[Event] = []
     sources: set[str] = set()
+    # `(source, diag, channel, pass_name)` -> the coverage it ran over.
+    # EVERY key that ran, event or no event: `events/<shot>_sources.parquet`
+    # is what tells "the tracker looked and saw nothing" from "the tracker
+    # never ran", and an events file states neither.
+    ran: dict[tuple[str, str, int, str], tuple[float, float]] = {}
 
     # --------------------------------------------------------- the tracks
     if runs:
@@ -531,6 +709,9 @@ def process_shot(
         partners = _cooccurrence(runs)
         for run in runs:
             res.n_tracks += len(run.tracks)
+            ran[(tracks.SOURCE, run.diag, run.channel, run.pass_name)] = (
+                run.t_cov
+            )
             rows = tracks.tracks_to_events(
                 run.tracks, shot=shot, diag=run.diag, channel=run.channel,
                 pass_name=run.pass_name, t_cov=run.t_cov,
@@ -562,20 +743,24 @@ def process_shot(
             res.n_elms = int(np.size(elm_times))
             res.elm_reference = reference.prefix
             sources |= {transients.SOURCE, transients.FREE_SOURCE}
+            key = (reference.diag, reference.channel, reference.pass_name)
+            ran[(transients.SOURCE, *key)] = reference.t_cov
+            ran[(transients.FREE_SOURCE, *key)] = reference.t_cov
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["elm_clock"] = _cause(exc)
 
     # ------------------------------------------------------- the sawteeth
     try:
         ece_t_s, ece_y = _read_group(corpus_file, "ece")
+        ece_cov = coverage.finite_span(ece_t_s, ece_y)
         found = heuristics.sawtooth_events(
-            ece_y, ece_t_s, shot=shot,
-            t_cov=(float(ece_t_s[0]), float(ece_t_s[-1])),
+            ece_y, ece_t_s, shot=shot, t_cov=ece_cov,
         )
         del ece_y
         events.extend(found)
         res.n_sawteeth = len(found)
         sources.add(heuristics.SAWTOOTH_SOURCE)
+        ran[(heuristics.SAWTOOTH_SOURCE, "ece", -1, "")] = ece_cov
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["sawtooth"] = _cause(exc)
 
@@ -586,6 +771,11 @@ def process_shot(
         )
         ne_t_s, ne_y = _read_group(corpus_file, "co2", stop=1)
         pinj_t_s, pinj_y = _read_group(corpus_file, "pinj")
+        lh_cov = coverage.intersect([
+            coverage.finite_span(dalpha_t_s, dalpha_y),
+            coverage.finite_span(ne_t_s, ne_y[0]),
+            coverage.finite_span(pinj_t_s, pinj_y),
+        ])
         found = heuristics.lh_transitions(
             dalpha_t_s, dalpha_y,
             ne_t_s=ne_t_s, ne_y=ne_y[0],
@@ -595,11 +785,14 @@ def process_shot(
             pinj_t_s=pinj_t_s,
             pinj_y=np.asarray(pinj_y, dtype=np.float64).sum(axis=0) * 1e-3,
             shot=shot,
-            t_cov=(float(dalpha_t_s[0]), float(dalpha_t_s[-1])),
+            # Three inputs, one answer: the transition is claimed where
+            # ALL THREE were measured, not over the D-alpha alone.
+            t_cov=lh_cov,
         )
         events.extend(found)
         res.n_lh = len(found)
         sources.add(heuristics.LH_SOURCE)
+        ran[(heuristics.LH_SOURCE, "filterscopes", -1, "")] = lh_cov
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["lh"] = _cause(exc)
 
@@ -608,10 +801,16 @@ def process_shot(
     features = _actuator_features(corpus_file, res.skipped)
     res.skipped["nbi_counter"] = NO_IP
     if features:
+        # PER FEATURE, over finite samples: the gas recorder's -10 to
+        # 94.86 s axis is not the NBI digitiser's coverage (task Lfix-C1).
+        spans = coverage.feature_spans(features)
+        ran.update(
+            ((heuristics.ACTUATOR_SOURCE, name, -1, ""), span)
+            for name, span in spans.items()
+        )
         try:
             found = heuristics.actuator_intervals(
-                features, shot=shot,
-                t_cov=_span(*[t for t, _ in features.values()]),
+                features, shot=shot, t_cov=spans,
             )
             events.extend(found)
             nbi_on = [(e.t0_s, e.t1_s) for e in found if e.phenomenon == "nbi_on"]
@@ -628,9 +827,14 @@ def process_shot(
         events.extend(heuristics.qh_candidates(
             [t for run in runs for t in run.tracks], elm_free, nbi_on, [],
             shot=shot,
-            t_cov=reference.t_cov if reference else (float("nan"),) * 2,
+            t_cov=reference.t_cov if reference else coverage.UNKNOWN,
         ))
         sources.add(heuristics.QH_SOURCE)
+        # `qh_candidates` stamps its rows `pass_name="zoom"`, so that is
+        # the key its completion record has to carry.
+        ran[(heuristics.QH_SOURCE, "", -1, "zoom")] = (
+            reference.t_cov if reference else coverage.UNKNOWN
+        )
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["qh"] = _cause(exc)
 
@@ -647,6 +851,7 @@ def process_shot(
             events.extend(found)
             res.n_text = len(found)
             sources.add("text")
+            ran[("text", "", -1, "")] = text_weak.shot_span_s(shot, paths=paths)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["text"] = _cause(exc)
 
@@ -663,6 +868,13 @@ def process_shot(
             events_file = paths.events_file(shot)
             schema.write_events(events_file, shot, events, run_id=run_id,
                                 merge=True, sources=sorted(sources))
+            schema.write_sources(
+                paths.sources_file(shot), shot,
+                coverage.source_records(
+                    shot, ran=ran, skipped=res.skipped, events=events,
+                ),
+                run_id=run_id, merge=True,
+            )
             append_index(paths.events_index, schema.index_rows(events_file),
                          keys=["shot", "source", "phenomenon"])
         except Exception as exc:  # noqa: BLE001 - see below
@@ -672,7 +884,7 @@ def process_shot(
             # shot is not done and a re-run has to redo it - which is what
             # `status == "error"` tells a run summary.
             res.error = f"write failed: {_cause(exc)}"
-    return finish()
+    return res
 
 
 def summarise(rows: Sequence[dict]) -> dict[str, Any]:
@@ -702,4 +914,14 @@ def summarise(rows: Sequence[dict]) -> dict[str, Any]:
     }
 
 
-__all__ = ["ShotResult", "process_shot", "summarise"]
+__all__ = [
+    "PreparedBlock",
+    "ShotResult",
+    "describe_block",
+    "finish_shot",
+    "infer_block",
+    "plan_shot",
+    "prep_block",
+    "process_shot",
+    "summarise",
+]

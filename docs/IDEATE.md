@@ -74,23 +74,37 @@ client works — the transport is stdio and the command above is the whole contr
 | --- | --- | --- |
 | `search_shots` | `text`, `ref_shot`, `segment`, `constraints`, `actuators`, `require_labels`, `avoid_labels`, `n` | ranked shots with a description, an explanation naming which channel found each one, and the operating-limit flags for the proposed actuators |
 | `describe_shot` | `shot`, `segment` | the prose description and the whole stored record: segments and their scalars, labels and their source, outcome, and the operator logbook verbatim |
-| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | the shot's events, filtered by phenomenon and by time overlap — and, in a separate list, the forecasts |
+| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and three lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
 
 Plus one resource, `ideate://manifest`: the built database's manifest, which is how a caller
 finds out which shots the tools can see at all.
 
-Two things hold for every reply and are worth knowing before reading one:
+Three things hold for the replies and are worth knowing before reading one:
 
-* **`caveats` is always there, and it changes what the reply means.** An empty result carrying
-  "no channel had anything to search on" means the query was empty — not that no such shot
-  exists. A result whose constraint excluded shots for having no recorded value says so, because
-  "not measured" is not "out of range".
-* **`get_events` never mixes forecasts into `events`.** A row with `evidence_kind == "forecast"`
-  is a model's estimate of what was about to happen, raised from a risk curve at a threshold;
-  every other row is a claim about what a diagnostic showed. They arrive in different lists and
-  must stay in different sentences. (On the `recommender_v1` database today, *all* 1,037 event
-  rows are forecasts — so a tool that concatenated them would report nothing but model output as
-  observation.)
+* **`caveats` is on every reply the tools themselves produce, and it changes what the reply
+  means.** An empty result carrying "no channel had anything to search on" means the query was
+  empty — not that no such shot exists. A result whose constraint excluded shots for having no
+  recorded value says so, because "not measured" is not "out of range". The promise is scoped:
+  a call whose *arguments* fail the tool schema (a string where a shot number belongs) is
+  rejected by the MCP framework before any tool code runs, and comes back as a protocol
+  validation error with no `caveats` field.
+* **`get_events` keeps three kinds of claim in three lists.** An `events` row is a detector's or
+  a heuristic's claim about what a diagnostic showed, with `source` saying who. A `forecasts`
+  row (`evidence_kind == "forecast"`) is a model's estimate of what was about to happen, raised
+  from a risk curve at a threshold. A `text_mentions` row (`evidence_kind == "text"`) is a
+  lexicon hit in the operator logbook — somebody wrote the word — and is *not* evidence that the
+  phenomenon occurred: shot 185980's "Updated ELM detector tuning." is a positive ELM hit about
+  the detector. The three arrive in different lists and must stay in different sentences.
+* **`status` says what an empty `events` means**, and the four values are not degrees of one
+  thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
+  `unprocessed`: it is indexed, but `db/event_sources.parquet` records no detector as having
+  completed over it — absence is not evidence. `uncovered`: detectors ran, but not over the
+  window asked about; the caveat names the covered span. `observed`: detectors ran over (part
+  of) the window, and an empty list is a real finding of nothing, said in as many words. A
+  reversed, zero-width or non-finite window is an error dict, never a silent empty. (On the
+  `recommender_v1` database today *all* 1,037 event rows are forecasts and no shot has an
+  observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
+  is the truth the old empty list hid.)
 
 Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` and
 `ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
