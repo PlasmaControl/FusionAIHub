@@ -40,6 +40,7 @@ from __future__ import annotations
 import functools
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -385,6 +386,7 @@ class Evidence:
     forecasts: tuple[Interval, ...] = ()
     label_evidence: dict[str, float | None] = field(default_factory=dict)
     max_label_p: float | None = None
+    max_label_raw_p: float | None = None
     text_hits: int = 0
     text_snippets: tuple[str, ...] = ()
     n_negative_claims: int = 0
@@ -826,6 +828,23 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     return "observed", hull, windows, partial, caveats
 
 
+def missing_required_groups(db, shot: int, ph: Phenomenon) -> tuple[str, ...]:
+    """Known absent requirements, leaving unknown legacy inventories silent.
+
+    Legacy records with empty raw_groups have all-false default columns. A corpus reader or
+    some positive inventory flag establishes that an inventory was actually recorded. A missing
+    or null flag remains unknown; a detector's existing evidence is still reported with a caveat.
+    """
+    row = _shot_row(db, shot) or {}
+    flags = {g: row.get(f"has_{g}") for g in CORPUS_GROUPS}
+    inventoried = row.get("reader") == "corpus" or any(v is not None and not pd.isna(v) and bool(v)
+                                                      for v in flags.values())
+    if not inventoried:
+        return ()
+    return tuple(g for g in ph.requires_group if flags[g] is not None
+                 and not pd.isna(flags[g]) and not bool(flags[g]))
+
+
 def _keeps_confidence(row: Mapping, limit: float) -> bool | None:
     """True/False for a scored row, None for one whose source recorded no confidence."""
     c = _f(row.get("confidence"))
@@ -934,12 +953,16 @@ def evidence(
         db, shot, ph, window, segment
     )
     caveats.extend(cov_caveats)
+    caveats.extend(
+        f"required corpus group {group} is absent for {ph.id}"
+        for group in missing_required_groups(db, shot, ph)
+    )
     for name, error in db.load_errors.items():
         caveats.append(f"could not read {name}.parquet: {error}")
     if not intervals:
         caveats.append(NO_OBSERVED)
 
-    label_evidence, max_p, label_caveats = _labels_for(db, shot, ph, label_floor)
+    label_evidence, max_p, raw_p, label_caveats = _labels_for(db, shot, ph, label_floor)
     caveats.extend(label_caveats)
 
     hits, snippets, n_neg, text_caveats = _text_for(db, shot, ph)
@@ -954,6 +977,7 @@ def evidence(
         forecasts=tuple(sorted(forecasts, key=lambda iv: (iv.t0_s, iv.event_id))),
         label_evidence=label_evidence,
         max_label_p=max_p,
+        max_label_raw_p=raw_p,
         text_hits=hits,
         text_snippets=snippets,
         n_negative_claims=n_neg,
@@ -980,12 +1004,13 @@ def _labels_for(db, shot: int, ph: Phenomenon, floor: float):
     low" survives: the first is None in `label_evidence`, the second is the number itself.
     """
     if not ph.labels:
-        return {}, None, [NO_LABEL_MODEL]
+        return {}, None, None, [NO_LABEL_MODEL]
     frame = getattr(db, "labels_wide", None)
     rows = _rows(frame, shot)
     by_key = {f"{r['slug']}/{r['label']}": r for r in rows}
     out: dict[str, float | None] = {}
     best: float | None = None
+    raw_best: float | None = None
     low: list[str] = []
     unavailable = False
     for ref in ph.labels:
@@ -1006,9 +1031,10 @@ def _labels_for(db, shot: int, ph: Phenomenon, floor: float):
             low.append(LABEL_BELOW_FLOOR.format(key=ref.key, p=p, floor=bar))
             continue
         weighted = p * ref.weight
-        best = weighted if best is None else max(best, weighted)
+        if best is None or weighted > best:
+            best, raw_best = weighted, p
     caveats = ([LABEL_UNAVAILABLE] if unavailable else []) + low
-    return out, best, caveats
+    return out, best, raw_best, caveats
 
 
 #: How many `text_claims` snippets a hit carries. The table is the record; this is a reading aid.
@@ -1300,7 +1326,7 @@ def _hit(ev: Evidence, tier: int, value: float, extra: list[str], db, segment: s
     elif tier == FORECAST:
         caveats.insert(0, FORECAST_ONLY)
     elif tier == LABELLED:
-        caveats.insert(0, LABEL_ONLY.format(p=ev.max_label_p))
+        caveats.insert(0, LABEL_ONLY.format(p=ev.max_label_raw_p))
     elif tier == DATABASE:
         caveats.insert(0, DATABASE_ONLY)
     quote, role, quote_caveat = _quote(ev, db)
@@ -1346,6 +1372,29 @@ def _mentions(text: str, pid: str) -> bool:
     """Does this sentence NAME the phenomenon? labelmaker's matcher, so the quote picker and
     `resolve` agree about what counts as a mention, including its denials."""
     return any(h.polarity == "pos" for h in lexicon_mod.hits(text, _lexicon()).get(pid, ()))
+
+
+def shorten_quote(text: str, pid: str, limit: int) -> str:
+    """A contiguous verbatim excerpt around a positive mention, never a spliced quotation.
+
+    The lexicon chooses the sentence. Prefix matching locates its mention without introducing
+    another alias tokenizer; the original entry supplies every displayed character.
+    """
+    hits = [h for h in lexicon_mod.hits(text, _lexicon()).get(pid, ()) if h.polarity == "pos"]
+    for hit in hits:
+        offset = text.lower().find(hit.sentence)
+        if offset < 0:
+            continue
+        end = next((m.end() for m in re.finditer(r"\S+", hit.sentence)
+                    if _mentions(hit.sentence[:m.end()], pid)), len(hit.sentence))
+        start = max(offset, offset + end - (limit - 8) // 2 - len(hit.alias))
+        if start and not text[start - 1].isspace():
+            start = text.find(" ", start) + 1
+        prefix = "... " if start else ""
+        budget = limit - len(prefix)
+        tail = text[start:]
+        return prefix + describe_mod.shorten(tail, budget - 4 if len(tail) > budget else budget)
+    return describe_mod.shorten(text, limit - 4 if len(text) > limit else limit)
 
 
 def _quote(ev: Evidence, db) -> tuple[str | None, str | None, str | None]:

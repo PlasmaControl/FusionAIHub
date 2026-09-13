@@ -1264,7 +1264,7 @@ def cmd_labels(args) -> int:
 # ------------------------------------------------------------------------------- phenomenon
 
 
-#: The quote column's width. Passed to `describe.shorten` so the cut lands on a word boundary.
+#: The quote column's width; retain the phenomenon mention in a contiguous excerpt.
 PHENOMENON_QUOTE_WIDTH = 60
 
 
@@ -1296,7 +1296,7 @@ def _phenomenon_table(hits, resolved_id: str) -> None:
         span = "-" if first is None else f"{kind} {first.t0_s:.3f}-{first.t1_s:.3f} s"
         quote = (
             "" if hit.quote is None
-            else describe_mod.shorten(hit.quote, PHENOMENON_QUOTE_WIDTH)
+            else ph_mod.shorten_quote(hit.quote, hit.phenomenon, PHENOMENON_QUOTE_WIDTH)
         )
         print(
             f"{hit.shot:>7}  {hit.score:>6.3f}  {', '.join(classes) or 'none':<26}  "
