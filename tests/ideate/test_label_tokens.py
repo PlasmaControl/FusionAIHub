@@ -99,3 +99,12 @@ def test_query_and_mcp_surface_coverage_exclusions_even_with_no_results(ideate_d
     cli.main(['query', '--ref', '100', '--avoid', 'phenomenon:rwm', '--json'])
     assert 'no detector registered for rwm' in capsys.readouterr().out
     tools.reset_cache()
+
+
+def test_avoid_reports_when_an_observed_drop_is_only_a_class_agnostic_transient(ideate_db):
+    db = _db_with(ideate_db, [_event(
+        100, 'transient', source='tokeye_transient', phenomenon='elm',
+    )])
+    report = rank.search_report(QueryState(avoid_labels={'phenomenon:elm'}), db)
+    assert any('dropped 1' in c and 'observed' in c for c in report['caveats'])
+    assert ph.TRANSIENT_NOT_CLASSIFIED in report['caveats']
