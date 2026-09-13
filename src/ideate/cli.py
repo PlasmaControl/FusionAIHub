@@ -466,6 +466,7 @@ def cmd_export(args) -> int:
 
 def cmd_encode(args) -> int:
     """IGNITE frame-code caches for a shot list: the seeds a Phase-5 rollout starts from."""
+    from .design import provenance
     from .design import seed as seed_mod
     from .shotdb.corpus import CorpusReader
 
@@ -479,6 +480,13 @@ def cmd_encode(args) -> int:
         print("nothing to encode", file=sys.stderr)
         return 1
     out = Path(args.out) if args.out else Path(paths.data_root) / "frame_codes"
+    # The manifest's path is settled BEFORE the run, not after, so every `frame_codes/<shot>.json`
+    # sidecar this run writes can name the manifest that will hold the run's own report. The two
+    # point at each other, which is what makes a cache traceable to a job.
+    run_dir = Path(paths.data_root) / "runs" / "encode"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
     report = seed_mod.encode_many(
         shots,
         reader=CorpusReader(paths.foundation_model_processed_dir),
@@ -488,11 +496,13 @@ def cmd_encode(args) -> int:
         skip_existing=args.skip_existing,
         workers=args.workers,
         paths=paths,
+        run_manifest=manifest,
     )
-    run_dir = Path(paths.data_root) / "runs" / "encode"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
+    # The commit the encode ran at, in the run manifest as well as in every sidecar: the
+    # manifests written before this change carry none, and their shots' sidecars can only be
+    # backfilled with a null (see `scripts/ideate/frame_codes_provenance.py`).
+    report["git_sha"] = provenance.build_sidecar(0, device="", input_file=None, bundle=None)["git_sha"]
+    report["run_manifest"] = str(manifest)
     manifest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         f"encoded {report['n_encoded']}/{report['n_requested']} shots "
@@ -510,11 +520,45 @@ def cmd_encode(args) -> int:
     return 0 if report["n_encoded"] or report["n_skipped"] else 1
 
 
+def _frame_codes_census(paths) -> str:
+    """One line per device the encoded caches were written on, plus what has no sidecar.
+
+    The product is device-mixed and the codes are NOT bit-reproducible across devices or even
+    across BLAS thread counts (see `design.provenance`), so "500 shots are encoded" is not a
+    statement anybody can act on without the split. A cache with no provenance sidecar is counted
+    separately rather than folded into a device: unknown is not the majority answer.
+    """
+    from collections import Counter
+
+    from .design import provenance
+
+    dirs = build_mod.frame_codes_dirs(paths)
+    by_device: Counter[str] = Counter()
+    shots: set[int] = set()
+    for d in dirs:
+        for cache in sorted(Path(d).glob("*.pt")):
+            try:
+                shot = int(cache.stem)
+            except ValueError:
+                continue
+            if shot in shots:  # the same shot in two locations is one shot
+                continue
+            shots.add(shot)
+            side = provenance.read_sidecar(d, shot)
+            by_device[str((side or {}).get("device") or "no sidecar")] += 1
+    if not shots:
+        return "frame codes  none found in " + ", ".join(str(d) for d in dirs)
+    parts = ", ".join(f"{dev} {n}" for dev, n in sorted(by_device.items()))
+    return f"frame codes  {len(shots)} shot(s) encoded: {parts}"
+
+
 def cmd_coverage(args) -> int:
-    db = _open_db(config.load_paths())
+    paths = config.load_paths()
+    db = _open_db(paths)
     if db is None:
         return 1
     print(_coverage_table(db))
+    print(_frame_codes_census(paths))
     return 0
 
 
@@ -1152,8 +1196,13 @@ def cmd_labels(args) -> int:
     result = join_mod.join(
         shots, labelmaker_root=root, text_root=text_root, lexicon_path=args.lexicon
     )
+    # The join is the step that runs AFTER the long jobs and republishes, so it is where a
+    # `has_frame_codes` column set at build time -- 13 true while all 500 caches existed -- gets
+    # brought back in line with the directory. A rebuild to fix one boolean costs an hour.
+    codes = build_mod.refresh_frame_codes(db_dir, paths)
     block = join_mod.write_tables(
-        db_dir, result.labels_wide, result.events, result.claims, result.manifest
+        db_dir, result.labels_wide, result.events, result.claims, result.manifest,
+        sources_df=result.sources, join_block={"frame_codes": codes},
     )
     m = result.manifest
     print(
@@ -1187,9 +1236,27 @@ def cmd_labels(args) -> int:
         for col in ("polarity", "temporality"):
             print("  " + ", ".join(f"{k} {v:,}" for k, v in
                                    sorted(Counter(result.claims[col]).items())))
+    # Which detectors RAN, not what they found: an events table with no rows for a shot is
+    # "nobody looked" until this says otherwise, and that is what `get_events` reports.
+    print(
+        f"event_sources {m['n_event_source_rows']:,} rows over "
+        f"{m['n_shots_with_source_rows']:,} shot(s): {m['n_sources_ok']:,} ok, "
+        f"{m['n_sources_skipped']:,} skipped, {m['n_sources_error']:,} error"
+    )
+    print(
+        f"  {m['n_shots_with_observed_products']:,} shot(s) have an observed-event product; "
+        f"{m['n_shots_unprocessed']:,} are unprocessed (their empty event list is not evidence)"
+    )
+    print(
+        f"has_frame_codes refreshed: {codes['n_has_frame_codes']:,}/{codes['n_shots']:,} shots "
+        f"({codes['n_changed']:,} changed, was {codes.get('n_was_true', 0):,})"
+    )
     if m["n_shots_missing_labels"]:
         print(f"no labels file: {_brief(m['labels_missing'])}")
-    print(f"wrote {db_dir}/{{labels_wide,events,text_claims}}.parquet and manifest.json")
+    print(
+        f"wrote {db_dir}/{{labels_wide,events,text_claims,event_sources}}.parquet "
+        f"and manifest.json"
+    )
     print(f"manifest labels block: {json.dumps(block, default=str)}")
     return 0
 
