@@ -363,3 +363,155 @@ def to_summary(rec: ShotRecord, description: str = "") -> ShotSummary:
         provenance=rec.derived_provenance,
         coverage_fraction=(n_present / len(rec.coverage)) if rec.coverage else 0.0,
     )
+
+
+# ------------------------------------------------------------------------------ evaluation
+#
+# The evaluation harness's own records (task I11). They are here with everything else rather
+# than in `eval/` because a report that is written to JSON, read back by a later run and
+# diffed against it is an interop format, and this module is where those live.
+
+
+class EvalPrompt(BaseModel):
+    """One row of `configs/ideate/evalsets/reference_shot_prompts.csv`.
+
+    `expect_phenomena` is what a DIII-D physicist typing this sentence MEANS, written down when
+    the prompt was authored and never afterwards. It is deliberately not "what `resolve` returns":
+    the gap between the two is the measurement.
+    """
+
+    prompt_id: str
+    category: str
+    prompt: str
+    expect_phenomena: list[str] = Field(default_factory=list)
+    expect_constraints: dict[str, Range] = Field(default_factory=dict)
+    expect_segment: SegName = "flat_top"
+    hand_graded: bool = False
+    notes: str = ""
+
+
+class PromptOutcome(BaseModel):
+    """What one prompt produced. Every field is a measurement, none is a verdict."""
+
+    prompt_id: str
+    category: str
+    n_results: int
+    candidates: int  # rows that survived the hard filter
+    segment_rows: int  # rows of that segment in the split at all
+    channels: dict[str, int] = Field(default_factory=dict)  # per channel, candidates returned
+    resolved: list[str] = Field(default_factory=list)  # what `phenomena.resolve` made of the text
+    expected_resolved: bool | None = None  # None when the prompt expects no phenomenon
+    shots: list[int] = Field(default_factory=list)  # the top-n shots, in rank order
+    run_ids: list[str] = Field(default_factory=list)  # distinct run days among them
+    duplicate_shots: int = 0  # positions beyond the first held by an already-listed shot
+    proxy_hit: bool | None = None  # hand-graded prompts only; see EvalReport.proxy
+    error: str | None = None
+
+
+class CategoryStats(BaseModel):
+    category: str
+    n_prompts: int
+    coverage: float
+    n_with_expectation: int
+    resolution: float | None = None  # None when no prompt of the category expects a phenomenon
+    mean_run_diversity: float = 0.0
+
+
+class ProxyGrade(BaseModel):
+    """The machine-checkable stand-in for the 20 hand grades.
+
+    IT IS NOT THE HAND GRADE. It asks one narrow question -- does any shot in the top 5 carry
+    evidence of every phenomenon the prompt expects (or satisfy every constraint it states) --
+    and a prompt can pass it with five useless shots or fail it while returning the five a
+    physicist would have picked. The human rubric is in the evalset's `notes` column and only a
+    human closes it.
+    """
+
+    caveat: str = (
+        "PROXY, NOT A HUMAN GRADE: expected phenomena present in the top-5 evidence "
+        "(or expected constraints satisfied). It does not judge whether the shots are the "
+        "right ones; the rubric in the evalset's `notes` column does, and only a human can."
+    )
+    n_prompts: int = 0
+    n_checkable: int = 0  # the rest state no machine-checkable expectation
+    n_hit: int = 0
+    fraction: float | None = None
+
+
+class EvalReport(BaseModel):
+    """The evalset run against one database, on one side of the frozen split."""
+
+    evalset: str
+    evalset_sha256: str
+    split: Literal["dev", "eval", "all"]
+    split_shots: int
+    n_prompts: int
+    n_results_total: int
+    coverage: float  # prompts with >= 1 result
+    hard_filter_survival: float  # mean candidates / segment rows
+    channel_participation: dict[str, float]  # per channel, fraction of prompts it contributed to
+    resolution_overall: float | None
+    categories: list[CategoryStats] = Field(default_factory=list)
+    mean_run_diversity: float = 0.0  # distinct run days per top-10
+    duplicate_rate: float = 0.0  # duplicated positions / results returned
+    proxy: ProxyGrade = Field(default_factory=ProxyGrade)
+    outcomes: list[PromptOutcome] = Field(default_factory=list)
+    db_dir: str = ""
+    db_manifest_sha: str | None = None
+    n_errors: int = 0
+    generated_at: datetime | None = None
+
+
+class LatencyRow(BaseModel):
+    """One timed operation. `budget_s` is the plan's Appendix B number, or None where the plan
+    sets none -- and a row with no budget gets no verdict rather than a free PASS."""
+
+    name: str
+    what: str
+    repeats: int
+    median_s: float
+    p95_s: float
+    budget_s: float | None = None
+
+    @property
+    def verdict(self) -> str:
+        if self.budget_s is None:
+            return "n/a"
+        return "PASS" if self.median_s <= self.budget_s else "FAIL"
+
+
+class LatencyReport(BaseModel):
+    db_dir: str
+    n_shots: int
+    n_segment_rows: int
+    repeats: int
+    warm: bool = True
+    rows: list[LatencyRow] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    generated_at: datetime | None = None
+
+
+class RecallReport(BaseModel):
+    """`locate()`'s recall against a human-annotated sheet, `split=test` rows only.
+
+    `n_labelled` counts only `y`/`n` rows: a `?` or an empty cell is an annotator who did not
+    answer, and counting those as negatives would manufacture a recall number out of unread
+    windows.
+    """
+
+    phenomenon: str
+    sheet: str
+    n_rows: int
+    n_test_rows: int
+    n_labelled: int
+    n_positive: int
+    n_negative: int
+    true_positive: int = 0
+    false_negative: int = 0
+    false_positive: int = 0
+    true_negative: int = 0
+    recall: float | None = None
+    specificity: float | None = None
+    n_shots: int = 0
+    caveats: list[str] = Field(default_factory=list)
+    generated_at: datetime | None = None

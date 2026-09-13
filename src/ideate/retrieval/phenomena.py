@@ -761,7 +761,7 @@ def _tier(ev: Evidence) -> int:
     return TEXTUAL
 
 
-def _has_evidence(ev: Evidence) -> bool:
+def has_evidence(ev: Evidence) -> bool:
     """Is there anything at all to show? A shot none of the four classes says a word about is
     not a weak hit, it is a non-answer, and returning it at score 0 with a "TEXT ONLY" caveat
     would attach a claim to a shot nothing claimed anything about."""
@@ -868,7 +868,7 @@ def locate(
                 extra.append(
                     AVOID_NO_COVERAGE.format(token=f"phenomenon:{other}", title=other_ph.title)
                 )
-        if dropped or not _has_evidence(ev):
+        if dropped or not has_evidence(ev):
             continue
         scored.append((_tier(ev), score(ev, weights, saturation_n), ev, extra))
     scored.sort(key=lambda t: (-t[0], -t[1], t[2].shot))
@@ -966,6 +966,7 @@ __all__ = [
     "PhenomenaError",
     "Phenomenon",
     "evidence",
+    "has_evidence",
     "locate",
     "registry",
     "resolve",
