@@ -28,6 +28,16 @@ thread count. So `git_sha` is null -- not inferred from a timestamp -- and `torc
 number the sbatch that ran the job exports, marked as coming from the script rather than from the
 run. Every backfilled sidecar carries `backfilled: true`, and `backfill()` never overwrites one a
 real encode wrote: a reconstruction must not replace a measurement.
+
+WHAT A BACKFILLED SIDECAR IS NOT. It has NO input fingerprint: `input_file` is null and
+`input_fingerprint.kind` is `unknown`, with `size_bytes`, `mtime_ns` and `sha256` all null.
+Stat-ing the corpus file during the backfill would describe it as it is TODAY, weeks after the
+encode, and a fingerprint that does not describe the encode's input is worse than none. Null too:
+`torch_version`, `git_sha`, `ignite_bundle`, `ignite_bundle_sha`, `n_frames`, `modalities`,
+`include_video`. What it DOES carry is `device` (with `device_source` naming the run manifest or
+saying "assumed"), `torch_threads` (from the sbatch, per `torch_threads_source`), `encoded_at`
+(the cache's own mtime, per `encoded_at_source`), `run_manifest` where one names the shot, and
+`backfilled: true`. `audit()` counts all of this over a directory, so the claim is checkable.
 """
 
 from __future__ import annotations
@@ -370,10 +380,73 @@ def backfill(
     }
 
 
+#: The fields `audit` counts nulls in, because they are the ones a reconstruction cannot fill and
+#: a reader would otherwise assume were there. A backfilled sidecar has all five null: the run
+#: manifests record no commit, no torch version and no codec bundle, and reading the input file's
+#: size and mtime TODAY would describe the file now rather than at encode time -- so the
+#: fingerprint is `unknown` (all of `size_bytes`, `mtime_ns`, `sha256` null) and not `mtime+size`.
+AUDIT_NULL_FIELDS: tuple[str, ...] = (
+    "torch_version", "git_sha", "ignite_bundle_sha", "run_manifest", "input_file",
+)
+
+
+def audit(*, codes_dir: Path | str) -> dict:
+    """Count what the sidecars beside `<codes_dir>/*.pt` ACTUALLY say. Reads; writes nothing.
+
+    The census exists because a claim about the delivered product was made in prose and never
+    counted: "the input fingerprint is size+mtime" is true of a live encode and false of every
+    backfilled sidecar, where it is `unknown`. `--audit` makes the true statement reproducible --
+    `by_fingerprint_kind`, `backfilled`, `by_device` and a null count per `AUDIT_NULL_FIELDS` --
+    so a reader can check the claim instead of believing it. Safe on the production store: it
+    opens the JSON siblings and never the `.pt`, and writes nothing anywhere.
+    """
+    codes_dir = Path(codes_dir)
+    caches = sorted(int(p.stem) for p in codes_dir.glob("*.pt"))
+    report = {
+        "codes_dir": str(codes_dir),
+        "n_caches": len(caches),
+        "n_sidecars": 0,
+        "n_missing_sidecars": 0,
+        "missing_sidecars": [],
+        "n_unreadable_sidecars": 0,
+        "by_fingerprint_kind": {},
+        "by_device": {},
+        "backfilled": {},
+        "by_schema": {},
+        "n_null": dict.fromkeys(AUDIT_NULL_FIELDS, 0),
+    }
+    for shot in caches:
+        path = sidecar_path(codes_dir, shot)
+        if not path.exists():
+            report["n_missing_sidecars"] += 1
+            report["missing_sidecars"].append(shot)
+            continue
+        body = read_sidecar(codes_dir, shot)
+        if body is None:
+            report["n_unreadable_sidecars"] += 1
+            continue
+        report["n_sidecars"] += 1
+        kind = str((body.get("input_fingerprint") or {}).get("kind", "absent"))
+        _bump(report["by_fingerprint_kind"], kind)
+        _bump(report["by_device"], str(body.get("device")))
+        _bump(report["backfilled"], "true" if body.get("backfilled") else "false")
+        _bump(report["by_schema"], str(body.get("schema")))
+        for field in AUDIT_NULL_FIELDS:
+            if body.get(field) is None:
+                report["n_null"][field] += 1
+    return report
+
+
+def _bump(counts: dict, key: str) -> None:
+    counts[key] = counts.get(key, 0) + 1
+
+
 __all__ = [
+    "AUDIT_NULL_FIELDS",
     "SBATCH_THREADS",
     "SCHEMA",
     "SIDECAR_KEYS",
+    "audit",
     "backfill",
     "build_sidecar",
     "device_of",
