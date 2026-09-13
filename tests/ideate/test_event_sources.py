@@ -130,3 +130,31 @@ def test_a_source_with_no_recorded_coverage_does_not_pretend_to_have_any():
     assert np.isnan(df["t_cov0_s"].iloc[0])
     assert es.coverage_span(df) is None
     assert es.covers(df, 1.0, 2.0) is None
+
+
+def test_a_text_source_that_ran_is_not_an_observation_and_covers_nothing():
+    """`text` runs the lexicon over the shot's logbook entries. That it RAN says nothing about
+    what any diagnostic showed -- the policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE`
+    states for rows, applied to the source that writes them -- so a shot whose only completed
+    source is `text` has no observed product, and the shot span its row carries covers no
+    window. Otherwise a logbook-only shot would come back `observed`: "0 detections inside
+    coverage", from a detector that never ran."""
+    assert es.NON_DIAGNOSTIC_SOURCES == ("text",)
+    rows = [
+        es.source_row(1, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=2),
+        es.source_row(1, "tokeye_track", status="skipped", reason="group absent", diag="mhr"),
+    ]
+    df = pd.DataFrame(rows)[list(es.SOURCES_COLUMNS)].astype(es.SOURCES_DTYPES)
+    summary = es.shot_summary(df, 1)
+    assert summary["n_sources_ok"] == 1                 # it did run, and the count says so
+    assert summary["has_observed_products"] is False    # but it observed no diagnostic
+    assert es.coverage_span(df) is None
+    assert es.covers(df, 1.0, 2.0) is None
+
+    # Beside a detector, the detector's span is the coverage - not the text's shot span.
+    both = pd.concat([
+        df, pd.DataFrame([es.source_row(1, "ece_sawtooth", t_cov0_s=1.0, t_cov1_s=4.0, diag="ece")]),
+    ])[list(es.SOURCES_COLUMNS)].astype(es.SOURCES_DTYPES)
+    assert es.shot_summary(both, 1)["has_observed_products"] is True
+    assert es.coverage_span(both) == (1.0, 4.0)
+    assert es.covers(both, 5.0, 6.0) is False

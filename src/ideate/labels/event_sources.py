@@ -56,6 +56,14 @@ SOURCES_COLUMNS: tuple[str, ...] = tuple(SOURCES_DTYPES)
 #: failed, `reason` carries the failure. Only `ok` rows contribute coverage.
 STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 
+#: Sources whose `ok` row is NOT an observation of the plasma. `text` runs the lexicon over the
+#: shot's own logbook entries and labelmaker records that it ran, over the shot's span -- but
+#: "the word was looked for" says nothing about what any diagnostic showed, which is the same
+#: policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
+#: source that writes them. Excluded from `has_observed_products` and from coverage: a shot with
+#: a logbook and no detector run is `unprocessed`, not "0 detections inside coverage".
+NON_DIAGNOSTIC_SOURCES: tuple[str, ...] = ("text",)
+
 SUFFIX = "_sources.parquet"
 
 
@@ -163,8 +171,10 @@ def shot_summary(sources: pd.DataFrame, shot: int) -> dict:
     """`{n_sources, n_sources_ok, n_sources_skipped, n_sources_error, has_observed_products}`.
 
     `has_observed_products` is "somebody ran a detector over this shot and it completed" -- at
-    least one `ok` row. A shot whose every source is `skipped` has been considered and not
-    examined, which is nearer to unprocessed than to observed and is counted as such.
+    least one `ok` row from a source that is not in `NON_DIAGNOSTIC_SOURCES`. A shot whose every
+    source is `skipped` has been considered and not examined, which is nearer to unprocessed than
+    to observed and is counted as such; so is a shot on which only the `text` lexicon ran.
+    `n_sources_ok` still counts every `ok` row, `text` included: it is a count of what ran.
     """
     rows = sources[sources["shot"] == int(shot)] if len(sources) else sources
     counts = {s: int((rows["status"] == s).sum()) for s in STATUSES}
@@ -173,18 +183,28 @@ def shot_summary(sources: pd.DataFrame, shot: int) -> dict:
         "n_sources_ok": counts["ok"],
         "n_sources_skipped": counts["skipped"],
         "n_sources_error": counts["error"],
-        "has_observed_products": counts["ok"] > 0,
+        "has_observed_products": bool(len(_observing(rows))),
     }
 
 
+def _observing(sources: pd.DataFrame) -> pd.DataFrame:
+    """The rows that completed AND are a diagnostic's: `ok`, and not `NON_DIAGNOSTIC_SOURCES`."""
+    if not len(sources):
+        return sources
+    keep = (sources["status"] == "ok") & ~sources["source"].isin(NON_DIAGNOSTIC_SOURCES)
+    return sources[keep]
+
+
 def coverage_span(sources: pd.DataFrame) -> tuple[float, float] | None:
-    """The `(min t_cov0, max t_cov1)` of the `ok` rows, or None when nothing ran.
+    """The `(min t_cov0, max t_cov1)` of the `ok` DIAGNOSTIC rows, or None when nothing ran.
 
     The OUTER span of what ran, used to answer "was this window looked at at all". It is
     deliberately not offered per event: handing one source's span to another source's rows is the
     defect this module exists to fix, and a caller that needs per-source coverage has the rows.
+    A `text` row's span is the shot's own duration and is not a diagnostic having looked, so it
+    does not count (`NON_DIAGNOSTIC_SOURCES`).
     """
-    ok = sources[sources["status"] == "ok"] if len(sources) else sources
+    ok = _observing(sources)
     if ok.empty:
         return None
     lo = ok["t_cov0_s"].to_numpy(dtype=float)
@@ -211,6 +231,7 @@ def covers(sources: pd.DataFrame, t0_s: float | None, t1_s: float | None) -> boo
 
 
 __all__ = [
+    "NON_DIAGNOSTIC_SOURCES",
     "SOURCES_COLUMNS",
     "SOURCES_DTYPES",
     "STATUSES",
