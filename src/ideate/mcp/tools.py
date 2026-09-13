@@ -520,7 +520,18 @@ def get_events(
             "status": "unindexed",
         }
 
-    sources = _event_sources(shot)
+    from ..labels import event_sources as es
+    from ..retrieval import phenomena as ph
+
+    relevant = None
+    if phenomenon:
+        entry = ph.registry().get(phenomenon)
+        relevant = entry.covering_sources if entry is not None else ()
+        if not relevant:
+            caveats.append(ph.NO_DETECTOR.format(id=phenomenon))
+    sources = es.for_shot(db, shot, relevant)
+    if "event_sources" in db.load_errors:
+        caveats.append(f"could not read event_sources.parquet: {db.load_errors['event_sources']}")
     summary = _sources_summary(sources, shot)
 
     paths = config.load_paths()
@@ -536,14 +547,6 @@ def get_events(
         df = df[df["shot"] == shot]
 
     all_rows = df if df is not None else None
-    # `OBSERVED_KINDS` is an allow-list, so `database` is already outside it: a curated table
-    # names a shot, it does not observe one, and a shot whose only rows come from a
-    # spreadsheet must never answer `status == "observed"` (task L-D1's error class arriving
-    # through the status field instead of through the list). Nothing extra to exclude here.
-    n_observed_rows = 0 if all_rows is None else int(
-        all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum()
-    )
-
     if phenomenon and all_rows is not None:
         all_rows = all_rows[all_rows["phenomenon"] == phenomenon]
 
@@ -576,7 +579,7 @@ def get_events(
     database = [r for r in rows if r.get("evidence_kind") == "database"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
 
-    status = _event_status(summary, n_observed_rows, sources, t0_s, t1_s)
+    status = es.coverage_state(sources, t0_s, t1_s)
     coverage = _coverage_block(sources, summary)
     window_text = "" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s"
     unknown = _unknown_coverage_sources(sources)
@@ -666,55 +669,10 @@ def _window(t0_s, t1_s) -> tuple[tuple[float | None, float | None], dict | None]
     )
 
 
-def _event_sources(shot: int):
-    """This shot's rows of `db/event_sources.parquet`, or an empty typed frame.
-
-    An absent table is a database whose join predates the source contract, and is treated the
-    same as a shot with no rows: unprocessed until something says otherwise.
-    """
-    from ..labels import event_sources as es
-
-    path = config.load_paths().db_dir / "event_sources.parquet"
-    if not path.exists():
-        return es.empty_sources()
-    try:
-        import pandas as pd
-
-        df = pd.read_parquet(path)
-        return df[df["shot"] == int(shot)]
-    except Exception:  # noqa: BLE001 - a broken coverage table must not lose the events
-        return es.empty_sources()
-
-
 def _sources_summary(sources, shot: int) -> dict:
     from ..labels import event_sources as es
 
     return es.shot_summary(sources, shot)
-
-
-def _event_status(summary, n_observed_rows: int, sources, t0_s, t1_s) -> str:
-    """Which of the four states this reply is in. See `EVENT_STATES`.
-
-    THE COVERAGE RULE. An `ok` source whose coverage is NaN ran and recorded no span, so it can
-    neither cover nor un-cover the window: it keeps the shot out of `unprocessed` (it did run)
-    and it cannot put it into `observed`, which needs some one diagnostic source's own finite
-    coverage to overlap the window -- a shot whose every completed source has unknown coverage is
-    `uncovered`, and the caveat names them.
-    """
-    from ..labels import event_sources as es
-
-    if not summary["has_observed_products"] and n_observed_rows == 0:
-        return "unprocessed"
-    covered = es.covers(sources, t0_s, t1_s)
-    if covered is False:
-        return "uncovered"
-    if covered is None and summary["has_observed_products"]:
-        # Sources completed and none recorded a span. Not `unprocessed` (they ran) and not
-        # `observed` (nothing says what they read) -- the window is not established as looked at.
-        return "uncovered"
-    # `None` with no completed diagnostic source at all is the legacy case: there are observed
-    # rows on this shot (the branch above) and the database simply predates the coverage table.
-    return "observed"
 
 
 def _unknown_coverage_sources(sources) -> list[str]:

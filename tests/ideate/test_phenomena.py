@@ -656,8 +656,11 @@ def test_coverage_of_the_whole_window_is_a_real_negative_and_says_nothing(ideate
 def test_the_four_coverage_states_are_distinguished(ideate_db):
     db = _db_with(ideate_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
     assert ph.COVERAGE_STATES == ("unindexed", "unprocessed", "uncovered", "observed")
-    # nothing in the pipeline looks for an rwm at all
-    assert ph.evidence(TEXT_SHOT, "rwm", db).coverage_state == "unindexed"
+    assert ph.evidence(999, "elm", db).coverage_state == "unindexed"
+    # The shot is indexed, but nothing in the pipeline looks for an RWM.
+    rwm = ph.evidence(TEXT_SHOT, "rwm", db)
+    assert rwm.coverage_state == "unprocessed"
+    assert "no detector registered for rwm; text/database evidence only" in rwm.caveats
     # the elm detectors exist but never ran on this shot
     assert ph.evidence(OBSERVED_SHOT, "elm", db).coverage_state == "unprocessed"
     assert ph.evidence(TEXT_SHOT, "elm", db).coverage_state == "uncovered"

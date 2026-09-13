@@ -96,6 +96,40 @@ def empty_sources() -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dt) for name, dt in SOURCES_DTYPES.items()})
 
 
+def for_shot(db, shot: int, sources: Iterable[str] | None = None) -> pd.DataFrame:
+    """Loaded coverage rows, optionally restricted to a phenomenon's covering sources.
+
+    Legacy databases without the table can donate coverage from observed event rows only.
+    An explicitly empty or unreadable source table is authoritative; it cannot borrow coverage
+    from event rows. No filesystem probes or per-call parquet reads are needed.
+    """
+    frame = db.event_sources
+    if not db.has_event_sources and frame.empty and 'event_sources' not in db.load_errors:
+        events = db.events
+        observed = events[
+            (events['shot'] == shot) & events['evidence_kind'].isin(('detector', 'heuristic'))
+        ]
+        frame = _frame([
+            source_row(
+                shot, r['source'], t_cov0_s=r['t_cov0_s'], t_cov1_s=r['t_cov1_s'],
+                n_events=1, diag=r['diag'], channel=r['channel'], pass_name=r['pass_name'],
+            ) for r in observed.to_dict('records')
+        ])
+    keep = frame['shot'] == int(shot)
+    if sources is not None:
+        keep &= frame['source'].isin(sources)
+    return frame[keep]
+
+
+def coverage_state(sources: pd.DataFrame, t0_s=None, t1_s=None) -> str:
+    """The processed-shot states shared by retrieval and MCP; callers check shot membership."""
+    if not observing_rows(sources, t0_s, t1_s).empty:
+        return 'observed'
+    if not observing_rows(sources).empty or not unknown_coverage_rows(sources).empty:
+        return 'uncovered'
+    return 'unprocessed'
+
+
 def _frame(rows: Sequence[Mapping]) -> pd.DataFrame:
     if not rows:
         return empty_sources()

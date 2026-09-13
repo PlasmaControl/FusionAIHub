@@ -74,8 +74,8 @@ CORPUS_GROUPS: tuple[str, ...] = ("bes", "co2", "ece", "filterscopes", "mhr", "m
 #: `ideate.mcp.tools.EVENT_STATES`', so a `get_events` reply and a phenomenon hit describe the
 #: same shot with the same word.
 #:
-#:   unindexed    nothing in the pipeline looks for this phenomenon at all (`rwm`, `detachment`)
-#:   unprocessed  its detectors exist, and none of them has run on this shot
+#:   unindexed    the shot is absent from db.shots
+#:   unprocessed  no relevant detector completed on this indexed shot (or none is registered)
 #:   uncovered    they ran, but not over the window the question is about
 #:   observed     they covered (part of) the window; `coverage` is that intersection
 COVERAGE_STATES: tuple[str, ...] = ("unindexed", "unprocessed", "uncovered", "observed")
@@ -121,8 +121,9 @@ ACTUATOR_COLUMNS: tuple[str, ...] = (
 # callers key on them -- the MCP layer and the CLI both surface them verbatim -- and because a
 # caveat that is spelled two ways is a caveat nobody can filter on.
 
-#: `unindexed`: nothing in the pipeline looks for this phenomenon, so nothing ever could have.
+#: No diagnostic coverage is recorded for this phenomenon.
 NO_COVERAGE = "no diagnostic coverage recorded; absence is not evidence"
+NO_DETECTOR = "no detector registered for {id}; text/database evidence only"
 #: `unprocessed`: the detectors exist and none of them has run on this shot. `.format(title=...)`
 COVERAGE_UNPROCESSED = "no detector for {title} has run on this shot; absence is not evidence"
 #: `uncovered`: they ran, elsewhere in the record. `.format(title=..., segment=...)`
@@ -749,76 +750,6 @@ def _rows(frame: pd.DataFrame, shot: int) -> list[dict]:
     return frame.loc[frame["shot"] == shot].to_dict("records")
 
 
-# path -> ((size, mtime_ns), frame) for `db/event_sources.parquet`, which `locate` would
-# otherwise re-read once per candidate shot.
-_SOURCES_CACHE: dict[str, tuple[tuple[int, int], pd.DataFrame]] = {}
-
-
-def _sources_frame(path: Path) -> pd.DataFrame | None:
-    try:
-        st = path.stat()
-    except OSError:
-        return None
-    stamp = (st.st_size, st.st_mtime_ns)
-    hit = _SOURCES_CACHE.get(str(path))
-    if hit is None or hit[0] != stamp:
-        try:
-            frame = pd.read_parquet(path)
-        except (OSError, ValueError):  # a broken coverage table must not lose the events
-            return None
-        _SOURCES_CACHE[str(path)] = hit = (stamp, frame)
-    return hit[1]
-
-
-def _event_sources(db) -> pd.DataFrame | None:
-    """labelmaker's source contract for this database, or None when it predates it.
-
-    `db/event_sources.parquet` (`ideate.labels.event_sources`) is one row per source that ran or
-    was deliberately skipped, and it is the only record of a detector that ran and emitted
-    NOTHING -- which is the coverage that matters most, because it is the only thing that can
-    turn "no rows" into a negative. Read through `getattr` and a file probe rather than required,
-    so this module works unchanged on a database built before the contract, which is every
-    database today.
-    """
-    frame = getattr(db, "event_sources", None)
-    if frame is None:
-        db_dir = getattr(db, "db_dir", None)
-        frame = None if db_dir is None else _sources_frame(Path(db_dir) / "event_sources.parquet")
-    if frame is None or len(frame) == 0:
-        return None
-    return frame if {"shot", "source", "status"} <= set(frame.columns) else None
-
-
-def _looked_windows(db, shot: int, ph: Phenomenon) -> list[tuple[float, float]]:
-    """Every stretch in which somebody looked for `ph` on this shot. Unmerged, unclipped."""
-    covering = set(ph.covering_sources)
-    if not covering:
-        return []
-    sources = _event_sources(db)
-    if sources is not None:
-        rows = [
-            r
-            for r in sources.loc[sources["shot"] == shot].to_dict("records")
-            if str(r.get("source")) in covering and str(r.get("status")) == "ok"
-        ]
-    else:
-        # No source table: fall back to the coverage columns of the rows the covering sources
-        # did write. A forecast row's validity window is not a diagnostic's coverage, and
-        # neither is a `text` or `model` row's, so only the observed kinds donate.
-        rows = [
-            r
-            for r in _rows(getattr(db, "events", None), shot)
-            if str(r.get("source")) in covering
-            and str(r.get("evidence_kind")) in OBSERVED_KINDS
-        ]
-    out = []
-    for r in rows:
-        a, b = _f(r.get("t_cov0_s")), _f(r.get("t_cov1_s"))
-        if a is not None and b is not None and b >= a:
-            out.append((a, b))
-    return out
-
-
 def _merge(windows: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
     """The union, as disjoint windows in time order. Two passes over the same stretch are one."""
     out: list[tuple[float, float]] = []
@@ -833,15 +764,14 @@ def _merge(windows: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
 def _clip(
     windows: Iterable[tuple[float, float]], window: tuple[float, float] | None
 ) -> list[tuple[float, float]]:
-    """The part of each window inside `window`. A window that only TOUCHES the edge covers
-    nothing of it, so the overlap has to be strictly positive."""
+    """The part of each window inside `window`, including an observed boundary instant."""
     if window is None:
         return list(windows)
     lo, hi = window
     out = []
     for a, b in windows:
         a2, b2 = max(a, lo), min(b, hi)
-        if b2 > a2:
+        if b2 >= a2:
             out.append((a2, b2))
     return out
 
@@ -859,20 +789,32 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     reported it anyway would suppress the caveat, satisfy `--avoid` as an established negative,
     and turn a gap in the data into a physics result.
     """
+    from ..labels import event_sources as es
+
     title = ph.title
+    if shot not in db.shots.index:
+        return "unindexed", None, (), False, [f"shot {shot} is not in the database"]
     if not ph.covering_sources:
-        return "unindexed", None, (), False, [NO_COVERAGE]
-    raw = _merge(_looked_windows(db, shot, ph))
-    if not raw:
-        return "unprocessed", None, (), False, [COVERAGE_UNPROCESSED.format(title=title)]
+        return "unprocessed", None, (), False, [NO_DETECTOR.format(id=ph.id), NO_COVERAGE]
+    sources = es.for_shot(db, shot, ph.covering_sources)
+    state = es.coverage_state(sources, *(window or (None, None)))
+    unknown = es.unknown_coverage_rows(sources)
+    caveats = []
+    if not unknown.empty:
+        names = ", ".join(sorted(set(unknown["source"])))
+        caveats.append(f"{names}: ran; coverage unknown; absence is not evidence")
+    if state == "unprocessed":
+        return state, None, (), False, caveats + [COVERAGE_UNPROCESSED.format(title=title)]
+    if state == "uncovered":
+        if not es.observing_rows(sources).empty:
+            caveats.append(COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment))
+        return state, None, (), False, caveats
+    raw = _merge(
+        (float(r.t_cov0_s), float(r.t_cov1_s))
+        for r in es.observing_rows(sources).itertuples()
+    )
     windows = tuple(_clip(raw, window))
-    if not windows:
-        return (
-            "uncovered", None, (), False,
-            [COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment)],
-        )
     hull = (windows[0][0], windows[-1][1])
-    caveats: list[str] = []
     if len(windows) > 1:
         caveats.append(COVERAGE_GAPS.format(title=title, segment=segment, n=len(windows) - 1))
     partial = window is not None and (
@@ -916,6 +858,11 @@ def evidence(
     model saying yes.
     """
     ph = _phenomenon(ph)
+    if shot not in db.shots.index:
+        return Evidence(
+            shot=int(shot), phenomenon=ph.id, window=None, coverage_state="unindexed",
+            caveats=(f"shot {shot} is not in the database",),
+        )
     if label_floor is None:
         label_floor = _config()[2]
     window = _window(db, shot, segment)
@@ -987,6 +934,8 @@ def evidence(
         db, shot, ph, window, segment
     )
     caveats.extend(cov_caveats)
+    for name, error in db.load_errors.items():
+        caveats.append(f"could not read {name}.parquet: {error}")
     if not intervals:
         caveats.append(NO_OBSERVED)
 

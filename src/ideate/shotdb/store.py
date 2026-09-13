@@ -73,6 +73,7 @@ class ShotDB:
         events: pd.DataFrame | None = None,
         labels_wide: pd.DataFrame | None = None,
         text_claims: pd.DataFrame | None = None,
+        event_sources: pd.DataFrame | None = None,
     ):
         self.db_dir = Path(db_dir)
         self.shots = shots
@@ -93,6 +94,10 @@ class ShotDB:
         self.events = empty_events() if events is None else events
         self.labels_wide = empty_labels_wide() if labels_wide is None else labels_wide
         self.text_claims = empty_text_claims() if text_claims is None else text_claims
+        from ..labels.event_sources import empty_sources
+
+        self.event_sources = empty_sources() if event_sources is None else event_sources
+        self.has_event_sources = event_sources is not None
         #: name -> message for an optional label table that exists but could not be read.
         self.load_errors: dict[str, str] = {}
         meta = shots[["shot", "run_id", "regime", "verdict", "operational"]].set_index("shot")
@@ -119,7 +124,7 @@ class ShotDB:
         # into a protocol error on every MCP call, including ones that never touch events.
         label_tables: dict[str, pd.DataFrame] = {}
         load_errors: dict[str, str] = {}
-        for name in ("events", "labels_wide", "text_claims"):
+        for name in ("events", "labels_wide", "text_claims", "event_sources"):
             p = db_dir / f"{name}.parquet"
             if not p.exists():
                 continue
