@@ -506,6 +506,7 @@ class RecallReport(BaseModel):
     n_labelled: int
     n_positive: int
     n_negative: int
+    n_rows_not_in_db: int = 0  # annotated windows whose shot this database does not hold
     true_positive: int = 0
     false_negative: int = 0
     false_positive: int = 0
