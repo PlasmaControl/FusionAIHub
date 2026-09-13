@@ -30,6 +30,7 @@ directory `resistive_wall_mode` is prose and `rwm` is the join key.
 """
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -41,7 +42,14 @@ import yaml
 
 from ..config import Paths
 from .lexicon import LexiconError, load_lexicon
-from .schema import Event
+from .schema import EVIDENCE_KINDS, Event
+
+#: One CSV projection for all format/ and extend_<producer>/ event tables.
+FORMAT_COLUMNS = (
+    "shot", "t0_s", "t1_s", "phenomenon", "evidence_kind", "source",
+    "confidence", "attrs",
+)
+FORMAT_SCHEMA_VERSION = 1
 
 #: The manifest's name inside the label-tables root.
 MANIFEST = "tables.yaml"
@@ -86,6 +94,49 @@ _CACHE: dict[tuple[str, int, int], pd.DataFrame] = {}
 
 class DatabaseError(ValueError):
     """A manifest or a table that cannot be believed, with the file named."""
+
+
+def validate_format(frame: pd.DataFrame, *, where: str = "table") -> pd.DataFrame:
+    """Validate the common CSV schema; return a copy with numeric dtypes.
+
+    Empty confidence means unknown, never certainty. ``attrs`` stays JSON
+    text here; the events loader parses it into an object's attributes.
+    """
+    if tuple(frame.columns) != FORMAT_COLUMNS:
+        raise DatabaseError(
+            f"{where}: columns must be {FORMAT_COLUMNS}; got {tuple(frame.columns)}"
+        )
+    out = frame.copy()
+    for col in ("shot", "t0_s", "t1_s", "confidence"):
+        values = out[col].replace("", float("nan")) if col == "confidence" \
+            else out[col]
+        numeric = pd.to_numeric(values, errors="coerce")
+        valid = numeric.map(math.isfinite)
+        if col == "confidence":
+            valid = (valid & numeric.between(0, 1)) | values.isna()
+        elif col == "shot":
+            valid &= numeric.map(lambda v: math.isfinite(v) and v % 1 == 0
+                                 and -(2**63) <= v < 2**63)
+        if not valid.all():
+            raise DatabaseError(f"{where}: invalid `{col}` value")
+        out[col] = numeric.astype("int64" if col == "shot" else "float64")
+    if (out["t1_s"] < out["t0_s"]).any():
+        raise DatabaseError(f"{where}: `t1_s` must not precede `t0_s`")
+    ids = set(load_lexicon().ids)
+    for col, allowed in (("phenomenon", ids), ("evidence_kind", EVIDENCE_KINDS)):
+        if not out[col].isin(allowed).all():
+            raise DatabaseError(f"{where}: invalid `{col}`; expected one of {allowed}")
+    if not out["source"].map(lambda v: isinstance(v, str) and bool(v.strip())).all():
+        raise DatabaseError(f"{where}: `source` must be a non-empty string")
+    for value in out["attrs"]:
+        try:
+            attrs = json.loads(value)
+            if not isinstance(attrs, dict):
+                raise TypeError("expected a JSON object")
+            json.dumps(attrs, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise DatabaseError(f"{where}: invalid `attrs`: {exc}") from exc
+    return out
 
 
 @dataclass(frozen=True)
