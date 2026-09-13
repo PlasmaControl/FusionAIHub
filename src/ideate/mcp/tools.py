@@ -446,7 +446,8 @@ def get_events(
       covered) or they completed without recording a span at all (the caveat names them). A
       source that ran and recorded no coverage can neither cover nor un-cover a window.
     * `observed` -- some one detector's OWN coverage overlaps the window. An empty `events` here
-      is a real observation of nothing, and the caveats say how many sources reported it.
+      is a real observation of nothing, and the caveats say how many sources reported it --
+      counting only the sources whose coverage overlaps the window, not everything that ran.
 
     `events`, `text_mentions` and `forecasts` are three different kinds of claim and must stay
     apart when you report them. An `events` row is somebody's claim about what a DIAGNOSTIC
@@ -556,9 +557,12 @@ def get_events(
             f"says nothing about the window you asked about"
         )
     elif status == "observed" and not events:
+        # The count is the sources whose OWN finite coverage overlaps the window, not
+        # `n_sources_ok`: that counts the logbook lexicon, a curated table and every
+        # unknown-coverage row, none of which reported 0 detections inside any coverage.
         caveats.append(
             _NO_DETECTION_CAVEAT.format(
-                n=summary["n_sources_ok"] or "an unrecorded number of",
+                n=_n_covering(sources, t0_s, t1_s) or "an unrecorded number of",
                 shot=shot,
                 window=window_text,
             )
@@ -686,6 +690,12 @@ def _unknown_coverage_sources(sources) -> list[str]:
             out.append(label)
     return out
 
+
+def _n_covering(sources, t0_s, t1_s) -> int:
+    """How many diagnostic sources' own finite coverage overlaps the window."""
+    from ..labels import event_sources as es
+
+    return len(es.observing_rows(sources, t0_s, t1_s))
 
 
 def _coverage_block(sources, summary) -> dict:

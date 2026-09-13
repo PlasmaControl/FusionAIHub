@@ -400,6 +400,28 @@ def test_the_unknown_coverage_caveat_is_there_even_beside_real_coverage(ideate_d
     assert got["status"] == "observed"
     assert got["coverage"]["n_sources_unknown_coverage"] == 1
     assert any("actuator" in c and "coverage unknown" in c for c in got["caveats"])
+    assert any("1 source(s) ran" in c and "0 detections" in c for c in got["caveats"])
+
+
+def test_the_no_detection_caveat_counts_only_what_covered_the_window(ideate_db):
+    """`n_sources_ok` is a count of what RAN -- the logbook lexicon and an unknown-coverage
+    actuator included. Putting it in a sentence about detections INSIDE COVERAGE inflates the
+    observation: on real 198658 it would have read "24 sources ran ... 0 detections"."""
+    write_sources(
+        ideate_db / "db",
+        [
+            _source(100, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1),
+            _source(100, "tokeye_track", t_cov0_s=0.0, t_cov1_s=6.0, n_events=0),
+            _source(100, "ece_sawtooth", diag="ece", t_cov0_s=5.0, t_cov1_s=6.0, n_events=0),
+        ],
+    )
+    write_events(ideate_db / "db", [])
+
+    got = tools.get_events(100, t0_s=1.0, t1_s=2.0)
+    assert got["status"] == "observed"
+    assert got["coverage"]["n_sources_ok"] == 3
+    assert any("1 source(s) ran" in c and "0 detections inside their coverage" in c
+               for c in got["caveats"]), got["caveats"]
 
 
 def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(ideate_db):
