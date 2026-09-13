@@ -23,6 +23,7 @@ a painted column index is the column index of the stitched mask.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import h5py
 import numpy as np
@@ -531,3 +532,102 @@ def test_a_shot_that_runs_over_its_budget_is_recorded_and_the_run_goes_on(
     rows = {r["shot"]: r for r in payload["shots"]}
     assert rows[11]["status"] == "error"
     assert rows[22]["status"] == "ok"
+
+
+# ------------------------------------------------- the curated label tables
+
+
+def _label_tables(tmp_path, rows, *, stem="rwm_fixture", version=1):
+    """A one-table label root: `tables.yaml` and one CSV of `(shot, ms)`."""
+    import yaml
+
+    root = tmp_path / "labels"
+    (root / "resistive_wall_mode").mkdir(parents=True, exist_ok=True)
+    (root / "tables.yaml").write_text(yaml.safe_dump({
+        "version": version,
+        "tables": [{
+            "stem": stem,
+            "dir": "resistive_wall_mode",
+            "phenomenon": "rwm",
+            "kind": "point",
+            "shot_col": "SHOT",
+            "t_col": "ONSET_TIME",
+            "t_units": "ms",
+            "attr_cols": ["NTOR"],
+            "attr_types": {"NTOR": "int"},
+            "provenance": "a fixture",
+        }],
+    }), encoding="utf-8")
+    (root / "resistive_wall_mode" / f"{stem}.csv").write_text(
+        "SHOT,ONSET_TIME,NTOR\n"
+        + "".join(f"{shot},{ms},1\n" for shot, ms in rows),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_a_table_that_names_the_shot_adds_its_rows_and_one_source_record(
+    shot_file, paths, model, tmp_path,
+):
+    root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0),
+                                    (SHOT + 1, 100.0)])
+    res = _run(replace(paths, label_tables=root), model)
+    assert res.error == "" and "database" not in res.skipped
+    df = schema.read_events(paths.events_file(SHOT),
+                            source="database:rwm_fixture")
+    assert list(df["t0_s"]) == [0.3, 0.45]
+    assert list(df["t1_s"]) == [0.3, 0.45]
+    assert set(df["evidence_kind"]) == {"database"}
+    assert set(df["phenomenon"]) == {"rwm"}
+    # A listing is not a coverage claim, and a curated list has no
+    # calibrated probability.
+    assert df["t_cov0_s"].isna().all() and df["t_cov1_s"].isna().all()
+    assert df["confidence"].isna().all()
+    assert res.by_source["database:rwm_fixture"] == 2
+    # One record per table that named this shot, carried on the result
+    # until the sources file exists on this branch.
+    (record,) = res.database_sources
+    assert record["source"] == "database:rwm_fixture"
+    assert record["status"] == "ok" and record["n_events"] == 2
+    assert "coverage unknown" in record["reason"]
+    assert np.isnan(record["t_cov0_s"]) and np.isnan(record["t_cov1_s"])
+
+
+def test_a_shot_no_table_names_gets_no_database_row_and_no_source_record(
+    shot_file, paths, model, tmp_path,
+):
+    # Nobody looked, so there is nothing to say - not `n_events=0`, which
+    # over 16,909 shots would be a coverage claim no author made.
+    root = _label_tables(tmp_path, [(SHOT + 1, 100.0)])
+    res = _run(replace(paths, label_tables=root), model)
+    assert res.database_sources == []
+    assert "database" not in res.skipped
+    df = schema.read_events(paths.events_file(SHOT))
+    assert (df["evidence_kind"] == "database").sum() == 0
+    assert not any(s.startswith("database:") for s in df["source"])
+
+
+def test_a_broken_manifest_is_a_skip_and_not_a_lost_shot(shot_file, paths,
+                                                         model, tmp_path):
+    root = _label_tables(tmp_path, [(SHOT, 300.0)])
+    (root / "tables.yaml").write_text("version: 1\ntables: [{stem: x}]\n",
+                                      encoding="utf-8")
+    res = _run(replace(paths, label_tables=root), model)
+    assert res.error == ""
+    assert "DatabaseError" in res.skipped["database"]
+    assert res.database_sources == []
+    df = schema.read_events(paths.events_file(SHOT))
+    assert "tokeye_track" in set(df["source"])       # the rest of the shot
+
+
+def test_the_curated_rows_are_in_the_index_like_any_other_source(
+    shot_file, paths, model, tmp_path,
+):
+    root = _label_tables(tmp_path, [(SHOT, 300.0)])
+    _run(replace(paths, label_tables=root), model)
+    index = pd.read_parquet(paths.events_index)
+    row = index[index["source"] == "database:rwm_fixture"]
+    assert len(row) == 1
+    assert row["phenomenon"].item() == "rwm"
+    assert row["evidence_kind"].item() == "database"
+    assert row["n_events"].item() == 1
