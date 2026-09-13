@@ -16,9 +16,9 @@ columns that record when and under which run id it was written.
 from __future__ import annotations
 
 import json
-import multiprocessing
 import os
 import time
+import weakref
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
@@ -753,38 +753,51 @@ def test_closing_a_pool_kills_a_worker_that_is_wedged(tmp_path):
         pool.close()
 
 
-def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(tmp_path):
+@pytest.mark.parametrize("tail_workers", [0, 1])
+def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(
+    tmp_path, monkeypatch, tail_workers,
+):
     """The same thing end to end, through `run_shots`.
 
     The shot is one error row after its `--timeout`, which the driver
     already did; what is under test is what is left behind afterwards. No
-    child of this process may still be alive once `run_shots` has returned
-    and its pool has been closed, because every one of them would be joined
-    at interpreter exit.
+    executor worker may still be alive after `run_shots` closes its pools:
+    their manager threads would be joined at interpreter exit. Python's
+    multiprocessing.resource_tracker is a separate helper, not a leaked
+    worker; check the pools' own handles rather than all OS children.
     """
     corpus = _fifo_corpus(tmp_path)
     paths = _paths_under(tmp_path, "root", corpus)
-    before = set(multiprocessing.active_children())
+    closed_workers = []
+    real_close = driver.PrepPool.close
+
+    def close(self):
+        closed_workers.extend(self.processes())
+        real_close(self)
+
+    monkeypatch.setattr(driver.PrepPool, "close", close)
 
     at = time.monotonic()
     got = driver.run_shots([SHOT], paths=paths, model=None, device="cpu",
                            corpus_dir=corpus, passes=("wide",), tile_batch=4,
                            prep_workers=1, prefetch=2, timeout_s=4,
+                           tail_workers=tail_workers,
                            unet_sha256=FAKE_SHA, echo=_silently)
     elapsed = time.monotonic() - at
 
     assert got.rows[0]["status"] == "error"
     assert elapsed < 120
-    deadline = time.monotonic() + 180
-    while (set(multiprocessing.active_children()) - before
-           and time.monotonic() < deadline):
-        time.sleep(0.2)
-    assert set(multiprocessing.active_children()) - before == set()
+    assert closed_workers, "the pools never started any workers"
+    _until_dead(closed_workers)
+    assert [p for p in closed_workers if p.is_alive()] == []
 
 
-def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(tmp_path,
-                                                            synth_shot, model):
-    """`peak_worker_rss_gib` must measure a prep worker.
+@pytest.mark.parametrize(("prep_workers", "tail_workers"),
+                         [(1, 0), (0, 1), (1, 1)])
+def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(
+    tmp_path, synth_shot, model, prep_workers, tail_workers,
+):
+    """`peak_worker_rss_gib` must include both prep and tail workers.
 
     It used to be `getrusage(RUSAGE_CHILDREN)`, which on a pool shut down
     with `wait=False` reads either zero (nothing was waited for) or the
@@ -799,7 +812,8 @@ def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(tmp_path,
     _write_corpus(corpus, SHOT, synth_shot)
     paths = _paths_under(tmp_path, "root", corpus)
     got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
-                           passes=("wide",), tile_batch=4, prep_workers=1,
+                           passes=("wide",), tile_batch=4,
+                           prep_workers=prep_workers, tail_workers=tail_workers,
                            prefetch=2, unet_sha256=FAKE_SHA, echo=_silently)
     worker = got.totals["peak_worker_rss_gib"]
     assert worker > 0.0
@@ -1017,6 +1031,38 @@ def test_the_text_pre_pass_builds_the_whole_list_once_and_runs_nothing(
 # ------------------------------------------------------------- the tail
 
 
+class _UnpicklableOnce:
+    """Only the first shot's payload is bad; later tails receive None."""
+
+    def __init__(self):
+        self.first = True
+
+    def __reduce__(self):
+        if self.first:
+            self.first = False
+            raise RuntimeError("the first lexicon cannot be pickled")
+        return type(None), ()
+
+
+_REAL_RUN_JOB = driver.run_job
+
+
+def _run_with_bad_first_tail(job):
+    """Inject one failure inside a real spawned worker; keep other work real."""
+    if isinstance(job, driver.FinishJob):
+        failure, job.lexicon = job.lexicon, None
+        if job.res.shot == SHOT:
+            if failure == "raise":
+                raise RuntimeError("the first tail raised")
+            if failure == "task_timeout":
+                raise TimeoutError("the first tail raised its own timeout")
+            if failure == "crash":
+                os._exit(1)
+            if failure == "timeout":
+                time.sleep(3600)
+    return _REAL_RUN_JOB(job)
+
+
 def _totals(tmp_path, name, shots, synth_shot, model, **kw):
     corpus = tmp_path / f"corpus_{name}"
     for shot in shots:
@@ -1027,6 +1073,107 @@ def _totals(tmp_path, name, shots, synth_shot, model, **kw):
                            prep_workers=0, run_id="test-run",
                            unet_sha256=FAKE_SHA, echo=_silently, **kw)
     return paths, got
+
+
+def test_an_unpicklable_tail_costs_only_its_shot(tmp_path, synth_shot, model):
+    """A payload error must not kill the next tail already in the real pool."""
+    paths, got = _totals(tmp_path, "unpicklable", SHOTS, synth_shot, model,
+                         tail_workers=1, lexicon=_UnpicklableOnce())
+
+    assert [r["shot"] for r in got.rows] == SHOTS
+    assert got.rows[0]["error"] == "RuntimeError"
+    assert "first lexicon cannot be pickled" in got.rows[0]["detail"]
+    assert [r["status"] for r in got.rows] == ["error", "ok", "ok"], got.rows
+    assert got.totals["counts"] == {"error": 1, "ok": 2}
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+    for shot in SHOTS[1:]:
+        assert masks.list_blocks(paths.masks_file(shot))
+        assert not _events(paths, shot).empty
+
+
+@pytest.mark.parametrize(("failure", "error"), [
+    ("raise", "RuntimeError"),
+    ("task_timeout", "TimeoutError"),
+    ("crash", "BrokenProcessPool"),
+    ("timeout", "TimeoutError"),
+])
+def test_a_failed_tail_worker_preserves_the_next_shots_gpu_work(
+    tmp_path, synth_shot, model, monkeypatch, failure, error,
+):
+    """A restart must recover the queued job even if its future is broken."""
+    monkeypatch.setattr(driver, "run_job", _run_with_bad_first_tail)
+
+    def warm(self):
+        # Pay imports before the timeout measures the deliberately hung job.
+        self.submit(driver.WarmJob()).result(timeout=120)
+
+    monkeypatch.setattr(driver.PrepPool, "warm", warm)
+    restarts = []
+    real_restart = driver.PrepPool.restart
+
+    def restart(self):
+        restarts.append(self.workers)
+        real_restart(self)
+
+    monkeypatch.setattr(driver.PrepPool, "restart", restart)
+    inferred = []
+    real_infer = pl.infer_block
+
+    def infer(prepared, **kwargs):
+        inferred.append(prepared.key)
+        return real_infer(prepared, **kwargs)
+
+    monkeypatch.setattr(pl, "infer_block", infer)
+    paths, got = _totals(
+        tmp_path, failure, SHOTS, synth_shot, model,
+        plan=(channels.ChannelSpec("mhr", 0, "magnetics"),),
+        tail_workers=1, timeout_s=30, lexicon=failure,
+    )
+
+    assert [r["shot"] for r in got.rows] == SHOTS
+    assert got.rows[0]["error"] == error
+    assert [r["status"] for r in got.rows] == ["error", "ok", "ok"], got.rows
+    assert got.totals["counts"] == {"error": 1, "ok": 2}
+    assert restarts == ([1] if failure in {"crash", "timeout"} else [])
+    assert inferred == ["mhr:0:wide"] * 3  # no repeated GPU work on recovery
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+    for shot in SHOTS[1:]:
+        assert masks.list_blocks(paths.masks_file(shot)) == ["mhr_00_wide"]
+        assert not _events(paths, shot).empty
+
+
+def test_a_finished_tail_releases_its_blocks_before_the_next_shot(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    """Keeping a retry payload must not retain an extra completed shot."""
+    jobs = {}
+    real_submit = driver.PrepPool.submit
+
+    def submit(self, job):
+        if isinstance(job, driver.FinishJob):
+            jobs[job.res.shot] = weakref.ref(job)
+        return real_submit(self, job)
+
+    monkeypatch.setattr(driver.PrepPool, "submit", submit)
+    retained = []
+    real_blocks = driver._shot_blocks
+
+    def blocks(shot, **kwargs):
+        if shot == SHOTS[2]:
+            # Shot 1 was flushed after shot 2's blocks. Only shot 2's
+            # payload may remain when shot 3 starts allocating its blocks.
+            retained.append(jobs[SHOT]() is not None)
+        return real_blocks(shot, **kwargs)
+
+    monkeypatch.setattr(driver, "_shot_blocks", blocks)
+    _, got = _totals(
+        tmp_path, "released", SHOTS, synth_shot, model,
+        plan=(channels.ChannelSpec("mhr", 0, "magnetics"),), tail_workers=0,
+    )
+    assert [r["status"] for r in got.rows] == ["ok", "ok", "ok"]
+    assert retained == [False]
 
 
 def test_the_tail_of_a_shot_is_paid_beside_the_next_shots_blocks(
