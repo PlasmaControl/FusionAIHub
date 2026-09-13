@@ -955,3 +955,91 @@ def test_the_same_phenomenon_named_twice_is_one_constraint(phen_db, monkeypatch)
     assert OBSERVED_SHOT not in [h.shot for h in kept]
     assert len(seen) == len(set(seen))  # each (shot, phenomenon) read once, not once per token
     assert sum(1 for c in kept[0].caveats if "--avoid phenomenon:elm" in c) == 1
+
+
+# ------------------------- L-D1: the curated RWM tables reach the registry as MEMBERSHIP only
+
+
+def _label_tables(root: Path, shots: list[int], stem: str = "rwm_onsets_2017") -> Path:
+    """A `data/labels`-shaped fixture: one manifest, one CSV, the stems the registry names."""
+    (root / "resistive_wall_mode").mkdir(parents=True, exist_ok=True)
+    (root / "tables.yaml").write_text(yaml.safe_dump({
+        "version": 1,
+        "tables": [{
+            "stem": stem,
+            "dir": "resistive_wall_mode",
+            "phenomenon": "rwm",
+            "kind": "point",
+            "shot_col": "SHOT",
+            "t_col": "ONSET_TIME",
+            "t_units": "ms",
+            "attr_cols": ["NTOR"],
+            "attr_types": {"NTOR": "int"},
+            "provenance": "a fixture",
+        }],
+    }), encoding="utf-8")
+    (root / "resistive_wall_mode" / f"{stem}.csv").write_text(
+        "SHOT,ONSET_TIME,NTOR\n" + "".join(f"{s},2000,1\n" for s in shots),
+        encoding="utf-8",
+    )
+    return root
+
+
+@pytest.fixture
+def rwm_tables(tmp_path, monkeypatch):
+    """The registry's `tables:` resolution pointed at a fixture, caches cleared both ways."""
+    def install(shots: list[int]) -> Path:
+        root = _label_tables(tmp_path / "labels", shots)
+        monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+        ph._table_shots.cache_clear()
+        return root
+
+    yield install
+    ph._table_shots.cache_clear()
+
+
+def test_the_shipped_registry_names_both_rwm_tables_and_the_manifest_knows_them():
+    """The registry entry and `data/labels/tables.yaml` are two files that have to agree, and
+    nothing else checks that they do: a stem typo here is a silent empty set, not an error."""
+    from labelmaker.events import databases as label_tables
+
+    entry = ph.registry()["rwm"].database
+    assert entry is not None
+    assert list(entry["tables"]) == ["rwm_onsets_2017", "rwm_onsets_2024"]
+    stems = {spec.stem for spec in label_tables.load_manifest()}
+    assert set(entry["tables"]) <= stems
+
+
+def test_a_shot_a_curated_table_names_is_in_the_database_and_one_it_omits_is_not(rwm_tables):
+    rwm_tables([TEXT_SHOT])
+    rwm = ph.registry()["rwm"]
+    assert ph._in_database(rwm, TEXT_SHOT) is True
+    assert ph._in_database(rwm, SILENT_SHOT) is False
+
+
+def test_a_database_only_shot_ranks_below_a_forecast_and_never_as_observed(
+    ideate_db, rwm_tables,
+):
+    """The whole point of the fourth evidence class. A curated table names shot 200 and nothing
+    else says a word about RWM on it: it must come back, because a human list IS evidence, and
+    it must come back in the DATABASE class carrying the caveat that says so -- not in the
+    observed class, where a reader would take it for a measurement."""
+    rwm_tables([TEXT_SHOT])
+    db = _db_with(ideate_db, [])
+    hit = next(h for h in ph.locate("rwm", db, 10) if h.shot == TEXT_SHOT)
+    assert ph.DATABASE_ONLY in hit.caveats
+    assert hit.intervals == []
+    # Membership is not coverage: nobody recorded which interval was examined.
+    assert hit.coverage is None
+    assert hit.coverage_state != "observed"
+    ev = ph.evidence(TEXT_SHOT, "rwm", db)
+    assert ev.in_database is True
+    assert ph._tier(ev) == ph.DATABASE < ph.FORECAST
+
+
+def test_a_stem_no_manifest_declares_is_an_empty_set_and_not_a_crash(rwm_tables):
+    """Curated tables are optional data. A database built on a machine without them must still
+    rank, and a stem that has been renamed must not take the whole query down with it."""
+    rwm_tables([TEXT_SHOT], )
+    assert ph._table_shots(("no_such_table",)) == frozenset()
+    assert ph._table_shots(()) == frozenset()

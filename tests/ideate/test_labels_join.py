@@ -374,6 +374,34 @@ def test_no_events_directory_at_all_is_an_empty_typed_frame(tmp_path):
     assert result.manifest["n_forecast_events"] == 0
 
 
+def test_a_curated_table_row_reaches_the_union_with_its_coverage_still_null(tmp_path):
+    """`events_union` reads each shot's file wholesale, so a curated label table
+    (`labelmaker.events.databases`) needs no wiring here - but it needs a guard. The two things
+    that must survive the join are the NaN coverage, which is what says nobody declared an
+    examined interval, and the NaN confidence, which is what stops a ranker treating a human's
+    list as a perfectly confident detector. A join that filled either with a default would turn
+    a listing into a measurement."""
+    (tmp_path / "events").mkdir()
+    curated = ev.Event(
+        shot=900001, source="database:rwm_onsets_2017", evidence_kind="database",
+        phenomenon="rwm", t0_s=2.613, t1_s=2.613, diag="", channel=-1,
+        attrs={"NTOR": 1, "MODE_TYPE": "rwm", "table": "rwm_onsets_2017"},
+        confidence=float("nan"), t_cov0_s=float("nan"), t_cov1_s=float("nan"),
+    )
+    ev.write_events(tmp_path / "events" / "900001_events.parquet", 900001,
+                    [curated, _detector_event(900001, 1.0)], run_id="test-run")
+
+    df = join.events_union([900001], labelmaker_root=tmp_path, forecasts=join.empty_events())
+
+    row = df[df["evidence_kind"] == "database"]
+    assert len(row) == 1
+    assert row["event_id"].item() == "900001-database:rwm_onsets_2017-00000"
+    assert row["t_cov0_s"].isna().all() and row["t_cov1_s"].isna().all()
+    assert row["confidence"].isna().all()
+    # And it did not displace the detector row it shares the shot with.
+    assert sorted(df["evidence_kind"]) == ["database", "detector"]
+
+
 # ------------------------------------------------------------------- the event-source table
 
 

@@ -1,0 +1,38 @@
+Name,Category,Database Exists,Auto Classification Exists,Priority,Feasability,Feasability Reason,Proposed Method,Link,Completed,Notes
+Tearing Mode,MHD,TRUE,Yes,5,5,Use existing method,"Survival Model, detection model",Tearing Mode,FALSE,
+AE Mode,Energetic,TRUE,Yes,5,5,Use existing + improve with tokeye,Tokeye + AzaLenny,AE Mode,FALSE,
+ELM,Edge,TRUE,"Yes, only for BES shots (maybe jalal detector can work). david smith has manual label database",5,5,Use existing,Semin and Jalal?,ELM,FALSE,
+WPQH-Mode,Regime,TRUE,Yes,5,5,Use previous database from jalal,,,FALSE,
+High Q-Min,Regime,TRUE,Yes,5,5,Use efit,EFIT,,FALSE,"qmin > 0.95 = hybrid, >1.5 = elevated, >2 = high. use maybe higher fidelity like efit02 or cake or something? 500ms"
+Detachment,Divertor,FALSE,Yes,5,4,"Multiple algorithms, some restricted. May need to recreate own. Have cheolsik",Either langmuir or tangtv (adjacent plasma-tv project),Detachment,FALSE,
+NBI,Actuation,TRUE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,define low medium high
+Helicon,Actuation,FALSE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+LH,Actuation,FALSE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+Gas,Actuation,TRUE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+Pellet,Actuation,FALSE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+RMP,Actuation,TRUE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+EFC,Actuation,FALSE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+Current Saturation,Actuation,FALSE,Yes,5,5,Probably stored,MDS / PTDATA,,FALSE,
+Disruption,,TRUE,Yes,5,3,Only with Cristina's group,,,FALSE,
+Sawtooth,MHD,FALSE,"Omfit seems to have a sawtooth (ece based) thing, kei said hiro also has.",4,3,Extracted before,Tokeye,,FALSE,"Typical sawtooth 0.3-0.6 inversion layer. If sawtooth trigger ELM, inversion not visible."
+L-Mode,Regime,TRUE,"Yes, but hard to access",4,4,Kouroche and Jalal did something?,Whatever they did,,FALSE,
+H-Mode,Regime,TRUE,"Yes, but hard to access",4,4,,,,FALSE,
+QH-Mode,Regime,TRUE,"Yes (EHO w/o ELM), but not really",4,4,Did a bit with jalal,,,FALSE,
+ECH,Actuation,FALSE,Yes,4,4,Probably stored,MDS / PTDATA,,FALSE,
+Pickup Noise,Contamination,FALSE,No,4,3,Extracted Before,Tokeye,,FALSE,
+VDE,,FALSE,No (ask jayson barr) (emailed him),4,4,,,,FALSE,
+Resistive Wall Mode,MHD,TRUE,"Yes, Jeremy Hansen (emailed)",3,3,,Ask him for database and way to characterize. see if can get both,,FALSE,
+Locked Mode,MHD,,,3,4,Modes suddenly disappear,,,,radial b field. sudden jump before ip disappear then locked mode.
+QCM,Edge,FALSE,No,3,3,Extracted before,Tokeye,,FALSE,"QCE feature (maybe can add QCE regime, EDA)"
+EHO,Edge,FALSE,No,3,4,Extracted before,Tokeye,,FALSE,
+MARFE,Divertor,FALSE,,3,2,"hard without inversion algorithm, but doable i thinnk",,,FALSE,
+Loop Voltage or IP?,Actuation,FALSE,Bootstrap? idk how to define,3,2,,,,FALSE,to see if current is inductive
+Fishbone,Energetic,FALSE,,2,3,"Extracted before, close to sawtooth",Tokeye,,FALSE,
+GAM,Turbulence,FALSE,,2,2,,,,FALSE,
+Zonal Flow,Turbulence,FALSE,,2,2,,,,FALSE,
+I-Mode,Regime,FALSE,Possibly on dFL,2,3,,,,FALSE,
+"E, F... Coils",Actuation,FALSE,,2,2,Not well defined,,,FALSE,
+External Kink,MHD,FALSE,"No, DIIID not at this regime",1,1,,,,FALSE,
+ITG,Turbulence,FALSE,,1,1,,,,FALSE,
+TEM,Turbulence,FALSE,,1,1,,,,FALSE,
+MTM,Turbulence,FALSE,,1,1,,,,FALSE,

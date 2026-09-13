@@ -187,12 +187,12 @@ client works — the transport is stdio and the command above is the whole contr
 | --- | --- | --- |
 | `search_shots` | `text`, `ref_shot`, `segment`, `constraints`, `actuators`, `require_labels`, `avoid_labels`, `n` | ranked shots with a description, an explanation naming which channel found each one, and the operating-limit flags for the proposed actuators |
 | `describe_shot` | `shot`, `segment` | the prose description and the whole stored record: segments and their scalars, labels and their source, outcome, and the operator logbook verbatim |
-| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and three lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
+| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and four lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `database_intervals` (a curated table's rows), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
 
 Plus one resource, `ideate://manifest`: the built database's manifest, which is how a caller
 finds out which shots the tools can see at all.
 
-Three things hold for the replies and are worth knowing before reading one:
+Four things hold for the replies and are worth knowing before reading one:
 
 * **`caveats` is on every reply the tools themselves produce, and it changes what the reply
   means.** An empty result carrying "no channel had anything to search on" means the query was
@@ -201,13 +201,27 @@ Three things hold for the replies and are worth knowing before reading one:
   a call whose *arguments* fail the tool schema (a string where a shot number belongs) is
   rejected by the MCP framework before any tool code runs, and comes back as a protocol
   validation error with no `caveats` field.
-* **`get_events` keeps three kinds of claim in three lists.** An `events` row is a detector's or
+* **`get_events` keeps four kinds of claim in four lists.** An `events` row is a detector's or
   a heuristic's claim about what a diagnostic showed, with `source` saying who. A `forecasts`
   row (`evidence_kind == "forecast"`) is a model's estimate of what was about to happen, raised
   from a risk curve at a threshold. A `text_mentions` row (`evidence_kind == "text"`) is a
   lexicon hit in the operator logbook — somebody wrote the word — and is *not* evidence that the
   phenomenon occurred: shot 185980's "Updated ELM detector tuning." is a positive ELM hit about
-  the detector. The three arrive in different lists and must stay in different sentences.
+  the detector. They arrive in different lists and must stay in different sentences.
+* **`get_events` keeps a curated list out of `events` too.** A row with
+  `evidence_kind == "database"` comes from a table somebody sent us — the first two are Jeremy
+  Hansen's RWM onset databases, under `data/labels/resistive_wall_mode/` and declared in
+  `data/labels/tables.yaml` — and it arrives in a fourth list, `database_intervals`. It names a
+  shot and a time, not a measurement: its `confidence` is `null`, because a human list has no
+  calibrated probability, and its coverage (`t_cov0_s`/`t_cov1_s`) is `null`, because nobody
+  recorded which interval of the shot was examined. That second null is the load-bearing one — a
+  shot's **absence** from a curated list is not a negative, and nothing downstream may read it as
+  one. `database` is outside `OBSERVED_KINDS`, so a shot whose only rows come from a spreadsheet
+  never answers `status: observed`, and labelmaker's own `database:<stem>` source row — `ok`,
+  coverage NaN — matches `event_sources.NON_DIAGNOSTIC_SOURCE_PREFIXES`, so it is not counted
+  as a diagnostic having looked and cannot donate coverage either. `ideate labels join` needs no rule for these rows: `events_union` reads each
+  shot's `events/<shot>_events.parquet` wholesale, so they reach `db/events.parquet` as they
+  are.
 * **`status` says what an empty `events` means**, and the four values are not degrees of one
   thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
   `unprocessed`: it is indexed, but `db/event_sources.parquet` records no detector as having

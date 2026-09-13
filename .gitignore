@@ -230,7 +230,14 @@ __marimo__/
 wandb/
 
 # FusionAIHub
-data/
+# `data/*`, not `data/`: git never descends into an excluded DIRECTORY, so
+# a `!data/labels/` after `data/` would un-ignore nothing. With the glob,
+# every entry under `data/` is still excluded one by one - `data/database/`,
+# `data/logbooks/`, `data/probes/`, `data/tokens/`, `data/preprocessing_stats.pt`
+# - and the negation can re-include the one directory that is source, not
+# data: the curated label tables and their manifest (see data/labels/README.md).
+data/*
+!data/labels/
 runs/
 
 # Conda env (21GB)
