@@ -18,6 +18,7 @@ from labelmaker.config import Paths
 from labelmaker.events.databases import (
     FORMAT_COLUMNS,
     FORMAT_SCHEMA_VERSION,
+    load_manifest,
     validate_format,
     write_csv,
     write_format_table,
@@ -36,6 +37,12 @@ CATEGORY_PHENOMENA = {
     "resistive_wall_mode": ("rwm",),
     "sawtooth_oscillation": ("sawtooth",),
     "tearing_mode": ("tearing",),
+}
+# Source records lack a phenomenon column. These unambiguous family producers
+# must be known even when every shot has zero events (or the source failed).
+PHENOMENON_SOURCES = {
+    "elm": ("elm_clock", "tokeye_transient"),
+    "sawtooth": ("ece_sawtooth",),
 }
 
 
@@ -78,6 +85,10 @@ def export(args) -> Path:
     n_events = 0
     provenance = set()
     actual_sources = {args.producer}
+    if args.producer in CATEGORY_PHENOMENA[args.category]:
+        actual_sources.update(PHENOMENON_SOURCES.get(args.producer, ()))
+        actual_sources.update(s.source for s in load_manifest()
+                              if s.phenomenon == args.producer and s.dir == args.category)
 
     def remember(frame):
         provenance.update((str(r.source), str(r.run_id), str(r.git_sha))
@@ -136,6 +147,17 @@ def export(args) -> Path:
     if args.run_id:
         run_path = args.root / "runs/events" / f"{args.run_id}.json"
         run = json.loads(run_path.read_text(encoding="utf-8"))
+        if (not run.get("settings", {}).get("databases_only")
+                or run.get("run_id") != args.run_id
+                or args.events_root.resolve() != (args.root / "events").resolve()):
+            raise ValueError(f"{run_path}: expected the matching databases-only run")
+        tables = load_manifest(run["settings"]["label_tables"])
+        relevant = {s.source for s in tables if s.dir == args.category
+                    and args.producer in (s.source, s.phenomenon)}
+        totals = run["totals"]
+        if (not relevant or not relevant.issubset(totals["tables"])
+                or totals["n_events"] != 0 or totals["n_source_records"] != 0):
+            raise ValueError(f"{run_path}: not a zero-event scan of the selected tables")
         if {int(r["shot"]) for r in run["shots"]} != set(shots):
             raise ValueError(f"{run_path}: run shots disagree with the export list")
         if any(r["status"] != "ok" for r in run["shots"]):

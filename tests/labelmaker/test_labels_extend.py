@@ -138,3 +138,32 @@ def test_extend_rejects_mismatched_output_directory_without_writes(tmp_path):
     with pytest.raises(SystemExit):
         extend()(argv)
     assert not out.parent.parent.exists()
+
+
+@pytest.mark.parametrize("status", ["ok", "error"])
+def test_phenomenon_selection_preserves_sources_with_no_positive_events(tmp_path, status):
+    events, out, argv = setup_export(tmp_path, producer="elm")
+    schema.write_sources(events / "1_sources.parquet", 1, [{
+        "source": "elm_clock", "status": status, "n_events": 0,
+        "reason": "failed to read" if status == "error" else "",
+        "t_cov0_s": 0, "t_cov1_s": 5,
+    }], run_id="empty-producer")
+    assert extend()(argv) == 0
+    meta = json.loads(out.with_suffix(".meta.json").read_text())
+    assert meta["made_from"][0]["producer"] == "elm_clock"
+    assert meta["made_from"][0]["run_id"] == "empty-producer"
+    assert meta["source_status_counts"] == {status: 1}
+
+
+def test_an_unrelated_successful_run_cannot_certify_a_zero_result(tmp_path):
+    events, out, argv = setup_export(tmp_path)
+    run_path = events.parent / "runs/events/unrelated.json"
+    run_path.parent.mkdir(parents=True)
+    run_path.write_text(json.dumps({
+        "run_id": "unrelated", "git_sha": "abc123", "settings": {},
+        "shots": [{"shot": s, "status": "ok"} for s in (1, 2, 3)],
+        "totals": {"tables": ["database:rwm_onsets_2017"], "n_events": 0},
+    }))
+    with pytest.raises(ValueError, match="databases-only"):
+        extend()([*argv, "--root", str(events.parent), "--run-id", "unrelated"])
+    assert not out.exists()
