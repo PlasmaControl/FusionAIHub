@@ -67,8 +67,10 @@ __all__ = [
     "SPLIT_BUCKETS",
     "SPLIT_RULE",
     "Evalset",
+    "bars_met",
     "build_split",
     "evalset_dir",
+    "failed_bars",
     "load_evalset",
     "load_split",
     "markdown",
@@ -426,6 +428,33 @@ def _categories(outcomes: list[PromptOutcome]) -> list[CategoryStats]:
             )
         )
     return out
+
+
+def failed_bars(report: EvalReport) -> list[str]:
+    """Which of the plan's bars this report misses, named.
+
+    Both bars, not just the first. `markdown` has always printed `FAIL` beside a barred category
+    whose resolution is under 80 %, but the exit code read only `coverage` -- so a CI job gating
+    on `ideate eval prompts` would have reported "eval passed" on a run whose `fast_ions`
+    resolution was 0 %, as long as coverage held. The two are computed here, once, and both the
+    exit code and any other caller read this.
+
+    A barred category whose `resolution is None` -- no prompt of it stated an expectation -- is
+    NOT a failure. That is a gap in the evalset, not a miss by the lexicon, and scoring it as one
+    would make an empty category indistinguishable from a wrong one.
+    """
+    missed = []
+    if report.coverage < COVERAGE_BAR:
+        missed.append(f"coverage {report.coverage:.3f} < {COVERAGE_BAR}")
+    for c in report.categories:
+        if c.category in RESOLUTION_BAR_CATEGORIES and c.resolution is not None:
+            if c.resolution < RESOLUTION_BAR:
+                missed.append(f"{c.category} resolution {c.resolution:.3f} < {RESOLUTION_BAR}")
+    return missed
+
+
+def bars_met(report: EvalReport) -> bool:
+    return not failed_bars(report)
 
 
 # ------------------------------------------------------------------------------- rendering

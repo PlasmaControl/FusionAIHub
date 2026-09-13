@@ -105,6 +105,64 @@ def test_eval_prompts_exits_three_when_coverage_is_under_the_bar(db_root, tmp_pa
     assert "FAIL" in capsys.readouterr().out
 
 
+def test_eval_prompts_exits_three_when_a_barred_category_misses_its_resolution(
+    db_root, tmp_path, capsys
+):
+    """Coverage is not the only bar. The plan sets TWO -- coverage >= 95 % and resolution >= 80 %
+    on qh_mode / elm_rmp / fast_ions -- and `markdown` has always printed `FAIL` beside a missing
+    one while the exit code ignored it. A CI job gating on this command would then have reported
+    "eval passed" on a run whose fast_ions resolution was 0 %, as long as coverage held.
+    """
+    path = tmp_path / "res.csv"
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(
+            ["prompt_id", "category", "prompt", "expect_phenomena", "expect_constraints",
+             "expect_segment", "hand_graded", "notes"]
+        )
+        # Full coverage -- every prompt is plain text and retrieves -- but the expectation names
+        # a phenomenon the sentence does not, so resolution on a barred category is 0 %.
+        w.writerow(["p001", "fast_ions", "beam power scan", "ae", "", "flat_top", "0", ""])
+        w.writerow(["p002", "qh_mode", "QH-mode at low torque", "qh", "", "flat_top", "0", ""])
+    code = cli.main(["eval", "prompts", "--split", "all", "--evalset", str(path)])
+    out = capsys.readouterr().out
+    assert "| coverage (prompts with >= 1 result) | 100.0 %" in out
+    assert "| `fast_ions` | 1 | 100.0 % | 1 | 0.0 % FAIL |" in out
+    assert code == 3
+
+
+def test_eval_prompts_exits_zero_when_both_bars_hold(db_root, tmp_path, capsys):
+    path = tmp_path / "ok.csv"
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(
+            ["prompt_id", "category", "prompt", "expect_phenomena", "expect_constraints",
+             "expect_segment", "hand_graded", "notes"]
+        )
+        w.writerow(["p001", "fast_ions", "TAE bursts on the magnetics", "ae", "", "flat_top",
+                    "0", ""])
+        w.writerow(["p002", "qh_mode", "QH-mode at low torque", "qh", "", "flat_top", "0", ""])
+    assert cli.main(["eval", "prompts", "--split", "all", "--evalset", str(path)]) == 0
+    assert "FAIL" not in capsys.readouterr().out
+
+
+def test_a_barred_category_with_no_expectation_at_all_does_not_fail_the_run(
+    db_root, tmp_path, capsys
+):
+    """`resolution is None` means nothing of that category stated an expectation. That is a gap in
+    the evalset, not a failure of the lexicon, and it must not be scored as one."""
+    path = tmp_path / "none.csv"
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(
+            ["prompt_id", "category", "prompt", "expect_phenomena", "expect_constraints",
+             "expect_segment", "hand_graded", "notes"]
+        )
+        w.writerow(["p001", "fast_ions", "beam power scan", "", "", "flat_top", "0", ""])
+    assert cli.main(["eval", "prompts", "--split", "all", "--evalset", str(path)]) == 0
+    assert "| `fast_ions` | 1 | 100.0 % | 0 | n/a |" in capsys.readouterr().out
+
+
 def test_eval_prompts_uses_the_frozen_evalset_when_none_is_named(db_root, capsys):
     cli.main(["eval", "prompts", "--split", "all", "--json"])
     doc = json.loads(capsys.readouterr().out)
