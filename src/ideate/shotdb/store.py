@@ -22,6 +22,38 @@ import pandas as pd
 from ..schema import Range, ShotRecord
 
 
+def _empty(dtypes: dict[str, str]) -> pd.DataFrame:
+    """A zero-row frame with exactly these columns and dtypes, in this order."""
+    return pd.DataFrame({name: pd.Series(dtype=dt) for name, dt in dtypes.items()})
+
+
+# The three optional label tables' schemas are defined once, by the modules that WRITE them, and
+# imported here lazily -- inside the functions rather than at module scope, because
+# `ideate.labels.claims` imports `ideate.shotdb.text`, and a top-level import would close that
+# circle through this package's own `__init__`.
+
+
+def empty_events() -> pd.DataFrame:
+    """No events, labelmaker's own columns and dtypes."""
+    from labelmaker.events import schema as events_schema
+
+    return _empty({name: events_schema.DTYPES[name] for name in events_schema.COLUMNS})
+
+
+def empty_labels_wide() -> pd.DataFrame:
+    """No label summaries, `labels.join`'s columns and dtypes."""
+    from ..labels.join import LABELS_WIDE_DTYPES
+
+    return _empty(LABELS_WIDE_DTYPES)
+
+
+def empty_text_claims() -> pd.DataFrame:
+    """No claims, `labels.claims`'s columns and dtypes."""
+    from ..labels.claims import CLAIMS_DTYPES
+
+    return _empty(CLAIMS_DTYPES)
+
+
 class ShotDB:
     """`segments` is the queryable view (segment rows joined to their shot's metadata);
     `segments_base` is exactly what segments.parquet holds, which is what `build.add` rewrites.
@@ -38,6 +70,9 @@ class ShotDB:
         manifest: dict,
         shapes: np.ndarray | None = None,
         windows: pd.DataFrame | None = None,
+        events: pd.DataFrame | None = None,
+        labels_wide: pd.DataFrame | None = None,
+        text_claims: pd.DataFrame | None = None,
     ):
         self.db_dir = Path(db_dir)
         self.shots = shots
@@ -49,6 +84,15 @@ class ShotDB:
         # windows.parquet: one row per 250 ms window of every encoded shot, aligned with
         # emb["ignite_win"]; only fragment queries (--ref-window) read it.
         self.windows = windows
+        # The three label tables (`ideate labels join`). Optional on disk and never None here:
+        # a database built before the join, or one whose join found no events, gets the EMPTY
+        # TYPED frame rather than None, so a caller filters `db.events` without first asking
+        # whether there is a table -- and gets zero rows, which is what "nobody has looked yet"
+        # honestly is. The distinction that matters ("did a detector cover this shot?") is not
+        # carried by the frame's existence but by the coverage columns on its rows.
+        self.events = empty_events() if events is None else events
+        self.labels_wide = empty_labels_wide() if labels_wide is None else labels_wide
+        self.text_claims = empty_text_claims() if text_claims is None else text_claims
         meta = shots[["shot", "run_id", "regime", "verdict", "operational"]].set_index("shot")
         # A left join preserves row order, which is what keeps self.segments aligned row-for-row
         # with emb["scalar"]; every lookup in this class relies on that.
@@ -66,7 +110,14 @@ class ShotDB:
         shapes = np.load(shape_path) if shape_path.exists() else None
         win_path = db_dir / "windows.parquet"
         windows = pd.read_parquet(win_path) if win_path.exists() else None
-        return cls(db_dir, shots, segments, emb, pca, manifest, shapes, windows)
+        label_tables = {
+            name: pd.read_parquet(p)
+            for name in ("events", "labels_wide", "text_claims")
+            if (p := db_dir / f"{name}.parquet").exists()
+        }
+        return cls(
+            db_dir, shots, segments, emb, pca, manifest, shapes, windows, **label_tables
+        )
 
     # ------------------------------------------------------------------ single-row access
 
