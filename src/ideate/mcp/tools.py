@@ -390,10 +390,9 @@ def _frame_codes(shot: int, caveats: list[str]) -> dict:
 EVENT_STATES = ("unindexed", "unprocessed", "uncovered", "observed")
 
 _UNPROCESSED_CAVEAT = (
-    "no observed-event product for shot {shot}: no detector is recorded as having run over it "
-    "and it has no detector or heuristic rows (a forecast, a logbook mention and a curated-table "
-    "entry are none of them). Absence is not evidence -- this is not a quiet shot, it is an "
-    "unexamined one"
+    "no observed-event product for shot {shot}: no relevant detector source is recorded as "
+    "having completed over it. Returned event rows do not establish that a registered covering "
+    "source ran. Absence is not evidence -- this is not a quiet shot, it is an unexamined one"
 )
 
 _NO_DETECTION_CAVEAT = (
@@ -467,13 +466,13 @@ def get_events(
     each:
 
     * `unindexed` -- the shot is not in the database at all. Nothing was ever loaded for it.
-    * `unprocessed` -- the shot is in the database, but no detector is recorded as having run
+    * `unprocessed` -- the shot is in the database, but no relevant detector is recorded as having run
       over it. Its empty event list is not evidence that the shot was quiet.
-    * `uncovered` -- detectors ran, but none of them is recorded as having covered the window
+    * `uncovered` -- relevant detectors ran, but none is recorded as having covered the window
       you asked about: either their spans lie elsewhere (the caveat names the span that IS
       covered) or they completed without recording a span at all (the caveat names them). A
       source that ran and recorded no coverage can neither cover nor un-cover a window.
-    * `observed` -- some one detector's OWN coverage overlaps the window. An empty `events` here
+    * `observed` -- a relevant detector's OWN coverage overlaps the window. An empty `events` here
       is a real observation of nothing, and the caveats say how many sources reported it --
       counting only the sources whose coverage overlaps the window, not everything that ran.
 
