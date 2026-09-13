@@ -374,6 +374,126 @@ def test_no_events_directory_at_all_is_an_empty_typed_frame(tmp_path):
     assert result.manifest["n_forecast_events"] == 0
 
 
+# ------------------------------------------------------------------- the event-source table
+
+
+def _sources(root: Path, shot: int, rows):
+    from ideate.labels import event_sources as es
+
+    return es.write_sources(es.sources_file(Path(root) / "events", shot), rows)
+
+
+def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_path):
+    """`events.parquet` says what was FOUND. This table says who LOOKED, so a shot with no rows
+    can be reported as unprocessed rather than as a quiet shot."""
+    from ideate.labels import event_sources as es
+
+    _sources(tmp_path, 900001, [
+        es.source_row(900001, "tokeye_track", t_cov0_s=0.0, t_cov1_s=6.0, n_events=0, diag="mhr"),
+        es.source_row(900001, "dalpha_lh", status="skipped", reason="no d_alpha"),
+    ])
+    _sources(tmp_path, 900002, [
+        es.source_row(900002, "tokeye_track", status="error", reason="mhr read failed"),
+    ])
+
+    result = join.join([900001, 900002, 900003], labelmaker_root=tmp_path)
+
+    assert list(result.sources.columns) == list(es.SOURCES_COLUMNS)
+    assert len(result.sources) == 3
+    m = result.manifest
+    assert m["n_event_source_rows"] == 3
+    assert m["n_shots_with_source_rows"] == 2
+    assert (m["n_sources_ok"], m["n_sources_skipped"], m["n_sources_error"]) == (1, 1, 1)
+    # 900001 completed a source; 900002's only source crashed; 900003 has no file at all.
+    assert m["n_shots_with_observed_products"] == 1
+    assert m["n_shots_unprocessed"] == 2
+    assert m["sources_by_shot"][900001]["has_observed_products"] is True
+    assert m["sources_by_shot"][900003] == {
+        "n_sources": 0, "n_sources_ok": 0, "n_sources_skipped": 0, "n_sources_error": 0,
+        "has_observed_products": False,
+    }
+
+
+def test_a_join_with_no_source_files_at_all_still_writes_a_typed_empty_table(tmp_path):
+    from ideate.labels import event_sources as es
+
+    db = tmp_path / "db"
+    db.mkdir()
+    result = join.join([900001], labelmaker_root=tmp_path)
+    join.write_tables(db, result.labels_wide, result.events, result.claims, result.manifest,
+                      sources_df=result.sources)
+    back = pd.read_parquet(db / "event_sources.parquet")
+    assert back.empty and list(back.columns) == list(es.SOURCES_COLUMNS)
+    assert json.loads((db / "manifest.json").read_text())["labels"]["n_shots_unprocessed"] == 1
+
+
+# ------------------------------------------------------------- refreshing has_frame_codes
+
+
+def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, ideate_db, monkeypatch):
+    """The column is set at BUILD time and the encode is a later job, so a database built before
+    the encode said 13 true while all 500 caches existed. The join is the step that runs after
+    the long jobs, so it is where the flag is brought back in line."""
+    from ideate import config
+    from ideate.schema import ShotRecord
+    from ideate.shotdb import build as build_mod
+
+    db_dir = ideate_db / "db"
+    paths = config.load_paths()
+    codes = build_mod.frame_codes_dirs(paths)[0]
+    codes.mkdir(parents=True, exist_ok=True)
+    for shot in (100, 200):
+        (codes / f"{shot}.pt").write_bytes(b"")
+
+    before = pd.read_parquet(db_dir / "shots.parquet")
+    assert not before["has_frame_codes"].any()
+
+    got = build_mod.refresh_frame_codes(db_dir, paths)
+    assert got["n_shots"] == 4
+    assert got["n_has_frame_codes"] == 2
+    assert got["n_changed"] == 2 and got["refreshed"] is True
+
+    after = pd.read_parquet(db_dir / "shots.parquet")
+    assert dict(zip(after.index, after["has_frame_codes"], strict=True)) == {
+        100: True, 101: False, 200: True, 201: False
+    }
+    # ... and inside record_json too, which is what `describe_shot` hands back.
+    for shot in (100, 200):
+        assert ShotRecord.model_validate_json(after.loc[shot, "record_json"]).has_frame_codes
+    assert not ShotRecord.model_validate_json(after.loc[101, "record_json"]).has_frame_codes
+
+
+def test_refreshing_twice_changes_nothing_and_a_missing_table_is_not_an_error(tmp_path, ideate_db):
+    from ideate import config
+    from ideate.shotdb import build as build_mod
+
+    db_dir = ideate_db / "db"
+    paths = config.load_paths()
+    assert build_mod.refresh_frame_codes(db_dir, paths)["n_changed"] == 0
+    before = (db_dir / "shots.parquet").read_bytes()
+    assert build_mod.refresh_frame_codes(db_dir, paths)["refreshed"] is False
+    assert (db_dir / "shots.parquet").read_bytes() == before
+
+    absent = build_mod.refresh_frame_codes(tmp_path / "nowhere", paths)
+    assert absent["refreshed"] is False and absent["n_shots"] == 0
+
+
+def test_write_tables_records_the_refreshed_count_in_its_own_manifest_block(tmp_path):
+    db = tmp_path / "db"
+    db.mkdir()
+    (db / "manifest.json").write_text(json.dumps({"n_shots": 2}))
+    result = join.join([], labelmaker_root=tmp_path)
+    join.write_tables(
+        db, result.labels_wide, result.events, result.claims, result.manifest,
+        sources_df=result.sources,
+        join_block={"frame_codes": {"n_shots": 500, "n_has_frame_codes": 500, "n_changed": 487}},
+    )
+    manifest = json.loads((db / "manifest.json").read_text())
+    assert manifest["labels_join"]["frame_codes"]["n_has_frame_codes"] == 500
+    assert manifest["labels_join"]["written_at"] == manifest["labels"]["written_at"]
+    assert manifest["n_shots"] == 2  # still merged, never replaced
+
+
 # ------------------------------------------------------------------------------ write_tables
 
 
