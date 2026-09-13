@@ -54,6 +54,12 @@ _FORECAST_CAVEAT = (
     "about what was about to happen, not an observation of what did"
 )
 
+_DATABASE_CAVEAT = (
+    "{n} row(s) are in `database_intervals`, not in `events`: a curated list names a shot and a "
+    "time, not a measurement. Its coverage is null because nobody recorded which interval of the "
+    "shot was examined, so a shot's ABSENCE from such a list is not a negative"
+)
+
 _TIMELESS_CAVEAT = (
     "{n} row(s) have no recorded time and were not considered for the window: unknown when, "
     "which is not the same as outside it"
@@ -337,7 +343,7 @@ def get_events(
     t0_s: float | None = None,
     t1_s: float | None = None,
 ) -> dict:
-    """Time-resolved events for one shot: what a detector saw, and separately what a model forecast.
+    """Time-resolved events for one shot: what a detector saw, what a model forecast, and what a curated list says.
 
     Args:
         shot: the DIII-D shot number.
@@ -346,16 +352,22 @@ def get_events(
         t1_s: ... and ending here. Either bound may be given alone.
 
     Returns:
-        `{"shot": int, "events": [...], "n": int, "forecasts": [...], "n_forecasts": int,
-        "caveats": [str]}` or `{"error": str, "caveats": [str]}`.
+        `{"shot": int, "events": [...], "n": int, "database_intervals": [...], "n_database": int,
+        "forecasts": [...], "n_forecasts": int, "caveats": [str]}` or
+        `{"error": str, "caveats": [str]}`.
 
-    `events` and `forecasts` are kept apart and must stay apart when you report them. An event
-    with `evidence_kind == "forecast"` is a model's estimate of what was ABOUT to happen,
-    computed from a risk curve and a threshold; every other row is somebody's claim about what a
-    diagnostic actually showed, with `source` saying who and `confidence` how sure. Reporting a
-    forecast as an observation is how "shot 190591 disrupted at 3.2 s" gets written from a
-    probability. Each row carries `t_cov0_s`/`t_cov1_s`, the coverage of the diagnostic that was
-    looked at, so "nothing was seen here" can be told from "nobody looked here".
+    `events`, `database_intervals` and `forecasts` are kept apart and must stay apart when you
+    report them. An event with `evidence_kind == "forecast"` is a model's estimate of what was
+    ABOUT to happen, computed from a risk curve and a threshold; one with
+    `evidence_kind == "database"` is a row of a curated table somebody sent us - it names a shot
+    and a time, not a measurement, its `confidence` is null because a human list has no
+    calibrated probability, and its coverage is null because nobody recorded which interval of
+    the shot was examined, so a shot's ABSENCE from such a list is not a negative. Every other
+    row is somebody's claim about what a diagnostic actually showed, with `source` saying who and
+    `confidence` how sure. Reporting a forecast or a curated listing as an observation is how
+    "shot 190591 disrupted at 3.2 s" gets written from a probability or from a spreadsheet. Each
+    row carries `t_cov0_s`/`t_cov1_s`, the coverage of the diagnostic that was looked at, so
+    "nothing was seen here" can be told from "nobody looked here".
 
     An empty `events` with the caveat "no events table yet" means the labels join has not run --
     not that the shot was quiet.
@@ -369,6 +381,8 @@ def get_events(
             "shot": int(shot),
             "events": [],
             "n": 0,
+            "database_intervals": [],
+            "n_database": 0,
             "forecasts": [],
             "n_forecasts": 0,
             "nan_excluded": 0,
@@ -403,14 +417,21 @@ def get_events(
     df = df.sort_values(["t0_s", "event_id"], kind="stable")
 
     rows = [_event_row(rec) for rec in df.to_dict("records")]
-    events = [r for r in rows if r.get("evidence_kind") != "forecast"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
+    database = [r for r in rows if r.get("evidence_kind") == "database"]
+    events = [
+        r for r in rows if r.get("evidence_kind") not in ("forecast", "database")
+    ]
     if forecasts:
         caveats.append(_FORECAST_CAVEAT.format(n=len(forecasts)))
+    if database:
+        caveats.append(_DATABASE_CAVEAT.format(n=len(database)))
     return {
         "shot": int(shot),
         "events": events,
         "n": len(events),
+        "database_intervals": database,
+        "n_database": len(database),
         "forecasts": forecasts,
         "n_forecasts": len(forecasts),
         "nan_excluded": nan_excluded,

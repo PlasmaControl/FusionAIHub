@@ -74,7 +74,7 @@ client works — the transport is stdio and the command above is the whole contr
 | --- | --- | --- |
 | `search_shots` | `text`, `ref_shot`, `segment`, `constraints`, `actuators`, `require_labels`, `avoid_labels`, `n` | ranked shots with a description, an explanation naming which channel found each one, and the operating-limit flags for the proposed actuators |
 | `describe_shot` | `shot`, `segment` | the prose description and the whole stored record: segments and their scalars, labels and their source, outcome, and the operator logbook verbatim |
-| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | the shot's events, filtered by phenomenon and by time overlap — and, in a separate list, the forecasts |
+| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | the shot's events, filtered by phenomenon and by time overlap — and, in separate lists, the forecasts and the curated-table rows |
 
 Plus one resource, `ideate://manifest`: the built database's manifest, which is how a caller
 finds out which shots the tools can see at all.
@@ -91,6 +91,16 @@ Two things hold for every reply and are worth knowing before reading one:
   must stay in different sentences. (On the `recommender_v1` database today, *all* 1,037 event
   rows are forecasts — so a tool that concatenated them would report nothing but model output as
   observation.)
+* **`get_events` keeps a curated list out of `events` too.** A row with
+  `evidence_kind == "database"` comes from a table somebody sent us — the first two are Jeremy
+  Hansen's RWM onset databases, under `data/labels/resistive_wall_mode/` and declared in
+  `data/labels/tables.yaml` — and it arrives in a fourth list, `database_intervals`. It names a
+  shot and a time, not a measurement: its `confidence` is `null`, because a human list has no
+  calibrated probability, and its coverage (`t_cov0_s`/`t_cov1_s`) is `null`, because nobody
+  recorded which interval of the shot was examined. That second null is the load-bearing one — a
+  shot's **absence** from a curated list is not a negative, and nothing downstream may read it as
+  one. `ideate labels join` needs no rule for these rows: `events_union` reads each shot's
+  `events/<shot>_events.parquet` wholesale, so they reach `db/events.parquet` as they are.
 
 Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` and
 `ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
