@@ -1407,7 +1407,9 @@ def main(argv=None) -> int:
 
 
 __all__ = [
+    "INDEX_KEYS",
     "DriverRun",
+    "FinishJob",
     "PrepJob",
     "PrepPool",
     "build_parser",
