@@ -414,7 +414,10 @@ class CategoryStats(BaseModel):
     coverage: float
     n_with_expectation: int
     resolution: float | None = None  # None when no prompt of the category expects a phenomenon
-    mean_run_diversity: float = 0.0
+    # Averaged over the prompts that ANSWERED; None when none did. A prompt that returned
+    # nothing has no top-10 to be diverse, and dividing by it would make the number smaller than
+    # any top-10 ever showed.
+    mean_run_diversity: float | None = None
 
 
 class ProxyGrade(BaseModel):
@@ -452,7 +455,7 @@ class EvalReport(BaseModel):
     channel_participation: dict[str, float]  # per channel, fraction of prompts it contributed to
     resolution_overall: float | None
     categories: list[CategoryStats] = Field(default_factory=list)
-    mean_run_diversity: float = 0.0  # distinct run days per top-10
+    mean_run_diversity: float | None = None  # distinct run days per ANSWERED prompt's top-10
     duplicate_rate: float = 0.0  # duplicated positions / results returned
     proxy: ProxyGrade = Field(default_factory=ProxyGrade)
     outcomes: list[PromptOutcome] = Field(default_factory=list)

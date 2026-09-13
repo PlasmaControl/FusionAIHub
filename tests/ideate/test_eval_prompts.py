@@ -179,6 +179,32 @@ def test_run_diversity_counts_distinct_run_days_not_shots(db, split_file, tmp_pa
     assert report.mean_run_diversity > 0
 
 
+def test_run_diversity_averages_over_the_prompts_that_ANSWERED(db, split_file, tmp_path):
+    """A prompt that returned nothing contributes no top-10 to be diverse. Dividing by it made
+    "mean distinct run days per top-10" a smaller number than any top-10 ever showed -- 7.91 on
+    the real run against 8.46 over the prompts that actually answered."""
+    report = ev.run(db, _evalset(tmp_path), split="all", split_path=split_file)
+    answered = [o for o in report.outcomes if o.n_results > 0]
+    assert len(answered) == 5 and len(report.outcomes) == 6  # p005 retrieves nothing
+    assert report.mean_run_diversity == pytest.approx(
+        sum(len(o.run_ids) for o in answered) / len(answered)
+    )
+    by_cat = {c.category: c for c in report.categories}
+    # `actuator_only` holds p004 (answers) and p005 (does not); only p004 is averaged.
+    p004 = next(o for o in report.outcomes if o.prompt_id == "p004")
+    assert by_cat["actuator_only"].mean_run_diversity == pytest.approx(len(p004.run_ids))
+
+
+def test_a_category_where_nothing_answered_reports_no_diversity_rather_than_zero(
+    db, split_file, tmp_path
+):
+    rows = [("p001", "impossible", "nothing is this big", "", '{"ip_mean":[9e9,null]}',
+             "flat_top", "0", "")]
+    report = ev.run(db, _evalset(tmp_path, rows), split="all", split_path=split_file)
+    assert report.categories[0].mean_run_diversity is None
+    assert report.mean_run_diversity is None
+
+
 def test_the_duplicate_rate_is_zero_when_every_result_is_a_different_shot(
     db, split_file, tmp_path
 ):
@@ -364,3 +390,21 @@ def test_the_markdown_marks_the_two_bars_the_plan_states(db, split_file, tmp_pat
     assert ">= 95.0 %" in md
     assert "| `qh_mode` |" in md
     assert "| channel | prompts it contributed to |" in md
+
+
+def test_the_markdown_says_resolution_is_not_a_split_number(db, split_file, tmp_path):
+    """`_resolution` reads the prompt text and the lexicon -- no database, no split -- so the
+    column is identical on dev, eval and all. It shares a table with metrics that ARE split
+    numbers, and a reader who assumes it is one will read `fast_ions 56.2 %` as a statement about
+    the eval split's zero fast-ion shots."""
+    md = ev.markdown(ev.run(db, _evalset(tmp_path), split="eval", split_path=split_file))
+    assert "identical on every split" in md
+
+
+def test_resolution_really_is_identical_on_every_split(db, split_file, tmp_path):
+    evalset = _evalset(tmp_path)
+    per_split = {}
+    for split in ("dev", "eval", "all"):
+        report = ev.run(db, evalset, split=split, split_path=split_file)
+        per_split[split] = {c.category: c.resolution for c in report.categories}
+    assert per_split["dev"] == per_split["eval"] == per_split["all"]
