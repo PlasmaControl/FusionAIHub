@@ -72,8 +72,11 @@
 #                    assumed, and metadata only: no term of the score reads it. 0.000 for qcm and
 #                    pickup means the operators never write them down -- the detectors are the
 #                    only route to those two.
-#   database         a curated shot list, when one exists. `path_key` names a key of paths.yaml
-#                    rather than repeating an absolute path.
+#   database         a curated shot list, when one exists, named ONE of two ways: `path_key`, a
+#                    key of paths.yaml rather than an absolute path, or `tables`, the manifest
+#                    stems of `data/labels/tables.yaml` resolved through labelmaker's own
+#                    reader. Either way it is MEMBERSHIP and not observation: a hit ranks in
+#                    the DATABASE class, below a forecast, and its coverage stays unknown.
 #
 # Round-1 ids, all twelve, in the lexicon's order.
 version: 1
@@ -249,9 +252,25 @@ phenomena:
   rwm:
     title: Resistive wall mode
     labels: []
-    events: []          # no detector writes rwm; text is the only route (see the caveats)
+    # No DETECTOR writes rwm. The two curated tables below do, through
+    # `labelmaker.events.databases`, and their rows carry `evidence_kind: database` with NaN
+    # coverage -- so they are never an observation and never donate coverage. Text is the only
+    # other route (see the caveats).
+    events: []
     forecasts: []
     band_khz: [0.0, 10.0]
     diags: []      # nothing detects rwm, so nothing writes a diag for it
     requires_group: [mhr]
     prior: 0.012
+    database:
+      name: RWM_Onsets
+      # Manifest stems, not a path: `data/labels/tables.yaml` says where each CSV is and what
+      # its columns mean, and `_table_shots` resolves them through labelmaker's own reader.
+      tables: [rwm_onsets_2017, rwm_onsets_2024]
+      note: >-
+        Jeremy Hansen's onset databases: 56 rows, 33 distinct shots, 156785-176092 -- and 0 of
+        the 33 are in the 500-shot recommender_v1 database or in the corpus (which starts at
+        185601), so this term contributes nothing today. It is wired because the tables are the
+        only human-curated RWM evidence there is, and a database built over those campaigns
+        would light it up. A hit here ranks in the DATABASE class, below a forecast and never as
+        an observation.

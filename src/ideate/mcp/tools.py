@@ -54,6 +54,12 @@ _FORECAST_CAVEAT = (
     "about what was about to happen, not an observation of what did"
 )
 
+_DATABASE_CAVEAT = (
+    "{n} row(s) are in `database_intervals`, not in `events`: a curated list names a shot and a "
+    "time, not a measurement. Its coverage is null because nobody recorded which interval of the "
+    "shot was examined, so a shot's ABSENCE from such a list is not a negative"
+)
+
 _TIMELESS_CAVEAT = (
     "{n} row(s) have no recorded time and were not considered for the window: unknown when, "
     "which is not the same as outside it"
@@ -400,6 +406,15 @@ _NO_DETECTION_CAVEAT = (
 #: turn an unexamined shot into an observed one.
 OBSERVED_KINDS: tuple[str, ...] = ("detector", "heuristic")
 
+#: Which `evidence_kind` values get a LIST OF THEIR OWN in `get_events`, and are therefore not
+#: in `events`. A different question from `OBSERVED_KINDS`, which decides `status`, and not its
+#: complement: `OBSERVED_KINDS` is an allow-list ("did somebody look at the plasma"), this is a
+#: deny-list ("is this claim a different KIND of claim that must be reported separately"). A
+#: `human` or `model` row is neither observed nor separately listed - it stays in `events` with
+#: its `evidence_kind` on it, which is the status quo, and giving it a list is a decision
+#: nobody has made yet.
+OWN_LIST_KINDS: tuple[str, ...] = ("forecast", "text", "database")
+
 #: Said whenever a diagnostic source completed without recording its coverage -- whether or not
 #: any other source did record some. The row is a real fact ("it ran") that establishes nothing
 #: about any window, and a reader who saw only `n_sources_ok` would count it as a source that
@@ -429,7 +444,7 @@ def get_events(
     t0_s: float | None = None,
     t1_s: float | None = None,
 ) -> dict:
-    """Time-resolved events for one shot: what a detector saw, what a logbook mentioned, and separately what a model forecast.
+    """Time-resolved events for one shot: what a detector saw, what a logbook mentioned, what a curated list names, and separately what a model forecast.
 
     Args:
         shot: the DIII-D shot number.
@@ -441,8 +456,9 @@ def get_events(
 
     Returns:
         `{"shot": int, "status": str, "events": [...], "n": int, "text_mentions": [...],
-        "n_text_mentions": int, "forecasts": [...], "n_forecasts": int, "coverage": {...},
-        "caveats": [str]}` or `{"error": str, "status": "unindexed", "caveats": [str]}`.
+        "n_text_mentions": int, "database_intervals": [...], "n_database": int,
+        "forecasts": [...], "n_forecasts": int, "coverage": {...}, "caveats": [str]}` or
+        `{"error": str, "status": "unindexed", "caveats": [str]}`.
 
     READ `status` FIRST. It is one of four, and an empty `events` means something different in
     each:
@@ -458,14 +474,19 @@ def get_events(
       is a real observation of nothing, and the caveats say how many sources reported it --
       counting only the sources whose coverage overlaps the window, not everything that ran.
 
-    `events`, `text_mentions` and `forecasts` are three different kinds of claim and must stay
-    apart when you report them. An `events` row is somebody's claim about what a DIAGNOSTIC
-    showed, with `source` saying who and `confidence` how sure. A `forecasts` row (evidence_kind
-    `forecast`) is a model's estimate of what was ABOUT to happen, computed from a risk curve and
-    a threshold; reporting one as an observation is how "shot 190591 disrupted at 3.2 s" gets
-    written from a probability. A `text_mentions` row (evidence_kind `text`) is a lexicon hit in
-    the operator logbook -- somebody wrote a word at some point in a shift -- which is evidence
-    that the word was written and not that the phenomenon occurred.
+    `events`, `text_mentions`, `database_intervals` and `forecasts` are four different kinds of
+    claim and must stay apart when you report them. An `events` row is somebody's claim about
+    what a DIAGNOSTIC showed, with `source` saying who and `confidence` how sure. A `forecasts`
+    row (evidence_kind `forecast`) is a model's estimate of what was ABOUT to happen, computed
+    from a risk curve and a threshold; reporting one as an observation is how "shot 190591
+    disrupted at 3.2 s" gets written from a probability. A `text_mentions` row (evidence_kind
+    `text`) is a lexicon hit in the operator logbook -- somebody wrote a word at some point in a
+    shift -- which is evidence that the word was written and not that the phenomenon occurred.
+    A `database_intervals` row (evidence_kind `database`) is a row of a curated table somebody
+    sent us: it names a shot and a time, not a measurement, its `confidence` is null because a
+    human list has no calibrated probability, and its `coverage` is null because nobody recorded
+    which interval of the shot was examined -- so a shot's ABSENCE from such a list is not a
+    negative, and a curated row never makes `status` `observed`.
 
     Each row carries `t_cov0_s`/`t_cov1_s`, the coverage of the diagnostic that was looked at, and
     `coverage` carries the per-source table, so "nothing was seen here" can be told from "nobody
@@ -515,6 +536,10 @@ def get_events(
         df = df[df["shot"] == shot]
 
     all_rows = df if df is not None else None
+    # `OBSERVED_KINDS` is an allow-list, so `database` is already outside it: a curated table
+    # names a shot, it does not observe one, and a shot whose only rows come from a
+    # spreadsheet must never answer `status == "observed"` (task L-D1's error class arriving
+    # through the status field instead of through the list). Nothing extra to exclude here.
     n_observed_rows = 0 if all_rows is None else int(
         all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum()
     )
@@ -546,8 +571,9 @@ def get_events(
     else:
         rows = []
 
-    events = [r for r in rows if r.get("evidence_kind") not in ("forecast", "text")]
+    events = [r for r in rows if r.get("evidence_kind") not in OWN_LIST_KINDS]
     text_mentions = [r for r in rows if r.get("evidence_kind") == "text"]
+    database = [r for r in rows if r.get("evidence_kind") == "database"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
 
     status = _event_status(summary, n_observed_rows, sources, t0_s, t1_s)
@@ -591,6 +617,8 @@ def get_events(
         caveats.append(_FORECAST_CAVEAT.format(n=len(forecasts)))
     if text_mentions:
         caveats.append(_TEXT_CAVEAT.format(n=len(text_mentions)))
+    if database:
+        caveats.append(_DATABASE_CAVEAT.format(n=len(database)))
     return {
         "shot": shot,
         "status": status,
@@ -598,6 +626,8 @@ def get_events(
         "n": len(events),
         "text_mentions": text_mentions,
         "n_text_mentions": len(text_mentions),
+        "database_intervals": database,
+        "n_database": len(database),
         "forecasts": forecasts,
         "n_forecasts": len(forecasts),
         "coverage": coverage,

@@ -879,3 +879,76 @@ def test_the_realistic_synthetic_channel_runs_end_to_end(synth_mask, tmp_path):
     n_tracks = x[windows.FEATURE_NAMES.index("mhr_n_tracks")]
     assert n_tracks.max() >= 3.0        # the EHO and its two harmonics
     assert n_tracks[-1] == 0.0          # past the fishbone: pickup alone
+
+
+def _curated(phenomenon: str, source: str, *, evidence_kind="database"):
+    """One curated-table row at 0.15 s, inside the window under test."""
+    return schema.Event(
+        shot=SHOT, source=source, evidence_kind=evidence_kind,
+        phenomenon=phenomenon, t0_s=0.15, t1_s=0.15, diag="", channel=-1,
+        attrs={"NTOR": 1, "MODE_TYPE": "rwm", "table": "manual"},
+        # The point of the row: nobody said which interval was examined.
+        t_cov0_s=float("nan"), t_cov1_s=float("nan"),
+        confidence=float("nan"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("phenomenon", "source", "evidence_kind", "why"),
+    [
+        # The shipped case: a curated RWM table. `rwm` is in no family, and
+        # `database` is in no evidence kind - both halves say no.
+        ("rwm", "database:rwm_onsets_2017", "database", "the shipped case"),
+        # The case the shipped one missed. `elm` IS a window phenomenon,
+        # and `databases.py`'s own docstring names David Smith's manual
+        # ELMs as the next table to arrive. Excluded by FAMILY_SOURCES
+        # here, so this row fails if THAT half is dropped...
+        ("elm", "database:manual_elms", "database", "a window phenomenon"),
+        # ...and this row is the other half on its own: it passes
+        # FAMILY_SOURCES (`elm` from `tokeye_transient`) and must still be
+        # excluded, for its evidence kind alone. Drop `k in allowed` from
+        # `diagnostic_mask` and only this case turns red.
+        ("elm", windows.ELM_SOURCE, "database", "an allowed source"),
+        # And the mirror: the right evidence kind is not enough either.
+        ("elm", "database:manual_elms", "heuristic", "an allowed kind"),
+    ],
+)
+def test_a_database_row_inside_the_window_changes_no_feature(
+    tmp_path, phenomenon, source, evidence_kind, why,
+):
+    """The evidence policy, as a test rather than as a set membership.
+
+    A curated label table (`events/databases.py`) writes rows with
+    `evidence_kind="database"` and NaN coverage. They are knowledge about
+    the shot, not something a diagnostic showed here, so no window feature
+    may read one - otherwise a human's list of RWM onsets would arrive in a
+    classifier's input as though a detector had found it, and the model
+    would be scored against its own training labels.
+
+    Four cases because ONE case pins nothing: `windows.diagnostic_mask`
+    applies `DIAGNOSTIC_EVIDENCE` AND `FAMILY_SOURCES` together, and a row
+    that fails both cannot say which of them did the work. Each of the
+    middle two fails exactly one half, so deleting either filter turns the
+    parametrisation red.
+    """
+    paths = _paths(tmp_path)
+    elms = [_elm(0.10), _elm(0.20), _elm(0.30)]
+    before = windows.window_features(
+        (0.0, 0.34), blocks={}, events=_write_events(paths, elms),
+        cov={"mhr": (0.0, 1.0)},
+    )
+    curated = _curated(phenomenon, source, evidence_kind=evidence_kind)
+    frame = _write_events(paths, [*elms, curated])
+    after = windows.window_features(
+        (0.0, 0.34), blocks={}, events=frame, cov={"mhr": (0.0, 1.0)},
+    )
+    assert np.array_equal(before, after), why
+    # And it really is in the table the window was handed - the row was
+    # excluded by the policy, not lost on the way in.
+    table = schema.read_events(paths.events_file(SHOT))
+    # 0.15 s is the curated row's time and no ELM's, so this counts it
+    # whatever source or kind the case gave it.
+    assert (table["t0_s"] == 0.15).sum() == 1
+    assert len(table) == len(elms) + 1
+    # ...and the policy, not the write, is what kept it out.
+    assert len(windows.diagnostic_rows(table)) == len(elms)

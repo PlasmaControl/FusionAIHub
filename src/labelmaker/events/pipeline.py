@@ -59,6 +59,7 @@ from ..labels.store import append_index
 from . import (
     channels,
     coverage,
+    databases,
     heuristics,
     masks,
     schema,
@@ -151,6 +152,12 @@ class ShotResult:
     elapsed_s: float = 0.0
     skipped: dict[str, str] = field(default_factory=dict)
     error: str = ""
+    #: One record per curated table that NAMED this shot - see
+    #: `databases_block`. They are written to the shot's sources file with
+    #: every other source's; this field is what the run JSON reports.
+    #: Empty is the ordinary case and means no table names the shot, which
+    #: is not the same as a table finding nothing in it.
+    database_sources: list[dict] = field(default_factory=list)
 
     @property
     def status(self) -> str:
@@ -227,6 +234,30 @@ class _BlockRun:
 
 def _cause(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"[:200]
+
+
+def databases_block(shot: int, paths: Paths) -> tuple[list[Event], list[dict]]:
+    """This shot's curated-table rows, and which tables named it.
+
+    One function so the events stage's hook is one guarded call. What makes
+    it different from every other step: a table that does not list this
+    shot contributes NOTHING - no event row and no source record. Nobody
+    looked, and `status="ok", n_events=0` against every table for every one
+    of 16,909 corpus shots would be a coverage claim no author made.
+
+    Cheap enough to sit in the per-shot path (a CSV read, cached per
+    process), but it is knowledge about a shot we may hold no signals for,
+    so `run.py events --databases-only` ingests a table over any shot list
+    without the corpus or the network - that, and not this call site, is
+    how a table reaches a shot whose corpus file is missing.
+
+    The records it returns go to `events/<shot>_sources.parquet` beside
+    every other source's, through `coverage.source_records`: `status="ok"`,
+    `reason=""` (an ok row carries none - `schema._source_row` enforces
+    that), `n_events`, and coverage NaN, which is the signal. They are also
+    kept on `ShotResult.database_sources` for the run JSON.
+    """
+    return databases.events_for_shot(shot, root=paths.label_tables)
 
 
 def _read_group(corpus_file, diag: str, *, stop: int | None = None):
@@ -854,6 +885,26 @@ def finish_shot(
             ran[("text", "", -1, "")] = text_weak.shot_span_s(shot, paths=paths)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["text"] = _cause(exc)
+
+    # --------------------------------------------- the curated label tables
+    try:
+        found, res.database_sources = databases_block(shot, paths)
+        events.extend(found)
+        sources |= {e.source for e in found}
+        # Through the same `ran` map as every detector, so the records
+        # reach `schema.write_sources` with the rest: one key per table
+        # that NAMED this shot, keyed `(source, "", -1, "")` because a
+        # curated list reads no diagnostic, and coverage `UNKNOWN` - NaN,
+        # not empty - because nobody recorded which interval was examined.
+        # A table that does not name the shot adds no key here, so it
+        # writes no row, which is the whole point.
+        for record in res.database_sources:
+            ran[(
+                str(record["source"]), str(record["diag"]),
+                int(record["channel"]), str(record["pass_name"]),
+            )] = (float(record["t_cov0_s"]), float(record["t_cov1_s"]))
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        res.skipped["database"] = _cause(exc)
 
     res.n_events = len(events)
     for event in events:

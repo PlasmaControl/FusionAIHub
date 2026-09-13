@@ -1107,9 +1107,51 @@ def _database_shots(path_key: str) -> frozenset[int]:
     return frozenset() if path is None else _qh_shots(str(path))
 
 
+@functools.lru_cache(maxsize=4)
+def _table_shots(stems: tuple[str, ...]) -> frozenset[int]:
+    """The shots labelmaker's curated tables name, by manifest stem.
+
+    The second way a `database:` block can point at a list, and the one new tables use:
+    `data/labels/tables.yaml` already declares where the CSV is and what its columns mean, so
+    the registry names the STEM and labelmaker resolves it. A stem the manifest does not know,
+    or a manifest that cannot be read at all, is an empty set and not an exception -- the
+    tables are optional data and a database built without them must still rank.
+    """
+    from labelmaker.events import databases as label_tables
+
+    try:
+        specs = {spec.stem: spec for spec in label_tables.load_manifest()}
+    except (OSError, ValueError):
+        return frozenset()
+    out: set[int] = set()
+    for stem in stems:
+        spec = specs.get(str(stem))
+        if spec is None:
+            continue
+        try:
+            out |= label_tables.shots(spec)
+        except (OSError, ValueError):
+            continue
+    return frozenset(out)
+
+
 def _in_database(ph: Phenomenon, shot: int) -> bool:
-    key = None if ph.database is None else ph.database.get("path_key")
-    return bool(key) and int(shot) in _database_shots(str(key))
+    """Does a curated list name this shot? Membership, and never an observation.
+
+    `_tier` puts DATABASE below FORECAST, so a shot whose only evidence is a curated listing
+    can never come back in the observed class, and `DATABASE_ONLY` is the caveat it carries.
+    That is the same rule labelmaker writes on the rows themselves (NaN coverage, NaN
+    confidence): a list names a shot, it does not measure one.
+    """
+    if ph.database is None:
+        return False
+    key = ph.database.get("path_key")
+    if key:
+        return int(shot) in _database_shots(str(key))
+    tables = ph.database.get("tables") or ()
+    return bool(tables) and int(shot) in _table_shots(
+        tuple(str(t) for t in tables)
+    )
 
 
 # -------------------------------------------------------------------------------------- locate
