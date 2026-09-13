@@ -151,14 +151,29 @@ turns what it sees into rows:
 | source | evidence_kind | what it claims |
 |---|---|---|
 | `tokeye_track` | detector | a coherent mode (or a `pickup` line) with a band, a chirp and a confidence |
-| `tokeye_transient` | detector | one point event per ELM, from **one** reference channel |
-| `elm_clock` | heuristic | the ELM-free intervals implied by those ELMs |
-| `ece_sawtooth` | heuristic | one point per sawtooth crash, with the inversion radius |
+| `tokeye_transient` | detector | class-agnostic `transient` points from one mask reference channel |
+| `elm_clock` | heuristic | D-alpha `elm` points and the `elm_free` intervals implied by those same peaks |
+| `ece_sawtooth` | heuristic | one point per inversion-qualified crash, with dropping-channel bounds; radius is not mapped |
 | `dalpha_lh` | heuristic | L->H and H->L transitions |
 | `actuator` | heuristic | the intervals NBI, ECH, the RMP coils and the gas valves were on for |
 | `qh_proxy` | heuristic | an EHO inside an ELM-free NBI-heated flat-top - a proxy, and its `attrs` say so |
 | `text` | text | a phenomenon this shot's own logbook entries name |
 | `database:<table>` | database | a row of a curated table somebody sent us, e.g. `database:rwm_onsets_2017` |
+
+The D-alpha clock reads filterscopes channels 0-7 independently of the U-Net,
+using the first channel with at least two adjacent finite samples (prefer 0). It scales the finite
+range to [0, 1], smooths for 0.64 ms, and picks peaks with prominence ≥ 0.03
+and separation ≥ 3 ms. Point attributes are `prominence` (normalised),
+`width_ms` (half-prominence width), `channel`, and `rate_hz_local` (centred
+100 ms count / 0.1 s). Confidence is NaN: this is a heuristic that still needs
+manual ELM validation. Padding and internal gaps cannot generate peaks or
+quiet intervals; source coverage uses the first and last finite sample.
+All-NaN filterscopes are skipped, never called ELM-free. `transient` is in
+both registries and never supplies an ELM window feature or phenomenon hit.
+Re-running events replaces old `tokeye_transient` rows by source; existing
+read-only products are not migrated by changing the code. See the
+[L-A assessment](superpowers/specs/2026-09-13-labels-assessment-A.md) for the
+500-shot census and validation limits.
 
 Flags: `--passes {wide,zoom}` (wide is 0.49 kHz/bin and 0.256 ms/column, zoom
 is four times finer in frequency and four times coarser in time),
@@ -202,7 +217,7 @@ counted as events at `t = 0`.
   `heuristic`;
 * `FAMILY_SOURCES` - and its `source` must be one the family's own detector
   writes: `coherent_mode` and `pickup` from `tokeye_track`, `elm` from
-  `tokeye_transient`, `elm_free` from `elm_clock`, `sawtooth` from
+  `elm_clock`, `elm_free` from `elm_clock`, `sawtooth` from
   `ece_sawtooth`, `lh_transition` from `dalpha_lh`.
 
 Both, together, applied once before anything is clustered or unioned. Text

@@ -106,10 +106,8 @@ from .schema import read_events
 from .tracks import PHENOMENON as TRACK_PHENOMENON
 from .tracks import PICKUP_PHENOMENON
 from .tracks import SOURCE as TRACK_SOURCE
-from .transients import FREE_PHENOMENON
+from .transients import ELM_PHENOMENON, ELM_SOURCE, FREE_PHENOMENON
 from .transients import FREE_SOURCE as ELM_FREE_SOURCE
-from .transients import PHENOMENON as ELM_PHENOMENON
-from .transients import SOURCE as ELM_SOURCE
 
 #: The window, and how far it slides. Half-overlapping on purpose.
 WINDOW_S = 0.34
@@ -159,11 +157,9 @@ DIAGNOSTIC_EVIDENCE: tuple[str, ...] = ("detector", "heuristic")
 #: is a claim this module has no calibration for, and a phenomenon absent
 #: from this map reaches no feature at all.
 #:
-#: `elm` comes from `tokeye_transient` and NOT from `elm_clock`, which is
-#: the derived source: the clock's own rows are the `elm_free` intervals it
-#: computes FROM those ELMs (`transients.transients_to_events` writes both,
-#: one source each, and `docs/LABELMAKER.md` tabulates them). Keeping the
-#: two apart is what lets a consumer trust one and not the other.
+#: `elm` points and `elm_free` intervals both come from the D-alpha clock.
+#: Class-agnostic TokEye transients, including legacy rows named `elm`,
+#: cannot enter the ELM family. The window reductions themselves are unchanged.
 FAMILY_SOURCES: dict[str, tuple[str, ...]] = {
     TRACK_PHENOMENON: (TRACK_SOURCE,),
     PICKUP_PHENOMENON: (TRACK_SOURCE,),

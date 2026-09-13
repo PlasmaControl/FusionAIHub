@@ -30,7 +30,7 @@ import yaml
 #: quietly has no evidence.
 PHENOMENON_IDS = (
     "ae", "eho", "elm", "tearing", "sawtooth", "fishbone", "qcm", "qh",
-    "lh", "detachment", "pickup", "rwm",
+    "lh", "detachment", "pickup", "rwm", "transient",
 )
 
 #: The alias lists themselves. Shipped beside this module because ideate

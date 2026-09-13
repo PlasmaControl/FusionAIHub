@@ -17,6 +17,7 @@ import asyncio
 import inspect
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -888,8 +889,17 @@ def test_the_project_mcp_config_points_at_this_server():
     cfg = json.loads((REPO / ".mcp.json").read_text(encoding="utf-8"))
     entry = cfg["mcpServers"]["ideate"]
     assert entry["args"][-2:] == ["-m", "ideate.mcp"]
-    assert Path(entry["cwd"]).resolve() == REPO
     assert os.path.isabs(entry["cwd"])
+    # A shared config can launch the primary checkout from a linked worktree.
+    # Reject unrelated repositories while accepting that supported layout.
+    def common_git_dir(path):
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--path-format=absolute",
+             "--git-common-dir"], check=True, capture_output=True, text=True,
+        )
+        return Path(result.stdout.strip()).resolve()
+
+    assert common_git_dir(entry["cwd"]) == common_git_dir(REPO)
 
 
 def test_an_unreadable_optional_table_is_recorded_by_the_store_not_raised(ideate_db):

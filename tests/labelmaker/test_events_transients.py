@@ -22,6 +22,29 @@ import pytest
 
 from labelmaker.events import masks, schema, transients
 
+
+def test_dalpha_units_do_not_turn_small_noise_into_elms():
+    t = np.arange(10001) / 10000
+    peaks = np.array([0.2, 0.4, 0.6, 0.8])
+    y = 1 + 0.001 * np.sin(2 * np.pi * 170 * t)
+    y += sum(np.exp(-0.5 * ((t - p) / 0.001) ** 2) for p in peaks)
+    for scale in (1.0, 1e15):
+        rows = transients.elm_clock_events(y * scale, t, shot=1)
+        points = [e for e in rows if e.phenomenon == "elm"]
+        assert len(points) == 4
+        np.testing.assert_allclose([e.t0_s for e in points], peaks, atol=0.0001)
+
+
+def test_dalpha_padding_and_gaps_create_neither_peaks_nor_quiet_intervals():
+    t = np.arange(10001) / 10000
+    y = np.zeros_like(t)
+    y[:1000] = y[9001:] = y[4000:6001] = np.nan
+    rows = transients.elm_clock_events(y, t, shot=1)
+    assert [e.phenomenon for e in rows] == ["elm_free", "elm_free"]
+    np.testing.assert_allclose([(e.t0_s, e.t1_s) for e in rows],
+                               [(0.1, 0.3999), (0.6001, 0.9)])
+    assert all((e.t_cov0_s, e.t_cov1_s) == (0.1, 0.9) for e in rows)
+
 #: The synthetic train is a WIDE pass of a 500 kHz record: hop 128 samples,
 #: so 0.256 ms per column, 60 columns per ELM, 15.36 ms, 65.104 Hz.
 TRAIN_FS_HZ = 5.0e5
@@ -98,7 +121,7 @@ def test_the_thresholds_are_ours_and_the_row_threshold_is_the_masks_own():
 def test_the_sources_and_phenomena_are_ones_the_events_table_knows():
     assert transients.SOURCE in schema.KNOWN_SOURCES
     assert transients.FREE_SOURCE in schema.KNOWN_SOURCES
-    assert transients.PHENOMENON == "elm"
+    assert transients.PHENOMENON == "transient"
     assert transients.FREE_PHENOMENON == "elm_free"
 
 
@@ -387,13 +410,13 @@ def _events(elms, bursts, act, t_s):
     )
 
 
-def test_every_elm_is_one_point_event_and_the_quiet_is_an_interval():
+def test_every_mask_peak_is_a_transient_point_without_an_elm_claim():
     elms, bursts, act, t_s = _built()
     got = _events(elms, bursts, act, t_s)
-    points = [e for e in got if e.phenomenon == "elm"]
+    points = [e for e in got if e.phenomenon == "transient"]
     free = [e for e in got if e.phenomenon == "elm_free"]
     assert len(points) == len(elms)
-    assert len(free) == 1
+    assert free == []
     one = points[0]
     assert one.shot == 198658
     assert one.source == "tokeye_transient"
@@ -404,10 +427,6 @@ def test_every_elm_is_one_point_event_and_the_quiet_is_an_interval():
     assert math.isnan(one.f0_khz) and math.isnan(one.f1_khz)
     # An ELM inside a burst is as confident as that burst is active.
     assert one.confidence == pytest.approx(BURST_ACTIVITY)
-    assert free[0].source == "elm_clock"
-    assert free[0].evidence_kind == "heuristic"
-    assert free[0].t1_s > free[0].t0_s
-    assert math.isnan(free[0].confidence)
 
 
 def test_an_elm_outside_every_burst_is_confident_of_the_smoothed_activity():
@@ -422,7 +441,7 @@ def test_an_elm_outside_every_burst_is_confident_of_the_smoothed_activity():
     assert transients.extract_bursts(act) == []
     got = _events(elms, [], act, t_s)
     smoothed = transients.smooth_activity(act, t_s)
-    point = next(e for e in got if e.phenomenon == "elm")
+    point = next(e for e in got if e.phenomenon == "transient")
     assert point.confidence == pytest.approx(
         float(smoothed[int(np.abs(t_s - elms[0]).argmin())])
     )
@@ -432,25 +451,19 @@ def test_an_elm_outside_every_burst_is_confident_of_the_smoothed_activity():
         t_s=t_s, t_cov=(float(t_s[0]), float(t_s[-1])), unet_sha256="b" * 64,
         activity=None,
     )
-    assert math.isnan(next(e for e in bare if e.phenomenon == "elm").confidence)
+    assert math.isnan(next(e for e in bare if e.phenomenon == "transient").confidence)
 
 
 def test_the_attrs_say_what_the_evidence_was_and_survive_json():
     elms, bursts, act, t_s = _built()
     got = _events(elms, bursts, act, t_s)
-    point = next(e for e in got if e.phenomenon == "elm")
+    point = next(e for e in got if e.phenomenon == "transient")
     assert point.attrs["unet_sha256"] == "b" * 64
     assert point.attrs["burst_col0"] is not None
     assert point.attrs["burst_cols"] == 3
     assert json.loads(json.dumps(point.attrs, allow_nan=False)) == dict(
         point.attrs
     )
-    free = next(e for e in got if e.phenomenon == "elm_free")
-    assert free.attrs["n_elms_inside"] == 0
-    assert free.attrs["max_rate_hz"] == transients.ELM_FREE_MAX_RATE_HZ
-    assert free.attrs["max_rate_inside_hz"] == 0.0
-    assert free.attrs["duration_s"] == pytest.approx(free.t1_s - free.t0_s)
-    assert json.loads(json.dumps(free.attrs, allow_nan=False)) == dict(free.attrs)
 
 
 def test_the_events_go_into_the_shots_table(tmp_path):
@@ -458,10 +471,10 @@ def test_the_events_go_into_the_shots_table(tmp_path):
     path = tmp_path / "198658_events.parquet"
     schema.write_events(path, 198658, _events(elms, bursts, act, t_s), run_id="t")
     back = schema.read_events(path)
-    assert set(back["source"]) == {"tokeye_transient", "elm_clock"}
-    assert len(schema.read_events(path, phenomenon="elm")) == len(elms)
+    assert set(back["source"]) == {"tokeye_transient"}
+    assert len(schema.read_events(path, phenomenon="transient")) == len(elms)
     free = schema.intervals(back, "elm_free")
-    assert free.shape == (1, 2)
+    assert free.shape == (0, 2)
 
 
 def test_the_activity_the_confidence_comes_from_is_not_optional():
@@ -479,7 +492,7 @@ def test_the_activity_the_confidence_comes_from_is_not_optional():
         transients.transients_to_events(np.zeros(0), [], **common)
     assert transients.transients_to_events(
         np.zeros(0), [], activity=None, **common
-    )
+    ) == []
 
 
 def test_events_of_a_channel_with_nothing_on_it():
@@ -489,9 +502,8 @@ def test_events_of_a_channel_with_nothing_on_it():
         t_s=t_s, t_cov=(float(t_s[0]), float(t_s[-1])), unet_sha256="b" * 64,
         activity=None,
     )
-    # No ELMs is not no coverage: the whole record is one ELM-free interval.
-    assert [e.phenomenon for e in got] == ["elm_free"]
-    assert (got[0].t0_s, got[0].t1_s) == (float(t_s[0]), float(t_s[-1]))
+    # A quiet mask makes no ELM claim; completion belongs in sources.parquet.
+    assert got == []
 
 
 # ---------------------------------------------------- transients_for_block

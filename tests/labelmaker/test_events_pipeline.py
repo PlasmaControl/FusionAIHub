@@ -169,6 +169,133 @@ def model():
     return PaintedNet().eval()
 
 
+def test_finish_publishes_dalpha_clock_points_without_any_mask(paths):
+    """A missing U-Net block must not hide measured D-alpha peaks."""
+    paths.corpus.mkdir(parents=True)
+    t = np.arange(10001) / 10000
+    peak_times = np.array([0.2, 0.4, 0.6, 0.8])
+    signal = sum(np.exp(-0.5 * ((t - p) / 0.001) ** 2) for p in peak_times)
+    y = np.full((104, t.size), np.nan)
+    y[:8] = signal
+    y[:, :100] = np.nan
+    y[:, -100:] = np.nan
+    with h5py.File(paths.corpus_file(SHOT), "w") as f:
+        f["filterscopes/xdata"] = t
+        f["filterscopes/ydata"] = y
+    result = pl.finish_shot(pl.ShotResult(shot=SHOT), paths,
+                            paths.corpus_file(SHOT), [], run_id="dalpha")
+    assert not result.error
+    events = schema.read_events(paths.events_file(SHOT))
+    points = events[events.phenomenon == "elm"]
+    assert len(points) == 4
+    np.testing.assert_allclose(points.t0_s, peak_times, atol=0.0001)
+    np.testing.assert_array_equal(points.t0_s, points.t1_s)
+    assert set(points.source) == {"elm_clock"}
+    assert set(points.evidence_kind) == {"heuristic"}
+    assert set(points.diag) == {"filterscopes"}
+    assert set(points.t_cov0_s) == {t[100]}
+    assert set(points.t_cov1_s) == {t[-101]}
+    for raw in points["attrs"]:
+        attrs = json.loads(raw)
+        assert set(attrs) == {"prominence", "width_ms", "channel", "rate_hz_local"}
+        assert attrs["channel"] == 0
+        assert attrs["prominence"] > 0.9
+        assert 2 < attrs["width_ms"] < 3
+        assert attrs["rate_hz_local"] == 10
+    assert result.n_elms == 4
+    source = schema.read_sources(paths.sources_file(SHOT))
+    clock = source[source.source == "elm_clock"].iloc[0]
+    assert clock.status == "ok"
+    assert clock.n_events == len(events[events.source == "elm_clock"])
+    assert clock.t_cov0_s == t[100] and clock.t_cov1_s == t[-101]
+    assert events[events.phenomenon == "elm_free"].shape[0] == 5
+
+
+def test_outside_track_does_not_prevent_independent_dalpha_events(
+    shot_file, paths, model, monkeypatch,
+):
+    with h5py.File(shot_file, "a") as f:
+        t = f["filterscopes/xdata"][:]
+        signal = sum(np.exp(-0.5 * ((t - p) / 0.002) ** 2)
+                     for p in (0.1, 0.3, 0.5, 0.7))
+        f["filterscopes/ydata"][:8, :] = signal
+    describe = pl.describe_block
+
+    def outside_track(prepared, *args, **kwargs):
+        block = describe(prepared, *args, **kwargs)
+        if block.diag == "ece" and block.channel == 8:
+            at = block.t_cov[1] + 0.001
+            block = replace(block, tracks=[replace(block.tracks[0], t0_s=at, t1_s=at)])
+        return block
+
+    monkeypatch.setattr(pl, "describe_block", outside_track)
+    result = _run(paths, model)
+    assert not result.error
+    assert result.n_elms == 4
+    assert "must not exceed" in result.skipped["track ece:8:wide"]
+    events = schema.read_events(paths.events_file(SHOT))
+    assert len(events[events.phenomenon == "elm"]) == 4
+    track_rows = events[events.source == "tokeye_track"]
+    assert result.n_tracks == len(track_rows) == 6
+    assert not ((track_rows.diag == "ece") & (track_rows.channel == 8)).any()
+    sources = schema.read_sources(paths.sources_file(SHOT))
+    failed = sources[(sources.source == "tokeye_track")
+                     & (sources.diag == "ece") & (sources.channel == 8)].iloc[0]
+    assert failed.status == "skipped" and failed.n_events == 0
+    assert np.isnan(failed.t_cov0_s) and np.isnan(failed.t_cov1_s)
+    assert sources[sources.source == "elm_clock"].iloc[0].status == "ok"
+
+
+def test_quiet_dalpha_writes_coverage_and_no_observed_elm(paths):
+    paths.corpus.mkdir(parents=True)
+    with h5py.File(paths.corpus_file(SHOT), "w") as f:
+        f["filterscopes/xdata"] = np.arange(1001) / 10000
+        f["filterscopes/ydata"] = np.zeros((104, 1001))
+    pl.finish_shot(pl.ShotResult(shot=SHOT), paths, paths.corpus_file(SHOT), [])
+    events = schema.read_events(paths.events_file(SHOT))
+    assert list(events.phenomenon) == ["elm_free"]
+    source = schema.read_sources(paths.sources_file(SHOT))
+    clock = source[source.source == "elm_clock"].iloc[0]
+    assert clock.status == "ok" and clock.n_events == 1
+    assert (clock.t_cov0_s, clock.t_cov1_s) == (0.0, 0.1)
+
+
+def test_dalpha_falls_back_past_isolated_finite_samples(paths):
+    paths.corpus.mkdir(parents=True)
+    t = np.arange(1001) / 10000
+    y = np.zeros((104, t.size))
+    y[0] = np.nan
+    y[0, [0, -1]] = 1.0
+    with h5py.File(paths.corpus_file(SHOT), "w") as f:
+        f["filterscopes/xdata"] = t
+        f["filterscopes/ydata"] = y
+    result = pl.finish_shot(pl.ShotResult(shot=SHOT), paths,
+                            paths.corpus_file(SHOT), [])
+    assert "elm_clock" not in result.skipped
+    assert result.elm_reference == "filterscopes_01"
+    rows = schema.read_events(paths.events_file(SHOT))
+    assert list(rows.phenomenon) == ["elm_free"]
+    assert list(rows.channel) == [1]
+
+
+def test_missing_dalpha_is_skipped_without_borrowing_mask_coverage(
+    shot_file, paths, model,
+):
+    with h5py.File(shot_file, "a") as f:
+        del f["filterscopes"]
+    _run(paths, model)
+    events = schema.read_events(paths.events_file(SHOT))
+    assert not (events.phenomenon == "elm").any()
+    assert not (events.phenomenon == "elm_free").any()
+    transient = events[events.source == "tokeye_transient"]
+    assert set(transient.phenomenon) == {"transient"}
+    assert len(transient) == len(ELM_COLS)
+    source = schema.read_sources(paths.sources_file(SHOT))
+    clock = source[source.source == "elm_clock"].iloc[0]
+    assert clock.status == "skipped" and clock.diag == "filterscopes"
+    assert np.isnan(clock.t_cov0_s) and np.isnan(clock.t_cov1_s)
+
+
 def _run(paths, model, **kw):
     kw.setdefault("passes", ("wide",))
     kw.setdefault("tile_batch", 4)
@@ -235,7 +362,9 @@ def test_the_tracks_are_measured_on_the_probabilities_not_the_packed_mask(
     assert 0.0 < float(df.iloc[0]["confidence"]) < 1.0
 
 
-def test_the_elm_clock_runs_on_one_reference_channel(shot_file, paths, model):
+def test_transients_keep_one_mask_reference_and_elms_use_filterscopes(
+    shot_file, paths, model,
+):
     # Every magnetics block carries the same comb, and writing an ELM per
     # channel puts every crash in the table N times - which is what
     # `windows.EventTable`'s de-duplication exists to survive, not what it
@@ -245,8 +374,31 @@ def test_the_elm_clock_runs_on_one_reference_channel(shot_file, paths, model):
     assert set(zip(df["diag"], df["channel"], df["pass_name"], strict=True)) == {
         ("mhr", 0, "wide")
     }
-    assert res.elm_reference == "mhr_00_wide"
-    assert res.n_elms == len(ELM_COLS)
+    assert set(df.phenomenon) == {"transient"}
+    assert len(df) == len(ELM_COLS)
+    assert res.elm_reference == "filterscopes_00"
+    assert res.n_elms == len(schema.read_events(
+        paths.events_file(SHOT), phenomenon="elm",
+    ))
+
+
+def test_rerunning_legacy_transients_removes_obsolete_elm_index_rows(
+    shot_file, paths, model,
+):
+    legacy = schema.Event(shot=SHOT, source="tokeye_transient", phenomenon="elm",
+                          t0_s=0.2, t1_s=0.2, t_cov0_s=0, t_cov1_s=1)
+    schema.write_events(paths.events_file(SHOT), SHOT, [legacy], run_id="old")
+    old = schema.index_rows(paths.events_file(SHOT))
+    pl.append_index(paths.events_index, [*old, {**old[0], "shot": SHOT + 1}],
+                    keys=["shot", "source", "phenomenon"])
+    _run(paths, model)
+    index = pd.read_parquet(paths.events_index)
+    ours = index[index.shot == SHOT]
+    assert not ((ours.source == "tokeye_transient") & (ours.phenomenon == "elm")).any()
+    transient = ours[ours.source == "tokeye_transient"]
+    assert list(transient.phenomenon) == ["transient"]
+    assert list(transient.n_events) == [len(ELM_COLS)]
+    assert (index.shot == SHOT + 1).sum() == 1
 
 
 def test_the_cooccurring_tracks_name_each_other(shot_file, paths, model):
@@ -348,8 +500,9 @@ def test_a_skipped_step_reaches_the_sources_file_with_its_reason(shot_file,
     assert set(src["shot"]) == {SHOT}
 
 
-def test_a_failed_step_leaves_both_of_its_sources_visible(shot_file, paths,
-                                                          model, monkeypatch):
+def test_a_failed_transient_step_does_not_skip_the_dalpha_clock(
+    shot_file, paths, model, monkeypatch,
+):
     def boom(*a, **kw):
         raise RuntimeError("no transient trace")
 
@@ -357,9 +510,11 @@ def test_a_failed_step_leaves_both_of_its_sources_visible(shot_file, paths,
     _run(paths, model)
     src = schema.read_sources(paths.sources_file(SHOT))
     got = src[src["source"].isin(["tokeye_transient", "elm_clock"])]
-    assert len(got) == 2                       # one step, two sources, two rows
-    assert set(got["status"]) == {"skipped"}
-    assert all("RuntimeError" in r for r in got["reason"])
+    assert len(got) == 2
+    got = got.set_index("source")
+    assert got.loc["tokeye_transient", "status"] == "skipped"
+    assert "RuntimeError" in got.loc["tokeye_transient", "reason"]
+    assert got.loc["elm_clock", "status"] == "ok"
 
 
 def test_each_actuator_source_records_its_own_axis(shot_file, paths, model,

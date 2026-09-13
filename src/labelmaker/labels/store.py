@@ -167,7 +167,7 @@ def index_rows(path) -> list[dict]:
     return rows
 
 
-def append_index(index_path, rows, *, keys=INDEX_KEYS) -> None:
+def append_index(index_path, rows, *, keys=INDEX_KEYS, replace_shots=()) -> None:
     """Merge rows into the parquet index, replacing any (shot, slug, label).
 
     Rewritten whole and renamed into place: the index is small (one row per
@@ -176,6 +176,8 @@ def append_index(index_path, rows, *, keys=INDEX_KEYS) -> None:
     `keys` is the identity of a row - which rows a re-run replaces and how the
     file is sorted. The default is the label index's; the events index passes
     `["shot", "source", "phenomenon"]` and gets the same merge for free.
+    `replace_shots` replaces each listed shot's complete index, including
+    removed families and a rerun that emitted zero events.
     """
     import pandas as pd
 
@@ -183,11 +185,18 @@ def append_index(index_path, rows, *, keys=INDEX_KEYS) -> None:
     index_path.parent.mkdir(parents=True, exist_ok=True)
     keys = list(keys)
     new = pd.DataFrame(rows)
-    if new.empty:
+    if new.empty and (not replace_shots or not index_path.exists()):
         return
     if index_path.exists():
         old = pd.read_parquet(index_path)
-        merged = pd.concat([old, new], ignore_index=True)
+        if replace_shots:
+            old = old[~old["shot"].isin(replace_shots)]
+        if new.empty:
+            merged = old
+        elif old.empty:
+            merged = new
+        else:
+            merged = pd.concat([old, new], ignore_index=True)
         merged = merged.drop_duplicates(subset=keys, keep="last")
     else:
         merged = new

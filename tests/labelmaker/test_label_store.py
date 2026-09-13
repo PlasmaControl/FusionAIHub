@@ -133,6 +133,20 @@ def test_index_rows_summarise_each_label(tmp_path):
     assert r["run_id"] == "run-test"
 
 
+def test_append_index_can_clear_a_replaced_shot_with_no_new_events(tmp_path):
+    import pandas as pd
+
+    idx = tmp_path / "index.parquet"
+    keys = ["shot", "source", "phenomenon"]
+    rows = [{"shot": shot, "source": "elm_clock", "phenomenon": "elm"}
+            for shot in (100, 101)]
+    append_index(idx, rows, keys=keys)
+    append_index(idx, [], keys=keys, replace_shots=[100])
+    assert pd.read_parquet(idx).shot.tolist() == [101]
+    append_index(idx, [], keys=keys, replace_shots=[101])
+    assert pd.read_parquet(idx).empty
+
+
 def test_append_index_is_idempotent_per_shot_and_label(tmp_path):
     p = tmp_path / "190000_labels.h5"
     _write(p)

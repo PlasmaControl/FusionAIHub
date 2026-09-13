@@ -97,7 +97,7 @@ def _forecast(shot: int, phenomenon: str, t: float) -> schema.Event:
 def _detected_elm(shot: int, t: float) -> schema.Event:
     """What the ELM clock's detector actually writes."""
     return schema.Event(
-        shot=int(shot), source="tokeye_transient", evidence_kind="detector",
+        shot=int(shot), source="elm_clock", evidence_kind="heuristic",
         phenomenon="elm", t0_s=float(t), t1_s=float(t), confidence=0.8,
         diag="mhr", channel=0, pass_name="wide", t_cov0_s=0.0, t_cov1_s=2.0,
     )
@@ -148,7 +148,7 @@ def test_the_evidence_policy_is_two_named_constants():
     assert windows.FAMILY_SOURCES == {
         "coherent_mode": ("tokeye_track",),
         "pickup": ("tokeye_track",),
-        "elm": ("tokeye_transient",),
+        "elm": ("elm_clock",),
         "elm_free": ("elm_clock",),
         "sawtooth": ("ece_sawtooth",),
         "lh_transition": ("dalpha_lh",),
@@ -335,4 +335,4 @@ def test_a_text_only_shot_resolves_to_zero_events_and_honest_coverage(
     assert np.all(rows["cov_frac_co2"][valid] == 0.0)
     # And the policy is on the array, so a stored feature can be re-checked.
     assert got.attrs["evidence_kinds"] == "detector|heuristic"
-    assert "elm<-tokeye_transient" in got.attrs["evidence_sources"]
+    assert "elm<-elm_clock" in got.attrs["evidence_sources"]
