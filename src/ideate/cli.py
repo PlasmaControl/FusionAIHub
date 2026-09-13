@@ -466,6 +466,7 @@ def cmd_export(args) -> int:
 
 def cmd_encode(args) -> int:
     """IGNITE frame-code caches for a shot list: the seeds a Phase-5 rollout starts from."""
+    from .design import provenance
     from .design import seed as seed_mod
     from .shotdb.corpus import CorpusReader
 
@@ -479,6 +480,13 @@ def cmd_encode(args) -> int:
         print("nothing to encode", file=sys.stderr)
         return 1
     out = Path(args.out) if args.out else Path(paths.data_root) / "frame_codes"
+    # The manifest's path is settled BEFORE the run, not after, so every `frame_codes/<shot>.json`
+    # sidecar this run writes can name the manifest that will hold the run's own report. The two
+    # point at each other, which is what makes a cache traceable to a job.
+    run_dir = Path(paths.data_root) / "runs" / "encode"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
     report = seed_mod.encode_many(
         shots,
         reader=CorpusReader(paths.foundation_model_processed_dir),
@@ -488,11 +496,13 @@ def cmd_encode(args) -> int:
         skip_existing=args.skip_existing,
         workers=args.workers,
         paths=paths,
+        run_manifest=manifest,
     )
-    run_dir = Path(paths.data_root) / "runs" / "encode"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    manifest = run_dir / f"encode_{stamp}_{args.chunk}of{args.n_chunks}.json"
+    # The commit the encode ran at, in the run manifest as well as in every sidecar: the
+    # manifests written before this change carry none, and their shots' sidecars can only be
+    # backfilled with a null (see `scripts/ideate/frame_codes_provenance.py`).
+    report["git_sha"] = provenance.build_sidecar(0, device="", input_file=None, bundle=None)["git_sha"]
+    report["run_manifest"] = str(manifest)
     manifest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         f"encoded {report['n_encoded']}/{report['n_requested']} shots "
@@ -510,11 +520,45 @@ def cmd_encode(args) -> int:
     return 0 if report["n_encoded"] or report["n_skipped"] else 1
 
 
+def _frame_codes_census(paths) -> str:
+    """One line per device the encoded caches were written on, plus what has no sidecar.
+
+    The product is device-mixed and the codes are NOT bit-reproducible across devices or even
+    across BLAS thread counts (see `design.provenance`), so "500 shots are encoded" is not a
+    statement anybody can act on without the split. A cache with no provenance sidecar is counted
+    separately rather than folded into a device: unknown is not the majority answer.
+    """
+    from collections import Counter
+
+    from .design import provenance
+
+    dirs = build_mod.frame_codes_dirs(paths)
+    by_device: Counter[str] = Counter()
+    shots: set[int] = set()
+    for d in dirs:
+        for cache in sorted(Path(d).glob("*.pt")):
+            try:
+                shot = int(cache.stem)
+            except ValueError:
+                continue
+            if shot in shots:  # the same shot in two locations is one shot
+                continue
+            shots.add(shot)
+            side = provenance.read_sidecar(d, shot)
+            by_device[str((side or {}).get("device") or "no sidecar")] += 1
+    if not shots:
+        return "frame codes  none found in " + ", ".join(str(d) for d in dirs)
+    parts = ", ".join(f"{dev} {n}" for dev, n in sorted(by_device.items()))
+    return f"frame codes  {len(shots)} shot(s) encoded: {parts}"
+
+
 def cmd_coverage(args) -> int:
-    db = _open_db(config.load_paths())
+    paths = config.load_paths()
+    db = _open_db(paths)
     if db is None:
         return 1
     print(_coverage_table(db))
+    print(_frame_codes_census(paths))
     return 0
 
 
@@ -1152,8 +1196,13 @@ def cmd_labels(args) -> int:
     result = join_mod.join(
         shots, labelmaker_root=root, text_root=text_root, lexicon_path=args.lexicon
     )
+    # The join is the step that runs AFTER the long jobs and republishes, so it is where a
+    # `has_frame_codes` column set at build time -- 13 true while all 500 caches existed -- gets
+    # brought back in line with the directory. A rebuild to fix one boolean costs an hour.
+    codes = build_mod.refresh_frame_codes(db_dir, paths)
     block = join_mod.write_tables(
-        db_dir, result.labels_wide, result.events, result.claims, result.manifest
+        db_dir, result.labels_wide, result.events, result.claims, result.manifest,
+        sources_df=result.sources, join_block={"frame_codes": codes},
     )
     m = result.manifest
     print(
@@ -1187,10 +1236,144 @@ def cmd_labels(args) -> int:
         for col in ("polarity", "temporality"):
             print("  " + ", ".join(f"{k} {v:,}" for k, v in
                                    sorted(Counter(result.claims[col]).items())))
+    # Which detectors RAN, not what they found: an events table with no rows for a shot is
+    # "nobody looked" until this says otherwise, and that is what `get_events` reports.
+    print(
+        f"event_sources {m['n_event_source_rows']:,} rows over "
+        f"{m['n_shots_with_source_rows']:,} shot(s): {m['n_sources_ok']:,} ok, "
+        f"{m['n_sources_skipped']:,} skipped, {m['n_sources_error']:,} error"
+    )
+    print(
+        f"  {m['n_shots_with_observed_products']:,} shot(s) have an observed-event product; "
+        f"{m['n_shots_unprocessed']:,} are unprocessed (their empty event list is not evidence)"
+    )
+    print(
+        f"has_frame_codes refreshed: {codes['n_has_frame_codes']:,}/{codes['n_shots']:,} shots "
+        f"({codes['n_changed']:,} changed, was {codes.get('n_was_true', 0):,})"
+    )
     if m["n_shots_missing_labels"]:
         print(f"no labels file: {_brief(m['labels_missing'])}")
-    print(f"wrote {db_dir}/{{labels_wide,events,text_claims}}.parquet and manifest.json")
+    print(
+        f"wrote {db_dir}/{{labels_wide,events,text_claims,event_sources}}.parquet "
+        f"and manifest.json"
+    )
     print(f"manifest labels block: {json.dumps(block, default=str)}")
+    return 0
+
+
+# ------------------------------------------------------------------------------- phenomenon
+
+
+#: The quote column's width. Passed to `describe.shorten` so the cut lands on a word boundary.
+PHENOMENON_QUOTE_WIDTH = 60
+
+
+def _phenomenon_table(hits, resolved_id: str) -> None:
+    """One line per hit: the shot, the score, WHICH classes of evidence there are, the first
+    interval and a shortened quote. The evidence column is the point of the table -- two hits with
+    the same score are not the same claim if one is `obs` and the other `text`."""
+    from .retrieval import phenomena as ph_mod
+
+    print(f"{'shot':>7}  {'score':>6}  {'evidence':<26}  {'first interval':<22}  quote")
+    for hit in hits:
+        classes = []
+        if hit.intervals:
+            classes.append(f"obs x{len(hit.intervals)}")
+        if any(v is not None for v in hit.label_evidence.values()):
+            classes.append("label")
+        if hit.forecasts:
+            classes.append(f"forecast x{len(hit.forecasts)}")
+        if hit.text_snippets:
+            classes.append("text")
+        # The span is labelled by WHICH list it came from. An unlabelled time range beside a
+        # forecast-only hit reads as "the mode was there then", which is the one thing it is not.
+        if hit.intervals:
+            first, kind = hit.intervals[0], "seen"
+        elif hit.forecasts:
+            first, kind = hit.forecasts[0], "forecast"
+        else:
+            first, kind = None, ""
+        span = "-" if first is None else f"{kind} {first.t0_s:.3f}-{first.t1_s:.3f} s"
+        quote = (
+            "" if hit.quote is None
+            else describe_mod.shorten(hit.quote, PHENOMENON_QUOTE_WIDTH)
+        )
+        print(
+            f"{hit.shot:>7}  {hit.score:>6.3f}  {', '.join(classes) or 'none':<26}  "
+            f"{span:<22}  {quote}"
+        )
+        for caveat in hit.caveats:
+            print(f"{'':>7}  {'':>6}  ! {caveat}")
+    if not hits:
+        print(
+            f"no shot in the database carries evidence of {ph_mod.registry()[resolved_id].title}.",
+            file=sys.stderr,
+        )
+
+
+def cmd_phenomenon(args) -> int:
+    """`ideate phenomenon TEXT`: which shots show a phenomenon, and what kind of evidence says so.
+
+    Exit 2 on text that resolves to no phenomenon, with the registry's titles listed: an empty
+    table would read as "no shot has one", and the two are opposite answers.
+    """
+    from .retrieval import phenomena as ph_mod
+
+    reg = ph_mod.registry()
+    if args.list:
+        for pid, ph in reg.items():
+            band = "" if ph.band_khz is None else f"  band {ph.band_khz[0]}-{ph.band_khz[1]} kHz"
+            print(f"{pid:<12} {ph.title}{band}")
+            print(f"{'':<12} aliases: {', '.join(ph.aliases)}")
+            print(
+                f"{'':<12} labels: {len(ph.labels)}, event rules: {len(ph.events)}, "
+                f"forecast sources: {', '.join(ph.forecasts) or 'none'}, prior {ph.prior:.3f}"
+            )
+        return 0
+    if not args.text:
+        print("give some text, or --list", file=sys.stderr)
+        return 2
+    resolved = ph_mod.resolve(args.text)
+    if not resolved:
+        titles = ", ".join(f"{pid} ({ph.title})" for pid, ph in reg.items())
+        print(f"no phenomenon resolved; try one of: {titles}", file=sys.stderr)
+        return 2
+    paths = config.load_paths()
+    db_dir = Path(args.db) if args.db else paths.db_dir
+    if not (db_dir / "manifest.json").exists():
+        print(f"no database at {db_dir} -- run `ideate build` first", file=sys.stderr)
+        return 1
+    db = store.ShotDB.load(db_dir)
+    top = resolved[0][0]
+    notes: list[str] = []
+    hits = ph_mod.locate(
+        top,
+        db,
+        args.n,
+        segment=args.segment,
+        min_confidence=args.min_confidence,
+        avoid=args.avoid or (),
+        notes=notes,
+    )
+    if args.json:
+        # The notes are about shots that are NOT in the payload, so they go to stderr rather
+        # than into a list of hits whose schema is `PhenomenonHit`.
+        for note in notes:
+            print(note, file=sys.stderr)
+        print(json.dumps([h.model_dump(mode="json") for h in hits], indent=1, default=str))
+        return 0
+    print(
+        "resolved: "
+        + ", ".join(f"{pid} ({reg[pid].title}) {w:.2f}" for pid, w in resolved)
+    )
+    # The fact that changes what every row below means, on the screen where the rows are, and
+    # not only in the docs: a database with no observation in it cannot return an observed hit.
+    n_events = len(db.events)
+    if n_events and not (db.events["evidence_kind"] != "forecast").any():
+        print(ph_mod.ALL_FORECASTS.format(n=n_events))
+    for note in notes:
+        print(note)
+    _phenomenon_table(hits, top)
     return 0
 
 
@@ -1412,6 +1595,27 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lexicon", help="phenomenon aliases (default: labelmaker's lexicons.yaml)")
     s.add_argument("--no-text", action="store_true", help="skip the text claims entirely")
     p.set_defaults(func=cmd_labels)
+
+    p = sub.add_parser(
+        "phenomenon",
+        help="which shots show a phenomenon, and what kind of evidence says so",
+    )
+    p.add_argument("text", nargs="?", help='what to look for, e.g. "edge harmonic oscillation"')
+    p.add_argument("--list", action="store_true", help="print the registry instead of searching")
+    p.add_argument("--n", type=int, default=20, help="how many shots (default 20)")
+    p.add_argument("--segment", default="flat_top", choices=list(get_args(SegName)))
+    p.add_argument("--json", action="store_true", help="the hits as JSON")
+    p.add_argument(
+        "--avoid", nargs="*", metavar="TOKEN", default=[],
+        help="drop shots with OBSERVED evidence of another phenomenon, e.g. phenomenon:elm; "
+             "a shot nothing looked at is kept, with a caveat",
+    )
+    p.add_argument(
+        "--min-confidence", type=float, default=0.0, dest="min_confidence",
+        help="drop events below this confidence (and events the source never scored)",
+    )
+    p.add_argument("--db", help="database directory (default: paths.yaml's db_dir)")
+    p.set_defaults(func=cmd_phenomenon)
 
     p = sub.add_parser("query", help="find similar shots")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")

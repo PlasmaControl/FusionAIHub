@@ -35,8 +35,11 @@ DEFAULT_LOGS_JSONL = Path(
 #: lives under `data/labels/` and never under `src/`, and the default
 #: resolves relative to this FILE rather than to the caller's cwd - a run
 #: from a SLURM scratch directory finds the committed manifest the same way
-#: a run from the repo does. Overridable, because a table too large or too
-#: restricted to commit lives on /scratch instead.
+#: a run from the repo does. That resolution is a SOURCE CHECKOUT's (which
+#: is every way labelmaker is run today: `PYTHONPATH=$PWD/src`, or an
+#: editable install); from a non-editable wheel the tables are outside the
+#: package and `LABELMAKER_LABEL_TABLES` is the answer. Overridable anyway,
+#: because a table too large or too restricted to commit lives on /scratch.
 DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "labels"
 
 
@@ -141,6 +144,16 @@ class Paths:
 
     def events_file(self, shot: int) -> Path:
         return self.events / f"{shot}_events.parquet"
+
+    def sources_file(self, shot: int) -> Path:
+        """Which sources RAN on this shot, and over what coverage.
+
+        Beside the events file and not inside it, because it is a
+        different claim: an events file says what was found, and a shot on
+        which every detector ran and found nothing has an EMPTY one. This
+        is what tells that apart from a shot nothing has been run on.
+        """
+        return self.events / f"{shot}_sources.parquet"
 
     def masks_file(self, shot: int) -> Path:
         return self.masks / f"{shot}_masks.npz"

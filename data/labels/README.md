@@ -74,12 +74,17 @@ about it. It is knowledge we did not compute and cannot re-derive, so:
 
 ## Committing
 
-`data/` is in `.gitignore` (it holds the corpus caches and the preprocessing
-statistics), so these files are tracked by an explicit override:
+`.gitignore` excludes `data/*` and re-includes `data/labels/` — the glob and
+not `data/`, because git never descends into an excluded *directory* and a
+`!data/labels/` after `data/` would un-ignore nothing. So a new table is a
+plain `git add` and needs no `-f`:
 
 ```bash
-git add -f data/labels/tables.yaml data/labels/<dir>/<stem>.csv
+git add data/labels/tables.yaml data/labels/<dir>/<stem>.csv
 ```
+
+(A checkout whose `.git/info/exclude` also carries `data/` will still hide
+them — that file is per-clone and not tracked; drop the line there once.)
 
 Only commit a table that is small and that we are allowed to redistribute. One
 that is neither lives on `/scratch` and the root moves with it:

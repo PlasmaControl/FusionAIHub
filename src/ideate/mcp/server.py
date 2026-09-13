@@ -32,12 +32,33 @@ DIII-D shot retrieval over a locally built database of tokamak discharges.
 `describe_shot` returns everything the database holds about one shot; `get_events` returns the
 time-resolved events for a shot.
 
-Every reply carries `caveats`, and they change what the reply means -- read them before
-answering. Two of them matter most: an empty result with "no channel had anything to search on"
-means the query was empty, not that no such shot exists; and `get_events` keeps `forecasts`
-apart from `events` because a forecast is a model's estimate of what was about to happen and an
-event is a claim about what a diagnostic showed. Never report one as the other, and quote the
-operator logbook only from `record.human.log_entries`, verbatim.
+Every reply the tools THEMSELVES produce carries `caveats`, and they change what the reply means
+-- read them before answering. That promise covers application-level results, including failures
+these tools anticipate and ones they do not (a database caught mid-publish, a table written to
+some other schema): those come back as `{"error": ..., "caveats": [...]}`. It does NOT cover a
+call whose arguments do not match the tool's schema -- a string where a shot number belongs. Such
+a call is rejected by the MCP framework before any of this code runs, so it surfaces as a
+protocol/validation error with no `caveats` field. Fix the argument and call again.
+
+Two caveats matter most. An empty search result with "no channel had anything to search on"
+means the query was empty, not that no such shot exists.
+
+And `get_events` returns THREE separate lists plus a `status`, because they are three different
+kinds of claim:
+
+  events         what a DIAGNOSTIC showed, per `source` and `confidence`.
+  text_mentions  a lexicon hit in the operator logbook: somebody wrote the word. Not evidence
+                 that the phenomenon occurred.
+  forecasts      a MODEL's estimate of what was about to happen, from a risk curve and a
+                 threshold. Never report one as an observation.
+
+`status` says what an EMPTY `events` means, and the four are not interchangeable:
+`unindexed` (the shot is not in the database at all), `unprocessed` (no detector is recorded as
+having run over it -- absence is not evidence), `uncovered` (detectors ran but not over the
+window you asked about; the caveat names the span that was covered), `observed` (somebody looked
+and saw nothing, which is a real finding).
+
+Quote the operator logbook only from `record.human.log_entries`, verbatim.
 """
 
 

@@ -63,6 +63,7 @@ from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 
 from ..ae.labels import N_BINS, PROB_THRESHOLD
+from .coverage import clip_point_to_coverage, clipped_attrs
 from .masks import read_mask
 from .schema import Event
 
@@ -457,6 +458,11 @@ def transients_to_events(
     Its `attrs` record the threshold and window it was cut at, the highest
     rate actually reached inside it, and how many ELMs it contains - which
     is zero unless the caller relaxed `max_rate_hz`.
+
+    An ELM whose column lies outside `t_cov` - the stitched transform's
+    first and last columns do (`masks.COL_ORIGIN`) - is written AT the
+    bound with `attrs["clipped"] = true`; see
+    `coverage.clip_point_to_coverage` for why that and not a refusal.
     """
     elm = _sorted_times(elm_times_s)
     t = np.asarray(t_s, dtype=np.float64)
@@ -488,20 +494,26 @@ def transients_to_events(
             confidence = float(smoothed[col])
         else:
             confidence = math.nan
+        # A column centre outside the record it was computed from is the
+        # transform's edge padding (`masks.COL_ORIGIN`), not an ELM that
+        # outlived the digitiser: the point is moved onto the bound and the
+        # row says so. `col` still names the column the peak was found in,
+        # and the clock's own arithmetic below runs on the measured times.
+        at, clipped = clip_point_to_coverage(time, cov)
         out.append(
             Event(
                 source=SOURCE,
                 evidence_kind="detector",
                 phenomenon=PHENOMENON,
-                t0_s=float(time),
-                t1_s=float(time),
+                t0_s=at,
+                t1_s=at,
                 confidence=confidence,
-                attrs={
+                attrs=clipped_attrs({
                     "col": int(col),
                     "burst_col0": None if holder is None else int(holder.col0),
                     "burst_cols": None if holder is None else int(holder.n_cols),
                     "unet_sha256": str(unet_sha256),
-                },
+                }, clipped),
                 **common,
             )
         )

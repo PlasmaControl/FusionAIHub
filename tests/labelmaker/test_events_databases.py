@@ -317,9 +317,12 @@ def test_a_table_that_names_the_shot_records_one_ok_source_with_nan_coverage(
     assert record["source"] == "database:rwm_fixture"
     assert record["status"] == "ok"
     assert record["n_events"] == 2
+    # The NaN coverage IS the signal, and it is the only one: an `ok` row
+    # carries no reason (`schema._source_row` refuses one), so the sentence
+    # lives in `db.COVERAGE_REASON` for the docs and never on the row.
     assert math.isnan(record["t_cov0_s"]) and math.isnan(record["t_cov1_s"])
-    assert record["reason"] == db.COVERAGE_REASON
-    assert "coverage unknown" in record["reason"]
+    assert record["reason"] == ""
+    assert "coverage unknown" in db.COVERAGE_REASON
     # The sources file's key is `(source, diag, channel, pass_name)`, so two
     # tables for one phenomenon coexist and a re-run replaces its own rows.
     assert (record["diag"], record["channel"], record["pass_name"]) == ("", -1, "")
