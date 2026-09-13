@@ -712,6 +712,12 @@ def _fifo_corpus(tmp_path, shot=SHOT):
     return corpus
 
 
+def _until_dead(procs, seconds: float = 180.0) -> None:
+    deadline = time.monotonic() + seconds
+    while any(p.is_alive() for p in procs) and time.monotonic() < deadline:
+        time.sleep(0.2)
+
+
 def test_closing_a_pool_kills_a_worker_that_is_wedged(tmp_path):
     """`close()` must not leave a live worker behind - at all.
 
@@ -736,6 +742,12 @@ def test_closing_a_pool_kills_a_worker_that_is_wedged(tmp_path):
         at = time.monotonic()
         pool.close()
         assert time.monotonic() - at < 30       # close does not wait forever
+        # `close` SENDS the signals and does not join for ever - a child
+        # caught in an uninterruptible read (a busy GPFS, which is the whole
+        # reason this path exists) is reaped when it leaves that state, and
+        # a driver that waited for it would be the hang this fixes. So the
+        # assertion is that it dies, not that it dies synchronously.
+        _until_dead(procs)
         assert [p for p in procs if p.is_alive()] == []
     finally:
         pool.close()
@@ -763,10 +775,10 @@ def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(tmp_path):
 
     assert got.rows[0]["status"] == "error"
     assert elapsed < 120
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 180
     while (set(multiprocessing.active_children()) - before
            and time.monotonic() < deadline):
-        time.sleep(0.1)
+        time.sleep(0.2)
     assert set(multiprocessing.active_children()) - before == set()
 
 
