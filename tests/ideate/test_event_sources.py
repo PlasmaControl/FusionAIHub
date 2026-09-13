@@ -89,7 +89,7 @@ def test_the_summary_counts_each_status_and_says_whether_anything_completed(tmp_
 
     assert es.shot_summary(union, 198658) == {
         "n_sources": 3, "n_sources_ok": 2, "n_sources_skipped": 1, "n_sources_error": 0,
-        "has_observed_products": True,
+        "n_sources_unknown_coverage": 0, "has_observed_products": True,
     }
     failed = es.shot_summary(union, 190090)
     assert failed["n_sources_error"] == 1
@@ -139,7 +139,7 @@ def test_a_text_source_that_ran_is_not_an_observation_and_covers_nothing():
     source is `text` has no observed product, and the shot span its row carries covers no
     window. Otherwise a logbook-only shot would come back `observed`: "0 detections inside
     coverage", from a detector that never ran."""
-    assert es.NON_DIAGNOSTIC_SOURCES == ("text",)
+    assert es.NON_DIAGNOSTIC_SOURCES == ("text", "database")
     rows = [
         es.source_row(1, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=2),
         es.source_row(1, "tokeye_track", status="skipped", reason="group absent", diag="mhr"),
@@ -158,3 +158,74 @@ def test_a_text_source_that_ran_is_not_an_observation_and_covers_nothing():
     assert es.shot_summary(both, 1)["has_observed_products"] is True
     assert es.coverage_span(both) == (1.0, 4.0)
     assert es.covers(both, 5.0, 6.0) is False
+
+
+def _df(rows: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(rows)[list(es.SOURCES_COLUMNS)].astype(es.SOURCES_DTYPES)
+
+
+def test_an_ok_source_whose_coverage_is_unknown_can_neither_cover_nor_uncover(tmp_path):
+    """THE CORNER. Real shot 198658 wrote `actuator/ech_power_total` as `ok` with NaN coverage:
+    the detector RAN and nothing records over what span. Such a row is not a skipped source (it
+    did run, and `has_observed_products` says so), and it is not coverage either -- it cannot
+    make a window observed, because nothing in it says the window was looked at."""
+    rows = [es.source_row(1, "actuator", diag="ech_power_total", n_events=0)]  # t_cov NaN
+    df = _df(rows)
+
+    assert es.shot_summary(df, 1)["has_observed_products"] is True, "it ran"
+    assert es.shot_summary(df, 1)["n_sources_unknown_coverage"] == 1
+    assert [r["source"] for r in es.unknown_coverage_rows(df).to_dict("records")] == ["actuator"]
+    assert es.coverage_span(df) is None
+    assert es.covers(df, 3.0, 4.0) is None, "unknown coverage is not 'no', and not 'yes'"
+    assert es.observing_rows(df, 3.0, 4.0).empty
+
+
+def test_an_unknown_coverage_row_beside_a_covering_one_is_still_listed(tmp_path):
+    """The caveat has to name it even when the shot does have real coverage: "ech_power_total ran"
+    is part of what the reply means, and a reader counting sources would otherwise count it."""
+    df = _df([
+        es.source_row(1, "actuator", diag="ech_power_total", n_events=0),
+        es.source_row(1, "ece_sawtooth", diag="ece", t_cov0_s=1.0, t_cov1_s=4.0, n_events=0),
+    ])
+    assert es.coverage_span(df) == (1.0, 4.0)
+    assert es.covers(df, 2.0, 3.0) is True
+    assert es.covers(df, 8.0, 9.0) is False
+    assert len(es.unknown_coverage_rows(df)) == 1
+    assert [r["source"] for r in es.observing_rows(df, 2.0, 3.0).to_dict("records")] \
+        == ["ece_sawtooth"]
+
+
+def test_a_window_in_the_gap_between_two_sources_is_not_covered_by_their_hull():
+    """Coverage is per source, not the outer hull of all of them: two passes over [1,2] and [5,6]
+    have not looked at 3-4 s, and answering from the hull is the same borrowed-span defect the
+    per-source table exists to fix. `retrieval.phenomena` clips per source for the same reason."""
+    df = _df([
+        es.source_row(1, "a", t_cov0_s=1.0, t_cov1_s=2.0),
+        es.source_row(1, "b", t_cov0_s=5.0, t_cov1_s=6.0),
+    ])
+    assert es.coverage_span(df) == (1.0, 6.0)  # the hull is still reported, labelled as the hull
+    assert es.covers(df, 3.0, 4.0) is False
+    assert es.covers(df, 1.5, 3.0) is True
+    assert es.observing_rows(df, 3.0, 4.0).empty
+
+
+def test_a_curated_database_listing_is_not_a_diagnostic_having_looked():
+    """`database:<stem>` rows are a curated table's entries -- somebody published a list of shots
+    with an RWM. A listing is not an observation and carries no coverage, so a shot whose only
+    `ok` source is a curated table has no observed product: `unprocessed`, not "0 detections"."""
+    assert es.is_non_diagnostic("database:rwm_database") is True
+    assert es.is_non_diagnostic("database") is True
+    assert es.is_non_diagnostic("text") is True
+    assert es.is_non_diagnostic("databases_of_rwm") is False, "prefix, not substring"
+    assert es.is_non_diagnostic("tokeye_track") is False
+
+    df = _df([
+        es.source_row(1, "database:rwm_database", n_events=3),
+        es.source_row(1, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1),
+    ])
+    summary = es.shot_summary(df, 1)
+    assert summary["n_sources_ok"] == 2
+    assert summary["has_observed_products"] is False
+    assert summary["n_sources_unknown_coverage"] == 0, "a non-diagnostic row is not a gap in one"
+    assert es.coverage_span(df) is None
+    assert es.covers(df, 1.0, 2.0) is None
