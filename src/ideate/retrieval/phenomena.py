@@ -68,6 +68,42 @@ DEFAULT_SATURATION_N = 3.0
 #: typo here is a requirement no shot can ever satisfy, so it is checked rather than trusted.
 CORPUS_GROUPS: tuple[str, ...] = ("bes", "co2", "ece", "filterscopes", "mhr", "mirnov")
 
+#: The four states `PhenomenonHit.coverage_state` can be in, worst-informed first. They are not
+#: degrees of one thing: only `observed` is an answer to "was it there?", and the other three are
+#: three different ways of saying the database cannot tell you. The names and the order are
+#: `ideate.mcp.tools.EVENT_STATES`', so a `get_events` reply and a phenomenon hit describe the
+#: same shot with the same word.
+#:
+#:   unindexed    nothing in the pipeline looks for this phenomenon at all (`rwm`, `detachment`)
+#:   unprocessed  its detectors exist, and none of them has run on this shot
+#:   uncovered    they ran, but not over the window the question is about
+#:   observed     they covered (part of) the window; `coverage` is that intersection
+COVERAGE_STATES: tuple[str, ...] = ("unindexed", "unprocessed", "uncovered", "observed")
+
+#: Which `evidence_kind` values are OBSERVATIONS. An allow-list, not "anything that is not a
+#: forecast": labelmaker's `EVIDENCE_KINDS` also holds `text`, `model`, `human` and `database`,
+#: and one `source="tokeye_track", evidence_kind="model"` row would otherwise be reported as a
+#: diagnostic sighting by the same code path that reports a detector's. The registry's source
+#: pins keep those rows out today; this keeps them out when a source starts writing both.
+OBSERVED_KINDS = frozenset({"detector", "heuristic"})
+FORECAST_KIND = "forecast"
+
+#: How good a detection label has to be before it is EVIDENCE rather than a number. Below it the
+#: probability is still reported in `label_evidence` -- it is a measurement of the model, and
+#: suppressing it would be its own kind of lie -- but it does not put the shot in the LABELLED
+#: tier and it does not make the shot a hit. Measured on the 500-shot database: a quarter of the
+#: `tm_prob` rows that "have label evidence" are at or below 0.010, i.e. the model saying no.
+#: 0.5 is a declared default and not a fitted operating point; a `thr:` published on a registry
+#: entry (from a model card) overrides it for that label, which is what `thr` is for.
+DEFAULT_LABEL_FLOOR = 0.5
+
+#: The tier order, in one sentence, so `retrieval.yaml` and `docs/IDEATE.md` cannot state it
+#: differently from the code that sorts by it. A test asserts both files contain this string.
+RANKING_SENTENCE = (
+    "an observed hit outranks a label-only hit, which outranks a forecast-only hit, which "
+    "outranks a curated-list hit, which outranks a text-only hit"
+)
+
 #: What `PhenomenonHit.actuators_at_onset` reports. **Segment statistics, not onset values**:
 #: these are the segment's own summary columns, so what the field says is "this is what the
 #: machine was doing during the segment the phenomenon was found in", not "this is what it was
@@ -85,8 +121,53 @@ ACTUATOR_COLUMNS: tuple[str, ...] = (
 # callers key on them -- the MCP layer and the CLI both surface them verbatim -- and because a
 # caveat that is spelled two ways is a caveat nobody can filter on.
 
-#: No detector for this phenomenon recorded a coverage window on this shot.
+#: `unindexed`: nothing in the pipeline looks for this phenomenon, so nothing ever could have.
 NO_COVERAGE = "no diagnostic coverage recorded; absence is not evidence"
+#: `unprocessed`: the detectors exist and none of them has run on this shot. `.format(title=...)`
+COVERAGE_UNPROCESSED = "no detector for {title} has run on this shot; absence is not evidence"
+#: `uncovered`: they ran, elsewhere in the record. `.format(title=..., segment=...)`
+COVERAGE_OUTSIDE_WINDOW = (
+    "the {title} detectors ran on this shot but not over the {segment} window; absence there is "
+    "unmeasured, not established"
+)
+#: `observed`, but only over part of the window. `.format(title=..., segment=..., covered=...)`
+COVERAGE_PARTIAL = (
+    "the {title} detectors covered only {covered} of the {segment} window; absence outside that "
+    "is unmeasured"
+)
+#: The covered stretches are disjoint. `.format(title=..., segment=..., n=...)`
+COVERAGE_GAPS = (
+    "the {title} coverage of the {segment} window has {n} gap(s): `coverage` is the hull of "
+    "`coverage_windows`, which is the union"
+)
+#: The detector that fired is not a detector for this CLASS. Attached by an `events:` rule that
+#: declares `caveat:`, to every hit whose observed intervals came through that rule.
+TRANSIENT_NOT_CLASSIFIED = (
+    "observed via tokeye_transient, a class-agnostic transient detector: a sawtooth crash or a "
+    "disruption precursor is transient too, so this is an ELM-LIKE TRANSIENT and not a "
+    "classified ELM"
+)
+#: Rows that matched a rule but are of a kind that is neither observation nor forecast.
+#: `.format(n=..., kinds=...)`
+UNCLASSIFIED_KIND = (
+    "{n} row(s) of evidence_kind {kinds} match this phenomenon's rules and are counted as "
+    "neither observation nor forecast"
+)
+#: The label model ran and scored below its floor. `.format(key=..., p=..., floor=...)`
+LABEL_BELOW_FLOOR = (
+    "{key} scored {p:.3f}, below the {floor:.2f} evidence floor: reported, not counted as evidence"
+)
+#: The quote beside the hit is the shot's best entry, not a sentence about this phenomenon.
+#: `.format(title=...)`
+QUOTE_UNRELATED = (
+    "the quote is this shot's most informative logbook entry and does not mention {title}"
+)
+#: Printed once, under `resolved:`, when the database holds no observation at all.
+#: `.format(n=...)`
+ALL_FORECASTS = (
+    "this database holds {n} event row(s), all of them forecasts: no observed-class hit is "
+    "possible yet"
+)
 #: Nothing but operator text supports this hit. Its score is capped at `TEXT_ONLY_CEILING`.
 TEXT_ONLY = "TEXT ONLY"
 #: Ranked on forecasts: the best evidence class present is a model's claim about the future.
@@ -94,9 +175,12 @@ FORECAST_ONLY = (
     "ranked on forecasts: the strongest evidence here is a model's estimate of what was about "
     "to happen, not an observation"
 )
-#: Ranked on labels: the best evidence class present is a model's claim about the present.
+#: Ranked on labels: the best evidence class present is a model's claim about the present. The
+#: number is in the string because "the model ran" is not the same claim as "the model said 0.9",
+#: and a caveat that hides the score lets a 0.51 read like a sighting. `.format(p=...)`
 LABEL_ONLY = (
-    "ranked on model labels: the strongest evidence here is a model's score, not a diagnostic"
+    "ranked on model labels: the strongest evidence here is a model's score ({p:.3f}), not a "
+    "diagnostic"
 )
 #: Ranked on a curated human list, and nothing else says a word.
 DATABASE_ONLY = (
@@ -112,16 +196,50 @@ RUN_SCOPE_TEXT = "text evidence is run scope: a session-wide sentence, not this 
 NEGATIVE_CLAIM = "operator log says NOT {title}"
 #: `.format(segment=...)` -- the shot has no such segment, so the whole record was searched.
 NO_SEGMENT = "no {segment} segment on this shot; the whole record was searched"
-#: `.format(token=..., title=...)` -- why an `avoid` token did not remove this shot.
+#: `.format(token=..., title=...)` -- why an `avoid` token did not remove this shot. One per
+#: coverage state, because "nobody has ever looked for this", "the detector has not run on this
+#: shot" and "the detector ran, but not over this window" are three different answers, and none
+#: of them is the fourth one -- a detector that covered the window and found nothing, which is
+#: the only real negative and the only case that carries no caveat at all.
 AVOID_NO_COVERAGE = (
     "kept despite --avoid {token}: nothing looked for {title} on this shot, so its absence "
     "is unmeasured, not established"
 )
+AVOID_UNPROCESSED = (
+    "kept despite --avoid {token}: no detector for {title} has run on this shot, so its absence "
+    "is unmeasured, not established"
+)
+AVOID_UNCOVERED = (
+    "kept despite --avoid {token}: the {title} detectors ran on this shot but not over the "
+    "window searched, so its absence there is unmeasured, not established"
+)
+AVOID_PARTIAL = (
+    "kept despite --avoid {token}: the {title} detectors covered only part of the window "
+    "searched, so outside that its absence is unmeasured"
+)
+AVOID_COVERAGE_CAVEATS: dict[str, str] = {
+    "unindexed": AVOID_NO_COVERAGE,
+    "unprocessed": AVOID_UNPROCESSED,
+    "uncovered": AVOID_UNCOVERED,
+    "partial": AVOID_PARTIAL,
+}
+#: `locate(..., notes=[])` -- what an `avoid` filter did, which no surviving hit can carry
+#: because the shots it speaks about are the ones that are gone. `.format(token=, n=, title=)`
+AVOID_DROPPED = "--avoid {token}: dropped {n} shot(s) with observed {title} evidence"
+#: `.format(n=..., caveat=...)` -- and what that observed evidence actually was.
+AVOID_DROPPED_CAVEATED = "{n} of those drops rest on evidence that carries: {caveat}"
 #: `.format(n=..., limit=...)` -- events that could not be shown to clear `--min-confidence`.
 DROPPED_UNSCORED = (
     "{n} event(s) not shown: the source recorded no confidence, so they cannot be shown to "
     "reach --min-confidence {limit}"
 )
+
+
+#: The caveats an `events:` rule may attach, by the name the registry calls them. A rule whose
+#: detector does not detect the CLASS it is registered under says so on every hit it produces,
+#: and the registry names the string rather than restating it, so the config cannot invent a
+#: caveat the callers who key on these constants have never seen.
+EVENT_CAVEATS: dict[str, str] = {"transient_not_classified": TRANSIENT_NOT_CLASSIFIED}
 
 
 class PhenomenaError(ValueError):
@@ -135,9 +253,12 @@ class PhenomenaError(ValueError):
 class LabelRef:
     """One `labels_wide` series read as evidence for a phenomenon.
 
-    `thr` is the operating point IF one has been published. None -- which is every entry today,
-    because `labels_wide.thr` is NaN for both detection labels -- means the probability is
-    reported as a probability and never thresholded into a fake yes/no.
+    `thr` is this label's operating point IF a model card has published one, and it is the floor
+    the probability has to clear to be EVIDENCE: below it the number is still reported in
+    `label_evidence` and still caveated, but it does not lift the shot into the LABELLED tier.
+    None -- which is every entry today, because `labels_wide.thr` is NaN for both detection
+    labels -- falls back to `DEFAULT_LABEL_FLOOR`, so a label is never thresholded against a
+    number nobody declared, and `thr:` is never a key that silently does nothing.
     """
 
     slug: str
@@ -157,14 +278,29 @@ class EventRule:
     `phenomenon` is the string the SOURCE writes, which is deliberately not ideate's id:
     `tokeye_track` writes `coherent_mode` for every track it finds, and what makes one of them an
     EHO rather than a tearing mode is the band and the harmonic count, not the detector's label.
+
+
+    `weight` is how much one matching row is worth in the event term, and it is not always 1:
+    `tokeye_transient` writes `phenomenon="elm"` for any burst, and labelmaker's own module says
+    a sawtooth crash and a disruption precursor are transient too, so a row from it is weaker
+    evidence of an ELM than an `ece_sawtooth` crash is of a sawtooth. `caveat` names the string
+    every hit built on this rule carries for the same reason; the two go together.
+
+    `max_bandwidth_khz` bounds the track's width. `band_khz` alone matches on the centroid, and
+    a track spanning 0.5-248 kHz has a centroid somewhere: on the three real labelmaker shots
+    5-12 % of the rows the tearing rule matched are that wide. The rule of thumb the registry
+    follows is that a track has to FIT INSIDE the band it is claimed to be in.
     """
 
     source: str
     phenomenon: str | None = None
     band_khz: tuple[float | None, float | None] | None = None
+    max_bandwidth_khz: float | None = None
     min_harmonics: int | None = None
     chirp_sign: int | None = None
     pickup: bool | None = None
+    weight: float = 1.0
+    caveat: str | None = None
 
     def matches(self, row: Mapping, attrs: Mapping) -> bool:
         """Does this row satisfy the rule? Frequency is read from `attrs.f_centroid_khz`."""
@@ -178,6 +314,13 @@ class EventRule:
                 return False
             lo, hi = self.band_khz
             if (lo is not None and f < lo) or (hi is not None and f > hi):
+                return False
+        if self.max_bandwidth_khz is not None:
+            bw = _bandwidth_khz(row, attrs)
+            # A row that records NO width is not rejected for not recording one: "we cannot show
+            # this is a smear" is not "this is a smear". Every real `tokeye_track` row carries
+            # `attrs.bandwidth_khz`, so the predicate bites where it was measured to be needed.
+            if bw is not None and bw > self.max_bandwidth_khz:
                 return False
         if self.min_harmonics is not None:
             n = attrs.get("n_harmonics")
@@ -244,7 +387,18 @@ class Evidence:
     text_hits: int = 0
     text_snippets: tuple[str, ...] = ()
     n_negative_claims: int = 0
+    #: The intersection of the coverage union with `window`, as a hull. None unless
+    #: `coverage_state == "observed"`: a window somebody looked at is not coverage of the window
+    #: somebody ASKED about, and reporting it as though it were is how a ramp-up-only detector
+    #: pass becomes a clean flat-top negative.
     coverage: tuple[float, float] | None = None
+    #: The same intersection as the real union, gaps and all. `coverage` is its hull.
+    coverage_windows: tuple[tuple[float, float], ...] = ()
+    coverage_state: str = "unindexed"
+    coverage_partial: bool = False
+    #: The event term's input: the sum of the WEIGHTS of the rules the intervals matched, which
+    #: is `len(intervals)` only when every rule weighs 1.
+    event_weight: float = 0.0
     in_database: bool = False
     caveats: tuple[str, ...] = ()
 
@@ -365,20 +519,37 @@ def _seq(source: Path, pid: str, value, field_name: str) -> list:
     return list(value)
 
 
+def _forecast_keys() -> frozenset[str]:
+    """`<slug>/<label>` of every series `labels.yaml` declares to be a RISK, i.e. a forecast."""
+    try:
+        from ..labels.join import forecast_rules
+
+        return frozenset(r.key for r in forecast_rules())
+    except (OSError, ValueError, KeyError):  # a labels.yaml that will not parse is its own error
+        return frozenset()
+
+
 def _labels(source: Path, pid: str, value) -> tuple[LabelRef, ...]:
     out = []
+    forecasts = _forecast_keys()
     for item in _seq(source, pid, value, "labels"):
         if not isinstance(item, Mapping) or not item.get("slug") or not item.get("label"):
             raise PhenomenaError(f"{source}: {pid} `labels` entries need `slug` and `label`")
         thr = item.get("thr")
-        out.append(
-            LabelRef(
-                slug=str(item["slug"]),
-                label=str(item["label"]),
-                thr=None if thr is None else float(thr),
-                weight=float(item.get("weight", 1.0)),
-            )
+        ref = LabelRef(
+            slug=str(item["slug"]),
+            label=str(item["label"]),
+            thr=None if thr is None else float(thr),
+            weight=float(item.get("weight", 1.0)),
         )
+        if ref.key in forecasts:
+            raise PhenomenaError(
+                f"{source}: {pid} lists {ref.key} under `labels:`, but labels.yaml declares it a "
+                "forecast. A risk curve is a claim about the FUTURE and reaches a hit through "
+                "`forecasts:`; scoring it as present-tense label evidence is the tier order's "
+                "whole point (plan §2, §7)."
+            )
+        out.append(ref)
     return tuple(out)
 
 
@@ -387,7 +558,9 @@ def _events(source: Path, pid: str, value) -> tuple[EventRule, ...]:
     for item in _seq(source, pid, value, "events"):
         if not isinstance(item, Mapping) or not item.get("source"):
             raise PhenomenaError(f"{source}: {pid} `events` entries need a `source`")
-        unknown = set(item) - {"source", "phenomenon", "band_khz", "attrs"}
+        unknown = set(item) - {
+            "source", "phenomenon", "band_khz", "max_bandwidth_khz", "attrs", "weight", "caveat",
+        }
         if unknown:
             raise PhenomenaError(f"{source}: {pid} `events` entry has unknown key(s) {sorted(unknown)}")
         attrs = item.get("attrs") or {}
@@ -396,11 +569,29 @@ def _events(source: Path, pid: str, value) -> tuple[EventRule, ...]:
         unknown = set(attrs) - {"min_harmonics", "chirp_sign", "pickup"}
         if unknown:
             raise PhenomenaError(f"{source}: {pid} `events.attrs` has unknown key(s) {sorted(unknown)}")
+        caveat = item.get("caveat")
+        if caveat is not None and str(caveat) not in EVENT_CAVEATS:
+            raise PhenomenaError(
+                f"{source}: {pid} `events.caveat` {caveat!r} is not one of "
+                f"{sorted(EVENT_CAVEATS)}. The strings are constants in "
+                "`ideate.retrieval.phenomena` because callers key on them."
+            )
+        weight = float(item.get("weight", 1.0))
+        if not 0.0 < weight <= 1.0:
+            raise PhenomenaError(
+                f"{source}: {pid} `events.weight` must be in (0, 1]; got {weight}"
+            )
+        max_bw = item.get("max_bandwidth_khz")
+        if max_bw is not None and float(max_bw) <= 0.0:
+            raise PhenomenaError(f"{source}: {pid} `events.max_bandwidth_khz` must be positive")
         out.append(
             EventRule(
                 source=str(item["source"]),
                 phenomenon=None if item.get("phenomenon") is None else str(item["phenomenon"]),
                 band_khz=_band(source, pid, item.get("band_khz")),
+                max_bandwidth_khz=None if max_bw is None else float(max_bw),
+                weight=weight,
+                caveat=None if caveat is None else EVENT_CAVEATS[str(caveat)],
                 min_harmonics=(
                     None if attrs.get("min_harmonics") is None else int(attrs["min_harmonics"])
                 ),
@@ -507,6 +698,17 @@ def _centroid_khz(row: Mapping, attrs: Mapping) -> float | None:
     return 0.5 * (f0 + f1)
 
 
+def _bandwidth_khz(row: Mapping, attrs: Mapping) -> float | None:
+    """How WIDE the track is, in kHz. `attrs.bandwidth_khz` is recorded on every real
+    `tokeye_track` row (0 missing of 1,147 on the three labelmaker shots); the `f0-f1` extent is
+    the fallback. None when neither is recorded -- and None never rejects a row."""
+    bw = _f(attrs.get("bandwidth_khz"))
+    if bw is not None:
+        return abs(bw)
+    f0, f1 = _f(row.get("f0_khz")), _f(row.get("f1_khz"))
+    return None if f0 is None or f1 is None else abs(f1 - f0)
+
+
 def _window(db, shot: int, segment: str) -> tuple[float, float] | None:
     """The segment's `[t0, t1]` in seconds, or None when the shot has no such segment."""
     seg_id = f"{shot}:{segment}"
@@ -547,6 +749,141 @@ def _rows(frame: pd.DataFrame, shot: int) -> list[dict]:
     return frame.loc[frame["shot"] == shot].to_dict("records")
 
 
+# path -> ((size, mtime_ns), frame) for `db/event_sources.parquet`, which `locate` would
+# otherwise re-read once per candidate shot.
+_SOURCES_CACHE: dict[str, tuple[tuple[int, int], pd.DataFrame]] = {}
+
+
+def _sources_frame(path: Path) -> pd.DataFrame | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    stamp = (st.st_size, st.st_mtime_ns)
+    hit = _SOURCES_CACHE.get(str(path))
+    if hit is None or hit[0] != stamp:
+        try:
+            frame = pd.read_parquet(path)
+        except (OSError, ValueError):  # a broken coverage table must not lose the events
+            return None
+        _SOURCES_CACHE[str(path)] = hit = (stamp, frame)
+    return hit[1]
+
+
+def _event_sources(db) -> pd.DataFrame | None:
+    """labelmaker's source contract for this database, or None when it predates it.
+
+    `db/event_sources.parquet` (`ideate.labels.event_sources`) is one row per source that ran or
+    was deliberately skipped, and it is the only record of a detector that ran and emitted
+    NOTHING -- which is the coverage that matters most, because it is the only thing that can
+    turn "no rows" into a negative. Read through `getattr` and a file probe rather than required,
+    so this module works unchanged on a database built before the contract, which is every
+    database today.
+    """
+    frame = getattr(db, "event_sources", None)
+    if frame is None:
+        db_dir = getattr(db, "db_dir", None)
+        frame = None if db_dir is None else _sources_frame(Path(db_dir) / "event_sources.parquet")
+    if frame is None or len(frame) == 0:
+        return None
+    return frame if {"shot", "source", "status"} <= set(frame.columns) else None
+
+
+def _looked_windows(db, shot: int, ph: Phenomenon) -> list[tuple[float, float]]:
+    """Every stretch in which somebody looked for `ph` on this shot. Unmerged, unclipped."""
+    covering = set(ph.covering_sources)
+    if not covering:
+        return []
+    sources = _event_sources(db)
+    if sources is not None:
+        rows = [
+            r
+            for r in sources.loc[sources["shot"] == shot].to_dict("records")
+            if str(r.get("source")) in covering and str(r.get("status")) == "ok"
+        ]
+    else:
+        # No source table: fall back to the coverage columns of the rows the covering sources
+        # did write. A forecast row's validity window is not a diagnostic's coverage, and
+        # neither is a `text` or `model` row's, so only the observed kinds donate.
+        rows = [
+            r
+            for r in _rows(getattr(db, "events", None), shot)
+            if str(r.get("source")) in covering
+            and str(r.get("evidence_kind")) in OBSERVED_KINDS
+        ]
+    out = []
+    for r in rows:
+        a, b = _f(r.get("t_cov0_s")), _f(r.get("t_cov1_s"))
+        if a is not None and b is not None and b >= a:
+            out.append((a, b))
+    return out
+
+
+def _merge(windows: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The union, as disjoint windows in time order. Two passes over the same stretch are one."""
+    out: list[tuple[float, float]] = []
+    for a, b in sorted(windows):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def _clip(
+    windows: Iterable[tuple[float, float]], window: tuple[float, float] | None
+) -> list[tuple[float, float]]:
+    """The part of each window inside `window`. A window that only TOUCHES the edge covers
+    nothing of it, so the overlap has to be strictly positive."""
+    if window is None:
+        return list(windows)
+    lo, hi = window
+    out = []
+    for a, b in windows:
+        a2, b2 = max(a, lo), min(b, hi)
+        if b2 > a2:
+            out.append((a2, b2))
+    return out
+
+
+#: Slack on the two coverage/window comparisons, in seconds. A detector whose pass ends 1 ns
+#: before the flat top does is not a partially covered shot.
+_EPS = 1e-9
+
+
+def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
+    """`(state, hull, windows, partial, caveats)` -- which of `COVERAGE_STATES` this shot is in.
+
+    The window filter is applied to the COVERAGE, not only to the events. That is the whole
+    point: a pass that read the ramp-up says nothing about the flat top, and a `coverage` that
+    reported it anyway would suppress the caveat, satisfy `--avoid` as an established negative,
+    and turn a gap in the data into a physics result.
+    """
+    title = ph.title
+    if not ph.covering_sources:
+        return "unindexed", None, (), False, [NO_COVERAGE]
+    raw = _merge(_looked_windows(db, shot, ph))
+    if not raw:
+        return "unprocessed", None, (), False, [COVERAGE_UNPROCESSED.format(title=title)]
+    windows = tuple(_clip(raw, window))
+    if not windows:
+        return (
+            "uncovered", None, (), False,
+            [COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment)],
+        )
+    hull = (windows[0][0], windows[-1][1])
+    caveats: list[str] = []
+    if len(windows) > 1:
+        caveats.append(COVERAGE_GAPS.format(title=title, segment=segment, n=len(windows) - 1))
+    partial = window is not None and (
+        len(windows) > 1 or hull[0] > window[0] + _EPS or hull[1] < window[1] - _EPS
+    )
+    if partial:
+        covered = ", ".join(f"{a:.3f}-{b:.3f} s" for a, b in windows)
+        caveats.append(COVERAGE_PARTIAL.format(title=title, segment=segment, covered=covered))
+    return "observed", hull, windows, partial, caveats
+
+
 def _keeps_confidence(row: Mapping, limit: float) -> bool | None:
     """True/False for a scored row, None for one whose source recorded no confidence."""
     c = _f(row.get("confidence"))
@@ -562,6 +899,7 @@ def evidence(
     segment: str = "flat_top",
     *,
     min_confidence: float = 0.0,
+    label_floor: float | None = None,
 ) -> Evidence:
     """Every class of evidence for one phenomenon on one shot, kept apart and never merged.
 
@@ -572,8 +910,14 @@ def evidence(
     `min_confidence` drops events below the bar. A row whose source recorded NO confidence is
     kept when the bar is 0 and dropped above it -- it cannot be shown to clear a bar it was never
     scored against -- and the count of those is reported as a caveat rather than vanishing.
+
+    `label_floor` is how high a detection label has to score to be evidence; None reads
+    `retrieval.yaml`. See `DEFAULT_LABEL_FLOOR`: the model running is not the same fact as the
+    model saying yes.
     """
     ph = _phenomenon(ph)
+    if label_floor is None:
+        label_floor = _config()[2]
     window = _window(db, shot, segment)
     caveats: list[str] = []
     if window is None:
@@ -583,38 +927,43 @@ def evidence(
     intervals: list[Interval] = []
     refs: list[EventRef] = []
     forecasts: list[Interval] = []
-    cov0: list[float] = []
-    cov1: list[float] = []
+    rule_caveats: list[str] = []
+    event_weight = 0.0
     n_unscored = 0
-    covering = set(ph.covering_sources)
+    other_kinds: dict[str, int] = {}
     for row in rows:
         attrs = _attrs(row.get("attrs"))
-        is_forecast = str(row.get("evidence_kind")) == "forecast"
-        if not is_forecast and str(row.get("source")) in covering:
-            # Coverage is about whether anyone LOOKED -- see `Phenomenon.coverage_sources` for why
-            # that is a wider set than the detectors that can claim the phenomenon. Forecast rows
-            # never count: a label's validity window is not a diagnostic's coverage.
-            a, b = _f(row.get("t_cov0_s")), _f(row.get("t_cov1_s"))
-            if a is not None and b is not None:
-                cov0.append(a)
-                cov1.append(b)
+        kind = str(row.get("evidence_kind"))
         if not _overlaps(row, window):
             continue
-        if is_forecast:
+        rule = None
+        if kind == FORECAST_KIND:
             if str(row.get("source")) not in ph.forecasts or str(row.get("phenomenon")) != ph.id:
                 continue
-        elif not any(rule.matches(row, attrs) for rule in ph.events):
-            continue
+        else:
+            rule = next((r for r in ph.events if r.matches(row, attrs)), None)
+            if rule is None:
+                continue
+            if kind not in OBSERVED_KINDS:
+                # It matched the rule and it is not a forecast, and it is still not an
+                # observation: `text` is somebody typing and `model` is a model scoring. Counted
+                # in a caveat rather than dropped silently, because a row nobody sees is a row
+                # nobody can correct the registry with.
+                other_kinds[kind] = other_kinds.get(kind, 0) + 1
+                continue
         keep = _keeps_confidence(row, min_confidence)
         if keep is False:
             continue
         if keep is None and min_confidence > 0.0:
             n_unscored += 1
             continue
-        if is_forecast:
+        if rule is None:
             forecasts.append(_interval(row, attrs))
         else:
             intervals.append(_interval(row, attrs))
+            event_weight += rule.weight
+            if rule.caveat is not None:
+                rule_caveats.append(rule.caveat)
             refs.append(
                 EventRef(
                     shot=int(row["shot"]),
@@ -627,13 +976,21 @@ def evidence(
             )
     if n_unscored:
         caveats.append(DROPPED_UNSCORED.format(n=n_unscored, limit=min_confidence))
-    coverage = (min(cov0), max(cov1)) if cov0 else None
-    if coverage is None:
-        caveats.append(NO_COVERAGE)
+    if other_kinds:
+        caveats.append(
+            UNCLASSIFIED_KIND.format(
+                n=sum(other_kinds.values()), kinds=", ".join(sorted(other_kinds))
+            )
+        )
+    caveats.extend(dict.fromkeys(rule_caveats))
+    state, coverage, cov_windows, partial, cov_caveats = _coverage_for(
+        db, shot, ph, window, segment
+    )
+    caveats.extend(cov_caveats)
     if not intervals:
         caveats.append(NO_OBSERVED)
 
-    label_evidence, max_p, label_caveats = _labels_for(db, shot, ph)
+    label_evidence, max_p, label_caveats = _labels_for(db, shot, ph, label_floor)
     caveats.extend(label_caveats)
 
     hits, snippets, n_neg, text_caveats = _text_for(db, shot, ph)
@@ -652,17 +1009,26 @@ def evidence(
         text_snippets=snippets,
         n_negative_claims=n_neg,
         coverage=coverage,
+        coverage_windows=tuple(cov_windows),
+        coverage_state=state,
+        coverage_partial=partial,
+        event_weight=event_weight,
         in_database=_in_database(ph, shot),
         caveats=tuple(dict.fromkeys(caveats)),
     )
 
 
-def _labels_for(db, shot: int, ph: Phenomenon):
+def _labels_for(db, shot: int, ph: Phenomenon, floor: float):
     """`{"<slug>/<label>.max_valid": p | None, ...}`, the best p, and the caveats.
 
     None, never 0.0, for a label that was not run on this shot or whose every sample was invalid:
     `n_valid == 0` means the model emitted nothing it stood behind, and a 0.0 there reads as "the
     model looked and said no" (plan §2, "unavailable" is never rendered as 0).
+
+    A probability BELOW the label's floor (`LabelRef.thr`, else `floor`) is reported and does not
+    count: "the model ran" is not evidence, and on the real database a quarter of the tearing
+    label's scored shots are at or under 0.010. The distinction between "unavailable" and "scored
+    low" survives: the first is None in `label_evidence`, the second is the number itself.
     """
     if not ph.labels:
         return {}, None, [NO_LABEL_MODEL]
@@ -671,6 +1037,7 @@ def _labels_for(db, shot: int, ph: Phenomenon):
     by_key = {f"{r['slug']}/{r['label']}": r for r in rows}
     out: dict[str, float | None] = {}
     best: float | None = None
+    low: list[str] = []
     unavailable = False
     for ref in ph.labels:
         row = by_key.get(ref.key)
@@ -683,10 +1050,15 @@ def _labels_for(db, shot: int, ph: Phenomenon):
         p = _f(row.get("max_valid"))
         out[f"{ref.key}.max_valid"] = p
         out[f"{ref.key}.frac_above"] = _f(row.get("frac_above"))
-        if p is not None:
-            weighted = p * ref.weight
-            best = weighted if best is None else max(best, weighted)
-    caveats = [LABEL_UNAVAILABLE] if unavailable else []
+        if p is None:
+            continue
+        bar = floor if ref.thr is None else ref.thr
+        if p < bar:
+            low.append(LABEL_BELOW_FLOOR.format(key=ref.key, p=p, floor=bar))
+            continue
+        weighted = p * ref.weight
+        best = weighted if best is None else max(best, weighted)
+    caveats = ([LABEL_UNAVAILABLE] if unavailable else []) + low
     return out, best, caveats
 
 
@@ -771,15 +1143,26 @@ def _has_evidence(ev: Evidence) -> bool:
     )
 
 
-def _config() -> tuple[dict[str, float], float]:
+def _config() -> tuple[dict[str, float], float, float]:
     block = config.load_yaml("retrieval.yaml").get(RETRIEVAL_BLOCK) or {}
     weights = {**DEFAULT_WEIGHTS, **{k: float(v) for k, v in (block.get("weights") or {}).items()}}
-    return weights, float(block.get("saturation_n", DEFAULT_SATURATION_N))
+    return (
+        weights,
+        float(block.get("saturation_n", DEFAULT_SATURATION_N)),
+        float(block.get("label_floor", DEFAULT_LABEL_FLOOR)),
+    )
 
 
-def sat(n: int, saturation_n: float = DEFAULT_SATURATION_N) -> float:
+def sat(n: float, saturation_n: float = DEFAULT_SATURATION_N) -> float:
     """`1 - exp(-n / n0)`: three detections is already "this shot has them", and three hundred is
-    not a hundred times the evidence that it does."""
+    not a hundred times the evidence that it does.
+
+    `n` is the summed rule WEIGHT, not the row count (`Evidence.event_weight`), so a detector
+    that does not detect the class it is registered under contributes less than one row's worth.
+    The exact curve is pinned by a test written in `math.exp`, not in this function: it is the
+    one piece of arithmetic here that encodes a physics judgement, and a stub that returned 1.0
+    for any positive count would otherwise pass the suite.
+    """
     return 0.0 if n <= 0 else float(1.0 - math.exp(-n / saturation_n))
 
 
@@ -791,14 +1174,14 @@ def score(ev: Evidence, weights: Mapping[str, float] | None = None, saturation_n
     that somebody typed the word is not a shot where the thing was measured.
     """
     if weights is None or saturation_n is None:
-        cfg_weights, cfg_sat = _config()
+        cfg_weights, cfg_sat, _floor = _config()
         weights = cfg_weights if weights is None else weights
         saturation_n = cfg_sat if saturation_n is None else saturation_n
     total = 0.0
     if ev.max_label_p is not None:
         total += weights.get("label", 1.0) * ev.max_label_p
     if ev.intervals:
-        total += weights.get("event", 1.0) * sat(len(ev.intervals), saturation_n)
+        total += weights.get("event", 1.0) * sat(ev.event_weight, saturation_n)
     if ev.text_hits:
         total += weights.get("text", 0.5) * math.tanh(ev.text_hits / 2.0)
     if ev.in_database:
@@ -818,7 +1201,9 @@ def _avoid_ids(avoid: Iterable[str]) -> list[str]:
                 f"--avoid {token!r}: {pid!r} is not a phenomenon; the registry has {sorted(reg)}"
             )
         out.append(pid)
-    return out
+    # De-duplicated: `--avoid elm --avoid phenomenon:elm` is one constraint, and evaluating it
+    # twice per candidate would double the work and print the caveat twice.
+    return list(dict.fromkeys(out))
 
 
 def _candidates(db, segment: str, constraints) -> list[int]:
@@ -836,6 +1221,7 @@ def locate(
     constraints=None,
     min_confidence: float = 0.0,
     avoid: Iterable[str] = (),
+    notes: list[str] | None = None,
 ) -> list[PhenomenonHit]:
     """The shots where `ph` happened, best evidence first.
 
@@ -847,30 +1233,69 @@ def locate(
     `avoid` takes `phenomenon:<id>` tokens. A shot with OBSERVED evidence of the avoided
     phenomenon inside the window is dropped. A shot where nothing looked for it is KEPT, with a
     caveat saying so: no data is not a negative, and silently dropping those would turn a gap in
-    the diagnostic coverage into a physics claim. A shot whose detector ran and found nothing is
-    kept with no caveat -- that one is a real negative.
+    the diagnostic coverage into a physics claim. The only case that carries NO caveat is the
+    real negative -- a detector that covered the whole window and found nothing; partial cover,
+    cover elsewhere in the record, a detector that never ran and a phenomenon nothing detects
+    are four different sentences, and `AVOID_COVERAGE_CAVEATS` has one for each.
+
+    `notes` is filled, when a list is passed, with what the run did to shots that are NOT in the
+    result: how many `avoid` dropped and on what kind of evidence. A dropped shot cannot carry a
+    caveat, so without this the strongest claim the filter makes is the one nothing reports.
     """
     ph = _phenomenon(ph)
-    weights, saturation_n = _config()
+    weights, saturation_n, floor = _config()
     avoid_ids = _avoid_ids(avoid)
+    cache: dict[tuple[int, str], Evidence] = {}
+
+    def ev_for(shot: int, entry: Phenomenon) -> Evidence:
+        key = (int(shot), entry.id)
+        if key not in cache:
+            cache[key] = evidence(
+                shot, entry, db, segment, min_confidence=min_confidence, label_floor=floor
+            )
+        return cache[key]
+
+    n_dropped: dict[str, int] = dict.fromkeys(avoid_ids, 0)
+    drop_caveats: dict[str, dict[str, int]] = {pid: {} for pid in avoid_ids}
     scored: list[tuple[int, float, Evidence, list[str]]] = []
     for shot in _candidates(db, segment, constraints):
-        ev = evidence(shot, ph, db, segment, min_confidence=min_confidence)
+        ev = ev_for(shot, ph)
         extra: list[str] = []
         dropped = False
         for other in avoid_ids:
             other_ph = registry()[other]
-            oev = evidence(shot, other_ph, db, segment, min_confidence=min_confidence)
+            oev = ev_for(shot, other_ph)
             if oev.intervals:
                 dropped = True
+                n_dropped[other] += 1
+                for caveat in EVENT_CAVEATS.values():
+                    if caveat in oev.caveats:
+                        drop_caveats[other][caveat] = drop_caveats[other].get(caveat, 0) + 1
                 break
-            if oev.coverage is None:
+            state = (
+                "partial"
+                if oev.coverage_state == "observed" and oev.coverage_partial
+                else oev.coverage_state
+            )
+            template = AVOID_COVERAGE_CAVEATS.get(state)
+            if template is not None:
                 extra.append(
-                    AVOID_NO_COVERAGE.format(token=f"phenomenon:{other}", title=other_ph.title)
+                    template.format(token=f"phenomenon:{other}", title=other_ph.title)
                 )
         if dropped or not _has_evidence(ev):
             continue
         scored.append((_tier(ev), score(ev, weights, saturation_n), ev, extra))
+    if notes is not None:
+        for pid, count in n_dropped.items():
+            if not count:
+                continue
+            notes.append(
+                AVOID_DROPPED.format(
+                    token=f"phenomenon:{pid}", n=count, title=registry()[pid].title
+                )
+            )
+            for caveat, n_caveated in sorted(drop_caveats[pid].items()):
+                notes.append(AVOID_DROPPED_CAVEATED.format(n=n_caveated, caveat=caveat))
     scored.sort(key=lambda t: (-t[0], -t[1], t[2].shot))
     return [
         _hit(ev, tier, value, extra, db, segment) for tier, value, ev, extra in scored[: max(int(n), 0)]
@@ -884,10 +1309,12 @@ def _hit(ev: Evidence, tier: int, value: float, extra: list[str], db, segment: s
     elif tier == FORECAST:
         caveats.insert(0, FORECAST_ONLY)
     elif tier == LABELLED:
-        caveats.insert(0, LABEL_ONLY)
+        caveats.insert(0, LABEL_ONLY.format(p=ev.max_label_p))
     elif tier == DATABASE:
         caveats.insert(0, DATABASE_ONLY)
-    quote, role = _quote(ev, db)
+    quote, role, quote_caveat = _quote(ev, db)
+    if quote_caveat is not None:
+        caveats.append(quote_caveat)
     row = _shot_row(db, ev.shot)
     return PhenomenonHit(
         shot=ev.shot,
@@ -896,6 +1323,8 @@ def _hit(ev: Evidence, tier: int, value: float, extra: list[str], db, segment: s
         intervals=list(ev.intervals),
         total_duration_s=ev.total_duration_s,
         coverage=ev.coverage,
+        coverage_windows=[tuple(w) for w in ev.coverage_windows],
+        coverage_state=ev.coverage_state,
         quote=quote,
         quote_role=role,
         text_snippets=list(ev.text_snippets),
@@ -922,26 +1351,44 @@ def _shot_row(db, shot: int) -> dict | None:
     return shots.loc[shot].to_dict()
 
 
-def _quote(ev: Evidence, db) -> tuple[str | None, str | None]:
-    """One logbook entry, or one claim snippet, and which it was.
+def _mentions(text: str, pid: str) -> bool:
+    """Does this sentence NAME the phenomenon? labelmaker's matcher, so the quote picker and
+    `resolve` agree about what counts as a mention, including its denials."""
+    return any(h.polarity == "pos" for h in lexicon_mod.hits(text, _lexicon()).get(pid, ()))
+
+
+def _quote(ev: Evidence, db) -> tuple[str | None, str | None, str | None]:
+    """One logbook entry, or one claim snippet: the text, its role, and a caveat when it needs one.
 
     `describe.best_quote` returns a whole single `LogEntry` -- one author, one timestamp -- and
     nothing here joins two of them; splicing two operators' sentences into one quotation is the
     fabrication this module is most able to commit. The fallback is a `text_claims` snippet,
     flagged `quote_role="claim_snippet"` so a reader is never told an extract from a sentence is
     a logbook entry.
+
+    An entry that MENTIONS the phenomenon is preferred over the shot's best entry, and when there
+    is none the hit says so: a quotation printed beside a hit reads as the reason for the hit, and
+    on the real database the top EHO hit was quoting a dud trip on the locked-mode detector.
     """
     try:
         rec = db.get(ev.shot)
     except (KeyError, ValueError, OSError):
         rec = None
-    found = None if rec is None else describe_mod.best_quote(rec)
+    caveat = None
+    found = None
+    if rec is not None:
+        found = describe_mod.best_quote(rec, where=lambda text: _mentions(text, ev.phenomenon))
+        if found is None:
+            found = describe_mod.best_quote(rec)
+            if found is not None:
+                caveat = QUOTE_UNRELATED.format(title=_phenomenon(ev.phenomenon).title)
     if found is not None:
         entry, text = found
-        return text, entry.role
+        return text, entry.role, caveat
     if ev.text_snippets:
-        return ev.text_snippets[0], "claim_snippet"
-    return None, None
+        # A claim snippet is a sentence about this phenomenon by construction.
+        return ev.text_snippets[0], "claim_snippet", None
+    return None, None, None
 
 
 def _actuators(db, shot: int, segment: str) -> dict[str, float | None]:
@@ -960,6 +1407,7 @@ def _actuators(db, shot: int, segment: str) -> dict[str, float | None]:
 
 __all__ = [
     "CORPUS_GROUPS",
+    "COVERAGE_STATES",
     "EventRule",
     "Evidence",
     "LabelRef",

@@ -295,9 +295,18 @@ class PhenomenonHit(BaseModel):
     score: float
     intervals: list[Interval] = Field(default_factory=list)
     total_duration_s: float = 0.0
-    # The union of the coverage windows of the diagnostics this phenomenon's detectors looked at.
-    # None means nobody looked, which is not the same as "it did not happen".
+    # The part of the searched window the phenomenon's detectors actually covered, as a hull.
+    # None whenever `coverage_state` is not "observed": a detector that read the ramp-up has not
+    # looked at the flat top, and reporting its window here would read as "we looked and it was
+    # not there" about a stretch nobody read.
     coverage: tuple[float, float] | None = None
+    # The same intersection as the real union, gaps and all; `coverage` is its hull.
+    coverage_windows: list[tuple[float, float]] = Field(default_factory=list)
+    # Which of the four states the coverage is in -- see `phenomena.COVERAGE_STATES`. Only
+    # "observed" makes an empty `intervals` a negative; "unindexed" (nothing looks for this at
+    # all), "unprocessed" (its detectors have not run here) and "uncovered" (they ran elsewhere
+    # in the record) are three different ways of saying the database cannot tell you.
+    coverage_state: Literal["unindexed", "unprocessed", "uncovered", "observed"] | None = None
     quote: str | None = None
     quote_role: str | None = None
     text_snippets: list[str] = Field(default_factory=list)

@@ -31,6 +31,7 @@ import html
 import math
 import re
 from collections import Counter
+from collections.abc import Callable
 
 from .. import schema
 from .rank import display, units
@@ -216,16 +217,20 @@ def _outcome_line(rec: schema.ShotRecord) -> str | None:
     return f"Outcome: {'; '.join(bits)}." if bits else None
 
 
-def _shorten(text: str) -> str:
-    """A verbatim prefix of `text`, at most MAX_QUOTE characters, cut at a sentence boundary
-    where there is one. Never edits the words it keeps."""
-    if len(text) <= MAX_QUOTE:
+def _shorten(text: str, limit: int = MAX_QUOTE) -> str:
+    """A verbatim prefix of `text`, at most `limit` characters, cut at a sentence boundary
+    where there is one. Never edits the words it keeps.
+
+    `limit` exists so a caller with a narrower column asks for that column's width instead of
+    slicing the result again: `shorten(t)[:60]` cuts mid-word, which reads as a truncation bug.
+    """
+    if len(text) <= limit:
         return text
-    ends = [m.end() for m in _SENTENCE_END.finditer(text) if m.end() <= MAX_QUOTE]
-    if ends and ends[-1] >= _MIN_SENTENCE:
+    ends = [m.end() for m in _SENTENCE_END.finditer(text) if m.end() <= limit]
+    if ends and ends[-1] >= min(_MIN_SENTENCE, limit):
         return text[: ends[-1]]
-    cut = text.rfind(" ", 0, MAX_QUOTE)
-    return text[: cut if cut > 0 else MAX_QUOTE].rstrip() + " ..."
+    cut = text.rfind(" ", 0, limit)
+    return text[: cut if cut > 0 else limit].rstrip() + " ..."
 
 
 def quotable(entry: schema.LogEntry) -> str | None:
@@ -255,23 +260,32 @@ def quotable(entry: schema.LogEntry) -> str | None:
 
 
 #: The public name for `_shorten`. `cli`'s phenomenon table cuts its quotes by the same rule the
-#: description does -- a verbatim prefix, at a sentence boundary where there is one -- rather than
-#: by a second `[:60]` that would cut mid-word and read like a truncation bug.
+#: description does -- a verbatim prefix, at a sentence boundary where there is one -- by passing
+#: its own column width, rather than by a second `[:60]` that would cut mid-word.
 shorten = _shorten
 
 
-def best_quote(rec: schema.ShotRecord) -> tuple[schema.LogEntry, str] | None:
+def best_quote(
+    rec: schema.ShotRecord, where: Callable[[str], bool] | None = None
+) -> tuple[schema.LogEntry, str] | None:
     """The most informative single logbook entry and its display text, or None.
 
     One entry, one author, one timestamp -- `quotable` decides which entries qualify and how
     their text is shown. Nothing here can join two entries. A "Postshot:" note is the session
     leader saying how the shot actually went, which is what a search result wants; anything else
     from the same role is preshot intent.
+
+    `where` narrows the candidates to entries whose display text satisfies it, leaving the
+    ranking among the survivors alone: `retrieval.phenomena` uses it to prefer an entry that
+    actually names the phenomenon, since a quotation printed beside a hit is read as the reason
+    for the hit.
     """
     best: tuple[tuple[int, int, int], schema.LogEntry, str] | None = None
     for i, e in enumerate(rec.human.log_entries):
         text = quotable(e)
         if text is None:
+            continue
+        if where is not None and not where(text):
             continue
         postshot = e.text.lower().lstrip().startswith("postshot")
         key = (QUOTE_ROLES.index(e.role), 0 if postshot else 1, i)
