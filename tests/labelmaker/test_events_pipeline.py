@@ -631,3 +631,113 @@ def test_the_curated_rows_are_in_the_index_like_any_other_source(
     assert row["phenomenon"].item() == "rwm"
     assert row["evidence_kind"].item() == "database"
     assert row["n_events"].item() == 1
+
+
+# ------------------------------------------------ run events --databases-only
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """Nothing in `--databases-only` may reach the U-Net or the logbook."""
+    def refuse(*a, **kw):
+        raise AssertionError("--databases-only loaded the network")
+
+    monkeypatch.setattr(unet, "load_unet", refuse)
+    return refuse
+
+
+def test_databases_only_needs_neither_the_corpus_nor_the_network(
+    paths, tmp_path, monkeypatch, no_network,
+):
+    # A curated list is knowledge ABOUT a shot; we may hold no signals for
+    # it at all, and for the RWM tables we hold none for any of the 33.
+    root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0)])
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert not paths.corpus_file(SHOT).exists()
+    assert run.main(_argv(paths, "--databases-only")) == 0
+    df = schema.read_events(paths.events_file(SHOT))
+    assert list(df["source"]) == ["database:rwm_fixture"] * 2
+    assert df["t_cov0_s"].isna().all()
+    assert not paths.masks_file(SHOT).exists()
+
+
+def test_databases_only_says_how_many_shots_any_table_names(
+    paths, tmp_path, monkeypatch, capsys, no_network,
+):
+    root = _label_tables(tmp_path, [(SHOT, 300.0)])
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main(["events", "--databases-only", "--root", str(paths.root),
+                     "--shots", str(SHOT), "11", "22"]) == 0
+    out = capsys.readouterr().out
+    assert "1 of 3 shots are named by any table" in out
+
+
+def test_databases_only_over_shots_no_table_names_writes_nothing_and_exits_ok(
+    paths, tmp_path, monkeypatch, capsys, no_network,
+):
+    # The `recommender_v1` case, which must READ as an answer and not as a
+    # failure: the RWM tables span 156785-176092 and the corpus starts at
+    # 185601, so zero is the honest count.
+    root = _label_tables(tmp_path, [(156785, 856.0)])
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main(_argv(paths, "--databases-only")) == 0
+    assert "0 of 1 shots are named by any table" in capsys.readouterr().out
+    assert not paths.events_file(SHOT).exists()
+    assert not paths.events_index.exists()
+
+
+def test_databases_only_writes_the_run_json_with_the_per_table_totals(
+    paths, tmp_path, monkeypatch, no_network,
+):
+    root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0)])
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main(_argv(paths, "--databases-only")) == 0
+    payload = json.loads(_only_run(paths).read_text())
+    assert payload["settings"]["databases_only"] is True
+    assert payload["settings"]["label_tables"] == str(root)
+    totals = payload["totals"]
+    assert totals["n_shots_named"] == 1 and totals["n_shots"] == 1
+    assert totals["n_events"] == 2
+    assert totals["n_source_records"] == 1
+    assert totals["events_by_source"] == {"database:rwm_fixture": 2}
+    assert totals["tables"] == ["database:rwm_fixture"]
+    (row,) = payload["shots"]
+    assert row["n_events"] == 2 and row["status"] == "ok"
+    assert row["sources"] == ["database:rwm_fixture"]
+    assert row["source_records"][0]["reason"].startswith("curated list")
+
+
+def test_databases_only_leaves_another_sources_rows_alone(
+    shot_file, staged, paths, tmp_path, monkeypatch,
+):
+    # The tables are ingested over a shot list in seconds, repeatedly and at
+    # any time; a re-ingest must not cost the shot its detector rows.
+    assert run.main(_argv(paths, "--passes", "wide")) == 0
+    before = schema.read_events(paths.events_file(SHOT))
+    assert "tokeye_track" in set(before["source"])
+    root = _label_tables(tmp_path, [(SHOT, 300.0)])
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main(_argv(paths, "--databases-only")) == 0
+    after = schema.read_events(paths.events_file(SHOT))
+    assert len(after) == len(before) + 1
+    assert set(before["event_id"]) < set(after["event_id"])
+
+
+def test_databases_only_belongs_to_the_events_stage_alone(paths, tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        run.main(["features", "--models", "d3d_ae_activity_seldnet",
+                  "--shots", str(SHOT), "--root", str(paths.root),
+                  "--databases-only"])
+    assert exc.value.code == 2
+
+
+def test_an_unreadable_manifest_stops_the_run_before_any_shot(
+    paths, tmp_path, monkeypatch, capsys, no_network,
+):
+    root = _label_tables(tmp_path, [(SHOT, 300.0)])
+    (root / "tables.yaml").write_text("version: 1\ntables: [{stem: x}]\n",
+                                      encoding="utf-8")
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main(_argv(paths, "--databases-only")) == run.EXIT_BAD_LABEL_TABLE
+    assert "kind" in capsys.readouterr().err
+    assert not paths.events_file(SHOT).exists()
