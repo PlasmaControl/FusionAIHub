@@ -56,6 +56,13 @@ they are not interchangeable:
 | **forecast** | `events.parquet` rows with `evidence_kind == "forecast"` — a risk curve crossed at a threshold, with a `horizon_s` | a model's estimate of what was about to happen. It arrives in `PhenomenonHit.forecasts`, never in `intervals`, and it is never reported as an observation |
 | **text** | `text_claims.parquet`, `polarity=pos` and `temporality=observed` | an operator wrote it down. Never a label by itself: a hit resting on nothing else is capped at 0.25 and carries **TEXT ONLY** |
 
+One registry id is a **topic, not a mode**: `fast_ion` (fast ions, energetic particles, beam ions,
+FIDA) has no detector, no label head, no band and no coverage source, so `locate("fast_ion")` can
+only ever return TEXT ONLY hits. It exists so that those words do not have to be aliased onto
+`ae` — `ae` is one specific MHD mode with a ≥ 40 kHz detector band and an `--avoid` path read as
+"the AE detector looked and saw nothing", and a diagnostic name resolving to it would turn a topic
+match into a mode observation.
+
 Ranking is the class order first and the score second: an observed hit outranks a label-only hit,
 which outranks a forecast-only hit, which outranks a text-only hit, whatever the weights in
 `configs/ideate/retrieval.yaml` say. **On the `recommender_v1` database today every one of the
@@ -116,12 +123,29 @@ ideate eval recall eho                      # detector recall vs a human annotat
 ```
 
 **The harness is frozen before anything is tuned.** `configs/ideate/evalsets/` holds 200 prompts
-authored from this corpus's own vocabulary — the 500 shots' mini-proposal titles, the operators'
-logbook sentences, the 12 phenomenon ids and the 14 curation themes — and a dev/eval split cut by
-**run day**, not by shot. `tests/ideate/test_evalset_frozen.py` asserts the CSV's sha256 against a
-literal in the test *and* against the hash in `configs/ideate/evalsets/README.md`, so editing the
-set takes three deliberate edits in three files. **A prompt the retrieval cannot answer is a line
-in the report, not a rewrite of the prompt.**
+(**v1.1**) authored from this corpus's own vocabulary — the 500 shots' mini-proposal titles, the
+operators' logbook sentences, the 13 phenomenon ids and the 14 curation themes — and a dev/eval
+split cut by **run day**, not by shot. `tests/ideate/test_evalset_frozen.py` asserts the CSV's
+sha256 against a literal in the test *and* against the hash in
+`configs/ideate/evalsets/README.md`, so editing the set takes three deliberate edits in three
+files. **A prompt the retrieval cannot answer is a line in the report, not a rewrite of the
+prompt.**
+
+v1.1 is the one re-freeze: an independent review found eleven prompts with defects in the
+**question** — an expectation naming the AE *mode* for a fast-ion *topic*, a row whose hard filter
+selected against its own expected phenomenon, a duplicate pair, a garbled sentence — and those are
+corrections to what is asked, not to what was answered. The README carries a prompt-by-prompt
+changelog and keeps the superseded v1.0 hash, so a number published against either is
+identifiable. Always quote the version beside the number.
+
+**Some prompts cannot be answered by this corpus, and say so.** Eight rows return nothing on every
+split because the 500 shots have no such discharge: `betan_mean` tops out at 3.006, `pech_total_mean`
+at 2.298 MW, `pnbi_total_mean` never falls below 0.834 MW or reaches 12 MW, and `q95_mean` is NaN
+on all 500 shots (the builder writes the column; nothing records it). They are kept, with an
+annotation in `notes`, because they are honest things for a physicist to type and "nothing here"
+is the correct answer — but they cost coverage, so coverage alone never tells the whole story.
+Three further rows are satisfiable corpus-wide and empty only on the eval side; that is
+split thinness, a different finding, and is annotated as such.
 
 | what `eval prompts` measures | why it is separate |
 | --- | --- |
@@ -135,7 +159,11 @@ in the report, not a rewrite of the prompt.**
 `--split eval` (the default) restricts the database to the 110 eval shots **before** searching, so
 the hard filter, the BM25 corpus statistics and the k-NN neighbourhoods are computed on one side
 only. Every report says which split produced it, because a number from `all` and a number from
-`eval` are not comparable.
+`eval` are not comparable. **Resolution is the exception**: it is computed from the prompt text
+and the lexicon alone, so that column is identical on every split, and the table says so.
+
+Exit codes: **0** measured and inside both bars, **2** refused (nothing to measure), **3**
+measured and outside a bar. Both bars gate the exit, not only coverage.
 
 ### What the proxy grade is NOT
 
@@ -153,19 +181,30 @@ never a free pass.
 
 ### Latency
 
-`eval latency` times five operations at N=20 and reports median and p95 against the plan's
-Appendix B budgets (load < 3 s, search with text < 400 ms, search without text < 200 ms,
-`phenomenon locate` < 300 ms; `describe` has no budget and so gets the verdict `n/a` rather than a
-free PASS). **Warm**: every operation runs once and that run is discarded, so the MiniLM load and
-the first parquet read are not in the numbers. The verdict is read off the median. Exit 3 means a
-budgeted row was over.
+`eval latency` times five operations against the plan's Appendix B budgets (load < 3 s, search
+with text < 400 ms, search without text < 200 ms, `phenomenon locate` < 300 ms; `describe` has no
+budget and so gets the verdict `n/a` rather than a free PASS).
+
+**Three separate blocks of N=20, interleaved, and a verdict only where they agree.** One block on
+a shared login node measures the node, not the code: re-running this harness on the same database
+gave `search_no_text` at 126 / 156 / 235 ms against a 200 ms budget and `search_text` anywhere
+from 174 ms to 2.3 s. A row that straddles its budget across the blocks therefore reports
+**`load-dependent`** — not a pass, not a failure, but the statement that the node would not let
+the measurement be made — and only a row over budget in *every* block is a FAIL. The headline
+median is the median of the block medians; the spread is printed. **Warm**: every operation runs
+once and that run is discarded, so the MiniLM load and the first parquet read are not in the
+numbers. The report records the load average, the core count and `torch.get_num_threads()`, so
+the next reader's run is comparable with this one. Exit 3 means a row was over budget in every
+block.
 
 ### Phenomenon recall
 
 `eval recall <phenomenon>` scores the detectors against `$LABELMAKER_ROOT/annotate/<phenomenon>/`
 — `sheet.csv` joined to `manifest.parquet`, `split=test` rows only, `y`/`n` labels only. It
-**refuses with exit 2** below 20 labelled test rows: an empty table would read as "recall 0", and
-the two are opposite answers. No sheet exists yet, so today every invocation refuses. Only an
+**refuses with exit 2** below 20 *scorable* test rows — counted after the windows on shots the
+database does not hold are dropped, so a sheet of 22 rows with 20 absent shots cannot publish a
+number from two windows. An empty table would read as "recall 0", and the two are opposite
+answers. No sheet exists yet, so today every invocation refuses. Only an
 *observed* interval overlapping the annotated window counts as a detection — a forecast and an
 operator's sentence do not, or the detectors' recall would be inflated with the label models'
 confidence.
