@@ -337,7 +337,7 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
     return {
         "shot": shot,
         "segment": seg,
-        "description": describe_mod.describe(rec, seg),
+        "description": describe_mod.describe(rec, seg, db=db),
         "record": rec.model_dump(mode="json"),
         "frame_codes": codes,
         "caveats": caveats,

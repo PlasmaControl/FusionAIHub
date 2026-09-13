@@ -308,7 +308,56 @@ def _quote(rec: schema.ShotRecord) -> str | None:
     return f'Operator: "{_shorten(text)}" ({who}).'
 
 
-def describe(rec: schema.ShotRecord, segment: str = "flat_top") -> str:
+def _phenomenon_line(ev, rec: schema.ShotRecord) -> str:
+    """One phenomenon's evidence classes and coverage, quoting only through `best_quote`."""
+    from . import phenomena as ph
+
+    def ranges(intervals):
+        shown = ", ".join(f"{iv.t0_s:.3f}-{iv.t1_s:.3f} s" for iv in intervals[:3])
+        return shown + (f" (+{len(intervals) - 3} more)" if len(intervals) > 3 else "")
+
+    parts = []
+    if ev.intervals:
+        parts.append("observed " + ranges(ev.intervals))
+    if ev.max_label_p is not None:
+        parts.append(f"model label p={ev.max_label_raw_p:.3f}")
+    if ev.forecasts:
+        parts.append("forecast " + ranges(ev.forecasts))
+    if ev.in_database:
+        parts.append("curated-list evidence")
+    if ev.text_hits:
+        parts.append("text mentions" if parts else "text-only")
+    if not parts:
+        parts.append("no indexed evidence")
+    parts.append(f"coverage: {ev.coverage_state}")
+    for caveat in ev.caveats:
+        if (caveat in ph.EVENT_CAVEATS.values() or caveat.startswith((
+            "no detector registered", "required corpus group", "could not read", "no flat_top",
+        )) or "coverage unknown" in caveat or "covered only" in caveat or "coverage of" in caveat):
+            parts.append(caveat)
+    found = best_quote(rec, where=lambda text: ph._mentions(text, ev.phenomenon))
+    if found is not None:
+        entry, text = found
+        quote = ph.shorten_quote(text, ev.phenomenon, MAX_QUOTE)
+        who = " ".join(b for b in (entry.role, entry.author, entry.time) if b)
+        parts.append(f'operator: "{quote}" ({who})')
+    return f"{ph.registry()[ev.phenomenon].title} ({ev.phenomenon}): " + "; ".join(parts) + "."
+
+
+def _phenomenon_lines(rec: schema.ShotRecord, segment: str, db) -> list[str]:
+    from . import phenomena as ph
+
+    text = " ".join(quotable(entry) or "" for entry in rec.human.log_entries)
+    resolved = {pid for pid, _weight in ph.resolve(text)}
+    lines = []
+    for pid in ph.registry():
+        ev = db.phenomenon_evidence(rec.shot, pid, segment)
+        if pid in resolved or ph._has_evidence(ev):
+            lines.append(_phenomenon_line(ev, rec))
+    return lines
+
+
+def describe(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None) -> str:
     """The template. One line per fact group; missing facts are omitted, never rendered.
 
     `segment` names which segment's numbers to print and is not silently swapped for another:
@@ -322,6 +371,8 @@ def describe(rec: schema.ShotRecord, segment: str = "flat_top") -> str:
         _outcome_line(rec),
         _quote(rec),
     ]
+    if db is not None:
+        lines.extend(_phenomenon_lines(rec, segment, db))
     return "\n".join(line for line in lines if line)
 
 

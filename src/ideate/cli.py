@@ -1377,6 +1377,18 @@ def cmd_phenomenon(args) -> int:
     return 0
 
 
+def cmd_describe(args) -> int:
+    """Describe a stored shot and its phenomenon evidence without reading raw data."""
+    db = _open_db(config.load_paths())
+    if db is None:
+        return 1
+    rec = _record(db, args.shot)
+    if rec is None:
+        return 1
+    print(describe_mod.describe(rec, args.segment, db=db))
+    return 0
+
+
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
     paths = config.load_paths()
@@ -1499,6 +1511,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--full", action="store_true", help="every scalar, by column name")
     p.add_argument("--json", action="store_true", help="the whole ShotRecord as JSON")
     p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("describe", help="describe a stored shot, its phenomenon evidence and coverage")
+    p.add_argument("shot", type=int)
+    p.add_argument("--segment", default="flat_top", choices=get_args(SegName))
+    p.set_defaults(func=cmd_describe)
 
     p = sub.add_parser("export", help="ShotSummary rows as JSON or Parquet")
     p.add_argument("shots", type=int, nargs="+")

@@ -491,7 +491,7 @@ def _enrich(
     row = db.segments.loc[seg_id]
     values = {c: (float(row[c]) if np.isfinite(float(row[c])) else None) for c in _numeric(row)}
     category = {"regime": str(rec.labels.regime), "campaign": str(rec.campaign)}
-    return describe(rec, segment), list(evaluate_flags(values, category, rule_cfg))
+    return describe(rec, segment, db=db), list(evaluate_flags(values, category, rule_cfg))
 
 
 def _numeric(row) -> list[str]:
