@@ -22,6 +22,7 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 | `add` | incremental upsert of one or more shots |
 | `query` | find similar shots — `--ref SHOT`, `--text`, `--where`, `--actuator` |
 | `show` | print one shot's record |
+| `describe` | describe a stored shot, with phenomenon evidence, forecast ranges, coverage states and attributed quotes |
 | `coverage` | present/unavailable/pending per registry field |
 | `corpus` | the FAITH corpus: what each shot file carries; `corpus select` draws the shot list |
 | `logs` | the shot-log contract (`logs missing`, `logs import`) |
@@ -35,6 +36,52 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 The development universe is `configs/ideate/shot_lists/recommender_v1.yaml` — 500 shots drawn by
 `ideate corpus select` under the rule in `src/ideate/shotdb/select.py`'s module docstring. The
 database built from it is what the MCP server below serves.
+
+## Search
+
+```bash
+ideate query "edge harmonic oscillation" --n 5
+ideate query "edge harmonic oscillation" --avoid phenomenon:elm --n 5
+ideate query --ref 198658 --require phenomenon:tearing
+ideate query "tearing mode" --require label:d3d_tearing_onset_cnn1d/tm_prob
+ideate query "tearing mode" --require source:detector
+ideate describe 198658
+```
+
+Positional query text and `--text` are equivalent. The `phenomenon` channel resolves aliases
+through the existing lexicon and uses the same evidence tiers and four-term score as
+`ideate phenomenon` below. Its RRF weight is **1.2**. Within this channel, observed evidence
+ranks above labels, forecasts, curated lists and text-only evidence; the final search ranking
+also combines the scalar, dense-text, BM25 and IGNITE channels. A query with no resolved
+phenomenon contributes no vote, leaving its ranking identical without this channel.
+
+`--require` requires every supplied token; `--avoid` rejects any supplied token present in a
+segment. Existing regime and operational tokens (`QH`, `L`, `dud`, etc.) still work.
+
+| token | presence means |
+| --- | --- |
+| `phenomenon:<id>` | registered detector or heuristic evidence overlaps this segment; a forecast, model label or text mention alone cannot create it |
+| `label:<slug>/<name>` | valid label probability at or above its published operating point; for registered detection labels without one, the registry threshold or declared label floor applies |
+| `source:<kind>` | an event of that evidence kind overlaps this segment, e.g. `source:detector` or `source:forecast` |
+| `source:<producer>` | an event from that producer overlaps this segment, e.g. `source:tokeye_track` |
+
+Label summaries are shot scoped and their tokens apply to each segment; they do not establish
+when within a segment a label crossed its threshold. Event and phenomenon tokens are segment
+scoped. Token sets and evidence are cached lazily in the loaded database snapshot.
+
+**Query `--avoid phenomenon:<id>` requires observed coverage of the segment by a relevant
+source.** It rejects observed matches and excludes shots whose relevant sources are unprocessed
+or uncovered, with counts and per-state caveats in CLI text, CLI JSON and MCP search results.
+No data is not an established negative. Partial overlap is eligible, with a caveat that silence
+outside the covered stretches is unmeasured. An indexed phenomenon with no detector registered
+(such as `rwm`) is unprocessed and cannot satisfy this filter. This coverage requirement applies
+to phenomenon tokens; ordinary label/source tokens retain set membership semantics.
+
+`describe` and MCP `describe_shot` add a line for each phenomenon resolved from the shot's
+quotable logbook or supported by indexed evidence. Observed intervals, model label probabilities,
+forecast ranges and text-only evidence are named separately, with the coverage state. Every
+operator quotation comes from one `best_quote` logbook entry; narrow excerpts retain the
+phenomenon mention, with ellipses marking omitted context.
 
 ## Phenomena: the evidence classes and the caveat vocabulary
 
@@ -68,12 +115,24 @@ under its `resolved:` line rather than leaving it here.
 `coverage` answers "did anyone look, over the window I asked about?", and `coverage_state` says
 which of four situations a `null` is. Only the last makes an empty `intervals` a negative:
 
-| `coverage_state` | what it means | `--avoid` |
+| `coverage_state` | what it means | query `--avoid phenomenon:<id>` |
 | --- | --- | --- |
-| `unindexed` | nothing in the pipeline looks for this phenomenon at all (`rwm`, `detachment`) | keeps the shot, with a caveat |
-| `unprocessed` | its detectors exist and none of them has run on this shot | keeps the shot, with a caveat |
-| `uncovered` | they ran, but elsewhere in the record — not over the segment searched | keeps the shot, with a caveat |
-| `observed` | they covered the window, or part of it; `coverage` is that intersection | drops only on an observed interval; caveats anything short of full cover |
+| `unindexed` | the shot is absent from `db.shots`; checked first by retrieval and MCP | excluded |
+| `unprocessed` | no relevant detector completed on this indexed shot, or none is registered | excluded with a caveat |
+| `uncovered` | relevant detectors completed, but no finite coverage overlaps the window; includes `ok` rows with NaN coverage | excluded with a caveat |
+| `observed` | a relevant source's finite coverage overlaps the window | kept only without observed matching intervals; partial coverage is caveated |
+
+For a phenomenon, relevant sources are its registered event sources plus `coverage_sources`.
+`get_events` without a phenomenon considers all sources; with a phenomenon it uses precisely
+that phenomenon's covering sources. Another detector cannot make RWM observed. Both tools say
+`no detector registered for rwm; text/database evidence only` on an indexed shot with no RWM
+detector. Unknown coverage gets its own `ran; coverage unknown` caveat.
+
+`ShotDB.load` reads `event_sources.parquet` as an optional typed table, alongside events, labels
+and text claims. An absent table has an empty typed frame; an unreadable table also records
+`load_errors`, which both readers surface. Legacy databases without this table may use the
+finite coverage on detector/heuristic event rows; explicit empty or unreadable source tables
+cannot borrow coverage that way. Reload the database snapshot to see changed tables.
 
 Coverage is **clipped to the window searched** before any of this is decided. On labelmaker's own
 shots the ELM clock's coverage ends at ~4.3 s while other detectors run to 6-7 s, so a flat top
@@ -115,7 +174,10 @@ can key on them:
 | `ranked on forecasts: ...` | the strongest evidence is a model's estimate of what was about to happen; no diagnostic saw anything |
 | `ranked on model labels: ... (<p>) ...` | the strongest evidence is a model's score, and the caveat says what the score was |
 | `ranked on a curated human list: ...` | a human list names the shot and nothing else does |
-| `no diagnostic coverage recorded; absence is not evidence` | `unindexed`: nothing looks for this phenomenon at all. **Not** "it did not happen" |
+| `no diagnostic coverage recorded; absence is not evidence` | diagnostic coverage is unknown; silence does not establish absence |
+| `no detector registered for <id>; text/database evidence only` | the indexed shot is `unprocessed` for a phenomenon with no registered covering source |
+| `<source>: ran; coverage unknown; absence is not evidence` | a relevant source completed without finite coverage |
+| `required corpus group <group> is absent for <id>` | an inventoried corpus shot lacks a required group; unknown legacy inventories stay silent |
 | `no detector for <title> has run on this shot; ...` | `unprocessed`: its detectors exist and none ran here |
 | `the <title> detectors ran on this shot but not over the <segment> window; ...` | `uncovered`: they looked somewhere else in the record |
 | `the <title> detectors covered only <windows> of the <segment> window; ...` | partial cover: outside those stretches, absence is unmeasured |
@@ -134,9 +196,10 @@ can key on them:
 | `kept despite --avoid <token>: ...` | the shot survived an `--avoid` filter because the avoided phenomenon's coverage is not a full cover of the window — one variant per coverage state, and no caveat at all in the one case that is a real negative |
 | `<n> event(s) not shown: ...` | events the source never scored, dropped by `--min-confidence` |
 
-`--avoid phenomenon:elm` drops the shots an ELM detector fired on and **keeps**, with the caveat
-for that shot's coverage state, the shots no ELM detector covered. Dropping those would read a gap in the diagnostic
-coverage as a physics result. What separates the two is `coverage_sources` in the registry: a
+`ideate phenomenon "tearing mode" --avoid phenomenon:elm` retains its exploratory behavior:
+it drops observed ELM matches and keeps unknown coverage with a caveat. Use
+`ideate query "tearing mode" --avoid phenomenon:elm` when the result must satisfy the coverage
+requirement described in Search above. What separates the two is `coverage_sources` in the registry: a
 detector that finds nothing writes no rows, so on a quiet shot the only record that the mhr data
 was read for ELMs at all is `elm_clock`'s `elm_free` interval — a *different* source from the one
 that would have reported an ELM. A phenomenon nothing detects (`rwm`, `detachment`) declares
@@ -224,8 +287,8 @@ Four things hold for the replies and are worth knowing before reading one:
   are.
 * **`status` says what an empty `events` means**, and the four values are not degrees of one
   thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
-  `unprocessed`: it is indexed, but `db/event_sources.parquet` records no detector as having
-  completed over it — absence is not evidence. `uncovered`: detectors ran, but not over the
+  `unprocessed`: it is indexed, but no relevant source is recorded as having
+  completed over it (the phenomenon's covering sources when filtered, all sources otherwise) — absence is not evidence. `uncovered`: detectors ran, but not over the
   window asked about; the caveat names the covered span. `observed`: some one detector's *own*
   finite coverage overlaps the window, and an empty list is a real finding of nothing, said in as
   many words — and the caveat counts only the sources that covered the window, not everything
