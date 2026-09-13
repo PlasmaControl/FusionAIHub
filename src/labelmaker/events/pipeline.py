@@ -56,7 +56,16 @@ from ..ae.labels import PROB_THRESHOLD
 from ..ae.transform import STD_EPS
 from ..config import Paths
 from ..labels.store import append_index
-from . import channels, heuristics, masks, schema, text_weak, tracks, transients
+from . import (
+    channels,
+    databases,
+    heuristics,
+    masks,
+    schema,
+    text_weak,
+    tracks,
+    transients,
+)
 from .lexicon import Lexicon
 from .schema import Event
 from .unet import CHECKPOINT_SHA256
@@ -142,6 +151,12 @@ class ShotResult:
     elapsed_s: float = 0.0
     skipped: dict[str, str] = field(default_factory=dict)
     error: str = ""
+    #: One record per curated table that NAMED this shot - see
+    #: `databases_block`, whose docstring says where they go on the merge
+    #: with the sources contract. Empty is the ordinary case and means no
+    #: table names the shot, which is not the same as a table finding
+    #: nothing in it.
+    database_sources: list[dict] = field(default_factory=list)
 
     @property
     def status(self) -> str:
@@ -218,6 +233,36 @@ class _BlockRun:
 
 def _cause(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"[:200]
+
+
+def databases_block(shot: int, paths: Paths) -> tuple[list[Event], list[dict]]:
+    """This shot's curated-table rows, and which tables named it.
+
+    One function so the events stage's hook is one guarded call. What makes
+    it different from every other step: a table that does not list this
+    shot contributes NOTHING - no event row and no source record. Nobody
+    looked, and `status="ok", n_events=0` against every table for every one
+    of 16,909 corpus shots would be a coverage claim no author made.
+
+    Cheap enough to sit in the per-shot path (a CSV read, cached per
+    process), but it is knowledge about a shot we may hold no signals for,
+    so `run.py events --databases-only` ingests a table over any shot list
+    without the corpus or the network - that, and not this call site, is
+    how a table reaches a shot whose corpus file is missing.
+
+    TODO(merge `recommender-fix`): that branch has the sources contract
+    (`schema.write_sources`, `SOURCE_KEY = (source, diag, channel,
+    pass_name)`), which this branch does not, so the records are carried on
+    `ShotResult.database_sources` and tested directly instead of written.
+    On the merge they should go to `paths.sources_file(shot)` beside every
+    other source's record. TWO THINGS TO SETTLE THERE: `schema._source_row`
+    currently REJECTS a `reason` on an `ok` row, and `databases.COVERAGE_REASON`
+    is exactly that - an ok row whose coverage is unknown rather than empty
+    - so either that rule relaxes for `evidence_kind="database"` or the
+    sentence moves to a column of its own; and the records must keep NaN
+    coverage through the writer.
+    """
+    return databases.events_for_shot(shot, root=paths.label_tables)
 
 
 def _read_group(corpus_file, diag: str, *, stop: int | None = None):
@@ -649,6 +694,14 @@ def process_shot(
             sources.add("text")
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["text"] = _cause(exc)
+
+    # --------------------------------------------- the curated label tables
+    try:
+        found, res.database_sources = databases_block(shot, paths)
+        events.extend(found)
+        sources |= {e.source for e in found}
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        res.skipped["database"] = _cause(exc)
 
     res.n_events = len(events)
     for event in events:

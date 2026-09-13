@@ -879,3 +879,37 @@ def test_the_realistic_synthetic_channel_runs_end_to_end(synth_mask, tmp_path):
     n_tracks = x[windows.FEATURE_NAMES.index("mhr_n_tracks")]
     assert n_tracks.max() >= 3.0        # the EHO and its two harmonics
     assert n_tracks[-1] == 0.0          # past the fishbone: pickup alone
+
+
+def test_a_database_row_inside_the_window_changes_no_feature(tmp_path):
+    """The evidence policy, as a test rather than as a set membership.
+
+    A curated label table (`events/databases.py`) writes rows with
+    `evidence_kind="database"` and NaN coverage. They are knowledge about
+    the shot, not something a diagnostic showed here, so no window feature
+    may read one - otherwise a human's list of RWM onsets would arrive in a
+    classifier's input as though a detector had found it, and the model
+    would be scored against its own training labels.
+    """
+    paths = _paths(tmp_path)
+    elms = [_elm(0.10), _elm(0.20), _elm(0.30)]
+    before = windows.window_features(
+        (0.0, 0.34), blocks={}, events=_write_events(paths, elms),
+        cov={"mhr": (0.0, 1.0)},
+    )
+    curated = schema.Event(
+        shot=SHOT, source="database:rwm_onsets_2017", evidence_kind="database",
+        phenomenon="rwm", t0_s=0.15, t1_s=0.15, diag="", channel=-1,
+        attrs={"NTOR": 1, "MODE_TYPE": "rwm", "table": "rwm_onsets_2017"},
+        # The point of the row: nobody said which interval was examined.
+        t_cov0_s=float("nan"), t_cov1_s=float("nan"),
+        confidence=float("nan"),
+    )
+    after = windows.window_features(
+        (0.0, 0.34), blocks={}, events=_write_events(paths, [*elms, curated]),
+        cov={"mhr": (0.0, 1.0)},
+    )
+    assert np.array_equal(before, after)
+    # And it really is in the table the window was handed.
+    table = schema.read_events(paths.events_file(SHOT))
+    assert (table["evidence_kind"] == "database").sum() == 1
