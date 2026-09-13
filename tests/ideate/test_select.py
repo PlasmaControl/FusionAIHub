@@ -815,7 +815,9 @@ def test_the_summary_says_whether_the_list_is_final_and_which_store_verified_it(
     summary has to carry which one this was, and against which feature store -- the number of
     files and the newest mtime, so a list can be told apart from one verified an hour later."""
     got = candidates(5, per_run=1)
-    store = {"n_featured": 878, "n_frame_codes": 10, "max_mtime": "2026-09-07T11:28:00+00:00"}
+    by_dir = {"/data/ideate/frame_codes": 500, "/models/IGNITE/frame_codes": 10}
+    store = {"n_featured": 878, "n_frame_codes": 507, "max_mtime": "2026-09-07T11:28:00+00:00",
+             "frame_codes_by_dir": by_dir}
     s = select.summarize(
         n_candidates=9, reasons=Counter(), selected=got, quotas=quotas(n=5),
         replacements=[{"dropped": 190001, "dropped_flattop_s": 0.4, "theme": "rmp_elm",
@@ -824,9 +826,20 @@ def test_the_summary_says_whether_the_list_is_final_and_which_store_verified_it(
         finalized=True, n_verified=4, store=store,
     )
     assert s["finalized"] is True and s["n_verified"] == 4 and s["n_dropped"] == 1
-    assert s["n_featured"] == 878 and s["n_frame_codes"] == 10
+    assert s["n_featured"] == 878 and s["n_frame_codes"] == 507
+    assert s["frame_codes_by_dir"] == by_dir
     assert s["feature_store"] == {"n_files": 878, "max_mtime": "2026-09-07T11:28:00+00:00"}
-    assert "finalized" in select.format_summary(s)
+    text = select.format_summary(s)
+    assert "finalized" in text
+    # The 507 is a UNION over two directories (production store + shipped bundle), not the
+    # production count; the line says so and shows the split, so nobody reads it as 507 encoded
+    # production shots.
+    assert "507" in text and "counted once" in text
+    assert "500  /data/ideate/frame_codes" in text and "10  /models/IGNITE/frame_codes" in text
+    # And what is and is not deterministic about the file two runs write: the rows, byte for
+    # byte; not the header, which carries the clock and the store's fingerprint.
+    assert "byte-identical" in text and "regenerated" in text
+    assert "created" in text and "from_list" in text and "feature_store" in text
 
 
 def test_an_unfinalized_summary_still_carries_the_keys_with_nothing_in_them():
@@ -834,6 +847,7 @@ def test_an_unfinalized_summary_still_carries_the_keys_with_nothing_in_them():
     s = select.summarize(n_candidates=9, reasons=Counter(), selected=got, quotas=quotas(n=5))
     assert s["finalized"] is False and s["n_dropped"] == 0
     assert s["n_featured"] is None and s["feature_store"] == {"n_files": None, "max_mtime": None}
+    assert s["n_frame_codes"] is None and s["frame_codes_by_dir"] is None
     # `n_verified` counts the measured rows when the caller does not say.
     assert s["n_verified"] == 0
 
@@ -850,13 +864,14 @@ def test_the_store_fingerprint_counts_the_files_and_takes_the_newest_mtime(tmp_p
     os.utime(feats / "190002_features.h5", (2.0e9, 2.0e9))
     got = select.store_fingerprint(feats, codes)
     assert got["n_featured"] == 2 and got["n_frame_codes"] == 1
+    assert got["frame_codes_by_dir"] == {str(codes): 1}
     # The NEWER of the two, in UTC: 2e9 seconds after the epoch.
     assert got["max_mtime"].startswith("2033-05-18")
 
 
 def test_the_fingerprint_of_a_store_that_is_not_there_is_empty(tmp_path):
     assert select.store_fingerprint(tmp_path / "nope", None) == {
-        "n_featured": 0, "n_frame_codes": 0, "max_mtime": None
+        "n_featured": 0, "n_frame_codes": 0, "max_mtime": None, "frame_codes_by_dir": {}
     }
 
 # ------------------------------------------------------------------------------ the document
@@ -964,14 +979,22 @@ def test_cli_select_writes_the_yaml_the_txt_list_and_prints_the_summary(
     assert "eligible" in printed and "theme" in printed
 
 
-def test_cli_select_is_deterministic_across_two_runs(selection_inputs, tmp_path):
+def test_cli_select_is_deterministic_across_two_runs(selection_inputs, tmp_path, capsys):
+    """The claim the summary prints, held: the `shots:` rows two runs write are byte-identical -
+    not merely the same shots in the same order - while the header (`created`, the store
+    fingerprint) is regenerated. The critic measured exactly this on the finalized list."""
     txt_dir, parquet = selection_inputs
-    outs = []
+    outs, texts = [], []
     for i in (1, 2):
         out = tmp_path / f"v{i}.yaml"
         assert cli.main(select_argv(txt_dir, parquet, tmp_path, **{"--out": str(out)})) == 0
-        outs.append(yaml.safe_load(out.read_text(encoding="utf-8")))
+        texts.append(out.read_text(encoding="utf-8"))
+        outs.append(yaml.safe_load(texts[-1]))
     assert [e["shot"] for e in outs[0]["shots"]] == [e["shot"] for e in outs[1]["shots"]]
+    rows = [t[t.index("shots:\n"):] for t in texts]
+    assert rows[0] == rows[1]
+    printed = capsys.readouterr().out
+    assert "byte-identical" in printed and "regenerated" in printed
 
 
 def test_cli_select_refuses_a_census_that_is_not_there(tmp_path, capsys):
