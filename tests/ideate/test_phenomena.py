@@ -962,11 +962,13 @@ def test_the_same_phenomenon_named_twice_is_one_constraint(phen_db, monkeypatch)
 
 def _label_tables(root: Path, shots: list[int], stem: str = "rwm_onsets_2017") -> Path:
     """A `data/labels`-shaped fixture: one manifest, one CSV, the stems the registry names."""
-    (root / "resistive_wall_mode").mkdir(parents=True, exist_ok=True)
+    (root / "resistive_wall_mode/format").mkdir(parents=True, exist_ok=True)
     (root / "tables.yaml").write_text(yaml.safe_dump({
         "version": 1,
         "tables": [{
             "stem": stem,
+            "raw_file": f"{stem}.csv", "format_stem": stem, "converter": "csv",
+            "made_at": "2026-09-13T00:00:00Z",
             "dir": "resistive_wall_mode",
             "phenomenon": "rwm",
             "kind": "point",
@@ -978,10 +980,16 @@ def _label_tables(root: Path, shots: list[int], stem: str = "rwm_onsets_2017") -
             "provenance": "a fixture",
         }],
     }), encoding="utf-8")
-    (root / "resistive_wall_mode" / f"{stem}.csv").write_text(
-        "SHOT,ONSET_TIME,NTOR\n" + "".join(f"{s},2000,1\n" for s in shots),
-        encoding="utf-8",
-    )
+    import csv
+
+    with (root / "resistive_wall_mode/format" / f"{stem}.csv").open("w") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["shot", "t0_s", "t1_s", "phenomenon", "evidence_kind",
+                         "source", "confidence", "attrs"])
+        for shot, ms in [(s, 2000) for s in shots]:
+            writer.writerow([shot, ms / 1000, ms / 1000, "rwm", "database",
+                             f"database:{stem}", "", json.dumps({"NTOR": 1,
+                                                                "table": stem})])
     return root
 
 

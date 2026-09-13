@@ -1,15 +1,4 @@
-"""Curated label tables: the manifest, the loader, and what a listing means.
-
-Two kinds of test here, and they are guarding different things. Most of
-them build a manifest and a CSV inside `tmp_path`, because what is under
-test is the loader's contract - ms to seconds, NaN coverage, an absent shot
-producing nothing at all - and a fixture is the only way to say "this
-table, these rows, this answer". The last few read the REAL committed
-tables under `data/labels/`, because those are edited by hand by whoever
-sends us the next one, and a shot number that stopped being an integer or
-an onset time that stopped being in milliseconds should fail here rather
-than three stages downstream.
-"""
+"""Common-format tables become events; curated lists never claim coverage."""
 from __future__ import annotations
 
 import json
@@ -17,24 +6,15 @@ import math
 
 import pandas as pd
 import pytest
+import yaml
 
 from labelmaker.config import Paths
 from labelmaker.events import databases as db
 from labelmaker.events import schema
 from labelmaker.events.lexicon import load_lexicon
 
-POINT_TABLE = """\
-SHOT,ONSET_TIME,NTOR,MODE_TYPE
-158015,2.61300E+03,2,n2rwm
-158015,2.61300E+03,2,n2rwm
-156785,8.56000E+02,1,rwm
-"""
-
 
 def _manifest(root, entries, *, version=1):
-    """Write `tables.yaml` under `root` from a list of dicts."""
-    import yaml
-
     root.mkdir(parents=True, exist_ok=True)
     (root / "tables.yaml").write_text(
         yaml.safe_dump({"version": version, "tables": list(entries)}),
@@ -45,31 +25,35 @@ def _manifest(root, entries, *, version=1):
 
 def _entry(**over):
     entry = {
-        "stem": "rwm_fixture",
-        "dir": "resistive_wall_mode",
-        "phenomenon": "rwm",
-        "kind": "point",
-        "shot_col": "SHOT",
-        "t_col": "ONSET_TIME",
-        "t_units": "ms",
-        "attr_cols": ["NTOR", "MODE_TYPE"],
-        "attr_types": {"NTOR": "int", "MODE_TYPE": "str"},
-        "provenance": "a fixture",
+        "stem": "rwm_fixture", "dir": "resistive_wall_mode", "phenomenon": "rwm",
+        "kind": "point", "shot_col": "SHOT", "t_col": "ONSET_TIME",
+        "t_units": "ms", "attr_cols": ["NTOR", "MODE_TYPE"],
+        "attr_types": {"NTOR": "int", "MODE_TYPE": "str"}, "provenance": "a fixture",
+        "raw_file": "original.csv", "format_stem": "normalized", "converter": "csv",
+        "made_at": "2026-09-13T00:00:00Z",
     }
     entry.update(over)
     return entry
 
 
-def _csv(root, entry, text=POINT_TABLE):
-    path = root / entry["dir"] / f"{entry['stem']}.csv"
+def _csv(root, entry, rows=None, **over):
+    if rows is None:
+        rows = [(158015, 2.613, 2, "n2rwm"), (158015, 2.613, 2, "n2rwm"),
+                (156785, 0.856, 1, "rwm")]
+    frame = pd.DataFrame([{
+        "shot": shot, "t0_s": t, "t1_s": t, "phenomenon": entry["phenomenon"],
+        "evidence_kind": "database", "source": "database:" + entry["stem"],
+        "confidence": "", "attrs": json.dumps({"NTOR": ntor, "MODE_TYPE": mode,
+                                                "table": entry["stem"]}), **over,
+    } for shot, t, ntor, mode in rows], columns=db.FORMAT_COLUMNS)
+    path = root / entry["dir"] / "format" / f"{entry['format_stem']}.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    frame.to_csv(path, index=False)
     return path
 
 
 @pytest.fixture
 def table(tmp_path):
-    """A one-table root: the manifest, the CSV, and the spec they make."""
     root = tmp_path / "labels"
     entry = _entry()
     _manifest(root, [entry])
@@ -77,177 +61,101 @@ def table(tmp_path):
     return root
 
 
-# ------------------------------------------------------------- the manifest
-
-
-def test_the_manifest_is_read_and_a_table_names_its_own_source(table):
+def test_manifest_separates_raw_fields_format_path_and_source(table):
     (spec,) = db.load_manifest(table)
-    assert spec.stem == "rwm_fixture"
-    assert spec.phenomenon == "rwm"
-    assert spec.kind == "point"
-    assert spec.t_units == "ms"
-    assert spec.attr_cols == ("NTOR", "MODE_TYPE")
-    assert spec.provenance == "a fixture"
-    # The source is the join key everything downstream filters on, and it
-    # is derived from the stem so that two tables of one phenomenon can
-    # never collapse into one source.
     assert spec.source == "database:rwm_fixture"
-    assert spec.path(table) == table / "resistive_wall_mode" / "rwm_fixture.csv"
+    assert spec.path(table) == table / "resistive_wall_mode/format/normalized.csv"
+    assert spec.raw_path(table) == table / "resistive_wall_mode/raw/original.csv"
+    assert spec.kind == "point" and spec.t_units == "ms"
+    assert spec.attr_cols == ("NTOR", "MODE_TYPE")
 
 
 def test_a_duplicate_stem_is_an_error_naming_the_file(tmp_path):
-    root = tmp_path / "labels"
-    _manifest(root, [_entry(), _entry(dir="elsewhere")])
-    with pytest.raises(db.DatabaseError) as exc:
-        db.load_manifest(root)
-    assert "rwm_fixture" in str(exc.value)
-    assert str(root / "tables.yaml") in str(exc.value)
+    _manifest(tmp_path, [_entry(), _entry(dir="elsewhere")])
+    with pytest.raises(db.DatabaseError, match="rwm_fixture") as exc:
+        db.load_manifest(tmp_path)
+    assert "tables.yaml" in str(exc.value)
+
+
+def test_two_tables_cannot_overwrite_the_same_format_file(tmp_path):
+    _manifest(tmp_path, [_entry(), _entry(stem="other")])
+    with pytest.raises(db.DatabaseError, match="format_stem"):
+        db.load_manifest(tmp_path)
 
 
 def test_a_phenomenon_the_lexicon_does_not_have_is_an_error(tmp_path):
-    # The lexicon is the single vocabulary: a phenomenon id is a join key
-    # against labels, events and ideate, so one that loaded silently would
-    # be a phenomenon with no evidence anywhere.
-    root = tmp_path / "labels"
-    _manifest(root, [_entry(phenomenon="resistive_wall_mode")])
-    with pytest.raises(db.DatabaseError) as exc:
-        db.load_manifest(root)
-    assert "resistive_wall_mode" in str(exc.value)
-    assert "rwm" in str(exc.value)          # the ids it could have been
+    _manifest(tmp_path, [_entry(phenomenon="resistive_wall_mode")])
+    with pytest.raises(db.DatabaseError, match="resistive_wall_mode"):
+        db.load_manifest(tmp_path)
 
 
 def test_every_manifest_phenomenon_is_a_lexicon_id():
-    ids = set(load_lexicon().ids)
-    for spec in db.load_manifest(Paths().label_tables):
-        assert spec.phenomenon in ids
+    assert {s.phenomenon for s in db.load_manifest()} <= set(load_lexicon().ids)
 
 
-@pytest.mark.parametrize(
-    "over, wanted",
-    [
-        ({"t_units": "minutes"}, "t_units"),
-        ({"kind": "region"}, "kind"),
-        ({"t_col": None}, "t_col"),
-        ({"stem": ""}, "stem"),
-        ({"attr_types": {"NTOR": "complex"}}, "attr_types"),
-        ({"attr_types": {"NOT_A_COLUMN": "int"}}, "attr_cols"),
-        ({"provenance": ""}, "provenance"),
-    ],
-)
-def test_a_malformed_entry_is_an_error_that_names_the_field(tmp_path, over,
-                                                            wanted):
-    root = tmp_path / "labels"
-    entry = _entry(**over)
-    entry = {k: v for k, v in entry.items() if v is not None}
-    _manifest(root, [entry])
-    with pytest.raises(db.DatabaseError) as exc:
-        db.load_manifest(root)
-    assert wanted in str(exc.value)
+@pytest.mark.parametrize("over, wanted", [
+    ({"t_units": "minutes"}, "t_units"), ({"kind": "region"}, "kind"),
+    ({"t_col": None}, "t_col"), ({"stem": ""}, "stem"),
+    ({"attr_types": {"NTOR": "complex"}}, "attr_types"),
+    ({"attr_types": {"NOT_A_COLUMN": "int"}}, "attr_cols"),
+    ({"provenance": ""}, "provenance"), ({"raw_file": None}, "raw_file"),
+    ({"format_stem": None}, "format_stem"), ({"converter": None}, "converter"),
+    ({"made_at": None}, "made_at"),
+])
+def test_a_malformed_entry_is_an_error_that_names_the_field(tmp_path, over, wanted):
+    entry = {k: v for k, v in _entry(**over).items() if v is not None}
+    _manifest(tmp_path, [entry])
+    with pytest.raises(db.DatabaseError, match=wanted):
+        db.load_manifest(tmp_path)
 
 
-def test_an_interval_table_names_two_time_columns(tmp_path):
-    root = tmp_path / "labels"
-    entry = _entry(stem="qh_windows", phenomenon="qh", kind="interval",
-                   t0_col="START", t1_col="END", t_units="s",
-                   attr_cols=[], attr_types={})
-    del entry["t_col"]
-    _manifest(root, [entry])
-    _csv(root, entry, "SHOT,START,END\n190000,1.5,2.25\n")
-    (spec,) = db.load_manifest(root)
-    frame = db.read_table(spec, root)
-    assert list(frame["t0_s"]) == [1.5] and list(frame["t1_s"]) == [2.25]
-    events, _ = db.events_for_shot(190000, root=root)
-    assert [(e.t0_s, e.t1_s) for e in events] == [(1.5, 2.25)]
+def test_loader_uses_stored_intervals_evidence_and_confidence(tmp_path):
+    entry = _entry(kind="interval", t0_col="START", t1_col="END")
+    _manifest(tmp_path, [entry])
+    _csv(tmp_path, entry, [(190000, 1.5, 1, "rwm")], t1_s=2.25,
+         evidence_kind="human", confidence=0.6)
+    (event,), (record,) = db.events_for_shot(190000, root=tmp_path)
+    assert (event.t0_s, event.t1_s) == (1.5, 2.25)
+    assert event.evidence_kind == "human" and event.confidence == 0.6
+    assert record["n_events"] == 1
+
+
+def test_loader_reads_format_only_and_never_requires_raw(table):
+    (spec,) = db.load_manifest(table)
+    before = spec.path(table).read_bytes()
+    frame = db.read_table(spec, table)
+    assert frame.t0_s.tolist() == [2.613, 2.613, 0.856]
+    assert spec.path(table).read_bytes() == before
+    raw = spec.raw_path(table)
+    raw.parent.mkdir()
+    raw.write_text("this is deliberately not a CSV")
+    assert len(db.read_table(spec, table)) == 3
+    spec.path(table).unlink()
+    with pytest.raises(db.DatabaseError, match="format/normalized.csv"):
+        db.read_table(spec, table)
 
 
 def test_a_missing_manifest_is_an_error_and_not_an_empty_answer(tmp_path):
-    # Silence here would look exactly like "no table names this shot",
-    # which is the one thing a curated list must never be confused with.
     with pytest.raises(db.DatabaseError):
         db.load_manifest(tmp_path / "nothing")
 
 
-# ---------------------------------------------------------------- the table
-
-
-def test_the_times_are_converted_to_seconds_on_load_and_never_on_disk(table):
-    (spec,) = db.load_manifest(table)
-    before = (spec.path(table)).read_text(encoding="utf-8")
-    frame = db.read_table(spec, table)
-    assert list(frame["t0_s"]) == [2.613, 2.613, 0.856]
-    assert list(frame["t1_s"]) == [2.613, 2.613, 0.856]
-    assert list(frame["shot"]) == [158015, 158015, 156785]
-    assert spec.path(table).read_text(encoding="utf-8") == before
-
-
 def test_a_duplicate_row_inside_one_table_is_kept(table):
-    (spec,) = db.load_manifest(table)
-    frame = db.read_table(spec, table)
-    # Two onsets at the same time is a claim the table makes. De-duplicating
-    # it here would be us editing somebody else's list.
-    assert len(frame) == 3
     events, _ = db.events_for_shot(158015, root=table)
     assert len(events) == 2
 
 
-def test_a_missing_column_is_an_error_naming_the_file_and_the_column(tmp_path):
-    root = tmp_path / "labels"
-    entry = _entry()
-    _manifest(root, [entry])
-    path = _csv(root, entry, "SHOT,TIME,NTOR,MODE_TYPE\n158015,2613,1,rwm\n")
-    (spec,) = db.load_manifest(root)
-    with pytest.raises(db.DatabaseError) as exc:
-        db.read_table(spec, root)
-    assert "ONSET_TIME" in str(exc.value) and str(path) in str(exc.value)
-
-
-def test_a_missing_csv_is_an_error_naming_the_path(tmp_path):
-    root = tmp_path / "labels"
-    _manifest(root, [_entry()])
-    (spec,) = db.load_manifest(root)
-    with pytest.raises(db.DatabaseError) as exc:
-        db.read_table(spec, root)
-    assert "rwm_fixture.csv" in str(exc.value)
-
-
-@pytest.mark.parametrize("bad", ["nan", "", "soon"])
-def test_a_non_numeric_or_non_finite_time_raises_at_load_not_at_write(tmp_path,
-                                                                     bad):
-    # At load, so the file is named in the error. An Event with a NaN t0_s
-    # would raise in `Event.__post_init__` instead, five frames away from
-    # the row that caused it and with no path in the message.
-    root = tmp_path / "labels"
-    entry = _entry()
-    _manifest(root, [entry])
-    _csv(root, entry, f"SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015,{bad},1,rwm\n")
-    (spec,) = db.load_manifest(root)
-    with pytest.raises(db.DatabaseError) as exc:
-        db.read_table(spec, root)
-    assert "ONSET_TIME" in str(exc.value)
-
-
-def test_a_non_integer_shot_raises_at_load(tmp_path):
-    root = tmp_path / "labels"
-    entry = _entry()
-    _manifest(root, [entry])
-    _csv(root, entry, "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015.5,2613,1,rwm\n")
-    (spec,) = db.load_manifest(root)
-    with pytest.raises(db.DatabaseError) as exc:
-        db.read_table(spec, root)
-    assert "SHOT" in str(exc.value)
-
-
-def test_an_interval_that_runs_backwards_raises_at_load(tmp_path):
-    root = tmp_path / "labels"
-    entry = _entry(stem="backwards", phenomenon="qh", kind="interval",
-                   t0_col="START", t1_col="END", t_units="s",
-                   attr_cols=[], attr_types={})
-    del entry["t_col"]
-    _manifest(root, [entry])
-    _csv(root, entry, "SHOT,START,END\n190000,2.5,1.5\n")
-    (spec,) = db.load_manifest(root)
-    with pytest.raises(db.DatabaseError):
-        db.read_table(spec, root)
+@pytest.mark.parametrize("over, field", [
+    ({"t0_s": "soon"}, "t0_s"), ({"t1_s": 0}, "t1_s"),
+    ({"shot": 158015.5}, "shot"), ({"attrs": "oops"}, "attrs"),
+    ({"source": "database:wrong"}, "source"), ({"phenomenon": "elm"}, "phenomenon"),
+])
+def test_loader_validates_the_format_file(table, over, field):
+    path = _csv(table, _entry(), **over)
+    (spec,) = db.load_manifest(table)
+    with pytest.raises(db.DatabaseError, match=field) as exc:
+        db.read_table(spec, table)
+    assert str(path) in str(exc.value)
 
 
 def test_shots_is_the_membership_set(table):
@@ -330,10 +238,10 @@ def test_a_table_that_names_the_shot_records_one_ok_source_with_nan_coverage(
 
 def test_two_tables_naming_one_shot_stay_two_sources(tmp_path):
     root = tmp_path / "labels"
-    first, second = _entry(), _entry(stem="rwm_other")
+    first, second = _entry(), _entry(stem="rwm_other", format_stem="other")
     _manifest(root, [first, second])
-    _csv(root, first, "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015,1000,1,rwm\n")
-    _csv(root, second, "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015,2000,2,n2rwm\n")
+    _csv(root, first, [(158015, 1.0, 1, "rwm")])
+    _csv(root, second, [(158015, 2.0, 2, "n2rwm")])
     events, records = db.events_for_shot(158015, root=root)
     assert sorted(e.source for e in events) == [
         "database:rwm_fixture", "database:rwm_other",
@@ -362,12 +270,11 @@ def test_the_event_ids_keep_the_colon_and_number_per_source_in_time_order(
 
 def test_the_index_gets_one_row_per_table_per_shot(tmp_path):
     root = tmp_path / "labels"
-    first, second = _entry(), _entry(stem="rwm_other")
+    first, second = _entry(), _entry(stem="rwm_other", format_stem="other")
     _manifest(root, [first, second])
-    _csv(root, first, "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015,1000,1,rwm\n")
-    _csv(root, second,
-         "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015,2000,2,n2rwm\n"
-         "158015,2500,2,n2rwm\n")
+    _csv(root, first, [(158015, 1.0, 1, "rwm")])
+    _csv(root, second, [(158015, 2.0, 2, "n2rwm"),
+                        (158015, 2.5, 2, "n2rwm")])
     events, _ = db.events_for_shot(158015, root=root)
     path = tmp_path / "e.parquet"
     schema.write_events(path, 158015, events, run_id="test")
@@ -412,8 +319,10 @@ def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
         assert (frame["shot"] > 100_000).all()
         assert frame["t0_s"].between(0.1, 20.0).all()
         assert (frame["t1_s"] == frame["t0_s"]).all()
-        assert set(frame["MODE_TYPE"]) <= {"rwm", "n2rwm"}
-        assert set(frame["NTOR"]) <= {1, 2}
+        attrs = frame["attrs"].map(json.loads)
+        assert {a["MODE_TYPE"] for a in attrs} <= {"rwm", "n2rwm"}
+        assert {a["NTOR"] for a in attrs} <= {1, 2}
+        assert spec.path(root).parent.name == "format"
     assert (total, len(named)) == (56, 33)
 
 
@@ -448,6 +357,5 @@ def test_reading_the_same_table_twice_does_not_reread_the_file(table,
 def test_a_changed_file_is_reread(table):
     (spec,) = db.load_manifest(table)
     assert len(db.read_table(spec, table)) == 3
-    _csv(table, {"dir": "resistive_wall_mode", "stem": "rwm_fixture"},
-         "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n158015,2613,2,n2rwm\n")
+    _csv(table, _entry(), [(158015, 2.613, 2, "n2rwm")])
     assert len(db.read_table(spec, table)) == 1
