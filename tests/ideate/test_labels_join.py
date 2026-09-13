@@ -414,6 +414,40 @@ def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_
     }
 
 
+def test_a_sources_file_labelmaker_itself_wrote_is_ingested_as_is(tmp_path):
+    """The other tests here build the table through ideate's fixture writer. This one writes it
+    through labelmaker's REAL `schema.write_sources` - the producer - and reads it back through
+    the join, so the two sides' definitions of the contract cannot drift apart unnoticed: the
+    columns, their order, their dtypes, and the file's name and place."""
+    from ideate.labels import event_sources as es
+    from labelmaker.config import Paths as LabelmakerPaths
+
+    assert tuple(ev.SOURCE_COLUMNS) == es.SOURCES_COLUMNS
+    assert dict(ev.SOURCE_DTYPES) == es.SOURCES_DTYPES
+    lm = LabelmakerPaths(root=tmp_path, corpus=tmp_path / "corpus",
+                         text_root=tmp_path / "bundles", logs_jsonl=tmp_path / "logs.jsonl")
+    assert lm.sources_file(900001) == es.sources_file(tmp_path / "events", 900001)
+
+    lm.events.mkdir(parents=True, exist_ok=True)
+    ev.write_sources(lm.sources_file(900001), 900001, [
+        {"source": "tokeye_track", "diag": "mhr", "channel": 4, "pass_name": "wide",
+         "status": "ok", "reason": "", "t_cov0_s": 0.0, "t_cov1_s": 6.0, "n_events": 0},
+        {"source": "dalpha_lh", "diag": "filterscopes", "channel": -1, "pass_name": "",
+         "status": "skipped", "reason": "KeyError: no group 'co2'", "n_events": 0},
+    ], run_id="test-run")
+
+    result = join.join([900001, 900002], labelmaker_root=tmp_path)
+    src = result.sources
+    assert list(src.columns) == list(es.SOURCES_COLUMNS)
+    assert src.dtypes.astype(str).to_dict() == es.SOURCES_DTYPES
+    assert len(src) == 2 and set(src["run_id"]) == {"test-run"}
+    assert set(src["status"]) == {"ok", "skipped"}
+    assert np.isnan(src.loc[src["source"] == "dalpha_lh", "t_cov0_s"]).all()
+    m = result.manifest
+    assert m["sources_by_shot"][900001]["has_observed_products"] is True
+    assert (m["n_shots_with_observed_products"], m["n_shots_unprocessed"]) == (1, 1)
+
+
 def test_a_join_with_no_source_files_at_all_still_writes_a_typed_empty_table(tmp_path):
     from ideate.labels import event_sources as es
 

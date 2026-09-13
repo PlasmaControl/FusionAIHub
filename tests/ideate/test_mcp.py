@@ -290,6 +290,24 @@ def test_an_indexed_shot_nobody_processed_is_unprocessed(ideate_db):
     assert got["coverage"]["has_observed_products"] is False
 
 
+def test_a_shot_where_only_the_text_ran_is_unprocessed_not_observed(ideate_db):
+    """labelmaker records `text` as a source that RAN (over the shot's own span). A lexicon hit is
+    not a detector, so a shot with a logbook and no detector run is `unprocessed` - its mention
+    is in `text_mentions` and its empty `events` is not "0 detections inside coverage"."""
+    write_sources(ideate_db / "db", [_source(100, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1)])
+    write_events(
+        ideate_db / "db",
+        [_event(100, "elm", 0.0, 0.0, source="text", evidence_kind="text", diag="", channel=-1,
+                pass_name="")],
+    )
+    got = tools.get_events(100)
+    assert got["status"] == "unprocessed"
+    assert got["n"] == 0 and got["n_text_mentions"] == 1
+    assert got["coverage"]["has_observed_products"] is False
+    assert got["coverage"]["t_cov0_s"] is None
+    assert any("Absence is not evidence" in c for c in got["caveats"])
+
+
 def test_a_window_outside_every_sources_coverage_is_uncovered_and_names_the_span(ideate_db):
     write_sources(ideate_db / "db", [_source(100, t_cov0_s=1.0, t_cov1_s=4.0)])
     write_events(ideate_db / "db", [_event(100, "tearing", 1.5, 2.0)])
