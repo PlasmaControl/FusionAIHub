@@ -106,8 +106,9 @@ Three things hold for the replies and are worth knowing before reading one:
   real shot 198658's `actuator/ech_power_total` is) can neither cover nor un-cover a window: it
   keeps the shot out of `unprocessed` because it did run, it can never make a window `observed`,
   and a shot whose every completed source has unknown coverage answers `uncovered` with a caveat
-  naming each one.** A reversed, zero-width or non-finite window is an error dict, never a
-  silent empty. (On the
+  naming each one.** A `text` row, a `database:<stem>` row and an `evidence_kind="database"` row
+  are not diagnostics having looked either, and none of them can make a shot `observed`. A
+  reversed, zero-width or non-finite window is an error dict, never a silent empty. (On the
   `recommender_v1` database today *all* 1,037 event rows are forecasts and no shot has an
   observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
   is the truth the old empty list hid.)
