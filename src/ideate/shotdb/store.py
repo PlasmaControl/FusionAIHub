@@ -99,7 +99,7 @@ class ShotDB:
 
         self.event_sources = empty_sources() if event_sources is None else event_sources
         self.has_event_sources = event_sources is not None
-        #: name -> message for an optional label table that exists but could not be read.
+        #: name -> message for an optional evidence table that exists but could not be read.
         self.load_errors: dict[str, str] = {}
         meta = shots[["shot", "run_id", "regime", "verdict", "operational"]].set_index("shot")
         # A left join preserves row order, which is what keeps self.segments aligned row-for-row

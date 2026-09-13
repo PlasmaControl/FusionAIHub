@@ -98,3 +98,15 @@ def test_legacy_event_coverage_agrees_and_counts_one_source_once(ideate_db):
     assert result['status'] == ph.evidence(100, 'elm', db).coverage_state == 'observed'
     assert result['coverage']['n_sources_ok'] == 1
     tools.reset_cache()
+
+
+def test_no_registered_detector_caveat_does_not_deny_returned_event_rows(ideate_db):
+    from .test_phenomena import _db_with, _event
+
+    _db_with(ideate_db, [_event(100, 'foreign-rwm', phenomenon='rwm')])
+    tools.reset_cache()
+    result = tools.get_events(100, 'rwm', 1, 5)
+    assert result['status'] == 'unprocessed' and result['n'] == 1
+    assert not any('has no detector or heuristic rows' in c for c in result['caveats'])
+    assert 'no detector registered for rwm; text/database evidence only' in result['caveats']
+    tools.reset_cache()
