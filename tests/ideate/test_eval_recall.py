@@ -164,7 +164,7 @@ def test_a_sheet_and_manifest_from_different_renderings_are_refused(tmp_path, db
 
 def test_fewer_than_twenty_labelled_test_rows_is_a_refusal_with_the_counts(tmp_path, db):
     _sheet(tmp_path, "sawtooth", _rows(19))
-    with pytest.raises(rec.RecallRefused, match="19 labelled `test` rows"):
+    with pytest.raises(rec.RecallRefused, match=r"19 scorable labelled .test. rows"):
         rec.recall("sawtooth", db, tmp_path)
 
 
@@ -175,7 +175,7 @@ def test_unlabelled_rows_do_not_count_towards_the_twenty(tmp_path, db):
     for i, r in enumerate(rows):
         r["file"] = f"{i:04d}.png"
     _sheet(tmp_path, "sawtooth", rows)
-    with pytest.raises(rec.RecallRefused, match="15 labelled"):
+    with pytest.raises(rec.RecallRefused, match="15 scorable labelled"):
         rec.recall("sawtooth", db, tmp_path)
 
 
@@ -183,8 +183,34 @@ def test_rows_outside_the_test_split_do_not_count_towards_the_twenty(tmp_path, d
     rows = _rows(30)
     splits = {r["file"]: ("test" if i < 12 else "train") for i, r in enumerate(rows)}
     _sheet(tmp_path, "sawtooth", rows, splits=splits)
-    with pytest.raises(rec.RecallRefused, match="12 labelled `test` rows"):
+    with pytest.raises(rec.RecallRefused, match=r"12 scorable labelled .test. rows"):
         rec.recall("sawtooth", db, tmp_path)
+
+
+def test_the_floor_is_applied_to_the_rows_actually_SCORED_not_to_the_sheet(tmp_path, db):
+    """22 labelled test rows, 20 of them on shots this database does not hold, is TWO windows.
+
+    The floor counted rows before the absent-shot filter, so this scored two and printed
+    `recall = 0.0` with a caveat beside it and exit 0 -- precisely the "a recall over twelve
+    windows is a claim the data cannot support" the module refuses everywhere else.
+    """
+    rows = _rows(2) + _rows(20, shot=999999)
+    for i, r in enumerate(rows):
+        r["file"] = f"{i:04d}.png"
+    _sheet(tmp_path, "sawtooth", rows)
+    with pytest.raises(rec.RecallRefused, match=r"2 scorable labelled .test. rows"):
+        rec.recall("sawtooth", db, tmp_path)
+
+
+def test_the_floor_counts_windows_on_shots_the_database_holds(tmp_path, db):
+    """The mirror of the above: 20 scorable windows plus any number of absent ones is enough."""
+    rows = _rows(20) + _rows(5, shot=999999)
+    for i, r in enumerate(rows):
+        r["file"] = f"{i:04d}.png"
+    _sheet(tmp_path, "sawtooth", rows)
+    report = rec.recall("sawtooth", db, tmp_path)
+    assert report.true_positive + report.false_negative == 20
+    assert report.n_rows_not_in_db == 5
 
 
 def test_a_manifest_with_no_split_column_is_refused(tmp_path, db):

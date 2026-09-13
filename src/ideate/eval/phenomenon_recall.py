@@ -16,11 +16,16 @@ did not answer. Counting those as negatives would manufacture a recall number ou
 nobody read, which is the same error as reading "no data" as "no phenomenon" everywhere else in
 this package.
 
-**It refuses below 20 labelled test rows** (`MIN_TEST_ROWS`). A recall computed on twelve windows
+**It refuses below 20 SCORABLE test rows** (`MIN_TEST_ROWS`). A recall computed on twelve windows
 has a 95 % interval roughly half the unit interval wide; printing it with three decimals would be
 a claim the data cannot support. The refusal is a `RecallRefused` with the counts in the message,
 and the CLI exits 2 on it -- an empty table would read as "recall 0", and the two are opposite
 answers.
+
+"Scorable" means *after* the windows on shots this database does not hold are dropped, not
+before. Counting them would let a sheet of 22 labelled rows, 20 of them on absent shots, score
+two windows and publish a number with a caveat beside it -- which is the same claim the floor
+exists to refuse, wearing an apology.
 
 **What counts as a detection.** An OBSERVED interval overlapping the annotated window, and
 nothing else. A forecast is a model's estimate of what was about to happen and a text claim is a
@@ -117,6 +122,12 @@ def _detected(db, shot: int, ph, t0: float, t1: float, segment: str, min_confide
 
     Observed intervals only -- see the module docstring for why a forecast and a text claim do
     not count here.
+
+    `label_floor` is deliberately not passed: this branch's `evidence()` does not take one, and
+    when I9a's does, THIS call must pass the same floor `locate()` uses or the recall score and
+    the ranked list would be measuring different things. Only `intervals` is read here, which no
+    label floor touches, so the default is correct today and the note is for whoever adds a
+    `--label-floor` flag.
     """
     ev = ph_mod.evidence(shot, ph, db, segment, min_confidence=min_confidence)
     return any(iv.t0_s <= t1 and iv.t1_s >= t0 for iv in ev.intervals)
@@ -137,23 +148,27 @@ def recall(
     n_rows = len(frame)
     test = frame.loc[frame["split"].astype(str) == TEST_SPLIT]
     labelled = test.loc[test["label"].astype(str).str.strip().isin({LABELS_YES, LABELS_NO})]
-    if len(labelled) < min_rows:
+
+    # The floor is applied to what can actually be SCORED, which is why the absent-shot filter
+    # runs first. See the module docstring.
+    known = {int(s) for s in getattr(db, "shots", pd.DataFrame()).index}
+    in_db = labelled.loc[labelled["shot"].astype(int).isin(known)] if len(labelled) else labelled
+    absent = len(labelled) - len(in_db)
+    if len(in_db) < min_rows:
+        held = (
+            f" ({absent} of them are on shots this database does not hold)" if absent else ""
+        )
         raise RecallRefused(
-            f"{phenomenon}: {len(labelled)} labelled `{TEST_SPLIT}` rows in "
-            f"{sheet_path(root, phenomenon)} ({len(test)} test rows of {n_rows}); "
-            f"{min_rows} are needed. A recall over fewer is a number the data cannot support, "
-            "so none is reported."
+            f"{phenomenon}: {len(in_db)} scorable labelled `{TEST_SPLIT}` rows in "
+            f"{sheet_path(root, phenomenon)}{held}; {len(labelled)} labelled of {len(test)} test "
+            f"rows of {n_rows}; {min_rows} are needed. A recall over fewer is a number the data "
+            "cannot support, so none is reported."
         )
 
-    known = {int(s) for s in getattr(db, "shots", pd.DataFrame()).index}
     counts = {"tp": 0, "fn": 0, "fp": 0, "tn": 0}
-    absent = 0
     shots: set[int] = set()
-    for row in labelled.to_dict("records"):
+    for row in in_db.to_dict("records"):
         shot = int(row["shot"])
-        if shot not in known:
-            absent += 1
-            continue
         shots.add(shot)
         hit = _detected(db, shot, ph, float(row["t0_s"]), float(row["t1_s"]), segment,
                         min_confidence)
@@ -170,7 +185,9 @@ def recall(
     if absent:
         caveats.append(
             f"{absent} labelled test windows are on shots this database does not hold; they are "
-            "excluded, not counted as misses"
+            "excluded before the {n}-row floor is applied, and are not counted as misses".format(
+                n=min_rows
+            )
         )
     if counts["tp"] + counts["fn"] == 0:
         caveats.append("no positive test window survived, so recall is undefined rather than 0")

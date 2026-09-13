@@ -17,7 +17,9 @@ What is measured, and why each one is here rather than a single "accuracy":
   and "radiative divertor" are how the operators write two phenomena whose alias lists do not
   contain those words. The plan's bar is 80 % on qh_mode, elm_rmp and fast_ions.
 * **run diversity and duplicate rate** -- ten results from one run day are one experiment shown
-  ten times. `rerank`'s run-day decay and dedup exist to prevent that, and these two numbers are
+  ten times. Diversity is averaged over the prompts that ANSWERED: a prompt that returned nothing
+  has no top-10 to be diverse, and dividing by it reports a number smaller than any top-10 ever
+  showed. `rerank`'s run-day decay and dedup exist to prevent that, and these two numbers are
   what says whether they work on real queries.
 * **the proxy grade** -- a narrow, machine-checkable stand-in for the 20 hand grades, which
   announces itself as a proxy in `ProxyGrade.caveat`. See there.
@@ -259,6 +261,12 @@ def _proxy_hit(prompt: EvalPrompt, shots: list[int], db) -> bool | None:
     text-only elsewhere). A prompt that expects only constraints passes if EVERY one of the top 5
     satisfies them -- that is a hard filter, so anything else would be a bug rather than a miss.
     A prompt that expects neither is not machine-checkable and returns None instead of a free pass.
+
+    `evidence()` is called with this branch's signature and no `label_floor`. When I9a's
+    keyword-only `label_floor` lands, this call must pass the SAME floor `locate()` passes at its
+    own call site: the proxy grade is about the shots a user would have been shown, so a floor
+    that changes what `locate` returns and not what this reads would make the two disagree
+    silently. `label_floor=None` reads the configured default, which is what `locate` uses today.
     """
     top = shots[:PROXY_K]
     if not top:
@@ -345,6 +353,7 @@ def run(
 
 def _report(evalset, outcomes, db, split, keep, n) -> EvalReport:
     ok = [o for o in outcomes if o.error is None]
+    answered = [o for o in outcomes if o.n_results > 0]
     n_prompts = len(outcomes)
     n_results = sum(o.n_results for o in outcomes)
     survival = [
@@ -373,9 +382,7 @@ def _report(evalset, outcomes, db, split, keep, n) -> EvalReport:
             else None
         ),
         categories=_categories(outcomes),
-        mean_run_diversity=(
-            sum(len(o.run_ids) for o in ok) / len(ok) if ok else 0.0
-        ),
+        mean_run_diversity=_mean_diversity(answered),
         duplicate_rate=_frac(sum(o.duplicate_shots for o in outcomes), n_results),
         proxy=ProxyGrade(
             n_prompts=len(graded),
@@ -403,6 +410,17 @@ def _frac(num: int, den: int) -> float:
     return (num / den) if den else 0.0
 
 
+def _mean_diversity(answered: list[PromptOutcome]) -> float | None:
+    """Distinct run days per answered top-k, or None when nothing answered.
+
+    None rather than 0.0: "no prompt returned anything" and "every prompt returned ten results
+    from one run day" are opposite findings and 0.0 cannot tell them apart.
+    """
+    if not answered:
+        return None
+    return sum(len(o.run_ids) for o in answered) / len(answered)
+
+
 def _categories(outcomes: list[PromptOutcome]) -> list[CategoryStats]:
     by: dict[str, list[PromptOutcome]] = {}
     for o in outcomes:
@@ -422,9 +440,7 @@ def _categories(outcomes: list[PromptOutcome]) -> list[CategoryStats]:
                     if expecting
                     else None
                 ),
-                mean_run_diversity=(
-                    sum(len(o.run_ids) for o in rows) / len(rows) if rows else 0.0
-                ),
+                mean_run_diversity=_mean_diversity([o for o in rows if o.n_results > 0]),
             )
         )
     return out
@@ -464,6 +480,10 @@ def _pct(x: float | None) -> str:
     return "n/a" if x is None else f"{100.0 * x:.1f} %"
 
 
+def _num(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:.2f}"
+
+
 def markdown(report: EvalReport) -> str:
     """The report as a table a human reads, with the two plan bars marked and nothing else
     judged. `split` is stated in the first line because a number from `all` is not comparable
@@ -488,7 +508,10 @@ def markdown(report: EvalReport) -> str:
             f"| phenomenon resolution (all prompts with an expectation) | "
             f"{_pct(report.resolution_overall)} | — |"
         ),
-        f"| mean distinct run days per top-{TOP_K} | {report.mean_run_diversity:.2f} | — |",
+        (
+            f"| mean distinct run days per answered top-{TOP_K} | "
+            f"{_num(report.mean_run_diversity)} | — |"
+        ),
         f"| duplicate rate (repeated shots / results) | {_pct(report.duplicate_rate)} | — |",
         f"| prompts that raised an error | {report.n_errors} | — |",
         "",
@@ -508,8 +531,15 @@ def markdown(report: EvalReport) -> str:
             bar = " PASS" if c.resolution >= RESOLUTION_BAR else " FAIL"
         lines.append(
             f"| `{c.category}` | {c.n_prompts} | {_pct(c.coverage)} | {c.n_with_expectation} | "
-            f"{_pct(c.resolution)}{bar} | {c.mean_run_diversity:.2f} |"
+            f"{_pct(c.resolution)}{bar} | {_num(c.mean_run_diversity)} |"
         )
+    lines += [
+        "",
+        (
+            "`resolution` is computed from the prompt text and the lexicon alone — no database, "
+            "no split — so it is **identical on every split**, unlike every other column here."
+        ),
+    ]
     p = report.proxy
     lines += [
         "",
