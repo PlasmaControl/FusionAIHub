@@ -24,6 +24,24 @@ pickup event families. The annotator picks candidate windows with actuator
 conditions in mind, so a classifier trained on those conditions would be
 scored against its own selection - the circularity the plan rules out.
 
+**"What a diagnostic saw" is a POLICY, not an adjective.** An events file
+holds every kind of claim about a shot side by side - a detector's, a
+heuristic's, a forecast's, an operator's logbook line - and the row that
+says which is `evidence_kind`, with `source` saying who. Selecting a
+family by `phenomenon` alone therefore counts a shift-leader's
+"updated ELM detector tuning" as an ELM at `t = 0` and a model's
+`label_forecast` as a crash that happened: BOTH were reproduced on real
+records by the iteration-0 critic, and both are what `DIAGNOSTIC_EVIDENCE`
+and `FAMILY_SOURCES` now forbid. Every row reaching a feature must have
+`evidence_kind` in `DIAGNOSTIC_EVIDENCE` (`detector` or `heuristic`) AND
+a `source` that `FAMILY_SOURCES` allows for its own phenomenon;
+`EventTable.from_frame` applies that filter once, before any clustering,
+union or overlap, so nothing downstream can reach a row it excluded.
+`text`, `forecast`, `human`, `database` and `model` rows are not dropped
+from the FILE - they are what retrieval and the text channel are for -
+they are simply not evidence about what a diagnostic showed, and this
+module computes nothing else.
+
 The exception is `lh_recent`. It counts `lh_transition` events, and
 `heuristics.lh_transitions` is GATED on NBI power (`LH_MIN_PINJ_KW`): it
 returns `[]` without beams and drops any candidate whose preceding window
@@ -71,7 +89,12 @@ import numpy as np
 import pandas as pd
 
 from ..ae.labels import N_BINS
-from .heuristics import LH_PHENOMENON, SAWTOOTH_PHENOMENON
+from .heuristics import (
+    LH_PHENOMENON,
+    LH_SOURCE,
+    SAWTOOTH_PHENOMENON,
+    SAWTOOTH_SOURCE,
+)
 from .masks import (
     N_BANDS,
     freq_axis_khz,
@@ -80,10 +103,13 @@ from .masks import (
     unpack,
 )
 from .schema import read_events
+from .tracks import PHENOMENON as TRACK_PHENOMENON
 from .tracks import PICKUP_PHENOMENON
 from .tracks import SOURCE as TRACK_SOURCE
 from .transients import FREE_PHENOMENON
+from .transients import FREE_SOURCE as ELM_FREE_SOURCE
 from .transients import PHENOMENON as ELM_PHENOMENON
+from .transients import SOURCE as ELM_SOURCE
 
 #: The window, and how far it slides. Half-overlapping on purpose.
 WINDOW_S = 0.34
@@ -117,6 +143,35 @@ BAND_HI_KHZ = (100.0, 250.0)
 # A band is the mean of 32 bins, so `lo` includes the 0-2 kHz corner of
 # band 0 and `hi` stops at the top bin: these are broad power summaries,
 # not filters, and nothing downstream reads a band edge as a cut-off.
+
+#: The evidence kinds a row must carry before any of the 46 features may
+#: be computed from it. A `forecast` is a model's estimate of what was
+#: ABOUT to happen, a `text` row is an operator's mention of a phenomenon
+#: (which may be a mention of the DETECTOR - "updated ELM detector tuning"
+#: - rather than of an ELM), and `human`, `database` and `model` rows are
+#: somebody else's claim, restated. None of them is what a diagnostic
+#: showed on this shot, which is the only thing this module reduces.
+DIAGNOSTIC_EVIDENCE: tuple[str, ...] = ("detector", "heuristic")
+
+#: phenomenon -> the sources whose rows may become that family's features.
+#: The evidence kind is necessary and not sufficient: a `heuristic` row
+#: claiming `elm` from some source other than the ELM clock's own detector
+#: is a claim this module has no calibration for, and a phenomenon absent
+#: from this map reaches no feature at all.
+#:
+#: `elm` comes from `tokeye_transient` and NOT from `elm_clock`, which is
+#: the derived source: the clock's own rows are the `elm_free` intervals it
+#: computes FROM those ELMs (`transients.transients_to_events` writes both,
+#: one source each, and `docs/LABELMAKER.md` tabulates them). Keeping the
+#: two apart is what lets a consumer trust one and not the other.
+FAMILY_SOURCES: dict[str, tuple[str, ...]] = {
+    TRACK_PHENOMENON: (TRACK_SOURCE,),
+    PICKUP_PHENOMENON: (TRACK_SOURCE,),
+    ELM_PHENOMENON: (ELM_SOURCE,),
+    FREE_PHENOMENON: (ELM_FREE_SOURCE,),
+    SAWTOOTH_PHENOMENON: (SAWTOOTH_SOURCE,),
+    LH_PHENOMENON: (LH_SOURCE,),
+}
 
 #: Point detections this close together are one physical event seen by
 #: more than one block. 2 ms is well under the shortest interval round 1
@@ -387,6 +442,51 @@ def _cluster_times(t_s: np.ndarray, tol_s: float = DEDUP_S) -> np.ndarray:
     return np.add.reduceat(t, idx) / sizes
 
 
+def diagnostic_mask(events: pd.DataFrame) -> np.ndarray:
+    """Which rows of `events` may be reduced into `FEATURE_NAMES`.
+
+    Both halves of the policy, applied together: the row's `evidence_kind`
+    must be in `DIAGNOSTIC_EVIDENCE`, and its `source` must be one
+    `FAMILY_SOURCES` allows for its own `phenomenon`. A phenomenon this
+    module computes no feature for - `hl_transition`, `nbi_on`, `qh` -
+    fails the second test and is excluded, which is the same answer for a
+    different reason and is why the mask is computed from the pair rather
+    than from a list of families.
+
+    Returns a plain boolean array rather than a pandas mask so that the
+    caller can index either a frame or the arrays it came from, and so that
+    an empty frame - the common case for a shot nothing has run on - costs
+    nothing.
+    """
+    n = len(events)
+    if n == 0:
+        return np.zeros(0, dtype=bool)
+    kind = events["evidence_kind"].to_numpy(dtype=object)
+    source = events["source"].to_numpy(dtype=object)
+    phenomenon = events["phenomenon"].to_numpy(dtype=object)
+    allowed = DIAGNOSTIC_EVIDENCE
+    return np.fromiter(
+        (
+            k in allowed and s in FAMILY_SOURCES.get(p, ())
+            for k, s, p in zip(kind, source, phenomenon, strict=True)
+        ),
+        dtype=bool,
+        count=n,
+    )
+
+
+def diagnostic_rows(events: pd.DataFrame) -> pd.DataFrame:
+    """`events` narrowed to what a diagnostic showed on this shot.
+
+    The one gate between an events file and the 46 features. A consumer
+    that wants the text or the forecasts has the whole frame and the
+    `evidence_kind` column; a consumer computing a diagnostic feature goes
+    through here, so that "which rows count" is one decision in one place
+    rather than a `phenomenon` test repeated per family.
+    """
+    return events.loc[diagnostic_mask(events)]
+
+
 def _attr(raw: str, key: str) -> float:
     """One numeric field of a stored `attrs` JSON string, or NaN."""
     try:
@@ -434,7 +534,11 @@ class EventTable:
 
     @classmethod
     def from_frame(cls, events: pd.DataFrame) -> EventTable:
-        df = events
+        # ONE filter, here, before anything is clustered, unioned or
+        # counted: every array below is built off `df`, so a row the
+        # evidence policy excludes is unreachable from every feature
+        # rather than excluded family by family.
+        df = diagnostic_rows(events)
         tracks = df[df["source"] == TRACK_SOURCE]
         attrs = tracks["attrs"].to_numpy()
 

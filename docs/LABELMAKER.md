@@ -112,6 +112,7 @@ corpus location):
 | `models/<slug>/` | the weights, copied once; verified against the card's sha256 before every load |
 | `masks/<shot>_masks.npz` | one `(diag, channel, pass)` block per planned channel: packed coherent/transient masks, their row and column summaries, 16-band log-power, the column times, a `_meta` JSON |
 | `events/<shot>_events.parquet` | discrete events - one row per thing that happened, and the source that says so |
+| `events/<shot>_sources.parquet` | one row per (source, diag, channel, pass) that RAN or was SKIPPED - the "did anybody look" query |
 | `events_index.parquet` | one row per (shot, source, phenomenon) - the "which shots have EHOs" query |
 | `text/logs_subset.jsonl` | the shots-in-hand slice of the 616 MB logbook dump, beside `logs_subset.missing` |
 | `runs/events/<run_id>.json` | one mask run: settings, per-shot rows, per-source event totals |
@@ -167,21 +168,113 @@ is four times finer in frequency and four times coarser in time),
 that matters is inside the batched forward pass - and each shot still gets its
 own SIGALRM budget, so a hung read costs one shot.
 
+### Evidence kinds, and what may become a feature
+
+`evidence_kind` is the column that says what KIND of claim a row is, and it
+is load-bearing rather than decorative:
+
+| evidence_kind | what the row is | may become a diagnostic feature |
+|---|---|---|
+| `detector` | a network or a threshold, on a measured signal | yes |
+| `heuristic` | arithmetic on one or more measured signals | yes |
+| `forecast` | a model's estimate of what was ABOUT to happen; carries `horizon_s` | no |
+| `text` | a phrase in this shot's own logbook entries | no |
+| `human` | an annotation somebody made | no |
+| `database` | a value restated from another store | no |
+| `model` | a model's output, not raised to a forecast | no |
+
+**A `text` row does not describe what a diagnostic showed.** It records
+that a phrase appeared in the logbook, and a phrase may be about the
+DETECTOR rather than about the plasma: shot 185980's operator wrote
+"Updated ELM detector tuning.", and shot 193348's "Sawtooth piggyback:
+Density higher than desired but good shot." names an experiment, not a
+crash. Both are true rows and neither is an observation of the phenomenon.
+Because a text row inherits the shot's span - `[0, PULSE-LENGTH)`, or a
+point at zero when the bundle has no length - an untimed mention lands at
+shot start, which is where the iteration-0 critic found both of them being
+counted as events at `t = 0`.
+
+`events/windows.py` therefore selects the rows it reduces into the 46
+`phenomenon_window_features` by an explicit policy, not by `phenomenon`:
+
+* `DIAGNOSTIC_EVIDENCE` - the row's `evidence_kind` must be `detector` or
+  `heuristic`;
+* `FAMILY_SOURCES` - and its `source` must be one the family's own detector
+  writes: `coherent_mode` and `pickup` from `tokeye_track`, `elm` from
+  `tokeye_transient`, `elm_free` from `elm_clock`, `sawtooth` from
+  `ece_sawtooth`, `lh_transition` from `dalpha_lh`.
+
+Both, together, applied once before anything is clustered or unioned. Text
+and forecasts stay in the file - retrieval and the text channel want them -
+and reach none of the 46 numbers; the served `FeatureArray` stamps the
+policy into its `attrs` so a stored feature can be re-checked when the
+policy changes.
+
+### Coverage: no coverage is not absence
+
+Every row carries `t_cov0_s`/`t_cov1_s`, the span of the thing the row was
+measured on. Three rules:
+
+* **Per source and per quantity.** An `nbi_on` row's coverage is the NBI
+  digitiser's, a `gas_on` row's is the gas recorder's, and `diag` on an
+  actuator row names which. They are not the same span: on shot 198658 the
+  gas axis runs -10 to 94.86 s and the NBI's stops at 13.10 s.
+* **Over finite samples.** A record's axis runs past its samples - the fast
+  groups end in NaN, a filterscope's head and tail are NaN - and padding is
+  not observation. A multi-input heuristic gets the INTERSECTION of the
+  inputs it needs at once: the L-H detector covers only where the D-alpha,
+  the line density and the injected power were all measured.
+* **NaN means unknown, not zero.** `(NaN, NaN)` is "nobody looked", which is
+  a third answer beside "looked and saw nothing" and "looked and saw
+  something". A consumer that reads it as an empty interval, or as an
+  infinite one, is wrong in a direction nothing downstream can detect.
+
+An event's extent is clipped into its own coverage at the point the row is
+built, with `attrs["clipped"] = true` where it had to be: a track stitched
+across tile boundaries carries the transform's edge support and ran up to
+2 ms past the record on the pilot shots. `schema.Event` refuses a row whose
+`t1_s` is after its own `t_cov1_s`, so the invariant is enforced rather
+than repaired.
+
+### `events/<shot>_sources.parquet`: did anybody look
+
+An events file says what was FOUND. A detector that ran and found nothing
+writes no row to it, so "no ELMs on this shot" and "nobody has run the ELM
+clock on this shot" are the same empty query. The sources file is the
+missing half - one row per `(source, diag, channel, pass_name)` that ran or
+was skipped:
+
+| column | meaning |
+|---|---|
+| `shot`, `source`, `diag`, `channel`, `pass_name` | which producer, on which block or quantity |
+| `status` | `ok` (it ran to completion), `skipped` (it did not), `error` |
+| `reason` | why, for a skip; `""` when `ok` |
+| `t_cov0_s`, `t_cov1_s` | what it ran over; NaN when unknown |
+| `n_events` | how many rows it put in the events file - **0 is a real answer** |
+| `run_id`, `git_sha`, `written_at` | which run wrote this row |
+
+So: `status == "ok"` with `n_events == 0` is observed silence, `status ==
+"skipped"` with a reason is the absence of an observation, and NO ROW AT
+ALL is "not processed". Written merged and atomically on the same key, so a
+re-run of one channel replaces that channel's rows and leaves the rest.
+
 Three things worth knowing before reading a row:
 
 - **A skip is ordinary.** `bes` is absent on 67% of shots and `mirnov` is not
   planned where `mhr` is present, so every shot's row carries a `skipped` dict
   saying which channel or step did not run and why. It is the answer to "was
-  there no ELM here, or did nobody look" - which is also what every row's
-  `t_cov0_s`/`t_cov1_s` are for.
+  there no ELM here, or did nobody look" - and so is
+  `events/<shot>_sources.parquet`, per source, on disk.
 - **The corpus has no `ip` and no `betan`.** So `actuator` never claims
   `nbi_counter` (it is a comparison of the injected torque's sign with the
   current's), `qh_proxy` has no flat-top to intersect and claims nothing, and
   an L->H row's `attrs["betan"]` is `null`. All three are recorded as skips
   rather than left looking like an absence of the phenomenon.
-- **Text is never a label by itself.** A `text` row's confidence is capped at
-  `TEXT_ONLY_CEILING`, and only the shot's OWN logbook entries are read - the
-  session context is the run's, not this shot's. The shot-scope text comes
+- **Text is never a label by itself, and never a detection.** A `text` row's
+  confidence is capped at `TEXT_ONLY_CEILING`, it is excluded from every
+  diagnostic feature by the evidence policy above, and only the shot's OWN
+  logbook entries are read - the session context is the run's, not this
+  shot's. The shot-scope text comes
   from a subset of the logbook dump that the stage builds once per run;
   `--refresh-text` re-asks about shots a previous run found no record for
   (deleting `text/logs_subset.missing` forgets all of them).
@@ -264,6 +357,15 @@ one in its config.
 
 ## Known limits
 
+- **Shot-scope text is thin, and a hit is not an assertion.** Measured over
+  the 500 shots of `recommender_v1.txt`, a shot's OWN logbook entries name a
+  sawtooth on 3 of them (0.6%) - a clear MISS against the >=5% condition the
+  plan set. The run-scope session text would give 14.6%, and is a fact about
+  the session rather than about the shot, so it is not substituted. Separately,
+  a lexicon hit is a mention and not a claim that the phenomenon occurred:
+  shot 185980's "Updated ELM detector tuning." is a positive ELM hit and is
+  about the detector. This is why `text` rows are capped at
+  `TEXT_ONLY_CEILING` and excluded from every diagnostic feature.
 - The archive resolver covers 3,246 of 16,909 corpus shots (19%). Everything
   else goes through fdp, which is built, measured against the archive on
   random overlap shots, and exercised on 69 of the 100 proof-of-concept shots -
