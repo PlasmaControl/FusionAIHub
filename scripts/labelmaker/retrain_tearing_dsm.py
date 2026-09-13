@@ -183,14 +183,17 @@ def main() -> int:
 
     t0 = time.time()
     sys.path.insert(0, str(args.fork))
-    import torch  # noqa: PLC0415  (imported after sys.path, with the fork's imports)
-    from sklearn.utils import shuffle  # noqa: PLC0415
-
-    from auton_survival.models.dsm.losses import conditional_loss  # noqa: PLC0415
-    from auton_survival.models.dsm.utilities import (  # noqa: PLC0415
+    # Imported HERE and not at module scope: `auton_survival` only exists on
+    # `sys.path` once `--fork` has been read, and these have to be the
+    # fork's copies. (`PLC0415` is not an enabled rule, so there is nothing
+    # to suppress; this comment is the reason the suppression carried.)
+    import torch
+    from auton_survival.models.dsm.losses import conditional_loss
+    from auton_survival.models.dsm.utilities import (
         _reshape_tensor_with_nans,
         get_optimizer,
     )
+    from sklearn.utils import shuffle
 
     names = array_names(args.cfg)
     print(f"arrays: {names}", flush=True)
@@ -404,9 +407,11 @@ def main() -> int:
     }
     (out_dir / "PROVENANCE.json").write_text(json.dumps(provenance, indent=2) + "\n")
 
-    import matplotlib  # noqa: PLC0415
+    # `use("Agg")` has to run between the two imports, so these stay here
+    # and in this order: a headless node has no display to fall back to.
+    import matplotlib
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt  # noqa: PLC0415
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(7, 4.2))
     ax.plot(range(len(val_all)), val_all, color="#4a3aa7", lw=1.9,
             label="validation NLL (elbo=False)")
