@@ -382,14 +382,23 @@ EVENT_STATES = ("unindexed", "unprocessed", "uncovered", "observed")
 
 _UNPROCESSED_CAVEAT = (
     "no observed-event product for shot {shot}: no detector is recorded as having run over it "
-    "and it has no non-forecast rows. Absence is not evidence -- this is not a quiet shot, it "
-    "is an unexamined one"
+    "and it has no detector or heuristic rows (a forecast, a logbook mention and a curated-table "
+    "entry are none of them). Absence is not evidence -- this is not a quiet shot, it is an "
+    "unexamined one"
 )
 
 _NO_DETECTION_CAVEAT = (
     "{n} source(s) ran over shot {shot} and reported 0 detections inside their coverage"
     "{window}. This IS an observation of nothing happening, unlike an unprocessed shot"
 )
+
+#: Which `evidence_kind` values decide `status`. An allow-list, the same two
+#: `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` and `retrieval.phenomena.OBSERVED_KINDS`
+#: name: a `forecast` is a model's estimate, a `text` row is a word in a logbook, a `database`
+#: row is an entry in a curated table and a `human`/`model` row is neither a diagnostic nor a
+#: heuristic. None of them is somebody having looked at this shot's plasma, so none of them may
+#: turn an unexamined shot into an observed one.
+OBSERVED_KINDS: tuple[str, ...] = ("detector", "heuristic")
 
 #: Said whenever a diagnostic source completed without recording its coverage -- whether or not
 #: any other source did record some. The row is a real fact ("it ran") that establishes nothing
@@ -507,7 +516,7 @@ def get_events(
 
     all_rows = df if df is not None else None
     n_observed_rows = 0 if all_rows is None else int(
-        (~all_rows["evidence_kind"].isin(("forecast", "text"))).sum()
+        all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum()
     )
 
     if phenomenon and all_rows is not None:

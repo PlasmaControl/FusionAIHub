@@ -19,9 +19,11 @@ columns. A shot whose file is absent contributes NO ROWS, and that absence is wh
 reports as `unprocessed`: nobody has run a detector over this shot, so its empty event list is
 not evidence of a quiet shot.
 
-A ROW THAT IS NOT COVERAGE. An `ok` row whose `t_cov` pair is NaN ran and recorded no span
-(`unknown_coverage_rows`). It cannot make a window observed -- nothing in it says the window was
-looked at -- and a reply has to say so instead of counting it as "a source that looked".
+TWO ROWS THAT ARE NOT COVERAGE. An `ok` row whose `t_cov` pair is NaN ran and recorded no span
+(`unknown_coverage_rows`), and an `ok` row from a non-diagnostic source -- `text`, `database`,
+`database:<stem>` -- is a logbook hit or a curated listing rather than a measurement
+(`is_non_diagnostic`). Neither can make a window observed, and a reply has to say which of the
+two it is holding instead of counting either as "a source that looked".
 
 `write_sources` is the fixture writer for the contract: labelmaker's tests and ideate's build the
 same table through it, so the two sides cannot drift into two shapes of the same file.
@@ -64,9 +66,22 @@ STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 #: shot's own logbook entries and labelmaker records that it ran, over the shot's span -- but
 #: "the word was looked for" says nothing about what any diagnostic showed, which is the same
 #: policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
-#: source that writes them. Excluded from `has_observed_products` and from coverage: a shot with
-#: a logbook and no detector run is `unprocessed`, not "0 detections inside coverage".
-NON_DIAGNOSTIC_SOURCES: tuple[str, ...] = ("text",)
+#: source that writes them. `database` is the same kind of claim from the other direction: a
+#: curated table is a list somebody published of shots that had a thing, and a listing is not a
+#: measurement of this shot -- its rows carry NaN coverage for exactly that reason. Excluded from
+#: `has_observed_products` and from coverage: a shot with a logbook, a curated entry and no
+#: detector run is `unprocessed`, not "0 detections inside coverage".
+NON_DIAGNOSTIC_SOURCES: tuple[str, ...] = ("text", "database")
+
+#: The same rule for the per-table sources labelmaker writes as `database:<stem>` (one row per
+#: curated file). A PREFIX, not a substring: `databases_of_rwm` would be somebody's detector.
+NON_DIAGNOSTIC_SOURCE_PREFIXES: tuple[str, ...] = ("database:",)
+
+
+def is_non_diagnostic(source: str) -> bool:
+    """Is this source's `ok` row something other than a diagnostic having looked at the plasma?"""
+    name = str(source)
+    return name in NON_DIAGNOSTIC_SOURCES or name.startswith(NON_DIAGNOSTIC_SOURCE_PREFIXES)
 
 SUFFIX = "_sources.parquet"
 
@@ -175,10 +190,11 @@ def shot_summary(sources: pd.DataFrame, shot: int) -> dict:
     """`{n_sources, n_sources_ok, n_sources_skipped, n_sources_error, has_observed_products}`.
 
     `has_observed_products` is "somebody ran a detector over this shot and it completed" -- at
-    least one `ok` row from a source that is not in `NON_DIAGNOSTIC_SOURCES`. A shot whose every
-    source is `skipped` has been considered and not examined, which is nearer to unprocessed than
-    to observed and is counted as such; so is a shot on which only the `text` lexicon ran.
-    `n_sources_ok` still counts every `ok` row, `text` included: it is a count of what ran.
+    least one `ok` row from a source `is_non_diagnostic` rejects. A shot whose every source is
+    `skipped` has been considered and not examined, which is nearer to unprocessed than to
+    observed and is counted as such; so is a shot on which only the `text` lexicon ran or only a
+    curated table lists it. `n_sources_ok` still counts every `ok` row, `text` included: it is a
+    count of what ran.
 
     `n_sources_unknown_coverage` counts the diagnostic `ok` rows whose `t_cov` pair is NaN: they
     RAN and nothing records over what span, so they can neither cover nor un-cover any window
@@ -198,10 +214,10 @@ def shot_summary(sources: pd.DataFrame, shot: int) -> dict:
 
 
 def _observing(sources: pd.DataFrame) -> pd.DataFrame:
-    """The rows that completed AND are a diagnostic's: `ok`, and not `NON_DIAGNOSTIC_SOURCES`."""
+    """The rows that completed AND are a diagnostic's: `ok`, and not `is_non_diagnostic`."""
     if not len(sources):
         return sources
-    keep = (sources["status"] == "ok") & ~sources["source"].isin(NON_DIAGNOSTIC_SOURCES)
+    keep = (sources["status"] == "ok") & ~sources["source"].map(is_non_diagnostic)
     return sources[keep]
 
 
@@ -253,8 +269,8 @@ def coverage_span(sources: pd.DataFrame) -> tuple[float, float] | None:
     The outer span of what ran, for reporting ("the covered stretch runs 0 to 6 s"). It is
     deliberately not offered per event, and it is not what `covers` asks: handing one source's
     span to another source's rows is the defect this module exists to fix, and the hull would
-    hand every source the union of all of them. A `text` row's span is the shot's own duration
-    and is not a diagnostic having looked, so it does not count (`NON_DIAGNOSTIC_SOURCES`).
+    hand every source the union of all of them. A `text` or `database:` row's span is not a
+    diagnostic having looked, so it does not count (`is_non_diagnostic`).
     """
     ok = observing_rows(sources)
     if ok.empty:
@@ -279,6 +295,7 @@ def covers(sources: pd.DataFrame, t0_s: float | None, t1_s: float | None) -> boo
 
 __all__ = [
     "NON_DIAGNOSTIC_SOURCES",
+    "NON_DIAGNOSTIC_SOURCE_PREFIXES",
     "SOURCES_COLUMNS",
     "SOURCES_DTYPES",
     "STATUSES",
@@ -286,6 +303,7 @@ __all__ = [
     "coverage_span",
     "covers",
     "empty_sources",
+    "is_non_diagnostic",
     "observing_rows",
     "read_sources",
     "shot_summary",

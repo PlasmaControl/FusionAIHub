@@ -424,6 +424,31 @@ def test_the_no_detection_caveat_counts_only_what_covered_the_window(ideate_db):
                for c in got["caveats"]), got["caveats"]
 
 
+def test_a_curated_database_listing_never_makes_a_shot_observed(ideate_db):
+    """A `database:<stem>` source is a published table of shots, not a detector, and a
+    `evidence_kind="database"` row is its entry. Neither is a diagnostic having looked, so a shot
+    whose only completed source is a curated list is `unprocessed`: nobody ran a detector over
+    it, and its empty `events` is not an observation of nothing."""
+    write_sources(
+        ideate_db / "db",
+        [_source(100, "database:rwm_database", n_events=1,
+                 t_cov0_s=float("nan"), t_cov1_s=float("nan"))],
+    )
+    write_events(
+        ideate_db / "db",
+        [_event(100, "rwm", 2.0, 2.0, event_id="100-d-00001", source="database:rwm_database",
+                evidence_kind="database", diag="", channel=-1, pass_name="",
+                t_cov0_s=float("nan"), t_cov1_s=float("nan"))],
+    )
+
+    got = tools.get_events(100)
+    assert got["status"] == "unprocessed"
+    assert got["coverage"]["has_observed_products"] is False
+    assert got["coverage"]["n_sources_unknown_coverage"] == 0
+    assert any("Absence is not evidence" in c for c in got["caveats"])
+    assert not any("0 detections inside their coverage" in c for c in got["caveats"])
+
+
 def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(ideate_db):
     """A reversed window used to come back as a successful empty result, which reads exactly like
     "nothing happened in that interval" -- for an interval that does not exist."""

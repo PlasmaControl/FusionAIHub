@@ -139,7 +139,7 @@ def test_a_text_source_that_ran_is_not_an_observation_and_covers_nothing():
     source is `text` has no observed product, and the shot span its row carries covers no
     window. Otherwise a logbook-only shot would come back `observed`: "0 detections inside
     coverage", from a detector that never ran."""
-    assert es.NON_DIAGNOSTIC_SOURCES == ("text",)
+    assert es.NON_DIAGNOSTIC_SOURCES == ("text", "database")
     rows = [
         es.source_row(1, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=2),
         es.source_row(1, "tokeye_track", status="skipped", reason="group absent", diag="mhr"),
@@ -207,3 +207,25 @@ def test_a_window_in_the_gap_between_two_sources_is_not_covered_by_their_hull():
     assert es.covers(df, 3.0, 4.0) is False
     assert es.covers(df, 1.5, 3.0) is True
     assert es.observing_rows(df, 3.0, 4.0).empty
+
+
+def test_a_curated_database_listing_is_not_a_diagnostic_having_looked():
+    """`database:<stem>` rows are a curated table's entries -- somebody published a list of shots
+    with an RWM. A listing is not an observation and carries no coverage, so a shot whose only
+    `ok` source is a curated table has no observed product: `unprocessed`, not "0 detections"."""
+    assert es.is_non_diagnostic("database:rwm_database") is True
+    assert es.is_non_diagnostic("database") is True
+    assert es.is_non_diagnostic("text") is True
+    assert es.is_non_diagnostic("databases_of_rwm") is False, "prefix, not substring"
+    assert es.is_non_diagnostic("tokeye_track") is False
+
+    df = _df([
+        es.source_row(1, "database:rwm_database", n_events=3),
+        es.source_row(1, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1),
+    ])
+    summary = es.shot_summary(df, 1)
+    assert summary["n_sources_ok"] == 2
+    assert summary["has_observed_products"] is False
+    assert summary["n_sources_unknown_coverage"] == 0, "a non-diagnostic row is not a gap in one"
+    assert es.coverage_span(df) is None
+    assert es.covers(df, 1.0, 2.0) is None
