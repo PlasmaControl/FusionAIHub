@@ -101,7 +101,8 @@ Three things hold for the replies and are worth knowing before reading one:
   completed over it — absence is not evidence. `uncovered`: detectors ran, but not over the
   window asked about; the caveat names the covered span. `observed`: some one detector's *own*
   finite coverage overlaps the window, and an empty list is a real finding of nothing, said in as
-  many words. **A source that completed without recording its coverage (`ok` with NaN `t_cov`, as
+  many words — and the caveat counts only the sources that covered the window, not everything
+  that ran. **A source that completed without recording its coverage (`ok` with NaN `t_cov`, as
   real shot 198658's `actuator/ech_power_total` is) can neither cover nor un-cover a window: it
   keeps the shot out of `unprocessed` because it did run, it can never make a window `observed`,
   and a shot whose every completed source has unknown coverage answers `uncovered` with a caveat
