@@ -356,6 +356,52 @@ def test_a_source_that_failed_is_reported_rather_than_counted_as_coverage(ideate
     assert reasons["dalpha_lh"] == "no d_alpha on this shot"
 
 
+def test_an_ok_source_whose_coverage_is_unknown_never_makes_a_window_observed(ideate_db):
+    """THE CORNER, from real shot 198658: `actuator/ech_power_total` is `ok` with NaN coverage --
+    it ran, and nothing records over what span. The reply used to say `observed` and "0 detections
+    inside their coverage" while its own `coverage` block said the coverage was None. A source
+    that cannot say what it looked at can neither cover nor un-cover the window, so the window is
+    NOT observed; it is `uncovered`, and the caveat names the source rather than implying it saw
+    nothing."""
+    write_sources(
+        ideate_db / "db",
+        [_source(100, "actuator", diag="ech_power_total", n_events=0,
+                 t_cov0_s=float("nan"), t_cov1_s=float("nan"))],
+    )
+    write_events(ideate_db / "db", [])
+
+    got = tools.get_events(100, t0_s=3.0, t1_s=4.0)
+    assert got["status"] == "uncovered"
+    assert got["coverage"]["has_observed_products"] is True, "it did run: this is not unprocessed"
+    assert got["coverage"]["t_cov0_s"] is None
+    assert got["coverage"]["n_sources_unknown_coverage"] == 1
+    assert any("actuator" in c and "coverage unknown" in c for c in got["caveats"])
+    assert not any("0 detections inside their coverage" in c for c in got["caveats"])
+
+    whole_shot = tools.get_events(100)
+    assert whole_shot["status"] == "uncovered", "no window is not a covered window"
+
+
+def test_the_unknown_coverage_caveat_is_there_even_beside_real_coverage(ideate_db):
+    """A shot with one honest span and one unknown one is observed over the span -- and the
+    reader still has to be told that one source's coverage is unrecorded, because "2 sources ran"
+    would otherwise read as two sources having looked at the window."""
+    write_sources(
+        ideate_db / "db",
+        [
+            _source(100, "actuator", diag="ech_power_total", n_events=0,
+                    t_cov0_s=float("nan"), t_cov1_s=float("nan")),
+            _source(100, "ece_sawtooth", diag="ece", t_cov0_s=0.0, t_cov1_s=6.0, n_events=0),
+        ],
+    )
+    write_events(ideate_db / "db", [])
+
+    got = tools.get_events(100, t0_s=1.0, t1_s=2.0)
+    assert got["status"] == "observed"
+    assert got["coverage"]["n_sources_unknown_coverage"] == 1
+    assert any("actuator" in c and "coverage unknown" in c for c in got["caveats"])
+
+
 def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(ideate_db):
     """A reversed window used to come back as a successful empty result, which reads exactly like
     "nothing happened in that interval" -- for an interval that does not exist."""

@@ -99,9 +99,14 @@ Three things hold for the replies and are worth knowing before reading one:
   thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
   `unprocessed`: it is indexed, but `db/event_sources.parquet` records no detector as having
   completed over it — absence is not evidence. `uncovered`: detectors ran, but not over the
-  window asked about; the caveat names the covered span. `observed`: detectors ran over (part
-  of) the window, and an empty list is a real finding of nothing, said in as many words. A
-  reversed, zero-width or non-finite window is an error dict, never a silent empty. (On the
+  window asked about; the caveat names the covered span. `observed`: some one detector's *own*
+  finite coverage overlaps the window, and an empty list is a real finding of nothing, said in as
+  many words. **A source that completed without recording its coverage (`ok` with NaN `t_cov`, as
+  real shot 198658's `actuator/ech_power_total` is) can neither cover nor un-cover a window: it
+  keeps the shot out of `unprocessed` because it did run, it can never make a window `observed`,
+  and a shot whose every completed source has unknown coverage answers `uncovered` with a caveat
+  naming each one.** A reversed, zero-width or non-finite window is an error dict, never a
+  silent empty. (On the
   `recommender_v1` database today *all* 1,037 event rows are forecasts and no shot has an
   observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
   is the truth the old empty list hid.)
