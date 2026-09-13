@@ -18,7 +18,24 @@ re-ordered so the card is busy, and nothing else:
   waveform read, the STFT and the standardisation - while this process runs
   `pipeline.infer_block` on the block before. The parent consumes prepared
   blocks IN ORDER, so what reaches `pipeline.finish_shot` is the plan order
-  `process_shot` would have produced.
+  `process_shot` would have produced. One job is one `(channel, pass)`, so a
+  channel's waveform is read once per pass rather than once per channel as
+  in `process_shot`: ~3-6 % more CPU per channel and roughly twice the GPFS
+  request count (~260 MB -> ~520 MB per shot), nearly all of it served from
+  the page cache because wide and zoom run next to each other. Measured on
+  185786; not worth splitting the job unit for.
+* **So does the tail.** `--tail-workers 1` runs `pipeline.finish_shot` -
+  the sawtooth pass over the whole ECE array, L-H, the actuators, the QH
+  proxy, the text lookup and the two writes - in a second, single-worker
+  pool, beside the NEXT shot's forward passes. Un-overlapped it is ~3.7 s
+  of parent-thread work per shot against ~0.84 s of A100 forward pass
+  (measured on a CPU smoke), which on its own would cap GPU utilisation
+  near 15 % - under plan section 13.3's 70 % gate, whatever prep does.
+  Shot i's tail is collected when shot i+1's blocks are done, so the rows
+  stay in shot order, at most one shot is unfinished at a time, and the
+  cost is one shot's `_BlockRun`s (tens of MB) crossing a pipe. It is
+  order-independent by construction: a tail touches only its own shot's
+  files and reads only its own shot's corpus file.
 * **`process_shot` stays the definition.** This module owns scheduling and
   nothing else: the three stage functions, `plan_shot` and `finish_shot` are
   `pipeline.py`'s, and a mask file or an events table written here is
@@ -48,19 +65,34 @@ the widest block (`mirnov` wide, 64,000 columns) is 131 MB each, so
 being inferred is dropped as soon as the network has read it. The prep
 workers add one such pair each while they work.
 
-**One file this driver does NOT own.** `masks/<shot>_masks.npz` and
-`events/<shot>_events.parquet` are per shot, so sixteen tasks writing sixteen
-shots never meet. `events_index.parquet` is one file for the whole root, and
-`labels.store.append_index` rewrites it whole through a fixed `.tmp`
-sibling: two processes finishing a shot at the same moment can interleave
-that temporary and can lose each other's rows. `run.py` avoids this by
-having the PARENT write the index while the workers only return rows; a
-SLURM array of these drivers has no such parent. The index is derivable -
-`schema.index_rows(events_file)` per shot rebuilds it exactly - so the
-production run (task L12) must either rebuild it in one pass after the array
-or shard it per task, and this module leaves the per-shot write where
-`process_shot` has it rather than writing a different file from the one the
-sequential path writes.
+**The two files this driver does NOT own.** `masks/<shot>_masks.npz` and
+`events/<shot>_events.parquet` are per shot, so sixteen tasks writing
+sixteen shots never meet. Two other files belong to the whole root, and
+both are whole-file rewrites, which is a lost update rather than a torn
+file - the damage a pid-suffixed temporary does not prevent:
+
+* `events_index.parquet` (`labels.store.append_index`, called per shot by
+  `pipeline.finish_shot` through a FIXED `.tmp` sibling). Concurrent tasks
+  lose each other's rows AND can rename a half-written parquet into place,
+  after which the next shot's `read_parquet` raises inside the write guard
+  and a healthy shot is recorded `status == "error"`. **`--no-index`** is
+  the answer: the per-shot products are written and the shared file is
+  left alone, and `--rebuild-index` regenerates it from
+  `events/*_events.parquet` in one pass afterwards (it is derivable, so
+  the rebuild is exact and is idempotent even if a task died).
+* `text/logs_subset.jsonl` (`text_weak.build_logs_subset`), which is worse
+  because it changes what is WRITTEN: sixteen tasks read the same old
+  subset, each appends its own thirty shots and the last rename wins, so
+  fifteen tasks' records are gone before their shots are processed and
+  `finish_shot` files `skipped["text"]` for every one of them. **The
+  subset is built once, before the array** (`--build-text-subset`), and a
+  run with `--world` or `--n-chunks` above 1 reads it and never writes it
+  (`--text-subset auto`, or `readonly` to force it). A shot the pre-pass
+  did not cover is named in the run record and in its own `skipped["text"]`
+  with the command that fixes it. (`text_weak.text_events` re-checks the
+  subset per shot, which under `readonly` is always a no-op: it is only
+  reached for a shot whose record is already there, and
+  `build_logs_subset` returns without writing when it has nothing to add.)
 
 **Isolation.** Per shot: one `SIGALRM` (`--timeout`) and one try/except, as
 `run.py`'s stages. The alarm ends the shot wherever the driver itself is
@@ -68,12 +100,20 @@ waiting - on a prepared block, in the network, in a describe step. Inside
 `pipeline.finish_shot` it behaves as it does under `run.py`: that step's own
 guard turns it into that step's skip and the shot finishes without a timer,
 which is `process_shot`'s long-standing behaviour and not something a
-scheduler may quietly change. A block whose prep raised - a `co2` channel whose
+scheduler may quietly change. With `--tail-workers 1` the tail is in
+another process, where this process's alarm cannot reach it; it is
+collected with a `--timeout` of its own instead, and a tail that overran or
+whose worker died is that shot's error row and a fresh tail pool for the
+next shot. A block whose prep raised - a `co2` channel whose
 digitiser gapped, a worker that ran out of memory - is a `skipped` entry and
 the shot goes on, exactly as in `process_shot`. A prep worker that DIES
 (the OOM killer, a segfault) breaks the pool: the block in flight is
 recorded as a skip, the pool is restarted, and the shot's remaining blocks
-are re-submitted to it. Nothing waits forever for a process that is gone.
+are re-submitted to it. Nothing waits forever for a process that is gone,
+and nothing is LEFT alive that could stop this one exiting: `PrepPool.close`
+terminates and, if it must, kills, because a worker wedged in an
+uninterruptible read never takes a shutdown sentinel and CPython joins the
+executor's manager thread at interpreter exit.
 """
 from __future__ import annotations
 
@@ -103,7 +143,7 @@ from ..run import (
     time_limit,
     write_events_run,
 )
-from . import channels, masks, pipeline, text_weak, unet
+from . import channels, masks, pipeline, schema, text_weak, unet
 from .lexicon import load_lexicon
 from .unet import CHECKPOINT_SHA256
 
@@ -127,6 +167,19 @@ CUDA_WORKERS_FALLBACK = 4
 #: rounds (`terminate`, then `kill`). Short on purpose: this is the path a
 #: shot that timed out goes through, and the run is already late.
 WORKER_EXIT_GRACE_S = 5.0
+
+#: What `pipeline.finish_shot` records for a shot the subset has no record
+#: of, mirrored here so a read-only run can tell "the logbook says nothing
+#: about this shot" from "nobody built this shot into the subset".
+NO_SUBSET_RECORD = "no logbook record in the subset"
+
+#: The second, and better, reason - only ever recorded under
+#: `--text-subset readonly`, where the driver KNOWS the shot is absent
+#: because it looked before the run started.
+NOT_PREBUILT = (
+    "not in the prebuilt logs subset (--text-subset readonly); build it "
+    "once before the array: tokeye_masks.py --build-text-subset --shot-file"
+)
 
 #: Cores left to this process when the workers are sized from
 #: `SLURM_CPUS_PER_TASK`: one for the parent's own describe steps and one
@@ -170,6 +223,54 @@ def split_shots(
     hi = (len(ordered) * (int(chunk) + 1)) // int(n_chunks)
     mine = ordered[lo:hi][int(rank)::int(world)]
     return mine[:int(limit)] if int(limit) > 0 else mine
+
+
+# ----------------------------------------------------------------- the index
+
+
+#: What identifies a row of `events_index.parquet` - the key
+#: `pipeline.finish_shot` passes `labels.store.append_index` per shot, and
+#: the one a rebuild has to pass to get the same file.
+INDEX_KEYS = ("shot", "source", "phenomenon")
+
+
+def rebuild_index(paths: Paths, *, echo=print) -> dict:
+    """`events_index.parquet`, regenerated from the per-shot events files.
+
+    The index is derivable: `schema.index_rows(events_file)` is a pure
+    function of one shot's parquet, so the whole file is
+    `sorted(events/*_events.parquet)` read once. That is what makes
+    `--no-index` safe for a SLURM array - the shared file nobody can write
+    concurrently is simply not written during the array, and this rebuilds
+    it in one pass afterwards (`--rebuild-index`, or an `afterok` job).
+
+    REPLACES rather than merges. `append_index` merges by
+    `(shot, source, phenomenon)`, so a row whose events file has since been
+    deleted would survive every incremental write for ever; a rebuild is
+    the repair for exactly that, and has to describe what is on disk now.
+    An events file that cannot be read is named in `unreadable` and costs
+    only its own rows: a torn file from an earlier racing array is the
+    likeliest reason to be running this at all.
+    """
+    from ..labels.store import append_index
+
+    files = sorted(Path(paths.events).glob("*_events.parquet"))
+    rows: list[dict] = []
+    unreadable: dict[str, str] = {}
+    for events_file in files:
+        try:
+            rows.extend(schema.index_rows(events_file))
+        except Exception as exc:  # noqa: BLE001 - one bad file is not the run
+            unreadable[events_file.name] = pipeline._cause(exc)
+            echo(f"tokeye_masks: cannot index {events_file.name} - "
+                 f"{unreadable[events_file.name]}")
+    out = Path(paths.events_index)
+    out.unlink(missing_ok=True)
+    append_index(out, rows, keys=list(INDEX_KEYS))
+    echo(f"tokeye_masks: rebuilt {out} - {len(rows)} rows from "
+         f"{len(files) - len(unreadable)} of {len(files)} events files")
+    return {"files": len(files), "rows": len(rows), "index": str(out),
+            "unreadable": unreadable}
 
 
 # ------------------------------------------------------------------- the jobs
@@ -254,24 +355,115 @@ def prep_one(job: PrepJob) -> pipeline.PreparedBlock:
         raise BlockFailed("mask", pipeline._cause(exc)) from None
 
 
+@dataclass
+class FinishJob:
+    """Everything a shot does AFTER its blocks, as sent to the tail worker.
+
+    `pipeline.finish_shot` and its inputs: the result so far, this shot's
+    `_BlockRun`s in plan order, and the two writes' destinations. Tens of
+    megabytes of packed masks per shot cross the pipe with it - against the
+    ~3.7 s of parent-thread work it takes off the process that holds the
+    GPU (measured; see the module docstring).
+
+    `text_missing` is this shot's answer to "was it absent from a read-only
+    logs subset", carried on the job because the sentence it changes is
+    written in `finish_shot`.
+    """
+
+    res: pipeline.ShotResult
+    paths: Paths
+    corpus_file: Path
+    runs: list
+    unet_sha256: str = CHECKPOINT_SHA256
+    lexicon: Any = None
+    run_id: str = "manual"
+    write: bool = True
+    index: bool = True
+    text_missing: bool = False
+
+
+@dataclass
+class FinishDone:
+    """What a finished tail brings back: the shot's result and its cost."""
+
+    res: pipeline.ShotResult
+    seconds: float = 0.0
+
+
+def finish_one(job: FinishJob) -> FinishDone:
+    """`pipeline.finish_shot`, in whichever process the driver put it in.
+
+    The result is RETURNED rather than mutated in place, because in a
+    worker the `res` this runs on is a copy and the parent's is not.
+    """
+    at = time.monotonic()
+    res = pipeline.finish_shot(
+        job.res, job.paths, job.corpus_file, job.runs,
+        unet_sha256=job.unet_sha256, lexicon=job.lexicon,
+        run_id=job.run_id, write=job.write, index=job.index,
+    )
+    if job.text_missing and res.skipped.get("text") == NO_SUBSET_RECORD:
+        # The same fact with the cause in it: under `--text-subset readonly`
+        # the driver looked this shot up in the subset before the run and
+        # knows it is absent, which is a pre-pass that did not cover it and
+        # not a logbook that has nothing to say about the shot.
+        res.skipped["text"] = f"{NOT_PREBUILT} <list>"
+    return FinishDone(res=res, seconds=time.monotonic() - at)
+
+
+@dataclass(frozen=True)
+class WarmJob:
+    """Nothing at all, sent to a pool to make it start a worker NOW.
+
+    A spawned worker is a fresh interpreter and a torch import - 5.4 s
+    against 2.0 s for the same job in a warm worker, measured - and a
+    `ProcessPoolExecutor` starts its workers lazily, at the first submit.
+    For the tail pool that would put the whole of it in front of the first
+    shot's tail, with the parent waiting; sent at the top of a run it is
+    paid while the first shot's blocks are in the network instead.
+    """
+
+
 def run_job(job):
-    """Dispatch, so a pool holds one picklable entry point and not two."""
-    return plan_one(job) if isinstance(job, PlanJob) else prep_one(job)
+    """Dispatch, so a pool holds one picklable entry point and not three."""
+    if isinstance(job, WarmJob):
+        return None
+    if isinstance(job, PlanJob):
+        return plan_one(job)
+    if isinstance(job, FinishJob):
+        return finish_one(job)
+    return prep_one(job)
+
+
+#: The thread-count variables a prep worker must inherit. Set in the PARENT
+#: before the pool starts (`PrepPool._start`), because a spawned child gets
+#: its environment at exec and OpenBLAS/MKL size their pools when they are
+#: imported - which, with `spawn`, has already happened by the time the
+#: initializer below runs.
+THREAD_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+               "NUMEXPR_NUM_THREADS")
 
 
 def _init_worker() -> None:
-    """One thread per prep worker.
+    """One thread per prep worker - the part of it that still can be set.
 
-    Eighteen workers share a node with two GPU tasks (spec A5), and a
-    prep worker that helped itself to the node's cores would leave the
-    other task's workers waiting. Belt and braces rather than the whole
-    story: the sbatch exports `OMP_NUM_THREADS=1` before python starts,
-    which is the only moment it is guaranteed to be read, and the prep work
-    itself - `ShortTimeFFT`, `signal.decimate`, a percentile and a z-score -
-    is single-threaded numpy and scipy with no BLAS call in it.
+    Only `torch.set_num_threads(1)` bites here. It is a runtime call, so it
+    takes effect whenever it is made; the four environment variables do not,
+    because with `spawn` the child unpickles the worker bootstrap - which
+    resolves this function by IMPORTING `labelmaker.events.driver`, and with
+    it numpy, scipy and torch - before this body runs, and by then
+    OpenBLAS and MKL have already sized their pools from the environment
+    they were exec'd with. They are set in the parent instead
+    (`PrepPool._start`), and the sbatch exports them before python starts,
+    which is the only moment they are certain to be read. Setting them
+    again here costs nothing and covers a worker started some other way.
+
+    Belt and braces either way: the prep work itself - `ShortTimeFFT`,
+    `signal.decimate`, a percentile and a z-score - is single-threaded
+    numpy and scipy with no BLAS call in it. What it protects against is
+    eighteen workers sharing a node with two GPU tasks (spec A5).
     """
-    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                "NUMEXPR_NUM_THREADS"):
+    for var in THREAD_VARS:
         os.environ[var] = "1"
     try:
         import torch
@@ -350,11 +542,24 @@ class PrepPool:
 
     def _start(self) -> None:
         if self.workers > 0:
+            # Before the executor, so the children inherit it at exec:
+            # OpenBLAS and MKL size their pools when they are imported, and
+            # a spawned worker imports them before its initializer runs.
+            # This process's own libraries read these at THEIR import and
+            # are long past caring, so this sets the workers' threads and
+            # not the parent's.
+            for var in THREAD_VARS:
+                os.environ[var] = "1"
             self._pool = ProcessPoolExecutor(
                 max_workers=self.workers,
                 mp_context=multiprocessing.get_context("spawn"),
                 initializer=_init_worker,
             )
+
+    def warm(self) -> None:
+        """Start a worker now rather than at the first real job (`WarmJob`)."""
+        if self._pool is not None:
+            self.submit(WarmJob())
 
     def submit(self, job) -> Future:
         """A future for `job`, ALWAYS - a dead pool included.
@@ -472,11 +677,21 @@ class ShotTiming:
     would mean the workers are always ahead; a `prep_wait_s` close to the
     shot's own elapsed time means they never are and the run wants more
     `--prep-workers`.
+
+    `finish_s` is the shot's TAIL - `pipeline.finish_shot`: the sawtooth
+    pass over the whole ECE array, L-H, the actuators, the QH proxy, the
+    text lookup and the two writes - wherever it ran. `tail_wait_s` is how
+    much of it the GPU-owning thread actually waited for, which is the
+    whole point of `--tail-workers`: with one, `finish_s` is paid beside
+    the next shot's forward passes and `tail_wait_s` falls to ~0; with
+    zero, the two are equal and the card idles for `finish_s` a shot.
     """
 
     prep_wait_s: float = 0.0
     infer_s: float = 0.0
     describe_s: float = 0.0
+    finish_s: float = 0.0
+    tail_wait_s: float = 0.0
     n_tiles: int = 0
 
     def as_row(self) -> dict[str, float | int]:
@@ -484,6 +699,8 @@ class ShotTiming:
             "prep_wait_s": round(self.prep_wait_s, 3),
             "infer_s": round(self.infer_s, 3),
             "describe_s": round(self.describe_s, 3),
+            "finish_s": round(self.finish_s, 3),
+            "tail_wait_s": round(self.tail_wait_s, 3),
             "n_tiles": int(self.n_tiles),
         }
 
@@ -491,13 +708,14 @@ class ShotTiming:
         self.prep_wait_s += other.prep_wait_s
         self.infer_s += other.infer_s
         self.describe_s += other.describe_s
+        self.finish_s += other.finish_s
+        self.tail_wait_s += other.tail_wait_s
         self.n_tiles += other.n_tiles
 
 
-def _one_shot(
+def _shot_blocks(
     shot: int,
     *,
-    paths: Paths,
     corpus_file: Path,
     model,
     pool: PrepPool,
@@ -508,20 +726,22 @@ def _one_shot(
     tile_batch: int,
     amp: bool,
     norm: str,
-    write: bool,
-    lexicon,
-    run_id: str,
-    unet_sha256: str,
-) -> tuple[pipeline.ShotResult, ShotTiming]:
-    """One shot, prepared in the pool and inferred here.
+    unet_sha256: str = CHECKPOINT_SHA256,
+) -> tuple[pipeline.ShotResult, ShotTiming, list | None]:
+    """One shot's MASK BLOCKS: prepared in the pool, inferred here.
 
     The same sequence of decisions as `process_shot` - plan, then a block
-    per `(channel, pass)` in plan order, then everything that is not a block
-    - with the CPU half of each block moved off this process. Every failure
-    is recorded under the key `process_shot` records it under, because the
-    two are required to produce the same `ShotResult`.
+    per `(channel, pass)` in plan order - with the CPU half of each block
+    moved off this process. Every failure is recorded under the key
+    `process_shot` records it under, because the two are required to
+    produce the same `ShotResult`.
+
+    Returns the blocks rather than finishing the shot, so that the caller
+    can hand the tail (`pipeline.finish_shot`) to another process and get
+    on with the next shot's forward passes. `runs is None` means the one
+    failure that ends a shot before it starts: a corpus file that could not
+    be planned.
     """
-    started = time.monotonic()
     res = pipeline.ShotResult(shot=int(shot))
     timing = ShotTiming()
 
@@ -532,13 +752,11 @@ def _one_shot(
     except BlockFailed as exc:
         # The one run-ending failure: a corpus file that cannot be read.
         res.error = exc.cause
-        res.elapsed_s = time.monotonic() - started
-        return res, timing
+        return res, timing, None
     except BrokenExecutor as exc:
         pool.restart()
         res.error = pipeline._cause(exc)
-        res.elapsed_s = time.monotonic() - started
-        return res, timing
+        return res, timing, None
     res.skipped.update(planned)
 
     jobs = [
@@ -602,12 +820,22 @@ def _one_shot(
         if broken:
             pool.restart()
     res.n_blocks = len(runs)
+    return res, timing, runs
 
-    pipeline.finish_shot(res, paths, corpus_file, runs,
-                         unet_sha256=unet_sha256, lexicon=lexicon,
-                         run_id=run_id, write=write)
-    res.elapsed_s = time.monotonic() - started
-    return res, timing
+
+@dataclass
+class _Unfinished:
+    """A shot whose blocks are done and whose tail is still running.
+
+    At most one of these exists at a time: shot i's tail is collected as
+    soon as shot i+1's blocks are, which is what bounds the overlap at one
+    shot and keeps `rows` in shot order.
+    """
+
+    shot: int
+    timing: ShotTiming
+    blocks_s: float
+    future: Future
 
 
 @dataclass
@@ -656,11 +884,14 @@ def run_shots(
     prefetch: int = 4,
     timeout_s: int = 300,
     write: bool = True,
+    index: bool = True,
     lexicon=None,
     run_id: str = "manual",
     unet_sha256: str = CHECKPOINT_SHA256,
     skip_existing: bool = False,
     force: bool = False,
+    tail_workers: int = 0,
+    text_missing: Iterable[int] = (),
     echo=print,
 ) -> DriverRun:
     """Every shot in `shots`, one prep pool, one model, one row each.
@@ -669,6 +900,17 @@ def run_shots(
     before this is entered - `main` does both - because a driver that loaded
     the network per shot would spend more time on `torch.load` than on the
     shots, and a `build_logs_subset` per shot would stream 616 MB per shot.
+
+    `tail_workers=1` runs each shot's tail - `pipeline.finish_shot` - in a
+    second, single-worker pool, so that it is paid beside the NEXT shot's
+    forward passes instead of in front of them. The rows are still in shot
+    order and every byte written is the same: one shot's tail touches only
+    that shot's files and reads only that shot's corpus file, so two shots'
+    tails and blocks are order-independent. At most one shot is unfinished
+    at a time - shot i's tail is harvested as soon as shot i+1's blocks are
+    done - which bounds the extra memory at one shot's `_BlockRun`s.
+    `tail_workers=0` finishes each shot in this process before starting the
+    next, under the shot's own alarm, which is what `process_shot` does.
 
     Nothing in here raises for one shot: a shot over its `--timeout` or one
     that failed in a way `process_shot` does not guard is one row with an
@@ -684,7 +926,42 @@ def run_shots(
     started = time.monotonic()
     totals = ShotTiming()
     rows: list[dict] = []
+    absent_text = frozenset(int(s) for s in text_missing)
     pool = PrepPool(prep_workers)
+    tails = PrepPool(tail_workers)
+    # The tail pool's spawn and torch import happen during the first shot's
+    # blocks, not in front of the first shot's tail.
+    tails.warm()
+    pending: _Unfinished | None = None
+
+    def flush(unfinished: _Unfinished | None) -> None:
+        """Wait for one shot's tail, then write its row - in shot order."""
+        if unfinished is None:
+            return
+        waited = time.monotonic()
+        timing = unfinished.timing
+        try:
+            done = unfinished.future.result(timeout=max(1, int(timeout_s)))
+            timing.tail_wait_s += time.monotonic() - waited
+            timing.finish_s += done.seconds
+            res = done.res
+            res.elapsed_s = unfinished.blocks_s + done.seconds
+            row = res.as_row()
+            echo(res.line())
+        except Exception as exc:  # noqa: BLE001 - per-shot isolation
+            timing.tail_wait_s += time.monotonic() - waited
+            row = {"shot": int(unfinished.shot), "status": "error",
+                   "error": type(exc).__name__, "detail": str(exc)[:200]}
+            echo(f"{unfinished.shot}: ERROR {type(exc).__name__}: "
+                 f"{str(exc)[:120]}")
+            # A tail that hung or whose worker died leaves nothing this
+            # process can use; the next shot gets a fresh pool.
+            tails.restart()
+        row["seconds"] = round(unfinished.blocks_s + timing.finish_s, 2)
+        row.update(timing.as_row())
+        totals.add(timing)
+        rows.append(row)
+
     try:
         for shot in shots:
             corpus_file = (
@@ -694,6 +971,10 @@ def run_shots(
             if (skip_existing and not force
                     and paths.masks_file(shot).exists()
                     and paths.events_file(shot).exists()):
+                # In shot order: the previous shot's row first, whatever
+                # this one turns out to be.
+                flush(pending)
+                pending = None
                 echo(f"{shot}: skipped, masks and events already written")
                 rows.append({
                     "shot": int(shot), "status": "skipped", "seconds": 0.0,
@@ -702,34 +983,75 @@ def run_shots(
                 })
                 continue
             at = time.monotonic()
+            handed_off = None
             try:
                 with time_limit(timeout_s):
-                    res, timing = _one_shot(
-                        shot, paths=paths, corpus_file=corpus_file,
+                    res, timing, runs = _shot_blocks(
+                        shot, corpus_file=corpus_file,
                         model=model, pool=pool, plan=plan, passes=passes,
                         prefetch=prefetch, device=device,
                         tile_batch=tile_batch, amp=amp, norm=norm,
-                        write=write, lexicon=lexicon, run_id=run_id,
                         unet_sha256=unet_sha256,
                     )
-                row = res.as_row()
-                echo(res.line())
+                    if runs is not None:
+                        # Inside the alarm on purpose: with `tail_workers=0`
+                        # the submit IS the tail, and it keeps the shot's
+                        # own timer, exactly as `process_shot` has it. With
+                        # a worker the submit returns at once.
+                        submitted = time.monotonic()
+                        handed_off = tails.submit(FinishJob(
+                            res=res, paths=paths, corpus_file=corpus_file,
+                            runs=runs, unet_sha256=unet_sha256,
+                            lexicon=lexicon, run_id=run_id, write=write,
+                            index=index,
+                            text_missing=int(shot) in absent_text,
+                        ))
+                        timing.tail_wait_s += time.monotonic() - submitted
+                        del runs, res
             except Exception as exc:  # noqa: BLE001 - per-shot isolation
+                flush(pending)
+                pending = None
                 timing = ShotTiming()
                 row = {"shot": int(shot), "status": "error",
                        "error": type(exc).__name__, "detail": str(exc)[:200]}
                 echo(f"{shot}: ERROR {type(exc).__name__}: {str(exc)[:120]}")
                 # Whatever this shot left in flight has no reader now.
                 pool.restart()
-            row["seconds"] = round(time.monotonic() - at, 2)
-            row.update(timing.as_row())
-            totals.add(timing)
-            rows.append(row)
+                row["seconds"] = round(time.monotonic() - at, 2)
+                row.update(timing.as_row())
+                totals.add(timing)
+                rows.append(row)
+                pool.sample()
+                continue
+            if handed_off is None:
+                # The plan failed: one error row, no tail, as `process_shot`.
+                flush(pending)
+                pending = None
+                res.elapsed_s = time.monotonic() - at
+                row = res.as_row()
+                echo(res.line())
+                row["seconds"] = round(res.elapsed_s, 2)
+                row.update(timing.as_row())
+                totals.add(timing)
+                rows.append(row)
+            else:
+                previous, pending = pending, _Unfinished(
+                    shot=int(shot), timing=timing,
+                    blocks_s=time.monotonic() - at, future=handed_off,
+                )
+                # The PREVIOUS shot's tail has been running beside this
+                # shot's blocks; collecting it here is what keeps the rows
+                # in shot order without ever waiting in front of the GPU.
+                flush(previous)
             # Four `/proc` reads: the workers' high-water marks while they
             # are still alive to be asked (see `_vmhwm_gib`).
             pool.sample()
+        flush(pending)
+        pending = None
     finally:
+        flush(pending)
         pool.close()
+        tails.close()
 
     elapsed = time.monotonic() - started
     summary = pipeline.summarise(rows)
@@ -744,6 +1066,7 @@ def run_shots(
         peak_worker_rss_gib=round(pool.peak_worker_rss_gib, 3),
         cuda_max_alloc_gib=_cuda_peak_gib(device),
         prep_workers=int(prep_workers),
+        tail_workers=int(tail_workers),
         prefetch=int(prefetch),
         tile_batch=int(tile_batch),
         device=str(device),
@@ -764,7 +1087,9 @@ def build_parser() -> argparse.ArgumentParser:
             "the same files `python -m labelmaker.run events` writes."
         ),
     )
-    picker = parser.add_mutually_exclusive_group(required=True)
+    # Not `required=True`: `--rebuild-index` runs over what is already on
+    # disk and has no shot list. `main` refuses every other run without one.
+    picker = parser.add_mutually_exclusive_group(required=False)
     picker.add_argument("--shot-file", type=Path,
                         help="one shot per line, # starting a comment")
     picker.add_argument("--shots", nargs="+", type=int, metavar="SHOT")
@@ -806,6 +1131,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "4; ~262 MB each on the widest channel). Also "
                              "the concurrency: at most min(prefetch, "
                              "prep-workers) workers are ever busy")
+    parser.add_argument("--tail-workers", type=int, default=None,
+                        help="processes running each shot's TAIL "
+                             "(the heuristics, the text and the two "
+                             "writes) beside the next shot's forward "
+                             "passes; 1 overlaps it, 0 runs it in this "
+                             "process before the next shot starts. "
+                             "Default 1 when --prep-workers is not 0")
     parser.add_argument("--amp", action="store_true",
                         help="fp16 autocast; CUDA only, ignored on cpu")
     parser.add_argument("--norm", default="record",
@@ -827,9 +1159,31 @@ def build_parser() -> argparse.ArgumentParser:
                              "exist; --force overrides")
     parser.add_argument("--force", action="store_true",
                         help="redo shots --skip-existing would leave alone")
+    parser.add_argument("--text-subset", default="auto",
+                        choices=("auto", "build", "readonly"),
+                        help="text/logs_subset.jsonl is one file for the "
+                             "whole root and building it is a whole-file "
+                             "rewrite, so concurrent tasks lose each "
+                             "other's records. auto (default) builds it "
+                             "for a single-task run and READS it when "
+                             "--world or --n-chunks is more than 1; build "
+                             "and readonly force either way")
+    parser.add_argument("--build-text-subset", action="store_true",
+                        help="the pre-pass: build text/logs_subset.jsonl "
+                             "for the WHOLE shot list (not this chunk) and "
+                             "exit. Run it once before submitting an array")
     parser.add_argument("--refresh-text", action="store_true",
                         help="re-ask the logbook about the shots recorded in "
                              "text/logs_subset.missing")
+    parser.add_argument("--no-index", action="store_true",
+                        help="do not touch events_index.parquet: the one "
+                             "file a whole root shares, which sixteen array "
+                             "tasks cannot rewrite at once. Rebuild it "
+                             "afterwards with --rebuild-index")
+    parser.add_argument("--rebuild-index", action="store_true",
+                        help="regenerate events_index.parquet from "
+                             "events/*_events.parquet in one pass and exit; "
+                             "takes no shot list")
     parser.add_argument("--no-write", action="store_true",
                         help="compute everything and store nothing; for a "
                              "pilot measuring throughput")
@@ -848,8 +1202,6 @@ def settle(args):
         args.rank = int(os.environ.get("SLURM_PROCID", "0"))
     if args.world is None:
         args.world = int(os.environ.get("SLURM_NTASKS", "1"))
-    if args.tile_batch is None:
-        args.tile_batch = TILE_BATCH_DEFAULT[args.device]
     if args.prep_workers is None:
         if args.device != "cuda":
             # One worker: overlap enough to hide a read behind the previous
@@ -862,6 +1214,30 @@ def settle(args):
                 max(1, int(cpus) - CORES_FOR_THE_PARENT) if cpus
                 else CUDA_WORKERS_FALLBACK
             )
+    if args.text_subset == "auto":
+        # One task owns the subset; several share it, and a shared
+        # whole-file rewrite is a lost update. See `--text-subset`.
+        args.text_subset = ("readonly"
+                            if int(args.world) > 1 or int(args.n_chunks) > 1
+                            else "build")
+    if args.tail_workers is None:
+        # The tail is ~3.7 s of parent-thread work per shot against ~0.84 s
+        # of A100 forward pass (measured), so not overlapping it caps GPU
+        # utilisation near 15 %. Off only where there is no pool at all -
+        # `--prep-workers 0` is the debugger's setting, and a second
+        # process would be a second thing to step through.
+        args.tail_workers = 0 if args.prep_workers == 0 else 1
+    if args.tile_batch is None:
+        args.tile_batch = TILE_BATCH_DEFAULT[args.device]
+    if args.prefetch < args.prep_workers:
+        # Not raised behind the caller's back - `--prefetch` is the memory
+        # bound and multiplying it multiplies ~262 MB a block - but said
+        # out loud, because the pairing in plan section 8 (18 workers,
+        # prefetch 4) leaves fourteen workers idle and a pilot that did not
+        # notice would measure the wrong cost model.
+        print(f"tokeye_masks: {args.prep_workers - args.prefetch} of "
+              f"{args.prep_workers} prep workers will be idle - --prefetch "
+              f"is the concurrency as well as the queue", file=sys.stderr)
     return args
 
 
@@ -876,7 +1252,10 @@ def run_tag(run_id: str, args) -> str:
 
 
 def main(argv=None) -> int:
-    args = settle(build_parser().parse_args(argv))
+    parser = build_parser()
+    args = settle(parser.parse_args(argv))
+    if not (args.rebuild_index or args.shot_file or args.shots):
+        parser.error("one of --shot-file or --shots is required")
     base = Paths.from_env()
     paths = replace(
         base,
@@ -885,11 +1264,30 @@ def main(argv=None) -> int:
     )
     paths.mkdirs()
 
+    if args.rebuild_index:
+        if args.shot_file or args.shots:
+            parser.error("--rebuild-index takes no shot list: it rebuilds "
+                         "the index from every events file under --root")
+        rebuild_index(paths)
+        return EXIT_OK
+
     listed = (read_shot_file(args.shot_file) if args.shot_file
               else list(args.shots or []))
     if not listed:
         print("no shots selected", file=sys.stderr)
         return EXIT_NO_SHOTS
+
+    if args.build_text_subset:
+        # The whole list, once, in one process, before any array task
+        # starts: after this every task's `wanted = asked - have` is empty
+        # and nobody rewrites the file. `text_events` reads the subset per
+        # shot and never the 616 MB source, so this is the only writer.
+        n_added = text_weak.build_logs_subset(
+            listed, paths=paths, refresh_missing=args.refresh_text
+        )
+        print(f"tokeye_masks: {n_added} logbook records added to "
+              f"{paths.logs_subset} for {len(listed)} shots")
+        return EXIT_OK
     mine = split_shots(listed, chunk=args.chunk, n_chunks=args.n_chunks,
                        rank=args.rank, world=args.world, limit=args.limit)
     span = f"{mine[0]}..{mine[-1]}" if mine else "nothing to do"
@@ -903,18 +1301,36 @@ def main(argv=None) -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     run_id = args.run_id or f"masks-{stamp}-{os.getpid()}"
     n_added, text_note = 0, ""
+    text_missing: list[int] = []
     result = DriverRun(rows=[], totals=pipeline.summarise([]))
     if mine:
-        try:
-            n_added = text_weak.build_logs_subset(
-                mine, paths=paths, refresh_missing=args.refresh_text
-            )
-        except OSError as exc:
-            # As `run.py`: the text is one of eight sources and the only one
-            # that is not in the corpus. Losing it is not losing the masks.
-            text_note = f"{type(exc).__name__}: {exc}"
-            print(f"tokeye_masks: no shot-scope text this run - {text_note}",
-                  file=sys.stderr)
+        if args.text_subset == "build":
+            try:
+                n_added = text_weak.build_logs_subset(
+                    mine, paths=paths, refresh_missing=args.refresh_text
+                )
+            except OSError as exc:
+                # As `run.py`: the text is one of eight sources and the only
+                # one that is not in the corpus. Losing it is not losing the
+                # masks.
+                text_note = f"{type(exc).__name__}: {exc}"
+                print(f"tokeye_masks: no shot-scope text this run - "
+                      f"{text_note}", file=sys.stderr)
+        else:
+            # Read-only: the subset is not written at all, so this task
+            # cannot lose another task's records. What it CAN do is say
+            # which of its shots the pre-pass did not cover, per shot and
+            # in the run record, instead of leaving them to look like
+            # shots the logbook has nothing about.
+            text_missing = [s for s in mine
+                            if text_weak.load_log_record(s, paths=paths) is None]
+            if text_missing:
+                text_note = (
+                    f"read-only text subset: {len(text_missing)} of "
+                    f"{len(mine)} shots have no record in "
+                    f"{paths.logs_subset}"
+                )
+                print(f"tokeye_masks: {text_note}", file=sys.stderr)
         model = unet.load_unet(args.unet, device=args.device)
         result = run_shots(
             mine, paths=paths, model=model, device=args.device,
@@ -922,8 +1338,10 @@ def main(argv=None) -> int:
             passes=tuple(args.passes), tile_batch=args.tile_batch,
             amp=args.amp, norm=args.norm, prep_workers=args.prep_workers,
             prefetch=args.prefetch, timeout_s=args.timeout,
-            write=not args.no_write, lexicon=load_lexicon(), run_id=run_id,
+            write=not args.no_write, index=not args.no_index,
+            lexicon=load_lexicon(), run_id=run_id,
             skip_existing=args.skip_existing, force=args.force,
+            tail_workers=args.tail_workers, text_missing=text_missing,
         )
 
     totals = result.totals
@@ -946,15 +1364,18 @@ def main(argv=None) -> int:
             "passes": list(args.passes),
             "tile_batch": int(args.tile_batch),
             "prep_workers": int(args.prep_workers),
+            "tail_workers": int(args.tail_workers),
             "prefetch": int(args.prefetch),
             "amp": bool(args.amp),
             "norm": args.norm,
             "timeout_s": int(args.timeout),
             "limit": int(args.limit),
             "write": not args.no_write,
+            "index": "skipped" if args.no_index else "per-shot",
             "skip_existing": bool(args.skip_existing),
             "force": bool(args.force),
             "refresh_text": bool(args.refresh_text),
+            "text_subset": args.text_subset,
             "unet": str(args.unet) if args.unet else "",
             "root": str(paths.root),
             "corpus": str(paths.corpus),
@@ -963,6 +1384,7 @@ def main(argv=None) -> int:
         "shots_selected": mine,
         "n_log_records_added": int(n_added),
         "logs_subset": str(paths.logs_subset),
+        "text_subset_missing": text_missing,
         "text_note": text_note,
         "totals": totals,
         "shots": result.rows,
@@ -976,6 +1398,8 @@ def main(argv=None) -> int:
         f"prep wait {totals.get('prep_wait_s', 0.0)}s, "
         f"infer {totals.get('infer_s', 0.0)}s, "
         f"describe {totals.get('describe_s', 0.0)}s, "
+        f"finish {totals.get('finish_s', 0.0)}s "
+        f"(waited {totals.get('tail_wait_s', 0.0)}s), "
         f"peak RSS {totals.get('peak_rss_gib', 0.0)} GiB"
     )
     print(f"tokeye_masks: {out}")
@@ -989,6 +1413,7 @@ __all__ = [
     "build_parser",
     "in_order",
     "main",
+    "rebuild_index",
     "run_shots",
     "settle",
     "split_shots",

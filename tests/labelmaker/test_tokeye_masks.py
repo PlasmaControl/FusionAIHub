@@ -33,7 +33,13 @@ from labelmaker.config import Paths
 from labelmaker.events import channels, driver, masks, schema, text_weak, unet
 from labelmaker.events import pipeline as pl
 
-from .test_events_pipeline import FAKE_SHA, SHOT, PaintedNet, _write_corpus
+from .test_events_pipeline import (
+    FAKE_SHA,
+    SHOT,
+    PaintedNet,
+    _write_corpus,
+    _write_text,
+)
 
 #: Three copies of the synthetic shot, so a chunk and a rank have
 #: something to split. The corpus files differ only in their names.
@@ -255,17 +261,21 @@ def test_help_names_every_flag():
         "--limit", "--root", "--corpus", "--plan", "--passes", "--tile-batch",
         "--prep-workers", "--prefetch", "--amp", "--norm", "--timeout",
         "--device", "--unet", "--run-id", "--skip-existing", "--force",
-        "--refresh-text", "--no-write",
+        "--refresh-text", "--no-write", "--no-index", "--rebuild-index",
+        "--text-subset", "--build-text-subset", "--tail-workers",
     ):
         assert flag in text, flag
 
 
-def test_the_shot_pickers_are_exclusive_and_one_is_required():
+def test_the_shot_pickers_are_exclusive_and_one_is_required(tmp_path):
     parser = driver.build_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["--root", "/tmp"])
-    with pytest.raises(SystemExit):
         parser.parse_args(["--shots", "1", "--shot-file", "/tmp/x"])
+    # The requirement moved from the argparse group to `main`, because
+    # `--rebuild-index` is a run over what is already on disk and has no
+    # shot list; everything else still refuses to start without one.
+    with pytest.raises(SystemExit):
+        driver.main(["--root", str(tmp_path)])
 
 
 def test_the_rank_and_world_default_to_the_srun_environment(monkeypatch):
@@ -315,13 +325,19 @@ def _events(paths, shot):
     return df.drop(columns=["run_id", "written_at"])
 
 
+#: The row keys the driver's schedule is allowed to change.
+_TIMINGS = ("seconds", "prep_wait_s", "infer_s", "describe_s", "finish_s",
+            "tail_wait_s", "n_tiles")
+
+
 def _silently(*args, **kwargs):
     return None
 
 
-@pytest.mark.parametrize(("workers", "prefetch"), [(0, 1), (1, 4), (2, 2)])
+@pytest.mark.parametrize(("workers", "prefetch", "tail"),
+                         [(0, 1, 0), (1, 4, 1), (2, 2, 1)])
 def test_the_driver_writes_exactly_what_process_shot_writes(
-    tmp_path, synth_shot, model, workers, prefetch,
+    tmp_path, synth_shot, model, workers, prefetch, tail,
 ):
     """The requirement the whole task turns on.
 
@@ -344,15 +360,16 @@ def test_the_driver_writes_exactly_what_process_shot_writes(
     got = driver.run_shots(
         [SHOT], paths=driven, model=model, device="cpu",
         passes=("wide", "zoom"), tile_batch=4, prep_workers=workers,
-        prefetch=prefetch, run_id="test-run", unet_sha256=FAKE_SHA,
-        echo=_silently,
+        prefetch=prefetch, tail_workers=tail, run_id="test-run",
+        unet_sha256=FAKE_SHA, echo=_silently,
     )
 
     assert ref.error == "" and ref.n_blocks == 14
     row = dict(got.rows[0])
     # The two timings and the wall clock are the only rows that may differ:
     # they are what the driver exists to change.
-    for key in ("seconds", "prep_wait_s", "infer_s", "describe_s", "n_tiles"):
+    for key in ("seconds", "prep_wait_s", "infer_s", "describe_s",
+                "finish_s", "tail_wait_s", "n_tiles"):
         row.pop(key, None)
     assert row == {k: v for k, v in ref.as_row().items() if k != "seconds"}
 
@@ -601,9 +618,11 @@ def test_main_builds_the_log_subset_once_for_its_own_shots(staged, monkeypatch):
             calls.append((sorted(shots), refresh_missing)) or 0
         ),
     )
+    # `--text-subset build` explicitly: `auto` reads a multi-rank run's
+    # subset instead of writing it (see the text-subset tests below).
     assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
                              "--rank", "0", "--world", "3",
-                             "--refresh-text")) == 0
+                             "--text-subset", "build", "--refresh-text")) == 0
     assert calls == [([SHOTS[0]], True)]
 
 
@@ -773,3 +792,317 @@ def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(tmp_path,
     worker = got.totals["peak_worker_rss_gib"]
     assert worker > 0.0
     assert worker != got.totals["peak_rss_gib"]
+
+
+# ------------------------------------------------------------- the index
+
+
+def test_no_index_writes_the_per_shot_products_and_not_the_shared_file(
+    tmp_path, synth_shot, model,
+):
+    """`--no-index` is what an array task runs.
+
+    `events_index.parquet` is ONE file for the whole root and
+    `labels.store.append_index` rewrites it whole through a FIXED `.tmp`
+    sibling. Sixteen tasks doing that per shot lose each other's rows and
+    can rename a torn parquet into place - after which the next shot's
+    `read_parquet` raises inside the write guard and a healthy shot is
+    recorded `status == "error"`. The per-shot products are untouched by
+    the flag; only the derivable file is left for one pass afterwards.
+    """
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4, prep_workers=0,
+                           index=False, unet_sha256=FAKE_SHA, echo=_silently)
+
+    assert got.rows[0]["status"] == "ok"
+    assert paths.masks_file(SHOT).exists()
+    assert paths.events_file(SHOT).exists()
+    assert not paths.events_index.exists()
+
+
+def test_a_rebuilt_index_is_the_one_the_shot_by_shot_writes_would_have_left(
+    tmp_path, synth_shot, model,
+):
+    """The rebuild is not an approximation of the incremental index.
+
+    Same shots, two roots: one written with the per-shot `append_index`,
+    one with `--no-index` and then rebuilt in a single pass from
+    `events/*_events.parquet`. The two parquet files must agree row for
+    row and column for column, bar `written_at` - which records when each
+    run wrote, and is the one thing two runs cannot share.
+    """
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    incremental = _paths_under(tmp_path, "incremental", corpus)
+    deferred = _paths_under(tmp_path, "deferred", corpus)
+    for paths, index in ((incremental, True), (deferred, False)):
+        driver.run_shots(SHOTS, paths=paths, model=model, device="cpu",
+                         corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                         prep_workers=0, index=index, run_id="test-run",
+                         unet_sha256=FAKE_SHA, echo=_silently)
+    assert incremental.events_index.exists()
+    assert not deferred.events_index.exists()
+
+    report = driver.rebuild_index(deferred)
+    assert report["files"] == len(SHOTS)
+    assert report["rows"] > 0
+    assert report["unreadable"] == {}
+
+    def _index(paths):
+        df = pd.read_parquet(paths.events_index).drop(columns=["written_at"])
+        return df.sort_values(list(driver.INDEX_KEYS)).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(_index(deferred), _index(incremental))
+
+
+def test_the_rebuild_replaces_a_stale_index_rather_than_merging_into_it(
+    tmp_path, synth_shot, model,
+):
+    """A rebuild is derived from what is on disk NOW.
+
+    `append_index` merges, so a row for a shot whose events file has been
+    deleted (a re-run with a different plan, a shot withdrawn from the
+    list) would survive every incremental write for ever. The rebuild is
+    the repair for that, so it must not merge.
+    """
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    driver.run_shots(SHOTS, paths=paths, model=model, device="cpu",
+                     corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                     prep_workers=0, run_id="test-run", unet_sha256=FAKE_SHA,
+                     echo=_silently)
+    paths.events_file(SHOTS[2]).unlink()
+
+    report = driver.rebuild_index(paths, echo=_silently)
+    assert report["files"] == len(SHOTS) - 1
+    left = pd.read_parquet(paths.events_index)
+    assert sorted(set(left["shot"])) == SHOTS[:2]
+
+
+def test_main_can_rebuild_the_index_without_a_shot_list(staged, capsys):
+    """`--rebuild-index` is the one-pass repair task L12 runs after the array."""
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--no-index", "--run-id", "arrayish")) == 0
+    assert not staged.events_index.exists()
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["settings"]["index"] == "skipped"
+
+    assert driver.main(["--root", str(staged.root), "--rebuild-index"]) == 0
+    rows = pd.read_parquet(staged.events_index)
+    assert sorted(set(rows["shot"])) == SHOTS
+    assert "tokeye_masks: rebuilt" in capsys.readouterr().out
+
+
+# --------------------------------------------------------- the text subset
+
+
+@pytest.fixture
+def staged_text(tmp_path, monkeypatch, model, synth_shot):
+    """`staged`, but with the REAL `build_logs_subset`.
+
+    The subset file itself is the assertion here - whether a run left its
+    bytes alone - so the builder must be the one that would rewrite it.
+    """
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    monkeypatch.setattr(unet, "load_unet",
+                        lambda path=None, device="cpu", **kw: model)
+    return paths
+
+
+def _subset_state(paths):
+    stat = paths.logs_subset.stat()
+    return (paths.logs_subset.read_bytes(), stat.st_size, stat.st_mtime_ns,
+            sorted(p.name for p in paths.logs_subset.parent.iterdir()))
+
+
+def test_a_multi_rank_run_reads_the_text_subset_and_never_writes_it(
+    staged_text,
+):
+    """`text/logs_subset.jsonl` is the second file a whole root shares.
+
+    `build_logs_subset` rewrites it WHOLE - the old lines plus this call's
+    records - into a pid-suffixed `.tmp` and renames it over the old file.
+    The pid stops two tasks interleaving bytes; it does not stop a lost
+    update. Sixteen array tasks each add their own thirty shots to the same
+    old file and the last rename wins, so fifteen tasks' records vanish
+    before their shots are processed and those shots silently lose their
+    `text` events. So a run that is one of several does not build it at
+    all: it reads what a pre-pass built.
+    """
+    staged = staged_text
+    _write_text(staged, SHOTS[0], "fishbones through the current ramp")
+    before = _subset_state(staged)
+
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--rank", "0", "--world", "3")) == 0
+    # Byte for byte, mtime included, and no `.tmp` sibling left behind:
+    # this rank did not rewrite the file, so it cannot have dropped
+    # another rank's records from it.
+    assert _subset_state(staged) == before
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["settings"]["text_subset"] == "readonly"
+    assert payload["text_subset_missing"] == []
+    row = payload["shots"][0]
+    assert row["shot"] == SHOTS[0]
+    assert row["n_text"] == 1                       # the prebuilt record read
+    assert "text" not in row["skipped"]
+
+
+def test_a_shot_missing_from_the_prebuilt_subset_is_told_how_to_fix_it(
+    staged_text,
+):
+    """A missing record must not read as "the logbook has nothing".
+
+    And it must not send this rank to the logbook either: a build here is
+    the whole-file rewrite that loses the other ranks' records, and there
+    is no `logs.jsonl` under this root for it to read anyway.
+    """
+    staged = staged_text
+    _write_text(staged, SHOTS[2], "fishbones through the current ramp")
+    before = _subset_state(staged)
+
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--rank", "0", "--world", "3")) == 0
+    assert _subset_state(staged) == before
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["text_subset_missing"] == [SHOTS[0]]
+    why = payload["shots"][0]["skipped"]["text"]
+    assert "prebuilt" in why and "--build-text-subset" in why
+
+
+def test_the_text_pre_pass_builds_the_whole_list_once_and_runs_nothing(
+    staged, monkeypatch,
+):
+    """The documented one-shot pre-pass, before the array is submitted."""
+    calls: list = []
+    monkeypatch.setattr(
+        text_weak, "build_logs_subset",
+        lambda shots, *, paths=None, refresh_missing=False: (
+            calls.append((sorted(shots), refresh_missing)) or 7
+        ),
+    )
+    assert driver.main([
+        "--root", str(staged.root), "--corpus", str(staged.corpus),
+        "--build-text-subset", "--shots", *[str(s) for s in SHOTS],
+        "--chunk", "0", "--n-chunks", "3", "--rank", "0", "--world", "4",
+    ]) == 0
+    # The WHOLE list, not this task's chunk or this rank's stride, and no
+    # shot was run: a pre-pass is not a run.
+    assert calls == [(SHOTS, False)]
+    assert list((staged.runs / "events").glob("*.json")) == []
+    assert not staged.masks_file(SHOTS[0]).exists()
+
+
+# ------------------------------------------------------------- the tail
+
+
+def _totals(tmp_path, name, shots, synth_shot, model, **kw):
+    corpus = tmp_path / f"corpus_{name}"
+    for shot in shots:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, name, corpus)
+    got = driver.run_shots(shots, paths=paths, model=model, device="cpu",
+                           corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                           prep_workers=0, run_id="test-run",
+                           unet_sha256=FAKE_SHA, echo=_silently, **kw)
+    return paths, got
+
+
+def test_the_tail_of_a_shot_is_paid_beside_the_next_shots_blocks(
+    tmp_path, synth_shot, model,
+):
+    """The per-shot tail must not stand in front of the next forward pass.
+
+    `pipeline.finish_shot` - the sawtooth pass over the whole ECE array,
+    L-H, the actuators, the QH proxy, the text lookup and the two writes -
+    was measured at ~3.72 s per shot of parent-thread work against ~0.84 s
+    of A100 forward pass, which caps GPU utilisation near 15 %. It is
+    order-independent across shots (one shot's tail touches one shot's
+    files), so it is handed to a worker and collected once the next shot's
+    blocks are done.
+
+    Measured here as the driver reports it: `finish_s` is what the tail
+    cost, `tail_wait_s` is how much of that the thread holding the GPU
+    actually waited for. The middle shot is the one to read - the first
+    shot's tail is also where the worker's own spawn and torch import land
+    if `warm()` has not finished paying for them, and the last shot's tail
+    has no next shot to hide behind.
+    """
+    overlapped = _totals(tmp_path, "overlapped", SHOTS, synth_shot, model,
+                         tail_workers=1)[1]
+    serial = _totals(tmp_path, "serial", SHOTS, synth_shot, model,
+                     tail_workers=0)[1]
+
+    mine, theirs = overlapped.rows[1], serial.rows[1]
+    assert mine["finish_s"] > 0.0 and theirs["finish_s"] > 0.0
+    # Serial: the tail IS the wait, to within the clock either side of it.
+    assert theirs["tail_wait_s"] >= theirs["finish_s"] * 0.9
+    # Overlapped: the GPU-owning thread did not wait for what it cost.
+    assert mine["tail_wait_s"] < mine["finish_s"]
+    assert overlapped.totals["finish_s"] > 0.0
+
+
+def test_an_overlapped_run_writes_the_same_rows_in_the_same_order(
+    tmp_path, synth_shot, model,
+):
+    """Overlapping the tail may not re-order or lose a shot."""
+    later, overlapped = _totals(tmp_path, "overlapped", SHOTS, synth_shot,
+                                model, tail_workers=1)
+    first, serial = _totals(tmp_path, "serial", SHOTS, synth_shot, model,
+                            tail_workers=0)
+
+    assert [r["shot"] for r in overlapped.rows] == SHOTS
+    assert [r["shot"] for r in serial.rows] == SHOTS
+    for mine, theirs in zip(overlapped.rows, serial.rows, strict=True):
+        assert {k: v for k, v in mine.items() if k not in _TIMINGS} == {
+            k: v for k, v in theirs.items() if k not in _TIMINGS
+        }
+    for shot in SHOTS:
+        assert _mask_keys(later.masks_file(shot)).keys() == _mask_keys(
+            first.masks_file(shot)).keys()
+        pd.testing.assert_frame_equal(_events(later, shot),
+                                      _events(first, shot))
+
+
+def test_a_tail_that_raises_is_one_error_row_and_the_run_goes_on(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    """A failed tail costs its shot and not the run.
+
+    In-process (`tail_workers=0`) so the stand-in can be monkeypatched; the
+    path under test is the one that collects the tail, which is shared with
+    the worker case - `PrepPool.submit` puts a failure on the future either
+    way.
+    """
+    def boom(*args, **kwargs):
+        raise RuntimeError("the tail fell off")
+
+    monkeypatch.setattr(pl, "finish_shot", boom)
+    _, got = _totals(tmp_path, "boom", SHOTS[:2], synth_shot, model,
+                     tail_workers=0)
+    assert [r["status"] for r in got.rows] == ["error", "error"]
+    assert [r["shot"] for r in got.rows] == SHOTS[:2]
+    assert all("the tail fell off" in r["detail"] for r in got.rows)
+
+
+def test_the_tail_worker_default_follows_the_prep_pool(monkeypatch):
+    monkeypatch.delenv("SLURM_CPUS_PER_TASK", raising=False)
+    args = driver.settle(driver.build_parser().parse_args(["--shots", "1"]))
+    assert args.tail_workers == 1
+    args = driver.settle(driver.build_parser().parse_args(
+        ["--shots", "1", "--prep-workers", "0"]
+    ))
+    assert args.tail_workers == 0
+    args = driver.settle(driver.build_parser().parse_args(
+        ["--shots", "1", "--prep-workers", "0", "--tail-workers", "1"]
+    ))
+    assert args.tail_workers == 1
