@@ -40,10 +40,12 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-import torch  # noqa: E402
+# Imported after the `sys.path` line above, deliberately: this script runs
+# from a checkout rather than an installed package.
+import torch
 
-from labelmaker.config import sha256_of  # noqa: E402
-from labelmaker.events import unet  # noqa: E402
+from labelmaker.config import sha256_of
+from labelmaker.events import unet
 
 #: Read only here. Library code resolves the checkpoint through
 #: `unet.default_checkpoint_path()` and never mentions this path.
