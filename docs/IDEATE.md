@@ -27,6 +27,7 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 | `logs` | the shot-log contract (`logs missing`, `logs import`) |
 | `labels` | labelmaker's labels and events → `labels_wide.parquet`, `events.parquet` |
 | `phenomenon` | which shots show a phenomenon, and what kind of evidence says so (`--list` prints the registry) |
+| `eval` | the frozen evaluation harness: `eval prompts`, `eval latency`, `eval recall` |
 | `export` | `ShotSummary` rows as JSON or Parquet |
 | `actuation`, `blurb`, `llm`, `model` | actuator waveform sets, per-shot blurbs, LLM reachability, the IGNITE bundle |
 
@@ -104,6 +105,78 @@ summary columns (`pnbi_total_mean`, `pech_total_mean`, `gas_total_mean`, `irmp_t
 the values at the phenomenon's first interval. A per-onset lookup needs the raw waveform, which
 the database does not carry; the keys are the column names, so the field cannot misdescribe
 itself in the meantime.
+
+## Evaluation
+
+```bash
+ideate eval prompts --split eval            # the frozen 200 against the eval side of the split
+ideate eval prompts --split all --json      # the whole development universe, as JSON
+ideate eval latency --repeats 20            # the Appendix B budget table, warm
+ideate eval recall eho                      # detector recall vs a human annotation sheet
+```
+
+**The harness is frozen before anything is tuned.** `configs/ideate/evalsets/` holds 200 prompts
+authored from this corpus's own vocabulary — the 500 shots' mini-proposal titles, the operators'
+logbook sentences, the 12 phenomenon ids and the 14 curation themes — and a dev/eval split cut by
+**run day**, not by shot. `tests/ideate/test_evalset_frozen.py` asserts the CSV's sha256 against a
+literal in the test *and* against the hash in `configs/ideate/evalsets/README.md`, so editing the
+set takes three deliberate edits in three files. **A prompt the retrieval cannot answer is a line
+in the report, not a rewrite of the prompt.**
+
+| what `eval prompts` measures | why it is separate |
+| --- | --- |
+| **coverage** — prompts with ≥ 1 result | a system that answers nothing is absent, not inaccurate. Plan bar: ≥ 95 % |
+| **hard-filter survival** — candidates ÷ segment rows | a top-5 out of six and a top-5 out of three hundred are different answers |
+| **channel participation** — which of `CHANNELS` contributed | a channel firing on 3 % of prompts is mis-wired or very narrow, and a score shows neither |
+| **category → phenomenon resolution** | measures the **lexicon** against the words physicists type, not retrieval. Plan bar: ≥ 80 % on `qh_mode`, `elm_rmp`, `fast_ions` |
+| **run diversity, duplicate rate** — over the top-10 | ten results from one run day are one experiment shown ten times |
+| **the proxy grade** — over the 20 hand-graded prompts | see below |
+
+`--split eval` (the default) restricts the database to the 110 eval shots **before** searching, so
+the hard filter, the BM25 corpus statistics and the k-NN neighbourhoods are computed on one side
+only. Every report says which split produced it, because a number from `all` and a number from
+`eval` are not comparable.
+
+### What the proxy grade is NOT
+
+Twenty prompts carry `hand_graded=1` and a rubric in the evalset's `notes` column saying what a
+correct top-5 looks like. The harness computes a **proxy** for them — does any of the top 5 carry
+evidence of every expected phenomenon, or do all 5 satisfy the expected constraints — and every
+report repeats, in its own `proxy.caveat` field:
+
+> PROXY, NOT A HUMAN GRADE … It does not judge whether the shots are the right ones; the rubric in
+> the evalset's `notes` column does, and only a human can.
+
+A prompt can pass the proxy with five useless shots and fail it while returning the five a
+physicist would have picked. A prompt that states no machine-checkable expectation scores `None`,
+never a free pass.
+
+### Latency
+
+`eval latency` times five operations at N=20 and reports median and p95 against the plan's
+Appendix B budgets (load < 3 s, search with text < 400 ms, search without text < 200 ms,
+`phenomenon locate` < 300 ms; `describe` has no budget and so gets the verdict `n/a` rather than a
+free PASS). **Warm**: every operation runs once and that run is discarded, so the MiniLM load and
+the first parquet read are not in the numbers. The verdict is read off the median. Exit 3 means a
+budgeted row was over.
+
+### Phenomenon recall
+
+`eval recall <phenomenon>` scores the detectors against `$LABELMAKER_ROOT/annotate/<phenomenon>/`
+— `sheet.csv` joined to `manifest.parquet`, `split=test` rows only, `y`/`n` labels only. It
+**refuses with exit 2** below 20 labelled test rows: an empty table would read as "recall 0", and
+the two are opposite answers. No sheet exists yet, so today every invocation refuses. Only an
+*observed* interval overlapping the annotated window counts as a detection — a forecast and an
+operator's sentence do not, or the detectors' recall would be inflated with the label models'
+confidence.
+
+### Out of scope here
+
+Whether a detector is *physically* right. Agreement with a TokEye track or a teacher label is
+agreement, not physical accuracy (plan V17: the existing AE model scores 0.99 against its teacher
+and **0.62** against human annotation). Establishing physical quality is the labelmaker
+workstream's task; this harness measures the retrieval layer built on top of whatever evidence
+exists.
 
 ## The MCP server
 

@@ -359,7 +359,7 @@ def _report(evalset, outcomes, db, split, keep, n) -> EvalReport:
         evalset=evalset.path.name,
         evalset_sha256=evalset.sha256,
         split=split,
-        split_shots=len(keep) if keep is not None else int(len(db.shots)),
+        split_shots=len(keep) if keep is not None else len(db.shots),
         n_prompts=n_prompts,
         n_results_total=n_results,
         coverage=_frac(sum(1 for o in outcomes if o.n_results > 0), n_prompts),
@@ -440,18 +440,25 @@ def markdown(report: EvalReport) -> str:
     judged. `split` is stated in the first line because a number from `all` is not comparable
     with one from `eval` and nothing downstream can tell them apart otherwise."""
     lines = [
-        f"### `{report.evalset}` on split `{report.split}` "
-        f"({report.split_shots} shots, {report.n_prompts} prompts)",
+        (
+            f"### `{report.evalset}` on split `{report.split}` "
+            f"({report.split_shots} shots, {report.n_prompts} prompts)"
+        ),
         "",
         f"evalset sha256 `{report.evalset_sha256}` — frozen; database `{report.db_dir}`",
         "",
         "| metric | value | bar |",
         "| --- | --- | --- |",
-        f"| coverage (prompts with >= 1 result) | {_pct(report.coverage)} | "
-        f">= {_pct(COVERAGE_BAR)} {'PASS' if report.coverage >= COVERAGE_BAR else 'FAIL'} |",
+        (
+            f"| coverage (prompts with >= 1 result) | {_pct(report.coverage)} | "
+            f">= {_pct(COVERAGE_BAR)} "
+            f"{'PASS' if report.coverage >= COVERAGE_BAR else 'FAIL'} |"
+        ),
         f"| hard-filter survival (mean) | {_pct(report.hard_filter_survival)} | — |",
-        f"| phenomenon resolution (all prompts with an expectation) | "
-        f"{_pct(report.resolution_overall)} | — |",
+        (
+            f"| phenomenon resolution (all prompts with an expectation) | "
+            f"{_pct(report.resolution_overall)} | — |"
+        ),
         f"| mean distinct run days per top-{TOP_K} | {report.mean_run_diversity:.2f} | — |",
         f"| duplicate rate (repeated shots / results) | {_pct(report.duplicate_rate)} | — |",
         f"| prompts that raised an error | {report.n_errors} | — |",
@@ -477,8 +484,10 @@ def markdown(report: EvalReport) -> str:
     p = report.proxy
     lines += [
         "",
-        f"**Proxy grade** {p.n_hit}/{p.n_checkable} checkable of {p.n_prompts} hand-graded "
-        f"({_pct(p.fraction)}). {p.caveat}",
+        (
+            f"**Proxy grade** {p.n_hit}/{p.n_checkable} checkable of {p.n_prompts} "
+            f"hand-graded ({_pct(p.fraction)}). {p.caveat}"
+        ),
     ]
     errors = Counter(o.error for o in report.outcomes if o.error)
     if errors:

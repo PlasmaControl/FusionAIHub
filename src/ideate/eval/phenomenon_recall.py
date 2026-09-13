@@ -146,7 +146,7 @@ def recall(
         )
 
     known = {int(s) for s in getattr(db, "shots", pd.DataFrame()).index}
-    counts = dict(tp=0, fn=0, fp=0, tn=0)
+    counts = {"tp": 0, "fn": 0, "fp": 0, "tn": 0}
     absent = 0
     shots: set[int] = set()
     for row in labelled.to_dict("records"):
@@ -213,9 +213,11 @@ def markdown(report: RecallReport) -> str:
     lines = [
         f"### `{report.phenomenon}` recall vs `split=test` annotation rows",
         "",
-        f"sheet `{report.sheet}` — {report.n_labelled} labelled test rows "
-        f"({report.n_positive} y, {report.n_negative} n) over {report.n_shots} shots, "
-        f"of {report.n_test_rows} test rows in {report.n_rows}",
+        (
+            f"sheet `{report.sheet}` — {report.n_labelled} labelled test rows "
+            f"({report.n_positive} y, {report.n_negative} n) over {report.n_shots} shots, "
+            f"of {report.n_test_rows} test rows in {report.n_rows}"
+        ),
         "",
         "| | detected | not detected |",
         "| --- | --- | --- |",
