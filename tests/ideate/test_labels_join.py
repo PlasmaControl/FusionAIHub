@@ -410,7 +410,7 @@ def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_
     assert m["sources_by_shot"][900001]["has_observed_products"] is True
     assert m["sources_by_shot"][900003] == {
         "n_sources": 0, "n_sources_ok": 0, "n_sources_skipped": 0, "n_sources_error": 0,
-        "has_observed_products": False,
+        "n_sources_unknown_coverage": 0, "has_observed_products": False,
     }
 
 
