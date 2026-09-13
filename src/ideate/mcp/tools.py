@@ -382,13 +382,38 @@ EVENT_STATES = ("unindexed", "unprocessed", "uncovered", "observed")
 
 _UNPROCESSED_CAVEAT = (
     "no observed-event product for shot {shot}: no detector is recorded as having run over it "
-    "and it has no non-forecast rows. Absence is not evidence -- this is not a quiet shot, it "
-    "is an unexamined one"
+    "and it has no detector or heuristic rows (a forecast, a logbook mention and a curated-table "
+    "entry are none of them). Absence is not evidence -- this is not a quiet shot, it is an "
+    "unexamined one"
 )
 
 _NO_DETECTION_CAVEAT = (
     "{n} source(s) ran over shot {shot} and reported 0 detections inside their coverage"
     "{window}. This IS an observation of nothing happening, unlike an unprocessed shot"
+)
+
+#: Which `evidence_kind` values decide `status`. An allow-list, the same two
+#: `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` and `retrieval.phenomena.OBSERVED_KINDS`
+#: name: a `forecast` is a model's estimate, a `text` row is a word in a logbook, a `database`
+#: row is an entry in a curated table and a `human`/`model` row is neither a diagnostic nor a
+#: heuristic. None of them is somebody having looked at this shot's plasma, so none of them may
+#: turn an unexamined shot into an observed one.
+OBSERVED_KINDS: tuple[str, ...] = ("detector", "heuristic")
+
+#: Said whenever a diagnostic source completed without recording its coverage -- whether or not
+#: any other source did record some. The row is a real fact ("it ran") that establishes nothing
+#: about any window, and a reader who saw only `n_sources_ok` would count it as a source that
+#: looked. Real shot 198658: `actuator/ech_power_total`, ok, NaN..NaN, 0 events.
+_UNKNOWN_COVERAGE_CAVEAT = (
+    "{n} source(s) ran over shot {shot} and recorded NO coverage -- {names}: ran; coverage "
+    "unknown -- says nothing about this window, neither that it was looked at nor that it "
+    "was not"
+)
+
+_UNCOVERED_UNKNOWN_CAVEAT = (
+    "no source with recorded coverage ran over shot {shot}{window}: the sources that completed "
+    "did not record what span they read, so nothing establishes that anybody looked -- an empty "
+    "result here is not an observation of nothing happening"
 )
 
 _TEXT_CAVEAT = (
@@ -425,10 +450,13 @@ def get_events(
     * `unindexed` -- the shot is not in the database at all. Nothing was ever loaded for it.
     * `unprocessed` -- the shot is in the database, but no detector is recorded as having run
       over it. Its empty event list is not evidence that the shot was quiet.
-    * `uncovered` -- detectors ran, but none of them covered the window you asked about. The
-      caveat names the span that IS covered.
-    * `observed` -- detectors ran over (part of) the window. An empty `events` here is a real
-      observation of nothing, and the caveats say how many sources reported it.
+    * `uncovered` -- detectors ran, but none of them is recorded as having covered the window
+      you asked about: either their spans lie elsewhere (the caveat names the span that IS
+      covered) or they completed without recording a span at all (the caveat names them). A
+      source that ran and recorded no coverage can neither cover nor un-cover a window.
+    * `observed` -- some one detector's OWN coverage overlaps the window. An empty `events` here
+      is a real observation of nothing, and the caveats say how many sources reported it --
+      counting only the sources whose coverage overlaps the window, not everything that ran.
 
     `events`, `text_mentions` and `forecasts` are three different kinds of claim and must stay
     apart when you report them. An `events` row is somebody's claim about what a DIAGNOSTIC
@@ -488,7 +516,7 @@ def get_events(
 
     all_rows = df if df is not None else None
     n_observed_rows = 0 if all_rows is None else int(
-        (~all_rows["evidence_kind"].isin(("forecast", "text"))).sum()
+        all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum()
     )
 
     if phenomenon and all_rows is not None:
@@ -524,8 +552,12 @@ def get_events(
 
     status = _event_status(summary, n_observed_rows, sources, t0_s, t1_s)
     coverage = _coverage_block(sources, summary)
+    window_text = "" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s"
+    unknown = _unknown_coverage_sources(sources)
     if status == "unprocessed":
         caveats.append(_UNPROCESSED_CAVEAT.format(shot=shot))
+    elif status == "uncovered" and coverage["t_cov0_s"] is None:
+        caveats.append(_UNCOVERED_UNKNOWN_CAVEAT.format(shot=shot, window=window_text))
     elif status == "uncovered":
         span = coverage["t_cov0_s"], coverage["t_cov1_s"]
         caveats.append(
@@ -534,11 +566,20 @@ def get_events(
             f"says nothing about the window you asked about"
         )
     elif status == "observed" and not events:
+        # The count is the sources whose OWN finite coverage overlaps the window, not
+        # `n_sources_ok`: that counts the logbook lexicon, a curated table and every
+        # unknown-coverage row, none of which reported 0 detections inside any coverage.
         caveats.append(
             _NO_DETECTION_CAVEAT.format(
-                n=summary["n_sources_ok"] or "an unrecorded number of",
+                n=_n_covering(sources, t0_s, t1_s) or "an unrecorded number of",
                 shot=shot,
-                window="" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s",
+                window=window_text,
+            )
+        )
+    if unknown:
+        caveats.append(
+            _UNKNOWN_COVERAGE_CAVEAT.format(
+                n=len(unknown), shot=shot, names=", ".join(unknown)
             )
         )
     if summary["n_sources_error"]:
@@ -622,17 +663,48 @@ def _sources_summary(sources, shot: int) -> dict:
 
 
 def _event_status(summary, n_observed_rows: int, sources, t0_s, t1_s) -> str:
-    """Which of the four states this reply is in. See `EVENT_STATES`."""
+    """Which of the four states this reply is in. See `EVENT_STATES`.
+
+    THE COVERAGE RULE. An `ok` source whose coverage is NaN ran and recorded no span, so it can
+    neither cover nor un-cover the window: it keeps the shot out of `unprocessed` (it did run)
+    and it cannot put it into `observed`, which needs some one diagnostic source's own finite
+    coverage to overlap the window -- a shot whose every completed source has unknown coverage is
+    `uncovered`, and the caveat names them.
+    """
     from ..labels import event_sources as es
 
     if not summary["has_observed_products"] and n_observed_rows == 0:
         return "unprocessed"
-    if t0_s is None and t1_s is None:
-        return "observed"
     covered = es.covers(sources, t0_s, t1_s)
-    # `None` -- nothing recorded coverage -- is not "uncovered": there are observed rows on this
-    # shot (the branch above), the database simply predates the coverage table.
-    return "uncovered" if covered is False else "observed"
+    if covered is False:
+        return "uncovered"
+    if covered is None and summary["has_observed_products"]:
+        # Sources completed and none recorded a span. Not `unprocessed` (they ran) and not
+        # `observed` (nothing says what they read) -- the window is not established as looked at.
+        return "uncovered"
+    # `None` with no completed diagnostic source at all is the legacy case: there are observed
+    # rows on this shot (the branch above) and the database simply predates the coverage table.
+    return "observed"
+
+
+def _unknown_coverage_sources(sources) -> list[str]:
+    """The names of the diagnostic `ok` rows that recorded no coverage, deduplicated, in order."""
+    from ..labels import event_sources as es
+
+    out: list[str] = []
+    for rec in es.unknown_coverage_rows(sources).to_dict("records"):
+        name = str(rec["source"])
+        label = f"{name}/{rec['diag']}" if str(rec["diag"]) else name
+        if label not in out:
+            out.append(label)
+    return out
+
+
+def _n_covering(sources, t0_s, t1_s) -> int:
+    """How many diagnostic sources' own finite coverage overlaps the window."""
+    from ..labels import event_sources as es
+
+    return len(es.observing_rows(sources, t0_s, t1_s))
 
 
 def _coverage_block(sources, summary) -> dict:
