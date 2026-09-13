@@ -13,8 +13,57 @@ rule over the committed shot list. Editing the evalset therefore takes three del
 three files and shows up in every diff.
 
 ```
-sha256(reference_shot_prompts.csv) = a6059fbccd3aec79547d5a7ced3896c0ea6496c4e60927aa108675caef63a6a9
+version: 1.1
+sha256(reference_shot_prompts.csv) = aed8547330414e5b427579b58b207d661609bbfca1b048ca6df666e71172ef0e
+superseded: v1.0 = a6059fbccd3aec79547d5a7ced3896c0ea6496c4e60927aa108675caef63a6a9
 ```
+
+The superseded hash is kept so that a number published against v1.0 can still be told apart from
+a v1.1 one. **Always quote the version beside the number.**
+
+## Changelog
+
+### v1.1 — 2026-09-13, the one re-freeze, before any retrieval tuning
+
+An independent review of v1.0 found eleven prompts with defects in the **question** and ten rows
+whose emptiness needed recording. These are corrections to what is asked, not to what was
+answered: nothing in retrieval, the ranking, the scoring or the lexicon-matching code changed
+alongside them, and the re-run is reported against both hashes. The `fast_ion` phenomenon id that
+four of these rows now expect was added at the same time — to `src/labelmaker/events/lexicons.yaml`
+and `configs/ideate/phenomena.yaml` as a **text-only topic with no detector and no label**,
+deliberately *not* as four new aliases on `ae` (see the note in either file).
+
+**Eleven prompts changed:**
+
+| prompt_id | v1.0 | v1.1 | why |
+| --- | --- | --- | --- |
+| `p036` | expected `ae` | expects `fast_ion` | a 3D-field fast-ion transport experiment names no mode; `ae` is the AE *mode* id, not a fast-ion topic |
+| `p038` | expected `ae` | expects `fast_ion` | FIDA is a diagnostic; the losses may be from 3D fields, ripple or sawteeth |
+| `p041` | expected `ae` | expects `fast_ion` | the sentence names no mode at all |
+| `p046` | expected `ae` | expects `fast_ion` | a neutron deficit is a fast-ion transport signature, not an AE claim |
+| `p066` | expected `sawtooth\|ae` | expects `sawtooth\|fast_ion` | Porcelli fast-ion stabilisation of the internal kink — no Alfvén eigenmode in it |
+| `p197` | expected `ae\|sawtooth` | expects `sawtooth\|fast_ion` | "fast ion driven modes" is the topic, not a named AE |
+| `p048` | expected `ae\|fishbone` | expects `fishbone` | below 40 kHz contradicts the registry's own AE band, so requiring both was unresolvable by construction |
+| `p039` | "TAE-induced ITG turbulence" | "interaction between TAEs and ITG turbulence" | garbled physics — TAEs do not induce ITG turbulence. Still a deliberate plural-gap probe (`tae` is an alias, `taes` is not) |
+| `p072` | "sawtooth behaviour in a hybrid with qmin above 1", expected `sawtooth` | "sawtooth-free hybrid operation with qmin above 1", expects nothing | self-contradictory: qmin > 1 means no q = 1 surface and so no sawteeth, and the hard filter selected *against* the expected phenomenon |
+| `p186` | "L-H transition with ECH only and no beams" | "L-H transition at the ITER-similar shape with the beams held flat", `kappa_mean ≥ 1.7` | byte-identical expectation to `p079`, so one unanswerable question was charged twice against coverage |
+| `p053` | — | unchanged, annotated | it misses only on the plural: the lexicon has `ntm`, not `ntms`, where `elm` has both |
+
+**Ten rows annotated, not changed.** Eight are **unanswerable on this corpus by construction**
+(`p079`, `p100`, `p111`, `p120`, `p125`, `p134`, `p163`, `p170`) and three are satisfiable
+corpus-wide but empty on the eval side (`p028` 8 shots, `p123` 6, `p166` 8). Measured
+2026-09-13 over all 500 `recommender_v1` flat-tops:
+
+| ceiling | measured |
+| --- | --- |
+| `betan_mean` | 0.072 – **3.006** — `betaN ≥ 4` matches nothing |
+| `pech_total_mean` | 82 W – **2.298 MW** — `≥ 3 MW` matches nothing |
+| `pnbi_total_mean` | **0.834 MW** – 11.9 MW — neither `≤ 0.5 MW` nor `≥ 12 MW` matches anything |
+| `q95_mean` | **NaN on all 500 shots** — the builder writes the column, nothing records it |
+
+They are kept, not deleted. They are honest things for a physicist to type, "nothing here" is the
+correct answer, and the annotation is what stops the next reader re-diagnosing them as retrieval
+misses. But they do cost coverage, and that is why coverage alone is not the whole story.
 
 ## Why frozen
 
@@ -116,6 +165,20 @@ neighbours. `prompts.run` excludes the whole complement from the database *befor
 the hard filter, the BM25 corpus statistics and the k-NN neighbourhoods are computed on one side
 only.
 
+**`reference_shot`'s twelve prompts all name shots on the `eval` side, deliberately.** `p145`
+196336, `p146` 186194, `p147` 203295, `p148` 194350, `p149` 196399, `p150` 187143, `p151` 186114,
+`p152` 194789, `p153` 194953, `p154` 201526, `p155` 196141, `p156` 186389 — 12 of 12 in
+`split.eval`. That is not chance (the eval side is 22 % of the corpus; 0.22¹² ≈ 10⁻⁸): they were
+chosen with the split in hand, because a reference-shot prompt naming a dev shot is *vacuous* on
+`--split eval` — the named shot is excluded before the search. Three things follow, and a reader
+is entitled to all three:
+
+* **`reference_shot` on `--split dev` is vacuous.** Every named shot is excluded there. Read that
+  category on `--split eval` or `--split all`, never on `dev`.
+* `reference_shot`'s coverage and its top-of-table run-day diversity are **not neutral results**.
+* 12 of the 200 prompts — 6 % of the coverage numerator — were selected against the split. Every
+  other prompt was authored from the vocabulary alone, with no reference to which shots are where.
+
 **What the split landed on, quirks included** (these limit what an eval-split number can mean):
 
 | theme | dev | eval |
@@ -133,9 +196,16 @@ is a statement about the lexicon and the retrieval machinery, not about whether 
 shots can be found. Category numbers that depend on the corpus rather than on the code should be
 read on `--split all`, and the report always says which split it ran on.
 
+**Resolution is not a split number.** `prompts._resolution` calls `phenomena.resolve` on the
+prompt text alone — no database, no split — so the per-category resolution column is *identical*
+on `dev`, `eval` and `all`. It measures the lexicon against the words physicists type. It is
+printed under a split heading only because it shares a table with metrics that are split
+numbers; do not read `fast_ions 56.2 %` as a statement about the eval split's 0 fast-ion shots.
+
 ## How to extend it
 
-Do not edit the 200. Add a **new** file — `reference_shot_prompts_v2.csv` — with its own sha256
+Do not edit the 200 again. v1.1 was the one re-freeze, for defects in the *questions* found by
+review before any tuning; the next change is a **new** file — `reference_shot_prompts_v2.csv` — with its own sha256
 recorded here and its own test constant, and report both. A number from v1 and a number from v2
 are then comparable only when they are labelled, which is the point.
 

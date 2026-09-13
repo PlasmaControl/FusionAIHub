@@ -34,7 +34,17 @@ README = REPO / "configs" / "ideate" / "evalsets" / "README.md"
 SPLIT = REPO / "configs" / "ideate" / "evalsets" / "split.yaml"
 
 # The frozen hash. Authored 2026-09-13 (task I11) and never edited to make a number pass.
-EVALSET_SHA256 = "a6059fbccd3aec79547d5a7ced3896c0ea6496c4e60927aa108675caef63a6a9"
+#
+# v1.1 -- the ONE re-freeze, and it happened before any retrieval tuning. An independent review
+# found eleven prompts with physics defects (an expectation that named the AE *mode* for a
+# fast-ion *topic*, a row whose hard filter selected against its own expected phenomenon, a
+# duplicate pair, a garbled sentence) plus nine that are unanswerable on this corpus by
+# construction. Those are corrections to the QUESTIONS, not to the answers: nothing in retrieval,
+# the ranking or the scoring changed with them. The changelog is in README.md, prompt by prompt,
+# and the v1.0 hash is kept below so a v1.0 number can still be told apart from a v1.1 one.
+EVALSET_SHA256_V1_0 = "a6059fbccd3aec79547d5a7ced3896c0ea6496c4e60927aa108675caef63a6a9"
+EVALSET_SHA256 = "aed8547330414e5b427579b58b207d661609bbfca1b048ca6df666e71172ef0e"
+EVALSET_VERSION = "1.1"
 
 HEADER = [
     "prompt_id",
@@ -65,7 +75,12 @@ def test_the_evalset_hash_is_the_one_this_test_and_the_readme_both_record():
         "the frozen evalset changed. If that was deliberate, say so in the report and update "
         "BOTH this constant and the hash in configs/ideate/evalsets/README.md."
     )
-    assert EVALSET_SHA256 in README.read_text(encoding="utf-8")
+    text = README.read_text(encoding="utf-8")
+    assert EVALSET_SHA256 in text
+    assert f"version: {EVALSET_VERSION}" in text
+    # The superseded hash stays recorded, so a number produced against v1.0 is still identifiable.
+    assert EVALSET_SHA256_V1_0 in text
+    assert EVALSET_SHA256 != EVALSET_SHA256_V1_0
 
 
 def test_the_loader_reports_the_same_hash_it_read():
@@ -102,7 +117,45 @@ def test_exactly_twenty_hand_graded_prompts_and_every_one_has_a_rubric(rows):
     assert len(graded) == 20
     for r in graded:
         assert len(r["notes"]) > 40, f"{r['prompt_id']} has no rubric"
-    assert all(r["notes"] == "" for r in rows if r["hand_graded"] == "0")
+
+
+def test_the_annotated_rows_are_exactly_the_ones_the_changelog_names(rows):
+    """`notes` on a non-hand-graded row is a v1.1 annotation, and the set of them is pinned.
+
+    In v1.0 the column was empty on every ungraded row, and asserting that was how an annotation
+    could not be slipped in unnoticed. v1.1 needs annotations -- eleven corrections and ten rows
+    that are unanswerable on this corpus -- so the guarantee moves from "none" to "exactly
+    these", which is the same guarantee with a list attached. Every id below is in README.md's
+    changelog.
+    """
+    annotated = {r["prompt_id"] for r in rows if r["hand_graded"] == "0" and r["notes"]}
+    assert annotated == {
+        # corrected in v1.1
+        "p036", "p038", "p039", "p041", "p046", "p048", "p066", "p072", "p186", "p197",
+        # annotated, not changed: a lexicon plural gap
+        "p053",
+        # annotated, not changed: unanswerable on the whole corpus
+        "p079", "p100", "p120", "p125", "p134", "p163", "p170",
+        # annotated, not changed: satisfiable corpus-wide, empty on the eval split
+        "p028", "p123", "p166",
+    }
+    # p111 is hand-graded AND unanswerable, so its rubric and its annotation are both there.
+    p111 = next(r for r in rows if r["prompt_id"] == "p111")
+    assert "unanswerable on this corpus" in p111["notes"] and p111["notes"].count(" || ") == 1
+    for r in rows:
+        if r["notes"] and r["hand_graded"] == "0":
+            assert r["notes"].startswith("v1.1"), r["prompt_id"]
+
+
+def test_no_two_prompts_ask_the_same_question(rows):
+    """v1.0 shipped `p079` and `p186` with byte-identical expectations and near-identical text,
+    so one unanswerable question was charged twice against coverage. v1.1 replaced `p186`."""
+    seen: dict[tuple, str] = {}
+    for r in rows:
+        key = (r["expect_phenomena"], r["expect_constraints"], r["expect_segment"], r["prompt"])
+        assert key not in seen, f"{r['prompt_id']} duplicates {seen.get(key)}"
+        seen[key] = r["prompt_id"]
+    assert len({r["prompt"] for r in rows}) == 200
 
 
 def test_the_hand_graded_prompts_are_spread_over_the_categories(rows):
@@ -172,9 +225,10 @@ def test_the_committed_split_is_what_the_rule_produces_from_recommender_v1():
     shot list has to reproduce it exactly."""
     doc = yaml.safe_load(SPLIT.read_text(encoding="utf-8"))
     rebuilt = ev.build_split(config.CONFIG_DIR / "shot_lists" / "recommender_v1.yaml")
-    assert rebuilt["eval"]["shots"] == doc["eval"]["shots"]
-    assert rebuilt["dev"]["shots"] == doc["dev"]["shots"]
-    assert rebuilt["rule"] == doc["rule"]
+    # The WHOLE document, not just the two shot lists: `n_shots`, `n_run_ids`, `buckets`,
+    # `eval_bucket_max` and the run-id lists are part of what a reader trusts, and comparing only
+    # the shots left them free to drift.
+    assert rebuilt == doc
 
 
 def test_the_split_covers_all_five_hundred_shots_about_four_to_one():
