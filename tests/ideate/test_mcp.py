@@ -308,6 +308,82 @@ def test_a_missing_value_of_any_pandas_flavour_becomes_null(ideate_db):
     json.dumps(row)  # the point: it survives the encoder
 
 
+def _database_row(shot: int, t: float, **over) -> dict:
+    """A curated-table row as `labelmaker.events.databases` writes one."""
+    return _event(
+        shot, over.pop("phenomenon", "rwm"), t, t,
+        source=over.pop("source", "database:rwm_onsets_2017"),
+        evidence_kind="database",
+        event_id=over.pop("event_id", f"{shot}-database:rwm_onsets_2017-00000"),
+        confidence=np.nan,
+        diag="", channel=-1, pass_name="",
+        attrs={"NTOR": 1, "MODE_TYPE": "rwm", "table": "rwm_onsets_2017"},
+        # The load-bearing part: a listing is not a coverage claim.
+        t_cov0_s=np.nan, t_cov1_s=np.nan,
+        **over,
+    )
+
+
+def test_a_curated_table_row_is_a_fourth_list_and_not_an_observation(ideate_db):
+    """A database row is somebody's LIST: it names a shot and a time, and nothing looked at the
+    shot to produce it. Merging it into `events` is the same error class the forecast split
+    exists to prevent - an assistant would report "a detector saw an RWM at 2.6 s" from a line
+    in a spreadsheet."""
+    write_events(
+        ideate_db / "db",
+        [
+            _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
+            _database_row(100, 2.613),
+        ],
+    )
+    got = tools.get_events(100)
+    assert [e["event_id"] for e in got["events"]] == ["100-x-00001"]
+    assert [e["event_id"] for e in got["database_intervals"]] == [
+        "100-database:rwm_onsets_2017-00000"
+    ]
+    assert got["n"] == 1 and got["n_database"] == 1
+    assert any("curated" in c for c in got["caveats"])
+    row = got["database_intervals"][0]
+    # `coverage: null` on the row itself, which is what says nobody declared
+    # an interval they examined - so its ABSENCE elsewhere is not a negative.
+    assert row["t_cov0_s"] is None and row["t_cov1_s"] is None
+    assert row["confidence"] is None
+    assert row["attrs"]["table"] == "rwm_onsets_2017"
+
+
+def test_the_four_lists_stay_apart(ideate_db):
+    write_events(
+        ideate_db / "db",
+        [
+            _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
+            _database_row(100, 2.613),
+            _event(100, "disruption", 3.0, 3.0, event_id="100-f-00001",
+                   source="label_forecast", evidence_kind="forecast", horizon_s=0.2),
+        ],
+    )
+    got = tools.get_events(100)
+    assert len(got["events"]) == 1
+    assert len(got["database_intervals"]) == 1
+    assert len(got["forecasts"]) == 1
+    assert (got["n"], got["n_database"], got["n_forecasts"]) == (1, 1, 1)
+    assert len({e["event_id"] for e in got["events"]}
+               & {e["event_id"] for e in got["database_intervals"]}) == 0
+
+
+def test_the_curated_list_caveat_is_absent_when_no_table_named_the_shot(ideate_db):
+    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+    got = tools.get_events(100)
+    assert got["database_intervals"] == [] and got["n_database"] == 0
+    assert not any("curated" in c for c in got["caveats"])
+
+
+def test_the_empty_answer_carries_the_fourth_list_too(tmp_path, monkeypatch):
+    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "root"))
+    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    got = tools.get_events(shot=1)
+    assert got["database_intervals"] == [] and got["n_database"] == 0
+
+
 # ------------------------------------------------------------------------------- the registry
 
 
