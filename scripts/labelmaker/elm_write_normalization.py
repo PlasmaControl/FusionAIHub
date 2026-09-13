@@ -35,7 +35,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from labelmaker.models import elm_inputs  # noqa: E402
+# After the `sys.path` line above, deliberately: run from a checkout.
+from labelmaker.models import elm_inputs
 
 NORMS_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/testing_model.pkl")
 SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl")
@@ -61,7 +62,10 @@ def verify_split(norms: dict[str, tuple[float, float]]) -> dict:
         s = raw.std(axis=0) / nrm.std(axis=0)
         m = raw.mean(axis=0) - s * nrm.mean(axis=0)
 
-        def worst(order):
+        # `m` and `s` are bound as defaults rather than closed over: the
+        # closure is called inside this iteration only, and binding says so
+        # instead of leaving a reader (or a linter) to check that it is.
+        def worst(order, m=m, s=s):
             out = 0.0
             for i, name in enumerate(order):
                 mu, sd = norms[name]
