@@ -30,17 +30,19 @@ directory `resistive_wall_mode` is prose and `rwm` is the join key.
 """
 from __future__ import annotations
 
+import csv
 import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import yaml
 
-from ..config import Paths
+from ..config import Paths, atomic_path
 from .lexicon import LexiconError, load_lexicon
 from .schema import EVIDENCE_KINDS, Event
 
@@ -139,6 +141,43 @@ def validate_format(frame: pd.DataFrame, *, where: str = "table") -> pd.DataFram
     return out
 
 
+def write_csv(frame: pd.DataFrame, path: Path) -> None:
+    """Write deterministic UTF-8 CSV, LF endings, twelve decimal places, empty NaN."""
+    def cell(value):
+        if isinstance(value, float):
+            return "" if math.isnan(value) else f"{value:.12f}"
+        return value
+
+    with atomic_path(path) as tmp, tmp.open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerow(frame.columns)
+        writer.writerows([cell(v) for v in row]
+                         for row in frame.itertuples(index=False, name=None))
+
+
+def write_meta(path: Path, meta: Mapping[str, Any]) -> None:
+    """Write the sidecar beside either an events projection or a shot summary."""
+    text = json.dumps(dict(meta), sort_keys=True, indent=2, allow_nan=False) + "\n"
+    with atomic_path(path.with_suffix(".meta.json")) as tmp:
+        tmp.write_text(text, encoding="utf-8")
+
+
+def write_format_table(frame: pd.DataFrame, path: Path, meta: Mapping[str, Any]) -> None:
+    """Validate, sort without deduplicating, and write the common CSV plus metadata."""
+    frame = validate_format(frame, where=str(path))
+    frame["attrs"] = frame["attrs"].map(
+        lambda value: json.dumps(json.loads(value), sort_keys=True, allow_nan=False)
+    )
+    frame = frame.sort_values(list(FORMAT_COLUMNS), kind="stable")
+    metadata = {**meta, "n_rows": len(frame), "n_shots": int(frame["shot"].nunique())}
+    # Validate metadata before replacing either artifact.
+    json.dumps(metadata, allow_nan=False)
+    write_csv(frame, path)
+    write_meta(path, metadata)
+
+
 @dataclass(frozen=True)
 class TableSpec:
     """One entry of `tables.yaml`: where a table is and what its columns mean."""
@@ -155,6 +194,10 @@ class TableSpec:
     t1_col: str = ""
     attr_cols: tuple[str, ...] = ()
     attr_types: Mapping[str, str] = field(default_factory=dict)
+    raw_file: str = ""
+    format_stem: str = ""
+    converter: str = ""
+    made_at: str = ""
 
     @property
     def source(self) -> str:
@@ -173,6 +216,9 @@ class TableSpec:
 
     def path(self, root=None) -> Path:
         return _root(root) / self.dir / f"{self.stem}.csv"
+
+    def raw_path(self, root=None) -> Path:
+        return _root(root) / self.dir / "raw" / self.raw_file
 
 
 def _root(root=None) -> Path:
@@ -223,6 +269,16 @@ def _spec(where: str, entry: Any) -> TableSpec:
                 f"{where}: `attr_types[{col}]` must be one of {ATTR_TYPES}; "
                 f"got {kind_name!r}"
             )
+    for key in ("stem", "dir", "raw_file", "format_stem", "converter"):
+        value = _str(where, entry, key)
+        if value in (".", "..") or "/" in value or "\\" in value:
+            raise DatabaseError(f"{where}: `{key}` must be a single path component")
+    made_at = _str(where, entry, "made_at")
+    try:
+        if datetime.fromisoformat(made_at).tzinfo is None:
+            raise ValueError("timezone required")
+    except ValueError as exc:
+        raise DatabaseError(f"{where}: `made_at` must be an ISO timestamp") from exc
     return TableSpec(
         stem=stem,
         dir=_str(where, entry, "dir"),
@@ -236,6 +292,10 @@ def _spec(where: str, entry: Any) -> TableSpec:
         t1_col=_str(where, entry, "t1_col") if kind == "interval" else "",
         attr_cols=attr_cols,
         attr_types={str(k): str(v) for k, v in types.items()},
+        raw_file=entry["raw_file"],
+        format_stem=entry["format_stem"],
+        converter=entry["converter"],
+        made_at=made_at,
     )
 
 
@@ -266,6 +326,7 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
         raise DatabaseError(f"{path}: `tables` must be a list")
     specs = tuple(_spec(str(path), entry) for entry in entries)
     seen: set[str] = set()
+    outputs: set[tuple[str, str]] = set()
     for spec in specs:
         if spec.stem in seen:
             raise DatabaseError(
@@ -273,6 +334,10 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
                 f"the source, so they would replace each other's rows"
             )
         seen.add(spec.stem)
+        output = (spec.dir, spec.format_stem)
+        if output in outputs:
+            raise DatabaseError(f"{path}: duplicate format_stem output {output}")
+        outputs.add(output)
     if specs:
         try:
             ids = set(load_lexicon().ids)
