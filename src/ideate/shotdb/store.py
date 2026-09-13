@@ -229,10 +229,14 @@ class ShotDB:
             pid = ph._avoid_ids([token])[0]
             counts: dict[str, int] = {}
             details: set[str] = set()
+            n_observed = 0
             for i, row in enumerate(self.segments[["shot", "segment"]].itertuples(index=False)):
                 if row.segment != segment:
                     continue
                 ev = self.phenomenon_evidence(row.shot, pid, segment)
+                if ev.intervals:
+                    n_observed += 1
+                    details.update(c for c in ev.caveats if c in ph.EVENT_CAVEATS.values())
                 if ev.coverage_state != "observed":
                     keep[i] = False
                     counts[ev.coverage_state] = counts.get(ev.coverage_state, 0) + 1
@@ -242,6 +246,10 @@ class ShotDB:
                 elif ev.coverage_partial and f"phenomenon:{pid}" not in self._label_tokens[i]:
                     details.update(c for c in ev.caveats if "coverage" in c or "covered only" in c)
             if notes is not None:
+                if n_observed:
+                    notes.append(ph.AVOID_DROPPED.format(
+                        token=token, n=n_observed, title=ph.registry()[pid].title,
+                    ))
                 notes.extend(
                     f"--avoid {token}: excluded {n} {segment} segment(s) with {state} coverage; "
                     "absence is not evidence"
