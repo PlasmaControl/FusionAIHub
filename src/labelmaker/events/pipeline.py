@@ -709,6 +709,7 @@ def finish_shot(
     lexicon: Lexicon | None = None,
     run_id: str = "manual",
     write: bool = True,
+    index: bool = True,
 ) -> ShotResult:
     """Everything a shot does AFTER its mask blocks, on `res` in place.
 
@@ -926,8 +927,13 @@ def finish_shot(
                 ),
                 run_id=run_id, merge=True,
             )
-            append_index(paths.events_index, schema.index_rows(events_file),
-                         keys=["shot", "source", "phenomenon"])
+            if index:
+                # `index=False` is for a SLURM array: `events_index.parquet`
+                # is ONE file for the whole root and this is a whole-file
+                # rewrite, so sixteen tasks doing it per shot tear it. It is
+                # derivable from the per-shot files (`driver.rebuild_index`).
+                append_index(paths.events_index, schema.index_rows(events_file),
+                             keys=["shot", "source", "phenomenon"])
         except Exception as exc:  # noqa: BLE001 - see below
             # The one failure other than the corpus file that sets `error`.
             # Everything above is a claim this shot could not make; a failed
