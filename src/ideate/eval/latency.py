@@ -19,9 +19,20 @@ Three things about how this measures, because each of them changes what the numb
   a different measurement and this module does not claim to make it.
 * **Median and p95, not mean.** A mean over 20 samples is one GC pause away from being a
   different number; the median is what a user feels and the p95 is what they complain about.
-* **The verdict is on the median, and a row with no budget gets no verdict.** `describe` has no
-  Appendix B number, so it reports `n/a` rather than a free PASS -- a table full of passes, one of
-  which was never tested against anything, is worse than an honest gap.
+* **Separate runs, and a verdict only where they agree.** `runs` blocks of `repeats` samples each,
+  with each block's own median kept. One block on a shared login node measures the NODE: the I11
+  review re-ran this harness three times and got `search_no_text` at 126 / 156 / 235 ms against a
+  200 ms budget and `search_text` anywhere from 174 ms to 2.3 s, while `phenomenon_locate` was
+  over budget in 6 runs out of 6. So PASS and FAIL are reported only where every block agrees;
+  a row that straddles its budget says **`load-dependent`**, which is the honest answer and is
+  not the same as a failure. The headline `median_s` is the median OF THE BLOCK MEDIANS, so one
+  bad block cannot carry it, and the spread is printed.
+* **The machine is recorded.** Load average, core count and `torch.get_num_threads()` go into the
+  report, because a budget table the next reader cannot compare with their own run is a table of
+  one afternoon.
+* **A row with no budget gets no verdict.** `describe` has no Appendix B number, so it reports
+  `n/a` rather than a free PASS -- a table full of passes, one of which was never tested against
+  anything, is worse than an honest gap.
 
 Nothing here is tuned to pass. If a row says FAIL it is a finding, and the report says by how much.
 """
@@ -30,6 +41,8 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import os
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -38,7 +51,15 @@ import numpy as np
 
 from ..schema import LatencyReport, LatencyRow, QueryState
 
-__all__ = ["BUDGETS_S", "DEFAULT_REPEATS", "WARMUP", "markdown", "measure", "time_it"]
+__all__ = [
+    "BUDGETS_S",
+    "DEFAULT_REPEATS",
+    "DEFAULT_RUNS",
+    "WARMUP",
+    "markdown",
+    "measure",
+    "time_it",
+]
 
 # The plan's Appendix B numbers, in seconds. None = the plan sets none.
 BUDGETS_S: dict[str, float | None] = {
@@ -58,6 +79,8 @@ WHAT = {
 }
 
 DEFAULT_REPEATS = 20
+# Three separate blocks, which is the smallest number that can show a straddle at all.
+DEFAULT_RUNS = 3
 WARMUP = 1
 
 # What is typed and what is looked for, when the caller says nothing. The text is one of the
@@ -83,15 +106,23 @@ def time_it(fn: Callable[[], object], repeats: int, warmup: int = WARMUP) -> lis
     return out
 
 
-def _row(name: str, samples: list[float], repeats: int) -> LatencyRow:
-    arr = np.asarray(samples, dtype=float)
+def _row(name: str, blocks: list[list[float]], repeats: int) -> LatencyRow:
+    """One row from `runs` blocks of samples.
+
+    `median_s` is the median of the per-block medians rather than of the pooled samples: pooling
+    lets one slow block of 20 drag the headline, which is exactly the contamination this is meant
+    to expose. `p95_s` IS pooled -- a tail is a tail whichever block it came from.
+    """
+    medians = [float(np.median(b)) for b in blocks if b]
+    pooled = np.asarray([s for b in blocks for s in b], dtype=float)
     return LatencyRow(
         name=name,
         what=WHAT.get(name, name),
         repeats=repeats,
-        median_s=float(np.median(arr)) if arr.size else float("nan"),
-        p95_s=float(np.percentile(arr, 95)) if arr.size else float("nan"),
+        median_s=float(np.median(medians)) if medians else float("nan"),
+        p95_s=float(np.percentile(pooled, 95)) if pooled.size else float("nan"),
         budget_s=BUDGETS_S.get(name),
+        run_medians=medians,
     )
 
 
@@ -99,6 +130,7 @@ def measure(
     db_dir: Path | str,
     *,
     repeats: int = DEFAULT_REPEATS,
+    runs: int = DEFAULT_RUNS,
     text: str = DEFAULT_TEXT,
     phenomenon: str = DEFAULT_PHENOMENON,
     ref_shot: int | None = None,
@@ -127,37 +159,40 @@ def measure(
             "and is not a measurement of a search that returns results"
         )
 
-    rows = [
-        _row("load", time_it(lambda: store.ShotDB.load(db_dir), repeats), repeats),
-        _row(
-            "search_text",
-            time_it(
-                lambda: rank_mod.search(QueryState(text=text, segment=segment, n=n), db), repeats
-            ),
-            repeats,
+    ops: dict[str, Callable[[], object]] = {
+        "load": lambda: store.ShotDB.load(db_dir),
+        "search_text": lambda: rank_mod.search(QueryState(text=text, segment=segment, n=n), db),
+        "search_no_text": lambda: rank_mod.search(
+            QueryState(ref_shot=ref, segment=segment, n=n), db
         ),
-        _row(
-            "search_no_text",
-            time_it(
-                lambda: rank_mod.search(QueryState(ref_shot=ref, segment=segment, n=n), db),
-                repeats,
-            ),
-            repeats,
-        ),
-        _row(
-            "phenomenon_locate",
-            time_it(lambda: ph_mod.locate(phenomenon, db, 20, segment=segment), repeats),
-            repeats,
-        ),
-        _row(
-            "describe",
-            time_it(lambda: describe_mod.describe(db.get(ref), segment), repeats),
-            repeats,
-        ),
-    ]
+        "phenomenon_locate": lambda: ph_mod.locate(phenomenon, db, 20, segment=segment),
+        "describe": lambda: describe_mod.describe(db.get(ref), segment),
+    }
+    # Interleaved, not one operation at a time: the node's load drifts over the minutes a full
+    # sweep takes, and running all 3 blocks of `search_text` back to back would put each
+    # operation's blocks in a different part of that drift.
+    blocks: dict[str, list[list[float]]] = {name: [] for name in ops}
+    runs = max(1, int(runs))
+    for _ in range(runs):
+        for name, fn in ops.items():
+            blocks[name].append(time_it(fn, repeats))
+    rows = [_row(name, blocks[name], repeats) for name in ops]
+
+    load_avg = _load_avg()
+    cpu_count = os.cpu_count()
+    threads = _torch_threads()
     notes.append(
         f"warm: every operation was run {WARMUP}x and discarded before timing, so the MiniLM "
         "load and the first parquet read are not in these numbers"
+    )
+    notes.append(
+        f"{runs} separate blocks of {repeats}, interleaved; the row median is the median of the "
+        "block medians and PASS/FAIL is reported only where every block agrees"
+    )
+    notes.append(
+        f"machine at the end of the sweep: load average "
+        f"{'/'.join(f'{x:.2f}' for x in load_avg) if load_avg else 'unknown'}, "
+        f"{cpu_count} cpus, torch threads {threads if threads is not None else 'unknown'}"
     )
     notes.append(f"text query {text!r}; phenomenon {phenomenon!r}; reference shot {ref}")
     return LatencyReport(
@@ -165,11 +200,36 @@ def measure(
         n_shots=len(shots),
         n_segment_rows=len(db.segments),
         repeats=repeats,
+        runs=runs,
+        load_avg=load_avg,
+        cpu_count=cpu_count,
+        torch_threads=threads,
         warm=True,
         rows=rows,
         notes=notes,
         generated_at=dt.datetime.now(dt.UTC),
     )
+
+
+def _load_avg() -> tuple[float, float, float] | None:
+    try:
+        one, five, fifteen = os.getloadavg()
+    except OSError:  # pragma: no cover - not every platform has one
+        return None
+    return (one, five, fifteen)
+
+
+def _torch_threads() -> int | None:
+    """Read only if torch is ALREADY imported. Importing it here to measure it would change the
+    thing being measured (and cost several seconds on a cold process)."""
+    torch = sys.modules.get("torch")
+    getter = getattr(torch, "get_num_threads", None)
+    if getter is None:
+        return None
+    try:
+        return int(getter())
+    except (RuntimeError, ValueError, TypeError):  # pragma: no cover - an unusual torch build
+        return None
 
 
 def _first_with_segment(db, shots: list[int], segment: str) -> int | None:
@@ -184,20 +244,25 @@ def _ms(seconds: float) -> str:
 def markdown(report: LatencyReport) -> str:
     lines = [
         (
-            f"### latency, warm, N={report.repeats} "
+            f"### latency, warm, N={report.repeats} x {report.runs} runs "
             f"({report.n_shots} shots, {report.n_segment_rows} segment rows)"
         ),
         "",
         f"database `{report.db_dir}`",
         "",
-        "| operation | what | median | p95 | budget | verdict |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| operation | what | median | p95 | spread over runs | budget | verdict |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in report.rows:
         budget = "—" if r.budget_s is None else _ms(r.budget_s)
+        spread = (
+            f"{_ms(min(r.run_medians))} – {_ms(max(r.run_medians))}"
+            if r.run_medians
+            else "—"
+        )
         lines.append(
-            f"| `{r.name}` | {r.what} | {_ms(r.median_s)} | {_ms(r.p95_s)} | {budget} | "
-            f"{r.verdict} |"
+            f"| `{r.name}` | {r.what} | {_ms(r.median_s)} | {_ms(r.p95_s)} | {spread} | "
+            f"{budget} | {r.verdict} |"
         )
     if report.notes:
         lines += [""] + [f"- {n}" for n in report.notes]

@@ -174,29 +174,62 @@ def test_eval_prompts_uses_the_frozen_evalset_when_none_is_named(db_root, capsys
 
 
 def test_eval_latency_prints_the_budget_table(db_root, capsys):
-    code = cli.main(["eval", "latency", "--repeats", "2"])
+    code = cli.main(["eval", "latency", "--repeats", "2", "--runs", "2"])
     out = capsys.readouterr().out
     assert code in (0, 3)  # a wall-clock verdict on a shared node is not asserted
-    assert "| operation | what | median | p95 | budget | verdict |" in out
+    assert "| operation | what | median | p95 | spread over runs | budget | verdict |" in out
     assert "`phenomenon_locate`" in out
+    assert "N=2 x 2 runs" in out
 
 
-def test_eval_latency_json_carries_every_row(db_root, capsys):
-    cli.main(["eval", "latency", "--repeats", "2", "--json"])
+def test_eval_latency_defaults_to_three_separate_runs(db_root, capsys):
+    """One block on a shared login node measures the node. The default has to be more than one,
+    or every table published from it is a table of one afternoon."""
+    assert cli.build_parser().parse_args(["eval", "latency"]).runs == 3
+    cli.main(["eval", "latency", "--repeats", "1", "--json"])
+    assert json.loads(capsys.readouterr().out)["runs"] == 3
+
+
+def test_eval_latency_json_carries_every_row_and_the_machine(db_root, capsys):
+    cli.main(["eval", "latency", "--repeats", "2", "--runs", "2", "--json"])
     doc = json.loads(capsys.readouterr().out)
     assert [r["name"] for r in doc["rows"]] == [
         "load", "search_text", "search_no_text", "phenomenon_locate", "describe"
     ]
     assert doc["warm"] is True
+    assert all(len(r["run_medians"]) == 2 for r in doc["rows"])
+    assert doc["cpu_count"] and len(doc["load_avg"]) == 3
 
 
 def test_eval_latency_exits_three_when_a_budgeted_row_is_over(db_root, monkeypatch, capsys):
     from ideate.eval import latency as lat_mod
 
     monkeypatch.setitem(lat_mod.BUDGETS_S, "load", 0.0)
-    code = cli.main(["eval", "latency", "--repeats", "1"])
+    code = cli.main(["eval", "latency", "--repeats", "1", "--runs", "2"])
     assert code == 3
     assert "FAIL" in capsys.readouterr().out
+
+
+def test_a_load_dependent_row_is_named_on_stderr_and_is_not_a_failure(
+    db_root, monkeypatch, capsys
+):
+    """Neither PASS nor FAIL: the node would not let the measurement be made. Folding it into the
+    exit code either way would be inventing a verdict."""
+    from ideate.eval import latency as lat_mod
+
+    real = lat_mod.measure
+
+    def straddling(*a, **kw):
+        report = real(*a, **kw)
+        row = report.rows[0]
+        row.budget_s = 1.0
+        row.run_medians = [0.5, 2.0]
+        return report
+
+    monkeypatch.setattr(lat_mod, "measure", straddling)
+    assert cli.main(["eval", "latency", "--repeats", "1", "--runs", "2"]) == 0
+    captured = capsys.readouterr()
+    assert "load-dependent" in captured.out and "load" in captured.err
 
 
 # ----------------------------------------------------------------------------- eval recall

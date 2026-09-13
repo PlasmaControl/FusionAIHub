@@ -464,7 +464,14 @@ class EvalReport(BaseModel):
 
 class LatencyRow(BaseModel):
     """One timed operation. `budget_s` is the plan's Appendix B number, or None where the plan
-    sets none -- and a row with no budget gets no verdict rather than a free PASS."""
+    sets none -- and a row with no budget gets no verdict rather than a free PASS.
+
+    `run_medians` is one median per SEPARATE block of `repeats` samples. It exists because a
+    single block on a shared login node measures the node: the I11 review re-ran this harness and
+    got `search_no_text` at 126, 156 and 235 ms against a 200 ms budget, and `search_text`
+    anywhere from 174 ms to 2.3 s. A row that straddles its budget across those blocks has no
+    verdict to give, and says `load-dependent` instead of picking one.
+    """
 
     name: str
     what: str
@@ -472,12 +479,19 @@ class LatencyRow(BaseModel):
     median_s: float
     p95_s: float
     budget_s: float | None = None
+    run_medians: list[float] = Field(default_factory=list)
 
     @property
     def verdict(self) -> str:
+        """PASS / FAIL only where EVERY run agrees; `load-dependent` where they do not."""
         if self.budget_s is None:
             return "n/a"
-        return "PASS" if self.median_s <= self.budget_s else "FAIL"
+        runs = self.run_medians or [self.median_s]
+        if all(m <= self.budget_s for m in runs):
+            return "PASS"
+        if all(m > self.budget_s for m in runs):
+            return "FAIL"
+        return "load-dependent"
 
 
 class LatencyReport(BaseModel):
@@ -485,6 +499,12 @@ class LatencyReport(BaseModel):
     n_shots: int
     n_segment_rows: int
     repeats: int
+    runs: int = 1
+    # What actually decides these numbers on a shared node, recorded so a later run is
+    # comparable with this one rather than merely printed beside it.
+    load_avg: tuple[float, float, float] | None = None
+    cpu_count: int | None = None
+    torch_threads: int | None = None
     warm: bool = True
     rows: list[LatencyRow] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)

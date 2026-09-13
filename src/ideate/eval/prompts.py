@@ -447,9 +447,9 @@ def failed_bars(report: EvalReport) -> list[str]:
     if report.coverage < COVERAGE_BAR:
         missed.append(f"coverage {report.coverage:.3f} < {COVERAGE_BAR}")
     for c in report.categories:
-        if c.category in RESOLUTION_BAR_CATEGORIES and c.resolution is not None:
-            if c.resolution < RESOLUTION_BAR:
-                missed.append(f"{c.category} resolution {c.resolution:.3f} < {RESOLUTION_BAR}")
+        barred = c.category in RESOLUTION_BAR_CATEGORIES and c.resolution is not None
+        if barred and c.resolution < RESOLUTION_BAR:
+            missed.append(f"{c.category} resolution {c.resolution:.3f} < {RESOLUTION_BAR}")
     return missed
 
 

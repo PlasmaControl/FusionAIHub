@@ -1221,6 +1221,7 @@ def cmd_eval(args) -> int:
         report = lat_mod.measure(
             db_dir,
             repeats=args.repeats,
+            runs=args.runs,
             text=args.text or lat_mod.DEFAULT_TEXT,
             phenomenon=args.phenomenon,
             ref_shot=args.ref_shot,
@@ -1228,7 +1229,17 @@ def cmd_eval(args) -> int:
         )
         print(json.dumps(report.model_dump(mode="json"), indent=1, default=str)
               if args.json else lat_mod.markdown(report))
-        return 0 if all(r.verdict != "FAIL" for r in report.rows) else 3
+        # Only a row that was over budget in EVERY block fails the run. A `load-dependent` row is
+        # not a pass and not a failure -- it is a measurement the node would not let us make --
+        # so it is named on stderr rather than folded into the exit code either way.
+        straddled = [r.name for r in report.rows if r.verdict == "load-dependent"]
+        if straddled and not args.json:
+            print(
+                "load-dependent (the budget was crossed in some blocks and not others): "
+                + ", ".join(straddled),
+                file=sys.stderr,
+            )
+        return 3 if any(r.verdict == "FAIL" for r in report.rows) else 0
 
     db = store.ShotDB.load(db_dir)
 
@@ -1591,7 +1602,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--evalset", help="an evalset CSV (default: the frozen one)")
     s.add_argument("-n", "--n", type=int, default=10, help="results per prompt (default 10)")
     s = what.add_parser("latency", help="warm timings against the plan's Appendix B budgets")
-    s.add_argument("--repeats", type=int, default=20, help="timed samples per operation")
+    s.add_argument("--repeats", type=int, default=20, help="timed samples per block")
+    s.add_argument(
+        "--runs", type=int, default=3,
+        help="separate blocks of --repeats (default 3); PASS/FAIL only where they all agree",
+    )
     s.add_argument("--text", help="the text query to time (default: an evalset prompt)")
     s.add_argument("--phenomenon", default="elm", help="what `locate` looks for (default: elm)")
     s.add_argument("--ref-shot", type=int, help="the no-text query's reference shot")
