@@ -288,14 +288,37 @@ Three things worth knowing before reading a row:
 
 ### Curated label tables
 
-Some knowledge arrives as a spreadsheet rather than a signal: Jeremy Hansen's
-RWM onsets, and every curated list after them. The CSVs live under
-`data/labels/<phenomenon>/`, exactly as their author sent them, and
-`data/labels/tables.yaml` is the manifest that says what their columns mean —
-so adding a table is a YAML entry and never a code edit
-(`data/labels/README.md` is the how-to). `events/databases.py` reads them;
-`config.Paths.label_tables` is the root, and `LABELMAKER_LABEL_TABLES` moves
-it for a table too large or too restricted to commit.
+Curated lists use the user's `data/labels/<category>/{raw,format,extend_<model>}/`
+layout. `raw/` holds byte-identical originals; deterministic adapters in
+`scripts/labelmaker/labels_format.py` use `tables.yaml` to convert them into
+`format/`. `events/databases.py` reads only the common format CSVs, with parsed JSON
+attributes and the stored evidence kind. Its `FORMAT_COLUMNS` and validator define
+one schema for every dataset and producer: `shot, t0_s, t1_s, phenomenon,
+evidence_kind, source, confidence, attrs`. Every CSV has a `.meta.json` sidecar
+with schema version, input SHA-256 or producer/run/git provenance, writer,
+creation time, row count, and shot count.
+
+Add an untouched raw file, declare its columns and format stem in the manifest,
+register an adapter if needed, run `PYTHONPATH=src python
+scripts/labelmaker/labels_format.py`, and commit raw, format CSV, sidecar, and
+converter changes together. Manifest `made_at` fixes the conversion revision time;
+sorted rows, stable float/JSON formatting, and that timestamp make the CSV and
+sidecar byte-reproducible. See [data/labels/README.md](../data/labels/README.md) for
+the complete schema and examples. `config.Paths.label_tables` is the root;
+`LABELMAKER_LABEL_TABLES` overrides it.
+
+Each `extend_<model>/` belongs to one producer task and holds that producer's result
+on the 500 `recommender_v1` shots. `scripts/labelmaker/labels_extend.py` reads
+per-shot events and source records without modifying them. Specify `--category`,
+`--producer` (source or phenomenon), `--shot-list`, optional `--events-root`, and
+`--out data/labels/<category>/extend_<producer>/recommender_v1.csv`. The common
+schema preserves evidence kinds and source identities. Above **50,000** selected
+rows, the writer instead emits `recommender_v1.summary.csv` with
+`shot, n_events, t_first_s, t_last_s, t_cov0_s, t_cov1_s`, and metadata pointing to
+the full `$LABELMAKER_ROOT/events` products. Summary coverage gives bounds, not
+continuous coverage; missing files and source statuses remain visible. A producer
+rerun regenerates its directory's table and removes a stale full/summary alternate.
+Categories without a producer have no `extend_*` directory.
 
 **A listing is not a coverage claim**: every row a table produces has
 `t_cov0_s = t_cov1_s = NaN` and `confidence = NaN`, and a shot no table names
@@ -322,9 +345,14 @@ pixi run -e labelmaker python -m labelmaker.run events --databases-only \
 
 It prints `N of M shots are named by any table`. Zero is a normal answer and
 exits 0: the two RWM tables span 156785–176092, the corpus starts at 185601,
-and `0 of 500 shots are named by any table` is what an honest run says. A
-`tables.yaml` or CSV that cannot be believed stops the run before any shot,
-with exit code 7.
+and `0 of 500 shots are named by any table` is what an honest run says. The
+committed `resistive_wall_mode/extend_rwm/recommender_v1.csv` records exactly that
+empty result, with provenance from a successful databases-only scan under `/tmp`.
+A `--run-id` supplied to the extension writer must identify a successful zero scan
+of the selected curated tables. The two committed format tables still yield 56
+events and 33 source rows on their original 33 shots. An invalid
+`tables.yaml` stops the run before any shot with exit code 7; an unreadable or
+invalid format CSV is reported as an error for each affected shot.
 
 The cost is per *named* shot, not per shot in the list: a shot no table names
 is a dictionary lookup, and a shot one does names costs ~0.11 s (measured:
