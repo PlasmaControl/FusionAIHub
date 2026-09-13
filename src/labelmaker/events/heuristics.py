@@ -69,7 +69,13 @@ import numpy as np
 from scipy.ndimage import median_filter
 from scipy.signal import medfilt
 
-from .coverage import UNKNOWN, clip_to_coverage, clipped_attrs, intersect
+from .coverage import (
+    UNKNOWN,
+    clip_point_to_coverage,
+    clip_to_coverage,
+    clipped_attrs,
+    intersect,
+)
 from .schema import Event
 from .tracks import Track
 
@@ -777,6 +783,13 @@ def lh_transitions(
 
     Every measured quantity is in the `attrs`, so a marginal transition can
     be re-weighed without re-running anything.
+
+    `t_cov` is the coverage the row declares - the pipeline passes the
+    INTERSECTION of the D-alpha, the density and the beams, since the
+    claim needs all three. A `when` past it by no more than the gate
+    window (the beam record ended within `drop_window_ms` of the step) is
+    written AT the bound with `attrs["clipped"] = true` and the measured
+    instant in `attrs["t_measured_s"]`; see `coverage.clip_point_to_coverage`.
     """
     y = np.atleast_2d(np.asarray(dalpha_y, dtype=np.float64))
     if y.shape[0] != N_DALPHA_CHANNELS:
@@ -852,18 +865,26 @@ def lh_transitions(
             if not (math.isfinite(pinj_kw) and pinj_kw >= float(min_pinj_kw)):
                 continue
             betan = _at(betan_t_s, betan_y, when)
+            # The gates above read windows AROUND `when`, so a transition up
+            # to `drop_window_ms` after the beam record's last sample clears
+            # them with every input measured - and lies past the
+            # intersection coverage the pipeline hands in. Moved onto the
+            # bound, said so, the measured instant kept; see
+            # `coverage.clip_point_to_coverage`.
+            at, clipped = clip_point_to_coverage(when, cov)
             out.append(
                 Event(
                     shot=int(shot),
                     source=LH_SOURCE,
                     evidence_kind="heuristic",
                     phenomenon=phenomenon,
-                    t0_s=when,
-                    t1_s=when,
+                    t0_s=at,
+                    t1_s=at,
                     confidence=float(min(1.0, measured / LH_FULL_DROP)),
                     diag="filterscopes",
                     channel=-1,
-                    attrs={
+                    attrs=clipped_attrs({
+                        **({"t_measured_s": float(when)} if clipped else {}),
                         "drop_frac": float(measured),
                         "dalpha_before": float(before),
                         "dalpha_after": float(after),
@@ -876,7 +897,7 @@ def lh_transitions(
                         "window_ms": float(drop_window_ms),
                         "hold_lo_ms": float(LH_HOLD_LO_MS),
                         "hold_hi_ms": float(LH_HOLD_HI_MS),
-                    },
+                    }, clipped),
                     t_cov0_s=cov[0],
                     t_cov1_s=cov[1],
                 )
