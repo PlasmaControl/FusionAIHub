@@ -575,12 +575,33 @@ def _data_units(rec: dict) -> str:
 
 def _resolve_one(spec, locator: str, shot: int, cached) -> FeatureArray:
     """One feature, or an exception the caller records as a miss."""
+    if spec.name == "efc_n1_ka":
+        components = []
+        for name in ("efc_a1_c_ka", "efc_a1_iu_ka", "efc_a1_il_ka"):
+            component = ns.by_name(name)
+            components.append(cached(
+                f"feature:{name}",
+                lambda component=component: _resolve_one(
+                    component, component.locator_for(SOURCE), shot, cached
+                ),
+            ))
+        t_s = _checked_time(components[0].x, locator)
+        if any(not np.array_equal(t_s, c.x) for c in components[1:]):
+            raise ValueError(f"{locator}: component clocks disagree")
+        values = np.stack([c.y[0] for c in components])
+        data = np.max(values, axis=0)
+        data[~np.isfinite(values).all(axis=0)] = np.nan
+        return _series(data, t_s, spec, locator, "kA")
+
     if not locator.startswith("\\"):
         rec = _fetch_ptdata(locator, shot)
         data, t_s = _scalar_axes(rec, locator)
+        data = _actuator_units(data, spec, _data_units(rec))
         return _series(data, t_s, spec, locator, _data_units(rec))
 
-    tree = ZIPFIT_TREE if "zipfit" in locator.lower() else EFIT_TREE
+    # The qualified node owns its tree, including rf/operations/pellet/d3d.
+    # Only EFIT has the measured separate aeqdsk/geqdsk time-node fallback.
+    tree = locator.lstrip("\\").split("::", 1)[0].lower()
     dims = ("x", "t_ms") if tree == ZIPFIT_TREE else ()
     rec = _fetch_mds(locator, tree, shot, dims=dims)
 
@@ -605,7 +626,9 @@ def _resolve_one(spec, locator: str, shot: int, cached) -> FeatureArray:
 
     if spec.kind == "scalar":
         node = AEQDSK_TIME if "aeqdsk" in locator.lower() else GEQDSK_TIME
-        data, t_s = _scalar_axes(rec, locator, fallback=time_node(node))
+        fallback = time_node(node) if tree == EFIT_TREE else None
+        data, t_s = _scalar_axes(rec, locator, fallback=fallback)
+        data = _actuator_units(data, spec, _data_units(rec))
         return _series(data, t_s, spec, locator, _data_units(rec))
 
     fallback = time_node(GEQDSK_TIME) if tree == EFIT_TREE else None
@@ -613,6 +636,19 @@ def _resolve_one(spec, locator: str, shot: int, cached) -> FeatureArray:
     return _profile(
         data, t_s, coord, coord_units, spec, locator, _data_units(rec)
     )
+
+
+def _actuator_units(data: np.ndarray, spec, units: str) -> np.ndarray:
+    """Apply only the LC2 conversions established by source unit metadata."""
+    if spec.name == "lh_power":
+        if units.lower() != "kw":
+            raise ValueError(f"{spec.name}: expected kW, got {units!r}")
+    elif spec.name in ("ecoil_a", "efc_a1_c_ka", "efc_a1_iu_ka", "efc_a1_il_ka"):
+        if units.lower() not in ("a", "amp", "amps"):
+            raise ValueError(f"{spec.name}: expected amps, got {units!r}")
+        if spec.units == "kA":
+            return data / 1000.0
+    return data
 
 
 def resolve(
@@ -642,18 +678,23 @@ def resolve(
 
     arrays: dict[str, FeatureArray] = {}
     missing: dict[str, str] = {}
-    axes: dict[str, dict] = {}      # time nodes, fetched once per shot
+    records = {}  # time nodes and resolved components, once per shot
 
     def cached(key: str, thunk):
-        if key not in axes:
-            axes[key] = thunk()
-        return axes[key]
+        if key not in records:
+            records[key] = thunk()
+        return records[key]
 
     for spec in specs:
         locator = locators[spec.name]
         for _ in range(max(retries, 0) + 1):
             try:
-                arrays[spec.name] = _resolve_one(spec, locator, shot, cached)
+                arrays[spec.name] = cached(
+                    f"feature:{spec.name}",
+                    lambda spec=spec, locator=locator: _resolve_one(
+                        spec, locator, shot, cached
+                    ),
+                )
             except Exception as exc:  # noqa: BLE001 - per-signal isolation
                 # fdp raises whatever MDSplus, ptserver or the OSDF route
                 # raised, none of it a documented type, and one bad signal
@@ -662,4 +703,10 @@ def resolve(
             else:
                 missing.pop(spec.name, None)
                 break
+    # A component requested before its maximum may fail initially and then
+    # recover while the maximum resolves. Return every requested recovery.
+    for name in names:
+        if f"feature:{name}" in records:
+            arrays[name] = records[f"feature:{name}"]
+            missing.pop(name, None)
     return arrays, missing
