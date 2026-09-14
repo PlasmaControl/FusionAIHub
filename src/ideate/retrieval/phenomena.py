@@ -283,11 +283,10 @@ class EventRule:
     EHO rather than a tearing mode is the band and the harmonic count, not the detector's label.
 
 
-    `weight` is how much one matching row is worth in the event term, and it is not always 1:
-    `tokeye_transient` writes `phenomenon="elm"` for any burst, and labelmaker's own module says
-    a sawtooth crash and a disruption precursor are transient too, so a row from it is weaker
-    evidence of an ELM than an `ece_sawtooth` crash is of a sawtooth. `caveat` names the string
-    every hit built on this rule carries for the same reason; the two go together.
+    `weight` is how much one matching row is worth in the event term. Custom rules can downweight
+    an indirect observation and name a `caveat` that every hit built on the rule carries.
+    The shipped ELM rule reads D-alpha `elm_clock` points at weight 1.0 with no transient caveat;
+    `tokeye_transient` writes `phenomenon="transient"` and has its own rule.
 
     `max_bandwidth_khz` bounds the track's width. `band_khz` alone matches on the centroid, and
     a track spanning 0.5-248 kHz has a centroid somewhere: on the three real labelmaker shots
@@ -351,12 +350,14 @@ class Phenomenon:
     forecasts: tuple[str, ...] = ()
     #: Sources whose rows establish that someone LOOKED for this phenomenon, beyond its own
     #: detectors. Declared and not inferred: a detector that finds nothing writes no rows, so on
-    #: a quiet shot the only record that the mhr data was read for ELMs at all is `elm_clock`'s
-    #: `elm_free` interval -- a different source from the one that would have reported an ELM.
+    #: a quiet shot `elm_clock`'s source record and `elm_free` intervals establish where the
+    #: clock read D-alpha (`filterscopes`), even when it reported no ELM points.
     #: Inferring this from the `diag` string instead would have let any row off any diagnostic
     #: donate coverage to a phenomenon nothing detects (`rwm`, `detachment`), which would turn
     #: "nobody has ever looked for this" into "we looked and it was not there".
     coverage_sources: tuple[str, ...] = ()
+    #: When set, covering sources must name one of these diagnostics to donate coverage or hits.
+    coverage_diags: tuple[str, ...] = ()
     band_khz: tuple[float | None, float | None] | None = None
     diags: tuple[str, ...] = ()
     requires_group: tuple[str, ...] = ()
@@ -373,6 +374,17 @@ class Phenomenon:
         """Every source whose rows say someone looked. Empty when nothing detects this at all,
         which is exactly the case whose coverage must stay unknown."""
         return tuple(dict.fromkeys((*self.sources, *self.coverage_sources)))
+
+    def accepts_row(self, row: Mapping) -> bool:
+        """Reject legacy diagnostics of covering sources for both coverage and event evidence.
+
+        Other sources (including text and forecasts) are unaffected. Missing diagnostics cannot
+        establish that a restricted detector read the required input.
+        """
+        if not self.coverage_diags or row.get("source") not in self.covering_sources:
+            return True
+        diag = row.get("diag")
+        return isinstance(diag, str) and diag in self.coverage_diags
 
 
 @dataclass(frozen=True)
@@ -439,7 +451,7 @@ def registry(path: Path | str | None = None) -> dict[str, Phenomenon]:
     """The validated registry, by phenomenon id, with labelmaker's aliases merged in.
 
     Validated rather than trusted, because every mistake this file can make is silent: an id that
-    is not one of the round-1 twelve joins to no label, no event and no claim, and a re-stated
+    is not one of labelmaker's registered ids joins to no label, no event and no claim. A re-stated
     alias list is a second vocabulary that drifts from labelmaker's on the first correction.
     """
     p = Path(path) if path is not None else config.CONFIG_DIR / CONFIG_NAME
@@ -499,6 +511,11 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
             raise PhenomenaError(
                 f"{source}: {pid} requires_group {unknown} -- not corpus groups {CORPUS_GROUPS}"
             )
+        coverage_diags = body.get("coverage_diags", [])
+        if not isinstance(coverage_diags, list) or any(
+            not isinstance(diag, str) for diag in coverage_diags
+        ):
+            raise PhenomenaError(f"{source}: {pid} `coverage_diags` must be a list of strings")
         entry = lex[pid]
         out[pid] = Phenomenon(
             id=pid,
@@ -511,6 +528,7 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
             coverage_sources=tuple(
                 str(x) for x in _seq(source, pid, body.get("coverage_sources"), "coverage_sources")
             ),
+            coverage_diags=tuple(coverage_diags),
             band_khz=_band(source, pid, body.get("band_khz")),
             diags=tuple(str(d) for d in body.get("diags") or ()),
             requires_group=groups,
@@ -802,7 +820,8 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     if not ph.covering_sources:
         return "unprocessed", None, (), False, [NO_DETECTOR.format(id=ph.id), NO_COVERAGE]
     sources = es.CoverageSummary.from_rows(
-        r for r in db.evidence_rows('coverage_sources', shot) if r['source'] in ph.covering_sources
+        r for r in db.evidence_rows('coverage_sources', shot)
+        if r['source'] in ph.covering_sources and ph.accepts_row(r)
     )
     state = es.coverage_state(sources, *(window or (None, None)))
     caveats = []
@@ -908,7 +927,7 @@ def evidence(
     other_kinds: dict[str, int] = {}
     for row in rows:
         kind = str(row.get("evidence_kind"))
-        if not _overlaps(row, window):
+        if not ph.accepts_row(row) or not _overlaps(row, window):
             continue
         rule = None
         if kind == FORECAST_KIND:

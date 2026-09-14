@@ -33,10 +33,10 @@ PHENOMENON_EVIDENCE_CACHE_SIZE = 4096
 # both snapshot memory and first-query time (especially with Arrow-backed string columns).
 _EVIDENCE_COLUMNS = {
     'events': (
-        'shot', 'event_id', 'source', 'evidence_kind', 'phenomenon', 't0_s', 't1_s',
+        'shot', 'event_id', 'source', 'diag', 'evidence_kind', 'phenomenon', 't0_s', 't1_s',
         'f0_khz', 'f1_khz', 'confidence', 'attrs',
     ),
-    'coverage_sources': ('shot', 'source', 'status', 't_cov0_s', 't_cov1_s'),
+    'coverage_sources': ('shot', 'source', 'diag', 'status', 't_cov0_s', 't_cov1_s'),
     'labels_wide': ('shot', 'slug', 'label', 'n_valid', 'max_valid', 'frac_above'),
 }
 

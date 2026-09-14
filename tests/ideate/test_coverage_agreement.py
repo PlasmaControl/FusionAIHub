@@ -30,7 +30,8 @@ def test_both_tools_agree_on_the_report_tables_and_coverage_edges(
     ideate_db, shot, pid, status, span, expected, filtered,
 ):
     rows = [] if status is None else [es.source_row(
-        100, 'elm_clock', status=status, t_cov0_s=span[0], t_cov1_s=span[1],
+        100, 'elm_clock', diag='filterscopes', status=status,
+        t_cov0_s=span[0], t_cov1_s=span[1],
     )]
     es.write_sources(ideate_db / 'db/event_sources.parquet', rows)
     tools.reset_cache()
@@ -82,7 +83,7 @@ def test_sources_are_an_optional_typed_table_loaded_once(ideate_db, monkeypatch)
     pd.testing.assert_frame_equal(absent.event_sources, es.empty_sources())
     assert absent.load_errors == {}
     es.write_sources(db_dir / 'event_sources.parquet', [
-        es.source_row(100, 'elm_clock', t_cov0_s=0, t_cov1_s=6),
+        es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
     ])
     db = ShotDB.load(db_dir)
     assert len(db.event_sources) == 1
