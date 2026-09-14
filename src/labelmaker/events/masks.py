@@ -484,8 +484,8 @@ class _ReferenceBatches:
     cuDNN AMP rounding changes when a tile moves to another batch shape (and
     can cross the stored threshold). Pool full H2D buffers, but assemble device
     views back into the reference's forward groups. At most one partial group
-    waits for the following input buffer. CPU full-forward pooling is exact on
-    the pinned checkpoint and remains enabled there.
+    waits for the following input buffer. Preserve these boundaries on CPU too:
+    its measured single-threaded exactness need not hold for every backend.
     """
 
     def __init__(self, model, device, batch, amp, forward_context):
@@ -502,7 +502,16 @@ class _ReferenceBatches:
         for state, begin, count, _first, last in spans:
             if self.state is None:
                 self.state, self.done, self.size = state, 0, self.batch
-            assert state is self.state
+            if state is not self.state:
+                raise RuntimeError("interleaved blocks in reference forward group")
+            if state.error is not None:
+                # A failed transfer may interrupt a group spanning two buffers.
+                # Drop its retained input and drain just this block's spans.
+                self.pending.clear()
+                if last:
+                    completed.append((state, None))
+                    self.state = None
+                continue
             self.pending.append(copied[begin : begin + count])
             available = sum(len(x) for x in self.pending)
             total = n_tiles(state.n_cols)
@@ -544,7 +553,8 @@ class _ReferenceBatches:
                 self.pending = [joined[take:]] if available else []
                 del joined, probs
                 if self.done == total:
-                    assert last and not available
+                    if not last or available:
+                        raise RuntimeError("invalid end of reference forward group")
                     event = None
                     if self.device.type == "cuda":
                         event = torch.cuda.Event()
@@ -553,6 +563,11 @@ class _ReferenceBatches:
                     self.state = None
                     break
         return completed
+
+
+def _preserves_reference_batches(device):
+    """Keep oracle forward shapes on every device; CPU pooling is opt-in."""
+    return True
 
 
 def infer_pooled(
@@ -564,6 +579,7 @@ def infer_pooled(
     amp=True,
     forward_context=nullcontext,
     preserve_batches=None,
+    remaining=None,
 ):
     """Yield `(token, CompactMask | Exception)` from consecutive block tiles.
 
@@ -574,10 +590,12 @@ def infer_pooled(
     halves the forward size, retaining completed work and retrying only the
     failing slice. Every output remains in input block order.
     """
+    from ..run import StageTimeout
+
     device = torch.device(device)
     cuda = device.type == "cuda"
     if preserve_batches is None:
-        preserve_batches = cuda
+        preserve_batches = _preserves_reference_batches(device)
     reference = (
         _ReferenceBatches(model, device, max(1, int(batch)), amp, forward_context)
         if preserve_batches
@@ -585,8 +603,9 @@ def infer_pooled(
     )
     copy_stream = torch.cuda.Stream(device=device) if cuda else None
     result_stream = torch.cuda.Stream(device=device) if cuda else None
-    size = max(1, int(batch))
-    batches = iter(_tile_batches(blocks, size, pin_memory=cuda))
+    batch = max(1, int(batch))
+    size, size_state = batch, None
+    batches = iter(_tile_batches(blocks, batch, pin_memory=cuda))
     current = next(batches, None)
     if current is None:
         return
@@ -626,18 +645,33 @@ def infer_pooled(
             newly_done = []
             if reference is not None:
                 if copied is None:
-                    # A full input allocation failed. Preserve group boundaries
-                    # even in this exceptional path; one input group is small
-                    # relative to the network's activations.
-                    copied, ready = _copy_batch(host, device, copy_stream)
-                    if cuda:
+                    # Retry this allocation once after releasing cached memory.
+                    # A second failure costs only the blocks in this buffer.
+                    torch.cuda.empty_cache()
+                    try:
+                        copied, ready = _copy_batch(host, device, copy_stream)
+                    except torch.cuda.OutOfMemoryError as exc:
+                        for state, *_ in spans:
+                            state.error = type(exc)(str(exc))
+                    if cuda and copied is not None:
                         compute.wait_event(ready)
                         copied.record_stream(compute)
                 newly_done = reference.consume(copied, spans)
                 offset = len(host)
             while offset < len(host):
                 probs, chunk, error = None, None, None
+                active, begin, count, _, _ = next(
+                    span for span in spans if span[1] <= offset < span[1] + span[2]
+                )
+                if active is not size_state:
+                    size, size_state = batch, active
                 stop = min(offset + size, len(host))
+                if size < batch or active.error is not None:
+                    stop = min(stop, begin + count)
+                # Do not forward an already failed span along with healthy ones.
+                for state, begin, *_ in spans:
+                    if begin > offset and state.error is not None:
+                        stop = min(stop, begin)
                 try:
                     if copied is None:
                         chunk, event = _copy_batch(
@@ -654,14 +688,16 @@ def infer_pooled(
                         if begin < stop and begin + count > offset
                     ]
                     with (
-                        forward_context(tokens),
+                        forward_context(tokens) if active.error is None
+                        else nullcontext(),
                         (
                             torch.autocast("cuda", dtype=torch.float16)
                             if amp and cuda
                             else nullcontext()
                         ),
                     ):
-                        probs = probabilities(model, chunk)
+                        if active.error is None:
+                            probs = probabilities(model, chunk)
                 except torch.cuda.OutOfMemoryError as exc:
                     if size > 1:
                         size = max(1, size // 2)
@@ -670,6 +706,21 @@ def infer_pooled(
                             torch.cuda.empty_cache()
                         continue
                     error = type(exc)(str(exc))
+                except StageTimeout as exc:
+                    if remaining is None:
+                        error = type(exc)(str(exc))
+                    else:
+                        expired = [
+                            state for state, begin, count, _, _ in spans
+                            if begin < stop and begin + count > offset
+                            and remaining(state.token) <= 0
+                        ]
+                        if not expired:
+                            raise  # An unrelated alarm cannot identify a shot.
+                        for state in expired:
+                            state.error = type(exc)(str(exc))
+                        # Retry healthy spans; failed spans are drained in order.
+                        continue
                 except Exception as exc:  # noqa: BLE001 - only this batch's blocks
                     error = type(exc)(str(exc))
                 for state, begin, count, first, last in spans:

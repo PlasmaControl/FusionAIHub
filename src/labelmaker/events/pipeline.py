@@ -821,6 +821,9 @@ def describe_block(prepared: PreparedBlock, probs, *,
                            freq_khz=freq_khz, t_s=t_s)
         for group in tracks.merge(tracks.components(coh_mask))
     ]
+    if compact is not None:
+        # Device compaction substitutes for column_activity at this threshold.
+        assert transients.ACTIVITY_THR == masks.PROB_THRESHOLD
     activity = (compact.col_act if compact is not None else
                 transients.column_activity(probs[1]))
     return _BlockRun(

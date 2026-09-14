@@ -1009,6 +1009,8 @@ def _run_pooled(shots, **opts):
                 batch=opts["tile_batch"],
                 amp=opts["amp"],
                 forward_context=lambda tokens: guard([token[0] for token in tokens]),
+                remaining=lambda token: remaining(token[0]),
+                preserve_batches=False if opts["pool_cpu_forwards"] else None,
             )
         )
         while True:
@@ -1104,6 +1106,7 @@ def run_shots(
     tail_workers: int = 0,
     text_missing: Iterable[int] = (),
     pooled: bool = False,
+    pool_cpu_forwards: bool = False,
     echo=print,
 ) -> DriverRun:
     """Every shot in `shots`, one prep pool, one model, one row each.
@@ -1136,6 +1139,8 @@ def run_shots(
     if bad:
         raise ValueError(f"passes must be from {masks.PASS_NAMES}; got {bad}")
 
+    if pool_cpu_forwards and (not pooled or str(device) != "cpu"):
+        raise ValueError("pool_cpu_forwards requires pooled=True and device=cpu")
     if pooled:
         if tail_workers > 1 and index:
             raise ValueError("multiple tail workers require index=False / --no-index")
@@ -1386,6 +1391,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probs-on-host", action="store_true",
                         help="use the reference per-block full-probability "
                              "path instead of compact pooled inference")
+    parser.add_argument("--pool-cpu-forwards", action="store_true",
+                        help="opt in to cross-block CPU forward batches; exactness "
+                             "is only measured with the pinned single-threaded setup")
     parser.add_argument("--norm", default="record",
                         choices=list(pipeline.NORMS),
                         help="record: z-score over the whole record, as the "
@@ -1505,6 +1513,8 @@ def run_tag(run_id: str, args) -> str:
 def main(argv=None) -> int:
     parser = build_parser()
     args = settle(parser.parse_args(argv))
+    if args.pool_cpu_forwards and (args.device != "cpu" or args.probs_on_host):
+        parser.error("--pool-cpu-forwards requires --device cpu and compact inference")
     if args.index_out is not None and not args.rebuild_index:
         parser.error("--index-out requires --rebuild-index")
     if not (args.rebuild_index or args.shot_file or args.shots):
@@ -1598,6 +1608,7 @@ def main(argv=None) -> int:
             skip_existing=args.skip_existing, force=args.force,
             tail_workers=args.tail_workers, text_missing=text_missing,
             pooled=not args.probs_on_host,
+            pool_cpu_forwards=args.pool_cpu_forwards,
         )
 
     totals = result.totals
@@ -1623,6 +1634,7 @@ def main(argv=None) -> int:
             "tail_workers": int(args.tail_workers),
             "prefetch": int(args.prefetch),
             "amp": bool(args.amp),
+            "pool_cpu_forwards": bool(args.pool_cpu_forwards),
             "norm": args.norm,
             "timeout_s": int(args.timeout),
             "limit": int(args.limit),
