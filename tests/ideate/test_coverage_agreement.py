@@ -10,6 +10,160 @@ from ideate.retrieval import phenomena as ph
 from ideate.shotdb.store import ShotDB
 
 
+@pytest.fixture
+def gap_chain(ideate_db, tmp_path, monkeypatch):
+    from ideate import cli
+    from labelmaker.config import Paths
+    from labelmaker.events import pipeline
+
+    from ..labelmaker.coverage_fixture import gapped_filterscopes
+    from .conftest import shot_record, write_db
+
+    paths = Paths(root=tmp_path / "products", corpus=tmp_path / "corpus")
+    monkeypatch.setenv("LABELMAKER_ROOT", str(paths.root))
+    expected = gapped_filterscopes(paths.corpus)
+    paths.labels.mkdir(parents=True)
+    result = pipeline.process_shot(198658, paths, model=None, passes=("wide",))
+    assert not result.error
+    records = [shot_record(s, "run", 1e6, 5e6, "ELMs and sawteeth")
+               for s in (198658, 101, 200, 201)]
+    # Named segments give evidence/locate/describe the SAME windows as MCP.
+    from ideate.schema import Segment
+    records[0].segments = []
+    for name, a, b in (("flat_top", 1.2, 1.8), ("ramp_up", .5, 1.5), ("ramp_down", 2.5, 3.0)):
+        records[0].segments.append(Segment(name=name, t0_ms=a * 1000, t1_ms=b * 1000))
+    write_db(ideate_db / "db", records)
+    assert cli.main([
+        "labels", "join", "--shots", "198658", "--labelmaker-root", str(paths.root),
+        "--db", str(ideate_db / "db"), "--no-text",
+    ]) == 0
+    tools.reset_cache()
+    yield ideate_db, expected
+    tools.reset_cache()
+
+
+@pytest.mark.parametrize("segment,a,b,status,partial", [
+    ("flat_top", 1.2, 1.8, "uncovered", False),
+    ("ramp_up", .5, 1.5, "observed", True),
+    ("ramp_down", 2.5, 3.0, "observed", False),
+])
+def test_real_pipeline_join_and_all_consumers_preserve_the_gap(
+    gap_chain, segment, a, b, status, partial,
+):
+    import json
+
+    from ideate.retrieval.describe import describe
+
+    root, expected = gap_chain
+    db = ShotDB.load(root / "db")
+    row = db.event_sources.query("source == 'elm_clock'").iloc[0]
+    result = tools.get_events(198658, "elm", a, b)
+    assert result["status"] == status
+    assert json.loads(row.intervals) == [list(i) for i in expected]
+    assert result["coverage_partial"] is partial
+    ev = ph.evidence(198658, "elm", db, segment=segment)
+    assert ev.coverage_state == status and ev.coverage_partial is partial
+    direct = ph._coverage_for(db, 198658, ph.registry()["elm"], (a, b), segment)
+    assert direct[0] == status and direct[3] is partial
+    description = describe(db.get(198658), segment=segment, db=db)
+    assert f"coverage: {status}" in description
+    hits = ph.locate("elm", db, segment=segment)
+    if status == "uncovered":
+        assert result["n"] == 0
+        assert not any("This IS an observation" in c for c in result["caveats"])
+        assert any("covered intervals" in c for c in result["caveats"])
+        assert "covered intervals" in description
+        assert not any(h.shot == 198658 and h.evidence.intervals for h in hits)
+    if partial:
+        assert any("covered only" in c for c in result["caveats"])
+        assert "covered only" in description
+    print(json.dumps({"window": [a, b], "status": status, "coverage_partial": partial,
+                      "caveats": result["caveats"]}))
+
+
+def test_real_stdio_mcp_preserves_the_pipeline_dropout(gap_chain):
+    import asyncio
+    import json
+    import os
+    import sys
+    from pathlib import Path
+
+    from mcp.client import Client
+    from mcp.client.stdio import StdioServerParameters, get_default_environment
+
+    root, _ = gap_chain
+    repo = Path(__file__).resolve().parents[2]
+    env = get_default_environment()
+    env.update(IDEATE_DATA_ROOT=str(root), LABELMAKER_ROOT=str(root.parent / "products"),
+               HF_HUB_OFFLINE="1", PYTHONDONTWRITEBYTECODE="1",
+               PYTHONPATH=os.pathsep.join([str(repo / "src"), env.get("PYTHONPATH", "")]))
+    env.pop("IDEATE_PATHS", None)
+    params = StdioServerParameters(command=sys.executable, args=["-m", "ideate.mcp"],
+                                   cwd=str(repo), env=env)
+
+    async def go():
+        async with Client(params) as client:
+            answers = []
+            for a, b in ((1.2, 1.8), (.5, 1.5), (2.5, 3.0)):
+                result = await client.call_tool("get_events", {
+                    "shot": 198658, "phenomenon": "elm", "t0_s": a, "t1_s": b,
+                })
+                assert not result.is_error
+                answers.append(json.loads(result.content[0].text))
+            return answers
+
+    results = asyncio.run(asyncio.wait_for(go(), timeout=90))
+    assert [r["status"] for r in results] == ["uncovered", "observed", "observed"]
+    assert [r["coverage_partial"] for r in results] == [False, True, False]
+    assert any("covered intervals" in c for c in results[0]["caveats"])
+    assert any("covered only" in c for c in results[1]["caveats"])
+
+
+def test_new_event_fallback_cannot_reintroduce_the_pipeline_hull(gap_chain):
+    root, _ = gap_chain
+    (root / "db/event_sources.parquet").unlink()
+    tools.reset_cache()
+    result = tools.get_events(198658, "elm", 1.2, 1.8)
+    assert result["status"] == "uncovered"
+    assert not any("older writer" in c for c in result["caveats"])
+    db = ShotDB.load(root / "db")
+    assert ph.evidence(198658, "elm", db).coverage_state == "uncovered"
+
+
+def test_whole_record_searches_agree_that_interior_gaps_are_partial(gap_chain):
+    root, _ = gap_chain
+    db = ShotDB.load(root / "db")
+    result = tools.get_events(198658, "elm")
+    ev = ph.evidence(198658, "elm", db, segment="full")  # absent: searches whole record
+    assert result["status"] == ev.coverage_state == "observed"
+    assert result["coverage_partial"] is ev.coverage_partial is True
+
+
+@pytest.mark.parametrize("legacy_events", [False, True])
+def test_older_source_and_event_hulls_are_disclosed_by_all_readers(ideate_db, legacy_events):
+    from ideate.retrieval.describe import describe
+
+    from .test_phenomena import _db_with, _elm_clock
+
+    _db_with(ideate_db, [_elm_clock(100, "old", (0, 6))])
+    if not legacy_events:
+        old = pd.DataFrame([es.source_row(100, "elm_clock", diag="filterscopes",
+                                          t_cov0_s=0, t_cov1_s=6)])
+        old.drop(columns=["intervals", "min_gap_s"]).to_parquet(
+            ideate_db / "db/event_sources.parquet", index=False)
+    tools.reset_cache()
+    db = ShotDB.load(ideate_db / "db")
+    result = tools.get_events(100, "elm", 1.2, 1.8)
+    ev = ph.evidence(100, "elm", db)
+    assert result["status"] == ev.coverage_state == "observed"
+    for caveats in (result["caveats"], ev.caveats):
+        assert any(es.LEGACY_HULL_CAVEAT in c for c in caveats)
+    rec = db.get(100)
+    rec.human.log_entries[0].text = "ELMs"
+    assert es.LEGACY_HULL_CAVEAT in describe(rec, db=db)
+    tools.reset_cache()
+
+
 @pytest.mark.parametrize('filtered', [True, False])
 @pytest.mark.parametrize(
     'shot,pid,status,span,expected',
@@ -56,6 +210,7 @@ def test_both_tools_agree_on_the_report_tables_and_coverage_edges(
 
 def test_unknown_phenomenon_and_registered_no_detector_are_distinct(ideate_db):
     tools.reset_cache()
+
     unknown = tools.get_events(100, 'zzz_not_a_phenomenon')
     known = tools.get_events(100, 'rwm')
     assert unknown['status'] == known['status'] == 'unprocessed'
@@ -63,6 +218,25 @@ def test_unknown_phenomenon_and_registered_no_detector_are_distinct(ideate_db):
                for c in unknown['caveats'])
     assert not any('no detector registered' in c for c in unknown['caveats'])
     assert 'no detector registered for rwm; text/database evidence only' in known['caveats']
+    tools.reset_cache()
+
+
+def test_former_caps_cannot_borrow_the_long_gas_span_or_invent_qh_completion(ideate_db):
+    es.write_sources(ideate_db / "db/event_sources.parquet", [
+        es.source_row(100, "ece_sawtooth", diag="ece", t_cov0_s=-.05, t_cov1_s=6.143,
+                      intervals="[[-0.05, 6.143]]", min_gap_s=.008),
+        es.source_row(100, "actuator", diag="gas_a", t_cov0_s=-10, t_cov1_s=94.9,
+                      intervals="[[-10, 94.9]]", min_gap_s=.02),
+        es.source_row(100, "qh_proxy", status="skipped", reason="no Ip flat-top"),
+    ])
+    tools.reset_cache()
+    db = ShotDB.load(ideate_db / "db")
+    for pid, window, status in (("sawtooth", (14, 15), "uncovered"),
+                                ("qh", (3, 4), "unprocessed")):
+        result = tools.get_events(100, pid, *window)
+        assert result["status"] == status and result["n"] == 0
+        assert ph._coverage_for(db, 100, ph.registry()[pid], window, "test")[0] == status
+        assert not any(r["source"] == "actuator" for r in result["coverage"]["sources"])
     tools.reset_cache()
 
 

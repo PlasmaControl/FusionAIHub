@@ -53,6 +53,22 @@ SHOT = 199999
 #: A stand-in sha, so nothing here needs the pinned checkpoint on disk.
 FAKE_SHA = "0" * 64
 
+
+def test_real_clock_persists_the_finite_intervals_around_a_dropout(tmp_path):
+    from .coverage_fixture import gapped_filterscopes
+
+    paths = Paths(root=tmp_path / "products", corpus=tmp_path / "corpus")
+    expected = gapped_filterscopes(paths.corpus)
+    result = pl.process_shot(198658, paths, model=None, passes=("wide",))
+    assert not result.error
+    sources = schema.read_sources(paths.sources_file(198658))
+    clock = sources[sources.source == "elm_clock"].iloc[0]
+    assert "intervals" in clock, "the source writer still publishes only a hull"
+    assert json.loads(clock.intervals) == [list(i) for i in expected]
+    assert clock.min_gap_s == pytest.approx(transients.MIN_DISTANCE_MS / 1000)
+    events = schema.read_events(paths.events_file(198658))
+    assert not ((events.t0_s <= 1.8) & (events.t1_s >= 1.2)).any()
+
 #: What the stand-in paints. Rows 100-139 of 512 are 4.93-6.83 kHz on this
 #: fixture's 50 kHz record; 200 lit columns of 320 is under
 #: `tracks.PICKUP_ROW_FRACTION`, so the band is a `coherent_mode` and not a
@@ -201,7 +217,10 @@ def test_finish_publishes_dalpha_clock_points_without_any_mask(paths):
     assert set(points.t_cov1_s) == {t[-101]}
     for raw in points["attrs"]:
         attrs = json.loads(raw)
-        assert set(attrs) == {"prominence", "width_ms", "channel", "rate_hz_local"}
+        assert set(attrs) == {"prominence", "width_ms", "channel", "rate_hz_local",
+                              "coverage_intervals", "coverage_min_gap_s"}
+        assert attrs["coverage_intervals"] == [[t[100], t[-101]]]
+        assert attrs["coverage_min_gap_s"] == pl.ELM_MIN_GAP_S
         assert attrs["channel"] == 0
         assert attrs["prominence"] > 0.9
         assert 2 < attrs["width_ms"] < 3
@@ -1465,6 +1484,70 @@ def test_the_qh_proxy_takes_the_dalpha_clocks_span_not_the_magnetics_reference(
     assert (clock[2], clock[3]) == pytest.approx((cov0, cov1), abs=1e-9)
     ref = rows[("tokeye_transient", "mhr")]
     assert ref[2] < 0.05 and ref[3] > 0.75
+
+
+def test_all_multi_input_source_rows_preserve_each_inputs_interior_gaps(
+    shot_file, paths, synth_shot, model,
+):
+    _write_features(paths, SHOT, synth_shot)
+    gaps = {"filterscopes": (.3, .4), "co2": (.5, .6),
+            "pinj": (.2, .25), "ece": (.45, .5)}
+    with h5py.File(shot_file, "a") as f:
+        for group, (a, b) in gaps.items():
+            t, y = f[f"{group}/xdata"][:], f[f"{group}/ydata"][:]
+            y[:, (t >= a) & (t <= b)] = np.nan
+            f[f"{group}/ydata"][...] = y
+    _run(paths, model)
+    rows = schema.read_sources(paths.sources_file(SHOT))
+    for source, diag, holes in (
+        ("elm_clock", "filterscopes", [.35]),
+        ("ece_sawtooth", "ece", [.475]),
+        ("dalpha_lh", "filterscopes", [.225, .35, .55]),
+        ("actuator", "pinj_total", [.225]),
+        ("actuator", "tinj_total", [.225]),
+        ("qh_proxy", "", [.225, .35]),
+    ):
+        row = rows[(rows.source == source) & (rows.diag == diag)].iloc[0]
+        assert row.status == "ok", row.reason
+        intervals = json.loads(row.intervals)
+        assert intervals
+        for instant in holes:
+            assert not any(a <= instant <= b for a, b in intervals), (source, instant)
+        assert np.isfinite(row.min_gap_s)
+
+
+def test_qh_unions_published_blocks_without_filling_the_gap_between_them():
+    from types import SimpleNamespace
+
+    from labelmaker.events.coverage import Coverage
+
+    runs = [SimpleNamespace(t_cov=(a, b), t_s=np.linspace(a, b, 101))
+            for a, b in ((0, 1), (3, 4))]
+    whole = Coverage(((0, 4),), .003)
+    cov, why = pl._qh_coverage(runs, whole, {}, {"pinj_total": whole}, [(0, 4)])
+    assert why == ""
+    assert cov.intervals == ((0, 1), (3, 4))
+
+
+def test_qmin_and_feature_rows_preserve_interior_missing_samples(paths, synth_shot):
+    from labelmaker.features.store import FeatureArray, write_features
+
+    _write_features(paths, SHOT, synth_shot)
+    t = np.linspace(0, .8, 41)
+    y = np.full(t.size, 1.2)
+    y[(t >= .3) & (t <= .4)] = np.nan
+    write_features(paths.features_file(SHOT), SHOT,
+                   {"qmin": FeatureArray(x=t, y=y[None, :])}, {}, merge=True)
+    result = pl.rules_shot(SHOT, paths, run_id="gapped-qmin")
+    assert not result.error
+    rows = schema.read_sources(paths.sources_file(SHOT))
+    for source in ("features", "qmin_rule"):
+        row = rows[(rows.source == source) & (rows.diag == "qmin")].iloc[0]
+        assert row.status == "ok"
+        intervals = json.loads(row.intervals)
+        assert len(intervals) == 2
+        assert not any(a <= .35 <= b for a, b in intervals)
+        assert row.min_gap_s == 0
 
 
 def test_a_skipped_dalpha_clock_makes_the_qh_proxy_unevaluable(

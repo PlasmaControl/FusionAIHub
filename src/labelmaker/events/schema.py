@@ -310,7 +310,7 @@ SOURCE_STATUSES = ("ok", "skipped", "error")
 SOURCE_COLUMNS = (
     "shot", "source", "status", "reason", "t_cov0_s", "t_cov1_s",
     "n_events", "diag", "channel", "pass_name", "run_id", "git_sha",
-    "written_at",
+    "written_at", "intervals", "min_gap_s",
 )
 
 #: Dtype of every column of the sources file.
@@ -328,6 +328,8 @@ SOURCE_DTYPES = {
     "run_id": "object",
     "git_sha": "object",
     "written_at": "object",
+    "intervals": "object",
+    "min_gap_s": "float64",
 }
 
 #: What makes two rows the same record. A source is not enough: the
@@ -368,6 +370,13 @@ def _source_row(shot: int, record: Mapping[str, Any], *, run_id: str,
     t1 = float(record.get("t_cov1_s", _NAN))
     if math.isfinite(t0) and math.isfinite(t1) and t1 < t0:
         raise ValueError(f"t_cov1_s must not precede t_cov0_s; got {t0}, {t1}")
+    intervals = record.get("intervals")
+    min_gap_s = float(record.get("min_gap_s", _NAN))
+    if intervals is not None:
+        from .coverage import Coverage
+
+        cov = Coverage(json.loads(intervals), min_gap_s)
+        t0, t1 = cov.hull
     return {
         "shot": int(shot),
         "source": source,
@@ -382,6 +391,8 @@ def _source_row(shot: int, record: Mapping[str, Any], *, run_id: str,
         "run_id": run_id,
         "git_sha": sha,
         "written_at": now,
+        "intervals": intervals,
+        "min_gap_s": min_gap_s,
     }
 
 
@@ -457,7 +468,14 @@ def read_sources(path, *, source: str | None = None) -> pd.DataFrame:
     if not path.exists():
         out = _empty_sources()
     else:
-        out = pd.read_parquet(path)[list(SOURCE_COLUMNS)].astype(SOURCE_DTYPES)
+        out = pd.read_parquet(path)
+        # Null intervals preserve the fact that an older writer recorded
+        # only a hull; consumers must disclose its unknown interior gaps.
+        if "intervals" not in out:
+            out["intervals"] = None
+        if "min_gap_s" not in out:
+            out["min_gap_s"] = _NAN
+        out = out[list(SOURCE_COLUMNS)].astype(SOURCE_DTYPES)
     if source is not None:
         out = out[out["source"] == source]
     return out.reset_index(drop=True)
