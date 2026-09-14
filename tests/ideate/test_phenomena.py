@@ -587,8 +587,20 @@ def test_the_actuator_field_reports_the_segments_own_columns(phen_db):
 
 def test_every_hit_names_the_evidence_classes_it_lacks_and_only_those(phen_db):
     """Caveats are informative, not boilerplate. Shot 100 has an observation, a label and the
-    operators' word, all inside a recorded coverage window, so it carries none -- which is what
-    makes the ones on the other two hits mean something."""
+    operators' word. Its older event hull still needs the gap-uncertainty caveat;
+    explicit interval coverage removes that uncertainty and carries none."""
+    from ideate.labels import event_sources as es
+
+    hits = {h.shot: h for h in ph.locate("tearing", phen_db, 10)}
+    assert hits[OBSERVED_SHOT].caveats == [f"tokeye_track: {es.LEGACY_HULL_CAVEAT}"]
+    es.write_sources(phen_db.db_dir / "event_sources.parquet", [es.source_row(
+        OBSERVED_SHOT, "tokeye_track", diag="mhr", t_cov0_s=0, t_cov1_s=6,
+        intervals="[[0, 6]]", min_gap_s=.001,
+    )])
+    phen_db.event_sources = es.read_sources(phen_db.db_dir / "event_sources.parquet")
+    phen_db.has_event_sources = True
+    del phen_db.coverage_sources
+    phen_db._evidence_indexes.clear()
     hits = {h.shot: h for h in ph.locate("tearing", phen_db, 10)}
     assert hits[OBSERVED_SHOT].caveats == []
     for shot, hit in hits.items():

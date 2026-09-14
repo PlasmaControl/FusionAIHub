@@ -1503,3 +1503,41 @@ def test_cli_select_from_list_refuses_a_finalized_list_shorter_than_it_asked_for
     assert not out.exists()
     err = capsys.readouterr().err
     assert "11 of 12" in err
+
+
+def test_finalize_txt_out_applies_review_and_names_the_effective_changes(
+    selection_inputs, tmp_path, capsys,
+):
+    from ideate import config
+
+    txt_dir, parquet = selection_inputs
+    features = tmp_path / "features"
+    for shot in range(190000, 190060):
+        _write_features(features, shot, 3.0)
+    original = tmp_path / "original.yaml"
+    doc = _write_list([
+        *select_argv(txt_dir, parquet, tmp_path,
+                     **{"--out": str(original), "--features": str(features)}),
+        "--finalize",
+    ], original)
+    drop, readd = (row["shot"] for row in doc["shots"][:2])
+    doc["hand_review"] = {
+        "drop": [{"shot": drop}, {"shot": readd}],
+        "add": [{"shot": 190999}, {"shot": readd}, {"shot": 190998}],
+    }
+    original.write_text(yaml.safe_dump(doc))
+    out, txt = tmp_path / "final.yaml", tmp_path / "effective.txt"
+    capsys.readouterr()
+    assert cli.main([
+        *select_argv(txt_dir, parquet, tmp_path, **{
+            "--out": str(out), "--txt-out": str(txt), "--features": str(features),
+        }), "--finalize", "--from-list", str(original),
+    ]) == 0
+    emitted = yaml.safe_load(out.read_text())
+    assert emitted["shots"] == doc["shots"]
+    assert emitted["hand_review"] == doc["hand_review"]
+    effective = [int(line) for line in txt.read_text().splitlines()]
+    assert effective == config.load_shot_list("unused", path=out)
+    assert drop not in effective and readd in effective
+    assert effective == sorted(set(effective))
+    assert f"hand_review: +2 (190998 190999), -1 ({drop})" in capsys.readouterr().out

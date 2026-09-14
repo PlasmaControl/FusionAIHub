@@ -153,7 +153,7 @@ function timeline(rows, domain = bounds(rows || []), coverage = false) {
         }));
       }
       const values = coverage ?
-        { status: item.status, reason: item.reason, diag: item.diag, channel: item.channel, pass_name: item.pass_name, n_events: item.n_events } :
+        { status: item.status, reason: item.reason, diag: item.diag, channel: item.channel, pass_name: item.pass_name, n_events: item.n_events, min_gap_s: item.min_gap_s } :
         { phenomenon: item.phenomenon, evidence_kind: item.evidence_kind, confidence: item.confidence };
       detail.append(el("li", {}, `${display(item.t0_s)} – ${display(item.t1_s)} s · ${display(values)}`, caveats(item.caveats)));
     }
@@ -181,7 +181,18 @@ function renderEvents(data, prefix = "") {
   const meaning = (data.caveats || []).find((c) => patterns[data.status]?.test(c));
   target("event-meaning").textContent = display(meaning);
   notes(target("event-notes"), data);
-  const coverage = (data.coverage?.sources || []).map((s) => ({ ...s, t0_s: s.t_cov0_s, t1_s: s.t_cov1_s }));
+  const coverage = (data.coverage?.sources || []).flatMap((s) => {
+    const diagnostic = s.source !== "text" && s.source !== "database" && !s.source?.startsWith("database:");
+    const legacy = !Array.isArray(s.intervals) || s.legacy_hull;
+    const intervals = s.status === "ok" && diagnostic ?
+      (Array.isArray(s.intervals) ? s.intervals :
+        (finite(s.t_cov0_s) && finite(s.t_cov1_s) ? [[s.t_cov0_s, s.t_cov1_s]] : [])) : [];
+    const row = { ...s, caveats: legacy && intervals.length ?
+      ["coverage recorded as a hull by an older writer; interior gaps unknown"] : [] };
+    // Keep skipped/unknown rows visible in the details, without drawing a bar.
+    return intervals.length ? intervals.map(([t0_s, t1_s]) => ({ ...row, t0_s, t1_s })) :
+      [{ ...row, t0_s: null, t1_s: null }];
+  });
   const domain = bounds([...(data.events || []), ...(data.forecasts || []), ...(data.database_intervals || []), ...coverage]);
   target("event-lanes").replaceChildren(timeline(data.events, domain));
   target("forecast-lanes").replaceChildren(timeline(data.forecasts, domain));

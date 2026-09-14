@@ -80,6 +80,26 @@ from .lexicon import Lexicon
 from .schema import Event
 from .unet import CHECKPOINT_SHA256
 
+# Coverage gap resolutions, beside the detector orchestration they guard.
+# Derived from detector constants, never fitted to corpus dropouts.
+ELM_MIN_GAP_S = transients.MIN_DISTANCE_MS * 1e-3  # 3 ms peak separation
+SAWTOOTH_MIN_GAP_S = heuristics.STEP_SPAN_MS * 1e-3  # 8 ms inversion window
+LH_MIN_GAP_S = heuristics.LH_DROP_WINDOW_MS * 1e-3  # 5 ms step comparison
+ACTUATOR_MIN_GAP_S = heuristics.ACTUATOR_MIN_MS * 1e-3  # 20 ms hysteresis minimum
+# Feature reads and the q-min rule evaluate individual samples: bridge no missing sample.
+FEATURE_MIN_GAP_S = 0.0
+QMIN_MIN_GAP_S = FEATURE_MIN_GAP_S
+# TokEye rejects interior non-finite waveform samples before inference; one column
+# is its temporal resolution. The multiplier is applied to each pass's grid below.
+TRACK_MIN_GAP_COLS = 1
+
+
+def _block_coverage(run) -> coverage.Coverage:
+    """A validated finite waveform; masks.read_waveform refuses interior gaps."""
+    step = float(np.median(np.diff(run.t_s))) if len(run.t_s) > 1 else 0.0
+    return coverage.Coverage((run.t_cov,), TRACK_MIN_GAP_COLS * step)
+
+
 #: How the spectrogram is standardised before the network sees it.
 #: `record` is the z-score over the whole record, which is what
 #: `ae_dataset.py` fed the network in training and is therefore the default.
@@ -410,7 +430,7 @@ def features_block(
 
 def rules_block(
     shot: int, paths: Paths, res: ShotResult,
-    ran: dict[tuple[str, str, int, str], tuple[float, float]],
+    ran: dict[tuple[str, str, int, str], coverage.Coverage],
 ) -> tuple[dict[str, tuple[np.ndarray, np.ndarray]], list[Event],
            list[tuple[float, float]]]:
     """The features-store steps: canonical `ip`/`qmin`, the flat-top, the rule.
@@ -437,7 +457,8 @@ def rules_block(
         missing = {}
     res.skipped.update(missing)
     ran.update(
-        ((FEATURES_SOURCE, name, -1, ""), coverage.finite_span(t_s, y))
+        ((FEATURES_SOURCE, name, -1, ""), coverage.Coverage.measured(
+            t_s, y, min_gap_s=FEATURE_MIN_GAP_S))
         for name, (t_s, y) in features.items()
     )
 
@@ -461,7 +482,8 @@ def rules_block(
             t_s, y = features["qmin"]
             events = heuristics.qmin_regimes(t_s, y, flattop[0], shot=shot)
             ran[(heuristics.QMIN_SOURCE, heuristics.QMIN_DIAG, -1, "")] = (
-                heuristics.qmin_rule_coverage(t_s, y, flattop[0])
+                coverage.Coverage.measured(t_s, y, min_gap_s=QMIN_MIN_GAP_S).intersect(
+                    coverage.Coverage(tuple(flattop), FEATURE_MIN_GAP_S))
             )
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["qmin_rule"] = _cause(exc)
@@ -471,8 +493,8 @@ def rules_block(
 
 def _counter_coverage(
     res: ShotResult,
-    ran: dict[tuple[str, str, int, str], tuple[float, float]],
-    spans: Mapping[str, tuple[float, float]],
+    ran: dict[tuple[str, str, int, str], coverage.Coverage],
+    spans: Mapping[str, coverage.Coverage],
 ) -> None:
     """Say whether counter-injection was EVALUATED, and over what.
 
@@ -505,16 +527,14 @@ def _counter_coverage(
             step="counter-injection", why=why,
         )
         return
-    cov = coverage.intersect(
-        [spans["tinj_total"], spans["pinj_total"], spans["ip"]]
-    )
-    if not (math.isfinite(cov[0]) and math.isfinite(cov[1])):
+    cov = spans["tinj_total"].intersect(spans["pinj_total"], spans["ip"])
+    if not cov.known:
         ran.pop(key, None)
         res.skipped["nbi_counter"] = UNEVALUABLE.format(
             step="counter-injection", why=NO_COMMON_SPAN,
         )
         return
-    # Replaces the torque's own span, which `feature_spans` put here: a
+    # Replaces the torque's own intervals: a
     # window in which the torque was measured and the current was not is
     # not a window anybody checked the two signs in.
     ran[key] = cov
@@ -522,11 +542,11 @@ def _counter_coverage(
 
 def _qh_coverage(
     runs: Sequence[_BlockRun],
-    elm_cov: tuple[float, float] | None,
+    elm_cov: coverage.Coverage | None,
     skipped: Mapping[str, str],
-    spans: Mapping[str, tuple[float, float]],
+    spans: Mapping[str, coverage.Coverage],
     ip_flattop: Sequence[tuple[float, float]],
-) -> tuple[tuple[float, float], str]:
+) -> tuple[coverage.Coverage, str]:
     """`(coverage, "")` if the QH proxy can be evaluated, `(UNKNOWN, why)` if not.
 
     The proxy is an intersection of four things - an EHO-like track, an
@@ -542,39 +562,29 @@ def _qh_coverage(
     missing input now returns a reason here, the caller records it against
     `qh_proxy` itself, and no `ran` row is written.
 
-    The track span is the HULL of the PUBLISHED blocks - the ones whose
-    tracks were converted to rows. A block whose conversion failed is
-    unknown, not quiet, and must not donate coverage to a proxy built on
-    its tracks. The hull is the one span here that is a union rather than
-    an intersection, because a track seen on any block is a track; the
-    blocks of one shot come off digitisers that overlap almost entirely,
-    so the hull is not a material over-claim, and it is intersected with
-    three narrower spans anyway.
-
-    `elm_cov` is the finite span of the D-alpha channel the ELM clock ran
-    on (task L-A moved the clock from the magnetics reference block to
-    `filterscopes`), or `None` when the clock did not run. The ELM-free
-    intervals the proxy intersects with are that clock's, so that span -
-    and not the magnetics reference's - is the window they were measured
-    over.
+    Published track blocks contribute their UNION of intervals. The proxy
+    intersects that set with the clock, beam and flat-top input sets; no
+    input may donate its display hull across an interior gap.
     """
     if not runs:
-        return coverage.UNKNOWN, QH_NEEDS_TRACKS
+        return coverage.Coverage((), 0.0), QH_NEEDS_TRACKS
     if elm_cov is None or "elm_clock" in skipped:
-        return coverage.UNKNOWN, QH_NEEDS_CLOCK
+        return coverage.Coverage((), 0.0), QH_NEEDS_CLOCK
     if "pinj_total" not in spans:
-        return coverage.UNKNOWN, QH_NEEDS_NBI
+        return coverage.Coverage((), 0.0), QH_NEEDS_NBI
     if not ip_flattop:
-        return coverage.UNKNOWN, QH_NEEDS_FLATTOP
-    tracks_span = (
-        min(run.t_cov[0] for run in runs),
-        max(run.t_cov[1] for run in runs),
+        return coverage.Coverage((), 0.0), QH_NEEDS_FLATTOP
+    track_sets = [_block_coverage(run) for run in runs]
+    track_cov = coverage.Coverage(
+        coverage.union_intervals(*(c.intervals for c in track_sets)),
+        max(c.min_gap_s for c in track_sets),
     )
-    cov = coverage.intersect([
-        tracks_span, elm_cov, spans["pinj_total"], ip_flattop[0],
-    ])
-    if not (math.isfinite(cov[0]) and math.isfinite(cov[1])):
-        return coverage.UNKNOWN, NO_COMMON_SPAN
+    cov = track_cov.intersect(
+        elm_cov, spans["pinj_total"],
+        coverage.Coverage(tuple(ip_flattop), FEATURE_MIN_GAP_S),
+    )
+    if not cov.known:
+        return coverage.Coverage((), 0.0), NO_COMMON_SPAN
     return cov, ""
 
 
@@ -1051,7 +1061,7 @@ def finish_shot(
     # EVERY key that ran, event or no event: `events/<shot>_sources.parquet`
     # is what tells "the tracker looked and saw nothing" from "the tracker
     # never ran", and an events file states neither.
-    ran: dict[tuple[str, str, int, str], tuple[float, float]] = {}
+    ran: dict[tuple[str, str, int, str], coverage.Coverage] = {}
 
     # --------------------------------------------------------- the tracks
     # The blocks whose tracks were converted to rows: the QH proxy below
@@ -1075,7 +1085,7 @@ def finish_shot(
                 continue
             res.n_tracks += len(rows)
             ran[(tracks.SOURCE, run.diag, run.channel, run.pass_name)] = (
-                run.t_cov
+                _block_coverage(run)
             )
             accepted.append((run, rows))
         # Only published blocks may corroborate one another. Conversion is
@@ -1106,7 +1116,7 @@ def finish_shot(
             ))
             sources.add(transients.SOURCE)
             key = (reference.diag, reference.channel, reference.pass_name)
-            ran[(transients.SOURCE, *key)] = reference.t_cov
+            ran[(transients.SOURCE, *key)] = _block_coverage(reference)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped[transients.SOURCE] = _cause(exc)
 
@@ -1114,7 +1124,7 @@ def finish_shot(
     elm_free = np.zeros((0, 2), dtype=np.float64)
     # The D-alpha span the clock ran over; `None` until it has. The QH
     # proxy's ELM-free input is measured over exactly this window.
-    elm_cov: tuple[float, float] | None = None
+    elm_cov: coverage.Coverage | None = None
     try:
         dalpha_t_s, dalpha_y = _read_group(
             corpus_file, "filterscopes", stop=heuristics.N_DALPHA_CHANNELS
@@ -1125,7 +1135,8 @@ def finish_shot(
                         if (np.isfinite(y[:-1]) & np.isfinite(y[1:])).any()), -1)
         if channel < 0:
             raise ValueError("no finite D-alpha channel in filterscopes 0-7")
-        elm_cov = coverage.finite_span(dalpha_t_s, dalpha_y[channel])
+        elm_cov = coverage.Coverage.measured(
+            dalpha_t_s, dalpha_y[channel], min_gap_s=ELM_MIN_GAP_S)
         found = transients.elm_clock_events(
             dalpha_y[channel], dalpha_t_s, shot=shot, channel=channel,
         )
@@ -1144,9 +1155,10 @@ def finish_shot(
     # ------------------------------------------------------- the sawteeth
     try:
         ece_t_s, ece_y = _read_group(corpus_file, "ece")
-        ece_cov = coverage.finite_span(ece_t_s, ece_y)
+        ece_cov = coverage.Coverage.measured(
+            ece_t_s, ece_y, min_gap_s=SAWTOOTH_MIN_GAP_S)
         found = heuristics.sawtooth_events(
-            ece_y, ece_t_s, shot=shot, t_cov=ece_cov,
+            ece_y, ece_t_s, shot=shot, t_cov=ece_cov.hull,
         )
         del ece_y
         events.extend(found)
@@ -1163,11 +1175,15 @@ def finish_shot(
         )
         ne_t_s, ne_y = _read_group(corpus_file, "co2", stop=1)
         pinj_t_s, pinj_y = _read_group(corpus_file, "pinj")
-        lh_cov = coverage.intersect([
-            coverage.finite_span(dalpha_t_s, dalpha_y),
-            coverage.finite_span(ne_t_s, ne_y[0]),
-            coverage.finite_span(pinj_t_s, pinj_y),
-        ])
+        lh_cov = coverage.Coverage.measured(
+            dalpha_t_s, dalpha_y, min_gap_s=LH_MIN_GAP_S,
+        ).intersect(
+            coverage.Coverage.measured(ne_t_s, ne_y[0], min_gap_s=LH_MIN_GAP_S),
+            # Beam channels are alternatives for coverage: one missing beam
+            # does not erase a sample measured by another beam.
+            coverage.Coverage.measured(
+                pinj_t_s, pinj_y, min_gap_s=LH_MIN_GAP_S),
+        )
         found = heuristics.lh_transitions(
             dalpha_t_s, dalpha_y,
             ne_t_s=ne_t_s, ne_y=ne_y[0],
@@ -1179,7 +1195,7 @@ def finish_shot(
             shot=shot,
             # Three inputs, one answer: the transition is claimed where
             # ALL THREE were measured, not over the D-alpha alone.
-            t_cov=lh_cov,
+            t_cov=lh_cov.hull,
         )
         events.extend(found)
         res.n_lh = len(found)
@@ -1210,18 +1226,21 @@ def finish_shot(
     # copy is the one `nbi_counter` was measured with.
     if "ip" in store_features:
         features["ip"] = store_features["ip"]
-    spans: dict[str, tuple[float, float]] = {}
+    spans: dict[str, coverage.Coverage] = {}
     if features:
         # PER FEATURE, over finite samples: the gas recorder's -10 to
         # 94.86 s axis is not the NBI digitiser's coverage (task Lfix-C1).
-        spans = coverage.feature_spans(features)
+        spans = {
+            name: coverage.Coverage.measured(t, y, min_gap_s=ACTUATOR_MIN_GAP_S)
+            for name, (t, y) in features.items()
+        }
         ran.update(
             ((heuristics.ACTUATOR_SOURCE, name, -1, ""), span)
             for name, span in spans.items()
         )
         try:
             found = heuristics.actuator_intervals(
-                features, shot=shot, t_cov=spans,
+                features, shot=shot, t_cov={name: cov.hull for name, cov in spans.items()},
             )
             events.extend(found)
             nbi_on = [(e.t0_s, e.t1_s) for e in found if e.phenomenon == "nbi_on"]
@@ -1245,7 +1264,7 @@ def finish_shot(
         try:
             events.extend(heuristics.qh_candidates(
                 [t for run in published for t in run.tracks], elm_free, nbi_on,
-                ip_flattop, shot=shot, t_cov=qh_cov,
+                ip_flattop, shot=shot, t_cov=qh_cov.hull,
             ))
             sources.add(heuristics.QH_SOURCE)
             # `qh_candidates` stamps its rows `pass_name="zoom"`, so that is
@@ -1267,7 +1286,9 @@ def finish_shot(
             events.extend(found)
             res.n_text = len(found)
             sources.add("text")
-            ran[("text", "", -1, "")] = text_weak.shot_span_s(shot, paths=paths)
+            # A logbook search is non-diagnostic, so even a successful text
+            # source carries no coverage (including no display shot span).
+            ran[("text", "", -1, "")] = coverage.Coverage((), 0.0)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["text"] = _cause(exc)
 
@@ -1287,10 +1308,11 @@ def finish_shot(
             ran[(
                 str(record["source"]), str(record["diag"]),
                 int(record["channel"]), str(record["pass_name"]),
-            )] = (float(record["t_cov0_s"]), float(record["t_cov1_s"]))
+            )] = coverage.Coverage((), 0.0)
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["database"] = _cause(exc)
 
+    events = coverage.attach_intervals(events, ran)
     res.n_events = len(events)
     _tally(res, events)
 
@@ -1358,7 +1380,7 @@ def rules_shot(
     paths = Paths.from_env() if paths is None else paths
     events: list[Event] = []
     sources: set[str] = set()
-    ran: dict[tuple[str, str, int, str], tuple[float, float]] = {}
+    ran: dict[tuple[str, str, int, str], coverage.Coverage] = {}
 
     _, qmin_events, _ = rules_block(int(shot), paths, res, ran)
     events.extend(qmin_events)
@@ -1373,10 +1395,11 @@ def rules_shot(
             ran[(
                 str(record["source"]), str(record["diag"]),
                 int(record["channel"]), str(record["pass_name"]),
-            )] = (float(record["t_cov0_s"]), float(record["t_cov1_s"]))
+            )] = coverage.Coverage((), 0.0)
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["database"] = _cause(exc)
 
+    events = coverage.attach_intervals(events, ran)
     res.n_events = len(events)
     _tally(res, events)
     if write:

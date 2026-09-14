@@ -9,7 +9,8 @@ have to be persisted even when a detector emits zero events, and this is the tab
 
 THE CONTRACT. labelmaker WRITES it, ideate READS it. One row per `(source, diag, channel, pass)`
 that ran or was deliberately skipped, with `status` in {ok, skipped, error} and `reason` saying
-why for the last two. `t_cov0_s`/`t_cov1_s` are that source's OWN coverage -- not a span borrowed
+why for the last two. `intervals` records disjoint finite coverage and `min_gap_s` its
+resolution; `t_cov0_s`/`t_cov1_s` are display hulls only. Neither may be borrowed
 from a sibling input, which is the second half of the same defect: actuator events all received
 the union of the gas, NBI and RMP time axes, so an NBI event carried coverage from -10 to 94.9 s
 because the gas recorder happened to run that long.
@@ -31,6 +32,7 @@ same table through it, so the two sides cannot drift into two shapes of the same
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite
@@ -55,17 +57,61 @@ SOURCES_DTYPES: dict[str, str] = {
     "run_id": "object",
     "git_sha": "object",
     "written_at": "object",
+    "intervals": "object",
+    "min_gap_s": "float64",
 }
 SOURCES_COLUMNS: tuple[str, ...] = tuple(SOURCES_DTYPES)
 
-#: `ok` -- the source ran to completion over `[t_cov0_s, t_cov1_s]`, emitting `n_events` (which
+LEGACY_HULL_CAVEAT = "coverage recorded as a hull by an older writer; interior gaps unknown"
+
+
+def legacy_hull(row: Mapping) -> bool:
+    """Missing/null intervals identify older source writers and legacy event rows."""
+    value = row.get("intervals")
+    if isinstance(value, (str, list, tuple, np.ndarray)):
+        return False
+    return value is None or bool(pd.isna(value))
+
+
+def row_intervals(row: Mapping) -> tuple[tuple[float, float], ...]:
+    """An authoritative interval set, or an explicitly qualified legacy hull.
+
+    An empty JSON list is authoritative even if stale display bounds are finite.
+    Never recover a hull from a present interval column.
+    """
+    if legacy_hull(row):
+        lo, hi = float(row["t_cov0_s"]), float(row["t_cov1_s"])
+        return ((lo, hi),) if isfinite(lo) and isfinite(hi) and hi >= lo else ()
+    from labelmaker.events.coverage import Coverage
+
+    value = row["intervals"]
+    intervals = json.loads(value) if isinstance(value, str) else value
+    # Parsing coverage does not infer a resolution for an older row.
+    return Coverage(intervals, 0.0).intervals
+
+
+def with_interval_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Append nullable columns to old source tables without inventing gap knowledge."""
+    out = frame.copy()
+    if "intervals" not in out:
+        out["intervals"] = None
+    if "min_gap_s" not in out:
+        out["min_gap_s"] = float("nan")
+    return out
+
+
+def format_intervals(intervals) -> str:
+    """Display finite bounds without rounding away a covered boundary instant."""
+    return ", ".join(f"[{float(a)!r}, {float(b)!r}] s" for a, b in intervals)
+
+#: `ok` -- the source ran to completion over its interval set, emitting `n_events` (which
 #: may be 0, and that is the point of the table). `skipped` -- it was not run, `reason` says why
 #: (no such diagnostic on this shot, out of scope for the pass). `error` -- it was run and
 #: failed, `reason` carries the failure. Only `ok` rows contribute coverage.
 STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 
 #: Sources whose `ok` row is NOT an observation of the plasma. `text` runs the lexicon over the
-#: shot's own logbook entries and labelmaker records that it ran, over the shot's span -- but
+#: shot's own logbook entries and labelmaker records that it ran, with no coverage -- but
 #: "the word was looked for" says nothing about what any diagnostic showed, which is the same
 #: policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
 #: source that writes them. `database` is the same kind of claim from the other direction: a
@@ -113,23 +159,26 @@ def for_shot(db, shot: int, sources: Iterable[str] | None = None) -> pd.DataFram
 
 @dataclass(frozen=True)
 class CoverageSummary:
-    """Diagnostic finite spans and unknown-coverage names from a shot's own rows."""
+    """Diagnostic intervals, unknown coverage, and legacy hull provenance."""
 
     spans: tuple[tuple[float, float], ...]
     unknown: tuple[str, ...]
+    legacy: tuple[str, ...] = ()
 
     @classmethod
     def from_rows(cls, rows: Iterable[Mapping]) -> CoverageSummary:
-        spans, unknown = [], set()
+        spans, unknown, legacy = [], set(), set()
         for row in rows:
             if row['status'] != 'ok' or is_non_diagnostic(row['source']):
                 continue
-            lo, hi = float(row['t_cov0_s']), float(row['t_cov1_s'])
-            if isfinite(lo) and isfinite(hi):
-                spans.append((lo, hi))
+            intervals = row_intervals(row)
+            if intervals:
+                spans.extend(intervals)
+                if legacy_hull(row):
+                    legacy.add(row['source'])
             else:
                 unknown.add(row['source'])
-        return cls(tuple(spans), tuple(sorted(unknown)))
+        return cls(tuple(spans), tuple(sorted(unknown)), tuple(sorted(legacy)))
 
 
 def coverage_state(sources: pd.DataFrame | CoverageSummary, t0_s=None, t1_s=None) -> str:
@@ -147,7 +196,7 @@ def coverage_state(sources: pd.DataFrame | CoverageSummary, t0_s=None, t1_s=None
 def _frame(rows: Sequence[Mapping]) -> pd.DataFrame:
     if not rows:
         return empty_sources()
-    out = pd.DataFrame(list(rows))
+    out = with_interval_columns(pd.DataFrame(list(rows)))
     missing = [c for c in SOURCES_COLUMNS if c not in out.columns]
     if missing:
         raise ValueError(
@@ -186,6 +235,8 @@ def source_row(
     run_id: str = "",
     git_sha: str = "",
     written_at: str = "",
+    intervals: str | None = None,
+    min_gap_s: float = float("nan"),
 ) -> dict:
     """One contract row with every column present. Keyword-only past `source` on purpose: a
     positional coverage pair is exactly how a start and an end get swapped."""
@@ -196,6 +247,7 @@ def source_row(
         "t_cov0_s": float(t_cov0_s), "t_cov1_s": float(t_cov1_s), "n_events": int(n_events),
         "diag": str(diag), "channel": int(channel), "pass_name": str(pass_name),
         "run_id": str(run_id), "git_sha": str(git_sha), "written_at": str(written_at),
+        "intervals": intervals, "min_gap_s": float(min_gap_s),
     }
 
 
@@ -209,7 +261,9 @@ def read_sources(path: Path | str) -> pd.DataFrame:
     path = Path(path)
     if not path.exists():
         return empty_sources()
-    return pd.read_parquet(path)[list(SOURCES_COLUMNS)].astype(SOURCES_DTYPES)
+    return with_interval_columns(pd.read_parquet(path))[list(SOURCES_COLUMNS)].astype(
+        SOURCES_DTYPES
+    )
 
 
 def sources_union(shots: Iterable[int], *, events_dir: Path | str) -> pd.DataFrame:
@@ -270,9 +324,7 @@ def _observing(sources: pd.DataFrame) -> pd.DataFrame:
 
 
 def _finite(sources: pd.DataFrame) -> np.ndarray:
-    lo = sources["t_cov0_s"].to_numpy(dtype=float)
-    hi = sources["t_cov1_s"].to_numpy(dtype=float)
-    return np.isfinite(lo) & np.isfinite(hi)
+    return np.array([bool(row_intervals(r)) for r in sources.to_dict("records")], dtype=bool)
 
 
 def unknown_coverage_rows(sources: pd.DataFrame) -> pd.DataFrame:
@@ -302,11 +354,8 @@ def observing_rows(
     ok = _observing(sources)
     if not len(ok):
         return ok
-    keep = _finite(ok)
-    if t0_s is not None:
-        keep &= ok["t_cov1_s"].to_numpy(dtype=float) >= float(t0_s)
-    if t1_s is not None:
-        keep &= ok["t_cov0_s"].to_numpy(dtype=float) <= float(t1_s)
+    keep = [any((t0_s is None or hi >= t0_s) and (t1_s is None or lo <= t1_s)
+                for lo, hi in row_intervals(r)) for r in ok.to_dict("records")]
     return ok[keep]
 
 
@@ -323,7 +372,8 @@ def coverage_span(sources: pd.DataFrame) -> tuple[float, float] | None:
     ok = observing_rows(sources)
     if ok.empty:
         return None
-    return float(ok["t_cov0_s"].min()), float(ok["t_cov1_s"].max())
+    spans = CoverageSummary.from_rows(ok.to_dict("records")).spans
+    return min(a for a, _ in spans), max(b for _, b in spans)
 
 
 def covers(sources: pd.DataFrame, t0_s: float | None, t1_s: float | None) -> bool | None:
