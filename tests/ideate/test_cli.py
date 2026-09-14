@@ -412,8 +412,11 @@ def test_explicitly_empty_data_root_reports_a_clear_error(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("command", ["fetch", "serve", "curate"])
-def test_dropped_commands_are_not_advertised(command):
+def test_retired_commands_and_restored_serve(command):
     parser = cli.build_parser()
+    if command == "serve":
+        assert parser.parse_args([command]).func is cli.cmd_serve
+        return
     with pytest.raises(SystemExit) as exc:
         parser.parse_args([command])
     assert exc.value.code == 2
