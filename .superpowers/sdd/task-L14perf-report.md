@@ -234,3 +234,83 @@ exit **0**; IDEATE **1,252 passed**, 132.69 s, exit **0**; required Ruff command
 passed, exit **0**. The labelmaker atexit XRootD FutureWarning printed after the
 successful summary and did not change its exit code. No commit occurred while
 any suite or real identity test was running.
+
+## Deliverable 3: AFTER profile and pilot sizing
+
+Profile completed at `c707b26`, exit **0**. Same physical GPU 1 on
+stellar-vis2 (V100S 32 GB), phase3 Python, shots 185786/185955/185956, both
+passes, batch cap 96, AMP, 6 prep / 6 prefetch / 0 tail, readonly text, no index.
+Both profiles completed 38 blocks / 1,170 tiles / 4,542 events. The original
+profile predates C3fix; the AFTER profile includes its required current coverage
+contract. Instrumentation synchronizes CUDA for attribution and disables much
+of the overlap; these throughput figures are not utilization-pilot measurements.
+
+| Phase | Before seconds | After seconds |
+|---|---:|---:|
+| Prepared-future wait | 6.635684 | 11.689123 |
+| Host tiling / pooled buffer fill | 0.637067 | 0.433324 |
+| H2D | 0.280518 | 0.224046 |
+| Successful forward, synchronized wall | 6.976396 | 7.791690 |
+| D2H | 1.717956 | 0.130861 |
+| Stitch (host before, device after) | 7.611698 | 0.204567 |
+| Device threshold/pack/statistics | — | 0.254318 |
+| Describe | 5.263547 | 6.537106 |
+| Mask write | 2.278039 | 3.655924 |
+| Events write | 0.230823 | 0.478939 |
+| Sources write | 0.063069 | 0.062074 |
+| Inference excluding input/plan waits | 18.814418 | 9.370647 |
+
+The AFTER inference total subtracts measured input/plan waits from the pooled
+generator time (24.980185 s inclusive), matching the BEFORE scope. Plan wait
+was 3.920415 s after; it was not separately captured before. The driver JSON
+retains the inclusive pooled timer, so its `infer_s` must not be summed with
+`prep_wait_s`. Tail-workers-zero finishing is synchronous even though the
+future-result-only `tail_wait_s` is near zero in this schedule; use `finish_s`.
+The driver wall was **43.27 -> 44.55 s**, **27.04 -> 26.26 tiles/s**: overall
+instrumented throughput did not improve. Exposed prep waits and synchronous
+CPU tails dominate after the GPU-side savings. No improvement is claimed for
+that whole-run measurement.
+
+D2H was **107,683,288 bytes** versus 2,453,667,840 bytes
+for the old tile probabilities (**22.786x fewer**). Device peak allocation was
+18.212 GiB after (17.647 GiB before); allocator cache is a separate measurement.
+The AFTER run used the existing halving fallback for V100S OOM attempts.
+Profiles are `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/profile-before/` and `profile-after/`: JSON,
+Chrome trace and operator table. The updated profiler records device stitching,
+compaction, full-buffer H2D and total prep-worker service time.
+
+Pilot sizing is fixed BEFORE submission, with no threshold changes:
+
+- Measured AFTER prep work: **60.277594 worker-seconds** for 1,170 tiles;
+  describe **6.537106 s** plus finishing **12.964 s**. Six prep workers leave
+  11.689123 s of observed wait.
+- As a conservative A100 service estimate, L12's sampled GPU-active time is
+  `152.72 * 0.069 = 10.53768 s` for 7,478 tiles, or approximately 709.64
+  tiles/active-second. This is a sizing estimate from sampled utilization,
+  not a new A100 kernel benchmark. The 1,170-tile equivalent is 1.648714 s.
+- `ceil(60.277594 / 1.648714) = 37` prep workers and
+  `ceil((6.537106 + 12.964) / 1.648714) = 12` tail workers; **50 CPUs**
+  including the parent, **prefetch 37**, unchanged **tile batch 96**. This
+  deliberately supplies CPU capacity for the faster A100; the one pilot must
+  determine whether IPC, bandwidth or startup limits it instead.
+- **68G memory**: conservative reservation envelope
+  `(3.846 parent + 49 * 0.951 worker) * 1.3 = 65.585 GiB`, rounded up.
+  This sum is NOT a measured cgroup RSS: shared pages make worker VmHWM
+  non-additive. Actual sampled memory and sacct MaxRSS will both be reported.
+- **00:07:00**: `44.55 / 3 * 20 * 1.3 = 386.1 s`, rounded up to seven
+  minutes. This uses the slower instrumented AFTER wall, with headroom; it
+  stays below the 30-minute limit. No allocation was shrunk to pass a gate.
+
+profile-before profile.json SHA-256: `e269f56276707e1598524de09f5a39dd22c0d954f57f96f76d27dd6ebc75754d`.
+
+profile-after profile.json SHA-256: `0f7191167db0268b343cca1b54e5915061f18eb97e750938140c5e042a391569`.
+
+Exact AFTER command (exit 0):
+
+```bash
+L14_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/profile-after
+printf 'Resolved root: %s\n' "$L14_ROOT"
+mkdir -p "$L14_ROOT/text"
+cp /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/text/logs_subset.jsonl "$L14_ROOT/text/"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 CUDA_VISIBLE_DEVICES=1 XDG_CACHE_HOME="$L14_ROOT/cache" CUDA_CACHE_PATH="$L14_ROOT/cache/cuda" /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python -u .superpowers/sdd/profile_l14perf.py --shot-file /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt --limit 3 --passes wide zoom --root "$L14_ROOT" --corpus /scratch/gpfs/EKOLEMEN/foundation_model --unet /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt --device cuda --tile-batch 96 --amp --prep-workers 6 --prefetch 6 --tail-workers 0 --text-subset readonly --no-index --run-id profile-after > "$L14_ROOT/profile.log" 2>&1
+```
