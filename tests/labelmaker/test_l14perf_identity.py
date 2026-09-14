@@ -118,6 +118,7 @@ def test_pool_fills_batches_across_shots(tmp_path, synth_shot, tails):
         paths=pooled,
         model=model,
         tile_batch=5,
+        pool_cpu_forwards=True,
         prep_workers=2,
         prefetch=2,
         tail_workers=tails,
@@ -203,7 +204,8 @@ def test_pooled_oom_retries_transfer_and_forward(monkeypatch):
     ]
     expected = [masks.infer(Net(), spec, "cpu", batch=1) for spec in specs]
     monkeypatch.setattr(masks, "_copy_batch", copy)
-    actual = list(masks.infer_pooled(Net(), enumerate(specs), "cpu", batch=5))
+    actual = list(masks.infer_pooled(Net(), enumerate(specs), "cpu", batch=5,
+                           preserve_batches=False))
     assert calls[0] == 5 and 1 in calls
     assert [token for token, _ in actual] == [0, 1, 2]
     for (_, compact), reference in zip(actual, expected, strict=True):
@@ -351,10 +353,188 @@ def test_full_transfers_preserve_reference_forward_boundaries(monkeypatch):
     model = CountedNet()
     actual = list(
         masks.infer_pooled(
-            model, enumerate(specs), "cpu", batch=3, preserve_batches=True
+            model, enumerate(specs), "cpu", batch=3
         )
     )
     assert copies == [3, 3, 3]
     assert model.batches == [2, 3, 2, 2]
     assert [token for token, _ in actual] == [0, 1, 2]
     assert all(isinstance(value, masks.CompactMask) for _, value in actual)
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_reference_batches_are_the_default_on_every_device(device):
+    import torch
+
+    assert masks._preserves_reference_batches(torch.device(device)) is True
+
+
+@pytest.mark.parametrize("failures", [1, 2])
+@pytest.mark.parametrize("widths", [[20, 20, 20], [960, 1999, 777, 20]])
+def test_reference_transfer_oom_is_bounded_and_isolated(monkeypatch, failures, widths):
+    import numpy as np
+    import torch
+
+    original = masks._copy_batch
+    calls, clears = [], []
+
+    def copy(host, device, stream):
+        calls.append(len(host))
+        # Fail the second buffer, including a block with a pending group.
+        if 2 <= len(calls) < 2 + failures:
+            raise torch.cuda.OutOfMemoryError("transfer failed")
+        return original(host, device, stream)
+
+    monkeypatch.setattr(masks, "_copy_batch", copy)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: clears.append(True))
+    specs = [np.zeros((512, width), dtype=np.float32) for width in widths]
+    batch = 1 if widths[0] == 20 else 3
+    actual = list(masks.infer_pooled(
+        PaintedNet(), enumerate(specs), "cpu", batch=batch, preserve_batches=True,
+    ))
+    assert [token for token, _ in actual] == list(range(len(specs)))
+    failed = [token for token, value in actual if isinstance(value, Exception)]
+    assert failed == ([1] if failures == 2 else [])
+    assert isinstance(actual[-1][1], masks.CompactMask)
+    assert len(clears) == 1
+
+
+def test_nonreference_oom_size_resets_at_block_boundary():
+    import numpy as np
+    import torch
+
+    class OOMOnce(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.batches = []
+
+        def forward(self, x):
+            self.batches.append(len(x))
+            if len(self.batches) == 1:
+                raise torch.cuda.OutOfMemoryError("one transient forward OOM")
+            return (torch.cat([x, -x], dim=1),)
+
+    # Six tiles: block 1 ends halfway through the second transfer buffer.
+    specs = [np.zeros((512, 2600), dtype=np.float32) for _ in range(3)]
+    model = OOMOnce()
+    actual = list(masks.infer_pooled(
+        model, enumerate(specs), "cpu", batch=4, preserve_batches=False,
+    ))
+    assert all(isinstance(value, masks.CompactMask) for _, value in actual)
+    assert model.batches == [4, 2, 2, 2, 2, 4, 4, 2]
+
+
+@pytest.mark.parametrize("preserve", [False, True])
+def test_shared_batch_timeout_only_fails_the_expired_shot(monkeypatch, preserve):
+    import time
+
+    import numpy as np
+    import torch
+
+    from labelmaker.run import StageTimeout, time_limit
+
+    class SlowOnce(torch.nn.Module):
+        slow = True
+
+        def forward(self, x):
+            if self.slow:
+                self.slow = False
+                time.sleep(2)
+            return (torch.cat([x, -x], dim=1),)
+
+    at = time.monotonic()
+    deadlines = {0: at + 0.5, 1: at + 10}
+
+    def remaining(token):
+        return deadlines[token] - time.monotonic()
+
+    def guard(tokens):
+        if min(remaining(token) for token in tokens) <= 0:
+            raise StageTimeout("shot expired")
+        return time_limit(1)
+
+    specs = [np.zeros((512, 960), dtype=np.float32) for _ in range(2)]
+    actual = list(masks.infer_pooled(
+        SlowOnce(), enumerate(specs), "cpu", batch=4, preserve_batches=preserve,
+        forward_context=guard, remaining=remaining,
+    ))
+    assert [token for token, _ in actual] == [0, 1]
+    assert isinstance(actual[0][1], StageTimeout)
+    assert isinstance(actual[1][1], masks.CompactMask)
+
+
+@pytest.mark.parametrize("broken", ["interleaved", "last", "extra"])
+def test_reference_group_invariants_raise_real_exceptions(broken):
+    from contextlib import nullcontext
+
+    import torch
+
+    ref = masks._ReferenceBatches(PaintedNet(), torch.device("cpu"), 4, False,
+                                  nullcontext)
+    state = masks._PooledBlock(0, 960)
+    copied = torch.zeros((3, 1, 512, 512))
+    if broken == "interleaved":
+        ref.consume(copied, [(state, 0, 1, 0, False)])
+        spans = [(masks._PooledBlock(1, 20), 0, 1, 0, True)]
+    else:
+        spans = [(state, 0, 3 if broken == "extra" else 2, 0, False)]
+    with pytest.raises(RuntimeError, match="reference"):
+        ref.consume(copied, spans)
+
+
+def test_compact_activity_rejects_a_different_threshold(tmp_path, synth_shot,
+                                                       monkeypatch):
+    from labelmaker.events import channels, transients
+
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    y, fs, t0, t1 = masks.read_waveform(corpus / f"{SHOT}_processed.h5", "mhr", 0)
+    prepared = pipeline.prep_block(y, fs, t0, t1,
+                                  channels.ChannelSpec("mhr", 0, "magnetics"),
+                                  "wide", norm="record", window=None)
+    compact = masks.infer(PaintedNet(), prepared.spectrogram, "cpu", compact=True)
+    monkeypatch.setattr(transients, "ACTIVITY_THR", masks.PROB_THRESHOLD + 0.1)
+    with pytest.raises(AssertionError):
+        pipeline.describe_block(prepared, compact, unet_sha256=FAKE_SHA)
+
+
+@pytest.mark.parametrize("pool_cpu_forwards", [False, True])
+def test_driver_shared_batch_deadlines_are_attributed_per_shot(
+    tmp_path, synth_shot, monkeypatch, pool_cpu_forwards,
+):
+    import time
+
+    from labelmaker.events import channels
+
+    corpus = tmp_path / "corpus"
+    paths = _paths_under(tmp_path, "deadlines", corpus)
+    for shot in [SHOT, SHOT + 1]:
+        _write_corpus(corpus, shot, synth_shot)
+    original = driver._PooledShot
+
+    def staggered(*args, **kwargs):
+        state = original(*args, **kwargs)
+        if state.shot == SHOT:
+            state.started -= 9.5
+        return state
+
+    class SlowOnce(PaintedNet):
+        slow = True
+
+        def forward(self, x):
+            if self.slow:
+                self.slow = False
+                time.sleep(5)
+            return super().forward(x)
+
+    monkeypatch.setattr(driver, "_PooledShot", staggered)
+    result = driver.run_shots(
+        [SHOT, SHOT + 1], paths=paths, model=SlowOnce(), prep_workers=0,
+        prefetch=1, tail_workers=0, pooled=True, pool_cpu_forwards=pool_cpu_forwards,
+        plan=(channels.ChannelSpec("mhr", 0, "magnetics"),),
+        tile_batch=4, timeout_s=10,
+    )
+    assert [row["status"] for row in result.rows] == ["error", "ok"]
+    assert result.rows[1]["n_blocks"] == 2
+    assert not any("StageTimeout" in value
+                   for value in result.rows[1]["skipped"].values())
