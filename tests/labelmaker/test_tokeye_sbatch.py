@@ -28,7 +28,7 @@ def test_array_reserves_one_gpu_and_enough_cpus_for_both_pools():
     assert prefetch >= workers
     assert "--mem=" in text and "--time=" in text
     assert "/runs/slurm/%A_%a.out" in text
-    assert 'srun --cpu-bind=cores "$ROOT/envs/phase3/bin/python" -u' in text
+    assert 'srun --cpu-bind=cores "$PHASE3_PYTHON" -u' in text
     for flag in ('--chunk "$SLURM_ARRAY_TASK_ID"', '--n-chunks "$N_CHUNKS"',
                  "--rank 0 --world 1", "--device cuda", "--plan round1",
                  "--tail-workers 1", "--text-subset readonly", "--no-index",
@@ -120,5 +120,6 @@ def test_scratch_root_separates_outputs_from_readonly_runtime(tmp_path):
     assert args[args.index('--root') + 1] == str(root)
     assert args[args.index('--unet') + 1] == '/readonly/checkpoint.pt'
     assert args[1] == '/readonly/phase3/bin/python'
-    assert str(root) in done.stdout
+    assert f'Resolved root: {root}' in done.stdout
+    assert done.stdout.index('Resolved root:') < done.stdout.index('job 1234_0')
     assert '/production' not in ' '.join(args)

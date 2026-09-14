@@ -82,3 +82,30 @@ sacct MaxRSS 6,750,340K (6.438 GiB), torch peak allocated 17.647 GiB.
   ROOT override must be honored and the resolved root printed before writes.
 - Profile complete; implementation, identity verification, pilot, final suites,
   documentation and final report pending.
+
+## Resumed deliverable 1: WIP tests and writable root
+
+Resumed at `38a3c13` (current reference includes C3fix). The L12 report is gone;
+only the quoted brief/header numbers above are used. Initial worktree was clean.
+Both WIP tests were run first, with the real test opted in: **2 failed, exit 1**.
+The sbatch test exposed ROOT losing to LABELMAKER_ROOT. The real test exposed
+an unsupported `process_shot(index=False)` argument before reaching inference.
+Both tests are retained: the first guards output isolation, and the second is
+needed for real checkpoint identity. Removed the stale reference-only index
+argument and strengthened the real test to compare complete NPZ file bytes and
+hashes, in addition to array bytes and exact events/sources frames (including
+`intervals` and `min_gap_s`). Compact/pooled API checks await deliverable 2;
+the opt-in skip is not identity evidence.
+
+The sbatch now resolves and prints ROOT before execution, lets explicit ROOT
+win over activation, and uses independent RUNTIME_ROOT / PHASE3_PYTHON / UNET
+inputs. Scheduler contract tests updated for the independent Python path.
+Commands (from this worktree, common exports on every pixi command):
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 TMPDIR=/tmp/l14perf
+L14PERF_REAL_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/identity-wip OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m pytest tests/labelmaker/test_tokeye_sbatch.py::test_scratch_root_separates_outputs_from_readonly_runtime tests/labelmaker/test_l14perf_real_identity.py -q -W error -p no:cacheprovider -s
+# Initial: 2 failed, exit 1.
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m pytest tests/labelmaker/test_tokeye_sbatch.py tests/labelmaker/test_l14perf_real_identity.py -q -W error -p no:cacheprovider
+# After fix: 7 passed, 1 opt-in skip, exit 0.
+```
