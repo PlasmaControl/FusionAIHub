@@ -211,17 +211,17 @@ _BLOCK_STEPS = {
     "channel": "tokeye_track",
     "read": "tokeye_track",
     "mask": "tokeye_track",
+    "track": "tokeye_track",
     "norm": "norm",
 }
 
-#: Step name -> the sources it would have written. A step that produces two
-#: sources gets a row for each, so "did `tokeye_transient` run" has an
-#: answer whichever way the ELM clock went. A step with no entry here is
+#: Step name -> the sources it would have written. The D-alpha clock and
+#: TokEye transients run independently. A step with no entry here is
 #: its own source name - `qh_flattop` and `nbi_counter` are recorded skips
 #: that are not event sources at all, and inventing a source for them would
 #: be worse than letting them name themselves.
 _STEP_SOURCES = {
-    "elm_clock": ("tokeye_transient", "elm_clock"),
+    "elm_clock": ("elm_clock",),
     "sawtooth": ("ece_sawtooth",),
     "lh": ("dalpha_lh",),
     "actuator": ("actuator",),
@@ -233,6 +233,7 @@ _STEP_SOURCES = {
 #: fill the `diag` column of a SKIPPED step's row, so that a skipped
 #: sawtooth row and a sawtooth row that ran carry the same key.
 _STEP_DIAGS = {
+    "elm_clock": "filterscopes",
     "sawtooth": "ece",
     "lh": "filterscopes",
 }

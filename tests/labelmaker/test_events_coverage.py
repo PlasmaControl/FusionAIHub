@@ -356,7 +356,7 @@ def test_an_elm_on_an_edge_column_is_moved_into_coverage_and_says_so():
     # The ordinary row is untouched and carries no key at all.
     assert (mid.t0_s, mid.t1_s) == (inside, inside)
     assert "clipped" not in mid.attrs
-    # And the invariant holds for every row the clock wrote, quiet included.
-    assert any(e.phenomenon == transients.FREE_PHENOMENON for e in rows)
+    # A mask peak never supplies the D-alpha clock's quiet intervals.
+    assert not any(e.phenomenon == transients.FREE_PHENOMENON for e in rows)
     for e in rows:
         assert t_cov[0] <= e.t0_s <= e.t1_s <= t_cov[1]

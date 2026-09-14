@@ -91,6 +91,15 @@ phenomena:
       - no elms
       - without elms
 
+  transient:
+    title: Transient activity
+    aliases:
+      - transient
+      - transients
+      - transient activity
+    negatives:
+      - no transients
+
   tearing:
     title: Tearing mode
     aliases:
