@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 from ideate.eval import prompts as ev
+from ideate.retrieval import channels as ch_mod
 from ideate.schema import EvalReport, Range
 from ideate.shotdb import store
 
@@ -168,8 +169,14 @@ def test_channel_participation_counts_the_channels_that_had_something_to_say(
     # every prompt; ignite_knn has no embeddings in this database and fires on none.
     assert report.channel_participation["text_knn"] == pytest.approx(5 / 6)
     assert report.channel_participation["ignite_knn"] == 0.0
-    assert set(report.channel_participation) == {
-        "scalar_knn", "text_knn", "bm25", "ignite_knn"
+    # The phenomenon channel reads the four evidence classes -- event rows, label products,
+    # `text_claims` rows and the curated tables -- and `write_db` writes none of them: the
+    # fixture's log sentences are dense/BM25 text, not claims. So it has nothing to say on any
+    # prompt, p001's resolvable "QH-mode with a clear EHO" included.
+    assert report.channel_participation["phenomenon"] == 0.0
+    # Every registered channel is reported, so a new channel cannot go unmeasured.
+    assert set(report.channel_participation) == set(ch_mod.CHANNELS) == {
+        "scalar_knn", "text_knn", "bm25", "ignite_knn", "phenomenon"
     }
 
 

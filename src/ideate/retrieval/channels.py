@@ -493,7 +493,7 @@ def phenomenon(q: QueryState, db: ShotDB) -> list[tuple[str, float]]:
             (db.phenomenon_evidence(int(row.shot), pid, row.segment), weight)
             for pid, weight in resolved
         ]
-        evidence = [(ev, weight) for ev, weight in evidence if ph._has_evidence(ev)]
+        evidence = [(ev, weight) for ev, weight in evidence if ph.has_evidence(ev)]
         if not evidence:
             continue
         tier = max(ph._tier(ev) for ev, _ in evidence)
