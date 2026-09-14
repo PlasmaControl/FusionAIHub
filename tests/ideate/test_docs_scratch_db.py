@@ -50,7 +50,13 @@ def test_the_section_quotes_the_origin_labels_the_code_prints(monkeypatch):
     assert config.data_root_origin() in text
     monkeypatch.delenv("IDEATE_DATA_ROOT")
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
-    assert config.data_root_origin() in text
+    # The third label names the resolved paths file in full -- an absolute path, and so specific
+    # to the checkout -- because `IDEATE_CONFIG_DIR` can move it. The docs quote the repo-relative
+    # path it is in a plain checkout, which is that label minus the repo root.
+    label = config.data_root_origin()
+    assert label.endswith(" default"), label
+    resolved = Path(label.removesuffix(" default"))
+    assert f"{resolved.relative_to(REPO)} default" in text
 
 
 def test_the_section_says_what_the_publish_guard_refuses_and_how_to_override_it():
