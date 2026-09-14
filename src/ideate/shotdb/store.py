@@ -188,8 +188,11 @@ class ShotDB:
         frame = self.event_sources
         if self.has_event_sources or not frame.empty or 'event_sources' in self.load_errors:
             return frame
-        observed = self.events[self.events['evidence_kind'].isin(('detector', 'heuristic'))]
         keys = ['shot', 'source', 'diag', 'channel', 'pass_name', 't_cov0_s', 't_cov1_s']
+        missing = {*keys, 'evidence_kind'} - set(self.events.columns)
+        if missing:
+            raise KeyError(f"events table missing columns: {', '.join(sorted(missing))}")
+        observed = self.events[self.events['evidence_kind'].isin(('detector', 'heuristic'))]
         spans = observed.groupby(keys, dropna=False, sort=False).size().reset_index(name='n_events')
         return es._frame([es.source_row(**row) for row in spans.to_dict('records')])
 
