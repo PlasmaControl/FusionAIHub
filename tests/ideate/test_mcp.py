@@ -883,15 +883,8 @@ def test_the_instructions_do_not_promise_a_caveat_the_transport_cannot_deliver(i
     assert "caveats" in guarded(shot=100)
 
 
-def test_the_project_mcp_config_points_at_this_server():
-    """`.mcp.json` is what makes `claude` in this checkout see the server at all. It is the one
-    file nothing else in the suite would notice going stale."""
-    cfg = json.loads((REPO / ".mcp.json").read_text(encoding="utf-8"))
-    entry = cfg["mcpServers"]["ideate"]
-    assert entry["args"][-2:] == ["-m", "ideate.mcp"]
-    assert os.path.isabs(entry["cwd"])
-    # A shared config can launch the primary checkout from a linked worktree.
-    # Reject unrelated repositories while accepting that supported layout.
+def _is_repository_checkout_root(path):
+    """Allow linked checkout roots, but neither subdirectories nor other repos."""
     def common_git_dir(path):
         result = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--path-format=absolute",
@@ -899,7 +892,38 @@ def test_the_project_mcp_config_points_at_this_server():
         )
         return Path(result.stdout.strip()).resolve()
 
-    assert common_git_dir(entry["cwd"]) == common_git_dir(REPO)
+    root = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+        check=True, capture_output=True, text=True,
+    )
+    return (
+        Path(path).resolve() == Path(root.stdout.strip()).resolve()
+        and common_git_dir(path) == common_git_dir(REPO)
+    )
+
+
+@pytest.mark.parametrize("candidate, expected", [
+    ("checkout", True), ("subdirectory", False), ("unrelated", False),
+])
+def test_mcp_cwd_requires_a_root_of_this_repository(tmp_path, candidate, expected):
+    if candidate == "unrelated":
+        path = tmp_path / "unrelated"
+        subprocess.run(["git", "init", str(path)], check=True, capture_output=True)
+    else:
+        path = REPO if candidate == "checkout" else REPO / "docs"
+    assert _is_repository_checkout_root(path) is expected
+
+
+def test_the_project_mcp_config_points_at_this_server():
+    """`.mcp.json` is what makes `claude` in this checkout see the server at all. It is the one
+    file nothing else in the suite would notice going stale."""
+    cfg = json.loads((REPO / ".mcp.json").read_text(encoding="utf-8"))
+    entry = cfg["mcpServers"]["ideate"]
+    assert entry["args"][-2:] == ["-m", "ideate.mcp"]
+    assert os.path.isabs(entry["cwd"])
+    # A shared config can launch any checkout root of this repository,
+    # including the primary checkout when tested from a linked worktree.
+    assert _is_repository_checkout_root(entry["cwd"])
 
 
 def test_an_unreadable_optional_table_is_recorded_by_the_store_not_raised(ideate_db):
