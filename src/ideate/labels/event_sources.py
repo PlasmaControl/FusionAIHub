@@ -68,7 +68,9 @@ LEGACY_HULL_CAVEAT = "coverage recorded as a hull by an older writer; interior g
 def legacy_hull(row: Mapping) -> bool:
     """Missing/null intervals identify older source writers and legacy event rows."""
     value = row.get("intervals")
-    return value is None or (not isinstance(value, (str, list, tuple)) and pd.isna(value))
+    if isinstance(value, (str, list, tuple, np.ndarray)):
+        return False
+    return value is None or bool(pd.isna(value))
 
 
 def row_intervals(row: Mapping) -> tuple[tuple[float, float], ...]:
@@ -99,7 +101,8 @@ def with_interval_columns(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def format_intervals(intervals) -> str:
-    return ", ".join(f"[{a:g}, {b:g}] s" for a, b in intervals)
+    """Display finite bounds without rounding away a covered boundary instant."""
+    return ", ".join(f"[{float(a)!r}, {float(b)!r}] s" for a, b in intervals)
 
 #: `ok` -- the source ran to completion over its interval set, emitting `n_events` (which
 #: may be 0, and that is the point of the table). `skipped` -- it was not run, `reason` says why
@@ -108,7 +111,7 @@ def format_intervals(intervals) -> str:
 STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 
 #: Sources whose `ok` row is NOT an observation of the plasma. `text` runs the lexicon over the
-#: shot's own logbook entries and labelmaker records that it ran, over the shot's span -- but
+#: shot's own logbook entries and labelmaker records that it ran, with no coverage -- but
 #: "the word was looked for" says nothing about what any diagnostic showed, which is the same
 #: policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
 #: source that writes them. `database` is the same kind of claim from the other direction: a
