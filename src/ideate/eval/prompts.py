@@ -262,20 +262,22 @@ def _proxy_hit(prompt: EvalPrompt, shots: list[int], db) -> bool | None:
     satisfies them -- that is a hard filter, so anything else would be a bug rather than a miss.
     A prompt that expects neither is not machine-checkable and returns None instead of a free pass.
 
-    `evidence()` is called with this branch's signature and no `label_floor`. When I9a's
-    keyword-only `label_floor` lands, this call must pass the SAME floor `locate()` passes at its
-    own call site: the proxy grade is about the shots a user would have been shown, so a floor
-    that changes what `locate` returns and not what this reads would make the two disagree
-    silently. `label_floor=None` reads the configured default, which is what `locate` uses today.
+    `evidence()` is read at `phenomena.configured_label_floor()`, the SAME floor `locate()`
+    passes at its own call site, and it is passed explicitly: the proxy grade is about the
+    shots a user would have been shown, so a floor that changed what `locate` returns and not
+    what this reads would make the two disagree silently.
     """
     top = shots[:PROXY_K]
     if not top:
         return False
+    floor = ph_mod.configured_label_floor()
     if prompt.expect_phenomena:
         for shot in top:
             if all(
                 ph_mod.has_evidence(
-                    ph_mod.evidence(shot, pid, db, prompt.expect_segment)
+                    ph_mod.evidence(
+                        shot, pid, db, prompt.expect_segment, label_floor=floor
+                    )
                 )
                 for pid in prompt.expect_phenomena
             ):

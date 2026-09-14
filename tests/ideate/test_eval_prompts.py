@@ -408,3 +408,25 @@ def test_resolution_really_is_identical_on_every_split(db, split_file, tmp_path)
         report = ev.run(db, evalset, split=split, split_path=split_file)
         per_split[split] = {c.category: c.resolution for c in report.categories}
     assert per_split["dev"] == per_split["eval"] == per_split["all"]
+
+
+def test_the_proxy_grade_reads_evidence_at_the_floor_locate_uses(
+    db, split_file, tmp_path, monkeypatch
+):
+    """The proxy grade is about the shots a user would have been shown, so `_proxy_hit` reads
+    `evidence()` at the label floor `locate` passes -- explicitly, not by defaulting to it. A
+    configured floor that `locate` honoured and this call left implicit would let the two drift
+    apart silently the day the default and the configured value differ."""
+    from ideate.retrieval import phenomena as ph
+
+    seen: list = []
+    real = ph.evidence
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("label_floor", "MISSING"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ph, "evidence", spy)
+    ev.run(db, _evalset(tmp_path), split="all", split_path=split_file)
+    assert seen, "p001 is a hand-graded phenomenon prompt, so evidence() must have been read"
+    assert set(seen) == {ph.configured_label_floor()}
