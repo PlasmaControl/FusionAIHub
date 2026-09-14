@@ -27,6 +27,12 @@ before. Counting them would let a sheet of 22 labelled rows, 20 of them on absen
 two windows and publish a number with a caveat beside it -- which is the same claim the floor
 exists to refuse, wearing an apology.
 
+**It refuses a phenomenon no detector writes**, before it reads the sheet. `fast_ion`,
+`detachment` and `rwm` have no event rule and no label head in `phenomena.yaml`, so no observed
+interval can ever exist for them and the recall would be 0.0 over any sheet at all -- a number
+about the registry's shape rather than about a detector. That is the same claim the 20-row floor
+refuses, so it gets the same answer: exit 2 and no number.
+
 **What counts as a detection.** An OBSERVED interval overlapping the annotated window, and
 nothing else. A forecast is a model's estimate of what was about to happen and a text claim is a
 sentence somebody typed; neither is a diagnostic showing the phenomenon inside that window, and
@@ -144,6 +150,21 @@ def recall(
 ) -> RecallReport:
     """Recall (and specificity) of the detectors for `phenomenon` over the sheet's test rows."""
     ph = ph_mod.registry()[phenomenon]
+    # Before the sheet, because this refusal is about the REGISTRY and not about the corpus. A
+    # phenomenon with no event rule and no label head has no detector to score: `_detected` can
+    # only ever return False, so every annotated `y` is a false negative and the confusion table
+    # is all-misses by construction. `fast_ion` is the case that made this necessary -- a topic
+    # nothing looks for -- and `detachment` and `rwm` are in the same position. Today it would
+    # refuse anyway because no sheet exists anywhere, which is an accident of the corpus and not
+    # a guarantee; see the module docstring's note about the 20-row floor, which is this same
+    # shape of number.
+    if not ph.events and not ph.labels:
+        raise RecallRefused(
+            f"{phenomenon}: no detector writes it -- `phenomena.yaml` gives it no event rule and "
+            "no label head, so `evidence()` can never report an observed interval for it and the "
+            "recall would be 0.0 for every sheet, whatever the detectors do. It is a text-only "
+            "topic; there is nothing here to score, so no number is reported."
+        )
     frame = load_sheet(root, phenomenon)
     n_rows = len(frame)
     test = frame.loc[frame["split"].astype(str) == TEST_SPLIT]
@@ -177,6 +198,9 @@ def recall(
         counts["fp" if hit else "tn"] += 0 if positive else 1
 
     caveats: list[str] = []
+    # Reachable only for a phenomenon with a label head but no event rule -- one with neither was
+    # refused above. `_detected` reads `ev.intervals`, which events build and labels do not, so
+    # the sentence is still literally true of that case.
     if not ph.events:
         caveats.append(
             f"no detector writes `{phenomenon}` (phenomena.yaml lists no event rule for it), so "
