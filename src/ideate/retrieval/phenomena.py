@@ -231,10 +231,12 @@ AVOID_COVERAGE_CAVEATS: dict[str, str] = {
 AVOID_DROPPED = "--avoid {token}: dropped {n} shot(s) with observed {title} evidence"
 #: `.format(n=..., caveat=...)` -- and what that observed evidence actually was.
 AVOID_DROPPED_CAVEATED = "{n} of those drops rest on evidence that carries: {caveat}"
-#: `.format(n=..., limit=...)` -- events that could not be shown to clear `--min-confidence`.
+#: `.format(n=..., limit=...)` -- events that could not be shown to clear `min_confidence`.
+#: Named for the PARAMETER, which the CLI flag and the MCP argument share, because this sentence
+#: now reaches a caller that has no flags and cannot act on being told to change one.
 DROPPED_UNSCORED = (
     "{n} event(s) not shown: the source recorded no confidence, so they cannot be shown to "
-    "reach --min-confidence {limit}"
+    "reach min_confidence {limit}"
 )
 
 
@@ -1311,6 +1313,7 @@ def locate(
     min_confidence: float = 0.0,
     avoid: Iterable[str] = (),
     notes: list[str] | None = None,
+    option: str = "--avoid",
 ) -> list[PhenomenonHit]:
     """The shots where `ph` happened, best evidence first.
 
@@ -1330,10 +1333,14 @@ def locate(
     `notes` is filled, when a list is passed, with what the run did to shots that are NOT in the
     result: how many `avoid` dropped and on what kind of evidence. A dropped shot cannot carry a
     caveat, so without this the strongest claim the filter makes is the one nothing reports.
+
+    `option` is how a rejected `avoid` token is named back to the caller: `--avoid` for the CLI,
+    `avoid` for a caller whose surface has no flags. A model told to fix a flag that is not in
+    its schema has no move.
     """
     ph = _phenomenon(ph)
     weights, saturation_n, floor = _config()
-    avoid_ids = _avoid_ids(avoid)
+    avoid_ids = _avoid_ids(avoid, option=option)
     cache: dict[tuple[int, str], Evidence] = {}
 
     def ev_for(shot: int, entry: Phenomenon) -> Evidence:

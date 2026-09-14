@@ -1,4 +1,4 @@
-"""`build_server()`: the three tools of `tools.py` and the `ideate://manifest` resource.
+"""`build_server()`: the four tools of `tools.py` and the `ideate://manifest` resource.
 
 `TOOLS` is the registry -- one list, appended to as later tasks add tools -- so there is one
 place that says what this server offers and `test_mcp` can assert against it. Registration is
@@ -14,7 +14,13 @@ import json
 from mcp.server import MCPServer
 
 from .. import __version__, config
-from .tools import describe_shot, get_events, never_raises, search_shots
+from .tools import (
+    describe_shot,
+    get_events,
+    never_raises,
+    phenomenon_locate,
+    search_shots,
+)
 
 #: Every tool this server offers, in the order an assistant sees them. Later tasks append.
 #:
@@ -23,14 +29,18 @@ from .tools import describe_shot, get_events, never_raises, search_shots
 #: framework's bare "Error executing tool <name>" -- holds for a tool whose author forgot an
 #: `except`, which is the only kind of tool it has ever failed for. `functools.wraps` keeps the
 #: signature and the docstring, so the schema below is still the plain function's.
-TOOLS = [never_raises(fn) for fn in (search_shots, describe_shot, get_events)]
+TOOLS = [
+    never_raises(fn)
+    for fn in (search_shots, describe_shot, get_events, phenomenon_locate)
+]
 
 INSTRUCTIONS = """\
 DIII-D shot retrieval over a locally built database of tokamak discharges.
 
 `search_shots` finds shots resembling a description, a reference shot or a set of conditions;
 `describe_shot` returns everything the database holds about one shot; `get_events` returns the
-time-resolved events for a shot.
+time-resolved events for a shot; `phenomenon_locate` goes the other way, from a phenomenon to
+the shots that show it.
 
 Every reply the tools THEMSELVES produce carries `caveats`, and they change what the reply means
 -- read them before answering. That promise covers application-level results, including failures
@@ -57,6 +67,16 @@ kinds of claim:
 having run over it -- absence is not evidence), `uncovered` (detectors ran but not over the
 window you asked about; the caveat names the span that was covered), `observed` (somebody looked
 and saw nothing, which is a real finding).
+
+`phenomenon_locate` takes the operators' words for a phenomenon ("an NTM", "edge harmonic
+oscillation") and returns the shots carrying evidence of it, ordered by evidence CLASS before
+score: an observed hit outranks a label-only hit, which outranks a forecast-only hit, which
+outranks a curated-list hit, which outranks a text-only hit. So a hit's rank is not its
+strength, and each hit's own `caveats` name the class it rests on -- report it as that class.
+Text that names no known phenomenon comes back as an error listing the ids, never as an empty
+result: "I do not know that word" and "no shot has one" are opposite answers. `notes` is the
+one list that is not about the hits -- it says what `avoid` removed and on what evidence, about
+shots that are therefore not below.
 
 Quote the operator logbook only from `record.human.log_entries`, verbatim.
 """

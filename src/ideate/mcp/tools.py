@@ -834,3 +834,174 @@ def _pool_report(q, db) -> dict:
         int(channels.hard_filter(q, db).sum()) if filtering else int(in_segment.sum())
     )
     return {"candidates": candidates, "nan_excluded": channels.nan_excluded(q, db)}
+
+
+#: Said when the text named no phenomenon the registry knows. The distinction is the whole
+#: reason this is an error and not an empty list: `resolve` returning nothing is a fact about
+#: the QUESTION, and an empty `hits` would be read as a fact about the database.
+NOTHING_RESOLVED = (
+    "nothing was searched for: the text names no phenomenon in the registry, which is not the "
+    "same as no shot having one"
+)
+
+#: Said when `hits` is empty, because an unqualified empty list from a phenomenon tool reads as
+#: "no shot has one" -- the same misreading `NOTHING_RESOLVED` exists to prevent, arriving by the
+#: other route. `phenomena.py` has no constant for this: its own vocabulary is per-shot
+#: (`NO_DETECTOR`, the coverage states), and this is a fact about the result set.
+NO_EVIDENCE = (
+    "no shot carried evidence for this phenomenon under these filters; absence of evidence "
+    "here is not a negative"
+)
+
+#: The standing rule about what a hit's RANK means, built from the registry's own sentences so
+#: that the ordering is stated once (`phenomena.RANKING_SENTENCE`, which `retrieval.yaml` and
+#: `docs/IDEATE.md` are pinned equal to) and the two classes that are not observations are named
+#: with the caveats the hits themselves carry.
+_TIER_CAVEAT = (
+    "hits are ordered by evidence CLASS before score -- {ranking} -- so a hit's rank is not its "
+    "strength: one carrying {text_only!r} or {database_only!r} rests on no observation at all"
+)
+
+#: Said when `notes` is non-empty, because `notes` is the one list here that is not about the
+#: hits: its sentences are about shots that were REMOVED.
+_NOTES_CAVEAT = (
+    "`notes` describes shots that are NOT in `hits` -- what `avoid` dropped and on what evidence "
+    "-- and says nothing about any hit below"
+)
+
+
+def phenomenon_locate(
+    phenomenon: str,
+    n: int = 20,
+    segment: str = "flat_top",
+    constraints: dict | None = None,
+    min_confidence: float = 0.0,
+    avoid: list[str] | None = None,
+) -> dict:
+    """Which shots show a phenomenon, best evidence first, and what KIND of evidence says so.
+
+    Args:
+        phenomenon: free text or a registry id -- "an NTM at 2 s", "edge harmonic oscillation",
+            "tearing". The operators' words are matched against the same lexicon that labels the
+            logbook, so a shot-log phrase works; text that names nothing known is an error
+            listing the ids, never an empty result.
+        n: how many hits to return.
+        segment: which part of the discharge the evidence must fall in, one of "full",
+            "ramp_up", "flat_top", "ramp_down". "flattop" is understood and corrected. It is the
+            window coverage is judged over too: a detector that read the ramp-up has not looked
+            at the flat top.
+        constraints: hard filters on segment scalars, `{"ip_mean": {"lo": 1.0e6, "hi": 1.5e6}}`
+            (a two-element `[lo, hi]` works too, and either bound may be null), exactly as
+            `search_shots` takes them. A shot whose value was never recorded never satisfies one.
+        min_confidence: drop events whose source scored them below this. An event with NO
+            recorded confidence cannot be shown to clear a bar and is dropped with a caveat
+            saying so -- which is not the same as the phenomenon not being there.
+        avoid: `["phenomenon:elm"]` -- drop shots a detector OBSERVED that phenomenon on. A shot
+            nothing looked at is KEPT, with a caveat saying why: no data is not a negative.
+
+    Returns:
+        `{"phenomenon": str, "title": str, "resolved": [{"id", "title", "weight"}],
+        "n": int, "hits": [...], "notes": [str], "caveats": [str]}` or
+        `{"error": str, "caveats": [str]}`.
+
+    `hits` are ordered by evidence CLASS first and only then by score: an observed hit outranks a
+    label-only hit, which outranks a forecast-only hit, which outranks a curated-list hit, which
+    outranks a text-only hit. Each hit keeps the classes apart in its own fields -- `intervals`
+    is what a diagnostic showed, `forecasts` is what a model estimated was about to happen,
+    `label_evidence` is a model's probability about the present, `text_snippets` is what the
+    operators wrote -- and its `caveats` name whichever class it is resting on. Report a hit as
+    the class it carries; a forecast or a logbook word is not a sighting.
+
+    `notes` is not about the hits. It is what the `avoid` filter did to shots that are NOT in
+    the result, which no surviving hit can report because the shots it speaks about are gone.
+    """
+    from ..retrieval import phenomena as ph
+
+    caveats: list[str] = []
+    seg = _segment(segment, caveats)
+    if seg is None:
+        return _error(f"unknown segment {segment!r}; the segments are {', '.join(SEGMENTS)}")
+    try:
+        resolved = ph.resolve(phenomenon)
+        reg = ph.registry()
+    except ph.PhenomenaError as exc:
+        return _error(str(exc), [*caveats, str(exc)])
+    if not resolved:
+        # The CLI's exit-2 case. An empty hit list would read as "no shot has one", which is the
+        # opposite answer, so the reply names the ids there are and says which question failed.
+        titles = ", ".join(f"{pid} ({entry.title})" for pid, entry in reg.items())
+        return _error(
+            f"no phenomenon resolved from {phenomenon!r}; try one of: {titles}",
+            [*caveats, NOTHING_RESOLVED],
+        )
+    db, err = _db()
+    if err:
+        return err
+    top = resolved[0][0]
+    notes: list[str] = []
+    try:
+        hits = ph.locate(
+            top,
+            db,
+            int(n),
+            segment=seg,
+            constraints={k: _range(v) for k, v in (constraints or {}).items()},
+            min_confidence=float(min_confidence),
+            avoid=avoid or (),
+            notes=notes,
+            # This caller has no flags: a rejected token is named for the ARGUMENT it came in on.
+            option="avoid",
+        )
+    except ph.PhenomenaError as exc:  # an `avoid` token that is not a phenomenon, say
+        return _error(str(exc), [*caveats, str(exc)])
+    except KeyError as exc:
+        return _error(
+            f"{exc.args[0]}. Columns are the ones describe_shot returns for a shot.", caveats
+        )
+    # A malformed constraint is a message, not a crash -- and the SAME message `search_shots`
+    # gives for the same failure through the same `_range` (tools.py, the `QueryState` arm): a
+    # model that learnt the constraint shape from one tool must not meet a second wording here.
+    except (ValueError, TypeError) as exc:
+        return _error(str(exc), caveats)
+
+    caveats.append(
+        _TIER_CAVEAT.format(
+            ranking=ph.RANKING_SENTENCE, text_only=ph.TEXT_ONLY, database_only=ph.DATABASE_ONLY
+        )
+    )
+    # `ShotDB.load` does not raise on a missing or torn evidence table -- it hands back the empty
+    # typed frame and records the failure -- because "the reader that needs the table reports it
+    # in its own words" (`shotdb.store.load`). This is that reader doing so, in the words
+    # `get_events` already uses: without them a database whose `labels join` has not run answers
+    # an empty `hits` list, which reads as "no shot has this phenomenon".
+    for name in ("events", "labels_wide", "text_claims", "event_sources"):
+        if name in db.load_errors:
+            caveats.append(f"could not read {name}.parquet: {db.load_errors[name]}")
+    if not (config.load_paths().db_dir / "events.parquet").exists():
+        caveats.append(NO_EVENTS)
+    # Which absence this is. A phenomenon nothing detects could never have produced an observed
+    # hit, whatever the filters did -- worth saying on a non-empty list too, where it is why
+    # every hit rests on text or a curated row -- and an empty list is otherwise three different
+    # facts wearing one reply, exactly as `search_shots` refuses to let them be.
+    if not reg[top].covering_sources:
+        caveats.append(ph.NO_DETECTOR.format(id=top))
+    if not hits:
+        caveats.append(NO_EVIDENCE)
+    # The fact that changes what every hit means, said where the hits are: a database with no
+    # observation in it cannot return an observed hit, however the rows are ranked.
+    n_events = len(db.events)
+    if n_events and not (db.events["evidence_kind"] != ph.FORECAST_KIND).any():
+        caveats.append(ph.ALL_FORECASTS.format(n=n_events))
+    if notes:
+        caveats.append(_NOTES_CAVEAT)
+    return {
+        "phenomenon": top,
+        "title": reg[top].title,
+        "resolved": [
+            {"id": pid, "title": reg[pid].title, "weight": weight} for pid, weight in resolved
+        ],
+        "n": len(hits),
+        "hits": [hit.model_dump(mode="json") for hit in hits],
+        "notes": notes,
+        "caveats": caveats,
+    }
