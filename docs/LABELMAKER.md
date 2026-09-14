@@ -303,7 +303,15 @@ q-min evaluate individual samples and bridge no missing sample (`min_gap_s=0`).
 TokEye uses one column of its pass's time grid; its waveform reader already rejects
 interior missing samples. Required inputs intersect their interval sets (L→H,
 counter-injection, q-min and QH); QH first unions its published track blocks.
+L→H counts a beam sample as measured when **any** pinj channel is finite, then
+intersects those intervals with D-alpha and density coverage.
 Combined rows retain the coarsest input gap resolution, without filling additional gaps.
+
+The `text` source is non-diagnostic and carries no coverage: its successful source
+row has `intervals=[]` and NaN display bounds, replacing the older shot-span hull.
+It records a logbook search, not a measurement. Consumers exclude it from
+`n_sources_unknown_coverage` and diagnostic coverage decisions; a text-only shot
+is `unprocessed`, never `uncovered` evidence.
 
 `ideate labels join` preserves both new columns. A window inside a gap is
 `uncovered`; one crossing a gap is `observed` with `coverage_partial=True` and a

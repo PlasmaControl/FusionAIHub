@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import replace
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -733,6 +734,20 @@ def test_a_shot_with_no_logbook_record_is_not_an_error(shot_file, paths,
     assert res.error == ""
     assert res.n_text == 0
     assert "no logbook record" in res.skipped["text"]
+
+
+def test_text_source_has_documented_non_diagnostic_empty_coverage(
+    shot_file, paths, model,
+):
+    _write_text(paths, SHOT, "fishbones through the current ramp")
+    _run(paths, model, lexicon=lx.load_lexicon())
+    rows = schema.read_sources(paths.sources_file(SHOT))
+    text = rows[rows.source == "text"].iloc[0]
+    assert text.status == "ok" and text.n_events == 1
+    assert json.loads(text.intervals) == []
+    assert np.isnan(text.t_cov0_s) and np.isnan(text.t_cov1_s)
+    docs = Path(__file__).resolve().parents[2] / "docs/LABELMAKER.md"
+    assert "The `text` source is non-diagnostic and carries no coverage" in docs.read_text()
 
 
 # ---------------------------------------------------------- the norm switch
@@ -1484,6 +1499,32 @@ def test_the_qh_proxy_takes_the_dalpha_clocks_span_not_the_magnetics_reference(
     assert (clock[2], clock[3]) == pytest.approx((cov0, cov1), abs=1e-9)
     ref = rows[("tokeye_transient", "mhr")]
     assert ref[2] < 0.05 and ref[3] > 0.75
+
+
+@pytest.mark.parametrize("n_nan_channels", [1, 8], ids=["one-beam", "all-beams"])
+def test_lh_coverage_needs_any_finite_beam_at_each_sample(
+    shot_file, paths, model, n_nan_channels,
+):
+    def lh_intervals():
+        _run(paths, model)
+        rows = schema.read_sources(paths.sources_file(SHOT))
+        row = rows[rows.source == "dalpha_lh"].iloc[0]
+        assert row.status == "ok", row.reason
+        return json.loads(row.intervals)
+
+    baseline = lh_intervals()
+    assert len(baseline) == 1
+    with h5py.File(shot_file, "a") as f:
+        t, y = f["pinj/xdata"][:], f["pinj/ydata"][:]
+        missing = (t >= .2) & (t <= .25)
+        y[:n_nan_channels, missing] = np.nan
+        f["pinj/ydata"][...] = y
+    actual = lh_intervals()
+    if n_nan_channels == 1:
+        assert actual == baseline, "one missing beam cannot erase the other seven"
+    else:
+        assert actual == [[baseline[0][0], t[t < .2][-1]],
+                          [t[t > .25][0], baseline[0][1]]]
 
 
 def test_all_multi_input_source_rows_preserve_each_inputs_interior_gaps(
