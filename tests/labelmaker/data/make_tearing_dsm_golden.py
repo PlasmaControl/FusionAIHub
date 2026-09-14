@@ -35,4 +35,6 @@ np.savez_compressed(
     meta=np.array([f"source={src}", f"sha256={hashlib.sha256(src.read_bytes()).hexdigest()}",
                    f"torch={torch.__version__}", "fork=/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/auton-survival"]),
 )
-print("wrote", out, s.shape, f"S(1000) mean {s[:, 2].mean():.4f} min {s[:, 2].min():.4f} max {s[:, 2].max():.4f}")
+print("wrote", out, s.shape,
+      f"S(1000) mean {s[:, 2].mean():.4f} min {s[:, 2].min():.4f} "
+      f"max {s[:, 2].max():.4f}")

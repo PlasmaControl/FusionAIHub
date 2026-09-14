@@ -830,6 +830,12 @@ def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(
     worker = got.totals["peak_worker_rss_gib"]
     assert worker > 0.0
     assert worker != got.totals["peak_rss_gib"]
+    by_pool = got.totals["worker_rss_gib"]
+    for role, n_workers in (("prep", prep_workers), ("tail", tail_workers)):
+        assert len(by_pool[role]) == n_workers
+        assert all(int(pid) != os.getpid() and rss > 0
+                   for pid, rss in by_pool[role].items())
+    assert worker == max(rss for group in by_pool.values() for rss in group.values())
 
 
 # ------------------------------------------------------------- the index
@@ -935,6 +941,24 @@ def test_main_can_rebuild_the_index_without_a_shot_list(staged, capsys):
     rows = pd.read_parquet(staged.events_index)
     assert sorted(set(rows["shot"])) == SHOTS
     assert "tokeye_masks: rebuilt" in capsys.readouterr().out
+
+
+def test_rebuild_can_write_inside_events_without_touching_root_index(staged):
+    assert driver.main(_argv(staged, "--shots", str(SHOTS[0]),
+                             "--no-index", "--run-id", "index-output")) == 0
+    staged.events_index.write_bytes(b"leave the canonical index alone")
+    out = staged.events / "events_index.parquet"
+    assert driver.main(["--root", str(staged.root), "--rebuild-index",
+                        "--index-out", str(out)]) == 0
+    assert set(pd.read_parquet(out)["shot"]) == {SHOTS[0]}
+    assert staged.events_index.read_bytes() == b"leave the canonical index alone"
+
+
+def test_index_output_requires_rebuild(staged):
+    with pytest.raises(SystemExit) as exc:
+        driver.main(_argv(staged, "--shots", str(SHOTS[0]),
+                          "--index-out", str(staged.events / "index.parquet")))
+    assert exc.value.code == 2
 
 
 # --------------------------------------------------------- the text subset
