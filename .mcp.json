@@ -3,7 +3,7 @@
     "ideate": {
       "command": "pixi",
       "args": ["run", "-e", "ideate-cpu", "python", "-m", "ideate.mcp"],
-      "cwd": "/scratch/gpfs/nc1514/FusionAIHub-LD1b"
+      "cwd": "/scratch/gpfs/nc1514/FusionAIHub"
     }
   }
 }
