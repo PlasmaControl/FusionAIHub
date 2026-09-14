@@ -311,9 +311,8 @@ response header and are displayed above the hits. `/api/meta` summarizes the
 manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
 sources. Unknown API paths return JSON 404.
 
-`configs/ideate/ui.yaml` contains only `version` and `server`. The older retrieval
-actuation/scenario APIs still read their defaults through `config.load_yaml("ui.yaml")`;
-those defaults now live in `ui_legacy.yaml` and are merged only for compatibility.
-The browser does not read them. Request-scoped paths keep app factories separate;
+The browser reads only `server` from `configs/ideate/ui.yaml`; the file's `landing` and
+`actuation` blocks belong to `retrieval.scenarios` and `retrieval.actuation`, which
+predate the thin UI and still take their defaults from it. Request-scoped paths keep app factories separate;
 Locate calls serialize the upstream curated-list cache reset because that cache
 uses a configuration key instead of the selected CSV path.
