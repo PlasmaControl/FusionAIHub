@@ -598,6 +598,24 @@ def get_events(
 
     status = es.coverage_state(sources, t0_s, t1_s)
     coverage = _coverage_block(sources, summary)
+    source_summary = es.CoverageSummary.from_rows(sources.to_dict("records"))
+    raw_windows = ph._merge(source_summary.spans)
+    windows = ph._clip(raw_windows, (
+        float("-inf") if t0_s is None else t0_s,
+        float("inf") if t1_s is None else t1_s,
+    ))
+    partial = bool(windows) and (
+        len(windows) > 1
+        or (t0_s is not None and windows[0][0] > t0_s + ph._EPS)
+        or (t1_s is not None and windows[-1][1] < t1_s - ph._EPS)
+    )
+    if partial:
+        caveats.append(ph.COVERAGE_PARTIAL.format(
+            title=entry.title if entry is not None else "diagnostic",
+            segment="requested", covered=es.format_intervals(windows),
+        ))
+    if source_summary.legacy:
+        caveats.append(f"{', '.join(source_summary.legacy)}: {es.LEGACY_HULL_CAVEAT}")
     window_text = "" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s"
     unknown = _unknown_coverage_sources(sources)
     if status == "unprocessed":
@@ -605,10 +623,11 @@ def get_events(
     elif status == "uncovered" and coverage["t_cov0_s"] is None:
         caveats.append(_UNCOVERED_UNKNOWN_CAVEAT.format(shot=shot, window=window_text))
     elif status == "uncovered":
-        span = coverage["t_cov0_s"], coverage["t_cov1_s"]
         caveats.append(
             f"the window [{t0_s}, {t1_s}] s is outside every source's coverage of shot {shot}, "
-            f"which runs {span[0]} to {span[1]} s -- nobody looked there, so an empty result "
+            f"whose display hull is {coverage['t_cov0_s']} to {coverage['t_cov1_s']} s; "
+            f"covered intervals: {es.format_intervals(raw_windows)} -- "
+            f"nobody looked there, so an empty result "
             f"says nothing about the window you asked about"
         )
     elif status == "observed" and not events:
@@ -651,6 +670,8 @@ def get_events(
         "forecasts": forecasts,
         "n_forecasts": len(forecasts),
         "coverage": coverage,
+        "coverage_windows": [list(w) for w in windows],
+        "coverage_partial": partial,
         "nan_excluded": nan_excluded,
         "caveats": caveats,
     }
@@ -752,6 +773,9 @@ def _coverage_block(sources, summary) -> dict:
                 "t_cov0_s": None if _missing(r["t_cov0_s"]) else float(r["t_cov0_s"]),
                 "t_cov1_s": None if _missing(r["t_cov1_s"]) else float(r["t_cov1_s"]),
                 "n_events": int(r["n_events"]),
+                "intervals": [list(w) for w in es.row_intervals(r)],
+                "min_gap_s": None if _missing(r.get("min_gap_s")) else float(r["min_gap_s"]),
+                "legacy_hull": es.legacy_hull(r),
             }
             for r in sources.to_dict("records")
         ],

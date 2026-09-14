@@ -825,6 +825,8 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     )
     state = es.coverage_state(sources, *(window or (None, None)))
     caveats = []
+    if sources.legacy:
+        caveats.append(f"{', '.join(sources.legacy)}: {es.LEGACY_HULL_CAVEAT}")
     if sources.unknown:
         names = ", ".join(sources.unknown)
         caveats.append(f"{names}: ran; coverage unknown; absence is not evidence")
@@ -833,14 +835,15 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     if state == "uncovered":
         if sources.spans:
             caveats.append(COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment))
+            caveats.append("covered intervals: " + es.format_intervals(_merge(sources.spans)))
         return state, None, (), False, caveats
     raw = _merge(sources.spans)
     windows = tuple(_clip(raw, window))
     hull = (windows[0][0], windows[-1][1])
     if len(windows) > 1:
         caveats.append(COVERAGE_GAPS.format(title=title, segment=segment, n=len(windows) - 1))
-    partial = window is not None and (
-        len(windows) > 1 or hull[0] > window[0] + _EPS or hull[1] < window[1] - _EPS
+    partial = len(windows) > 1 or (
+        window is not None and (hull[0] > window[0] + _EPS or hull[1] < window[1] - _EPS)
     )
     if partial:
         covered = ", ".join(f"{a:.3f}-{b:.3f} s" for a, b in windows)

@@ -24,18 +24,48 @@ def _rows(shot: int) -> list[dict]:
     ]
 
 
+def test_interval_sets_override_display_hulls_in_every_coverage_helper(tmp_path):
+    row = {**es.source_row(100, "elm_clock", t_cov0_s=-10, t_cov1_s=90),
+           "intervals": "[[0, 1], [2, 4]]", "min_gap_s": .003}
+    rows = pd.DataFrame([row])
+    assert es.coverage_state(rows, 1.2, 1.8) == "uncovered"
+    assert es.coverage_state(es.CoverageSummary.from_rows([row]), 1.2, 1.8) == "uncovered"
+    assert es.covers(rows, 1.2, 1.8) is False
+    assert es.observing_rows(rows, 1.2, 1.8).empty
+    assert es.coverage_span(rows) == (0, 4)
+    assert es.coverage_state(rows, .5, 1.5) == "observed"
+    path = es.write_sources(tmp_path / "sources.parquet", [row])
+    assert es.read_sources(path).iloc[0].intervals == row["intervals"]
+    rows.loc[0, "intervals"] = "[]"
+    assert es.shot_summary(rows, 100)["n_sources_unknown_coverage"] == 1
+    assert es.coverage_span(rows) is None
+
+
+def test_old_sources_and_old_joins_remain_readable_with_an_explicit_hull_caveat(tmp_path):
+    row = es.source_row(100, "elm_clock", t_cov0_s=0, t_cov1_s=6)
+    old = {k: v for k, v in row.items() if k not in ("intervals", "min_gap_s")}
+    path = tmp_path / "old.parquet"
+    pd.DataFrame([old]).to_parquet(path, index=False)
+    rows = es.read_sources(path)
+    assert es.coverage_state(rows, 1.2, 1.8) == "observed"
+    assert es.CoverageSummary.from_rows(rows.to_dict("records")).legacy
+
+
 def test_the_contract_is_exactly_these_columns_in_this_order(tmp_path):
     """A column added on one side and not the other is a file neither can read. The order and the
     dtypes are the contract, not an implementation detail of whoever writes it first."""
     assert es.SOURCES_COLUMNS == (
         "shot", "source", "status", "reason", "t_cov0_s", "t_cov1_s", "n_events",
         "diag", "channel", "pass_name", "run_id", "git_sha", "written_at",
+        "intervals", "min_gap_s",
     )
     assert es.SOURCES_DTYPES["shot"] == "int32"
     assert es.SOURCES_DTYPES["t_cov0_s"] == es.SOURCES_DTYPES["t_cov1_s"] == "float64"
     assert es.SOURCES_DTYPES["n_events"] == "int32"
     assert es.SOURCES_DTYPES["channel"] == "int16"
     assert es.STATUSES == ("ok", "skipped", "error")
+    assert es.SOURCES_DTYPES["intervals"] == "object"
+    assert es.SOURCES_DTYPES["min_gap_s"] == "float64"
 
     path = es.write_sources(tmp_path / "198658_sources.parquet", _rows(198658))
     got = es.read_sources(path)

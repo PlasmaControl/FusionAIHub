@@ -1,30 +1,16 @@
 """What was actually looked at, per source, per quantity.
 
-`t_cov0_s`/`t_cov1_s` on an event row are what tells "no ELM here" from
-"nobody looked", and they are only worth that if they are the coverage of
-the thing the row was measured on. Two ways they stop being that, both
-found by the iteration-0 critic on shot 198658:
+A source's `Coverage` holds disjoint finite intervals and its detector's
+`min_gap_s`. It records what was measured even when no event was found.
+`finite_intervals` excludes leading, trailing and interior missing samples;
+only gaps shorter than the calling detector's resolution may merge.
+Required inputs intersect their sets; any-channel inputs use their union.
+The `t_cov0_s`/`t_cov1_s` pair remains a display hull, never a coverage test.
 
-* **A union of unrelated axes.** The old `pipeline._span` took the earliest
-  start and latest end across EVERY actuator input and gave that one span
-  to every actuator event. Gas runs -10 to 94.8576 s on that shot (the gas
-  recorder really does have that long an axis), NBI 0 to 13.1001 s and the
-  RMP coils -1.06286 to 10.20114 s - so an `nbi_on` row claimed 94.86 s of
-  coverage it had no measurement over, and "the beams were off after 13 s"
-  became indistinguishable from "nobody measured them". `feature_spans`
-  gives each feature ITS OWN axis, and `intersect` gives a heuristic that
-  needs several inputs at once - the L-H detector needs D-alpha AND the
-  line density AND the injected power - the intersection of the ones it
-  requires, which is the only interval in which its answer means anything.
-
-* **Padding counted as observation.** A record's axis routinely runs past
-  its samples: the corpus' fast groups end in NaN, a filterscope's head and
-  tail are NaN, a dead coil is NaN throughout. `finite_span` therefore
-  measures from the first to the last FINITE sample rather than from the
-  first to the last time, so coverage is where there was something to see.
-  For a multi-channel feature a sample counts as finite when ANY channel is
-  - "the RMP coils are on" is a claim about the set of them, and one dead
-  coil does not end the observation.
+Each source keeps its own inputs: a gas recorder's long axis cannot extend
+NBI coverage. Likewise, the first and last finite sample cannot establish
+observation of the gap between them. `finite_span`, `feature_spans` and
+`intersect` remain available for event extents and display-only callers.
 
 **Clipping is the other half of the same honesty.** A transform pads: a
 track stitched across tile boundaries ended up to 2.052 ms past its own
@@ -43,8 +29,11 @@ Nothing here opens a file or knows a locator; it takes arrays and spans.
 """
 from __future__ import annotations
 
+import dataclasses
+import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
@@ -70,6 +59,15 @@ def finite_span(t_s, y=None) -> tuple[float, float]:
     `UNKNOWN` when nothing is finite - an all-NaN channel, an empty axis -
     because a span computed from no samples is not a span.
     """
+    t, ok = _finite_mask(t_s, y)
+    idx = np.flatnonzero(ok)
+    if idx.size == 0:
+        return UNKNOWN
+    return (float(t[idx[0]]), float(t[idx[-1]]))
+
+
+def _finite_mask(t_s, y) -> tuple[np.ndarray, np.ndarray]:
+    """`(t, ok)`: the axis and, per sample, whether there was something to see."""
     t = np.asarray(t_s, dtype=np.float64).ravel()
     ok = np.isfinite(t)
     if y is not None:
@@ -85,16 +83,227 @@ def finite_span(t_s, y=None) -> tuple[float, float]:
                 f"{sample.size} samples against {t.size} times"
             )
         ok = ok & sample
+    return t, ok
+
+
+# ----------------------------------------------------- interval sets
+#
+# The third iteration-0 critic's remaining cap. `finite_span` is a HULL:
+# the real 198658 `filterscopes` group with every channel NaN over 1-2 s
+# still gave the ELM clock one continuous -0.05..6.95 s span, so a window
+# inside the gap came back from the MCP as `observed, n=0` - "an
+# observation of nothing happening" over a second nobody measured. What a
+# detector saw is the SET of finite runs; the hull is for display only.
+
+#: A disjoint, sorted set of `(t0, t1)` intervals. `()` is the interval
+#: analogue of `UNKNOWN`: nothing finite, nothing observed.
+IntervalSet = tuple[tuple[float, float], ...]
+
+
+def _check_min_gap(min_gap_s) -> float:
+    try:
+        gap = float(min_gap_s)
+    except (TypeError, ValueError):
+        gap = math.nan
+    if not (math.isfinite(gap) and gap >= 0.0):
+        raise ValueError(
+            f"min_gap_s must be a finite non-negative number of seconds; "
+            f"got {min_gap_s!r}"
+        )
+    return gap
+
+
+def finite_intervals(t_s, y=None, *, min_gap_s) -> IntervalSet:
+    """The maximal runs of finite samples on `t_s`, as `(first, last)` times.
+
+    `y` is as for `finite_span`: `(samples,)`, or `(channels, samples)` in
+    which case a sample counts wherever ANY channel is finite; without it
+    the finiteness of `t_s` itself is the test.
+
+    Two runs separated by a gap SHORTER than `min_gap_s` - measured from the
+    last finite sample before it to the first after - are one interval. The
+    constant is the guarded detector's own resolution: a dropout the ELM
+    clock could not have resolved a peak inside anyway is not a hole in
+    what it saw, while one it could have is. `0.0` bridges nothing.
+
+    Leading and trailing NaN - the corpus' fast groups are 2^k + 1 long with
+    a NaN last sample; a filterscope's head is NaN - are simply outside the
+    first and last run and never make an interval of their own. All NaN is
+    `()`.
+    """
+    gap = _check_min_gap(min_gap_s)
+    t, ok = _finite_mask(t_s, y)
     idx = np.flatnonzero(ok)
     if idx.size == 0:
+        return ()
+    seen = t[idx]
+    if np.any(np.diff(seen) < 0):
+        raise ValueError("t_s must be non-decreasing")
+    breaks = np.flatnonzero(np.diff(idx) > 1)
+    starts = np.concatenate(([idx[0]], idx[breaks + 1]))
+    ends = np.concatenate((idx[breaks], [idx[-1]]))
+    merged: list[tuple[float, float]] = []
+    for s, e in zip(starts, ends):
+        lo, hi = float(t[s]), float(t[e])
+        if merged and lo - merged[-1][1] < gap:
+            merged[-1] = (merged[-1][0], hi)
+        else:
+            merged.append((lo, hi))
+    return tuple(merged)
+
+
+def interval_hull(intervals: Iterable[tuple[float, float]]) -> tuple[float, float]:
+    """`(first start, last end)` of a sorted set - the DISPLAY hull - or `UNKNOWN`.
+
+    This is what `t_cov0_s`/`t_cov1_s` hold once the intervals are the
+    coverage: a number for a plot axis or a sentence, never the thing that
+    decides whether a window was observed.
+    """
+    ivs = tuple(intervals)
+    if not ivs:
         return UNKNOWN
-    return (float(t[idx[0]]), float(t[idx[-1]]))
+    return (float(ivs[0][0]), float(ivs[-1][1]))
+
+
+def union_intervals(*sets: Iterable[tuple[float, float]]) -> IntervalSet:
+    """One sorted, disjoint set covering every interval of every input.
+
+    Overlapping and touching intervals merge. For a step whose coverage is
+    "any channel" - the QH proxy runs on whichever tokeye block produced a
+    track. No input at all is `()`.
+    """
+    ivs = []
+    for group in sets:
+        for lo, hi in group:
+            lo, hi = float(lo), float(hi)
+            if not (math.isfinite(lo) and math.isfinite(hi)):
+                raise ValueError(f"intervals must be finite; got ({lo}, {hi})")
+            if hi < lo:
+                raise ValueError(
+                    f"an interval's start must precede its end; got ({lo}, {hi})"
+                )
+            ivs.append((lo, hi))
+    ivs.sort()
+    merged: list[tuple[float, float]] = []
+    for lo, hi in ivs:
+        if merged and lo <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return tuple(merged)
+
+
+def _intersect_two(a: IntervalSet, b: IntervalSet) -> IntervalSet:
+    out: list[tuple[float, float]] = []
+    i = j = 0
+    while i < len(a) and j < len(b):
+        lo = max(a[i][0], b[j][0])
+        hi = min(a[i][1], b[j][1])
+        if hi >= lo:
+            out.append((lo, hi))
+        if a[i][1] < b[j][1]:
+            i += 1
+        else:
+            j += 1
+    return tuple(out)
+
+
+def intersect_intervals(*sets: Iterable[tuple[float, float]]) -> IntervalSet:
+    """The set of times EVERY input covers.
+
+    For a detector that needs several inputs at once - the L-H detector
+    needs D-alpha AND the line density AND the injected power, the QH proxy
+    its tracks AND the ELM clock AND the beam power AND the flat-top. One
+    empty input makes the whole intersection `()`, as one `UNKNOWN` makes
+    `intersect` unknown: a heuristic whose density trace was never
+    measured observed nothing, not the D-alpha's stretch. No input at all
+    is `()` for the same reason. Two intervals that only touch meet in a
+    point.
+    """
+    if not sets:
+        return ()
+    result = union_intervals(sets[0])
+    for other in sets[1:]:
+        result = _intersect_two(result, union_intervals(other))
+        if not result:
+            return ()
+    return result
+
+
+@dataclasses.dataclass(frozen=True)
+class Coverage:
+    """What one source saw: its interval set and how small a gap could hide.
+
+    `intervals` is sorted and disjoint; `min_gap_s` is the resolution the
+    set was built at (`finite_intervals`' argument, or the coarsest of the
+    inputs when sets were intersected), persisted beside the row so a
+    reader knows that a dropout shorter than it would not show. `hull` is
+    the display span the row's `t_cov0_s`/`t_cov1_s` carry; `known` is
+    whether anything at all was seen.
+    """
+
+    intervals: IntervalSet
+    min_gap_s: float
+
+    def __post_init__(self) -> None:
+        ivs = tuple((float(lo), float(hi)) for lo, hi in self.intervals)
+        for lo, hi in ivs:
+            if not (math.isfinite(lo) and math.isfinite(hi)):
+                raise ValueError(f"intervals must be finite; got ({lo}, {hi})")
+            if hi < lo:
+                raise ValueError(
+                    f"an interval's start must precede its end; got ({lo}, {hi})"
+                )
+        for (plo, phi), (lo, _hi) in pairwise(ivs):
+            if lo < plo:
+                raise ValueError(f"intervals must be sorted; got {ivs}")
+            if lo <= phi:
+                raise ValueError(f"intervals must be disjoint; got {ivs}")
+        object.__setattr__(self, "intervals", ivs)
+        object.__setattr__(self, "min_gap_s", _check_min_gap(self.min_gap_s))
+
+    @property
+    def hull(self) -> tuple[float, float]:
+        return interval_hull(self.intervals)
+
+    @property
+    def known(self) -> bool:
+        return bool(self.intervals)
+
+    @classmethod
+    def measured(cls, t_s, y=None, *, min_gap_s: float) -> Coverage:
+        """Finite sample runs at the calling detector's documented resolution."""
+        return cls(finite_intervals(t_s, y, min_gap_s=min_gap_s), min_gap_s)
+
+    def intersect(self, *others: Coverage) -> Coverage:
+        """Required inputs intersect; retain the coarsest input resolution."""
+        return Coverage(
+            intersect_intervals(self.intervals, *(c.intervals for c in others)),
+            max([self.min_gap_s, *(c.min_gap_s for c in others)]),
+        )
+
+
+def attach_intervals(events, ran):
+    """Carry source interval sets on event rows for databases missing a source table.
+
+    The source table remains authoritative, including for zero detections.
+    Event hulls alone must never revive a known gap if that table is absent.
+    """
+    out = []
+    for event in events:
+        key = (event.source, event.diag, event.channel, event.pass_name)
+        cov = ran.get(key, Coverage((), 0.0))
+        out.append(dataclasses.replace(event, attrs={
+            **event.attrs, "coverage_intervals": cov.intervals,
+            "coverage_min_gap_s": cov.min_gap_s,
+        }))
+    return out
 
 
 def feature_spans(
     features: Mapping[str, tuple[Any, Any]],
 ) -> dict[str, tuple[float, float]]:
-    """`{name: (t0, t1)}`: each canonical feature's own finite coverage.
+    """`{name: (t0, t1)}`: each canonical feature's display hull, not its coverage set.
 
     `features` is what `pipeline._actuator_features` builds and
     `heuristics.actuator_intervals` reads - `{name: (t_s, y)}` in
@@ -132,6 +341,10 @@ def clip_to_coverage(
 
     An unknown or half-unknown coverage clips nothing on the side it does
     not know, because there is no bound there to trim to.
+
+    `cov` is the display hull. An event extent spanning an interior gap
+    stays intact: the detector saw both sides; coverage of the gap itself
+    is decided separately from the source's interval set.
 
     An extent lying WHOLLY outside its coverage comes back untouched, with
     `clipped` false. That is not a transform edge - it is a detector
@@ -176,7 +389,8 @@ def clip_point_to_coverage(
     claim, over a millisecond. So the point is moved onto the bound and the
     row says so; the caller keeps the measured instant in `attrs` (`col`
     for an ELM, `t_measured_s` for a transition). An unknown bound moves
-    nothing on its side.
+    nothing on its side. This clips only to the outer hull, never across
+    an interior gap; source intervals separately decide observation.
     """
     t = float(t_s)
     cov0, cov1 = float(cov[0]), float(cov[1])
@@ -300,7 +514,7 @@ def skip_key(step: str) -> list[tuple[str, str, int, str]]:
 def source_records(
     shot: int,
     *,
-    ran: Mapping[tuple[str, str, int, str], tuple[float, float]],
+    ran: Mapping[tuple[str, str, int, str], Coverage | tuple[float, float]],
     skipped: Mapping[str, str],
     events: Sequence[Any] = (),
 ) -> list[dict[str, Any]]:
@@ -351,6 +565,8 @@ def source_records(
 
 def _row(shot: int, key, status: str, reason: str, span, n_events: int) -> dict:
     source, diag, channel, pass_name = key
+    cov = span if isinstance(span, Coverage) else None
+    span = cov.hull if cov is not None else span
     return {
         "shot": int(shot),
         "source": str(source),
@@ -362,17 +578,26 @@ def _row(shot: int, key, status: str, reason: str, span, n_events: int) -> dict:
         "diag": str(diag),
         "channel": int(channel),
         "pass_name": str(pass_name),
+        # None marks an older caller's hull. [] explicitly means no coverage.
+        "intervals": json.dumps(cov.intervals) if cov is not None else None,
+        "min_gap_s": cov.min_gap_s if cov is not None else math.nan,
     }
 
 
 __all__ = [
     "UNKNOWN",
+    "Coverage",
+    "IntervalSet",
     "clip_point_to_coverage",
     "clip_to_coverage",
     "clipped_attrs",
     "feature_spans",
+    "finite_intervals",
     "finite_span",
     "intersect",
+    "intersect_intervals",
+    "interval_hull",
     "skip_key",
     "source_records",
+    "union_intervals",
 ]
