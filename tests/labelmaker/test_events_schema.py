@@ -369,12 +369,13 @@ def test_the_sources_contract_is_the_documented_columns_and_dtypes():
     assert SOURCE_COLUMNS == (
         "shot", "source", "status", "reason", "t_cov0_s", "t_cov1_s",
         "n_events", "diag", "channel", "pass_name", "run_id", "git_sha",
-        "written_at",
+        "written_at", "intervals", "min_gap_s",
     )
     assert SOURCE_STATUSES == ("ok", "skipped", "error")
     assert [SOURCE_DTYPES[c] for c in SOURCE_COLUMNS] == [
         "int32", "object", "object", "object", "float64", "float64",
         "int32", "object", "int16", "object", "object", "object", "object",
+        "object", "float64",
     ]
 
 

@@ -164,3 +164,16 @@ def test_empty_coverage_diags_leaves_sawtooth_rows_accepted(ideate_db, diag, sou
     assert reply['n'] == 1
     assert reply['events'][0]['diag'] == diag
     assert not any('excluded' in c for c in reply['caveats'])
+
+
+def test_an_ineligible_diagnostic_cannot_fill_an_eligible_sources_gap(ideate_db):
+    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6,
+                      intervals='[[0, 0.9], [5.1, 6]]', min_gap_s=.003),
+        es.source_row(100, 'elm_clock', diag='mhr', t_cov0_s=0, t_cov1_s=6,
+                      intervals='[[0, 6]]', min_gap_s=.001),
+    ])
+    reply = tools.get_events(100, 'elm', 1, 5)
+    assert reply['status'] == 'uncovered'
+    db = store.ShotDB.load(ideate_db / 'db')
+    assert ph.evidence(100, 'elm', db).coverage_state == 'uncovered'

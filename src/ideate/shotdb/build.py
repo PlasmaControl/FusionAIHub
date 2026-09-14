@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import errno
 import functools
 import hashlib
 import json
@@ -29,9 +30,11 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -67,6 +70,33 @@ FAST_GROUPS = ("bes", "co2", "ece", "filterscopes", "mhr", "mirnov")
 # The two text embeddings, one per shots.parquet text column: emb_<key>.npy is the MiniLM row
 # for shots_df[key], and every place that builds, concatenates or reorders them loops over this.
 TEXT_KEYS = ("text_mp", "text_log")
+#: The phases `build` times, in the order it runs them, and the keys of the manifest's
+#: `phase_seconds`. A build used to report one number -- total elapsed -- which is why three
+#: SLURM rebuilds that ran at 65-68 % CPU on 3-6 cores could not be diagnosed: nobody could say
+#: which phase was leaving the cores idle. Wall seconds, not CPU seconds, because the question is
+#: about idling.
+#:
+#: The IGNITE encode is deliberately NOT one of these: it already times itself into
+#: `manifest["ignite"]["elapsed_s"]`, and counting it again inside `write_tables` would make that
+#: phase the answer to every question on an encoding build.
+PHASES = (
+    "read_records",  # the text subset, then one ShotRecord per shot from the raw layer
+    "segment",  # records -> the shots/segments tables and the waveform-shape matrix
+    "scalar_embedding",  # the feature matrix, the PCA fit and the projection
+    "text_embedding",  # MiniLM over the two text columns
+    "write_tables",  # writing the staging directory `_publish` will move
+    "publish",  # moving it into place and pruning what this build did not write
+)
+
+
+@contextmanager
+def _phase(seconds: dict[str, float], name: str):
+    """Add this block's wall time to `seconds[name]`, whether or not the block raises."""
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        seconds[name] += time.perf_counter() - t0
 
 
 @dataclass
@@ -852,6 +882,24 @@ def _tmp_dir(db_dir: Path) -> Path:
     return db_dir.parent / f"{db_dir.name}.tmp"
 
 
+def _move_onto(src: Path, dst: Path) -> None:
+    """Rename `src` over `dst`, copying instead when the two are on different filesystems.
+
+    The rename is the path that matters and stays first: it is atomic, so a reader of `dst` sees
+    the whole of one file or the whole of the other. But the caller stages the text subset beside
+    db_dir while `text_cache_dir` is wherever the paths file says, and an `IDEATE_PATHS` file that
+    puts them on different mounts -- exactly the scratch-database workflow docs/IDEATE.md
+    recommends -- makes `os.replace` raise EXDEV. The fallback copies, so it is not atomic; that
+    is acceptable here and only here, because what it moves is a cache the next build rewrites.
+    """
+    try:
+        os.replace(src, dst)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.move(str(src), str(dst))
+
+
 #: Every name `build`/`add` write into db_dir -- the two tables, the shape matrix, the embedding
 #: matrices, the PCA and the manifest. `_write_tables` and `ignite.encode_db` between them write
 #: exactly these, and `store.ShotDB.load` reads exactly these back.
@@ -877,6 +925,10 @@ BUILD_FILES = (
     "shapes.npy",
     "pca.json",
     "manifest.json",
+    # Not written by a publish: it is the staging name `build` renames over manifest.json when it
+    # rewrites the timings, and a crash in that window leaves it behind for good. Claiming it here
+    # is what lets the next publish prune it.
+    "manifest.json.part",
     "windows.parquet",
 )
 #: Same set, for the matrices whose names depend on what was encoded (emb_scalar, emb_text_mp,
@@ -923,10 +975,18 @@ def _publish(tmp: Path, db_dir: Path) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _embeddings(shots_df: pd.DataFrame, X: np.ndarray, pca: dict) -> dict[str, np.ndarray]:
-    emb = {"scalar": project_scalar(X, pca)}
-    for key in TEXT_KEYS:
-        emb[key] = text.embed_texts(shots_df[key].tolist())
+def _embeddings(
+    shots_df: pd.DataFrame, X: np.ndarray, pca: dict, seconds: dict[str, float] | None = None
+) -> dict[str, np.ndarray]:
+    """The three embedding matrices. `seconds`, when a caller passes its phase dict, receives the
+    scalar projection and the MiniLM text pass under their own keys -- they are different work on
+    different hardware and one number for both cannot say which one idled the cores."""
+    seconds = dict.fromkeys(PHASES, 0.0) if seconds is None else seconds
+    with _phase(seconds, "scalar_embedding"):
+        emb = {"scalar": project_scalar(X, pca)}
+    with _phase(seconds, "text_embedding"):
+        for key in TEXT_KEYS:
+            emb[key] = text.embed_texts(shots_df[key].tolist())
     return emb
 
 
@@ -955,6 +1015,41 @@ def _encode(tmp: Path, records: list[ShotRecord], paths: config.Paths, workers: 
     return result or {"status": "failed", "reason": "encode_db returned nothing", "channels": []}
 
 
+def _check_publish(db_dir: Path, shot_source: str | None, n_shots: int, force: bool):
+    """Refuse a different or smaller rebuild, retaining readable history for an override."""
+    previous = {}
+    problem = None
+    try:
+        manifest = db_dir / "manifest.json"
+        manifest.stat()
+        previous = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(previous, dict):
+            previous = {}
+        if (
+            "shot_source" not in previous
+            or previous["shot_source"] is not None
+            and not isinstance(previous["shot_source"], str)
+            or type(previous.get("n_shots")) is not int
+            or previous["n_shots"] < 0
+        ):
+            problem = "invalid manifest fields"
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        problem = f"unreadable/corrupt manifest: {exc}"
+    history = {key: previous.get(key) for key in ("shot_source", "n_shots", "built_at")}
+    if not force and (
+        problem or history["shot_source"] != shot_source or n_shots < history["n_shots"]
+    ):
+        raise ValueError(
+            f"refusing to replace database at {db_dir}: existing source "
+            f"{history['shot_source']!r}, n_shots={history['n_shots']!r}; "
+            f"new source {shot_source!r}, n_shots={n_shots}. "
+            f"{problem + '; ' if problem else ''}Use --force to override."
+        )
+    return history
+
+
 def build(
     shots: list[int],
     paths: config.Paths,
@@ -966,6 +1061,7 @@ def build(
     shot_source: str | None = None,
     n_requested: int | None = None,
     limit: int | None = None,
+    force: bool = False,
 ) -> BuildReport:
     """Full rebuild into <db_dir>, via <db_dir>.tmp so a crash leaves the old database intact.
 
@@ -978,18 +1074,40 @@ def build(
     "the shots are in the manifest's `shots` array" is a reconstruction, not a record.
     """
     t_start = time.perf_counter()
+    seconds = dict.fromkeys(PHASES, 0.0)
     shots = sorted(set(shots))
-    text.build_logs_subset(paths, set(shots))
+    previous = _check_publish(paths.db_dir, shot_source, len(shots), force)
     report = BuildReport(shots=[])
-    records, shapes = _build_many(shots, paths, cfg, workers, report, reader_kind)
-    shots_df, segments_df, shape_mat = records_to_tables(records, shapes, _blurb_client())
-    X, feature_cols = _scalar_matrix(segments_df, shape_mat)
-    # PCA needs more rows than components to mean anything; below that the embedding is a single
-    # zero column and every cosine distance is zero, which the manifest's fitted_on_n makes visible.
-    pca = fit_scalar_embedding(X, cfg["scalar"]["n_components"]) if X.shape[0] > 2 else empty_pca()
-    pca["feature_cols"] = feature_cols
-    pca["n_shape"] = int(shape_mat.shape[1]) if shape_mat.size else 0
-    emb = _embeddings(shots_df, X, pca)
+    with _phase(seconds, "read_records"):
+        # Stage the text subset as well: failures can reduce the actual count after the
+        # preflight check. A refused rebuild must leave the old cache and DB untouched.
+        paths.db_dir.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".build-text-", dir=paths.db_dir.parent) as cache:
+            read_paths = paths.model_copy(update={"text_cache_dir": Path(cache)})
+            old_subset, subset = text.subset_path(paths), text.subset_path(read_paths)
+            if old_subset.exists():
+                shutil.copy2(old_subset, subset)
+            text.build_logs_subset(read_paths, set(shots))
+            records, shapes = _build_many(shots, read_paths, cfg, workers, report, reader_kind)
+            previous = _check_publish(paths.db_dir, shot_source, len(records), force)
+            if subset.exists():
+                old_subset.parent.mkdir(parents=True, exist_ok=True)
+                _move_onto(subset, old_subset)
+    with _phase(seconds, "segment"):
+        shots_df, segments_df, shape_mat = records_to_tables(records, shapes, _blurb_client())
+    with _phase(seconds, "scalar_embedding"):
+        X, feature_cols = _scalar_matrix(segments_df, shape_mat)
+        # PCA needs more rows than components to mean anything; below that the embedding is a
+        # single zero column and every cosine distance is zero, which the manifest's fitted_on_n
+        # makes visible.
+        pca = (
+            fit_scalar_embedding(X, cfg["scalar"]["n_components"])
+            if X.shape[0] > 2
+            else empty_pca()
+        )
+        pca["feature_cols"] = feature_cols
+        pca["n_shape"] = int(shape_mat.shape[1]) if shape_mat.size else 0
+    emb = _embeddings(shots_df, X, pca, seconds)
     cov = coverage_report(records)
     manifest = {
         "built_at": dt.datetime.now(dt.UTC).isoformat(),
@@ -1033,11 +1151,26 @@ def build(
             "scalar and text embeddings are built as usual",
             "channels": [],
         },
+        # Wall seconds per PHASE, for the question a single elapsed cannot answer: which phase
+        # left the cores idle. The dict is written twice -- the publish is the last phase and
+        # cannot have timed itself when the manifest it moves is written -- and it is the
+        # published copy, rewritten below, that carries every phase. If that rewrite never landed,
+        # `write_tables` and `publish` are the two keys left at 0.0.
+        "phase_seconds": seconds,
+        # The whole of `build`, so the phases can be read against something. They are NOT
+        # exhaustive: the coverage report, this manifest, and on an encoding build the entire
+        # IGNITE pass (which times itself into `ignite.elapsed_s`) are in no phase, and
+        # `build_elapsed_s - sum(phase_seconds.values())` is how much is unaccounted for. Set at
+        # the rewrite below, the last moment before the published manifest is serialised.
+        "build_elapsed_s": None,
     }
-    tmp = _tmp_dir(paths.db_dir)
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    _write_tables(tmp, shots_df, segments_df, shape_mat, emb, pca, manifest)
+    if force and previous is not None:
+        manifest["forced_over"] = previous
+    with _phase(seconds, "write_tables"):
+        tmp = _tmp_dir(paths.db_dir)
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        _write_tables(tmp, shots_df, segments_df, shape_mat, emb, pca, manifest)
     if encode:
         block = _reuse_encodings(tmp, records, segments_df, paths, workers) if reuse else None
         manifest["ignite"] = block or _encode(tmp, records, paths, workers=workers)
@@ -1045,7 +1178,23 @@ def build(
         if not report.encoded:
             _log.info("ignite channel skipped: %s", manifest["ignite"]["reason"])
         (tmp / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
-    _publish(tmp, paths.db_dir)
+    with _phase(seconds, "publish"):
+        _publish(tmp, paths.db_dir)
+    # Rewrite the published manifest now that `publish` has a number, through a sibling temp file
+    # renamed over it, so a reader sees the whole of one manifest or the whole of the other.
+    manifest["phase_seconds"] = {k: round(v, 6) for k, v in seconds.items()}
+    manifest["build_elapsed_s"] = round(time.perf_counter() - t_start, 6)
+    part = paths.db_dir / "manifest.json.part"
+    part.write_text(json.dumps(manifest, indent=2, default=str))
+    os.replace(part, paths.db_dir / "manifest.json")
+    # The total on the same line, because the phases only mean something against it: what it
+    # exceeds their sum by is the work no phase timed.
+    _log.info(
+        "build phases (wall s): %s, total %.1f (untimed %.1f)",
+        ", ".join(f"{name} {seconds[name]:.1f}" for name in PHASES),
+        manifest["build_elapsed_s"],
+        manifest["build_elapsed_s"] - sum(seconds.values()),
+    )
     report.n_segments, report.db_dir = len(segments_df), paths.db_dir
     report.elapsed_s = time.perf_counter() - t_start
     return report

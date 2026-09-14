@@ -90,6 +90,29 @@ def load_paths(path: Path | None = None) -> Paths:
     return Paths(**_interpolate(raw))
 
 
+def data_root_origin() -> str:
+    """Which of `load_paths`'s three sources settled `data_root`, phrased for a reader.
+
+    The writing CLI commands print this beside the root before they write. The 2026-09-14
+    incident was an exported `IDEATE_DATA_ROOT` that pixi's `[activation.env]` had already
+    overridden with the production root, and the only way to see that while it is happening is
+    to be told which source won -- the resolved path on its own looks plausible either way.
+
+    This is the environment precedence `load_paths` applies above, in its order. A per-request
+    `using_paths` override is a server concern and no writing command runs under one.
+
+    The third label names the file in full rather than saying "configs/ideate/paths.yaml":
+    `CONFIG_DIR` follows `IDEATE_CONFIG_DIR`, so the packaged path is not always the one that was
+    read, and a label naming a file that settled nothing is the same failure as an unlabelled
+    root one level up.
+    """
+    if os.environ.get("IDEATE_DATA_ROOT"):
+        return "IDEATE_DATA_ROOT env"
+    if os.environ.get("IDEATE_PATHS"):
+        return f"IDEATE_PATHS={os.environ['IDEATE_PATHS']}"
+    return f"{CONFIG_DIR / 'paths.yaml'} default"
+
+
 def _load_yaml_file(name: str) -> dict[str, Any]:
     return yaml.safe_load((CONFIG_DIR / name).read_text(encoding="utf-8")) or {}
 

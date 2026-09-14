@@ -225,7 +225,7 @@ Point attributes are `prominence` (normalised),
 `width_ms` (half-prominence width), `channel`, and `rate_hz_local` (centred
 100 ms count / 0.1 s). Confidence is NaN: this is a heuristic that still needs
 manual ELM validation. Padding and internal gaps cannot generate peaks or
-quiet intervals; source coverage uses the first and last finite sample.
+quiet intervals; source coverage stores disjoint finite intervals at the clock’s 3 ms resolution.
 All-NaN filterscopes are skipped, never called ELM-free. `transient` is in
 both registries and never supplies an ELM window feature or phenomenon hit.
 ELM window rates, quiet fractions and ages require `source=elm_clock` and
@@ -289,25 +289,41 @@ policy changes.
 
 ### Coverage: no coverage is not absence
 
-Every row carries `t_cov0_s`/`t_cov1_s`, the span of the thing the row was
-measured on. Three rules:
+Source rows store `intervals` (a JSON list of disjoint finite `[t0, t1]` pairs) and
+`min_gap_s`. The existing `t_cov0_s`/`t_cov1_s` columns are display hulls only.
+Coverage is per source and quantity: a gas recorder cannot extend NBI coverage.
+Leading/trailing NaNs are outside coverage; all-NaN input gives `[]` and a NaN hull.
+Runs merge only when the time from the preceding finite sample to the next finite
+sample is **shorter** than `min_gap_s`.
 
-* **Per source and per quantity.** An `nbi_on` row's coverage is the NBI
-  digitiser's, a `gas_on` row's is the gas recorder's, and `diag` on an
-  actuator row names which. They are not the same span: on shot 198658 the
-  gas axis runs -10 to 94.86 s and the NBI's stops at 13.10 s.
-* **Over finite samples.** A record's axis runs past its samples - the fast
-  groups end in NaN, a filterscope's head and tail are NaN - and padding is
-  not observation. A multi-input heuristic gets the INTERSECTION of the
-  inputs it needs at once: the L-H detector covers only where the D-alpha,
-  the line density and the injected power were all measured.
-* **NaN means unknown, not zero.** `(NaN, NaN)` is "nobody looked", which is
-  a third answer beside "looked and saw nothing" and "looked and saw
-  something". A consumer that reads it as an empty interval, or as an
-  infinite one, is wrong in a direction nothing downstream can detect.
+Named constants beside the pipeline's detector orchestration derive the resolution
+from the detector: ELM clock 3 ms peak separation; sawtooth 8 ms inversion window;
+L→H 5 ms step comparison; actuators 20 ms hysteresis minimum. Feature reads and
+q-min evaluate individual samples and bridge no missing sample (`min_gap_s=0`).
+TokEye uses one column of its pass's time grid; its waveform reader already rejects
+interior missing samples. Required inputs intersect their interval sets (L→H,
+counter-injection, q-min and QH); QH first unions its published track blocks.
+L→H counts a beam sample as measured when **any** pinj channel is finite, then
+intersects those intervals with D-alpha and density coverage.
+Combined rows retain the coarsest input gap resolution, without filling additional gaps.
 
-An event's extent is clipped into its own coverage at the point the row is
-built, with `attrs["clipped"] = true` where it had to be: a track stitched
+The `text` source is non-diagnostic and carries no coverage: its successful source
+row has `intervals=[]` and NaN display bounds, replacing the older shot-span hull.
+It records a logbook search, not a measurement. Consumers exclude it from
+`n_sources_unknown_coverage` and diagnostic coverage decisions; a text-only shot
+is `unprocessed`, never `uncovered` evidence.
+
+`ideate labels join` preserves both new columns. A window inside a gap is
+`uncovered`; one crossing a gap is `observed` with `coverage_partial=True` and a
+partial-coverage caveat. Older rows without intervals remain readable as one finite
+hull interval, with “coverage recorded as a hull by an older writer; interior gaps unknown”.
+No existing production files are rewritten by this change. New pipeline events also
+carry `coverage_intervals` and `coverage_min_gap_s` in `attrs` so a database missing
+its source table cannot recover a known gap from an event hull.
+
+An event's extent is clipped only to its source's outer hull, never split at an
+interior gap: an extent spanning a gap retains what the detector saw on both sides.
+Clipping happens at the point the row is built, with `attrs["clipped"] = true` where it had to be: a track stitched
 across tile boundaries carries the transform's edge support and ran up to
 2 ms past the record on the pilot shots. `schema.Event` refuses a row whose
 `t1_s` is after its own `t_cov1_s`, so the invariant is enforced rather
@@ -332,12 +348,14 @@ was skipped:
 | `shot`, `source`, `diag`, `channel`, `pass_name` | which producer, on which block or quantity |
 | `status` | `ok` (it ran to completion), `skipped` (it did not), `error` |
 | `reason` | why, for a skip; `""` when `ok` |
-| `t_cov0_s`, `t_cov1_s` | what it ran over; NaN when unknown |
+| `intervals`, `min_gap_s` | disjoint finite coverage and gap resolution; null intervals identify older hull-only rows |
+| `t_cov0_s`, `t_cov1_s` | display hull only; NaN when unknown |
 | `n_events` | how many rows it put in the events file - **0 is a real answer** |
 | `run_id`, `git_sha`, `written_at` | which run wrote this row |
 
-So: `status == "ok"` with `n_events == 0` is observed silence, `status ==
-"skipped"` with a reason is the absence of an observation, and NO ROW AT
+So: `status == "ok"` with `n_events == 0` is observed silence only within
+that diagnostic’s recorded intervals. `status == "skipped"` with a reason
+is the absence of an observation, and NO ROW AT
 ALL is "not processed". Written merged and atomically on the same key, so a
 re-run of one channel replaces that channel's rows and leaves the rest.
 
@@ -348,11 +366,10 @@ Three things worth knowing before reading a row:
   saying which channel or step did not run and why. It is the answer to "was
   there no ELM here, or did nobody look" - and so is
   `events/<shot>_sources.parquet`, per source, on disk.
-- **The corpus has no `ip` and no `betan`.** So `actuator` never claims
-  `nbi_counter` (it is a comparison of the injected torque's sign with the
-  current's), `qh_proxy` has no flat-top to intersect and claims nothing, and
-  an L->H row's `attrs["betan"]` is `null`. All three are recorded as skips
-  rather than left looking like an absence of the phenomenon.
+- **The corpus has no `ip` and no `betan`.** The features store supplies
+  canonical `ip` for counter-injection and the QH flat-top. If a required
+  input is unavailable, the dependent source is skipped. An L->H row’s
+  `attrs["betan"]` remains `null`.
 - **Text is never a label by itself, and never a detection.** A `text` row's
   confidence is capped at `TEXT_ONLY_CEILING`, it is excluded from every
   diagnostic feature by the evidence policy above, and only the shot's OWN
@@ -407,10 +424,10 @@ list is never a negative, and nothing downstream may read it as one.
 A shot a table *does* name gets one row in `events/<shot>_sources.parquet` per
 naming table, on the same contract as every detector's: `status = "ok"`,
 `reason = ""` (an `ok` row carries no reason), `n_events`, `diag = ""`,
-`channel = -1`, `pass_name = ""` — and coverage NaN, which is the whole
-signal. It is unambiguous because no detector writes `ok` with NaN coverage,
-so `ok` + NaN coverage + a `source` beginning `database:` *is* the curated
-source. The sentence itself lives in `databases.COVERAGE_REASON` for the docs
+`channel = -1`, `pass_name = ""`, an empty interval set and a NaN hull.
+A `source` beginning `database:` identifies the non-diagnostic curated source;
+`ok` with unknown coverage alone cannot distinguish it from a diagnostic that
+ran on all-NaN input. The sentence itself lives in `databases.COVERAGE_REASON` for the docs
 to quote, not in the row.
 
 The events stage reads the tables as one more guarded step, but the usual way
@@ -580,10 +597,9 @@ requires updating the namespace resolver/locator, refreshing the stored
 feature, and updating `heuristics.QMIN_EFIT`: the event attribute currently
 comes from that constant, not from the feature's metadata.
 
-The coverage of a `qmin_rule` row is the intersection of the flat-top and
-the span from the first to last finite q-min sample. This single span does
-not represent internal dropouts; those still split event bands. Outside
-the flat-top the rule
+The coverage of a `qmin_rule` source row is the intersection of the flat-top
+and the disjoint finite q-min intervals. Internal dropouts split coverage
+as well as event bands. Outside the flat-top the rule
 deliberately does not look, and declaring the ramp as covered would turn an
 abstention into an observed absence. A shot whose flat-top holds no band at
 all writes no event row and still writes its `qmin_rule` source row with
@@ -593,7 +609,7 @@ A shot with no features
 file is `skipped["features"]`; one whose file carries no `qmin` is
 `skipped["qmin"]` and still gets its `ip`-dependent steps in the full stage.
 The quantity source rows are `("features", "ip")` and
-`("features", "qmin")`, each with its own finite span; the rule's row is
+`("features", "qmin")`, each with its own finite interval set; the rule's row is
 `("qmin_rule", "qmin")`. A missing file instead produces a skipped
 `("features", "")` row. In the full stage, missing counter-injection
 inputs produce a skipped `("actuator", "tinj_total")` row, and missing
