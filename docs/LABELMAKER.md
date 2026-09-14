@@ -351,8 +351,9 @@ empty result, with provenance from a successful databases-only scan under `/tmp`
 A `--run-id` supplied to the extension writer must identify a successful zero scan
 of the selected curated tables. The two committed format tables still yield 56
 events and 33 source rows on their original 33 shots. An invalid
-`tables.yaml` stops the run before any shot with exit code 7; an unreadable or
-invalid format CSV is reported as an error for each affected shot.
+`tables.yaml` or an unreadable or invalid format CSV stops the run before any
+shot with `EXIT_BAD_LABEL_TABLE` (exit code 7). All tables are validated before
+any per-shot output is written.
 
 The cost is per *named* shot, not per shot in the list: a shot no table names
 is a dictionary lookup, and a shot one does names costs ~0.11 s (measured:

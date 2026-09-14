@@ -715,6 +715,10 @@ def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
     paths = ctx.paths
     try:
         specs = databases.load_manifest(paths.label_tables)
+        # Validate every input before writing any shot; read_table warms the
+        # shared cache, so the shot loop does not parse these CSVs again.
+        for spec in specs:
+            databases.read_table(spec, paths.label_tables)
     except databases.DatabaseError as exc:
         print(f"events --databases-only: refusing to run - {exc}",
               file=sys.stderr)
