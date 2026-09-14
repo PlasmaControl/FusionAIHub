@@ -1,30 +1,5 @@
+# Thin browser UI: only server is read; there are no plot, model or retrieval settings here.
 version: 1
-# Browser UI (src/ideate/ui). Everything a physicist might want to change about what the page
-# shows by default lives here, so "show Bt instead of q95 by default" is a one-line change.
 server:
-  host: 127.0.0.1          # never 0.0.0.0: the cloudflared tunnel is the only way in
+  host: 127.0.0.1  # local only; remote access uses ssh -L 8765:localhost:8765 stellar
   port: 8765
-plots:
-  # Drawn top to bottom on the default panel. A registry signal name (configs/signals.yaml), an
-  # actuator system total ("nbi.total" = sum of the installed members), or "raw:<group>/<column>".
-  default_traces: [ip, nbi.total, ech.total, ne_line, betan, q95, dalpha]
-  points_per_trace: 1500   # min/max decimation target; a 1.3 M-sample beam trace becomes ~3000 points
-  spectrogram:
-    group: magnetics_high_resolution
-    channel: b04
-    decimate_to_hz: 500000 # anti-aliased resample before the STFT, so the axis is 0-250 kHz
-    nperseg: 1024          # 512 frequency bins of 488 Hz at 500 kHz
-    max_shape: [400, 300]  # (time bins, frequency bins) sent to the browser; larger is block-averaged
-  profiles: [e_dens_fit, e_temp_fit, i_temp_fit, t_rot_fit]
-  scatter_default: {x: ip_mean, y: ne_line_mean}
-suggest:
-  k: 10                    # results considered for the suggested configuration
-  successful_only: true    # drop shots with a bad verdict or a missed Ip target
-landing:
-  prompt: "What do you want to test?"
-  n_scenarios: 6        # scenario cards shown for one question
-  n_hits: 50            # search depth the grouping works from
-actuation:
-  rdp_tol_frac: 0.03       # Ramer-Douglas-Peucker tolerance as a fraction of the trace's peak-to-peak range
-  max_vertices: 12         # met by raising the tolerance, bisected onto this budget; endpoints always kept
-  grid_ms: 50              # the median seed's common time grid

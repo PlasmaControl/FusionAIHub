@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- Ported from shot-recommender-system's shotrec/ui/static/index.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDEATE: DIII-D shots</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <h1>IDEATE</h1>
+  <span id="dbinfo" class="muted">Loading database summary…</span>
+  <nav id="tabs" aria-label="Views">
+    <button data-view="search" class="active" aria-current="page">Search</button>
+    <button data-view="shot">Shot</button>
+    <button data-view="locate">Locate</button>
+  </nav>
+</header>
+<main>
+  <div id="global-notes" aria-live="polite"></div>
+  <div id="view-search" class="view">
+    <section class="query-panel">
+      <h2>Search shots</h2>
+      <form id="search-form">
+        <label>Text<input name="text" placeholder="QH-mode at low torque"></label>
+        <label>Reference shot<input name="ref_shot" type="number" step="1"></label>
+        <label>Segment<select name="segment" class="segment"></select></label>
+        <label>Number of results<input name="n" type="number" value="10" min="1" step="1" required></label>
+        <label>Constraints (JSON)<textarea name="constraints" rows="5" placeholder='{"ip_mean": {"lo": 1000000}}'></textarea></label>
+        <label>Require labels (comma separated)<input name="require_labels" placeholder="H"></label>
+        <label>Avoid labels (comma separated)<input name="avoid_labels" placeholder="dud"></label>
+        <button class="primary" type="submit">Search</button>
+      </form>
+    </section>
+    <section class="content-panel">
+      <h2>Results</h2>
+      <div id="search-notes" aria-live="polite"></div>
+      <div id="search-results"><p class="muted">Enter a query to search the database.</p></div>
+    </section>
+  </div>
+  <div id="view-shot" class="view" hidden>
+    <section class="query-panel">
+      <h2>Inspect a shot</h2>
+      <form id="shot-form">
+        <label>Shot<input name="shot" type="number" step="1" required></label>
+        <label>Segment<select name="segment" class="segment"></select></label>
+        <button class="primary" type="submit">Open shot</button>
+      </form>
+      <h2 class="spaced">Event window</h2>
+      <form id="events-form">
+        <label>Event phenomenon (exact name)<select name="phenomenon" class="phenomenon" data-all="true"></select></label>
+        <label>Start (seconds)<input name="t0_s" type="number" step="any"></label>
+        <label>End (seconds)<input name="t1_s" type="number" step="any"></label>
+        <button type="submit">Update events</button>
+      </form>
+    </section>
+    <div class="content-panel">
+      <section>
+        <h2 id="shot-title">Shot</h2>
+        <div id="shot-notes" aria-live="polite"></div>
+        <div id="shot-record"><p class="muted">Open a shot from a result or enter its number.</p></div>
+      </section>
+      <section class="spaced" id="event-panel">
+        <h2>Event timeline</h2>
+        <p id="event-filter-note" class="caveats" hidden>This filter matches stored event names exactly.
+          Locate also uses registry rules: its phenomenon ID can differ from the event name.
+          The all-event context below keeps those observations visible.</p>
+        <div id="event-status" class="status" aria-live="polite">—</div>
+        <p id="event-meaning" class="muted">—</p>
+        <div id="event-notes"></div>
+        <h3>Events</h3><div id="event-lanes"></div>
+        <h3>forecasts — a model's risk estimate, not an observation</h3>
+        <div id="forecast-lanes"></div>
+        <h3>Curated database intervals — entries in a list, not measurements</h3>
+        <div id="database-lanes"></div>
+        <h3>Per-source coverage</h3><div id="coverage-lanes"></div>
+        <h3>Text mentions</h3><p class="muted">Logbook claims; these are not events on the timeline.</p>
+        <div id="text-mentions"></div>
+      </section>
+      <section class="spaced" id="event-context" hidden>
+        <h2>All event names — context for registry classification</h2>
+        <div id="context-event-status" class="status" aria-live="polite">—</div>
+        <p id="context-event-meaning" class="muted">—</p>
+        <div id="context-event-notes"></div>
+        <h3>Events</h3><div id="context-event-lanes"></div>
+        <h3>forecasts — a model's risk estimate, not an observation</h3>
+        <div id="context-forecast-lanes"></div>
+        <h3>Curated database intervals — entries in a list, not measurements</h3>
+        <div id="context-database-lanes"></div>
+        <h3>Per-source coverage</h3><div id="context-coverage-lanes"></div>
+        <h3>Text mentions</h3><div id="context-text-mentions"></div>
+      </section>
+    </div>
+  </div>
+  <div id="view-locate" class="view" hidden>
+    <section class="query-panel">
+      <h2>Locate a phenomenon</h2>
+      <form id="locate-form">
+        <label>Phenomenon<select name="phenomenon" class="phenomenon" required></select></label>
+        <label>Segment<select name="segment" class="segment"></select></label>
+        <label>Number of hits<input name="n" type="number" value="20" min="1" step="1" required></label>
+        <label>Minimum confidence<input name="min_confidence" type="number" value="0" step="any" min="0" max="1" required></label>
+        <label>Avoid (comma separated)<input name="avoid" placeholder="phenomenon:elm"></label>
+        <button class="primary" type="submit">Locate</button>
+      </form>
+    </section>
+    <section class="content-panel">
+      <h2>Ranked hits</h2>
+      <div id="locate-notes" aria-live="polite"></div>
+      <div id="locate-results"><p class="muted">Choose a phenomenon to locate its evidence.</p></div>
+    </section>
+  </div>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

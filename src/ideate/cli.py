@@ -1671,6 +1671,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("id")
     s.add_argument("--json", action="store_true", help="the stored JSON verbatim")
     p.set_defaults(func=cmd_actuation)
+
+    p = sub.add_parser("serve", help="open the local Search, Shot and Locate browser UI")
+    p.add_argument("--host", choices=["127.0.0.1"], default=None)
+    p.add_argument("--port", type=int, default=None)
+    p.add_argument("--db-dir", type=Path)
+    p.add_argument("--token")
+    p.set_defaults(func=cmd_serve)
     return ap
 
 
@@ -1690,6 +1697,13 @@ def main(argv: list[str] | None = None) -> int:
             return int(e.code or 0)
         print(e.code, file=sys.stderr)
         return 1
+
+
+def cmd_serve(args) -> int:
+    """Launch the thin UI; kept after the existing CLI handlers."""
+    from .ui.serve import main as serve
+
+    return serve(host=args.host, port=args.port, db_dir=args.db_dir, token=args.token)
 
 
 if __name__ == "__main__":
