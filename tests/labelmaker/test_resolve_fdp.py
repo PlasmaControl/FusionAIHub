@@ -452,8 +452,15 @@ def test_available_survives_a_fork_after_torch_is_already_loaded():
 
 
 @pytest.mark.live
-def test_live_fetch_of_every_fdp_feature_for_one_shot():
-    names = [f.name for f in ns.by_source("fdp")]
+def test_live_fetch_of_the_reference_points_for_one_shot():
+    # This is the original measured reference set, not a claim that every
+    # future feature exists on this 2021 shot. LC2's LH/Helicon records are
+    # measured on later shots by its pilot; both are TreeNNF on 185945.
+    names = [
+        "ip", "bt", "r0", "kappa", "tritop", "tribot", "gapin", "betan",
+        "qpsi", "pres", "ne_zipfit", "te_zipfit", "rot_zipfit", "qmin",
+        "li", "aminor", "volume", "pcbcoil", "ti_zipfit",
+    ]
     got, missing = rf.resolve(185945, names)
     assert missing == {}, f"misses on a shot the probe reached: {missing}"
     for name, arr in got.items():
