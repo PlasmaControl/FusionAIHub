@@ -340,6 +340,11 @@ class ShotDB:
             m &= ok
         req, avoid = set(require_labels), set(avoid_labels)
         if req or avoid:
+            from ..retrieval import phenomena as ph
+
+            for tokens, option in ((req, '--require'), (avoid, '--avoid')):
+                ph._avoid_ids(sorted(t for t in tokens if t.startswith('phenomenon:')), option=option)
+        if req or avoid:
             # The regime joins the operational set here so a caller can require "QH" or avoid
             # "L" with the same vocabulary it uses for "dud".
             labels = self._label_tokens
