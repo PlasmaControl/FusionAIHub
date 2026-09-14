@@ -930,3 +930,33 @@ def test_an_unreadable_manifest_stops_the_run_before_any_shot(
     assert run.main(_argv(paths, "--databases-only")) == run.EXIT_BAD_LABEL_TABLE
     assert "kind" in capsys.readouterr().err
     assert not paths.events_file(SHOT).exists()
+
+
+@pytest.mark.parametrize("damage", ["phenomenon", "columns", "malformed", "missing"])
+def test_an_invalid_format_csv_stops_the_run_before_any_shot(
+    paths, tmp_path, monkeypatch, capsys, no_network, damage,
+):
+    root = _label_tables(tmp_path, [(SHOT, 300.0)])
+    table = next(root.glob("*/format/*.csv"))
+    if damage == "missing":
+        table.unlink()
+    elif damage == "malformed":
+        table.write_text('shot,t0_s\n"unterminated\n', encoding="utf-8")
+    else:
+        frame = pd.read_csv(table, keep_default_na=False)
+        if damage == "phenomenon":
+            frame["phenomenon"] = "not_a_lexicon_id"
+        else:
+            frame = frame.drop(columns="attrs")
+        frame.to_csv(table, index=False)
+    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    assert run.main([
+        "events", "--databases-only", "--root", str(paths.root),
+        "--shots", str(SHOT), str(SHOT + 1),
+    ]) == run.EXIT_BAD_LABEL_TABLE
+    captured = capsys.readouterr()
+    assert "refusing to run" in captured.err and str(table) in captured.err
+    assert ": ERROR" not in captured.out
+    assert not paths.events_file(SHOT).exists()
+    assert not paths.sources_file(SHOT).exists()
+    assert not paths.events_index.exists()
