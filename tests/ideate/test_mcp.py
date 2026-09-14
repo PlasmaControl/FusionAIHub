@@ -1,4 +1,4 @@
-"""The MCP server: the three tool functions, and one real stdio roundtrip.
+"""The MCP server: the four tool functions, and one real stdio roundtrip.
 
 Two levels, deliberately. The tool FUNCTIONS are tested directly against the synthetic database
 (`conftest.ideate_db`) because that is where the behaviour is -- what a caveat says, what a
@@ -672,6 +672,260 @@ def test_the_empty_answer_carries_the_fourth_list_too(ideate_db):
     assert got["status"] != "observed"
 
 
+# -------------------------------------------------------------------------- phenomenon_locate
+
+
+def _claim(shot: int, phenomenon: str, **over) -> dict:
+    row = {
+        "shot": shot,
+        "phenomenon": phenomenon,
+        "polarity": "pos",
+        "temporality": "observed",
+        "snippet": "clear 2/1 tearing mode at 2 s",
+        "scope": "shot",
+    }
+    row.update(over)
+    return row
+
+
+def write_claims(db_dir: Path, rows: list[dict]) -> None:
+    from ideate.labels.claims import CLAIMS_DTYPES
+
+    pd.DataFrame(rows, columns=list(CLAIMS_DTYPES)).astype(CLAIMS_DTYPES).to_parquet(
+        db_dir / "text_claims.parquet", index=False
+    )
+
+
+@pytest.fixture
+def phenomenon_db(ideate_db: Path) -> Path:
+    """`ideate_db`'s four shots with one evidence class each, as `test_phenomena.phen_db` has it.
+
+    100 observed (three tracks in the tearing band, and an ELM a detector saw), 101 forecast
+    only, 200 the operators' word only, 201 silent. One database that exercises the whole tier
+    order in one call is the only way to test that the ORDER is what reaches the caller.
+    """
+    track = {"f_centroid_khz": 10.0, "bandwidth_khz": 2.0}
+    write_events(
+        ideate_db / "db",
+        [
+            _event(100, "coherent_mode", 2.0, 2.5, event_id="100-tokeye_track-00000",
+                   attrs=track),
+            _event(100, "coherent_mode", 3.0, 3.4, event_id="100-tokeye_track-00001",
+                   attrs=track),
+            _event(100, "coherent_mode", 4.0, 4.2, event_id="100-tokeye_track-00002",
+                   attrs=track),
+            # The ELM `--avoid phenomenon:elm` has to find, on the detector that writes it.
+            _event(100, "elm", 2.2, 2.2, event_id="100-elm_clock-00000", source="elm_clock",
+                   evidence_kind="heuristic", diag="filterscopes", confidence=np.nan,
+                   attrs={"prominence": 0.7}),
+            _event(101, "tearing", 2.0, 2.1, event_id="101-label_forecast-00000",
+                   source="label_forecast", evidence_kind="forecast", diag="",
+                   confidence=0.35, horizon_s=1.0, attrs={"label": "tm_risk_1s"}),
+            _event(101, "tearing", 3.0, 3.1, event_id="101-label_forecast-00001",
+                   source="label_forecast", evidence_kind="forecast", diag="",
+                   confidence=0.22, horizon_s=0.5, attrs={"label": "tm_risk_500ms"}),
+        ],
+    )
+    write_claims(ideate_db / "db", [_claim(200, "tearing", snippet="the tearing mode locked")])
+    return ideate_db
+
+
+def test_phenomenon_locate_resolves_an_alias_and_ranks_by_evidence_class_first(phenomenon_db):
+    """"NTM" is the operators' word and `tearing` is the registry's id: a tool that took only
+    the id would answer nothing for the text a person actually types. And the order is the
+    claim -- observed, then forecast-only, then text-only -- not the score."""
+    got = tools.phenomenon_locate("an NTM at 2 s", n=10)
+    assert "error" not in got
+    assert got["phenomenon"] == "tearing" and got["title"] == "Tearing mode"
+    assert got["resolved"][0] == {"id": "tearing", "title": "Tearing mode", "weight": 1.0}
+    assert [h["shot"] for h in got["hits"]] == [100, 101, 200]
+    assert got["n"] == 3
+    assert 201 not in [h["shot"] for h in got["hits"]]  # nothing said anything: not a hit
+    from ideate.retrieval import phenomena as ph
+
+    # Each hit still carries its own caveats, and they say which class it rests on.
+    assert ph.FORECAST_ONLY in got["hits"][1]["caveats"]
+    assert ph.TEXT_ONLY in got["hits"][2]["caveats"]
+    assert got["hits"][0]["intervals"] and got["hits"][0]["intervals"][0]["source"] == (
+        "tokeye_track"
+    )
+    assert got["caveats"] and any(ph.RANKING_SENTENCE in c for c in got["caveats"])
+    # F7: the payload crosses the protocol as JSON. A field of a less tame type would surface
+    # as a transport error rather than a caveated reply, which is the one failure mode this
+    # module's promise does not cover.
+    assert json.loads(json.dumps(got)) == got
+
+
+def test_phenomenon_locate_on_text_naming_nothing_is_an_error_not_an_empty_list(ideate_db):
+    """The two answers are opposites. "No shot has one" is a finding about the database; "that
+    text names no phenomenon I know" is a finding about the question, and only the second is
+    true here -- so the reply lists the ids there are, as the CLI's exit-2 does."""
+    got = tools.phenomenon_locate("a nice quiet discharge")
+    assert "hits" not in got
+    assert got["error"].startswith("no phenomenon resolved")
+    assert "tearing (Tearing mode)" in got["error"] and "eho (Edge harmonic oscillation)" in (
+        got["error"]
+    )
+    assert got["caveats"] and any("not the same as no shot" in c for c in got["caveats"])
+
+
+def test_phenomenon_locate_avoid_drops_a_shot_and_the_drop_is_in_notes(phenomenon_db):
+    """A dropped shot cannot carry a caveat -- it is gone -- so what the filter did is the one
+    claim nothing in `hits` can report. It goes in `notes`, and `caveats` says `notes` is about
+    shots that are NOT in the result."""
+    got = tools.phenomenon_locate("NTM", n=10, avoid=["phenomenon:elm"])
+    assert [h["shot"] for h in got["hits"]] == [101, 200]  # 100's ELM was seen by a detector
+    assert any("dropped 1 shot" in note for note in got["notes"])
+    assert any("phenomenon:elm" in note for note in got["notes"])
+    assert any("NOT in `hits`" in c for c in got["caveats"])
+
+
+def test_phenomenon_locate_rejects_an_avoid_token_that_is_not_a_phenomenon(phenomenon_db):
+    """F3. The message names the ARGUMENT, not the CLI flag: a model told to fix `--avoid` is
+    told to fix something that is not in its schema, and has no move."""
+    got = tools.phenomenon_locate("NTM", avoid=["phenomenon:banana"])
+    assert "not a phenomenon" in got["error"] and isinstance(got["caveats"], list)
+    assert "avoid 'phenomenon:banana'" in got["error"]
+    assert "--avoid" not in got["error"]
+
+
+def test_phenomenon_locate_reports_an_unknown_constraint_column_as_an_error(phenomenon_db):
+    got = tools.phenomenon_locate("NTM", constraints={"nope_mean": {"lo": 1.0}})
+    assert "nope_mean" in got["error"] and isinstance(got["caveats"], list)
+
+
+def test_phenomenon_locate_words_a_malformed_constraint_as_search_shots_does(phenomenon_db):
+    """F4. The same failure through the same `_range` must read the same in both tools: a
+    `ValueError:` prefix here and none there is a second spelling of one message."""
+    a = tools.search_shots(ref_shot=100, constraints={"ip_mean": "not a range"})
+    b = tools.phenomenon_locate("NTM", constraints={"ip_mean": "not a range"})
+    assert a["error"] == b["error"] and not b["error"].startswith("ValueError")
+
+
+def test_phenomenon_locate_takes_the_constraints_search_shots_takes(phenomenon_db):
+    """The same two spellings, parsed by the same `_range`: a model that learnt the constraint
+    shape from `search_shots` must not have to learn a second one here."""
+    a = tools.phenomenon_locate("NTM", n=10, constraints={"ip_mean": {"lo": 1.3e6}})
+    b = tools.phenomenon_locate("NTM", n=10, constraints={"ip_mean": [1.3e6, None]})
+    assert [h["shot"] for h in a["hits"]] == [h["shot"] for h in b["hits"]] == [200]
+
+
+def test_phenomenon_locate_says_when_the_database_holds_only_forecasts(ideate_db):
+    """What the CLI prints under `resolved:`, for the same reason: on a database with no
+    observation in it no hit below can be an observed one, and that changes what every row
+    means."""
+    from ideate.retrieval import phenomena as ph
+
+    write_events(
+        ideate_db / "db",
+        [
+            _event(101, "tearing", 2.0, 2.1, event_id="101-label_forecast-00000",
+                   source="label_forecast", evidence_kind="forecast", diag="",
+                   confidence=0.35, horizon_s=1.0, attrs={"label": "tm_risk_1s"}),
+        ],
+    )
+    got = tools.phenomenon_locate("NTM", n=10)
+    assert ph.ALL_FORECASTS.format(n=1) in got["caveats"]
+
+
+def test_phenomenon_locate_on_an_unknown_segment_lists_the_ones_there_are(phenomenon_db):
+    got = tools.phenomenon_locate("NTM", segment="middle")
+    assert "middle" in got["error"] and "flat_top" in got["error"]
+
+
+def test_phenomenon_locate_on_a_half_published_database_is_the_shared_error(
+    tmp_path, monkeypatch
+):
+    """The registered tool, not the plain function: a build in flight raises inside
+    `ShotDB.load`, and the promise that it comes back as a sentence is `never_raises`'s."""
+    root = tmp_path / "half"
+    (root / "db").mkdir(parents=True)
+    (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
+    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
+    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    got = _registered("phenomenon_locate")("NTM")
+    assert "FileNotFoundError" in got["error"] and "shots.parquet" in got["error"]
+    assert any("rebuilt" in c and "ideate build" in c for c in got["caveats"])
+
+
+def test_phenomenon_locate_without_a_database_at_all_names_the_build_command(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
+    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    got = tools.phenomenon_locate("NTM")
+    assert "no database" in got["error"] and "ideate build" in got["error"]
+
+
+# --------------------------------------------------- fix loop 1 (review I10), findings F1-F7
+
+
+def test_phenomenon_locate_without_an_events_table_says_the_join_has_not_run(ideate_db):
+    """F1. `ShotDB.load` skips a missing `events.parquet` and hands back the empty typed frame,
+    so every reader has to say so in its own words -- `get_events` does, with `NO_EVENTS`.
+    Without it the reply on a freshly built database is an empty `hits` list that reads as "no
+    shot has this phenomenon" rather than "nothing has been joined yet"."""
+    got = tools.phenomenon_locate("NTM", n=10)
+    assert "error" not in got and got["hits"] == []
+    assert tools.NO_EVENTS in got["caveats"]
+
+
+def test_phenomenon_locate_names_an_evidence_table_it_could_not_read(ideate_db):
+    """F1, the other half. A torn table is recorded in `db.load_errors` and is NOT a missing
+    one: `evidence()` would otherwise report `unprocessed`, whose meaning is "no detector ran"
+    -- a claim about the machine standing in for a file that would not open."""
+    (ideate_db / "db" / "events.parquet").write_bytes(b"not a parquet file at all")
+    got = tools.phenomenon_locate("NTM", n=10)
+    assert "error" not in got
+    assert any("could not read events.parquet" in c for c in got["caveats"])
+    assert tools.NO_EVENTS not in got["caveats"]  # the table is there; it is unreadable
+
+
+def test_phenomenon_locate_with_no_hits_says_which_absence_it_is(phenomenon_db):
+    """F2. Constraints that pass nothing produce the same `{"n": 0, "hits": []}` as a database
+    nobody has looked at, and an unqualified empty list from a phenomenon tool reads as "no shot
+    has one" -- the answer `NOTHING_RESOLVED` exists to stop this tool giving by accident."""
+    from ideate.retrieval import phenomena as ph
+
+    got = tools.phenomenon_locate("NTM", n=10, constraints={"ip_mean": {"lo": 1e12}})
+    assert "error" not in got and got["hits"] == [] and got["n"] == 0
+    assert tools.NO_EVIDENCE in got["caveats"]
+    assert [c for c in got["caveats"] if ph.RANKING_SENTENCE not in c]
+
+
+def test_phenomenon_locate_says_when_no_detector_covers_the_phenomenon(phenomenon_db):
+    """F2. `rwm` has no `covering_sources`, so an empty list could never have held an observed
+    hit: the absence is a fact about the detectors, not about the shots. `get_events` says it
+    with `NO_DETECTOR` and this tool says it with the same sentence, not a second spelling."""
+    from ideate.retrieval import phenomena as ph
+
+    got = tools.phenomenon_locate("resistive wall mode", n=10)
+    assert "error" not in got
+    assert ph.NO_DETECTOR.format(id="rwm") in got["caveats"]
+
+
+def test_the_server_instructions_quote_the_ranking_rule_verbatim():
+    """F5. `docs/IDEATE.md` and `configs/ideate/retrieval.yaml` are pinned equal to
+    `RANKING_SENTENCE` by a test; `INSTRUCTIONS` hand-copies it across a line wrap and nothing
+    pinned the copy, so a reword would drift silently on the surface that matters most."""
+    from ideate.retrieval import phenomena as ph
+
+    assert ph.RANKING_SENTENCE in " ".join(server_mod.INSTRUCTIONS.split())
+
+
+def test_every_registry_id_is_accepted_as_the_phenomenon_argument(phenomenon_db):
+    """F6. The no-resolution error hands the caller a list of ids, so the next call it makes is
+    with a bare id. That works only because each id is also its own alias in the lexicon, which
+    another front edits -- and a dropped alias would put a model in a loop against this tool's
+    own error message."""
+    from ideate.retrieval import phenomena as ph
+
+    for pid in ph.registry():
+        got = tools.phenomenon_locate(pid, n=1)
+        assert "phenomenon" in got, (pid, got)
+        assert "no phenomenon resolved" not in got.get("error", ""), pid
+
+
 # ------------------------------------------------------------------------------- the registry
 
 
@@ -682,6 +936,7 @@ def test_every_registered_tool_is_a_documented_function_with_annotated_arguments
         "search_shots",
         "describe_shot",
         "get_events",
+        "phenomenon_locate",
     ]
     for fn in server_mod.TOOLS:
         assert (fn.__doc__ or "").strip(), fn.__name__
@@ -747,7 +1002,7 @@ def test_an_events_table_with_the_wrong_columns_is_an_error_dict_not_a_key_error
     assert isinstance(got["caveats"], list)
 
 
-def test_the_server_registers_the_three_tools_and_the_manifest_resource(ideate_db):
+def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db):
     from mcp.client import Client
 
     async def go():
@@ -758,7 +1013,9 @@ def test_the_server_registers_the_three_tools_and_the_manifest_resource(ideate_d
             return tool_list, resources, manifest
 
     tool_list, resources, manifest = asyncio.run(go())
-    assert [t.name for t in tool_list.tools] == ["search_shots", "describe_shot", "get_events"]
+    assert [t.name for t in tool_list.tools] == [
+        "search_shots", "describe_shot", "get_events", "phenomenon_locate",
+    ]
     for t in tool_list.tools:
         assert t.description and t.input_schema["type"] == "object"
     assert [str(r.uri) for r in resources.resources] == ["ideate://manifest"]
@@ -841,7 +1098,9 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     except TimeoutError:  # pragma: no cover - a hung server
         pytest.fail("the stdio server did not answer within 90 s")
 
-    assert [t.name for t in tool_list.tools] == ["search_shots", "describe_shot", "get_events"]
+    assert [t.name for t in tool_list.tools] == [
+        "search_shots", "describe_shot", "get_events", "phenomenon_locate",
+    ]
     # Both tools now walk into `ShotDB.load` -- `get_events` needs the shot index to tell an
     # unindexed shot from an unexamined one -- and both come back as the SAME application error
     # rather than the framework's bare "Error executing tool <name>".
