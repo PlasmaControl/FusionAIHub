@@ -1,0 +1,11 @@
+{
+  "made_at": "2026-09-13T00:00:00Z",
+  "made_by": "scripts/labelmaker/labels_format.py:rwm_onsets_2017",
+  "made_from": {
+    "raw_file": "resistive_wall_mode/raw/rwm_onsets_2017.csv",
+    "sha256": "29a61a8f5ede9bd55fe52370862b185e0993c45eb37dbc6fd88abb7d90e234e6"
+  },
+  "n_rows": 30,
+  "n_shots": 20,
+  "schema_version": 1
+}

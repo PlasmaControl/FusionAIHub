@@ -243,7 +243,7 @@ def build_parser() -> ArgumentParser:
                              "<stage>-<timestamp>-<pid>")
     events.add_argument("--databases-only", action="store_true",
                         help="ingest the curated label tables "
-                             "(data/labels/tables.yaml) over the shot list "
+                             "(data/events/tables.yaml) over the shot list "
                              "and write nothing else: no corpus read, no "
                              "U-Net, no masks. Seconds over 10,000 shots, "
                              "and the only way a table reaches a shot whose "
@@ -722,6 +722,10 @@ def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
     paths = ctx.paths
     try:
         specs = databases.load_manifest(paths.label_tables)
+        # Validate every input before writing any shot; read_table warms the
+        # shared cache, so the shot loop does not parse these CSVs again.
+        for spec in specs:
+            databases.read_table(spec, paths.label_tables)
     except databases.DatabaseError as exc:
         print(f"events --databases-only: refusing to run - {exc}",
               file=sys.stderr)

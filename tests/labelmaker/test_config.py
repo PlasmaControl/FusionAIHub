@@ -94,13 +94,13 @@ def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
 def test_the_label_tables_root_is_the_repo_and_is_overridable(
     monkeypatch, tmp_path,
 ):
-    # Curated label tables are DATA and live under `data/labels/`, never
+    # Curated label tables are DATA and live under `data/events/`, never
     # under `src/`. The default resolves relative to the package rather
     # than to the caller's cwd, so a run from anywhere finds the committed
     # manifest; a table too large or too restricted to commit lives on
     # /scratch and the root moves with it.
     default = Paths().label_tables
-    assert default.name == "labels" and default.parent.name == "data"
+    assert default.name == "events" and default.parent.name == "data"
     assert (default / "tables.yaml").is_file()
     tables = tmp_path / "elsewhere"
     monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(tables))

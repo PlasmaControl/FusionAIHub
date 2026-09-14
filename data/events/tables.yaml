@@ -1,0 +1,36 @@
+version: 1
+
+# Raw columns and adapter inputs; the loader reads only format/<format_stem>.csv.
+# made_at is the recorded conversion revision time, fixed for reproducible sidecars.
+# stem remains the unique database:<stem> source; directory names are prose.
+
+tables:
+  - stem: rwm_onsets_2017
+    raw_file: rwm_onsets_2017.csv
+    format_stem: rwm_onsets_2017
+    converter: rwm_onsets_2017
+    made_at: "2026-09-13T00:00:00Z"
+    dir: resistive_wall_mode
+    phenomenon: rwm
+    kind: point
+    shot_col: SHOT
+    t_col: ONSET_TIME
+    t_units: ms
+    attr_cols: [NTOR, MODE_TYPE]
+    attr_types: {NTOR: int, MODE_TYPE: str}
+    provenance: "Jeremy Hansen, 2017 campaign RWM onset database"
+
+  - stem: rwm_onsets_2024
+    raw_file: rwm_onsets_2024.csv
+    format_stem: rwm_onsets_2024
+    converter: rwm_onsets_2024
+    made_at: "2026-09-13T00:00:00Z"
+    dir: resistive_wall_mode
+    phenomenon: rwm
+    kind: point
+    shot_col: SHOT
+    t_col: ONSET_TIME
+    t_units: ms
+    attr_cols: [NTOR, MODE_TYPE]
+    attr_types: {NTOR: int, MODE_TYPE: str}
+    provenance: "Jeremy Hansen, 2024 campaign RWM onset database"
