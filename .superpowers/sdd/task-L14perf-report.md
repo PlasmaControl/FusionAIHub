@@ -294,7 +294,7 @@ Pilot sizing is fixed BEFORE submission, with no threshold changes:
   deliberately supplies CPU capacity for the faster A100; the one pilot must
   determine whether IPC, bandwidth or startup limits it instead.
 - **68G memory**: conservative reservation envelope
-  `(3.846 parent + 49 * 0.951 worker) * 1.3 = 65.585 GiB`, rounded up.
+  `(3.846 parent + 49 * 0.951 worker) * 1.3 = 65.579 GiB`, rounded up.
   This sum is NOT a measured cgroup RSS: shared pages make worker VmHWM
   non-additive. Actual sampled memory and sacct MaxRSS will both be reported.
 - **00:07:00**: `44.55 / 3 * 20 * 1.3 = 386.1 s`, rounded up to seven
@@ -314,3 +314,120 @@ mkdir -p "$L14_ROOT/text"
 cp /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/text/logs_subset.jsonl "$L14_ROOT/text/"
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 CUDA_VISIBLE_DEVICES=1 XDG_CACHE_HOME="$L14_ROOT/cache" CUDA_CACHE_PATH="$L14_ROOT/cache/cuda" /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python -u .superpowers/sdd/profile_l14perf.py --shot-file /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt --limit 3 --passes wide zoom --root "$L14_ROOT" --corpus /scratch/gpfs/EKOLEMEN/foundation_model --unet /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt --device cuda --tile-batch 96 --amp --prep-workers 6 --prefetch 6 --tail-workers 0 --text-subset readonly --no-index --run-id profile-after > "$L14_ROOT/profile.log" 2>&1
 ```
+
+## Deliverable 4: the single A100 pilot
+
+**2931999_0**, source HEAD `5a8386e`, ran on **stellar-m01g5**, NVIDIA
+A100-PCIE-40GB. It started 2026-09-14 18:49:56 EDT and finished 18:50:57:
+**61 s SLURM wall, COMPLETED, exit 0:0**. The card reported 0 MiB used before
+launch. Exactly one `sbatch` command was issued; no companion, second pilot or
+production job was submitted. `squeue` emptied and every sacct step completed.
+
+**20/20 shots completed, 244 stored blocks, 7,478 tiles, 26,913 events.** Driver
+wall was **53.49 s**, **139.81 tiles/s**, versus L12's 48.97 tiles/s (**2.855x**).
+The same tile count was processed; L12 lost five shot tails whereas this run
+published all 20. `text_subset_missing` is empty. NPZ block counts and event
+counts were checked against every run row, and every sources frame was read
+and checked for intervals/min_gap_s. Product hashes and source-status counts
+are in `pilot-l14perf/completion-evidence.json`.
+
+| Measurement | L12 pilot 2931065_0 | L14 pilot 2931999_0 |
+|---|---:|---:|
+| CPU utilization, jobstats detailed | 27.1% | **12.8%** |
+| CPU memory, sampled jobstats | 4.7GB / 24GB (19.6%) | **22.4GB / 68GB (32.9%)** |
+| GPU utilization, jobstats | 6.9% | **100%** |
+| GPU memory, jobstats maximum | 37.9GB / 40GB (94.7%) | **38.6GB / 40GB (96.6%)** |
+| sacct MaxRSS | 6,750,340K (6.438 GiB) | **24,748,068K (23.601597 GiB)** |
+| sacct MaxRSS / requested host memory | — | **34.7%** |
+| Torch peak allocated | 17.647 GiB | **18.212 GiB** |
+
+These are the recorded measurements, not recomputed percentages rounded to
+make a gate pass. The jobstats summary bars show 12/33/100/97; the table uses
+the detailed values selected by the gate. GPU memory includes allocator cache;
+it is not the Torch live-allocation peak. Sampled CPU time is 390 s, whereas
+sacct TotalCPU is 454.406 s; those are also distinct observations.
+
+The **GPU >=70% target is met**. The full jobstats verdict remains
+**FAIL (exempt)**: CPU 12.8% and CPU-memory 32.9% are below 70%; GPU and
+GPU-memory pass. The prescribed `--pilot` gate returned **exit 0** because of
+the exemption, not because every check passed. The site report covers a
+61-second pilot and does not expose sample count here; 100% is reported as
+measured, not extrapolated into a claim of continuous utilization on a long run.
+
+L-A's five former error shots all completed with empty shot-level error fields:
+
+| Shot | Blocks | Events | Status |
+|---|---:|---:|---|
+| 185962 | 14 | 1,537 | ok |
+| 185980 | 14 | 1,421 | ok |
+| 185982 | 14 | 1,800 | ok |
+| 186090 | 10 | 588 | ok |
+| 186196 | 10 | 1,241 | ok |
+
+Their out-of-coverage tracks remain isolated per block in `skipped`; they do
+not abort mask writes, independent detectors or source writes. This confirms
+the L-A fix under the optimized driver without pretending those rejected
+tracks became valid. Scratch roots intentionally lack production feature
+files, so feature-dependent sources are honestly skipped, as in the identity
+oracle and the profiles; production stores were not modified.
+
+Observed scheduling: prepared-future wait **0.002 s**; pooled inference timer
+**39.251 s** (includes planning/input-generator time); description **27.772
+worker-seconds**; finishing **134.626 worker-seconds**; tail-result wait
+**8.344 s**. Concurrent worker service totals cannot be added to driver wall.
+Parent VmHWM was **9.498 GiB**, largest worker **2.576 GiB**. The pool report
+contains 21 prep and eight tail PIDs, below the configured maxima of 37/12.
+Thus the CPU capacity estimate was conservative: lazy worker creation, I/O,
+queue/serialization costs and a short cold run leave much of the 50-core
+reservation unused. More workers alone are not evidence of useful CPU demand.
+
+### Production sizing proposal — report only, unvalidated
+
+GPU performance permits recording the requested **8 x 60 shots**,
+`--array 0-7%2`, `N_CHUNKS=8` proposal. It does **not** erase the two failed
+production utilization checks. Using the pilot's measured resource use x 1.3:
+
+| Resource | Calculation | Proposed request |
+|---|---|---:|
+| CPU | `ceil((454.406 TotalCPU seconds / 61 wall seconds) * 1.3)` | **10 CPUs** |
+| Host memory | `ceil(23.601597 GiB MaxRSS * 1.3)` | **31G** |
+| Time per 60-shot chunk | `ceil(61 s / 20 * 60 * 1.3)` | **00:04:00** |
+| GPU | Same one A100, batch cap 96, AMP | **1 A100** |
+
+A matching worker configuration would be **6 prep, prefetch 6, 3 tail, 1
+parent**, with readonly text, no shared index, and the same compact/preserved
+CUDA batch schedule. This is a **capacity proposal**, not a validated claim
+that smaller pools sustain the observed GPU utilization: the AFTER profile
+exposed waits at six prep workers, and mean CPU demand does not measure burst
+capacity. The controller must review that concurrency risk and the failed
+CPU/host-memory gates before treating it as production-ready. The submitted
+pilot retained its original 50 CPUs/68G allocation; no hypothetical smaller
+allocation was passed back through jobstats and no threshold was changed.
+No production command was executed or placed in a submission script.
+
+Submission and gate, exactly (common environment exports as above):
+
+```bash
+L14_PILOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot-l14perf
+printf 'Resolved root: %s\n' "$L14_PILOT"
+mkdir -p "$L14_PILOT/text" "$L14_PILOT/slurm"
+cp /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/text/logs_subset.jsonl "$L14_PILOT/text/"
+REPO=/scratch/gpfs/nc1514/FusionAIHub-L14perf ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot-l14perf SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt PREP_WORKERS=37 PREFETCH=37 TAIL_WORKERS=12 TILE_BATCH=96 N_CHUNKS=1 sbatch --parsable --job-name=tokeye-L14perf --cpus-per-task=50 --mem=68G --time=00:07:00 --array=0-0%1 --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot-l14perf/slurm/%A_%a.out scripts/labelmaker/tokeye_masks.sbatch
+# Returned 2931999. Polled squeue and sacct to completion.
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 TMPDIR=/tmp/l14perf
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m labelmaker.jobstats --job-id 2931999_0 --pilot --preserve-dir /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm --out /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/jobstats.json
+# Exit 0; FAIL (exempt), CPU 12.8 / CPU-mem 32.9 / GPU 100 / GPU-mem 96.6.
+```
+
+Raw captures are `runs/slurm/2931999_0.jobstats.txt` and
+`runs/slurm/2931999_0.sacct.txt`; ledger entry is
+`runs/slurm/jobstats.json -> jobs["2931999_0"]`. These prescribed gate captures
+are the only task writes outside `runs/l14perf/` in the data root.
+Scheduler output, caches and products are inside `pilot-l14perf/`.
+
+Pilot evidence SHA-256:
+
+- `completion-evidence.json`: `039c3762056a0c4df3bc056dad85952f28390c9126e3d898f04b77ec0201105b`
+- `2931999_0.jobstats.txt`: `868eb9ae396077962efcabeeab16e8f0b0829d651d1953a34aade42fabda2c07`
+- `2931999_0.sacct.txt`: `04bfb5c819900ec1d86dab492f736e641eb72cc9fc4e0c59717b7039c673be38`
+- `tokeye-2931999_c0of1_r0.json`: `5ed8c186d4c68bba213eaa2ac6408eca647d756f3db166579d234a9fc1b7bed6`
