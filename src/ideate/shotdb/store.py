@@ -13,13 +13,32 @@ Ported from shot-recommender-system (shotrec) @565d548.
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from collections.abc import Iterable
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from ..schema import Range, ShotRecord
+
+# A negative must describe at least half the requested segment. Coverage states themselves
+# retain the shared overlap contract; this threshold governs only query --avoid eligibility.
+AVOID_MIN_COVERED_FRACTION = 0.5
+PHENOMENON_EVIDENCE_CACHE_SIZE = 4096
+
+# Only columns consumed by phenomenon evidence are materialized as Python row dictionaries.
+# Provenance stays on the original frames for MCP/event readers; duplicating it here wastes
+# both snapshot memory and first-query time (especially with Arrow-backed string columns).
+_EVIDENCE_COLUMNS = {
+    'events': (
+        'shot', 'event_id', 'source', 'diag', 'evidence_kind', 'phenomenon', 't0_s', 't1_s',
+        'f0_khz', 'f1_khz', 'confidence', 'attrs',
+    ),
+    'coverage_sources': ('shot', 'source', 'diag', 'status', 't_cov0_s', 't_cov1_s'),
+    'labels_wide': ('shot', 'slug', 'label', 'n_valid', 'max_valid', 'frac_above'),
+}
 
 
 def _empty(dtypes: dict[str, str]) -> pd.DataFrame:
@@ -73,6 +92,7 @@ class ShotDB:
         events: pd.DataFrame | None = None,
         labels_wide: pd.DataFrame | None = None,
         text_claims: pd.DataFrame | None = None,
+        event_sources: pd.DataFrame | None = None,
     ):
         self.db_dir = Path(db_dir)
         self.shots = shots
@@ -93,12 +113,19 @@ class ShotDB:
         self.events = empty_events() if events is None else events
         self.labels_wide = empty_labels_wide() if labels_wide is None else labels_wide
         self.text_claims = empty_text_claims() if text_claims is None else text_claims
-        #: name -> message for an optional label table that exists but could not be read.
+        from ..labels.event_sources import empty_sources
+
+        self.event_sources = empty_sources() if event_sources is None else event_sources
+        self.has_event_sources = event_sources is not None
+        #: name -> message for an optional evidence table that exists but could not be read.
         self.load_errors: dict[str, str] = {}
         meta = shots[["shot", "run_id", "regime", "verdict", "operational"]].set_index("shot")
         # A left join preserves row order, which is what keeps self.segments aligned row-for-row
         # with emb["scalar"]; every lookup in this class relies on that.
         self.segments = segments.join(meta, on="shot", rsuffix="_shot")
+        self._phenomenon_evidence: OrderedDict = OrderedDict()
+        self._evidence_indexes: dict[str, dict[int, list[dict]]] = {}
+        self._avoid_filter_cache: tuple | None = None
 
     @classmethod
     def load(cls, db_dir: Path) -> ShotDB:
@@ -119,7 +146,7 @@ class ShotDB:
         # into a protocol error on every MCP call, including ones that never touch events.
         label_tables: dict[str, pd.DataFrame] = {}
         load_errors: dict[str, str] = {}
-        for name in ("events", "labels_wide", "text_claims"):
+        for name in ("events", "labels_wide", "text_claims", "event_sources"):
             p = db_dir / f"{name}.parquet"
             if not p.exists():
                 continue
@@ -152,6 +179,197 @@ class ShotDB:
 
     # ------------------------------------------------------------------------- hard filters
 
+    def evidence_rows(self, table: str, shot: int) -> list[dict]:
+        """Snapshot rows grouped once in O(rows), then O(1) lookup without frame scans.
+
+        Indexes are lazy so opening a database for scalar retrieval pays no evidence cost.
+        Each index holds only the table's rows, never a shot × phenomenon expansion.
+        """
+        if table not in self._evidence_indexes:
+            grouped: dict[int, list[dict]] = {}
+            frame = getattr(self, table)
+            if table in _EVIDENCE_COLUMNS:
+                frame = frame[[c for c in _EVIDENCE_COLUMNS[table] if c in frame.columns]]
+            for row in frame.to_dict('records'):
+                grouped.setdefault(int(row['shot']), []).append(row)
+            self._evidence_indexes[table] = grouped
+        return self._evidence_indexes[table].get(int(shot), [])
+
+    @cached_property
+    def coverage_sources(self) -> pd.DataFrame:
+        """Authoritative sources, or legacy observed-event coverage grouped once."""
+        from ..labels import event_sources as es
+
+        frame = self.event_sources
+        if self.has_event_sources or not frame.empty or 'event_sources' in self.load_errors:
+            return frame
+        keys = ['shot', 'source', 'diag', 'channel', 'pass_name', 't_cov0_s', 't_cov1_s']
+        missing = {*keys, 'evidence_kind'} - set(self.events.columns)
+        if missing:
+            raise KeyError(f"events table missing columns: {', '.join(sorted(missing))}")
+        observed = self.events[self.events['evidence_kind'].isin(('detector', 'heuristic'))]
+        spans = observed.groupby(keys, dropna=False, sort=False).size().reset_index(name='n_events')
+        return es._frame([es.source_row(**row) for row in spans.to_dict('records')])
+
+    @cached_property
+    def _coverage_positions(self) -> dict:
+        return self.coverage_sources.groupby('shot', sort=False).indices
+
+    @cached_property
+    def _segment_windows(self) -> dict:
+        return {
+            str(row.Index): (row.t0_ms / 1000.0, row.t1_ms / 1000.0)
+            for row in self.segments[['t0_ms', 't1_ms']].itertuples()
+        }
+
+    @cached_property
+    def _inventory_rows(self) -> dict:
+        columns = [c for c in self.shots if c == 'reader' or c.startswith('has_')]
+        return self.shots[columns].to_dict('index')
+
+    @cached_property
+    def _phenomenon_registry(self):
+        from ..retrieval import phenomena as ph
+
+        return ph.registry()
+
+    @cached_property
+    def _phenomenon_config(self):
+        from ..retrieval import phenomena as ph
+
+        return ph._config()
+
+    def phenomenon_evidence(self, shot: int, phenomenon: str, segment: str):
+        """Evidence cached for this loaded snapshot, shared by masks and retrieval channels."""
+        from ..retrieval import phenomena as ph
+
+        key = (int(shot), phenomenon, segment)
+        if key not in self._phenomenon_evidence:
+            self._phenomenon_evidence[key] = ph.evidence(
+                shot, self._phenomenon_registry[phenomenon], self, segment,
+                label_floor=self._phenomenon_config[2],
+                shot_metadata=self._inventory_rows.get(int(shot), {}),
+            )
+            if len(self._phenomenon_evidence) > PHENOMENON_EVIDENCE_CACHE_SIZE:
+                self._phenomenon_evidence.popitem(last=False)
+        self._phenomenon_evidence.move_to_end(key)
+        return self._phenomenon_evidence[key]
+
+    @cached_property
+    def _label_tokens(self) -> list[frozenset[str]]:
+        """One token set per segment, built once on first use of a label filter.
+
+        Phenomena require observed intervals. Sources name both the event producer and evidence
+        kind within the segment. Label summaries are shot scoped; their operating point is the
+        published table threshold, a registered threshold, or the detection label floor.
+        """
+        from ..retrieval import phenomena as ph
+
+        registry = ph.registry()
+        floor = self._phenomenon_config[2]
+        thresholds = {
+            ref.key: floor if ref.thr is None else ref.thr
+            for entry in registry.values() for ref in entry.labels
+        }
+        labels: dict[int, set[str]] = {}
+        for row in self.labels_wide.to_dict("records"):
+            key = f"{row['slug']}/{row['label']}"
+            threshold = ph._f(row.get("thr"))
+            if threshold is None:
+                threshold = thresholds.get(key)
+            p = ph._f(row.get("max_valid"))
+            if threshold is not None and p is not None and row["n_valid"] > 0 and p >= threshold:
+                labels.setdefault(int(row["shot"]), set()).add(f"label:{key}")
+        out = []
+        for row in self.segments[["shot", "segment", "t0_ms", "t1_ms", "operational", "regime"]].itertuples():
+            tokens = set(row.operational) | {row.regime} | labels.get(int(row.shot), set())
+            window = (row.t0_ms / 1000.0, row.t1_ms / 1000.0)
+            rows = [r for r in self.evidence_rows('events', row.shot) if ph._overlaps(r, window)]
+            for event in rows:
+                tokens.update((f"source:{event['source']}", f"source:{event['evidence_kind']}"))
+            observed_sources = {r["source"] for r in rows if r["evidence_kind"] in ph.OBSERVED_KINDS}
+            for pid, entry in registry.items():
+                if observed_sources.intersection(entry.sources):
+                    ev = self.phenomenon_evidence(row.shot, pid, row.segment)
+                    if ev.intervals:
+                        tokens.add(f"phenomenon:{pid}")
+            out.append(frozenset(tokens))
+        return out
+
+    def _avoid_coverage(self, segment: str, avoid: Iterable[str], notes=None) -> np.ndarray:
+        """Require relevant observed coverage, explaining excluded states at report time."""
+        from ..retrieval import phenomena as ph
+
+        keep = np.ones(len(self.segments), dtype=bool)
+        for token in sorted(set(avoid)):
+            if not token.startswith("phenomenon:"):
+                continue
+            pid = ph._avoid_ids([token])[0]
+            counts: dict[str, int] = {}
+            details: set[str] = set()
+            n_observed = 0
+            for i, row in enumerate(self.segments[["shot", "segment"]].itertuples(index=False)):
+                if row.segment != segment:
+                    continue
+                ev = self.phenomenon_evidence(row.shot, pid, segment)
+                if ev.intervals:
+                    n_observed += 1
+                    details.update(c for c in ev.caveats if c in ph.EVENT_CAVEATS.values())
+                if ev.coverage_state != "observed":
+                    keep[i] = False
+                    counts[ev.coverage_state] = counts.get(ev.coverage_state, 0) + 1
+                    details.update(c for c in ev.caveats if (
+                        "coverage unknown" in c or "no detector registered" in c or "could not read" in c
+                    ))
+                elif ev.coverage_partial and f"phenomenon:{pid}" not in self._label_tokens[i]:
+                    if ev.covered_fraction < AVOID_MIN_COVERED_FRACTION:
+                        keep[i] = False
+                        counts['insufficient'] = counts.get('insufficient', 0) + 1
+                        details.add(
+                            f'--avoid {token}: requires at least '
+                            f'{AVOID_MIN_COVERED_FRACTION:.0%} measured coverage of {segment}'
+                        )
+            if notes is not None:
+                if n_observed:
+                    notes.append(ph.AVOID_DROPPED.format(
+                        token=token, n=n_observed, title=ph.registry()[pid].title,
+                    ))
+                notes.extend(
+                    f"--avoid {token}: excluded {n} {segment} segment(s) with {state} coverage; "
+                    "absence is not evidence"
+                    for state, n in sorted(counts.items())
+                )
+                notes.extend(sorted(details))
+        return keep
+
+    def label_filter_caveats(self, segment: str, avoid: Iterable[str]) -> list[str]:
+        return list(self._avoid_result(segment, avoid)[1])
+
+    def _avoid_result(self, segment: str, avoid: Iterable[str]) -> tuple[np.ndarray, tuple]:
+        """One bounded filter result shared by channel masks and CLI/MCP reporting."""
+        key = (segment, tuple(sorted(set(avoid))))
+        if self._avoid_filter_cache is not None and self._avoid_filter_cache[0] == key:
+            return self._avoid_filter_cache[1]
+        notes: list[str] = []
+        keep = self._avoid_coverage(segment, key[1], notes)
+        keep.setflags(write=False)
+        result = (keep, tuple(notes))
+        self._avoid_filter_cache = (key, result)
+        return result
+
+    def label_filter_shot_caveats(self, shot: int, segment: str, avoid: Iterable[str]) -> list[str]:
+        """Name the measured fraction on each retained partial negative, not just its query."""
+        notes = []
+        for token in sorted(set(avoid)):
+            if token.startswith('phenomenon:'):
+                ev = self.phenomenon_evidence(shot, token.split(':', 1)[1], segment)
+                if ev.coverage_state == 'observed' and ev.coverage_partial and not ev.intervals:
+                    notes.append(
+                        f'--avoid {token}: detectors covered {ev.covered_fraction:.1%} of '
+                        f'the {segment} window; absence outside that coverage is unmeasured'
+                    )
+        return notes
+
     def mask(
         self,
         segment: str,
@@ -179,15 +397,19 @@ class ShotDB:
             m &= ok
         req, avoid = set(require_labels), set(avoid_labels)
         if req or avoid:
+            from ..retrieval import phenomena as ph
+
+            for tokens, option in ((req, '--require'), (avoid, '--avoid')):
+                ph._avoid_ids(sorted(t for t in tokens if t.startswith('phenomenon:')), option=option)
+        if req or avoid:
             # The regime joins the operational set here so a caller can require "QH" or avoid
             # "L" with the same vocabulary it uses for "dud".
-            labels = [
-                set(ops) | {reg} for ops, reg in zip(s["operational"], s["regime"], strict=True)
-            ]
+            labels = self._label_tokens
             if req:
                 m &= np.array([req <= lab for lab in labels], dtype=bool)
             if avoid:
                 m &= np.array([not (avoid & lab) for lab in labels], dtype=bool)
+                m &= self._avoid_result(segment, avoid)[0]
         if exclude_shots:
             m &= ~s["shot"].isin(set(exclude_shots)).to_numpy()
         if exclude_runs:

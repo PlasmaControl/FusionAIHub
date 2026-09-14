@@ -472,6 +472,37 @@ def modality_cosine(M: np.ndarray, qvec: np.ndarray, dims: list[int]) -> np.ndar
         return np.where(shared > 0, total / np.maximum(shared, 1), np.nan)
 
 
+def phenomenon(q: QueryState, db: ShotDB) -> list[tuple[str, float]]:
+    """Resolved phenomenon evidence, ordered by the same tiers and score as `locate`.
+
+    With several phenomena, the strongest evidence tier leads and the resolver-weighted scores
+    break ties. A query with no resolved phenomenon casts no RRF vote.
+    """
+    from . import phenomena as ph
+
+    positive, negatives = positive_and_negatives(q)
+    resolved = ph.resolve(positive)
+    if not resolved:
+        return []
+    weights, saturation, _floor = db._phenomenon_config
+    out = []
+    for row in db.segments.loc[hard_filter(q, db), ["shot", "segment"]].itertuples():
+        if negatives and text_matches_negative(_shot_text(db, int(row.shot)), negatives):
+            continue
+        evidence = [
+            (db.phenomenon_evidence(int(row.shot), pid, row.segment), weight)
+            for pid, weight in resolved
+        ]
+        evidence = [(ev, weight) for ev, weight in evidence if ph._has_evidence(ev)]
+        if not evidence:
+            continue
+        tier = max(ph._tier(ev) for ev, _ in evidence)
+        value = sum(weight * ph.score(ev, weights, saturation) for ev, weight in evidence)
+        out.append((str(row.Index), value, tier, int(row.shot)))
+    out.sort(key=lambda item: (-item[2], -item[1], item[3]))
+    return [(sid, value) for sid, value, _tier, _shot in out[:CANDIDATES]]
+
+
 # The registry. One function, one line here, and rank.py picks it up; weights live in
 # configs/ideate/retrieval.yaml under `retrieval.weights` and default to 1.0 for a channel not
 # named.
@@ -480,4 +511,5 @@ CHANNELS = {
     "text_knn": text_knn,
     "bm25": bm25,
     "ignite_knn": ignite_knn,
+    "phenomenon": phenomenon,
 }

@@ -215,6 +215,7 @@ def search_shots(
         channel found it and how far each constraint was from the query.
     """
     from ..retrieval import rank as rank_mod
+    from ..retrieval.phenomena import PhenomenaError
     from ..schema import QueryState
 
     caveats: list[str] = []
@@ -252,6 +253,8 @@ def search_shots(
     try:
         found = rank_mod.search(state, db)
         report = _pool_report(state, db)
+    except PhenomenaError as exc:
+        return _error(str(exc), [*caveats, str(exc)])
     except KeyError as exc:
         return _error(
             f"{exc.args[0]}. Columns are the ones describe_shot returns for a shot.", caveats
@@ -260,7 +263,10 @@ def search_shots(
         return _error(f"{type(exc).__name__}: {exc}", caveats)
 
     fired = {name: len(ranking) for name, ranking in found.rankings.items()}
-    if not any(fired.values()):
+    caveats.extend(db.label_filter_caveats(state.segment, state.avoid_labels))
+    if report["candidates"] == 0:
+        caveats.append("nothing passed the filters")
+    elif not any(fired.values()):
         # Not the same as "nothing matched": no channel had anything to search ON. A model told
         # only that the list is empty will rephrase, which cannot help.
         caveats.append(
@@ -336,7 +342,7 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
     return {
         "shot": shot,
         "segment": seg,
-        "description": describe_mod.describe(rec, seg),
+        "description": describe_mod.describe(rec, seg, db=db),
         "record": rec.model_dump(mode="json"),
         "frame_codes": codes,
         "caveats": caveats,
@@ -387,10 +393,9 @@ def _frame_codes(shot: int, caveats: list[str]) -> dict:
 EVENT_STATES = ("unindexed", "unprocessed", "uncovered", "observed")
 
 _UNPROCESSED_CAVEAT = (
-    "no observed-event product for shot {shot}: no detector is recorded as having run over it "
-    "and it has no detector or heuristic rows (a forecast, a logbook mention and a curated-table "
-    "entry are none of them). Absence is not evidence -- this is not a quiet shot, it is an "
-    "unexamined one"
+    "no observed-event product for shot {shot}: no relevant detector source is recorded as "
+    "having completed over it. Returned event rows do not establish that a registered covering "
+    "source ran. Absence is not evidence -- this is not a quiet shot, it is an unexamined one"
 )
 
 _NO_DETECTION_CAVEAT = (
@@ -464,13 +469,13 @@ def get_events(
     each:
 
     * `unindexed` -- the shot is not in the database at all. Nothing was ever loaded for it.
-    * `unprocessed` -- the shot is in the database, but no detector is recorded as having run
+    * `unprocessed` -- the shot is in the database, but no relevant detector is recorded as having run
       over it. Its empty event list is not evidence that the shot was quiet.
-    * `uncovered` -- detectors ran, but none of them is recorded as having covered the window
+    * `uncovered` -- relevant detectors ran, but none is recorded as having covered the window
       you asked about: either their spans lie elsewhere (the caveat names the span that IS
       covered) or they completed without recording a span at all (the caveat names them). A
       source that ran and recorded no coverage can neither cover nor un-cover a window.
-    * `observed` -- some one detector's OWN coverage overlaps the window. An empty `events` here
+    * `observed` -- a relevant detector's OWN coverage overlaps the window. An empty `events` here
       is a real observation of nothing, and the caveats say how many sources reported it --
       counting only the sources whose coverage overlaps the window, not everything that ran.
 
@@ -520,12 +525,25 @@ def get_events(
             "status": "unindexed",
         }
 
-    sources = _event_sources(shot)
-    if phenomenon == "elm":
-        # A legacy magnetics clock or a generic transient cannot establish
-        # coverage for the D-alpha ELM family.
-        sources = sources[(sources["source"] == "elm_clock")
-                          & (sources["diag"] == "filterscopes")]
+    from ..labels import event_sources as es
+    from ..retrieval import phenomena as ph
+
+    relevant = None
+    entry = None
+    if phenomenon:
+        entry = ph.registry().get(phenomenon)
+        relevant = entry.covering_sources if entry is not None else ()
+        if entry is None:
+            caveats.append(
+                f'unknown phenomenon id {phenomenon!r}; the registry has {sorted(ph.registry())}; '
+                'absence cannot be interpreted as a detector observation'
+            )
+        elif not relevant:
+            caveats.append(ph.NO_DETECTOR.format(id=phenomenon))
+    sources = es.for_shot(db, shot, relevant)
+    sources = _accepted_phenomenon_rows(sources, entry, caveats, "coverage")
+    if "event_sources" in db.load_errors:
+        caveats.append(f"could not read event_sources.parquet: {db.load_errors['event_sources']}")
     summary = _sources_summary(sources, shot)
 
     paths = config.load_paths()
@@ -545,18 +563,9 @@ def get_events(
         df.loc[legacy, "phenomenon"] = "transient"
 
     all_rows = df if df is not None else None
-    # `OBSERVED_KINDS` is an allow-list, so `database` is already outside it: a curated table
-    # names a shot, it does not observe one, and a shot whose only rows come from a
-    # spreadsheet must never answer `status == "observed"` (task L-D1's error class arriving
-    # through the status field instead of through the list). Nothing extra to exclude here.
-    n_observed_rows = 0 if all_rows is None else int(
-        all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum()
-    )
-
     if phenomenon and all_rows is not None:
         all_rows = all_rows[all_rows["phenomenon"] == phenomenon]
-        if phenomenon == "elm":
-            n_observed_rows = int(all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum())
+        all_rows = _accepted_phenomenon_rows(all_rows, entry, caveats, "event")
 
     nan_excluded = 0
     if all_rows is not None and (t0_s is not None or t1_s is not None):
@@ -587,7 +596,7 @@ def get_events(
     database = [r for r in rows if r.get("evidence_kind") == "database"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
 
-    status = _event_status(summary, n_observed_rows, sources, t0_s, t1_s)
+    status = es.coverage_state(sources, t0_s, t1_s)
     coverage = _coverage_block(sources, summary)
     window_text = "" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s"
     unknown = _unknown_coverage_sources(sources)
@@ -647,6 +656,27 @@ def get_events(
     }
 
 
+def _accepted_phenomenon_rows(frame, entry, caveats: list[str], kind: str):
+    """Apply the registry's shared diagnostic gate and name every excluded source/diag group."""
+    if entry is None or not entry.coverage_diags or frame.empty:
+        return frame
+    keep = []
+    excluded: dict[tuple[str, str], int] = {}
+    for row in frame.to_dict("records"):
+        accepted = entry.accepts_row(row)
+        keep.append(accepted)
+        if not accepted:
+            key = str(row.get("source")), str(row.get("diag"))
+            excluded[key] = excluded.get(key, 0) + 1
+    for (source, diag), n in sorted(excluded.items()):
+        caveats.append(
+            f"{n} {kind} row(s) excluded for {entry.id}: {source}/{diag} does not satisfy "
+            f"coverage_diags {list(entry.coverage_diags)}; legacy diagnostic rows establish "
+            "neither coverage nor hits"
+        )
+    return frame.loc[keep]
+
+
 def _window(t0_s, t1_s) -> tuple[tuple[float | None, float | None], dict | None]:
     """`((t0, t1), None)` or `((None, None), error)`. A reversed window is a mistake, not a query.
 
@@ -677,55 +707,10 @@ def _window(t0_s, t1_s) -> tuple[tuple[float | None, float | None], dict | None]
     )
 
 
-def _event_sources(shot: int):
-    """This shot's rows of `db/event_sources.parquet`, or an empty typed frame.
-
-    An absent table is a database whose join predates the source contract, and is treated the
-    same as a shot with no rows: unprocessed until something says otherwise.
-    """
-    from ..labels import event_sources as es
-
-    path = config.load_paths().db_dir / "event_sources.parquet"
-    if not path.exists():
-        return es.empty_sources()
-    try:
-        import pandas as pd
-
-        df = pd.read_parquet(path)
-        return df[df["shot"] == int(shot)]
-    except Exception:  # noqa: BLE001 - a broken coverage table must not lose the events
-        return es.empty_sources()
-
-
 def _sources_summary(sources, shot: int) -> dict:
     from ..labels import event_sources as es
 
     return es.shot_summary(sources, shot)
-
-
-def _event_status(summary, n_observed_rows: int, sources, t0_s, t1_s) -> str:
-    """Which of the four states this reply is in. See `EVENT_STATES`.
-
-    THE COVERAGE RULE. An `ok` source whose coverage is NaN ran and recorded no span, so it can
-    neither cover nor un-cover the window: it keeps the shot out of `unprocessed` (it did run)
-    and it cannot put it into `observed`, which needs some one diagnostic source's own finite
-    coverage to overlap the window -- a shot whose every completed source has unknown coverage is
-    `uncovered`, and the caveat names them.
-    """
-    from ..labels import event_sources as es
-
-    if not summary["has_observed_products"] and n_observed_rows == 0:
-        return "unprocessed"
-    covered = es.covers(sources, t0_s, t1_s)
-    if covered is False:
-        return "uncovered"
-    if covered is None and summary["has_observed_products"]:
-        # Sources completed and none recorded a span. Not `unprocessed` (they ran) and not
-        # `observed` (nothing says what they read) -- the window is not established as looked at.
-        return "uncovered"
-    # `None` with no completed diagnostic source at all is the legacy case: there are observed
-    # rows on this shot (the branch above) and the database simply predates the coverage table.
-    return "observed"
 
 
 def _unknown_coverage_sources(sources) -> list[str]:

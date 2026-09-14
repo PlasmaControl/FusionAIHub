@@ -20,7 +20,7 @@
 #                    declares to be a forecast may not be listed here at all -- it is a claim
 #                    about the future and reaches a hit through `forecasts:`.
 #                    Only slugs/labels that EXIST in the built labels_wide (16,800 rows over five
-#                    model slugs) or are named in `labels.yaml` are listed. Ten of the twelve
+#                    model slugs) or are named in `labels.yaml` are listed. Fourteen of the sixteen
 #                    phenomena have no label model at all: that is a gap in the label corpus, and
 #                    an empty list is how it is stated.
 #   events           which labelmaker event rows count as OBSERVED evidence. `source` is the
@@ -60,12 +60,16 @@
 #   band_khz         where the mode lives, for display and for a frequency caveat. Physics, not a
 #                    filter: `events.band_khz` is what actually selects rows.
 #   diags            the `diag` strings labelmaker writes on this phenomenon's own rows.
-#                    Documentation; coverage is decided by `coverage_sources`, not by these.
-#   requires_group   corpus groups a shot needs before its silence is informative (the `has_*`
-#                    columns of shots.parquet). Declared metadata, like `prior`: it is validated
-#                    against the real group names and READ BY NOTHING in ideate today. I9b's
-#                    shot filter is where it becomes a predicate; until then it documents which
-#                    diagnostic a phenomenon needs, and says so rather than looking live.
+#                    Documentation only; these do not filter coverage or events.
+#   coverage_diags   optional list of allowed diagnostics for COVERING sources (event detectors
+#                    plus `coverage_sources`). When non-empty, both source coverage rows and
+#                    event rows must name one of these diagnostics to count for this phenomenon.
+#                    Other diagnostics are legacy rows and establish neither coverage nor hits.
+#                    Omitted or empty means no diagnostic restriction; other sources are unaffected.
+#   requires_group   corpus groups a shot needs before its silence is informative. False
+#                    has_* flags produce a caveat when the corpus was inventoried. Legacy
+#                    all-false defaults without an inventory remain unknown; recorded detector
+#                    evidence is retained even when the inventory disagrees.
 #   prior            the fraction of the 500 `recommender_v1` shots whose OWN logbook carries a
 #                    positive, observed mention (`text_claims`, scope=shot). Measured, not
 #                    assumed, and metadata only: no term of the score reads it. 0.000 for qcm and
@@ -77,8 +81,8 @@
 #                    reader. Either way it is MEMBERSHIP and not observation: a hit ranks in
 #                    the DATABASE class, below a forecast, and its coverage stays unknown.
 #
-# Round-1 ids, all twelve, in the lexicon's order -- plus `fast_ion`, added by the I11
-# review and last because it is not one of them.
+# The seventeen registered ids, in the lexicon's order: the round-1 twelve, `transient`, the
+# three `qmin_*` rule ids and -- last, because it is a topic and not one of them -- `fast_ion`.
 version: 1
 phenomena:
   ae:
@@ -118,6 +122,7 @@ phenomena:
       - {source: elm_clock, phenomenon: elm}
     forecasts: [label_forecast]
     coverage_sources: [elm_clock]
+    coverage_diags: [filterscopes]
     band_khz: null
     diags: [filterscopes]
     requires_group: [filterscopes]

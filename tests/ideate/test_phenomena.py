@@ -483,8 +483,8 @@ def test_min_confidence_drops_the_weakly_scored_events(phen_db):
 
 
 def test_an_unscored_event_cannot_be_shown_to_clear_a_bar_and_says_so(phen_db):
-    """Shot 100's ELM row carries no confidence -- `tokeye_transient` scores a burst and leaves a
-    lone ELM unscored. It is kept at the default bar and dropped above it, and the drop is said
+    """Shot 100's ELM clock point carries no calibrated confidence.
+    It is kept at the default bar and dropped above it, and the drop is said
     out loud rather than looking like "there was no ELM"."""
     kept = ph.evidence(OBSERVED_SHOT, "elm", phen_db)
     assert [iv.event_id for iv in kept.intervals] == ["100-elm_clock-00000"]
@@ -758,8 +758,11 @@ def test_coverage_of_the_whole_window_is_a_real_negative_and_says_nothing(ideate
 def test_the_four_coverage_states_are_distinguished(ideate_db):
     db = _db_with(ideate_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
     assert ph.COVERAGE_STATES == ("unindexed", "unprocessed", "uncovered", "observed")
-    # nothing in the pipeline looks for an rwm at all
-    assert ph.evidence(TEXT_SHOT, "rwm", db).coverage_state == "unindexed"
+    assert ph.evidence(999, "elm", db).coverage_state == "unindexed"
+    # The shot is indexed, but nothing in the pipeline looks for an RWM.
+    rwm = ph.evidence(TEXT_SHOT, "rwm", db)
+    assert rwm.coverage_state == "unprocessed"
+    assert "no detector registered for rwm; text/database evidence only" in rwm.caveats
     # the elm detectors exist but never ran on this shot
     assert ph.evidence(OBSERVED_SHOT, "elm", db).coverage_state == "unprocessed"
     assert ph.evidence(TEXT_SHOT, "elm", db).coverage_state == "uncovered"
@@ -849,6 +852,7 @@ def test_the_elm_registry_uses_the_filterscope_coverage_contract():
     assert entry.diags == ("filterscopes",)
     assert entry.requires_group == ("filterscopes",)
     assert entry.coverage_sources == ("elm_clock",)
+    assert entry.coverage_diags == ("filterscopes",)
 
 
 # ----------------------------------------------------- finding 3: the saturation is pinned
