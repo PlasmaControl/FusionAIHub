@@ -1028,10 +1028,24 @@ def cmd_corpus_select(args) -> int:
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100), encoding="utf-8"
     )
     print(f"wrote {out}")
+    generated = {c.shot for c in selected}
+    review = doc.get("hand_review") or {}
+    # Match load_shot_list: drops first, then adds. Older select documents
+    # also allowed bare integer review entries; preserve that input shape.
+    changes = {
+        action: {int(row["shot"] if isinstance(row, dict) else row)
+                 for row in review.get(action) or []}
+        for action in ("drop", "add")
+    }
+    effective = (generated - changes["drop"]) | changes["add"]
+    added, dropped = sorted(effective - generated), sorted(generated - effective)
+    additions = f"+{len(added)}" + (f" ({' '.join(map(str, added))})" if added else "")
+    drops = f"-{len(dropped)}" + (f" ({' '.join(map(str, dropped))})" if dropped else "")
+    print(f"hand_review: {additions}, {drops}")
     if args.txt_out:
         txt_out = Path(args.txt_out)
         txt_out.parent.mkdir(parents=True, exist_ok=True)
-        txt_out.write_text("".join(f"{c.shot}\n" for c in selected), encoding="utf-8")
+        txt_out.write_text("".join(f"{shot}\n" for shot in sorted(effective)), encoding="utf-8")
         print(f"wrote {txt_out}")
     print()
     print(select_mod.format_summary(summary))
