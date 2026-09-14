@@ -1199,6 +1199,16 @@ def _config() -> tuple[dict[str, float], float, float]:
     )
 
 
+def configured_label_floor() -> float:
+    """The label floor `locate` reads `evidence` at.
+
+    A caller that must agree with `locate` about what counts as evidence -- the eval proxy
+    grade -- passes this explicitly rather than letting `evidence` default to it, so the two
+    cannot drift apart the day the default and the configured value differ.
+    """
+    return _config()[2]
+
+
 def sat(n: float, saturation_n: float = DEFAULT_SATURATION_N) -> float:
     """`1 - exp(-n / n0)`: three detections is already "this shot has them", and three hundred is
     not a hundred times the evidence that it does.
