@@ -106,6 +106,7 @@ class ShotDB:
         # with emb["scalar"]; every lookup in this class relies on that.
         self.segments = segments.join(meta, on="shot", rsuffix="_shot")
         self._phenomenon_evidence: dict = {}
+        self._evidence_indexes: dict[str, dict[int, list[dict]]] = {}
 
     @classmethod
     def load(cls, db_dir: Path) -> ShotDB:
@@ -159,6 +160,54 @@ class ShotDB:
 
     # ------------------------------------------------------------------------- hard filters
 
+    def evidence_rows(self, table: str, shot: int) -> list[dict]:
+        """Snapshot rows grouped once in O(rows), then O(1) lookup without frame scans.
+
+        Indexes are lazy so opening a database for scalar retrieval pays no evidence cost.
+        Each index holds only the table's rows, never a shot × phenomenon expansion.
+        """
+        if table not in self._evidence_indexes:
+            grouped: dict[int, list[dict]] = {}
+            for row in getattr(self, table).to_dict('records'):
+                grouped.setdefault(int(row['shot']), []).append(row)
+            self._evidence_indexes[table] = grouped
+        return self._evidence_indexes[table].get(int(shot), [])
+
+    @cached_property
+    def coverage_sources(self) -> pd.DataFrame:
+        """Authoritative sources, or legacy observed-event coverage grouped once."""
+        from ..labels import event_sources as es
+
+        frame = self.event_sources
+        if self.has_event_sources or not frame.empty or 'event_sources' in self.load_errors:
+            return frame
+        observed = self.events[self.events['evidence_kind'].isin(('detector', 'heuristic'))]
+        keys = ['shot', 'source', 'diag', 'channel', 'pass_name', 't_cov0_s', 't_cov1_s']
+        spans = observed.groupby(keys, dropna=False, sort=False).size().reset_index(name='n_events')
+        return es._frame([es.source_row(**row) for row in spans.to_dict('records')])
+
+    @cached_property
+    def _coverage_positions(self) -> dict:
+        return self.coverage_sources.groupby('shot', sort=False).indices
+
+    @cached_property
+    def _segment_windows(self) -> dict:
+        return {
+            str(row.Index): (row.t0_ms / 1000.0, row.t1_ms / 1000.0)
+            for row in self.segments[['t0_ms', 't1_ms']].itertuples()
+        }
+
+    @cached_property
+    def _inventory_rows(self) -> dict:
+        columns = [c for c in self.shots if c == 'reader' or c.startswith('has_')]
+        return self.shots[columns].to_dict('index')
+
+    @cached_property
+    def _phenomenon_registry(self):
+        from ..retrieval import phenomena as ph
+
+        return ph.registry()
+
     @cached_property
     def _phenomenon_config(self):
         from ..retrieval import phenomena as ph
@@ -172,7 +221,9 @@ class ShotDB:
         key = (int(shot), phenomenon, segment)
         if key not in self._phenomenon_evidence:
             self._phenomenon_evidence[key] = ph.evidence(
-                shot, phenomenon, self, segment, label_floor=self._phenomenon_config[2],
+                shot, self._phenomenon_registry[phenomenon], self, segment,
+                label_floor=self._phenomenon_config[2],
+                shot_metadata=self._inventory_rows.get(int(shot), {}),
             )
         return self._phenomenon_evidence[key]
 
@@ -201,12 +252,11 @@ class ShotDB:
             p = ph._f(row.get("max_valid"))
             if threshold is not None and p is not None and row["n_valid"] > 0 and p >= threshold:
                 labels.setdefault(int(row["shot"]), set()).add(f"label:{key}")
-        events = {int(shot): frame.to_dict("records") for shot, frame in self.events.groupby("shot")}
         out = []
         for row in self.segments[["shot", "segment", "t0_ms", "t1_ms", "operational", "regime"]].itertuples():
             tokens = set(row.operational) | {row.regime} | labels.get(int(row.shot), set())
             window = (row.t0_ms / 1000.0, row.t1_ms / 1000.0)
-            rows = [r for r in events.get(int(row.shot), ()) if ph._overlaps(r, window)]
+            rows = [r for r in self.evidence_rows('events', row.shot) if ph._overlaps(r, window)]
             for event in rows:
                 tokens.update((f"source:{event['source']}", f"source:{event['evidence_kind']}"))
             observed_sources = {r["source"] for r in rows if r["evidence_kind"] in ph.OBSERVED_KINDS}
