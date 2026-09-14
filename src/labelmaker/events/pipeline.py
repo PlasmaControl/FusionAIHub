@@ -734,7 +734,7 @@ def finish_shot(
     # --------------------------------------------------------- the tracks
     if runs:
         sources.add(tracks.SOURCE)
-        partners = _cooccurrence(runs)
+        accepted: list[tuple[_BlockRun, list[Event]]] = []
         for run in runs:
             try:
                 rows = tracks.tracks_to_events(
@@ -752,6 +752,12 @@ def finish_shot(
             ran[(tracks.SOURCE, run.diag, run.channel, run.pass_name)] = (
                 run.t_cov
             )
+            accepted.append((run, rows))
+        # Only published blocks may corroborate one another. Conversion is
+        # all-or-nothing per block, so keeping each run's original track list
+        # also preserves raw block-local identities (including after clips).
+        partners = _cooccurrence([run for run, _ in accepted])
+        for run, rows in accepted:
             events.extend(
                 replace(e, attrs={
                     **e.attrs,
