@@ -388,7 +388,8 @@ exists.
 ## The MCP server
 
 `ideate` exposes its retrieval over the Model Context Protocol, so an assistant can search the
-database directly instead of being handed a transcript of a CLI run. stdio transport:
+database directly instead of being handed a transcript of a CLI run. Four tools — `search_shots`,
+`describe_shot`, `get_events` and `phenomenon_locate` — and one resource. stdio transport:
 
 ```bash
 pixi run -e ideate-cpu ideate-mcp        # == python -m ideate.mcp
@@ -425,6 +426,7 @@ client works — the transport is stdio and the command above is the whole contr
 | `search_shots` | `text`, `ref_shot`, `segment`, `constraints`, `actuators`, `require_labels`, `avoid_labels`, `n` | ranked shots with a description, an explanation naming which channel found each one, and the operating-limit flags for the proposed actuators |
 | `describe_shot` | `shot`, `segment` | the prose description and the whole stored record: segments and their scalars, labels and their source, outcome, and the operator logbook verbatim |
 | `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and four lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `database_intervals` (a curated table's rows), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
+| `phenomenon_locate` | `phenomenon`, `n`, `segment`, `constraints`, `min_confidence`, `avoid` | the shots carrying evidence of a phenomenon named in free text or by id, ordered by evidence class before score, each hit keeping its classes apart (`intervals`, `label_evidence`, `forecasts`, `text_snippets`) and its own caveats; plus `resolved` (what the text matched) and `notes` (what `avoid` dropped, about shots that are *not* in `hits`) |
 
 Plus one resource, `ideate://manifest`: the built database's manifest, which is how a caller
 finds out which shots the tools can see at all.
