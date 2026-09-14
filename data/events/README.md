@@ -4,7 +4,7 @@ Label data lives here; readers and producers live in `src/labelmaker` and
 `scripts/labelmaker`. The user's convention is one directory per label category:
 
 ```text
-data/labels/<category>/
+data/events/<category>/
   README.md
   raw/                         # the original provided list, untouched
   format/                      # the raw table reformatted into ONE common schema
@@ -86,7 +86,7 @@ gets one `status=ok`, `reason=""` source row per table, with NaN coverage.
 
 ## Add a table
 
-1. Drop the untouched original into `data/labels/<category>/raw/`.
+1. Drop the untouched original into `data/events/<category>/raw/`.
 2. Add a manifest entry describing its raw columns and naming its format stem:
 
    ```yaml
@@ -115,7 +115,7 @@ gets one `status=ok`, `reason=""` source row per table, with NaN coverage.
    ```bash
    PYTHONPATH=src python scripts/labelmaker/labels_format.py
    # Optional: --root <labels-root> --table example_onsets
-   git add data/labels scripts/labelmaker/labels_format.py
+   git add data/events scripts/labelmaker/labels_format.py
    ```
 
 5. Ingest curated events with the unchanged standalone command:
@@ -127,7 +127,7 @@ gets one `status=ok`, `reason=""` source row per table, with NaN coverage.
 
 `config.Paths.label_tables` locates this root; `LABELMAKER_LABEL_TABLES` overrides it
 for tables too large or restricted to commit. Only commit redistributable, small
-tables. The root `.gitignore` re-includes `data/labels/`, so no forced add is needed.
+tables. The root `.gitignore` re-includes `data/events/`, so no forced add is needed.
 
 ## Extend a producer onto the 500 shots
 
@@ -136,7 +136,7 @@ PYTHONPATH=src python scripts/labelmaker/labels_extend.py \
     --category edge_localized_mode --producer elm_clock \
     --shot-list configs/ideate/shot_lists/recommender_v1.yaml \
     --events-root "$LABELMAKER_ROOT/events" \
-    --out data/labels/edge_localized_mode/extend_elm_clock/recommender_v1.csv
+    --out data/events/edge_localized_mode/extend_elm_clock/recommender_v1.csv
 ```
 
 The writer reads `<shot>_events.parquet` through `read_events` and source records
@@ -206,5 +206,5 @@ PYTHONPATH=src python scripts/labelmaker/labels_extend.py \
     --category resistive_wall_mode --producer rwm \
     --shot-list configs/ideate/shot_lists/recommender_v1.yaml \
     --root /tmp/ld1b-fix/rwm-run --run-id ld1b-fix-rwm-recommender-v1 \
-    --out data/labels/resistive_wall_mode/extend_rwm/recommender_v1.csv
+    --out data/events/resistive_wall_mode/extend_rwm/recommender_v1.csv
 ```

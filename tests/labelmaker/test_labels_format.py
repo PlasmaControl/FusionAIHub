@@ -21,7 +21,7 @@ def converter():
 
 def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):
     root = tmp_path / "labels"
-    shutil.copytree(REPO / "data/labels", root)
+    shutil.copytree(REPO / "data/events", root)
     snapshots = {}
     for spec in db.load_manifest(root):
         raw = spec.raw_path(root)

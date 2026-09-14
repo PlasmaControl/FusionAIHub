@@ -961,7 +961,7 @@ def test_the_same_phenomenon_named_twice_is_one_constraint(phen_db, monkeypatch)
 
 
 def _label_tables(root: Path, shots: list[int], stem: str = "rwm_onsets_2017") -> Path:
-    """A `data/labels`-shaped fixture: one manifest, one CSV, the stems the registry names."""
+    """A `data/events`-shaped fixture: one manifest, one CSV, the stems the registry names."""
     (root / "resistive_wall_mode/format").mkdir(parents=True, exist_ok=True)
     (root / "tables.yaml").write_text(yaml.safe_dump({
         "version": 1,
@@ -1007,7 +1007,7 @@ def rwm_tables(tmp_path, monkeypatch):
 
 
 def test_the_shipped_registry_names_both_rwm_tables_and_the_manifest_knows_them():
-    """The registry entry and `data/labels/tables.yaml` are two files that have to agree, and
+    """The registry entry and `data/events/tables.yaml` are two files that have to agree, and
     nothing else checks that they do: a stem typo here is a silent empty set, not an error."""
     from labelmaker.events import databases as label_tables
 
