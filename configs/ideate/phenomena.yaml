@@ -26,7 +26,7 @@
 #   events           which labelmaker event rows count as OBSERVED evidence. `source` is the
 #                    detector; `phenomenon` is the string THAT DETECTOR writes, which is not
 #                    ideate's id -- `tokeye_track` writes "coherent_mode" for every track and
-#                    "pickup" for a receiver line, `elm_clock` writes "elm_free", `dalpha_lh`
+#                    "pickup" for a receiver line, `elm_clock` writes "elm"/"elm_free", `dalpha_lh`
 #                    writes "lh_transition"/"hl_transition". `band_khz` is matched against the
 #                    track's `attrs.f_centroid_khz` (the probability-weighted centre; `f0/f1_khz`
 #                    is the track's full extent and spans 0.5-248 kHz on a real row, so it
@@ -50,11 +50,10 @@
 #                    never an observation (plan §2, §7, Appendix C item 7): these rows land in
 #                    `PhenomenonHit.forecasts`, in their own field, and rank below any observation.
 #   coverage_sources extra sources whose rows prove someone LOOKED, beyond the detectors above.
-#                    Only `elm` needs one, and it is the reason the key exists: a detector that
-#                    finds nothing writes no rows, so on a quiet shot the only record that the mhr
-#                    data was read for ELMs at all is `elm_clock`'s `elm_free` interval -- written
-#                    by a different source from the one that would have reported an ELM. Without
-#                    it every quiet shot would look like "nobody looked" and `--avoid
+#                    `elm_clock` records D-alpha coverage even when it finds no peaks;
+#                    its `elm_free` intervals supply legacy row-based coverage too.
+#                    Only filterscopes rows count; older magnetics clocks do not.
+#                    Without coverage every quiet shot would look like "nobody looked" and `--avoid
 #                    phenomenon:elm` could never establish a real negative. A phenomenon with no
 #                    detector at all (`rwm`, `detachment`) declares none, so its coverage stays
 #                    unknown -- which is the honest answer.
@@ -112,34 +111,26 @@ phenomena:
 
   elm:
     title: Edge localised mode
-    labels: []          # the only ELM model is the DSM risk head, which is a forecast (below)
+    labels: []          # the DSM risk heads are forecasts
     events:
-      # `tokeye_transient`, not `elm_clock`: elm_clock's rows are `elm_free` INTERVALS -- the
-      # stretches with no ELM in them -- and counting an absence as observed evidence of the
-      # thing it denies is exactly the error plan §2 is about.
-      #
-      # But tokeye_transient is NOT an ELM detector either, and its own module says so
-      # (labelmaker `events/transients.py`): "Nothing here decides that a burst IS an ELM. The
-      # mask is a transient-activity detector, a sawtooth crash and a disruption precursor are
-      # transient too, and the `phenomenon="elm"` on an event row is a claim by
-      # `source="tokeye_transient"` that a consumer can weigh against any other." This is ideate
-      # weighing it: a caveat on every hit it produces, and 0.4 of a classified detection's
-      # weight in the event term.
-      #
-      # WHAT LABELMAKER MUST PUBLISH for a true observed-ELM class (a labelmaker task, named
-      # here because this is where the gap is): an `elm` POINT-EVENT FAMILY written by the ELM
-      # clock itself -- `transients.elm_events`' peaks, which are already computed (SOURCE /
-      # PHENOMENON in `transients.py`) -- published as its own source rather than folded into
-      # the class-agnostic transient family. When that source exists, it becomes this rule at
-      # weight 1.0 with no caveat, and this one stays as the weaker corroborating rule.
-      - {source: tokeye_transient, phenomenon: elm, weight: 0.4,
-         caveat: transient_not_classified}
+      - {source: elm_clock, phenomenon: elm}
     forecasts: [label_forecast]
-    coverage_sources: [elm_clock]   # the elm-FREE intervals: proof the mhr data was read
+    coverage_sources: [elm_clock]
     band_khz: null
-    diags: [mhr]
-    requires_group: [mhr]
+    diags: [filterscopes]
+    requires_group: [filterscopes]
     prior: 0.110
+
+  transient:
+    title: Transient activity
+    labels: []
+    events:
+      - {source: tokeye_transient, phenomenon: transient}
+    forecasts: []
+    band_khz: null
+    diags: [mhr, mirnov, ece, co2, bes]
+    requires_group: []
+    prior: 0.0          # not yet measured; no scoring term reads prior
 
   tearing:
     title: Tearing mode
@@ -273,3 +264,55 @@ phenomena:
         only human-curated RWM evidence there is, and a database built over those campaigns
         would light it up. A hit here ranks in the DATABASE class, below a forecast and never as
         an observation.
+
+  # The three q-min regime bands (labelmaker `events/heuristics.py::qmin_regimes`, task L-D2).
+  # Scenario ids, not instability ids: they say what the discharge WAS, and the only producer is
+  # a threshold rule on EFIT01's q-min inside the Ip flat-top. Three things follow from that.
+  #
+  # `qmin_rule` rows carry `confidence = NaN` -- a threshold on a reconstructed scalar has no
+  # calibrated probability -- so nothing here may read one as a detector's score.
+  #
+  # `coverage_sources: [qmin_rule]` is not redundant with `events:`. The rule writes a source row
+  # on every shot whose features file carries `qmin` AND whose `ip` gave a flat-top, event or no
+  # event, and its coverage is the flat-top met with the finite q-min record. That row is the
+  # only thing that can say "this shot ran at q-min under 0.95 throughout" rather than "nobody
+  # computed it": a shot in none of the three bands writes no event row at all.
+  #
+  # `requires_group: []` because the inputs are not corpus groups. `ip` and `qmin` come from the
+  # features store (`\efit01::top.results.aeqdsk:qmin` through fdp), which is why these are the
+  # first phenomena whose coverage does not depend on what the corpus file holds.
+  qmin_hybrid:
+    title: Hybrid scenario (q-min 0.95-1.5)
+    labels: []
+    events:
+      - {source: qmin_rule, phenomenon: qmin_hybrid}
+    forecasts: []
+    coverage_sources: [qmin_rule]
+    band_khz: null
+    diags: [qmin]
+    requires_group: []
+    prior: 0.004
+
+  qmin_elevated:
+    title: Elevated q-min (1.5-2)
+    labels: []
+    events:
+      - {source: qmin_rule, phenomenon: qmin_elevated}
+    forecasts: []
+    coverage_sources: [qmin_rule]
+    band_khz: null
+    diags: [qmin]
+    requires_group: []
+    prior: 0.000
+
+  qmin_high:
+    title: High q-min (above 2)
+    labels: []
+    events:
+      - {source: qmin_rule, phenomenon: qmin_high}
+    forecasts: []
+    coverage_sources: [qmin_rule]
+    band_khz: null
+    diags: [qmin]
+    requires_group: []
+    prior: 0.000

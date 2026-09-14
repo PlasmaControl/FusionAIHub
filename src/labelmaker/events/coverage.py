@@ -211,30 +211,54 @@ _BLOCK_STEPS = {
     "channel": "tokeye_track",
     "read": "tokeye_track",
     "mask": "tokeye_track",
+    "track": "tokeye_track",
     "norm": "norm",
 }
 
-#: Step name -> the sources it would have written. A step that produces two
-#: sources gets a row for each, so "did `tokeye_transient` run" has an
-#: answer whichever way the ELM clock went. A step with no entry here is
+#: Step name -> the sources it would have written. The D-alpha clock and
+#: TokEye transients run independently. A step with no entry here is
 #: its own source name - `qh_flattop` and `nbi_counter` are recorded skips
 #: that are not event sources at all, and inventing a source for them would
 #: be worse than letting them name themselves.
 _STEP_SOURCES = {
-    "elm_clock": ("tokeye_transient", "elm_clock"),
+    "elm_clock": ("elm_clock",),
     "sawtooth": ("ece_sawtooth",),
     "lh": ("dalpha_lh",),
     "actuator": ("actuator",),
     "qh": ("qh_proxy",),
     "text": ("text",),
+    # The features-store read (task L-D2). Three step names, one source:
+    # `features` is the whole file missing, `ip` and `qmin` are one
+    # quantity each, and they land on the SAME keys the successful read
+    # declares - `("features", "<quantity>", -1, "")` - so a shot's row for
+    # `qmin` says either what it covered or why there was none, never both
+    # and never neither.
+    "features": ("features",),
+    "ip": ("features",),
+    "qmin": ("features",),
+    # `nbi_counter` is a PHENOMENON of the actuator source, not a source,
+    # and `heuristics._actuator_event` stamps `diag="tinj_total"` on its
+    # rows and on no others. So a shot where it could not be evaluated and
+    # a shot where it was land on the same key - `("actuator",
+    # "tinj_total", ...)` - and a consumer reads one row rather than
+    # having to know that a missing row means one thing under one name and
+    # another under another.
+    "nbi_counter": ("actuator",),
 }
 
 #: The diagnostic a non-block step reads, where it reads one. Used only to
 #: fill the `diag` column of a SKIPPED step's row, so that a skipped
 #: sawtooth row and a sawtooth row that ran carry the same key.
 _STEP_DIAGS = {
+    "elm_clock": "filterscopes",
     "sawtooth": "ece",
     "lh": "filterscopes",
+    "ip": "ip",
+    "qmin": "qmin",
+    # `qmin_rule` is its own source and reads one canonical feature, so a
+    # skipped rule and a rule that ran carry the same key.
+    "qmin_rule": "qmin",
+    "nbi_counter": "tinj_total",
 }
 
 

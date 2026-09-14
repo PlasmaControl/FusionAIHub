@@ -16,7 +16,9 @@ columns that record when and under which run id it was written.
 from __future__ import annotations
 
 import json
+import os
 import time
+import weakref
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
@@ -31,7 +33,13 @@ from labelmaker.config import Paths
 from labelmaker.events import channels, driver, masks, schema, text_weak, unet
 from labelmaker.events import pipeline as pl
 
-from .test_events_pipeline import FAKE_SHA, SHOT, PaintedNet, _write_corpus
+from .test_events_pipeline import (
+    FAKE_SHA,
+    SHOT,
+    PaintedNet,
+    _write_corpus,
+    _write_text,
+)
 
 #: Three copies of the synthetic shot, so a chunk and a rank have
 #: something to split. The corpus files differ only in their names.
@@ -253,17 +261,21 @@ def test_help_names_every_flag():
         "--limit", "--root", "--corpus", "--plan", "--passes", "--tile-batch",
         "--prep-workers", "--prefetch", "--amp", "--norm", "--timeout",
         "--device", "--unet", "--run-id", "--skip-existing", "--force",
-        "--refresh-text", "--no-write",
+        "--refresh-text", "--no-write", "--no-index", "--rebuild-index",
+        "--text-subset", "--build-text-subset", "--tail-workers",
     ):
         assert flag in text, flag
 
 
-def test_the_shot_pickers_are_exclusive_and_one_is_required():
+def test_the_shot_pickers_are_exclusive_and_one_is_required(tmp_path):
     parser = driver.build_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["--root", "/tmp"])
-    with pytest.raises(SystemExit):
         parser.parse_args(["--shots", "1", "--shot-file", "/tmp/x"])
+    # The requirement moved from the argparse group to `main`, because
+    # `--rebuild-index` is a run over what is already on disk and has no
+    # shot list; everything else still refuses to start without one.
+    with pytest.raises(SystemExit):
+        driver.main(["--root", str(tmp_path)])
 
 
 def test_the_rank_and_world_default_to_the_srun_environment(monkeypatch):
@@ -319,13 +331,19 @@ def _sources(paths, shot):
     return df.drop(columns=["run_id", "written_at"])
 
 
+#: The row keys the driver's schedule is allowed to change.
+_TIMINGS = ("seconds", "prep_wait_s", "infer_s", "describe_s", "finish_s",
+            "tail_wait_s", "n_tiles")
+
+
 def _silently(*args, **kwargs):
     return None
 
 
-@pytest.mark.parametrize(("workers", "prefetch"), [(0, 1), (1, 4), (2, 2)])
+@pytest.mark.parametrize(("workers", "prefetch", "tail"),
+                         [(0, 1, 0), (1, 4, 1), (2, 2, 1)])
 def test_the_driver_writes_exactly_what_process_shot_writes(
-    tmp_path, synth_shot, model, workers, prefetch,
+    tmp_path, synth_shot, model, workers, prefetch, tail,
 ):
     """The requirement the whole task turns on.
 
@@ -348,15 +366,16 @@ def test_the_driver_writes_exactly_what_process_shot_writes(
     got = driver.run_shots(
         [SHOT], paths=driven, model=model, device="cpu",
         passes=("wide", "zoom"), tile_batch=4, prep_workers=workers,
-        prefetch=prefetch, run_id="test-run", unet_sha256=FAKE_SHA,
-        echo=_silently,
+        prefetch=prefetch, tail_workers=tail, run_id="test-run",
+        unet_sha256=FAKE_SHA, echo=_silently,
     )
 
     assert ref.error == "" and ref.n_blocks == 14
     row = dict(got.rows[0])
     # The two timings and the wall clock are the only rows that may differ:
     # they are what the driver exists to change.
-    for key in ("seconds", "prep_wait_s", "infer_s", "describe_s", "n_tiles"):
+    for key in ("seconds", "prep_wait_s", "infer_s", "describe_s",
+                "finish_s", "tail_wait_s", "n_tiles"):
         row.pop(key, None)
     assert row == {k: v for k, v in ref.as_row().items() if k != "seconds"}
 
@@ -611,9 +630,11 @@ def test_main_builds_the_log_subset_once_for_its_own_shots(staged, monkeypatch):
             calls.append((sorted(shots), refresh_missing)) or 0
         ),
     )
+    # `--text-subset build` explicitly: `auto` reads a multi-rank run's
+    # subset instead of writing it (see the text-subset tests below).
     assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
                              "--rank", "0", "--world", "3",
-                             "--refresh-text")) == 0
+                             "--text-subset", "build", "--refresh-text")) == 0
     assert calls == [([SHOTS[0]], True)]
 
 
@@ -684,3 +705,599 @@ def test_a_dead_prep_worker_costs_its_block_and_the_pool_is_replaced(
         "co2_02_wide", "ece_08_wide", "ece_20_wide", "ece_40_wide",
         "mhr_00_wide",
     ]
+
+
+# ------------------------------------------------------- the wedged worker
+
+
+def _fifo_corpus(tmp_path, shot=SHOT):
+    """A corpus file that never answers: a FIFO with no writer.
+
+    The cheapest faithful stand-in for the failure `--timeout` exists for -
+    a GPFS read that has gone away - because `open()` on it blocks in the
+    kernel, uninterruptibly as far as the reading process is concerned, and
+    a worker in that state never takes the pool's shutdown sentinel.
+    """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir(parents=True, exist_ok=True)
+    os.mkfifo(corpus / f"{int(shot)}_processed.h5")
+    return corpus
+
+
+def _until_dead(procs, seconds: float = 180.0) -> None:
+    deadline = time.monotonic() + seconds
+    while any(p.is_alive() for p in procs) and time.monotonic() < deadline:
+        time.sleep(0.2)
+
+
+def test_closing_a_pool_kills_a_worker_that_is_wedged(tmp_path):
+    """`close()` must not leave a live worker behind - at all.
+
+    `shutdown(wait=False)` asks politely: it drops a sentinel on the call
+    queue and returns. A worker blocked in an uninterruptible read never
+    reads that sentinel, and CPython's own `_python_exit` atexit hook then
+    joins the executor's manager thread at interpreter shutdown - so the
+    process hangs AFTER `main()` has returned, which on SLURM is a finished
+    job recorded as a wall-clock TIMEOUT still holding its GPU.
+    """
+    corpus = _fifo_corpus(tmp_path)
+    pool = driver.PrepPool(1)
+    try:
+        spec = channels.ChannelSpec("mhr", 0, "magnetics")
+        pool.submit(driver.PrepJob(corpus / f"{SHOT}_processed.h5", spec,
+                                   "wide"))
+        deadline = time.monotonic() + 60
+        while not pool.processes() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        procs = pool.processes()
+        assert procs, "the pool never started a worker"
+        at = time.monotonic()
+        pool.close()
+        assert time.monotonic() - at < 30       # close does not wait forever
+        # `close` SENDS the signals and does not join for ever - a child
+        # caught in an uninterruptible read (a busy GPFS, which is the whole
+        # reason this path exists) is reaped when it leaves that state, and
+        # a driver that waited for it would be the hang this fixes. So the
+        # assertion is that it dies, not that it dies synchronously.
+        _until_dead(procs)
+        assert [p for p in procs if p.is_alive()] == []
+    finally:
+        pool.close()
+
+
+@pytest.mark.parametrize("tail_workers", [0, 1])
+def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(
+    tmp_path, monkeypatch, tail_workers,
+):
+    """The same thing end to end, through `run_shots`.
+
+    The shot is one error row after its `--timeout`, which the driver
+    already did; what is under test is what is left behind afterwards. No
+    executor worker may still be alive after `run_shots` closes its pools:
+    their manager threads would be joined at interpreter exit. Python's
+    multiprocessing.resource_tracker is a separate helper, not a leaked
+    worker; check the pools' own handles rather than all OS children.
+    """
+    corpus = _fifo_corpus(tmp_path)
+    paths = _paths_under(tmp_path, "root", corpus)
+    closed_workers = []
+    real_close = driver.PrepPool.close
+
+    def close(self):
+        closed_workers.extend(self.processes())
+        real_close(self)
+
+    monkeypatch.setattr(driver.PrepPool, "close", close)
+
+    at = time.monotonic()
+    got = driver.run_shots([SHOT], paths=paths, model=None, device="cpu",
+                           corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                           prep_workers=1, prefetch=2, timeout_s=4,
+                           tail_workers=tail_workers,
+                           unet_sha256=FAKE_SHA, echo=_silently)
+    elapsed = time.monotonic() - at
+
+    assert got.rows[0]["status"] == "error"
+    assert elapsed < 120
+    assert closed_workers, "the pools never started any workers"
+    _until_dead(closed_workers)
+    assert [p for p in closed_workers if p.is_alive()] == []
+
+
+@pytest.mark.parametrize(("prep_workers", "tail_workers"),
+                         [(1, 0), (0, 1), (1, 1)])
+def test_the_worker_peak_rss_is_a_worker_and_not_the_parent(
+    tmp_path, synth_shot, model, prep_workers, tail_workers,
+):
+    """`peak_worker_rss_gib` must include both prep and tail workers.
+
+    It used to be `getrusage(RUSAGE_CHILDREN)`, which on a pool shut down
+    with `wait=False` reads either zero (nothing was waited for) or the
+    parent's own peak (a spawned child's fork-before-exec inherits its
+    resident pages). Both are the wrong number to size `--mem-per-cpu`
+    from, and the second is wrong in a way that looks right.
+    """
+    assert driver._vmhwm_gib(os.getpid()) > 0.0
+    assert driver._vmhwm_gib(2 ** 30) == 0.0        # no such process
+
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4,
+                           prep_workers=prep_workers, tail_workers=tail_workers,
+                           prefetch=2, unet_sha256=FAKE_SHA, echo=_silently)
+    worker = got.totals["peak_worker_rss_gib"]
+    assert worker > 0.0
+    assert worker != got.totals["peak_rss_gib"]
+    by_pool = got.totals["worker_rss_gib"]
+    for role, n_workers in (("prep", prep_workers), ("tail", tail_workers)):
+        assert len(by_pool[role]) == n_workers
+        assert all(int(pid) != os.getpid() and rss > 0
+                   for pid, rss in by_pool[role].items())
+    assert worker == max(rss for group in by_pool.values() for rss in group.values())
+
+
+# ------------------------------------------------------------- the index
+
+
+def test_no_index_writes_the_per_shot_products_and_not_the_shared_file(
+    tmp_path, synth_shot, model,
+):
+    """`--no-index` is what an array task runs.
+
+    `events_index.parquet` is ONE file for the whole root and
+    `labels.store.append_index` rewrites it whole through a FIXED `.tmp`
+    sibling. Sixteen tasks doing that per shot lose each other's rows and
+    can rename a torn parquet into place - after which the next shot's
+    `read_parquet` raises inside the write guard and a healthy shot is
+    recorded `status == "error"`. The per-shot products are untouched by
+    the flag; only the derivable file is left for one pass afterwards.
+    """
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus, SHOT, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
+                           passes=("wide",), tile_batch=4, prep_workers=0,
+                           index=False, unet_sha256=FAKE_SHA, echo=_silently)
+
+    assert got.rows[0]["status"] == "ok"
+    assert paths.masks_file(SHOT).exists()
+    assert paths.events_file(SHOT).exists()
+    assert not paths.events_index.exists()
+
+
+def test_a_rebuilt_index_is_the_one_the_shot_by_shot_writes_would_have_left(
+    tmp_path, synth_shot, model,
+):
+    """The rebuild is not an approximation of the incremental index.
+
+    Same shots, two roots: one written with the per-shot `append_index`,
+    one with `--no-index` and then rebuilt in a single pass from
+    `events/*_events.parquet`. The two parquet files must agree row for
+    row and column for column, bar `written_at` - which records when each
+    run wrote, and is the one thing two runs cannot share.
+    """
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    incremental = _paths_under(tmp_path, "incremental", corpus)
+    deferred = _paths_under(tmp_path, "deferred", corpus)
+    for paths, index in ((incremental, True), (deferred, False)):
+        driver.run_shots(SHOTS, paths=paths, model=model, device="cpu",
+                         corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                         prep_workers=0, index=index, run_id="test-run",
+                         unet_sha256=FAKE_SHA, echo=_silently)
+    assert incremental.events_index.exists()
+    assert not deferred.events_index.exists()
+
+    report = driver.rebuild_index(deferred)
+    assert report["files"] == len(SHOTS)
+    assert report["rows"] > 0
+    assert report["unreadable"] == {}
+
+    def _index(paths):
+        df = pd.read_parquet(paths.events_index).drop(columns=["written_at"])
+        return df.sort_values(list(driver.INDEX_KEYS)).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(_index(deferred), _index(incremental))
+
+
+def test_the_rebuild_replaces_a_stale_index_rather_than_merging_into_it(
+    tmp_path, synth_shot, model,
+):
+    """A rebuild is derived from what is on disk NOW.
+
+    `append_index` merges, so a row for a shot whose events file has been
+    deleted (a re-run with a different plan, a shot withdrawn from the
+    list) would survive every incremental write for ever. The rebuild is
+    the repair for that, so it must not merge.
+    """
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    driver.run_shots(SHOTS, paths=paths, model=model, device="cpu",
+                     corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                     prep_workers=0, run_id="test-run", unet_sha256=FAKE_SHA,
+                     echo=_silently)
+    paths.events_file(SHOTS[2]).unlink()
+
+    report = driver.rebuild_index(paths, echo=_silently)
+    assert report["files"] == len(SHOTS) - 1
+    left = pd.read_parquet(paths.events_index)
+    assert sorted(set(left["shot"])) == SHOTS[:2]
+
+
+def test_main_can_rebuild_the_index_without_a_shot_list(staged, capsys):
+    """`--rebuild-index` is the one-pass repair task L12 runs after the array."""
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--no-index", "--run-id", "arrayish")) == 0
+    assert not staged.events_index.exists()
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["settings"]["index"] == "skipped"
+
+    assert driver.main(["--root", str(staged.root), "--rebuild-index"]) == 0
+    rows = pd.read_parquet(staged.events_index)
+    assert sorted(set(rows["shot"])) == SHOTS
+    assert "tokeye_masks: rebuilt" in capsys.readouterr().out
+
+
+def test_rebuild_can_write_inside_events_without_touching_root_index(staged):
+    assert driver.main(_argv(staged, "--shots", str(SHOTS[0]),
+                             "--no-index", "--run-id", "index-output")) == 0
+    staged.events_index.write_bytes(b"leave the canonical index alone")
+    out = staged.events / "events_index.parquet"
+    assert driver.main(["--root", str(staged.root), "--rebuild-index",
+                        "--index-out", str(out)]) == 0
+    assert set(pd.read_parquet(out)["shot"]) == {SHOTS[0]}
+    assert staged.events_index.read_bytes() == b"leave the canonical index alone"
+
+
+def test_index_output_requires_rebuild(staged):
+    with pytest.raises(SystemExit) as exc:
+        driver.main(_argv(staged, "--shots", str(SHOTS[0]),
+                          "--index-out", str(staged.events / "index.parquet")))
+    assert exc.value.code == 2
+
+
+# --------------------------------------------------------- the text subset
+
+
+@pytest.fixture
+def staged_text(tmp_path, monkeypatch, model, synth_shot):
+    """`staged`, but with the REAL `build_logs_subset`.
+
+    The subset file itself is the assertion here - whether a run left its
+    bytes alone - so the builder must be the one that would rewrite it.
+    """
+    corpus = tmp_path / "corpus"
+    for shot in SHOTS:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, "root", corpus)
+    monkeypatch.setattr(unet, "load_unet",
+                        lambda path=None, device="cpu", **kw: model)
+    return paths
+
+
+def _subset_state(paths):
+    stat = paths.logs_subset.stat()
+    return (paths.logs_subset.read_bytes(), stat.st_size, stat.st_mtime_ns,
+            sorted(p.name for p in paths.logs_subset.parent.iterdir()))
+
+
+def test_a_multi_rank_run_reads_the_text_subset_and_never_writes_it(
+    staged_text,
+):
+    """`text/logs_subset.jsonl` is the second file a whole root shares.
+
+    `build_logs_subset` rewrites it WHOLE - the old lines plus this call's
+    records - into a pid-suffixed `.tmp` and renames it over the old file.
+    The pid stops two tasks interleaving bytes; it does not stop a lost
+    update. Sixteen array tasks each add their own thirty shots to the same
+    old file and the last rename wins, so fifteen tasks' records vanish
+    before their shots are processed and those shots silently lose their
+    `text` events. So a run that is one of several does not build it at
+    all: it reads what a pre-pass built.
+    """
+    staged = staged_text
+    _write_text(staged, SHOTS[0], "fishbones through the current ramp")
+    before = _subset_state(staged)
+
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--rank", "0", "--world", "3")) == 0
+    # Byte for byte, mtime included, and no `.tmp` sibling left behind:
+    # this rank did not rewrite the file, so it cannot have dropped
+    # another rank's records from it.
+    assert _subset_state(staged) == before
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["settings"]["text_subset"] == "readonly"
+    assert payload["text_subset_missing"] == []
+    row = payload["shots"][0]
+    assert row["shot"] == SHOTS[0]
+    assert row["n_text"] == 1                       # the prebuilt record read
+    assert "text" not in row["skipped"]
+
+
+def test_a_shot_missing_from_the_prebuilt_subset_is_told_how_to_fix_it(
+    staged_text,
+):
+    """A missing record must not read as "the logbook has nothing".
+
+    And it must not send this rank to the logbook either: a build here is
+    the whole-file rewrite that loses the other ranks' records, and there
+    is no `logs.jsonl` under this root for it to read anyway.
+    """
+    staged = staged_text
+    _write_text(staged, SHOTS[2], "fishbones through the current ramp")
+    before = _subset_state(staged)
+
+    assert driver.main(_argv(staged, "--shots", *[str(s) for s in SHOTS],
+                             "--rank", "0", "--world", "3")) == 0
+    assert _subset_state(staged) == before
+    payload = json.loads(_only_run(staged).read_text())
+    assert payload["text_subset_missing"] == [SHOTS[0]]
+    why = payload["shots"][0]["skipped"]["text"]
+    assert "prebuilt" in why and "--build-text-subset" in why
+
+
+def test_the_text_pre_pass_builds_the_whole_list_once_and_runs_nothing(
+    staged, monkeypatch,
+):
+    """The documented one-shot pre-pass, before the array is submitted."""
+    calls: list = []
+    monkeypatch.setattr(
+        text_weak, "build_logs_subset",
+        lambda shots, *, paths=None, refresh_missing=False: (
+            calls.append((sorted(shots), refresh_missing)) or 7
+        ),
+    )
+    assert driver.main([
+        "--root", str(staged.root), "--corpus", str(staged.corpus),
+        "--build-text-subset", "--shots", *[str(s) for s in SHOTS],
+        "--chunk", "0", "--n-chunks", "3", "--rank", "0", "--world", "4",
+    ]) == 0
+    # The WHOLE list, not this task's chunk or this rank's stride, and no
+    # shot was run: a pre-pass is not a run.
+    assert calls == [(SHOTS, False)]
+    assert list((staged.runs / "events").glob("*.json")) == []
+    assert not staged.masks_file(SHOTS[0]).exists()
+
+
+# ------------------------------------------------------------- the tail
+
+
+class _UnpicklableOnce:
+    """Only the first shot's payload is bad; later tails receive None."""
+
+    def __init__(self):
+        self.first = True
+
+    def __reduce__(self):
+        if self.first:
+            self.first = False
+            raise RuntimeError("the first lexicon cannot be pickled")
+        return type(None), ()
+
+
+_REAL_RUN_JOB = driver.run_job
+
+
+def _run_with_bad_first_tail(job):
+    """Inject one failure inside a real spawned worker; keep other work real."""
+    if isinstance(job, driver.FinishJob):
+        failure, job.lexicon = job.lexicon, None
+        if job.res.shot == SHOT:
+            if failure == "raise":
+                raise RuntimeError("the first tail raised")
+            if failure == "task_timeout":
+                raise TimeoutError("the first tail raised its own timeout")
+            if failure == "crash":
+                os._exit(1)
+            if failure == "timeout":
+                time.sleep(3600)
+    return _REAL_RUN_JOB(job)
+
+
+def _totals(tmp_path, name, shots, synth_shot, model, **kw):
+    corpus = tmp_path / f"corpus_{name}"
+    for shot in shots:
+        _write_corpus(corpus, shot, synth_shot)
+    paths = _paths_under(tmp_path, name, corpus)
+    got = driver.run_shots(shots, paths=paths, model=model, device="cpu",
+                           corpus_dir=corpus, passes=("wide",), tile_batch=4,
+                           prep_workers=0, run_id="test-run",
+                           unet_sha256=FAKE_SHA, echo=_silently, **kw)
+    return paths, got
+
+
+def test_an_unpicklable_tail_costs_only_its_shot(tmp_path, synth_shot, model):
+    """A payload error must not kill the next tail already in the real pool."""
+    paths, got = _totals(tmp_path, "unpicklable", SHOTS, synth_shot, model,
+                         tail_workers=1, lexicon=_UnpicklableOnce())
+
+    assert [r["shot"] for r in got.rows] == SHOTS
+    assert got.rows[0]["error"] == "RuntimeError"
+    assert "first lexicon cannot be pickled" in got.rows[0]["detail"]
+    assert [r["status"] for r in got.rows] == ["error", "ok", "ok"], got.rows
+    assert got.totals["counts"] == {"error": 1, "ok": 2}
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+    for shot in SHOTS[1:]:
+        assert masks.list_blocks(paths.masks_file(shot))
+        assert not _events(paths, shot).empty
+
+
+@pytest.mark.parametrize(("failure", "error"), [
+    ("raise", "RuntimeError"),
+    ("task_timeout", "TimeoutError"),
+    ("crash", "BrokenProcessPool"),
+    ("timeout", "TimeoutError"),
+])
+def test_a_failed_tail_worker_preserves_the_next_shots_gpu_work(
+    tmp_path, synth_shot, model, monkeypatch, failure, error,
+):
+    """A restart must recover the queued job even if its future is broken."""
+    monkeypatch.setattr(driver, "run_job", _run_with_bad_first_tail)
+
+    def warm(self):
+        # Pay imports before the timeout measures the deliberately hung job.
+        self.submit(driver.WarmJob()).result(timeout=120)
+
+    monkeypatch.setattr(driver.PrepPool, "warm", warm)
+    restarts = []
+    real_restart = driver.PrepPool.restart
+
+    def restart(self):
+        restarts.append(self.workers)
+        real_restart(self)
+
+    monkeypatch.setattr(driver.PrepPool, "restart", restart)
+    inferred = []
+    real_infer = pl.infer_block
+
+    def infer(prepared, **kwargs):
+        inferred.append(prepared.key)
+        return real_infer(prepared, **kwargs)
+
+    monkeypatch.setattr(pl, "infer_block", infer)
+    paths, got = _totals(
+        tmp_path, failure, SHOTS, synth_shot, model,
+        plan=(channels.ChannelSpec("mhr", 0, "magnetics"),),
+        tail_workers=1, timeout_s=30, lexicon=failure,
+    )
+
+    assert [r["shot"] for r in got.rows] == SHOTS
+    assert got.rows[0]["error"] == error
+    assert [r["status"] for r in got.rows] == ["error", "ok", "ok"], got.rows
+    assert got.totals["counts"] == {"error": 1, "ok": 2}
+    assert restarts == ([1] if failure in {"crash", "timeout"} else [])
+    assert inferred == ["mhr:0:wide"] * 3  # no repeated GPU work on recovery
+    assert not paths.masks_file(SHOT).exists()
+    assert not paths.events_file(SHOT).exists()
+    for shot in SHOTS[1:]:
+        assert masks.list_blocks(paths.masks_file(shot)) == ["mhr_00_wide"]
+        assert not _events(paths, shot).empty
+
+
+def test_a_finished_tail_releases_its_blocks_before_the_next_shot(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    """Keeping a retry payload must not retain an extra completed shot."""
+    jobs = {}
+    real_submit = driver.PrepPool.submit
+
+    def submit(self, job):
+        if isinstance(job, driver.FinishJob):
+            jobs[job.res.shot] = weakref.ref(job)
+        return real_submit(self, job)
+
+    monkeypatch.setattr(driver.PrepPool, "submit", submit)
+    retained = []
+    real_blocks = driver._shot_blocks
+
+    def blocks(shot, **kwargs):
+        if shot == SHOTS[2]:
+            # Shot 1 was flushed after shot 2's blocks. Only shot 2's
+            # payload may remain when shot 3 starts allocating its blocks.
+            retained.append(jobs[SHOT]() is not None)
+        return real_blocks(shot, **kwargs)
+
+    monkeypatch.setattr(driver, "_shot_blocks", blocks)
+    _, got = _totals(
+        tmp_path, "released", SHOTS, synth_shot, model,
+        plan=(channels.ChannelSpec("mhr", 0, "magnetics"),), tail_workers=0,
+    )
+    assert [r["status"] for r in got.rows] == ["ok", "ok", "ok"]
+    assert retained == [False]
+
+
+def test_the_tail_of_a_shot_is_paid_beside_the_next_shots_blocks(
+    tmp_path, synth_shot, model,
+):
+    """The per-shot tail must not stand in front of the next forward pass.
+
+    `pipeline.finish_shot` - the sawtooth pass over the whole ECE array,
+    L-H, the actuators, the QH proxy, the text lookup and the two writes -
+    was measured at ~3.72 s per shot of parent-thread work against ~0.84 s
+    of A100 forward pass, which caps GPU utilisation near 15 %. It is
+    order-independent across shots (one shot's tail touches one shot's
+    files), so it is handed to a worker and collected once the next shot's
+    blocks are done.
+
+    Measured here as the driver reports it: `finish_s` is what the tail
+    cost, `tail_wait_s` is how much of that the thread holding the GPU
+    actually waited for. The middle shot is the one to read - the first
+    shot's tail is also where the worker's own spawn and torch import land
+    if `warm()` has not finished paying for them, and the last shot's tail
+    has no next shot to hide behind.
+    """
+    overlapped = _totals(tmp_path, "overlapped", SHOTS, synth_shot, model,
+                         tail_workers=1)[1]
+    serial = _totals(tmp_path, "serial", SHOTS, synth_shot, model,
+                     tail_workers=0)[1]
+
+    mine, theirs = overlapped.rows[1], serial.rows[1]
+    assert mine["finish_s"] > 0.0 and theirs["finish_s"] > 0.0
+    # Serial: the tail IS the wait, to within the clock either side of it.
+    assert theirs["tail_wait_s"] >= theirs["finish_s"] * 0.9
+    # Overlapped: the GPU-owning thread did not wait for what it cost.
+    assert mine["tail_wait_s"] < mine["finish_s"]
+    assert overlapped.totals["finish_s"] > 0.0
+
+
+def test_an_overlapped_run_writes_the_same_rows_in_the_same_order(
+    tmp_path, synth_shot, model,
+):
+    """Overlapping the tail may not re-order or lose a shot."""
+    later, overlapped = _totals(tmp_path, "overlapped", SHOTS, synth_shot,
+                                model, tail_workers=1)
+    first, serial = _totals(tmp_path, "serial", SHOTS, synth_shot, model,
+                            tail_workers=0)
+
+    assert [r["shot"] for r in overlapped.rows] == SHOTS
+    assert [r["shot"] for r in serial.rows] == SHOTS
+    for mine, theirs in zip(overlapped.rows, serial.rows, strict=True):
+        assert {k: v for k, v in mine.items() if k not in _TIMINGS} == {
+            k: v for k, v in theirs.items() if k not in _TIMINGS
+        }
+    for shot in SHOTS:
+        assert _mask_keys(later.masks_file(shot)).keys() == _mask_keys(
+            first.masks_file(shot)).keys()
+        pd.testing.assert_frame_equal(_events(later, shot),
+                                      _events(first, shot))
+
+
+def test_a_tail_that_raises_is_one_error_row_and_the_run_goes_on(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    """A failed tail costs its shot and not the run.
+
+    In-process (`tail_workers=0`) so the stand-in can be monkeypatched; the
+    path under test is the one that collects the tail, which is shared with
+    the worker case - `PrepPool.submit` puts a failure on the future either
+    way.
+    """
+    def boom(*args, **kwargs):
+        raise RuntimeError("the tail fell off")
+
+    monkeypatch.setattr(pl, "finish_shot", boom)
+    _, got = _totals(tmp_path, "boom", SHOTS[:2], synth_shot, model,
+                     tail_workers=0)
+    assert [r["status"] for r in got.rows] == ["error", "error"]
+    assert [r["shot"] for r in got.rows] == SHOTS[:2]
+    assert all("the tail fell off" in r["detail"] for r in got.rows)
+
+
+def test_the_tail_worker_default_follows_the_prep_pool(monkeypatch):
+    monkeypatch.delenv("SLURM_CPUS_PER_TASK", raising=False)
+    args = driver.settle(driver.build_parser().parse_args(["--shots", "1"]))
+    assert args.tail_workers == 1
+    args = driver.settle(driver.build_parser().parse_args(
+        ["--shots", "1", "--prep-workers", "0"]
+    ))
+    assert args.tail_workers == 0
+    args = driver.settle(driver.build_parser().parse_args(
+        ["--shots", "1", "--prep-workers", "0", "--tail-workers", "1"]
+    ))
+    assert args.tail_workers == 1

@@ -25,26 +25,34 @@ this module writes is therefore computed HERE, on the float32 map the
 network returned, before it is packed; the `*_for_block` helpers are for
 offline re-analysis of a file whose probabilities are already gone.
 
-**One reference channel for the ELM clock.** Every magnetics channel sees
-the same ELMs, and writing a point event per channel puts each crash in the
-table as many times as the plan had magnetics channels - `windows.py`
-de-duplicates point families and unions `elm_free` precisely so that it
-survives, but the primary path should not need it. The reference is the
-magnetics wide block with the most transient activity, ties broken by name,
-and it is named in `ShotResult.elm_reference` and in the rows' own
-`diag`/`channel`/`pass_name`.
+**Independent transient and ELM references.** TokEye keeps one mask
+reference: the magnetics wide block with most transient activity, ties by
+name. Those rows are class-agnostic `transient` points. The ELM clock reads
+filterscopes 0-7 directly, preferring the first finite channel by index.
+`ShotResult.elm_reference` identifies that filterscope. The clock's points
+and quiet intervals share its finite coverage and run even without masks.
 
-**What the corpus cannot serve.** `ip` is not a corpus group (it is archive-
-and fdp-served; see `features/namespace.py`), so `actuator_intervals` gets
-no `ip` and never claims `nbi_counter`, and `qh_candidates` gets an empty
-Ip flat-top and therefore claims nothing. Both are recorded as skips rather
-than left to look like an absence of the phenomenon. `betan` is not a corpus
-group either, so an L-H transition's `attrs["betan"]` is `None`.
+**What the corpus cannot serve, and where the rest comes from.** `ip` is
+not a corpus group at all (measured: 32 groups on a real shot file, no
+`ip` among them; it is archive- and fdp-served, see
+`features/namespace.py`), and neither is `qmin`. They come from the
+FEATURES STORE - `paths.features_file(shot)`, written by the `features`
+stage - which `features_block` opens through `features/store.py` rather
+than by naming an h5 path here. That one read is what un-skipped three
+things that used to be dead: `actuator_intervals` gets `ip` and can
+compare the torque's sign with the current's (`nbi_counter`),
+`qh_candidates` gets a real Ip flat-top to intersect an EHO with instead
+of the empty set, and the q-min regime rule exists at all. A shot with no
+features file is `skipped["features"]`, a shot whose file carries no
+`qmin` is `skipped["qmin"]`, and either way the rest of the shot runs.
+`betan` is not a corpus group either and is not read here, so an L-H
+transition's `attrs["betan"]` is `None`.
 """
 from __future__ import annotations
 
+import math
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -55,6 +63,7 @@ import numpy as np
 from ..ae.labels import PROB_THRESHOLD
 from ..ae.transform import STD_EPS
 from ..config import Paths
+from ..features import store as feature_store
 from ..labels.store import append_index
 from . import (
     channels,
@@ -76,8 +85,7 @@ from .unet import CHECKPOINT_SHA256
 #: `ae_dataset.py` fed the network in training and is therefore the default.
 NORMS = ("record", "plasma")
 
-#: The diagnostics an ELM clock may run on. An ELM is broadband and the
-#: magnetics see it first; `mirnov` is `mhr`'s stand-in on the 14% of shots
+#: The diagnostics used to select the class-agnostic mask reference; `mirnov` is `mhr`'s stand-in on the 14% of shots
 #: that have no `mhr`.
 MAGNETICS_DIAGS = ("mhr", "mirnov")
 
@@ -111,20 +119,87 @@ ACTUATOR_GROUPS: dict[str, tuple[str, float, str]] = {
     "gas": ("gas_raw", 1.0, "first"),
 }
 
-#: Why `nbi_counter` is never claimed off the corpus alone.
-NO_IP = (
-    "`ip` is not a corpus group (archive- and fdp-served; see "
-    "features/namespace.py), and counter-injection is a comparison of the "
-    "torque's sign with the current's"
+#: The canonical quantities the events stage reads out of the features
+#: store. Deliberately two and not the file's whole contents: `ip` gates
+#: `nbi_counter`, the QH proxy and the q-min rule, and `qmin` is the rule's
+#: own input. Everything else a heuristic needs is a corpus group.
+FEATURE_QUANTITIES = ("ip", "qmin")
+
+#: The source name the features-store reads are recorded under in
+#: `events/<shot>_sources.parquet`. Not an event source - nothing writes a
+#: row claiming "there was an `ip` here" - but a step whose success or
+#: failure decides three others', which is exactly what that file is for.
+FEATURES_SOURCE = "features"
+
+#: Why the whole features step did not run. Deliberately PATH-FREE, like
+#: every other skip reason here: `events/driver.py` and `process_shot` must
+#: produce byte-identical rows for one shot, and they run under different
+#: roots in the test that pins that. The path is `paths.features_file(shot)`
+#: and the reader has the paths.
+NO_FEATURES = (
+    "no features file for this shot; the `features` stage has not run on it"
 )
 
-#: Why `qh_proxy` claims nothing off the corpus alone. Same missing signal,
-#: a different consequence: the proxy is an intersection and one of the
-#: three sets it intersects cannot be computed.
+#: Why one quantity was not served, by cause. Path-free for the same reason.
+NO_QUANTITY = "{name} is not in the features file"
+BAD_QUANTITY = "{name} could not be read from the features file: {cause}"
+
+#: Why `nbi_counter` is not claimed. `ip` is not a corpus group, so this
+#: now means the FEATURES STORE had none either - no file, or a file whose
+#: `ip` was never resolved.
+NO_IP = (
+    "no canonical `ip`: it is not a corpus group (archive- and fdp-served; "
+    "see features/namespace.py) and the features store served none, and "
+    "counter-injection is a comparison of the torque's sign with the "
+    "current's"
+)
+
+#: Why `qh_proxy` claims nothing. Same missing signal, a different
+#: consequence: the proxy is an intersection and one of the three sets it
+#: intersects cannot be computed.
 NO_FLATTOP = (
-    "`ip` is not a corpus group (archive- and fdp-served; see "
-    "features/namespace.py), so there is no flat-top interval to intersect "
-    "an EHO with and the proxy claims nothing"
+    "no Ip flat-top: `ip` is not a corpus group and the features store "
+    "served none, so there is no flat-top interval to intersect an EHO "
+    "with and the proxy claims nothing"
+)
+
+#: Why a step that needs several inputs AT ONCE could not be evaluated.
+#: The critic's iteration-0 re-run (defect 2) found the previous shape of
+#: this: `qh_flattop` was recorded as a skip while `qh_proxy` itself was
+#: recorded `ok` over the magnetics reference span with 0 events, so a
+#: MISSING PREREQUISITE reached ideate as an evaluated empty result and
+#: `coverage_state` came back `observed` on shot 198658. A step that could
+#: not be evaluated now writes no `ran` row at all, so the source's own row
+#: is `skipped` with this reason and NaN coverage - and when it CAN be
+#: evaluated, its coverage is the intersection of every input it needed,
+#: never the widest of them.
+UNEVALUABLE = "cannot evaluate {step}: {why}"
+
+#: What `qh_proxy` needs before it may claim anything, in the order it is
+#: worth reporting them.
+QH_NEEDS_TRACKS = "no mask block ran, so no EHO track could have been seen"
+QH_NEEDS_CLOCK = "the ELM clock did not run, so there are no ELM-free intervals"
+QH_NEEDS_NBI = "`pinj_total` was not measured, so the NBI-heated intervals are unknown"
+QH_NEEDS_FLATTOP = "there is no Ip flat-top"
+#: The four spans never overlap. Not a missing input - every one of them
+#: ran - but there is no instant at which all four were known, so there is
+#: no window the proxy evaluated either.
+NO_COMMON_SPAN = "its inputs have no common coverage"
+
+#: What `nbi_counter` needs. `ip` is the one that used to be permanently
+#: absent; the other two come off the corpus.
+COUNTER_NEEDS = "`{name}` was not measured"
+
+#: Why the q-min rule did not run, per cause. Both are ORDINARY: 17 of the
+#: 878 shots in the features store carry no `qmin`, and a shot whose `ip`
+#: never resolved has no flat-top to gate the bands with.
+NO_QMIN = (
+    "no canonical `qmin` in the features store, so there are no q-min "
+    "regimes to claim"
+)
+NO_QMIN_FLATTOP = (
+    "no Ip flat-top to gate the q-min bands with; ungated the rule fires "
+    "on 99.4% of shots (MEASURED on recommender_v1), so it does not run"
 )
 
 
@@ -148,6 +223,13 @@ class ShotResult:
     n_text: int = 0
     n_events: int = 0
     by_source: dict[str, int] = field(default_factory=dict)
+    #: Rows per PHENOMENON, beside the rows per source. A source and a
+    #: phenomenon are not interchangeable here - `qmin_rule` writes three
+    #: different phenomena and `tokeye_track` writes two - and a run
+    #: summary that could only group by source could not answer "how many
+    #: shots ran at elevated q-min", which is the question the rule labels
+    #: exist for.
+    by_phenomenon: dict[str, int] = field(default_factory=dict)
     elm_reference: str = ""
     elapsed_s: float = 0.0
     skipped: dict[str, str] = field(default_factory=dict)
@@ -184,6 +266,7 @@ class ShotResult:
             "n_text": self.n_text,
             "n_events": self.n_events,
             "by_source": dict(sorted(self.by_source.items())),
+            "by_phenomenon": dict(sorted(self.by_phenomenon.items())),
             "elm_reference": self.elm_reference,
             "seconds": round(self.elapsed_s, 2),
             "skipped": dict(sorted(self.skipped.items())),
@@ -236,6 +319,15 @@ def _cause(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"[:200]
 
 
+def _tally(res: ShotResult, events: Sequence[Event]) -> None:
+    """Count one shot's rows by source and by phenomenon, on `res`."""
+    for event in events:
+        res.by_source[event.source] = res.by_source.get(event.source, 0) + 1
+        res.by_phenomenon[event.phenomenon] = (
+            res.by_phenomenon.get(event.phenomenon, 0) + 1
+        )
+
+
 def databases_block(shot: int, paths: Paths) -> tuple[list[Event], list[dict]]:
     """This shot's curated-table rows, and which tables named it.
 
@@ -258,6 +350,232 @@ def databases_block(shot: int, paths: Paths) -> tuple[list[Event], list[dict]]:
     kept on `ShotResult.database_sources` for the run JSON.
     """
     return databases.events_for_shot(shot, root=paths.label_tables)
+
+
+def features_block(
+    shot: int, paths: Paths,
+) -> tuple[dict[str, tuple[np.ndarray, np.ndarray]], dict[str, str]]:
+    """This shot's canonical `ip` and `qmin`, and what the store did not have.
+
+    `({name: (t_s, y)}, {name: why})`, in `features/namespace.py`'s own
+    terms and units: `ip` in amps, `qmin` dimensionless, each as a 1-D
+    trace on its own axis. The events stage's one read of the features
+    store, and it goes through `features/store.py` rather than through an
+    h5 path spelled out here - `config.py` is the only module that names a
+    path and `store.py` is the only one that knows the file's layout, and
+    a heuristic that opened `<root>/features/<shot>_features.h5` itself
+    would pin both.
+
+    A file that is not there RAISES, because that is one fact about the
+    shot (`skipped["features"]`) and not one per quantity; a file that is
+    there but carries no `qmin` reports `qmin` in the second dict, because
+    that IS per quantity - 17 of the 878 shots in the store have `ip` and
+    no `qmin`, and the `ip`-gated steps must still run on them.
+
+    Every reason it produces is PATH-FREE. `events/driver.py` and
+    `process_shot` write the same shot's rows under different roots and a
+    test pins them equal, so a reason carrying `<root>/features/...` would
+    make the two schedules disagree about a shot neither of them looked at
+    differently.
+
+    A quantity that is stored several rows deep is reported as a miss
+    rather than reduced: `ip` and `qmin` are single-valued, and a wider
+    record is something else that has been given their name.
+    """
+    path = paths.features_file(shot)
+    if not Path(path).exists():
+        raise FileNotFoundError(NO_FEATURES)
+    out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    missing: dict[str, str] = {}
+    for name in FEATURE_QUANTITIES:
+        try:
+            arr = feature_store.read_feature(path, name)
+            y = np.asarray(arr.y, dtype=np.float64)
+            if y.ndim != 2 or y.shape[0] != 1:
+                raise ValueError(f"{name} is one trace, not {y.shape}")
+        except KeyError:
+            missing[name] = NO_QUANTITY.format(name=name)
+        except ValueError as exc:
+            missing[name] = BAD_QUANTITY.format(name=name, cause=_cause(exc))
+        except OSError as exc:
+            # The type alone: h5py's own message names the file, and a
+            # reason that carries a path is a row two roots disagree on.
+            missing[name] = BAD_QUANTITY.format(
+                name=name, cause=type(exc).__name__,
+            )
+        else:
+            out[name] = (np.asarray(arr.x, dtype=np.float64), y[0])
+    return out, missing
+
+
+def rules_block(
+    shot: int, paths: Paths, res: ShotResult,
+    ran: dict[tuple[str, str, int, str], tuple[float, float]],
+) -> tuple[dict[str, tuple[np.ndarray, np.ndarray]], list[Event],
+           list[tuple[float, float]]]:
+    """The features-store steps: canonical `ip`/`qmin`, the flat-top, the rule.
+
+    `(features, events, ip_flattop)`, with everything that failed recorded
+    on `res.skipped` and everything that ran recorded in `ran`. One
+    function because these three are one dependency chain - no file, no
+    `ip`; no `ip`, no flat-top; no flat-top, no regimes - and because
+    `finish_shot` (the corpus path) and `rules_shot` (`--rules-only`) must
+    run exactly the same chain rather than two copies of it that drift.
+
+    The coverage each step declares is its OWN. A `features` row carries
+    the finite span of that quantity's record, which is not the shot's
+    span and not the other quantity's; a `qmin_rule` row carries the
+    flat-top met with the finite q-min span, because outside the flat-top
+    the rule deliberately does not look and saying otherwise would turn an
+    abstention into an observed absence.
+    """
+    features: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    try:
+        features, missing = features_block(shot, paths)
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        res.skipped["features"] = _cause(exc)
+        missing = {}
+    res.skipped.update(missing)
+    ran.update(
+        ((FEATURES_SOURCE, name, -1, ""), coverage.finite_span(t_s, y))
+        for name, (t_s, y) in features.items()
+    )
+
+    flattop: list[tuple[float, float]] = []
+    if "ip" in features:
+        try:
+            span = heuristics.ip_flattop(*features["ip"])
+        except Exception as exc:  # noqa: BLE001 - per-step isolation
+            res.skipped["ip_flattop"] = _cause(exc)
+        else:
+            if math.isfinite(span[0]) and math.isfinite(span[1]):
+                flattop = [span]
+
+    events: list[Event] = []
+    if "qmin" not in features:
+        res.skipped["qmin_rule"] = NO_QMIN
+    elif not flattop:
+        res.skipped["qmin_rule"] = NO_QMIN_FLATTOP
+    else:
+        try:
+            t_s, y = features["qmin"]
+            events = heuristics.qmin_regimes(t_s, y, flattop[0], shot=shot)
+            ran[(heuristics.QMIN_SOURCE, heuristics.QMIN_DIAG, -1, "")] = (
+                heuristics.qmin_rule_coverage(t_s, y, flattop[0])
+            )
+        except Exception as exc:  # noqa: BLE001 - per-step isolation
+            res.skipped["qmin_rule"] = _cause(exc)
+            events = []
+    return features, events, flattop
+
+
+def _counter_coverage(
+    res: ShotResult,
+    ran: dict[tuple[str, str, int, str], tuple[float, float]],
+    spans: Mapping[str, tuple[float, float]],
+) -> None:
+    """Say whether counter-injection was EVALUATED, and over what.
+
+    `nbi_counter` needs the torque, the injected power and the current at
+    the same instant, and the three come off three digitisers. So its
+    coverage is their intersection and not the torque's own span - and a
+    shot missing any of the three did not evaluate counter-injection at
+    all, which has to reach the sources file as a SKIP rather than as a
+    successful zero (the critic's iteration-0 defect 2, in the form it
+    takes here).
+
+    The key is `("actuator", "tinj_total", -1, "")` whichever way it goes,
+    and that is not arbitrary: `heuristics._actuator_event` stamps
+    `diag="tinj_total"` on `nbi_counter` rows and on NO others - every
+    other actuator phenomenon is stamped with its own feature - so this is
+    the key those rows already count under, and a skipped row and a
+    successful one land on the same line of the table.
+    """
+    key = (heuristics.ACTUATOR_SOURCE, "tinj_total", -1, "")
+    absent = [
+        name for name in ("tinj_total", "pinj_total", "ip")
+        if name not in spans
+    ]
+    if absent:
+        why = "; ".join(COUNTER_NEEDS.format(name=n) for n in absent)
+        if absent == ["ip"]:
+            why = NO_IP
+        ran.pop(key, None)
+        res.skipped["nbi_counter"] = UNEVALUABLE.format(
+            step="counter-injection", why=why,
+        )
+        return
+    cov = coverage.intersect(
+        [spans["tinj_total"], spans["pinj_total"], spans["ip"]]
+    )
+    if not (math.isfinite(cov[0]) and math.isfinite(cov[1])):
+        ran.pop(key, None)
+        res.skipped["nbi_counter"] = UNEVALUABLE.format(
+            step="counter-injection", why=NO_COMMON_SPAN,
+        )
+        return
+    # Replaces the torque's own span, which `feature_spans` put here: a
+    # window in which the torque was measured and the current was not is
+    # not a window anybody checked the two signs in.
+    ran[key] = cov
+
+
+def _qh_coverage(
+    runs: Sequence[_BlockRun],
+    elm_cov: tuple[float, float] | None,
+    skipped: Mapping[str, str],
+    spans: Mapping[str, tuple[float, float]],
+    ip_flattop: Sequence[tuple[float, float]],
+) -> tuple[tuple[float, float], str]:
+    """`(coverage, "")` if the QH proxy can be evaluated, `(UNKNOWN, why)` if not.
+
+    The proxy is an intersection of four things - an EHO-like track, an
+    ELM-free stretch, an NBI-on stretch and the Ip flat-top - so the window
+    it evaluated is the intersection of the four INPUTS' coverage, and a
+    shot missing any one of them evaluated nothing at all.
+
+    That distinction is the whole of the critic's iteration-0 defect 2.
+    Before the features store reached this stage there was never a
+    flat-top, and the proxy still declared `ok` over the magnetics
+    reference span with 0 events - so on shot 198658 ideate read a
+    phenomenon nobody could compute as `coverage_state: observed`. A
+    missing input now returns a reason here, the caller records it against
+    `qh_proxy` itself, and no `ran` row is written.
+
+    The track span is the HULL of the PUBLISHED blocks - the ones whose
+    tracks were converted to rows. A block whose conversion failed is
+    unknown, not quiet, and must not donate coverage to a proxy built on
+    its tracks. The hull is the one span here that is a union rather than
+    an intersection, because a track seen on any block is a track; the
+    blocks of one shot come off digitisers that overlap almost entirely,
+    so the hull is not a material over-claim, and it is intersected with
+    three narrower spans anyway.
+
+    `elm_cov` is the finite span of the D-alpha channel the ELM clock ran
+    on (task L-A moved the clock from the magnetics reference block to
+    `filterscopes`), or `None` when the clock did not run. The ELM-free
+    intervals the proxy intersects with are that clock's, so that span -
+    and not the magnetics reference's - is the window they were measured
+    over.
+    """
+    if not runs:
+        return coverage.UNKNOWN, QH_NEEDS_TRACKS
+    if elm_cov is None or "elm_clock" in skipped:
+        return coverage.UNKNOWN, QH_NEEDS_CLOCK
+    if "pinj_total" not in spans:
+        return coverage.UNKNOWN, QH_NEEDS_NBI
+    if not ip_flattop:
+        return coverage.UNKNOWN, QH_NEEDS_FLATTOP
+    tracks_span = (
+        min(run.t_cov[0] for run in runs),
+        max(run.t_cov[1] for run in runs),
+    )
+    cov = coverage.intersect([
+        tracks_span, elm_cov, spans["pinj_total"], ip_flattop[0],
+    ])
+    if not (math.isfinite(cov[0]) and math.isfinite(cov[1])):
+        return coverage.UNKNOWN, NO_COMMON_SPAN
+    return cov, ""
 
 
 def _read_group(corpus_file, diag: str, *, stop: int | None = None):
@@ -543,7 +861,7 @@ def _cooccurrence(runs: Sequence[_BlockRun]) -> dict[tuple[str, int], list[str]]
 
 
 def _elm_reference(runs: Sequence[_BlockRun]) -> _BlockRun | None:
-    """The one block the ELM clock runs on: most transient activity, wide.
+    """The one transient mask reference: most transient activity, wide.
 
     Magnetics first and the wide pass first - an ELM is broadband and the
     zoom pass has thrown the top three quarters of the band away - and the
@@ -709,6 +1027,7 @@ def finish_shot(
     lexicon: Lexicon | None = None,
     run_id: str = "manual",
     write: bool = True,
+    index: bool = True,
 ) -> ShotResult:
     """Everything a shot does AFTER its mask blocks, on `res` in place.
 
@@ -735,19 +1054,35 @@ def finish_shot(
     ran: dict[tuple[str, str, int, str], tuple[float, float]] = {}
 
     # --------------------------------------------------------- the tracks
+    # The blocks whose tracks were converted to rows: the QH proxy below
+    # reads its tracks and its coverage hull off THESE, never off a block
+    # whose conversion failed.
+    accepted: list[tuple[_BlockRun, list[Event]]] = []
     if runs:
         sources.add(tracks.SOURCE)
-        partners = _cooccurrence(runs)
         for run in runs:
-            res.n_tracks += len(run.tracks)
+            try:
+                rows = tracks.tracks_to_events(
+                    run.tracks, shot=shot, diag=run.diag, channel=run.channel,
+                    pass_name=run.pass_name, t_cov=run.t_cov,
+                    unet_sha256=unet_sha256,
+                )
+            except Exception as exc:  # noqa: BLE001 - independent diagnostic blocks
+                # An invalid padded track must not lose the D-alpha clock
+                # or other diagnostics. This block is unknown, not quiet.
+                key = f"track {run.diag}:{run.channel}:{run.pass_name}"
+                res.skipped[key] = _cause(exc)
+                continue
+            res.n_tracks += len(rows)
             ran[(tracks.SOURCE, run.diag, run.channel, run.pass_name)] = (
                 run.t_cov
             )
-            rows = tracks.tracks_to_events(
-                run.tracks, shot=shot, diag=run.diag, channel=run.channel,
-                pass_name=run.pass_name, t_cov=run.t_cov,
-                unet_sha256=unet_sha256,
-            )
+            accepted.append((run, rows))
+        # Only published blocks may corroborate one another. Conversion is
+        # all-or-nothing per block, so keeping each run's original track list
+        # also preserves raw block-local identities (including after clips).
+        partners = _cooccurrence([run for run, _ in accepted])
+        for run, rows in accepted:
             events.extend(
                 replace(e, attrs={
                     **e.attrs,
@@ -756,11 +1091,10 @@ def finish_shot(
                 for i, e in enumerate(rows)
             )
 
-    # ------------------------------------------------------ the ELM clock
-    elm_free = np.zeros((0, 2), dtype=np.float64)
+    # ----------------------------------------- class-agnostic transients
     reference = _elm_reference(runs)
     if reference is None:
-        res.skipped["elm_clock"] = "no mask block to read a transient trace off"
+        res.skipped[transients.SOURCE] = "no mask block to read a transient trace off"
     else:
         try:
             elm_times = transients.elm_events(reference.activity, reference.t_s)
@@ -770,15 +1104,42 @@ def finish_shot(
                 t_s=reference.t_s, t_cov=reference.t_cov,
                 unet_sha256=unet_sha256, activity=reference.activity,
             ))
-            elm_free = transients.elm_free_intervals(elm_times, reference.t_cov)
-            res.n_elms = int(np.size(elm_times))
-            res.elm_reference = reference.prefix
-            sources |= {transients.SOURCE, transients.FREE_SOURCE}
+            sources.add(transients.SOURCE)
             key = (reference.diag, reference.channel, reference.pass_name)
             ran[(transients.SOURCE, *key)] = reference.t_cov
-            ran[(transients.FREE_SOURCE, *key)] = reference.t_cov
         except Exception as exc:  # noqa: BLE001 - per-step isolation
-            res.skipped["elm_clock"] = _cause(exc)
+            res.skipped[transients.SOURCE] = _cause(exc)
+
+    # ------------------------------------------------------ the ELM clock
+    elm_free = np.zeros((0, 2), dtype=np.float64)
+    # The D-alpha span the clock ran over; `None` until it has. The QH
+    # proxy's ELM-free input is measured over exactly this window.
+    elm_cov: tuple[float, float] | None = None
+    try:
+        dalpha_t_s, dalpha_y = _read_group(
+            corpus_file, "filterscopes", stop=heuristics.N_DALPHA_CHANNELS
+        )
+        # Prefer channel 0, falling back by channel index only when absent.
+        # Selecting by number of peaks would favour the noisiest detector.
+        channel = next((i for i, y in enumerate(dalpha_y)
+                        if (np.isfinite(y[:-1]) & np.isfinite(y[1:])).any()), -1)
+        if channel < 0:
+            raise ValueError("no finite D-alpha channel in filterscopes 0-7")
+        elm_cov = coverage.finite_span(dalpha_t_s, dalpha_y[channel])
+        found = transients.elm_clock_events(
+            dalpha_y[channel], dalpha_t_s, shot=shot, channel=channel,
+        )
+        events.extend(found)
+        res.n_elms = sum(e.phenomenon == transients.ELM_PHENOMENON for e in found)
+        res.elm_reference = f"filterscopes_{channel:02d}"
+        elm_free = np.array([
+            [e.t0_s, e.t1_s] for e in found
+            if e.phenomenon == transients.FREE_PHENOMENON
+        ], dtype=np.float64).reshape(-1, 2)
+        sources.add(transients.ELM_SOURCE)
+        ran[(transients.ELM_SOURCE, "filterscopes", channel, "")] = elm_cov
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        res.skipped["elm_clock"] = _cause(exc)
 
     # ------------------------------------------------------- the sawteeth
     try:
@@ -827,10 +1188,29 @@ def finish_shot(
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["lh"] = _cause(exc)
 
+    # ------------------------------------------------- the features store
+    # Before the actuators, because `ip` is one of their inputs and the
+    # only source of it is this read.
+    store_features, qmin_events, ip_flattop = rules_block(shot, paths, res, ran)
+    events.extend(qmin_events)
+    if (heuristics.QMIN_SOURCE, heuristics.QMIN_DIAG, -1, "") in ran:
+        # Declared whenever the rule RAN, band or no band: "q-min stayed
+        # under 0.95 for this whole flat-top" is an answer, and the events
+        # file cannot carry it because a rule that finds nothing writes no
+        # row.
+        sources.add(heuristics.QMIN_SOURCE)
+
     # -------------------------------------------------------- the actuators
     nbi_on: list[tuple[float, float]] = []
     features = _actuator_features(corpus_file, res.skipped)
-    res.skipped["nbi_counter"] = NO_IP
+    # `ip` is not a corpus group, so `_actuator_features` never has it and
+    # the features store is its only route to `actuator_intervals`. Merged
+    # rather than overlaid: a corpus that did grow an `ip` group would be
+    # the same canonical name off a different digitiser, and the store's
+    # copy is the one `nbi_counter` was measured with.
+    if "ip" in store_features:
+        features["ip"] = store_features["ip"]
+    spans: dict[str, tuple[float, float]] = {}
     if features:
         # PER FEATURE, over finite samples: the gas recorder's -10 to
         # 94.86 s axis is not the NBI digitiser's coverage (task Lfix-C1).
@@ -848,26 +1228,31 @@ def finish_shot(
             sources.add(heuristics.ACTUATOR_SOURCE)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["actuator"] = _cause(exc)
+    _counter_coverage(res, ran, spans)
 
     # --------------------------------------------------------- the QH proxy
-    try:
-        # No Ip flat-top to intersect with, so this claims nothing today; it
-        # runs anyway so that the source is declared and a shot's row can
-        # say "the proxy looked" rather than nothing at all.
+    if not ip_flattop:
+        # Which input was missing, beside the proxy's own row: `qh_flattop`
+        # is a caveat source of its own precisely so the reason survives.
         res.skipped["qh_flattop"] = NO_FLATTOP
-        events.extend(heuristics.qh_candidates(
-            [t for run in runs for t in run.tracks], elm_free, nbi_on, [],
-            shot=shot,
-            t_cov=reference.t_cov if reference else coverage.UNKNOWN,
-        ))
-        sources.add(heuristics.QH_SOURCE)
-        # `qh_candidates` stamps its rows `pass_name="zoom"`, so that is
-        # the key its completion record has to carry.
-        ran[(heuristics.QH_SOURCE, "", -1, "zoom")] = (
-            reference.t_cov if reference else coverage.UNKNOWN
-        )
-    except Exception as exc:  # noqa: BLE001 - per-step isolation
-        res.skipped["qh"] = _cause(exc)
+    published = [run for run, _ in accepted]
+    qh_cov, why = _qh_coverage(
+        published, elm_cov, res.skipped, spans, ip_flattop,
+    )
+    if why:
+        res.skipped["qh"] = UNEVALUABLE.format(step="the QH proxy", why=why)
+    else:
+        try:
+            events.extend(heuristics.qh_candidates(
+                [t for run in published for t in run.tracks], elm_free, nbi_on,
+                ip_flattop, shot=shot, t_cov=qh_cov,
+            ))
+            sources.add(heuristics.QH_SOURCE)
+            # `qh_candidates` stamps its rows `pass_name="zoom"`, so that is
+            # the key its completion record has to carry.
+            ran[(heuristics.QH_SOURCE, "", -1, "zoom")] = qh_cov
+        except Exception as exc:  # noqa: BLE001 - per-step isolation
+            res.skipped["qh"] = _cause(exc)
 
     # ------------------------------------------------------------- the text
     if lexicon is None:
@@ -907,8 +1292,7 @@ def finish_shot(
         res.skipped["database"] = _cause(exc)
 
     res.n_events = len(events)
-    for event in events:
-        res.by_source[event.source] = res.by_source.get(event.source, 0) + 1
+    _tally(res, events)
 
     if write:
         try:
@@ -926,8 +1310,14 @@ def finish_shot(
                 ),
                 run_id=run_id, merge=True,
             )
-            append_index(paths.events_index, schema.index_rows(events_file),
-                         keys=["shot", "source", "phenomenon"])
+            if index:
+                # `index=False` is for a SLURM array: `events_index.parquet`
+                # is ONE file for the whole root and this is a whole-file
+                # rewrite, so sixteen tasks doing it per shot tear it. It is
+                # derivable from the per-shot files (`driver.rebuild_index`).
+                append_index(paths.events_index, schema.index_rows(events_file),
+                             keys=["shot", "source", "phenomenon"],
+                             replace_shots=[shot])
         except Exception as exc:  # noqa: BLE001 - see below
             # The one failure other than the corpus file that sets `error`.
             # Everything above is a claim this shot could not make; a failed
@@ -935,6 +1325,77 @@ def finish_shot(
             # shot is not done and a re-run has to redo it - which is what
             # `status == "error"` tells a run summary.
             res.error = f"write failed: {_cause(exc)}"
+    return res
+
+
+def rules_shot(
+    shot: int,
+    paths: Paths | None = None,
+    *,
+    run_id: str = "manual",
+    write: bool = True,
+) -> ShotResult:
+    """One shot's RULE labels alone: the features store and the curated tables.
+
+    `run.py events --rules-only` is a loop around this, and the point of it
+    is what it does NOT do: no corpus file is opened, no U-Net is loaded,
+    no masks are written. Everything here reads either
+    `<root>/features/<shot>_features.h5` or a CSV, so the 500 shots of
+    `recommender_v1` run on a login node in about a minute where the full
+    events stage is a GPU job.
+
+    It is the same `rules_block` and the same `databases_block` the corpus
+    path runs, in the same order, writing the same two files through the
+    same writers - so a `qmin_hybrid` row produced here is
+    indistinguishable from one produced by `finish_shot`, which is the
+    only property that makes a cheap mode safe to use. What differs is the
+    SOURCES file: a rules-only run declares the steps it ran and nothing
+    about the detectors it did not, so merging one over a full run's
+    sources leaves that run's rows alone.
+    """
+    started = time.monotonic()
+    res = ShotResult(shot=int(shot))
+    paths = Paths.from_env() if paths is None else paths
+    events: list[Event] = []
+    sources: set[str] = set()
+    ran: dict[tuple[str, str, int, str], tuple[float, float]] = {}
+
+    _, qmin_events, _ = rules_block(int(shot), paths, res, ran)
+    events.extend(qmin_events)
+    if (heuristics.QMIN_SOURCE, heuristics.QMIN_DIAG, -1, "") in ran:
+        sources.add(heuristics.QMIN_SOURCE)
+
+    try:
+        found, res.database_sources = databases_block(int(shot), paths)
+        events.extend(found)
+        sources |= {e.source for e in found}
+        for record in res.database_sources:
+            ran[(
+                str(record["source"]), str(record["diag"]),
+                int(record["channel"]), str(record["pass_name"]),
+            )] = (float(record["t_cov0_s"]), float(record["t_cov1_s"]))
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        res.skipped["database"] = _cause(exc)
+
+    res.n_events = len(events)
+    _tally(res, events)
+    if write:
+        try:
+            events_file = paths.events_file(int(shot))
+            schema.write_events(events_file, int(shot), events, run_id=run_id,
+                                merge=True, sources=sorted(sources))
+            schema.write_sources(
+                paths.sources_file(int(shot)), int(shot),
+                coverage.source_records(
+                    int(shot), ran=ran, skipped=res.skipped, events=events,
+                ),
+                run_id=run_id, merge=True,
+            )
+            append_index(paths.events_index, schema.index_rows(events_file),
+                         keys=["shot", "source", "phenomenon"])
+        except Exception as exc:  # noqa: BLE001 - the one write failure
+            res.error = f"write failed: {_cause(exc)}"
+    res.elapsed_s = time.monotonic() - started
     return res
 
 
@@ -969,10 +1430,13 @@ __all__ = [
     "PreparedBlock",
     "ShotResult",
     "describe_block",
+    "features_block",
     "finish_shot",
     "infer_block",
     "plan_shot",
     "prep_block",
     "process_shot",
+    "rules_block",
+    "rules_shot",
     "summarise",
 ]

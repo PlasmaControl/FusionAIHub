@@ -16,6 +16,7 @@ is asserted by counting the calls, which no loaded machine can perturb.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import time
@@ -1056,3 +1057,304 @@ def test_an_eho_in_an_elmy_phase_is_not_a_qh():
         [_track(1.0, 2.0)], elm_free=whole, nbi=np.zeros((0, 2)),
         ip_flattop=whole, shot=1, t_cov=(0.0, 5.0),
     ) == []
+
+
+# ------------------------------------------------- the Ip flat-top and q-min
+
+def _ip_trace(step_s: float = 0.02):
+    """A current record with two flat stretches, the second one longer.
+
+    Ramp up to 1 MA over 0.5 s, hold to 1.5 s, notch to half current for
+    0.1 s, hold again to 3.0 s, then a disruption-fast drop to zero. The
+    longest run above `FLATTOP_FRAC` of the peak is therefore 1.6-3.0 s and
+    not 0.5-1.5 s, which is what `ip_flattop` has to pick.
+    """
+    t = (np.arange(round(3.5 / step_s) + 1) * step_s).round(10)
+    y = np.zeros_like(t)
+    y = np.where(t < 0.5, 2.0e6 * t, y)
+    y = np.where((t >= 0.5) & (t <= 1.5), 1.0e6, y)
+    y = np.where((t > 1.5) & (t < 1.6), 5.0e5, y)
+    y = np.where((t >= 1.6) & (t <= 3.0), 1.0e6, y)
+    return t, y
+
+
+def test_the_flattop_is_the_longest_run_above_nine_tenths_of_the_peak():
+    t, y = _ip_trace()
+    lo, hi = heuristics.ip_flattop(t, y)
+    assert (lo, hi) == pytest.approx((1.6, 3.0))
+
+
+def test_the_flattop_is_the_currents_magnitude_and_not_its_sign():
+    t, y = _ip_trace()
+    assert heuristics.ip_flattop(t, -y) == pytest.approx(
+        heuristics.ip_flattop(t, y)
+    )
+
+
+def test_a_current_record_with_nothing_finite_has_no_flattop():
+    t = np.arange(0.0, 1.0, 0.02)
+    assert heuristics.ip_flattop(t, np.full_like(t, np.nan)) == coverage.UNKNOWN
+    assert heuristics.ip_flattop(
+        np.zeros(0), np.zeros(0)
+    ) == coverage.UNKNOWN
+
+
+def test_the_flattop_takes_one_channel_and_refuses_an_array():
+    t, y = _ip_trace()
+    assert heuristics.ip_flattop(t, y[None, :]) == pytest.approx(
+        heuristics.ip_flattop(t, y)
+    )
+    with pytest.raises(ValueError, match="one trace"):
+        heuristics.ip_flattop(t, np.tile(y, (2, 1)))
+
+
+def _qmin_trace(step_s: float = 0.02, *, t1: float = 6.0):
+    """A 20 ms q-min axis, EFIT01's own cadence, over `[0.1, t1]`.
+
+    Rounded, so that a painted window's own bounds ARE sample times: a
+    boundary test measured against a float-drifted axis would be testing
+    `np.arange`.
+    """
+    return (0.1 + np.arange(round((t1 - 0.1) / step_s) + 1) * step_s).round(10)
+
+
+def _painted(t, pieces, fill=0.8):
+    """`[(t0, t1, value)]` painted onto `t`, `fill` everywhere else."""
+    y = np.full(t.size, float(fill))
+    for lo, hi, value in pieces:
+        y[(t >= lo) & (t <= hi)] = float(value)
+    return y
+
+
+def test_a_shot_stepping_through_the_three_regimes_gives_three_intervals():
+    t = _qmin_trace()
+    # 1.2 hybrid, 1.7 elevated, 3.0 high - each a second long, inside the
+    # flat-top - and a fourth second at 3.0 OUTSIDE it, which is the
+    # ramp-down the gate exists to refuse.
+    y = _painted(t, [(1.0, 2.0, 1.2), (2.5, 3.5, 1.7), (4.0, 5.0, 3.0),
+                   (5.5, 6.0, 3.0)])
+    got = heuristics.qmin_regimes(t, y, (0.5, 5.2), shot=7)
+    assert [e.phenomenon for e in got] == [
+        "qmin_hybrid", "qmin_elevated", "qmin_high",
+    ]
+    assert [(round(e.t0_s, 3), round(e.t1_s, 3)) for e in got] == [
+        (1.0, 2.0), (2.5, 3.5), (4.0, 5.0),
+    ]
+    assert all(e.source == "qmin_rule" for e in got)
+    assert all(e.evidence_kind == "heuristic" for e in got)
+    assert all(math.isnan(e.confidence) for e in got)
+
+
+def test_nothing_outside_the_flattop_is_claimed():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 3.0, 3.0)])
+    assert heuristics.qmin_regimes(t, y, (4.0, 5.0), shot=7) == []
+
+
+def test_a_band_shorter_than_the_minimum_is_no_event():
+    t = _qmin_trace()
+    # 400 ms of hybrid q-min, inside the flat-top and a hundred milliseconds
+    # short of the rule's own minimum.
+    y = _painted(t, [(1.0, 1.4, 1.2)])
+    assert heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7) == []
+
+
+def test_a_band_exactly_at_the_minimum_is_kept():
+    """The documented side of the duration test: `>=`, not `>`.
+
+    Measured on the 500 `recommender_v1` shots, five of them own a band
+    that is exactly 25 sampling intervals long, so this boundary is worth
+    three shots of the hybrid count and two of the high count.
+    """
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 1.5, 1.2)])
+    got = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)
+    assert len(got) == 1
+    assert (got[0].t1_s - got[0].t0_s) * 1e3 == pytest.approx(
+        heuristics.QMIN_MIN_MS
+    )
+
+
+def test_a_q_min_exactly_on_a_threshold_falls_in_the_lower_band():
+    """Bands are `lo < q <= hi`, so a threshold belongs to the band below."""
+    t = _qmin_trace()
+    for value, phenomenon in ((1.5, "qmin_hybrid"), (2.0, "qmin_elevated")):
+        y = _painted(t, [(1.0, 2.0, value)])
+        got = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)
+        assert [e.phenomenon for e in got] == [phenomenon]
+    # And the bottom of the lowest band is open: 0.95 itself is no regime.
+    y = _painted(t, [(1.0, 2.0, heuristics.QMIN_HYBRID)])
+    assert heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7) == []
+
+
+def test_the_bands_are_exclusive_and_never_overlap():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 2.0, 1.2), (2.0, 3.0, 1.7), (3.0, 4.0, 3.0)])
+    got = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)
+    assert len(got) == 3
+    for a, b in itertools.pairwise(got):
+        assert a.t1_s <= b.t0_s
+
+
+def test_nan_samples_split_a_band_and_leave_the_coverage():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 3.0, 1.2)])
+    # A 60 ms dropout in the middle of what would be a 2 s hybrid band, and
+    # a NaN head and tail: two 900-odd ms bands, and a coverage that starts
+    # at the first finite sample rather than at the first time.
+    y[(t > 1.9) & (t < 2.0)] = np.nan
+    y[t < 0.5] = np.nan
+    y[t > 5.5] = np.nan
+    got = heuristics.qmin_regimes(t, y, (0.0, 6.0), shot=7)
+    assert [e.phenomenon for e in got] == ["qmin_hybrid", "qmin_hybrid"]
+    assert (got[0].t1_s, got[1].t0_s) == pytest.approx((1.9, 2.0))
+    assert got[0].t_cov0_s == pytest.approx(0.5)
+    assert got[0].t_cov1_s == pytest.approx(5.5)
+    # A band made of nothing but NaN is no band, however long it is.
+    assert heuristics.qmin_regimes(t, np.full_like(t, np.nan), (0.0, 6.0),
+                                  shot=7) == []
+
+
+def test_the_coverage_is_the_flattop_met_with_the_finite_q_min_record():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 2.0, 1.2)])
+    got = heuristics.qmin_regimes(t, y, (0.5, 3.0), shot=7)
+    assert (got[0].t_cov0_s, got[0].t_cov1_s) == pytest.approx((0.5, 3.0))
+
+
+def test_the_rule_says_which_equilibrium_and_which_thresholds_it_used():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 2.0, 1.2)])
+    one = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)[0]
+    assert one.attrs["efit"] == "efit01"
+    assert one.attrs["qmin_min"] == pytest.approx(1.2)
+    assert one.attrs["qmin_max"] == pytest.approx(1.2)
+    assert one.attrs["thresholds"] == {
+        "lo": heuristics.QMIN_HYBRID, "hi": heuristics.QMIN_ELEVATED,
+        "min_ms": heuristics.QMIN_MIN_MS,
+    }
+    assert one.diag == "qmin"
+    assert json.loads(json.dumps(one.attrs, allow_nan=False)) == dict(one.attrs)
+    # The open-topped band says so with a null rather than an infinity JSON
+    # has no word for.
+    y = _painted(t, [(1.0, 2.0, 3.0)])
+    top = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)[0]
+    assert top.attrs["thresholds"]["hi"] is None
+    assert json.dumps(top.attrs, allow_nan=False)
+
+
+def test_the_extremes_are_the_bands_own_and_not_the_records():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 1.4, 1.1), (1.4, 2.0, 1.45)], fill=5.0)
+    one = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)[0]
+    assert one.attrs["qmin_min"] == pytest.approx(1.1)
+    assert one.attrs["qmin_max"] == pytest.approx(1.45)
+
+
+def test_without_a_flattop_there_is_no_regime_claim():
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 3.0, 1.2)])
+    assert heuristics.qmin_regimes(t, y, coverage.UNKNOWN, shot=7) == []
+    assert heuristics.qmin_regimes(t, y, None, shot=7) == []
+
+
+def test_a_q_min_record_and_its_axis_have_to_agree():
+    t = _qmin_trace()
+    with pytest.raises(ValueError, match="samples"):
+        heuristics.qmin_regimes(t, np.zeros(t.size + 1), (0.5, 5.0), shot=7)
+
+
+def test_a_regime_row_is_one_the_events_table_accepts(tmp_path):
+    t = _qmin_trace()
+    y = _painted(t, [(1.0, 2.0, 1.2)])
+    got = heuristics.qmin_regimes(t, y, (0.5, 5.0), shot=7)
+    path = tmp_path / "7_events.parquet"
+    schema.write_events(path, 7, got, run_id="test")
+    df = schema.read_events(path)
+    assert list(df["phenomenon"]) == ["qmin_hybrid"]
+    assert list(df["source"]) == ["qmin_rule"]
+    assert df["confidence"].isna().all()
+
+
+# ------------------------------- what the rule does on the real distribution
+
+#: The census `scripts/labelmaker/qmin_regime_census.py` wrote, from the
+#: real features store over the 500 shots of `recommender_v1`. Committed
+#: rather than recomputed, because the store is not in this repository and
+#: the suite is hermetic - and read on every run rather than quoted in a
+#: comment, because the gate it justifies is the whole of the rule.
+QMIN_CENSUS = Path(__file__).with_name("data") / "qmin_regimes_recommender_v1.json"
+
+
+@pytest.fixture(scope="module")
+def qmin_census():
+    return json.loads(QMIN_CENSUS.read_text())
+
+
+def test_the_census_was_measured_with_the_thresholds_this_module_still_has(
+    qmin_census,
+):
+    """The record and the code have to agree, or the record is a fossil.
+
+    Every number below is a measurement of a particular set of thresholds.
+    Moving one without re-running the census would leave the file claiming
+    a rule that no longer exists, so the thresholds travel WITH the
+    numbers and are checked against the module's here.
+    """
+    thresholds = qmin_census["thresholds"]
+    assert thresholds["bands"] == [
+        [name, lo, hi] for name, lo, hi in heuristics.QMIN_BANDS
+    ]
+    assert thresholds["min_ms"] == heuristics.QMIN_MIN_MS
+    assert thresholds["flattop_frac"] == heuristics.FLATTOP_FRAC
+    assert thresholds["efit"] == heuristics.QMIN_EFIT
+
+
+def test_without_the_flattop_gate_the_rule_fires_on_over_99_percent(
+    qmin_census,
+):
+    """MEASURED: the gate is not optional, and this is the number.
+
+    `qmin > 0.95` for 500 ms ANYWHERE in the record - the shipped rule with
+    the flat-top gate taken out - fires on 497 of the 500 `recommender_v1`
+    shots. Every discharge ramps its current up through every q band and
+    back down again, so an ungated q-min threshold is a label that says
+    "this is a tokamak discharge". The gated rule claims 271.
+    """
+    n = qmin_census["n_shots"]
+    assert n == 500
+    assert qmin_census["ungated"]["any_band"] == 497
+    assert qmin_census["ungated"]["any_band"] / n > 0.99
+    assert qmin_census["gated"]["qmin_hybrid"] / n < 0.60
+
+
+def test_the_regime_counts_on_the_five_hundred_are_pinned(qmin_census):
+    """hybrid 271 / elevated 60 / high 50, exactly.
+
+    The rule is deterministic, so this is an exact pin and not a
+    tolerance: a change to the bands, to the duration test's `>=`, or to
+    how the flat-top is found moves these, and they are the numbers the
+    task's own exit criterion names.
+    """
+    assert qmin_census["gated"] == {
+        "qmin_hybrid": 271, "qmin_elevated": 60, "qmin_high": 50,
+    }
+    assert qmin_census["n_skipped"] == {
+        "features": 0, "ip": 0, "qmin": 0, "flattop": 0,
+    }
+
+
+def test_the_census_totals_are_its_own_per_shot_rows(qmin_census):
+    """The file cannot be edited to say something its rows do not.
+
+    Without this the totals above would be three numbers anybody could
+    retype; with it they are a reduction of 500 per-shot answers.
+    """
+    per_shot = qmin_census["per_shot"]
+    assert len(per_shot) == qmin_census["n_shots"]
+    for band, n in qmin_census["gated"].items():
+        assert sum(band in found for found in per_shot.values()) == n
+    # And the bands are exclusive per SHOT only in the sense that a shot may
+    # hold several: every name in the file is one the rule can write.
+    names = {band for found in per_shot.values() for band in found}
+    assert names <= {name for name, _lo, _hi in heuristics.QMIN_BANDS}

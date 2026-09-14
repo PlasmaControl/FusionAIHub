@@ -151,14 +151,39 @@ turns what it sees into rows:
 | source | evidence_kind | what it claims |
 |---|---|---|
 | `tokeye_track` | detector | a coherent mode (or a `pickup` line) with a band, a chirp and a confidence |
-| `tokeye_transient` | detector | one point event per ELM, from **one** reference channel |
-| `elm_clock` | heuristic | the ELM-free intervals implied by those ELMs |
-| `ece_sawtooth` | heuristic | one point per sawtooth crash, with the inversion radius |
+| `tokeye_transient` | detector | class-agnostic `transient` points from one mask reference channel |
+| `elm_clock` | heuristic | D-alpha `elm` points and the `elm_free` intervals implied by those same peaks |
+| `ece_sawtooth` | heuristic | one point per inversion-qualified crash, with dropping-channel bounds; radius is not mapped |
 | `dalpha_lh` | heuristic | L->H and H->L transitions |
 | `actuator` | heuristic | the intervals NBI, ECH, the RMP coils and the gas valves were on for |
 | `qh_proxy` | heuristic | an EHO inside an ELM-free NBI-heated flat-top - a proxy, and its `attrs` say so |
 | `text` | text | a phenomenon this shot's own logbook entries name |
+| `qmin_rule` | heuristic | the q-min regime bands of the Ip flat-top (`qmin_hybrid`/`qmin_elevated`/`qmin_high`) |
 | `database:<table>` | database | a row of a curated table somebody sent us, e.g. `database:rwm_onsets_2017` |
+
+The D-alpha clock reads filterscopes channels 0-7 independently of the U-Net,
+using the first channel with at least two adjacent finite samples (prefer 0). It scales the finite
+range to [0, 1], smooths for 0.64 ms, and picks peaks with prominence ≥ 0.03
+and separation ≥ 3 ms. Within each contiguous finite run it rejects peaks
+whose half-prominence width exceeds `DALPHA_MAX_WIDTH_MS = 5.0` ms. D-alpha
+ELMs are millisecond bursts (a 200 Hz train is 5 ms apart); humps hundreds
+of ms wide are baseline excursions. This shape guard is independent of
+production-shot counts and applies only to the D-alpha clock. Smoothing
+and width measurement never span NaN gaps or padding.
+Point attributes are `prominence` (normalised),
+`width_ms` (half-prominence width), `channel`, and `rate_hz_local` (centred
+100 ms count / 0.1 s). Confidence is NaN: this is a heuristic that still needs
+manual ELM validation. Padding and internal gaps cannot generate peaks or
+quiet intervals; source coverage uses the first and last finite sample.
+All-NaN filterscopes are skipped, never called ELM-free. `transient` is in
+both registries and never supplies an ELM window feature or phenomenon hit.
+ELM window rates, quiet fractions and ages require `source=elm_clock` and
+`diag=filterscopes`; legacy magnetics clock rows are excluded before point
+clustering or interval unions, including in mixed legacy/new tables.
+Re-running events replaces old `tokeye_transient` rows by source; existing
+read-only products are not migrated by changing the code. See the
+[L-A assessment](superpowers/specs/2026-09-13-labels-assessment-A.md) for the
+500-shot census and validation limits.
 
 Flags: `--passes {wide,zoom}` (wide is 0.49 kHz/bin and 0.256 ms/column, zoom
 is four times finer in frequency and four times coarser in time),
@@ -202,7 +227,7 @@ counted as events at `t = 0`.
   `heuristic`;
 * `FAMILY_SOURCES` - and its `source` must be one the family's own detector
   writes: `coherent_mode` and `pickup` from `tokeye_track`, `elm` from
-  `tokeye_transient`, `elm_free` from `elm_clock`, `sawtooth` from
+  `elm_clock`, `elm_free` from `elm_clock`, `sawtooth` from
   `ece_sawtooth`, `lh_transition` from `dalpha_lh`.
 
 Both, together, applied once before anything is clustered or unioned. Text
@@ -342,6 +367,184 @@ count and even if its `source` were one a family allows.
 `test_a_database_row_inside_the_window_changes_no_feature` pins this with three
 rows, one per half of the policy plus the realistic case, so the test fails if
 either filter is dropped.
+
+
+## Running the events job
+
+Use the three L12 scripts in order: a CPU pre-pass over the **whole** shot list,
+one GPU per array element, then a single dependent index rebuild and utilisation
+gate. The array reads the text subset with `--text-subset readonly`, writes
+per-shot products with `--no-index`, and binds the parent plus prep/tail workers
+to its allocated CPUs. `PREFETCH` must be at least `PREP_WORKERS`, and request
+exactly `PREP_WORKERS + 2` CPUs. Both scripts and the gate import `$REPO/src`;
+GPU inference uses the phase3 Python, while CPU commands and jobstats use the
+main checkout's labelmaker pixi environment.
+
+The pre-pass also stages the site's unchanged `jobstats` client and its support
+files in a private `runs/slurm/jobstats-client/` directory. Compute nodes do not
+have `/usr/local/bin/jobstats`; the companion puts this shared copy on `PATH`.
+Run the pre-pass from a login node where the site command is installed.
+
+For a first, at-most-20-shot pilot (these commands submit work):
+
+```bash
+cd /scratch/gpfs/nc1514/FusionAIHub-L
+export REPO=$PWD
+export LABELMAKER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+ROOT=$LABELMAKER_ROOT
+mkdir -p "$ROOT/runs/slurm"
+head -20 "$ROOT/recommender_v1.txt" > "$ROOT/runs/slurm/pilot20.txt"
+
+# 1. Once for all 500 shots, on the login node; no GPU allocation.
+SHOT_FILE="$ROOT/recommender_v1.txt" bash scripts/labelmaker/tokeye_text_subset.sh
+
+# 2. One array element. Defaults and their measured basis are atop the sbatch.
+JOBID=$(SHOT_FILE="$ROOT/runs/slurm/pilot20.txt" N_CHUNKS=1 \
+  sbatch --parsable --array=0-0%1 scripts/labelmaker/tokeye_masks.sbatch)
+# Poll squeue until this array has left the queue before inspecting its gate.
+while [[ -n $(squeue -h -j "$JOBID" -o %i) ]]; do sleep 20; done
+
+# 3. Once the array has finished, rebuild then gate; afterok covers every element.
+CHECKID=$(sbatch --parsable --dependency=afterok:"$JOBID" \
+  scripts/labelmaker/tokeye_masks_afterok.sbatch "$JOBID" --pilot)
+while [[ -n $(squeue -h -j "$CHECKID" -o %i) ]]; do sleep 20; done
+# Once CHECKID has left squeue, also gate the CPU companion (GPU metrics are N/A).
+PYTHONPATH="$REPO/src" pixi run --manifest-path \
+  /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
+  python -m labelmaker.jobstats --job-id "$CHECKID" --pilot \
+  --wait-for-data 300 --preserve-dir "$ROOT/runs/slurm" \
+  --out "$ROOT/runs/slurm/jobstats.json"
+```
+
+`tokeye_masks_afterok.sbatch` invokes `jobstats_check.py` with the GPU array ID,
+which expands and gates every element. The equivalent manual GPU gate is
+`python -m labelmaker.jobstats --job-id "$JOBID" --pilot --wait-for-data 300
+--preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"`
+under the same pixi environment. Read the JSON verdict and preserve raw jobstats
+and sacct captures: the pilot exemption gives exit 0 even if thresholds fail.
+If the array fails, `afterok` does not run: gate that failed array manually and
+cancel its pending companion rather than treating the missing gate as success.
+
+L12's write boundary permits only `masks/`, `events/`, `text/`, and `runs/`
+under the data root. Its rebuild therefore uses
+`--index-out "$ROOT/events/events_index.parquet"`; it **does not refresh** the
+canonical `$ROOT/events_index.parquet` read by existing consumers. Publishing
+that canonical index requires a later task with the appropriate write scope.
+Without `--index-out`, the driver keeps its existing canonical output path.
+
+The stop rule is binding: **L12 submits no production job.** Production requires
+CPU, CPU-memory, GPU and GPU-memory each ≥70%; CPU-only jobs have two applicable
+gates. A ≤20-shot pilot is exempt but fully reported. Diagnose any miss from
+`prep_wait_s`, `infer_s`, `describe_s`, `finish_s`, and `tail_wait_s`; permit at
+most one additional ≤20-shot pilot when a knob change is indicated. Record both
+memory measurements (sampled jobstats and sacct MaxRSS), parent and per-PID worker
+RSS, tiles/s, every shot's wall time and status, `text_subset_missing`, and counts
+from all `*_sources.parquet` files. File existence alone is insufficient evidence
+of completion. The measured L12 report and exact **unsubmitted** production
+commands are in `.superpowers/sdd/task-L12-report.md`.
+
+### Rule labels from the features store
+
+Two of the quantities the events stage needs are not corpus groups at all.
+`ip` is archive- and fdp-served and `qmin` is fdp-only
+(`\efit01::top.results.aeqdsk:qmin`), so both come out of the **features
+store** — `$LABELMAKER_ROOT/features/<shot>_features.h5`, written by the
+`features` stage — which the events stage reads through
+`features/store.read_feature`, opening the file separately for each quantity.
+Until it did, three things were dead: `nbi_counter` was
+a recorded skip on 100 % of shots, `qh_proxy` intersected an EHO with an
+empty flat-top and claimed nothing, and there was no q-min label at all.
+
+**The Ip flat-top** (`heuristics.ip_flattop`) is the longest contiguous
+stretch whose |Ip| is over 90 % of the record's own peak, as `(first
+sample, last sample)`. Magnitude and not sign, because DIII-D runs both
+current directions; ties go to the earlier stretch. It is a *gate*, not a
+precision measurement of flat-top boundaries: a 100 ms boundary error spans
+five 20 ms q-min intervals, while a missing flat-top prevents the rule from
+running. `actuator_intervals` gets the same `ip`
+and can finally compare the injected torque's sign with the current's,
+which is what `nbi_counter` is.
+
+**The q-min bins** (`heuristics.qmin_regimes`) are exclusive and are the
+label sheet's own: `qmin_hybrid` 0.95 < q ≤ 1.5, `qmin_elevated`
+1.5 < q ≤ 2, `qmin_high` q > 2. A band is claimed over a contiguous run of
+q-min samples that lies inside the flat-top and lasts **at least 500 ms**
+(`>=`, edge to edge on the sample times — 25 intervals between 26 samples
+at a 20 ms cadence). The comparison has no floating-point tolerance.
+A sample at 1.5 or 2 belongs to the band *below* it; 0.95 belongs to none. A
+non-finite sample belongs to none, which splits a band around a dropout
+rather than interpolating over it.
+
+**The gate is the rule.** MEASURED over the 500 shots of `recommender_v1`:
+gated, hybrid 271 / elevated 60 / high 50 shots. The ungated condition
+`qmin > 0.95` for at least 500 ms anywhere in the record fires on
+**497 of 500 (99.4 %)**; it does not require staying in one of the three
+bands. Including the current ramps therefore makes that condition nearly
+universal on this list. `scripts/labelmaker/qmin_regime_census.py` measured it, and
+it writes `tests/labelmaker/data/qmin_regimes_recommender_v1.json`, which
+the suite reads on every run — so the gate is defended by a failing test
+rather than by a comment.
+
+**`confidence` is NaN, deliberately.** A threshold on a reconstructed
+scalar has no calibrated probability behind it, and a 1.0 would let a
+ranker read a rule as a perfectly-confident detector. `attrs` carries
+`qmin_min`, `qmin_max`, the `thresholds` that produced the row, and
+`efit: "efit01"` — the last because the sheet asks for EFIT02 or CAKE and
+EFIT01 is what the features store holds today. Changing the equilibrium
+requires updating the namespace resolver/locator, refreshing the stored
+feature, and updating `heuristics.QMIN_EFIT`: the event attribute currently
+comes from that constant, not from the feature's metadata.
+
+The coverage of a `qmin_rule` row is the intersection of the flat-top and
+the span from the first to last finite q-min sample. This single span does
+not represent internal dropouts; those still split event bands. Outside
+the flat-top the rule
+deliberately does not look, and declaring the ramp as covered would turn an
+abstention into an observed absence. A shot whose flat-top holds no band at
+all writes no event row and still writes its `qmin_rule` source row with
+`n_events = 0`, meaning no band met the duration requirement. This does not
+prove q-min stayed below 0.95: short excursions also produce no event.
+A shot with no features
+file is `skipped["features"]`; one whose file carries no `qmin` is
+`skipped["qmin"]` and still gets its `ip`-dependent steps in the full stage.
+The quantity source rows are `("features", "ip")` and
+`("features", "qmin")`, each with its own finite span; the rule's row is
+`("qmin_rule", "qmin")`. A missing file instead produces a skipped
+`("features", "")` row. In the full stage, missing counter-injection
+inputs produce a skipped `("actuator", "tinj_total")` row, and missing
+QH inputs produce a skipped `qh_proxy` row. These steps get no successful
+`ran` row when an input is missing; skipped rows have NaN coverage and a
+path-free reason.
+
+Because none of this needs the corpus or the network, there is a standalone
+mode for it, beside `--databases-only` and running the curated tables too:
+
+```bash
+pixi run -e labelmaker python -m labelmaker.run events --rules-only \
+    --shot-file $LABELMAKER_ROOT/recommender_v1.txt
+```
+
+For this list it prints `shots with a q-min band: qmin_elevated=60,
+qmin_high=50, qmin_hybrid=271`. It writes rule/table events to
+`events/<shot>_events.parquet`, their completion records to
+`events/<shot>_sources.parquet`, and `events_index.parquet`, through the
+same writers as the full stage. Only evaluated sources or attempted steps
+that were skipped are recorded: `--rules-only` does not evaluate
+`nbi_counter` or `qh_proxy` and writes no source rows for them. The 500-shot
+run takes minutes on a login node, depending on storage latency.
+
+`--root` moves **both** ends: the features it reads and the events it
+writes are both under it, so a scratch root has to be given the store to
+read. To write somewhere disposable while reading the real store, point
+its `features/` at the real one and leave everything else under the
+scratch root:
+
+```bash
+mkdir -p /tmp/ld2/rules500
+ln -s "$LABELMAKER_ROOT/features" /tmp/ld2/rules500/features
+pixi run -e labelmaker python -m labelmaker.run events --rules-only \
+    --shot-file $LABELMAKER_ROOT/recommender_v1.txt --root /tmp/ld2/rules500
+```
 
 
 ## Reading a label
