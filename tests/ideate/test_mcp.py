@@ -750,6 +750,10 @@ def test_phenomenon_locate_resolves_an_alias_and_ranks_by_evidence_class_first(p
         "tokeye_track"
     )
     assert got["caveats"] and any(ph.RANKING_SENTENCE in c for c in got["caveats"])
+    # F7: the payload crosses the protocol as JSON. A field of a less tame type would surface
+    # as a transport error rather than a caveated reply, which is the one failure mode this
+    # module's promise does not cover.
+    assert json.loads(json.dumps(got)) == got
 
 
 def test_phenomenon_locate_on_text_naming_nothing_is_an_error_not_an_empty_list(ideate_db):
@@ -788,6 +792,14 @@ def test_phenomenon_locate_rejects_an_avoid_token_that_is_not_a_phenomenon(pheno
 def test_phenomenon_locate_reports_an_unknown_constraint_column_as_an_error(phenomenon_db):
     got = tools.phenomenon_locate("NTM", constraints={"nope_mean": {"lo": 1.0}})
     assert "nope_mean" in got["error"] and isinstance(got["caveats"], list)
+
+
+def test_phenomenon_locate_words_a_malformed_constraint_as_search_shots_does(phenomenon_db):
+    """F4. The same failure through the same `_range` must read the same in both tools: a
+    `ValueError:` prefix here and none there is a second spelling of one message."""
+    a = tools.search_shots(ref_shot=100, constraints={"ip_mean": "not a range"})
+    b = tools.phenomenon_locate("NTM", constraints={"ip_mean": "not a range"})
+    assert a["error"] == b["error"] and not b["error"].startswith("ValueError")
 
 
 def test_phenomenon_locate_takes_the_constraints_search_shots_takes(phenomenon_db):
@@ -890,6 +902,28 @@ def test_phenomenon_locate_says_when_no_detector_covers_the_phenomenon(phenomeno
     got = tools.phenomenon_locate("resistive wall mode", n=10)
     assert "error" not in got
     assert ph.NO_DETECTOR.format(id="rwm") in got["caveats"]
+
+
+def test_the_server_instructions_quote_the_ranking_rule_verbatim():
+    """F5. `docs/IDEATE.md` and `configs/ideate/retrieval.yaml` are pinned equal to
+    `RANKING_SENTENCE` by a test; `INSTRUCTIONS` hand-copies it across a line wrap and nothing
+    pinned the copy, so a reword would drift silently on the surface that matters most."""
+    from ideate.retrieval import phenomena as ph
+
+    assert ph.RANKING_SENTENCE in " ".join(server_mod.INSTRUCTIONS.split())
+
+
+def test_every_registry_id_is_accepted_as_the_phenomenon_argument(phenomenon_db):
+    """F6. The no-resolution error hands the caller a list of ids, so the next call it makes is
+    with a bare id. That works only because each id is also its own alias in the lexicon, which
+    another front edits -- and a dropped alias would put a model in a loop against this tool's
+    own error message."""
+    from ideate.retrieval import phenomena as ph
+
+    for pid in ph.registry():
+        got = tools.phenomenon_locate(pid, n=1)
+        assert "phenomenon" in got, (pid, got)
+        assert "no phenomenon resolved" not in got.get("error", ""), pid
 
 
 # ------------------------------------------------------------------------------- the registry
