@@ -29,6 +29,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor
@@ -955,6 +956,41 @@ def _encode(tmp: Path, records: list[ShotRecord], paths: config.Paths, workers: 
     return result or {"status": "failed", "reason": "encode_db returned nothing", "channels": []}
 
 
+def _check_publish(db_dir: Path, shot_source: str | None, n_shots: int, force: bool):
+    """Refuse a different or smaller rebuild, retaining readable history for an override."""
+    previous = {}
+    problem = None
+    try:
+        manifest = db_dir / "manifest.json"
+        manifest.stat()
+        previous = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(previous, dict):
+            previous = {}
+        if (
+            "shot_source" not in previous
+            or previous["shot_source"] is not None
+            and not isinstance(previous["shot_source"], str)
+            or type(previous.get("n_shots")) is not int
+            or previous["n_shots"] < 0
+        ):
+            problem = "invalid manifest fields"
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        problem = f"unreadable/corrupt manifest: {exc}"
+    history = {key: previous.get(key) for key in ("shot_source", "n_shots", "built_at")}
+    if not force and (
+        problem or history["shot_source"] != shot_source or n_shots < history["n_shots"]
+    ):
+        raise ValueError(
+            f"refusing to replace database at {db_dir}: existing source "
+            f"{history['shot_source']!r}, n_shots={history['n_shots']!r}; "
+            f"new source {shot_source!r}, n_shots={n_shots}. "
+            f"{problem + '; ' if problem else ''}Use --force to override."
+        )
+    return history
+
+
 def build(
     shots: list[int],
     paths: config.Paths,
@@ -966,6 +1002,7 @@ def build(
     shot_source: str | None = None,
     n_requested: int | None = None,
     limit: int | None = None,
+    force: bool = False,
 ) -> BuildReport:
     """Full rebuild into <db_dir>, via <db_dir>.tmp so a crash leaves the old database intact.
 
@@ -979,9 +1016,22 @@ def build(
     """
     t_start = time.perf_counter()
     shots = sorted(set(shots))
-    text.build_logs_subset(paths, set(shots))
+    previous = _check_publish(paths.db_dir, shot_source, len(shots), force)
     report = BuildReport(shots=[])
-    records, shapes = _build_many(shots, paths, cfg, workers, report, reader_kind)
+    # Stage the text subset as well: failures can reduce the actual count after the
+    # preflight check. A refused rebuild must leave the old cache and DB untouched.
+    paths.db_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".build-text-", dir=paths.db_dir.parent) as cache:
+        read_paths = paths.model_copy(update={"text_cache_dir": Path(cache)})
+        old_subset, subset = text.subset_path(paths), text.subset_path(read_paths)
+        if old_subset.exists():
+            shutil.copy2(old_subset, subset)
+        text.build_logs_subset(read_paths, set(shots))
+        records, shapes = _build_many(shots, read_paths, cfg, workers, report, reader_kind)
+        previous = _check_publish(paths.db_dir, shot_source, len(records), force)
+        if subset.exists():
+            old_subset.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(subset, old_subset)
     shots_df, segments_df, shape_mat = records_to_tables(records, shapes, _blurb_client())
     X, feature_cols = _scalar_matrix(segments_df, shape_mat)
     # PCA needs more rows than components to mean anything; below that the embedding is a single
@@ -1034,6 +1084,8 @@ def build(
             "channels": [],
         },
     }
+    if force and previous is not None:
+        manifest["forced_over"] = previous
     tmp = _tmp_dir(paths.db_dir)
     if tmp.exists():
         shutil.rmtree(tmp)
