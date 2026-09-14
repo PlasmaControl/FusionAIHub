@@ -23,6 +23,70 @@ from ideate.shotdb import store
 REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------------- the fixture
+
+
+def test_elm_clock_points_are_observed_hits_and_transients_never_are(
+    ideate_db, capsys,
+):
+    events = [
+        _event(100, "100-elm_clock-00000", source="elm_clock",
+               evidence_kind="heuristic", phenomenon="elm", t0_s=2.2, t1_s=2.2,
+               diag="filterscopes", confidence=np.nan,
+               attrs={"prominence": 0.7, "width_ms": 2.0, "channel": 0,
+                      "rate_hz_local": 10.0}),
+        _event(101, "101-tokeye_transient-00000", source="tokeye_transient",
+               phenomenon="transient", t0_s=2.3, t1_s=2.3),
+        # Old rows in a read-only store must not become ELM hits either.
+        _event(200, "200-tokeye_transient-00000", source="tokeye_transient",
+               phenomenon="elm", t0_s=2.4, t1_s=2.4),
+    ]
+    _write_tables(ideate_db / "db", events, [], [])
+    db = store.ShotDB.load(ideate_db / "db")
+    assert ph.resolve("ELM") == [("elm", 1.0)]
+    hits = ph.locate("elm", db)
+    assert [h.shot for h in hits] == [100]
+    assert [iv.evidence_kind for iv in hits[0].intervals] == ["heuristic"]
+    assert ph.TRANSIENT_NOT_CLASSIFIED not in hits[0].caveats
+    assert [h.shot for h in ph.locate("transient", db)] == [101]
+    assert cli.main(["phenomenon", "ELM", "--json"]) == 0
+    assert [h["shot"] for h in json.loads(capsys.readouterr().out)] == [100]
+    from ideate.mcp import tools as mcp_tools
+
+    reply = mcp_tools.get_events(100, phenomenon="elm")
+    assert reply["n"] == 1
+    assert reply["events"][0]["source"] == "elm_clock"
+    assert reply["events"][0]["evidence_kind"] == "heuristic"
+    assert mcp_tools.get_events(200, phenomenon="elm")["n"] == 0
+    assert mcp_tools.get_events(200, phenomenon="elm")["status"] != "observed"
+    assert mcp_tools.get_events(200, phenomenon="transient")["n"] == 1
+
+
+@pytest.mark.parametrize("source_table", [False, True])
+def test_legacy_mask_clock_coverage_is_not_dalpha_coverage(ideate_db, source_table):
+    from ideate.labels import event_sources as es
+
+    events = [_event(100, "100-elm_clock-00000", source="elm_clock",
+                     evidence_kind="heuristic", phenomenon="elm_free",
+                     t0_s=1.0, t1_s=5.0, diag="mhr")]
+    _write_tables(ideate_db / "db", events, [], [])
+    if source_table:
+        es.write_sources(ideate_db / "db/event_sources.parquet", [
+            es.source_row(100, "elm_clock", diag="mhr", channel=0,
+                          t_cov0_s=0, t_cov1_s=6, n_events=1),
+            # A rerun can leave both keys. Only this D-alpha span is valid.
+            es.source_row(100, "elm_clock", diag="filterscopes", channel=0,
+                          t_cov0_s=2, t_cov1_s=3, n_events=0),
+        ])
+    db = store.ShotDB.load(ideate_db / "db")
+    ev = ph.evidence(100, "elm", db)
+    assert not ev.intervals
+    if source_table:
+        assert ev.coverage == (2.0, 3.0)
+    else:
+        assert ev.coverage_state == "unprocessed"
+        assert ev.coverage is None
+
+
 #
 # Four shots, one phenomenon each way. Their flat top is 1.0-5.0 s (conftest's `shot_record`), so
 # an event at 2.0 s is inside it and one at 0.5 s is not.
@@ -131,8 +195,9 @@ def phen_db(ideate_db: Path) -> store.ShotDB:
         _event(OBSERVED_SHOT, "100-tokeye_track-00004", attrs={"f_centroid_khz": 150.0}),
         _event(OBSERVED_SHOT, "100-tokeye_track-00005", t0_s=0.2, t1_s=0.3),
         _event(
-            OBSERVED_SHOT, "100-tokeye_transient-00000", source="tokeye_transient",
-            phenomenon="elm", t0_s=2.2, t1_s=2.2, confidence=np.nan, attrs={"col": 3},
+            OBSERVED_SHOT, "100-elm_clock-00000", source="elm_clock",
+            evidence_kind="heuristic", phenomenon="elm", t0_s=2.2, t1_s=2.2,
+            diag="filterscopes", confidence=np.nan, attrs={"col": 3},
         ),
         # 101: two forecast rows and nothing else. No detector wrote a thing, so no coverage.
         _event(
@@ -145,11 +210,11 @@ def phen_db(ideate_db: Path) -> store.ShotDB:
             evidence_kind="forecast", phenomenon="tearing", t0_s=3.0, t1_s=3.1,
             horizon_s=0.5, diag="", confidence=0.22, attrs={"label": "tm_risk_500ms"},
         ),
-        # 200: the ELM detector ran on the mhr data and found nothing to report but a quiet
+        # 200: the ELM clock ran on D-alpha and found nothing to report but a quiet
         # stretch. That row is the only thing that says the shot was LOOKED AT for ELMs.
         _event(
             TEXT_SHOT, "200-elm_clock-00000", source="elm_clock", evidence_kind="heuristic",
-            phenomenon="elm_free", t0_s=1.0, t1_s=4.0, confidence=np.nan,
+            phenomenon="elm_free", diag="filterscopes", t0_s=1.0, t1_s=4.0, confidence=np.nan,
             attrs={"n_elms_inside": 0},
         ),
     ]
@@ -257,7 +322,7 @@ def test_elm_reads_the_elm_detector_and_not_the_elm_free_one():
     """`elm_clock` writes `elm_free` INTERVALS -- stretches with no ELM in them. Counting an
     absence as evidence of the thing it denies is the error plan §2 is about."""
     rules = ph.registry()["elm"].events
-    assert [(r.source, r.phenomenon) for r in rules] == [("tokeye_transient", "elm")]
+    assert [(r.source, r.phenomenon) for r in rules] == [("elm_clock", "elm")]
 
 
 # --------------------------------------------------------------------------------------- resolve
@@ -385,7 +450,7 @@ def test_an_unscored_event_cannot_be_shown_to_clear_a_bar_and_says_so(phen_db):
     lone ELM unscored. It is kept at the default bar and dropped above it, and the drop is said
     out loud rather than looking like "there was no ELM"."""
     kept = ph.evidence(OBSERVED_SHOT, "elm", phen_db)
-    assert [iv.event_id for iv in kept.intervals] == ["100-tokeye_transient-00000"]
+    assert [iv.event_id for iv in kept.intervals] == ["100-elm_clock-00000"]
     got = ph.evidence(OBSERVED_SHOT, "elm", phen_db, min_confidence=0.5)
     assert got.intervals == ()
     assert any("no confidence" in c for c in got.caveats)
@@ -586,12 +651,12 @@ def _db_with(ideate_db: Path, events: list[dict], labels=(), claims=()) -> store
 
 
 def _elm_clock(shot: int, event_id: str, cov: tuple[float, float]) -> dict:
-    """One `elm_free` row: the ELM clock saying it READ the mhr data over `cov`, and found no
+    """One `elm_free` row: the ELM clock saying it read D-alpha over `cov`, and found no
     ELM in it. The row's own span and its coverage span are the same stretch."""
     return _event(
         shot, event_id, source="elm_clock", evidence_kind="heuristic", phenomenon="elm_free",
         t0_s=cov[0], t1_s=cov[1], confidence=np.nan, attrs={"n_elms_inside": 0},
-        t_cov0_s=cov[0], t_cov1_s=cov[1],
+        t_cov0_s=cov[0], t_cov1_s=cov[1], diag="filterscopes",
     )
 
 
@@ -694,9 +759,9 @@ def test_coverage_comes_from_the_source_table_when_the_database_has_one(ideate_d
     db.event_sources = pd.DataFrame(
         [
             {"shot": TEXT_SHOT, "source": "elm_clock", "status": "ok",
-             "t_cov0_s": 0.0, "t_cov1_s": 6.0},
+             "diag": "filterscopes", "t_cov0_s": 0.0, "t_cov1_s": 6.0},
             {"shot": OBSERVED_SHOT, "source": "elm_clock", "status": "skipped",
-             "t_cov0_s": np.nan, "t_cov1_s": np.nan},
+             "diag": "filterscopes", "t_cov0_s": np.nan, "t_cov1_s": np.nan},
         ]
     )
     assert ph.evidence(TEXT_SHOT, "elm", db).coverage == (1.0, 5.0)
@@ -712,26 +777,19 @@ def test_the_hit_carries_the_coverage_state(phen_db):
 # ---------------------------------- finding 2: a transient detector is not an ELM detector
 
 
-def test_a_transient_detection_is_reported_as_a_transient_and_not_as_an_elm(phen_db):
-    """`tokeye_transient` is a burst detector. labelmaker's own module says a sawtooth crash and
-    a disruption precursor are transient too, so its `phenomenon="elm"` is a claim to weigh, not
-    an ELM sighting to repeat."""
+def test_observed_elm_clock_hits_do_not_carry_the_transient_caveat(phen_db):
     seen = ph.evidence(OBSERVED_SHOT, "elm", phen_db)
-    assert [iv.source for iv in seen.intervals] == ["tokeye_transient"]
-    assert ph.TRANSIENT_NOT_CLASSIFIED in seen.caveats
-    # A class-specific detector says nothing of the kind.
-    assert ph.TRANSIENT_NOT_CLASSIFIED not in ph.evidence(
-        OBSERVED_SHOT, "tearing", phen_db
-    ).caveats
+    assert [iv.source for iv in seen.intervals] == ["elm_clock"]
+    assert ph.TRANSIENT_NOT_CLASSIFIED not in seen.caveats
 
 
-def test_the_transient_rule_weighs_less_than_a_class_specific_detector():
+def test_transients_have_their_own_registry_rule():
     reg = ph.registry()
     (elm_rule,) = reg["elm"].events
-    (saw_rule,) = reg["sawtooth"].events
-    assert elm_rule.source == "tokeye_transient"
-    assert elm_rule.weight < saw_rule.weight == 1.0
-    assert elm_rule.caveat == ph.TRANSIENT_NOT_CLASSIFIED
+    (transient_rule,) = reg["transient"].events
+    assert elm_rule.source == "elm_clock" and elm_rule.weight == 1.0
+    assert transient_rule.source == "tokeye_transient"
+    assert transient_rule.phenomenon == "transient"
 
 
 def test_the_event_term_counts_the_rules_weight_not_the_row_count(phen_db):
@@ -749,18 +807,14 @@ def test_an_avoid_drop_says_what_the_evidence_it_dropped_on_was(phen_db):
     kept = ph.locate("tearing", phen_db, 10, avoid=["phenomenon:elm"], notes=notes)
     assert OBSERVED_SHOT not in [h.shot for h in kept]
     assert any("dropped 1 shot" in n for n in notes)
-    assert any(ph.TRANSIENT_NOT_CLASSIFIED in n for n in notes)
+    assert not any(ph.TRANSIENT_NOT_CLASSIFIED in n for n in notes)
 
 
-def test_the_registry_and_the_docs_say_what_a_classified_elm_would_need():
-    """ideate cannot fix this: labelmaker has to publish an `elm` point family from the ELM
-    clock's own peaks. Naming the requirement where the rule is, and in the docs, is the part
-    that is ideate's."""
-    yaml_text = (REPO / "configs" / "ideate" / "phenomena.yaml").read_text()
-    docs = (REPO / "docs" / "IDEATE.md").read_text()
-    for text in (yaml_text, docs):
-        assert "point-event family" in text.lower()
-        assert "elm_clock" in text
+def test_the_elm_registry_uses_the_filterscope_coverage_contract():
+    entry = ph.registry()["elm"]
+    assert entry.diags == ("filterscopes",)
+    assert entry.requires_group == ("filterscopes",)
+    assert entry.coverage_sources == ("elm_clock",)
 
 
 # ----------------------------------------------------- finding 3: the saturation is pinned

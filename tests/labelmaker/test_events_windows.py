@@ -95,12 +95,29 @@ def _write_events(paths, events):
     return schema.read_events(paths.events_file(SHOT))
 
 
-def _elm(t: float, diag: str = "mhr", channel: int = 0) -> schema.Event:
+def _elm(t: float, diag: str = "filterscopes", channel: int = 0) -> schema.Event:
     return schema.Event(
-        shot=SHOT, source="tokeye_transient", phenomenon="elm",
+        shot=SHOT, source="elm_clock", phenomenon="elm", evidence_kind="heuristic",
         t0_s=t, t1_s=t, diag=diag, channel=int(channel), pass_name="wide",
         t_cov0_s=0.0, t_cov1_s=10.0,
     )
+
+
+def test_transient_rows_do_not_change_any_elm_window_feature(tmp_path):
+    from dataclasses import replace
+
+    paths = _paths(tmp_path)
+    baseline = _write_events(paths, [_elm(0.1), _elm(0.2), _elm(0.3)])
+    table = windows.EventTable.of(baseline)
+    rows = [_elm(0.1), _elm(0.2), _elm(0.3)]
+    rows += [
+        replace(_elm(0.25), source="tokeye_transient", phenomenon="transient",
+                evidence_kind="detector"),
+        replace(_elm(0.27), source="tokeye_transient", evidence_kind="detector"),
+    ]
+    augmented = windows.EventTable.of(_write_events(paths, rows))
+    np.testing.assert_array_equal(table.elm_s, [0.1, 0.2, 0.3])
+    np.testing.assert_array_equal(augmented.elm_s, table.elm_s)
 
 
 def _interval(phenomenon: str, t0: float, t1: float, *, source: str,
@@ -442,6 +459,38 @@ def test_a_window_with_no_track_reports_zeros(track_events):
 
 # ------------------------------------------------------- the event families
 
+def test_legacy_magnetics_clock_rows_do_not_supply_dalpha_features(tmp_path):
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _elm(0.3, diag="mhr"),
+        _interval("elm_free", 0.4, 0.9, source="elm_clock", diag="mhr"),
+    ])
+    vec = windows.window_features((0.0, 1.0), blocks={}, events=events, cov={})
+    # No D-alpha events: zero rate/quiet fraction, capped unknown age.
+    np.testing.assert_allclose(
+        [_f(vec, name) for name in (
+            "elm_rate_hz", "elm_free_frac", "time_since_last_elm_s",
+        )], [0.0, 0.0, 1.0],
+    )
+
+
+def test_legacy_magnetics_clock_rows_do_not_change_mixed_dalpha_features(tmp_path):
+    paths = _paths(tmp_path)
+    events = _write_events(paths, [
+        _elm(0.1, diag="filterscopes"),
+        _interval("elm_free", 0.0, 0.2, source="elm_clock", diag="filterscopes"),
+        _elm(0.3, diag="mhr"),
+        _interval("elm_free", 0.4, 0.9, source="elm_clock", diag="mhr"),
+    ])
+    vec = windows.window_features((0.0, 1.0), blocks={}, events=events, cov={})
+    # Only the D-alpha point/interval count: 1 Hz, 20% quiet, age 0.5 - 0.1.
+    np.testing.assert_allclose(
+        [_f(vec, name) for name in (
+            "elm_rate_hz", "elm_free_frac", "time_since_last_elm_s",
+        )], [1.0, 0.2, 0.4],
+    )
+
+
 def test_the_elm_rate_is_the_count_over_the_window_width(tmp_path):
     paths = _paths(tmp_path)
     events = _write_events(paths, [_elm(t) for t in (0.05, 0.15, 0.25, 0.40)])
@@ -454,8 +503,8 @@ def test_the_elm_rate_is_the_count_over_the_window_width(tmp_path):
 def test_the_elm_free_fraction_is_the_overlap_with_the_quiet_intervals(tmp_path):
     paths = _paths(tmp_path)
     events = _write_events(paths, [
-        _interval("elm_free", 0.20, 0.40, source="elm_clock"),
-        _interval("elm_free", 0.90, 1.00, source="elm_clock"),
+        _interval("elm_free", 0.20, 0.40, source="elm_clock", diag="filterscopes"),
+        _interval("elm_free", 0.90, 1.00, source="elm_clock", diag="filterscopes"),
     ])
     vec = windows.window_features(
         (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
@@ -573,7 +622,7 @@ def test_the_dedup_window_is_two_milliseconds():
 def test_two_channels_writing_the_same_elm_rows_are_one_elm(tmp_path):
     """The reviewer's reproduction, at the numbers they measured.
 
-    `transients.transients_to_events` emits one row set per
+    `transients.elm_clock_events` emits one row set per
     `(diag, channel, pass)`: a shot whose ELM clock ran on two D-alpha
     channels writes every crash twice AND a full set of `elm_free`
     intervals twice. Summing the intervals made `elm_free_frac` 2.0 - a
@@ -584,9 +633,9 @@ def test_two_channels_writing_the_same_elm_rows_are_one_elm(tmp_path):
     paths = _paths(tmp_path)
     events = _write_events(paths, [
         _interval("elm_free", 0.0, 1.0, source="elm_clock",
-                  kind="detector", channel=0),
+                  diag="filterscopes", kind="detector", channel=0),
         _interval("elm_free", 0.0, 1.0, source="elm_clock",
-                  kind="detector", channel=1),
+                  diag="filterscopes", kind="detector", channel=1),
         _elm(0.10, channel=0),
         _elm(0.10, channel=1),
     ])
@@ -628,9 +677,9 @@ def test_overlapping_elm_free_intervals_are_unioned_not_summed(tmp_path):
     paths = _paths(tmp_path)
     events = _write_events(paths, [
         _interval("elm_free", 0.00, 0.20, source="elm_clock",
-                  kind="detector", channel=0),
+                  diag="filterscopes", kind="detector", channel=0),
         _interval("elm_free", 0.10, 0.30, source="elm_clock",
-                  kind="detector", channel=1),
+                  diag="filterscopes", kind="detector", channel=1),
     ])
     vec = windows.window_features(
         (0.0, 0.34), blocks={}, events=events, cov={"mhr": (0.0, 1.0)}
@@ -665,9 +714,9 @@ def test_the_parsed_table_clusters_points_and_merges_intervals(tmp_path):
         _interval("lh_transition", 1.0004, 1.0004, source="dalpha_lh",
                   channel=1),
         _interval("elm_free", 0.0, 0.2, source="elm_clock",
-                  kind="detector", channel=0),
+                  diag="filterscopes", kind="detector", channel=0),
         _interval("elm_free", 0.1, 0.3, source="elm_clock",
-                  kind="detector", channel=1),
+                  diag="filterscopes", kind="detector", channel=1),
     ])
     table = windows.EventTable.of(events)
     assert table.elm_s.size == 1

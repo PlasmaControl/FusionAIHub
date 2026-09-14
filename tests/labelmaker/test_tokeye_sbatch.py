@@ -1,0 +1,87 @@
+"""Pin the L12 scheduler contract without submitting jobs from tests."""
+
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labelmaker"
+
+
+def _script(name):
+    path = SCRIPTS / name
+    assert path.is_file(), f"missing scheduler companion: {name}"
+    subprocess.run(["bash", "-n", str(path)], check=True)
+    return path.read_text()
+
+
+def test_array_reserves_one_gpu_and_enough_cpus_for_both_pools():
+    text = _script("tokeye_masks.sbatch")
+    for flag in ("--nodes=1", "--ntasks=1", "--gpus-per-task=1",
+                 "--partition=gpu", "--qos=gpu-stellar", "--array=0-0%1"):
+        assert f"#SBATCH {flag}" in text
+    cpus = int(re.search(r"#SBATCH --cpus-per-task=(\d+)", text)[1])
+    workers = int(re.search(r'PREP_WORKERS=\"\$\{PREP_WORKERS:-(\d+)\}', text)[1])
+    prefetch = int(re.search(r'PREFETCH=\"\$\{PREFETCH:-(\d+)\}', text)[1])
+    assert cpus == workers + 2
+    assert prefetch >= workers
+    assert "--mem=" in text and "--time=" in text
+    assert "/runs/slurm/%A_%a.out" in text
+    assert 'srun --cpu-bind=cores "$ROOT/envs/phase3/bin/python" -u' in text
+    for flag in ('--chunk "$SLURM_ARRAY_TASK_ID"', '--n-chunks "$N_CHUNKS"',
+                 "--rank 0 --world 1", "--device cuda", "--plan round1",
+                 "--tail-workers 1", "--text-subset readonly", "--no-index",
+                 "--amp", "--timeout 240"):
+        assert flag in text
+    for export in ('PYTHONPATH="$REPO/src"', "OMP_NUM_THREADS=1",
+                   "MKL_NUM_THREADS=1", "HDF5_USE_FILE_LOCKING=FALSE"):
+        assert text.index(export) < text.index("srun --cpu-bind")
+
+
+def test_prepass_builds_the_whole_list_on_cpu():
+    text = _script("tokeye_text_subset.sh")
+    assert '--shot-file "$SHOT_FILE"' in text
+    assert "--build-text-subset" in text
+    assert "--device cpu" in text
+    assert "--chunk" not in text and "--limit" not in text
+    assert "-e labelmaker python" in text
+
+
+def test_prepass_stages_the_site_jobstats_client_for_compute_nodes():
+    text = _script("tokeye_text_subset.sh")
+    assert 'install -d -m 700 "$ROOT/runs/slurm/jobstats-client"' in text
+    for name in ("jobstats", "jobstats.py", "config.py", "output_formatters.py"):
+        assert name in text
+    afterok = _script("tokeye_masks_afterok.sbatch")
+    assert 'export PATH="$ROOT/runs/slurm/jobstats-client:$PATH"' in afterok
+
+
+def test_afterok_rebuilds_before_the_gate_and_preserves_both_captures():
+    text = _script("tokeye_masks_afterok.sbatch")
+    assert "--dependency=afterok:" in text
+    assert text.index("--rebuild-index") < text.index('"$REPO/scripts/labelmaker/jobstats_check.py"')
+    assert '--index-out "$ROOT/events/events_index.parquet"' in text
+    assert '"$REPO/scripts/labelmaker/jobstats_check.py"' in text
+    for flag in ('--job-id "$JOBID"', '--preserve-dir "$ROOT/runs/slurm"',
+                 '--out "$ROOT/runs/slurm/jobstats.json"', "--wait-for-data 300"):
+        assert flag in text
+    assert "-e labelmaker python" in text
+    assert 'gate_mode+=(--pilot)' in text
+    assert "--gpus" not in text
+    assert text.count("srun --cpu-bind=cores pixi run") == 2
+
+
+@pytest.mark.parametrize("workers,prefetch,cpus", [(6, 5, 8), (6, 6, 7)])
+def test_array_rejects_inconsistent_worker_reservations(workers, prefetch, cpus):
+    import os
+
+    path = SCRIPTS / "tokeye_masks.sbatch"
+    assert path.is_file()
+    env = dict(os.environ, PREP_WORKERS=str(workers), PREFETCH=str(prefetch),
+               SLURM_CPUS_PER_TASK=str(cpus), SLURM_ARRAY_TASK_ID="0",
+               N_CHUNKS="1", SHOT_FILE="/tmp/unused-l12-shots.txt")
+    done = subprocess.run(["bash", str(path)], env=env, capture_output=True,
+                          text=True, check=False)
+    assert done.returncode == 2
+    assert "must" in done.stderr

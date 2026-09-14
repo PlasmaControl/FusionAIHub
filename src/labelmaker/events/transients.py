@@ -1,54 +1,23 @@
-"""A transient mask's column activity -> ELM times, an ELM clock, quiet time.
+"""TokEye transient peaks and an independent D-alpha ELM clock.
 
-`masks.py` says WHERE the network saw transient activity. On a tokamak that
-is very largely ELMs, and an ELM is not a shape in the time-frequency plane
-the way a mode is - it is a MOMENT: a narrow vertical stripe that lights
-most of the 512 frequency rows at once, because a filament crossing the
-separatrix is broadband. So everything here works on ONE number per column,
-the fraction of rows that are lit, and never looks at the mask again. That
-number is `masks.block_arrays`' `_col_act` key, computed at the same
-threshold and pinned equal to `column_activity` by a test, which is why
-`transients_for_block` can read a masks file without unpacking anything.
+`extract_bursts` ports TokEye's threshold-and-close rule; `elm_events`
+ports elmcycle's smooth-and-pick rule. A mask is class-agnostic, so
+`transients_to_events` publishes only `phenomenon="transient"` detector
+points. The historical helper names and stored-block clock arrays remain
+available for mask analysis; they do not turn a mask burst into an ELM.
 
-**Two readings of that trace, because a burst and an ELM are different
-questions.** `extract_bursts` is TokEye's
-`elmspec/events.py::extract_elm_events`, ported: threshold the activity at
-`ACTIVITY_MIN`, close quiet gaps of up to `MIN_GAP_COLS` columns, and every
-remaining run is a burst. That answers "how long was the plasma disturbed".
-`elm_events` is elmcycle's `elms.py::detect_elms`, parametrised the way it
-is there: smooth the trace over `SMOOTH_MS` and take `scipy.signal
-.find_peaks` with a `PROMINENCE` and a `MIN_DISTANCE_MS`. That answers
-"when did each one happen". One burst with two peaks in it is one
-disturbance and two ELMs, and both facts are wanted - the event rows carry
-the peaks, and the burst a peak sits in is where its confidence comes from.
-The thresholds are ours; only the two shapes of logic are the references'.
+`elm_clock_events` applies the same peak picker to one filterscope channel
+from 0-7, normalised over its finite signal range, then rejects broad
+baseline humps by their width within each finite run. It publishes `elm`
+heuristic points with prominence, width, channel and local rate, plus the
+`elm_free` intervals implied by those SAME peaks. Both use source
+`elm_clock` and the filterscope's finite coverage, independently of masks.
 
-**The clock, because what matters about an ELM is usually the one before.**
-Almost every quantity a consumer asks of an ELMy phase is relative to the
-cycle rather than to the shot clock: a pedestal recovers over a fraction of
-the inter-ELM interval, and a window feature computed two thirds of the way
-through one is not comparable with one computed just after a crash. So
-`elm_clock` returns, per column, the rate, the time since the last ELM, the
-time to the next and the PHASE - the fraction of the current interval
-elapsed - and the L9 script stores those four arrays beside the mask rather
-than as events, because an array per column is not a discrete happening and
-the events table is for discrete happenings.
-
-**ELM-free is a claim about a RATE, not about a silence.** A QH-mode or an
-EHO phase is defined by the ELMs having stopped, and "stopped" has to be
-measurable on a detector that misses one now and then; `elm_free_intervals`
-therefore asks where the rate counted in a `RATE_WINDOW_S` window stays at
-or under `ELM_FREE_MAX_RATE_HZ`, not where the trace is flat. With the
-defaults - 5 Hz in 100 ms - that is "no ELM within 50 ms either way", so
-each ELM costs the record the 100 ms window around it and a gap of `g`
-seconds yields an interval of `g - 0.1`. These intervals are what later
-gates the QH/EHO candidates: an EHO inside an ELMy phase is a mode with a
-different name.
-
-Nothing here decides that a burst IS an ELM. The mask is a transient-
-activity detector, a sawtooth crash and a disruption precursor are transient
-too, and the `phenomenon="elm"` on an event row is a claim by
-`source="tokeye_transient"` that a consumer can weigh against any other.
+The clock counts peaks in a centred 100 ms window. With the default 5 Hz
+quiet threshold an ELM removes the 50 ms either side of its timestamp from
+quiet time. Only quiet intervals lasting at least 50 ms are published.
+These are arithmetic claims, with NaN confidence, not classifier scores.
+The thresholds and channel policy still need independent manual validation.
 """
 from __future__ import annotations
 
@@ -63,7 +32,7 @@ from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 
 from ..ae.labels import N_BINS, PROB_THRESHOLD
-from .coverage import clip_point_to_coverage, clipped_attrs
+from .coverage import clip_point_to_coverage, clipped_attrs, finite_span
 from .masks import read_mask
 from .schema import Event
 
@@ -89,6 +58,10 @@ PROMINENCE = 0.03
 #: How close two ELMs may be. 3 ms is a fifth of the pinned period; two
 #: peaks nearer than that are one crash seen twice.
 MIN_DISTANCE_MS = 3.0
+#: D-alpha bursts must have a half-prominence width no greater than 5 ms.
+#: Millisecond spikes can resolve a 200 Hz train (5 ms spacing); humps
+#: hundreds of ms wide are baseline excursions, not ELMs. D-alpha only.
+DALPHA_MAX_WIDTH_MS = 5.0
 #: Window the ELM rate is counted in, centred on the sample. 100 ms holds
 #: six and a half of the pinned periods - long enough that missing one ELM
 #: moves the rate by a sixth rather than by half, short enough to see a
@@ -100,11 +73,11 @@ ELM_FREE_MAX_RATE_HZ = 5.0
 #: An ELM-free interval shorter than this is a missed ELM, not a phase.
 ELM_FREE_MIN_S = 0.05
 
-#: Who claims these events, and what they are claimed to be. The ELMs come
-#: from the mask; the quiet comes from the clock built on top of it, and a
-#: consumer that trusts one and not the other can tell them apart.
+#: Mask peaks are class-agnostic. Only the D-alpha clock publishes ELMs.
 SOURCE = "tokeye_transient"
-PHENOMENON = "elm"
+PHENOMENON = "transient"
+ELM_SOURCE = "elm_clock"
+ELM_PHENOMENON = "elm"
 FREE_SOURCE = "elm_clock"
 FREE_PHENOMENON = "elm_free"
 
@@ -260,10 +233,17 @@ def elm_events(
     `prominence` already makes locally and better.
     """
     t = np.asarray(t_s, dtype=np.float64)
-    smoothed = smooth_activity(activity, t, smooth_ms=smooth_ms)
-    distance = max(1, math.ceil(float(min_distance_ms) / (_frame_s(t) * 1e3)))
-    idx, _ = find_peaks(smoothed, prominence=float(prominence), distance=distance)
+    idx, _ = _elm_peaks(activity, t, smooth_ms=smooth_ms,
+                        prominence=prominence, min_distance_ms=min_distance_ms)
     return t[idx]
+
+
+def _elm_peaks(activity, t_s, *, smooth_ms, prominence, min_distance_ms):
+    """One peak picker for the clock's timestamps and measured attributes."""
+    smoothed = smooth_activity(activity, t_s, smooth_ms=smooth_ms)
+    distance = max(1, math.ceil(float(min_distance_ms) / (_frame_s(t_s) * 1e3)))
+    return find_peaks(smoothed, prominence=float(prominence), distance=distance,
+                      width=(None, None))
 
 
 # --------------------------------------------------------------- the clock
@@ -434,35 +414,15 @@ def transients_to_events(
     unet_sha256: str,
     activity,
     smooth_ms: float = SMOOTH_MS,
-    max_rate_hz: float = ELM_FREE_MAX_RATE_HZ,
-    min_duration_s: float = ELM_FREE_MIN_S,
-    window_s: float = RATE_WINDOW_S,
 ) -> list[Event]:
-    """ELMs and quiet -> event rows: a point per ELM, an interval per lull.
+    """Mask peak times -> class-agnostic transient detector points.
 
-    Two claims of two different kinds, so two sources. An ELM is a
-    `detector` claim by `tokeye_transient` and a POINT event
-    (`t1_s == t0_s`), with no frequency band at all - an ELM is broadband
-    by definition and a band on it would be an artefact of where the
-    spectrogram stops. Its confidence is the peak activity of the burst it
-    falls inside, which is the fraction of the spectrum that lit up; an ELM
-    that fell outside every burst - a peak too faint to reach
-    `ACTIVITY_MIN` - is worth the smoothed trace under it instead, and NaN
-    if the trace was not passed. `activity` has no default because that
-    fallback is the exception: a caller reaches it by passing `None` and
-    saying so, not by forgetting an argument.
-
-    An ELM-free interval is a `heuristic` claim by `elm_clock`, derived
-    from the same times by `elm_free_intervals`, and carries no confidence:
-    it is arithmetic on the ELM list, and its uncertainty is the ELM list's.
-    Its `attrs` record the threshold and window it was cut at, the highest
-    rate actually reached inside it, and how many ELMs it contains - which
-    is zero unless the caller relaxed `max_rate_hz`.
-
-    An ELM whose column lies outside `t_cov` - the stitched transform's
-    first and last columns do (`masks.COL_ORIGIN`) - is written AT the
-    bound with `attrs["clipped"] = true`; see
-    `coverage.clip_point_to_coverage` for why that and not a refusal.
+    Confidence is the containing burst's peak activity, otherwise the
+    smoothed activity at the peak, otherwise NaN when `activity=None` was
+    explicitly passed. Rows retain their block, burst and checkpoint
+    attributes. A transform-edge peak is clipped into the diagnostic's
+    coverage and marked as clipped. Quiet masks make no ELM-free claim;
+    only `elm_clock_events` may publish that D-alpha-derived family.
     """
     elm = _sorted_times(elm_times_s)
     t = np.asarray(t_s, dtype=np.float64)
@@ -518,6 +478,12 @@ def transients_to_events(
             )
         )
 
+    return out
+
+
+def _free_events(elm, cov, common, *, max_rate_hz, min_duration_s, window_s):
+    """The clock's quiet intervals, derived from its own observed peaks."""
+    out = []
     free = elm_free_intervals(
         elm, cov, max_rate_hz=max_rate_hz,
         min_duration_s=min_duration_s, window_s=window_s,
@@ -540,11 +506,88 @@ def transients_to_events(
                     "max_rate_inside_hz": float(peak) / float(window_s),
                     "n_elms_inside": int(inside.size),
                     "window_s": float(window_s),
-                    "unet_sha256": str(unet_sha256),
                 },
                 **common,
             )
         )
+    return out
+
+
+def elm_clock_events(
+    dalpha_y,
+    t_s,
+    *,
+    shot: int,
+    channel: int = 0,
+    smooth_ms: float = SMOOTH_MS,
+    prominence: float = PROMINENCE,
+    min_distance_ms: float = MIN_DISTANCE_MS,
+    max_rate_hz: float = ELM_FREE_MAX_RATE_HZ,
+    min_duration_s: float = ELM_FREE_MIN_S,
+    window_s: float = RATE_WINDOW_S,
+) -> list[Event]:
+    """One filterscope -> observed ELM points and ELM-free intervals.
+
+    This is the clock's peak-picking rule, not a classifier. The finite
+    signal is scaled to [0, 1] before applying the clock's 0.03 prominence;
+    corpus filterscopes are not mask probabilities. `attrs.prominence` is
+    in that normalised scale; width is the smoothed peak's half-prominence
+    width in ms. D-alpha ELM spikes are millisecond-scale bursts: a 200 Hz
+    train is only 5 ms apart, whereas humps hundreds of ms wide are baseline.
+    Reject peaks wider than `DALPHA_MAX_WIDTH_MS` (5 ms), measuring shape
+    separately within each contiguous finite run. The smoothing, separation
+    and rate rules are shared with `elm_events` / `elm_clock`; the width cap
+    applies only to D-alpha. These rules require validation
+    against manual ELMs; their confidence is therefore unknown, not 1.
+
+    Padding and internal NaN gaps are never smoothed across. Quiet intervals
+    are restricted to contiguous finite runs. Per-source coverage follows
+    the existing finite-span contract: first through last finite sample.
+    """
+    y = np.asarray(dalpha_y, dtype=np.float64)
+    t = np.asarray(t_s, dtype=np.float64)
+    if y.ndim != 1 or y.shape != t.shape:
+        raise ValueError("one D-alpha trace and its matching time axis required")
+    if not 0 <= channel < 8:
+        raise ValueError("D-alpha is filterscopes channels 0-7")
+    if not np.isfinite(t).all() or not (np.diff(t) > 0).all():
+        raise ValueError("D-alpha time axis must be finite and increasing")
+    runs = [(lo, hi) for lo, hi in _runs(np.isfinite(y)) if hi - lo >= 2]
+    if not runs:
+        raise ValueError("no finite D-alpha run with at least two samples")
+    cov = finite_span(t, y)
+    finite = y[np.isfinite(y)]
+    scale = float(finite.max() - finite.min())
+    y = (y - finite.min()) / scale if scale > 0 else y - finite.min()
+    common = {
+        "shot": int(shot), "diag": "filterscopes", "channel": int(channel),
+        "t_cov0_s": cov[0], "t_cov1_s": cov[1],
+    }
+    measured = []
+    for lo, hi in runs:
+        idx, props = _elm_peaks(
+            y[lo:hi], t[lo:hi], smooth_ms=smooth_ms, prominence=prominence,
+            min_distance_ms=min_distance_ms,
+        )
+        widths_ms = props["widths"] * _frame_s(t[lo:hi]) * 1e3
+        keep = widths_ms <= DALPHA_MAX_WIDTH_MS
+        measured.extend(zip(t[lo + idx[keep]], props["prominences"][keep],
+                            widths_ms[keep], strict=True))
+    elm = np.array([p[0] for p in measured], dtype=np.float64)
+    rates = elm_clock(elm, elm, window_s=window_s)["rate_hz"]
+    out = [
+        Event(source=ELM_SOURCE, phenomenon=ELM_PHENOMENON,
+              evidence_kind="heuristic", t0_s=float(at), t1_s=float(at),
+              attrs={"prominence": float(prom), "width_ms": float(width),
+                     "channel": int(channel), "rate_hz_local": float(rate)},
+              **common)
+        for (at, prom, width), rate in zip(measured, rates, strict=True)
+    ]
+    for lo, hi in runs:
+        out.extend(_free_events(
+            elm, (t[lo], t[hi - 1]), common, max_rate_hz=max_rate_hz,
+            min_duration_s=min_duration_s, window_s=window_s,
+        ))
     return out
 
 

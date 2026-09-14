@@ -46,7 +46,7 @@ def test_vocabularies_are_the_documented_ones():
     assert KNOWN_SOURCES == (
         "tokeye_track", "tokeye_transient", "ece_sawtooth", "dalpha_lh",
         "elm_clock", "actuator", "qh_proxy", "text", "model", "label_forecast",
-        "database",
+        "database", "qmin_rule",
     )
 
 

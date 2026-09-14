@@ -74,6 +74,7 @@ from .coverage import (
     clip_point_to_coverage,
     clip_to_coverage,
     clipped_attrs,
+    finite_span,
     intersect,
 )
 from .schema import Event
@@ -187,6 +188,47 @@ QH_NOTE = (
     "(definitional, see Appendix C item 8)"
 )
 
+#: The fraction of its own peak the current has to hold for the record to
+#: be in flat-top. 0.9 is the convention the q-min regimes were measured
+#: under, and it is loose enough to ride over the sawtooth-scale ripple of
+#: a real Ip trace while still excluding both ramps.
+FLATTOP_FRAC = 0.9
+
+#: The q-min regime boundaries, from the label sheet's own note - "qmin >
+#: 0.95 = hybrid, > 1.5 = elevated, > 2 = high ... 500 ms". One line each:
+#:
+#: 0.95 is where the q = 1 surface leaves the plasma, so the sawtooth goes
+#: with it and the discharge is a hybrid rather than a standard scenario.
+QMIN_HYBRID = 0.95
+#: 1.5 clears the 3/2 surface, the first tearing-prone rational surface
+#: inside a conventional profile; above it the scenario is "elevated".
+QMIN_ELEVATED = 1.5
+#: 2.0 clears the 2/1 as well, the last rational surface worth naming:
+#: above it the profile is advanced-tokamak territory.
+QMIN_HIGH = 2.0
+#: A band shorter than this is a stretch of a transition and not a regime
+#: the shot was IN. 500 ms is the sheet's own figure, and it is exactly 25
+#: sampling intervals of EFIT01's 20 ms q-min, so a real band lands on the
+#: boundary often - see `qmin_regimes` for which side it falls on.
+QMIN_MIN_MS = 500.0
+
+#: `(phenomenon, lower bound EXCLUSIVE, upper bound INCLUSIVE or None)`.
+#: Exclusive and exhaustive above `QMIN_HYBRID`: a sample is in at most one
+#: band, and a q-min sitting exactly on a boundary belongs to the band
+#: BELOW it, so the regimes partition rather than overlap.
+QMIN_BANDS: tuple[tuple[str, float, float | None], ...] = (
+    ("qmin_hybrid", QMIN_HYBRID, QMIN_ELEVATED),
+    ("qmin_elevated", QMIN_ELEVATED, QMIN_HIGH),
+    ("qmin_high", QMIN_HIGH, None),
+)
+
+#: Which equilibrium the q-min was reconstructed from, on every row. The
+#: canonical `qmin` feature is `\efit01::top.results.aeqdsk:qmin` today and
+#: the sheet asks for EFIT02 or CAKE; when a higher-fidelity source joins
+#: `features/namespace.py` this attribute is what tells a stored row which
+#: one it was computed from.
+QMIN_EFIT = "efit01"
+
 #: Who claims what. All four are `KNOWN_SOURCES` of the events table.
 SAWTOOTH_SOURCE = "ece_sawtooth"
 SAWTOOTH_PHENOMENON = "sawtooth"
@@ -196,6 +238,10 @@ HL_PHENOMENON = "hl_transition"
 ACTUATOR_SOURCE = "actuator"
 QH_SOURCE = "qh_proxy"
 QH_PHENOMENON = "qh"
+QMIN_SOURCE = "qmin_rule"
+#: The canonical feature every `qmin_rule` row was measured on, written
+#: into `diag` so a row says which axis its coverage is the coverage of.
+QMIN_DIAG = "qmin"
 
 
 # ----------------------------------------------------------------- envelope
@@ -1262,3 +1308,171 @@ def qh_candidates(
                 )
             )
     return sorted(out, key=lambda e: e.t0_s)
+
+
+# ------------------------------------------- the Ip flat-top and the q-min rule
+
+def _one_trace(name: str, y) -> np.ndarray:
+    """A scalar canonical feature's `(1, T)` or `(T,)` record as `(T,)`.
+
+    The features store keeps every quantity as `(channels, samples)`, so a
+    scalar arrives one row deep. Anything wider is refused rather than
+    reduced: `ip` and `qmin` are single-valued, and a caller handing over
+    several rows has resolved something else.
+    """
+    arr = np.asarray(y, dtype=np.float64)
+    if arr.ndim == 1:
+        return arr
+    if arr.ndim == 2 and arr.shape[0] == 1:
+        return arr[0]
+    raise ValueError(f"{name} is one trace, not {np.shape(y)}")
+
+
+def ip_flattop(t_s, ip_y) -> tuple[float, float]:
+    """`(t0, t1)` of the plasma-current flat-top, or `UNKNOWN`.
+
+    The longest CONTIGUOUS stretch of samples whose |Ip| is over
+    `FLATTOP_FRAC` of the record's own peak, as `(first sample, last
+    sample)`. Everything about it is deliberately crude, and that is the
+    point: the flat-top here is a GATE, not a measurement. It exists so
+    that a regime rule is asked about the part of the record where there
+    was a steady plasma, and the cost of the gate being a hundred
+    milliseconds out at either end is one sample of a 20 ms q-min, while
+    the cost of not having it at all is the whole rule - `qmin > 0.95`
+    fires on 99.4% of shots ungated, because every ramp passes through it.
+    
+    Magnitude, not sign: DIII-D runs both current directions and a
+    reversed-Ip shot's flat-top is the same stretch of record. Ties go to
+    the earlier stretch. `UNKNOWN` when nothing in the record is finite,
+    because a flat-top computed from no samples is not one.
+
+    This is the one thing `ip` was missing for: `ip` is not a corpus group,
+    so before the features store reached the events stage there was no
+    flat-top, `qh_candidates` intersected with the empty set and claimed
+    nothing on every shot, and `actuator_intervals` could not compare the
+    torque's sign with the current's.
+    """
+    t = np.asarray(t_s, dtype=np.float64).ravel()
+    y = _one_trace("ip", ip_y)
+    if t.size != y.size:
+        raise ValueError(f"ip: {y.size} samples against {t.size} times")
+    level = np.abs(y)
+    finite = np.isfinite(level) & np.isfinite(t)
+    if not finite.any():
+        return UNKNOWN
+    peak = float(level[finite].max())
+    with np.errstate(invalid="ignore"):
+        on = finite & (level > FLATTOP_FRAC * peak)
+    best: tuple[float, float] | None = None
+    longest = -1.0
+    for a, b in _runs(on):
+        span = float(t[b - 1] - t[a])
+        # Strictly greater, so the FIRST of two equally long stretches
+        # wins and a record with two identical halves is not decided by
+        # iteration order.
+        if span > longest:
+            longest, best = span, (float(t[a]), float(t[b - 1]))
+    return UNKNOWN if best is None else best
+
+
+def qmin_rule_coverage(qmin_t, qmin_y, flattop) -> tuple[float, float]:
+    """What a `qmin_rule` row's coverage is: the flat-top, where q-min was.
+
+    The intersection of the Ip flat-top with the finite span of the q-min
+    record, and not either one alone. Outside the flat-top the rule DOES
+    NOT LOOK - a ramp's q-min is not a regime - so declaring the whole
+    q-min record as coverage would turn a deliberate abstention into an
+    observed absence, which is the one thing the coverage columns exist to
+    prevent.
+    """
+    if flattop is None:
+        return UNKNOWN
+    return intersect([
+        finite_span(qmin_t, _one_trace("qmin", qmin_y)),
+        (float(flattop[0]), float(flattop[1])),
+    ])
+
+
+def _qmin_event(shot: int, phenomenon: str, lo: float, hi: float | None,
+                t: np.ndarray, q: np.ndarray, bounds: tuple[int, int],
+                cov: tuple[float, float]) -> Event:
+    """One q-min band as a row, with the extremes it held inside it."""
+    a, b = bounds
+    inside = q[a:b]
+    t0_s, t1_s, clipped = clip_to_coverage(float(t[a]), float(t[b - 1]), cov)
+    return Event(
+        shot=int(shot),
+        source=QMIN_SOURCE,
+        evidence_kind="heuristic",
+        phenomenon=phenomenon,
+        t0_s=t0_s,
+        t1_s=t1_s,
+        # No confidence, deliberately. A threshold on a reconstructed
+        # scalar has no calibrated probability behind it, and writing 1.0
+        # would let a ranker read a rule as a perfectly-confident detector.
+        diag=QMIN_DIAG,
+        channel=-1,
+        attrs=clipped_attrs({
+            "qmin_min": float(inside.min()),
+            "qmin_max": float(inside.max()),
+            "efit": QMIN_EFIT,
+            # `None` and not `inf` for the open-topped band: `attrs` is
+            # stored as strict JSON, which has no word for an infinity.
+            "thresholds": {"lo": float(lo),
+                           "hi": None if hi is None else float(hi),
+                           "min_ms": float(QMIN_MIN_MS)},
+        }, clipped),
+        t_cov0_s=cov[0],
+        t_cov1_s=cov[1],
+    )
+
+
+def qmin_regimes(qmin_t, qmin_y, flattop, *, shot: int) -> list[Event]:
+    """The q-min record and the Ip flat-top -> exclusive regime intervals.
+
+    `qmin_hybrid` (0.95 < q <= 1.5), `qmin_elevated` (1.5 < q <= 2) and
+    `qmin_high` (q > 2), each claimed over a contiguous run of q-min
+    samples that is INSIDE the flat-top and lasts at least `QMIN_MIN_MS`.
+    A sample belongs to at most one band, so the rows of one shot never
+    overlap; a non-finite sample belongs to none, which splits a band
+    around a dropout rather than interpolating over it.
+
+    Three things this rule is not. It has **no confidence**: it is a
+    threshold on a reconstructed scalar, and the honest value is NaN.
+    It is **gated**, and the gate is most of the rule - ungated,
+    `q > 0.95` fires on 497 of the 500 `recommender_v1` shots (99.4%),
+    because the current ramp takes every shot through every band on its
+    way up. And it is **EFIT01's** q-min today (`attrs["efit"]`), which
+    the label sheet notes is not the equilibrium it would have asked for.
+
+    MEASURED, on those 500 shots through the features store: hybrid 271,
+    elevated 60, high 50 shots. The duration test is `>=`, edge to edge on
+    the SAMPLE times - a band of exactly 25 of EFIT01's 20 ms slices
+    counts - and that is not a free choice: `>` instead gives 268 / 60 /
+    48. The same knife-edge cuts the other way once in the 500 (shot
+    190509's elevated band is 25 slices long but subtracts to
+    0.4999999999999999 s in float64 and is dropped), which is the price of
+    deciding a physical claim with a bare float comparison and is recorded
+    here rather than discovered later.
+    """
+    t = np.asarray(qmin_t, dtype=np.float64).ravel()
+    q = _one_trace("qmin", qmin_y)
+    if t.size != q.size:
+        raise ValueError(f"qmin: {q.size} samples against {t.size} times")
+    cov = qmin_rule_coverage(t, q, flattop)
+    if not (math.isfinite(cov[0]) and math.isfinite(cov[1])):
+        return []
+    inside = np.isfinite(q) & (t >= float(flattop[0])) & (t <= float(flattop[1]))
+    least_s = QMIN_MIN_MS * 1e-3
+    out: list[Event] = []
+    for phenomenon, lo, hi in QMIN_BANDS:
+        with np.errstate(invalid="ignore"):
+            band = inside & (q > lo)
+            if hi is not None:
+                band &= q <= hi
+        out.extend(
+            _qmin_event(shot, phenomenon, lo, hi, t, q, (a, b), cov)
+            for a, b in _runs(band)
+            if float(t[b - 1] - t[a]) >= least_s
+        )
+    return sorted(out, key=lambda e: (e.t0_s, e.phenomenon))

@@ -1,0 +1,1270 @@
+{
+  "features_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/features",
+  "gated": {
+    "qmin_elevated": 60,
+    "qmin_high": 50,
+    "qmin_hybrid": 271
+  },
+  "n_shots": 500,
+  "n_skipped": {
+    "features": 0,
+    "flattop": 0,
+    "ip": 0,
+    "qmin": 0
+  },
+  "note": "Written by scripts/labelmaker/qmin_regime_census.py. The `ungated` block is the rule with the Ip flat-top gate REMOVED and is the justification for having the gate at all.",
+  "per_shot": {
+    "185786": [
+      "qmin_hybrid"
+    ],
+    "185955": [
+      "qmin_high"
+    ],
+    "185956": [
+      "qmin_high"
+    ],
+    "185962": [
+      "qmin_high"
+    ],
+    "185980": [
+      "qmin_high"
+    ],
+    "185982": [
+      "qmin_high"
+    ],
+    "185996": [
+      "qmin_high"
+    ],
+    "186015": [
+      "qmin_high"
+    ],
+    "186034": [
+      "qmin_high"
+    ],
+    "186036": [
+      "qmin_high"
+    ],
+    "186055": [
+      "qmin_high"
+    ],
+    "186059": [
+      "qmin_high"
+    ],
+    "186090": [
+      "qmin_hybrid"
+    ],
+    "186114": [
+      "qmin_elevated"
+    ],
+    "186116": [
+      "qmin_elevated"
+    ],
+    "186118": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "186194": [
+      "qmin_high"
+    ],
+    "186196": [
+      "qmin_high"
+    ],
+    "186223": [
+      "qmin_high"
+    ],
+    "186224": [
+      "qmin_high"
+    ],
+    "186254": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "186257": [
+      "qmin_hybrid"
+    ],
+    "186259": [
+      "qmin_hybrid"
+    ],
+    "186278": [],
+    "186290": [],
+    "186292": [
+      "qmin_hybrid"
+    ],
+    "186389": [],
+    "186481": [
+      "qmin_elevated"
+    ],
+    "186507": [],
+    "186512": [
+      "qmin_elevated"
+    ],
+    "186528": [
+      "qmin_high"
+    ],
+    "186535": [
+      "qmin_elevated"
+    ],
+    "186563": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "186568": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "186599": [],
+    "186609": [],
+    "186640": [
+      "qmin_hybrid"
+    ],
+    "186744": [
+      "qmin_high",
+      "qmin_hybrid"
+    ],
+    "186749": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "186750": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "186861": [
+      "qmin_hybrid"
+    ],
+    "186867": [
+      "qmin_hybrid"
+    ],
+    "186892": [
+      "qmin_hybrid"
+    ],
+    "186904": [],
+    "186921": [
+      "qmin_hybrid"
+    ],
+    "186940": [],
+    "186943": [],
+    "186944": [],
+    "186976": [
+      "qmin_high"
+    ],
+    "186978": [
+      "qmin_high"
+    ],
+    "187068": [
+      "qmin_hybrid"
+    ],
+    "187071": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "187075": [
+      "qmin_hybrid"
+    ],
+    "187143": [],
+    "187153": [],
+    "187168": [
+      "qmin_hybrid"
+    ],
+    "187169": [],
+    "187196": [
+      "qmin_hybrid"
+    ],
+    "187199": [
+      "qmin_hybrid"
+    ],
+    "187205": [],
+    "187249": [
+      "qmin_hybrid"
+    ],
+    "187253": [
+      "qmin_hybrid"
+    ],
+    "187255": [
+      "qmin_hybrid"
+    ],
+    "187308": [
+      "qmin_hybrid"
+    ],
+    "188734": [
+      "qmin_hybrid"
+    ],
+    "188740": [
+      "qmin_hybrid"
+    ],
+    "188764": [
+      "qmin_hybrid"
+    ],
+    "189009": [
+      "qmin_hybrid"
+    ],
+    "189012": [
+      "qmin_hybrid"
+    ],
+    "189015": [
+      "qmin_hybrid"
+    ],
+    "189042": [
+      "qmin_hybrid"
+    ],
+    "189063": [
+      "qmin_hybrid"
+    ],
+    "189085": [],
+    "189089": [],
+    "189098": [
+      "qmin_hybrid"
+    ],
+    "189139": [
+      "qmin_high"
+    ],
+    "189181": [],
+    "189262": [
+      "qmin_high"
+    ],
+    "189265": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "189276": [
+      "qmin_high"
+    ],
+    "189298": [
+      "qmin_elevated"
+    ],
+    "189315": [
+      "qmin_high",
+      "qmin_hybrid"
+    ],
+    "189316": [
+      "qmin_high"
+    ],
+    "189370": [
+      "qmin_hybrid"
+    ],
+    "189371": [
+      "qmin_hybrid"
+    ],
+    "189373": [
+      "qmin_hybrid"
+    ],
+    "189405": [
+      "qmin_high"
+    ],
+    "189413": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "189433": [],
+    "189445": [
+      "qmin_hybrid"
+    ],
+    "189470": [],
+    "189472": [],
+    "189502": [],
+    "189510": [],
+    "189512": [],
+    "189570": [
+      "qmin_hybrid"
+    ],
+    "189571": [
+      "qmin_hybrid"
+    ],
+    "189573": [
+      "qmin_hybrid"
+    ],
+    "189582": [],
+    "189627": [
+      "qmin_hybrid"
+    ],
+    "189636": [
+      "qmin_hybrid"
+    ],
+    "189685": [
+      "qmin_hybrid"
+    ],
+    "189689": [
+      "qmin_hybrid"
+    ],
+    "189694": [
+      "qmin_hybrid"
+    ],
+    "189719": [
+      "qmin_high"
+    ],
+    "189726": [
+      "qmin_high"
+    ],
+    "189737": [
+      "qmin_high"
+    ],
+    "189836": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "189867": [
+      "qmin_hybrid"
+    ],
+    "189869": [
+      "qmin_hybrid"
+    ],
+    "189890": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "189937": [
+      "qmin_hybrid"
+    ],
+    "189938": [
+      "qmin_hybrid"
+    ],
+    "189963": [
+      "qmin_hybrid"
+    ],
+    "189976": [
+      "qmin_hybrid"
+    ],
+    "189988": [
+      "qmin_hybrid"
+    ],
+    "189990": [
+      "qmin_hybrid"
+    ],
+    "190007": [
+      "qmin_hybrid"
+    ],
+    "190035": [
+      "qmin_hybrid"
+    ],
+    "190065": [
+      "qmin_hybrid"
+    ],
+    "190098": [
+      "qmin_hybrid"
+    ],
+    "190103": [
+      "qmin_hybrid"
+    ],
+    "190104": [
+      "qmin_hybrid"
+    ],
+    "190127": [
+      "qmin_hybrid"
+    ],
+    "190130": [
+      "qmin_hybrid"
+    ],
+    "190170": [
+      "qmin_hybrid"
+    ],
+    "190180": [],
+    "190182": [],
+    "190201": [],
+    "190213": [],
+    "190228": [],
+    "190252": [],
+    "190258": [
+      "qmin_hybrid"
+    ],
+    "190267": [],
+    "190366": [
+      "qmin_hybrid"
+    ],
+    "190367": [
+      "qmin_hybrid"
+    ],
+    "190384": [
+      "qmin_hybrid"
+    ],
+    "190408": [
+      "qmin_hybrid"
+    ],
+    "190421": [
+      "qmin_hybrid"
+    ],
+    "190443": [
+      "qmin_hybrid"
+    ],
+    "190449": [
+      "qmin_hybrid"
+    ],
+    "190454": [
+      "qmin_hybrid"
+    ],
+    "190509": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "190511": [
+      "qmin_elevated"
+    ],
+    "190591": [],
+    "190592": [],
+    "190601": [],
+    "190627": [
+      "qmin_elevated"
+    ],
+    "190629": [
+      "qmin_elevated"
+    ],
+    "190632": [
+      "qmin_elevated"
+    ],
+    "190730": [],
+    "190732": [
+      "qmin_hybrid"
+    ],
+    "190735": [
+      "qmin_hybrid"
+    ],
+    "190788": [
+      "qmin_hybrid"
+    ],
+    "190794": [
+      "qmin_hybrid"
+    ],
+    "190796": [
+      "qmin_hybrid"
+    ],
+    "190818": [
+      "qmin_hybrid"
+    ],
+    "190867": [
+      "qmin_hybrid"
+    ],
+    "190869": [
+      "qmin_hybrid"
+    ],
+    "190914": [
+      "qmin_hybrid"
+    ],
+    "190917": [
+      "qmin_hybrid"
+    ],
+    "190922": [
+      "qmin_hybrid"
+    ],
+    "190958": [],
+    "190968": [],
+    "190993": [
+      "qmin_hybrid"
+    ],
+    "191038": [],
+    "191213": [
+      "qmin_hybrid"
+    ],
+    "191230": [
+      "qmin_hybrid"
+    ],
+    "191251": [
+      "qmin_hybrid"
+    ],
+    "191329": [],
+    "191346": [
+      "qmin_hybrid"
+    ],
+    "191498": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "191510": [
+      "qmin_hybrid"
+    ],
+    "191515": [
+      "qmin_elevated",
+      "qmin_high",
+      "qmin_hybrid"
+    ],
+    "191725": [
+      "qmin_hybrid"
+    ],
+    "191726": [
+      "qmin_hybrid"
+    ],
+    "191727": [
+      "qmin_hybrid"
+    ],
+    "191828": [],
+    "192082": [],
+    "192090": [],
+    "192092": [],
+    "192390": [
+      "qmin_hybrid"
+    ],
+    "192462": [
+      "qmin_hybrid"
+    ],
+    "192465": [
+      "qmin_hybrid"
+    ],
+    "192473": [
+      "qmin_hybrid"
+    ],
+    "192766": [
+      "qmin_elevated"
+    ],
+    "192768": [
+      "qmin_elevated"
+    ],
+    "192954": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "193038": [],
+    "193040": [],
+    "193268": [],
+    "193348": [],
+    "193353": [],
+    "193354": [
+      "qmin_hybrid"
+    ],
+    "193542": [
+      "qmin_hybrid"
+    ],
+    "193586": [
+      "qmin_hybrid"
+    ],
+    "193802": [
+      "qmin_hybrid"
+    ],
+    "194024": [
+      "qmin_hybrid"
+    ],
+    "194026": [
+      "qmin_hybrid"
+    ],
+    "194033": [
+      "qmin_hybrid"
+    ],
+    "194076": [
+      "qmin_hybrid"
+    ],
+    "194203": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "194211": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "194238": [
+      "qmin_hybrid"
+    ],
+    "194268": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "194277": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "194350": [
+      "qmin_hybrid"
+    ],
+    "194402": [],
+    "194407": [],
+    "194413": [
+      "qmin_hybrid"
+    ],
+    "194449": [],
+    "194549": [
+      "qmin_hybrid"
+    ],
+    "194554": [
+      "qmin_hybrid"
+    ],
+    "194567": [
+      "qmin_hybrid"
+    ],
+    "194614": [],
+    "194626": [],
+    "194758": [
+      "qmin_hybrid"
+    ],
+    "194789": [],
+    "194953": [
+      "qmin_hybrid"
+    ],
+    "194956": [
+      "qmin_hybrid"
+    ],
+    "194959": [
+      "qmin_hybrid"
+    ],
+    "195037": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "195050": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "195070": [
+      "qmin_high"
+    ],
+    "195071": [
+      "qmin_high"
+    ],
+    "195122": [],
+    "195126": [
+      "qmin_hybrid"
+    ],
+    "195131": [
+      "qmin_hybrid"
+    ],
+    "195190": [
+      "qmin_hybrid"
+    ],
+    "195191": [
+      "qmin_hybrid"
+    ],
+    "195195": [
+      "qmin_hybrid"
+    ],
+    "195217": [],
+    "195260": [
+      "qmin_hybrid"
+    ],
+    "195268": [
+      "qmin_hybrid"
+    ],
+    "195279": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "195296": [
+      "qmin_high"
+    ],
+    "195501": [],
+    "195526": [
+      "qmin_hybrid"
+    ],
+    "195536": [
+      "qmin_hybrid"
+    ],
+    "195625": [
+      "qmin_hybrid"
+    ],
+    "195646": [
+      "qmin_hybrid"
+    ],
+    "195648": [
+      "qmin_hybrid"
+    ],
+    "195765": [],
+    "195771": [],
+    "195780": [],
+    "195859": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "195871": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "195873": [
+      "qmin_elevated"
+    ],
+    "195896": [],
+    "195902": [
+      "qmin_hybrid"
+    ],
+    "195919": [],
+    "195936": [],
+    "195944": [],
+    "195946": [],
+    "196006": [
+      "qmin_elevated"
+    ],
+    "196008": [
+      "qmin_hybrid"
+    ],
+    "196009": [
+      "qmin_hybrid"
+    ],
+    "196020": [
+      "qmin_hybrid"
+    ],
+    "196028": [],
+    "196033": [],
+    "196095": [],
+    "196099": [],
+    "196103": [],
+    "196141": [
+      "qmin_hybrid"
+    ],
+    "196142": [
+      "qmin_hybrid"
+    ],
+    "196147": [
+      "qmin_hybrid"
+    ],
+    "196336": [],
+    "196339": [],
+    "196350": [],
+    "196362": [],
+    "196374": [],
+    "196380": [],
+    "196399": [],
+    "196405": [],
+    "196407": [],
+    "196449": [],
+    "196451": [],
+    "196488": [],
+    "196503": [
+      "qmin_hybrid"
+    ],
+    "196506": [
+      "qmin_hybrid"
+    ],
+    "196541": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "196546": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "196551": [
+      "qmin_elevated"
+    ],
+    "196583": [],
+    "196587": [],
+    "196625": [],
+    "196631": [],
+    "196639": [],
+    "198351": [
+      "qmin_hybrid"
+    ],
+    "198508": [
+      "qmin_hybrid"
+    ],
+    "198578": [],
+    "198582": [],
+    "198584": [],
+    "198627": [
+      "qmin_hybrid"
+    ],
+    "198628": [
+      "qmin_hybrid"
+    ],
+    "198629": [
+      "qmin_hybrid"
+    ],
+    "198659": [
+      "qmin_high",
+      "qmin_hybrid"
+    ],
+    "198674": [
+      "qmin_hybrid"
+    ],
+    "198798": [],
+    "198807": [
+      "qmin_hybrid"
+    ],
+    "198913": [],
+    "198944": [
+      "qmin_hybrid"
+    ],
+    "198956": [
+      "qmin_hybrid"
+    ],
+    "198972": [
+      "qmin_hybrid"
+    ],
+    "199025": [
+      "qmin_hybrid"
+    ],
+    "199031": [
+      "qmin_hybrid"
+    ],
+    "199038": [
+      "qmin_hybrid"
+    ],
+    "199054": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "199105": [
+      "qmin_hybrid"
+    ],
+    "199110": [
+      "qmin_hybrid"
+    ],
+    "199184": [],
+    "199289": [
+      "qmin_hybrid"
+    ],
+    "199516": [
+      "qmin_hybrid"
+    ],
+    "199575": [
+      "qmin_hybrid"
+    ],
+    "199617": [
+      "qmin_hybrid"
+    ],
+    "199651": [],
+    "199681": [],
+    "199691": [],
+    "199697": [
+      "qmin_hybrid"
+    ],
+    "199709": [],
+    "199714": [
+      "qmin_hybrid"
+    ],
+    "199716": [],
+    "199790": [],
+    "199793": [],
+    "199915": [
+      "qmin_hybrid"
+    ],
+    "199921": [
+      "qmin_hybrid"
+    ],
+    "200009": [],
+    "200011": [],
+    "200012": [],
+    "200072": [],
+    "200111": [],
+    "200131": [],
+    "200133": [],
+    "200144": [],
+    "200197": [
+      "qmin_hybrid"
+    ],
+    "200199": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "200214": [
+      "qmin_hybrid"
+    ],
+    "200380": [
+      "qmin_elevated",
+      "qmin_high"
+    ],
+    "200384": [
+      "qmin_high"
+    ],
+    "200405": [
+      "qmin_hybrid"
+    ],
+    "200412": [],
+    "200417": [],
+    "200439": [
+      "qmin_hybrid"
+    ],
+    "200520": [
+      "qmin_hybrid"
+    ],
+    "200521": [
+      "qmin_hybrid"
+    ],
+    "200596": [],
+    "200598": [
+      "qmin_hybrid"
+    ],
+    "200629": [
+      "qmin_hybrid"
+    ],
+    "200636": [
+      "qmin_hybrid"
+    ],
+    "200642": [
+      "qmin_hybrid"
+    ],
+    "200670": [
+      "qmin_hybrid"
+    ],
+    "200671": [
+      "qmin_hybrid"
+    ],
+    "200672": [
+      "qmin_hybrid"
+    ],
+    "200736": [],
+    "200833": [
+      "qmin_hybrid"
+    ],
+    "200847": [
+      "qmin_hybrid"
+    ],
+    "200878": [
+      "qmin_hybrid"
+    ],
+    "200917": [
+      "qmin_high",
+      "qmin_hybrid"
+    ],
+    "200952": [
+      "qmin_hybrid"
+    ],
+    "200957": [
+      "qmin_hybrid"
+    ],
+    "200962": [
+      "qmin_hybrid"
+    ],
+    "200995": [],
+    "200997": [
+      "qmin_hybrid"
+    ],
+    "201054": [],
+    "201066": [
+      "qmin_hybrid"
+    ],
+    "201068": [
+      "qmin_hybrid"
+    ],
+    "201093": [],
+    "201098": [],
+    "201179": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "201185": [
+      "qmin_elevated",
+      "qmin_high",
+      "qmin_hybrid"
+    ],
+    "201215": [
+      "qmin_hybrid"
+    ],
+    "201265": [
+      "qmin_hybrid"
+    ],
+    "201395": [
+      "qmin_hybrid"
+    ],
+    "201425": [
+      "qmin_hybrid"
+    ],
+    "201448": [
+      "qmin_hybrid"
+    ],
+    "201453": [
+      "qmin_elevated"
+    ],
+    "201526": [
+      "qmin_hybrid"
+    ],
+    "201527": [
+      "qmin_hybrid"
+    ],
+    "201530": [
+      "qmin_hybrid"
+    ],
+    "201556": [],
+    "201568": [],
+    "201573": [
+      "qmin_hybrid"
+    ],
+    "201584": [
+      "qmin_hybrid"
+    ],
+    "201586": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "201587": [
+      "qmin_elevated"
+    ],
+    "201673": [
+      "qmin_elevated"
+    ],
+    "201676": [],
+    "201678": [],
+    "201718": [],
+    "201721": [],
+    "201873": [
+      "qmin_hybrid"
+    ],
+    "201875": [
+      "qmin_hybrid"
+    ],
+    "201881": [
+      "qmin_hybrid"
+    ],
+    "201919": [
+      "qmin_high"
+    ],
+    "201945": [],
+    "201946": [],
+    "201953": [],
+    "202000": [
+      "qmin_hybrid"
+    ],
+    "202013": [
+      "qmin_hybrid"
+    ],
+    "202017": [
+      "qmin_hybrid"
+    ],
+    "202034": [
+      "qmin_hybrid"
+    ],
+    "202095": [],
+    "202131": [
+      "qmin_hybrid"
+    ],
+    "202180": [],
+    "202726": [
+      "qmin_hybrid"
+    ],
+    "202729": [
+      "qmin_hybrid"
+    ],
+    "202955": [
+      "qmin_hybrid"
+    ],
+    "202956": [
+      "qmin_hybrid"
+    ],
+    "202987": [
+      "qmin_hybrid"
+    ],
+    "203033": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "203036": [
+      "qmin_elevated"
+    ],
+    "203041": [],
+    "203059": [],
+    "203060": [],
+    "203147": [],
+    "203181": [],
+    "203244": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "203254": [
+      "qmin_hybrid"
+    ],
+    "203295": [
+      "qmin_hybrid"
+    ],
+    "203300": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "203307": [
+      "qmin_elevated"
+    ],
+    "203313": [
+      "qmin_elevated"
+    ],
+    "203332": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "203393": [],
+    "203395": [],
+    "203403": [
+      "qmin_hybrid"
+    ],
+    "203409": [
+      "qmin_hybrid"
+    ],
+    "203410": [],
+    "203426": [],
+    "203444": [
+      "qmin_hybrid"
+    ],
+    "203453": [
+      "qmin_high"
+    ],
+    "203462": [
+      "qmin_high"
+    ],
+    "203475": [
+      "qmin_hybrid"
+    ],
+    "203478": [
+      "qmin_hybrid"
+    ],
+    "203488": [
+      "qmin_hybrid"
+    ],
+    "203496": [],
+    "203505": [],
+    "203537": [],
+    "203541": [
+      "qmin_high"
+    ],
+    "203551": [
+      "qmin_hybrid"
+    ],
+    "203596": [],
+    "203641": [],
+    "203643": [],
+    "203660": [
+      "qmin_hybrid"
+    ],
+    "203661": [],
+    "203664": [
+      "qmin_hybrid"
+    ],
+    "203746": [],
+    "203752": [],
+    "203762": [],
+    "203765": [],
+    "203828": [
+      "qmin_elevated"
+    ],
+    "203872": [],
+    "203876": [],
+    "203904": [
+      "qmin_hybrid"
+    ],
+    "203905": [
+      "qmin_hybrid"
+    ],
+    "203906": [
+      "qmin_hybrid"
+    ],
+    "203932": [],
+    "203946": [
+      "qmin_hybrid"
+    ],
+    "203957": [],
+    "203987": [
+      "qmin_hybrid"
+    ],
+    "204049": [
+      "qmin_hybrid"
+    ],
+    "204054": [],
+    "204062": [
+      "qmin_hybrid"
+    ],
+    "204085": [
+      "qmin_hybrid"
+    ],
+    "204095": [],
+    "204107": [
+      "qmin_hybrid"
+    ],
+    "204113": [
+      "qmin_hybrid"
+    ],
+    "204114": [
+      "qmin_hybrid"
+    ],
+    "204157": [
+      "qmin_hybrid"
+    ],
+    "204163": [
+      "qmin_hybrid"
+    ],
+    "204170": [],
+    "204173": [],
+    "204195": [],
+    "204204": [],
+    "204207": [],
+    "204249": [
+      "qmin_hybrid"
+    ],
+    "204259": [],
+    "204261": [],
+    "204270": [
+      "qmin_hybrid"
+    ],
+    "204272": [
+      "qmin_hybrid"
+    ],
+    "204279": [
+      "qmin_hybrid"
+    ],
+    "204318": [
+      "qmin_hybrid"
+    ],
+    "204346": [
+      "qmin_hybrid"
+    ],
+    "204348": [
+      "qmin_hybrid"
+    ],
+    "204355": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "204382": [],
+    "204387": [],
+    "204416": [
+      "qmin_hybrid"
+    ],
+    "204422": [
+      "qmin_hybrid"
+    ],
+    "204426": [
+      "qmin_hybrid"
+    ],
+    "204449": [
+      "qmin_high"
+    ],
+    "204454": [
+      "qmin_high"
+    ],
+    "204598": [
+      "qmin_hybrid"
+    ],
+    "204657": [],
+    "204881": [
+      "qmin_hybrid"
+    ],
+    "204882": [
+      "qmin_hybrid"
+    ],
+    "204884": [
+      "qmin_elevated",
+      "qmin_hybrid"
+    ],
+    "204908": [
+      "qmin_hybrid"
+    ],
+    "204917": [
+      "qmin_hybrid"
+    ],
+    "204925": [
+      "qmin_hybrid"
+    ]
+  },
+  "seconds": 41.3,
+  "shot_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/recommender_v1.txt",
+  "skipped": {},
+  "thresholds": {
+    "bands": [
+      [
+        "qmin_hybrid",
+        0.95,
+        1.5
+      ],
+      [
+        "qmin_elevated",
+        1.5,
+        2.0
+      ],
+      [
+        "qmin_high",
+        2.0,
+        null
+      ]
+    ],
+    "efit": "efit01",
+    "flattop_frac": 0.9,
+    "min_ms": 500.0
+  },
+  "ungated": {
+    "any_band": 497,
+    "by_band": {
+      "qmin_elevated": 70,
+      "qmin_high": 319,
+      "qmin_hybrid": 347
+    },
+    "fraction": 0.994
+  }
+}
