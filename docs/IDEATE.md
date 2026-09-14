@@ -204,7 +204,11 @@ block.
 **refuses with exit 2** below 20 *scorable* test rows — counted after the windows on shots the
 database does not hold are dropped, so a sheet of 22 rows with 20 absent shots cannot publish a
 number from two windows. An empty table would read as "recall 0", and the two are opposite
-answers. No sheet exists yet, so today every invocation refuses. Only an
+answers. It also refuses, **before it reads the sheet**, a phenomenon `phenomena.yaml` gives no
+event rule and no label head — `fast_ion`, `detachment`, `rwm`. Nothing writes an observed
+interval for those, so their recall would be 0.0 over any sheet at all: a number about the
+registry's shape, not about a detector. No sheet exists yet, so today every invocation refuses
+for one reason or the other. Only an
 *observed* interval overlapping the annotated window counts as a detection — a forecast and an
 operator's sentence do not, or the detectors' recall would be inflated with the label models'
 confidence.

@@ -241,6 +241,19 @@ def test_eval_recall_exits_two_when_there_is_no_sheet(db_root, tmp_path, capsys)
     assert "no annotation sheet at" in capsys.readouterr().err
 
 
+def test_eval_recall_exits_two_for_a_phenomenon_no_detector_writes_and_prints_no_number(
+    db_root, tmp_path, capsys
+):
+    """`fast_ion` is a text-only topic: no event rule, no label head. A recall over it is 0.0 by
+    construction, so the command must refuse it the way it refuses a sheet that is too thin --
+    exit 2 and nothing on stdout, never a table with a zero in it."""
+    code = cli.main(["eval", "recall", "fast_ion", "--labelmaker-root", str(tmp_path)])
+    assert code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "no detector" in captured.err and "fast_ion" in captured.err
+
+
 def test_eval_recall_refuses_an_unknown_phenomenon_with_the_registry(db_root, tmp_path, capsys):
     code = cli.main(["eval", "recall", "sawtoth", "--labelmaker-root", str(tmp_path)])
     assert code == 2

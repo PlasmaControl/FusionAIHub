@@ -294,11 +294,37 @@ def test_only_observed_intervals_count_as_a_detection(tmp_path, db):
     assert any("observed intervals only" in c for c in report.caveats)
 
 
-def test_a_phenomenon_no_detector_writes_says_so_rather_than_reporting_a_failure(tmp_path, db):
-    _sheet(tmp_path, "detachment", _rows(20))
-    report = rec.recall("detachment", db, tmp_path)
-    assert report.recall == 0.0
-    assert any("no detector writes `detachment`" in c for c in report.caveats)
+def test_a_phenomenon_no_detector_writes_is_refused_rather_than_scored_as_recall_zero(
+    tmp_path, db
+):
+    """`fast_ion`, `detachment` and `rwm` have no event rule and no label head, so `_detected`
+    can only ever be False and the confusion table is all-misses BY CONSTRUCTION.
+
+    Publishing `recall = 0.0` from that would be a number about the registry's shape, not about
+    any detector -- the same shape as the twelve-window recall this module already refuses, and
+    a caveat beside the zero is an apology, not a refusal. So the refusal comes first.
+    """
+    for phenomenon in ("fast_ion", "detachment", "rwm"):
+        _sheet(tmp_path, phenomenon, _rows(20))
+        with pytest.raises(rec.RecallRefused, match="no detector") as excinfo:
+            rec.recall(phenomenon, db, tmp_path)
+        assert phenomenon in str(excinfo.value)
+
+
+def test_the_no_detector_refusal_fires_before_the_sheet_is_read(tmp_path, db):
+    """Today `fast_ion` refuses only because `$LABELMAKER_ROOT/annotate/` is empty. That is an
+    accident of the corpus, so the check is made against the REGISTRY and does not wait for a
+    sheet to arrive."""
+    with pytest.raises(rec.RecallRefused, match="no detector") as excinfo:
+        rec.recall("fast_ion", db, tmp_path)
+    assert "no annotation sheet" not in str(excinfo.value)
+
+
+def test_a_phenomenon_with_only_a_label_head_is_still_scorable(tmp_path, db):
+    """The bar is "no detector source at all". A label model is a detector source -- its recall
+    is a real question -- so the refusal must not swallow one."""
+    _sheet(tmp_path, "sawtooth", _rows(20))
+    assert rec.recall("sawtooth", db, tmp_path).recall == 1.0
 
 
 # -------------------------------------------------------------------------------- reporting
