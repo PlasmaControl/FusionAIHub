@@ -49,6 +49,17 @@ deliberately *not* as four new aliases on `ae` (see the note in either file).
 | `p186` | "L-H transition with ECH only and no beams" | "L-H transition at the ITER-similar shape with the beams held flat", `kappa_mean ≥ 1.7` | byte-identical expectation to `p079`, so one unanswerable question was charged twice against coverage |
 | `p053` | — | unchanged, annotated | it misses only on the plural: the lexicon has `ntm`, not `ntms`, where `elm` has both |
 
+**What this did to the `fast_ions` number, stated so nobody quotes it wrongly.** The category's
+resolution went from **56.2 % FAIL (v1.0)** to **81.2 % PASS (v1.1)**, and *both* halves of the
+test moved to produce that: the four rows above stopped expecting `ae`, **and** the aliases they
+now resolve through (`fast ion(s)`, `beam ion(s)`, `energetic ion(s)`, `fida`) were harvested from
+those same four sentences. Before the id existed all four resolved to nothing; after it, all four
+resolve to the id made for them. Under the review's alternative remedy — leave those rows with an
+empty `expect_phenomena` and change no vocabulary — the category reads **9/12 = 75.0 %, still
+FAIL**. So `fast_ions 81.2 %` is not an independent test of the lexicon against unseen wording and
+is not comparable to the 56.2 %; the honest next measurement is an *unseen* set of fast-ion
+sentences in a future v2.
+
 **Ten rows annotated, not changed.** Eight are **unanswerable on this corpus by construction**
 (`p079`, `p100`, `p111`, `p120`, `p125`, `p134`, `p163`, `p170`) and three are satisfiable
 corpus-wide but empty on the eval side (`p028` 8 shots, `p123` 6, `p166` 8). Measured
