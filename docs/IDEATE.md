@@ -38,6 +38,51 @@ The development universe is `configs/ideate/shot_lists/recommender_v1.yaml` — 
 `ideate corpus select` under the rule in `src/ideate/shotdb/select.py`'s module docstring. The
 database built from it is what the MCP server below serves.
 
+## Scratch databases and the pixi activation env
+
+`pixi run -e ideate` and `-e ideate-cpu` set `IDEATE_DATA_ROOT`, `LABELMAKER_ROOT` and
+`IDEATE_CORPUS` from `[tool.pixi.feature.ideate.target.unix.activation.env]` in `pyproject.toml`.
+Activation runs *after* your shell, so a value you exported is replaced without a word. On
+2026-09-14 a one-shot scratch build, run through `pixi run` with `IDEATE_DATA_ROOT` exported to a
+`/tmp` directory, published itself over the 500-shot production database.
+
+So a scratch build must not go through `pixi run`. Call the environment's interpreter directly,
+with the variables exported:
+
+```bash
+export IDEATE_DATA_ROOT=/tmp/scratch-db HF_HUB_OFFLINE=1
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python -m ideate build --shots 190000
+```
+
+or give it a paths file of its own — `IDEATE_PATHS=<file>` — remembering that `IDEATE_DATA_ROOT`
+still wins over it, so it has to be out of the environment:
+
+```bash
+pixi run -e ideate-cpu env -u IDEATE_DATA_ROOT IDEATE_PATHS=/tmp/my-paths.yaml \
+    python -m ideate build --shots 190000
+```
+
+**How to check.** Every command that writes under the root — `build`, `add`, `labels join`,
+`encode`, `corpus scan`, `corpus select` — prints one line on stderr before its first write:
+
+```
+ideate build: data root /tmp/scratch-db (IDEATE_DATA_ROOT env) -> db /tmp/scratch-db/db
+```
+
+The bracket is the source that won, and it is one of `IDEATE_DATA_ROOT env`,
+`IDEATE_PATHS=<file>` or `<repo>/configs/ideate/paths.yaml default` — the third names the
+packaged paths file in full, because `IDEATE_CONFIG_DIR` can move it and a label is only useful
+if it names the file that was actually read. If it names a root you did not mean, stop there.
+
+**What the guard refuses.** Before publishing, `build` compares the existing
+`<db_dir>/manifest.json` with what it is about to write and refuses — nothing touched, exit 1,
+a message naming both sources and both counts — when the `shot_source` differs, when the new
+`n_shots` is smaller than the existing one (a `--limit` pilot, a one-shot build), or when the
+existing manifest cannot be read. `ideate build --force` overrides it and records the database
+it replaced under `forced_over` in the new manifest. Growing the same selection needs no flag:
+the 500 → 504 rebuild over `list:recommender_v1` publishes as it always did. `ideate add` and
+`ideate labels join` are upserts and are not guarded.
+
 ## Search
 
 ```bash

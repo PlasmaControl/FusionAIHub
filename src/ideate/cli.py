@@ -303,6 +303,33 @@ def _print_record(rec: ShotRecord, segment: str, full: bool) -> None:
 # ------------------------------------------------------------------------------------ commands
 
 
+def _announce_root(command: str, destination: str, paths: config.Paths | None = None) -> None:
+    """Name the resolved data root, where it came from and what is about to be written -- on
+    stderr, before the command writes anything.
+
+    The 2026-09-14 incident (see `config.data_root_origin`) was a one-shot `build` that replaced
+    the 500-shot production database because pixi's `[activation.env]` silently won over the
+    exported `IDEATE_DATA_ROOT`. Nothing printed the root, so the only evidence was the database
+    afterwards. Every command that writes under the root says this line first, and it goes to
+    stderr so a redirected stdout report still carries it to the terminal.
+
+    `paths` is the caller's already-resolved object where it has one. Where it has none -- the
+    fully-explicit `corpus scan`/`corpus select` runs that never load a config -- the root is
+    resolved here, and a config too broken to resolve degrades the line to the destination alone
+    rather than failing a command that did not need a root in the first place.
+    """
+    try:
+        paths = paths or config.load_paths()
+    except (OSError, ValueError):
+        print(f"ideate {command}: no data root resolved -> {destination}", file=sys.stderr)
+        return
+    print(
+        f"ideate {command}: data root {paths.data_root} "
+        f"({config.data_root_origin()}) -> {destination}",
+        file=sys.stderr,
+    )
+
+
 def _coverage_table(db: store.ShotDB) -> str:
     """Recomputed from the records rather than read from manifest["coverage"], which `add()`
     does not update -- after an incremental add the manifest's copy describes the previous
@@ -313,6 +340,7 @@ def _coverage_table(db: store.ShotDB) -> str:
 
 def cmd_build(args) -> int:
     paths, cfg = config.load_paths(), build_mod.load_build_cfg()
+    _announce_root("build", f"db {paths.db_dir}", paths)
     wanted = _shots(args, "poc_v1")
     source, n_requested = _shot_source(args, "poc_v1"), len(wanted)
     # `--limit` before anything else, and on the sorted list, so a pilot and the full run agree on
@@ -345,6 +373,7 @@ def cmd_build(args) -> int:
         shot_source=source,
         n_requested=n_requested,
         limit=args.limit,
+        force=args.force,
     )
     print(
         f"built {len(report.shots)} shots / {report.n_segments} segments in "
@@ -407,6 +436,7 @@ def cmd_model(args) -> int:
 
 def cmd_add(args) -> int:
     paths, cfg = config.load_paths(), build_mod.load_build_cfg()
+    _announce_root("add", f"db {paths.db_dir}", paths)
     if not (paths.db_dir / "manifest.json").exists():
         print(
             f"no database at {paths.db_dir} -- `ideate build` before `ideate add`", file=sys.stderr
@@ -480,6 +510,7 @@ def cmd_encode(args) -> int:
         print("nothing to encode", file=sys.stderr)
         return 1
     out = Path(args.out) if args.out else Path(paths.data_root) / "frame_codes"
+    _announce_root("encode", f"frame codes {out}", paths)
     # The manifest's path is settled BEFORE the run, not after, so every `frame_codes/<shot>.json`
     # sidecar this run writes can name the manifest that will hold the run's own report. The two
     # point at each other, which is what makes a cache traceable to a job.
@@ -891,6 +922,7 @@ def cmd_corpus_select(args) -> int:
         if args.frame_codes
         else (build_mod.frame_codes_dirs(paths) if paths else [])
     )
+    _announce_root("corpus select", f"shot list {out}", paths)
 
     group_spans = select_mod.spans(pd.read_parquet(census_path, columns=_SELECT_COLUMNS))
     corpus_shots = set(pd.read_parquet(census_path, columns=["shot"])["shot"].astype(int))
@@ -1076,6 +1108,7 @@ def cmd_corpus(args) -> int:
     if not corpus_dir.is_dir():
         print(f"no corpus directory at {corpus_dir}", file=sys.stderr)
         return 1
+    _announce_root("corpus scan", f"census {out}", paths)
     shots = _shot_file(args.shots) if args.shots else None
     started = time.perf_counter()
     df = census.scan(
@@ -1189,6 +1222,7 @@ def cmd_labels(args) -> int:
         print(f"no labels directory at {root / 'labels'}", file=sys.stderr)
         return 1
     db_dir = Path(args.db) if args.db else paths.db_dir
+    _announce_root("labels join", f"db {db_dir}", paths)
     text_root = None if args.no_text else Path(args.text_root or paths.text_root)
     if text_root is not None and not text_root.is_dir():
         print(f"no text corpus at {text_root}; joining without claims", file=sys.stderr)
@@ -1571,6 +1605,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-encode every shot instead of carrying unchanged shots' IGNITE rows over",
     )
     p.add_argument("--all", action="store_true", help="build shots with no Ip on disk too")
+    p.add_argument(
+        "--force", action="store_true",
+        help="replace a different or larger database, recording its previous manifest identity",
+    )
     p.add_argument(
         "--limit", type=int, help="build only the first N shots of the selection (pilot runs)"
     )
