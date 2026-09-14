@@ -345,6 +345,7 @@ def cmd_build(args) -> int:
         shot_source=source,
         n_requested=n_requested,
         limit=args.limit,
+        force=args.force,
     )
     print(
         f"built {len(report.shots)} shots / {report.n_segments} segments in "
@@ -1571,6 +1572,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-encode every shot instead of carrying unchanged shots' IGNITE rows over",
     )
     p.add_argument("--all", action="store_true", help="build shots with no Ip on disk too")
+    p.add_argument(
+        "--force", action="store_true",
+        help="replace a different or larger database, recording its previous manifest identity",
+    )
     p.add_argument(
         "--limit", type=int, help="build only the first N shots of the selection (pilot runs)"
     )
