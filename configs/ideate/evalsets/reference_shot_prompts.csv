@@ -1,0 +1,201 @@
+prompt_id,category,prompt,expect_phenomena,expect_constraints,expect_segment,hand_graded,notes
+p001,qh_mode,wide pedestal QH-mode at low torque,qh,,flat_top,1,top-5 should be flat-tops from QH/WPQH run days with near-zero or counter NBI torque; a shot whose only link is the word 'pedestal' in an unrelated mini-proposal is wrong.
+p002,qh_mode,QH-mode with a clear EHO on the magnetics,qh|eho,,flat_top,0,
+p003,qh_mode,quiescent H-mode with counter-NBI torque,qh,,flat_top,0,
+p004,qh_mode,WPQH-mode in hydrogen plasmas,qh,,flat_top,0,
+p005,qh_mode,shots that stayed ELM-free in QH-mode for more than 2 s,qh,,flat_top,0,
+p006,qh_mode,edge harmonic oscillation with several harmonics on the magnetics,eho,,flat_top,1,"top-5 must carry EHO evidence (a 2-20 kHz track with >= 2 harmonics, or an operator sentence naming the EHO); a shot offered on the word 'harmonic' from an ECH polarisation note is wrong."
+p007,qh_mode,QH-mode access at high pedestal density,qh,,flat_top,0,
+p008,qh_mode,isotope effect in standard and wide pedestal QH-mode,qh,,flat_top,0,
+p009,qh_mode,QH mode with reduced carbon sputtering,qh,,flat_top,0,
+p010,qh_mode,wide-pedestal QH with ECH heating,qh,"{""pech_total_mean"":[500000.0,null]}",flat_top,0,
+p011,qh_mode,EHO onset during a torque ramp down,eho,,flat_top,0,
+p012,qh_mode,quiescent H mode at near-zero net NBI torque,qh,"{""nbi_torque_total_mean"":[-1.0,1.0]}",flat_top,0,
+p013,qh_mode,QH-mode shots where the EHO went away and the ELMs came back,qh|eho|elm,,flat_top,0,
+p014,qh_mode,wide pedestal QH-mode at low collisionality,qh,,flat_top,0,
+p015,qh_mode,QH-mode development on a negative triangularity shape,qh,,flat_top,0,
+p016,qh_mode,divertor diagnostic checkout for QH/WPQH-Mode,qh,,flat_top,0,
+p017,elm_rmp,ELM suppression with n=3 RMP,elm,,flat_top,1,top-5 should be flat-tops with I-coil current actually applied (irmp_total_peak well above the ~100 A error-field baseline) on an RMP/ELM run day; an ELMing shot with the coils off is wrong.
+p018,elm_rmp,n=2 RMP ELM suppression at high beta,elm,"{""betan_mean"":[2.0,null]}",flat_top,0,
+p019,elm_rmp,RMP ELM control with the I-coils in even parity,elm,,flat_top,0,
+p020,elm_rmp,shots where the RMP suppressed the ELMs and then they came back,elm,,flat_top,0,
+p021,elm_rmp,feedback adaptive RMP ELM controller,elm,,flat_top,0,
+p022,elm_rmp,ELM suppression with RMP and lithium,elm,,flat_top,0,
+p023,elm_rmp,n=1 RMP ELM mitigation,elm,,flat_top,0,
+p024,elm_rmp,impurity assisted ELM suppression,elm,,flat_top,0,
+p025,elm_rmp,small ELMs at high triangularity,elm,"{""tritop_mean"":[0.5,null]}",flat_top,0,
+p026,elm_rmp,grassy ELM regime,elm,,flat_top,0,
+p027,elm_rmp,type-I ELMing H-mode reference discharges,elm,,flat_top,1,"top-5 should be plain ELMing H-mode references: ELM evidence present, no RMP, no QH. A suppressed or ELM-free shot is the opposite of what was asked."
+p028,elm_rmp,3-5 kA n=3 RMP in even parity during 2.5-6 s,elm,"{""irmp_total_peak"":[3000.0,null]}",flat_top,0,"v1.1 annotation, no change: 8 shots satisfy this corpus-wide but 0 of them are on the eval side of the split. A genuine split-thinness effect, not a corpus ceiling; read this row on `--split all`."
+p029,elm_rmp,ELM pacing with pellets,elm,,flat_top,0,
+p030,elm_rmp,what happened to the ELM frequency when the I-coil current was ramped,elm,,flat_top,0,
+p031,elm_rmp,utilizing RMP to control ELMs and sustain a high pedestal,elm,,flat_top,0,
+p032,elm_rmp,obtaining and optimizing n=1 RMP ELM suppression,elm,,flat_top,0,
+p033,fast_ions,Alfven eigenmode activity driven by the neutral beams,ae,,flat_top,1,top-5 must rest on AE evidence -- a >= 40 kHz coherent track or the AE label head -- on a beam-heated flat-top; a shot offered because 'Alfven' appears in the run title with no detector or label evidence should be visible as text-only and should not fill the top 5.
+p034,fast_ions,TAE bursts during the current ramp,ae,,ramp_up,0,
+p035,fast_ions,RSAE chirping early in the flat-top,ae,,flat_top,0,
+p036,fast_ions,transport of passing and trapped fast ions by static 3D fields,fast_ion,,flat_top,0,"v1.1: expected `ae` in v1. A 3D-field fast-ion transport experiment names no mode; `ae` is the Alfven eigenmode id, not a fast-ion topic. Re-expected `fast_ion`."
+p037,fast_ions,energetic particle modes at high beam power,ae,"{""pnbi_total_mean"":[7000000.0,null]}",flat_top,0,
+p038,fast_ions,beam ion losses measured with FIDA,fast_ion,,flat_top,0,"v1.1: expected `ae` in v1. FIDA is a diagnostic and the losses may be from 3D fields, ripple or sawteeth. Re-expected `fast_ion`."
+p039,fast_ions,interaction between TAEs and ITG turbulence,ae,,flat_top,0,"v1.1: v1 read 'TAE-induced ITG turbulence', which is garbled physics -- TAEs do not induce ITG turbulence; the literature is AE/EP-mode INTERACTION with it. Still expects `ae`, and still a deliberate probe of a plural gap: `tae` is an alias, `taes` is not, and the matcher matches whole tokens."
+p040,fast_ions,Alfven eigenmodes in a reversed shear discharge,ae,,flat_top,0,
+p041,fast_ions,validating the turbulence and energetic ion interaction,fast_ion,,flat_top,0,v1.1: expected `ae` in v1. The sentence names no mode at all. Re-expected `fast_ion`.
+p042,fast_ions,fishbones during high power NBI,fishbone,,flat_top,1,"top-5 must show down-chirping 5-40 kHz activity, not any low-frequency mode: a 2/1 tearing track in the same band with no chirp is the classic false positive here."
+p043,fast_ions,fishbone activity with an off-axis beam,fishbone,,flat_top,0,
+p044,fast_ions,advanced sensors and actuators for Alfven eigenmode control,ae,,flat_top,0,
+p045,fast_ions,strong AE activity above 60 kHz,ae,,flat_top,0,
+p046,fast_ions,neutron rate dropping from fast ion transport,fast_ion,"{""neutrons_mean"":[100000000000000.0,null]}",flat_top,0,"v1.1: expected `ae` in v1. A neutron deficit is a fast-ion transport signature, not an AE claim. Re-expected `fast_ion`."
+p047,fast_ions,BAE and EAE modes on the magnetics,ae,,flat_top,0,
+p048,fast_ions,chirping modes below 40 kHz driven by beam ions,fishbone,,flat_top,0,"v1.1: expected `ae|fishbone` in v1, which is unresolvable by construction -- below 40 kHz contradicts the registry's own AE band. A down-chirping beam-driven mode in that band IS a fishbone, and the sentence deliberately does not use the word: this row probes whether the physics can be found without the name. Expected miss."
+p049,tearing,2/1 tearing mode onset in a hybrid discharge,tearing,,flat_top,1,"top-5 should be hybrid-like flat-tops with tearing evidence (a <= 30 kHz track, the tearing label head, or an operator sentence naming the 2/1); a forecast-only hit must be labelled as a forecast and must not outrank an observed one."
+p050,tearing,ECCD stabilization of 2/1 NTMs,tearing,,flat_top,0,
+p051,tearing,locked mode leading to a disruption,tearing,,flat_top,0,
+p052,tearing,3/2 NTM seeded by sawteeth,tearing|sawtooth,,flat_top,0,
+p053,tearing,avoidance of NTMs seeded by three-wave coupling,tearing,,flat_top,0,"v1.1 annotation, no change: this misses only on the plural. The lexicon has `ntm` and not `ntms`, where `elm` has both. A one-word gap, recorded here so it is not re-diagnosed as a retrieval failure."
+p054,tearing,ML based tearing mode prediction,tearing,,flat_top,0,
+p055,tearing,"an n=1 mode shot up, locked and disrupted the plasma",tearing,,flat_top,0,
+p056,tearing,"got tearing modes, n=2 is first",tearing,,flat_top,0,
+p057,tearing,tearing mode onset at betaN above 2.5,tearing,"{""betan_mean"":[2.5,null]}",flat_top,0,
+p058,tearing,island growth after the ECH was switched off,tearing,,flat_top,1,"the physicist means a magnetic island, i.e. a tearing mode. A top-5 built on the word 'island' from a shape or divertor note, with no tearing evidence, is wrong."
+p059,tearing,NTM onset during a beta ramp,tearing,,flat_top,0,
+p060,tearing,2/1 locked mode from an error field,tearing,,flat_top,0,
+p061,tearing,tearing stability with off-axis current drive,tearing,,flat_top,0,
+p062,tearing,error field penetration leading to a locked mode,tearing,,flat_top,0,
+p063,sawtooth,sawtooth crashes on the core ECE,sawtooth,,flat_top,1,"top-5 must have ece_sawtooth evidence in the flat-top, and the shot must actually have an ece group; a shot with no ECE coverage is not a negative and must not be presented as one."
+p064,sawtooth,long sawtooth period with on-axis ECCD,sawtooth,,flat_top,0,
+p065,sawtooth,sawteeth triggering an NTM,sawtooth|tearing,,flat_top,0,
+p066,sawtooth,sawtooth period lengthened by fast ions,sawtooth|fast_ion,,flat_top,0,v1.1: expected `sawtooth|ae` in v1. This is Porcelli fast-ion stabilisation of the internal kink; there is no Alfven eigenmode in it. Re-expected `sawtooth|fast_ion`.
+p067,sawtooth,large sawtooth crashes with q0 below 1,sawtooth,,flat_top,0,
+p068,sawtooth,sawtooth control with ECCD deposition near the q=1 surface,sawtooth,,flat_top,0,
+p069,sawtooth,monster sawteeth during high power NBI,sawtooth,"{""pnbi_total_mean"":[6000000.0,null]}",flat_top,0,
+p070,sawtooth,a sawtooth crash triggering a fishbone,sawtooth|fishbone,,flat_top,0,
+p071,sawtooth,ST crash just before the tearing mode onset,sawtooth|tearing,,flat_top,0,
+p072,sawtooth,sawtooth-free hybrid operation with qmin above 1,,"{""qmin_mean"":[1.0,null]}",flat_top,0,"v1.1: v1 read 'sawtooth behaviour in a hybrid with qmin above 1' and expected `sawtooth`, which is self-contradictory -- qmin > 1 means no q = 1 surface and so no sawteeth, and the hard filter therefore selected AGAINST the expected phenomenon. The hybrid's actual selling point is the absence, so the row now asks for that and expects no phenomenon."
+p073,lh_transition,L-H transition power threshold in hydrogen,lh,,flat_top,1,top-5 should be hydrogen / power-threshold run days with a dalpha_lh transition event; the filterscopes group must be present for the shot's silence to mean anything.
+p074,lh_transition,L to H transition at low density,lh,"{""ne_line_mean"":[null,60000000000000.0]}",flat_top,0,
+p075,lh_transition,LH transition characterization,lh,,flat_top,0,
+p076,lh_transition,density limit and L-H/H-L power hysteresis in PFPO hydrogen plasmas,lh,,flat_top,0,
+p077,lh_transition,H-mode access in reactor-relevant electron-heat-dominated plasmas,lh,,flat_top,1,the physicist means the L-H transition. A top-5 of ECH-heated shots with no transition evidence at all answers a different question and should be visible as such.
+p078,lh_transition,gyro-Bohm reversal in ITER similar hydrogen plasmas for L-H power threshold reduction,lh,,flat_top,0,
+p079,lh_transition,transition to H-mode with ECH only,lh,"{""pech_total_mean"":[500000.0,null],""pnbi_total_mean"":[null,500000.0]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- pnbi_total_mean never falls below 0.834 MW, so 'no beams' matches nothing. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p080,lh_transition,the L-H transition seen as a D-alpha drop on the filterscopes,lh,,flat_top,0,
+p081,lh_transition,back transition from H to L at the end of the beam pulse,lh,,ramp_down,0,
+p082,lh_transition,isotope dependence of the L-H power threshold,lh,,flat_top,0,
+p083,lh_transition,L-H transition in a negative triangularity shape,lh,,flat_top,0,
+p084,lh_transition,H-mode transition during the Ip ramp up,lh,,ramp_up,0,
+p085,detachment,divertor detachment with nitrogen seeding,detachment,,flat_top,1,"no detector writes detachment, so every hit here is text-only by construction and must say so. A top-5 that does not carry the TEXT ONLY caveat is misreporting its evidence."
+p086,detachment,X-point radiator formation,detachment,,flat_top,0,
+p087,detachment,1 MW ECH density ramp to detachment,detachment,,flat_top,0,
+p088,detachment,"high power, maximum q parallel detachment",detachment,,flat_top,0,
+p089,detachment,detachment control during the ramp up,detachment,,ramp_up,0,
+p090,detachment,detached divertor operation at high triangularity,detachment,,flat_top,0,
+p091,detachment,radiative divertor with neon,detachment,,flat_top,1,'radiative divertor' is how the operators write detachment; a top-5 of shots that merely puffed neon with no detachment language is the miss to watch for.
+p092,detachment,quantification of divertor detachment,detachment,,flat_top,0,
+p093,detachment,stability of the radiation front in detachment,detachment,,flat_top,0,
+p094,detachment,compatibility of a highly radiative divertor with a hybrid core,detachment,,flat_top,0,
+p095,detachment,heat flux broadening at high q parallel,detachment,,flat_top,0,
+p096,detachment,detachment onset seen on the IRTV heat flux,detachment,,flat_top,0,
+p097,detachment,impurity seeding to bring the divertor heat flux down,detachment,,flat_top,0,
+p098,detachment,core-edge integration with an X-point radiator,detachment,,flat_top,0,
+p099,high_qmin,high qmin steady state scenario with qmin above 1.5,,"{""qmin_mean"":[1.5,null]}",flat_top,1,"the hard filter, not the text, decides here: every shot in the top-5 must have qmin_mean >= 1.5 measured in the flat-top, and shots whose qmin was never recorded must be reported as dropped for missing data, not silently."
+p100,high_qmin,fully non-inductive high betaP at betaN above 4 with qmin over 2,,"{""betan_mean"":[4.0,null],""qmin_mean"":[2.0,null]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- betan_mean tops out at 3.006, so betaN >= 4 matches nothing. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p101,high_qmin,hybrid discharges with qmin just above 1,,"{""qmin_mean"":[1.0,1.3]}",flat_top,0,
+p102,high_qmin,advanced tokamak scenario with an internal transport barrier,,,flat_top,0,
+p103,high_qmin,high performance qmin>1 scenario development in neg-D plasmas,,"{""qmin_mean"":[1.0,null]}",flat_top,0,
+p104,high_qmin,reversed magnetic shear discharges,,,flat_top,0,
+p105,high_qmin,steady state scenario at high betaN and low internal inductance,,"{""betan_mean"":[2.5,null],""li_mean"":[null,0.9]}",flat_top,0,
+p106,high_qmin,max QDT achievable in stationary conditions with the high-yield hybrid,,,flat_top,0,
+p107,high_qmin,high betaP scenario with a large-radius internal transport barrier,,,flat_top,0,
+p108,high_qmin,broad current profile with li below 0.8,,"{""li_mean"":[null,0.8]}",flat_top,0,
+p109,high_qmin,qmin above 2 with off-axis current drive,,"{""qmin_mean"":[2.0,null]}",flat_top,0,
+p110,high_qmin,stationary hybrid held at betaN 3 for more than two seconds,,"{""betan_mean"":[2.7,3.3]}",flat_top,0,
+p111,nbi_program,shots that ran all eight beams at full power,,"{""pnbi_total_mean"":[12000000.0,null]}",flat_top,1,"an actuator question: the top-5 should be the highest measured pnbi_total_mean flat-tops, and the explanation should name the beam power, not a text similarity. || v1.1 annotation, no change: unanswerable on this corpus by construction -- pnbi_total_mean tops out at 11.9 MW, so >= 12 MW matches nothing. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p112,nbi_program,discharges where the 330 beams dropped out mid shot,,,flat_top,0,
+p113,nbi_program,"15L and 15R only, no other beams",,,flat_top,0,
+p114,nbi_program,beam torque ramped down during the flat-top,,,flat_top,0,
+p115,nbi_program,counter-NBI with net negative torque,,"{""nbi_torque_total_mean"":[null,0.0]}",flat_top,0,
+p116,nbi_program,low torque discharges near zero net NBI torque,,"{""nbi_torque_total_mean"":[-0.5,0.5]}",flat_top,0,
+p117,nbi_program,off-axis beam heating with the 150 beams,,,flat_top,0,
+p118,nbi_program,betaN feedback on the beam power,,,flat_top,0,
+p119,nbi_program,NBI power above 10 MW in the flat-top,,"{""pnbi_total_mean"":[10000000.0,null]}",flat_top,0,
+p120,nbi_program,"beam blips for CER only, no heating",,"{""pnbi_total_mean"":[null,500000.0]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- pnbi_total_mean never falls below 0.834 MW. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p121,nbi_program,lost the 330s due to open breakers,,,flat_top,0,
+p122,nbi_program,beam power stepped down at 3 s,,,flat_top,0,
+p123,ech_program,four gyrotrons on for the whole flat-top,,"{""pech_total_mean"":[2000000.0,null]}",flat_top,0,"v1.1 annotation, no change: 6 shots satisfy this corpus-wide but 0 of them are on the eval side of the split. A genuine split-thinness effect, not a corpus ceiling; read this row on `--split all`."
+p124,ech_program,top launch ECCD polarization scan,,,flat_top,1,a top-5 from the top-launch ECCD run days; a shot with no ECH power at all in the flat-top does not answer this even if the words match.
+p125,ech_program,"ECH only, no neutral beams",,"{""pech_total_mean"":[500000.0,null],""pnbi_total_mean"":[null,500000.0]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- pnbi_total_mean never falls below 0.834 MW. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p126,ech_program,X3 ECH absorption dependence on Te,,,flat_top,0,
+p127,ech_program,Leia and Luke fired from -10 to 100 ms,,,ramp_up,0,
+p128,ech_program,off-axis ECCD near rho 0.5,,,flat_top,0,
+p129,ech_program,assess helicon heating and current drive,,,flat_top,0,
+p130,ech_program,first high-power helicon experiments in H-mode plasmas,,,flat_top,0,
+p131,ech_program,EC assisted startup,,,ramp_up,0,
+p132,ech_program,gyrotron blocks and faults during the shot,,,flat_top,0,
+p133,ech_program,mode conversion to slow-X mode,,,flat_top,0,
+p134,ech_program,ECH power above 3 MW,,"{""pech_total_mean"":[3000000.0,null]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- pech_total_mean tops out at 2.298 MW, so >= 3 MW matches nothing. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p135,gas_puff,neon into GASB from 1.1 to 1.6 s,,,flat_top,0,
+p136,gas_puff,heavy deuterium gas puffing through the flat-top,,"{""gas_total_mean"":[5.0,null]}",flat_top,1,"the top-5 should be the heaviest measured gas_total_mean flat-tops; a shot whose gas was never recorded must be dropped as missing, never ranked as a low-gas match."
+p137,gas_puff,density ramp with the LOB1 valve,,,flat_top,0,
+p138,gas_puff,"cut early gas, 0 < t < 200 ms",,,ramp_up,0,
+p139,gas_puff,PFX1 and PFX2 divertor fueling,,,flat_top,0,
+p140,gas_puff,gas puff to raise the pedestal density,,,flat_top,0,
+p141,gas_puff,nitrogen seeding into the lower divertor,,,flat_top,0,
+p142,gas_puff,impurity gas puff with argon,,,flat_top,0,
+p143,gas_puff,upper outer baffle gas injection,,,flat_top,0,
+p144,gas_puff,"GASA off, fueling from the lower ports only",,,flat_top,0,
+p145,reference_shot,shots like 196336,,,flat_top,1,typing a shot number should bring back that shot's own run mates and shots with similar conditions. A top-5 with no shot from 196336's run day and nothing resembling its Ip/Bt/power point has not answered the question.
+p146,reference_shot,repeat of 186194 with more beam power,,,flat_top,0,
+p147,reference_shot,reference shot 203295,,,flat_top,0,
+p148,reference_shot,anything resembling 194350,,,flat_top,0,
+p149,reference_shot,shots from the same run day as 196399,,,flat_top,0,
+p150,reference_shot,find shots like 187143 but at lower density,,,flat_top,0,
+p151,reference_shot,similar to 186114 in the flat-top,,,flat_top,0,
+p152,reference_shot,restore 194789 and change the SPI timing,,,flat_top,0,
+p153,reference_shot,based on 194953 with a faster Ip ramp,,,flat_top,0,
+p154,reference_shot,repeat 201526 at higher power,,,flat_top,0,
+p155,reference_shot,shots near 196141 with the same shape,,,flat_top,0,
+p156,reference_shot,the startup trajectory is close to 186389,,,ramp_up,0,
+p157,actuator_only,Ip between 1.0 and 1.2 MA at 2.1 T,,"{""ip_mean"":[1000000.0,1200000.0],""bt_mean"":[2.0,2.2]}",flat_top,1,"a pure filter question. Every shot in the top-5 must satisfy both ranges; the header must say how many candidates survived, because a top-5 out of six is a different answer from a top-5 out of three hundred."
+p158,actuator_only,betaN above 2.5 in the flat-top,,"{""betan_mean"":[2.5,null]}",flat_top,0,
+p159,actuator_only,line averaged density above 1e14,,"{""ne_line_mean"":[100000000000000.0,null]}",flat_top,0,
+p160,actuator_only,elongation above 1.8,,"{""kappa_mean"":[1.8,null]}",flat_top,0,
+p161,actuator_only,upper triangularity above 0.6,,"{""tritop_mean"":[0.6,null]}",flat_top,0,
+p162,actuator_only,negative triangularity shapes,,"{""tritop_mean"":[null,0.0]}",flat_top,0,
+p163,actuator_only,q95 below 3.5,,"{""q95_mean"":[null,3.5]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- q95_mean is NaN for all 500 shots -- the builder writes the column and nothing records it. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p164,actuator_only,internal inductance between 0.9 and 1.1,,"{""li_mean"":[0.9,1.1]}",flat_top,0,
+p165,actuator_only,central electron temperature above 4 keV,,"{""te0_mean"":[4.0,null]}",flat_top,0,
+p166,actuator_only,RMP coil current above 3 kA,,"{""irmp_total_peak"":[3000.0,null]}",flat_top,0,"v1.1 annotation, no change: 8 shots satisfy this corpus-wide but 0 of them are on the eval side of the split. A genuine split-thinness effect, not a corpus ceiling; read this row on `--split all`."
+p167,actuator_only,neutron rate above 1e15,,"{""neutrons_mean"":[1000000000000000.0,null]}",flat_top,0,
+p168,actuator_only,Ip above 1.4 MA with Bt above 2.0 T,,"{""ip_mean"":[1400000.0,null],""bt_mean"":[2.0,null]}",flat_top,0,
+p169,negation,H-mode shots without ELMs,,,flat_top,1,the physicist is asking for an ABSENCE. A correct answer needs shots where the ELM detector ran and found nothing; a shot nobody looked at is not a negative and must be marked as uncovered rather than offered as one.
+p170,negation,discharges with no NBI at all,,"{""pnbi_total_mean"":[null,500000.0]}",flat_top,0,"v1.1 annotation, no change: unanswerable on this corpus by construction -- pnbi_total_mean never falls below 0.834 MW; the shot list's own eligibility rule required heating, so beam-free shots were selected out. Measured 2026-09-13 over all 500 recommender_v1 flat-tops, not just the eval split. The sentence is an honest thing to type and 'nothing here' is the correct answer; it is recorded so a later reader does not re-diagnose it as a retrieval miss."
+p171,negation,QH-mode with no RMP applied,qh,"{""irmp_total_peak"":[null,200.0]}",flat_top,0,
+p172,negation,hybrid shots that did not disrupt,,,flat_top,0,
+p173,negation,sawtooth-free operation with ECCD,,,flat_top,0,
+p174,negation,a tearing mode free flat-top at high beta,,"{""betan_mean"":[2.0,null]}",flat_top,0,
+p175,negation,ELM-free periods longer than 500 ms,,,flat_top,0,
+p176,negation,no EHO this shot,,,flat_top,0,
+p177,negation,shots with no gas puff in the flat-top,,"{""gas_total_mean"":[null,0.2]}",flat_top,0,
+p178,negation,"no ECH, beams only",,"{""pech_total_mean"":[null,10000.0]}",flat_top,0,
+p179,negation,discharges that avoided the locked mode,,,flat_top,0,
+p180,negation,"attached divertor throughout, no detachment",,,flat_top,0,
+p181,mixed,QH-mode at betaN above 2 with no RMP,qh,"{""betan_mean"":[2.0,null],""irmp_total_peak"":[null,200.0]}",flat_top,0,
+p182,mixed,ELM suppression with n=3 RMP at 1.4 MA,elm,"{""ip_mean"":[1300000.0,1500000.0]}",flat_top,0,
+p183,mixed,Alfven eigenmodes at beam power above 8 MW and qmin above 1,ae,"{""pnbi_total_mean"":[8000000.0,null],""qmin_mean"":[1.0,null]}",flat_top,0,
+p184,mixed,detachment with neon at high density,detachment,"{""ne_line_mean"":[100000000000000.0,null]}",flat_top,0,
+p185,mixed,tearing mode at low li and high betaN,tearing,"{""li_mean"":[null,0.9],""betan_mean"":[2.0,null]}",flat_top,0,
+p186,mixed,L-H transition at the ITER-similar shape with the beams held flat,lh,"{""kappa_mean"":[1.7,null]}",flat_top,0,"v1.1: v1 read 'L-H transition with ECH only and no beams' with an expectation byte-identical to p079's, so one unanswerable question was charged twice against coverage. Replaced with a different, answerable L-H sentence."
+p187,mixed,sawteeth and fishbones in the same discharge,sawtooth|fishbone,,flat_top,0,
+p188,mixed,an EHO and an ELM-free edge at low torque,eho,,flat_top,0,
+p189,mixed,hybrid with a 3/2 NTM at betaN 3,tearing,"{""betan_mean"":[2.7,3.3]}",flat_top,0,
+p190,mixed,negative triangularity L-mode at high power,,,flat_top,0,
+p191,mixed,runaway electron generation after a disruption,,,flat_top,0,
+p192,mixed,SPI disruption mitigation with neon,,,flat_top,0,
+p193,mixed,pellet fueling with ELM pacing,elm,,flat_top,0,
+p194,mixed,RMP ELM suppression followed by a locked mode,elm|tearing,,flat_top,0,
+p195,mixed,detachment and the core impurity accumulation that followed,detachment,,flat_top,0,
+p196,mixed,a QH-mode that transitioned back to ELMing H-mode,qh|elm,,flat_top,0,
+p197,mixed,fast ion driven modes around a sawtooth crash,sawtooth|fast_ion,,flat_top,0,"v1.1: expected `ae|sawtooth` in v1. 'Fast ion driven modes' is the topic, not a named Alfven eigenmode. Re-expected `sawtooth|fast_ion`."
+p198,mixed,resistive wall mode with the I-coil feedback,rwm,,flat_top,0,
+p199,mixed,a quasi-coherent mode in the pedestal,qcm,,flat_top,0,
+p200,mixed,noise pickup on the ECE channels,pickup,,flat_top,0,
