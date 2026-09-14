@@ -32,7 +32,7 @@ DEFAULT_LOGS_JSONL = Path(
 )
 #: The curated label tables `events/databases.py` reads: a `tables.yaml`
 #: manifest and one directory of CSVs per phenomenon. Label DATA, so it
-#: lives under `data/labels/` and never under `src/`, and the default
+#: lives under `data/events/` and never under `src/`, and the default
 #: resolves relative to this FILE rather than to the caller's cwd - a run
 #: from a SLURM scratch directory finds the committed manifest the same way
 #: a run from the repo does. That resolution is a SOURCE CHECKOUT's (which
@@ -40,7 +40,7 @@ DEFAULT_LOGS_JSONL = Path(
 #: editable install); from a non-editable wheel the tables are outside the
 #: package and `LABELMAKER_LABEL_TABLES` is the answer. Overridable anyway,
 #: because a table too large or too restricted to commit lives on /scratch.
-DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "labels"
+DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
 
 
 @dataclass(frozen=True)

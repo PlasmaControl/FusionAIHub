@@ -1,47 +1,35 @@
-"""Curated label tables: somebody's list, read as events.
+"""Common label-table schema and the format/ curated-table loader.
 
-A table is knowledge we did not compute and cannot re-derive - Jeremy
-Hansen's RWM onsets, Jalal's WPQH windows, David Smith's manual ELMs. It
-arrives as a CSV, it stays exactly as its author sent it (`data/labels/`,
-never `src/`), and everything that reconciles it with labelmaker's schema
-is in `data/labels/tables.yaml` and in this module. Adding a table is a
-YAML entry; if it needs a code edit, the manifest is missing a field and
-that is the thing to add.
-
-**A listing is not a coverage claim.** Every event here carries
-`t_cov0_s = t_cov1_s = NaN`, because a database that names a shot says
-nothing about which interval of that shot anybody examined. So a shot
-ABSENT from a table is not a negative, and `events_for_shot` writes no
-event row AND no source record for it: "ran and found nothing" is a claim,
-and nobody made it. Writing `status="ok", n_events=0` for every shot in
-the corpus against every table would be a false coverage claim over 16,909
-shots, which is exactly the mistake the sources file exists to prevent.
-
-**A curated list has no calibrated probability**, so `confidence` is NaN
-too. A 1.0 would let a ranker treat a human list as a perfectly confident
-detector.
-
-The other conversions are as boring as they should be: times become
-seconds on load and never on disk (`t_units` is what says which unit the
-file is in, so a table already in seconds needs no code change), the extra
-columns are carried into `attrs` verbatim beside the table's stem, and the
-phenomenon comes from the manifest rather than from the file name - the
-directory `resistive_wall_mode` is prose and `rwm` is the join key.
+Original lists live in raw/ and only scripts/labelmaker/labels_format.py
+converts them. This module reads format/<format_stem>.csv, preserving its
+stored evidence kind, confidence and JSON attributes. A listing is not a
+coverage claim: events and source records keep NaN coverage, and a shot
+absent from every table contributes neither an event nor a source row.
 """
 from __future__ import annotations
 
+import csv
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import yaml
 
-from ..config import Paths
+from ..config import Paths, atomic_path
 from .lexicon import LexiconError, load_lexicon
-from .schema import Event
+from .schema import EVIDENCE_KINDS, Event
+
+#: One CSV projection for all format/ and extend_<producer>/ event tables.
+FORMAT_COLUMNS = (
+    "shot", "t0_s", "t1_s", "phenomenon", "evidence_kind", "source",
+    "confidence", "attrs",
+)
+FORMAT_SCHEMA_VERSION = 1
 
 #: The manifest's name inside the label-tables root.
 MANIFEST = "tables.yaml"
@@ -88,6 +76,86 @@ class DatabaseError(ValueError):
     """A manifest or a table that cannot be believed, with the file named."""
 
 
+def validate_format(frame: pd.DataFrame, *, where: str = "table") -> pd.DataFrame:
+    """Validate the common CSV schema; return a copy with numeric dtypes.
+
+    Empty confidence means unknown, never certainty. ``attrs`` stays JSON
+    text here; the events loader parses it into an object's attributes.
+    """
+    if tuple(frame.columns) != FORMAT_COLUMNS:
+        raise DatabaseError(
+            f"{where}: columns must be {FORMAT_COLUMNS}; got {tuple(frame.columns)}"
+        )
+    out = frame.copy()
+    for col in ("shot", "t0_s", "t1_s", "confidence"):
+        values = out[col].replace("", float("nan")) if col == "confidence" \
+            else out[col]
+        numeric = pd.to_numeric(values, errors="coerce")
+        valid = numeric.map(math.isfinite)
+        if col == "confidence":
+            valid = (valid & numeric.between(0, 1)) | values.isna()
+        elif col == "shot":
+            valid &= numeric.map(lambda v: math.isfinite(v) and v % 1 == 0
+                                 and -(2**63) <= v < 2**63)
+        if not valid.all():
+            raise DatabaseError(f"{where}: invalid `{col}` value")
+        out[col] = numeric.astype("int64" if col == "shot" else "float64")
+    if (out["t1_s"] < out["t0_s"]).any():
+        raise DatabaseError(f"{where}: `t1_s` must not precede `t0_s`")
+    ids = set(load_lexicon().ids)
+    for col, allowed in (("phenomenon", ids), ("evidence_kind", EVIDENCE_KINDS)):
+        if not out[col].isin(allowed).all():
+            raise DatabaseError(f"{where}: invalid `{col}`; expected one of {allowed}")
+    if not out["source"].map(lambda v: isinstance(v, str) and bool(v.strip())).all():
+        raise DatabaseError(f"{where}: `source` must be a non-empty string")
+    for value in out["attrs"]:
+        try:
+            attrs = json.loads(value)
+            if not isinstance(attrs, dict):
+                raise TypeError("expected a JSON object")
+            json.dumps(attrs, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise DatabaseError(f"{where}: invalid `attrs`: {exc}") from exc
+    return out
+
+
+def write_csv(frame: pd.DataFrame, path: Path) -> None:
+    """Write deterministic UTF-8 CSV, LF endings, twelve decimal places, empty NaN."""
+    def cell(value):
+        if isinstance(value, float):
+            return "" if math.isnan(value) else f"{value:.12f}"
+        return value
+
+    with atomic_path(path) as tmp, tmp.open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerow(frame.columns)
+        writer.writerows([cell(v) for v in row]
+                         for row in frame.itertuples(index=False, name=None))
+
+
+def write_meta(path: Path, meta: Mapping[str, Any]) -> None:
+    """Write the sidecar beside either an events projection or a shot summary."""
+    text = json.dumps(dict(meta), sort_keys=True, indent=2, allow_nan=False) + "\n"
+    with atomic_path(path.with_suffix(".meta.json")) as tmp:
+        tmp.write_text(text, encoding="utf-8")
+
+
+def write_format_table(frame: pd.DataFrame, path: Path, meta: Mapping[str, Any]) -> None:
+    """Validate, sort without deduplicating, and write the common CSV plus metadata."""
+    frame = validate_format(frame, where=str(path))
+    frame["attrs"] = frame["attrs"].map(
+        lambda value: json.dumps(json.loads(value), sort_keys=True, allow_nan=False)
+    )
+    frame = frame.sort_values(list(FORMAT_COLUMNS), kind="stable")
+    metadata = {**meta, "n_rows": len(frame), "n_shots": int(frame["shot"].nunique())}
+    # Validate metadata before replacing either artifact.
+    json.dumps(metadata, allow_nan=False)
+    write_csv(frame, path)
+    write_meta(path, metadata)
+
+
 @dataclass(frozen=True)
 class TableSpec:
     """One entry of `tables.yaml`: where a table is and what its columns mean."""
@@ -104,6 +172,10 @@ class TableSpec:
     t1_col: str = ""
     attr_cols: tuple[str, ...] = ()
     attr_types: Mapping[str, str] = field(default_factory=dict)
+    raw_file: str = ""
+    format_stem: str = ""
+    converter: str = ""
+    made_at: str = ""
 
     @property
     def source(self) -> str:
@@ -121,7 +193,10 @@ class TableSpec:
         return (self.shot_col, *self.time_cols, *self.attr_cols)
 
     def path(self, root=None) -> Path:
-        return _root(root) / self.dir / f"{self.stem}.csv"
+        return _root(root) / self.dir / "format" / f"{self.format_stem}.csv"
+
+    def raw_path(self, root=None) -> Path:
+        return _root(root) / self.dir / "raw" / self.raw_file
 
 
 def _root(root=None) -> Path:
@@ -172,6 +247,16 @@ def _spec(where: str, entry: Any) -> TableSpec:
                 f"{where}: `attr_types[{col}]` must be one of {ATTR_TYPES}; "
                 f"got {kind_name!r}"
             )
+    for key in ("stem", "dir", "raw_file", "format_stem", "converter"):
+        value = _str(where, entry, key)
+        if value in (".", "..") or "/" in value or "\\" in value:
+            raise DatabaseError(f"{where}: `{key}` must be a single path component")
+    made_at = _str(where, entry, "made_at")
+    try:
+        if datetime.fromisoformat(made_at).tzinfo is None:
+            raise ValueError("timezone required")
+    except ValueError as exc:
+        raise DatabaseError(f"{where}: `made_at` must be an ISO timestamp") from exc
     return TableSpec(
         stem=stem,
         dir=_str(where, entry, "dir"),
@@ -185,6 +270,10 @@ def _spec(where: str, entry: Any) -> TableSpec:
         t1_col=_str(where, entry, "t1_col") if kind == "interval" else "",
         attr_cols=attr_cols,
         attr_types={str(k): str(v) for k, v in types.items()},
+        raw_file=entry["raw_file"],
+        format_stem=entry["format_stem"],
+        converter=entry["converter"],
+        made_at=made_at,
     )
 
 
@@ -215,6 +304,7 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
         raise DatabaseError(f"{path}: `tables` must be a list")
     specs = tuple(_spec(str(path), entry) for entry in entries)
     seen: set[str] = set()
+    outputs: set[tuple[str, str]] = set()
     for spec in specs:
         if spec.stem in seen:
             raise DatabaseError(
@@ -222,6 +312,10 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
                 f"the source, so they would replace each other's rows"
             )
         seen.add(spec.stem)
+        output = (spec.dir, spec.format_stem)
+        if output in outputs:
+            raise DatabaseError(f"{path}: duplicate format_stem output {output}")
+        outputs.add(output)
     if specs:
         try:
             ids = set(load_lexicon().ids)
@@ -237,25 +331,8 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
     return specs
 
 
-def _typed(spec: TableSpec, col: str, value: Any) -> Any:
-    """One `attrs` value, as the manifest says to read it."""
-    want = spec.attr_types.get(col, "str")
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return None
-    if want == "int":
-        return int(value)
-    if want == "float":
-        return float(value)
-    return str(value)
-
-
 def read_table(spec: TableSpec, root=None) -> pd.DataFrame:
-    """The table as `shot`, `t0_s`, `t1_s` and its own extra columns.
-
-    Seconds, integers and finite times are established HERE, so an error
-    names the CSV and the column. Left alone: the row ORDER and the
-    duplicates - two onsets at the same time is a claim the table makes.
-    """
+    """A validated common-schema frame; attrs remains JSON text until event loading."""
     return _read_cached(spec, root).copy()
 
 
@@ -269,51 +346,20 @@ def _read_cached(spec: TableSpec, root=None) -> pd.DataFrame:
     key = (str(path), stat.st_mtime_ns, stat.st_size)
     hit = _CACHE.get(key)
     if hit is None:
-        hit = _CACHE[key] = _parse(spec, path)
+        hit = _CACHE[key] = _parse(path)
+    for col, expected in (("source", spec.source), ("phenomenon", spec.phenomenon)):
+        if not (hit[col] == expected).all():
+            raise DatabaseError(f"{path}: `{col}` must match manifest {expected!r}")
     return hit
 
 
-def _parse(spec: TableSpec, path: Path) -> pd.DataFrame:
+def _parse(path: Path) -> pd.DataFrame:
     try:
-        raw = pd.read_csv(path)
-    except (OSError, UnicodeDecodeError, pd.errors.ParserError) as exc:
+        raw = pd.read_csv(path, keep_default_na=False)
+    except (OSError, UnicodeDecodeError, pd.errors.ParserError,
+            pd.errors.EmptyDataError) as exc:
         raise DatabaseError(f"{path}: unreadable as CSV: {exc}") from exc
-    missing = [c for c in spec.columns if c not in raw.columns]
-    if missing:
-        raise DatabaseError(
-            f"{path}: the manifest names {missing}, which the file does not "
-            f"have; it has {list(raw.columns)}"
-        )
-    shot = pd.to_numeric(raw[spec.shot_col], errors="coerce")
-    if not shot.notna().all() or not (shot % 1 == 0).all():
-        raise DatabaseError(
-            f"{path}: every `{spec.shot_col}` must be an integer shot number"
-        )
-    scale = UNITS[spec.t_units]
-    times = []
-    for col in spec.time_cols:
-        t = pd.to_numeric(raw[col], errors="coerce")
-        if not t.notna().all() or not t.map(math.isfinite).all():
-            raise DatabaseError(
-                f"{path}: every `{col}` must be a finite number of "
-                f"{spec.t_units}"
-            )
-        times.append(t.astype("float64") * scale)
-    t0 = times[0]
-    t1 = times[-1]
-    if (t1 < t0).any():
-        raise DatabaseError(
-            f"{path}: `{spec.time_cols[-1]}` precedes `{spec.time_cols[0]}` "
-            f"on {int((t1 < t0).sum())} row(s)"
-        )
-    out = pd.DataFrame({
-        "shot": shot.astype("int64"),
-        "t0_s": t0,
-        "t1_s": t1,
-    })
-    for col in spec.attr_cols:
-        out[col] = [_typed(spec, col, v) for v in raw[col]]
-    return out
+    return validate_format(raw, where=str(path))
 
 
 def shots(spec: TableSpec, root=None) -> frozenset[int]:
@@ -357,23 +403,22 @@ def events_for_shot(
         if rows.empty:
             continue
         for row in rows.to_dict("records"):
-            attrs = {col: row[col] for col in spec.attr_cols}
-            attrs["table"] = spec.stem
+            attrs = json.loads(row["attrs"])
             events.append(
                 Event(
                     shot=shot,
-                    source=spec.source,
-                    phenomenon=spec.phenomenon,
+                    source=row["source"],
+                    phenomenon=row["phenomenon"],
                     t0_s=float(row["t0_s"]),
                     t1_s=float(row["t1_s"]),
-                    confidence=_NAN,
+                    confidence=float(row["confidence"]),
                     diag="",
                     channel=-1,
                     pass_name="",
                     attrs=attrs,
                     t_cov0_s=_NAN,
                     t_cov1_s=_NAN,
-                    evidence_kind=EVIDENCE_KIND,
+                    evidence_kind=row["evidence_kind"],
                 )
             )
         records.append({
@@ -395,6 +440,8 @@ def events_for_shot(
 __all__ = [
     "COVERAGE_REASON",
     "EVIDENCE_KIND",
+    "FORMAT_COLUMNS",
+    "FORMAT_SCHEMA_VERSION",
     "MANIFEST",
     "SOURCE_PREFIX",
     "DatabaseError",
@@ -404,4 +451,8 @@ __all__ = [
     "load_manifest",
     "read_table",
     "shots",
+    "validate_format",
+    "write_csv",
+    "write_format_table",
+    "write_meta",
 ]

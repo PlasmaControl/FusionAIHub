@@ -73,7 +73,7 @@
 #                    only route to those two.
 #   database         a curated shot list, when one exists, named ONE of two ways: `path_key`, a
 #                    key of paths.yaml rather than an absolute path, or `tables`, the manifest
-#                    stems of `data/labels/tables.yaml` resolved through labelmaker's own
+#                    stems of `data/events/tables.yaml` resolved through labelmaker's own
 #                    reader. Either way it is MEMBERSHIP and not observation: a hit ranks in
 #                    the DATABASE class, below a forecast, and its coverage stays unknown.
 #
@@ -255,7 +255,7 @@ phenomena:
     prior: 0.012
     database:
       name: RWM_Onsets
-      # Manifest stems, not a path: `data/labels/tables.yaml` says where each CSV is and what
+      # Manifest stems, not a path: `data/events/tables.yaml` says where each CSV is and what
       # its columns mean, and `_table_shots` resolves them through labelmaker's own reader.
       tables: [rwm_onsets_2017, rwm_onsets_2024]
       note: >-
