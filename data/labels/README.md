@@ -32,9 +32,9 @@ task using `scripts/labelmaker/labels_extend.py`. A category with no producer ye
 has **no** `extend_*` directory; task F's roadmap generator reports `not_started`.
 The old unqualified `extend/` directory is not used.
 
-The eleven category directories mirror the user's layout. Their one-line READMEs
-name the inventory row and its lexicon ID, or explicitly say that the ID is pending
-its producer task. Directory names are prose; the join key is the phenomenon ID in
+The twelve category directories mirror the user's layout. Their READMEs preserve
+the user's authored content or follow the same section template, with technical
+inventory and lexicon mappings under `Tables`. Pending IDs are explicit. Directory names are prose; the join key is the phenomenon ID in
 `src/labelmaker/events/lexicons.yaml`. H/L/I-mode intervals, q-min bands, and WPQH
 must get their own IDs in their producer tasks; `lh` is a transition and `qh` is
 QH-Mode, so neither is silently reused for those distinct labels.
@@ -184,5 +184,5 @@ sidecar records the actual successful 500-shot databases-only scan under
 `/tmp/ld1b-rwm-run`. This is visible “ran, zero,” not a new RWM detector or a claim
 that RWM is absent on those shots. No external data roots were modified.
 
-`Recommender System - Discrete Labels.csv` remains the user's editable scope
+`discrete_labels.csv` remains the user's editable scope
 inventory and is deliberately absent from `tables.yaml`.

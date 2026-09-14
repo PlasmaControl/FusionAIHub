@@ -1,4 +1,4 @@
-# Improved Energy Confinement Mode
+# Poloidal Beta
 
 ## Description
 Pending.
@@ -28,7 +28,7 @@ Pending.
 
 ## Tables
 
-Inventory row: I-Mode; lexicon id pending producer task.
+Inventory row: none in `discrete_labels.csv` (37 rows); poloidal beta is not listed. Lexicon id pending producer task.
 
 The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
 `raw/` holds the untouched provided lists; `format/` holds their

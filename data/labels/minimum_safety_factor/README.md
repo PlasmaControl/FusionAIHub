@@ -1,34 +1,11 @@
-# Improved Energy Confinement Mode
-
-## Description
-Pending.
-
-## Method
-Pending.
-
-## Provenance
-Pending.
-
-## Models
-**stable**: pending | YYYY_MM_DD
-
-**latest**: pending | YYYY_MM_DD
-
-**all**:
-- pending | YYYY_MM_DD
+# Minimum Safety Factor
 
 ## Alias
-Pending.
-
-## Reference
-Pending.
-
-## Contact
-Pending.
+- qmin
 
 ## Tables
 
-Inventory row: I-Mode; lexicon id pending producer task.
+Inventory row: High Q-Min; lexicon ids pending q-min producer task.
 
 The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
 `raw/` holds the untouched provided lists; `format/` holds their
