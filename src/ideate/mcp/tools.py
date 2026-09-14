@@ -844,6 +844,15 @@ NOTHING_RESOLVED = (
     "same as no shot having one"
 )
 
+#: Said when `hits` is empty, because an unqualified empty list from a phenomenon tool reads as
+#: "no shot has one" -- the same misreading `NOTHING_RESOLVED` exists to prevent, arriving by the
+#: other route. `phenomena.py` has no constant for this: its own vocabulary is per-shot
+#: (`NO_DETECTOR`, the coverage states), and this is a fact about the result set.
+NO_EVIDENCE = (
+    "no shot carried evidence for this phenomenon under these filters; absence of evidence "
+    "here is not a negative"
+)
+
 #: The standing rule about what a hit's RANK means, built from the registry's own sentences so
 #: that the ordering is stated once (`phenomena.RANKING_SENTENCE`, which `retrieval.yaml` and
 #: `docs/IDEATE.md` are pinned equal to) and the two classes that are not observations are named
@@ -965,6 +974,14 @@ def phenomenon_locate(
             caveats.append(f"could not read {name}.parquet: {db.load_errors[name]}")
     if not (config.load_paths().db_dir / "events.parquet").exists():
         caveats.append(NO_EVENTS)
+    # Which absence this is. A phenomenon nothing detects could never have produced an observed
+    # hit, whatever the filters did -- worth saying on a non-empty list too, where it is why
+    # every hit rests on text or a curated row -- and an empty list is otherwise three different
+    # facts wearing one reply, exactly as `search_shots` refuses to let them be.
+    if not reg[top].covering_sources:
+        caveats.append(ph.NO_DETECTOR.format(id=top))
+    if not hits:
+        caveats.append(NO_EVIDENCE)
     # The fact that changes what every hit means, said where the hits are: a database with no
     # observation in it cannot return an observed hit, however the rows are ranked.
     n_events = len(db.events)
