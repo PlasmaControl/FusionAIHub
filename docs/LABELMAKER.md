@@ -163,7 +163,13 @@ turns what it sees into rows:
 The D-alpha clock reads filterscopes channels 0-7 independently of the U-Net,
 using the first channel with at least two adjacent finite samples (prefer 0). It scales the finite
 range to [0, 1], smooths for 0.64 ms, and picks peaks with prominence ≥ 0.03
-and separation ≥ 3 ms. Point attributes are `prominence` (normalised),
+and separation ≥ 3 ms. Within each contiguous finite run it rejects peaks
+whose half-prominence width exceeds `DALPHA_MAX_WIDTH_MS = 5.0` ms. D-alpha
+ELMs are millisecond bursts (a 200 Hz train is 5 ms apart); humps hundreds
+of ms wide are baseline excursions. This shape guard is independent of
+production-shot counts and applies only to the D-alpha clock. Smoothing
+and width measurement never span NaN gaps or padding.
+Point attributes are `prominence` (normalised),
 `width_ms` (half-prominence width), `channel`, and `rate_hz_local` (centred
 100 ms count / 0.1 s). Confidence is NaN: this is a heuristic that still needs
 manual ELM validation. Padding and internal gaps cannot generate peaks or

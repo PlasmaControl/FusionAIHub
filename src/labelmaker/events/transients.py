@@ -7,7 +7,8 @@ points. The historical helper names and stored-block clock arrays remain
 available for mask analysis; they do not turn a mask burst into an ELM.
 
 `elm_clock_events` applies the same peak picker to one filterscope channel
-from 0-7, normalised over its finite signal range. It publishes `elm`
+from 0-7, normalised over its finite signal range, then rejects broad
+baseline humps by their width within each finite run. It publishes `elm`
 heuristic points with prominence, width, channel and local rate, plus the
 `elm_free` intervals implied by those SAME peaks. Both use source
 `elm_clock` and the filterscope's finite coverage, independently of masks.
@@ -57,6 +58,10 @@ PROMINENCE = 0.03
 #: How close two ELMs may be. 3 ms is a fifth of the pinned period; two
 #: peaks nearer than that are one crash seen twice.
 MIN_DISTANCE_MS = 3.0
+#: D-alpha bursts must have a half-prominence width no greater than 5 ms.
+#: Millisecond spikes can resolve a 200 Hz train (5 ms spacing); humps
+#: hundreds of ms wide are baseline excursions, not ELMs. D-alpha only.
+DALPHA_MAX_WIDTH_MS = 5.0
 #: Window the ELM rate is counted in, centred on the sample. 100 ms holds
 #: six and a half of the pinned periods - long enough that missing one ELM
 #: moves the rate by a sixth rather than by half, short enough to see a
@@ -527,8 +532,12 @@ def elm_clock_events(
     signal is scaled to [0, 1] before applying the clock's 0.03 prominence;
     corpus filterscopes are not mask probabilities. `attrs.prominence` is
     in that normalised scale; width is the smoothed peak's half-prominence
-    width in ms. The smoothing, separation and rate rules
-    are shared with `elm_events` / `elm_clock`. They require validation
+    width in ms. D-alpha ELM spikes are millisecond-scale bursts: a 200 Hz
+    train is only 5 ms apart, whereas humps hundreds of ms wide are baseline.
+    Reject peaks wider than `DALPHA_MAX_WIDTH_MS` (5 ms), measuring shape
+    separately within each contiguous finite run. The smoothing, separation
+    and rate rules are shared with `elm_events` / `elm_clock`; the width cap
+    applies only to D-alpha. These rules require validation
     against manual ELMs; their confidence is therefore unknown, not 1.
 
     Padding and internal NaN gaps are never smoothed across. Quiet intervals
@@ -560,9 +569,10 @@ def elm_clock_events(
             y[lo:hi], t[lo:hi], smooth_ms=smooth_ms, prominence=prominence,
             min_distance_ms=min_distance_ms,
         )
-        measured.extend(zip(t[lo + idx], props["prominences"],
-                            props["widths"] * _frame_s(t[lo:hi]) * 1e3,
-                            strict=True))
+        widths_ms = props["widths"] * _frame_s(t[lo:hi]) * 1e3
+        keep = widths_ms <= DALPHA_MAX_WIDTH_MS
+        measured.extend(zip(t[lo + idx[keep]], props["prominences"][keep],
+                            widths_ms[keep], strict=True))
     elm = np.array([p[0] for p in measured], dtype=np.float64)
     rates = elm_clock(elm, elm, window_s=window_s)["rate_hz"]
     out = [
