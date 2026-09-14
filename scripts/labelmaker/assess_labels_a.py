@@ -178,7 +178,9 @@ def main():
         result = census(paths, paths.root.parent / "ideate/db", pool)
     else:
         shots = args.shots or [pool[i] for i in np.linspace(0, 499, 10, dtype=int)]
-        assert len(set(shots)) >= 10 and set(shots) <= set(pool)
+        outside = sorted(set(shots) - set(pool))
+        if outside:
+            parser.error(f"shots outside recommender_v1: {outside}")
         result = check_sawteeth(paths, shots, out)
     result["pool_sha256"] = sha256_of(pool_file)
     (out / f"{args.mode}.json").write_text(json.dumps(result, indent=2) + "\n")
