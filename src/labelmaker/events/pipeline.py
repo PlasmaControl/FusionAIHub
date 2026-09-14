@@ -1179,8 +1179,10 @@ def finish_shot(
             dalpha_t_s, dalpha_y, min_gap_s=LH_MIN_GAP_S,
         ).intersect(
             coverage.Coverage.measured(ne_t_s, ne_y[0], min_gap_s=LH_MIN_GAP_S),
+            # Beam channels are alternatives for coverage: one missing beam
+            # does not erase a sample measured by another beam.
             coverage.Coverage.measured(
-                pinj_t_s, np.asarray(pinj_y).sum(axis=0), min_gap_s=LH_MIN_GAP_S),
+                pinj_t_s, pinj_y, min_gap_s=LH_MIN_GAP_S),
         )
         found = heuristics.lh_transitions(
             dalpha_t_s, dalpha_y,
@@ -1284,6 +1286,8 @@ def finish_shot(
             events.extend(found)
             res.n_text = len(found)
             sources.add("text")
+            # A logbook search is non-diagnostic, so even a successful text
+            # source carries no coverage (including no display shot span).
             ran[("text", "", -1, "")] = coverage.Coverage((), 0.0)
         except Exception as exc:  # noqa: BLE001 - per-step isolation
             res.skipped["text"] = _cause(exc)
