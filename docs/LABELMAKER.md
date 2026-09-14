@@ -311,7 +311,10 @@ Each `extend_<model>/` belongs to one producer task and holds that producer's re
 on the 500 `recommender_v1` shots. `scripts/labelmaker/labels_extend.py` reads
 per-shot events and source records without modifying them. Specify `--category`,
 `--producer` (source or phenomenon), `--shot-list`, optional `--events-root`, and
-`--out data/labels/<category>/extend_<producer>/recommender_v1.csv`. The common
+`--out data/labels/<category>/extend_<source>/recommender_v1.csv`. Phenomenon
+selectors spanning sources are refused; even a single-source phenomenon export
+uses the actual source's directory. An empty scan with no producing source may
+use `extend_<phenomenon>/`. The common
 schema preserves evidence kinds and source identities. Above **50,000** selected
 rows, the writer instead emits `recommender_v1.summary.csv` with
 `shot, n_events, t_first_s, t_last_s, t_cov0_s, t_cov1_s`, and metadata pointing to
@@ -347,7 +350,9 @@ It prints `N of M shots are named by any table`. Zero is a normal answer and
 exits 0: the two RWM tables span 156785–176092, the corpus starts at 185601,
 and `0 of 500 shots are named by any table` is what an honest run says. The
 committed `resistive_wall_mode/extend_rwm/recommender_v1.csv` records exactly that
-empty result, with provenance from a successful databases-only scan under `/tmp`.
+empty result, with its successful scan's run ID and root-relative paths in the
+metadata. Missing shots are represented by a count, the first 20, and a pointer
+to the complete `.missing_event_shots.json` sidecar beside the CSV.
 A `--run-id` supplied to the extension writer must identify a successful zero scan
 of the selected curated tables. The two committed format tables still yield 56
 events and 33 source rows on their original 33 shots. An invalid

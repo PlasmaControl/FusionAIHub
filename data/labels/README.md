@@ -141,9 +141,11 @@ PYTHONPATH=src python scripts/labelmaker/labels_extend.py \
 
 The writer reads `<shot>_events.parquet` through `read_events` and source records
 through `read_sources`, without modifying them. `--producer` selects an exact
-source or phenomenon ID, restricted to the category. Prefer the source for a single
-model's output. A phenomenon selector unions its matching sources and keeps their
-actual identities in rows and metadata. Colons in source IDs become underscores
+source or phenomenon ID, restricted to the category. Use the source for a single
+model's output. A phenomenon selector that spans producing sources is refused
+before writing: export each source separately, including logbook `text` evidence.
+A single-source phenomenon export must use `extend_<actual-source>/`; only an
+empty scan with no producing source can use `extend_<phenomenon>/`. Colons in source IDs become underscores
 only in the directory slug (`database:rwm_onsets_2017` →
 `extend_database_rwm_onsets_2017`). Producer tasks register new category IDs and
 known source mappings in the extension script when their lexicon entries land.
@@ -162,8 +164,12 @@ the bounding range from matching successful source records, falling back to even
 coverage when no successful source record exists. These bounds do not assert
 continuous coverage. Unknown or missing coverage stays empty. Metadata records the
 full selected event count, requested shots, missing event files, source statuses,
-and that the full events live under `$LABELMAKER_ROOT/events` (with the resolved
-root). A rerun removes the stale alternate full/summary table and its sidecar.
+and the full events location. `full_events_root` is relative to `--root`
+when contained there (normally `events`); external stores retain their absolute
+path. A supplied run ID also records the root-relative `run_metadata` path.
+Missing event files are recorded as a count, the first 20 shots, and a filename
+pointing to the complete `<shot-list>.missing_event_shots.json` list beside the
+CSV; the full list stays outside the compact metadata. A rerun removes the stale alternate full/summary table and its sidecar.
 
 `n_shots` counts shots represented in the output table: event-bearing shots for a
 full table, all requested shots for a summary. `n_shots_with_events` and
@@ -180,9 +186,25 @@ a zero count alone never establishes a successful detector run or a negative lab
 The two format tables yield **56 events and 33 source rows** on their 33 shots.
 None of those shots is in the 500-shot `recommender_v1` set. The committed
 `resistive_wall_mode/extend_rwm/recommender_v1.csv` is therefore header-only; its
-sidecar records the actual successful 500-shot databases-only scan under
-`/tmp/ld1b-rwm-run`. This is visible “ran, zero,” not a new RWM detector or a claim
+sidecar records the successful 500-shot databases-only scan by run ID and
+root-relative paths. Temporary run products are kept separately from committed
+metadata. This is visible “ran, zero,” not a new RWM detector or a claim
 that RWM is absent on those shots. No external data roots were modified.
 
-`discrete_labels.csv` remains the user's editable scope
-inventory and is deliberately absent from `tables.yaml`.
+`discrete_labels.csv` remains the user's editable scope inventory: **37 rows,
+15 at Priority 5**. It is deliberately absent from `tables.yaml`. `poloidal_beta`
+has no row in this inventory yet.
+
+To reproduce the empty RWM scan, create a scratch shot file from the 500 shot
+numbers in `configs/ideate/shot_lists/recommender_v1.yaml`, then run:
+
+```bash
+PYTHONPATH=src python -m labelmaker.run events --databases-only \
+    --shot-file /tmp/ld1b-fix/recommender_v1.txt \
+    --root /tmp/ld1b-fix/rwm-run --run-id ld1b-fix-rwm-recommender-v1
+PYTHONPATH=src python scripts/labelmaker/labels_extend.py \
+    --category resistive_wall_mode --producer rwm \
+    --shot-list configs/ideate/shot_lists/recommender_v1.yaml \
+    --root /tmp/ld1b-fix/rwm-run --run-id ld1b-fix-rwm-recommender-v1 \
+    --out data/labels/resistive_wall_mode/extend_rwm/recommender_v1.csv
+```
