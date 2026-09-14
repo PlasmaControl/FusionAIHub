@@ -6,7 +6,7 @@ The committed [assessment](../../docs/superpowers/specs/2026-09-13-labels-assess
 
 ## Ledger-ready census and statuses
 
-Population: the 500 distinct shots in the read-only production `recommender_v1.txt` (185786–204925), SHA-256 `a58c9c8983bab1c71d5ab74eb4949f86b0a7d06df7b0f1ff5a39132aee6ac2e2`.
+Snapshot: **2026-09-13, measured at commit `b265f40`**. Population: the 500 distinct shots in the read-only production `recommender_v1.txt` (185786–204925), SHA-256 `a58c9c8983bab1c71d5ab74eb4949f86b0a7d06df7b0f1ff5a39132aee6ac2e2`.
 
 | Row | labels_wide rows / shots | Detector / heuristic / forecast / other event rows | Observed-event shots | Forecast-only event shots | Status | Remaining acceptance gap |
 |---|---:|---:|---:|---:|---|---|
@@ -16,7 +16,9 @@ Population: the 500 distinct shots in the read-only production `recommender_v1.t
 | Sawtooth | 0 / 0 | 0 / 0 / 0 / 0 | 0 | 0 | in_progress | Ten-shot check exposed false candidates; no validated radius mapping or independent crash truth |
 | Total | 16,800 / 500 unique | 0 / 0 / 1,037 / 0 | 0 | 76 unique | — | Production source table is empty |
 
-`labels_wide` has no evidence_kind column; summary rows are not time samples or observations. Valid-shot counts: CNN tm_prob 163, DSM tm_risk_1s 151, continued DSM 139/140, AE activity 203, ELM risk 10. The 1,037 event rows all use `label_forecast/forecast`. There are exactly three production event files, on **185946, 185953, 198658**, all outside the 500; no production source files. No production products were written.
+`labels_wide` has no evidence_kind column; summary rows are not time samples or observations. Valid-shot counts: CNN tm_prob 163, DSM tm_risk_1s 151, continued DSM 139/140, AE activity 203, ELM risk 10. The 1,037 event rows all use `label_forecast/forecast`. At that snapshot there were exactly three production event files, on **185946, 185953, 198658**, all outside the 500; no production source files. No production products were written by this assessment.
+
+**Current inventory as of the read-only review (2026-09-14):** production `events/` holds **18 event files and 15 source files**, including **15 `recommender_v1` shots** from L12's pilot products. The joined `events.parquet` is unchanged (SHA-256 `7a46f795e2e05ba6617a92e4b5c5c7767edd3a4fec6d919086904616fe46195d`) with **zero observed rows**. Per-shot products are distinct from the joined database; they do not revise the historical census. Evidence: [review check 2](task-LA-review.md).
 
 The census command and table hashes are in the assessment; the complete output is `/tmp/task-LA/census/census.json`. The committed reproduction script is `scripts/labelmaker/assess_labels_a.py`. All 500 label and feature files were opened read-only.
 
