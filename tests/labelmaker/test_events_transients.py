@@ -23,6 +23,33 @@ import pytest
 from labelmaker.events import masks, schema, transients
 
 
+def test_slow_baseline_with_gap_contains_no_elm_spikes():
+    t = np.arange(20001) / 10000
+    y = 1 + 0.2 * np.sin(2 * np.pi * t)
+    y[(t >= 0.8) & (t <= 1.1)] = np.nan
+    rows = transients.elm_clock_events(y, t, shot=2)
+    peaks = [e for e in rows if e.phenomenon == "elm"]
+    assert not peaks, [(e.t0_s, e.attrs["width_ms"]) for e in peaks]
+    assert [e.phenomenon for e in rows] == ["elm_free", "elm_free"]
+    np.testing.assert_allclose(
+        [(e.t0_s, e.t1_s) for e in rows], [(0.0, 0.7999), (1.1001, 2.0)]
+    )
+
+
+@pytest.mark.parametrize("width_ms", [1.0, 2.0])
+def test_narrow_dalpha_pulses_survive_slow_baseline_and_gap(width_ms):
+    t = np.arange(20001) / 10000
+    peaks = np.array([0.2, 0.6, 1.3, 1.7])
+    sigma = width_ms / 1000 / 2.355  # Gaussian full width at half maximum.
+    y = 1 + 0.2 * np.sin(2 * np.pi * t)
+    y += sum(np.exp(-0.5 * ((t - p) / sigma) ** 2) for p in peaks)
+    y[(t >= 0.8) & (t <= 1.1)] = np.nan
+    rows = transients.elm_clock_events(y, t, shot=2)
+    points = [e for e in rows if e.phenomenon == "elm"]
+    np.testing.assert_allclose([e.t0_s for e in points], peaks, atol=0.0001)
+    assert all(e.t1_s < 0.8 or e.t0_s > 1.1 for e in rows)
+
+
 def test_dalpha_units_do_not_turn_small_noise_into_elms():
     t = np.arange(10001) / 10000
     peaks = np.array([0.2, 0.4, 0.6, 0.8])
