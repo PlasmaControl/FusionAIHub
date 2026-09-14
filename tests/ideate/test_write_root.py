@@ -10,6 +10,7 @@ rather than afterwards.
 from __future__ import annotations
 
 import os
+import shutil
 
 import numpy as np
 import pytest
@@ -36,7 +37,29 @@ def test_origin_names_the_paths_file_when_it_alone_is_set(paths, tmp_path):
 
 def test_origin_names_the_repo_default_when_neither_is_set(paths, monkeypatch):
     monkeypatch.delenv("IDEATE_PATHS")
-    assert config.data_root_origin() == "configs/ideate/paths.yaml default"
+    assert config.data_root_origin() == f"{config.CONFIG_DIR / 'paths.yaml'} default"
+    assert config.data_root_origin().endswith("configs/ideate/paths.yaml default")
+
+
+def test_origin_names_the_paths_file_an_overridden_config_dir_actually_reads(
+    paths, tmp_path, monkeypatch
+):
+    """`IDEATE_CONFIG_DIR` moves the packaged config directory, so "the default" is then a
+    different file -- and a line that named `configs/ideate/paths.yaml` would be naming a file
+    that settled nothing. The label has to be the path `load_paths` reads.
+
+    `config.CONFIG_DIR` is resolved once, at import, from that variable: exporting it inside a
+    live process cannot move it, so the test sets both and then pins the label against the file
+    `load_paths` actually opens.
+    """
+    elsewhere = tmp_path / "other-configs"
+    elsewhere.mkdir()
+    shutil.copy2(tmp_path / "paths.yaml", elsewhere / "paths.yaml")
+    monkeypatch.setenv("IDEATE_CONFIG_DIR", str(elsewhere))
+    monkeypatch.setattr(config, "CONFIG_DIR", elsewhere)
+    monkeypatch.delenv("IDEATE_PATHS")
+    assert config.data_root_origin() == f"{elsewhere / 'paths.yaml'} default"
+    assert config.load_paths().data_root == paths.data_root
 
 
 # ------------------------------------------------------------- the line the commands print

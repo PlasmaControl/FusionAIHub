@@ -70,8 +70,9 @@ ideate build: data root /tmp/scratch-db (IDEATE_DATA_ROOT env) -> db /tmp/scratc
 ```
 
 The bracket is the source that won, and it is one of `IDEATE_DATA_ROOT env`,
-`IDEATE_PATHS=<file>` or `configs/ideate/paths.yaml default`. If it names a root you did not
-mean, stop there.
+`IDEATE_PATHS=<file>` or `<repo>/configs/ideate/paths.yaml default` — the third names the
+packaged paths file in full, because `IDEATE_CONFIG_DIR` can move it and a label is only useful
+if it names the file that was actually read. If it names a root you did not mean, stop there.
 
 **What the guard refuses.** Before publishing, `build` compares the existing
 `<db_dir>/manifest.json` with what it is about to write and refuses — nothing touched, exit 1,

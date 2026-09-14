@@ -100,12 +100,17 @@ def data_root_origin() -> str:
 
     This is the environment precedence `load_paths` applies above, in its order. A per-request
     `using_paths` override is a server concern and no writing command runs under one.
+
+    The third label names the file in full rather than saying "configs/ideate/paths.yaml":
+    `CONFIG_DIR` follows `IDEATE_CONFIG_DIR`, so the packaged path is not always the one that was
+    read, and a label naming a file that settled nothing is the same failure as an unlabelled
+    root one level up.
     """
     if os.environ.get("IDEATE_DATA_ROOT"):
         return "IDEATE_DATA_ROOT env"
     if os.environ.get("IDEATE_PATHS"):
         return f"IDEATE_PATHS={os.environ['IDEATE_PATHS']}"
-    return "configs/ideate/paths.yaml default"
+    return f"{CONFIG_DIR / 'paths.yaml'} default"
 
 
 def _load_yaml_file(name: str) -> dict[str, Any]:
