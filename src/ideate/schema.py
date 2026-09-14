@@ -232,6 +232,7 @@ class ResultItem(BaseModel):
     segment: SegName
     score: float
     description: str
+    caveats: list[str] = Field(default_factory=list)
     polished: bool = False
     blurb: str | None = None  # the offline two-sentence summary from shots.parquet
     explanation: Explanation = Field(default_factory=Explanation)

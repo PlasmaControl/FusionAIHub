@@ -22,6 +22,10 @@ import pandas as pd
 
 from ..schema import Range, ShotRecord
 
+# A negative must describe at least half the requested segment. Coverage states themselves
+# retain the shared overlap contract; this threshold governs only query --avoid eligibility.
+AVOID_MIN_COVERED_FRACTION = 0.5
+
 
 def _empty(dtypes: dict[str, str]) -> pd.DataFrame:
     """A zero-row frame with exactly these columns and dtypes, in this order."""
@@ -294,7 +298,13 @@ class ShotDB:
                         "coverage unknown" in c or "no detector registered" in c or "could not read" in c
                     ))
                 elif ev.coverage_partial and f"phenomenon:{pid}" not in self._label_tokens[i]:
-                    details.update(c for c in ev.caveats if "coverage" in c or "covered only" in c)
+                    if ev.covered_fraction < AVOID_MIN_COVERED_FRACTION:
+                        keep[i] = False
+                        counts['insufficient'] = counts.get('insufficient', 0) + 1
+                        details.add(
+                            f'--avoid {token}: requires at least '
+                            f'{AVOID_MIN_COVERED_FRACTION:.0%} measured coverage of {segment}'
+                        )
             if notes is not None:
                 if n_observed:
                     notes.append(ph.AVOID_DROPPED.format(
@@ -311,6 +321,19 @@ class ShotDB:
     def label_filter_caveats(self, segment: str, avoid: Iterable[str]) -> list[str]:
         notes: list[str] = []
         self._avoid_coverage(segment, avoid, notes)
+        return notes
+
+    def label_filter_shot_caveats(self, shot: int, segment: str, avoid: Iterable[str]) -> list[str]:
+        """Name the measured fraction on each retained partial negative, not just its query."""
+        notes = []
+        for token in sorted(set(avoid)):
+            if token.startswith('phenomenon:'):
+                ev = self.phenomenon_evidence(shot, token.split(':', 1)[1], segment)
+                if ev.coverage_state == 'observed' and ev.coverage_partial and not ev.intervals:
+                    notes.append(
+                        f'--avoid {token}: detectors covered {ev.covered_fraction:.1%} of '
+                        f'the {segment} window; absence outside that coverage is unmeasured'
+                    )
         return notes
 
     def mask(
