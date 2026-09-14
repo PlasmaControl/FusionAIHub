@@ -1,10 +1,13 @@
-# L14-perf report (in progress)
+# L14-perf report
 
-Worktree `/scratch/gpfs/nc1514/FusionAIHub-L14perf`, branch `recommender-L14perf`,
-base `3cced76004183f1b3eef4a485b9e294a207ab9e5`. Read the binding brief and
-L12 report before work. All runtime products use
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/`.
-No production job is authorized or will be submitted.
+Worktree `/scratch/gpfs/nc1514/FusionAIHub-L14perf`, branch `recommender-L14perf`.
+The original profile used `3cced76004183f1b3eef4a485b9e294a207ab9e5`;
+resumed work started at `38a3c13`, incorporating merge base `67f47e3` and C3fix.
+The L12 report is gone; comparison numbers come from the binding brief and
+`scripts/labelmaker/tokeye_masks.sbatch` header. Runtime products use
+`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/`; the prescribed gate
+captures use `runs/slurm/`. One A100 pilot was submitted. Production is a
+provisional report-only proposal and was not submitted.
 
 ## Deliverable 1: profile before implementation
 
@@ -80,8 +83,8 @@ sacct MaxRSS 6,750,340K (6.438 GiB), torch peak allocated 17.647 GiB.
 - Ruling: separate readonly Python/checkpoint inputs from sbatch output ROOT;
   current L12 script incorrectly ties these to the writable root. A plain
   ROOT override must be honored and the resolved root printed before writes.
-- Profile complete; implementation, identity verification, pilot, final suites,
-  documentation and final report pending.
+- Resumed implementation, identity verification, pilot, suites and documentation
+  are completed below; the full pilot utilization gate remains FAIL (exempt).
 
 ## Resumed deliverable 1: WIP tests and writable root
 
@@ -431,3 +434,72 @@ Pilot evidence SHA-256:
 - `2931999_0.jobstats.txt`: `868eb9ae396077962efcabeeab16e8f0b0829d651d1953a34aade42fabda2c07`
 - `2931999_0.sacct.txt`: `04bfb5c819900ec1d86dab492f736e641eb72cc9fc4e0c59717b7039c673be38`
 - `tokeye-2931999_c0of1_r0.json`: `5ed8c186d4c68bba213eaa2ac6408eca647d756f3db166579d234a9fc1b7bed6`
+
+## Deliverable 5: documentation, deviations and final validation
+
+`docs/LABELMAKER.md` now documents compact device results, sparse descriptor
+probabilities, pinned cross-shot input pooling, CUDA forward-boundary identity,
+tail scheduling, explicit output roots/read-only runtime inputs, the frozen
+worktree environment command, and this pilot's measured result and gate limits.
+
+Material deviations and limits:
+
+- Full CUDA cross-block **forward** pooling was rejected by an additional real
+  AMP identity test. Full transfer pooling remains; CUDA forwards retain oracle
+  boundaries. Both the failing evidence and the corrected passing evidence are
+  retained. This protects the binding output-identity contract.
+- Extra one-shot GPU identity smokes were used to catch that failure beyond the
+  required CPU checks. They used physical V100S GPU 1 and isolated L14 roots;
+  they were not SLURM pilots. Only job 2931999_0 was submitted.
+- The initial real CPU oracle was reused read-only at unchanged HEAD for the
+  later CPU schedules, with a git_sha check; every file/frame comparison stayed
+  exact. Fresh-oracle execution remains the test default.
+- The frozen BEFORE profile predates C3fix and was not repeated. AFTER uses
+  current coverage semantics, the same data/flags/GPU, and adapted attribution
+  for pooled input waits and device compaction. Its serial-tail wall did not
+  improve; the actual A100 pilot did.
+- Larger prep/tail limits were chosen from the AFTER service measurements.
+  The A100 capacity estimate over-reserved CPU and host memory: those two
+  production checks failed. Their measured failures remain in the ledger.
+  The requested usage-x-1.3 production proposal is explicitly provisional;
+  smaller-pool throughput has not been established by this one pilot.
+- Scratch feature stores were not populated from production. Feature-dependent
+  detectors report skips consistently in oracle, profiles and pilot; no
+  production masks, events, labels, features, runs/events or IDEATE data were
+  written. Gate captures use the explicitly prescribed runs/slurm exception.
+
+Final required checks ran from this worktree, using the main checkout's existing
+environments only. No install and no worktree `.pixi` were created. Commands:
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 TMPDIR=/tmp/l14perf
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m pytest tests/labelmaker -q -W error -p no:cacheprovider
+# 1621 passed, 3 skipped in 214.74s (0:03:34); EXIT 0.
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m pytest tests/ideate -q -W error -p no:cacheprovider
+# 1252 passed in 126.47s (0:02:06); EXIT 0.
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker ruff check src/labelmaker src/ideate scripts/labelmaker tests/labelmaker tests/ideate
+# All checks passed; EXIT 0.
+```
+
+All source changes were covered by the final labelmaker run; subsequent changes
+are profiler/report/documentation only. IDEATE was also rerun on the final
+source snapshot, with its exit code captured alongside the log. The
+XRootD atexit FutureWarning after the labelmaker summary did not alter exit 0.
+Raw suite/identity/gate logs are preserved under `runs/l14perf/evidence/` and
+`pilot-l14perf/slurm/`. No commit was made while any suite was running.
+
+`git log --oneline recommender..recommender-L14perf`, captured immediately before
+the closing report/documentation commit (the final terminal log includes that
+closing commit as well):
+
+```text
+17c0b06 labelmaker: record A100 pilot metrics and report-only sizing
+5a8386e labelmaker: record L14perf after profile and size the single A100 pilot
+c707b26 labelmaker: overlap compact TokEye inference while preserving output bytes
+48a5ba4 labelmaker: isolate TokEye output root from runtime inputs
+38a3c13 labelmaker: L14perf brief - resume addendum (base 67f47e3 with C3fix coverage contract; WIP tests unverified; mandatory pixi run form; pilot ROOT under runs/l14perf)
+67f47e3 Merge branch 'recommender' into recommender-L14perf
+5d7deee labelmaker: L14perf WIP snapshot at pause (user, 2026-09-14) - unverified
+bba8e8f labelmaker: record L14perf pre-change CUDA profile
+```
