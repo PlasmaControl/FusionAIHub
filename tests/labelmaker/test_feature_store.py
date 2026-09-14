@@ -76,6 +76,48 @@ def test_merge_keeps_earlier_groups_and_clears_resolved_misses(tmp_path):
     assert missing_names(p) == {}
 
 
+def test_merge_preserves_existing_dataset_bytes_and_metadata(tmp_path):
+    # Reconstructing old arrays through float64/float32 changes NaN payloads,
+    # custom datasets, storage filters, and attribute types. Copy them intact.
+    p = tmp_path / "190000_features.h5"
+    bits = np.array([0x3F800000, 0x7F800001, 0x80000000], dtype=np.uint32)
+    with h5py.File(p, "w") as f:
+        f.attrs["custom"] = 42
+        g = f.create_group("ip")
+        g.attrs["complete"] = np.int32(1)
+        g.attrs["calibration"] = np.array([1., 2.])
+        g.create_dataset("xdata", data=np.array([0., 1., 2.], dtype=np.float32))
+        g.create_dataset("ydata", data=bits.view(np.float32)[None], compression="gzip")
+        g.create_dataset("quality", data=np.array([1, 0, 1], dtype=np.int8))
+    write_features(p, 190000, {"bt": _scalar()}, {})
+    with h5py.File(p, "r") as f:
+        assert f.attrs["custom"] == 42
+        assert f["ip/xdata"].dtype == np.float32
+        assert f["ip/ydata"][:].tobytes() == bits.tobytes()
+        assert f["ip/ydata"].compression == "gzip"
+        assert f["ip/quality"][:].tolist() == [1, 0, 1]
+        np.testing.assert_array_equal(f["ip"].attrs["calibration"], [1., 2.])
+
+
+def test_failed_merge_leaves_original_file_byte_identical(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {"ip": _scalar()}, {})
+    before = p.read_bytes()
+    bad = FeatureArray(x=np.arange(3), y=np.zeros((1, 3)), attrs={"bad": {}})
+    with pytest.raises(TypeError):
+        write_features(p, 190000, {"bt": bad}, {})
+    assert p.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [p]
+
+
+def test_merge_does_not_mark_a_retained_feature_missing(tmp_path):
+    p = tmp_path / "190000_features.h5"
+    write_features(p, 190000, {"ip": _scalar()}, {})
+    write_features(p, 190000, {}, {"ip": "TimeoutError", "bt": "KeyError"})
+    assert present(p) == {"ip"}
+    assert missing_names(p) == {"bt": "KeyError"}
+
+
 def test_merge_false_replaces_the_file(tmp_path):
     p = tmp_path / "190000_features.h5"
     write_features(p, 190000, {"ip": _scalar()}, {})

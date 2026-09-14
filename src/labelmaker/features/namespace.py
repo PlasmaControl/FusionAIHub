@@ -453,6 +453,61 @@ FEATURES: tuple[FeatureSpec, ...] = (
         notes="TORBEAM deposition location; 0 where unavailable, which the "
               "upstream training filter admitted (x0[:, 10] >= 0)",
     ),
+    # LC2: measured through fdp on the login node, 2026-09-13. Native
+    # clocks are retained; record availability does not imply actuation.
+    FeatureSpec(
+        name="lh_power", kind="scalar", units="kW",
+        sources=("fdp",),
+        locators=(r"\RF::LH_POWER",),
+        notes=r"RF tag for \RF::TOP.LHCD:LH_POWER. Recorded kW, stored "
+              "without conversion. Net coupled vs forward power is "
+              "unconfirmed; LH_INTOD3 routing unchecked. Probe: 1/20 "
+              "records, shot 203505, peak 223.95677 kW",
+    ),
+    FeatureSpec(
+        name="helicon_twapwr", kind="scalar", units="",
+        sources=("fdp",),
+        locators=(r"\RF::TWAPWR",),
+        notes="RF traveling-wave antenna (Helicon). Raw values, no unit "
+              "conversion: source data units are blank on 200009/201068 "
+              "(2/20 probe records). TWAPWR/TWAPWRC/TWAPWRO meanings "
+              "are unconfirmed; magnitude is not unit evidence",
+    ),
+    *(
+        FeatureSpec(
+            name=f"efc_a1_{ring}_ka", kind="scalar", units="kA",
+            sources=("fdp",),
+            locators=(node,),
+            notes=f"Operations n=1 {description} current-amplitude proxy. "
+                  "Source Amps divided by 1000 to kA; native clock. "
+                  "Probe: 20/20 records. Amplitude alone is not correction",
+        )
+        for ring, node, description in (
+            ("c", r"\OPERATIONS::CN1IAMP", "C-coil"),
+            ("iu", r"\OPERATIONS::IUN1IAMP", "upper I-coil"),
+            ("il", r"\OPERATIONS::ILN1IAMP", "lower I-coil"),
+        )
+    ),
+    FeatureSpec(
+        name="efc_n1_ka", kind="scalar", units="kA",
+        sources=("fdp",),
+        locators=("max(efc_a1_c_ka,efc_a1_iu_ka,efc_a1_il_ka)",),
+        notes="max(A1_C, A1_IU, A1_IL), from the three operations "
+              "current-amplitude features in kA. Requires identical "
+              "native clocks and all three components; nonfinite input "
+              "gives NaN, never a partial maximum. Amplitude alone is "
+              "not correction or a calibrated resonant magnetic field",
+    ),
+    FeatureSpec(
+        name="ecoil_a", kind="scalar", units="A",
+        sources=("fdp",),
+        locators=("ecoil",),
+        notes="PTDATA ecoil, source units 'a', stored in A without "
+              "conversion at native rate. Probe: 20/20 via fdp run on "
+              "the login node. Current alone does not establish saturation; "
+              "no current-limit or polarity calibration is inferred. "
+              "ECOILFWDCL/REVCL are V and cannot substitute for this current",
+    ),
     # Added for the phenomenon recommender (2026-09-07). The first feature
     # labelmaker COMPUTES rather than fetches: its source is the package's
     # own `masks/<shot>_masks.npz` and `events/<shot>_events.parquet`.

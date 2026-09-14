@@ -24,6 +24,34 @@ SLUG = "fake_model"
 NAMES = ["bt", "ip", "pinj_total", "ne_zipfit"]
 
 
+def test_features_stage_accepts_explicit_features_without_a_model(tmp_path):
+    archive = _archive(tmp_path, shots=(190000,))
+    root = tmp_path / "out"
+    assert run.main([
+        "features", "--features", "bt", "--shots", "190000",
+        "--root", str(root), "--archive", str(archive), "--workers", "1",
+    ]) == 0
+    with h5py.File(root / "features/190000_features.h5", "r") as f:
+        assert set(f) == {"bt"}
+        np.testing.assert_array_equal(f["bt/ydata"][:], np.full((1, 240), 2.))
+    manifest = json.loads(next((root / "runs").glob("*/manifest.json")).read_text())
+    assert manifest["features"] == ["bt"]
+    assert manifest["models"] == []
+
+
+@pytest.mark.parametrize("args", [
+    ["features", "--features", "typo"],
+    ["infer", "--features", "bt"],
+    ["features", "--features", "bt", "--models", "fake_model"],
+])
+def test_invalid_feature_selection_is_refused_before_creating_outputs(tmp_path, args):
+    root = tmp_path / "out"
+    with pytest.raises(SystemExit) as exc:
+        run.main([*args, "--shots", "190000", "--root", str(root)])
+    assert exc.value.code == 2
+    assert not root.exists()
+
+
 def _archive(tmp_path, shots=(190000, 190001), n=240):
     p = tmp_path / "archive.h5"
     with h5py.File(p, "w") as f:
