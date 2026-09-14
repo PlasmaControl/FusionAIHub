@@ -192,6 +192,9 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--models", nargs="+", metavar="SLUG",
                         help="required by every stage but analyze, which takes "
                              "its models from --config")
+    parser.add_argument("--features", nargs="+", metavar="NAME",
+                        help="features stage: explicit canonical names instead "
+                             "of model inputs; no --models needed")
     parser.add_argument("--config", type=Path, default=analyze.DEFAULT_CONFIG,
                         help="analyze: the labels and context to produce")
     parser.add_argument("--out", type=Path, default=None,
@@ -890,7 +893,16 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     cfg = None
-    if args.stage == "analyze":
+    if args.features:
+        if args.stage != "features" or args.models:
+            parser.error("--features requires the features stage without --models")
+        for name in args.features:
+            try:
+                ns.by_name(name)
+            except KeyError:
+                parser.error(f"unknown canonical feature: {name}")
+        args.models = []
+    elif args.stage == "analyze":
         if args.models:
             parser.error("analyze takes its models from --config, not --models")
         try:
@@ -968,7 +980,7 @@ def main(argv=None) -> int:
         timeout_s=args.timeout,
         force=args.force,
     )
-    names = _feature_names(adapters)
+    names = list(dict.fromkeys(args.features)) if args.features else _feature_names(adapters)
     write_manifest(
         paths,
         run_id,
