@@ -127,3 +127,90 @@ committed to.
    cannot appear in the manifest it is moving.
 5. **Commit trailer.** Every commit ends with `Co-Authored-By: Claude Fable 5.1
    <noreply@anthropic.com>` as the brief binds, although this session ran on Claude Opus 5.
+
+## Post-review fixes (2026-09-14)
+
+Applied after the review of `3cced76..0a4eb9a` (`.superpowers/sdd/review-Iprev.md`, now tracked
+here). Two commits, TDD throughout — every test below was written or extended first and seen red
+for the stated reason.
+
+```
+80b7b8d ideate: total the build beside its phases, and survive a cross-device cache move
+2885afc ideate: the default root origin names the paths file it actually read
+```
+
+### Finding 1 (MEDIUM) — the untimed residual is now visible from the manifest
+
+The published manifest carries `build_elapsed_s` beside `phase_seconds`: the wall of `build()`
+from entry to the moment that manifest is serialised, rounded to 6 dp like the phases. What the
+six phases do not cover — `coverage_report`, the manifest construction, and on an encoding build
+the whole `if encode:` block and the ignite table writes — is `build_elapsed_s -
+sum(phase_seconds.values())`. The key is a sibling of `phase_seconds`, so the "keys are exactly
+`PHASES`" assertion still holds; it is `None` in the first (staged) manifest, which a crash in
+the rewrite window leaves behind together with the two zeroed phases the comment now names. The
+log line is `build phases (wall s): …, total 12.3 (untimed 1.4)`.
+
+`tests/ideate/test_build_phases.py`: **2 failed / 2 passed → 4 passed** (red: no
+`build_elapsed_s` key; no total on the phase log line).
+
+### Finding 2 (MEDIUM-LOW) — the default origin label names the file that was read
+
+`config.data_root_origin()` returns `f"{CONFIG_DIR / 'paths.yaml'} default"` instead of the
+literal `configs/ideate/paths.yaml default`. `CONFIG_DIR` follows `IDEATE_CONFIG_DIR`, so the old
+label could name a file that settled nothing. `docs/IDEATE.md` now says
+`<repo>/configs/ideate/paths.yaml default` and explains why the path is given in full; the drift
+test derives the expected prose from what the function returns (label minus the repo root) rather
+than repeating a literal.
+
+The new `IDEATE_CONFIG_DIR` case copies the fixture `paths.yaml` into another directory, sets the
+variable **and** `config.CONFIG_DIR` (the variable is read once, at import: setting it inside a
+live process cannot move `CONFIG_DIR`), and pins the label against the file `load_paths` then
+actually opens — `load_paths().data_root == paths.data_root`. The monkeypatch is narrow in the
+sense deviation 2 of the original report was about: six other readers use `config.CONFIG_DIR`,
+and this test calls only `data_root_origin` and `load_paths`, no command.
+
+`tests/ideate/test_write_root.py`: **2 failed / 8 passed → 11 passed**.
+`tests/ideate/test_docs_scratch_db.py`: **1 failed / 3 passed → 4 passed**.
+
+### Finding 5 (LOW) — the staged text subset survives a cross-device move
+
+`build._move_onto(src, dst)` keeps `os.replace` as the fast path (atomic, and both paths are on
+one filesystem under the stock paths file) and falls back to `shutil.move` on `errno.EXDEV` only
+— the case an `IDEATE_PATHS` file that puts `text_cache_dir` on another mount produces. The
+fallback copies and so is not atomic, which is stated where it is written and is acceptable for a
+cache the next build rewrites.
+
+### Finding 3 (LOW) — `manifest.json.part` is pruned
+
+One line: `"manifest.json.part"` is now in `BUILD_FILES`, so `_build_owned` claims an orphan left
+by a crash between writing it and renaming it over `manifest.json`, and the next `_publish`
+removes it. The finding's *second* half — wrapping the rewrite so an ENOSPC after a successful
+publish logs instead of raising — was **not** done: it changes what a failed build reports to the
+CLI, which is more than a cleanup and outside these fixes.
+
+New module `tests/ideate/test_build_staging.py` covers both: **2 failed → 2 passed** (red: EXDEV
+propagated out of `build`; `_publish` left the orphaned `.part` in place). The second test also
+asserts a foreign file (`corpus_coverage.parquet`) is still untouched.
+
+### Not changed
+
+The guard semantics (`_check_publish`), the announcement format beyond the origin label, and
+everything under `docs/superpowers/plans/**`. Review findings 4, 6, 7, 8 and 9 were out of scope
+for this pass; 4 is addressed in prose only (the `phase_seconds` comment now names the two keys a
+lost rewrite leaves at zero).
+
+### Verification
+
+Run from the worktree with `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1`:
+
+| what | result |
+| --- | --- |
+| `pytest test_publish_guard.py test_write_root.py test_build_phases.py test_docs_scratch_db.py test_build_staging.py -q -W error` | `34 passed in 8.23s`, exit 0 |
+| `pytest tests/ideate -q -W error -p no:cacheprovider` | `1210 passed in 191.17s (0:03:11)`, exit 0 |
+| `ruff check src/ideate tests/ideate` (env `labelmaker`) | `All checks passed!`, exit 0 |
+
+`tests/ideate` went 1206 → 1210 (+1 phases, +1 write_root, +2 staging). `tests/labelmaker` was
+not re-run: nothing under it was touched by these fixes. No `ideate` writing command was run
+outside the suites' `tmp_path` fixtures, `/scratch/gpfs/EKOLEMEN/` was not touched, nothing was
+created under `/scratch/gpfs/nc1514` outside this worktree, and `recommender` was neither checked
+out nor committed to.
