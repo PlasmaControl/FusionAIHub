@@ -176,6 +176,9 @@ manual ELM validation. Padding and internal gaps cannot generate peaks or
 quiet intervals; source coverage uses the first and last finite sample.
 All-NaN filterscopes are skipped, never called ELM-free. `transient` is in
 both registries and never supplies an ELM window feature or phenomenon hit.
+ELM window rates, quiet fractions and ages require `source=elm_clock` and
+`diag=filterscopes`; legacy magnetics clock rows are excluded before point
+clustering or interval unions, including in mixed legacy/new tables.
 Re-running events replaces old `tokeye_transient` rows by source; existing
 read-only products are not migrated by changing the code. See the
 [L-A assessment](superpowers/specs/2026-09-13-labels-assessment-A.md) for the
