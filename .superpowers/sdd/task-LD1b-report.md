@@ -164,3 +164,109 @@ Every commit uses `labelmaker:` and the exact trailer
 4. `db86a3e` — export producer tables with bounded per-shot summaries.
 5. `caf3be1` — verify format ingestion and extension provenance.
 6. This documentation/report commit — document the label table lifecycle and verification.
+
+## Review fixes
+
+This section supersedes the original implementation notes above. Fix base: `8d01d5a`; worktree: `/scratch/gpfs/nc1514/FusionAIHub-LD1b`; branch: `recommender-LD1b`. The six requested items were completed in order. The main checkout was only read; no other worktrees or plans were edited, and no SLURM, merge, push, or external publication was used. All writes were confined to this worktree and `/tmp/ld1b-fix`, apart from the shared Git metadata inherent in the requested worktree commits.
+
+### Finding → commit → verification
+
+| Review finding | Fix commit | Evidence |
+|---|---|---|
+| 1: worktree MCP cwd | `6e9700e` | `.mcp.json` is byte-identical to `recommender`; the IDEATE cwd assertion is the expected worktree artifact. |
+| 2: authored README preservation | `85e706b` | Four original byte prefixes verified against the main checkout; exactly one appended `## Tables` each; hashes below. |
+| 3: category layout/inventory rename | `85e706b` | Twelve category names match the main checkout; `minimum_safety_factor` replaces `q_min`; `poloidal_beta` added; inventory bytes unchanged; 11 format tests passed at this checkpoint. |
+| 4: corrupt format CSV exit | `d712216` | `test_an_invalid_format_csv_stops_the_run_before_any_shot`: all four cases (invalid phenomenon, missing column, malformed CSV, missing file) failed with `0 != 7` before the change. All 89 pipeline/database tests then passed. |
+| 5: temporary provenance path | `33372e6`, `b7c56e3` | `test_rwm_500_scan_exports_empty_table_with_completed_run_provenance` asserts `full_events_root=events` and `run_metadata=runs/events/<run-id>.json`. Committed metadata contains no `/tmp` pointer. |
+| 6: long missing-shot list | `33372e6`, `b7c56e3` | `test_missing_event_shots_are_bounded_with_a_complete_list_sidecar`; metadata contains count + first 20 + relative full-list filename. Committed metadata shrank from 6,933 to 1,393 bytes. |
+| 7: mixed producing sources | `33372e6` | `test_extend_refuses_a_phenomenon_spanning_sources_before_writing` covers detector/text evidence on different shots; `test_single_source_phenomenon_requires_the_actual_source_directory` and both zero/error-source cases enforce source directories. |
+| 8: hard-coded identity-test stem | `33372e6` | `test_rwm_raw_bytes_match_original_commit_and_format_regenerates` now uses `raw_path`, `path`, and `raw_file`; the existing adapter test also uses distinct raw/format stems. |
+| 9: inventory count and old paths | `85e706b`, `33372e6` | Parse confirms 37 rows, 15 at Priority 5; spec and README use `discrete_labels.csv` and current `raw/` paths. Historical Git comparisons deliberately retain the old commit paths. |
+| 10: missing guards | `33372e6` | `test_gitignore_allows_new_label_tables_to_be_tracked` checks tracked and future paths with `git check-ignore --no-index`; `test_discrete_label_inventory_has_the_roadmap_input_schema` checks exact columns, at least 37 rows, and valid priorities. |
+
+Seven housekeeping regression cases failed before their implementation; afterward the complete format/extend/layout set passed (26 tests, `-W error`). The two requested guard tests cover existing correct behavior.
+
+### Regeneration
+
+`/tmp/ld1b-fix/regeneration.log` records two byte-identical regenerations of both format CSVs and both metadata files. Both raw files also matched the user's main-checkout originals and Git commit `6de489d`. The new 500-shot run `ld1b-fix-rwm-recommender-v1` completed with zero events and source rows; its run JSON is `/tmp/ld1b-fix/rwm-run/runs/events/ld1b-fix-rwm-recommender-v1.json`.
+
+The RWM extension CSV is byte-identical to its previous committed version. Its metadata intentionally changed for the review fixes and the fresh run. The extension CSV, metadata, and complete missing-shot sidecar all reproduced byte-for-byte when replaying the recorded export timestamp with the same run input; `made_at` remains wall-clock time in normal operation. SHA-256 evidence is in `/tmp/ld1b-fix/regeneration-sha256.json`. No production event store was changed.
+
+### Authored README SHA-256 comparisons
+
+The user files have no final newline. Each complete original was copied unchanged as a byte prefix, then `\n\n## Tables\n` and the technical section were appended. Whole-file hashes therefore differ from the originals as required by the appended section. Sparse user READMEs were preserved as authored; only the other categories received the full template.
+
+| Category | Original SHA-256 = copied prefix SHA-256 | Complete README with Tables SHA-256 |
+|---|---|---|
+| `alfven_eigenmode` | `de6c5ddc97aa184e653d191eb6fccaa69e2801602f204917e59b53bcdda93466` | `e34f037514d44724b5de5933b2f9c29d9be23d054bbd96ca612c0b3f5703ed0f` |
+| `low_confinement_mode` | `0fc9e32049723a6bc2a8506d77b6a4749fed234f662a6512c54e40f218887f42` | `6b73e36aa61f22b52352e5a2fdf8a84375ce219276b22a1683cc30be2c6abc22` |
+| `minimum_safety_factor` | `5f2cf1ad383f23b76e79e92c5d53799c6bc96370a665840f3a0aea2257fad53e` | `02f907954a43a3f43dd7f3b06db72469434c474bf3ad621569edbc3a1adfe461` |
+| `resistive_wall_mode` | `c219b3f95b665715a481f7d8367dcb82ccf504f95d998ac44e9b303dcd3dc44c` | `0644663d0a31d512c86010b63a2e7739e33cb929139b7598dfc3053cd0bdf63d` |
+
+### Final verification
+
+Both full suites ran with `-W error` at HEAD `b7c56e3`. No commit was made while either labelmaker run was active. Both final subprocesses have exited; the only subsequent change is this report.
+
+| Check | Result | Log |
+|---|---|---|
+| Labelmaker | **1,454 passed, 2 skipped, 0 failed**, exit 0, 78.08 s | `/tmp/ld1b-fix/labelmaker-verified.log` |
+| IDEATE | **929 passed, 1 expected worktree failure**, exit 1, 99.31 s | `/tmp/ld1b-fix/ideate-verified.log` |
+| Ruff, requested scope | **All checks passed**, exit 0 | `/tmp/ld1b-fix/ruff-final.log` |
+| Byte-identity regeneration | **Passed**, exit 0 | `/tmp/ld1b-fix/regeneration.log` |
+| `git diff --check` and MCP identity to `recommender` | **Passed** | Verified after the final suites |
+
+The IDEATE failure is exactly `tests/ideate/test_mcp.py::test_the_project_mcp_config_points_at_this_server` at line 891: the restored cwd is `/scratch/gpfs/nc1514/FusionAIHub`, while the running worktree is `/scratch/gpfs/nc1514/FusionAIHub-LD1b`. It is explicitly expected by the fix brief and was not suppressed or repaired with a worktree-specific commit. Both skipped labelmaker cases are live FDP fetch tests gated on `--run-live` or `LABELMAKER_FDP=1`. The external XRootD shutdown finalizer emitted its existing PyTorch `reduce_op` FutureWarning after the successful labelmaker summary; process exit remained 0.
+
+Commands (from this worktree):
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH=$PWD/src
+export TMPDIR=/tmp/ld1b-fix
+export XDG_CACHE_HOME=/tmp/ld1b-fix/cache
+export MPLCONFIGDIR=/tmp/ld1b-fix/matplotlib
+export HF_HOME=/tmp/ld1b-fix/huggingface
+export HF_HUB_OFFLINE=1
+export TORCH_HOME=/tmp/ld1b-fix/torch
+
+pixi run --frozen --no-install \
+  --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
+  python -m pytest tests/labelmaker -q -W error -ra \
+  --basetemp=/tmp/ld1b-fix/pytest-labelmaker-verified
+
+IDEATE_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate \
+LABELMAKER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
+IDEATE_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model \
+  /scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python \
+  -m pytest tests/ideate -q -W error -ra \
+  --basetemp=/tmp/ld1b-fix/pytest-ideate-verified
+
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/ruff check --no-cache \
+  src/labelmaker src/ideate tests/labelmaker tests/ideate scripts/labelmaker
+```
+
+
+### Decisions and deviations
+
+- `poloidal_beta` has no row in the 37-row inventory and no registered phenomenon ID; its README says both explicitly. No inventory row or lexicon ID was invented.
+
+- The allowed refusal strategy was used for multi-source phenomenon selectors. A single-source phenomenon selector can still be used with the actual source directory. The requested empty `extend_rwm` scan remains valid because it contains no producing-source rows.
+
+- Whole authored README hashes cannot equal originals after appending a Tables section; preservation is verified on the complete original byte prefix, with both hashes reported above. This is the literal copy-then-append interpretation.
+
+- Pixi used `--frozen --no-install` with the main checkout's existing manifest/environment, preventing installation or lockfile changes. Bytecode was disabled; temporary files and caches were redirected to `/tmp/ld1b-fix`. A copy of the already cached MiniLM checkpoint was staged in that scratch cache for offline tests.
+
+- An initial attempt to run labelmaker with an empty scratch data root produced one existing model-weight lookup failure and 13 skips (1,442 passed). The final run restores the brief's read-only input roots rather than modifying or skipping that test; all test/run output stays in scratch. IDEATE was also rerun with the exact input roots from the brief.
+
+- The original brief/review input files remain unmodified and untracked. No product code or test was changed to suppress the expected MCP worktree assertion.
+
+### Fix commits
+
+- `6e9700e` — labelmaker: restore shared MCP configuration from recommender
+- `85e706b` — labelmaker: adopt user category layout and preserve authored READMEs
+- `d712216` — labelmaker: reject invalid format tables before processing shots
+- `33372e6` — labelmaker: isolate extension sources and compact export provenance
+- `b7c56e3` — labelmaker: regenerate RWM extension with portable scan metadata
+- This report commit: `labelmaker: document LD1b review fixes and verification`.
+
+Every fix commit has the exact trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
