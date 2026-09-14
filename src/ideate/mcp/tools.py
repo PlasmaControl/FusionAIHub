@@ -215,6 +215,7 @@ def search_shots(
         channel found it and how far each constraint was from the query.
     """
     from ..retrieval import rank as rank_mod
+    from ..retrieval.phenomena import PhenomenaError
     from ..schema import QueryState
 
     caveats: list[str] = []
@@ -252,6 +253,8 @@ def search_shots(
     try:
         found = rank_mod.search(state, db)
         report = _pool_report(state, db)
+    except PhenomenaError as exc:
+        return _error(str(exc), [*caveats, str(exc)])
     except KeyError as exc:
         return _error(
             f"{exc.args[0]}. Columns are the ones describe_shot returns for a shot.", caveats

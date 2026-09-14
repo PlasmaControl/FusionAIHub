@@ -43,6 +43,7 @@ import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from difflib import get_close_matches
 from pathlib import Path
 
 import pandas as pd
@@ -1205,14 +1206,16 @@ def score(ev: Evidence, weights: Mapping[str, float] | None = None, saturation_n
     return float(total)
 
 
-def _avoid_ids(avoid: Iterable[str]) -> list[str]:
+def _avoid_ids(avoid: Iterable[str], *, option: str = '--avoid') -> list[str]:
     """`"phenomenon:elm"` or `"elm"` -> `"elm"`. Anything else is an error, not a silent no-op."""
     reg, out = registry(), []
     for token in avoid or ():
         pid = str(token).split(":", 1)[1] if str(token).startswith("phenomenon:") else str(token)
         if pid not in reg:
             raise PhenomenaError(
-                f"--avoid {token!r}: {pid!r} is not a phenomenon; the registry has {sorted(reg)}"
+                f"{option} {token!r}: {pid!r} is not a phenomenon; "
+                f"nearest known ids: {get_close_matches(pid, reg, n=3, cutoff=0)}; "
+                f"the registry has {sorted(reg)}"
             )
         out.append(pid)
     # De-duplicated: `--avoid elm --avoid phenomenon:elm` is one constraint, and evaluating it

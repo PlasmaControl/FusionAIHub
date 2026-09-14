@@ -108,3 +108,21 @@ def test_avoid_reports_when_an_observed_drop_is_only_a_class_agnostic_transient(
     report = rank.search_report(QueryState(avoid_labels={'phenomenon:elm'}), db)
     assert any('dropped 1' in c and 'observed' in c for c in report['caveats'])
     assert ph.TRANSIENT_NOT_CLASSIFIED in report['caveats']
+
+
+def test_require_rejects_unknown_phenomena_before_building_tokens(ideate_db):
+    db = _db_with(ideate_db, [])
+    with pytest.raises(ph.PhenomenaError, match='sawtoot.*nearest.*sawtooth'):
+        db.mask('flat_top', require_labels=['phenomenon:sawtoot'])
+    assert '_label_tokens' not in db.__dict__
+    assert not db.mask('flat_top', require_labels=['phenomenon:sawtooth']).any()
+
+
+def test_mcp_require_returns_an_error_with_the_bad_id_and_suggestions(ideate_db):
+    _db_with(ideate_db, [])
+    tools.reset_cache()
+    reply = tools.search_shots(ref_shot=100, require_labels=['phenomenon:sawtoot'])
+    assert 'sawtoot' in reply.get('error', '')
+    assert 'nearest' in reply['error'] and 'sawtooth' in reply['error']
+    assert any('sawtoot' in c for c in reply['caveats'])
+    tools.reset_cache()
