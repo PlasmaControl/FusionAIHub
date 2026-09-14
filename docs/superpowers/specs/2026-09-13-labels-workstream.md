@@ -3,7 +3,7 @@
 _Design, 2026-09-13 (controller, from the read-only proposal `.superpowers/sdd/labels-workstream-proposal.md`; awaiting the user's review — decisions below are the controller's defaults, each reversible)._
 
 ## Why
-The user's label inventory `data/labels/discrete_labels.csv` (38 rows, Priority 5 = highest, 15 rows) and the first curated database `data/labels/resistive_wall_mode/rwm_onsets_{2017,2024}.csv` (56 onsets, 33 shots) define what labels to build next. Rule: **label DATA lives under `data/labels/`, never under `src/`**; code that reads it lives in `src/labelmaker`.
+The user's label inventory `data/labels/discrete_labels.csv` (37 rows, Priority 5 = highest, 15 rows) and the first curated database `data/labels/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv` (56 onsets, 33 shots) define what labels to build next. Rule: **label DATA lives under `data/labels/`, never under `src/`**; code that reads it lives in `src/labelmaker`.
 
 ## Measured facts that shape it
 - RWM tables: 33 shots in 156785–176092 — **0 in the corpus (185601–204999), 0 in `recommender_v1`, 0 in the features store.** The loader still lands first: it is the contract every later curated list (WPQH, ELM manual labels, disruption) arrives through; a run over the 500 must write zero rows and say so, not fail.

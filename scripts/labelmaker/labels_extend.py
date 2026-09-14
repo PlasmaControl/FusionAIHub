@@ -142,6 +142,21 @@ def export(args) -> Path:
 
     made_from = [{"producer": source, "run_id": run_id, "git_sha": sha}
                  for source, run_id, sha in sorted(provenance)]
+    producing_sources = sorted({source for source, _, _ in provenance})
+    if args.producer in CATEGORY_PHENOMENA[args.category]:
+        if len(producing_sources) > 1:
+            raise ValueError(
+                f"phenomenon selector {args.producer!r} spans sources "
+                f"{producing_sources}; select --producer <source> and write each "
+                "to its own extend_<source>/ directory"
+            )
+        if producing_sources:
+            directory = f"extend_{producer_slug(producing_sources[0])}"
+            if args.out.parent.name != directory:
+                raise ValueError(f"--out must use the producing source's {directory}/")
+        elif args.out.parent.name != f"extend_{producer_slug(args.producer)}":
+            raise ValueError("no producing source found; use extend_<phenomenon>/ "
+                             "for an empty scan")
     # A databases-only run legitimately writes no per-shot products on an absent
     # shot. Its run JSON is the evidence for a complete zero-result scan.
     if args.run_id:
@@ -165,6 +180,11 @@ def export(args) -> Path:
         if not made_from:
             made_from = [{"producer": args.producer, "run_id": args.run_id,
                           "git_sha": run["git_sha"]}]
+    try:
+        events_root = str(args.events_root.absolute().relative_to(args.root.absolute()))
+    except ValueError:
+        events_root = str(args.events_root.absolute())
+    missing_path = args.out.with_suffix(".missing_event_shots.json")
     meta = {
         "schema_version": FORMAT_SCHEMA_VERSION,
         "made_from": made_from,
@@ -175,13 +195,18 @@ def export(args) -> Path:
         "shot_list_sha256": hashlib.sha256(args.shot_list.read_bytes()).hexdigest(),
         "n_requested_shots": len(shots), "n_events": n_events,
         "n_shots_with_events": sum(r["n_events"] > 0 for r in summaries),
-        "missing_event_shots": missing, "source_status_counts": dict(statuses),
-        "full_events_root": str(args.events_root),
-        "full_events": "$LABELMAKER_ROOT/events/<shot>_events.parquet; "
-                       "the resolved root is full_events_root",
+        "missing_event_shots": {"count": len(missing), "first_20": missing[:20],
+                                "full_list": missing_path.name},
+        "source_status_counts": dict(statuses),
+        "full_events_root": events_root,
+        "full_events": "<full_events_root>/<shot>_events.parquet; "
+                       "a relative full_events_root is relative to --root "
+                       "($LABELMAKER_ROOT)",
         "coverage": "Bounds of successful source coverage; not a claim of continuous "
                     "coverage. Missing products and absent curated shots are not negatives.",
     }
+    if args.run_id:
+        meta["run_metadata"] = f"runs/events/{args.run_id}.json"
     summary_path = args.out.with_suffix(".summary.csv")
     if n_events > MAX_EVENT_ROWS:
         out, stale = summary_path, args.out
@@ -195,6 +220,7 @@ def export(args) -> Path:
             else pd.DataFrame(columns=FORMAT_COLUMNS)
         meta["table_kind"] = "events"
         write_format_table(frame, out, meta)
+    missing_path.write_text(json.dumps(missing) + "\n", encoding="utf-8")
     stale.unlink(missing_ok=True)
     stale.with_suffix(".meta.json").unlink(missing_ok=True)
     print(f"{out}: {n_events} events on {len(shots)} requested shots")
@@ -218,7 +244,9 @@ def main(argv=None) -> int:
         slug = producer_slug(args.producer)
     except ValueError as exc:
         parser.error(str(exc))
-    if (args.out.parent.name != f"extend_{slug}"
+    phenomenon_selector = args.producer in CATEGORY_PHENOMENA[args.category]
+    if ((not phenomenon_selector and args.out.parent.name != f"extend_{slug}")
+            or not args.out.parent.name.startswith("extend_")
             or args.out.parent.parent.name != args.category
             or args.out.name != f"{args.shot_list.stem}.csv"):
         parser.error("--out must be <category>/extend_<producer>/<shot-list-stem>.csv")

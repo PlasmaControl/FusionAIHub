@@ -24,12 +24,12 @@ def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):
     shutil.copytree(REPO / "data/labels", root)
     snapshots = {}
     for spec in db.load_manifest(root):
-        raw = root / spec.dir / "raw" / f"{spec.stem}.csv"
+        raw = spec.raw_path(root)
         original = subprocess.check_output([
-            "git", "show", f"6de489d:data/labels/{spec.dir}/{spec.stem}.csv",
+            "git", "show", f"6de489d:data/labels/{spec.dir}/{spec.raw_file}",
         ], cwd=REPO)
         assert raw.read_bytes() == original
-        formatted = root / spec.dir / "format" / f"{spec.stem}.csv"
+        formatted = spec.path(root)
         for path in (formatted, formatted.with_suffix(".meta.json")):
             snapshots[path] = path.read_bytes()
             path.unlink()
@@ -38,11 +38,11 @@ def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):
     assert converter()(["--root", str(root)]) == 0
     assert {p: p.read_bytes() for p in snapshots} == snapshots
     for spec in db.load_manifest(root):
-        raw = root / spec.dir / "raw" / f"{spec.stem}.csv"
-        formatted = root / spec.dir / "format" / f"{spec.stem}.csv"
+        raw = spec.raw_path(root)
+        formatted = spec.path(root)
         meta = json.loads(formatted.with_suffix(".meta.json").read_text())
         assert meta["made_from"] == {
-            "raw_file": f"{spec.dir}/raw/{spec.stem}.csv",
+            "raw_file": str(raw.relative_to(root)),
             "sha256": hashlib.sha256(raw.read_bytes()).hexdigest(),
         }
         assert meta["n_rows"] in (30, 26)

@@ -1,6 +1,8 @@
 """The committed format inputs retain the RWM CLI contract on both shot sets."""
+import csv
 import json
 import runpy
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -54,4 +56,31 @@ def test_rwm_500_scan_exports_empty_table_with_completed_run_provenance(
     assert meta["n_requested_shots"] == 500 and meta["n_rows"] == 0
     assert meta["made_from"][0]["run_id"] == "rwm-zero"
     assert meta["made_from"][0]["producer"] == "rwm"
+    assert meta["full_events_root"] == "events"
+    assert not meta["full_events_root"].startswith("/tmp")
+    assert meta["run_metadata"] == "runs/events/rwm-zero.json"
     assert not list((tmp_path / "events").glob("*.parquet"))
+
+
+def test_gitignore_allows_new_label_tables_to_be_tracked():
+    # --no-index also checks tracked paths; the novel name catches future tables.
+    result = subprocess.run([
+        "git", "check-ignore", "--no-index", "data/labels/tables.yaml",
+        "data/labels/future_category/raw/future_table.csv",
+    ], cwd=REPO, capture_output=True, text=True, check=False)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout == ""
+
+
+def test_discrete_label_inventory_has_the_roadmap_input_schema():
+    with (REPO / "data/labels/discrete_labels.csv").open(newline="") as stream:
+        reader = csv.DictReader(stream)
+        assert reader.fieldnames == [
+            "Name", "Category", "Database Exists", "Auto Classification Exists",
+            "Priority", "Feasability", "Feasability Reason", "Proposed Method",
+            "Link", "Completed", "Notes",
+        ]
+        rows = list(reader)
+    assert len(rows) >= 37
+    assert all(None not in row and row["Priority"] in {"1", "2", "3", "4", "5"}
+               for row in rows)
