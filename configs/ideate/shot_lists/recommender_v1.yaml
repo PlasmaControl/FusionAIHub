@@ -84,7 +84,12 @@ summary:
     max_mtime: '2026-09-07T15:58:28+00:00'
 hand_review:
   drop: []
-  add: []
+  add:
+  # User request 2026-09-14 (190735 was asked for too; it is already in `shots`).
+  - {shot: 199597, reason: user request 2026-09-14}
+  - {shot: 199607, reason: user request 2026-09-14}
+  - {shot: 190736, reason: user request 2026-09-14}
+  - {shot: 200729, reason: user request 2026-09-14}
 shots:
 - shot: 185786
   run_id: '20210412'
