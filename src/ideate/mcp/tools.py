@@ -955,6 +955,16 @@ def phenomenon_locate(
             ranking=ph.RANKING_SENTENCE, text_only=ph.TEXT_ONLY, database_only=ph.DATABASE_ONLY
         )
     )
+    # `ShotDB.load` does not raise on a missing or torn evidence table -- it hands back the empty
+    # typed frame and records the failure -- because "the reader that needs the table reports it
+    # in its own words" (`shotdb.store.load`). This is that reader doing so, in the words
+    # `get_events` already uses: without them a database whose `labels join` has not run answers
+    # an empty `hits` list, which reads as "no shot has this phenomenon".
+    for name in ("events", "labels_wide", "text_claims", "event_sources"):
+        if name in db.load_errors:
+            caveats.append(f"could not read {name}.parquet: {db.load_errors[name]}")
+    if not (config.load_paths().db_dir / "events.parquet").exists():
+        caveats.append(NO_EVENTS)
     # The fact that changes what every hit means, said where the hits are: a database with no
     # observation in it cannot return an observed hit, however the rows are ranked.
     n_events = len(db.events)

@@ -840,6 +840,31 @@ def test_phenomenon_locate_without_a_database_at_all_names_the_build_command(
     got = tools.phenomenon_locate("NTM")
     assert "no database" in got["error"] and "ideate build" in got["error"]
 
+
+# --------------------------------------------------- fix loop 1 (review I10), findings F1-F7
+
+
+def test_phenomenon_locate_without_an_events_table_says_the_join_has_not_run(ideate_db):
+    """F1. `ShotDB.load` skips a missing `events.parquet` and hands back the empty typed frame,
+    so every reader has to say so in its own words -- `get_events` does, with `NO_EVENTS`.
+    Without it the reply on a freshly built database is an empty `hits` list that reads as "no
+    shot has this phenomenon" rather than "nothing has been joined yet"."""
+    got = tools.phenomenon_locate("NTM", n=10)
+    assert "error" not in got and got["hits"] == []
+    assert tools.NO_EVENTS in got["caveats"]
+
+
+def test_phenomenon_locate_names_an_evidence_table_it_could_not_read(ideate_db):
+    """F1, the other half. A torn table is recorded in `db.load_errors` and is NOT a missing
+    one: `evidence()` would otherwise report `unprocessed`, whose meaning is "no detector ran"
+    -- a claim about the machine standing in for a file that would not open."""
+    (ideate_db / "db" / "events.parquet").write_bytes(b"not a parquet file at all")
+    got = tools.phenomenon_locate("NTM", n=10)
+    assert "error" not in got
+    assert any("could not read events.parquet" in c for c in got["caveats"])
+    assert tools.NO_EVENTS not in got["caveats"]  # the table is there; it is unreadable
+
+
 # ------------------------------------------------------------------------------- the registry
 
 
