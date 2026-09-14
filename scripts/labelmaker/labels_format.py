@@ -101,7 +101,7 @@ def convert(spec: TableSpec, root: Path) -> Path:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2]
-                        / "data/labels", help="Root containing tables.yaml")
+                        / "data/events", help="Root containing tables.yaml")
     parser.add_argument("--table", action="append", help="Convert only this stem")
     args = parser.parse_args(argv)
     specs = load_manifest(args.root)

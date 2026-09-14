@@ -243,7 +243,7 @@ def build_parser() -> ArgumentParser:
                              "<stage>-<timestamp>-<pid>")
     events.add_argument("--databases-only", action="store_true",
                         help="ingest the curated label tables "
-                             "(data/labels/tables.yaml) over the shot list "
+                             "(data/events/tables.yaml) over the shot list "
                              "and write nothing else: no corpus read, no "
                              "U-Net, no masks. Seconds over 10,000 shots, "
                              "and the only way a table reaches a shot whose "

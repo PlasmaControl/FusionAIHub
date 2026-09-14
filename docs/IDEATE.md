@@ -210,8 +210,8 @@ Four things hold for the replies and are worth knowing before reading one:
   the detector. They arrive in different lists and must stay in different sentences.
 * **`get_events` keeps a curated list out of `events` too.** A row with
   `evidence_kind == "database"` comes from a table somebody sent us — the first two are Jeremy
-  Hansen's RWM onset databases, under `data/labels/resistive_wall_mode/` and declared in
-  `data/labels/tables.yaml` — and it arrives in a fourth list, `database_intervals`. It names a
+  Hansen's RWM onset databases, under `data/events/resistive_wall_mode/` and declared in
+  `data/events/tables.yaml` — and it arrives in a fourth list, `database_intervals`. It names a
   shot and a time, not a measurement: its `confidence` is `null`, because a human list has no
   calibrated probability, and its coverage (`t_cov0_s`/`t_cov1_s`) is `null`, because nobody
   recorded which interval of the shot was examined. That second null is the load-bearing one — a

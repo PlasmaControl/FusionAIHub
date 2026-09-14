@@ -288,7 +288,7 @@ Three things worth knowing before reading a row:
 
 ### Curated label tables
 
-Curated lists use the user's `data/labels/<category>/{raw,format,extend_<model>}/`
+Curated lists use the user's `data/events/<category>/{raw,format,extend_<model>}/`
 layout. `raw/` holds byte-identical originals; deterministic adapters in
 `scripts/labelmaker/labels_format.py` use `tables.yaml` to convert them into
 `format/`. `events/databases.py` reads only the common format CSVs, with parsed JSON
@@ -303,7 +303,7 @@ register an adapter if needed, run `PYTHONPATH=src python
 scripts/labelmaker/labels_format.py`, and commit raw, format CSV, sidecar, and
 converter changes together. Manifest `made_at` fixes the conversion revision time;
 sorted rows, stable float/JSON formatting, and that timestamp make the CSV and
-sidecar byte-reproducible. See [data/labels/README.md](../data/labels/README.md) for
+sidecar byte-reproducible. See [data/events/README.md](../data/events/README.md) for
 the complete schema and examples. `config.Paths.label_tables` is the root;
 `LABELMAKER_LABEL_TABLES` overrides it.
 
@@ -311,7 +311,7 @@ Each `extend_<model>/` belongs to one producer task and holds that producer's re
 on the 500 `recommender_v1` shots. `scripts/labelmaker/labels_extend.py` reads
 per-shot events and source records without modifying them. Specify `--category`,
 `--producer` (source or phenomenon), `--shot-list`, optional `--events-root`, and
-`--out data/labels/<category>/extend_<source>/recommender_v1.csv`. Phenomenon
+`--out data/events/<category>/extend_<source>/recommender_v1.csv`. Phenomenon
 selectors spanning sources are refused; even a single-source phenomenon export
 uses the actual source's directory. An empty scan with no producing source may
 use `extend_<phenomenon>/`. The common
