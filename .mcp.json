@@ -1,13 +1,9 @@
 {
   "mcpServers": {
     "ideate": {
-      "command": "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python",
-      "args": ["-m", "ideate.mcp"],
-      "cwd": "/scratch/gpfs/nc1514/FusionAIHub-Ifix",
-      "env": {
-        "PYTHONPATH": "/scratch/gpfs/nc1514/FusionAIHub-Ifix/src",
-        "PYTHONDONTWRITEBYTECODE": "1"
-      }
+      "command": "pixi",
+      "args": ["run", "-e", "ideate-cpu", "python", "-m", "ideate.mcp"],
+      "cwd": "/scratch/gpfs/nc1514/FusionAIHub"
     }
   }
 }
