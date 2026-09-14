@@ -1,5 +1,6 @@
 """Loaded detector evidence must scale by rows, not shots times full-table scans."""
 
+import gc
 from time import perf_counter
 
 import pandas as pd
@@ -51,6 +52,9 @@ def test_loaded_evidence_time_budget(scale_db_dir, operation, budget):
     ph.registry()
     _ = db._phenomenon_config
     ph.resolve('sawtooth')
+    # Isolate each fresh-snapshot measurement from garbage left by earlier suite tests.
+    # Collection remains enabled while timing this operation's own index/evidence allocations.
+    gc.collect()
     start = perf_counter()
     if operation == 'tokens':
         got = db._label_tokens
