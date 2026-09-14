@@ -140,17 +140,25 @@ that phenomenon's covering sources. Another detector cannot make RWM observed. B
 `no detector registered for rwm; text/database evidence only` on an indexed shot with no RWM
 detector. Unknown coverage gets its own `ran; coverage unknown` caveat.
 
-`ShotDB.load` reads `event_sources.parquet` as an optional typed table, alongside events, labels
-and text claims. An absent table has an empty typed frame; an unreadable table also records
-`load_errors`, which both readers surface. Legacy databases without this table may use the
-finite coverage on detector/heuristic event rows; explicit empty or unreadable source tables
-cannot borrow coverage that way. Reload the database snapshot to see changed tables.
+Each source stores `intervals`, a JSON list of disjoint finite `[t0, t1]` pairs, and
+`min_gap_s`, its detector-derived gap resolution. Finite runs separated by less than that
+resolution may merge. Leading/trailing NaNs never extend coverage. Multi-input heuristics
+intersect their required inputs' interval sets; any-channel steps use their union.
+`t_cov0_s`/`t_cov1_s` are display hulls only.
 
-Coverage is **clipped to the window searched** before any of this is decided. On labelmaker's own
-shots the ELM clock's coverage ends at ~4.3 s while other detectors run to 6-7 s, so a flat top
-extending past 4.3 s is partly unlooked-at for ELMs — and a `coverage` that reported the clock's
-own window would have made that shot a clean ELM negative. `coverage_windows` is the real union
-(gaps and all) and `coverage` is its hull; a hull spanning a gap says so in a caveat.
+Coverage is clipped to the requested window. A window wholly inside an interior gap is
+`uncovered`, with a caveat listing the covered intervals around it. A window crossing a gap
+is `observed` with `coverage_partial=True` and the “covered only” qualification; a window
+inside one interval is `observed`. Retrieval's `coverage_windows` and MCP's
+`coverage_windows` carry the actual union; hulls never decide observation.
+
+`ShotDB.load` reads `event_sources.parquet` once per snapshot. An absent table may fall back
+to detector/heuristic event rows: new pipeline rows preserve the source interval set in
+`attrs.coverage_intervals` and its resolution in `attrs.coverage_min_gap_s`. Explicit empty
+or unreadable source tables cannot borrow event coverage. Older source files, older joined
+tables, and older events without interval metadata use their finite hull as one interval,
+always with this caveat: “coverage recorded as a hull by an older writer; interior gaps unknown”.
+They do not establish whether an interior dropout occurred. Reload the snapshot to see updates.
 
 ### The ELM case: a transient detector is not an ELM detector
 
