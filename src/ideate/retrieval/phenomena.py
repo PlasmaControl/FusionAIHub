@@ -140,8 +140,8 @@ COVERAGE_PARTIAL = (
 )
 #: The covered stretches are disjoint. `.format(title=..., segment=..., n=...)`
 COVERAGE_GAPS = (
-    "the {title} coverage of the {segment} window has {n} gap(s): `coverage` is the hull of "
-    "`coverage_windows`, which is the union"
+    "the {title} coverage of the {segment} window has {n} gap(s): the covered intervals are "
+    "disjoint; see `coverage_windows` for the observed portions"
 )
 #: The detector that fired is not a detector for this CLASS. Attached by an `events:` rule that
 #: declares `caveat:`, to every hit whose observed intervals came through that rule.
@@ -804,6 +804,42 @@ def _clip(
 _EPS = 1e-9
 
 
+def coverage_for_sources(
+    sources, t0_s: float | None = None, t1_s: float | None = None,
+    *, title: str, segment: str,
+):
+    """Shared `(state, hull, windows, partial, qualifications)` for eligible sources.
+
+    Both bounds are optional: an omitted edge ends at the recorded coverage,
+    and a whole-record request is partial exactly when its union has gaps.
+    A covered boundary instant counts as overlap. Callers select eligible sources
+    first and add shot/provenance caveats afterwards; all window decisions and
+    gap/partial qualifications live here for retrieval, describe and MCP.
+    """
+    from ..labels import event_sources as es
+
+    state = es.coverage_state(sources, t0_s, t1_s)
+    if state != "observed":
+        return state, None, (), False, []
+    windows = tuple(_clip(_merge(sources.spans), (
+        float("-inf") if t0_s is None else t0_s,
+        float("inf") if t1_s is None else t1_s,
+    )))
+    hull = (windows[0][0], windows[-1][1])
+    partial = len(windows) > 1 or (
+        (t0_s is not None and hull[0] > t0_s + _EPS)
+        or (t1_s is not None and hull[1] < t1_s - _EPS)
+    )
+    caveats = []
+    if len(windows) > 1:
+        caveats.append(COVERAGE_GAPS.format(title=title, segment=segment, n=len(windows) - 1))
+    if partial:
+        caveats.append(COVERAGE_PARTIAL.format(
+            title=title, segment=segment, covered=es.format_intervals(windows),
+        ))
+    return state, hull, windows, partial, caveats
+
+
 def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     """`(state, hull, windows, partial, caveats)` -- which of `COVERAGE_STATES` this shot is in.
 
@@ -823,8 +859,12 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
         r for r in db.evidence_rows('coverage_sources', shot)
         if r['source'] in ph.covering_sources and ph.accepts_row(r)
     )
-    state = es.coverage_state(sources, *(window or (None, None)))
+    state, hull, windows, partial, qualifications = coverage_for_sources(
+        sources, *(window or (None, None)), title=title, segment=segment,
+    )
     caveats = []
+    if sources.legacy:
+        caveats.append(f"{', '.join(sources.legacy)}: {es.LEGACY_HULL_CAVEAT}")
     if sources.unknown:
         names = ", ".join(sources.unknown)
         caveats.append(f"{names}: ran; coverage unknown; absence is not evidence")
@@ -833,19 +873,9 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     if state == "uncovered":
         if sources.spans:
             caveats.append(COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment))
+            caveats.append("covered intervals: " + es.format_intervals(_merge(sources.spans)))
         return state, None, (), False, caveats
-    raw = _merge(sources.spans)
-    windows = tuple(_clip(raw, window))
-    hull = (windows[0][0], windows[-1][1])
-    if len(windows) > 1:
-        caveats.append(COVERAGE_GAPS.format(title=title, segment=segment, n=len(windows) - 1))
-    partial = window is not None and (
-        len(windows) > 1 or hull[0] > window[0] + _EPS or hull[1] < window[1] - _EPS
-    )
-    if partial:
-        covered = ", ".join(f"{a:.3f}-{b:.3f} s" for a, b in windows)
-        caveats.append(COVERAGE_PARTIAL.format(title=title, segment=segment, covered=covered))
-    return "observed", hull, windows, partial, caveats
+    return state, hull, windows, partial, caveats + qualifications
 
 
 def missing_required_groups(

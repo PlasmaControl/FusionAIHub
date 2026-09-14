@@ -36,7 +36,9 @@ _EVIDENCE_COLUMNS = {
         'shot', 'event_id', 'source', 'diag', 'evidence_kind', 'phenomenon', 't0_s', 't1_s',
         'f0_khz', 'f1_khz', 'confidence', 'attrs',
     ),
-    'coverage_sources': ('shot', 'source', 'diag', 'status', 't_cov0_s', 't_cov1_s'),
+    'coverage_sources': (
+        'shot', 'source', 'diag', 'status', 't_cov0_s', 't_cov1_s', 'intervals', 'min_gap_s',
+    ),
     'labels_wide': ('shot', 'slug', 'label', 'n_valid', 'max_valid', 'frac_above'),
 }
 
@@ -207,7 +209,17 @@ class ShotDB:
         missing = {*keys, 'evidence_kind'} - set(self.events.columns)
         if missing:
             raise KeyError(f"events table missing columns: {', '.join(sorted(missing))}")
-        observed = self.events[self.events['evidence_kind'].isin(('detector', 'heuristic'))]
+        observed = self.events[
+            self.events['evidence_kind'].isin(('detector', 'heuristic'))
+        ].copy()
+        # New event rows preserve source intervals in attrs. Only older
+        # rows without that metadata may fall back to a qualified hull.
+        attrs = [json.loads(a) if isinstance(a, str) else (a or {})
+                 for a in observed.get('attrs', [{}] * len(observed))]
+        observed['intervals'] = [json.dumps(a['coverage_intervals'])
+                                 if 'coverage_intervals' in a else None for a in attrs]
+        observed['min_gap_s'] = [a.get('coverage_min_gap_s', float('nan')) for a in attrs]
+        keys += ['intervals', 'min_gap_s']
         spans = observed.groupby(keys, dropna=False, sort=False).size().reset_index(name='n_events')
         return es._frame([es.source_row(**row) for row in spans.to_dict('records')])
 

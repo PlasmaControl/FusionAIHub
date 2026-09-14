@@ -564,7 +564,8 @@ def join(
         claims = claims_mod.text_claims(shots, text_root=text_root, lexicon_path=lexicon.source)
 
     # Which detectors RAN, as opposed to what they found. A shot with no source file gets no
-    # rows and is `unprocessed`; see `labels.event_sources`.
+    # rows and is `unprocessed`; see `labels.event_sources`. Preserve intervals
+    # and min_gap_s unchanged; missing legacy columns remain null, not inferred.
     sources = es.sources_union(shots, events_dir=paths.events)
     by_shot = {int(s): es.shot_summary(sources, s) for s in shots}
     observed = [s for s in shots if by_shot[s]["has_observed_products"]]

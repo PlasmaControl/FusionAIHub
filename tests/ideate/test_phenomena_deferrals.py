@@ -62,3 +62,22 @@ def test_excerpt_centres_on_a_mention_inside_one_long_sentence():
     assert 'tearing mode' in excerpt
     assert excerpt.strip(' .') in text
     assert len(excerpt) <= 60
+
+
+@pytest.mark.parametrize('intervals,template', [
+    ('[[0, 0.9], [5.1, 6]]', ph.AVOID_UNCOVERED),
+    ('[[0, 2], [3, 6]]', ph.AVOID_PARTIAL),
+])
+def test_avoid_cannot_turn_an_interior_gap_into_a_negative(ideate_db, intervals, template):
+    from ideate.labels import event_sources as es
+    from ideate.shotdb.store import ShotDB
+
+    _db_with(ideate_db, [], claims=[_claim(100, 'tearing')])
+    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6,
+                      intervals=intervals, min_gap_s=.003),
+    ])
+    (hit,) = ph.locate('tearing', ShotDB.load(ideate_db / 'db'), avoid=['elm'])
+    assert hit.shot == 100
+    assert template.format(token='phenomenon:elm', title=ph.registry()['elm'].title,
+                           segment='flat_top') in hit.caveats
