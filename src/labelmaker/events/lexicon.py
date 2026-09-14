@@ -24,20 +24,32 @@ from pathlib import Path
 
 import yaml
 
-#: Plan 5.6's round-1 ids, and the rule-label ids added since. The lexicon
-#: may not name anything else: a phenomenon id is a join key against
-#: labels, events and ideate's `phenomena.yaml`, and a typo that loads
-#: silently is a phenomenon that quietly has no evidence.
+#: Plan 5.6's round-1 ids, and the ids added since: `transient`, the three
+#: `qmin_*` rule labels and the `fast_ion` topic. The lexicon may not name
+#: anything else: a phenomenon id is a join key against labels, events and
+#: ideate's `phenomena.yaml`, and a typo that loads silently is a
+#: phenomenon that quietly has no evidence.
 #:
 #: The three `qmin_*` ids are `events/heuristics.py`'s q-min regime bands
 #: (task L-D2). They are SCENARIO ids rather than instability ids - what
 #: the discharge was doing, not what went wrong in it - which is why their
 #: aliases are so much sparser than an instability's: an operator writes
 #: "hybrid" when the shot is one and otherwise writes nothing at all.
+#:
+#: `fast_ion` was added by the I11 review and is deliberately NOT an alias
+#: list bolted onto `ae`. `ae` is one specific MHD mode: it has a detector
+#: band (>= 40 kHz tracks), a label head, and an `--avoid phenomenon:ae`
+#: path that is read as "the AE detector looked and saw nothing". Folding
+#: `fida`, `beam ion`, `fast ion` and `energetic particle` into it would
+#: make a diagnostic name and a transport topic resolve to a mode
+#: observation, and every consumer that reads an `ae` hit as "this shot had
+#: an Alfven eigenmode" would then be reading a topic match. `fast_ion` is
+#: a TOPIC: no detector writes it, no model scores it, and ideate's
+#: registry gives it text evidence only.
 PHENOMENON_IDS = (
     "ae", "eho", "elm", "transient", "tearing", "sawtooth", "fishbone", "qcm",
     "qh", "lh", "detachment", "pickup", "rwm",
-    "qmin_hybrid", "qmin_elevated", "qmin_high",
+    "qmin_hybrid", "qmin_elevated", "qmin_high", "fast_ion",
 )
 
 #: The alias lists themselves. Shipped beside this module because ideate

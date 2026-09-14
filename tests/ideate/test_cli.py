@@ -359,15 +359,19 @@ def test_build_unions_list_and_list_file(tmp_path, monkeypatch):
     assert cli._shots(cli.build_parser().parse_args(["build", "--shots", "5"]), "poc_v1") == [5]
 
 
-def test_there_is_no_eval_subcommand(capsys):
-    """The retrieval-metrics harness is deferred by scope decision. A stub that parsed
-    --task/--folds/--out only to print a Phase-2 notice and exit 2 advertised a command that did
-    nothing; argparse now refuses it like any other unknown word."""
+def test_the_eval_subcommand_is_the_harness_and_not_the_old_stub(capsys):
+    """`eval` was refused outright while the harness was deferred, because a stub that parsed
+    --task/--folds/--out only to print a Phase-2 notice advertised a command that did nothing.
+    Task I11 built the real one, so the word is now taken -- by three subcommands, none of which
+    accepts the stub's flags."""
+    assert set(cli.build_parser().parse_args(["eval", "prompts"]).__dict__) >= {"split", "json"}
+    assert "eval" in cli.build_parser().format_help()
     with pytest.raises(SystemExit) as e:
         cli.main(["eval", "--task", "mp2shots"])
     assert e.value.code == 2
-    assert "invalid choice: 'eval'" in capsys.readouterr().err
-    assert "eval" not in cli.build_parser().format_help()
+    err = capsys.readouterr().err
+    assert "invalid choice: 'mp2shots'" in err
+    assert "prompts" in err and "latency" in err and "recall" in err
 
 
 # --------------------------------------------------------------------------------- packaging

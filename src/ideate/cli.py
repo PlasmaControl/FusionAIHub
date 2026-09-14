@@ -1261,6 +1261,86 @@ def cmd_labels(args) -> int:
     return 0
 
 
+
+# ------------------------------------------------------------------------------------ eval
+
+
+def cmd_eval(args) -> int:
+    """`eval prompts|latency|recall`: the frozen harness (task I11, plan §B8).
+
+    Nothing here tunes anything. `prompts` runs the frozen 200 against one side of the frozen
+    split and prints what came back; `latency` times the five operations Appendix B budgets;
+    `recall` scores the detectors against a human annotation sheet and REFUSES (exit 2) below 20
+    labelled test rows, because an empty table would read as "recall 0" and the two are opposite
+    answers.
+    """
+    from .eval import latency as lat_mod
+    from .eval import phenomenon_recall as rec_mod
+    from .eval import prompts as prompts_mod
+
+    paths = config.load_paths()
+    db_dir = Path(args.db) if args.db else paths.db_dir
+    if not (db_dir / "manifest.json").exists():
+        print(f"no database at {db_dir} -- run `ideate build` first", file=sys.stderr)
+        return 1
+
+    if args.what == "latency":
+        report = lat_mod.measure(
+            db_dir,
+            repeats=args.repeats,
+            runs=args.runs,
+            text=args.text or lat_mod.DEFAULT_TEXT,
+            phenomenon=args.phenomenon,
+            ref_shot=args.ref_shot,
+            segment=args.segment,
+        )
+        print(json.dumps(report.model_dump(mode="json"), indent=1, default=str)
+              if args.json else lat_mod.markdown(report))
+        # Only a row that was over budget in EVERY block fails the run. A `load-dependent` row is
+        # not a pass and not a failure -- it is a measurement the node would not let us make --
+        # so it is named on stderr rather than folded into the exit code either way.
+        straddled = [r.name for r in report.rows if r.verdict == "load-dependent"]
+        if straddled and not args.json:
+            print(
+                "load-dependent (the budget was crossed in some blocks and not others): "
+                + ", ".join(straddled),
+                file=sys.stderr,
+            )
+        return 3 if any(r.verdict == "FAIL" for r in report.rows) else 0
+
+    db = store.ShotDB.load(db_dir)
+
+    if args.what == "recall":
+        from labelmaker.config import Paths as LabelmakerPaths
+
+        root = Path(args.labelmaker_root) if args.labelmaker_root else LabelmakerPaths.from_env().root
+        try:
+            report = rec_mod.recall(args.phenomenon, db, root, segment=args.segment)
+        except KeyError:
+            from .retrieval import phenomena as ph_mod
+
+            titles = ", ".join(sorted(ph_mod.registry()))
+            print(f"unknown phenomenon {args.phenomenon!r}; it is one of {titles}", file=sys.stderr)
+            return 2
+        except rec_mod.RecallRefused as e:
+            print(f"ideate eval recall: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(report.model_dump(mode="json"), indent=1, default=str)
+              if args.json else rec_mod.markdown(report))
+        return 0
+
+    evalset = prompts_mod.load_evalset(args.evalset)
+    report = prompts_mod.run(db, evalset, split=args.split, n=args.n)
+    print(json.dumps(report.model_dump(mode="json"), indent=1, default=str)
+          if args.json else prompts_mod.markdown(report))
+    # BOTH of the plan's bars, not just coverage: `prompts.failed_bars` is the one place they are
+    # decided, so the table's FAIL marks and the exit code cannot disagree.
+    missed = prompts_mod.failed_bars(report)
+    if missed and not args.json:
+        print(f"\nbars missed: {'; '.join(missed)}", file=sys.stderr)
+    return 3 if missed else 0
+
+
 # ------------------------------------------------------------------------------- phenomenon
 
 
@@ -1595,6 +1675,44 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lexicon", help="phenomenon aliases (default: labelmaker's lexicons.yaml)")
     s.add_argument("--no-text", action="store_true", help="skip the text claims entirely")
     p.set_defaults(func=cmd_labels)
+
+    p = sub.add_parser(
+        "eval",
+        help="the frozen evaluation harness: the 200 prompts, the latency table, recall",
+    )
+    what = p.add_subparsers(dest="what", required=True)
+    s = what.add_parser("prompts", help="the frozen 200-prompt evalset against the database")
+    s.add_argument(
+        "--split", default="eval", choices=["eval", "dev", "all"],
+        help="which side of configs/ideate/evalsets/split.yaml (default: eval)",
+    )
+    s.add_argument("--evalset", help="an evalset CSV (default: the frozen one)")
+    s.add_argument("-n", "--n", type=int, default=10, help="results per prompt (default 10)")
+    s = what.add_parser("latency", help="warm timings against the plan's Appendix B budgets")
+    s.add_argument("--repeats", type=int, default=20, help="timed samples per block")
+    s.add_argument(
+        "--runs", type=int, default=3,
+        help="separate blocks of --repeats (default 3); PASS/FAIL only where they all agree",
+    )
+    s.add_argument("--text", help="the text query to time (default: an evalset prompt)")
+    s.add_argument("--phenomenon", default="elm", help="what `locate` looks for (default: elm)")
+    s.add_argument("--ref-shot", type=int, help="the no-text query's reference shot")
+    s = what.add_parser(
+        "recall", help="detector recall vs an annotation sheet; exits 2 below 20 labelled rows"
+    )
+    s.add_argument("phenomenon", help="which sheet, e.g. eho")
+    s.add_argument("--labelmaker-root", help="$LABELMAKER_ROOT (default: labelmaker's own)")
+    for name, s in what.choices.items():
+        # `recall` alone defaults to the whole discharge: an annotation window is indexed against
+        # the shot, and clipping it to the flat top would score a ramp-down ELM as a miss.
+        s.add_argument(
+            "--segment",
+            default="full" if name == "recall" else "flat_top",
+            choices=list(get_args(SegName)),
+        )
+        s.add_argument("--db", help="database directory (default: paths.yaml's db_dir)")
+        s.add_argument("--json", action="store_true", help="the report as JSON")
+    p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser(
         "phenomenon",

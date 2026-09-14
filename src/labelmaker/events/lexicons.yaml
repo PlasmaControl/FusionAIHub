@@ -150,6 +150,11 @@ phenomena:
   lh:
     title: L-H transition
     aliases:
+      # The id itself, so that every consumer whose "try one of" line prints
+      # `lh` also accepts `lh`. It is a real operator spelling too ("LH
+      # transition at 2.1s") and it is not the lower-hybrid launcher: DIII-D
+      # has none, so the token is unambiguous in this corpus.
+      - lh
       - l-h transition
       - lh transition
       - l to h
@@ -202,6 +207,9 @@ phenomena:
   qmin_hybrid:
     title: Hybrid scenario (q-min 0.95-1.5)
     aliases:
+      # The id itself, as for `fast_ion`: every id is a phrase `ideate phenomenon <id>`
+      # must accept (ideate pins it), and an underscore is not a word.
+      - qmin_hybrid
       - hybrid
       - hybrid scenario
       - hybrid discharge
@@ -211,6 +219,9 @@ phenomena:
   qmin_elevated:
     title: Elevated q-min (1.5-2)
     aliases:
+      # The id itself, as for `fast_ion`: every id is a phrase `ideate phenomenon <id>`
+      # must accept (ideate pins it), and an underscore is not a word.
+      - qmin_elevated
       - elevated q-min
       - elevated qmin
     negatives: []
@@ -218,6 +229,46 @@ phenomena:
   qmin_high:
     title: High q-min (above 2)
     aliases:
+      # The id itself, as for `fast_ion`: every id is a phrase `ideate phenomenon <id>`
+      # must accept (ideate pins it), and an underscore is not a word.
+      - qmin_high
       - high q-min
       - high qmin
+    negatives: []
+
+  # A TOPIC, not a mode. Everything above names something a diagnostic can
+  # show; this names the population of ions a dozen different experiments
+  # are about. It is here because the words below are what the
+  # mini-proposals and the logbook actually use for that work - "Transport
+  # of passing and trapped fast ions by static 3D fields", "beam ion losses
+  # measured with FIDA" - and before it existed those sentences resolved to
+  # NOTHING, or (worse, and the I11 review caught it before it shipped) were
+  # about to be aliased into `ae`, which would have turned a diagnostic name
+  # into a claim about an Alfven eigenmode.
+  #
+  # The mode names stay with the mode: `tae`, `rsae`, `bae`, `eae` and
+  # `alfven*` are `ae`'s and are not repeated here. A sentence naming both
+  # ("TAE-induced ITG turbulence in a fast-ion experiment") resolves to both,
+  # which is correct - they are different claims about the same shot.
+  fast_ion:
+    title: Fast-ion physics
+    aliases:
+      # The id itself. Nobody writes an underscore in a logbook, but every id
+      # in this file is a phrase that `ideate phenomenon <id>` and the "try one
+      # of" line it prints must both accept, and `fast_ion` is the first id
+      # that is not a bare word. A test pins the rule for every id.
+      - fast_ion
+      - fast ion
+      - fast-ion
+      - fast ions
+      - fast-ions
+      - energetic particle
+      - energetic particles
+      - energetic ion
+      - energetic ions
+      - beam ion
+      - beam ions
+      - fida
+      - epm
+      - fast ion transport
     negatives: []

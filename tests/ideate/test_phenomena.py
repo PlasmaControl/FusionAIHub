@@ -256,6 +256,43 @@ def test_the_registry_names_exactly_labelmakers_round_one_phenomena():
     assert reg["elm"].exclude == tuple(ph._lexicon()["elm"].negatives)
 
 
+def test_fast_ion_is_a_text_only_topic_with_no_detector_and_no_coverage():
+    """The id the I11 review asked for instead of aliasing fast-ion words onto `ae`.
+
+    Everything that could let it be read as a detector observation is empty, and this test is
+    what keeps it that way: an event rule added here later would make `locate("fast_ion")` claim
+    a diagnostic saw something, and no diagnostic looks for "fast-ion physics".
+    """
+    fast = ph.registry()["fast_ion"]
+    assert fast.labels == () and fast.events == () and fast.forecasts == ()
+    assert fast.coverage_sources == () and fast.band_khz is None
+    assert fast.diags == () and fast.requires_group == ()
+    assert "fida" in fast.aliases and "beam ion" in fast.aliases
+    # And the mode keeps its own words, so an `ae` hit still means an Alfven eigenmode.
+    assert "fida" not in ph.registry()["ae"].aliases
+
+
+def test_resolve_separates_the_fast_ion_topic_from_the_alfven_mode():
+    assert [pid for pid, _ in ph.resolve("beam ion losses measured with FIDA")] == ["fast_ion"]
+    assert [pid for pid, _ in ph.resolve("TAE bursts during the current ramp")] == ["ae"]
+    both = {pid for pid, _ in ph.resolve("fast ion drive of a TAE")}
+    assert both == {"ae", "fast_ion"}
+
+
+def test_every_registry_id_resolves_to_itself():
+    """`ideate phenomenon <query>` matches TEXT, and its refusal prints the registry's ids.
+
+    So an id that does not appear in its own alias list is advertised by the error message and
+    then rejected when it is typed -- which is what `fast_ion` did, and what `lh` did before it
+    (the I11 re-review found the first; this test found the second). The rule is the cheap one:
+    every id the "try one of" line can print is a phrase `resolve` accepts.
+    """
+    reg = ph.registry()
+    for pid in reg:
+        resolved = [p for p, _ in ph.resolve(pid)]
+        assert resolved and resolved[0] == pid, f"{pid!r} resolves to {resolved}"
+
+
 def _registry_file(tmp_path: Path, mutate) -> Path:
     doc = yaml.safe_load((REPO / "configs" / "ideate" / "phenomena.yaml").read_text())
     mutate(doc)
