@@ -141,6 +141,11 @@ phenomena:
   lh:
     title: L-H transition
     aliases:
+      # The id itself, so that every consumer whose "try one of" line prints
+      # `lh` also accepts `lh`. It is a real operator spelling too ("LH
+      # transition at 2.1s") and it is not the lower-hybrid launcher: DIII-D
+      # has none, so the token is unambiguous in this corpus.
+      - lh
       - l-h transition
       - lh transition
       - l to h
@@ -188,6 +193,11 @@ phenomena:
   fast_ion:
     title: Fast-ion physics
     aliases:
+      # The id itself. Nobody writes an underscore in a logbook, but every id
+      # in this file is a phrase that `ideate phenomenon <id>` and the "try one
+      # of" line it prints must both accept, and `fast_ion` is the first id
+      # that is not a bare word. A test pins the rule for every id.
+      - fast_ion
       - fast ion
       - fast-ion
       - fast ions
