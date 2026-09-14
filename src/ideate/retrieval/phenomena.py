@@ -715,12 +715,10 @@ def _bandwidth_khz(row: Mapping, attrs: Mapping) -> float | None:
 def _window(db, shot: int, segment: str) -> tuple[float, float] | None:
     """The segment's `[t0, t1]` in seconds, or None when the shot has no such segment."""
     seg_id = f"{shot}:{segment}"
-    index = getattr(db.segments, "index", None)
-    if index is None or seg_id not in index:
+    window = db._segment_windows.get(seg_id)
+    if window is None or any(_f(t) is None for t in window):
         return None
-    row = db.segments.loc[seg_id]
-    t0, t1 = _f(row.get("t0_ms")), _f(row.get("t1_ms"))
-    return None if t0 is None or t1 is None else (t0 / 1000.0, t1 / 1000.0)
+    return window
 
 
 def _overlaps(row: Mapping, window: tuple[float, float] | None) -> bool:
@@ -744,12 +742,6 @@ def _interval(row: Mapping, attrs: Mapping) -> Interval:
         confidence=_f(row.get("confidence")),
         event_id=str(row["event_id"]),
     )
-
-
-def _rows(frame: pd.DataFrame, shot: int) -> list[dict]:
-    if frame is None or len(frame) == 0 or "shot" not in frame.columns:
-        return []
-    return frame.loc[frame["shot"] == shot].to_dict("records")
 
 
 def _merge(windows: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -798,23 +790,21 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
         return "unindexed", None, (), False, [f"shot {shot} is not in the database"]
     if not ph.covering_sources:
         return "unprocessed", None, (), False, [NO_DETECTOR.format(id=ph.id), NO_COVERAGE]
-    sources = es.for_shot(db, shot, ph.covering_sources)
+    sources = es.CoverageSummary.from_rows(
+        r for r in db.evidence_rows('coverage_sources', shot) if r['source'] in ph.covering_sources
+    )
     state = es.coverage_state(sources, *(window or (None, None)))
-    unknown = es.unknown_coverage_rows(sources)
     caveats = []
-    if not unknown.empty:
-        names = ", ".join(sorted(set(unknown["source"])))
+    if sources.unknown:
+        names = ", ".join(sources.unknown)
         caveats.append(f"{names}: ran; coverage unknown; absence is not evidence")
     if state == "unprocessed":
         return state, None, (), False, caveats + [COVERAGE_UNPROCESSED.format(title=title)]
     if state == "uncovered":
-        if not es.observing_rows(sources).empty:
+        if sources.spans:
             caveats.append(COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment))
         return state, None, (), False, caveats
-    raw = _merge(
-        (float(r.t_cov0_s), float(r.t_cov1_s))
-        for r in es.observing_rows(sources).itertuples()
-    )
+    raw = _merge(sources.spans)
     windows = tuple(_clip(raw, window))
     hull = (windows[0][0], windows[-1][1])
     if len(windows) > 1:
@@ -828,14 +818,18 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     return "observed", hull, windows, partial, caveats
 
 
-def missing_required_groups(db, shot: int, ph: Phenomenon) -> tuple[str, ...]:
+def missing_required_groups(
+    db, shot: int, ph: Phenomenon, shot_metadata: Mapping | None = None,
+) -> tuple[str, ...]:
     """Known absent requirements, leaving unknown legacy inventories silent.
 
     Legacy records with empty raw_groups have all-false default columns. A corpus reader or
     some positive inventory flag establishes that an inventory was actually recorded. A missing
     or null flag remains unknown; a detector's existing evidence is still reported with a caveat.
     """
-    row = _shot_row(db, shot) or {}
+    if not ph.requires_group:
+        return ()
+    row = (_shot_row(db, shot) or {}) if shot_metadata is None else shot_metadata
     flags = {g: row.get(f"has_{g}") for g in CORPUS_GROUPS}
     inventoried = row.get("reader") == "corpus" or any(v is not None and not pd.isna(v) and bool(v)
                                                       for v in flags.values())
@@ -861,6 +855,7 @@ def evidence(
     *,
     min_confidence: float = 0.0,
     label_floor: float | None = None,
+    shot_metadata: Mapping | None = None,
 ) -> Evidence:
     """Every class of evidence for one phenomenon on one shot, kept apart and never merged.
 
@@ -875,6 +870,9 @@ def evidence(
     `label_floor` is how high a detection label has to score to be evidence; None reads
     `retrieval.yaml`. See `DEFAULT_LABEL_FLOOR`: the model running is not the same fact as the
     model saying yes.
+
+    `shot_metadata` supplies the snapshot's pre-indexed inventory for bulk retrieval. Direct
+    calls omit it to read live shot metadata, including an inventory edited by the caller.
     """
     ph = _phenomenon(ph)
     if shot not in db.shots.index:
@@ -889,7 +887,7 @@ def evidence(
     if window is None:
         caveats.append(NO_SEGMENT.format(segment=segment))
 
-    rows = _rows(getattr(db, "events", None), shot)
+    rows = db.evidence_rows('events', shot)
     intervals: list[Interval] = []
     refs: list[EventRef] = []
     forecasts: list[Interval] = []
@@ -955,7 +953,7 @@ def evidence(
     caveats.extend(cov_caveats)
     caveats.extend(
         f"required corpus group {group} is absent for {ph.id}"
-        for group in missing_required_groups(db, shot, ph)
+        for group in missing_required_groups(db, shot, ph, shot_metadata)
     )
     for name, error in db.load_errors.items():
         caveats.append(f"could not read {name}.parquet: {error}")
@@ -1005,8 +1003,7 @@ def _labels_for(db, shot: int, ph: Phenomenon, floor: float):
     """
     if not ph.labels:
         return {}, None, None, [NO_LABEL_MODEL]
-    frame = getattr(db, "labels_wide", None)
-    rows = _rows(frame, shot)
+    rows = db.evidence_rows('labels_wide', shot)
     by_key = {f"{r['slug']}/{r['label']}": r for r in rows}
     out: dict[str, float | None] = {}
     best: float | None = None
@@ -1048,7 +1045,7 @@ def _text_for(db, shot: int, ph: Phenomenon):
     shot") and a back-reference ("like shot 190090") are claims about something else. A negative
     claim is not subtracted -- it is a caveat, in the operators' own frame.
     """
-    rows = [r for r in _rows(getattr(db, "text_claims", None), shot)
+    rows = [r for r in db.evidence_rows('text_claims', shot)
             if str(r.get("phenomenon")) == ph.id]
     positive = [r for r in rows
                 if str(r.get("polarity")) == "pos" and str(r.get("temporality")) == "observed"]
