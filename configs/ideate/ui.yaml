@@ -1,5 +1,16 @@
-# Thin browser UI: only server is read; there are no plot, model or retrieval settings here.
+# Browser UI (src/ideate/ui): the thin Search / Shot / Locate page reads only `server`.
+# `landing` and `actuation` are read by retrieval.scenarios and retrieval.actuation (the
+# scenario cards and the actuation-sketch defaults), which predate the thin UI and still
+# take their defaults from this file.
 version: 1
 server:
   host: 127.0.0.1  # local only; remote access uses ssh -L 8765:localhost:8765 stellar
   port: 8765
+landing:
+  prompt: "What do you want to test?"
+  n_scenarios: 6        # scenario cards shown for one question
+  n_hits: 50            # search depth the grouping works from
+actuation:
+  rdp_tol_frac: 0.03       # Ramer-Douglas-Peucker tolerance as a fraction of the trace's peak-to-peak range
+  max_vertices: 12         # met by raising the tolerance, bisected onto this budget; endpoints always kept
+  grid_ms: 50              # the median seed's common time grid

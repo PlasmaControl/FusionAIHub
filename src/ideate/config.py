@@ -113,12 +113,7 @@ def load_yaml(name: str) -> dict[str, Any]:
     hit = _YAML_CACHE.get(str(path))
     if hit is None or hit[0] != st.st_size or hit[1] != st.st_mtime_ns:
         hit = _YAML_CACHE[str(path)] = (st.st_size, st.st_mtime_ns, _load_yaml_file(name))
-    result = copy.deepcopy(hit[2])
-    if name == "ui.yaml":
-        # Older retrieval callers still request these keys through ui.yaml. Keep
-        # their configuration separate from the thin UI without changing those APIs.
-        result = {**load_yaml("ui_legacy.yaml"), **result}
-    return result
+    return copy.deepcopy(hit[2])
 
 
 class CorpusAddress(BaseModel):
