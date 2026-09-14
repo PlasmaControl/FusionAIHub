@@ -13,7 +13,7 @@ cd /scratch/gpfs/nc1514/FusionAIHub-build
 CUDA_VISIBLE_DEVICES='' PYTHONPATH=$PWD/src /scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python scripts/labelmaker/assess_labels_a.py census --out /tmp/task-LA/census
 ```
 
-The complete machine-readable output is `/tmp/task-LA/census/census.json`. Inputs are `/scratch/gpfs/EKOLEMEN/nc1514/ideate/db/{labels_wide,events,event_sources,corpus_coverage}.parquet` and `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/{labels,features,events}`. These results are a dated snapshot, not a claim about future production joins.
+The complete machine-readable output is `/tmp/task-LA/census/census.json`. Inputs are `/scratch/gpfs/EKOLEMEN/nc1514/ideate/db/{labels_wide,events,event_sources,corpus_coverage}.parquet` and `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/{labels,features,events}`. These results are the **2026-09-13 snapshot, measured at commit `b265f40`**, not a claim about future production joins.
 
 | CSV row | `labels_wide` rows / shots | Event rows: detector / heuristic / forecast / other | Shots with observed events | Forecast-only event shots | Status and decisive gap |
 |---|---:|---:|---:|---:|---|
@@ -37,7 +37,9 @@ The raw label files contain AE, ELM DSM, tearing CNN, and original tearing DSM g
 
 The four ELM forecast horizons each have 10 valid shots. The 0.5 column is descriptive, **not** the forecast join threshold: the DSM operating threshold is 0.2, which explains the seven ELM forecast-event shots. Auxiliary beta, frequency, mixture, and survival parameters must not be counted as mode detections.
 
-There are **exactly three production labelmaker event files today**: `185946_events.parquet`, `185953_events.parquet`, and `198658_events.parquet`. **None is a recommender_v1 shot.** They contain older TokEye tracks/transients, ECE sawtooth candidates and rules, including old `tokeye_transient/elm` labels and magnetics-derived `elm_clock/elm_free`. There are zero production `*_sources.parquet` files. These three files cannot support a claim of observed coverage on the 500. L-A keeps them read-only; query compatibility and rerun migration are covered by regression tests.
+At that snapshot there were **exactly three production labelmaker event files**: `185946_events.parquet`, `185953_events.parquet`, and `198658_events.parquet`. **None is a recommender_v1 shot.** They contain older TokEye tracks/transients, ECE sawtooth candidates and rules, including old `tokeye_transient/elm` labels and magnetics-derived `elm_clock/elm_free`. There were zero production `*_sources.parquet` files. These three files cannot support a claim of observed coverage on the 500. L-A keeps them read-only; query compatibility and rerun migration are covered by regression tests.
+
+**Current inventory as of the read-only review (2026-09-14):** production `events/` holds **18 event files and 15 source files**, including **15 `recommender_v1` shots** from L12's pilot products. The joined `events.parquet` is unchanged (SHA-256 `7a46f795e2e05ba6617a92e4b5c5c7767edd3a4fec6d919086904616fe46195d`) with **zero observed rows**. Per-shot products are distinct from the joined database; the newer files do not change the dated joined-table census above. See [review check 2](../../../.superpowers/sdd/task-LA-review.md).
 
 Input table SHA-256 values, for snapshot identification:
 
