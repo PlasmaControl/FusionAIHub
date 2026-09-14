@@ -169,3 +169,29 @@ def test_retained_partial_negative_carries_its_fraction_on_the_shot(ideate_db, c
     cli.main(['query', '--ref', '100', '--avoid', 'phenomenon:elm'])
     assert '50.0%' in capsys.readouterr().out
     tools.reset_cache()
+
+
+@pytest.mark.parametrize('option', ['--require', '--avoid'])
+def test_cli_phenomenon_errors_do_not_offer_irrelevant_column_advice(ideate_db, capsys, option):
+    assert cli.main(['query', '--ref', '100', option, 'phenomenon:sawtoot']) == 2
+    error = capsys.readouterr().err
+    assert 'sawtoot' in error and 'nearest' in error
+    assert 'Columns are' not in error
+
+
+def test_avoid_coverage_runs_only_once_per_mcp_search(ideate_db, monkeypatch):
+    db = _avoid_db(ideate_db)
+    calls = []
+    original = type(db)._avoid_coverage
+
+    def counted(self, *args, **kwargs):
+        calls.append(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(db), '_avoid_coverage', counted)
+    tools.reset_cache()
+    reply = tools.search_shots(ref_shot=101, avoid_labels=['phenomenon:elm'])
+    assert [item['shot'] for item in reply['results']] == [100]
+    assert any('uncovered' in c for c in reply['caveats'])
+    assert len(calls) == 1
+    tools.reset_cache()

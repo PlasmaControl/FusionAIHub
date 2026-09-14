@@ -1393,6 +1393,8 @@ def cmd_describe(args) -> int:
 
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
+    from .retrieval.phenomena import PhenomenaError
+
     paths = config.load_paths()
     db = _open_db(paths)
     if db is None:
@@ -1405,10 +1407,16 @@ def cmd_query(args) -> int:
         return 1
     try:
         report = rank_mod.search_report(state, db)
-    except (KeyError, ValueError) as e:
+    except PhenomenaError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    except KeyError as e:
         print(
             f"{e.args[0]}. Columns are the ones `ideate show SHOT --full` prints.", file=sys.stderr
         )
+        return 2
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
         return 2
     # One pass: the per-channel counts on the "channels" line come from the same rankings the
     # results were fused from. Running every channel once more for the counts doubled the cost of

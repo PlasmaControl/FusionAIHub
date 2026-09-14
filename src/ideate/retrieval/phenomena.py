@@ -73,7 +73,7 @@ CORPUS_GROUPS: tuple[str, ...] = ("bes", "co2", "ece", "filterscopes", "mhr", "m
 #: The four states `PhenomenonHit.coverage_state` can be in, worst-informed first. They are not
 #: degrees of one thing: only `observed` is an answer to "was it there?", and the other three are
 #: three different ways of saying the database cannot tell you. The names and the order are
-#: `ideate.mcp.tools.EVENT_STATES`', so a `get_events` reply and a phenomenon hit describe the
+#: `ideate.mcp.tools.EVENT_STATES`, so a `get_events` reply and a phenomenon hit describe the
 #: same shot with the same word.
 #:
 #:   unindexed    the shot is absent from db.shots
