@@ -202,6 +202,20 @@ def test_resolve_separates_the_fast_ion_topic_from_the_alfven_mode():
     assert both == {"ae", "fast_ion"}
 
 
+def test_every_registry_id_resolves_to_itself():
+    """`ideate phenomenon <query>` matches TEXT, and its refusal prints the registry's ids.
+
+    So an id that does not appear in its own alias list is advertised by the error message and
+    then rejected when it is typed -- which is what `fast_ion` did, and what `lh` did before it
+    (the I11 re-review found the first; this test found the second). The rule is the cheap one:
+    every id the "try one of" line can print is a phrase `resolve` accepts.
+    """
+    reg = ph.registry()
+    for pid in reg:
+        resolved = [p for p, _ in ph.resolve(pid)]
+        assert resolved and resolved[0] == pid, f"{pid!r} resolves to {resolved}"
+
+
 def _registry_file(tmp_path: Path, mutate) -> Path:
     doc = yaml.safe_load((REPO / "configs" / "ideate" / "phenomena.yaml").read_text())
     mutate(doc)
