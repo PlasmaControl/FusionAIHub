@@ -596,24 +596,13 @@ def get_events(
     database = [r for r in rows if r.get("evidence_kind") == "database"]
     forecasts = [r for r in rows if r.get("evidence_kind") == "forecast"]
 
-    status = es.coverage_state(sources, t0_s, t1_s)
     coverage = _coverage_block(sources, summary)
     source_summary = es.CoverageSummary.from_rows(sources.to_dict("records"))
-    raw_windows = ph._merge(source_summary.spans)
-    windows = ph._clip(raw_windows, (
-        float("-inf") if t0_s is None else t0_s,
-        float("inf") if t1_s is None else t1_s,
-    ))
-    partial = bool(windows) and (
-        len(windows) > 1
-        or (t0_s is not None and windows[0][0] > t0_s + ph._EPS)
-        or (t1_s is not None and windows[-1][1] < t1_s - ph._EPS)
+    status, _, windows, partial, qualifications = ph.coverage_for_sources(
+        source_summary, t0_s, t1_s,
+        title=entry.title if entry is not None else "diagnostic", segment="requested",
     )
-    if partial:
-        caveats.append(ph.COVERAGE_PARTIAL.format(
-            title=entry.title if entry is not None else "diagnostic",
-            segment="requested", covered=es.format_intervals(windows),
-        ))
+    caveats.extend(qualifications)
     if source_summary.legacy:
         caveats.append(f"{', '.join(source_summary.legacy)}: {es.LEGACY_HULL_CAVEAT}")
     window_text = "" if t0_s is None and t1_s is None else f" over [{t0_s}, {t1_s}] s"
@@ -626,7 +615,7 @@ def get_events(
         caveats.append(
             f"the window [{t0_s}, {t1_s}] s is outside every source's coverage of shot {shot}, "
             f"whose display hull is {coverage['t_cov0_s']} to {coverage['t_cov1_s']} s; "
-            f"covered intervals: {es.format_intervals(raw_windows)} -- "
+            f"covered intervals: {es.format_intervals(ph._merge(source_summary.spans))} -- "
             f"nobody looked there, so an empty result "
             f"says nothing about the window you asked about"
         )

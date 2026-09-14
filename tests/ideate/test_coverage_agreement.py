@@ -139,6 +139,104 @@ def test_whole_record_searches_agree_that_interior_gaps_are_partial(gap_chain):
     assert result["coverage_partial"] is ev.coverage_partial is True
 
 
+@pytest.mark.parametrize("bounds,state,partial,gaps", [
+    ((1.2, 1.8), "uncovered", False, 0),
+    ((.5, 1.5), "observed", True, 0),
+    ((.5, 3.0), "observed", True, 1),
+    ((2.5, 3.0), "observed", False, 0),
+    ((None, None), "observed", True, 1),
+    ((.5, None), "observed", True, 1),
+    ((None, 3.0), "observed", True, 1),
+    ((2.5, None), "observed", False, 0),
+    ((None, .5), "observed", False, 0),
+    ((7., None), "uncovered", False, 0),
+    ((None, -.1), "uncovered", False, 0),
+])
+def test_mcp_and_retrieval_share_window_decisions_and_qualifications(
+    gap_chain, bounds, state, partial, gaps,
+):
+    root, _ = gap_chain
+    db = ShotDB.load(root / "db")
+    result = tools.get_events(198658, "elm", *bounds)
+    direct = ph._coverage_for(db, 198658, ph.registry()["elm"],
+                              None if bounds == (None, None) else bounds, "requested")
+    assert result["status"] == direct[0] == state
+    assert result["coverage_partial"] is direct[3] is partial
+    assert result["coverage_windows"] == [list(w) for w in direct[2]]
+    for caveats in (result["caveats"], direct[4]):
+        assert sum("gap(s)" in c for c in caveats) == bool(gaps)
+        assert sum("covered only" in c for c in caveats) == partial
+    def qualifications(cs):
+        return [c for c in cs if "gap(s)" in c or "covered only" in c]
+
+    assert qualifications(result["caveats"]) == qualifications(direct[4])
+
+
+def test_gap_qualification_does_not_confuse_source_and_requested_hulls(gap_chain):
+    _, expected = gap_chain
+    result = tools.get_events(198658, "elm", .5, 3.0)
+    assert result["coverage"]["t_cov0_s"] == expected[0][0]
+    assert result["coverage"]["t_cov1_s"] == expected[-1][1]
+    assert result["coverage_windows"] == [[.5, expected[0][1]], [expected[1][0], 3.0]]
+    caveat, = [c for c in result["caveats"] if "gap(s)" in c]
+    assert "`coverage` is the hull of `coverage_windows`" not in caveat
+    assert "disjoint" in caveat and "coverage_windows" in caveat
+
+
+def test_mcp_evidence_and_describe_call_the_same_window_function(gap_chain, monkeypatch):
+    from ideate.retrieval.describe import describe
+
+    root, _ = gap_chain
+    db = ShotDB.load(root / "db")
+    real = ph.coverage_for_sources
+    calls = []
+
+    def tracked(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ph, "coverage_for_sources", tracked)
+    tools.get_events(198658, "elm", .5, 1.5)
+    assert len(calls) == 1
+    calls.clear()
+    ph.evidence(198658, "elm", db, segment="ramp_up")
+    assert len(calls) == 1
+    calls.clear()
+    describe(db.get(198658), segment="ramp_up", db=db)
+    assert calls, "describe must reach the shared decision through evidence"
+
+
+def test_text_only_empty_coverage_is_unprocessed_and_never_unknown(ideate_db):
+    from ideate.retrieval.describe import describe
+
+    es.write_sources(ideate_db / "db/event_sources.parquet", [
+        es.source_row(100, "text", intervals="[]", min_gap_s=0, n_events=1),
+    ])
+    tools.reset_cache()
+    db = ShotDB.load(ideate_db / "db")
+    summary = es.shot_summary(db.coverage_sources, 100)
+    assert summary["n_sources_ok"] == 1
+    assert summary["n_sources_unknown_coverage"] == 0
+    assert summary["has_observed_products"] is False
+    for bounds in ((None, None), (1.2, 1.8)):
+        assert es.coverage_state(db.coverage_sources, *bounds) == "unprocessed"
+        assert es.unknown_coverage_rows(db.coverage_sources).empty
+        result = tools.get_events(100, t0_s=bounds[0], t1_s=bounds[1])
+        assert result["status"] == "unprocessed"
+        assert result["coverage"]["n_sources_unknown_coverage"] == 0
+        assert result["coverage_windows"] == []
+        assert not result["coverage_partial"]
+        assert not any("coverage unknown" in c or "nobody looked there" in c
+                       for c in result["caveats"])
+    ev = ph.evidence(100, "elm", db)
+    assert ev.coverage_state == "unprocessed"
+    assert not any("coverage unknown" in c for c in ev.caveats)
+    description = describe(db.get(100), db=db)
+    assert "coverage: uncovered" not in description
+    assert "coverage unknown" not in description
+    tools.reset_cache()
+
+
 @pytest.mark.parametrize("legacy_events", [False, True])
 def test_older_source_and_event_hulls_are_disclosed_by_all_readers(ideate_db, legacy_events):
     from ideate.retrieval.describe import describe

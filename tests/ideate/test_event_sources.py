@@ -8,11 +8,50 @@ file need one definition of it, and `write_sources` is it.
 
 from __future__ import annotations
 
+import ast
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from ideate.labels import event_sources as es
+
+
+def test_formatted_bounds_do_not_exclude_a_window_the_source_covers():
+    lo, hi = 99.9999999, 100.0000499
+    window = (99.99999995, 100.00004)
+    shown = es.format_intervals(((lo, hi),))
+    displayed = ast.literal_eval(shown.removesuffix(" s"))
+    assert displayed[0] <= window[0] <= window[1] <= displayed[1], shown
+    assert displayed == [lo, hi], "coverage bounds must round-trip as floats"
+
+
+@pytest.mark.parametrize("value,legacy,expected", [
+    pytest.param([[0, 1], [2, 4]], False, ((0, 1), (2, 4)), id="list"),
+    pytest.param(((0, 1), (2, 4)), False, ((0, 1), (2, 4)), id="tuple"),
+    pytest.param(np.array([[0., 1.], [2., 4.]]), False,
+                 ((0, 1), (2, 4)), id="ndarray"),
+    pytest.param("[[0, 1], [2, 4]]", False, ((0, 1), (2, 4)), id="json"),
+    pytest.param(None, True, ((-10, 90),), id="none"),
+    pytest.param(float("nan"), True, ((-10, 90),), id="nan"),
+    pytest.param(np.float32("nan"), True, ((-10, 90),), id="numpy-nan"),
+    pytest.param([], False, (), id="empty-list"),
+    pytest.param((), False, (), id="empty-tuple"),
+    pytest.param(np.empty((0, 2)), False, (), id="empty-ndarray"),
+    pytest.param("[]", False, (), id="empty-json"),
+])
+def test_interval_encodings_have_consistent_legacy_and_authoritative_semantics(
+    value, legacy, expected,
+):
+    row = es.source_row(100, "elm_clock", t_cov0_s=-10, t_cov1_s=90)
+    row["intervals"] = value
+    assert es.legacy_hull(row) is legacy
+    assert es.row_intervals(row) == expected
+    summary = es.CoverageSummary.from_rows([row])
+    assert summary.spans == expected
+    assert summary.legacy == (("elm_clock",) if legacy else ())
+    assert es.coverage_state(summary, 1.2, 1.8) == (
+        "observed" if legacy else "uncovered")
 
 
 def _rows(shot: int) -> list[dict]:
