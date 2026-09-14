@@ -344,6 +344,80 @@ rows, one per half of the policy plus the realistic case, so the test fails if
 either filter is dropped.
 
 
+## Running the events job
+
+Use the three L12 scripts in order: a CPU pre-pass over the **whole** shot list,
+one GPU per array element, then a single dependent index rebuild and utilisation
+gate. The array reads the text subset with `--text-subset readonly`, writes
+per-shot products with `--no-index`, and binds the parent plus prep/tail workers
+to its allocated CPUs. `PREFETCH` must be at least `PREP_WORKERS`, and request
+exactly `PREP_WORKERS + 2` CPUs. Both scripts and the gate import `$REPO/src`;
+GPU inference uses the phase3 Python, while CPU commands and jobstats use the
+main checkout's labelmaker pixi environment.
+
+The pre-pass also stages the site's unchanged `jobstats` client and its support
+files in a private `runs/slurm/jobstats-client/` directory. Compute nodes do not
+have `/usr/local/bin/jobstats`; the companion puts this shared copy on `PATH`.
+Run the pre-pass from a login node where the site command is installed.
+
+For a first, at-most-20-shot pilot (these commands submit work):
+
+```bash
+cd /scratch/gpfs/nc1514/FusionAIHub-L
+export REPO=$PWD
+export LABELMAKER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+ROOT=$LABELMAKER_ROOT
+mkdir -p "$ROOT/runs/slurm"
+head -20 "$ROOT/recommender_v1.txt" > "$ROOT/runs/slurm/pilot20.txt"
+
+# 1. Once for all 500 shots, on the login node; no GPU allocation.
+SHOT_FILE="$ROOT/recommender_v1.txt" bash scripts/labelmaker/tokeye_text_subset.sh
+
+# 2. One array element. Defaults and their measured basis are atop the sbatch.
+JOBID=$(SHOT_FILE="$ROOT/runs/slurm/pilot20.txt" N_CHUNKS=1 \
+  sbatch --parsable --array=0-0%1 scripts/labelmaker/tokeye_masks.sbatch)
+# Poll squeue until this array has left the queue before inspecting its gate.
+while [[ -n $(squeue -h -j "$JOBID" -o %i) ]]; do sleep 20; done
+
+# 3. Once the array has finished, rebuild then gate; afterok covers every element.
+CHECKID=$(sbatch --parsable --dependency=afterok:"$JOBID" \
+  scripts/labelmaker/tokeye_masks_afterok.sbatch "$JOBID" --pilot)
+while [[ -n $(squeue -h -j "$CHECKID" -o %i) ]]; do sleep 20; done
+# Once CHECKID has left squeue, also gate the CPU companion (GPU metrics are N/A).
+PYTHONPATH="$REPO/src" pixi run --manifest-path \
+  /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
+  python -m labelmaker.jobstats --job-id "$CHECKID" --pilot \
+  --wait-for-data 300 --preserve-dir "$ROOT/runs/slurm" \
+  --out "$ROOT/runs/slurm/jobstats.json"
+```
+
+`tokeye_masks_afterok.sbatch` invokes `jobstats_check.py` with the GPU array ID,
+which expands and gates every element. The equivalent manual GPU gate is
+`python -m labelmaker.jobstats --job-id "$JOBID" --pilot --wait-for-data 300
+--preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"`
+under the same pixi environment. Read the JSON verdict and preserve raw jobstats
+and sacct captures: the pilot exemption gives exit 0 even if thresholds fail.
+If the array fails, `afterok` does not run: gate that failed array manually and
+cancel its pending companion rather than treating the missing gate as success.
+
+L12's write boundary permits only `masks/`, `events/`, `text/`, and `runs/`
+under the data root. Its rebuild therefore uses
+`--index-out "$ROOT/events/events_index.parquet"`; it **does not refresh** the
+canonical `$ROOT/events_index.parquet` read by existing consumers. Publishing
+that canonical index requires a later task with the appropriate write scope.
+Without `--index-out`, the driver keeps its existing canonical output path.
+
+The stop rule is binding: **L12 submits no production job.** Production requires
+CPU, CPU-memory, GPU and GPU-memory each ≥70%; CPU-only jobs have two applicable
+gates. A ≤20-shot pilot is exempt but fully reported. Diagnose any miss from
+`prep_wait_s`, `infer_s`, `describe_s`, `finish_s`, and `tail_wait_s`; permit at
+most one additional ≤20-shot pilot when a knob change is indicated. Record both
+memory measurements (sampled jobstats and sacct MaxRSS), parent and per-PID worker
+RSS, tiles/s, every shot's wall time and status, `text_subset_missing`, and counts
+from all `*_sources.parquet` files. File existence alone is insufficient evidence
+of completion. The measured L12 report and exact **unsubmitted** production
+commands are in `.superpowers/sdd/task-L12-report.md`.
+
 ## Reading a label
 
 ```python
