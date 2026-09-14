@@ -564,7 +564,7 @@ def test_search_returns_n_explained_results_and_never_the_reference_itself(db):
     # the one renderer: a result's description is describe.describe for its own segment
     from ideate.retrieval import describe
 
-    assert first.description == describe.describe(db.get(first.shot), "flat_top")
+    assert first.description == describe.describe(db.get(first.shot), "flat_top", db=db)
     assert (
         f"Ip {rank.display('ip_mean', db.segments.loc[first.id, 'ip_mean'])}" in first.description
     )
@@ -620,7 +620,7 @@ def test_search_loads_the_rules_and_the_query_values_once_not_per_result(db, mon
 
 def test_channels_is_a_plain_dict_a_reader_can_extend():
     assert isinstance(channels.CHANNELS, dict)
-    assert set(channels.CHANNELS) == {"scalar_knn", "text_knn", "bm25", "ignite_knn"}
+    assert set(channels.CHANNELS) == {"scalar_knn", "text_knn", "bm25", "ignite_knn", "phenomenon"}
     for fn in channels.CHANNELS.values():
         assert callable(fn)
 

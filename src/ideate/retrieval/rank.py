@@ -491,7 +491,7 @@ def _enrich(
     row = db.segments.loc[seg_id]
     values = {c: (float(row[c]) if np.isfinite(float(row[c])) else None) for c in _numeric(row)}
     category = {"regime": str(rec.labels.regime), "campaign": str(rec.campaign)}
-    return describe(rec, segment), list(evaluate_flags(values, category, rule_cfg))
+    return describe(rec, segment, db=db), list(evaluate_flags(values, category, rule_cfg))
 
 
 def _numeric(row) -> list[str]:
@@ -570,6 +570,7 @@ def _item(
         segment=q.segment,
         score=score,
         description=description,
+        caveats=db.label_filter_shot_caveats(shot, q.segment, q.avoid_labels),
         explanation=explain(q, db, seg_id, ranks, scales, q_vals=q_vals),
         blurb=_blurb(db, shot),
         flags=flags,
@@ -587,4 +588,5 @@ def search_report(q: QueryState, db: ShotDB) -> dict:
         "candidates": int(mask.sum()),
         "segment_rows": int((db.segments["segment"] == q.segment).sum()),
         "nan_excluded": nan_excluded(q, db),
+        "caveats": db.label_filter_caveats(q.segment, q.avoid_labels),
     }

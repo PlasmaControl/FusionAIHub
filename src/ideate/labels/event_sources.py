@@ -32,6 +32,8 @@ same table through it, so the two sides cannot drift into two shapes of the same
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 
 import numpy as np
@@ -94,6 +96,52 @@ def sources_file(events_dir: Path | str, shot: int) -> Path:
 def empty_sources() -> pd.DataFrame:
     """No rows, the contract's columns, the contract's dtypes."""
     return pd.DataFrame({name: pd.Series(dtype=dt) for name, dt in SOURCES_DTYPES.items()})
+
+
+def for_shot(db, shot: int, sources: Iterable[str] | None = None) -> pd.DataFrame:
+    """Loaded coverage rows, optionally restricted to a phenomenon's covering sources.
+
+    Legacy databases without the table can donate coverage from observed event rows only.
+    An explicitly empty or unreadable source table is authoritative; it cannot borrow coverage
+    from event rows. No filesystem probes or per-call parquet reads are needed.
+    """
+    frame = db.coverage_sources.iloc[db._coverage_positions.get(int(shot), [])]
+    if sources is not None:
+        frame = frame[frame['source'].isin(sources)]
+    return frame
+
+
+@dataclass(frozen=True)
+class CoverageSummary:
+    """Diagnostic finite spans and unknown-coverage names from a shot's own rows."""
+
+    spans: tuple[tuple[float, float], ...]
+    unknown: tuple[str, ...]
+
+    @classmethod
+    def from_rows(cls, rows: Iterable[Mapping]) -> CoverageSummary:
+        spans, unknown = [], set()
+        for row in rows:
+            if row['status'] != 'ok' or is_non_diagnostic(row['source']):
+                continue
+            lo, hi = float(row['t_cov0_s']), float(row['t_cov1_s'])
+            if isfinite(lo) and isfinite(hi):
+                spans.append((lo, hi))
+            else:
+                unknown.add(row['source'])
+        return cls(tuple(spans), tuple(sorted(unknown)))
+
+
+def coverage_state(sources: pd.DataFrame | CoverageSummary, t0_s=None, t1_s=None) -> str:
+    """The processed-shot states shared by retrieval and MCP; callers check shot membership."""
+    summary = (sources if isinstance(sources, CoverageSummary)
+               else CoverageSummary.from_rows(sources.to_dict('records')))
+    if any((t0_s is None or hi >= t0_s) and (t1_s is None or lo <= t1_s)
+           for lo, hi in summary.spans):
+        return 'observed'
+    if summary.spans or summary.unknown:
+        return 'uncovered'
+    return 'unprocessed'
 
 
 def _frame(rows: Sequence[Mapping]) -> pd.DataFrame:
@@ -301,8 +349,10 @@ __all__ = [
     "STATUSES",
     "SUFFIX",
     "coverage_span",
+    "coverage_state",
     "covers",
     "empty_sources",
+    "for_shot",
     "is_non_diagnostic",
     "observing_rows",
     "read_sources",

@@ -665,7 +665,7 @@ def _actuator(text: str) -> tuple[str, float]:
 
 def _query_state(args) -> QueryState:
     return QueryState(
-        text=args.text,
+        text=args.text or getattr(args, "query_text", None),
         negatives=args.negative,
         ref_shot=args.ref_shot,
         ref_window_ms=tuple(args.ref_window) if args.ref_window else None,
@@ -747,6 +747,8 @@ def _print_results(results, db, state: QueryState) -> None:
             head += f"  regime {r.labels.regime}"
         print(head)
         print(_fill(r.description, indent="    ", hang="    "))
+        for caveat in r.caveats:
+            print(_fill(f'coverage  {caveat}', indent='    ', hang='              '))
         e = r.explanation
         for line in e.matched_constraints:
             print(_fill(f"met       {line}", indent="    ", hang="              "))
@@ -1344,7 +1346,7 @@ def cmd_eval(args) -> int:
 # ------------------------------------------------------------------------------- phenomenon
 
 
-#: The quote column's width. Passed to `describe.shorten` so the cut lands on a word boundary.
+#: The quote column's width; retain the phenomenon mention in a contiguous excerpt.
 PHENOMENON_QUOTE_WIDTH = 60
 
 
@@ -1376,7 +1378,7 @@ def _phenomenon_table(hits, resolved_id: str) -> None:
         span = "-" if first is None else f"{kind} {first.t0_s:.3f}-{first.t1_s:.3f} s"
         quote = (
             "" if hit.quote is None
-            else describe_mod.shorten(hit.quote, PHENOMENON_QUOTE_WIDTH)
+            else ph_mod.shorten_quote(hit.quote, hit.phenomenon, PHENOMENON_QUOTE_WIDTH)
         )
         print(
             f"{hit.shot:>7}  {hit.score:>6.3f}  {', '.join(classes) or 'none':<26}  "
@@ -1457,8 +1459,22 @@ def cmd_phenomenon(args) -> int:
     return 0
 
 
+def cmd_describe(args) -> int:
+    """Describe a stored shot and its phenomenon evidence without reading raw data."""
+    db = _open_db(config.load_paths())
+    if db is None:
+        return 1
+    rec = _record(db, args.shot)
+    if rec is None:
+        return 1
+    print(describe_mod.describe(rec, args.segment, db=db))
+    return 0
+
+
 def cmd_query(args) -> int:
     """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
+    from .retrieval.phenomena import PhenomenaError
+
     paths = config.load_paths()
     db = _open_db(paths)
     if db is None:
@@ -1471,10 +1487,16 @@ def cmd_query(args) -> int:
         return 1
     try:
         report = rank_mod.search_report(state, db)
+    except PhenomenaError as e:
+        print(str(e), file=sys.stderr)
+        return 2
     except KeyError as e:
         print(
             f"{e.args[0]}. Columns are the ones `ideate show SHOT --full` prints.", file=sys.stderr
         )
+        return 2
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
         return 2
     # One pass: the per-channel counts on the "channels" line come from the same rankings the
     # results were fused from. Running every channel once more for the counts doubled the cost of
@@ -1483,13 +1505,19 @@ def cmd_query(args) -> int:
     fired = {name: len(ranking) for name, ranking in found.rankings.items()}
     if args.json:
         doc = {
+            "caveats": report["caveats"],
             "proposal_flags": [f.model_dump(mode="json") for f in found.proposal_flags],
             "results": [r.model_dump(mode="json") for r in found.items],
         }
         print(json.dumps(doc, indent=1, default=str))
-        return 0 if any(fired.values()) else 2
+        return 0 if any(fired.values()) or report["candidates"] == 0 else 2
     _query_header(state, report, fired)
+    for caveat in report["caveats"]:
+        print(caveat)
     _print_proposal(state, found.proposal_flags)  # answered even when nothing resembles it
+    if report["candidates"] == 0:
+        print("nothing passed the filters.", file=sys.stderr)
+        return 0
     if not any(fired.values()):
         print(
             "no channel had anything to search on -- give --ref SHOT, --text, --where or "
@@ -1576,6 +1604,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--full", action="store_true", help="every scalar, by column name")
     p.add_argument("--json", action="store_true", help="the whole ShotRecord as JSON")
     p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("describe", help="describe a stored shot, its phenomenon evidence and coverage")
+    p.add_argument("shot", type=int)
+    p.add_argument("--segment", default="flat_top", choices=get_args(SegName))
+    p.set_defaults(func=cmd_describe)
 
     p = sub.add_parser("export", help="ShotSummary rows as JSON or Parquet")
     p.add_argument("shots", type=int, nargs="+")
@@ -1736,6 +1769,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_phenomenon)
 
     p = sub.add_parser("query", help="find similar shots")
+    p.add_argument("query_text", nargs="?", metavar="TEXT", help="free text; resolves phenomenon aliases")
     p.add_argument("--text", help="free text, e.g. 'wide pedestal QH at low torque'")
     p.add_argument("--negative", action="append", default=[], help="text to move away from")
     p.add_argument("--ref-shot", "--ref", type=int, help="use this shot as the reference")
@@ -1760,8 +1794,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME=VALUE",
         help="target actuator setting, e.g. nbi.total=5e6",
     )
-    p.add_argument("--require", action="append", default=[], metavar="LABEL")
-    p.add_argument("--avoid", action="append", default=[], metavar="LABEL")
+    p.add_argument(
+        "--require", action="append", default=[], metavar="TOKEN",
+        help="require every token: regime/operational, phenomenon:<id> (observed), "
+             "label:<slug>/<name> (above operating point), source:<kind or producer>",
+    )
+    p.add_argument(
+        "--avoid", action="append", default=[], metavar="TOKEN",
+        help="exclude matching tokens; phenomenon:<id> requires observed source coverage of "
+             "the segment, and excludes unprocessed/uncovered shots with caveats",
+    )
     p.add_argument("--exclude-shot", action="append", default=[], type=int)
     p.add_argument("--exclude-run", action="append", default=[])
     p.add_argument("--prefer-outcome", choices=["any", "success"], default="any")

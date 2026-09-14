@@ -40,8 +40,10 @@ from __future__ import annotations
 import functools
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from difflib import get_close_matches
 from pathlib import Path
 
 import pandas as pd
@@ -71,11 +73,11 @@ CORPUS_GROUPS: tuple[str, ...] = ("bes", "co2", "ece", "filterscopes", "mhr", "m
 #: The four states `PhenomenonHit.coverage_state` can be in, worst-informed first. They are not
 #: degrees of one thing: only `observed` is an answer to "was it there?", and the other three are
 #: three different ways of saying the database cannot tell you. The names and the order are
-#: `ideate.mcp.tools.EVENT_STATES`', so a `get_events` reply and a phenomenon hit describe the
+#: `ideate.mcp.tools.EVENT_STATES`, so a `get_events` reply and a phenomenon hit describe the
 #: same shot with the same word.
 #:
-#:   unindexed    nothing in the pipeline looks for this phenomenon at all (`rwm`, `detachment`)
-#:   unprocessed  its detectors exist, and none of them has run on this shot
+#:   unindexed    the shot is absent from db.shots
+#:   unprocessed  no relevant detector completed on this indexed shot (or none is registered)
 #:   uncovered    they ran, but not over the window the question is about
 #:   observed     they covered (part of) the window; `coverage` is that intersection
 COVERAGE_STATES: tuple[str, ...] = ("unindexed", "unprocessed", "uncovered", "observed")
@@ -121,8 +123,9 @@ ACTUATOR_COLUMNS: tuple[str, ...] = (
 # callers key on them -- the MCP layer and the CLI both surface them verbatim -- and because a
 # caveat that is spelled two ways is a caveat nobody can filter on.
 
-#: `unindexed`: nothing in the pipeline looks for this phenomenon, so nothing ever could have.
+#: No diagnostic coverage is recorded for this phenomenon.
 NO_COVERAGE = "no diagnostic coverage recorded; absence is not evidence"
+NO_DETECTOR = "no detector registered for {id}; text/database evidence only"
 #: `unprocessed`: the detectors exist and none of them has run on this shot. `.format(title=...)`
 COVERAGE_UNPROCESSED = "no detector for {title} has run on this shot; absence is not evidence"
 #: `uncovered`: they ran, elsewhere in the record. `.format(title=..., segment=...)`
@@ -280,11 +283,10 @@ class EventRule:
     EHO rather than a tearing mode is the band and the harmonic count, not the detector's label.
 
 
-    `weight` is how much one matching row is worth in the event term, and it is not always 1:
-    `tokeye_transient` writes `phenomenon="elm"` for any burst, and labelmaker's own module says
-    a sawtooth crash and a disruption precursor are transient too, so a row from it is weaker
-    evidence of an ELM than an `ece_sawtooth` crash is of a sawtooth. `caveat` names the string
-    every hit built on this rule carries for the same reason; the two go together.
+    `weight` is how much one matching row is worth in the event term. Custom rules can downweight
+    an indirect observation and name a `caveat` that every hit built on the rule carries.
+    The shipped ELM rule reads D-alpha `elm_clock` points at weight 1.0 with no transient caveat;
+    `tokeye_transient` writes `phenomenon="transient"` and has its own rule.
 
     `max_bandwidth_khz` bounds the track's width. `band_khz` alone matches on the centroid, and
     a track spanning 0.5-248 kHz has a centroid somewhere: on the three real labelmaker shots
@@ -348,28 +350,41 @@ class Phenomenon:
     forecasts: tuple[str, ...] = ()
     #: Sources whose rows establish that someone LOOKED for this phenomenon, beyond its own
     #: detectors. Declared and not inferred: a detector that finds nothing writes no rows, so on
-    #: a quiet shot the only record that the mhr data was read for ELMs at all is `elm_clock`'s
-    #: `elm_free` interval -- a different source from the one that would have reported an ELM.
+    #: a quiet shot `elm_clock`'s source record and `elm_free` intervals establish where the
+    #: clock read D-alpha (`filterscopes`), even when it reported no ELM points.
     #: Inferring this from the `diag` string instead would have let any row off any diagnostic
     #: donate coverage to a phenomenon nothing detects (`rwm`, `detachment`), which would turn
     #: "nobody has ever looked for this" into "we looked and it was not there".
     coverage_sources: tuple[str, ...] = ()
+    #: When set, covering sources must name one of these diagnostics to donate coverage or hits.
+    coverage_diags: tuple[str, ...] = ()
     band_khz: tuple[float | None, float | None] | None = None
     diags: tuple[str, ...] = ()
     requires_group: tuple[str, ...] = ()
     prior: float = 0.0
     database: Mapping[str, object] | None = None
 
-    @property
+    @functools.cached_property
     def sources(self) -> tuple[str, ...]:
         """The detectors that can claim this phenomenon."""
         return tuple(dict.fromkeys(r.source for r in self.events))
 
-    @property
+    @functools.cached_property
     def covering_sources(self) -> tuple[str, ...]:
         """Every source whose rows say someone looked. Empty when nothing detects this at all,
         which is exactly the case whose coverage must stay unknown."""
         return tuple(dict.fromkeys((*self.sources, *self.coverage_sources)))
+
+    def accepts_row(self, row: Mapping) -> bool:
+        """Reject legacy diagnostics of covering sources for both coverage and event evidence.
+
+        Other sources (including text and forecasts) are unaffected. Missing diagnostics cannot
+        establish that a restricted detector read the required input.
+        """
+        if not self.coverage_diags or row.get("source") not in self.covering_sources:
+            return True
+        diag = row.get("diag")
+        return isinstance(diag, str) and diag in self.coverage_diags
 
 
 @dataclass(frozen=True)
@@ -384,6 +399,7 @@ class Evidence:
     forecasts: tuple[Interval, ...] = ()
     label_evidence: dict[str, float | None] = field(default_factory=dict)
     max_label_p: float | None = None
+    max_label_raw_p: float | None = None
     text_hits: int = 0
     text_snippets: tuple[str, ...] = ()
     n_negative_claims: int = 0
@@ -406,6 +422,16 @@ class Evidence:
     def total_duration_s(self) -> float:
         return float(sum(iv.t1_s - iv.t0_s for iv in self.intervals))
 
+    @property
+    def covered_fraction(self) -> float:
+        """Measured union length / segment length; a boundary instant contributes no duration."""
+        if self.window is None:
+            return 0.0
+        duration = self.window[1] - self.window[0]
+        if not math.isfinite(duration) or duration <= 0:
+            return 0.0
+        return min(1.0, sum(max(0.0, b - a) for a, b in self.coverage_windows) / duration)
+
 
 # ------------------------------------------------------------------------------- the registry
 
@@ -425,7 +451,7 @@ def registry(path: Path | str | None = None) -> dict[str, Phenomenon]:
     """The validated registry, by phenomenon id, with labelmaker's aliases merged in.
 
     Validated rather than trusted, because every mistake this file can make is silent: an id that
-    is not one of the round-1 twelve joins to no label, no event and no claim, and a re-stated
+    is not one of labelmaker's registered ids joins to no label, no event and no claim. A re-stated
     alias list is a second vocabulary that drifts from labelmaker's on the first correction.
     """
     p = Path(path) if path is not None else config.CONFIG_DIR / CONFIG_NAME
@@ -485,6 +511,11 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
             raise PhenomenaError(
                 f"{source}: {pid} requires_group {unknown} -- not corpus groups {CORPUS_GROUPS}"
             )
+        coverage_diags = body.get("coverage_diags", [])
+        if not isinstance(coverage_diags, list) or any(
+            not isinstance(diag, str) for diag in coverage_diags
+        ):
+            raise PhenomenaError(f"{source}: {pid} `coverage_diags` must be a list of strings")
         entry = lex[pid]
         out[pid] = Phenomenon(
             id=pid,
@@ -497,6 +528,7 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
             coverage_sources=tuple(
                 str(x) for x in _seq(source, pid, body.get("coverage_sources"), "coverage_sources")
             ),
+            coverage_diags=tuple(coverage_diags),
             band_khz=_band(source, pid, body.get("band_khz")),
             diags=tuple(str(d) for d in body.get("diags") or ()),
             requires_group=groups,
@@ -712,12 +744,10 @@ def _bandwidth_khz(row: Mapping, attrs: Mapping) -> float | None:
 def _window(db, shot: int, segment: str) -> tuple[float, float] | None:
     """The segment's `[t0, t1]` in seconds, or None when the shot has no such segment."""
     seg_id = f"{shot}:{segment}"
-    index = getattr(db.segments, "index", None)
-    if index is None or seg_id not in index:
+    window = db._segment_windows.get(seg_id)
+    if window is None or any(_f(t) is None for t in window):
         return None
-    row = db.segments.loc[seg_id]
-    t0, t1 = _f(row.get("t0_ms")), _f(row.get("t1_ms"))
-    return None if t0 is None or t1 is None else (t0 / 1000.0, t1 / 1000.0)
+    return window
 
 
 def _overlaps(row: Mapping, window: tuple[float, float] | None) -> bool:
@@ -743,86 +773,6 @@ def _interval(row: Mapping, attrs: Mapping) -> Interval:
     )
 
 
-def _rows(frame: pd.DataFrame, shot: int) -> list[dict]:
-    if frame is None or len(frame) == 0 or "shot" not in frame.columns:
-        return []
-    return frame.loc[frame["shot"] == shot].to_dict("records")
-
-
-# path -> ((size, mtime_ns), frame) for `db/event_sources.parquet`, which `locate` would
-# otherwise re-read once per candidate shot.
-_SOURCES_CACHE: dict[str, tuple[tuple[int, int], pd.DataFrame]] = {}
-
-
-def _sources_frame(path: Path) -> pd.DataFrame | None:
-    try:
-        st = path.stat()
-    except OSError:
-        return None
-    stamp = (st.st_size, st.st_mtime_ns)
-    hit = _SOURCES_CACHE.get(str(path))
-    if hit is None or hit[0] != stamp:
-        try:
-            frame = pd.read_parquet(path)
-        except (OSError, ValueError):  # a broken coverage table must not lose the events
-            return None
-        _SOURCES_CACHE[str(path)] = hit = (stamp, frame)
-    return hit[1]
-
-
-def _event_sources(db) -> pd.DataFrame | None:
-    """labelmaker's source contract for this database, or None when it predates it.
-
-    `db/event_sources.parquet` (`ideate.labels.event_sources`) is one row per source that ran or
-    was deliberately skipped, and it is the only record of a detector that ran and emitted
-    NOTHING -- which is the coverage that matters most, because it is the only thing that can
-    turn "no rows" into a negative. Read through `getattr` and a file probe rather than required,
-    so this module works unchanged on a database built before the contract, which is every
-    database today.
-    """
-    frame = getattr(db, "event_sources", None)
-    if frame is None:
-        db_dir = getattr(db, "db_dir", None)
-        frame = None if db_dir is None else _sources_frame(Path(db_dir) / "event_sources.parquet")
-    if frame is None or len(frame) == 0:
-        return None
-    return frame if {"shot", "source", "status"} <= set(frame.columns) else None
-
-
-def _looked_windows(db, shot: int, ph: Phenomenon) -> list[tuple[float, float]]:
-    """Every stretch in which somebody looked for `ph` on this shot. Unmerged, unclipped."""
-    covering = set(ph.covering_sources)
-    if not covering:
-        return []
-    sources = _event_sources(db)
-    if sources is not None:
-        rows = [
-            r
-            for r in sources.loc[sources["shot"] == shot].to_dict("records")
-            if str(r.get("source")) in covering and str(r.get("status")) == "ok"
-        ]
-    else:
-        # No source table: fall back to the coverage columns of the rows the covering sources
-        # did write. A forecast row's validity window is not a diagnostic's coverage, and
-        # neither is a `text` or `model` row's, so only the observed kinds donate.
-        rows = [
-            r
-            for r in _rows(getattr(db, "events", None), shot)
-            if str(r.get("source")) in covering
-            and str(r.get("evidence_kind")) in OBSERVED_KINDS
-        ]
-    out = []
-    for r in rows:
-        # Old elm_clock rows came from magnetics masks, including persisted
-        # source keys a rerun leaves behind. They did not inspect D-alpha.
-        if ph.id == "elm" and r.get("diag") != "filterscopes":
-            continue
-        a, b = _f(r.get("t_cov0_s")), _f(r.get("t_cov1_s"))
-        if a is not None and b is not None and b >= a:
-            out.append((a, b))
-    return out
-
-
 def _merge(windows: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
     """The union, as disjoint windows in time order. Two passes over the same stretch are one."""
     out: list[tuple[float, float]] = []
@@ -837,15 +787,14 @@ def _merge(windows: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
 def _clip(
     windows: Iterable[tuple[float, float]], window: tuple[float, float] | None
 ) -> list[tuple[float, float]]:
-    """The part of each window inside `window`. A window that only TOUCHES the edge covers
-    nothing of it, so the overlap has to be strictly positive."""
+    """The part of each window inside `window`, including an observed boundary instant."""
     if window is None:
         return list(windows)
     lo, hi = window
     out = []
     for a, b in windows:
         a2, b2 = max(a, lo), min(b, hi)
-        if b2 > a2:
+        if b2 >= a2:
             out.append((a2, b2))
     return out
 
@@ -863,20 +812,31 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
     reported it anyway would suppress the caveat, satisfy `--avoid` as an established negative,
     and turn a gap in the data into a physics result.
     """
+    from ..labels import event_sources as es
+
     title = ph.title
+    if shot not in db.shots.index:
+        return "unindexed", None, (), False, [f"shot {shot} is not in the database"]
     if not ph.covering_sources:
-        return "unindexed", None, (), False, [NO_COVERAGE]
-    raw = _merge(_looked_windows(db, shot, ph))
-    if not raw:
-        return "unprocessed", None, (), False, [COVERAGE_UNPROCESSED.format(title=title)]
+        return "unprocessed", None, (), False, [NO_DETECTOR.format(id=ph.id), NO_COVERAGE]
+    sources = es.CoverageSummary.from_rows(
+        r for r in db.evidence_rows('coverage_sources', shot)
+        if r['source'] in ph.covering_sources and ph.accepts_row(r)
+    )
+    state = es.coverage_state(sources, *(window or (None, None)))
+    caveats = []
+    if sources.unknown:
+        names = ", ".join(sources.unknown)
+        caveats.append(f"{names}: ran; coverage unknown; absence is not evidence")
+    if state == "unprocessed":
+        return state, None, (), False, caveats + [COVERAGE_UNPROCESSED.format(title=title)]
+    if state == "uncovered":
+        if sources.spans:
+            caveats.append(COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment))
+        return state, None, (), False, caveats
+    raw = _merge(sources.spans)
     windows = tuple(_clip(raw, window))
-    if not windows:
-        return (
-            "uncovered", None, (), False,
-            [COVERAGE_OUTSIDE_WINDOW.format(title=title, segment=segment)],
-        )
     hull = (windows[0][0], windows[-1][1])
-    caveats: list[str] = []
     if len(windows) > 1:
         caveats.append(COVERAGE_GAPS.format(title=title, segment=segment, n=len(windows) - 1))
     partial = window is not None and (
@@ -886,6 +846,27 @@ def _coverage_for(db, shot: int, ph: Phenomenon, window, segment: str):
         covered = ", ".join(f"{a:.3f}-{b:.3f} s" for a, b in windows)
         caveats.append(COVERAGE_PARTIAL.format(title=title, segment=segment, covered=covered))
     return "observed", hull, windows, partial, caveats
+
+
+def missing_required_groups(
+    db, shot: int, ph: Phenomenon, shot_metadata: Mapping | None = None,
+) -> tuple[str, ...]:
+    """Known absent requirements, leaving unknown legacy inventories silent.
+
+    Legacy records with empty raw_groups have all-false default columns. A corpus reader or
+    some positive inventory flag establishes that an inventory was actually recorded. A missing
+    or null flag remains unknown; a detector's existing evidence is still reported with a caveat.
+    """
+    if not ph.requires_group:
+        return ()
+    row = (_shot_row(db, shot) or {}) if shot_metadata is None else shot_metadata
+    flags = {g: row.get(f"has_{g}") for g in CORPUS_GROUPS}
+    inventoried = row.get("reader") == "corpus" or any(v is not None and not pd.isna(v) and bool(v)
+                                                      for v in flags.values())
+    if not inventoried:
+        return ()
+    return tuple(g for g in ph.requires_group if flags[g] is not None
+                 and not pd.isna(flags[g]) and not bool(flags[g]))
 
 
 def _keeps_confidence(row: Mapping, limit: float) -> bool | None:
@@ -904,6 +885,7 @@ def evidence(
     *,
     min_confidence: float = 0.0,
     label_floor: float | None = None,
+    shot_metadata: Mapping | None = None,
 ) -> Evidence:
     """Every class of evidence for one phenomenon on one shot, kept apart and never merged.
 
@@ -918,8 +900,16 @@ def evidence(
     `label_floor` is how high a detection label has to score to be evidence; None reads
     `retrieval.yaml`. See `DEFAULT_LABEL_FLOOR`: the model running is not the same fact as the
     model saying yes.
+
+    `shot_metadata` supplies the snapshot's pre-indexed inventory for bulk retrieval. Direct
+    calls omit it to read live shot metadata, including an inventory edited by the caller.
     """
     ph = _phenomenon(ph)
+    if shot not in db.shots.index:
+        return Evidence(
+            shot=int(shot), phenomenon=ph.id, window=None, coverage_state="unindexed",
+            caveats=(f"shot {shot} is not in the database",),
+        )
     if label_floor is None:
         label_floor = _config()[2]
     window = _window(db, shot, segment)
@@ -927,7 +917,7 @@ def evidence(
     if window is None:
         caveats.append(NO_SEGMENT.format(segment=segment))
 
-    rows = _rows(getattr(db, "events", None), shot)
+    rows = db.evidence_rows('events', shot)
     intervals: list[Interval] = []
     refs: list[EventRef] = []
     forecasts: list[Interval] = []
@@ -936,15 +926,18 @@ def evidence(
     n_unscored = 0
     other_kinds: dict[str, int] = {}
     for row in rows:
-        attrs = _attrs(row.get("attrs"))
         kind = str(row.get("evidence_kind"))
-        if not _overlaps(row, window):
+        if not ph.accepts_row(row) or not _overlaps(row, window):
             continue
         rule = None
         if kind == FORECAST_KIND:
             if str(row.get("source")) not in ph.forecasts or str(row.get("phenomenon")) != ph.id:
                 continue
+            attrs = {}
         else:
+            if row.get('source') not in ph.sources:
+                continue
+            attrs = _attrs(row.get("attrs"))
             rule = next((r for r in ph.events if r.matches(row, attrs)), None)
             if rule is None:
                 continue
@@ -991,10 +984,16 @@ def evidence(
         db, shot, ph, window, segment
     )
     caveats.extend(cov_caveats)
+    caveats.extend(
+        f"required corpus group {group} is absent for {ph.id}"
+        for group in missing_required_groups(db, shot, ph, shot_metadata)
+    )
+    for name, error in db.load_errors.items():
+        caveats.append(f"could not read {name}.parquet: {error}")
     if not intervals:
         caveats.append(NO_OBSERVED)
 
-    label_evidence, max_p, label_caveats = _labels_for(db, shot, ph, label_floor)
+    label_evidence, max_p, raw_p, label_caveats = _labels_for(db, shot, ph, label_floor)
     caveats.extend(label_caveats)
 
     hits, snippets, n_neg, text_caveats = _text_for(db, shot, ph)
@@ -1009,6 +1008,7 @@ def evidence(
         forecasts=tuple(sorted(forecasts, key=lambda iv: (iv.t0_s, iv.event_id))),
         label_evidence=label_evidence,
         max_label_p=max_p,
+        max_label_raw_p=raw_p,
         text_hits=hits,
         text_snippets=snippets,
         n_negative_claims=n_neg,
@@ -1035,12 +1035,12 @@ def _labels_for(db, shot: int, ph: Phenomenon, floor: float):
     low" survives: the first is None in `label_evidence`, the second is the number itself.
     """
     if not ph.labels:
-        return {}, None, [NO_LABEL_MODEL]
-    frame = getattr(db, "labels_wide", None)
-    rows = _rows(frame, shot)
+        return {}, None, None, [NO_LABEL_MODEL]
+    rows = db.evidence_rows('labels_wide', shot)
     by_key = {f"{r['slug']}/{r['label']}": r for r in rows}
     out: dict[str, float | None] = {}
     best: float | None = None
+    raw_best: float | None = None
     low: list[str] = []
     unavailable = False
     for ref in ph.labels:
@@ -1061,9 +1061,10 @@ def _labels_for(db, shot: int, ph: Phenomenon, floor: float):
             low.append(LABEL_BELOW_FLOOR.format(key=ref.key, p=p, floor=bar))
             continue
         weighted = p * ref.weight
-        best = weighted if best is None else max(best, weighted)
+        if best is None or weighted > best:
+            best, raw_best = weighted, p
     caveats = ([LABEL_UNAVAILABLE] if unavailable else []) + low
-    return out, best, caveats
+    return out, best, raw_best, caveats
 
 
 #: How many `text_claims` snippets a hit carries. The table is the record; this is a reading aid.
@@ -1077,7 +1078,7 @@ def _text_for(db, shot: int, ph: Phenomenon):
     shot") and a back-reference ("like shot 190090") are claims about something else. A negative
     claim is not subtracted -- it is a caveat, in the operators' own frame.
     """
-    rows = [r for r in _rows(getattr(db, "text_claims", None), shot)
+    rows = [r for r in db.evidence_rows('text_claims', shot)
             if str(r.get("phenomenon")) == ph.id]
     positive = [r for r in rows
                 if str(r.get("polarity")) == "pos" and str(r.get("temporality")) == "observed"]
@@ -1247,14 +1248,16 @@ def score(ev: Evidence, weights: Mapping[str, float] | None = None, saturation_n
     return float(total)
 
 
-def _avoid_ids(avoid: Iterable[str]) -> list[str]:
+def _avoid_ids(avoid: Iterable[str], *, option: str = '--avoid') -> list[str]:
     """`"phenomenon:elm"` or `"elm"` -> `"elm"`. Anything else is an error, not a silent no-op."""
     reg, out = registry(), []
     for token in avoid or ():
         pid = str(token).split(":", 1)[1] if str(token).startswith("phenomenon:") else str(token)
         if pid not in reg:
             raise PhenomenaError(
-                f"--avoid {token!r}: {pid!r} is not a phenomenon; the registry has {sorted(reg)}"
+                f"{option} {token!r}: {pid!r} is not a phenomenon; "
+                f"nearest known ids: {get_close_matches(pid, reg, n=3, cutoff=0)}; "
+                f"the registry has {sorted(reg)}"
             )
         out.append(pid)
     # De-duplicated: `--avoid elm --avoid phenomenon:elm` is one constraint, and evaluating it
@@ -1365,7 +1368,7 @@ def _hit(ev: Evidence, tier: int, value: float, extra: list[str], db, segment: s
     elif tier == FORECAST:
         caveats.insert(0, FORECAST_ONLY)
     elif tier == LABELLED:
-        caveats.insert(0, LABEL_ONLY.format(p=ev.max_label_p))
+        caveats.insert(0, LABEL_ONLY.format(p=ev.max_label_raw_p))
     elif tier == DATABASE:
         caveats.insert(0, DATABASE_ONLY)
     quote, role, quote_caveat = _quote(ev, db)
@@ -1411,6 +1414,29 @@ def _mentions(text: str, pid: str) -> bool:
     """Does this sentence NAME the phenomenon? labelmaker's matcher, so the quote picker and
     `resolve` agree about what counts as a mention, including its denials."""
     return any(h.polarity == "pos" for h in lexicon_mod.hits(text, _lexicon()).get(pid, ()))
+
+
+def shorten_quote(text: str, pid: str, limit: int) -> str:
+    """A contiguous verbatim excerpt around a positive mention, never a spliced quotation.
+
+    The lexicon chooses the sentence. Prefix matching locates its mention without introducing
+    another alias tokenizer; the original entry supplies every displayed character.
+    """
+    hits = [h for h in lexicon_mod.hits(text, _lexicon()).get(pid, ()) if h.polarity == "pos"]
+    for hit in hits:
+        offset = text.lower().find(hit.sentence)
+        if offset < 0:
+            continue
+        end = next((m.end() for m in re.finditer(r"\S+", hit.sentence)
+                    if _mentions(hit.sentence[:m.end()], pid)), len(hit.sentence))
+        start = max(offset, offset + end - (limit - 8) // 2 - len(hit.alias))
+        if start and not text[start - 1].isspace():
+            start = text.find(" ", start) + 1
+        prefix = "... " if start else ""
+        budget = limit - len(prefix)
+        tail = text[start:]
+        return prefix + describe_mod.shorten(tail, budget - 4 if len(tail) > budget else budget)
+    return describe_mod.shorten(text, limit - 4 if len(text) > limit else limit)
 
 
 def _quote(ev: Evidence, db) -> tuple[str | None, str | None, str | None]:
