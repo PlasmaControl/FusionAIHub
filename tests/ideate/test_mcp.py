@@ -865,6 +865,29 @@ def test_phenomenon_locate_names_an_evidence_table_it_could_not_read(ideate_db):
     assert tools.NO_EVENTS not in got["caveats"]  # the table is there; it is unreadable
 
 
+def test_phenomenon_locate_with_no_hits_says_which_absence_it_is(phenomenon_db):
+    """F2. Constraints that pass nothing produce the same `{"n": 0, "hits": []}` as a database
+    nobody has looked at, and an unqualified empty list from a phenomenon tool reads as "no shot
+    has one" -- the answer `NOTHING_RESOLVED` exists to stop this tool giving by accident."""
+    from ideate.retrieval import phenomena as ph
+
+    got = tools.phenomenon_locate("NTM", n=10, constraints={"ip_mean": {"lo": 1e12}})
+    assert "error" not in got and got["hits"] == [] and got["n"] == 0
+    assert tools.NO_EVIDENCE in got["caveats"]
+    assert [c for c in got["caveats"] if ph.RANKING_SENTENCE not in c]
+
+
+def test_phenomenon_locate_says_when_no_detector_covers_the_phenomenon(phenomenon_db):
+    """F2. `rwm` has no `covering_sources`, so an empty list could never have held an observed
+    hit: the absence is a fact about the detectors, not about the shots. `get_events` says it
+    with `NO_DETECTOR` and this tool says it with the same sentence, not a second spelling."""
+    from ideate.retrieval import phenomena as ph
+
+    got = tools.phenomenon_locate("resistive wall mode", n=10)
+    assert "error" not in got
+    assert ph.NO_DETECTOR.format(id="rwm") in got["caveats"]
+
+
 # ------------------------------------------------------------------------------- the registry
 
 
