@@ -225,7 +225,11 @@ def test_outside_track_does_not_prevent_independent_dalpha_events(
         block = describe(prepared, *args, **kwargs)
         if block.diag == "ece" and block.channel == 8:
             at = block.t_cov[1] + 0.001
-            block = replace(block, tracks=[replace(block.tracks[0], t0_s=at, t1_s=at)])
+            # Its valid track co-occurs with the surviving blocks, but one
+            # wholly outside descriptor rejects this entire block.
+            block = replace(block, tracks=[
+                *block.tracks, replace(block.tracks[0], t0_s=at, t1_s=at),
+            ])
         return block
 
     monkeypatch.setattr(pl, "describe_block", outside_track)
@@ -244,6 +248,18 @@ def test_outside_track_does_not_prevent_independent_dalpha_events(
     assert failed.status == "skipped" and failed.n_events == 0
     assert np.isnan(failed.t_cov0_s) and np.isnan(failed.t_cov1_s)
     assert sources[sources.source == "elm_clock"].iloc[0].status == "ok"
+    published = {
+        f"{r.diag}:{r.channel}:{r.pass_name}"
+        for r in sources.itertuples()
+        if r.source == "tokeye_track" and r.status == "ok"
+    }
+    partners = [
+        target for r in track_rows.itertuples()
+        for target in json.loads(r.attrs)["cooccurrent_with"]
+    ]
+    assert partners  # Successful blocks must still corroborate each other.
+    assert all(target.split("#")[0] in published for target in partners)
+    assert "mhr:4:wide#0" in partners  # Original block-local track identity.
 
 
 def test_quiet_dalpha_writes_coverage_and_no_observed_elm(paths):
