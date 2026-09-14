@@ -28,6 +28,18 @@ from ..schema import Range, ShotRecord
 AVOID_MIN_COVERED_FRACTION = 0.5
 PHENOMENON_EVIDENCE_CACHE_SIZE = 4096
 
+# Only columns consumed by phenomenon evidence are materialized as Python row dictionaries.
+# Provenance stays on the original frames for MCP/event readers; duplicating it here wastes
+# both snapshot memory and first-query time (especially with Arrow-backed string columns).
+_EVIDENCE_COLUMNS = {
+    'events': (
+        'shot', 'event_id', 'source', 'evidence_kind', 'phenomenon', 't0_s', 't1_s',
+        'f0_khz', 'f1_khz', 'confidence', 'attrs',
+    ),
+    'coverage_sources': ('shot', 'source', 'status', 't_cov0_s', 't_cov1_s'),
+    'labels_wide': ('shot', 'slug', 'label', 'n_valid', 'max_valid', 'frac_above'),
+}
+
 
 def _empty(dtypes: dict[str, str]) -> pd.DataFrame:
     """A zero-row frame with exactly these columns and dtypes, in this order."""
@@ -175,7 +187,10 @@ class ShotDB:
         """
         if table not in self._evidence_indexes:
             grouped: dict[int, list[dict]] = {}
-            for row in getattr(self, table).to_dict('records'):
+            frame = getattr(self, table)
+            if table in _EVIDENCE_COLUMNS:
+                frame = frame[[c for c in _EVIDENCE_COLUMNS[table] if c in frame.columns]]
+            for row in frame.to_dict('records'):
                 grouped.setdefault(int(row['shot']), []).append(row)
             self._evidence_indexes[table] = grouped
         return self._evidence_indexes[table].get(int(shot), [])

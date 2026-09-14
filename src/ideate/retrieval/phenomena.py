@@ -363,12 +363,12 @@ class Phenomenon:
     prior: float = 0.0
     database: Mapping[str, object] | None = None
 
-    @property
+    @functools.cached_property
     def sources(self) -> tuple[str, ...]:
         """The detectors that can claim this phenomenon."""
         return tuple(dict.fromkeys(r.source for r in self.events))
 
-    @property
+    @functools.cached_property
     def covering_sources(self) -> tuple[str, ...]:
         """Every source whose rows say someone looked. Empty when nothing detects this at all,
         which is exactly the case whose coverage must stay unknown."""
@@ -907,7 +907,6 @@ def evidence(
     n_unscored = 0
     other_kinds: dict[str, int] = {}
     for row in rows:
-        attrs = _attrs(row.get("attrs"))
         kind = str(row.get("evidence_kind"))
         if not _overlaps(row, window):
             continue
@@ -915,7 +914,11 @@ def evidence(
         if kind == FORECAST_KIND:
             if str(row.get("source")) not in ph.forecasts or str(row.get("phenomenon")) != ph.id:
                 continue
+            attrs = {}
         else:
+            if row.get('source') not in ph.sources:
+                continue
+            attrs = _attrs(row.get("attrs"))
             rule = next((r for r in ph.events if r.matches(row, attrs)), None)
             if rule is None:
                 continue
