@@ -98,3 +98,13 @@ def test_evidence_queries_never_rescan_full_frames(scale_db_dir, monkeypatch):
         assert ev.coverage_state == 'observed'
         assert len(es.for_shot(db, shot)) == 3
     assert scans[0] == initial, 'per-shot queries must not scan a full evidence frame'
+
+
+def test_evidence_cache_is_bounded_and_eviction_preserves_results(scale_db_dir):
+    db = ShotDB.load(scale_db_dir)
+    first = db.phenomenon_evidence(200000, 'tearing', 'flat_top')
+    for shot in range(200000, 202000):
+        for pid in ('tearing', 'sawtooth', 'elm'):
+            db.phenomenon_evidence(shot, pid, 'flat_top')
+    assert len(db._phenomenon_evidence) <= 4096
+    assert db.phenomenon_evidence(200000, 'tearing', 'flat_top') == first

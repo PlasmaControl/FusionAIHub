@@ -10,6 +10,7 @@ from ideate.retrieval import phenomena as ph
 from ideate.shotdb.store import ShotDB
 
 
+@pytest.mark.parametrize('filtered', [True, False])
 @pytest.mark.parametrize(
     'shot,pid,status,span,expected',
     [
@@ -26,7 +27,7 @@ from ideate.shotdb.store import ShotDB
     ],
 )
 def test_both_tools_agree_on_the_report_tables_and_coverage_edges(
-    ideate_db, shot, pid, status, span, expected,
+    ideate_db, shot, pid, status, span, expected, filtered,
 ):
     rows = [] if status is None else [es.source_row(
         100, 'elm_clock', status=status, t_cov0_s=span[0], t_cov1_s=span[1],
@@ -35,14 +36,32 @@ def test_both_tools_agree_on_the_report_tables_and_coverage_edges(
     tools.reset_cache()
     db = ShotDB.load(ideate_db / 'db')
     retrieval = ph.evidence(shot, pid, db)
-    mcp = tools.get_events(shot, pid, 1, 5)
-    assert retrieval.coverage_state == mcp['status'] == expected
-    if shot == 100 and pid == 'rwm':
+    mcp = tools.get_events(shot, pid if filtered else None, 1, 5)
+    if filtered:
+        assert retrieval.coverage_state == mcp['status'] == expected
+    else:
+        # An unfiltered indexed RWM row may use elm_clock; RWM itself still cannot.
+        unfiltered_expected = 'observed' if shot == 100 and pid == 'rwm' else expected
+        assert retrieval.coverage_state == expected
+        assert mcp['status'] == unfiltered_expected
+    if filtered and shot == 100 and pid == 'rwm':
         caveat = 'no detector registered for rwm; text/database evidence only'
         assert caveat in retrieval.caveats and caveat in mcp['caveats']
     if status == 'ok' and not np.isfinite(span).all():
         assert any('coverage unknown' in c for c in retrieval.caveats)
         assert any('coverage unknown' in c for c in mcp['caveats'])
+    tools.reset_cache()
+
+
+def test_unknown_phenomenon_and_registered_no_detector_are_distinct(ideate_db):
+    tools.reset_cache()
+    unknown = tools.get_events(100, 'zzz_not_a_phenomenon')
+    known = tools.get_events(100, 'rwm')
+    assert unknown['status'] == known['status'] == 'unprocessed'
+    assert any('unknown phenomenon id' in c and 'zzz_not_a_phenomenon' in c
+               for c in unknown['caveats'])
+    assert not any('no detector registered' in c for c in unknown['caveats'])
+    assert 'no detector registered for rwm; text/database evidence only' in known['caveats']
     tools.reset_cache()
 
 

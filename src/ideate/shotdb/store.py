@@ -13,6 +13,7 @@ Ported from shot-recommender-system (shotrec) @565d548.
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from collections.abc import Iterable
 from functools import cached_property
 from pathlib import Path
@@ -25,6 +26,7 @@ from ..schema import Range, ShotRecord
 # A negative must describe at least half the requested segment. Coverage states themselves
 # retain the shared overlap contract; this threshold governs only query --avoid eligibility.
 AVOID_MIN_COVERED_FRACTION = 0.5
+PHENOMENON_EVIDENCE_CACHE_SIZE = 4096
 
 
 def _empty(dtypes: dict[str, str]) -> pd.DataFrame:
@@ -109,8 +111,9 @@ class ShotDB:
         # A left join preserves row order, which is what keeps self.segments aligned row-for-row
         # with emb["scalar"]; every lookup in this class relies on that.
         self.segments = segments.join(meta, on="shot", rsuffix="_shot")
-        self._phenomenon_evidence: dict = {}
+        self._phenomenon_evidence: OrderedDict = OrderedDict()
         self._evidence_indexes: dict[str, dict[int, list[dict]]] = {}
+        self._avoid_filter_cache: tuple | None = None
 
     @classmethod
     def load(cls, db_dir: Path) -> ShotDB:
@@ -229,6 +232,9 @@ class ShotDB:
                 label_floor=self._phenomenon_config[2],
                 shot_metadata=self._inventory_rows.get(int(shot), {}),
             )
+            if len(self._phenomenon_evidence) > PHENOMENON_EVIDENCE_CACHE_SIZE:
+                self._phenomenon_evidence.popitem(last=False)
+        self._phenomenon_evidence.move_to_end(key)
         return self._phenomenon_evidence[key]
 
     @cached_property
@@ -319,9 +325,19 @@ class ShotDB:
         return keep
 
     def label_filter_caveats(self, segment: str, avoid: Iterable[str]) -> list[str]:
+        return list(self._avoid_result(segment, avoid)[1])
+
+    def _avoid_result(self, segment: str, avoid: Iterable[str]) -> tuple[np.ndarray, tuple]:
+        """One bounded filter result shared by channel masks and CLI/MCP reporting."""
+        key = (segment, tuple(sorted(set(avoid))))
+        if self._avoid_filter_cache is not None and self._avoid_filter_cache[0] == key:
+            return self._avoid_filter_cache[1]
         notes: list[str] = []
-        self._avoid_coverage(segment, avoid, notes)
-        return notes
+        keep = self._avoid_coverage(segment, key[1], notes)
+        keep.setflags(write=False)
+        result = (keep, tuple(notes))
+        self._avoid_filter_cache = (key, result)
+        return result
 
     def label_filter_shot_caveats(self, shot: int, segment: str, avoid: Iterable[str]) -> list[str]:
         """Name the measured fraction on each retained partial negative, not just its query."""
@@ -375,7 +391,7 @@ class ShotDB:
                 m &= np.array([req <= lab for lab in labels], dtype=bool)
             if avoid:
                 m &= np.array([not (avoid & lab) for lab in labels], dtype=bool)
-                m &= self._avoid_coverage(segment, avoid)
+                m &= self._avoid_result(segment, avoid)[0]
         if exclude_shots:
             m &= ~s["shot"].isin(set(exclude_shots)).to_numpy()
         if exclude_runs:

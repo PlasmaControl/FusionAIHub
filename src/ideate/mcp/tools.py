@@ -532,7 +532,12 @@ def get_events(
     if phenomenon:
         entry = ph.registry().get(phenomenon)
         relevant = entry.covering_sources if entry is not None else ()
-        if not relevant:
+        if entry is None:
+            caveats.append(
+                f'unknown phenomenon id {phenomenon!r}; the registry has {sorted(ph.registry())}; '
+                'absence cannot be interpreted as a detector observation'
+            )
+        elif not relevant:
             caveats.append(ph.NO_DETECTOR.format(id=phenomenon))
     sources = es.for_shot(db, shot, relevant)
     if "event_sources" in db.load_errors:
