@@ -20,7 +20,7 @@ V100S allocation and used the existing halving retry. Failed-forward time and
 concatenation/control overhead remain in `infer_s`'s residual (~1.59 s).
 No allocation was resized to manipulate a gate.
 
-| Phase, 34 completed blocks / 1,170 tiles | Before seconds |
+| Phase, 38 completed blocks / 1,170 tiles | Before seconds |
 |---|---:|
 | Prepared-future wait | 6.635684 |
 | Host tiling | 0.637067 |

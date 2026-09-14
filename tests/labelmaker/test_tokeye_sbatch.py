@@ -85,3 +85,40 @@ def test_array_rejects_inconsistent_worker_reservations(workers, prefetch, cpus)
                           text=True, check=False)
     assert done.returncode == 2
     assert "must" in done.stderr
+
+
+def test_scratch_root_separates_outputs_from_readonly_runtime(tmp_path):
+    """ROOT must win over an activated production LABELMAKER_ROOT."""
+    import json
+    import os
+
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    capture = tmp_path / 'arguments.json'
+    for name, body in {
+        'nvidia-smi': '#!/bin/sh\nexit 0\n',
+        'srun': '#!/usr/bin/env python3\nimport json, os, sys\n'
+                'with open(os.environ["CAPTURE"], "w") as handle:\n'
+                '    json.dump(sys.argv[1:], handle)\n',
+    }.items():
+        program = bin_dir / name
+        program.write_text(body)
+        program.chmod(0o755)
+    root = tmp_path / 'scratch-products'
+    repo = SCRIPTS.parents[1]
+    env = dict(os.environ, ROOT=str(root), LABELMAKER_ROOT='/production',
+               REPO=str(repo), CAPTURE=str(capture),
+               PATH=f'{bin_dir}:/usr/bin:/bin', SHOT_FILE='/input/shots.txt',
+               PHASE3_PYTHON='/readonly/phase3/bin/python',
+               UNET='/readonly/checkpoint.pt', PREP_WORKERS='6', PREFETCH='6',
+               SLURM_CPUS_PER_TASK='8', SLURM_ARRAY_TASK_ID='0',
+               SLURM_ARRAY_JOB_ID='1234', SLURM_JOB_ID='1234', N_CHUNKS='1')
+    done = subprocess.run(['bash', str(SCRIPTS / 'tokeye_masks.sbatch')],
+                          env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    args = json.loads(capture.read_text())
+    assert args[args.index('--root') + 1] == str(root)
+    assert args[args.index('--unet') + 1] == '/readonly/checkpoint.pt'
+    assert args[1] == '/readonly/phase3/bin/python'
+    assert str(root) in done.stdout
+    assert '/production' not in ' '.join(args)
