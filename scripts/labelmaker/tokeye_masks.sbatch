@@ -47,12 +47,13 @@ N_CHUNKS="${N_CHUNKS:-1}"
 PREP_WORKERS="${PREP_WORKERS:-6}"
 PREFETCH="${PREFETCH:-6}"
 TILE_BATCH="${TILE_BATCH:-96}"
+TAIL_WORKERS="${TAIL_WORKERS:-1}"
 if (( PREFETCH < PREP_WORKERS )); then
     echo "PREFETCH must be >= PREP_WORKERS" >&2
     exit 2
 fi
-if (( SLURM_CPUS_PER_TASK != PREP_WORKERS + 2 )); then
-    echo "SLURM_CPUS_PER_TASK must equal PREP_WORKERS + 2" >&2
+if (( SLURM_CPUS_PER_TASK != PREP_WORKERS + TAIL_WORKERS + 1 )); then
+    echo "SLURM_CPUS_PER_TASK must equal PREP_WORKERS + TAIL_WORKERS + 1" >&2
     exit 2
 fi
 if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID >= N_CHUNKS )); then
@@ -73,6 +74,6 @@ srun --cpu-bind=cores "$PHASE3_PYTHON" -u \
     --n-chunks "$N_CHUNKS" --rank 0 --world 1 \
     --root "$ROOT" --unet "$UNET" --corpus "$CORPUS" --device cuda --plan round1 \
     --tile-batch "$TILE_BATCH" --prep-workers "$PREP_WORKERS" \
-    --prefetch "$PREFETCH" --tail-workers 1 --text-subset readonly --no-index \
+    --prefetch "$PREFETCH" --tail-workers "$TAIL_WORKERS" --text-subset readonly --no-index \
     --amp --timeout 240 --run-id "tokeye-${SLURM_ARRAY_JOB_ID}"
 echo "finished at $(date -Is)"

@@ -1,127 +1,33 @@
 """Many shots on one GPU: the batch driver behind `tokeye_masks.py`.
 
-`python -m labelmaker.run events` is a sequential loop - read, transform,
-infer, describe, one channel after another - and on a GPU that is the 1 %
-utilisation the plan measured (V8): a shot is ~15 core-seconds of HDF5 read
-and STFT against ~0.84 s of A100 forward pass. This module is the same work
-re-ordered so the card is busy, and nothing else:
+The CLI pools consecutive tiles across channels, passes and shots. Prep runs
+in spawned CPU workers; the parent fills pinned batches, overlaps H2D on a
+copy stream, and retains overlap stitching and compaction on the device.
+Only packed masks, row/column summaries and sparse coherent probabilities
+cross back. With tail workers, description and shot finishing run in that
+pool while the GPU processes later shots. Results retain plan and shot order.
 
-* **The list is split twice.** `--chunk K --n-chunks N` cuts a CONTIGUOUS
-  slice of the sorted, de-duplicated shot list for one SLURM array task, so
-  two tasks walk two regions of the corpus directory rather than competing
-  for the same GPFS blocks; `--rank R --world W` then STRIDES that slice
-  across the ranks of one `srun` step, whose tasks share a node and its page
-  cache. Between them, every shot is done exactly once
-  (`test_tokeye_masks.py` pins that over all (chunk, rank) pairs).
-* **The CPU part runs somewhere else.** `--prep-workers` spawned processes
-  run `pipeline.plan_shot` and `pipeline.prep_block` - the header reads, the
-  waveform read, the STFT and the standardisation - while this process runs
-  `pipeline.infer_block` on the block before. The parent consumes prepared
-  blocks IN ORDER, so what reaches `pipeline.finish_shot` is the plan order
-  `process_shot` would have produced. One job is one `(channel, pass)`, so a
-  channel's waveform is read once per pass rather than once per channel as
-  in `process_shot`: ~3-6 % more CPU per channel and roughly twice the GPFS
-  request count (~260 MB -> ~520 MB per shot), nearly all of it served from
-  the page cache because wide and zoom run next to each other. Measured on
-  185786; not worth splitting the job unit for.
-* **So does the tail.** `--tail-workers 1` runs `pipeline.finish_shot` -
-  the sawtooth pass over the whole ECE array, L-H, the actuators, the QH
-  proxy, the text lookup and the two writes - in a second, single-worker
-  pool, beside the NEXT shot's forward passes. Un-overlapped it is ~3.7 s
-  of parent-thread work per shot against ~0.84 s of A100 forward pass
-  (measured on a CPU smoke), which on its own would cap GPU utilisation
-  near 15 % - under plan section 13.3's 70 % gate, whatever prep does.
-  Shot i's tail is collected when shot i+1's blocks are done, so the rows
-  stay in shot order, at most one shot is unfinished at a time, and the
-  cost is one shot's `_BlockRun`s (tens of MB) crossing a pipe. It is
-  order-independent by construction: a tail touches only its own shot's
-  files and reads only its own shot's corpus file.
-* **`process_shot` stays the definition.** This module owns scheduling and
-  nothing else: the three stage functions, `plan_shot` and `finish_shot` are
-  `pipeline.py`'s, and a mask file or an events table written here is
-  required to be byte-identical to the one the sequential path writes. The
-  one thing deliberately NOT done is pooling tiles from two blocks into one
-  forward pass: `masks.infer` already batches a block's tiles to
-  `--tile-batch` (a `mirnov` wide pass is 143 of them), and re-cutting the
-  batches across blocks would change which batch a tile is run in, which is
-  the one thing that could make these outputs differ in the last bits.
+The full-probability per-block schedule remains available with
+`--probs-on-host` (or `run_shots(pooled=False)`). `pipeline.process_shot` uses
+that independent inference reference. Both schedules must preserve complete
+NPZ bytes and exact events/sources frames except run_id/written_at, including
+source coverage intervals and min_gap_s.
 
-**`--prefetch` is also the concurrency.** A job is submitted only when
-fewer than `--prefetch` are outstanding, so at most
-`min(--prefetch, --prep-workers)` workers are ever busy: the plan's pairing
-of 18 workers with `--prefetch 4` would leave fourteen of them idle and cap
-prep throughput at four cores against the ~18 the GPU needs to stay fed
-(15.2 core-s of prep per shot against 0.84 s of A100). A production run
-wants `--prefetch` at least `--prep-workers`, and its queue is then that
-many prepared blocks - which is the memory below, multiplied. Task L11's
-pilot is where the pair is sized; the knob is here, and the bound is not
-raised behind the caller's back.
+Memory is bounded by the prep queue, two pinned tile batches, partial device
+stitches and the tail backlog. `--prefetch` is also prep concurrency; choosing
+fewer slots than workers leaves workers idle. Raw log-power survives until
+CPU description, so pending tails cost more than their packed output files.
+The network, CUDA context and streams remain exclusively in the parent.
 
-**Memory.** At most `--prefetch` prepared blocks are held at once, plus the
-one in the network. A prepared block is two `(512, T)` float32 arrays - the
-standardised spectrogram and the pre-standardisation log-power - which on
-the widest block (`mirnov` wide, 64,000 columns) is 131 MB each, so
-`--prefetch 4` bounds the queue at ~1.05 GB and the spectrogram of the block
-being inferred is dropped as soon as the network has read it. The prep
-workers add one such pair each while they work.
+Each task owns its per-shot files. Build the whole list's text subset once,
+then use `--text-subset readonly --no-index` for concurrent tasks. Rebuild the
+shared index separately after completion. A resolved output root is printed
+before any directory is created; pass an explicit --root for scratch runs.
 
-**The two files this driver does NOT own.** `masks/<shot>_masks.npz` and
-`events/<shot>_events.parquet` are per shot, so sixteen tasks writing
-sixteen shots never meet. Two other files belong to the whole root, and
-both are whole-file rewrites, which is a lost update rather than a torn
-file - the damage a pid-suffixed temporary does not prevent:
-
-* `events_index.parquet` (`labels.store.append_index`, called per shot by
-  `pipeline.finish_shot` through a FIXED `.tmp` sibling). Concurrent tasks
-  lose each other's rows AND can rename a half-written parquet into place,
-  after which the next shot's `read_parquet` raises inside the write guard
-  and a healthy shot is recorded `status == "error"`. **`--no-index`** is
-  the answer: the per-shot products are written and the shared file is
-  left alone, and `--rebuild-index` regenerates it from
-  `events/*_events.parquet` in one pass afterwards (it is derivable, so
-  the rebuild is exact and is idempotent even if a task died).
-* `text/logs_subset.jsonl` (`text_weak.build_logs_subset`), which is worse
-  because it changes what is WRITTEN: sixteen tasks read the same old
-  subset, each appends its own thirty shots and the last rename wins, so
-  fifteen tasks' records are gone before their shots are processed and
-  `finish_shot` files `skipped["text"]` for every one of them. **The
-  subset is built once, before the array** (`--build-text-subset`), and a
-  run with `--world` or `--n-chunks` above 1 reads it and never writes it
-  (`--text-subset auto`, or `readonly` to force it). A shot the pre-pass
-  did not cover is named in the run record and in its own `skipped["text"]`
-  with the command that fixes it. (`text_weak.text_events` re-checks the
-  subset per shot, which under `readonly` is always a no-op: it is only
-  reached for a shot whose record is already there, and
-  `build_logs_subset` returns without writing when it has nothing to add.)
-  **The pre-pass is REQUIRED for multi-rank or multi-chunk runs** to match
-  `python -m labelmaker.run events`: without it, `readonly` adds a `text`
-  skip and omits `text` from an uncovered shot's declared sources. A
-  covered record with no matches still declares `text` with zero events.
-  Check that every run JSON's `text_subset_missing` is empty.
-
-**Isolation.** Per shot: one `SIGALRM` (`--timeout`) and one try/except, as
-`run.py`'s stages. The alarm ends the shot wherever the driver itself is
-waiting - on a prepared block, in the network, in a describe step. Inside
-`pipeline.finish_shot` it behaves as it does under `run.py`: that step's own
-guard turns it into that step's skip and the shot finishes without a timer,
-which is `process_shot`'s long-standing behaviour and not something a
-scheduler may quietly change. With `--tail-workers 1` the tail is in
-another process, where this process's alarm cannot reach it; it is
-collected with a `--timeout` of its own instead, and a tail that overran or
-whose worker died is that shot's error row and a fresh tail pool for the
-next shot. The next shot's `FinishJob` is retained and re-submitted if
-that restart destroyed its future, preserving the blocks already inferred.
-Ordinary tail exceptions leave the pool running. A block whose prep raised -
-a `co2` channel whose
-digitiser gapped, a worker that ran out of memory - is a `skipped` entry and
-the shot goes on, exactly as in `process_shot`. A prep worker that DIES
-(the OOM killer, a segfault) breaks the pool: the block in flight is
-recorded as a skip, the pool is restarted, and the shot's remaining blocks
-are re-submitted to it. Nothing waits forever for a process that is gone,
-and nothing is LEFT alive that could stop this one exiting: `PrepPool.close`
-terminates and, if it must, kills, because a worker wedged in an
-uninterruptible read never takes a shutdown sentinel and CPython joins the
-executor's manager thread at interpreter exit.
+Prep and tail failures are isolated and broken pools are replaced; inferred
+tail payloads survive a restart. `PrepPool.close` terminates wedged workers
+rather than leaving interpreter shutdown waiting forever. Timeout alarms
+bound synchronous stages; future waits have explicit deadlines.
 """
 from __future__ import annotations
 
@@ -136,7 +42,7 @@ import time
 from collections import deque
 from collections.abc import Iterable, Sequence
 from concurrent.futures import BrokenExecutor, Future, ProcessPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -348,6 +254,7 @@ def prep_one(job: PrepJob) -> pipeline.PreparedBlock:
     called a failed STFT a failed read would be reporting a different shot
     from the one the sequential path reports.
     """
+    started = time.monotonic()
     try:
         y, fs_hz, t0_s, t1_s = masks.read_waveform(
             job.corpus_file, job.spec.diag, job.spec.channel
@@ -355,10 +262,12 @@ def prep_one(job: PrepJob) -> pipeline.PreparedBlock:
     except Exception as exc:  # noqa: BLE001 - per-channel isolation
         raise BlockFailed("read", pipeline._cause(exc)) from None
     try:
-        return pipeline.prep_block(
+        prepared = pipeline.prep_block(
             y, fs_hz, t0_s, t1_s, job.spec, job.pass_name,
             norm=job.norm, window=job.window,
         )
+        prepared.prep_seconds = time.monotonic() - started
+        return prepared
     except Exception as exc:  # noqa: BLE001 - per-pass isolation
         raise BlockFailed("mask", pipeline._cause(exc)) from None
 
@@ -388,6 +297,7 @@ class FinishJob:
     write: bool = True
     index: bool = True
     text_missing: bool = False
+    descriptions: list = field(default_factory=list)
 
 
 @dataclass
@@ -396,6 +306,7 @@ class FinishDone:
 
     res: pipeline.ShotResult
     seconds: float = 0.0
+    describe_seconds: float = 0.0
 
 
 def finish_one(job: FinishJob) -> FinishDone:
@@ -404,6 +315,17 @@ def finish_one(job: FinishJob) -> FinishDone:
     The result is RETURNED rather than mutated in place, because in a
     worker the `res` this runs on is a copy and the parent's is not.
     """
+    at = time.monotonic()
+    for prepared, compact in job.descriptions:
+        try:
+            job.runs.append(pipeline.describe_block(
+                prepared, compact, unet_sha256=job.unet_sha256))
+        except Exception as exc:  # noqa: BLE001 - one descriptor block
+            job.res.skipped[f'mask {prepared.key}'] = pipeline._cause(exc)
+    describe_seconds = time.monotonic() - at if job.descriptions else 0.0
+    if job.descriptions:
+        job.res.n_blocks = len(job.runs)
+    job.descriptions.clear()
     at = time.monotonic()
     res = pipeline.finish_shot(
         job.res, job.paths, job.corpus_file, job.runs,
@@ -416,7 +338,8 @@ def finish_one(job: FinishJob) -> FinishDone:
         # knows it is absent, which is a pre-pass that did not cover it and
         # not a logbook that has nothing to say about the shot.
         res.skipped["text"] = f"{NOT_PREBUILT} <list>"
-    return FinishDone(res=res, seconds=time.monotonic() - at)
+    return FinishDone(res=res, seconds=time.monotonic() - at,
+                      describe_seconds=describe_seconds)
 
 
 @dataclass(frozen=True)
@@ -883,6 +806,279 @@ def _cuda_peak_gib(device: str) -> float | None:
     return torch.cuda.max_memory_allocated() / float(1 << 30)
 
 
+@dataclass
+class _PooledShot:
+    shot: int
+    corpus_file: Path
+    res: pipeline.ShotResult
+    timing: ShotTiming = field(default_factory=ShotTiming)
+    runs: list = field(default_factory=list)
+    descriptions: list = field(default_factory=list)
+    remaining: int = 0
+    started: float = field(default_factory=time.monotonic)
+    skipped: bool = False
+
+
+def _run_pooled(shots, **opts):
+    """Bounded, ordered prep stream spanning channels, passes and shots."""
+    paths = opts["paths"]
+    pool = PrepPool(opts["prep_workers"])
+    tails = PrepPool(opts["tail_workers"])
+    tails.warm()
+    states, pending = deque(), deque()
+    rows, totals = [], ShotTiming()
+    started = time.monotonic()
+    epoch = 0
+
+    def remaining(state):
+        return opts["timeout_s"] - (time.monotonic() - state.started)
+
+    def guard(states):
+        left = min(remaining(state) for state in states)
+        if left <= 0:
+            raise StageTimeout(f"exceeded {opts['timeout_s']}s for shot blocks")
+        return time_limit(max(1, int(left) + 1))
+
+    def jobs():
+        nonlocal epoch
+        for shot in shots:
+            corpus_file = (
+                Path(opts["corpus_dir"]) / f"{int(shot)}_processed.h5"
+                if opts["corpus_dir"] is not None
+                else paths.corpus_file(shot)
+            )
+            state = _PooledShot(int(shot), corpus_file, pipeline.ShotResult(int(shot)))
+            states.append(state)
+            if (
+                opts["skip_existing"]
+                and not opts["force"]
+                and paths.masks_file(shot).exists()
+                and paths.events_file(shot).exists()
+            ):
+                state.skipped = True
+                continue
+            try:
+                with guard([state]):
+                    specs, planned, window = pool.submit(
+                        PlanJob(corpus_file, tuple(opts["plan"]), opts["norm"])
+                    ).result(timeout=opts["timeout_s"])
+                state.res.skipped.update(planned)
+            except Exception as exc:  # noqa: BLE001 - one shot's header
+                state.res.error = (
+                    exc.cause if isinstance(exc, BlockFailed) else pipeline._cause(exc)
+                )
+                if isinstance(exc, (BrokenExecutor, TimeoutError, StageTimeout)):
+                    pool.restart()
+                    epoch += 1
+                continue
+            state.remaining = len(specs) * len(opts["passes"])
+            for spec in specs:
+                for pass_name in opts["passes"]:
+                    yield (
+                        state,
+                        PrepJob(corpus_file, spec, pass_name, opts["norm"], window),
+                    )
+
+    def submit(item):
+        try:
+            with guard([item[0]]):
+                future = pool.submit(item[1])
+        except StageTimeout as exc:
+            future = Future()
+            future.set_exception(exc)
+        future.l14_epoch = epoch
+        return future
+
+    def prepared_blocks():
+        nonlocal epoch
+        for (state, job), future in in_order(jobs(), submit, prefetch=opts["prefetch"]):
+            at = time.monotonic()
+            try:
+                if future.l14_epoch != epoch:
+                    future = submit((state, job))
+                prepared = future.result(timeout=max(0, remaining(state)))
+                if remaining(state) <= 0:
+                    raise StageTimeout("shot timed out during preparation")
+            except Exception as exc:  # noqa: BLE001 - preserve per-block isolation
+                key = (
+                    f"read {job.spec.key}"
+                    if isinstance(exc, BlockFailed) and exc.stage == "read"
+                    else f"mask {job.key}"
+                )
+                state.res.skipped[key] = (
+                    exc.cause if isinstance(exc, BlockFailed) else pipeline._cause(exc)
+                )
+                state.remaining -= 1
+                if isinstance(exc, (TimeoutError, StageTimeout)):
+                    state.res.error = pipeline._cause(exc)
+                if isinstance(exc, (BrokenExecutor, TimeoutError, StageTimeout)):
+                    pool.restart()
+                    epoch += 1
+                continue
+            finally:
+                state.timing.prep_wait_s += time.monotonic() - at
+            if prepared.norm_note:
+                state.res.skipped[f"norm {prepared.key}"] = prepared.norm_note
+            yield (state, prepared), prepared.spectrogram
+            prepared.spectrogram = None
+
+    def flush():
+        state, future, _job = pending.popleft()
+        at = time.monotonic()
+        if state.skipped:
+            row = {
+                "shot": state.shot,
+                "status": "skipped",
+                "error": "",
+                "skipped": {},
+                "by_source": {},
+                "n_blocks": 0,
+                "n_events": 0,
+            }
+        else:
+            try:
+                if future is not None:
+                    done = future.result(timeout=opts["timeout_s"])
+                    state.timing.finish_s += done.seconds
+                    state.timing.describe_s += done.describe_seconds
+                    state.res = done.res
+                state.res.elapsed_s = time.monotonic() - state.started
+                row = state.res.as_row()
+            except Exception as exc:  # noqa: BLE001 - tail failure is one shot
+                row = {
+                    "shot": state.shot,
+                    "status": "error",
+                    "error": type(exc).__name__,
+                    "detail": str(exc)[:200],
+                }
+                if isinstance(exc, (BrokenExecutor, TimeoutError)):
+                    tails.restart()
+                    # Preserve inferred payloads already queued behind this job.
+                    for other, old, payload in list(pending):
+                        if old is not None and (
+                            not old.done()
+                            or old.cancelled()
+                            or isinstance(old.exception(), BrokenExecutor)
+                        ):
+                            pending.remove((other, old, payload))
+                            pending.append((other, tails.submit(payload), payload))
+        state.timing.tail_wait_s += time.monotonic() - at
+        row["seconds"] = round(time.monotonic() - state.started, 2)
+        row.update(state.timing.as_row())
+        totals.add(state.timing)
+        rows.append(row)
+        opts["echo"](
+            f"{state.shot}: {row.get('n_blocks', 0)} blocks, "
+            f"{row.get('n_events', 0)} events in {row['seconds']}s"
+        )
+
+    def dispatch_ready():
+        while states and states[0].remaining == 0:
+            state = states.popleft()
+            state.res.n_blocks = len(state.runs)
+            job, future = None, None
+            if not state.skipped and not state.res.error:
+                job = FinishJob(
+                    res=state.res,
+                    paths=paths,
+                    corpus_file=state.corpus_file,
+                    runs=state.runs,
+                    unet_sha256=opts["unet_sha256"],
+                    lexicon=opts["lexicon"],
+                    run_id=opts["run_id"],
+                    write=opts["write"],
+                    index=opts["index"],
+                    text_missing=state.shot in opts["text_missing"],
+                    descriptions=state.descriptions,
+                )
+                with time_limit(opts["timeout_s"]):
+                    future = tails.submit(job)
+            state.runs = []
+            state.descriptions = []
+            pending.append((state, future, job))
+            # Bound queued payloads while keeping every tail worker fed.
+            if len(pending) >= max(2, 2 * opts["tail_workers"]):
+                flush()
+
+    try:
+        inferred = iter(
+            masks.infer_pooled(
+                opts["model"],
+                prepared_blocks(),
+                opts["device"],
+                batch=opts["tile_batch"],
+                amp=opts["amp"],
+                forward_context=lambda tokens: guard([token[0] for token in tokens]),
+            )
+        )
+        while True:
+            at = time.monotonic()
+            output = next(inferred, None)
+            if output is None:
+                break
+            (state, prepared), result = output
+            state.timing.infer_s += time.monotonic() - at
+            state.timing.n_tiles += prepared.n_tiles
+            prepared.spectrogram = None
+            at = time.monotonic()
+            try:
+                if isinstance(result, Exception):
+                    raise result
+                if state.res.error:
+                    state.remaining -= 1
+                    dispatch_ready()
+                    continue
+                if opts["tail_workers"]:
+                    state.descriptions.append((prepared, result))
+                else:
+                    state.runs.append(
+                        pipeline.describe_block(
+                            prepared, result, unet_sha256=opts["unet_sha256"]
+                        )
+                    )
+            except Exception as exc:  # noqa: BLE001 - one descriptor failure
+                if isinstance(exc, StageTimeout):
+                    state.res.error = pipeline._cause(exc)
+                state.res.skipped[f"mask {prepared.key}"] = pipeline._cause(exc)
+            state.timing.describe_s += time.monotonic() - at
+            state.remaining -= 1
+            dispatch_ready()
+            pool.sample()
+            tails.sample()
+        dispatch_ready()
+        while pending:
+            flush()
+    finally:
+        pool.close()
+        tails.close()
+    elapsed = time.monotonic() - started
+    summary = pipeline.summarise(rows)
+    summary.update(totals.as_row())
+    summary.update(
+        n_shots=len(rows),
+        elapsed_s=round(elapsed, 2),
+        seconds_per_shot=round(elapsed / len(rows), 2) if rows else 0.0,
+        blocks_per_s=round(summary["n_blocks"] / elapsed, 3),
+        tiles_per_s=round(totals.n_tiles / elapsed, 2),
+        peak_rss_gib=round(_rss_gib(resource.RUSAGE_SELF), 3),
+        peak_worker_rss_gib=round(
+            max(pool.peak_worker_rss_gib, tails.peak_worker_rss_gib), 3
+        ),
+        worker_rss_gib={
+            role: workers.worker_rss_gib
+            for role, workers in [("prep", pool), ("tail", tails)]
+        },
+        cuda_max_alloc_gib=_cuda_peak_gib(opts["device"]),
+        prep_workers=opts["prep_workers"],
+        tail_workers=opts["tail_workers"],
+        prefetch=opts["prefetch"],
+        tile_batch=opts["tile_batch"],
+        device=str(opts["device"]),
+        pooled=True,
+    )
+    return DriverRun(rows, summary)
+
+
 def run_shots(
     shots: Sequence[int],
     *,
@@ -907,6 +1103,7 @@ def run_shots(
     force: bool = False,
     tail_workers: int = 0,
     text_missing: Iterable[int] = (),
+    pooled: bool = False,
     echo=print,
 ) -> DriverRun:
     """Every shot in `shots`, one prep pool, one model, one row each.
@@ -938,6 +1135,13 @@ def run_shots(
     bad = [p for p in passes if p not in masks.PASS_NAMES]
     if bad:
         raise ValueError(f"passes must be from {masks.PASS_NAMES}; got {bad}")
+
+    if pooled:
+        if tail_workers > 1 and index:
+            raise ValueError("multiple tail workers require index=False / --no-index")
+        options = dict(locals())
+        options.pop('shots')
+        return _run_pooled(shots, **options)
 
     started = time.monotonic()
     totals = ShotTiming()
@@ -1179,6 +1383,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "Default 1 when --prep-workers is not 0")
     parser.add_argument("--amp", action="store_true",
                         help="fp16 autocast; CUDA only, ignored on cpu")
+    parser.add_argument("--probs-on-host", action="store_true",
+                        help="use the reference per-block full-probability "
+                             "path instead of compact pooled inference")
     parser.add_argument("--norm", default="record",
                         choices=list(pipeline.NORMS),
                         help="record: z-score over the whole record, as the "
@@ -1308,6 +1515,8 @@ def main(argv=None) -> int:
         root=args.root or base.root,
         corpus=args.corpus or base.corpus,
     )
+    paths = replace(paths, root=paths.root.resolve())
+    print(f"Resolved root: {paths.root}", flush=True)
     paths.mkdirs()
 
     if args.rebuild_index:
@@ -1388,6 +1597,7 @@ def main(argv=None) -> int:
             lexicon=load_lexicon(), run_id=run_id,
             skip_existing=args.skip_existing, force=args.force,
             tail_workers=args.tail_workers, text_missing=text_missing,
+            pooled=not args.probs_on_host,
         )
 
     totals = result.totals

@@ -31,7 +31,7 @@ def test_array_reserves_one_gpu_and_enough_cpus_for_both_pools():
     assert 'srun --cpu-bind=cores "$PHASE3_PYTHON" -u' in text
     for flag in ('--chunk "$SLURM_ARRAY_TASK_ID"', '--n-chunks "$N_CHUNKS"',
                  "--rank 0 --world 1", "--device cuda", "--plan round1",
-                 "--tail-workers 1", "--text-subset readonly", "--no-index",
+                 '--tail-workers "$TAIL_WORKERS"', "--text-subset readonly", "--no-index",
                  "--amp", "--timeout 240"):
         assert flag in text
     for export in ('PYTHONPATH="$REPO/src"', "OMP_NUM_THREADS=1",
