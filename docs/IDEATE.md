@@ -38,6 +38,51 @@ The development universe is `configs/ideate/shot_lists/recommender_v1.yaml` — 
 `ideate corpus select` under the rule in `src/ideate/shotdb/select.py`'s module docstring. The
 database built from it is what the MCP server below serves.
 
+## Scratch databases and the pixi activation env
+
+`pixi run -e ideate` and `-e ideate-cpu` set `IDEATE_DATA_ROOT`, `LABELMAKER_ROOT` and
+`IDEATE_CORPUS` from `[tool.pixi.feature.ideate.target.unix.activation.env]` in `pyproject.toml`.
+Activation runs *after* your shell, so a value you exported is replaced without a word. On
+2026-09-14 a one-shot scratch build, run through `pixi run` with `IDEATE_DATA_ROOT` exported to a
+`/tmp` directory, published itself over the 500-shot production database.
+
+So a scratch build must not go through `pixi run`. Call the environment's interpreter directly,
+with the variables exported:
+
+```bash
+export IDEATE_DATA_ROOT=/tmp/scratch-db HF_HUB_OFFLINE=1
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python -m ideate build --shots 190000
+```
+
+or give it a paths file of its own — `IDEATE_PATHS=<file>` — remembering that `IDEATE_DATA_ROOT`
+still wins over it, so it has to be out of the environment:
+
+```bash
+pixi run -e ideate-cpu env -u IDEATE_DATA_ROOT IDEATE_PATHS=/tmp/my-paths.yaml \
+    python -m ideate build --shots 190000
+```
+
+**How to check.** Every command that writes under the root — `build`, `add`, `labels join`,
+`encode`, `corpus scan`, `corpus select` — prints one line on stderr before its first write:
+
+```
+ideate build: data root /tmp/scratch-db (IDEATE_DATA_ROOT env) -> db /tmp/scratch-db/db
+```
+
+The bracket is the source that won, and it is one of `IDEATE_DATA_ROOT env`,
+`IDEATE_PATHS=<file>` or `<repo>/configs/ideate/paths.yaml default` — the third names the
+packaged paths file in full, because `IDEATE_CONFIG_DIR` can move it and a label is only useful
+if it names the file that was actually read. If it names a root you did not mean, stop there.
+
+**What the guard refuses.** Before publishing, `build` compares the existing
+`<db_dir>/manifest.json` with what it is about to write and refuses — nothing touched, exit 1,
+a message naming both sources and both counts — when the `shot_source` differs, when the new
+`n_shots` is smaller than the existing one (a `--limit` pilot, a one-shot build), or when the
+existing manifest cannot be read. `ideate build --force` overrides it and records the database
+it replaced under `forced_over` in the new manifest. Growing the same selection needs no flag:
+the 500 → 504 rebuild over `list:recommender_v1` publishes as it always did. `ideate add` and
+`ideate labels join` are upserts and are not guarded.
+
 ## Search
 
 ```bash
@@ -140,17 +185,25 @@ that phenomenon's covering sources. Another detector cannot make RWM observed. B
 `no detector registered for rwm; text/database evidence only` on an indexed shot with no RWM
 detector. Unknown coverage gets its own `ran; coverage unknown` caveat.
 
-`ShotDB.load` reads `event_sources.parquet` as an optional typed table, alongside events, labels
-and text claims. An absent table has an empty typed frame; an unreadable table also records
-`load_errors`, which both readers surface. Legacy databases without this table may use the
-finite coverage on detector/heuristic event rows; explicit empty or unreadable source tables
-cannot borrow coverage that way. Reload the database snapshot to see changed tables.
+Each source stores `intervals`, a JSON list of disjoint finite `[t0, t1]` pairs, and
+`min_gap_s`, its detector-derived gap resolution. Finite runs separated by less than that
+resolution may merge. Leading/trailing NaNs never extend coverage. Multi-input heuristics
+intersect their required inputs' interval sets; any-channel steps use their union.
+`t_cov0_s`/`t_cov1_s` are display hulls only.
 
-Coverage is **clipped to the window searched** before any of this is decided. On labelmaker's own
-shots the ELM clock's coverage ends at ~4.3 s while other detectors run to 6-7 s, so a flat top
-extending past 4.3 s is partly unlooked-at for ELMs — and a `coverage` that reported the clock's
-own window would have made that shot a clean ELM negative. `coverage_windows` is the real union
-(gaps and all) and `coverage` is its hull; a hull spanning a gap says so in a caveat.
+Coverage is clipped to the requested window. A window wholly inside an interior gap is
+`uncovered`, with a caveat listing the covered intervals around it. A window crossing a gap
+is `observed` with `coverage_partial=True` and the “covered only” qualification; a window
+inside one interval is `observed`. Retrieval's `coverage_windows` and MCP's
+`coverage_windows` carry the actual union; hulls never decide observation.
+
+`ShotDB.load` reads `event_sources.parquet` once per snapshot. An absent table may fall back
+to detector/heuristic event rows: new pipeline rows preserve the source interval set in
+`attrs.coverage_intervals` and its resolution in `attrs.coverage_min_gap_s`. Explicit empty
+or unreadable source tables cannot borrow event coverage. Older source files, older joined
+tables, and older events without interval metadata use their finite hull as one interval,
+always with this caveat: “coverage recorded as a hull by an older writer; interior gaps unknown”.
+They do not establish whether an interior dropout occurred. Reload the snapshot to see updates.
 
 ### The ELM case: a transient detector is not an ELM detector
 

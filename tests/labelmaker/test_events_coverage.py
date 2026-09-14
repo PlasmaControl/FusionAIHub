@@ -360,3 +360,169 @@ def test_an_elm_on_an_edge_column_is_moved_into_coverage_and_says_so():
     assert not any(e.phenomenon == transients.FREE_PHENOMENON for e in rows)
     for e in rows:
         assert t_cov[0] <= e.t0_s <= e.t1_s <= t_cov[1]
+
+
+# ------------------------------------------------ finite_intervals (C3fix)
+#
+# The third iteration-0 critic's remaining cap: `finite_span` is a HULL, and
+# the real 198658 `filterscopes` group with every channel NaN over 1-2 s
+# still published -0.05..6.95 s as one continuous source span, so a window
+# inside the gap came back `observed, n=0` - "an observation of nothing
+# happening" over a second nobody measured. Coverage is a SET of finite
+# intervals; the hull is for display only.
+
+def _gapped(t, lo, hi):
+    """Ones on `t`, NaN over `[lo, hi]`."""
+    y = np.ones(t.size)
+    y[(t >= lo) & (t <= hi)] = np.nan
+    return y
+
+
+def test_finite_intervals_are_the_runs_of_finite_samples_and_exclude_the_gap():
+    t = np.arange(0.0, 4.0 + 0.5e-3, 1e-3)
+    got = coverage.finite_intervals(t, _gapped(t, 1.0, 2.0), min_gap_s=0.003)
+    assert len(got) == 2
+    (a0, a1), (b0, b1) = got
+    assert a0 == 0.0 and a1 == pytest.approx(0.999)
+    assert b0 == pytest.approx(2.001) and b1 == pytest.approx(4.0)
+    # Nothing in the set touches the gap.
+    assert not any(lo <= 1.5 <= hi for lo, hi in got)
+    # And the hull of the set is exactly what `finite_span` says.
+    assert coverage.interval_hull(got) == coverage.finite_span(t, _gapped(t, 1.0, 2.0))
+
+
+def test_a_gap_shorter_than_min_gap_does_not_split_and_a_longer_one_does():
+    # A 10 kHz D-alpha axis, as the corpus' filterscopes are. The ELM
+    # clock cannot tell two peaks nearer than 3 ms apart, so a dropout of
+    # 0.3 ms is below its resolution and is not a hole in what it saw.
+    t = np.arange(0.0, 1.0, 1e-4)
+    short = np.ones(t.size)
+    short[5000:5003] = np.nan                       # gap 0.0004 s < 0.003
+    assert coverage.finite_intervals(t, short, min_gap_s=0.003) == (
+        (0.0, pytest.approx(t[-1])),
+    )
+    long = np.ones(t.size)
+    long[5000:5040] = np.nan                        # gap 0.0041 s > 0.003
+    got = coverage.finite_intervals(t, long, min_gap_s=0.003)
+    assert len(got) == 2
+    assert got[0][1] == pytest.approx(t[4999]) and got[1][0] == pytest.approx(t[5040])
+    # `min_gap_s=0` bridges nothing: one missing sample is a hole.
+    assert len(coverage.finite_intervals(t, short, min_gap_s=0.0)) == 2
+
+
+def test_leading_and_trailing_nan_create_no_interval():
+    # Every fast group in the corpus is 2^k + 1 long with a NaN last
+    # sample, and a filterscope's head is NaN; they are simply outside.
+    t = np.linspace(0.0, 1.0, 1001)
+    y = np.ones(1001)
+    y[:100] = np.nan
+    y[-1] = np.nan
+    assert coverage.finite_intervals(t, y, min_gap_s=0.003) == (
+        (pytest.approx(t[100]), pytest.approx(t[-2])),
+    )
+
+
+def test_all_nan_is_the_empty_set_which_is_the_interval_analogue_of_unknown():
+    t = np.linspace(0.0, 1.0, 11)
+    assert coverage.finite_intervals(t, np.full(11, np.nan), min_gap_s=0.01) == ()
+    assert coverage.finite_intervals([], None, min_gap_s=0.01) == ()
+    hull = coverage.interval_hull(())
+    assert all(math.isnan(v) for v in hull)
+
+
+def test_finite_intervals_count_a_sample_where_any_channel_is_finite():
+    t = np.linspace(0.0, 1.0, 11)
+    y = np.full((3, 11), np.nan)
+    y[1, :5] = 1.0
+    y[2, 7:] = 1.0
+    got = coverage.finite_intervals(t, y, min_gap_s=0.0)
+    assert got == ((0.0, pytest.approx(0.4)), (pytest.approx(0.7), 1.0))
+    # Without a trace the axis itself is the question.
+    assert coverage.finite_intervals(t, min_gap_s=0.0) == ((0.0, 1.0),)
+
+
+def test_finite_intervals_refuse_a_length_mismatch_and_a_negative_gap():
+    with pytest.raises(ValueError, match="samples against"):
+        coverage.finite_intervals(np.zeros(4), np.zeros(5), min_gap_s=0.0)
+    with pytest.raises(ValueError, match="min_gap_s"):
+        coverage.finite_intervals(np.zeros(4), np.zeros(4), min_gap_s=-1.0)
+
+
+# ----------------------------------------- intersect_intervals / union
+
+def test_the_intersection_of_sets_is_where_every_input_was_measured():
+    a = ((0.0, 5.0),)
+    b = ((1.0, 2.0), (3.0, 9.0))
+    c = ((-1.0, 1.5), (3.5, 4.0), (8.0, 9.0))
+    assert coverage.intersect_intervals(a, b) == ((1.0, 2.0), (3.0, 5.0))
+    assert coverage.intersect_intervals(a, b, c) == ((1.0, 1.5), (3.5, 4.0))
+    # A single set intersects to itself; touching intervals meet in a point.
+    assert coverage.intersect_intervals(b) == b
+    assert coverage.intersect_intervals(((0.0, 1.0),), ((1.0, 2.0),)) == ((1.0, 1.0),)
+
+
+def test_one_empty_set_makes_the_intersection_empty():
+    # The L-H detector whose density trace was all NaN observed nothing,
+    # not the D-alpha's stretch.
+    assert coverage.intersect_intervals(((0.0, 5.0),), ()) == ()
+    assert coverage.intersect_intervals() == ()
+    assert coverage.intersect_intervals(((0.0, 1.0),), ((2.0, 3.0),)) == ()
+
+
+def test_the_union_merges_overlapping_and_touching_intervals_and_sorts():
+    got = coverage.union_intervals(((3.0, 4.0), (0.0, 1.0)), ((1.0, 2.0), (5.0, 6.0)))
+    assert got == ((0.0, 2.0), (3.0, 4.0), (5.0, 6.0))
+    assert coverage.union_intervals() == ()
+    assert coverage.union_intervals((), ((1.0, 2.0),)) == ((1.0, 2.0),)
+
+
+# ------------------------------------------------------------- Coverage
+
+def test_a_coverage_carries_its_intervals_its_resolution_and_a_display_hull():
+    cov = coverage.Coverage(((0.0, 1.0), (2.0, 4.0)), min_gap_s=0.003)
+    assert cov.intervals == ((0.0, 1.0), (2.0, 4.0))
+    assert cov.min_gap_s == 0.003
+    assert cov.hull == (0.0, 4.0)
+    assert cov.known
+    empty = coverage.Coverage((), min_gap_s=0.003)
+    assert all(math.isnan(v) for v in empty.hull)
+    assert not empty.known
+
+
+def test_a_coverage_refuses_a_set_that_is_not_sorted_and_disjoint():
+    with pytest.raises(ValueError, match="sorted"):
+        coverage.Coverage(((2.0, 3.0), (0.0, 1.0)), min_gap_s=0.0)
+    with pytest.raises(ValueError, match="disjoint"):
+        coverage.Coverage(((0.0, 2.0), (1.0, 3.0)), min_gap_s=0.0)
+    with pytest.raises(ValueError, match="finite"):
+        coverage.Coverage(((0.0, math.nan),), min_gap_s=0.0)
+    with pytest.raises(ValueError, match="precede"):
+        coverage.Coverage(((2.0, 1.0),), min_gap_s=0.0)
+
+
+def test_sources_persist_intervals_and_merge_an_older_hull_row(tmp_path):
+    import json
+
+    import pandas as pd
+
+    from labelmaker.events import schema
+
+    cov = coverage.Coverage(((0, 1), (2, 4)), .003)
+    records = coverage.source_records(100, ran={
+        ("elm_clock", "filterscopes", 0, ""): cov,
+    }, skipped={})
+    path = tmp_path / "sources.parquet"
+    frame = schema.write_sources(path, 100, records, run_id="interval-test")
+    assert json.loads(frame.iloc[0].intervals) == [[0, 1], [2, 4]]
+    assert frame.iloc[0].min_gap_s == .003
+    assert (frame.iloc[0].t_cov0_s, frame.iloc[0].t_cov1_s) == (0, 4)
+    old = frame.drop(columns=["intervals", "min_gap_s"])
+    old.to_parquet(path, index=False)
+    assert schema.read_sources(path).iloc[0].intervals is None
+    other = coverage.source_records(100, ran={
+        ("ece_sawtooth", "ece", -1, ""): coverage.Coverage((), .008),
+    }, skipped={})
+    merged = schema.write_sources(path, 100, other, run_id="new")
+    assert len(merged) == 2
+    assert pd.isna(merged.query("source == 'elm_clock'").iloc[0].min_gap_s)
+    assert merged.query("source == 'ece_sawtooth'").iloc[0].intervals == "[]"
