@@ -265,3 +265,55 @@ phenomena:
         only human-curated RWM evidence there is, and a database built over those campaigns
         would light it up. A hit here ranks in the DATABASE class, below a forecast and never as
         an observation.
+
+  # The three q-min regime bands (labelmaker `events/heuristics.py::qmin_regimes`, task L-D2).
+  # Scenario ids, not instability ids: they say what the discharge WAS, and the only producer is
+  # a threshold rule on EFIT01's q-min inside the Ip flat-top. Three things follow from that.
+  #
+  # `qmin_rule` rows carry `confidence = NaN` -- a threshold on a reconstructed scalar has no
+  # calibrated probability -- so nothing here may read one as a detector's score.
+  #
+  # `coverage_sources: [qmin_rule]` is not redundant with `events:`. The rule writes a source row
+  # on every shot whose features file carries `qmin` AND whose `ip` gave a flat-top, event or no
+  # event, and its coverage is the flat-top met with the finite q-min record. That row is the
+  # only thing that can say "this shot ran at q-min under 0.95 throughout" rather than "nobody
+  # computed it": a shot in none of the three bands writes no event row at all.
+  #
+  # `requires_group: []` because the inputs are not corpus groups. `ip` and `qmin` come from the
+  # features store (`\efit01::top.results.aeqdsk:qmin` through fdp), which is why these are the
+  # first phenomena whose coverage does not depend on what the corpus file holds.
+  qmin_hybrid:
+    title: Hybrid scenario (q-min 0.95-1.5)
+    labels: []
+    events:
+      - {source: qmin_rule, phenomenon: qmin_hybrid}
+    forecasts: []
+    coverage_sources: [qmin_rule]
+    band_khz: null
+    diags: [qmin]
+    requires_group: []
+    prior: 0.004
+
+  qmin_elevated:
+    title: Elevated q-min (1.5-2)
+    labels: []
+    events:
+      - {source: qmin_rule, phenomenon: qmin_elevated}
+    forecasts: []
+    coverage_sources: [qmin_rule]
+    band_khz: null
+    diags: [qmin]
+    requires_group: []
+    prior: 0.000
+
+  qmin_high:
+    title: High q-min (above 2)
+    labels: []
+    events:
+      - {source: qmin_rule, phenomenon: qmin_high}
+    forecasts: []
+    coverage_sources: [qmin_rule]
+    band_khz: null
+    diags: [qmin]
+    requires_group: []
+    prior: 0.000
