@@ -126,3 +126,46 @@ def test_mcp_require_returns_an_error_with_the_bad_id_and_suggestions(ideate_db)
     assert 'nearest' in reply['error'] and 'sawtooth' in reply['error']
     assert any('sawtoot' in c for c in reply['caveats'])
     tools.reset_cache()
+
+
+@pytest.mark.parametrize('spans,eligible', [
+    ([(1, 1.02)], False),
+    ([(1, 2.96)], False),
+    ([(1, 3)], True),
+    ([(1, 4)], True),
+    ([(0, 1)], False),
+    ([(1, 1.5), (4.5, 5)], False),  # the hull hides a three-second gap
+    ([(1, 2.5), (1.5, 3)], True),  # union: exactly half, not the sum
+    ([(1, 2), (1.5, 2.5)], False),  # double counting would admit this
+])
+def test_avoid_requires_half_the_segment_measured_without_changing_its_state(
+    ideate_db, spans, eligible,
+):
+    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.source_row(100, 'elm_clock', t_cov0_s=a, t_cov1_s=b) for a, b in spans
+    ])
+    db = _db_with(ideate_db, [])
+    assert ph.evidence(100, 'elm', db).coverage_state == 'observed'
+    mask = db.mask('flat_top', avoid_labels=['phenomenon:elm'])
+    assert db.segments.loc[mask, 'shot'].tolist() == ([100] if eligible else [])
+
+
+def test_retained_partial_negative_carries_its_fraction_on_the_shot(ideate_db, capsys):
+    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.source_row(101, 'elm_clock', t_cov0_s=1, t_cov1_s=3),
+        es.source_row(201, 'elm_clock', t_cov0_s=0, t_cov1_s=6),
+    ])
+    db = _db_with(ideate_db, [])
+    query = QueryState(ref_shot=100, avoid_labels={'phenomenon:elm'})
+    result = rank.search(query, db)
+    entries = {item.shot: item.model_dump() for item in result.items}
+    assert set(entries) == {101, 201}
+    assert any('50.0%' in c and 'phenomenon:elm' in c for c in entries[101].get('caveats', []))
+    assert entries[201]['caveats'] == []
+    tools.reset_cache()
+    reply = tools.search_shots(ref_shot=100, avoid_labels=['phenomenon:elm'])
+    item = next(r for r in reply['results'] if r['shot'] == 101)
+    assert any('50.0%' in c for c in item['caveats'])
+    cli.main(['query', '--ref', '100', '--avoid', 'phenomenon:elm'])
+    assert '50.0%' in capsys.readouterr().out
+    tools.reset_cache()

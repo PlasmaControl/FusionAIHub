@@ -72,8 +72,12 @@ scoped. Token sets and evidence are cached lazily in the loaded database snapsho
 **Query `--avoid phenomenon:<id>` requires observed coverage of the segment by a relevant
 source.** It rejects observed matches and excludes shots whose relevant sources are unprocessed
 or uncovered, with counts and per-state caveats in CLI text, CLI JSON and MCP search results.
-No data is not an established negative. Partial overlap is eligible, with a caveat that silence
-outside the covered stretches is unmeasured. An indexed phenomenon with no detector registered
+No data is not an established negative. At least 50% of the segment must be measured
+(`AVOID_MIN_COVERED_FRACTION = 0.5`), counting the union of covered stretches, never their hull
+or double-counting overlap. Smaller fractions are excluded. Each retained partial negative
+carries its covered percentage in the shot's `caveats` field (also printed under that shot in
+CLI text); silence outside those stretches is unmeasured. This filter threshold does not
+change the coverage states: even a boundary instant can be `observed`. An indexed phenomenon with no detector registered
 (such as `rwm`) is unprocessed and cannot satisfy this filter. This coverage requirement applies
 to phenomenon tokens; ordinary label/source tokens retain set membership semantics.
 

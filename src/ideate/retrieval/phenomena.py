@@ -410,6 +410,16 @@ class Evidence:
     def total_duration_s(self) -> float:
         return float(sum(iv.t1_s - iv.t0_s for iv in self.intervals))
 
+    @property
+    def covered_fraction(self) -> float:
+        """Measured union length / segment length; a boundary instant contributes no duration."""
+        if self.window is None:
+            return 0.0
+        duration = self.window[1] - self.window[0]
+        if not math.isfinite(duration) or duration <= 0:
+            return 0.0
+        return min(1.0, sum(max(0.0, b - a) for a, b in self.coverage_windows) / duration)
+
 
 # ------------------------------------------------------------------------------- the registry
 

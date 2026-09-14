@@ -747,6 +747,8 @@ def _print_results(results, db, state: QueryState) -> None:
             head += f"  regime {r.labels.regime}"
         print(head)
         print(_fill(r.description, indent="    ", hang="    "))
+        for caveat in r.caveats:
+            print(_fill(f'coverage  {caveat}', indent='    ', hang='              '))
         e = r.explanation
         for line in e.matched_constraints:
             print(_fill(f"met       {line}", indent="    ", hang="              "))
