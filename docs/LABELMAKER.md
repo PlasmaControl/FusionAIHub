@@ -58,6 +58,57 @@ adapter fidelity failed - the evaluator disagrees with the framework it is
 supposed to reproduce, and no label from that model should be trusted; 6 a
 validation report raised.
 
+## Actuator features through fdp
+
+The `features` stage accepts `--features NAME ...` instead of `--models`,
+so canonical records can be fetched without a model or its weights. These
+scalar features retain their native clocks, with `xdata` in **seconds** and
+`ydata` shaped `(1, T)`. Fetch them on the **login node** under `fdp run`.
+
+| Feature | Point or calculation | Stored units | Available /500 |
+|---|---|---|---:|
+| `lh_power` | `\RF::LH_POWER` (`\RF::TOP.LHCD:LH_POWER`) | kW, unchanged | 41 |
+| `helicon_twapwr` | `\RF::TWAPWR` | blank, raw values | 73 |
+| `efc_a1_c_ka` | `\OPERATIONS::CN1IAMP` | Amps / 1000 → kA | 500 |
+| `efc_a1_iu_ka` | `\OPERATIONS::IUN1IAMP` | Amps / 1000 → kA | 500 |
+| `efc_a1_il_ka` | `\OPERATIONS::ILN1IAMP` | Amps / 1000 → kA | 500 |
+| `efc_n1_ka` | maximum of the three components above | kA | 500 |
+| `ecoil_a` | PTDATA `ecoil` | source `a` → A, no scaling | 500 |
+
+Measured on `recommender_v1.txt`, 2026-09-14; availability counts records,
+not active actuators. LH net coupled versus forward power remains unconfirmed,
+and `LH_INTOD3` routing is unchecked. Helicon's source units are blank on the
+probe shots 200009/201068; TWAPWR/TWAPWRC/TWAPWRO meanings remain unconfirmed,
+so no watts conversion or clipping is applied. EFC requires all three
+components on identical clocks; a nonfinite component gives a NaN maximum.
+Current amplitude alone does not identify error-field correction. E-coil
+current alone does not identify saturation; the V-valued `ECOILFWDCL` and
+`ECOILREVCL` signals cannot replace an A-valued current without calibration.
+
+Use the shared environment read-only, with this worktree's source selected:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src XDG_CACHE_HOME=/tmp/lc2/cache \
+pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
+  --frozen --no-install -e labelmaker fdp run python -m labelmaker.run features \
+  --features lh_power helicon_twapwr efc_n1_ka \
+    efc_a1_c_ka efc_a1_iu_ka efc_a1_il_ka ecoil_a \
+  --shot-file /tmp/lc2/pilot-shots.txt --root /tmp/lc2/pilot --workers 4
+```
+
+Before writing the shared production feature store, wait until
+`pgrep -fa 'labelmaker.run events'` returns nothing; poll every 60 seconds
+while another events run is present. Use four fetch workers and append only
+missing feature groups, without `--force`. Atomic merges copy untouched
+datasets and group metadata intact. Resolution failures are recorded in the
+file's JSON `missing` attribute and create no zero-valued substitute group.
+
+The 500-shot pellet census found no records in `\PELLET::LGIHI_T`,
+`LGIDR_T`, `LGIAB_TMAX`, or `LGIHI_MASS`: `no_data_in_corpus` for lithium
+granules. PCS candidate records exist but do not establish pellet delivery;
+failed PCS reads remain unknown. The [LC2 report](../.superpowers/sdd/task-LC2-report.md)
+contains the full census, pilot measurements, commands, and preservation hashes.
+
 ## One shot, all the labels you asked for
 
 ```bash
