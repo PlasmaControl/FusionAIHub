@@ -958,8 +958,11 @@ def phenomenon_locate(
         return _error(
             f"{exc.args[0]}. Columns are the ones describe_shot returns for a shot.", caveats
         )
-    except (ValueError, TypeError) as exc:  # a malformed constraint is a message, not a crash
-        return _error(f"{type(exc).__name__}: {exc}", caveats)
+    # A malformed constraint is a message, not a crash -- and the SAME message `search_shots`
+    # gives for the same failure through the same `_range` (tools.py, the `QueryState` arm): a
+    # model that learnt the constraint shape from one tool must not meet a second wording here.
+    except (ValueError, TypeError) as exc:
+        return _error(str(exc), caveats)
 
     caveats.append(
         _TIER_CAVEAT.format(
