@@ -99,7 +99,7 @@ def _detected_elm(shot: int, t: float) -> schema.Event:
     return schema.Event(
         shot=int(shot), source="elm_clock", evidence_kind="heuristic",
         phenomenon="elm", t0_s=float(t), t1_s=float(t), confidence=0.8,
-        diag="mhr", channel=0, pass_name="wide", t_cov0_s=0.0, t_cov1_s=2.0,
+        diag="filterscopes", channel=0, t_cov0_s=0.0, t_cov1_s=2.0,
     )
 
 
@@ -108,7 +108,7 @@ def _elm_free(shot: int, t0: float, t1: float) -> schema.Event:
     return schema.Event(
         shot=int(shot), source="elm_clock", evidence_kind="heuristic",
         phenomenon="elm_free", t0_s=float(t0), t1_s=float(t1),
-        diag="mhr", channel=0, pass_name="wide", t_cov0_s=0.0, t_cov1_s=2.0,
+        diag="filterscopes", channel=0, t_cov0_s=0.0, t_cov1_s=2.0,
     )
 
 
