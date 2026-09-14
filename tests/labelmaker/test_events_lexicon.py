@@ -25,12 +25,14 @@ def _lexicon(tmp_path, body: str, name: str = "lex.yaml"):
 
 # --------------------------------------------------------- the shipped file
 
-def test_the_shipped_lexicon_carries_the_twelve_round_one_ids(lex):
-    # Plan 5.6's round-1 ids. This file is the SINGLE source of them: ideate
-    # reads it too, so an id renamed here is renamed there.
+def test_the_shipped_lexicon_carries_the_round_one_ids_and_the_rule_labels(lex):
+    # Plan 5.6's round-1 twelve, plus the three q-min regime ids task L-D2
+    # added. This file is the SINGLE source of them: ideate reads it too, so
+    # an id renamed here is renamed there.
     assert lex.version == 1
-    assert set(lex.ids) == set(lx.PHENOMENON_IDS)
-    assert len(lex.ids) == 13
+    # Same ids in the same order: the tuple is the file's table of contents.
+    assert list(lex.ids) == list(lx.PHENOMENON_IDS)
+    assert len(lex.ids) == 16
     for p in lex.phenomena:
         assert p.title and p.aliases and p.weight > 0.0
         assert all(a == a.lower() and a.strip() for a in p.aliases)
@@ -38,6 +40,35 @@ def test_the_shipped_lexicon_carries_the_twelve_round_one_ids(lex):
     assert "edge harmonic oscillation" in lex["eho"].aliases
     assert "sawteeth" in lex["sawtooth"].aliases
     assert "elm-free" in lex["elm"].negatives
+
+
+def test_the_q_min_regime_ids_are_the_rules_own_band_names(lex):
+    """The lexicon and `heuristics.QMIN_BANDS` name the same three things.
+
+    One vocabulary, two readers: the rule writes `phenomenon=` strings and
+    the lexicon carries their aliases, and a band renamed in one without
+    the other is a phenomenon with events and no name (or a name and no
+    events).
+    """
+    from labelmaker.events import heuristics
+
+    assert [band[0] for band in heuristics.QMIN_BANDS] == [
+        "qmin_hybrid", "qmin_elevated", "qmin_high",
+    ]
+    for band, _lo, _hi in heuristics.QMIN_BANDS:
+        assert band in lex.ids
+
+
+def test_bare_qmin_and_reversed_shear_are_not_aliases_of_any_band(lex):
+    """Two deliberate omissions, pinned so they are not "fixed" later.
+
+    "qmin" names the QUANTITY and not a band, so it cannot say which of the
+    three a sentence means; "reversed shear" is a statement about dq/drho
+    that a bodily-lifted monotonic profile satisfies without and a weakly
+    reversed one violates with.
+    """
+    every = {a for p in lex.phenomena for a in p.aliases}
+    assert {"qmin", "q-min", "q min", "reversed shear"} & every == set()
 
 
 def test_the_shipped_lexicon_is_read_as_utf_8_whatever_the_locale(lex):

@@ -248,6 +248,13 @@ def build_parser() -> ArgumentParser:
                              "U-Net, no masks. Seconds over 10,000 shots, "
                              "and the only way a table reaches a shot whose "
                              "corpus file we do not have")
+    events.add_argument("--rules-only", action="store_true",
+                        help="run only the steps that read the features "
+                             "store and the curated tables - the Ip "
+                             "flat-top, the q-min regime rule, the label "
+                             "tables - and write nothing else: no corpus "
+                             "read, no U-Net, no masks. Minutes over the "
+                             "500-shot recommender_v1 list on a login node")
     events.add_argument("--refresh-text", action="store_true",
                         help="re-ask the logbook about the shots recorded in "
                              "text/logs_subset.missing; a miss is a fact "
@@ -779,6 +786,57 @@ def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
     return rows, totals
 
 
+def rules_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
+    """`events --rules-only`: the features store and the tables, no corpus.
+
+    A loop around `pipeline.rules_shot`, and it is a separate mode for the
+    same reason `--databases-only` is: everything it runs is cheap and
+    none of it needs the GPU path, so the answer to "which shots ran at
+    elevated q-min" should not cost a mask run. MEASURED over the 500
+    shots of `recommender_v1` on a login node: about a minute, serially.
+
+    The summary is the product. `shots_with_band` counts SHOTS, not rows -
+    a shot with three separate hybrid bands is one hybrid shot - because
+    that is the number the rule was calibrated against (hybrid 271,
+    elevated 60, high 50 of 500) and the number a later run has to
+    reproduce to show the rule has not moved.
+    """
+    from .events import pipeline
+
+    paths = ctx.paths
+    rows: list[dict] = []
+    by_source: dict[str, int] = {}
+    with_band: dict[str, int] = {}
+    for shot in shots:
+        try:
+            res = pipeline.rules_shot(shot, paths, run_id=ctx.run_id)
+        except Exception as exc:  # noqa: BLE001 - per-shot isolation
+            rows.append({"shot": int(shot), "status": "error",
+                         "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
+            print(f"{shot}: ERROR {type(exc).__name__}: {str(exc)[:120]}")
+            continue
+        row = res.as_row()
+        rows.append(row)
+        for source, n in res.by_source.items():
+            by_source[source] = by_source.get(source, 0) + n
+        for band in sorted(res.by_phenomenon):
+            with_band[band] = with_band.get(band, 0) + 1
+        print(res.line())
+
+    totals = pipeline.summarise(rows)
+    totals.update(
+        n_shots=len(rows),
+        shots_with_band=dict(sorted(with_band.items())),
+        summary_line=(
+            "shots with a q-min band: " + (", ".join(
+                f"{band}={n}" for band, n in sorted(with_band.items())
+            ) or "none")
+        ),
+    )
+    totals["events_by_source"] = dict(sorted(by_source.items()))
+    return rows, totals
+
+
 def write_events_run(paths: Paths, run_id: str, payload: dict) -> Path:
     """`runs/events/<run_id>.json`: the settings, the shots and the totals.
 
@@ -906,6 +964,13 @@ def main(argv=None) -> int:
         parser.error("--models is required")
     if args.databases_only and args.stage != "events":
         parser.error("--databases-only belongs to the events stage")
+    if args.rules_only and args.stage != "events":
+        parser.error("--rules-only belongs to the events stage")
+    if args.rules_only and args.databases_only:
+        # `--rules-only` already runs the curated tables; asking for both
+        # would run them twice and write the second copy over the first.
+        parser.error("--rules-only already ingests the curated tables; "
+                     "--databases-only is the tables ALONE")
     base = Paths.from_env()
     # `replace` and not a fresh `Paths`: `text_root` and `logs_jsonl` have no
     # flag of their own and are read from the environment, and building a
@@ -1023,6 +1088,34 @@ def main(argv=None) -> int:
             "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "settings": {
                 "databases_only": True,
+                "label_tables": str(paths.label_tables),
+                "limit": args.limit,
+                "root": str(paths.root),
+            },
+            "totals": totals,
+            "shots": rows,
+        })
+        print(f"events: {out}")
+    elif args.stage == "events" and args.rules_only:
+        rows, totals = rules_stage(shots, ctx)
+        _log(paths, run_id, rows)
+        summary = _stage_summary("events --rules-only", rows)
+        _summarise(summary)
+        summaries.append(summary)
+        print(totals["summary_line"])
+        print("events by source: " + (", ".join(
+            f"{s}={n}" for s, n in totals["events_by_source"].items()
+        ) or "none"))
+        out = write_events_run(paths, run_id, {
+            "run_id": run_id,
+            "stage": "events",
+            "git_sha": git_sha(),
+            "labelmaker_version": __version__,
+            "hostname": socket.gethostname(),
+            "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "settings": {
+                "rules_only": True,
+                "features": str(paths.features),
                 "label_tables": str(paths.label_tables),
                 "limit": args.limit,
                 "root": str(paths.root),

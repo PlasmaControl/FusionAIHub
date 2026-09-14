@@ -179,3 +179,45 @@ phenomena:
       - rwm
       - resistive wall mode
     negatives: []
+
+  # ---------------------------------------------------------------- q-min
+  # The three regime bands `events/heuristics.py::qmin_regimes` writes
+  # (0.95 < q <= 1.5 / 1.5 < q <= 2 / q > 2, inside the Ip flat-top, over
+  # at least 500 ms). Three ids and not one because the bands are what a
+  # consumer selects on, and "the shot ran at elevated q-min" and "the shot
+  # ran fully above 2" are different scenarios with different physics.
+  #
+  # Two phrases were considered and LEFT OUT, which is the more informative
+  # half of these lists:
+  #
+  # * bare "qmin" (and "q-min", "q min"). It names the QUANTITY, not a
+  #   band: an entry reading "qmin ~ 1.1 at 3 s" and one reading "qmin
+  #   climbing past 2" would both hit whichever id carried it, and putting
+  #   it on all three would count one mention three times. The rule reads
+  #   the equilibrium; the text layer is not the place to guess the band.
+  # * "reversed shear". It is NOT a synonym for a high q-min: a monotonic
+  #   q profile lifted bodily above 2 has a high q-min and no shear
+  #   reversal at all, and a weakly reversed profile can sit under 1.5. It
+  #   names a different measurement (dq/drho), which nothing here computes.
+  qmin_hybrid:
+    title: Hybrid scenario (q-min 0.95-1.5)
+    aliases:
+      - hybrid
+      - hybrid scenario
+      - hybrid discharge
+      - hybrid shot
+    negatives: []
+
+  qmin_elevated:
+    title: Elevated q-min (1.5-2)
+    aliases:
+      - elevated q-min
+      - elevated qmin
+    negatives: []
+
+  qmin_high:
+    title: High q-min (above 2)
+    aliases:
+      - high q-min
+      - high qmin
+    negatives: []

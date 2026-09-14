@@ -52,7 +52,7 @@ PASS_NAMES = ("", "wide", "zoom")
 KNOWN_SOURCES = (
     "tokeye_track", "tokeye_transient", "ece_sawtooth", "dalpha_lh",
     "elm_clock", "actuator", "qh_proxy", "text", "model", "label_forecast",
-    "database",
+    "database", "qmin_rule",
 )
 
 #: Column order of `events/<shot>_events.parquet`.

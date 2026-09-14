@@ -23,6 +23,7 @@ a painted column index is the column index of the stitched mask.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import replace
 
 import h5py
@@ -39,11 +40,14 @@ from labelmaker.events import (
     masks,
     schema,
     text_weak,
+    tracks,
     transients,
     unet,
 )
 from labelmaker.events import lexicon as lx
 from labelmaker.events import pipeline as pl
+
+from .conftest import SYNTH_COUNTER_S
 
 SHOT = 199999
 #: A stand-in sha, so nothing here needs the pinned checkpoint on disk.
@@ -452,9 +456,15 @@ def test_the_gas_valve_is_channel_0_and_not_the_group_maximum(shot_file,
     assert float(gas.iloc[0]["t1_s"]) == pytest.approx(0.7, abs=0.01)
 
 
-def test_nbi_counter_is_a_recorded_skip_because_ip_is_not_in_the_corpus(
+def test_nbi_counter_is_a_recorded_skip_when_no_store_serves_the_current(
     shot_file, paths, model,
 ):
+    """No features file, so no `ip`, so counter-injection is not evaluated.
+
+    `ip` is not a corpus group, so this is what every shot did before the
+    features store reached this stage - and what a shot whose features
+    file has not been written still does.
+    """
     res = _run(paths, model)
     df = schema.read_events(paths.events_file(SHOT), source="actuator")
     assert "nbi_counter" not in set(df["phenomenon"])
@@ -475,10 +485,18 @@ def test_the_index_gets_one_row_per_source_and_phenomenon(shot_file, paths,
 
 
 def test_every_source_that_ran_is_a_row_even_with_no_events(shot_file, paths,
-                                                            model):
+                                                            synth_shot, model):
     # An events file says what was FOUND. `ech_power_total` is zero for
-    # this whole shot and `qh_proxy` claims nothing without an Ip
-    # flat-top, so neither writes an event row - and both ran.
+    # this whole shot, and with the beams zeroed below there is no NBI-on
+    # interval for the QH proxy to intersect with, so it finds no candidate
+    # either: neither writes an event row - and both ran. (The proxy needs
+    # the features store's `ip` before it can run at all; without one it is
+    # SKIPPED rather than a successful zero, which is its own test. And the
+    # fixture's D-alpha carries no ELM burst, so with the beams ON the proxy
+    # DOES find the 5 kHz line - that is the intersection test below.)
+    _write_features(paths, SHOT, synth_shot)
+    with h5py.File(shot_file, "a") as f:
+        f["pinj/ydata"][...] = 0.0
     _run(paths, model)
     src = schema.read_sources(paths.sources_file(SHOT))
     ev = schema.read_events(paths.events_file(SHOT))
@@ -508,9 +526,14 @@ def test_a_skipped_step_reaches_the_sources_file_with_its_reason(shot_file,
     }
     # A planned channel the corpus does not serve.
     assert rows[("tokeye_track", "bes", 26)] == ("skipped", "group absent")
-    # And the two caveats that fire while the run succeeds get rows of
-    # their own rather than colliding with the step they qualify.
-    assert rows[("nbi_counter", "", -1)][0] == "skipped"
+    # A step that could not be EVALUATED is skipped on its own source's
+    # key, not recorded as a successful zero somewhere else: counter
+    # -injection on `("actuator", "tinj_total")`, which is where its rows
+    # would have been counted, and the proxy on `qh_proxy` itself.
+    assert rows[("actuator", "tinj_total", -1)][0] == "skipped"
+    assert rows[("qh_proxy", "", -1)][0] == "skipped"
+    assert "flat-top" in rows[("qh_proxy", "", -1)][1]
+    # And the caveat naming WHICH input was missing keeps its own row.
     assert "not a corpus group" in rows[("qh_flattop", "", -1)][1]
     assert rows[("text", "", -1)] == ("skipped", "no lexicon passed")
     assert set(src["shot"]) == {SHOT}
@@ -543,6 +566,11 @@ def test_each_actuator_source_records_its_own_axis(shot_file, paths, model,
     assert set(act.index) == {
         "pinj_total", "tinj_total", "ech_power_total", "rmp", "gas"
     }
+    # `tinj_total` is the counter-injection row and there is no `ip` here,
+    # so it is the one that is skipped rather than covered; the other four
+    # carry the axis they were read off.
+    assert act.loc["tinj_total", "status"] == "skipped"
+    act = act.drop(index="tinj_total")
     scalar_t = synth_shot["pinj_t_s"]
     for name in act.index:
         assert act.loc[name, "t_cov0_s"] == pytest.approx(float(scalar_t[0]))
@@ -1094,3 +1122,510 @@ def test_an_unreadable_manifest_stops_the_run_before_any_shot(
     assert run.main(_argv(paths, "--databases-only")) == run.EXIT_BAD_LABEL_TABLE
     assert "kind" in capsys.readouterr().err
     assert not paths.events_file(SHOT).exists()
+
+
+# --------------------------------------------------- the features store steps
+
+#: The q-min band the feature file below paints, and the record it sits in.
+#: 0.10-0.70 s of `qmin = 1.2` is 600 ms of hybrid inside the flat-top, and
+#: the shot's own record is 0-0.8 s (`SYNTH_T_COV`).
+FEATURE_QMIN_BAND = (0.10, 0.70)
+FEATURE_QMIN_VALUE = 1.2
+FEATURE_QMIN_STEP_S = 0.02
+
+
+def _write_features(paths, shot, synth, *, qmin=True, ip=True,
+                    qmin_value=FEATURE_QMIN_VALUE):
+    """A features file for `shot`, written through the store's own writer.
+
+    `ip` is the fixture's own constant current, so the flat-top is the
+    whole record; `qmin` is a 20 ms axis - EFIT01's cadence - holding
+    `qmin_value` over `FEATURE_QMIN_BAND` and 0.8 (no regime) either side.
+    """
+    from labelmaker.features import store as fs
+
+    paths.features.mkdir(parents=True, exist_ok=True)
+    arrays = {}
+    if ip:
+        arrays["ip"] = fs.FeatureArray(
+            x=np.asarray(synth["ip_t_s"], dtype=np.float64),
+            y=np.asarray(synth["ip_y"], dtype=np.float64)[None, :],
+            attrs={"resolver": "fdp"},
+        )
+    if qmin:
+        t = (np.arange(round(0.8 / FEATURE_QMIN_STEP_S) + 1)
+             * FEATURE_QMIN_STEP_S).round(10)
+        y = np.full(t.size, 0.8)
+        lo, hi = FEATURE_QMIN_BAND
+        y[(t >= lo) & (t <= hi)] = float(qmin_value)
+        arrays["qmin"] = fs.FeatureArray(x=t, y=y[None, :],
+                                         attrs={"resolver": "fdp"})
+    fs.write_features(paths.features_file(shot), shot, arrays, {},
+                      merge=False)
+    return paths.features_file(shot)
+
+
+def _sources(paths, shot=SHOT):
+    """`{(source, diag): (status, reason, t_cov0, t_cov1, n_events)}`."""
+    df = schema.read_sources(paths.sources_file(shot))
+    return {
+        (r["source"], r["diag"]): (
+            r["status"], r["reason"], r["t_cov0_s"], r["t_cov1_s"],
+            r["n_events"],
+        )
+        for _, r in df.iterrows()
+    }
+
+
+def test_the_flattop_comes_off_the_features_store(shot_file, paths, synth_shot,
+                                                  model):
+    _write_features(paths, SHOT, synth_shot)
+    res = _run(paths, model)
+    assert "features" not in res.skipped
+    assert "qh_flattop" not in res.skipped
+    assert "nbi_counter" not in res.skipped
+
+
+def test_nbi_counter_is_claimed_once_the_store_supplies_the_current(
+    shot_file, paths, synth_shot, model,
+):
+    """The skip that stood on every shot is gone, and the rows are there.
+
+    `ip` is not a corpus group, so before the features store reached this
+    stage `nbi_counter` was a recorded skip on 100% of shots and the QH
+    proxy intersected with the empty set. This test fails if either skip
+    comes back.
+    """
+    _write_features(paths, SHOT, synth_shot)
+    res = _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT))
+    counter = df[df["phenomenon"] == "nbi_counter"]
+    assert not counter.empty
+    # The fixture flips the torque counter-current over 0.30-0.50 s.
+    assert counter["t0_s"].min() == pytest.approx(SYNTH_COUNTER_S[0], abs=2e-3)
+    assert counter["t1_s"].max() == pytest.approx(SYNTH_COUNTER_S[1], abs=2e-3)
+    assert res.by_source.get("actuator", 0) >= len(counter)
+
+
+class QuietNet(PaintedNet):
+    """`PaintedNet` with the ELM comb moved off the track.
+
+    The default fixture paints ELMs straight through the drawn mode, so
+    its `elm_free` intervals are exactly the record either side of the
+    track and the QH proxy is empty whatever the flat-top says - which
+    makes it useless for testing the flat-top. Here the two ELMs are at
+    columns 10 and 300, outside `TRACK_COLS`, so the track runs in an
+    ELM-free NBI-heated stretch and the ONLY remaining gate is the one
+    under test.
+    """
+
+    def forward(self, x):
+        b, _, h, w = x.shape
+        logits = torch.full((b, 2, h, w), -LOGIT, dtype=torch.float32)
+        logits[:, 0, TRACK_ROWS[0]:TRACK_ROWS[1], TRACK_COLS[0]:TRACK_COLS[1]] = (
+            LOGIT
+        )
+        for col in (10, 300):
+            if col < w:
+                logits[:, 1, :, col] = LOGIT
+        return (logits,)
+
+
+def test_the_qh_proxy_intersects_a_real_flattop(shot_file, paths, synth_shot):
+    """The proxy claims where all four hold - and nothing outside them.
+
+    Three runs of one shot. Without a features file there is no flat-top,
+    the proxy intersects with the empty set and claims nothing - which is
+    what EVERY shot did before this task. With the fixture's flat current
+    the flat-top is the whole record and the proxy claims. With a current
+    that collapses at 0.4 s the flat-top ends there, and so does the
+    claim: this test fails if the flat-top stops reaching `qh_candidates`
+    in either direction.
+    """
+    model = QuietNet().eval()
+    blind = _run(paths, model)
+    assert blind.skipped["qh_flattop"] == pl.NO_FLATTOP
+    assert blind.by_source.get("qh_proxy", 0) == 0
+
+    _write_features(paths, SHOT, synth_shot)
+    wide = _run(paths, model)
+    assert "qh_flattop" not in wide.skipped
+    assert wide.by_source.get("qh_proxy", 0) >= 1
+    whole = schema.read_events(paths.events_file(SHOT))
+    whole = whole[whole["source"] == "qh_proxy"]
+
+    ip = np.asarray(synth_shot["ip_y"], dtype=np.float64).copy()
+    ip[np.asarray(synth_shot["ip_t_s"]) > 0.4] = 0.0
+    _write_features(paths, SHOT, {**synth_shot, "ip_y": ip})
+    _run(paths, model)
+    narrow = schema.read_events(paths.events_file(SHOT))
+    narrow = narrow[narrow["source"] == "qh_proxy"]
+    assert not narrow.empty
+    assert whole["t1_s"].max() > 0.4
+    assert narrow["t1_s"].max() == pytest.approx(0.4, abs=5e-3)
+
+
+def test_the_q_min_rule_writes_its_band_and_its_own_source(
+    shot_file, paths, synth_shot, model,
+):
+    _write_features(paths, SHOT, synth_shot)
+    _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT))
+    band = df[df["source"] == "qmin_rule"]
+    assert list(band["phenomenon"]) == ["qmin_hybrid"]
+    assert (band["t0_s"].iloc[0], band["t1_s"].iloc[0]) == pytest.approx(
+        FEATURE_QMIN_BAND
+    )
+    assert band["confidence"].isna().all()
+    assert json.loads(band["attrs"].iloc[0])["efit"] == "efit01"
+    rows = _sources(paths)
+    status, reason, cov0, cov1, n = rows[("qmin_rule", "qmin")]
+    assert (status, reason, n) == ("ok", "", 1)
+    # The flat-top met with the q-min record: the fixture's current is flat
+    # over the whole 0-0.8 s record, so the q-min axis is what bounds it.
+    assert (cov0, cov1) == pytest.approx((0.0, 0.8))
+
+
+def test_each_features_quantity_records_its_own_span(shot_file, paths,
+                                                     synth_shot, model):
+    _write_features(paths, SHOT, synth_shot)
+    _run(paths, model)
+    rows = _sources(paths)
+    ip_status, _, ip0, ip1, _ = rows[("features", "ip")]
+    q_status, _, q0, q1, _ = rows[("features", "qmin")]
+    assert (ip_status, q_status) == ("ok", "ok")
+    assert (ip0, ip1) == pytest.approx(
+        (synth_shot["ip_t_s"][0], synth_shot["ip_t_s"][-1])
+    )
+    assert (q0, q1) == pytest.approx((0.0, 0.8))
+
+
+def test_a_shot_with_no_features_file_is_a_skip_with_a_reason(
+    shot_file, paths, model,
+):
+    res = _run(paths, model)
+    assert "features" in res.skipped
+    assert "features" in res.skipped["features"].lower()
+    assert "qmin_rule" in res.skipped
+    assert pl.NO_IP in res.skipped["nbi_counter"]
+    assert res.skipped["qh_flattop"] == pl.NO_FLATTOP
+    df = schema.read_events(paths.events_file(SHOT))
+    assert df[df["source"] == "qmin_rule"].empty
+    rows = _sources(paths)
+    assert rows[("features", "")][0] == "skipped"
+    assert rows[("qmin_rule", "qmin")][0] == "skipped"
+
+
+def test_a_file_without_q_min_still_serves_the_current(shot_file, paths,
+                                                       synth_shot, model):
+    """The two quantities fail independently: `ip` runs, `qmin` says why.
+
+    17 of the 878 shots in the real features store are exactly this shape.
+    """
+    _write_features(paths, SHOT, synth_shot, qmin=False)
+    res = _run(paths, model)
+    assert "features" not in res.skipped
+    assert "qmin" in res.skipped
+    assert res.skipped["qmin_rule"] == pl.NO_QMIN
+    assert "nbi_counter" not in res.skipped
+    assert "qh_flattop" not in res.skipped
+    rows = _sources(paths)
+    assert rows[("features", "ip")][0] == "ok"
+    assert rows[("features", "qmin")][0] == "skipped"
+    assert "qmin" in rows[("features", "qmin")][1]
+
+
+def test_a_file_without_the_current_leaves_the_rule_ungateable(
+    shot_file, paths, synth_shot, model,
+):
+    _write_features(paths, SHOT, synth_shot, ip=False)
+    res = _run(paths, model)
+    assert res.skipped["qmin_rule"] == pl.NO_QMIN_FLATTOP
+    assert pl.NO_IP in res.skipped["nbi_counter"]
+    assert res.skipped["qh_flattop"] == pl.NO_FLATTOP
+    df = schema.read_events(paths.events_file(SHOT))
+    assert df[df["source"] == "qmin_rule"].empty
+
+
+def test_a_flattop_with_no_regime_in_it_still_declares_the_rule_ran(
+    shot_file, paths, synth_shot, model,
+):
+    """The answer only the sources file can carry.
+
+    A shot whose q-min never leaves the lowest band writes no event row at
+    all, and "it was under 0.95 all flat-top" and "nobody computed it" are
+    then the same empty query without this row.
+    """
+    _write_features(paths, SHOT, synth_shot, qmin_value=0.5)
+    _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT))
+    assert df[df["source"] == "qmin_rule"].empty
+    status, reason, cov0, cov1, n = _sources(paths)[("qmin_rule", "qmin")]
+    assert (status, reason, n) == ("ok", "", 0)
+    assert (cov0, cov1) == pytest.approx((0.0, 0.8))
+
+
+def test_the_regime_rows_reach_the_index_like_any_other_source(
+    shot_file, paths, synth_shot, model,
+):
+    _write_features(paths, SHOT, synth_shot)
+    _run(paths, model)
+    index = pd.read_parquet(paths.events_index)
+    got = index[index["source"] == "qmin_rule"]
+    assert list(got["phenomenon"]) == ["qmin_hybrid"]
+    assert int(got["n_events"].iloc[0]) == 1
+
+
+def test_a_features_file_that_cannot_be_read_is_a_skip_and_not_an_error(
+    shot_file, paths, synth_shot, model,
+):
+    paths.features.mkdir(parents=True, exist_ok=True)
+    paths.features_file(SHOT).write_bytes(b"not an hdf5 file")
+    res = _run(paths, model)
+    assert res.status == "ok"
+    assert "ip" in res.skipped and "qmin" in res.skipped
+    assert res.skipped["qmin_rule"] == pl.NO_QMIN
+
+
+# ------------------- a missing prerequisite is never an evaluated zero
+
+def test_a_missing_flattop_makes_the_qh_source_itself_skipped(shot_file, paths,
+                                                              model):
+    """The critic's iteration-0 defect 2, pinned at the writer.
+
+    Before this, a shot with no `ip` wrote TWO incompatible rows -
+    `qh_flattop skipped NaN..NaN` and `qh_proxy ok -0.097..4.097 0 events`
+    - so ideate read `coverage_state: observed` for a phenomenon nobody
+    could compute (measured on shot 198658). The proxy's OWN row has to
+    carry the skip, because that is the source the registry consults.
+    """
+    _run(paths, model)
+    rows = _sources(paths)
+    status, reason, cov0, cov1, n = rows[("qh_proxy", "")]
+    assert status == "skipped"
+    assert "flat-top" in reason
+    assert math.isnan(cov0) and math.isnan(cov1)
+    assert n == 0
+
+
+def test_with_a_flattop_the_qh_source_covers_the_intersection_of_its_inputs(
+    shot_file, paths, synth_shot, model,
+):
+    """And when it CAN be evaluated, the window is every input's, not one.
+
+    The proxy needs an EHO track, an ELM-free stretch, NBI and the
+    flat-top at once. Here the stored current holds only over 0.2-0.6 s,
+    which is narrower than the magnetics reference span the old code
+    declared, so the row has to shrink to it.
+    """
+    ip = np.asarray(synth_shot["ip_y"], dtype=np.float64).copy()
+    t = np.asarray(synth_shot["ip_t_s"], dtype=np.float64)
+    ip[(t < 0.2) | (t > 0.6)] = 0.0
+    _write_features(paths, SHOT, {**synth_shot, "ip_y": ip})
+    _run(paths, model)
+    status, reason, cov0, cov1, _ = _sources(paths)[("qh_proxy", "")]
+    assert (status, reason) == ("ok", "")
+    assert (cov0, cov1) == pytest.approx((0.2, 0.6), abs=2e-3)
+    # Narrower than the block the ELM clock ran on, which is what the row
+    # used to claim on its own.
+    ref = _sources(paths)[("tokeye_transient", "mhr")]
+    assert cov0 > ref[2] and cov1 < ref[3]
+
+
+def test_the_qh_proxy_takes_the_dalpha_clocks_span_not_the_magnetics_reference(
+    shot_file, paths, synth_shot, model,
+):
+    """The ELM-free input is the D-alpha clock's, so its window is the clock's.
+
+    Task L-A moved the ELM clock off the magnetics reference block and onto
+    `filterscopes`; task L-D2's proxy coverage was written against the
+    reference. Here the D-alpha record is finite only over 0.1-0.5 s while
+    every magnetics block spans the whole 0-0.8 s, so a proxy row that read
+    the reference's span would over-claim by 0.4 s.
+    """
+    _write_features(paths, SHOT, synth_shot)
+    with h5py.File(shot_file, "a") as f:
+        t = f["filterscopes/xdata"][:]
+        y = f["filterscopes/ydata"][:]
+        y[:, (t < 0.1) | (t > 0.5)] = np.nan
+        f["filterscopes/ydata"][...] = y
+    _run(paths, model)
+    rows = _sources(paths)
+    status, reason, cov0, cov1, _ = rows[("qh_proxy", "")]
+    assert (status, reason) == ("ok", "")
+    assert (cov0, cov1) == pytest.approx((0.1, 0.5), abs=2e-3)
+    clock = rows[("elm_clock", "filterscopes")]
+    assert (clock[2], clock[3]) == pytest.approx((cov0, cov1), abs=1e-9)
+    ref = rows[("tokeye_transient", "mhr")]
+    assert ref[2] < 0.05 and ref[3] > 0.75
+
+
+def test_a_skipped_dalpha_clock_makes_the_qh_proxy_unevaluable(
+    shot_file, paths, synth_shot, model,
+):
+    """No D-alpha, no ELM-free intervals, no proxy - however many magnetics
+    blocks ran. Before this the reference block stood in for the clock and
+    the proxy declared `ok` over a span nobody measured ELMs on."""
+    _write_features(paths, SHOT, synth_shot)
+    with h5py.File(shot_file, "a") as f:
+        del f["filterscopes"]
+    _run(paths, model)
+    rows = _sources(paths)
+    status, reason, cov0, cov1, n = rows[("qh_proxy", "")]
+    assert status == "skipped" and n == 0
+    assert pl.QH_NEEDS_CLOCK in reason
+    assert np.isnan(cov0) and np.isnan(cov1)
+    assert rows[("tokeye_transient", "mhr")][0] == "ok"
+
+
+def test_rejected_blocks_do_not_donate_tracks_or_coverage_to_the_qh_proxy(
+    shot_file, paths, synth_shot, model, monkeypatch,
+):
+    """A block whose conversion failed is unknown, not quiet.
+
+    Every block's conversion fails here, so nothing was PUBLISHED - and the
+    proxy, which is built on published tracks, must say it had none, even
+    though the tracker ran on every block.
+    """
+    def boom(*a, **kw):
+        raise ValueError("invalid padded track")
+
+    monkeypatch.setattr(tracks, "tracks_to_events", boom)
+    _write_features(paths, SHOT, synth_shot)
+    res = _run(paths, model)
+    assert any(k.startswith("track mhr:") for k in res.skipped)
+    status, reason, _, _, n = _sources(paths)[("qh_proxy", "")]
+    assert status == "skipped" and n == 0
+    assert pl.QH_NEEDS_TRACKS in reason
+
+
+def test_counter_injection_is_skipped_or_covers_all_three_of_its_inputs(
+    shot_file, paths, synth_shot, model,
+):
+    """Same rule for `nbi_counter`: the torque AND the power AND the current.
+
+    Without a features file there is no `ip` and the row is skipped; with
+    one whose current is measured over a stretch narrower than the torque
+    record, the row is the intersection and not the torque's own axis.
+    """
+    _run(paths, model)
+    status, reason, cov0, cov1, _ = _sources(paths)[("actuator", "tinj_total")]
+    assert status == "skipped"
+    assert "ip" in reason
+    assert math.isnan(cov0) and math.isnan(cov1)
+
+    t = np.asarray(synth_shot["ip_t_s"], dtype=np.float64)
+    inside = (t >= 0.2) & (t <= 0.6)
+    ip = np.where(inside, np.asarray(synth_shot["ip_y"], dtype=np.float64),
+                  np.nan)
+    _write_features(paths, SHOT, {**synth_shot, "ip_y": ip})
+    _run(paths, model)
+    status, reason, cov0, cov1, n = _sources(paths)[("actuator", "tinj_total")]
+    assert (status, reason) == ("ok", "")
+    assert (cov0, cov1) == pytest.approx((0.2, 0.6), abs=2e-3)
+    # The row counts the rows it is the coverage OF: `_actuator_event`
+    # stamps `diag="tinj_total"` on `nbi_counter` and on nothing else.
+    assert n >= 1
+    ev = schema.read_events(paths.events_file(SHOT), source="actuator")
+    assert set(ev[ev["diag"] == "tinj_total"]["phenomenon"]) == {"nbi_counter"}
+
+
+def test_inputs_that_never_overlap_are_no_coverage_at_all(shot_file, paths,
+                                                          synth_shot, model):
+    """Measured everywhere, together nowhere: still not an observation."""
+    # The stored current is a perfectly good record on its own axis - it
+    # simply runs after the corpus' beam and torque records have stopped,
+    # so there is no instant at which all three were known.
+    t = np.asarray(synth_shot["ip_t_s"], dtype=np.float64) + 2.0
+    _write_features(paths, SHOT, {**synth_shot, "ip_t_s": t})
+    res = _run(paths, model)
+    assert "no common coverage" in res.skipped["nbi_counter"]
+    rows = _sources(paths)
+    assert rows[("actuator", "tinj_total")][0] == "skipped"
+
+
+# ------------------------------------------------------------- --rules-only
+
+def test_rules_only_needs_neither_the_corpus_nor_the_network(paths, synth_shot,
+                                                             monkeypatch):
+    """The whole point of the mode: no corpus file, no U-Net, no masks."""
+    _write_features(paths, SHOT, synth_shot)
+    paths.mkdirs()
+    monkeypatch.setattr(
+        unet, "load_unet",
+        lambda *a, **k: pytest.fail("--rules-only loaded the network"),
+    )
+    code = run.main([
+        "events", "--rules-only", "--shots", str(SHOT),
+        "--root", str(paths.root), "--corpus-dir", str(paths.corpus),
+    ])
+    assert code == 0
+    assert not list(paths.masks.glob("*.npz"))
+    df = schema.read_events(paths.events_file(SHOT))
+    assert list(df["phenomenon"]) == ["qmin_hybrid"]
+    assert list(df["source"]) == ["qmin_rule"]
+
+
+def test_rules_only_writes_the_sources_file_and_the_index(paths, synth_shot):
+    _write_features(paths, SHOT, synth_shot)
+    paths.mkdirs()
+    assert run.main([
+        "events", "--rules-only", "--shots", str(SHOT),
+        "--root", str(paths.root),
+    ]) == 0
+    rows = _sources(paths)
+    assert rows[("qmin_rule", "qmin")][0] == "ok"
+    assert rows[("features", "ip")][0] == "ok"
+    index = pd.read_parquet(paths.events_index)
+    assert set(index["source"]) == {"qmin_rule"}
+
+
+def test_rules_only_counts_the_bands_it_found_over_the_shot_list(
+    paths, synth_shot, capsys,
+):
+    """The summary the 500-shot run is read off."""
+    _write_features(paths, SHOT, synth_shot)
+    _write_features(paths, SHOT + 1, synth_shot, qmin_value=3.0)
+    _write_features(paths, SHOT + 2, synth_shot, qmin=False)
+    paths.mkdirs()
+    assert run.main([
+        "events", "--rules-only", "--root", str(paths.root),
+        "--shots", str(SHOT), str(SHOT + 1), str(SHOT + 2),
+    ]) == 0
+    out = capsys.readouterr().out
+    assert "qmin_hybrid=1" in out
+    assert "qmin_high=1" in out
+    payload = json.loads(
+        max((paths.runs / "events").glob("*.json")).read_text()
+    )
+    totals = payload["totals"]
+    assert totals["shots_with_band"] == {"qmin_hybrid": 1, "qmin_high": 1}
+    assert totals["n_shots"] == 3
+    assert totals["shots_skipping"]["qmin_rule"] == 1
+
+
+def test_rules_only_records_a_shot_with_no_features_file_and_carries_on(
+    paths, synth_shot,
+):
+    _write_features(paths, SHOT, synth_shot)
+    paths.mkdirs()
+    assert run.main([
+        "events", "--rules-only", "--root", str(paths.root),
+        "--shots", str(SHOT), str(SHOT + 9),
+    ]) == 0
+    payload = json.loads(
+        max((paths.runs / "events").glob("*.json")).read_text()
+    )
+    rows = {int(r["shot"]): r for r in payload["shots"]}
+    assert rows[SHOT + 9]["status"] == "ok"
+    assert "features" in rows[SHOT + 9]["skipped"]
+    assert rows[SHOT]["n_events"] == 1
+
+
+def test_rules_only_belongs_to_the_events_stage_alone(paths, tmp_path):
+    with pytest.raises(SystemExit):
+        run.main(["features", "--rules-only", "--shots", "1",
+                  "--root", str(tmp_path)])
+    with pytest.raises(SystemExit):
+        run.main(["events", "--rules-only", "--databases-only",
+                  "--shots", "1", "--root", str(tmp_path)])

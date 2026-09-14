@@ -24,13 +24,20 @@ from pathlib import Path
 
 import yaml
 
-#: Plan 5.6's round-1 ids. The lexicon may not name anything else: a
-#: phenomenon id is a join key against labels, events and ideate's
-#: `phenomena.yaml`, and a typo that loads silently is a phenomenon that
-#: quietly has no evidence.
+#: Plan 5.6's round-1 ids, and the rule-label ids added since. The lexicon
+#: may not name anything else: a phenomenon id is a join key against
+#: labels, events and ideate's `phenomena.yaml`, and a typo that loads
+#: silently is a phenomenon that quietly has no evidence.
+#:
+#: The three `qmin_*` ids are `events/heuristics.py`'s q-min regime bands
+#: (task L-D2). They are SCENARIO ids rather than instability ids - what
+#: the discharge was doing, not what went wrong in it - which is why their
+#: aliases are so much sparser than an instability's: an operator writes
+#: "hybrid" when the shot is one and otherwise writes nothing at all.
 PHENOMENON_IDS = (
-    "ae", "eho", "elm", "tearing", "sawtooth", "fishbone", "qcm", "qh",
-    "lh", "detachment", "pickup", "rwm", "transient",
+    "ae", "eho", "elm", "transient", "tearing", "sawtooth", "fishbone", "qcm",
+    "qh", "lh", "detachment", "pickup", "rwm",
+    "qmin_hybrid", "qmin_elevated", "qmin_high",
 )
 
 #: The alias lists themselves. Shipped beside this module because ideate

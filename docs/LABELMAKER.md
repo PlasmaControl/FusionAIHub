@@ -158,6 +158,7 @@ turns what it sees into rows:
 | `actuator` | heuristic | the intervals NBI, ECH, the RMP coils and the gas valves were on for |
 | `qh_proxy` | heuristic | an EHO inside an ELM-free NBI-heated flat-top - a proxy, and its `attrs` say so |
 | `text` | text | a phenomenon this shot's own logbook entries name |
+| `qmin_rule` | heuristic | the q-min regime bands of the Ip flat-top (`qmin_hybrid`/`qmin_elevated`/`qmin_high`) |
 | `database:<table>` | database | a row of a curated table somebody sent us, e.g. `database:rwm_onsets_2017` |
 
 The D-alpha clock reads filterscopes channels 0-7 independently of the U-Net,
@@ -441,6 +442,110 @@ RSS, tiles/s, every shot's wall time and status, `text_subset_missing`, and coun
 from all `*_sources.parquet` files. File existence alone is insufficient evidence
 of completion. The measured L12 report and exact **unsubmitted** production
 commands are in `.superpowers/sdd/task-L12-report.md`.
+
+### Rule labels from the features store
+
+Two of the quantities the events stage needs are not corpus groups at all.
+`ip` is archive- and fdp-served and `qmin` is fdp-only
+(`\efit01::top.results.aeqdsk:qmin`), so both come out of the **features
+store** — `$LABELMAKER_ROOT/features/<shot>_features.h5`, written by the
+`features` stage — which the events stage reads through
+`features/store.read_feature`, opening the file separately for each quantity.
+Until it did, three things were dead: `nbi_counter` was
+a recorded skip on 100 % of shots, `qh_proxy` intersected an EHO with an
+empty flat-top and claimed nothing, and there was no q-min label at all.
+
+**The Ip flat-top** (`heuristics.ip_flattop`) is the longest contiguous
+stretch whose |Ip| is over 90 % of the record's own peak, as `(first
+sample, last sample)`. Magnitude and not sign, because DIII-D runs both
+current directions; ties go to the earlier stretch. It is a *gate*, not a
+precision measurement of flat-top boundaries: a 100 ms boundary error spans
+five 20 ms q-min intervals, while a missing flat-top prevents the rule from
+running. `actuator_intervals` gets the same `ip`
+and can finally compare the injected torque's sign with the current's,
+which is what `nbi_counter` is.
+
+**The q-min bins** (`heuristics.qmin_regimes`) are exclusive and are the
+label sheet's own: `qmin_hybrid` 0.95 < q ≤ 1.5, `qmin_elevated`
+1.5 < q ≤ 2, `qmin_high` q > 2. A band is claimed over a contiguous run of
+q-min samples that lies inside the flat-top and lasts **at least 500 ms**
+(`>=`, edge to edge on the sample times — 25 intervals between 26 samples
+at a 20 ms cadence). The comparison has no floating-point tolerance.
+A sample at 1.5 or 2 belongs to the band *below* it; 0.95 belongs to none. A
+non-finite sample belongs to none, which splits a band around a dropout
+rather than interpolating over it.
+
+**The gate is the rule.** MEASURED over the 500 shots of `recommender_v1`:
+gated, hybrid 271 / elevated 60 / high 50 shots. The ungated condition
+`qmin > 0.95` for at least 500 ms anywhere in the record fires on
+**497 of 500 (99.4 %)**; it does not require staying in one of the three
+bands. Including the current ramps therefore makes that condition nearly
+universal on this list. `scripts/labelmaker/qmin_regime_census.py` measured it, and
+it writes `tests/labelmaker/data/qmin_regimes_recommender_v1.json`, which
+the suite reads on every run — so the gate is defended by a failing test
+rather than by a comment.
+
+**`confidence` is NaN, deliberately.** A threshold on a reconstructed
+scalar has no calibrated probability behind it, and a 1.0 would let a
+ranker read a rule as a perfectly-confident detector. `attrs` carries
+`qmin_min`, `qmin_max`, the `thresholds` that produced the row, and
+`efit: "efit01"` — the last because the sheet asks for EFIT02 or CAKE and
+EFIT01 is what the features store holds today. Changing the equilibrium
+requires updating the namespace resolver/locator, refreshing the stored
+feature, and updating `heuristics.QMIN_EFIT`: the event attribute currently
+comes from that constant, not from the feature's metadata.
+
+The coverage of a `qmin_rule` row is the intersection of the flat-top and
+the span from the first to last finite q-min sample. This single span does
+not represent internal dropouts; those still split event bands. Outside
+the flat-top the rule
+deliberately does not look, and declaring the ramp as covered would turn an
+abstention into an observed absence. A shot whose flat-top holds no band at
+all writes no event row and still writes its `qmin_rule` source row with
+`n_events = 0`, meaning no band met the duration requirement. This does not
+prove q-min stayed below 0.95: short excursions also produce no event.
+A shot with no features
+file is `skipped["features"]`; one whose file carries no `qmin` is
+`skipped["qmin"]` and still gets its `ip`-dependent steps in the full stage.
+The quantity source rows are `("features", "ip")` and
+`("features", "qmin")`, each with its own finite span; the rule's row is
+`("qmin_rule", "qmin")`. A missing file instead produces a skipped
+`("features", "")` row. In the full stage, missing counter-injection
+inputs produce a skipped `("actuator", "tinj_total")` row, and missing
+QH inputs produce a skipped `qh_proxy` row. These steps get no successful
+`ran` row when an input is missing; skipped rows have NaN coverage and a
+path-free reason.
+
+Because none of this needs the corpus or the network, there is a standalone
+mode for it, beside `--databases-only` and running the curated tables too:
+
+```bash
+pixi run -e labelmaker python -m labelmaker.run events --rules-only \
+    --shot-file $LABELMAKER_ROOT/recommender_v1.txt
+```
+
+For this list it prints `shots with a q-min band: qmin_elevated=60,
+qmin_high=50, qmin_hybrid=271`. It writes rule/table events to
+`events/<shot>_events.parquet`, their completion records to
+`events/<shot>_sources.parquet`, and `events_index.parquet`, through the
+same writers as the full stage. Only evaluated sources or attempted steps
+that were skipped are recorded: `--rules-only` does not evaluate
+`nbi_counter` or `qh_proxy` and writes no source rows for them. The 500-shot
+run takes minutes on a login node, depending on storage latency.
+
+`--root` moves **both** ends: the features it reads and the events it
+writes are both under it, so a scratch root has to be given the store to
+read. To write somewhere disposable while reading the real store, point
+its `features/` at the real one and leave everything else under the
+scratch root:
+
+```bash
+mkdir -p /tmp/ld2/rules500
+ln -s "$LABELMAKER_ROOT/features" /tmp/ld2/rules500/features
+pixi run -e labelmaker python -m labelmaker.run events --rules-only \
+    --shot-file $LABELMAKER_ROOT/recommender_v1.txt --root /tmp/ld2/rules500
+```
+
 
 ## Reading a label
 
