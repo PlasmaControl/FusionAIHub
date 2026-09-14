@@ -34,7 +34,9 @@ family by `phenomenon` alone therefore counts a shift-leader's
 records by the iteration-0 critic, and both are what `DIAGNOSTIC_EVIDENCE`
 and `FAMILY_SOURCES` now forbid. Every row reaching a feature must have
 `evidence_kind` in `DIAGNOSTIC_EVIDENCE` (`detector` or `heuristic`) AND
-a `source` that `FAMILY_SOURCES` allows for its own phenomenon;
+a `source` that `FAMILY_SOURCES` allows for its own phenomenon. ELM and
+ELM-free rows must also name `diag="filterscopes"`, since the legacy
+magnetics clock used the same source name for different evidence;
 `EventTable.from_frame` applies that filter once, before any clustering,
 union or overlap, so nothing downstream can reach a row it excluded.
 `text`, `forecast`, `human`, `database` and `model` rows are not dropped
@@ -160,6 +162,8 @@ DIAGNOSTIC_EVIDENCE: tuple[str, ...] = ("detector", "heuristic")
 #: `elm` points and `elm_free` intervals both come from the D-alpha clock.
 #: Class-agnostic TokEye transients, including legacy rows named `elm`,
 #: cannot enter the ELM family. The window reductions themselves are unchanged.
+#: `diagnostic_mask` also requires filterscopes for both clock families,
+#: excluding legacy magnetics rows that shared the `elm_clock` source.
 FAMILY_SOURCES: dict[str, tuple[str, ...]] = {
     TRACK_PHENOMENON: (TRACK_SOURCE,),
     PICKUP_PHENOMENON: (TRACK_SOURCE,),
@@ -443,7 +447,9 @@ def diagnostic_mask(events: pd.DataFrame) -> np.ndarray:
 
     Both halves of the policy, applied together: the row's `evidence_kind`
     must be in `DIAGNOSTIC_EVIDENCE`, and its `source` must be one
-    `FAMILY_SOURCES` allows for its own `phenomenon`. A phenomenon this
+    `FAMILY_SOURCES` allows for its own `phenomenon`. ELM and ELM-free rows
+    additionally require `diag="filterscopes"`: legacy magnetics rows used
+    the same clock source but cannot supply D-alpha features. A phenomenon this
     module computes no feature for - `hl_transition`, `nbi_on`, `qh` -
     fails the second test and is excluded, which is the same answer for a
     different reason and is why the mask is computed from the pair rather
@@ -460,11 +466,13 @@ def diagnostic_mask(events: pd.DataFrame) -> np.ndarray:
     kind = events["evidence_kind"].to_numpy(dtype=object)
     source = events["source"].to_numpy(dtype=object)
     phenomenon = events["phenomenon"].to_numpy(dtype=object)
+    diag = events["diag"].to_numpy(dtype=object)
     allowed = DIAGNOSTIC_EVIDENCE
     return np.fromiter(
         (
             k in allowed and s in FAMILY_SOURCES.get(p, ())
-            for k, s, p in zip(kind, source, phenomenon, strict=True)
+            and (p not in (ELM_PHENOMENON, FREE_PHENOMENON) or d == "filterscopes")
+            for k, s, p, d in zip(kind, source, phenomenon, diag, strict=True)
         ),
         dtype=bool,
         count=n,
