@@ -529,6 +529,7 @@ def get_events(
     from ..retrieval import phenomena as ph
 
     relevant = None
+    entry = None
     if phenomenon:
         entry = ph.registry().get(phenomenon)
         relevant = entry.covering_sources if entry is not None else ()
@@ -540,6 +541,7 @@ def get_events(
         elif not relevant:
             caveats.append(ph.NO_DETECTOR.format(id=phenomenon))
     sources = es.for_shot(db, shot, relevant)
+    sources = _accepted_phenomenon_rows(sources, entry, caveats, "coverage")
     if "event_sources" in db.load_errors:
         caveats.append(f"could not read event_sources.parquet: {db.load_errors['event_sources']}")
     summary = _sources_summary(sources, shot)
@@ -563,8 +565,7 @@ def get_events(
     all_rows = df if df is not None else None
     if phenomenon and all_rows is not None:
         all_rows = all_rows[all_rows["phenomenon"] == phenomenon]
-        if phenomenon == "elm":
-            n_observed_rows = int(all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum())
+        all_rows = _accepted_phenomenon_rows(all_rows, entry, caveats, "event")
 
     nan_excluded = 0
     if all_rows is not None and (t0_s is not None or t1_s is not None):
@@ -653,6 +654,27 @@ def get_events(
         "nan_excluded": nan_excluded,
         "caveats": caveats,
     }
+
+
+def _accepted_phenomenon_rows(frame, entry, caveats: list[str], kind: str):
+    """Apply the registry's shared diagnostic gate and name every excluded source/diag group."""
+    if entry is None or not entry.coverage_diags or frame.empty:
+        return frame
+    keep = []
+    excluded: dict[tuple[str, str], int] = {}
+    for row in frame.to_dict("records"):
+        accepted = entry.accepts_row(row)
+        keep.append(accepted)
+        if not accepted:
+            key = str(row.get("source")), str(row.get("diag"))
+            excluded[key] = excluded.get(key, 0) + 1
+    for (source, diag), n in sorted(excluded.items()):
+        caveats.append(
+            f"{n} {kind} row(s) excluded for {entry.id}: {source}/{diag} does not satisfy "
+            f"coverage_diags {list(entry.coverage_diags)}; legacy diagnostic rows establish "
+            "neither coverage nor hits"
+        )
+    return frame.loc[keep]
 
 
 def _window(t0_s, t1_s) -> tuple[tuple[float | None, float | None], dict | None]:

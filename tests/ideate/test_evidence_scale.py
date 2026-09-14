@@ -29,8 +29,10 @@ def write_scale_db(root, n=2000):
             _event(shot, f'{shot}-risk', source='label_forecast',
                    phenomenon='tearing', evidence_kind='forecast'),
         ])
-        sources.extend(es.source_row(shot, source, t_cov0_s=0, t_cov1_s=6)
-                       for source in ('ece_sawtooth', 'elm_clock', 'tokeye_track'))
+        sources.extend(es.source_row(shot, source, diag=diag, t_cov0_s=0, t_cov1_s=6)
+                       for source, diag in (('ece_sawtooth', 'ece'),
+                                            ('elm_clock', 'filterscopes'),
+                                            ('tokeye_track', 'mhr')))
         labels.append(_label_row(shot, 'tm_prob'))
         claims.append(_claim(shot, 'tearing'))
     write_db(root, records)

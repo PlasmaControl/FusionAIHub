@@ -44,9 +44,10 @@ def test_label_tokens_require_valid_probability_above_the_operating_point(ideate
 
 def _avoid_db(ideate_db):
     es.write_sources(ideate_db / 'db/event_sources.parquet', [
-        es.source_row(100, 'elm_clock', t_cov0_s=0, t_cov1_s=6),
-        es.source_row(101, 'elm_clock', t_cov0_s=0, t_cov1_s=.9),
-        es.source_row(201, 'elm_clock', t_cov0_s=np.nan, t_cov1_s=np.nan),
+        es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
+        es.source_row(101, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=.9),
+        es.source_row(201, 'elm_clock', diag='filterscopes',
+                      t_cov0_s=np.nan, t_cov1_s=np.nan),
     ])
     return _db_with(ideate_db, [])
 
@@ -65,11 +66,12 @@ def test_avoid_requires_relevant_coverage_and_reports_each_excluded_state(ideate
 
 def test_avoid_excludes_observed_events_and_never_borrows_another_detector(ideate_db):
     es.write_sources(ideate_db / 'db/event_sources.parquet', [
-        es.source_row(100, 'elm_clock', t_cov0_s=0, t_cov1_s=6),
+        es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
         es.source_row(101, 'ece_sawtooth', t_cov0_s=0, t_cov1_s=6),
     ])
     db = _db_with(ideate_db, [_event(
-        100, 'elm', source='tokeye_transient', phenomenon='elm', t0_s=2, t1_s=2,
+        100, 'elm', source='elm_clock', phenomenon='elm', diag='filterscopes',
+        t0_s=2, t1_s=2,
     )])
     assert not db.mask('flat_top', avoid_labels=['phenomenon:elm']).any()
     assert not db.mask('flat_top', avoid_labels=['phenomenon:rwm']).any()
@@ -101,13 +103,39 @@ def test_query_and_mcp_surface_coverage_exclusions_even_with_no_results(ideate_d
     tools.reset_cache()
 
 
-def test_avoid_reports_when_an_observed_drop_is_only_a_class_agnostic_transient(ideate_db):
-    db = _db_with(ideate_db, [_event(
-        100, 'transient', source='tokeye_transient', phenomenon='elm',
-    )])
-    report = rank.search_report(QueryState(avoid_labels={'phenomenon:elm'}), db)
-    assert any('dropped 1' in c and 'observed' in c for c in report['caveats'])
-    assert ph.TRANSIENT_NOT_CLASSIFIED in report['caveats']
+def test_observed_tokens_keep_transient_and_elm_provenance_distinct(ideate_db):
+    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.source_row(101, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
+    ])
+    db = _db_with(ideate_db, [
+        _event(100, 'transient', source='tokeye_transient', phenomenon='transient'),
+        _event(101, 'elm', source='elm_clock', phenomenon='elm', diag='filterscopes'),
+    ])
+
+    assert db.segments.loc[
+        db.mask('flat_top', require_labels=['phenomenon:transient']), 'shot'
+    ].tolist() == [100]
+    assert db.segments.loc[
+        db.mask('flat_top', require_labels=['phenomenon:elm']), 'shot'
+    ].tolist() == [101]
+    assert db.segments.loc[
+        db.mask('flat_top', require_labels=['source:tokeye_transient']), 'shot'
+    ].tolist() == [100]
+    assert db.segments.loc[
+        db.mask('flat_top', require_labels=['source:elm_clock']), 'shot'
+    ].tolist() == [101]
+    assert not ph.evidence(100, 'elm', db).intervals
+    elm = ph.evidence(101, 'elm', db)
+    assert [iv.source for iv in elm.intervals] == ['elm_clock']
+    assert ph.TRANSIENT_NOT_CLASSIFIED not in elm.caveats
+    elm_report = rank.search_report(QueryState(avoid_labels={'phenomenon:elm'}), db)
+    assert any('dropped 1' in c and 'observed' in c for c in elm_report['caveats'])
+    assert not any(ph.TRANSIENT_NOT_CLASSIFIED in c for c in elm_report['caveats'])
+    transient_report = rank.search_report(
+        QueryState(avoid_labels={'phenomenon:transient'}), db
+    )
+    assert any('dropped 1' in c and 'observed' in c for c in transient_report['caveats'])
+    assert not any(ph.TRANSIENT_NOT_CLASSIFIED in c for c in transient_report['caveats'])
 
 
 def test_require_rejects_unknown_phenomena_before_building_tokens(ideate_db):
@@ -142,7 +170,8 @@ def test_avoid_requires_half_the_segment_measured_without_changing_its_state(
     ideate_db, spans, eligible,
 ):
     es.write_sources(ideate_db / 'db/event_sources.parquet', [
-        es.source_row(100, 'elm_clock', t_cov0_s=a, t_cov1_s=b) for a, b in spans
+        es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=a, t_cov1_s=b)
+        for a, b in spans
     ])
     db = _db_with(ideate_db, [])
     assert ph.evidence(100, 'elm', db).coverage_state == 'observed'
@@ -152,8 +181,8 @@ def test_avoid_requires_half_the_segment_measured_without_changing_its_state(
 
 def test_retained_partial_negative_carries_its_fraction_on_the_shot(ideate_db, capsys):
     es.write_sources(ideate_db / 'db/event_sources.parquet', [
-        es.source_row(101, 'elm_clock', t_cov0_s=1, t_cov1_s=3),
-        es.source_row(201, 'elm_clock', t_cov0_s=0, t_cov1_s=6),
+        es.source_row(101, 'elm_clock', diag='filterscopes', t_cov0_s=1, t_cov1_s=3),
+        es.source_row(201, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
     ])
     db = _db_with(ideate_db, [])
     query = QueryState(ref_shot=100, avoid_labels={'phenomenon:elm'})
