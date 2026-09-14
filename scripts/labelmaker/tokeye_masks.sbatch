@@ -35,7 +35,12 @@
 
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-L}"
-ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+ROOT="${ROOT:-${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}}"
+RUNTIME_ROOT="${RUNTIME_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+PHASE3_PYTHON="${PHASE3_PYTHON:-$RUNTIME_ROOT/envs/phase3/bin/python}"
+UNET="${UNET:-$RUNTIME_ROOT/models/tokeye/big_tf_unet_251210.pt}"
+ROOT="$(realpath -m -- "$ROOT")"
+printf 'Resolved root: %s\n' "$ROOT"
 CORPUS="${LABELMAKER_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 SHOT_FILE="${SHOT_FILE:?set SHOT_FILE to the pilot or remaining-shot list}"
 N_CHUNKS="${N_CHUNKS:-1}"
@@ -62,11 +67,11 @@ export CUDA_CACHE_PATH="$XDG_CACHE_HOME/cuda" MPLCONFIGDIR="$XDG_CACHE_HOME/matp
 cd "$REPO"
 echo "job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID} on $(hostname) at $(date -Is)"
 nvidia-smi --query-gpu=name,uuid,memory.total,memory.used,utilization.gpu --format=csv
-srun --cpu-bind=cores "$ROOT/envs/phase3/bin/python" -u \
+srun --cpu-bind=cores "$PHASE3_PYTHON" -u \
     "$REPO/scripts/labelmaker/tokeye_masks.py" \
     --shot-file "$SHOT_FILE" --chunk "$SLURM_ARRAY_TASK_ID" \
     --n-chunks "$N_CHUNKS" --rank 0 --world 1 \
-    --root "$ROOT" --corpus "$CORPUS" --device cuda --plan round1 \
+    --root "$ROOT" --unet "$UNET" --corpus "$CORPUS" --device cuda --plan round1 \
     --tile-batch "$TILE_BATCH" --prep-workers "$PREP_WORKERS" \
     --prefetch "$PREFETCH" --tail-workers 1 --text-subset readonly --no-index \
     --amp --timeout 240 --run-id "tokeye-${SLURM_ARRAY_JOB_ID}"

@@ -58,7 +58,7 @@ def test_real_shot_cpu_output_identity():
         paths.append(item)
     ref = pipeline.process_shot(
         shot, paths[0], model=model, device='cpu', passes=('wide', 'zoom'),
-        tile_batch=8, amp=False, index=False, run_id='identity',
+        tile_batch=8, amp=False, run_id='identity',
     )
     assert not ref.error and ref.n_blocks > 0
     # The compact-only path preserves tile grouping; pooled deliberately changes it.
@@ -71,7 +71,7 @@ def test_real_shot_cpu_output_identity():
         pipeline.infer_block = compact_infer
         compact = pipeline.process_shot(
             shot, paths[1], model=model, device='cpu', passes=('wide', 'zoom'),
-            tile_batch=8, amp=False, index=False, run_id='identity',
+            tile_batch=8, amp=False, run_id='identity',
         )
         assert not compact.error and compact.n_blocks == ref.n_blocks
     finally:
@@ -92,7 +92,11 @@ def test_real_shot_cpu_output_identity():
                 for key in reference.files:
                     assert actual[key].dtype == reference[key].dtype, key
                     assert actual[key].tobytes() == reference[key].tobytes(), key
-        hashes = {'masks': _digest_masks(item.masks_file(shot))}
+        assert item.masks_file(shot).read_bytes() == paths[0].masks_file(shot).read_bytes()
+        hashes = {
+            'masks_npz': hashlib.sha256(item.masks_file(shot).read_bytes()).hexdigest(),
+            'masks_arrays': _digest_masks(item.masks_file(shot)),
+        }
         for name, getter, reader in (
             ('events', Paths.events_file, schema.read_events),
             ('sources', Paths.sources_file, schema.read_sources),
