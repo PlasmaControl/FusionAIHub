@@ -30,7 +30,7 @@ def test_the_shipped_lexicon_carries_the_twelve_round_one_ids(lex):
     # reads it too, so an id renamed here is renamed there.
     assert lex.version == 1
     assert set(lex.ids) == set(lx.PHENOMENON_IDS)
-    assert len(lex.ids) == 12
+    assert len(lex.ids) == 13
     for p in lex.phenomena:
         assert p.title and p.aliases and p.weight > 0.0
         assert all(a == a.lower() and a.strip() for a in p.aliases)

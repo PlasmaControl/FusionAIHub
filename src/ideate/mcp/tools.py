@@ -521,6 +521,11 @@ def get_events(
         }
 
     sources = _event_sources(shot)
+    if phenomenon == "elm":
+        # A legacy magnetics clock or a generic transient cannot establish
+        # coverage for the D-alpha ELM family.
+        sources = sources[(sources["source"] == "elm_clock")
+                          & (sources["diag"] == "filterscopes")]
     summary = _sources_summary(sources, shot)
 
     paths = config.load_paths()
@@ -533,7 +538,11 @@ def get_events(
             df = pd.read_parquet(path)
         except Exception as exc:  # noqa: BLE001 - a corrupt table is a message, not a stack trace
             return _error(f"could not read {path}: {type(exc).__name__}: {exc}")
-        df = df[df["shot"] == shot]
+        df = df[df["shot"] == shot].copy()
+        # Read-only compatibility for pre-L-A products. Keep the burst
+        # accessible under its actual class without rewriting the store.
+        legacy = (df["source"] == "tokeye_transient") & (df["phenomenon"] == "elm")
+        df.loc[legacy, "phenomenon"] = "transient"
 
     all_rows = df if df is not None else None
     # `OBSERVED_KINDS` is an allow-list, so `database` is already outside it: a curated table
@@ -546,6 +555,8 @@ def get_events(
 
     if phenomenon and all_rows is not None:
         all_rows = all_rows[all_rows["phenomenon"] == phenomenon]
+        if phenomenon == "elm":
+            n_observed_rows = int(all_rows["evidence_kind"].isin(OBSERVED_KINDS).sum())
 
     nan_excluded = 0
     if all_rows is not None and (t0_s is not None or t1_s is not None):

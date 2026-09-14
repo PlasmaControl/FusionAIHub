@@ -25,14 +25,12 @@ this module writes is therefore computed HERE, on the float32 map the
 network returned, before it is packed; the `*_for_block` helpers are for
 offline re-analysis of a file whose probabilities are already gone.
 
-**One reference channel for the ELM clock.** Every magnetics channel sees
-the same ELMs, and writing a point event per channel puts each crash in the
-table as many times as the plan had magnetics channels - `windows.py`
-de-duplicates point families and unions `elm_free` precisely so that it
-survives, but the primary path should not need it. The reference is the
-magnetics wide block with the most transient activity, ties broken by name,
-and it is named in `ShotResult.elm_reference` and in the rows' own
-`diag`/`channel`/`pass_name`.
+**Independent transient and ELM references.** TokEye keeps one mask
+reference: the magnetics wide block with most transient activity, ties by
+name. Those rows are class-agnostic `transient` points. The ELM clock reads
+filterscopes 0-7 directly, preferring the first finite channel by index.
+`ShotResult.elm_reference` identifies that filterscope. The clock's points
+and quiet intervals share its finite coverage and run even without masks.
 
 **What the corpus cannot serve.** `ip` is not a corpus group (it is archive-
 and fdp-served; see `features/namespace.py`), so `actuator_intervals` gets
@@ -76,8 +74,7 @@ from .unet import CHECKPOINT_SHA256
 #: `ae_dataset.py` fed the network in training and is therefore the default.
 NORMS = ("record", "plasma")
 
-#: The diagnostics an ELM clock may run on. An ELM is broadband and the
-#: magnetics see it first; `mirnov` is `mhr`'s stand-in on the 14% of shots
+#: The diagnostics used to select the class-agnostic mask reference; `mirnov` is `mhr`'s stand-in on the 14% of shots
 #: that have no `mhr`.
 MAGNETICS_DIAGS = ("mhr", "mirnov")
 
@@ -543,7 +540,7 @@ def _cooccurrence(runs: Sequence[_BlockRun]) -> dict[tuple[str, int], list[str]]
 
 
 def _elm_reference(runs: Sequence[_BlockRun]) -> _BlockRun | None:
-    """The one block the ELM clock runs on: most transient activity, wide.
+    """The one transient mask reference: most transient activity, wide.
 
     Magnetics first and the wide pass first - an ELM is broadband and the
     zoom pass has thrown the top three quarters of the band away - and the
@@ -738,17 +735,30 @@ def finish_shot(
     # --------------------------------------------------------- the tracks
     if runs:
         sources.add(tracks.SOURCE)
-        partners = _cooccurrence(runs)
+        accepted: list[tuple[_BlockRun, list[Event]]] = []
         for run in runs:
-            res.n_tracks += len(run.tracks)
+            try:
+                rows = tracks.tracks_to_events(
+                    run.tracks, shot=shot, diag=run.diag, channel=run.channel,
+                    pass_name=run.pass_name, t_cov=run.t_cov,
+                    unet_sha256=unet_sha256,
+                )
+            except Exception as exc:  # noqa: BLE001 - independent diagnostic blocks
+                # An invalid padded track must not lose the D-alpha clock
+                # or other diagnostics. This block is unknown, not quiet.
+                key = f"track {run.diag}:{run.channel}:{run.pass_name}"
+                res.skipped[key] = _cause(exc)
+                continue
+            res.n_tracks += len(rows)
             ran[(tracks.SOURCE, run.diag, run.channel, run.pass_name)] = (
                 run.t_cov
             )
-            rows = tracks.tracks_to_events(
-                run.tracks, shot=shot, diag=run.diag, channel=run.channel,
-                pass_name=run.pass_name, t_cov=run.t_cov,
-                unet_sha256=unet_sha256,
-            )
+            accepted.append((run, rows))
+        # Only published blocks may corroborate one another. Conversion is
+        # all-or-nothing per block, so keeping each run's original track list
+        # also preserves raw block-local identities (including after clips).
+        partners = _cooccurrence([run for run, _ in accepted])
+        for run, rows in accepted:
             events.extend(
                 replace(e, attrs={
                     **e.attrs,
@@ -757,11 +767,10 @@ def finish_shot(
                 for i, e in enumerate(rows)
             )
 
-    # ------------------------------------------------------ the ELM clock
-    elm_free = np.zeros((0, 2), dtype=np.float64)
+    # ----------------------------------------- class-agnostic transients
     reference = _elm_reference(runs)
     if reference is None:
-        res.skipped["elm_clock"] = "no mask block to read a transient trace off"
+        res.skipped[transients.SOURCE] = "no mask block to read a transient trace off"
     else:
         try:
             elm_times = transients.elm_events(reference.activity, reference.t_s)
@@ -771,15 +780,39 @@ def finish_shot(
                 t_s=reference.t_s, t_cov=reference.t_cov,
                 unet_sha256=unet_sha256, activity=reference.activity,
             ))
-            elm_free = transients.elm_free_intervals(elm_times, reference.t_cov)
-            res.n_elms = int(np.size(elm_times))
-            res.elm_reference = reference.prefix
-            sources |= {transients.SOURCE, transients.FREE_SOURCE}
+            sources.add(transients.SOURCE)
             key = (reference.diag, reference.channel, reference.pass_name)
             ran[(transients.SOURCE, *key)] = reference.t_cov
-            ran[(transients.FREE_SOURCE, *key)] = reference.t_cov
         except Exception as exc:  # noqa: BLE001 - per-step isolation
-            res.skipped["elm_clock"] = _cause(exc)
+            res.skipped[transients.SOURCE] = _cause(exc)
+
+    # ------------------------------------------------------ the ELM clock
+    elm_free = np.zeros((0, 2), dtype=np.float64)
+    try:
+        dalpha_t_s, dalpha_y = _read_group(
+            corpus_file, "filterscopes", stop=heuristics.N_DALPHA_CHANNELS
+        )
+        # Prefer channel 0, falling back by channel index only when absent.
+        # Selecting by number of peaks would favour the noisiest detector.
+        channel = next((i for i, y in enumerate(dalpha_y)
+                        if (np.isfinite(y[:-1]) & np.isfinite(y[1:])).any()), -1)
+        if channel < 0:
+            raise ValueError("no finite D-alpha channel in filterscopes 0-7")
+        elm_cov = coverage.finite_span(dalpha_t_s, dalpha_y[channel])
+        found = transients.elm_clock_events(
+            dalpha_y[channel], dalpha_t_s, shot=shot, channel=channel,
+        )
+        events.extend(found)
+        res.n_elms = sum(e.phenomenon == transients.ELM_PHENOMENON for e in found)
+        res.elm_reference = f"filterscopes_{channel:02d}"
+        elm_free = np.array([
+            [e.t0_s, e.t1_s] for e in found
+            if e.phenomenon == transients.FREE_PHENOMENON
+        ], dtype=np.float64).reshape(-1, 2)
+        sources.add(transients.ELM_SOURCE)
+        ran[(transients.ELM_SOURCE, "filterscopes", channel, "")] = elm_cov
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        res.skipped["elm_clock"] = _cause(exc)
 
     # ------------------------------------------------------- the sawteeth
     try:
@@ -933,7 +966,8 @@ def finish_shot(
                 # rewrite, so sixteen tasks doing it per shot tear it. It is
                 # derivable from the per-shot files (`driver.rebuild_index`).
                 append_index(paths.events_index, schema.index_rows(events_file),
-                             keys=["shot", "source", "phenomenon"])
+                             keys=["shot", "source", "phenomenon"],
+                             replace_shots=[shot])
         except Exception as exc:  # noqa: BLE001 - see below
             # The one failure other than the corpus file that sets `error`.
             # Everything above is a claim this shot could not make; a failed
