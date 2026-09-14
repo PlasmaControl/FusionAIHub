@@ -12,6 +12,8 @@ from __future__ import annotations
 import copy
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
@@ -62,7 +64,23 @@ class Paths(BaseModel):
     sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
 
+_PATHS_OVERRIDE: ContextVar[Paths | None] = ContextVar("ideate_paths", default=None)
+
+
+@contextmanager
+def using_paths(paths: Paths):
+    """Scope paths to one request, including its worker thread, without changing the env."""
+    token = _PATHS_OVERRIDE.set(paths)
+    try:
+        yield
+    finally:
+        _PATHS_OVERRIDE.reset(token)
+
+
 def load_paths(path: Path | None = None) -> Paths:
+    override = _PATHS_OVERRIDE.get()
+    if path is None and override is not None:
+        return override
     if os.environ.get("IDEATE_DATA_ROOT") == "":
         raise ValueError("IDEATE_DATA_ROOT is empty; set it to a data directory or unset it")
     p = path or Path(os.environ.get("IDEATE_PATHS", CONFIG_DIR / "paths.yaml"))

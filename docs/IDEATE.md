@@ -450,3 +450,55 @@ Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` 
 `ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
 `ideate query` cannot disagree about a shot. `src/ideate/mcp/tools.py` is the whole contract —
 the function signatures and docstrings there *are* the tool schemas the assistant sees.
+
+## Browser UI: Search, Shot and Locate
+
+The local browser UI wraps the existing MCP tool functions and the
+`ideate phenomenon --json` retrieval path. It reads the database without building or
+updating it. Start it on Stellar from this worktree:
+
+```bash
+cd /scratch/gpfs/nc1514/FusionAIHub-build
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src
+export HF_HUB_OFFLINE=1 IDEATE_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate \
+       LABELMAKER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
+       IDEATE_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
+  -e ideate-cpu python -m ideate serve --port 8765
+```
+
+On your computer, run `ssh -L 8765:localhost:8765 stellar`, then open the token URL
+printed by the server. The server binds only to `127.0.0.1`. A valid `?token=` link
+sets an HttpOnly cookie and redirects to remove the token from the URL; requests
+without that cookie receive 401. `--db-dir PATH` selects another built database;
+`--token TOKEN` supplies a token instead of generating one. There are no external
+browser assets or tunnel services.
+
+Search supports text, a reference shot, segment, result count, JSON constraints,
+and require/avoid labels. Search scores and quotes come from `search_shots`; titles
+come from `describe_shot`. Both replies' caveats stay visible in the result row.
+Shot shows stored scalars, flags, quotes and events. Timeline colours identify the
+reported evidence kind, and forecast lanes, curated database intervals and text
+mentions remain separate. Missing values display as `—`. Every events reply shows
+its status and supplied caveats; when there is no status explanation in the reply,
+the explanation displays `—` too.
+
+The Shot phenomenon filter matches literal event names, while Locate uses registry
+classification rules. For example, an EHO can be classified from a `coherent_mode`
+row. Selecting a phenomenon therefore also shows an **all event names** timeline
+with its own status and caveats, so the literal filter cannot hide that context.
+Locate hits show intervals, duration, quote and caveats, and open Shot with the
+phenomenon selected.
+
+`/api/search`, `/api/shot/{shot}` and `/api/shot/{shot}/events` preserve the MCP tool
+JSON, including error dictionaries (HTTP 200). `/api/locate` preserves the CLI's
+bare JSON list; CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
+response header and are displayed above the hits. `/api/meta` summarizes the
+manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
+sources. Unknown API paths return JSON 404.
+
+The browser reads only `server` from `configs/ideate/ui.yaml`; the file's `landing` and
+`actuation` blocks belong to `retrieval.scenarios` and `retrieval.actuation`, which
+predate the thin UI and still take their defaults from it. Request-scoped paths keep app factories separate;
+Locate calls serialize the upstream curated-list cache reset because that cache
+uses a configuration key instead of the selected CSV path.
