@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import errno
 import functools
 import hashlib
 import json
@@ -881,6 +882,24 @@ def _tmp_dir(db_dir: Path) -> Path:
     return db_dir.parent / f"{db_dir.name}.tmp"
 
 
+def _move_onto(src: Path, dst: Path) -> None:
+    """Rename `src` over `dst`, copying instead when the two are on different filesystems.
+
+    The rename is the path that matters and stays first: it is atomic, so a reader of `dst` sees
+    the whole of one file or the whole of the other. But the caller stages the text subset beside
+    db_dir while `text_cache_dir` is wherever the paths file says, and an `IDEATE_PATHS` file that
+    puts them on different mounts -- exactly the scratch-database workflow docs/IDEATE.md
+    recommends -- makes `os.replace` raise EXDEV. The fallback copies, so it is not atomic; that
+    is acceptable here and only here, because what it moves is a cache the next build rewrites.
+    """
+    try:
+        os.replace(src, dst)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.move(str(src), str(dst))
+
+
 #: Every name `build`/`add` write into db_dir -- the two tables, the shape matrix, the embedding
 #: matrices, the PCA and the manifest. `_write_tables` and `ignite.encode_db` between them write
 #: exactly these, and `store.ShotDB.load` reads exactly these back.
@@ -906,6 +925,10 @@ BUILD_FILES = (
     "shapes.npy",
     "pca.json",
     "manifest.json",
+    # Not written by a publish: it is the staging name `build` renames over manifest.json when it
+    # rewrites the timings, and a crash in that window leaves it behind for good. Claiming it here
+    # is what lets the next publish prune it.
+    "manifest.json.part",
     "windows.parquet",
 )
 #: Same set, for the matrices whose names depend on what was encoded (emb_scalar, emb_text_mp,
@@ -1069,7 +1092,7 @@ def build(
             previous = _check_publish(paths.db_dir, shot_source, len(records), force)
             if subset.exists():
                 old_subset.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(subset, old_subset)
+                _move_onto(subset, old_subset)
     with _phase(seconds, "segment"):
         shots_df, segments_df, shape_mat = records_to_tables(records, shapes, _blurb_client())
     with _phase(seconds, "scalar_embedding"):
@@ -1131,8 +1154,15 @@ def build(
         # Wall seconds per PHASE, for the question a single elapsed cannot answer: which phase
         # left the cores idle. The dict is written twice -- the publish is the last phase and
         # cannot have timed itself when the manifest it moves is written -- and it is the
-        # published copy, rewritten below, that carries every phase.
+        # published copy, rewritten below, that carries every phase. If that rewrite never landed,
+        # `write_tables` and `publish` are the two keys left at 0.0.
         "phase_seconds": seconds,
+        # The whole of `build`, so the phases can be read against something. They are NOT
+        # exhaustive: the coverage report, this manifest, and on an encoding build the entire
+        # IGNITE pass (which times itself into `ignite.elapsed_s`) are in no phase, and
+        # `build_elapsed_s - sum(phase_seconds.values())` is how much is unaccounted for. Set at
+        # the rewrite below, the last moment before the published manifest is serialised.
+        "build_elapsed_s": None,
     }
     if force and previous is not None:
         manifest["forced_over"] = previous
@@ -1153,12 +1183,17 @@ def build(
     # Rewrite the published manifest now that `publish` has a number, through a sibling temp file
     # renamed over it, so a reader sees the whole of one manifest or the whole of the other.
     manifest["phase_seconds"] = {k: round(v, 6) for k, v in seconds.items()}
+    manifest["build_elapsed_s"] = round(time.perf_counter() - t_start, 6)
     part = paths.db_dir / "manifest.json.part"
     part.write_text(json.dumps(manifest, indent=2, default=str))
     os.replace(part, paths.db_dir / "manifest.json")
+    # The total on the same line, because the phases only mean something against it: what it
+    # exceeds their sum by is the work no phase timed.
     _log.info(
-        "build phases (wall s): %s",
+        "build phases (wall s): %s, total %.1f (untimed %.1f)",
         ", ".join(f"{name} {seconds[name]:.1f}" for name in PHASES),
+        manifest["build_elapsed_s"],
+        manifest["build_elapsed_s"] - sum(seconds.values()),
     )
     report.n_segments, report.db_dir = len(segments_df), paths.db_dir
     report.elapsed_s = time.perf_counter() - t_start
