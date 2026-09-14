@@ -949,6 +949,8 @@ def phenomenon_locate(
             min_confidence=float(min_confidence),
             avoid=avoid or (),
             notes=notes,
+            # This caller has no flags: a rejected token is named for the ARGUMENT it came in on.
+            option="avoid",
         )
     except ph.PhenomenaError as exc:  # an `avoid` token that is not a phenomenon, say
         return _error(str(exc), [*caveats, str(exc)])

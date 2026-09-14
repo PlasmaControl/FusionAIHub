@@ -777,8 +777,12 @@ def test_phenomenon_locate_avoid_drops_a_shot_and_the_drop_is_in_notes(phenomeno
 
 
 def test_phenomenon_locate_rejects_an_avoid_token_that_is_not_a_phenomenon(phenomenon_db):
+    """F3. The message names the ARGUMENT, not the CLI flag: a model told to fix `--avoid` is
+    told to fix something that is not in its schema, and has no move."""
     got = tools.phenomenon_locate("NTM", avoid=["phenomenon:banana"])
     assert "not a phenomenon" in got["error"] and isinstance(got["caveats"], list)
+    assert "avoid 'phenomenon:banana'" in got["error"]
+    assert "--avoid" not in got["error"]
 
 
 def test_phenomenon_locate_reports_an_unknown_constraint_column_as_an_error(phenomenon_db):
