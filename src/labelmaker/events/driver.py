@@ -242,7 +242,7 @@ def split_shots(
 INDEX_KEYS = ("shot", "source", "phenomenon")
 
 
-def rebuild_index(paths: Paths, *, echo=print) -> dict:
+def rebuild_index(paths: Paths, *, out: Path | None = None, echo=print) -> dict:
     """`events_index.parquet`, regenerated from the per-shot events files.
 
     The index is derivable: `schema.index_rows(events_file)` is a pure
@@ -272,7 +272,7 @@ def rebuild_index(paths: Paths, *, echo=print) -> dict:
             unreadable[events_file.name] = pipeline._cause(exc)
             echo(f"tokeye_masks: cannot index {events_file.name} - "
                  f"{unreadable[events_file.name]}")
-    out = Path(paths.events_index)
+    out = Path(out) if out is not None else Path(paths.events_index)
     out.unlink(missing_ok=True)
     append_index(out, rows, keys=list(INDEX_KEYS))
     echo(f"tokeye_masks: rebuilt {out} - {len(rows)} rows from "
@@ -529,14 +529,19 @@ class PrepPool:
         #: incarnations - sampled per shot and again as each pool is closed,
         #: because a worker that is gone cannot be asked.
         self.peak_worker_rss_gib = 0.0
+        self.worker_rss_gib: dict[str, float] = {}
         self._pool: ProcessPoolExecutor | None = None
         self._start()
 
     def _note_worker_rss(self, procs) -> None:
         for proc in procs:
             if proc.pid:
+                rss = _vmhwm_gib(proc.pid)
+                key = str(proc.pid)
+                self.worker_rss_gib[key] = max(self.worker_rss_gib.get(key, 0.0),
+                                               rss)
                 self.peak_worker_rss_gib = max(self.peak_worker_rss_gib,
-                                               _vmhwm_gib(proc.pid))
+                                               rss)
 
     def sample(self) -> float:
         """Read the live workers' high-water marks; the worst so far.
@@ -1094,6 +1099,10 @@ def run_shots(
         peak_rss_gib=round(_rss_gib(resource.RUSAGE_SELF), 3),
         peak_worker_rss_gib=round(max(pool.peak_worker_rss_gib,
                                      tails.peak_worker_rss_gib), 3),
+        worker_rss_gib={
+            role: {pid: round(rss, 3) for pid, rss in workers.worker_rss_gib.items()}
+            for role, workers in (("prep", pool), ("tail", tails))
+        },
         cuda_max_alloc_gib=_cuda_peak_gib(device),
         prep_workers=int(prep_workers),
         tail_workers=int(tail_workers),
@@ -1216,6 +1225,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="regenerate events_index.parquet from "
                              "events/*_events.parquet in one pass and exit; "
                              "takes no shot list")
+    parser.add_argument("--index-out", type=Path, default=None,
+                        help="output path for --rebuild-index only; default "
+                             "<root>/events_index.parquet")
     parser.add_argument("--no-write", action="store_true",
                         help="compute everything and store nothing; for a "
                              "pilot measuring throughput")
@@ -1286,6 +1298,8 @@ def run_tag(run_id: str, args) -> str:
 def main(argv=None) -> int:
     parser = build_parser()
     args = settle(parser.parse_args(argv))
+    if args.index_out is not None and not args.rebuild_index:
+        parser.error("--index-out requires --rebuild-index")
     if not (args.rebuild_index or args.shot_file or args.shots):
         parser.error("one of --shot-file or --shots is required")
     base = Paths.from_env()
@@ -1300,7 +1314,7 @@ def main(argv=None) -> int:
         if args.shot_file or args.shots:
             parser.error("--rebuild-index takes no shot list: it rebuilds "
                          "the index from every events file under --root")
-        rebuild_index(paths)
+        rebuild_index(paths, out=args.index_out)
         return EXIT_OK
 
     listed = (read_shot_file(args.shot_file) if args.shot_file
