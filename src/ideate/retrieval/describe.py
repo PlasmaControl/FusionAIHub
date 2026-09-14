@@ -353,7 +353,7 @@ def _phenomenon_lines(rec: schema.ShotRecord, segment: str, db) -> list[str]:
     lines = []
     for pid in ph.registry():
         ev = db.phenomenon_evidence(rec.shot, pid, segment)
-        if pid in resolved or ph._has_evidence(ev):
+        if pid in resolved or ph.has_evidence(ev):
             lines.append(_phenomenon_line(ev, rec))
     return lines
 
