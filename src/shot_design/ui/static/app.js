@@ -324,7 +324,10 @@ function blurbText(row, { cell = false } = {}) {
   return el("div", { class: "blurb-text" }, cell ? cellText([text]) : longText(text),
     row.blurb_source === "template"
       ? el("span", { class: "blurb-auto small muted",
-        title: "Deterministic header + outcome; no model summary yet" }, "auto") : null);
+        title: "Deterministic header + outcome; no model summary yet" }, "auto")
+      : row.blurb_source === "human"
+        ? el("span", { class: "blurb-auto small muted",
+          title: "Summary written by hand from the shot's own text; no model" }, "hand") : null);
 }
 
 function resultsTable(rows, segment) {

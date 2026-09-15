@@ -408,6 +408,13 @@ assert(text(shot.children[0]).includes('Goal. Outcome. Finding.'));
 assert.equal(text(byClass(shot.children[0], 'blurb-auto')[0]), 'auto');
 assert(text(shot).includes('8.924e5 A')); assert(text(shot).includes('1.321–1.792 s'));
 assert(!text(shot).includes('NEVER_PARSE'));
+run(`renderShot({record: {shot: 199607, blurb: 'Hand written.', blurb_source: 'human', segments: []},
+ describe_parts: {header: 'Shot 199607.', scalars: [], segment: null, labels:{}, outcome:{}, phenomena:[], caveats:[]}})`);
+assert.equal(text(byClass(shot.children[0], 'blurb-auto')[0]), 'hand');
+assert(byClass(shot.children[0], 'blurb-auto')[0].attrs.title.includes('by hand'));
+run(`renderShot({record: {shot: 199607, blurb: 'Model written.', blurb_source: 'llm', segments: []},
+ describe_parts: {header: 'Shot 199607.', scalars: [], segment: null, labels:{}, outcome:{}, phenomena:[], caveats:[]}})`);
+assert.equal(byClass(shot.children[0], 'blurb-auto').length, 0);
 run(`renderShot({record: {blurb:null, blurb_source:'template', segments:[]}})`);
 assert.equal(byClass(shot, 'summary-block').length, 0);
 run(`api = async () => ({data: {record: {human: {}}}})`);
