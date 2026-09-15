@@ -27,6 +27,14 @@ def wire(value):
     return json.loads(json.dumps(value, default=str))
 
 
+def event_payload(response, *, source="segments"):
+    """Only the browser's new domain is additive; all tool evidence stays verbatim."""
+    payload = response.json()
+    if "error" not in payload:
+        assert payload.pop("domain") == {"t0_s": -2, "t1_s": 8, "source": source}
+    return payload
+
+
 @pytest.fixture(autouse=True)
 def local_auxiliary_paths(ideate_db, tmp_path, monkeypatch):
     """The shared DB fixture relocates db, but not the curated CSV or model paths."""
@@ -94,7 +102,7 @@ def test_transport_does_not_drop_new_fields_or_coerce_values(client, monkeypatch
     payload = {"caveats": ["visible caveat"], "status": "uncovered", "extra": date(2026, 9, 1),
                "events": [], "forecasts": [], "text_mentions": [], "unknown": None}
     monkeypatch.setattr(tools, "get_events", lambda *args, **kw: payload)
-    assert client.get("/api/shot/100/events").json() == wire(payload)
+    assert event_payload(client.get("/api/shot/100/events")) == wire(payload)
 
 
 @pytest.mark.parametrize("shot,segment", [(100, "flat_top"), (200, "full"),
@@ -133,7 +141,7 @@ def event_db(ideate_db):
 def test_events_is_tool_json_and_preserves_evidence(client, event_db, params):
     response = client.get("/api/shot/100/events", params=params)
     assert response.status_code == 200
-    assert response.json() == wire(tools.get_events(100, **params))
+    assert event_payload(response) == wire(tools.get_events(100, **params))
     if "error" not in response.json():
         assert {"status", "caveats", "events", "forecasts", "text_mentions",
                 "database_intervals", "coverage"} <= response.json().keys()
@@ -156,7 +164,10 @@ def test_locate_is_cli_json_with_reply_notes(client, event_db, capsys, name, avo
               ("min_confidence", "0.1"), *[("avoid", item) for item in avoid]]
     response = client.get("/api/locate", params=params)
     assert response.status_code == 200
-    assert response.json() == json.loads(output.out)
+    hits = response.json()
+    for hit in hits:
+        assert hit.pop("domain") == {"t0_s": -2, "t1_s": 8, "source": "segments"}
+    assert hits == json.loads(output.out)
     assert response.json(), "CLI equality must exercise real hits, not two empty lists"
     if name == "eho":
         assert response.json()[0]["intervals"]
@@ -184,7 +195,9 @@ def test_each_event_status_survives_transport(client, event_db, shot, params, st
                                  t_cov0_s=0.0, t_cov1_s=6.0, n_events=2),
     ])
     response = client.get(f"/api/shot/{shot}/events", params=params)
-    assert response.json() == wire(tools.get_events(shot, **params))
+    assert event_payload(response, source="default" if shot == 999 else "segments") == wire(
+        tools.get_events(shot, **params)
+    )
     assert response.json()["status"] == status
 
 

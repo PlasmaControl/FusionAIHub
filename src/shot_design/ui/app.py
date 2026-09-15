@@ -1,13 +1,15 @@
 """Browser transport, ported from shot-recommender-system's shotrec/ui/app.py.
 
 The token gate and static app structure come from shotrec. Retrieval belongs to the
-existing MCP tools and phenomenon CLI path. Successful tool replies are serialized
-verbatim with default=str; the MCP's own guard also handles incomplete databases.
+existing MCP tools and phenomenon CLI path. Tool fields are serialized verbatim
+with default=str, alongside browser-only descriptions, units and timeline domains;
+the MCP's own guard also handles incomplete databases.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import threading
 from pathlib import Path
@@ -17,7 +19,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .. import config
+from .. import config, schema
 from ..mcp import tools
 from ..retrieval import phenomena
 from ..retrieval.describe import describe_parts, scalar_units
@@ -37,6 +39,27 @@ def _registry() -> list[dict]:
          "sources": ph.sources, "covering_sources": ph.covering_sources}
         for pid, ph in sorted(phenomena.registry().items())
     ]
+
+
+def _timeline_domain(rec: schema.ShotRecord) -> dict:
+    """Shot scale in seconds, independent of coverage and event-window filters.
+
+    Prefer the full segment, then the union of valid segments, then -2..8 s.
+    Pad with min(-2, floor(t0_s)) .. max(8, ceil(t1_s + 0.5)). Stored segment
+    times are milliseconds. Malformed legacy spans cannot define an axis.
+    """
+    segments = [s for s in rec.segments if math.isfinite(s.t0_ms) and
+                math.isfinite(s.t1_ms) and s.t1_ms >= s.t0_ms]
+    full = next((s for s in segments if s.name == "full"), None)
+    if full is not None:
+        segments = [full]
+    if not segments:
+        return {"t0_s": -2, "t1_s": 8, "source": "default"}
+    return {
+        "t0_s": min(-2, math.floor(min(s.t0_ms for s in segments) / 1000)),
+        "t1_s": max(8, math.ceil(max(s.t1_ms for s in segments) / 1000 + 0.5)),
+        "source": "full segment" if full is not None else "segments",
+    }
 
 
 def create_app(
@@ -127,9 +150,18 @@ def create_app(
         shot: int, phenomenon: str | None = None,
         t0_s: float | None = None, t1_s: float | None = None,
     ):
-        return _json(tools.never_raises(tools.get_events)(
-            shot, phenomenon=phenomenon, t0_s=t0_s, t1_s=t1_s,
-        ))
+        def with_domain():
+            payload = tools.get_events(
+                shot, phenomenon=phenomenon, t0_s=t0_s, t1_s=t1_s,
+            )
+            if "error" in payload:
+                return payload
+            db, error = tools._db()
+            if error:
+                return error
+            return {**payload, "domain": _timeline_domain(db.get(shot))}
+
+        return _json(tools.never_raises(with_domain)())
 
     @app.get("/api/phenomena")
     def registry():
@@ -159,7 +191,10 @@ def create_app(
                 resolved[0][0], db, n, segment=segment, min_confidence=min_confidence,
                 avoid=avoid or (), notes=notes,
             )
-            return [h.model_dump(mode="json") for h in hits]
+            return [
+                {**h.model_dump(mode="json"), "domain": _timeline_domain(db.get(h.shot))}
+                for h in hits
+            ]
 
         # The upstream curated-list cache keys on the config name, not its resolved
         # path. Serialize UI locate calls and reset it so two app factories cannot
@@ -167,7 +202,7 @@ def create_app(
         with _LOCATE_LOCK:
             phenomena._database_shots.cache_clear()
             payload = tools.never_raises(run)()
-        # CLI stderr becomes a header: the JSON body remains the CLI's bare list.
+        # CLI stderr becomes a header; the bare hit list adds only UI domains.
         return _json(payload, headers={"X-Ideate-Caveats": json.dumps(notes)})
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

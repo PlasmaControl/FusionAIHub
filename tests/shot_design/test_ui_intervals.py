@@ -32,7 +32,7 @@ let code = fs.readFileSync(process.argv[1], 'utf8');
 code = code.slice(0, code.lastIndexOf('\ninit().catch'));
 vm.createContext(context);
 vm.runInContext(code, context);
-vm.runInContext(`renderEvents({status: 'observed', coverage: {sources: [
+vm.runInContext(`renderEvents({status: 'observed', domain: {t0_s:-2, t1_s:8, source:'full segment'}, coverage: {sources: [
   {source: 'elm_clock', status: 'ok', t_cov0_s: 0, t_cov1_s: 4,
    intervals: [[0, 1], [2, 4]], min_gap_s: .003},
   {source: 'empty', status: 'ok', t_cov0_s: 0, t_cov1_s: 4, intervals: []},
@@ -49,5 +49,5 @@ process.stdout.write(JSON.stringify(marks(targets['#coverage-lanes'])));
                             check=True, timeout=20)
     styles = json.loads(result.stdout)
     assert len(styles) == 2
-    assert styles[0].startswith("left:0%;width:25%;")
-    assert styles[1].startswith("left:50%;width:50%;")
+    assert styles[0].startswith("left:20%;width:10%;")
+    assert styles[1].startswith("left:40%;width:20%;")
