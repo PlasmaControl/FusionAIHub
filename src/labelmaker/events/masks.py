@@ -337,7 +337,434 @@ def _to_device(x, device):
     return x.to(device)
 
 
-def infer(model, spec, device, *, batch: int = 96, amp: bool = True) -> np.ndarray:
+@dataclass
+class CompactMask:
+    """Host result: stored summaries and only descriptor-visible probabilities.
+
+    Sparse coherent values are in row-major lit-pixel order. Components never
+    grow the threshold mask, so reconstructing its other pixels as zero leaves
+    all descriptor inputs exact. Transient floats have no downstream consumer.
+    """
+
+    n_cols: int
+    coh_packed: np.ndarray
+    tra_packed: np.ndarray
+    row_lit: np.ndarray
+    col_act: np.ndarray
+    coh_values: np.ndarray
+
+    def coherent_inputs(self):
+        lit = unpack(self.coh_packed, (N_BINS, self.n_cols))
+        prob = np.zeros(lit.shape, dtype=np.float32)
+        prob[lit] = self.coh_values
+        return prob, lit
+
+
+def _pack_device(lit):
+    # N_BINS is divisible by eight, even for a partial last column.
+    bits = lit.reshape(-1, 8).to(torch.uint8)
+    shifts = torch.arange(7, -1, -1, device=lit.device, dtype=torch.uint8)
+    return (bits << shifts).sum(dim=1).to(torch.uint8)
+
+
+class DeviceStitch:
+    """The reference's ordered float64 overlap sum, retained on the device."""
+
+    def __init__(self, n_cols, device):
+        self.n_cols = int(n_cols)
+        width = (n_tiles(n_cols) - 1) * STRIDE + TILE
+        self.total = torch.zeros((2, N_BINS, width), dtype=torch.float64, device=device)
+        self.count = torch.zeros(width, dtype=torch.float64, device=device)
+
+    def add(self, pred, first_tile):
+        for i in range(len(pred)):
+            start = (first_tile + i) * STRIDE
+            self.total[:, :, start : start + TILE].add_(pred[i].float())
+            self.count[start : start + TILE].add_(1)
+
+    def finish(self):
+        probs = (self.total[:, :, : self.n_cols] / self.count[: self.n_cols]).float()
+        lit = probs >= PROB_THRESHOLD
+        # NumPy bool.mean accumulates/divides in float64 before casting.
+        row_lit = (lit[0].sum(dim=1).double() / self.n_cols).float()
+        col_act = (lit[1].sum(dim=0).double() / N_BINS).float()
+        return CompactMask(
+            self.n_cols,
+            _pack_device(lit[0]).to("cpu").numpy(),
+            _pack_device(lit[1]).to("cpu").numpy(),
+            row_lit.to("cpu").numpy(),
+            col_act.to("cpu").numpy(),
+            probs[0][lit[0]].to("cpu").numpy(),
+        )
+
+
+def _infer_compact(model, spec, device, *, batch, amp):
+    tiles, meta = tile(spec)
+    device = torch.device(device)
+    x = torch.from_numpy(tiles).unsqueeze(1)
+    stitched = DeviceStitch(meta["n_cols"], device)
+    i, size = 0, max(1, int(batch))
+    while i < len(x):
+        chunk = None
+        try:
+            chunk = _to_device(x[i : i + size], device)
+            with (
+                torch.autocast("cuda", dtype=torch.float16)
+                if amp and device.type == "cuda"
+                else nullcontext()
+            ):
+                probs = probabilities(model, chunk)
+        except torch.cuda.OutOfMemoryError:
+            if size == 1:
+                raise
+            size = max(1, size // 2)
+            chunk = None
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            continue
+        stitched.add(probs, i)
+        i += len(probs)
+    return stitched.finish()
+
+
+@dataclass
+class _PooledBlock:
+    token: Any
+    n_cols: int
+    stitch: DeviceStitch | None = None
+    error: Exception | None = None
+
+
+def _fill_tiles(host, spec, used, first, take):
+    view = host.numpy()
+    for offset in range(take):
+        start = (first + offset) * STRIDE
+        chunk = spec[:, start : start + TILE]
+        view[used + offset, 0, :, : chunk.shape[1]] = chunk
+        view[used + offset, 0, :, chunk.shape[1] :] = 0
+
+
+def _tile_batches(blocks, batch, *, pin_memory):
+    """Copy directly into bounded full batches; one partial batch at EOF only."""
+    host, spans, used = None, [], 0
+    for token, spec in blocks:
+        state = _PooledBlock(token, spec.shape[1])
+        count = n_tiles(state.n_cols)
+        first = 0
+        while first < count:
+            if host is None:
+                host = torch.empty(
+                    (batch, 1, N_BINS, TILE), dtype=torch.float32, pin_memory=pin_memory
+                )
+            take = min(batch - used, count - first)
+            _fill_tiles(host, spec, used, first, take)
+            spans.append((state, used, take, first, first + take == count))
+            used += take
+            first += take
+            if used == batch:
+                yield host, spans
+                host, spans, used = None, [], 0
+    if used:
+        yield host[:used], spans
+
+
+def _copy_batch(host, device, stream):
+    if stream is None:
+        return host.to(device), None
+    with torch.cuda.stream(stream):
+        copied = host.to(device, non_blocking=True)
+        ready = torch.cuda.Event()
+        ready.record(stream)
+    return copied, ready
+
+
+class _ReferenceBatches:
+    """CUDA forward boundaries must match the independent per-block oracle.
+
+    cuDNN AMP rounding changes when a tile moves to another batch shape (and
+    can cross the stored threshold). Pool full H2D buffers, but assemble device
+    views back into the reference's forward groups. At most one partial group
+    waits for the following input buffer. Preserve these boundaries on CPU too:
+    its measured single-threaded exactness need not hold for every backend.
+    """
+
+    def __init__(self, model, device, batch, amp, forward_context):
+        self.model, self.device = model, device
+        self.batch, self.amp = batch, amp
+        self.forward_context = forward_context
+        self.pending = []
+        self.state = None
+        self.done = 0
+        self.size = batch
+
+    def consume(self, copied, spans):
+        completed = []
+        for state, begin, count, _first, last in spans:
+            if self.state is None:
+                self.state, self.done, self.size = state, 0, self.batch
+            if state is not self.state:
+                raise RuntimeError("interleaved blocks in reference forward group")
+            if state.error is not None:
+                # A failed transfer may interrupt a group spanning two buffers.
+                # Drop its retained input and drain just this block's spans.
+                self.pending.clear()
+                if last:
+                    completed.append((state, None))
+                    self.state = None
+                continue
+            self.pending.append(copied[begin : begin + count])
+            available = sum(len(x) for x in self.pending)
+            total = n_tiles(state.n_cols)
+            while available >= min(self.size, total - self.done):
+                take = min(self.size, total - self.done)
+                joined = (
+                    self.pending[0]
+                    if len(self.pending) == 1
+                    else torch.cat(self.pending, dim=0)
+                )
+                self.pending = [joined]
+                probs = None
+                if state.error is None:
+                    try:
+                        with (
+                            self.forward_context([state.token]),
+                            (
+                                torch.autocast("cuda", dtype=torch.float16)
+                                if self.amp and self.device.type == "cuda"
+                                else nullcontext()
+                            ),
+                        ):
+                            probs = probabilities(self.model, joined[:take])
+                    except torch.cuda.OutOfMemoryError as exc:
+                        if self.size > 1:
+                            self.size = max(1, self.size // 2)
+                            if self.device.type == "cuda":
+                                torch.cuda.empty_cache()
+                            continue
+                        state.error = type(exc)(str(exc))
+                    except Exception as exc:  # noqa: BLE001 - one reference block
+                        state.error = type(exc)(str(exc))
+                if state.error is None:
+                    if state.stitch is None:
+                        state.stitch = DeviceStitch(state.n_cols, self.device)
+                    state.stitch.add(probs, self.done)
+                self.done += take
+                available -= take
+                self.pending = [joined[take:]] if available else []
+                del joined, probs
+                if self.done == total:
+                    if not last or available:
+                        raise RuntimeError("invalid end of reference forward group")
+                    event = None
+                    if self.device.type == "cuda":
+                        event = torch.cuda.Event()
+                        event.record(torch.cuda.current_stream(self.device))
+                    completed.append((state, event))
+                    self.state = None
+                    break
+        return completed
+
+
+def _preserves_reference_batches(device):
+    """Keep oracle forward shapes on every device; CPU pooling is opt-in."""
+    return True
+
+
+def infer_pooled(
+    model,
+    blocks,
+    device,
+    *,
+    batch=96,
+    amp=True,
+    forward_context=nullcontext,
+    preserve_batches=None,
+    remaining=None,
+):
+    """Yield `(token, CompactMask | Exception)` from consecutive block tiles.
+
+    Two pinned input batches and one unfinished block bound host input memory.
+    The copy stream uploads the next batch while the current forward runs.
+    A result stream reduces/reads completed blocks beside the next forward.
+    Owners survive copies; record_stream protects device input reuse. OOM
+    halves the forward size, retaining completed work and retrying only the
+    failing slice. Every output remains in input block order.
+    """
+    from ..run import StageTimeout
+
+    device = torch.device(device)
+    cuda = device.type == "cuda"
+    if preserve_batches is None:
+        preserve_batches = _preserves_reference_batches(device)
+    reference = (
+        _ReferenceBatches(model, device, max(1, int(batch)), amp, forward_context)
+        if preserve_batches
+        else None
+    )
+    copy_stream = torch.cuda.Stream(device=device) if cuda else None
+    result_stream = torch.cuda.Stream(device=device) if cuda else None
+    batch = max(1, int(batch))
+    size, size_state = batch, None
+    batches = iter(_tile_batches(blocks, batch, pin_memory=cuda))
+    current = next(batches, None)
+    if current is None:
+        return
+    host, spans = current
+
+    def stage(host):
+        try:
+            return _copy_batch(host, device, copy_stream)
+        except torch.cuda.OutOfMemoryError:
+            # Retry transfer together with the forward, in smaller slices.
+            return None, None
+
+    copied, ready = stage(host)
+    completed = []
+
+    def collect():
+        for state, event in completed:
+            if state.error is not None:
+                yield state.token, state.error
+            elif cuda:
+                result_stream.wait_event(event)
+                with torch.cuda.stream(result_stream):
+                    state.stitch.total.record_stream(result_stream)
+                    state.stitch.count.record_stream(result_stream)
+                    yield state.token, state.stitch.finish()
+            else:
+                yield state.token, state.stitch.finish()
+            state.stitch = None
+
+    try:
+        while current is not None:
+            compute = torch.cuda.current_stream(device) if cuda else None
+            if cuda and copied is not None:
+                compute.wait_event(ready)
+                copied.record_stream(compute)
+            offset = 0
+            newly_done = []
+            if reference is not None:
+                if copied is None:
+                    # Retry this allocation once after releasing cached memory.
+                    # A second failure costs only the blocks in this buffer.
+                    torch.cuda.empty_cache()
+                    try:
+                        copied, ready = _copy_batch(host, device, copy_stream)
+                    except torch.cuda.OutOfMemoryError as exc:
+                        for state, *_ in spans:
+                            state.error = type(exc)(str(exc))
+                    if cuda and copied is not None:
+                        compute.wait_event(ready)
+                        copied.record_stream(compute)
+                newly_done = reference.consume(copied, spans)
+                offset = len(host)
+            while offset < len(host):
+                probs, chunk, error = None, None, None
+                active, begin, count, _, _ = next(
+                    span for span in spans if span[1] <= offset < span[1] + span[2]
+                )
+                if active is not size_state:
+                    size, size_state = batch, active
+                stop = min(offset + size, len(host))
+                if size < batch or active.error is not None:
+                    stop = min(stop, begin + count)
+                # Do not forward an already failed span along with healthy ones.
+                for state, begin, *_ in spans:
+                    if begin > offset and state.error is not None:
+                        stop = min(stop, begin)
+                try:
+                    if copied is None:
+                        chunk, event = _copy_batch(
+                            host[offset:stop], device, copy_stream
+                        )
+                        if cuda:
+                            compute.wait_event(event)
+                            chunk.record_stream(compute)
+                    else:
+                        chunk = copied[offset:stop]
+                    tokens = [
+                        state.token
+                        for state, begin, count, _, _ in spans
+                        if begin < stop and begin + count > offset
+                    ]
+                    with (
+                        forward_context(tokens) if active.error is None
+                        else nullcontext(),
+                        (
+                            torch.autocast("cuda", dtype=torch.float16)
+                            if amp and cuda
+                            else nullcontext()
+                        ),
+                    ):
+                        if active.error is None:
+                            probs = probabilities(model, chunk)
+                except torch.cuda.OutOfMemoryError as exc:
+                    if size > 1:
+                        size = max(1, size // 2)
+                        chunk = None
+                        if cuda:
+                            torch.cuda.empty_cache()
+                        continue
+                    error = type(exc)(str(exc))
+                except StageTimeout as exc:
+                    if remaining is None:
+                        error = type(exc)(str(exc))
+                    else:
+                        expired = [
+                            state for state, begin, count, _, _ in spans
+                            if begin < stop and begin + count > offset
+                            and remaining(state.token) <= 0
+                        ]
+                        if not expired:
+                            raise  # An unrelated alarm cannot identify a shot.
+                        for state in expired:
+                            state.error = type(exc)(str(exc))
+                        # Retry healthy spans; failed spans are drained in order.
+                        continue
+                except Exception as exc:  # noqa: BLE001 - only this batch's blocks
+                    error = type(exc)(str(exc))
+                for state, begin, count, first, last in spans:
+                    lo, hi = max(begin, offset), min(begin + count, stop)
+                    if lo >= hi:
+                        continue
+                    if error is not None:
+                        state.error = error
+                    if state.error is None:
+                        if state.stitch is None:
+                            state.stitch = DeviceStitch(state.n_cols, device)
+                        state.stitch.add(
+                            probs[lo - offset : hi - offset], first + lo - begin
+                        )
+                    if last and hi == begin + count:
+                        event = torch.cuda.Event() if cuda else None
+                        if cuda:
+                            event.record(compute)
+                        newly_done.append((state, event))
+                offset = stop
+                del probs, chunk
+            # GPU work above is enqueued. Host packing and H2D now overlap it.
+            following = next(batches, None)
+            if following is not None:
+                next_host, next_spans = following
+                next_copied, next_ready = stage(next_host)
+            # Collect the previous batch on its own stream, beside this forward.
+            yield from collect()
+            completed = newly_done
+            current = following
+            if following is not None:
+                host, spans = next_host, next_spans
+                copied, ready = next_copied, next_ready
+        yield from collect()
+    finally:
+        # Also on early generator close/exception: no pinned owner dies while
+        # DMA still reads it, and the caller may safely tear down CUDA state.
+        if cuda:
+            copy_stream.synchronize()
+            result_stream.synchronize()
+
+
+def infer(model, spec, device, *, batch: int = 96, amp: bool = True,
+          compact: bool = False) -> np.ndarray | CompactMask:
     """`(512, T)` spectrogram -> `(2, 512, T)` float32 probabilities.
 
     Channel 0 is coherent activity, channel 1 transient. The vendored
@@ -360,6 +787,8 @@ def infer(model, spec, device, *, batch: int = 96, amp: bool = True) -> np.ndarr
     the retry: it allocates the whole batch on the card, so it is as likely
     a place to run out of memory as the forward pass is.
     """
+    if compact:
+        return _infer_compact(model, spec, device, batch=batch, amp=amp)
     tiles, meta = tile(spec)
     device = torch.device(device)
     x = torch.from_numpy(tiles).unsqueeze(1)          # (n_tiles, 1, 512, 512)
@@ -487,6 +916,7 @@ def block_arrays(
     *,
     thr: float = PROB_THRESHOLD,
     unet_sha256: str,
+    compact: CompactMask | None = None,
 ) -> dict[str, np.ndarray | str]:
     """One block -> the seven keys it is stored as.
 
@@ -499,8 +929,10 @@ def block_arrays(
     `_meta` records the threshold and the checkpoint that produced the
     probabilities, so a file always says what it is.
     """
-    coh = np.asarray(block.coh) >= thr
-    tra = np.asarray(block.tra) >= thr
+    if compact is not None and thr != PROB_THRESHOLD:
+        raise ValueError("a compact mask has already applied PROB_THRESHOLD")
+    coh = None if compact else np.asarray(block.coh) >= thr
+    tra = None if compact else np.asarray(block.tra) >= thr
     meta = dict(block.meta)
     meta.update(
         diag=block.diag,
@@ -514,10 +946,12 @@ def block_arrays(
     )
     prefix = block.prefix
     return {
-        f"{prefix}_coh_packed": pack(coh),
-        f"{prefix}_tra_packed": pack(tra),
-        f"{prefix}_row_lit": coh.mean(axis=1).astype(np.float32),
-        f"{prefix}_col_act": tra.mean(axis=0).astype(np.float32),
+        f"{prefix}_coh_packed": compact.coh_packed if compact else pack(coh),
+        f"{prefix}_tra_packed": compact.tra_packed if compact else pack(tra),
+        f"{prefix}_row_lit": (compact.row_lit if compact else
+                              coh.mean(axis=1).astype(np.float32)),
+        f"{prefix}_col_act": (compact.col_act if compact else
+                              tra.mean(axis=0).astype(np.float32)),
         f"{prefix}_band_logpow": band_logpow(block.raw_logpow),
         f"{prefix}_t_s": np.asarray(block.t_s, dtype=np.float64),
         f"{prefix}_meta": json.dumps(meta, sort_keys=True),
