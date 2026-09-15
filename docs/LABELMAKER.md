@@ -481,14 +481,21 @@ and sparse coherent float32 probabilities return to the host; the latter preserv
 probability-weighted track descriptors exactly. With `--tail-workers`, description,
 heuristics and per-shot writes run in that pool alongside later GPU work.
 
-CUDA retains the reference's **forward batch boundaries** inside the pooled
-transfers. Real-checkpoint AMP tests found changed packed pixels when forward
+Every device retains the reference's **forward batch boundaries** inside the
+pooled transfers by default. Real-checkpoint AMP tests found changed packed pixels when forward
 batches crossed block boundaries, so full CUDA forward pooling is disabled to
-preserve identity. CPU full-forward pooling passed the real-shot comparison.
+preserve identity. `--pool-cpu-forwards` explicitly opts into cross-block CPU
+forwards; its exactness was measured only with the pinned checkpoint and
+single-threaded CPU settings.
 `--probs-on-host` selects the original per-block schedule with full probability
 maps; the rendering API and `pipeline.process_shot` keep that independent path.
 The tests require complete NPZ byte identity and exact events/sources frames
 apart from `run_id` and `written_at`, including `intervals` and `min_gap_s`.
+The guarantee is **byte-identical when no OOM halving occurs or when it occurs
+identically**. Allocator pressure can otherwise change forward shapes and AMP
+rounding. At TILE 512 / STRIDE 448, float32 and float64 overlap accumulation
+are indistinguishable (at most two tiles per column and exact halving);
+float64 matches the oracle but is extra protection, not a test-proven need.
 
 `--prefetch` bounds pending preparation and is also its concurrency: use at least
 `--prep-workers` slots. Input buffers, partial device groups and the pending tail
@@ -505,7 +512,11 @@ override its Python/checkpoint paths. A scratch output root therefore does not
 need copies of the environment or checkpoint. The corpus remains read-only.
 The script requires `PREP_WORKERS + TAIL_WORKERS + 1` CPUs and accepts `REPO`
 for the source worktree. Always pass an explicit `--root` to a writing CLI
-invocation.
+invocation. Slurm treats shell variables in `#SBATCH` as literal text, so the
+script's bootstrap `--output` is `/dev/null` and the shell opens the full log at
+`$ROOT/runs/slurm/<array>_<task>.out` after printing the resolved root. Pass
+`--output="$ROOT/slurm/%A_%a.out"` at submission to also retain bootstrap
+messages (create that directory first). Both logs then follow the output root.
 
 Build the logbook subset once for the whole shot list, or copy the already-built
 subset into the printed scratch root's `text/logs_subset.jsonl`. Array tasks use
@@ -515,34 +526,73 @@ rewritten by concurrent tasks. A separately authorized index rebuild can use
 `--rebuild-index --index-out <root>/events/events_index.parquet`; the L14 pilot
 does not rebuild or publish a production index.
 
-The L14 performance task allows **one** at-most-20-shot A100 pilot, with all
-products and scheduler output below
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/`. Use the measured resource
-settings and exact submission in the
-[L14-perf report](../.superpowers/sdd/task-L14perf-report.md). Poll `squeue` and
-`sacct` to completion, then gate the allocation from the source worktree:
+### Runnable pilot workflow
+
+The three scripts provide a login-node text pre-pass, a GPU array, and an
+`afterok` index rebuild plus gate. The pre-pass stages the site's unchanged
+jobstats client and support files into `runs/slurm/jobstats-client/` because
+compute nodes lack `/usr/local/bin/jobstats`. Run it on a login node with the
+site client installed. `ROOT` and `LABELMAKER_ROOT` below name the same scratch
+root so both CPU companions use the intended destination.
+
+This is the general operator workflow; the L14 fix loop itself submits only
+its single GPU pilot and gates it manually, without a companion submission.
 
 ```bash
+cd /scratch/gpfs/nc1514/FusionAIHub-L14perf
+export REPO=$PWD
+export ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot-example
+export LABELMAKER_ROOT="$ROOT"
+export SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+export TMPDIR=/tmp/l14perf PIXI_CACHE_DIR=/tmp/l14perf/pixi-cache
+export XDG_CACHE_HOME=/tmp/l14perf/cache
+printf 'Resolved root: %s\n' "$ROOT"
+mkdir -p "$ROOT/slurm" "$ROOT/runs/slurm"
+
+# Pre-pass over the WHOLE list; no GPU and no allocation.
+bash scripts/labelmaker/tokeye_text_subset.sh
+
+# Choose measured resource overrides from the report; defaults record pilot 2.
+JOBID=$(N_CHUNKS=1 sbatch --parsable --array=0-0%1 \
+  --output="$ROOT/slurm/%A_%a.out" scripts/labelmaker/tokeye_masks.sbatch)
+CHECKID=$(sbatch --parsable --dependency=afterok:"$JOBID" \
+  --output="$ROOT/slurm/%j.out" \
+  scripts/labelmaker/tokeye_masks_afterok.sbatch "$JOBID" --pilot)
+while [[ -n $(squeue -h -j "$JOBID,$CHECKID" -o %i) ]]; do sleep 20; done
+
+# The companion gates each GPU element; also gate the CPU companion itself.
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m labelmaker.jobstats \
-    --job-id 2931999_0 --pilot \
-    --preserve-dir /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm \
-    --out /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/jobstats.json
+  --job-id "$CHECKID" --pilot --wait-for-data 300 \
+  --preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"
 ```
 
-That command gates the completed L14 pilot. Job 2931999_0 completed all 20
-shots at 139.81 tiles/s (2.855x L12); jobstats reported CPU 12.8%, sampled host
-memory 32.9%, GPU 100%, and GPU memory 96.6%. The GPU target was met, while
-the overall gate remained FAIL (exempt). The report retains both memory
-measurements and labels its smaller production capacity proposal unvalidated.
+The companion rebuilds at `--index-out "$ROOT/events/events_index.parquet"`.
+If the GPU array fails, `afterok` does not run: gate the array manually and
+cancel the pending companion. The equivalent manual GPU gate uses `--job-id
+"$JOBID"` with the same capture flags and frozen environment. Check `sacct`
+completion as well as `squeue`, each run row and product count, and empty
+`text_subset_missing`; file existence alone is insufficient.
+
+### L14 measurements and limits
+
+The original pilot 2931999_0 completed all 20 shots at 139.81 tiles/s (2.855x
+L12): CPU 12.8%, sampled host memory 32.9%, GPU 100%, GPU memory 96.6%.
+Its 50-CPU allocation over-reserved both pools. The earlier 10 CPU / 6 prep /
+3 tail / 31G / four-minute proposal is withdrawn: both pools were below
+measured demand, memory came from different pool sizes, and one timeout
+could consume the entire wall allocation. The authorized second pilot and
+its derived defaults are recorded in the
+[L14-perf report, Fix loop](../.superpowers/sdd/task-L14perf-report.md#fix-loop).
 
 Worktrees use the main checkout's existing pixi environments with the frozen,
 no-install command above. GPU work uses the independent phase3 Python.
 The pilot exemption can return exit 0 with missed thresholds; read all four
-measured percentages and both host-memory measurements, and confirm each shot's
-completion from its run row and products. A GPU result below 70% requires a
-diagnosis and a stop. A successful result permits only a production sizing
-proposal in the report; production submission is outside this task.
+measured percentages and both host-memory measurements. Production requires
+all four utilization checks to pass. A GPU result below 70% requires a
+diagnosis and a stop. The L14 fix loop records a production sizing proposal;
+production is not submitted.
 
 ### Rule labels from the features store
 

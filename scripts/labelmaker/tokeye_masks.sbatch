@@ -31,7 +31,9 @@
 #SBATCH --mem=9G
 #SBATCH --time=00:11:00
 #SBATCH --array=0-0%1
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
+# Slurm cannot expand ROOT in a directive. The shell below opens the full log
+# under the resolved ROOT; an explicit --output captures bootstrap diagnostics.
+#SBATCH --output=/dev/null
 
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-L}"
@@ -60,6 +62,9 @@ if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID >= N_CHUNKS )); then
     echo "array task must be within N_CHUNKS" >&2
     exit 2
 fi
+mkdir -p "$ROOT/runs/slurm"
+exec > "$ROOT/runs/slurm/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.out" 2>&1
+printf 'Resolved root: %s\n' "$ROOT"
 export LABELMAKER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export HDF5_USE_FILE_LOCKING=FALSE PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1
