@@ -1,0 +1,890 @@
+diff --git a/configs/shot_design/llm.yaml b/configs/shot_design/llm.yaml
+index ebbd21b..bd207f6 100644
+--- a/configs/shot_design/llm.yaml
++++ b/configs/shot_design/llm.yaml
+@@ -22,22 +22,28 @@ temperature: 0.0
+ max_tokens: 600
+ cache: true                      # deterministic (temperature 0) requests are cached under llm_cache_dir
+ # gemma4:26b is a reasoning model: measured through /v1/chat/completions it spends the whole
+ # max_tokens budget on a `reasoning` field and returns content "" (max_tokens 20 -> content "",
+ # finish_reason "length"); "reasoning_effort": "none" turns that off (content "ready", 2 completion
+ # tokens) where "think": false is ignored. Remove the key for a provider that rejects it.
+ reasoning_effort: "none"
+ blurb:
+   model: quality
+   max_words: 90
+-  prompt_version: 5              # part of the prompt: bump to invalidate every cached blurb
++  prompt_version: 6              # part of the prompt: bump to invalidate every cached blurb
+                                   # v2: states the word cap explicitly and targets 40-60 words,
+                                   # so a reply naturally lands under gate's max_words cutoff
+                                   # v3: owner decision -- exactly two sentences, no quotation
+                                   # marks at all; the gate no longer checks quotes (removed)
+                                   # v4: reviewer found a bad ending ("performing as expected")
+                                   # dressed up a fast current quench; gate now rejects quotation
+                                   # marks and the prompt requires naming a disruption/quench/
+                                   # early termination plainly in the second sentence
+                                   # v5: exactly three sentences: goal; success/failure; one
+                                   # finding or "No notable findings were logged." The gate
+                                   # enforces three complete sentences; word cap is 90.
++                                  # v6: abbreviations verbatim, never expanded; numbers never as
++                                  # words; gate adds number-word and unknown-acronym rules. Audit
++                                  # of the 2026-09-15 v5 backfill found AE->aeroelastic,
++                                  # EHO->edge helical, QH->quasi-high, FPP->flat pressure profile,
++                                  # PCS->power control system, betan->poloidal beta, V.s->volts,
++                                  # and spelled-out numerals.
+diff --git a/docs/SHOT_DESIGN.md b/docs/SHOT_DESIGN.md
+index 4e6f587..16a984e 100644
+--- a/docs/SHOT_DESIGN.md
++++ b/docs/SHOT_DESIGN.md
+@@ -512,54 +512,85 @@ Nothing in the tools re-implements retrieval: they call `shot_design.retrieval.r
+ `shot_design.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
+ `shot_design query` cannot disagree about a shot. `src/shot_design/mcp/tools.py` is the whole contract —
+ the function signatures and docstrings there *are* the tool schemas the assistant sees.
+ 
+ ## Local LLM and per-shot blurbs
+ 
+ `configs/shot_design/llm.yaml` enables `provider: ollama`. Without an endpoint file,
+ the client is unavailable and builds use the existing header + outcome template.
+ The UI reads stored blurbs; loading a page does not generate them.
+ 
+-Prompt v5 asks for exactly **three plain sentences**, at most **90 words**:
++Prompt v6 asks for exactly **three plain sentences**, at most **90 words**:
+ 
+ 1. What the shot or experiment set out to do.
+ 2. Whether it succeeded, plainly naming a disruption, fast current quench or early
+    termination when the source records one; say when success is unknown.
+ 3. One interesting finding from the operator entries or shot brief, or the literal
+    sentence **No notable findings were logged.**
+ 
+ The model uses the mini-proposal title/purpose, run title, shot brief, up to eight
+ quotable operator entries, chief-operator status, outcome and verdict. It writes
+ in its own words, without quotation marks, headings, lists or invented/rounded
+-numbers. The gate rejects empty text, overlong text, double/curly quotation marks,
+-numbers or shot references absent from the source, and anything other than three
+-complete sentences. Sentence terminators are `.`, `!` and `?` followed by whitespace
+-or end of text; decimal points do not split sentences. A rejected reply retains
+-the header + outcome template. These mechanical checks do not establish semantic
+-accuracy: inspect the dry-run candidates before the full backfill.
++numbers. Abbreviations, acronyms and symbols must be copied verbatim, never expanded,
++translated or explained, even when the model thinks it knows their meaning; it may
++not introduce an abbreviation absent from the source. Quantities must use digits
++and the unit exactly as given, or be omitted; numbers must never be written as words
++(such as `thirteen`, `several hundred` or `two-one`). The 2026-09-15 audit of the v5
++backfill motivated these rules: shot 200729 incorrectly expanded the source's `AE`
++to `aeroelastic instabilities`.
++
++The gate rejects empty text, overlong text, double/curly quotation marks, numbers
++or shot references absent from the source, and anything other than three complete
++sentences. Before counting sentences, it also checks:
++
++- `number written as a word: [...]`: a number word absent as a whole word from
++  the source, ignoring case and splitting candidate text on whitespace and hyphens.
++  The list covers two through nineteen, tens through ninety, hundred, thousand,
++  million and dozen. `one` and ordinals are exempt; source wording such as
++  `two-day experiment` may be retained.
++- `abbreviation not in source: [...]`: an ALL-CAPS token of two to six letters,
++  with an optional plural `s`, absent from the source. The comparison removes
++  hyphens, ignores case, strips the token's plural `s`, and matches substrings:
++  `L-H` passes for `PLH`, `ELMs` for `ELM`, and `NTMs` for `NTM`. `DIII` is always
++  allowed; single letters, including the `D` in `DIII-D`, are exempt.
++
++Sentence terminators are `.`, `!` and `?` followed by whitespace or end of text;
++decimal points do not split sentences. A rejected reply retains the header + outcome
++template. These mechanical checks do not establish semantic accuracy: inspect the
++dry-run candidates before the full backfill.
+ 
+ Every generated table row carries `blurb`, `blurb_source` (`llm` or `template`),
+ `blurb_model` (resolved tag, e.g. `gemma4:26b`) and `blurb_prompt_version` (integer).
+ The latter two record the configuration used for the attempt, including template
+ fallbacks; `blurb_source` says whether the model supplied the final text. Legacy
+ rows retain unknown provenance until processed. `manifest.json["blurbs"]` contains
+ the whole table's `llm` and `template` counts plus the latest pass's `model` and
+-`prompt_version`; a limited pass may leave a mix of row versions.
++`prompt_version`. Its `prompt_versions` histogram counts every non-null row version
++with string keys, for example `{"5": 502, "6": 2}`, making mixed versions visible;
++legacy rows with unknown versions are excluded. Builds and additions update the
++same histogram.
+ 
+ `blurb` normally selects templates, empty blurbs, and rows with missing or older
+ prompt versions. `--all` selects every row, including current model blurbs.
+-`--limit N` takes the first N eligible shots in shot order (`0` does nothing).
++`--shots N [N ...]` regenerates exactly the named shots in ascending order, regardless
++of their existing text or prompt version; unknown shots fail before any model call.
++Combining `--shots` with `--all` reports an error on stderr and exits with status 2.
++`--limit N` takes the first N eligible shots after selection (`0` does nothing).
+ `--dry-run` prints each shot number, source-text character count, candidate, gate
+ verdict/reason and final text; it writes neither database files nor request cache.
+ A normal pass atomically replaces `shots.parquet`, then atomically updates the
+ manifest. Those are two file replacements, not a transaction across both files.
+ 
++For a targeted preview, use `shot_design blurb --shots 200729 190511 --dry-run`;
++remove `--dry-run` to regenerate those rows. Invoke the CLI directly for `--shots`:
++the `blurb_all.sh` wrapper already supplies `--all`.
++
+ ### Operator runbook (after merge)
+ 
+ The existing Ollama 0.33.3 binary and both Gemma models are reused in place:
+ 
+ | `llm.yaml` key | default path |
+ | --- | --- |
+ | `ollama_bin_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/bin/ollama` |
+ | `ollama_models_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/ollama` |
+ | `ollama_home_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/ollama_home` |
+ 
+diff --git a/src/shot_design/cli.py b/src/shot_design/cli.py
+index 738209c..2377822 100644
+--- a/src/shot_design/cli.py
++++ b/src/shot_design/cli.py
+@@ -613,30 +613,34 @@ def cmd_llm(args) -> int:
+     return 0
+ 
+ 
+ def cmd_blurb(args) -> int:
+     from .llm.client import LLMClient
+     from .shotdb.build import write_blurbs
+ 
+     if args.limit is not None and args.limit < 0:
+         print("blurb limit must be non-negative", file=sys.stderr)
+         return 2
++    if args.shots and args.all:
++        print("blurb --shots cannot be combined with --all", file=sys.stderr)
++        return 2
+     client = LLMClient()
+     ok, hint = client.available()
+     if not ok:
+         print(hint)
+         return 1
+     paths = config.load_paths()
+     if not args.dry_run:
+         _announce_root("blurb", str(paths.db_dir / "shots.parquet"), paths)
+     n = write_blurbs(
+         paths, client, only_missing=not args.all, limit=args.limit, dry_run=args.dry_run,
++        shots=args.shots,
+     )
+     action = "accepted in dry run (nothing written)" if args.dry_run else "written"
+     print(f"{n} blurbs {action} by {client.model(client.cfg['blurb']['model'])}")
+     return 0
+ 
+ 
+ def cmd_actuation(args) -> int:
+     from .retrieval import actuation
+ 
+     paths = config.load_paths()
+@@ -1879,20 +1883,24 @@ def build_parser() -> argparse.ArgumentParser:
+         "llm", help="is a language model reachable? prints the endpoint or how to start one"
+     )
+     p.set_defaults(func=cmd_llm)
+ 
+     p = sub.add_parser(
+         "blurb", help="write the model's per-shot blurbs into shots.parquet (needs a running model)"
+     )
+     p.add_argument(
+         "--all", action="store_true", help="rewrite every blurb, including current model blurbs"
+     )
++    p.add_argument(
++        "--shots", type=int, nargs="+", metavar="N",
++        help="rewrite only these shots, in ascending order",
++    )
+     p.add_argument("--limit", type=int, help="process at most N eligible shots in shot order")
+     p.add_argument(
+         "--dry-run", action="store_true",
+         help="print candidates, gate verdicts and final text without writing files or cache",
+     )
+     p.set_defaults(func=cmd_blurb)
+ 
+     p = sub.add_parser("actuation", help="inspect saved actuator waveform sets")
+     what = p.add_subparsers(dest="what", required=True)
+     what.add_parser("list", help="every saved set, newest first")
+diff --git a/src/shot_design/retrieval/blurb.py b/src/shot_design/retrieval/blurb.py
+index e0dbfcf..275af74 100644
+--- a/src/shot_design/retrieval/blurb.py
++++ b/src/shot_design/retrieval/blurb.py
+@@ -1,17 +1,18 @@
+ """The three-sentence summary that leads every result card.
+ 
+ Written once, offline, from the shot's own text (mini-proposal title and purpose, run title,
+ the shot brief, the operators' entries, the outcome), stored in shots.parquet, and gated: a
+-blurb may not state a number or a shot number that is absent from its source, may not contain a
+-quotation mark, must have three complete sentences, and must fit the word cap. It is a plain-language
+-summary in the model's own words, not a quotation: the blurb does not quote the operators --
++blurb may not state a number or a shot number that is absent from its source, write an unsupported
++number word, introduce an abbreviation, contain a quotation mark, fail to contain exactly three
++complete sentences, or exceed the word cap. It is a plain-language summary in the model's own words:
++the blurb does not quote the operators --
+ the card's "more" section already shows a verbatim operator quote (`describe.best_quote`), so
+ faithfulness there is that function's job, not this one's. Fail the gate and the template
+ stands, marked so on the card. The page never waits on the model; `shot_design blurb` backfills.
+ 
+ 
+ Ported from shot-recommender-system (shotrec) @565d548.
+ """
+ 
+ from __future__ import annotations
+ 
+@@ -21,32 +22,47 @@ from typing import Literal
+ 
+ from pydantic import BaseModel
+ 
+ from shot_design import config
+ from shot_design.retrieval import describe
+ from shot_design.schema import ShotRecord
+ 
+ _log = logging.getLogger(__name__)
+ 
+ _WS = re.compile(r"\s+")
++_NUMBER_WORDS = frozenset(
++    {
++        "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
++        "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
++        "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
++        "ninety", "hundred", "thousand", "million", "dozen",
++    }
++)
++_ACRONYM = re.compile(r"\b[A-Z]{2,6}s?\b")
+ 
+ 
+ def _system(max_words: int) -> str:
+-    """Prompt v5: goal, success/failure, then one finding or the literal no-findings sentence."""
++    """Prompt v6: v5's three-sentence contract plus verbatim abbreviations and digit quantities."""
+     return (
+         "You summarise DIII-D tokamak shots for physicists scanning a list of past shots to find "
+         "one worth looking at. Write exactly three plain sentences: the first says what the "
+         "experiment or this shot set out to do; the second says whether it succeeded "
+         "(say when success is unknown); the third gives one interesting finding from the "
+         "operator entries or shot brief. When nothing notable is recorded, the third sentence "
+         "must be exactly: No notable findings were logged. "
+         "Use only the text given. Do not invent or round numbers; prefer no numbers at all. "
++        "Copy every abbreviation, acronym and symbol exactly as the text writes it (for example "
++        "AE, EHO, QH, FPP, PCS, RMP, LM, li, V.s, betan). Never expand, translate or explain "
++        "one, even when you think you know what it stands for, and never introduce an "
++        "abbreviation the text does not use. Write a quantity with digits and the unit exactly "
++        "as the text gives it, or leave it out. Never write a number as a word (not thirteen, "
++        "not several hundred, not two-one). "
+         "Do not use quotation "
+         "marks -- write in your own words, never quote the operators. If the shot ended in a "
+         "disruption, a fast current quench or was terminated early, the second sentence must say "
+         "so plainly. No headings, no lists, no preamble, exactly three sentences, and never "
+         f"more than {max_words} words."
+     )
+ 
+ 
+ class Blurb(BaseModel):
+     text: str
+@@ -102,20 +118,43 @@ def gate(source: str, candidate: str, rec: ShotRecord, max_words: int) -> str |
+     nums, shots = describe.extract_facts(candidate)
+     # Shot references first: every shot number is also a number, so checking numbers first would
+     # report an invented "161234" as an invented number and hide the more useful reason.
+     if not set(shots) <= set(src_shots) | {str(rec.shot)}:
+         return f"shot not in source: {sorted(set(shots) - set(src_shots))}"
+     # extract_facts returns sets (each number counted once), so a multiset comparison here would
+     # always agree with (or be stricter than) the set comparison for no extra benefit -- reduced
+     # to the one check that matches what extract_facts actually hands back.
+     if not set(nums) <= set(src_nums):
+         return f"number not in source: {sorted(set(nums) - set(src_nums))}"
++    candidate_number_words = {
++        re.sub(r"^[\W_]+|[\W_]+$", "", token).lower()
++        for token in re.split(r"[\s-]+", candidate)
++    } & _NUMBER_WORDS
++    unknown_number_words = {
++        word for word in candidate_number_words
++        if re.search(rf"\b{re.escape(word)}\b", source, flags=re.IGNORECASE) is None
++    }
++    if unknown_number_words:
++        return f"number written as a word: {sorted(unknown_number_words)}"
++    source_compact = source.replace("-", "").lower()
++    acronym_texts = (candidate, candidate.replace("DIII-D", "DIII").replace("-", ""))
++    candidate_acronyms = {
++        token.removesuffix("s")
++        for text in acronym_texts
++        for token in _ACRONYM.findall(text)
++    }
++    unknown_acronyms = {
++        token for token in candidate_acronyms
++        if token != "DIII" and token.replace("-", "").lower() not in source_compact
++    }
++    if unknown_acronyms:
++        return f"abbreviation not in source: {sorted(unknown_acronyms)}"
+     # Count terminator groups followed by whitespace/end; decimal points stay inside words.
+     # Unit abbreviations such as "kA." terminate a sentence here. No NLP dependency is needed.
+     sentences = len(re.findall(r"[.!?]+(?=\s|$)", candidate))
+     if sentences != 3 or not candidate.rstrip().endswith((".", "!", "?")):
+         return f"expected exactly three complete sentences (found {sentences} terminators)"
+     return None
+ 
+ 
+ def make(
+     rec: ShotRecord, client, cfg: dict | None = None, *, cache: bool | None = None,
+diff --git a/src/shot_design/shotdb/build.py b/src/shot_design/shotdb/build.py
+index 46aa02b..35b161d 100644
+--- a/src/shot_design/shotdb/build.py
++++ b/src/shot_design/shotdb/build.py
+@@ -26,20 +26,21 @@ import errno
+ import functools
+ import hashlib
+ import json
+ import logging
+ import os
+ import shutil
+ import subprocess
+ import tempfile
+ import time
+ import warnings
++from collections.abc import Sequence
+ from concurrent.futures import ProcessPoolExecutor
+ from contextlib import contextmanager
+ from dataclasses import dataclass, field
+ from pathlib import Path
+ 
+ import numpy as np
+ import pandas as pd
+ 
+ from .. import config
+ from ..schema import Labels, Outcome, Provenance, Segment, ShotRecord, Status
+@@ -802,56 +803,69 @@ def _blurb_client():
+ def _blurb_provenance(client=None) -> dict[str, str | int]:
+     """Configuration used for this pass, including when a row falls back to a template."""
+     cfg = client.cfg if client is not None else config.load_yaml("llm.yaml")
+     key = cfg["blurb"]["model"]
+     return {
+         "model": str(cfg["models"].get(key, key)),
+         "prompt_version": int(cfg["blurb"]["prompt_version"]),
+     }
+ 
+ 
+-def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, str | int]:
++def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, object]:
+     col = shots_df["blurb_source"] if "blurb_source" in shots_df.columns else pd.Series(dtype=str)
++    versions = pd.to_numeric(
++        shots_df.get("blurb_prompt_version", pd.Series(dtype="Int64")), errors="coerce"
++    ).dropna().astype(int).value_counts().sort_index()
+     return {
+         **{k: int(col.eq(k).sum()) for k in ("llm", "template")},
+         **_blurb_provenance(client),
++        "prompt_versions": {str(version): int(count) for version, count in versions.items()},
+     }
+ 
+ 
+ def write_blurbs(
+     paths: config.Paths, client, only_missing: bool = True, *,
+-    limit: int | None = None, dry_run: bool = False,
++    limit: int | None = None, dry_run: bool = False, shots: Sequence[int] | None = None,
+ ) -> int:
+     """Backfill blurbs into shots.parquet with the model; rewrite the file atomically.
+     Return the number of accepted model replies. Select templates, empty blurbs and stale or
+-    unknown prompt versions in shot order, then apply `limit`. Dry runs print each candidate,
+-    gate verdict and final text without writing database files or the client's request cache.
++    unknown prompt versions in shot order, or exactly the sorted unique targeted `shots` regardless
++    of `only_missing`, then apply `limit`. Dry runs print each candidate, gate verdict and final
++    text without writing database files or the client's request cache.
+     """
+     from ..retrieval import blurb as _blurb
+     from .store import ShotDB
+ 
+     if limit is not None and limit < 0:
+         raise ValueError("blurb limit must be non-negative")
+-    provenance = _blurb_provenance(client)
+     db = ShotDB.load(paths.db_dir)
+     df = db.shots.copy()
++    targeted = sorted({int(shot) for shot in shots}) if shots is not None else None
++    if targeted is not None:
++        known = {int(shot) for shot in df.index}
++        unknown = [shot for shot in targeted if shot not in known]
++        if unknown:
++            raise ValueError(f"shot not in shots.parquet: {unknown}")
++    provenance = _blurb_provenance(client)
+     for col, default in (("blurb", ""), ("blurb_source", "template"), ("blurb_model", None)):
+         if col not in df:
+             df[col] = default
+     versions = df.get("blurb_prompt_version", pd.Series(index=df.index, dtype="Int64"))
+     df["blurb_prompt_version"] = pd.to_numeric(versions, errors="coerce").astype("Int64")
+     missing = (
+         df["blurb_source"].fillna("template").ne("llm")
+         | df["blurb"].fillna("").str.strip().eq("")
+         | df["blurb_prompt_version"].fillna(0).lt(provenance["prompt_version"])
+     )
+-    todo = (df.index[missing] if only_missing else df.index).sort_values()
++    todo = targeted if targeted is not None else list(
++        (df.index[missing] if only_missing else df.index).sort_values()
++    )
+     if limit is not None:
+         todo = todo[:limit]
+     if not len(todo):
+         return 0
+     n = 0
+     for shot in todo:
+         rec = db.get(int(shot))
+         b = _blurb.make(rec, client, cache=False if dry_run else None)
+         if dry_run:
+             verdict = "PASS" if b.reason is None else f"FAIL ({b.reason})"
+diff --git a/tests/shot_design/test_blurb.py b/tests/shot_design/test_blurb.py
+index a8c4e64..cb651d7 100644
+--- a/tests/shot_design/test_blurb.py
++++ b/tests/shot_design/test_blurb.py
+@@ -17,21 +17,21 @@ from shot_design.retrieval import blurb
+ from shot_design.schema import ResultItem
+ from shot_design.shotdb import build, store
+ 
+ from .test_build_store import stub_embeddings  # noqa: F401
+ 
+ CFG = {
+     "provider": "ollama",
+     "base_url": "http://llm.test",
+     "models": {"quality": "gemma4:26b", "fast": "gemma4:e4b"},
+     "reasoning_effort": "none",
+-    "blurb": {"model": "quality", "max_words": 90, "prompt_version": 5},
++    "blurb": {"model": "quality", "max_words": 90, "prompt_version": 6},
+ }
+ GOOD = (
+     "The session studied QH-mode access at low torque. It ran through to rampdown. "
+     "No notable findings were logged."
+ )
+ 
+ 
+ class FakeClient(LLMClient):
+     def __init__(self, content, paths, cfg=None):
+         self.content, self.calls = content, []
+@@ -64,20 +64,96 @@ def test_gate_accepts_a_faithful_blurb(rec):
+     cand = GOOD
+     assert blurb.gate(src, cand, rec, 70) is None
+ 
+ 
+ def test_gate_rejects_an_invented_number_or_shot(rec):
+     src = blurb.source_text(rec)
+     assert "number" in blurb.gate(src, f"Shot {rec.shot} reached 2.4 MA.", rec, 70)
+     assert "shot" in blurb.gate(src, f"Shot {rec.shot} repeated 175000.", rec, 70)
+ 
+ 
++@pytest.mark.parametrize(
++    ("source", "candidate", "reason"),
++    [
++        ("The plan requested 13 pellets.", "The run used thirteen pellets. It ended. Done.",
++         "number written as a word: ['thirteen']"),
++        ("The plan requested a 2/1 mode.", "The run studied a two-one mode. It ended. Done.",
++         "number written as a word: ['two']"),
++        ("The plan requested 13 pellets.", "The run used *thirteen* pellets. It ended. Done.",
++         "number written as a word: ['thirteen']"),
++        ("The plan requested 13 pellets.", "The run used /thirteen/ pellets. It ended. Done.",
++         "number written as a word: ['thirteen']"),
++        ("The plan requested 13 pellets.", "The run used ‘thirteen’ pellets. It ended. Done.",
++         "number written as a word: ['thirteen']"),
++    ],
++)
++def test_gate_rejects_numbers_written_as_words(rec, source, candidate, reason):
++    assert blurb.gate(source, candidate, rec, 90) == reason
++
++
++@pytest.mark.parametrize(
++    ("source", "candidate"),
++    [
++        ("The plan used beams.", "The run used one of the beams. It ended. Done."),
++        ("This was a two-day experiment.", "The two-day experiment ran. It ended. Done."),
++        ("The plan used beams.", "The first beam ran. The second followed. The third ended."),
++    ],
++)
++def test_gate_allows_ordinary_one_source_number_words_and_ordinals(rec, source, candidate):
++    assert blurb.gate(source, candidate, rec, 90) is None
++
++
++def test_gate_rejects_an_abbreviation_absent_from_source(rec):
++    source = "The experiment used neutral beams."
++    candidate = "The NBI experiment ran. It ended. Done."
++    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['NBI']"
++
++
++def test_gate_strips_unknown_abbreviation_plural(rec):
++    source = "The experiment used neutral beams."
++    candidate = "The NBIs ran. They ended. Done."
++    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['NBI']"
++
++
++def test_gate_checks_a_hyphenated_abbreviation_absent_from_source(rec):
++    source = "The threshold was measured."
++    candidate = "The L-H threshold was measured. It ended. Done."
++    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['LH']"
++
++
++@pytest.mark.parametrize(
++    ("source", "candidate"),
++    [
++        ("The PLH threshold was measured.", "The L-H threshold was measured. It ended. Done."),
++        ("The ELM was measured.", "ELMs were measured. It ended. Done."),
++        ("The ntm was measured.", "NTMs were measured. It ended. Done."),
++        ("The p-lh threshold was measured.", "The LH threshold was measured. It ended. Done."),
++        ("The tokamak was operated.", "The DIII-D tokamak ran. It ended. Done."),
++        ("The tokamak was operated.", "The DIIIs ran. They ended. Done."),
++    ],
++)
++def test_gate_allows_source_substring_plural_and_diii_d_abbreviations(rec, source, candidate):
++    assert blurb.gate(source, candidate, rec, 90) is None
++
++
++def test_new_gate_checks_keep_required_order(rec):
++    source = "The experiment used beams."
++    candidate = "Shot 203500 used NBI at 7 units with thirteen pellets. It stopped."
++    assert blurb.gate(source, candidate, rec, 90).startswith("shot not in source")
++    candidate = "The NBI run reached 7 units with thirteen pellets. It stopped."
++    assert blurb.gate(source, candidate, rec, 90) == "number not in source: ['7']"
++    candidate = "The run used thirteen pellets. It stopped."
++    assert blurb.gate(source, candidate, rec, 90) == "number written as a word: ['thirteen']"
++    candidate = "The NBI run ended. It stopped."
++    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['NBI']"
++
++
+ def test_gate_rejects_an_invented_shot_in_the_2xxxxx_band(rec):
+     """Shot references used to be `1\\d{5}`: an invented 203500 read as an ordinary number and
+     the gate reported it (if at all) as the wrong kind of fabrication."""
+     src = blurb.source_text(rec)
+     reason = blurb.gate(src, f"Shot {rec.shot} repeated 203500.", rec, 70)
+     assert reason is not None and reason.startswith("shot not in source") and "203500" in reason
+ 
+ 
+ def test_gate_rejects_a_quoted_candidate(rec):
+     src = blurb.source_text(rec)
+@@ -96,52 +172,61 @@ def test_gate_rejects_too_long(rec):
+ 
+ def test_system_prompt_requires_naming_a_bad_ending():
+     prompt = blurb._system(90)
+     assert "disrupt" in prompt and "quench" in prompt and "terminated early" in prompt
+     assert "exactly three plain sentences" in prompt
+     assert "whether it succeeded" in prompt
+     assert "third" in prompt and "interesting finding" in prompt
+     assert "operator entries" in prompt and "shot brief" in prompt
+     assert "No notable findings were logged." in prompt
+     assert "90 words" in prompt
++    assert "Never expand, translate or explain" in prompt
++    assert "Never write a number as a word" in prompt
+ 
+ 
+ def test_make_uses_the_model_and_falls_back_on_failure(rec, paths):
+     good = FakeClient(GOOD, paths)
+     b = blurb.make(rec, good, CFG)
+     assert b.source == "llm" and b.text == good.content
+     prompt = good.calls[0]["messages"]
+     assert prompt[0]["role"] == "system" and str(rec.shot) in prompt[1]["content"]
+-    assert "(prompt v5)" in prompt[0]["content"]
++    assert "(prompt v6)" in prompt[0]["content"]
+     assert good.calls[0]["reasoning_effort"] == "none"
+     bad = FakeClient(f"Shot {rec.shot} reached 3.1 MA.", paths)
+     # Clear the previous deterministic reply before trying a different fake server answer.
+     for cached in paths.llm_cache_dir.rglob("*.json"):
+         cached.unlink()
+     b = blurb.make(rec, bad, CFG)
+     assert b.source == "template" and "number" in b.reason and b.text == blurb.fallback(rec)
+     b = blurb.make(rec, None, CFG)
+     assert b.source == "template" and b.reason == "no model"
+ 
+ 
++def test_make_marks_prompt_v6_when_using_the_yaml_config(rec, paths):
++    yaml_cfg = {**config.load_yaml("llm.yaml"), "base_url": "http://llm.test"}
++    client = FakeClient(GOOD, paths, cfg=yaml_cfg)
++    assert blurb.make(rec, client).source == "llm"
++    assert "(prompt v6)" in client.calls[0]["messages"][0]["content"]
++
++
+ def test_shots_parquet_has_blurb_columns_after_build(
+     paths,
+     staged_shot_a,
+     text_fixtures,
+     stub_embeddings,  # noqa: F811
+ ):
+     build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+     df = pd.read_parquet(paths.db_dir / "shots.parquet")
+     assert {"blurb", "blurb_source", "blurb_model", "blurb_prompt_version"} <= set(df.columns)
+     assert df["blurb_source"].iloc[0] == "template" and df["blurb"].iloc[0]
+     assert df["blurb_model"].iloc[0] == "gemma4:26b"
+-    assert df["blurb_prompt_version"].iloc[0] == 5
++    assert df["blurb_prompt_version"].iloc[0] == 6
+     assert pd.api.types.is_integer_dtype(df["blurb_prompt_version"])
+ 
+ 
+ def test_write_blurbs_backfills_only_missing_and_is_atomic(
+     paths,
+     staged_shot_a,
+     staged_shot_b,
+     text_fixtures,
+     stub_embeddings,  # noqa: F811
+ ):
+@@ -149,49 +234,53 @@ def test_write_blurbs_backfills_only_missing_and_is_atomic(
+         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False
+     )
+     # No numbers and no quotes, so the same reply passes the gate for either shot: this test is
+     # about the backfill's bookkeeping, not about the gate (which has its own tests above).
+     client = FakeClient(GOOD, paths)
+     n = build.write_blurbs(paths, client, only_missing=True)
+     assert n == 2 and len(client.calls) == 2
+     df = pd.read_parquet(paths.db_dir / "shots.parquet")
+     assert set(df["blurb_source"]) == {"llm"}
+     assert set(df["blurb_model"]) == {"gemma4:26b"}
+-    assert set(df["blurb_prompt_version"]) == {5}
++    assert set(df["blurb_prompt_version"]) == {6}
+     assert not list(paths.db_dir.glob("*.part"))
+     assert build.write_blurbs(paths, client, only_missing=True) == 0
+ 
+ 
+ def test_write_blurbs_updates_the_manifest_counts(
+     paths,
+     staged_shot_a,
+     staged_shot_b,
+     text_fixtures,
+     stub_embeddings,  # noqa: F811
+ ):
+     """The backfill rewrites shots.parquet, so the manifest's blurb counts -- the only place a
+     reader can see how much of the database the model actually wrote -- have to follow it, or
+     `shot_design blurb` leaves a database claiming 0 llm blurbs while every row has one."""
+     build.build(
+         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False
+     )
+     before = json.loads((paths.db_dir / "manifest.json").read_text())
+-    provenance = {"model": "gemma4:26b", "prompt_version": 5}
+-    assert before["blurbs"] == {"llm": 0, "template": 2, **provenance}
++    provenance = {"model": "gemma4:26b", "prompt_version": 6}
++    assert before["blurbs"] == {
++        "llm": 0, "template": 2, "prompt_versions": {"6": 2}, **provenance,
++    }
+     build.write_blurbs(paths, FakeClient(GOOD, paths), True)
+     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+     df = pd.read_parquet(paths.db_dir / "shots.parquet")
+     assert manifest["blurbs"] == {
+         **{k: int((df["blurb_source"] == k).sum()) for k in ("llm", "template")},
+-        **provenance,
++        "prompt_versions": {"6": 2}, **provenance,
++    }
++    assert manifest["blurbs"] == {
++        "llm": 2, "template": 0, "prompt_versions": {"6": 2}, **provenance,
+     }
+-    assert manifest["blurbs"] == {"llm": 2, "template": 0, **provenance}
+     assert manifest["n_shots"] == before["n_shots"]  # nothing else was rewritten
+     assert not list(paths.db_dir.glob("*.part"))
+ 
+ 
+ def test_result_item_carries_the_blurb(
+     paths,
+     staged_shot_a,
+     staged_shot_b,
+     text_fixtures,
+     stub_embeddings,  # noqa: F811
+@@ -222,55 +311,118 @@ def test_gate_counts_sentences_without_splitting_decimals(rec, candidate):
+     (GOOD + " The plasma was steady.", 4),
+     ("Study low torque", 0),
+     ("Study low torque. It ran through rampdown. No notable findings were logged", 2),
+     (GOOD + " Unfinished claim", 3),
+ ])
+ def test_gate_rejects_wrong_sentence_count_or_unfinished_text(rec, candidate, count):
+     reason = blurb.gate(blurb.source_text(rec), candidate, rec, 90)
+     assert reason is not None and "three" in reason and str(count) in reason
+ 
+ 
+-@pytest.mark.parametrize("version", [4, None, "absent", 5, 6])
++@pytest.mark.parametrize("version", [4, None, "absent", 5, 6, 7])
+ def test_write_blurbs_retries_stale_or_unknown_versions(rec, paths, version):
+     table = paths.db_dir / "shots.parquet"
+     df = pd.read_parquet(table)
+     df["blurb"], df["blurb_source"] = "Old answer.", "llm"
+     if version != "absent":
+         df["blurb_prompt_version"] = pd.Series([version], index=df.index, dtype="Int64")
+     elif "blurb_prompt_version" in df:
+         df = df.drop(columns="blurb_prompt_version")
+     df.to_parquet(table)
+     client = FakeClient(GOOD, paths)
+-    expected = int(version in (4, None, "absent"))
++    expected = int(version in (4, 5, None, "absent"))
+     assert build.write_blurbs(paths, client) == expected
+     assert len(client.calls) == expected
+     updated = pd.read_parquet(table)
+-    assert updated["blurb_prompt_version"].iloc[0] == (5 if expected else version)
++    assert updated["blurb_prompt_version"].iloc[0] == (6 if expected else version)
+     assert updated["blurb"].iloc[0] == (GOOD if expected else "Old answer.")
+ 
+ 
+ def test_write_blurbs_uses_client_config_for_prompt_and_provenance(rec, paths):
+     custom = {**CFG, "blurb": {"model": "fast", "max_words": 90, "prompt_version": 6}}
+     client = FakeClient(GOOD, paths, cfg=custom)
+     assert build.write_blurbs(paths, client) == 1
+     sent = client.calls[0]
+     assert sent["model"] == "gemma4:e4b"
+     assert "prompt v6" in sent["messages"][0]["content"]
+     df = pd.read_parquet(paths.db_dir / "shots.parquet")
+     assert df["blurb_model"].iloc[0] == "gemma4:e4b"
+     assert df["blurb_prompt_version"].iloc[0] == 6
+     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+     assert manifest["blurbs"] == {
+         "llm": 1, "template": 0, "model": "gemma4:e4b", "prompt_version": 6,
++        "prompt_versions": {"6": 1},
+     }
+ 
+ 
++def test_write_blurbs_rewrites_only_sorted_unique_targeted_shots(
++    paths, staged_shot_a, staged_shot_b, our_shot_c, text_fixtures,
++    stub_embeddings,  # noqa: F811
++):
++    build.build(
++        [staged_shot_a, staged_shot_b, our_shot_c], paths, build.load_build_cfg(),
++        workers=1, encode=False,
++    )
++    table = paths.db_dir / "shots.parquet"
++    df = pd.read_parquet(table)
++    df["blurb"] = pd.Series(
++        {staged_shot_a: "old a", staged_shot_b: "old b", our_shot_c: "old c"}
++    )
++    df["blurb_source"] = "llm"
++    df["blurb_model"] = "old-model"
++    df["blurb_prompt_version"] = pd.Series(
++        {staged_shot_a: 5, staged_shot_b: 5, our_shot_c: 6}, dtype="Int64"
++    )
++    df.to_parquet(table)
++
++    client = FakeClient(GOOD, paths)
++    assert build.write_blurbs(
++        paths, client, only_missing=True, shots=[our_shot_c, staged_shot_a, our_shot_c]
++    ) == 2
++    updated = pd.read_parquet(table)
++    assert list(updated.loc[[staged_shot_a, our_shot_c], "blurb"]) == [GOOD, GOOD]
++    assert list(updated.loc[[staged_shot_a, our_shot_c], "blurb_model"]) == [
++        "gemma4:26b", "gemma4:26b",
++    ]
++    assert list(updated.loc[[staged_shot_a, our_shot_c], "blurb_prompt_version"]) == [6, 6]
++    assert updated.loc[staged_shot_b, "blurb"] == "old b"
++    assert updated.loc[staged_shot_b, "blurb_model"] == "old-model"
++    assert updated.loc[staged_shot_b, "blurb_prompt_version"] == 5
++    sent_shots = [call["messages"][1]["content"].splitlines()[0] for call in client.calls]
++    assert sent_shots == [f"Shot {staged_shot_a} (2015-01-20), campaign unknown.",
++                          f"Shot {our_shot_c} (2015-01-20), campaign unknown."]
++    manifest = json.loads((paths.db_dir / "manifest.json").read_text())
++    assert manifest["blurbs"]["prompt_versions"] == {"5": 1, "6": 2}
++
++
++def test_write_blurbs_validates_every_target_before_limit_or_model_call(rec, paths):
++    unknown = rec.shot + 99
++    for targets, limit in (([rec.shot, unknown], None), ([unknown], 0)):
++        client = FakeClient(GOOD, paths)
++        with pytest.raises(ValueError, match=rf"\b{unknown}\b"):
++            build.write_blurbs(paths, client, shots=targets, limit=limit)
++        assert not client.calls
++
++
++def test_write_blurbs_applies_limit_after_sorting_targeted_shots(
++    paths, staged_shot_a, staged_shot_b, text_fixtures, stub_embeddings,  # noqa: F811
++):
++    build.build(
++        [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False,
++    )
++    client = FakeClient(GOOD, paths)
++    assert build.write_blurbs(
++        paths, client, only_missing=False, shots=[staged_shot_b, staged_shot_a], limit=1,
++    ) == 1
++    assert client.calls[0]["messages"][1]["content"].startswith(f"Shot {staged_shot_a}")
++
++
+ @pytest.mark.parametrize("candidate", [GOOD, "Only one sentence."])
+ def test_cli_dry_run_limits_calls_prints_candidate_gate_final_and_writes_nothing(
+     paths, staged_shot_a, staged_shot_b, text_fixtures, stub_embeddings,  # noqa: F811
+     monkeypatch, capsys, candidate,
+ ):
+     from shot_design.llm import client as client_module
+ 
+     build.build(
+         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False,
+     )
+@@ -288,20 +440,51 @@ def test_cli_dry_run_limits_calls_prints_candidate_gate_final_and_writes_nothing
+     assert "Gate: PASS" in output if candidate == GOOD else "Gate: FAIL" in output
+     assert f"Final (llm): {GOOD}" in output if candidate == GOOD else (
+         f"Final (template): {blurb.fallback(rec)}" in output
+     )
+     assert len(client.calls) == 1
+     after = {p: (p.read_bytes(), p.stat().st_mtime_ns)
+              for p in paths.data_root.rglob("*") if p.is_file()}
+     assert after == before  # includes request cache, manifests, tables and sidecars
+ 
+ 
++def test_cli_rejects_shots_with_all_before_opening_the_model(paths, monkeypatch, capsys):
++    from shot_design.llm import client as client_module
++
++    monkeypatch.setattr(client_module, "LLMClient", lambda: pytest.fail("model must not be opened"))
++    assert cli.main(["blurb", "--shots", "900001", "--all"]) == 2
++    error = capsys.readouterr().err
++    assert "--shots" in error and "--all" in error
++
++
++def test_cli_dry_run_prints_only_targeted_shots_and_writes_nothing(
++    paths, staged_shot_a, staged_shot_b, text_fixtures, stub_embeddings,  # noqa: F811
++    monkeypatch, capsys,
++):
++    from shot_design.llm import client as client_module
++
++    build.build(
++        [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False,
++    )
++    capsys.readouterr()
++    client = FakeClient(GOOD, paths)
++    monkeypatch.setattr(client_module, "LLMClient", lambda: client)
++    before = {p: (p.read_bytes(), p.stat().st_mtime_ns)
++              for p in paths.data_root.rglob("*") if p.is_file()}
++    assert cli.main(["blurb", "--shots", str(staged_shot_b), "--dry-run"]) == 0
++    output = capsys.readouterr().out
++    assert f"Shot {staged_shot_b}" in output and f"Shot {staged_shot_a}" not in output
++    after = {p: (p.read_bytes(), p.stat().st_mtime_ns)
++             for p in paths.data_root.rglob("*") if p.is_file()}
++    assert after == before
++
++
+ def test_write_blurbs_limit_applies_after_missing_filter(
+     paths, staged_shot_a, staged_shot_b, text_fixtures, stub_embeddings,  # noqa: F811
+ ):
+     build.build(
+         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False,
+     )
+     client = FakeClient(GOOD, paths)
+     assert build.write_blurbs(paths, client, limit=1) == 1
+     assert build.write_blurbs(paths, client, limit=1) == 1
+     assert len(client.calls) == 2
+diff --git a/tests/shot_design/test_blurb_provenance.py b/tests/shot_design/test_blurb_provenance.py
+index 5730f3a..dd282a9 100644
+--- a/tests/shot_design/test_blurb_provenance.py
++++ b/tests/shot_design/test_blurb_provenance.py
+@@ -15,16 +15,17 @@ def test_add_to_legacy_database_keeps_unknown_versions_nullable_and_new_versions
+     cfg = build.load_build_cfg()
+     build.build([staged_shot_a], paths, cfg, workers=1, encode=False)
+     table = paths.db_dir / "shots.parquet"
+     legacy = pd.read_parquet(table).drop(columns=["blurb_model", "blurb_prompt_version"])
+     legacy.to_parquet(table)
+     build.add([staged_shot_b], paths, cfg)
+     updated = pd.read_parquet(table)
+     assert pd.api.types.is_integer_dtype(updated["blurb_prompt_version"])
+     assert pd.isna(updated.loc[staged_shot_a, "blurb_prompt_version"])
+     assert pd.isna(updated.loc[staged_shot_a, "blurb_model"])
+-    assert updated.loc[staged_shot_b, "blurb_prompt_version"] == 5
++    assert updated.loc[staged_shot_b, "blurb_prompt_version"] == 6
+     assert updated.loc[staged_shot_b, "blurb_model"] == "gemma4:26b"
+     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+     assert manifest["blurbs"] == {
+-        "llm": 0, "template": 2, "model": "gemma4:26b", "prompt_version": 5,
++        "llm": 0, "template": 2, "model": "gemma4:26b", "prompt_version": 6,
++        "prompt_versions": {"6": 1},
+     }
+diff --git a/tests/shot_design/test_llm_client.py b/tests/shot_design/test_llm_client.py
+index 9d3f341..ce6752c 100644
+--- a/tests/shot_design/test_llm_client.py
++++ b/tests/shot_design/test_llm_client.py
+@@ -51,21 +51,21 @@ def _transport(handler_calls: list, reply):
+     return httpx.MockTransport(handler)
+ 
+ 
+ def test_llm_yaml_matches_the_shape_the_client_reads():
+     cfg = config.load_yaml("llm.yaml")
+     assert cfg["provider"] == "ollama"
+     assert cfg["models"] == {"quality": "gemma4:26b", "fast": "gemma4:e4b"}
+     assert cfg["default"] == "quality"
+     assert cfg["max_tool_rounds"] == 8 and cfg["timeout_s"] == 120
+     assert cfg["endpoint_file"] == "llm/endpoint.json"
+-    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 5}
++    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 6}
+     root = "/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender"
+     assert cfg["ollama_bin_dir"] == f"{root}/bin/ollama"
+     assert cfg["ollama_models_dir"] == f"{root}/models/ollama"
+     assert cfg["ollama_home_dir"] == f"{root}/ollama_home"
+ 
+ 
+ def test_no_endpoint_means_unavailable_with_the_start_command(paths):
+     c = LLMClient(CFG, paths)
+     assert c.endpoint() is None
+     ok, hint = c.available()
