@@ -95,6 +95,7 @@ class ShotDB:
         labels_wide: pd.DataFrame | None = None,
         text_claims: pd.DataFrame | None = None,
         event_sources: pd.DataFrame | None = None,
+        summaries: pd.DataFrame | None = None,
     ):
         self.db_dir = Path(db_dir)
         self.shots = shots
@@ -103,6 +104,10 @@ class ShotDB:
         self.emb = emb
         self.pca = pca
         self.manifest = manifest
+        self.summaries = summaries
+        self._summaries = {} if summaries is None else summaries.set_index("shot")[
+            "summary"
+        ].to_dict()
         # windows.parquet: one row per 250 ms window of every encoded shot, aligned with
         # emb["ignite_win"]; only fragment queries (--ref-window) read it.
         self.windows = windows
@@ -148,12 +153,24 @@ class ShotDB:
         # into a protocol error on every MCP call, including ones that never touch events.
         label_tables: dict[str, pd.DataFrame] = {}
         load_errors: dict[str, str] = {}
-        for name in ("events", "labels_wide", "text_claims", "event_sources"):
+        for name in ("events", "labels_wide", "text_claims", "event_sources", "summaries"):
             p = db_dir / f"{name}.parquet"
             if not p.exists():
                 continue
             try:
-                label_tables[name] = pd.read_parquet(p)
+                table = pd.read_parquet(p)
+                if name == "summaries":
+                    required = {"shot", "summary", "goal", "outcome", "findings",
+                                "model", "prompt_version", "written_at"}
+                    if required - set(table):
+                        raise ValueError("summaries table is missing required columns")
+                    if table["shot"].isna().any() or table["shot"].duplicated().any():
+                        raise ValueError("summaries table requires one row per shot")
+                    if not pd.api.types.is_integer_dtype(table["shot"]):
+                        raise ValueError("summaries shot must be an integer")
+                    if any(not isinstance(v, str) for v in table["summary"].dropna()):
+                        raise ValueError("summary must be text or null")
+                label_tables[name] = table
             except Exception as exc:  # noqa: BLE001 - reported to the caller, never swallowed
                 load_errors[name] = f"{type(exc).__name__}: {exc}"
         db = cls(db_dir, shots, segments, emb, pca, manifest, shapes, windows, **label_tables)
@@ -165,7 +182,14 @@ class ShotDB:
     def get(self, shot: int) -> ShotRecord:
         """The full record, rehydrated from the JSON column. Parquet holds the flat view for
         querying and the record verbatim for reading; this is the second one."""
-        return ShotRecord.model_validate_json(self.shots.loc[shot, "record_json"])
+        rec = ShotRecord.model_validate_json(self.shots.loc[shot, "record_json"])
+        rec.summary = self.summary(shot)
+        return rec
+
+    def summary(self, shot: int) -> str | None:
+        """Offline text for this snapshot; missing rows never fall back to logbook text."""
+        value = self._summaries.get(int(shot))
+        return value if isinstance(value, str) and value.strip() else None
 
     def row(self, seg_id: str) -> pd.Series:
         return self.segments.loc[seg_id]
