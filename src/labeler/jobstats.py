@@ -893,7 +893,7 @@ def format_line(job_id: str, stats: JobStats, verdict: Verdict) -> str:
 
 
 def default_out() -> Path:
-    """`$LABELMAKER_ROOT/runs/slurm/jobstats.json`.
+    """`$LABELER_ROOT/runs/slurm/jobstats.json`.
 
     Under the DATA root, not the repository: nothing this project runs writes
     a new file into the source tree.
@@ -983,7 +983,7 @@ def build_parser() -> argparse.ArgumentParser:
                         "until the report is populated")
     p.add_argument("--out", default="",
                    help="JSON ledger to append to (default: "
-                        "$LABELMAKER_ROOT/runs/slurm/jobstats.json)")
+                        "$LABELER_ROOT/runs/slurm/jobstats.json)")
     p.add_argument("--preserve-dir", default="",
                    help="also write <id>.jobstats.txt and <id>.sacct.txt here")
     p.add_argument("--quiet", action="store_true", help="print nothing")

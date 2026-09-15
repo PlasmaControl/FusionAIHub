@@ -5,13 +5,13 @@ Ported from shot-recommender-system (shotrec) @565d548.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from shot_design.config import load_paths
+from shot_design.env import getenv
 from shot_design.shotdb import build, ignite
 
 
@@ -174,7 +174,7 @@ def test_coverage_is_read_off_the_final_matrix_per_shot():
 
 # --- the parts that genuinely need the trained weights ---------------------------------------
 
-_bundle = Path(os.environ.get("IDEATE_IGNITE_CKPT", ignite.bundle_dir(load_paths())))
+_bundle = Path(getenv("SHOT_DESIGN_IGNITE_CKPT", str(ignite.bundle_dir(load_paths()))))
 needs_weights = pytest.mark.skipif(
     not ignite.codec_manifest(_bundle).exists(),
     reason=f"no IGNITE bundle at {_bundle} (shot_design model --download)",

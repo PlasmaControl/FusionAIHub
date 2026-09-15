@@ -31,7 +31,7 @@ def staging_db(paths, staged_shot_a, text_fixtures, monkeypatch):
 def test_the_staged_text_subset_lands_when_the_cache_is_on_another_filesystem(
     staging_db, staged_shot_a, monkeypatch
 ):
-    """The staging directory is a sibling of db_dir, but an `IDEATE_PATHS` file -- the scratch
+    """The staging directory is a sibling of db_dir, but an `SHOT_DESIGN_PATHS` file -- the scratch
     database workflow docs/SHOT_DESIGN.md recommends -- is free to put `text_cache_dir` on a different
     mount, and `os.replace` across mounts raises EXDEV. The subset must still land."""
     subset = text.subset_path(staging_db)

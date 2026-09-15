@@ -8,7 +8,7 @@ mounted, so `pytest` still passes on a laptop.
 
 Every number asserted here was measured in this environment against
 /scratch/gpfs/EKOLEMEN/d3d_fusion_data/161172.h5, not copied from a plan. Nothing is written
-anywhere but a pytest tmp directory: IDEATE_DATA_ROOT is redirected, which moves raw_dir, db_dir
+anywhere but a pytest tmp directory: SHOT_DESIGN_DATA_ROOT is redirected, which moves raw_dir, db_dir
 and text_cache_dir while leaving the read-only stores where they are.
 
 
@@ -48,8 +48,8 @@ def _stub_embeddings(mp) -> None:
 @pytest.fixture(scope="module")
 def real_paths(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("IDEATE_DATA_ROOT", str(tmp_path_factory.mktemp("ideate-real")))
-        mp.delenv("IDEATE_PATHS", raising=False)
+        mp.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path_factory.mktemp("ideate-real")))
+        mp.delenv("SHOT_DESIGN_PATHS", raising=False)
         paths = config.load_paths()
         for d in (paths.raw_dir, paths.db_dir, paths.text_cache_dir):
             d.mkdir(parents=True, exist_ok=True)

@@ -203,7 +203,7 @@ def build_logs_subset(shots: Iterable[int], *,
     the old one, so a reader never sees a half-written file and a build
     killed at any point leaves either the old cache or the new one. The
     `.tmp` carries the pid, because several SLURM array tasks sharing a
-    `LABELMAKER_ROOT` build this cache at once and a fixed name lets them
+    `LABELER_ROOT` build this cache at once and a fixed name lets them
     interleave their writes into one file. (This hand-rolls `atomic_path`
     rather than using it because it needs the fsync, which `atomic_path`
     does not do. Appending in place is what produces the torn trailing line

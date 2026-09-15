@@ -30,9 +30,9 @@ def test_the_section_names_every_variable_the_ideate_features_pin():
     """`pixi run -e ideate*` overrides these, whatever the caller exported -- which is what
     replaced the production database with a one-shot one."""
     pinned = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    env = pinned["tool"]["pixi"]["feature"]["shot_design"]["target"]["unix"]["activation"]["env"]
+    env = pinned["tool"]["pixi"]["feature"]["ideate"]["target"]["unix"]["activation"]["env"]
     text = section()
-    for name in ("IDEATE_DATA_ROOT", "LABELMAKER_ROOT", "IDEATE_CORPUS"):
+    for name in ("SHOT_DESIGN_DATA_ROOT", "LABELER_ROOT", "SHOT_DESIGN_CORPUS"):
         assert name in env, f"{name} is no longer pinned; the docs section is now wrong"
         assert name in text, f"the docs section does not name {name}"
 
@@ -40,18 +40,18 @@ def test_the_section_names_every_variable_the_ideate_features_pin():
 def test_the_section_gives_both_ways_to_build_a_scratch_database():
     text = section()
     assert ".pixi/envs/ideate-cpu/bin/python -m shot_design" in text
-    assert "IDEATE_PATHS=" in text
+    assert "SHOT_DESIGN_PATHS=" in text
 
 
 def test_the_section_quotes_the_origin_labels_the_code_prints(monkeypatch):
     text = section()
     # Not a paraphrase: each label is what `data_root_origin` returns for that precedence.
-    monkeypatch.setenv("IDEATE_DATA_ROOT", "/tmp/whatever")
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", "/tmp/whatever")
     assert config.data_root_origin() in text
-    monkeypatch.delenv("IDEATE_DATA_ROOT")
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT")
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     # The third label names the resolved paths file in full -- an absolute path, and so specific
-    # to the checkout -- because `IDEATE_CONFIG_DIR` can move it. The docs quote the repo-relative
+    # to the checkout -- because `SHOT_DESIGN_CONFIG_DIR` can move it. The docs quote the repo-relative
     # path it is in a plain checkout, which is that label minus the repo root.
     label = config.data_root_origin()
     assert label.endswith(" default"), label

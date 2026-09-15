@@ -30,7 +30,7 @@ Attribute names are load bearing - they are the state-dict keys - so
 This is **not** a labeler model in the `models/` sense: there is no card,
 no adapter and no runner, because it produces masks for the event layer
 rather than a label column on the 25 ms grid. What it does share with those
-models is where its weights live - `$LABELMAKER_ROOT/models/tokeye/` - so
+models is where its weights live - `$LABELER_ROOT/models/tokeye/` - so
 one data root still holds every weight file labeler reads.
 """
 from __future__ import annotations
@@ -66,7 +66,7 @@ N_PARAMS = 7_852_002
 
 
 def default_checkpoint_path() -> Path:
-    """Where the pinned checkpoint lives, per `LABELMAKER_ROOT`."""
+    """Where the pinned checkpoint lives, per `LABELER_ROOT`."""
     return Paths.from_env().models / CHECKPOINT_SUBDIR / CHECKPOINT_NAME
 
 
@@ -314,7 +314,7 @@ def load_unet(
 ) -> nn.Module:
     """The pinned U-Net, in `eval()` mode on `device`.
 
-    `path=None` resolves to `$LABELMAKER_ROOT/models/tokeye/` - the same data
+    `path=None` resolves to `$LABELER_ROOT/models/tokeye/` - the same data
     root every other weight file labeler loads lives under. The checkpoint
     is a bare `state_dict`, so it loads with `weights_only=True`: nothing in
     the file is executed.

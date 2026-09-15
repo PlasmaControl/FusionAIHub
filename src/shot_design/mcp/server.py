@@ -1,4 +1,4 @@
-"""`build_server()`: the four tools of `tools.py` and the `shot_design://manifest` resource.
+"""`build_server()`: the four tools of `tools.py` and the `ideate://manifest` resource.
 
 `TOOLS` is the registry -- one list, appended to as later tasks add tools -- so there is one
 place that says what this server offers and `test_mcp` can assert against it. Registration is
@@ -94,7 +94,7 @@ def build_server() -> MCPServer:
         server.add_tool(fn)
 
     @server.resource(
-        "shot_design://manifest",
+        "ideate://manifest",
         name="manifest",
         title="shot_design database manifest",
         description="What the built database contains: shot counts, reader, PCA, labels join.",

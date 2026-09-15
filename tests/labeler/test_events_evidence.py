@@ -10,7 +10,7 @@ became `n_sawtooth = 1` in the same window. A schema-valid
 family by `phenomenon` and ignoring `evidence_kind` and `source`.
 
 The two logbook lines here are the REAL ones, transcribed from
-`$LABELMAKER_ROOT/text/logs_subset.jsonl`, and they reach the frame
+`$LABELER_ROOT/text/logs_subset.jsonl`, and they reach the frame
 through the real `text_weak.text_events` and the real lexicon - so this
 file pins the actual reproduction and not a hand-written row that
 resembles it. Everything is written into `tmp_path` in the layout

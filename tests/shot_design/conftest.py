@@ -7,6 +7,7 @@ Ported from shot-recommender-system (shotrec) @565d548.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import h5py
@@ -60,8 +61,8 @@ def paths(tmp_path: Path, monkeypatch) -> config.Paths:
     )
     pfile = tmp_path / "paths.yaml"
     pfile.write_text(yaml.safe_dump(cfg))
-    monkeypatch.setenv("IDEATE_PATHS", str(pfile))
-    monkeypatch.delenv("IDEATE_DATA_ROOT", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_PATHS", str(pfile))
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     return config.load_paths()
 
 
@@ -647,7 +648,7 @@ def write_feature_file(features_dir: Path, shot: int, arrays: dict, missing: dic
 
 @pytest.fixture
 def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
-    """`$LABELMAKER_ROOT/features` with one file for `CORPUS_SIGNAL_SHOT`.
+    """`$LABELER_ROOT/features` with one file for `CORPUS_SIGNAL_SHOT`.
 
     Written to cover all four statuses in one shot: stored scalars (`bt`, `betan`), a profile
     (`ne_zipfit`, whose core/edge/peak reductions differ), a stored feature with no finite sample
@@ -655,7 +656,7 @@ def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
     missed one (`volume`), and one that was never attempted at all (`li`).
     """
     root = tmp_path / "labelmaker"
-    monkeypatch.setenv("LABELMAKER_ROOT", str(root))
+    monkeypatch.setenv("LABELER_ROOT", str(root))
     x = np.arange(0, 6.0, 0.025)  # the 25 ms grid, in seconds
     n = x.size
     ip = np.clip(np.minimum(x / 0.5, (5.0 - x) / 0.5), 0.0, 1.0) * 1.2e6
@@ -676,14 +677,21 @@ def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
     return root / "features"
 
 
-# ------------------------------------------------- a built database under $IDEATE_DATA_ROOT
+# ------------------------------------------------- a built database under $SHOT_DESIGN_DATA_ROOT
 
 
 def shot_record(shot: int, run: str, ip: float, pnbi: float, text: str, **over):
     """One synthetic `ShotRecord` with a flat top and a ramp-up, so `segment` has to select."""
     import datetime as dt
 
-    from shot_design.schema import HumanTier, Labels, LogEntry, Outcome, Segment, ShotRecord
+    from shot_design.schema import (
+        HumanTier,
+        Labels,
+        LogEntry,
+        Outcome,
+        Segment,
+        ShotRecord,
+    )
 
     flat = Segment(
         name="flat_top",
@@ -756,7 +764,7 @@ def write_db(db_dir: Path, records) -> None:
 
 @pytest.fixture
 def ideate_db(tmp_path: Path, monkeypatch) -> Path:
-    """A four-shot database under `$IDEATE_DATA_ROOT/db`, and the env pointing at it.
+    """A four-shot database under `$SHOT_DESIGN_DATA_ROOT/db`, and the env pointing at it.
 
     Six shots over three run days would be a retrieval fixture; four over two is a fixture for
     anything that has to LOAD a database -- the MCP tools, a client roundtrip -- where what
@@ -764,8 +772,8 @@ def ideate_db(tmp_path: Path, monkeypatch) -> Path:
     """
     root = tmp_path / "shot_design"
     (root / "db").mkdir(parents=True)
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(root))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     write_db(
         root / "db",
         [
@@ -779,3 +787,11 @@ def ideate_db(tmp_path: Path, monkeypatch) -> Path:
         ],
     )
     return root
+
+
+@pytest.fixture(autouse=True)
+def _isolate_package_environment(monkeypatch):
+    """Keep caller/pixi settings out of synthetic tests, including legacy fallbacks."""
+    for name in tuple(os.environ):
+        if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_")):
+            monkeypatch.delenv(name)

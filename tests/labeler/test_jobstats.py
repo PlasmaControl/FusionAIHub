@@ -36,7 +36,7 @@ def text(name: str) -> str:
 @pytest.fixture
 def out(tmp_path, monkeypatch):
     """A data root of our own, so no test can write to the real one."""
-    monkeypatch.setenv("LABELMAKER_ROOT", str(tmp_path / "root"))
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
     return tmp_path / "jobstats.json"
 
 
@@ -355,7 +355,7 @@ def test_a_record_carries_the_raw_texts_and_the_parsed_values(out):
 
 
 def test_out_defaults_under_the_data_root(tmp_path, monkeypatch):
-    monkeypatch.setenv("LABELMAKER_ROOT", str(tmp_path / "root"))
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
     jobstats.main(["--jobstats-file", str(DATA / "2925387_0.jobstats.txt"),
                    "--quiet"])
     assert (tmp_path / "root" / "runs" / "slurm" / "jobstats.json").is_file()

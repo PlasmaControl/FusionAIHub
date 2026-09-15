@@ -1039,7 +1039,7 @@ def test_databases_only_needs_neither_the_corpus_nor_the_network(
     # A curated list is knowledge ABOUT a shot; we may hold no signals for
     # it at all, and for the RWM tables we hold none for any of the 33.
     root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0)])
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert not paths.corpus_file(SHOT).exists()
     assert run.main(_argv(paths, "--databases-only")) == 0
     df = schema.read_events(paths.events_file(SHOT))
@@ -1052,7 +1052,7 @@ def test_databases_only_says_how_many_shots_any_table_names(
     paths, tmp_path, monkeypatch, capsys, no_network,
 ):
     root = _label_tables(tmp_path, [(SHOT, 300.0)])
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main(["events", "--databases-only", "--root", str(paths.root),
                      "--shots", str(SHOT), "11", "22"]) == 0
     out = capsys.readouterr().out
@@ -1066,7 +1066,7 @@ def test_databases_only_over_shots_no_table_names_writes_nothing_and_exits_ok(
     # failure: the RWM tables span 156785-176092 and the corpus starts at
     # 185601, so zero is the honest count.
     root = _label_tables(tmp_path, [(156785, 856.0)])
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main(_argv(paths, "--databases-only")) == 0
     assert "0 of 1 shots are named by any table" in capsys.readouterr().out
     assert not paths.events_file(SHOT).exists()
@@ -1077,7 +1077,7 @@ def test_databases_only_writes_the_run_json_with_the_per_table_totals(
     paths, tmp_path, monkeypatch, no_network,
 ):
     root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0)])
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main(_argv(paths, "--databases-only")) == 0
     payload = json.loads(_only_run(paths).read_text())
     assert payload["settings"]["databases_only"] is True
@@ -1117,7 +1117,7 @@ def test_databases_only_writes_the_sources_file_too(
     """
     root = _label_tables(tmp_path, [(SHOT, 300.0), (SHOT, 450.0),
                                     (SHOT + 1, 100.0)])
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main(_argv(paths, "--databases-only")) == 0
     (row,) = schema.read_sources(paths.sources_file(SHOT)).to_dict("records")
     assert row["source"] == "database:rwm_fixture"
@@ -1138,7 +1138,7 @@ def test_databases_only_leaves_another_sources_rows_alone(
     before = schema.read_events(paths.events_file(SHOT))
     assert "tokeye_track" in set(before["source"])
     root = _label_tables(tmp_path, [(SHOT, 300.0)])
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main(_argv(paths, "--databases-only")) == 0
     after = schema.read_events(paths.events_file(SHOT))
     assert len(after) == len(before) + 1
@@ -1159,7 +1159,7 @@ def test_an_unreadable_manifest_stops_the_run_before_any_shot(
     root = _label_tables(tmp_path, [(SHOT, 300.0)])
     (root / "tables.yaml").write_text("version: 1\ntables: [{stem: x}]\n",
                                       encoding="utf-8")
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main(_argv(paths, "--databases-only")) == run.EXIT_BAD_LABEL_TABLE
     assert "kind" in capsys.readouterr().err
     assert not paths.events_file(SHOT).exists()
@@ -1779,7 +1779,7 @@ def test_an_invalid_format_csv_stops_the_run_before_any_shot(
         else:
             frame = frame.drop(columns="attrs")
         frame.to_csv(table, index=False)
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
     assert run.main([
         "events", "--databases-only", "--root", str(paths.root),
         "--shots", str(SHOT), str(SHOT + 1),

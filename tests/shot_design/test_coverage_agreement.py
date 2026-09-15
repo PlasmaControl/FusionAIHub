@@ -12,15 +12,15 @@ from shot_design.shotdb.store import ShotDB
 
 @pytest.fixture
 def gap_chain(ideate_db, tmp_path, monkeypatch):
-    from shot_design import cli
     from labeler.config import Paths
     from labeler.events import pipeline
+    from shot_design import cli
 
     from ..labeler.coverage_fixture import gapped_filterscopes
     from .conftest import shot_record, write_db
 
     paths = Paths(root=tmp_path / "products", corpus=tmp_path / "corpus")
-    monkeypatch.setenv("LABELMAKER_ROOT", str(paths.root))
+    monkeypatch.setenv("LABELER_ROOT", str(paths.root))
     expected = gapped_filterscopes(paths.corpus)
     paths.labels.mkdir(parents=True)
     result = pipeline.process_shot(198658, paths, model=None, passes=("wide",))
@@ -94,10 +94,10 @@ def test_real_stdio_mcp_preserves_the_pipeline_dropout(gap_chain):
     root, _ = gap_chain
     repo = Path(__file__).resolve().parents[2]
     env = get_default_environment()
-    env.update(IDEATE_DATA_ROOT=str(root), LABELMAKER_ROOT=str(root.parent / "products"),
+    env.update(SHOT_DESIGN_DATA_ROOT=str(root), LABELER_ROOT=str(root.parent / "products"),
                HF_HUB_OFFLINE="1", PYTHONDONTWRITEBYTECODE="1",
                PYTHONPATH=os.pathsep.join([str(repo / "src"), env.get("PYTHONPATH", "")]))
-    env.pop("IDEATE_PATHS", None)
+    env.pop("SHOT_DESIGN_PATHS", None)
     params = StdioServerParameters(command=sys.executable, args=["-m", "shot_design.mcp"],
                                    cwd=str(repo), env=env)
 

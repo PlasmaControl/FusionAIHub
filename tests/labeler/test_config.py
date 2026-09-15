@@ -11,8 +11,8 @@ def test_default_root_is_group_storage():
 
 
 def test_from_env_overrides_both_roots(monkeypatch, tmp_path):
-    monkeypatch.setenv("LABELMAKER_ROOT", str(tmp_path / "out"))
-    monkeypatch.setenv("LABELMAKER_CORPUS", str(tmp_path / "corpus"))
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "out"))
+    monkeypatch.setenv("LABELER_CORPUS", str(tmp_path / "corpus"))
     p = Paths.from_env()
     assert p.root == tmp_path / "out"
     assert p.corpus == tmp_path / "corpus"
@@ -53,7 +53,7 @@ def test_the_text_root_is_a_third_input_root(monkeypatch, tmp_path):
     # Not `tmp_path / "text"`: that is `text_cache`, which labeler owns
     # and `mkdirs` does create.
     bundles = tmp_path / "bundles"
-    monkeypatch.setenv("LABELMAKER_TEXT_ROOT", str(bundles))
+    monkeypatch.setenv("LABELER_TEXT_ROOT", str(bundles))
     assert Paths.from_env().text_root == bundles
     p = Paths(root=tmp_path, corpus=tmp_path, text_root=bundles)
     assert p.text_file(198658) == bundles / "shot_198658.txt"
@@ -78,7 +78,7 @@ def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
         "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
         "/sql/logs.jsonl"
     )
-    monkeypatch.setenv("LABELMAKER_LOGS_JSONL", str(tmp_path / "logs.jsonl"))
+    monkeypatch.setenv("LABELER_LOGS_JSONL", str(tmp_path / "logs.jsonl"))
     assert Paths.from_env().logs_jsonl == tmp_path / "logs.jsonl"
     p = Paths(root=tmp_path)
     assert p.text_cache == tmp_path / "text"
@@ -103,7 +103,7 @@ def test_the_label_tables_root_is_the_repo_and_is_overridable(
     assert default.name == "events" and default.parent.name == "data"
     assert (default / "tables.yaml").is_file()
     tables = tmp_path / "elsewhere"
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(tables))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
     assert Paths.from_env().label_tables == tables
     # An input, like the corpus and the bundles: `mkdirs` does not make it.
     Paths(root=tmp_path, label_tables=tables).mkdirs()

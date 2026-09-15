@@ -38,9 +38,9 @@ def local_auxiliary_paths(ideate_db, tmp_path, monkeypatch):
             values[key] = "${data_root}/" + ("db" if key == "db_dir" else key)
     path = tmp_path / "paths.yaml"
     path.write_text(yaml.safe_dump(values))
-    monkeypatch.setenv("IDEATE_PATHS", str(path))
-    monkeypatch.setenv("LABELMAKER_ROOT", str(tmp_path / "labelmaker"))
-    monkeypatch.setenv("IDEATE_CORPUS", str(tmp_path / "corpus"))
+    monkeypatch.setenv("SHOT_DESIGN_PATHS", str(path))
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "labelmaker"))
+    monkeypatch.setenv("SHOT_DESIGN_CORPUS", str(tmp_path / "corpus"))
     tools.reset_cache()
     phenomena._database_shots.cache_clear()
     yield
@@ -261,7 +261,7 @@ def test_meta_and_registry(client):
 def test_unbuilt_db_preserves_tool_errors(ideate_db, tmp_path, monkeypatch):
     from shot_design.ui.app import create_app
 
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "unbuilt"))
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "unbuilt"))
     with TestClient(create_app(token="test")) as client:
         client.get("/?token=test")
         replies = [

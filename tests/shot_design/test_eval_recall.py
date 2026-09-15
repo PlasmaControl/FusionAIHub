@@ -1,6 +1,6 @@
 """Phenomenon recall against an annotation sheet -- and the refusals, which are most of it.
 
-No sheet exists anywhere today (`$LABELMAKER_ROOT/annotate/` is empty), so every test here builds
+No sheet exists anywhere today (`$LABELER_ROOT/annotate/` is empty), so every test here builds
 one under `tmp_path`. That is not a workaround: the refusal path is what this module does in
 production right now, and it is the part that has to be right first.
 """
@@ -312,7 +312,7 @@ def test_a_phenomenon_no_detector_writes_is_refused_rather_than_scored_as_recall
 
 
 def test_the_no_detector_refusal_fires_before_the_sheet_is_read(tmp_path, db):
-    """Today `fast_ion` refuses only because `$LABELMAKER_ROOT/annotate/` is empty. That is an
+    """Today `fast_ion` refuses only because `$LABELER_ROOT/annotate/` is empty. That is an
     accident of the corpus, so the check is made against the REGISTRY and does not wait for a
     sheet to arrive."""
     with pytest.raises(rec.RecallRefused, match="no detector") as excinfo:

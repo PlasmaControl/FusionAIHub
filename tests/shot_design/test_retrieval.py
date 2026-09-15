@@ -646,8 +646,8 @@ pytestmark_real = pytest.mark.skipif(
 def real_query_db(tmp_path_factory):
     """Build the real retrieval slice under pytest's temporary root, never in a shared store."""
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("IDEATE_DATA_ROOT", str(tmp_path_factory.mktemp("ideate-query")))
-        mp.delenv("IDEATE_PATHS", raising=False)
+        mp.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path_factory.mktemp("ideate-query")))
+        mp.delenv("SHOT_DESIGN_PATHS", raising=False)
         mp.setattr(text, "embed_texts", lambda texts: np.zeros((len(texts), 384), np.float32))
         from shot_design.config import load_paths
 

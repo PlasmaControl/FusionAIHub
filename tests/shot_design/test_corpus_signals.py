@@ -229,7 +229,7 @@ def test_a_profile_feature_is_reduced_to_a_scalar(
     """`ne_zipfit` is (33 rho, T). core is rho = 0, edge is rho = 1, peak is the largest of the
     33 -- the fixture puts its peak at rho index 16 so the three cannot alias."""
     spec = config.SignalSpec(
-        name="ne_probe", labeler={"feature": "ne_zipfit", "reduce": reduce}
+        name="ne_probe", labelmaker={"feature": "ne_zipfit", "reduce": reduce}
     )
     sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
     assert sig is not None and np.allclose(sig.y, expected)
@@ -358,7 +358,7 @@ def test_the_corpus_answers_first_when_a_spec_carries_both_addresses(
         name="ip",
         units="A",
         corpus=config.CorpusAddress(group="pinj", channels=[0], reduce="first"),
-        labeler=config.LabelerAddress(feature="ip"),
+        labelmaker=config.LabelerAddress(feature="ip"),
     )
     sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
     assert sig is not None and sig.source == "corpus" and np.allclose(sig.y, 1.0e5)
@@ -371,7 +371,7 @@ def test_a_corpus_miss_falls_back_to_the_feature_store(paths, signal_corpus, lab
         name="ip",
         units="A",
         corpus=config.CorpusAddress(group="not_a_corpus_group", reduce="first"),
-        labeler=config.LabelerAddress(feature="ip"),
+        labelmaker=config.LabelerAddress(feature="ip"),
     )
     r = CorpusSignalReader(paths)
     sig = r.read_signal(signal_corpus, spec)

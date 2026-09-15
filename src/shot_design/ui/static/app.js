@@ -43,7 +43,7 @@ async function api(path, options = {}) {
   const data = parseWire(await response.text());
   if (!response.ok) throw new Error(response.status === 401 ?
     "401: reopen the token link printed by shot_design serve." : display(data.error ?? data.detail));
-  return { data, notes: JSON.parse(response.headers.get("X-shot_design-Caveats") || "[]") };
+  return { data, notes: JSON.parse(response.headers.get("X-Ideate-Caveats") || "[]") };
 }
 
 function caveats(items) {
