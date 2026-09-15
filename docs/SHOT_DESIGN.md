@@ -1,19 +1,26 @@
-# ideate
+# shot_design
+
+Environment settings use the `SHOT_DESIGN_*` prefix. Legacy `IDEATE_*` settings
+remain fallbacks when the corresponding new name is unset; an explicitly empty
+new setting still wins. A fallback emits one log line naming the replacement.
+The pixi environments remain `ideate` and `ideate-cpu` because pixi rejects
+underscores in environment names. Tasks and Python modules use `shot_design`.
+The production data directory remains `/scratch/gpfs/EKOLEMEN/nc1514/ideate`.
 
 A shot database and retrieval layer for DIII-D: build a queryable record of a set of discharges
 from the local raw stores, then find shots by what happened in them — a description, a reference
 shot, a set of conditions — and read back what the diagnostics, the labels and the operators say.
 It exists to answer "has DIII-D done anything like this, and what happened?" before an experiment
-is proposed, so `ideate` is the retrieval half of the recommender: no model is trained here.
+is proposed, so `shot_design` is the retrieval half of the recommender: no model is trained here.
 
-The source is `src/ideate/`; the tests are `tests/ideate/`. Two pixi environments run it,
-`ideate` (CUDA) and `ideate-cpu` (identical but for the torch wheel — only `design_rollout` needs
-a GPU). Both set `IDEATE_DATA_ROOT`, which is where the built database lives.
+The source is `src/shot_design/`; the tests are `tests/shot_design/`. Two pixi environments run it,
+`shot_design` (CUDA) and `shot_design-cpu` (identical but for the torch wheel — only `design_rollout` needs
+a GPU). Both set `SHOT_DESIGN_DATA_ROOT`, which is where the built database lives.
 
 ## The command line
 
 ```bash
-pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command>
+pixi run -e ideate-cpu shot_design <command>          # or: python -m shot_design <command>
 ```
 
 | command | what it does |
@@ -26,77 +33,77 @@ pixi run -e ideate-cpu ideate <command>          # or: python -m ideate <command
 | `coverage` | present/unavailable/pending per registry field |
 | `corpus` | the FAITH corpus: what each shot file carries; `corpus select` draws the shot list |
 | `logs` | the shot-log contract (`logs missing`, `logs import`) |
-| `labels` | labelmaker's labels and events → `labels_wide.parquet`, `events.parquet` |
+| `labels` | labeler's labels and events → `labels_wide.parquet`, `events.parquet` |
 | `phenomenon` | which shots show a phenomenon, and what kind of evidence says so (`--list` prints the registry) |
 | `eval` | the frozen evaluation harness: `eval prompts`, `eval latency`, `eval recall` |
 | `export` | `ShotSummary` rows as JSON or Parquet |
 | `actuation`, `blurb`, `llm`, `model` | actuator waveform sets, per-shot blurbs, LLM reachability, the IGNITE bundle |
 
-`ideate <command> --help` is authoritative; the table is a map, not a specification.
+`shot_design <command> --help` is authoritative; the table is a map, not a specification.
 
-The development universe is `configs/ideate/shot_lists/recommender_v1.yaml` — 500 shots drawn by
-`ideate corpus select` under the rule in `src/ideate/shotdb/select.py`'s module docstring. The
+The development universe is `configs/shot_design/shot_lists/recommender_v1.yaml` — 500 shots drawn by
+`shot_design corpus select` under the rule in `src/shot_design/shotdb/select.py`'s module docstring. The
 database built from it is what the MCP server below serves.
 
 ## Scratch databases and the pixi activation env
 
-`pixi run -e ideate` and `-e ideate-cpu` set `IDEATE_DATA_ROOT`, `LABELMAKER_ROOT` and
-`IDEATE_CORPUS` from `[tool.pixi.feature.ideate.target.unix.activation.env]` in `pyproject.toml`.
+`pixi run -e ideate` and `-e ideate-cpu` set `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
+`SHOT_DESIGN_CORPUS` from `[tool.pixi.feature.shot_design.target.unix.activation.env]` in `pyproject.toml`.
 Activation runs *after* your shell, so a value you exported is replaced without a word. On
-2026-09-14 a one-shot scratch build, run through `pixi run` with `IDEATE_DATA_ROOT` exported to a
+2026-09-14 a one-shot scratch build, run through `pixi run` with `SHOT_DESIGN_DATA_ROOT` exported to a
 `/tmp` directory, published itself over the 500-shot production database.
 
 So a scratch build must not go through `pixi run`. Call the environment's interpreter directly,
 with the variables exported:
 
 ```bash
-export IDEATE_DATA_ROOT=/tmp/scratch-db HF_HUB_OFFLINE=1
-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python -m ideate build --shots 190000
+export SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db HF_HUB_OFFLINE=1
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python -m shot_design build --shots 190000
 ```
 
-or give it a paths file of its own — `IDEATE_PATHS=<file>` — remembering that `IDEATE_DATA_ROOT`
+or give it a paths file of its own — `SHOT_DESIGN_PATHS=<file>` — remembering that `SHOT_DESIGN_DATA_ROOT`
 still wins over it, so it has to be out of the environment:
 
 ```bash
-pixi run -e ideate-cpu env -u IDEATE_DATA_ROOT IDEATE_PATHS=/tmp/my-paths.yaml \
-    python -m ideate build --shots 190000
+pixi run -e ideate-cpu env -u SHOT_DESIGN_DATA_ROOT SHOT_DESIGN_PATHS=/tmp/my-paths.yaml \
+    python -m shot_design build --shots 190000
 ```
 
 **How to check.** Every command that writes under the root — `build`, `add`, `labels join`,
 `encode`, `corpus scan`, `corpus select` — prints one line on stderr before its first write:
 
 ```
-ideate build: data root /tmp/scratch-db (IDEATE_DATA_ROOT env) -> db /tmp/scratch-db/db
+shot_design build: data root /tmp/scratch-db (SHOT_DESIGN_DATA_ROOT env) -> db /tmp/scratch-db/db
 ```
 
-The bracket is the source that won, and it is one of `IDEATE_DATA_ROOT env`,
-`IDEATE_PATHS=<file>` or `<repo>/configs/ideate/paths.yaml default` — the third names the
-packaged paths file in full, because `IDEATE_CONFIG_DIR` can move it and a label is only useful
+The bracket is the source that won, and it is one of `SHOT_DESIGN_DATA_ROOT env`,
+`SHOT_DESIGN_PATHS=<file>` or `<repo>/configs/shot_design/paths.yaml default` — the third names the
+packaged paths file in full, because `SHOT_DESIGN_CONFIG_DIR` can move it and a label is only useful
 if it names the file that was actually read. If it names a root you did not mean, stop there.
 
 **What the guard refuses.** Before publishing, `build` compares the existing
 `<db_dir>/manifest.json` with what it is about to write and refuses — nothing touched, exit 1,
 a message naming both sources and both counts — when the `shot_source` differs, when the new
 `n_shots` is smaller than the existing one (a `--limit` pilot, a one-shot build), or when the
-existing manifest cannot be read. `ideate build --force` overrides it and records the database
+existing manifest cannot be read. `shot_design build --force` overrides it and records the database
 it replaced under `forced_over` in the new manifest. Growing the same selection needs no flag:
-the 500 → 504 rebuild over `list:recommender_v1` publishes as it always did. `ideate add` and
-`ideate labels join` are upserts and are not guarded.
+the 500 → 504 rebuild over `list:recommender_v1` publishes as it always did. `shot_design add` and
+`shot_design labels join` are upserts and are not guarded.
 
 ## Search
 
 ```bash
-ideate query "edge harmonic oscillation" --n 5
-ideate query "edge harmonic oscillation" --avoid phenomenon:elm --n 5
-ideate query --ref 198658 --require phenomenon:tearing
-ideate query "tearing mode" --require label:d3d_tearing_onset_cnn1d/tm_prob
-ideate query "tearing mode" --require source:detector
-ideate describe 198658
+shot_design query "edge harmonic oscillation" --n 5
+shot_design query "edge harmonic oscillation" --avoid phenomenon:elm --n 5
+shot_design query --ref 198658 --require phenomenon:tearing
+shot_design query "tearing mode" --require label:d3d_tearing_onset_cnn1d/tm_prob
+shot_design query "tearing mode" --require source:detector
+shot_design describe 198658
 ```
 
 Positional query text and `--text` are equivalent. The `phenomenon` channel resolves aliases
 through the existing lexicon and uses the same evidence tiers and four-term score as
-`ideate phenomenon` below. Its RRF weight is **1.2**. Within this channel, observed evidence
+`shot_design phenomenon` below. Its RRF weight is **1.2**. Within this channel, observed evidence
 ranks above labels, forecasts, curated lists and text-only evidence; the final search ranking
 also combines the scalar, dense-text, BM25 and IGNITE channels. A query with no resolved
 phenomenon contributes no vote, leaving its ranking identical without this channel.
@@ -136,12 +143,12 @@ phenomenon mention, with ellipses marking omitted context.
 ## Phenomena: the evidence classes and the caveat vocabulary
 
 ```bash
-ideate phenomenon "edge harmonic oscillation" --n 20            # ranked shots + caveats
-ideate phenomenon "tearing mode" --avoid phenomenon:elm --json  # the hits as JSON
-ideate phenomenon --list                                        # the registry
+shot_design phenomenon "edge harmonic oscillation" --n 20            # ranked shots + caveats
+shot_design phenomenon "tearing mode" --avoid phenomenon:elm --json  # the hits as JSON
+shot_design phenomenon --list                                        # the registry
 ```
 
-`ideate phenomenon` answers "which shots had one of these?" — and the answer is only usable
+`shot_design phenomenon` answers "which shots had one of these?" — and the answer is only usable
 because it says *who claims so*. Four classes of evidence can name a phenomenon on a shot, and
 they are not interchangeable:
 
@@ -161,10 +168,10 @@ match into a mode observation.
 
 Ranking is the class order first and the score second: an observed hit outranks a label-only hit,
 which outranks a forecast-only hit, which outranks a curated-list hit, which outranks a text-only
-hit, whatever the weights in `configs/ideate/retrieval.yaml` say. **On the `recommender_v1`
-database today every one of the 1,037 event rows is a forecast**, so `ideate phenomenon` returns
+hit, whatever the weights in `configs/shot_design/retrieval.yaml` say. **On the `recommender_v1`
+database today every one of the 1,037 event rows is a forecast**, so `shot_design phenomenon` returns
 forecast-, label- and text-class hits and no observed ones at all until the production masks land
-and `ideate labels join` ingests labelmaker's detector output — and the command prints that fact
+and `shot_design labels join` ingests labeler's detector output — and the command prints that fact
 under its `resolved:` line rather than leaving it here.
 
 ### Coverage: the four states
@@ -215,26 +222,26 @@ trained ELM classifier; manual validation remains a follow-up. The rule has weig
 
 `tokeye_transient` publishes `phenomenon="transient"`, with its own lexicon and
 registry entry. It cannot count as ELM evidence, including legacy rows whose
-phenomenon is still `elm`. Re-run labelmaker's events stage and the labels join to
+phenomenon is still `elm`. Re-run labeler's events stage and the labels join to
 publish new products; a code change alone cannot populate the database. L-A's
 read-only census found zero observed events on the 500 recommender shots, and
 its CPU demonstrations under `/tmp` do not change that production count.
 
-The registry is `configs/ideate/phenomena.yaml` — one entry per phenomenon, saying which
+The registry is `configs/shot_design/phenomena.yaml` — one entry per phenomenon, saying which
 `labels_wide` series, which event sources, which frequency band and which descriptors count.
 It states **no aliases**: the ids and the phrases that name them live in
-`src/labelmaker/events/lexicons.yaml`, which both packages read, and an `aliases:` key in
-ideate's file is an error rather than a second vocabulary.
+`src/labeler/events/lexicons.yaml`, which both packages read, and an `aliases:` key in
+shot_design's file is an error rather than a second vocabulary.
 
 ### The caveat vocabulary
 
 Every hit carries `caveats`, and a hit with none is a hit that lacks nothing — which is what
-makes the others mean something. They are constants in `ideate.retrieval.phenomena`, so a caller
+makes the others mean something. They are constants in `shot_design.retrieval.phenomena`, so a caller
 can key on them:
 
 | caveat | what it tells you |
 | --- | --- |
-| `TEXT ONLY` | nothing but operator text; the score is capped at labelmaker's `TEXT_ONLY_CEILING` |
+| `TEXT ONLY` | nothing but operator text; the score is capped at labeler's `TEXT_ONLY_CEILING` |
 | `ranked on forecasts: ...` | the strongest evidence is a model's estimate of what was about to happen; no diagnostic saw anything |
 | `ranked on model labels: ... (<p>) ...` | the strongest evidence is a model's score, and the caveat says what the score was |
 | `ranked on a curated human list: ...` | a human list names the shot and nothing else does |
@@ -260,9 +267,9 @@ can key on them:
 | `kept despite --avoid <token>: ...` | the shot survived an `--avoid` filter because the avoided phenomenon's coverage is not a full cover of the window — one variant per coverage state, and no caveat at all in the one case that is a real negative |
 | `<n> event(s) not shown: ...` | events the source never scored, dropped by `--min-confidence` |
 
-`ideate phenomenon "tearing mode" --avoid phenomenon:elm` retains its exploratory behavior:
+`shot_design phenomenon "tearing mode" --avoid phenomenon:elm` retains its exploratory behavior:
 it drops observed ELM matches and keeps unknown coverage with a caveat. Use
-`ideate query "tearing mode" --avoid phenomenon:elm` when the result must satisfy the coverage
+`shot_design query "tearing mode" --avoid phenomenon:elm` when the result must satisfy the coverage
 requirement described in Search above. The registry's `coverage_sources` identifies sources
 that establish where a detector looked even when it found nothing. The ELM clock reads D-alpha
 (`filterscopes`); its source record states whether it ran and over which filterscope span,
@@ -280,18 +287,18 @@ itself in the meantime.
 ## Evaluation
 
 ```bash
-ideate eval prompts --split eval            # the frozen 200 against the eval side of the split
-ideate eval prompts --split all --json      # the whole development universe, as JSON
-ideate eval latency --repeats 20            # the Appendix B budget table, warm
-ideate eval recall eho                      # detector recall vs a human annotation sheet
+shot_design eval prompts --split eval            # the frozen 200 against the eval side of the split
+shot_design eval prompts --split all --json      # the whole development universe, as JSON
+shot_design eval latency --repeats 20            # the Appendix B budget table, warm
+shot_design eval recall eho                      # detector recall vs a human annotation sheet
 ```
 
-**The harness is frozen before anything is tuned.** `configs/ideate/evalsets/` holds 200 prompts
+**The harness is frozen before anything is tuned.** `configs/shot_design/evalsets/` holds 200 prompts
 (**v1.1**) authored from this corpus's own vocabulary — the 500 shots' mini-proposal titles, the
 operators' logbook sentences, the 13 phenomenon ids and the 14 curation themes — and a dev/eval
-split cut by **run day**, not by shot. `tests/ideate/test_evalset_frozen.py` asserts the CSV's
+split cut by **run day**, not by shot. `tests/shot_design/test_evalset_frozen.py` asserts the CSV's
 sha256 against a literal in the test *and* against the hash in
-`configs/ideate/evalsets/README.md`, so editing the set takes three deliberate edits in three
+`configs/shot_design/evalsets/README.md`, so editing the set takes three deliberate edits in three
 files. **A prompt the retrieval cannot answer is a line in the report, not a rewrite of the
 prompt.**
 
@@ -363,7 +370,7 @@ block.
 
 ### Phenomenon recall
 
-`eval recall <phenomenon>` scores the detectors against `$LABELMAKER_ROOT/annotate/<phenomenon>/`
+`eval recall <phenomenon>` scores the detectors against `$LABELER_ROOT/annotate/<phenomenon>/`
 — `sheet.csv` joined to `manifest.parquet`, `split=test` rows only, `y`/`n` labels only. It
 **refuses with exit 2** below 20 *scorable* test rows — counted after the windows on shots the
 database does not hold are dropped, so a sheet of 22 rows with 20 absent shots cannot publish a
@@ -381,18 +388,18 @@ confidence.
 
 Whether a detector is *physically* right. Agreement with a TokEye track or a teacher label is
 agreement, not physical accuracy (plan V17: the existing AE model scores 0.99 against its teacher
-and **0.62** against human annotation). Establishing physical quality is the labelmaker
+and **0.62** against human annotation). Establishing physical quality is the labeler
 workstream's task; this harness measures the retrieval layer built on top of whatever evidence
 exists.
 
 ## The MCP server
 
-`ideate` exposes its retrieval over the Model Context Protocol, so an assistant can search the
+`shot_design` exposes its retrieval over the Model Context Protocol, so an assistant can search the
 database directly instead of being handed a transcript of a CLI run. Four tools — `search_shots`,
 `describe_shot`, `get_events` and `phenomenon_locate` — and one resource. stdio transport:
 
 ```bash
-pixi run -e ideate-cpu ideate-mcp        # == python -m ideate.mcp
+pixi run -e ideate-cpu shot_design-mcp        # == python -m shot_design.mcp
 ```
 
 ### Attaching it in Claude Code
@@ -403,9 +410,9 @@ session started in this checkout and asks once whether to trust it.
 ```json
 {
   "mcpServers": {
-    "ideate": {
+    "shot_design": {
       "command": "pixi",
-      "args": ["run", "-e", "ideate-cpu", "python", "-m", "ideate.mcp"],
+      "args": ["run", "-e", "shot_design-cpu", "python", "-m", "shot_design.mcp"],
       "cwd": "/scratch/gpfs/nc1514/FusionAIHub"
     }
   }
@@ -413,7 +420,7 @@ session started in this checkout and asks once whether to trust it.
 ```
 
 `cwd` is absolute because the server is started by whatever directory the client happens to be
-in. `IDEATE_DATA_ROOT` comes from the `ideate-cpu` environment's own activation, so the config
+in. `SHOT_DESIGN_DATA_ROOT` comes from the `shot_design-cpu` environment's own activation, so the config
 names no data path; add an `"env"` block to point one session at a different database.
 
 `/mcp` in a session lists the connected servers and their tools. Outside Claude Code, any MCP
@@ -428,7 +435,7 @@ client works — the transport is stdio and the command above is the whole contr
 | `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and four lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `database_intervals` (a curated table's rows), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
 | `phenomenon_locate` | `phenomenon`, `n`, `segment`, `constraints`, `min_confidence`, `avoid` | the shots carrying evidence of a phenomenon named in free text or by id, ordered by evidence class before score, each hit keeping its classes apart (`intervals`, `label_evidence`, `forecasts`, `text_snippets`) and its own caveats; plus `resolved` (what the text matched) and `notes` (what `avoid` dropped, about shots that are *not* in `hits`) |
 
-Plus one resource, `ideate://manifest`: the built database's manifest, which is how a caller
+Plus one resource, `shot_design://manifest`: the built database's manifest, which is how a caller
 finds out which shots the tools can see at all.
 
 Four things hold for the replies and are worth knowing before reading one:
@@ -456,9 +463,9 @@ Four things hold for the replies and are worth knowing before reading one:
   recorded which interval of the shot was examined. That second null is the load-bearing one — a
   shot's **absence** from a curated list is not a negative, and nothing downstream may read it as
   one. `database` is outside `OBSERVED_KINDS`, so a shot whose only rows come from a spreadsheet
-  never answers `status: observed`, and labelmaker's own `database:<stem>` source row — `ok`,
+  never answers `status: observed`, and labeler's own `database:<stem>` source row — `ok`,
   coverage NaN — matches `event_sources.NON_DIAGNOSTIC_SOURCE_PREFIXES`, so it is not counted
-  as a diagnostic having looked and cannot donate coverage either. `ideate labels join` needs no rule for these rows: `events_union` reads each
+  as a diagnostic having looked and cannot donate coverage either. `shot_design labels join` needs no rule for these rows: `events_union` reads each
   shot's `events/<shot>_events.parquet` wholesale, so they reach `db/events.parquet` as they
   are.
 * **`status` says what an empty `events` means**, and the four values are not degrees of one
@@ -485,7 +492,7 @@ Each `frame_codes/<shot>.pt` has a JSON sibling saying how it was made — devic
 encode clock, run manifest — because the encoder is not device-independent (185955's `bes` and
 `mhr` codes differ between cuda and cpu, and between cpu at four threads and at eight). The 500
 production caches predate the sidecar and were reconstructed by
-`scripts/ideate/frame_codes_provenance.py --backfill` from the run manifests under `runs/encode/`.
+`scripts/shot_design/frame_codes_provenance.py --backfill` from the run manifests under `runs/encode/`.
 
 **A backfilled sidecar carries `device`/`device_source`, `torch_threads`/`torch_threads_source`
 (the `OMP_NUM_THREADS` the sbatch exports, not a measurement of the run), `encoded_at` (the cache
@@ -501,25 +508,25 @@ would describe it today rather than at encode time.** So "every cache has a side
 sidecars, `input_fingerprint.kind`, device, `backfilled`, and the null count per field — so a
 reader checks the counts instead of trusting the sentence.
 
-Nothing in the tools re-implements retrieval: they call `ideate.retrieval.rank` and
-`ideate.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
-`ideate query` cannot disagree about a shot. `src/ideate/mcp/tools.py` is the whole contract —
+Nothing in the tools re-implements retrieval: they call `shot_design.retrieval.rank` and
+`shot_design.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
+`shot_design query` cannot disagree about a shot. `src/shot_design/mcp/tools.py` is the whole contract —
 the function signatures and docstrings there *are* the tool schemas the assistant sees.
 
 ## Browser UI: Search, Shot and Locate
 
 The local browser UI wraps the existing MCP tool functions and the
-`ideate phenomenon --json` retrieval path. It reads the database without building or
+`shot_design phenomenon --json` retrieval path. It reads the database without building or
 updating it. Start it on Stellar from this worktree:
 
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub-build
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src
-export HF_HUB_OFFLINE=1 IDEATE_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate \
-       LABELMAKER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
-       IDEATE_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
+export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate \
+       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
+       SHOT_DESIGN_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  -e ideate-cpu python -m ideate serve --port 8765
+  -e ideate-cpu python -m shot_design serve --port 8765
 ```
 
 On your computer, run `ssh -L 8765:localhost:8765 stellar`, then open the token URL
@@ -547,12 +554,12 @@ phenomenon selected.
 
 `/api/search`, `/api/shot/{shot}` and `/api/shot/{shot}/events` preserve the MCP tool
 JSON, including error dictionaries (HTTP 200). `/api/locate` preserves the CLI's
-bare JSON list; CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
+bare JSON list; CLI stderr notes travel as the JSON-encoded `X-shot_design-Caveats`
 response header and are displayed above the hits. `/api/meta` summarizes the
 manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
 sources. Unknown API paths return JSON 404.
 
-The browser reads only `server` from `configs/ideate/ui.yaml`; the file's `landing` and
+The browser reads only `server` from `configs/shot_design/ui.yaml`; the file's `landing` and
 `actuation` blocks belong to `retrieval.scenarios` and `retrieval.actuation`, which
 predate the thin UI and still take their defaults from it. Request-scoped paths keep app factories separate;
 Locate calls serialize the upstream curated-list cache reset because that cache

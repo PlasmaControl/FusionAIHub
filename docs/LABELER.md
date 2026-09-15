@@ -1,4 +1,12 @@
-# labelmaker
+# labeler
+
+Environment settings use `LABELER_*`. The corresponding `LABELMAKER_*` name
+remains a fallback when the new name is unset, with a one-line log warning.
+An explicitly empty new value still wins. The pixi environment remains
+`labelmaker` under the environment-rename fallback; Python modules use `labeler`.
+Data remains under `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`, including
+`envs/phase3` and `models/tokeye`. Stored keys such as `labelmaker_version`
+and the model-card `labelmaker:` block keep their names.
 
 Runs the group's trained models over the FAITH shot corpus and writes their
 predictions as per-shot label files in the corpus HDF5 layout, with a measured
@@ -6,7 +14,7 @@ statement of how much each model's labels can be trusted.
 
 Design: `docs/superpowers/specs/2026-09-03-labelmaker-design.md`.
 Phase 1 build log: `docs/superpowers/plans/2026-09-03-labelmaker-phase1.md`.
-Code: `src/labelmaker/`. Tests: `tests/labelmaker/`.
+Code: `src/labeler/`. Tests: `tests/labeler/`.
 
 ## Running it
 
@@ -19,18 +27,18 @@ pixi run -e labelmaker label 199597     # the one-shot demo: every servable mode
 
 `label` runs the `analyze` stage over every model in `analyze_default.yaml`, then
 leaves four files in `outputs/labelmaker/analysis/<shot>/` in this repo (override the
-directory with `LABELMAKER_DEMO_OUT`): `<shot>_labels.h5` (the labels file, `<slug>/<label>/{xdata,ydata}`
+directory with `LABELER_DEMO_OUT`): `<shot>_labels.h5` (the labels file, `<slug>/<label>/{xdata,ydata}`
 plus `_spread`/`_valid`), `<shot>_labels.npz` (`time_s` plus one `"<slug>/<label>"` array
 per label), `<shot>_analysis.json` (per-label summary) and `<shot>_labels.png`, one
 panel per prediction. Pass several shots to
-label them all; set `LABELMAKER_DEMO_FORCE=1` to recompute instead of reusing the
-features and labels cached under `$LABELMAKER_ROOT`. Shots 199597-199607 (2024) have every input the models need; older shots
+label them all; set `LABELER_DEMO_FORCE=1` to recompute instead of reusing the
+features and labels cached under `$LABELER_ROOT`. Shots 199597-199607 (2024) have every input the models need; older shots
 lack the CO2 interferometer channels the AE model reads, and some lack EFIT via fdp.
 
 The full pipeline, stage by stage:
 
 ```bash
-pixi run -e labelmaker fdp run python -m labelmaker.run all \
+pixi run -e labelmaker fdp run python -m labeler.run all \
     --models d3d_tearing_onset_cnn1d \
     --overlap --sample 100 --seed 20260903 --workers 8 --timeout 300
 ```
@@ -48,7 +56,7 @@ archive), with `--sample N --seed S` to take a reproducible subset and
 `--limit N` to keep the first N of it. Stages are
 `features`, `infer`, `validate`, `all`, `analyze` and `events`; each is independently
 rerunnable and skips work that is already complete unless given `--force`. The
-100-shot proof-of-concept pool is `$LABELMAKER_ROOT/poc_shots.txt`; the
+100-shot proof-of-concept pool is `$LABELER_ROOT/poc_shots.txt`; the
 500-shot pool the reliability numbers below come from is `shots_500.txt` (the
 100, 389 more validatable shots, and the tearing-mode shots 199597-199607).
 
@@ -90,14 +98,14 @@ Use the shared environment read-only, with this worktree's source selected:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src XDG_CACHE_HOME=/tmp/lc2/cache \
 pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  --frozen --no-install -e labelmaker fdp run python -m labelmaker.run features \
+  --frozen --no-install -e labelmaker fdp run python -m labeler.run features \
   --features lh_power helicon_twapwr efc_n1_ka \
     efc_a1_c_ka efc_a1_iu_ka efc_a1_il_ka ecoil_a \
   --shot-file /tmp/lc2/pilot-shots.txt --root /tmp/lc2/pilot --workers 4
 ```
 
 Before writing the shared production feature store, wait until
-`pgrep -fa 'labelmaker.run events'` returns nothing; poll every 60 seconds
+`pgrep -fa 'labeler.run events'` returns nothing; poll every 60 seconds
 while another events run is present. Use four fetch workers and append only
 missing feature groups, without `--force`. Atomic merges copy untouched
 datasets and group metadata intact. Resolution failures are recorded in the
@@ -112,12 +120,12 @@ contains the full census, pilot measurements, commands, and preservation hashes.
 ## One shot, all the labels you asked for
 
 ```bash
-pixi run -e labelmaker fdp run python -m labelmaker.run analyze \
+pixi run -e labelmaker fdp run python -m labeler.run analyze \
     --shots 199597 --config my_labels.yaml --out /some/dir
 ```
 
 `analyze` takes its models from the config rather than `--models`. The config
-is YAML (the default is `src/labelmaker/analyze_default.yaml`):
+is YAML (the default is `src/labeler/analyze_default.yaml`):
 
 ```yaml
 labels:                                  # plotted top to bottom, in this order
@@ -145,14 +153,14 @@ line, and each label's `truth` block in the JSON carries AUROC, precision,
 recall and F1 at the label's threshold, plus `lead_time_s` - how far before the
 archived onset the label first crossed. A survival label is scored only on rows
 before the onset, against "an onset occurs within the horizon". A shot with no
-archived truth says so instead, per label. `--out` defaults to `$LABELMAKER_ROOT/analysis/`. The label file under
+archived truth says so instead, per label. `--out` defaults to `$LABELER_ROOT/analysis/`. The label file under
 `labels/` stays the one canonical output; the analysis directory is a view of
 it.
 
 ## What it writes
 
-Everything under `$LABELMAKER_ROOT` (default
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`; `$LABELMAKER_CORPUS` overrides the
+Everything under `$LABELER_ROOT` (default
+`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`; `$LABELER_CORPUS` overrides the
 corpus location):
 
 | path | contents |
@@ -187,8 +195,8 @@ with a start, an end, an optional frequency band and a named source, and the
 `events` stage is what produces them:
 
 ```bash
-pixi run -e labelmaker python -m labelmaker.run events \
-    --shot-file $LABELMAKER_ROOT/recommender_v1.txt --limit 5 \
+pixi run -e labelmaker python -m labeler.run events \
+    --shot-file $LABELER_ROOT/recommender_v1.txt --limit 5 \
     --device cpu --tile-batch 8 --passes wide --timeout 900
 ```
 
@@ -313,7 +321,7 @@ It records a logbook search, not a measurement. Consumers exclude it from
 `n_sources_unknown_coverage` and diagnostic coverage decisions; a text-only shot
 is `unprocessed`, never `uncovered` evidence.
 
-`ideate labels join` preserves both new columns. A window inside a gap is
+`shot_design labels join` preserves both new columns. A window inside a gap is
 `uncovered`; one crossing a gap is `observed` with `coverage_partial=True` and a
 partial-coverage caveat. Older rows without intervals remain readable as one finite
 hull interval, with “coverage recorded as a hull by an older writer; interior gaps unknown”.
@@ -383,7 +391,7 @@ Three things worth knowing before reading a row:
 
 Curated lists use the user's `data/events/<category>/{raw,format,extend_<model>}/`
 layout. `raw/` holds byte-identical originals; deterministic adapters in
-`scripts/labelmaker/labels_format.py` use `tables.yaml` to convert them into
+`scripts/labeler/labels_format.py` use `tables.yaml` to convert them into
 `format/`. `events/databases.py` reads only the common format CSVs, with parsed JSON
 attributes and the stored evidence kind. Its `FORMAT_COLUMNS` and validator define
 one schema for every dataset and producer: `shot, t0_s, t1_s, phenomenon,
@@ -393,15 +401,15 @@ creation time, row count, and shot count.
 
 Add an untouched raw file, declare its columns and format stem in the manifest,
 register an adapter if needed, run `PYTHONPATH=src python
-scripts/labelmaker/labels_format.py`, and commit raw, format CSV, sidecar, and
+scripts/labeler/labels_format.py`, and commit raw, format CSV, sidecar, and
 converter changes together. Manifest `made_at` fixes the conversion revision time;
 sorted rows, stable float/JSON formatting, and that timestamp make the CSV and
 sidecar byte-reproducible. See [data/events/README.md](../data/events/README.md) for
 the complete schema and examples. `config.Paths.label_tables` is the root;
-`LABELMAKER_LABEL_TABLES` overrides it.
+`LABELER_LABEL_TABLES` overrides it.
 
 Each `extend_<model>/` belongs to one producer task and holds that producer's result
-on the 500 `recommender_v1` shots. `scripts/labelmaker/labels_extend.py` reads
+on the 500 `recommender_v1` shots. `scripts/labeler/labels_extend.py` reads
 per-shot events and source records without modifying them. Specify `--category`,
 `--producer` (source or phenomenon), `--shot-list`, optional `--events-root`, and
 `--out data/events/<category>/extend_<source>/recommender_v1.csv`. Phenomenon
@@ -411,7 +419,7 @@ use `extend_<phenomenon>/`. The common
 schema preserves evidence kinds and source identities. Above **50,000** selected
 rows, the writer instead emits `recommender_v1.summary.csv` with
 `shot, n_events, t_first_s, t_last_s, t_cov0_s, t_cov1_s`, and metadata pointing to
-the full `$LABELMAKER_ROOT/events` products. Summary coverage gives bounds, not
+the full `$LABELER_ROOT/events` products. Summary coverage gives bounds, not
 continuous coverage; missing files and source statuses remain visible. A producer
 rerun regenerates its directory's table and removes a stale full/summary alternate.
 Categories without a producer have no `extend_*` directory.
@@ -435,8 +443,8 @@ to ingest one is the standalone mode, which needs no corpus file, no U-Net and
 no GPU:
 
 ```bash
-pixi run -e labelmaker python -m labelmaker.run events --databases-only \
-    --shot-file $LABELMAKER_ROOT/recommender_v1.txt
+pixi run -e labelmaker python -m labeler.run events --databases-only \
+    --shot-file $LABELER_ROOT/recommender_v1.txt
 ```
 
 It prints `N of M shots are named by any table`. Zero is a normal answer and
@@ -473,7 +481,7 @@ either filter is dropped.
 
 ## Running the events job
 
-`scripts/labelmaker/tokeye_masks.py` prepares channels in spawned CPU workers,
+`scripts/labeler/tokeye_masks.py` prepares channels in spawned CPU workers,
 pools consecutive tiles across channels/passes/shots into full pinned input
 buffers, and overlaps CUDA copies with inference. Overlap averaging, thresholding,
 mask packing and row/column summaries run on the GPU. Only those compact outputs
@@ -505,7 +513,7 @@ size and retries; pool failures retain per-shot error reporting and preserve
 queued inferred tail payloads when workers restart.
 
 `tokeye_masks.sbatch` uses a plain `ROOT` override before activated
-`LABELMAKER_ROOT`. It resolves and prints that destination before running any
+`LABELER_ROOT`. It resolves and prints that destination before running any
 writer. Read-only inputs are independent: `RUNTIME_ROOT` defaults to
 `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`, while `PHASE3_PYTHON` and `UNET` can
 override its Python/checkpoint paths. A scratch output root therefore does not
@@ -532,7 +540,7 @@ The three scripts provide a login-node text pre-pass, a GPU array, and an
 `afterok` index rebuild plus gate. The pre-pass stages the site's unchanged
 jobstats client and support files into `runs/slurm/jobstats-client/` because
 compute nodes lack `/usr/local/bin/jobstats`. Run it on a login node with the
-site client installed. `ROOT` and `LABELMAKER_ROOT` below name the same scratch
+site client installed. `ROOT` and `LABELER_ROOT` below name the same scratch
 root so both CPU companions use the intended destination.
 
 This is the general operator workflow; the L14 fix loop itself submits only
@@ -542,7 +550,7 @@ its single GPU pilot and gates it manually, without a companion submission.
 cd /scratch/gpfs/nc1514/FusionAIHub-L14perf
 export REPO=$PWD
 export ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot-example
-export LABELMAKER_ROOT="$ROOT"
+export LABELER_ROOT="$ROOT"
 export SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
@@ -552,18 +560,18 @@ printf 'Resolved root: %s\n' "$ROOT"
 mkdir -p "$ROOT/slurm" "$ROOT/runs/slurm"
 
 # Pre-pass over the WHOLE list; no GPU and no allocation.
-bash scripts/labelmaker/tokeye_text_subset.sh
+bash scripts/labeler/tokeye_text_subset.sh
 
 # Choose measured resource overrides from the report; defaults record pilot 2.
 JOBID=$(N_CHUNKS=1 sbatch --parsable --array=0-0%1 \
-  --output="$ROOT/slurm/%A_%a.out" scripts/labelmaker/tokeye_masks.sbatch)
+  --output="$ROOT/slurm/%A_%a.out" scripts/labeler/tokeye_masks.sbatch)
 CHECKID=$(sbatch --parsable --dependency=afterok:"$JOBID" \
   --output="$ROOT/slurm/%j.out" \
-  scripts/labelmaker/tokeye_masks_afterok.sbatch "$JOBID" --pilot)
+  scripts/labeler/tokeye_masks_afterok.sbatch "$JOBID" --pilot)
 while [[ -n $(squeue -h -j "$JOBID,$CHECKID" -o %i) ]]; do sleep 20; done
 
 # The companion gates each GPU element; also gate the CPU companion itself.
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m labelmaker.jobstats \
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m labeler.jobstats \
   --job-id "$CHECKID" --pilot --wait-for-data 300 \
   --preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"
 ```
@@ -611,7 +619,7 @@ production is not submitted.
 Two of the quantities the events stage needs are not corpus groups at all.
 `ip` is archive- and fdp-served and `qmin` is fdp-only
 (`\efit01::top.results.aeqdsk:qmin`), so both come out of the **features
-store** — `$LABELMAKER_ROOT/features/<shot>_features.h5`, written by the
+store** — `$LABELER_ROOT/features/<shot>_features.h5`, written by the
 `features` stage — which the events stage reads through
 `features/store.read_feature`, opening the file separately for each quantity.
 Until it did, three things were dead: `nbi_counter` was
@@ -643,8 +651,8 @@ gated, hybrid 271 / elevated 60 / high 50 shots. The ungated condition
 `qmin > 0.95` for at least 500 ms anywhere in the record fires on
 **497 of 500 (99.4 %)**; it does not require staying in one of the three
 bands. Including the current ramps therefore makes that condition nearly
-universal on this list. `scripts/labelmaker/qmin_regime_census.py` measured it, and
-it writes `tests/labelmaker/data/qmin_regimes_recommender_v1.json`, which
+universal on this list. `scripts/labeler/qmin_regime_census.py` measured it, and
+it writes `tests/labeler/data/qmin_regimes_recommender_v1.json`, which
 the suite reads on every run — so the gate is defended by a failing test
 rather than by a comment.
 
@@ -682,8 +690,8 @@ Because none of this needs the corpus or the network, there is a standalone
 mode for it, beside `--databases-only` and running the curated tables too:
 
 ```bash
-pixi run -e labelmaker python -m labelmaker.run events --rules-only \
-    --shot-file $LABELMAKER_ROOT/recommender_v1.txt
+pixi run -e labelmaker python -m labeler.run events --rules-only \
+    --shot-file $LABELER_ROOT/recommender_v1.txt
 ```
 
 For this list it prints `shots with a q-min band: qmin_elevated=60,
@@ -703,9 +711,9 @@ scratch root:
 
 ```bash
 mkdir -p /tmp/ld2/rules500
-ln -s "$LABELMAKER_ROOT/features" /tmp/ld2/rules500/features
-pixi run -e labelmaker python -m labelmaker.run events --rules-only \
-    --shot-file $LABELMAKER_ROOT/recommender_v1.txt --root /tmp/ld2/rules500
+ln -s "$LABELER_ROOT/features" /tmp/ld2/rules500/features
+pixi run -e labelmaker python -m labeler.run events --rules-only \
+    --shot-file $LABELER_ROOT/recommender_v1.txt --root /tmp/ld2/rules500
 ```
 
 
@@ -723,7 +731,7 @@ with h5py.File(".../labels/190000_labels.h5") as f:
 
 ## How reliable are the labels
 
-`python -m labelmaker.run validate` writes four reports for models with archived truth and folds the headline
+`python -m labeler.run validate` writes four reports for models with archived truth and folds the headline
 numbers into the model card's `model-index`, so the card is the one place to
 read how a model performed. For `d3d_tearing_onset_cnn1d`, measured on the
 500-shot pool (486 aligned to their archived training rows - the 11 tearing-mode
@@ -741,7 +749,7 @@ reconstruction does not cover; 31,257 published rows of 35,776 matched):
    (rotation) median relative difference.
 3. **Label quality** - against the archived labels, scored twice over the same
    rows: with the training inputs (the model's ceiling) and with our
-   reconstruction (what labelmaker publishes).
+   reconstruction (what labeler publishes).
 4. **Alarm quality** (`alarm_quality.json`) - final-label and any-row shot
    FPR/FNR, warning times, jumps, and per-horizon IPCW AUC alongside plain
    AUROC. Available for slugs with archived truth; survival uses pre-onset
@@ -770,20 +778,20 @@ one in its config.
 
 ## Adding a model
 
-1. `src/labelmaker/models/<device>_<phenomenon>_<predicted>_<arch>/`, with
+1. `src/labeler/models/<device>_<phenomenon>_<predicted>_<arch>/`, with
    `README.md` (HuggingFace card plus the `labelmaker:` block), `spec.py`
    (`ADAPTER`), and an empty `__init__.py`. Copy the closest existing folder.
 2. Map each trained-on input name to a canonical feature in
    `features/namespace.py`. Add a `FeatureSpec` only if the quantity is
    genuinely new, and give it every source that can serve it, cheapest first.
-3. Put the training-time filter in as `DomainRule`s. Labelmaker flags rows
+3. Put the training-time filter in as `DomainRule`s. labeler flags rows
    outside them instead of dropping them.
 4. Load the weights from their upstream location, copy them into
    `<root>/models/<slug>/`, and record the sha256 in the card - inference
    refuses to run against bytes the card does not know.
-5. `pixi run -e labelmaker python -m pytest tests/labelmaker -q -W error` - the
+5. `pixi run -e labelmaker python -m pytest tests/labeler -q -W error` - the
    registry tests check that the card and `spec.py` agree - and
-   `pixi run -e labelmaker ruff check src/labelmaker tests/labelmaker`.
+   `pixi run -e labelmaker ruff check src/labeler tests/labeler`.
 
 ## Known limits
 
@@ -859,5 +867,5 @@ one in its config.
   upstream actually do (measured, with the shipped survival model's
   hyperparameters decoded from its own pickle), the three agreed reliability
   fixes, the uncertainty series to publish from the survival mixture, and the
-  requirements for `d3d_ae_activity_seldnet` - the one model labelmaker will
+  requirements for `d3d_ae_activity_seldnet` - the one model labeler will
   train itself.

@@ -22,7 +22,7 @@ model-index:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labeler's
         validity mask)
       type: d3d-faith-corpus
     metrics:
@@ -33,7 +33,7 @@ model-index:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labeler's
         validity mask)
       type: d3d-faith-corpus
     metrics:
@@ -47,7 +47,7 @@ model-index:
       type: tabular-regression
       name: betan
     dataset:
-      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labeler's
         validity mask)
       type: d3d-faith-corpus
     metrics:
@@ -58,7 +58,7 @@ model-index:
       type: tabular-classification
       name: tm_prob
     dataset:
-      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labelmaker's
+      name: d3d overlap shots (n_shots=486/500 requested, n_rows=31257/35776 valid after labeler's
         validity mask)
       type: d3d-faith-corpus
     metrics:
@@ -158,7 +158,7 @@ labelmaker:
     the raw corpus samples, not a quantity `build()` computes today, and is pending re-measurement under
     the current convention. ECH''s rule, threshold and locator are unchanged and remain on hold - this
     note is about the number''s currency, not about the rule'
-  - 'a NaN ECH power is treated as UNMEASURED, which is labelmaker''s own conservatism and not upstream
+  - 'a NaN ECH power is treated as UNMEASURED, which is labeler''s own conservatism and not upstream
     fidelity: train.py:80 clips a NaN to 0 and keeps the row. It coincides with upstream on the archive
     only because the location is NaN on exactly the same rows. EC.PECH is NaN on 56.8% of rows, and 23.0%
     of those NaNs (13.05% of all rows) are interior to the measured window rather than before or after
@@ -187,7 +187,7 @@ labelmaker:
     back to ech_pwr would add nothing - measured, all 49 read identically 0.0 W. The rows are recoverable
     from the corpus source instead, and the corpus reads all 12 gyrotrons: it serves 38 of the 49 and
     shows zero power flowing on every one, which CONFIRMS ECH-off rather than assuming it. Upstream, by
-    contrast, fabricated a 0.0 for an absent ECH signal and trained on those rows; labelmaker declines
+    contrast, fabricated a 0.0 for an absent ECH signal and trained on those rows; labeler declines
     to invent the value and takes the evidence from the second source. NOTE: ''38 of the 49 show zero
     power'' was measured against the nearest-sample series `build()` produced before the per-resolver
     sampling fix; `build()` now windows a corpus-served field into the archive''s 50 ms mean instead,
@@ -197,7 +197,7 @@ labelmaker:
     real-TensorFlow outputs (tensorflow-cpu==2.15.1) on 1,673 reference rows x 10 members, gated on a
     scale-normalized max (measured 2.71e-06 against 1e-5), a median absolute difference (7.65e-07 against
     1e-6), and a label-space max on the published post-activation tm_prob (1.24e-06 against 1e-5). The
-    raw absolute max is 5.6005e-05 - float32 arithmetic noise, not a semantic error (see labelmaker.validate.adapter_fidelity)
+    raw absolute max is 5.6005e-05 - float32 arithmetic noise, not a semantic error (see labeler.validate.adapter_fidelity)
     - and the operational consequence is 1.2e-06 in published tm_prob probability
 ---
 
@@ -279,17 +279,17 @@ the profiles.
 
 ## Evaluation
 
-Written by `python -m labelmaker.run validate --models d3d_tearing_onset_cnn1d`
+Written by `python -m labeler.run validate --models d3d_tearing_onset_cnn1d`
 into `model-index` above and, in full, into
-`<LABELMAKER_ROOT>/validation/d3d_tearing_onset_cnn1d/`:
+`<LABELER_ROOT>/validation/d3d_tearing_onset_cnn1d/`:
 
 - `adapter_fidelity.json` - torch evaluator against frozen real-TensorFlow
   outputs on the upstream reference file: a scale-normalized max, a median
   absolute difference, and a label-space max on the published `tm_prob`
   (measured 2.71e-06, 7.65e-07 and 1.24e-06 against gates of 1e-5, 1e-6 and
   1e-5), plus the raw absolute max (5.6005e-05, float32 arithmetic noise -
-  see `labelmaker.validate.adapter_fidelity`).
-- `reconstruction.json` - per-feature agreement between labelmaker's features
+  see `labeler.validate.adapter_fidelity`).
+- `reconstruction.json` - per-feature agreement between labeler's features
   and the model's own training rows on the corpus/archive overlap shots. On
   the 486 aligned shots of the 500-shot pool: the archive-served columns
   (`pinj`, `tinj`, `tritop`, `tribot`, `gapin`, `pres`, the ECH pair) are
@@ -301,8 +301,8 @@ into `model-index` above and, in full, into
 - `label_quality.json` - AUROC, F1 at 0.5, precision, recall, best F1 and
   the threshold reaching it, Brier and calibration against the archived
   labels, scored two ways over the SAME rows: with archived (training) inputs
-  and with labelmaker's own reconstructed inputs, both restricted to the rows
-  labelmaker's own validity rule would actually publish a label for. The
+  and with labeler's own reconstructed inputs, both restricted to the rows
+  labeler's own validity rule would actually publish a label for. The
   `model-index` numbers above are this row-matched pair; the difference
   between them is the reconstruction penalty - on the 500-shot pool (486
   aligned), `tm_prob` AUROC 0.932 -> 0.897 (-0.034), best F1 0.576 -> 0.490
@@ -316,7 +316,7 @@ into `model-index` above and, in full, into
   observes 8%); the ranking is fine, the operating threshold is a choice.
   `dataset.name` states how many of the requested shots were used and how
   many of the matched rows passed the validity mask - both denominators
-  matter. The archived rows are aligned to labelmaker's timesteps by an exact
+  matter. The archived rows are aligned to labeler's timesteps by an exact
   match on the EFIT01 geometry columns `tritop`/`tribot`/`gapin` plus
   whichever of `bt`/`ip` the archive served for that shot, with the
   reconstructed columns breaking exact ties; 486 of the 489 archived shots
@@ -327,7 +327,7 @@ into `model-index` above and, in full, into
   the full JSON also reports each side scored over every matched row
   regardless of validity (`*_all`, diagnostic only, never the published
   number) and a `skip_reasons` histogram with a warning when one cause
-  dominates - see `labelmaker.validate.label_quality`'s docstring for why
+  dominates - see `labeler.validate.label_quality`'s docstring for why
   scoring the two inputs over different row sets (an earlier version of this
   card) understates the penalty and can invert which direction a metric moved.
 
