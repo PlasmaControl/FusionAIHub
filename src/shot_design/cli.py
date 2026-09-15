@@ -620,6 +620,9 @@ def cmd_blurb(args) -> int:
     if args.limit is not None and args.limit < 0:
         print("blurb limit must be non-negative", file=sys.stderr)
         return 2
+    if args.shots and args.all:
+        print("blurb --shots cannot be combined with --all", file=sys.stderr)
+        return 2
     client = LLMClient()
     ok, hint = client.available()
     if not ok:
@@ -630,6 +633,7 @@ def cmd_blurb(args) -> int:
         _announce_root("blurb", str(paths.db_dir / "shots.parquet"), paths)
     n = write_blurbs(
         paths, client, only_missing=not args.all, limit=args.limit, dry_run=args.dry_run,
+        shots=args.shots,
     )
     action = "accepted in dry run (nothing written)" if args.dry_run else "written"
     print(f"{n} blurbs {action} by {client.model(client.cfg['blurb']['model'])}")
@@ -1885,6 +1889,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--all", action="store_true", help="rewrite every blurb, including current model blurbs"
+    )
+    p.add_argument(
+        "--shots", type=int, nargs="+", metavar="N",
+        help="rewrite only these shots, in ascending order",
     )
     p.add_argument("--limit", type=int, help="process at most N eligible shots in shot order")
     p.add_argument(

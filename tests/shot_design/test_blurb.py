@@ -24,7 +24,7 @@ CFG = {
     "base_url": "http://llm.test",
     "models": {"quality": "gemma4:26b", "fast": "gemma4:e4b"},
     "reasoning_effort": "none",
-    "blurb": {"model": "quality", "max_words": 90, "prompt_version": 5},
+    "blurb": {"model": "quality", "max_words": 90, "prompt_version": 6},
 }
 GOOD = (
     "The session studied QH-mode access at low torque. It ran through to rampdown. "
@@ -71,6 +71,82 @@ def test_gate_rejects_an_invented_number_or_shot(rec):
     assert "shot" in blurb.gate(src, f"Shot {rec.shot} repeated 175000.", rec, 70)
 
 
+@pytest.mark.parametrize(
+    ("source", "candidate", "reason"),
+    [
+        ("The plan requested 13 pellets.", "The run used thirteen pellets. It ended. Done.",
+         "number written as a word: ['thirteen']"),
+        ("The plan requested a 2/1 mode.", "The run studied a two-one mode. It ended. Done.",
+         "number written as a word: ['two']"),
+        ("The plan requested 13 pellets.", "The run used *thirteen* pellets. It ended. Done.",
+         "number written as a word: ['thirteen']"),
+        ("The plan requested 13 pellets.", "The run used /thirteen/ pellets. It ended. Done.",
+         "number written as a word: ['thirteen']"),
+        ("The plan requested 13 pellets.", "The run used ‘thirteen’ pellets. It ended. Done.",
+         "number written as a word: ['thirteen']"),
+    ],
+)
+def test_gate_rejects_numbers_written_as_words(rec, source, candidate, reason):
+    assert blurb.gate(source, candidate, rec, 90) == reason
+
+
+@pytest.mark.parametrize(
+    ("source", "candidate"),
+    [
+        ("The plan used beams.", "The run used one of the beams. It ended. Done."),
+        ("This was a two-day experiment.", "The two-day experiment ran. It ended. Done."),
+        ("The plan used beams.", "The first beam ran. The second followed. The third ended."),
+    ],
+)
+def test_gate_allows_ordinary_one_source_number_words_and_ordinals(rec, source, candidate):
+    assert blurb.gate(source, candidate, rec, 90) is None
+
+
+def test_gate_rejects_an_abbreviation_absent_from_source(rec):
+    source = "The experiment used neutral beams."
+    candidate = "The NBI experiment ran. It ended. Done."
+    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['NBI']"
+
+
+def test_gate_strips_unknown_abbreviation_plural(rec):
+    source = "The experiment used neutral beams."
+    candidate = "The NBIs ran. They ended. Done."
+    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['NBI']"
+
+
+def test_gate_checks_a_hyphenated_abbreviation_absent_from_source(rec):
+    source = "The threshold was measured."
+    candidate = "The L-H threshold was measured. It ended. Done."
+    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['LH']"
+
+
+@pytest.mark.parametrize(
+    ("source", "candidate"),
+    [
+        ("The PLH threshold was measured.", "The L-H threshold was measured. It ended. Done."),
+        ("The ELM was measured.", "ELMs were measured. It ended. Done."),
+        ("The ntm was measured.", "NTMs were measured. It ended. Done."),
+        ("The p-lh threshold was measured.", "The LH threshold was measured. It ended. Done."),
+        ("The tokamak was operated.", "The DIII-D tokamak ran. It ended. Done."),
+        ("The tokamak was operated.", "The DIIIs ran. They ended. Done."),
+    ],
+)
+def test_gate_allows_source_substring_plural_and_diii_d_abbreviations(rec, source, candidate):
+    assert blurb.gate(source, candidate, rec, 90) is None
+
+
+def test_new_gate_checks_keep_required_order(rec):
+    source = "The experiment used beams."
+    candidate = "Shot 203500 used NBI at 7 units with thirteen pellets. It stopped."
+    assert blurb.gate(source, candidate, rec, 90).startswith("shot not in source")
+    candidate = "The NBI run reached 7 units with thirteen pellets. It stopped."
+    assert blurb.gate(source, candidate, rec, 90) == "number not in source: ['7']"
+    candidate = "The run used thirteen pellets. It stopped."
+    assert blurb.gate(source, candidate, rec, 90) == "number written as a word: ['thirteen']"
+    candidate = "The NBI run ended. It stopped."
+    assert blurb.gate(source, candidate, rec, 90) == "abbreviation not in source: ['NBI']"
+
+
 def test_gate_rejects_an_invented_shot_in_the_2xxxxx_band(rec):
     """Shot references used to be `1\\d{5}`: an invented 203500 read as an ordinary number and
     the gate reported it (if at all) as the wrong kind of fabrication."""
@@ -103,6 +179,8 @@ def test_system_prompt_requires_naming_a_bad_ending():
     assert "operator entries" in prompt and "shot brief" in prompt
     assert "No notable findings were logged." in prompt
     assert "90 words" in prompt
+    assert "Never expand, translate or explain" in prompt
+    assert "Never write a number as a word" in prompt
 
 
 def test_make_uses_the_model_and_falls_back_on_failure(rec, paths):
@@ -111,7 +189,7 @@ def test_make_uses_the_model_and_falls_back_on_failure(rec, paths):
     assert b.source == "llm" and b.text == good.content
     prompt = good.calls[0]["messages"]
     assert prompt[0]["role"] == "system" and str(rec.shot) in prompt[1]["content"]
-    assert "(prompt v5)" in prompt[0]["content"]
+    assert "(prompt v6)" in prompt[0]["content"]
     assert good.calls[0]["reasoning_effort"] == "none"
     bad = FakeClient(f"Shot {rec.shot} reached 3.1 MA.", paths)
     # Clear the previous deterministic reply before trying a different fake server answer.
@@ -121,6 +199,13 @@ def test_make_uses_the_model_and_falls_back_on_failure(rec, paths):
     assert b.source == "template" and "number" in b.reason and b.text == blurb.fallback(rec)
     b = blurb.make(rec, None, CFG)
     assert b.source == "template" and b.reason == "no model"
+
+
+def test_make_marks_prompt_v6_when_using_the_yaml_config(rec, paths):
+    yaml_cfg = {**config.load_yaml("llm.yaml"), "base_url": "http://llm.test"}
+    client = FakeClient(GOOD, paths, cfg=yaml_cfg)
+    assert blurb.make(rec, client).source == "llm"
+    assert "(prompt v6)" in client.calls[0]["messages"][0]["content"]
 
 
 def test_shots_parquet_has_blurb_columns_after_build(
@@ -134,7 +219,7 @@ def test_shots_parquet_has_blurb_columns_after_build(
     assert {"blurb", "blurb_source", "blurb_model", "blurb_prompt_version"} <= set(df.columns)
     assert df["blurb_source"].iloc[0] == "template" and df["blurb"].iloc[0]
     assert df["blurb_model"].iloc[0] == "gemma4:26b"
-    assert df["blurb_prompt_version"].iloc[0] == 5
+    assert df["blurb_prompt_version"].iloc[0] == 6
     assert pd.api.types.is_integer_dtype(df["blurb_prompt_version"])
 
 
@@ -156,7 +241,7 @@ def test_write_blurbs_backfills_only_missing_and_is_atomic(
     df = pd.read_parquet(paths.db_dir / "shots.parquet")
     assert set(df["blurb_source"]) == {"llm"}
     assert set(df["blurb_model"]) == {"gemma4:26b"}
-    assert set(df["blurb_prompt_version"]) == {5}
+    assert set(df["blurb_prompt_version"]) == {6}
     assert not list(paths.db_dir.glob("*.part"))
     assert build.write_blurbs(paths, client, only_missing=True) == 0
 
@@ -175,16 +260,20 @@ def test_write_blurbs_updates_the_manifest_counts(
         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False
     )
     before = json.loads((paths.db_dir / "manifest.json").read_text())
-    provenance = {"model": "gemma4:26b", "prompt_version": 5}
-    assert before["blurbs"] == {"llm": 0, "template": 2, **provenance}
+    provenance = {"model": "gemma4:26b", "prompt_version": 6}
+    assert before["blurbs"] == {
+        "llm": 0, "template": 2, "prompt_versions": {"6": 2}, **provenance,
+    }
     build.write_blurbs(paths, FakeClient(GOOD, paths), True)
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     df = pd.read_parquet(paths.db_dir / "shots.parquet")
     assert manifest["blurbs"] == {
         **{k: int((df["blurb_source"] == k).sum()) for k in ("llm", "template")},
-        **provenance,
+        "prompt_versions": {"6": 2}, **provenance,
     }
-    assert manifest["blurbs"] == {"llm": 2, "template": 0, **provenance}
+    assert manifest["blurbs"] == {
+        "llm": 2, "template": 0, "prompt_versions": {"6": 2}, **provenance,
+    }
     assert manifest["n_shots"] == before["n_shots"]  # nothing else was rewritten
     assert not list(paths.db_dir.glob("*.part"))
 
@@ -229,7 +318,7 @@ def test_gate_rejects_wrong_sentence_count_or_unfinished_text(rec, candidate, co
     assert reason is not None and "three" in reason and str(count) in reason
 
 
-@pytest.mark.parametrize("version", [4, None, "absent", 5, 6])
+@pytest.mark.parametrize("version", [4, None, "absent", 5, 6, 7])
 def test_write_blurbs_retries_stale_or_unknown_versions(rec, paths, version):
     table = paths.db_dir / "shots.parquet"
     df = pd.read_parquet(table)
@@ -240,11 +329,11 @@ def test_write_blurbs_retries_stale_or_unknown_versions(rec, paths, version):
         df = df.drop(columns="blurb_prompt_version")
     df.to_parquet(table)
     client = FakeClient(GOOD, paths)
-    expected = int(version in (4, None, "absent"))
+    expected = int(version in (4, 5, None, "absent"))
     assert build.write_blurbs(paths, client) == expected
     assert len(client.calls) == expected
     updated = pd.read_parquet(table)
-    assert updated["blurb_prompt_version"].iloc[0] == (5 if expected else version)
+    assert updated["blurb_prompt_version"].iloc[0] == (6 if expected else version)
     assert updated["blurb"].iloc[0] == (GOOD if expected else "Old answer.")
 
 
@@ -261,7 +350,70 @@ def test_write_blurbs_uses_client_config_for_prompt_and_provenance(rec, paths):
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     assert manifest["blurbs"] == {
         "llm": 1, "template": 0, "model": "gemma4:e4b", "prompt_version": 6,
+        "prompt_versions": {"6": 1},
     }
+
+
+def test_write_blurbs_rewrites_only_sorted_unique_targeted_shots(
+    paths, staged_shot_a, staged_shot_b, our_shot_c, text_fixtures,
+    stub_embeddings,  # noqa: F811
+):
+    build.build(
+        [staged_shot_a, staged_shot_b, our_shot_c], paths, build.load_build_cfg(),
+        workers=1, encode=False,
+    )
+    table = paths.db_dir / "shots.parquet"
+    df = pd.read_parquet(table)
+    df["blurb"] = pd.Series(
+        {staged_shot_a: "old a", staged_shot_b: "old b", our_shot_c: "old c"}
+    )
+    df["blurb_source"] = "llm"
+    df["blurb_model"] = "old-model"
+    df["blurb_prompt_version"] = pd.Series(
+        {staged_shot_a: 5, staged_shot_b: 5, our_shot_c: 6}, dtype="Int64"
+    )
+    df.to_parquet(table)
+
+    client = FakeClient(GOOD, paths)
+    assert build.write_blurbs(
+        paths, client, only_missing=True, shots=[our_shot_c, staged_shot_a, our_shot_c]
+    ) == 2
+    updated = pd.read_parquet(table)
+    assert list(updated.loc[[staged_shot_a, our_shot_c], "blurb"]) == [GOOD, GOOD]
+    assert list(updated.loc[[staged_shot_a, our_shot_c], "blurb_model"]) == [
+        "gemma4:26b", "gemma4:26b",
+    ]
+    assert list(updated.loc[[staged_shot_a, our_shot_c], "blurb_prompt_version"]) == [6, 6]
+    assert updated.loc[staged_shot_b, "blurb"] == "old b"
+    assert updated.loc[staged_shot_b, "blurb_model"] == "old-model"
+    assert updated.loc[staged_shot_b, "blurb_prompt_version"] == 5
+    sent_shots = [call["messages"][1]["content"].splitlines()[0] for call in client.calls]
+    assert sent_shots == [f"Shot {staged_shot_a} (2015-01-20), campaign unknown.",
+                          f"Shot {our_shot_c} (2015-01-20), campaign unknown."]
+    manifest = json.loads((paths.db_dir / "manifest.json").read_text())
+    assert manifest["blurbs"]["prompt_versions"] == {"5": 1, "6": 2}
+
+
+def test_write_blurbs_validates_every_target_before_limit_or_model_call(rec, paths):
+    unknown = rec.shot + 99
+    for targets, limit in (([rec.shot, unknown], None), ([unknown], 0)):
+        client = FakeClient(GOOD, paths)
+        with pytest.raises(ValueError, match=rf"\b{unknown}\b"):
+            build.write_blurbs(paths, client, shots=targets, limit=limit)
+        assert not client.calls
+
+
+def test_write_blurbs_applies_limit_after_sorting_targeted_shots(
+    paths, staged_shot_a, staged_shot_b, text_fixtures, stub_embeddings,  # noqa: F811
+):
+    build.build(
+        [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False,
+    )
+    client = FakeClient(GOOD, paths)
+    assert build.write_blurbs(
+        paths, client, only_missing=False, shots=[staged_shot_b, staged_shot_a], limit=1,
+    ) == 1
+    assert client.calls[0]["messages"][1]["content"].startswith(f"Shot {staged_shot_a}")
 
 
 @pytest.mark.parametrize("candidate", [GOOD, "Only one sentence."])
@@ -293,6 +445,37 @@ def test_cli_dry_run_limits_calls_prints_candidate_gate_final_and_writes_nothing
     after = {p: (p.read_bytes(), p.stat().st_mtime_ns)
              for p in paths.data_root.rglob("*") if p.is_file()}
     assert after == before  # includes request cache, manifests, tables and sidecars
+
+
+def test_cli_rejects_shots_with_all_before_opening_the_model(paths, monkeypatch, capsys):
+    from shot_design.llm import client as client_module
+
+    monkeypatch.setattr(client_module, "LLMClient", lambda: pytest.fail("model must not be opened"))
+    assert cli.main(["blurb", "--shots", "900001", "--all"]) == 2
+    error = capsys.readouterr().err
+    assert "--shots" in error and "--all" in error
+
+
+def test_cli_dry_run_prints_only_targeted_shots_and_writes_nothing(
+    paths, staged_shot_a, staged_shot_b, text_fixtures, stub_embeddings,  # noqa: F811
+    monkeypatch, capsys,
+):
+    from shot_design.llm import client as client_module
+
+    build.build(
+        [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False,
+    )
+    capsys.readouterr()
+    client = FakeClient(GOOD, paths)
+    monkeypatch.setattr(client_module, "LLMClient", lambda: client)
+    before = {p: (p.read_bytes(), p.stat().st_mtime_ns)
+              for p in paths.data_root.rglob("*") if p.is_file()}
+    assert cli.main(["blurb", "--shots", str(staged_shot_b), "--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert f"Shot {staged_shot_b}" in output and f"Shot {staged_shot_a}" not in output
+    after = {p: (p.read_bytes(), p.stat().st_mtime_ns)
+             for p in paths.data_root.rglob("*") if p.is_file()}
+    assert after == before
 
 
 def test_write_blurbs_limit_applies_after_missing_filter(

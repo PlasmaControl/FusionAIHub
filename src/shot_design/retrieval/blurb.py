@@ -2,9 +2,10 @@
 
 Written once, offline, from the shot's own text (mini-proposal title and purpose, run title,
 the shot brief, the operators' entries, the outcome), stored in shots.parquet, and gated: a
-blurb may not state a number or a shot number that is absent from its source, may not contain a
-quotation mark, must have three complete sentences, and must fit the word cap. It is a plain-language
-summary in the model's own words, not a quotation: the blurb does not quote the operators --
+blurb may not state a number or a shot number that is absent from its source, write an unsupported
+number word, introduce an abbreviation, contain a quotation mark, fail to contain exactly three
+complete sentences, or exceed the word cap. It is a plain-language summary in the model's own words:
+the blurb does not quote the operators --
 the card's "more" section already shows a verbatim operator quote (`describe.best_quote`), so
 faithfulness there is that function's job, not this one's. Fail the gate and the template
 stands, marked so on the card. The page never waits on the model; `shot_design blurb` backfills.
@@ -28,10 +29,19 @@ from shot_design.schema import ShotRecord
 _log = logging.getLogger(__name__)
 
 _WS = re.compile(r"\s+")
+_NUMBER_WORDS = frozenset(
+    {
+        "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+        "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+        "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
+        "ninety", "hundred", "thousand", "million", "dozen",
+    }
+)
+_ACRONYM = re.compile(r"\b[A-Z]{2,6}s?\b")
 
 
 def _system(max_words: int) -> str:
-    """Prompt v5: goal, success/failure, then one finding or the literal no-findings sentence."""
+    """Prompt v6: v5's three-sentence contract plus verbatim abbreviations and digit quantities."""
     return (
         "You summarise DIII-D tokamak shots for physicists scanning a list of past shots to find "
         "one worth looking at. Write exactly three plain sentences: the first says what the "
@@ -40,6 +50,12 @@ def _system(max_words: int) -> str:
         "operator entries or shot brief. When nothing notable is recorded, the third sentence "
         "must be exactly: No notable findings were logged. "
         "Use only the text given. Do not invent or round numbers; prefer no numbers at all. "
+        "Copy every abbreviation, acronym and symbol exactly as the text writes it (for example "
+        "AE, EHO, QH, FPP, PCS, RMP, LM, li, V.s, betan). Never expand, translate or explain "
+        "one, even when you think you know what it stands for, and never introduce an "
+        "abbreviation the text does not use. Write a quantity with digits and the unit exactly "
+        "as the text gives it, or leave it out. Never write a number as a word (not thirteen, "
+        "not several hundred, not two-one). "
         "Do not use quotation "
         "marks -- write in your own words, never quote the operators. If the shot ended in a "
         "disruption, a fast current quench or was terminated early, the second sentence must say "
@@ -109,6 +125,29 @@ def gate(source: str, candidate: str, rec: ShotRecord, max_words: int) -> str | 
     # to the one check that matches what extract_facts actually hands back.
     if not set(nums) <= set(src_nums):
         return f"number not in source: {sorted(set(nums) - set(src_nums))}"
+    candidate_number_words = {
+        re.sub(r"^[\W_]+|[\W_]+$", "", token).lower()
+        for token in re.split(r"[\s-]+", candidate)
+    } & _NUMBER_WORDS
+    unknown_number_words = {
+        word for word in candidate_number_words
+        if re.search(rf"\b{re.escape(word)}\b", source, flags=re.IGNORECASE) is None
+    }
+    if unknown_number_words:
+        return f"number written as a word: {sorted(unknown_number_words)}"
+    source_compact = source.replace("-", "").lower()
+    acronym_texts = (candidate, candidate.replace("DIII-D", "DIII").replace("-", ""))
+    candidate_acronyms = {
+        token.removesuffix("s")
+        for text in acronym_texts
+        for token in _ACRONYM.findall(text)
+    }
+    unknown_acronyms = {
+        token for token in candidate_acronyms
+        if token != "DIII" and token.replace("-", "").lower() not in source_compact
+    }
+    if unknown_acronyms:
+        return f"abbreviation not in source: {sorted(unknown_acronyms)}"
     # Count terminator groups followed by whitespace/end; decimal points stay inside words.
     # Unit abbreviations such as "kA." terminate a sentence here. No NLP dependency is needed.
     sentences = len(re.findall(r"[.!?]+(?=\s|$)", candidate))
