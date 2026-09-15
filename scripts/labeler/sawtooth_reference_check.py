@@ -1,14 +1,14 @@
 """Check `events.heuristics`'s sawtooth port against omnimode, crash for crash.
 
-`src/labelmaker/events/heuristics.py` is a port of
+`src/labeler/events/heuristics.py` is a port of
 `omnimode.mrms.ece.find_sawteeth` with one thing changed: the reference
 recomputes the 1 ms envelope inside `crash_steps` for every candidate crash,
 which on shot 198658's 429 candidates is 430 passes over a 594 MB record.
 A port is only trustworthy if somebody has run both on real data and
 compared the ANSWERS - not the counts, the times - so this script does that
 and writes what it found into
-`tests/labelmaker/data/sawtooth_198658_reference.json`, which
-`tests/labelmaker/test_events_heuristics.py` then reads on every run.
+`tests/labeler/data/sawtooth_198658_reference.json`, which
+`tests/labeler/test_events_heuristics.py` then reads on every run.
 
 What it does:
 
@@ -20,7 +20,7 @@ What it does:
 2. runs the **port**, `heuristics.sawtooth_events`, and times it;
 3. runs the **reference**, `omnimode.mrms.ece.find_sawteeth`, on the same
    array and times it. omnimode is put on `sys.path` HERE and nowhere else:
-   no library code and no test in labelmaker may import it;
+   no library code and no test in labeler may import it;
 4. pairs the two crash lists nearest-neighbour and reports every crash's
    time difference, the largest of them, and anything unpaired;
 5. prints counts, median and mean periods and elapsed times, and with
@@ -31,7 +31,7 @@ What it does:
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labelmaker/sawtooth_reference_check.py \\
+        -e labelmaker python scripts/labeler/sawtooth_reference_check.py \\
         --shot 198658 --json
 
 Re-run it when the port's crash search changes. The acceptance it exists to
@@ -46,16 +46,16 @@ longer exists. `--port-only` is that: it re-runs step 2 alone on the shot and
 the record the file already names, and amends it with a `port_rerun` stanza -
 the crash count, the median period, the elapsed time, the largest distance
 from the crashes the record already holds, the sha it was measured at, and
-whether anything under `src/labelmaker` was uncommitted when it ran (`dirty`;
+whether anything under `src/labeler` was uncommitted when it ran (`dirty`;
 a dirty record names a tree that is not the tree that was measured, so re-run
 it once the change is committed).
-`tests/labelmaker/test_events_heuristics.py` then checks that count against
+`tests/labeler/test_events_heuristics.py` then checks that count against
 the reference's, so a port that drifts away from omnimode fails the suite
 rather than waiting for somebody to spend the eight minutes.
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labelmaker/sawtooth_reference_check.py \\
+        -e labelmaker python scripts/labeler/sawtooth_reference_check.py \\
         --port-only
 """
 from __future__ import annotations
@@ -73,7 +73,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from labelmaker.events import heuristics
+from labeler.events import heuristics
 
 #: Read only here. `heuristics` is a PORT of this and imports nothing from
 #: it; a test that imported omnimode would pin the reference rather than the
@@ -83,7 +83,7 @@ OMNIMODE_SRC = Path("/scratch/gpfs/nc1514/omnimode/src")
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 #: Two crash times count as the same crash within this, in ms. See `main`.
 AGREE_MS = 1e-9
-OUT = REPO / "tests" / "labelmaker" / "data" / "sawtooth_198658_reference.json"
+OUT = REPO / "tests" / "labeler" / "data" / "sawtooth_198658_reference.json"
 
 
 def reference_find_sawteeth(y: np.ndarray, t_ms: np.ndarray,
@@ -208,7 +208,7 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
     deltas = np.array([r["delta_ms"] for r in rows], dtype=np.float64)
     record["port_rerun"] = {
         "labelmaker_sha": git_sha(REPO),
-        "dirty": git_dirty(REPO, "src/labelmaker"),
+        "dirty": git_dirty(REPO, "src/labeler"),
         "n": stats["n"],
         "median_ms": stats["median_period_ms"],
         "elapsed_s": elapsed,

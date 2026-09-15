@@ -1,8 +1,8 @@
-"""Train labelmaker's own ELM time-to-event DSM, with and without BES.
+"""Train labeler's own ELM time-to-event DSM, with and without BES.
 
 Why a new fit rather than the shipped weights: the upstream ELM model takes 124
 inputs and 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled
-shots. A model that needs BES cannot be served at corpus scale. So labelmaker
+shots. A model that needs BES cannot be served at corpus scale. So labeler
 fits the same architecture on the same rows twice - `all124`, the upstream input
 set, and `no_bes`, the 60 columns of the split pickle that are not BES (slots
 0-11 and 76-123 of `new_diagnostic_order`) - and the ablation decides whether the servable
@@ -60,14 +60,14 @@ Two upstream properties that the numbers must be read with:
 
 Saves `[[survival_model, train_losses, val_losses, params]]` - the shape
 `new_train_elm_model.py` writes and the shape
-`labelmaker.models.runners.dsm_pickle.load_dsm` reads - plus `training.json`, a
+`labeler.models.runners.dsm_pickle.load_dsm` reads - plus `training.json`, a
 normalisation dict beside the weights, `loss_curve.png` and `PROVENANCE.json`.
 With `--ablation` it reads both sets' `training.json` and writes `ablation.json`.
 
-Runs in the Phase 3 uv venv (`scripts/labelmaker/make_phase3_env.sh`), with
-`PYTHONPATH=<repo>/src` so `labelmaker.alarm.ipcw_auc`,
-`labelmaker.models.elm_inputs` and `labelmaker.models.runners.dsm_pickle` are
-importable. It imports nothing else from labelmaker.
+Runs in the Phase 3 uv venv (`scripts/labeler/make_phase3_env.sh`), with
+`PYTHONPATH=<repo>/src` so `labeler.alarm.ipcw_auc`,
+`labeler.models.elm_inputs` and `labeler.models.runners.dsm_pickle` are
+importable. It imports nothing else from labeler.
 """
 from __future__ import annotations
 
@@ -83,6 +83,8 @@ from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
+
+from labeler.env import getenv
 
 SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl")
 FORK = Path("/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/auton-survival")
@@ -145,7 +147,7 @@ def evaluate(graph, x, t_ms, e, ipcw_auc) -> dict:
     neither cases nor controls because it is unknown whether an ELM happened,
     and the IPCW AUC uses them only to estimate the censoring distribution.
     """
-    from labelmaker.models.runners import dsm_pickle
+    from labeler.models.runners import dsm_pickle
 
     horizons = [h + T_OFFSET_MS for h in HORIZONS_MS]
     surv = dsm_pickle.survival(graph, x, horizons)
@@ -183,9 +185,9 @@ def train(args) -> int:
     )
     from sklearn.utils import shuffle
 
-    from labelmaker.alarm import ipcw_auc
-    from labelmaker.models import elm_inputs
-    from labelmaker.models.runners import dsm_pickle
+    from labeler.alarm import ipcw_auc
+    from labeler.models import elm_inputs
+    from labeler.models.runners import dsm_pickle
 
     t0 = time.time()
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "8")))
@@ -363,7 +365,7 @@ def train(args) -> int:
                       [float(v) for v in costs], params]], fh)
     os.replace(tmp, weights)
 
-    # ---- final numbers, in eval mode, and through labelmaker's own reader ----
+    # ---- final numbers, in eval mode, and through labeler's own reader ----
     nll_test = float(dsm.compute_nll(x_test, t_test_raw + T_OFFSET_MS, e_test))
     nll_train = float(dsm.compute_nll(x_train, t_train_raw + T_OFFSET_MS, e_train))
     graph = dsm_pickle.load_dsm(weights)
@@ -432,8 +434,8 @@ def train(args) -> int:
 
     provenance = {
         "artifact": weights.name,
-        "produced_by": "scripts/labelmaker/elm_dsm_train.py",
-        "git_sha": os.environ.get("LABELMAKER_GIT_SHA"),
+        "produced_by": "scripts/labeler/elm_dsm_train.py",
+        "git_sha": getenv("LABELER_GIT_SHA"),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
         "jobstats": None,
         "inputs": {str(args.split_pkl): sha256_of(args.split_pkl)},
@@ -510,10 +512,10 @@ def ablate(args) -> int:
         "stopped_on": {k: v["stopped_on"] for k, v in sets.items()},
         "wall_s": {k: v["wall_s"] for k, v in sets.items()},
         "score_note": (
-            "score is 1 - S(h + 1) from labelmaker's own dsm_pickle.survival; the "
+            "score is 1 - S(h + 1) from labeler's own dsm_pickle.survival; the "
             "+1 ms is upstream's fit-time offset. AUROC cases are e == 1 and t <= h "
             "against controls t > h, rows censored inside h excluded; ipcw_auc is "
-            "labelmaker.alarm.ipcw_auc on the same score with the same horizon."
+            "labeler.alarm.ipcw_auc on the same score with the same horizon."
         ),
     }
     write_json(out_dir / "ablation.json", payload)

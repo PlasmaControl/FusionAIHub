@@ -26,9 +26,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from labelmaker.config import Paths
-from labelmaker.labels.store import read_label
-from labelmaker.validate import binary_metrics
+from labeler.config import Paths
+from labeler.labels.store import read_label
+from labeler.validate import binary_metrics
 
 SCR = Path(__file__).resolve().parent
 ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

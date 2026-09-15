@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """Write the `frame_codes/<shot>.json` provenance sidecars for caches encoded before they existed.
 
-    python scripts/ideate/frame_codes_provenance.py --backfill --dry-run
-    python scripts/ideate/frame_codes_provenance.py --backfill
-    python scripts/ideate/frame_codes_provenance.py --audit        # read-only census
+    python scripts/shot_design/frame_codes_provenance.py --backfill --dry-run
+    python scripts/shot_design/frame_codes_provenance.py --backfill
+    python scripts/shot_design/frame_codes_provenance.py --audit        # read-only census
 
-The 500 production caches under `$IDEATE_DATA_ROOT/frame_codes` were written by `ideate encode`
+The 500 production caches under `$SHOT_DESIGN_DATA_ROOT/frame_codes` were written by `shot_design encode`
 before it wrote a sidecar. `--backfill` reconstructs what the run manifests under `runs/encode/`
 still say -- which task encoded which shots, on which device -- and writes one sidecar per cache,
 marked `backfilled: true`. It writes NOTHING inside the `.pt` files and never overwrites a
@@ -31,7 +31,7 @@ counts rather than taking either sentence on trust.
 prints the census: caches, sidecars, missing sidecars, `input_fingerprint.kind`, device,
 `backfilled`, and how many sidecars hold null in each field a reconstruction cannot fill.
 
-The behaviour lives in `ideate.design.provenance.backfill` and `.audit`, which is what the tests
+The behaviour lives in `shot_design.design.provenance.backfill` and `.audit`, which is what the tests
 exercise; this script is the shell entry point and nothing else.
 """
 
@@ -46,8 +46,8 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
-from ideate import config
-from ideate.design import provenance
+from shot_design import config
+from shot_design.design import provenance
 
 
 def main(argv: list[str] | None = None) -> int:

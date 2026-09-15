@@ -18,9 +18,9 @@ and can be matched name by name. Measured 2026-09-06: all 124 columns of both
 the train and the test side match `new_diagnostic_order` to a worst relative
 error of 1.2e-12, and only 6 of 124 match `current_diagnostic_order`.
 
-    python scripts/labelmaker/elm_write_normalization.py --verify-split
+    python scripts/labeler/elm_write_normalization.py --verify-split
 
-Runs in either env; it imports only numpy and `labelmaker.models.elm_inputs`.
+Runs in either env; it imports only numpy and `labeler.models.elm_inputs`.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 # After the `sys.path` line above, deliberately: run from a checkout.
-from labelmaker.models import elm_inputs
+from labeler.models import elm_inputs
 
 NORMS_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/testing_model.pkl")
 SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl")

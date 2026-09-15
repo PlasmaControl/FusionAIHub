@@ -23,8 +23,8 @@ export OMP_NUM_THREADS=8
 export MKL_NUM_THREADS=8
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-export LABELMAKER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
+export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
 
-srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labelmaker/retrain_tearing_dsm.py" \
+srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labeler/retrain_tearing_dsm.py" \
   --out-dir "$ROOT/models/d3d_tearing_time_to_event_dsm_continued" \
   --lr 1e-4 --batch-size 1000 --max-epochs 300 --patience 5 --seed 0

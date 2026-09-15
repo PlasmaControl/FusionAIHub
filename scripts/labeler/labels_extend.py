@@ -14,8 +14,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from labelmaker.config import Paths
-from labelmaker.events.databases import (
+from labeler.config import Paths
+from labeler.events.databases import (
     FORMAT_COLUMNS,
     FORMAT_SCHEMA_VERSION,
     load_manifest,
@@ -24,7 +24,7 @@ from labelmaker.events.databases import (
     write_format_table,
     write_meta,
 )
-from labelmaker.events.schema import read_events, read_sources
+from labeler.events.schema import read_events, read_sources
 
 MAX_EVENT_ROWS = 50_000
 SUMMARY_COLUMNS = ("shot", "n_events", "t_first_s", "t_last_s", "t_cov0_s", "t_cov1_s")
@@ -188,7 +188,7 @@ def export(args) -> Path:
     meta = {
         "schema_version": FORMAT_SCHEMA_VERSION,
         "made_from": made_from,
-        "made_by": "scripts/labelmaker/labels_extend.py",
+        "made_by": "scripts/labeler/labels_extend.py",
         "made_at": now,
         "category": args.category, "producer": args.producer,
         "shot_list": args.shot_list.name,
@@ -201,7 +201,7 @@ def export(args) -> Path:
         "full_events_root": events_root,
         "full_events": "<full_events_root>/<shot>_events.parquet; "
                        "a relative full_events_root is relative to --root "
-                       "($LABELMAKER_ROOT)",
+                       "($LABELER_ROOT)",
         "coverage": "Bounds of successful source coverage; not a claim of continuous "
                     "coverage. Missing products and absent curated shots are not negatives.",
     }
@@ -233,7 +233,7 @@ def main(argv=None) -> int:
     parser.add_argument("--producer", required=True)
     parser.add_argument("--shot-list", required=True, type=Path)
     parser.add_argument("--root", type=Path, default=Paths.from_env().root,
-                        help="Labelmaker root (read-only); also locates --run-id metadata")
+                        help="labeler root (read-only); also locates --run-id metadata")
     parser.add_argument("--events-root", type=Path)
     parser.add_argument("--run-id", help="Completed run JSON for a scan with no shot products")
     parser.add_argument("--out", required=True, type=Path)

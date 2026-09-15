@@ -4,19 +4,19 @@
     # in the sbatch that submits the work
     JOBID=$(sbatch --parsable my_work.sbatch)
     sbatch --dependency=afterany:$JOBID --partition=serial --time=00:10:00 \
-        --wrap "pixi run -e labelmaker python scripts/labelmaker/jobstats_check.py \
+        --wrap "pixi run -e labelmaker python scripts/labeler/jobstats_check.py \
             --job-id $JOBID --wait-for-data 300 \
-            --preserve-dir $LABELMAKER_ROOT/runs/slurm"
+            --preserve-dir $LABELER_ROOT/runs/slurm"
 
     # offline, on a report you already have
-    python scripts/labelmaker/jobstats_check.py \
+    python scripts/labeler/jobstats_check.py \
         --jobstats-file 2925387_0.jobstats.txt --sacct-file 2925387_0.sacct.txt
 
-Everything is in `labelmaker.jobstats`, so the parsing and the gate are testable
+Everything is in `labeler.jobstats`, so the parsing and the gate are testable
 without a scheduler and importable from other tooling; this file only exists to
 give SLURM a path to run. `--help` lists every flag.
 """
-from labelmaker.jobstats import main
+from labeler.jobstats import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

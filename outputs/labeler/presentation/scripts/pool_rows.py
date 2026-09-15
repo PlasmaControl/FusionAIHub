@@ -9,12 +9,12 @@ import sys
 
 import numpy as np
 
-from labelmaker import catalog, validate
-from labelmaker.config import Paths
-from labelmaker.labels.store import read_label
-from labelmaker.models import registry
-from labelmaker.models.d3d_tearing_onset_cnn1d.spec import ARTIFACTS, OUTPUT_SPEC, SLUG
-from labelmaker.models.runners import keras_h5
+from labeler import catalog, validate
+from labeler.config import Paths
+from labeler.labels.store import read_label
+from labeler.models import registry
+from labeler.models.d3d_tearing_onset_cnn1d.spec import ARTIFACTS, OUTPUT_SPEC, SLUG
+from labeler.models.runners import keras_h5
 
 out = sys.argv[1]
 p = Paths.from_env()

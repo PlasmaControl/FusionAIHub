@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ideate-census
+#SBATCH --job-name=shot_design-census
 #SBATCH --partition=pppl
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
@@ -11,7 +11,7 @@
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 
 # Task I3: the fresh corpus census -- one row per (file, group) for all 16,909 files of
-# $IDEATE_CORPUS, written to db/corpus_coverage.parquet with a sibling .json describing the run.
+# $SHOT_DESIGN_CORPUS, written to db/corpus_coverage.parquet with a sibling .json describing the run.
 #
 # This is the census the plan requires in place of the old shotsearch manifest, which counted a
 # group as populated on the CHANNEL axis (`shape[0] > 1`) and so counted every (C, 1) placeholder
@@ -21,8 +21,8 @@
 # ---------------------------------------------------------------------------- sizing (measured)
 #
 # Pilot (login node, cold cache, 2026-09-07):
-#     /usr/bin/time -v pixi run -e ideate-cpu python -m ideate corpus scan \
-#         --limit 300 --workers 8 --out $IDEATE_DATA_ROOT/db/census_pilot.parquet
+#     /usr/bin/time -v pixi run -e ideate-cpu python -m shot_design corpus scan \
+#         --limit 300 --workers 8 --out $SHOT_DESIGN_DATA_ROOT/db/census_pilot.parquet
 #   -> 300 files, 249 openable, 7,949 rows; scan wall 32.3 s (38.4 s including `pixi run`);
 #      max RSS 1,140,716 KB. A second, warm-cache run of the same 300 files took 2.5 s, which is
 #      how we know the 32.3 s is cold metadata I/O and nothing else.
@@ -70,15 +70,15 @@
 set -euo pipefail
 
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-IDEATE_DATA_ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
+SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
 
 cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 
-export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false IDEATE_CORPUS="${IDEATE_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
-export LABELMAKER_ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
-srun "$REPO/.pixi/envs/ideate-cpu/bin/python" -m ideate corpus scan \
+export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false SHOT_DESIGN_CORPUS="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
+export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+srun "$REPO/.pixi/envs/ideate-cpu/bin/python" -m shot_design corpus scan \
     --workers 96 \
-    --out "$IDEATE_DATA_ROOT/db/corpus_coverage.parquet"
+    --out "$SHOT_DESIGN_DATA_ROOT/db/corpus_coverage.parquet"
 
 echo "finished at $(date -Is)"

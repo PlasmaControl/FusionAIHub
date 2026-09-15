@@ -1,6 +1,6 @@
-"""Pin `labelmaker.ae.transform` against tokeye's own transform, on real data.
+"""Pin `labeler.ae.transform` against tokeye's own transform, on real data.
 
-`labelmaker.ae.transform.compute_stft` is a port of
+`labeler.ae.transform.compute_stft` is a port of
 `tokeye.transforms.compute_stft`, and labelmaker must not import tokeye at
 runtime (it lives in a read-only venv with its own torch). This script is the
 evidence that the port agrees: it reads one real corpus CO2 record, runs both
@@ -33,7 +33,7 @@ import numpy as np
 import scipy
 from tokeye.transforms import compute_stft as tokeye_compute_stft
 
-from labelmaker.ae import transform as tr
+from labeler.ae import transform as tr
 
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 

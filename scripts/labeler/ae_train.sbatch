@@ -37,7 +37,7 @@ set -euo pipefail
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 export PYTHONPATH=$REPO/src
-export LABELMAKER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
+export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
 export OMP_NUM_THREADS=1   # 8 dataloader workers, each single-threaded numpy
 
 EXTRA=()
@@ -52,7 +52,7 @@ esac
 nvidia-smi || true
 echo "job ${SLURM_JOB_ID} task ${SLURM_ARRAY_TASK_ID} (${TARGET}/${LOSS}) on $(hostname) at $(date -Is)"
 
-srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labelmaker/ae_train.py" \
+srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labeler/ae_train.py" \
   --target "$TARGET" --loss "$LOSS" \
   --dataset-dir "$ROOT/ae/dataset" \
   --out-dir "$ROOT/models/d3d_ae_activity_seldnet" \

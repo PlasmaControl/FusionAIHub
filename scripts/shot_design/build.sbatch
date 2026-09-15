@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ideate-build-rv1
+#SBATCH --job-name=shot_design-build-rv1
 #SBATCH --partition=pppl
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
@@ -10,8 +10,8 @@
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 
-# Task I6b: the recommender_v1 shot database, built from the FAITH corpus + labelmaker's feature
-# store -- `ideate build --list recommender_v1 --reader corpus --no-encode`.
+# Task I6b: the recommender_v1 shot database, built from the FAITH corpus + labeler's feature
+# store -- `shot_design build --list recommender_v1 --reader corpus --no-encode`.
 #
 # `--no-encode` skips the IGNITE waveform channel ONLY; the scalar and MiniLM text embeddings are
 # part of the database and are written either way (the manifest's ignite block says so). The
@@ -88,10 +88,10 @@ set -euo pipefail
 #   Lesson recorded in the ledger: size from a COLD pilot (drop_caches is not available; use shots
 #   not read in the last hour, or a compute-node pilot).
 # REPO may point at a clean worktree snapshot (the controller does this while another task edits
-# the main checkout); IDEATE_PY is the interpreter, which always lives in the main checkout.
+# the main checkout); SHOT_DESIGN_PY is the interpreter, which always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-IDEATE_PY="${IDEATE_PY:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python}"
-IDEATE_DATA_ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
+SHOT_DESIGN_PY="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_PY "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python")"
+SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
 LIST="${LIST:-recommender_v1}"
 
 cd "$REPO"
@@ -101,8 +101,8 @@ echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 # be re-fetched from a node with no route to the Hub. TOKENIZERS_PARALLELISM: the tokenizer forks
 # with the build's own pool otherwise and warns on every shot.
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
-export IDEATE_DATA_ROOT="$IDEATE_DATA_ROOT"
-export LABELMAKER_ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+export SHOT_DESIGN_DATA_ROOT="$SHOT_DESIGN_DATA_ROOT"
+export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 # One thread per worker: the work is numpy over one shot's arrays, and 8 workers x 6 OpenMP
 # threads on 6 allocated cpus is pure contention.
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -110,7 +110,7 @@ export HDF5_USE_FILE_LOCKING=FALSE
 # The env python has the main checkout on its path; put THIS snapshot's src first.
 export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 
-srun "$IDEATE_PY" -m ideate build \
+srun "$SHOT_DESIGN_PY" -m shot_design build \
     --list "$LIST" \
     --reader corpus \
     --no-encode \
