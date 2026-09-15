@@ -513,6 +513,107 @@ Nothing in the tools re-implements retrieval: they call `shot_design.retrieval.r
 `shot_design query` cannot disagree about a shot. `src/shot_design/mcp/tools.py` is the whole contract —
 the function signatures and docstrings there *are* the tool schemas the assistant sees.
 
+## Local LLM and per-shot blurbs
+
+`configs/shot_design/llm.yaml` enables `provider: ollama`. Without an endpoint file,
+the client is unavailable and builds use the existing header + outcome template.
+The UI reads stored blurbs; loading a page does not generate them.
+
+Prompt v5 asks for exactly **three plain sentences**, at most **90 words**:
+
+1. What the shot or experiment set out to do.
+2. Whether it succeeded, plainly naming a disruption, fast current quench or early
+   termination when the source records one; say when success is unknown.
+3. One interesting finding from the operator entries or shot brief, or the literal
+   sentence **No notable findings were logged.**
+
+The model uses the mini-proposal title/purpose, run title, shot brief, up to eight
+quotable operator entries, chief-operator status, outcome and verdict. It writes
+in its own words, without quotation marks, headings, lists or invented/rounded
+numbers. The gate rejects empty text, overlong text, double/curly quotation marks,
+numbers or shot references absent from the source, and anything other than three
+complete sentences. Sentence terminators are `.`, `!` and `?` followed by whitespace
+or end of text; decimal points do not split sentences. A rejected reply retains
+the header + outcome template. These mechanical checks do not establish semantic
+accuracy: inspect the dry-run candidates before the full backfill.
+
+Every generated table row carries `blurb`, `blurb_source` (`llm` or `template`),
+`blurb_model` (resolved tag, e.g. `gemma4:26b`) and `blurb_prompt_version` (integer).
+The latter two record the configuration used for the attempt, including template
+fallbacks; `blurb_source` says whether the model supplied the final text. Legacy
+rows retain unknown provenance until processed. `manifest.json["blurbs"]` contains
+the whole table's `llm` and `template` counts plus the latest pass's `model` and
+`prompt_version`; a limited pass may leave a mix of row versions.
+
+`blurb` normally selects templates, empty blurbs, and rows with missing or older
+prompt versions. `--all` selects every row, including current model blurbs.
+`--limit N` takes the first N eligible shots in shot order (`0` does nothing).
+`--dry-run` prints each shot number, source-text character count, candidate, gate
+verdict/reason and final text; it writes neither database files nor request cache.
+A normal pass atomically replaces `shots.parquet`, then atomically updates the
+manifest. Those are two file replacements, not a transaction across both files.
+
+### Operator runbook (after merge)
+
+The existing Ollama 0.33.3 binary and both Gemma models are reused in place:
+
+| `llm.yaml` key | default path |
+| --- | --- |
+| `ollama_bin_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/bin/ollama` |
+| `ollama_models_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/ollama` |
+| `ollama_home_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/ollama_home` |
+
+`serve_llm.sh` requires `<ollama_bin_dir>/bin/ollama`; a missing binary exits 2
+with its path. Installed model tags bypass pulling; a missing tag uses the retained
+pull loop. No binary installation or copying occurs. Defaults are a 16384-token
+context, 24h keep-alive and two loaded models. The Slurm allocation is one GPU,
+eight CPUs, 64 GB RAM and four hours. See the upstream
+[Ollama serving documentation](https://github.com/ollama/ollama/blob/main/docs/cli.mdx)
+and [environment settings](https://github.com/ollama/ollama/blob/main/docs/faq.mdx).
+
+Run these commands as the operator, from the merged checkout, on the login node:
+
+```bash
+cd /scratch/gpfs/nc1514/FusionAIHub
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+
+# 1. Create the Slurm log directory, then submit the model server.
+mkdir -p /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm
+sbatch scripts/shot_design/serve_llm.sbatch
+
+# 2. Wait for readiness; check the job/log if this does not appear.
+until test -s /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json; do sleep 2; done
+cat /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design llm
+
+# 3. Inspect five candidates, gate verdicts and final summaries without writing.
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design blurb --all --dry-run --limit 5
+
+# 4. After reviewing the preview, backfill all shots from the login node.
+bash scripts/shot_design/blurb_all.sh
+
+# 5. Stop the existing UI serve process with Ctrl-C in its terminal, then restart
+#    it so its loaded database snapshot contains the new blurbs.
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design serve --port 8765
+```
+
+The blurb wrapper runs the mandated frozen Pixi command with
+`python -m shot_design blurb --all`; additional flags are forwarded. The client
+runs on the CPU and discovers the GPU server through `llm/endpoint.json` under
+`paths.data_root`. A configured `base_url` takes precedence over that file.
+Match the endpoint's `job_id` to the submitted job and check its log for `ready:`;
+the `llm` command prints discovery metadata and does not probe the server.
+
+The Slurm script binds `$(hostname -s):11434` and uses the default data root in its
+literal `#SBATCH -o` directive. For another root, override `sbatch --output` and
+create its `llm` directory first; account for Pixi activation overriding
+`SHOT_DESIGN_DATA_ROOT` as described above. Endpoint JSON contains `url`, `models`,
+`host`, `job_id`, `started` and `version`, and is published with an atomic rename.
+An answering port is refused before any write. On exit, the script removes the
+endpoint only if its URL and start time still match this run, then stops its child.
+To stop the GPU allocation, use `scancel JOB_ID` with the ID printed by `sbatch`;
+to renew it, wait for that job to exit and submit the same script again.
+
 ## Browser UI: Search, Shot and Locate
 
 The local browser UI wraps the existing MCP tool functions and the
