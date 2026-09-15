@@ -664,3 +664,45 @@ records are outside this grep's scope and remain unchanged by hash verification.
 The worktree `.pixi` directory and generated package bytecode are removed. Only
 the intended source, test, configuration, documentation, and report changes are
 committed. `git status --porcelain` is empty after the report commit.
+
+## Controller verification follow-up
+
+The controller's run with mounted production stores exposed five shot_design
+integration failures: the function-scoped autouse fixtures deleted new-name
+variables after the module-scoped `real_paths` fixture set `SHOT_DESIGN_DATA_ROOT`.
+Subsequent CLI calls therefore opened the default production database instead of
+the fixture's temporary database. The earlier interposer-backed run skipped these
+tests and did not expose the bug.
+
+Fix commit `0578a65` changes both autouse fixtures to delete only `IDEATE_*` and
+`LABELMAKER_*`. Their docstrings explain that this is transitional isolation from
+the old names still exported by the main pixi manifest. New-name variables,
+including module- and session-scoped fixture values, remain untouched; tests that
+need them absent must delete them explicitly. One small regression test per
+package resolves a root set by a module-scoped fixture through the real config
+reader. Both tests failed before the fix by resolving the production root and
+passed after it.
+
+The controller clarified that existing tests may read mounted production stores
+as the baseline did; production writes remain forbidden. Both full suites ran
+from `/scratch/gpfs/nc1514/FusionAIHub-R1` with `LD_PRELOAD` absent and no interposer,
+using exactly:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m pytest tests/shot_design -q -W error -p no:cacheprovider -rs
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m pytest tests/labeler -q -W error -p no:cacheprovider -rs
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/ruff check --no-cache src/labeler src/shot_design scripts/labeler tests/labeler tests/shot_design
+```
+
+- **shot_design: 1,374 passed, no skips, exit 0** in 130.03 seconds, including all
+  five previously failing real-integration tests.
+- **labeler: 1,774 passed, 3 skipped, exit 0** in 277.41 seconds. Only the baseline
+  skips remain: `L14PERF_REAL_ROOT` is unset and the two live fdp tests are opt-in.
+- **Ruff: all checks passed** on the five requested paths.
+
+These counts include one new regression test per package and supersede the
+earlier interposer-backed verification counts. Labeler printed the previously
+observed XRootD finalizer `FutureWarning` about `torch.distributed.reduce_op` during
+interpreter shutdown; the suite and process still exited 0, without suppression.
+Both suites finished before the fix commit. This follow-up created no worktree
+`.pixi` directory and changed only the four test files plus this report.
