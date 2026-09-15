@@ -80,7 +80,8 @@ def test_array_rejects_inconsistent_worker_reservations(workers, prefetch, cpus)
 
     path = SCRIPTS / "tokeye_masks.sbatch"
     assert path.is_file()
-    env = dict(os.environ, PREP_WORKERS=str(workers), PREFETCH=str(prefetch),
+    env = dict(os.environ, REPO=str(SCRIPTS.parents[1]),
+               PREP_WORKERS=str(workers), PREFETCH=str(prefetch),
                SLURM_CPUS_PER_TASK=str(cpus), SLURM_ARRAY_TASK_ID="0",
                N_CHUNKS="1", SHOT_FILE="/tmp/unused-l12-shots.txt")
     done = subprocess.run(["bash", str(path)], env=env, capture_output=True,
@@ -90,7 +91,7 @@ def test_array_rejects_inconsistent_worker_reservations(workers, prefetch, cpus)
 
 
 def test_scratch_root_separates_outputs_from_readonly_runtime(tmp_path):
-    """ROOT must win over an activated production LABELMAKER_ROOT."""
+    """ROOT must win over an activated production LABELER_ROOT."""
     import json
     import os
 
@@ -108,7 +109,7 @@ def test_scratch_root_separates_outputs_from_readonly_runtime(tmp_path):
         program.chmod(0o755)
     root = tmp_path / 'scratch-products'
     repo = SCRIPTS.parents[1]
-    env = dict(os.environ, ROOT=str(root), LABELMAKER_ROOT='/production',
+    env = dict(os.environ, ROOT=str(root), LABELER_ROOT='/production',
                REPO=str(repo), CAPTURE=str(capture),
                PATH=f'{bin_dir}:/usr/bin:/bin', SHOT_FILE='/input/shots.txt',
                PHASE3_PYTHON='/readonly/phase3/bin/python',

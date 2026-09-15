@@ -20,7 +20,14 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-CONFIG_DIR = Path(os.environ.get("IDEATE_CONFIG_DIR", Path(__file__).resolve().parents[2] / "configs" / "shot_design"))
+from labeler.env import getenv as labeler_getenv
+
+from .env import getenv
+
+CONFIG_DIR = Path(getenv(
+    "SHOT_DESIGN_CONFIG_DIR",
+    str(Path(__file__).resolve().parents[2] / "configs" / "shot_design"),
+))
 _VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -32,7 +39,10 @@ def _interpolate(values: dict[str, Any]) -> dict[str, Any]:
         for k, v in out.items():
             if isinstance(v, str) and "${" in v:
                 new = _VAR.sub(
-                    lambda m: str(out.get(m.group(1), os.environ.get(m.group(1), m.group(0)))), v
+                    lambda m: str(out[m[1]] if m[1] in out else (
+                        labeler_getenv if m[1].startswith(("LABELER_", "LABELMAKER_"))
+                        else getenv
+                    )(m[1], m[0])), v
                 )
                 if new != v:
                     out[k], changed = new, True
@@ -81,12 +91,13 @@ def load_paths(path: Path | None = None) -> Paths:
     override = _PATHS_OVERRIDE.get()
     if path is None and override is not None:
         return override
-    if os.environ.get("IDEATE_DATA_ROOT") == "":
-        raise ValueError("IDEATE_DATA_ROOT is empty; set it to a data directory or unset it")
-    p = path or Path(os.environ.get("IDEATE_PATHS", CONFIG_DIR / "paths.yaml"))
+    root = getenv("SHOT_DESIGN_DATA_ROOT")
+    if root == "":
+        raise ValueError("SHOT_DESIGN_DATA_ROOT is empty; set it to a data directory or unset it")
+    p = path or Path(getenv("SHOT_DESIGN_PATHS", str(CONFIG_DIR / "paths.yaml")))
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
-    if os.environ.get("IDEATE_DATA_ROOT"):
-        raw["data_root"] = os.environ["IDEATE_DATA_ROOT"]
+    if root:
+        raw["data_root"] = root
     return Paths(**_interpolate(raw))
 
 
@@ -94,7 +105,7 @@ def data_root_origin() -> str:
     """Which of `load_paths`'s three sources settled `data_root`, phrased for a reader.
 
     The writing CLI commands print this beside the root before they write. The 2026-09-14
-    incident was an exported `IDEATE_DATA_ROOT` that pixi's `[activation.env]` had already
+    incident was an exported `SHOT_DESIGN_DATA_ROOT` that pixi's `[activation.env]` had already
     overridden with the production root, and the only way to see that while it is happening is
     to be told which source won -- the resolved path on its own looks plausible either way.
 
@@ -102,14 +113,17 @@ def data_root_origin() -> str:
     `using_paths` override is a server concern and no writing command runs under one.
 
     The third label names the file in full rather than saying "configs/shot_design/paths.yaml":
-    `CONFIG_DIR` follows `IDEATE_CONFIG_DIR`, so the packaged path is not always the one that was
+    `CONFIG_DIR` follows `SHOT_DESIGN_CONFIG_DIR`, so the packaged path is not always the one that was
     read, and a label naming a file that settled nothing is the same failure as an unlabelled
     root one level up.
     """
-    if os.environ.get("IDEATE_DATA_ROOT"):
-        return "IDEATE_DATA_ROOT env"
-    if os.environ.get("IDEATE_PATHS"):
-        return f"IDEATE_PATHS={os.environ['IDEATE_PATHS']}"
+    if getenv("SHOT_DESIGN_DATA_ROOT"):
+        name = "SHOT_DESIGN_DATA_ROOT" if "SHOT_DESIGN_DATA_ROOT" in os.environ else "IDEATE_DATA_ROOT"
+        return f"{name} env"
+    path = getenv("SHOT_DESIGN_PATHS")
+    if path:
+        name = "SHOT_DESIGN_PATHS" if "SHOT_DESIGN_PATHS" in os.environ else "IDEATE_PATHS"
+        return f"{name}={path}"
     return f"{CONFIG_DIR / 'paths.yaml'} default"
 
 
@@ -159,7 +173,7 @@ class CorpusAddress(BaseModel):
 
 
 class LabelerAddress(BaseModel):
-    """One canonical feature of `$LABELMAKER_ROOT/features/<shot>_features.h5`.
+    """One canonical feature of `$LABELER_ROOT/features/<shot>_features.h5`.
 
     `reduce` says how a stored `(C, T)` array becomes one series: a scalar feature is `(1, T)` and
     takes `first`; a profile is `(33 rho, T)` and takes `core` (rho = 0), `edge` (rho = 1) or

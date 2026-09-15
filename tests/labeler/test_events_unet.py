@@ -77,7 +77,7 @@ def test_the_parameter_count_is_the_pinned_one():
 
 
 def test_the_default_path_follows_the_model_artifact_convention(monkeypatch):
-    monkeypatch.setenv("LABELMAKER_ROOT", "/tmp/not-a-real-root")
+    monkeypatch.setenv("LABELER_ROOT", "/tmp/not-a-real-root")
     got = unet.default_checkpoint_path()
     assert got == Path("/tmp/not-a-real-root/models/tokeye/big_tf_unet_251210.pt")
     assert unet.CHECKPOINT_NAME == "big_tf_unet_251210.pt"

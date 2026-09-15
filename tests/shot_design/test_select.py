@@ -948,7 +948,7 @@ def selection_inputs(tmp_path):
 
 def select_argv(txt_dir, parquet, tmp_path, **over) -> list[str]:
     """The CLI arguments for one selection run, with every real-data path pointed at tmp_path so
-    nothing here reads $LABELMAKER_ROOT, the corpus or the 616 MB logbook."""
+    nothing here reads $LABELER_ROOT, the corpus or the 616 MB logbook."""
     args = {
         "--n": "12",
         "--census": str(parquet),

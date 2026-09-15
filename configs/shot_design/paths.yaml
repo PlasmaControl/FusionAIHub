@@ -1,5 +1,5 @@
 # Every absolute path the project touches. ${var} refers to another key here or to an env var.
-# Override the root for tests/other users with IDEATE_DATA_ROOT, or point IDEATE_PATHS at another file.
+# Override the root for tests/other users with SHOT_DESIGN_DATA_ROOT, or point SHOT_DESIGN_PATHS at another file.
 data_root: /scratch/gpfs/EKOLEMEN/nc1514/ideate
 raw_dir: ${data_root}/raw                       # our fetched per-shot files (d3d_fusion_data layout)
 db_dir: ${data_root}/db

@@ -1431,7 +1431,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="keep only the first N shots OF THIS RANK's "
                              "share; 0 means all")
     parser.add_argument("--root", type=Path, default=None,
-                        help="LABELMAKER_ROOT: where masks/, events/ and "
+                        help="LABELER_ROOT: where masks/, events/ and "
                              "runs/ are written")
     parser.add_argument("--corpus", type=Path, default=None,
                         help="directory of <shot>_processed.h5")

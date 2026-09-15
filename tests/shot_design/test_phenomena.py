@@ -166,9 +166,9 @@ def _claim(shot: int, phenomenon: str, **over) -> dict:
 
 
 def _write_tables(db_dir: Path, events: list[dict], labels: list[dict], claims: list[dict]) -> None:
+    from labeler.events import schema as events_schema
     from shot_design.labels.claims import CLAIMS_DTYPES
     from shot_design.labels.join import LABELS_WIDE_DTYPES
-    from labeler.events import schema as events_schema
 
     pd.DataFrame(events, columns=list(events_schema.COLUMNS)).astype(
         events_schema.DTYPES
@@ -1105,7 +1105,7 @@ def rwm_tables(tmp_path, monkeypatch):
     """The registry's `tables:` resolution pointed at a fixture, caches cleared both ways."""
     def install(shots: list[int]) -> Path:
         root = _label_tables(tmp_path / "labels", shots)
-        monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(root))
+        monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
         ph._table_shots.cache_clear()
         return root
 

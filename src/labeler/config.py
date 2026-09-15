@@ -7,11 +7,12 @@ variable. Defaults are group storage: Nathan's own scratch is near quota.
 from __future__ import annotations
 
 import hashlib
-import os
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+from .env import getenv
 
 DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 DEFAULT_CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
@@ -38,7 +39,7 @@ DEFAULT_LOGS_JSONL = Path(
 #: a run from the repo does. That resolution is a SOURCE CHECKOUT's (which
 #: is every way labeler is run today: `PYTHONPATH=$PWD/src`, or an
 #: editable install); from a non-editable wheel the tables are outside the
-#: package and `LABELMAKER_LABEL_TABLES` is the answer. Overridable anyway,
+#: package and `LABELER_LABEL_TABLES` is the answer. Overridable anyway,
 #: because a table too large or too restricted to commit lives on /scratch.
 DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
 
@@ -56,13 +57,13 @@ class Paths:
     @classmethod
     def from_env(cls) -> Paths:
         return cls(
-            root=Path(os.environ.get("LABELMAKER_ROOT", str(DEFAULT_ROOT))),
-            corpus=Path(os.environ.get("LABELMAKER_CORPUS", str(DEFAULT_CORPUS))),
-            text_root=Path(os.environ.get("LABELMAKER_TEXT_ROOT",
+            root=Path(getenv("LABELER_ROOT", str(DEFAULT_ROOT))),
+            corpus=Path(getenv("LABELER_CORPUS", str(DEFAULT_CORPUS))),
+            text_root=Path(getenv("LABELER_TEXT_ROOT",
                                           str(DEFAULT_TEXT))),
-            logs_jsonl=Path(os.environ.get("LABELMAKER_LOGS_JSONL",
+            logs_jsonl=Path(getenv("LABELER_LOGS_JSONL",
                                            str(DEFAULT_LOGS_JSONL))),
-            label_tables=Path(os.environ.get("LABELMAKER_LABEL_TABLES",
+            label_tables=Path(getenv("LABELER_LABEL_TABLES",
                                              str(DEFAULT_LABEL_TABLES))),
         )
 

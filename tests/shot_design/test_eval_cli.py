@@ -33,8 +33,8 @@ def _no_minilm(monkeypatch):
 def db_root(tmp_path: Path, monkeypatch) -> Path:
     root = tmp_path / "shot_design"
     (root / "db").mkdir(parents=True)
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(root))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     write_db(
         root / "db",
         [
@@ -273,8 +273,8 @@ def test_eval_recall_defaults_to_the_whole_discharge_not_the_flat_top():
 
 
 def test_every_eval_subcommand_says_so_when_there_is_no_database(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "empty"))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     for argv in (["eval", "prompts"], ["eval", "latency"], ["eval", "recall", "eho"]):
         assert cli.main(argv) == 1
     assert capsys.readouterr().err.count("run `shot_design build` first") == 3

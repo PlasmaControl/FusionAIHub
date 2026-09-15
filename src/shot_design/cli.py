@@ -20,7 +20,10 @@ from typing import get_args
 
 import yaml
 
+from labeler.env import getenv as labeler_getenv
+
 from . import config
+from .env import getenv
 from .retrieval import describe as describe_mod
 from .retrieval import rank as rank_mod
 from .schema import QueryState, Range, SegName, ShotRecord, to_summary
@@ -36,9 +39,9 @@ from .shotdb.reader import ShotFailed
 # the same load takes ~5 s with HF_HUB_OFFLINE=1). Set here rather than in the Makefile so that
 # `uv run shot_design build` behaves the same however it is invoked, and at import time so the build's
 # worker processes inherit it. Below the imports is early enough -- huggingface_hub reads this
-# variable when IT is imported, which is lazily, inside text._load_model. IDEATE_HF_ONLINE=1 opts
+# variable when IT is imported, which is lazily, inside text._load_model. SHOT_DESIGN_HF_ONLINE=1 opts
 # out, which is what a first run on a machine with no cached checkpoint needs.
-if os.environ.get("IDEATE_HF_ONLINE") != "1":
+if getenv("SHOT_DESIGN_HF_ONLINE") != "1":
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 WIDTH = 98
@@ -309,7 +312,7 @@ def _announce_root(command: str, destination: str, paths: config.Paths | None = 
 
     The 2026-09-14 incident (see `config.data_root_origin`) was a one-shot `build` that replaced
     the 500-shot production database because pixi's `[activation.env]` silently won over the
-    exported `IDEATE_DATA_ROOT`. Nothing printed the root, so the only evidence was the database
+    exported `SHOT_DESIGN_DATA_ROOT`. Nothing printed the root, so the only evidence was the database
     afterwards. Every command that writes under the root says this line first, and it goes to
     stderr so a redirected stdout report still carries it to the terminal.
 
@@ -1007,7 +1010,7 @@ def cmd_corpus_select(args) -> int:
             print(
                 f"{len(pending)} {noun} shot(s) have no measured flat-top; refusing to write "
                 f"{args.name}. Run labeler's features stage over "
-                f"{pending_out or 'those shots (set $LABELMAKER_ROOT or --pending-out)'} and "
+                f"{pending_out or 'those shots (set $LABELER_ROOT or --pending-out)'} and "
                 "repeat with --finalize, or pass --allow-pending to write the list as it stands.",
                 file=sys.stderr,
             )
@@ -1092,15 +1095,15 @@ _SELECT_COLUMNS = ["shot", "group", "present", "t0_s", "t1_s"]
 def _pending_path(args) -> Path | None:
     """Where the selected shots that still need a labeler features run are listed.
 
-    `$LABELMAKER_ROOT/<name>_pending_features.txt` by default: the file is a work order for
+    `$LABELER_ROOT/<name>_pending_features.txt` by default: the file is a work order for
     labeler's features stage, so it belongs next to the feature store that stage writes into
-    and not in this repo. None when neither `--pending-out` nor `$LABELMAKER_ROOT` says where --
+    and not in this repo. None when neither `--pending-out` nor `$LABELER_ROOT` says where --
     in which case the count is still printed and the list is still refused, because not knowing
     where to file the work order is not a reason to publish an unverified list.
     """
     if args.pending_out:
         return Path(args.pending_out)
-    root = os.environ.get("LABELMAKER_ROOT")
+    root = labeler_getenv("LABELER_ROOT")
     return Path(root) / f"{args.name}_pending_features.txt" if root else None
 
 
@@ -1219,7 +1222,7 @@ def cmd_logs(args) -> int:
 def cmd_labels(args) -> int:
     """`labels join`: labeler's per-time labels and events become the DB's three label tables.
 
-    Succeeds with `n_shots_with_events = 0` when `$LABELMAKER_ROOT/events/` does not exist -- it
+    Succeeds with `n_shots_with_events = 0` when `$LABELER_ROOT/events/` does not exist -- it
     does not until the mask job has run, and the labels are useful before then.
     """
     from labeler.config import Paths as LabelmakerPaths
@@ -1231,7 +1234,7 @@ def cmd_labels(args) -> int:
     if not shots:
         print("no shots selected", file=sys.stderr)
         return 1
-    root = Path(args.labelmaker_root) if args.labelmaker_root else LabelmakerPaths.from_env().root
+    root = Path(args.labeler_root) if args.labeler_root else LabelmakerPaths.from_env().root
     if not (root / "labels").is_dir():
         print(f"no labels directory at {root / 'labels'}", file=sys.stderr)
         return 1
@@ -1363,7 +1366,7 @@ def cmd_eval(args) -> int:
     if args.what == "recall":
         from labeler.config import Paths as LabelmakerPaths
 
-        root = Path(args.labelmaker_root) if args.labelmaker_root else LabelmakerPaths.from_env().root
+        root = Path(args.labeler_root) if args.labeler_root else LabelmakerPaths.from_env().root
         try:
             report = rec_mod.recall(args.phenomenon, db, root, segment=args.segment)
         except KeyError:
@@ -1605,7 +1608,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("legacy", "corpus"),
         default="legacy",
         help="raw layer to build from: the d3d_fusion_data layout (default) or the FAITH corpus "
-        "plus $LABELMAKER_ROOT/features",
+        "plus $LABELER_ROOT/features",
     )
     p.add_argument(
         "--no-encode",
@@ -1695,7 +1698,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"the list is a function of it (default {select_mod.DEFAULT_SEED}, or the seed "
         "--from-list's document recorded)",
     )
-    s.add_argument("--features", help="labeler feature store (default: $LABELMAKER_ROOT/features)")
+    s.add_argument("--features", help="labeler feature store (default: $LABELER_ROOT/features)")
     s.add_argument("--frame-codes", help="IGNITE frame_codes directory")
     s.add_argument("--logs", help="sql/logs.jsonl, the source of mpid (default: paths.yaml's)")
     s.add_argument(
@@ -1728,7 +1731,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--pending-out",
         help="where to list the shots awaiting features (default: "
-        "$LABELMAKER_ROOT/<name>_pending_features.txt)",
+        "$LABELER_ROOT/<name>_pending_features.txt)",
     )
     p.set_defaults(func=cmd_corpus)
 
@@ -1754,7 +1757,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--list", help="configs/shot_design/shot_lists/<name>.yaml (default: recommender_v1)")
     s.add_argument("--list-file", help="a shot-list YAML at an explicit path")
     s.add_argument("--shots", type=int, nargs="*", help="explicit shot numbers")
-    s.add_argument("--labeler-root", help="$LABELMAKER_ROOT (default: labeler's own)")
+    s.add_argument("--labeler-root", help="$LABELER_ROOT (default: labeler's own)")
     s.add_argument("--db", help="database directory (default: paths.yaml's db_dir)")
     s.add_argument("--text-root", help="the text corpus root (default: paths.yaml's)")
     s.add_argument("--lexicon", help="phenomenon aliases (default: labeler's lexicons.yaml)")
@@ -1786,7 +1789,7 @@ def build_parser() -> argparse.ArgumentParser:
         "recall", help="detector recall vs an annotation sheet; exits 2 below 20 labelled rows"
     )
     s.add_argument("phenomenon", help="which sheet, e.g. eho")
-    s.add_argument("--labeler-root", help="$LABELMAKER_ROOT (default: labeler's own)")
+    s.add_argument("--labeler-root", help="$LABELER_ROOT (default: labeler's own)")
     for name, s in what.choices.items():
         # `recall` alone defaults to the whole discharge: an annotation window is indexed against
         # the shot, and clipping it to the flat top would score a ramp-down ELM as a miss.

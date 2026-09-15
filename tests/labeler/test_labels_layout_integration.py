@@ -76,7 +76,7 @@ def test_databases_only_on_all_committed_rwm_shots_writes_56_events_33_sources(
     tmp_path, monkeypatch,
 ):
     labels = REPO / "data/events"
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(labels))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(labels))
     shots = sorted(set().union(*(db.shots(s, labels) for s in db.load_manifest(labels))))
     assert run.main(["events", "--databases-only", "--root", str(tmp_path),
                      "--run-id", "rwm-integration", "--shots", *map(str, shots)]) == 0
@@ -97,7 +97,7 @@ def test_databases_only_on_all_committed_rwm_shots_writes_56_events_33_sources(
 def test_rwm_500_scan_exports_empty_table_with_completed_run_provenance(
     tmp_path, monkeypatch,
 ):
-    monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(REPO / "data/events"))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(REPO / "data/events"))
     shot_list = REPO / "configs/shot_design/shot_lists/recommender_v1.yaml"
     shots = [r["shot"] for r in yaml.safe_load(shot_list.read_text())["shots"]]
     assert len(shots) == 500

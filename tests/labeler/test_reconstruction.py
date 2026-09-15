@@ -257,7 +257,7 @@ def test_reconstruction_fidelity_asserts_the_match_column_mapping():
         validate_mod.MATCH_COLUMNS = original
 
 
-def test_reconstruction_fidelity_counts_shots_before_the_generator_is_consumed():
+def test_reconstruction_fidelity_counts_shots_before_the_generator_is_consumed(truth_archive):
     """`len(list(shots))` after the loop reports 0 for a
     generator. `shots_requested` must reflect what was actually asked for."""
 
@@ -265,7 +265,7 @@ def test_reconstruction_fidelity_counts_shots_before_the_generator_is_consumed()
         yield 999999999    # not in the archive; the loop must still consume it
 
     report = validate.reconstruction_fidelity(
-        "d3d_tearing_onset_cnn1d", shots(), Paths.from_env()
+        "d3d_tearing_onset_cnn1d", shots(), Paths.from_env(), archive=truth_archive
     )
     assert report["n_shots_requested"] == 1
     assert report["skipped"]["999999999"] == "no archived rows"

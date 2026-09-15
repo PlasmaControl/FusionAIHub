@@ -33,23 +33,23 @@ fdp_project_dir: /x/fdp
 
 
 def test_interpolate_resolves_keys_and_env(monkeypatch):
-    monkeypatch.setenv("IDEATE_TEST_HOME", "/h")
+    monkeypatch.setenv("SHOT_DESIGN_TEST_HOME", "/h")
     out = config._interpolate(
-        {"root": "/r", "a": "${root}/a", "b": "${a}/b", "c": "${IDEATE_TEST_HOME}/c"}
+        {"root": "/r", "a": "${root}/a", "b": "${a}/b", "c": "${SHOT_DESIGN_TEST_HOME}/c"}
     )
     assert out == {"root": "/r", "a": "/r/a", "b": "/r/a/b", "c": "/h/c"}
 
 
 def test_interpolate_leaves_unknown_variable_literal(monkeypatch):
-    monkeypatch.delenv("IDEATE_NOPE_UNSET", raising=False)
-    out = config._interpolate({"a": "${IDEATE_NOPE_UNSET}/x"})
+    monkeypatch.delenv("SHOT_DESIGN_NOPE_UNSET", raising=False)
+    out = config._interpolate({"a": "${SHOT_DESIGN_NOPE_UNSET}/x"})
     # Designed fallback (see config._interpolate docstring): a ${var} matching neither
     # another key nor an environment variable is left as literal text, not raised.
-    assert out == {"a": "${IDEATE_NOPE_UNSET}/x"}
+    assert out == {"a": "${SHOT_DESIGN_NOPE_UNSET}/x"}
 
 
 def test_load_paths_data_root_override(monkeypatch):
-    monkeypatch.setenv("IDEATE_DATA_ROOT", "/tmp/ideate-test")
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", "/tmp/ideate-test")
     p = config.load_paths()
     assert p.raw_dir == Path("/tmp/ideate-test/raw")
     assert p.staged_raw_dir == Path("/scratch/gpfs/EKOLEMEN/d3d_fusion_data")
@@ -60,21 +60,21 @@ def test_load_paths_data_root_override(monkeypatch):
 
 
 def test_ideate_paths_env_selects_alternate_file(tmp_path, monkeypatch):
-    monkeypatch.delenv("IDEATE_DATA_ROOT", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     alt = tmp_path / "alt_paths.yaml"
     alt.write_text(_PATHS_YAML_TEMPLATE.format(data_root="/alt/root"))
-    monkeypatch.setenv("IDEATE_PATHS", str(alt))
+    monkeypatch.setenv("SHOT_DESIGN_PATHS", str(alt))
     p = config.load_paths()
     assert p.data_root == Path("/alt/root")
 
 
 def test_load_paths_explicit_path_overrides_ideate_paths_env(tmp_path, monkeypatch):
-    monkeypatch.delenv("IDEATE_DATA_ROOT", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     env_file = tmp_path / "env_paths.yaml"
     env_file.write_text(_PATHS_YAML_TEMPLATE.format(data_root="/env/root"))
     explicit_file = tmp_path / "explicit_paths.yaml"
     explicit_file.write_text(_PATHS_YAML_TEMPLATE.format(data_root="/explicit/root"))
-    monkeypatch.setenv("IDEATE_PATHS", str(env_file))
+    monkeypatch.setenv("SHOT_DESIGN_PATHS", str(env_file))
     p = config.load_paths(explicit_file)
     assert p.data_root == Path("/explicit/root")
 
@@ -101,7 +101,7 @@ def test_config_dir_environment_override(tmp_path, monkeypatch):
     import sys
 
     (tmp_path / "custom.yaml").write_text("port: shot_design\n")
-    monkeypatch.setenv("IDEATE_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("SHOT_DESIGN_CONFIG_DIR", str(tmp_path))
     result = subprocess.run(
         [sys.executable, "-c", "from shot_design.config import load_yaml; print(load_yaml('custom.yaml')['port'])"],
         cwd=tmp_path, env=os.environ.copy(), capture_output=True, text=True, check=False,
@@ -111,8 +111,8 @@ def test_config_dir_environment_override(tmp_path, monkeypatch):
 
 
 def test_default_models_and_corpus_paths_remain_read_only(monkeypatch):
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
-    monkeypatch.delenv("IDEATE_DATA_ROOT", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     paths = config.load_paths()
     assert paths.data_root == Path("/scratch/gpfs/EKOLEMEN/nc1514/ideate")
     assert paths.models_dir / "IGNITE" == Path("/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE")

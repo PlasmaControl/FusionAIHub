@@ -2,7 +2,7 @@
 writes.
 
 The 2026-09-14 incident was a `build` into a root nobody printed: pixi's `[activation.env]`
-overrode the exported `IDEATE_DATA_ROOT` and the production database was replaced by a one-shot
+overrode the exported `SHOT_DESIGN_DATA_ROOT` and the production database was replaced by a one-shot
 one. One line on stderr, emitted before the first write, is what makes that visible at the time
 rather than afterwards.
 """
@@ -26,17 +26,17 @@ from .test_select import select_argv, selection_inputs  # noqa: F401
 
 
 def test_origin_names_the_env_variable_when_it_is_set(paths, monkeypatch):
-    """`IDEATE_DATA_ROOT` wins over the paths file, so it is what the line must name."""
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(paths.data_root))
-    assert config.data_root_origin() == "IDEATE_DATA_ROOT env"
+    """`SHOT_DESIGN_DATA_ROOT` wins over the paths file, so it is what the line must name."""
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(paths.data_root))
+    assert config.data_root_origin() == "SHOT_DESIGN_DATA_ROOT env"
 
 
 def test_origin_names_the_paths_file_when_it_alone_is_set(paths, tmp_path):
-    assert config.data_root_origin() == f"IDEATE_PATHS={tmp_path / 'paths.yaml'}"
+    assert config.data_root_origin() == f"SHOT_DESIGN_PATHS={tmp_path / 'paths.yaml'}"
 
 
 def test_origin_names_the_repo_default_when_neither_is_set(paths, monkeypatch):
-    monkeypatch.delenv("IDEATE_PATHS")
+    monkeypatch.delenv("SHOT_DESIGN_PATHS")
     assert config.data_root_origin() == f"{config.CONFIG_DIR / 'paths.yaml'} default"
     assert config.data_root_origin().endswith("configs/shot_design/paths.yaml default")
 
@@ -44,7 +44,7 @@ def test_origin_names_the_repo_default_when_neither_is_set(paths, monkeypatch):
 def test_origin_names_the_paths_file_an_overridden_config_dir_actually_reads(
     paths, tmp_path, monkeypatch
 ):
-    """`IDEATE_CONFIG_DIR` moves the packaged config directory, so "the default" is then a
+    """`SHOT_DESIGN_CONFIG_DIR` moves the packaged config directory, so "the default" is then a
     different file -- and a line that named `configs/shot_design/paths.yaml` would be naming a file
     that settled nothing. The label has to be the path `load_paths` reads.
 
@@ -55,9 +55,9 @@ def test_origin_names_the_paths_file_an_overridden_config_dir_actually_reads(
     elsewhere = tmp_path / "other-configs"
     elsewhere.mkdir()
     shutil.copy2(tmp_path / "paths.yaml", elsewhere / "paths.yaml")
-    monkeypatch.setenv("IDEATE_CONFIG_DIR", str(elsewhere))
+    monkeypatch.setenv("SHOT_DESIGN_CONFIG_DIR", str(elsewhere))
     monkeypatch.setattr(config, "CONFIG_DIR", elsewhere)
-    monkeypatch.delenv("IDEATE_PATHS")
+    monkeypatch.delenv("SHOT_DESIGN_PATHS")
     assert config.data_root_origin() == f"{elsewhere / 'paths.yaml'} default"
     assert config.load_paths().data_root == paths.data_root
 
@@ -70,8 +70,8 @@ def writing_inputs(paths, staged_shot_a, text_fixtures, monkeypatch):
     monkeypatch.setattr(
         text, "embed_texts", lambda texts: np.zeros((len(texts), 384), np.float32)
     )
-    monkeypatch.setenv("LABELMAKER_ROOT", str(paths.data_root / "labelmaker"))
-    monkeypatch.setenv("IDEATE_CORPUS", str(paths.foundation_model_processed_dir))
+    monkeypatch.setenv("LABELER_ROOT", str(paths.data_root / "labelmaker"))
+    monkeypatch.setenv("SHOT_DESIGN_CORPUS", str(paths.foundation_model_processed_dir))
     return paths
 
 
@@ -99,9 +99,9 @@ def watch_first_write(monkeypatch, capsys, root):
 
 def test_build_names_the_env_root_before_writing(writing_inputs, monkeypatch, capsys):
     paths = writing_inputs
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(paths.data_root))
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(paths.data_root))
     expected = (
-        f"shot_design build: data root {paths.data_root} (IDEATE_DATA_ROOT env) -> db {paths.db_dir}"
+        f"shot_design build: data root {paths.data_root} (SHOT_DESIGN_DATA_ROOT env) -> db {paths.db_dir}"
     )
     capsys.readouterr()
     seen = watch_first_write(monkeypatch, capsys, paths.data_root)
@@ -143,7 +143,7 @@ def test_writers_name_the_root_before_writing(
         destination = f"census {paths.db_dir / 'corpus_coverage.parquet'}"
     expected = (
         f"shot_design {command}: data root {paths.data_root} "
-        f"(IDEATE_PATHS={tmp_path / 'paths.yaml'}) -> {destination}"
+        f"(SHOT_DESIGN_PATHS={tmp_path / 'paths.yaml'}) -> {destination}"
     )
     capsys.readouterr()
     seen = watch_first_write(monkeypatch, capsys, paths.data_root)
@@ -161,7 +161,7 @@ def test_select_names_the_root_even_when_every_path_is_explicit(
     out = writing_inputs.data_root / "selection.yaml"
     expected = (
         f"shot_design corpus select: data root {writing_inputs.data_root} "
-        f"(IDEATE_PATHS={tmp_path / 'paths.yaml'}) -> shot list {out}"
+        f"(SHOT_DESIGN_PATHS={tmp_path / 'paths.yaml'}) -> shot list {out}"
     )
     capsys.readouterr()
     assert cli.main(select_argv(txt, parquet, tmp_path, **{"--out": str(out)})) == 0
@@ -176,7 +176,7 @@ def test_a_command_with_no_resolvable_root_still_names_its_destination(
     degrades to the destination alone and a fully-explicit run works as it did before."""
     txt, parquet = selection_inputs
     out = tmp_path / "selection.yaml"
-    monkeypatch.setenv("IDEATE_DATA_ROOT", "")  # load_paths refuses an empty root
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", "")  # load_paths refuses an empty root
     capsys.readouterr()
     assert cli.main(select_argv(txt, parquet, tmp_path, **{"--out": str(out)})) == 0
     assert capsys.readouterr().err.splitlines()[0] == (

@@ -1,6 +1,6 @@
 """The shot-log contract: what to run on the GA network, and how to bring the result back.
 
-The text corpus under `$IDEATE_TEXT_ROOT/shotsummary/` is not this project's output. It is the
+The text corpus under `$SHOT_DESIGN_TEXT_ROOT/shotsummary/` is not this project's output. It is the
 output of **PlasmaControl/d3dlogfetching** (`main.py` scrapes a run day off the DIII-D logbook into
 `data/runs/<run_id>/`; `textprocess.py` turns each of those into one `shot_<N>.txt` per shot), and
 that tool can only run on a machine inside the GA fusion network -- not on Stellar, not on Omega.

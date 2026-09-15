@@ -395,13 +395,13 @@ def test_the_encoder_is_kept_offline_by_default():
     import os
 
     assert os.environ.get("HF_HUB_OFFLINE") == "1"
-    assert "IDEATE_HF_ONLINE" in Path(cli.__file__).read_text()
+    assert "SHOT_DESIGN_HF_ONLINE" in Path(cli.__file__).read_text()
 
 
 @pytest.mark.parametrize("argv", [["show", "1"], ["export", "1"], ["coverage"], ["query", "--ref", "1"], ["add", "1"]])
 def test_data_commands_report_an_empty_database(tmp_path, monkeypatch, capsys, argv):
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path))
     assert cli.main(argv) == 1
     error = capsys.readouterr().err
     assert "no database at" in error and str(tmp_path) in error
@@ -410,9 +410,9 @@ def test_data_commands_report_an_empty_database(tmp_path, monkeypatch, capsys, a
 
 
 def test_explicitly_empty_data_root_reports_a_clear_error(monkeypatch, capsys):
-    monkeypatch.setenv("IDEATE_DATA_ROOT", "")
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", "")
     assert cli.main(["coverage"]) == 1
-    assert "IDEATE_DATA_ROOT is empty" in capsys.readouterr().err
+    assert "SHOT_DESIGN_DATA_ROOT is empty" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("command", ["fetch", "serve", "curate"])

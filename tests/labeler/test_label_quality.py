@@ -205,7 +205,7 @@ def test_label_quality_asserts_the_match_column_mapping():
         validate_mod.MATCH_COLUMNS = original
 
 
-def test_label_quality_isolates_a_per_shot_crash(tmp_path, monkeypatch):
+def test_label_quality_isolates_a_per_shot_crash(tmp_path, monkeypatch, truth_archive):
     """Shared with `reconstruction_fidelity`: one shot's bad data must
     not abort the whole validation run. A shot missing every one of the five
     `MATCH_COLUMNS` features makes `match_rows`' variance guard raise
@@ -234,7 +234,7 @@ def test_label_quality_isolates_a_per_shot_crash(tmp_path, monkeypatch):
         pass  # every field absent
 
     report = validate.label_quality(
-        "d3d_tearing_onset_cnn1d", [111, 222], Paths(root=tmp_path)
+        "d3d_tearing_onset_cnn1d", [111, 222], Paths(root=tmp_path), archive=truth_archive
     )
     assert report["n_shots_requested"] == 2
     assert report["n_shots_used"] == 0
@@ -243,7 +243,7 @@ def test_label_quality_isolates_a_per_shot_crash(tmp_path, monkeypatch):
     assert "constant" in report["skipped"]["111"]
 
 
-def test_label_quality_skip_reasons_histogram_and_warning(tmp_path, monkeypatch):
+def test_label_quality_skip_reasons_histogram_and_warning(tmp_path, monkeypatch, truth_archive):
     """Many shots skipping for the identical underlying
     cause must collapse into one histogram bucket with a warning, not vanish
     into `skipped`'s per-shot dict of numpy-repr strings - which is exactly
@@ -270,7 +270,7 @@ def test_label_quality_skip_reasons_histogram_and_warning(tmp_path, monkeypatch)
             pass  # every field absent -> the identical "constant" ValueError each time
 
     report = validate.label_quality(
-        "d3d_tearing_onset_cnn1d", shots, Paths(root=tmp_path)
+        "d3d_tearing_onset_cnn1d", shots, Paths(root=tmp_path), archive=truth_archive
     )
     assert report["n_shots_used"] == 0
     assert len(report["skipped"]) == 5
@@ -309,12 +309,13 @@ def test_label_quality_asserts_truth_column_shapes(tmp_path, monkeypatch):
     validate._archive_shot_ids.cache_clear()
 
 
-def test_label_quality_counts_shots_before_the_generator_is_consumed():
+def test_label_quality_counts_shots_before_the_generator_is_consumed(monkeypatch, truth_archive):
+    monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_tearing_adapter())
     def shots():
         yield 999999999  # not in the archive; must still be consumed
 
     report = validate.label_quality(
-        "d3d_tearing_onset_cnn1d", shots(), Paths.from_env()
+        "d3d_tearing_onset_cnn1d", shots(), Paths.from_env(), archive=truth_archive
     )
     assert report["n_shots_requested"] == 1
     assert report["skipped"]["999999999"] == "no archived rows"
@@ -528,7 +529,7 @@ def test_label_quality_report_on_one_real_shot():
     assert "row-matched" in penalty["computed_from"]
 
 
-def test_reconstruction_penalty_is_computed_row_matched_not_from_all_matched(monkeypatch):
+def test_reconstruction_penalty_is_computed_row_matched_not_from_all_matched(monkeypatch, truth_archive):
     """The two headline scores must come from the same
     row set. `theirs` (archived, `bt=0`) and `ours` (reconstructed, `bt=2`)
     predict different baseline values, and the last two of six rows are
@@ -606,7 +607,7 @@ def test_reconstruction_penalty_is_computed_row_matched_not_from_all_matched(mon
     monkeypatch.setattr(validate_mod, "_matched_shot", fake_matched_shot)
 
     report = validate_mod.label_quality(
-        "d3d_tearing_onset_cnn1d", [111], Paths.from_env()
+        "d3d_tearing_onset_cnn1d", [111], Paths.from_env(), archive=truth_archive
     )
 
     a_all = report["archived_inputs_all"]["betan"]["rmse"]
@@ -658,7 +659,7 @@ def test_penalty_carries_the_best_f1_gap_for_a_binary_label():
 
 
 def test_a_source_no_requested_feature_names_is_not_warned_about(tmp_path,
-                                                                 monkeypatch):
+                                                                 monkeypatch, truth_archive):
     """`events` serves one feature - `phenomenon_window_features` - and a
     model that does not ask for it has not failed to resolve anything
     through that source. Warning about it on every run that requests no
@@ -682,7 +683,7 @@ def test_a_source_no_requested_feature_names_is_not_warned_about(tmp_path,
         pass
 
     report = validate.label_quality(
-        "d3d_tearing_onset_cnn1d", [111], Paths(root=tmp_path)
+        "d3d_tearing_onset_cnn1d", [111], Paths(root=tmp_path), archive=truth_archive
     )
     warnings_ = report["skip_reasons"]["warnings"]
     assert not any("'events'" in w for w in warnings_)

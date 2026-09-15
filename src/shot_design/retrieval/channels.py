@@ -27,6 +27,7 @@ from collections import Counter
 
 import numpy as np
 
+from ..env import getenv
 from ..flags.rules import actuator_columns
 from ..schema import QueryState, Range
 from ..shotdb.store import ShotDB
@@ -296,9 +297,9 @@ def text_knn(q: QueryState, db: ShotDB) -> list[tuple[str, float]]:
         # The same guard cli.py sets, repeated because this package is importable on its own: on
         # a node with no outbound route sentence_transformers does not fail when it reaches into
         # huggingface_hub, it hangs for minutes inside httpx.connect_tcp (measured in Task 12; the
-        # same load takes ~5 s offline). IDEATE_HF_ONLINE=1 opts out, which is what a first run
+        # same load takes ~5 s offline). SHOT_DESIGN_HF_ONLINE=1 opts out, which is what a first run
         # on a machine with no cached checkpoint needs.
-        if os.environ.get("IDEATE_HF_ONLINE") != "1":
+        if getenv("SHOT_DESIGN_HF_ONLINE") != "1":
             os.environ.setdefault("HF_HUB_OFFLINE", "1")
         from ..shotdb.text import embed_texts
 

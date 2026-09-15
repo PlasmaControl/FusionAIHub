@@ -211,7 +211,7 @@ def test_a_build_that_finds_nothing_does_not_rewrite_the_subset(corpus, paths):
 
 
 def test_the_temporary_file_carries_the_pid(corpus, paths, monkeypatch):
-    # Two SLURM array tasks sharing a `LABELMAKER_ROOT` build this cache at
+    # Two SLURM array tasks sharing a `LABELER_ROOT` build this cache at
     # once. A fixed sibling `.tmp` lets them interleave their writes into
     # one file and rename the result into place.
     seen: list[str] = []

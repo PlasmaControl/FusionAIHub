@@ -7,7 +7,7 @@ a real `python -m shot_design.mcp` subprocess, because the things a wrapper gets
 in-process: a tool whose signature will not turn into a JSON schema, a module that writes to
 stdout and corrupts the transport, an entry point that does not exist.
 
-Nothing here reaches the network or the real store: `IDEATE_DATA_ROOT` points at `tmp_path`
+Nothing here reaches the network or the real store: `SHOT_DESIGN_DATA_ROOT` points at `tmp_path`
 throughout, including in the subprocess's environment.
 """
 
@@ -218,8 +218,8 @@ def test_describe_shot_says_which_device_encoded_the_frame_codes(ideate_db, monk
 
 
 def test_a_missing_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "empty"))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     got = tools.describe_shot(100)
     assert "no database" in got["error"] and "shot_design build" in got["error"]
     assert got["caveats"] == []
@@ -246,8 +246,8 @@ def _source(shot: int, name: str = "tokeye_track", **over) -> dict:
 def test_get_events_without_a_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
     """The tool now needs the shot index to tell an unindexed shot from an unexamined one, so a
     missing database is the same error `describe_shot` and `search_shots` give."""
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "root"))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "root"))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     got = tools.get_events(shot=1)
     assert "error" in got and "shot_design build" in got["error"]
 
@@ -841,8 +841,8 @@ def test_phenomenon_locate_on_a_half_published_database_is_the_shared_error(
     root = tmp_path / "half"
     (root / "db").mkdir(parents=True)
     (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(root))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     got = _registered("phenomenon_locate")("NTM")
     assert "FileNotFoundError" in got["error"] and "shots.parquet" in got["error"]
     assert any("rebuilt" in c and "shot_design build" in c for c in got["caveats"])
@@ -851,8 +851,8 @@ def test_phenomenon_locate_on_a_half_published_database_is_the_shared_error(
 def test_phenomenon_locate_without_a_database_at_all_names_the_build_command(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "empty"))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     got = tools.phenomenon_locate("NTM")
     assert "no database" in got["error"] and "shot_design build" in got["error"]
 
@@ -983,8 +983,8 @@ def test_a_half_published_database_is_an_error_dict_naming_the_rebuild(tmp_path,
     root = tmp_path / "half"
     (root / "db").mkdir(parents=True)
     (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(root))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     got = _registered("describe_shot")(shot=100)
     assert "FileNotFoundError" in got["error"] and "shots.parquet" in got["error"]
     assert any("rebuilt" in c and "shot_design build" in c for c in got["caveats"])
@@ -1009,7 +1009,7 @@ def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db
         async with Client(server_mod.build_server()) as client:
             tool_list = await client.list_tools()
             resources = await client.list_resources()
-            manifest = await client.read_resource("shot_design://manifest")
+            manifest = await client.read_resource("ideate://manifest")
             return tool_list, resources, manifest
 
     tool_list, resources, manifest = asyncio.run(go())
@@ -1018,7 +1018,7 @@ def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db
     ]
     for t in tool_list.tools:
         assert t.description and t.input_schema["type"] == "object"
-    assert [str(r.uri) for r in resources.resources] == ["shot_design://manifest"]
+    assert [str(r.uri) for r in resources.resources] == ["ideate://manifest"]
     assert json.loads(manifest.contents[0].text)["reader"] == "test"
     # The guard at registration must not eat the schema: a `*args` wrapper that did would leave
     # every tool with an empty property set and the model guessing at argument names.
@@ -1031,12 +1031,12 @@ def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db
 def test_the_manifest_resource_carries_the_missing_database_error(tmp_path, monkeypatch):
     from mcp.client import Client
 
-    monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
-    monkeypatch.delenv("IDEATE_PATHS", raising=False)
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "empty"))
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
 
     async def go():
         async with Client(server_mod.build_server()) as client:
-            return await client.read_resource("shot_design://manifest")
+            return await client.read_resource("ideate://manifest")
 
     doc = json.loads(asyncio.run(go()).contents[0].text)
     assert "no database" in doc["error"]
@@ -1068,8 +1068,9 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     (root / "db").mkdir(parents=True)
     (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
     env = get_default_environment()
-    env.update(IDEATE_DATA_ROOT=str(root), HF_HUB_OFFLINE="1", PYTHONUNBUFFERED="1")
-    env.pop("IDEATE_PATHS", None)
+    env.update(SHOT_DESIGN_DATA_ROOT=str(root), HF_HUB_OFFLINE="1",
+               PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
+    env.pop("SHOT_DESIGN_PATHS", None)
     # THIS checkout's src first, exactly as the suite is run. Without it the subprocess imports
     # whichever `shot_design` is installed in the environment -- the main checkout -- and the test
     # silently exercises somebody else's code, which is how a worktree passes a test it breaks.

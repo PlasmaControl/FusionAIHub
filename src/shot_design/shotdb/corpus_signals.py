@@ -15,7 +15,7 @@ of them is a silent, plausible-looking error when it is wrong:
   line-integrated density is one chord and not a total at all. `reduce: sum|mean|first` is
   per address, never a default applied to whatever a group happens to hold.
 
-The second source is labeler's `$LABELMAKER_ROOT/features/<shot>_features.h5`, which is where
+The second source is labeler's `$LABELER_ROOT/features/<shot>_features.h5`, which is where
 the EFIT and plasma scalars live for corpus shots (the corpus itself carries no EFIT). Those are
 read through `labeler.features.store`, not through h5py here, so that the resolver provenance
 (`archive` / `corpus` / `fdp`, which differ by a few percent and by a 25 ms row lag -- see
@@ -69,6 +69,8 @@ from pathlib import Path
 
 import numpy as np
 
+from labeler.env import getenv
+
 from ..config import CONFIG_DIR, CorpusActuator, Paths, SignalSpec, corpus_actuators
 from ..schema import Status
 from .corpus import CorpusReader
@@ -82,13 +84,13 @@ DTYPE = np.float32
 
 
 def default_features_dir(root: str | os.PathLike | None = None) -> Path | None:
-    """`$LABELMAKER_ROOT/features`, or None when the variable is not set.
+    """`$LABELER_ROOT/features`, or None when the variable is not set.
 
     None rather than labeler's own default root: a build that silently read another user's
     feature store would report coverage this repo's environment cannot reproduce. With no root
     set, every labeler-addressed signal is `pending`, which is true and is a work order.
     """
-    root = root or os.environ.get("LABELMAKER_ROOT")
+    root = root or getenv("LABELER_ROOT")
     return Path(root) / "features" if root else None
 
 

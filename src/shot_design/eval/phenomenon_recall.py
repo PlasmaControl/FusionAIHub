@@ -1,7 +1,7 @@
 """Recall of `phenomena.locate` against the human annotation sheets -- and a refusal when there
 is not enough of a sheet to say anything.
 
-The sheets live at `$LABELMAKER_ROOT/annotate/<phenomenon>/`: `sheet.csv`, whose header is
+The sheets live at `$LABELER_ROOT/annotate/<phenomenon>/`: `sheet.csv`, whose header is
 exactly `file,shot,t0_s,t1_s,phenomenon,label,notes` and whose `label` is `y`, `n`, `?` or empty,
 beside `manifest.parquet`, which carries the same rows keyed by `file` plus the columns the
 renderer kept back from the annotator -- `is_negative`, `prior_score`, `why`, `seed`, `diags` --
@@ -39,7 +39,7 @@ sentence somebody typed; neither is a diagnostic showing the phenomenon inside t
 scoring either as a hit would inflate the recall of the detectors with the confidence of the
 label models. `locate`'s ranking keeps those classes apart for the same reason (plan §2, §7).
 
-Today no sheet exists anywhere: `$LABELMAKER_ROOT/annotate/` is empty, so every real call to this
+Today no sheet exists anywhere: `$LABELER_ROOT/annotate/` is empty, so every real call to this
 module refuses, and its tests build a synthetic sheet under `tmp_path`.
 """
 

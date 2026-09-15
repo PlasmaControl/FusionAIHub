@@ -24,12 +24,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from shot_design import cli
-from shot_design.labels import join
 from labeler.events import schema as ev
 from labeler.labels import store as label_store
 from labeler.labels.schema import LabelSpec
 from labeler.models.base import Decoded
+from shot_design import cli
+from shot_design.labels import join
 
 # One label file's worth of hand-built numbers. dt is 0.1 s so every duration below is exact in
 # binary and can be asserted without a tolerance on the time axis.
@@ -447,8 +447,8 @@ def test_a_sources_file_labelmaker_itself_wrote_is_ingested_as_is(tmp_path):
     through labeler's REAL `schema.write_sources` - the producer - and reads it back through
     the join, so the two sides' definitions of the contract cannot drift apart unnoticed: the
     columns, their order, their dtypes, and the file's name and place."""
-    from shot_design.labels import event_sources as es
     from labeler.config import Paths as LabelmakerPaths
+    from shot_design.labels import event_sources as es
 
     assert tuple(ev.SOURCE_COLUMNS) == es.SOURCES_COLUMNS
     assert dict(ev.SOURCE_DTYPES) == es.SOURCES_DTYPES

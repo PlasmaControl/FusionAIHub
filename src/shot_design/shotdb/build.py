@@ -887,7 +887,7 @@ def _move_onto(src: Path, dst: Path) -> None:
 
     The rename is the path that matters and stays first: it is atomic, so a reader of `dst` sees
     the whole of one file or the whole of the other. But the caller stages the text subset beside
-    db_dir while `text_cache_dir` is wherever the paths file says, and an `IDEATE_PATHS` file that
+    db_dir while `text_cache_dir` is wherever the paths file says, and an `SHOT_DESIGN_PATHS` file that
     puts them on different mounts -- exactly the scratch-database workflow docs/SHOT_DESIGN.md
     recommends -- makes `os.replace` raise EXDEV. The fallback copies, so it is not atomic; that
     is acceptable here and only here, because what it moves is a cache the next build rewrites.

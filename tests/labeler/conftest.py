@@ -4,7 +4,7 @@ Everything else in this directory is hermetic: it must pass under a plain
 `pixi run -e labelmaker python -m pytest tests/labeler`, with no server,
 no token and no network. A live test is marked `live` and is skipped unless
 it is asked for explicitly, either with `--run-live` or with
-`LABELMAKER_FDP=1` (the environment switch the plan's command blocks use).
+`LABELER_FDP=1` (the environment switch the plan's command blocks use).
 
 A live run also needs the `fdp run` wrapper, which supplies the server
 configuration: without it PTDATA fails with `getservbyname failed for task
@@ -24,8 +24,10 @@ import os
 import numpy as np
 import pytest
 
+from labeler.env import getenv
+
 #: Environment switch, equivalent to `--run-live`.
-LIVE_ENV = "LABELMAKER_FDP"
+LIVE_ENV = "LABELER_FDP"
 
 
 def pytest_addoption(parser) -> None:
@@ -48,10 +50,10 @@ def pytest_configure(config) -> None:
 
 
 def pytest_collection_modifyitems(config, items) -> None:
-    if config.getoption("--run-live") or os.environ.get(LIVE_ENV) == "1":
+    if config.getoption("--run-live") or getenv(LIVE_ENV) == "1":
         return
     skip = pytest.mark.skip(
-        reason="live fdp fetch is opt-in: --run-live or LABELMAKER_FDP=1"
+        reason="live fdp fetch is opt-in: --run-live or LABELER_FDP=1"
     )
     for item in items:
         if "live" in item.keywords:
@@ -379,3 +381,26 @@ def synth_shot():
         "ip_y": ip,
         "t_cov": SYNTH_T_COV,
     }
+
+
+@pytest.fixture(autouse=True)
+def _isolate_package_environment(monkeypatch):
+    """Keep caller/pixi settings out of synthetic tests, including legacy fallbacks."""
+    for name in tuple(os.environ):
+        if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_")):
+            monkeypatch.delenv(name)
+
+
+@pytest.fixture
+def truth_archive(tmp_path):
+    """Synthetic continuous/binary truth and shot IDs for validation unit tests.
+
+    These tests mock per-shot data or request an absent shot. Their initial
+    archive-shape check must also use synthetic input, never the production store.
+    """
+    root = tmp_path / "truth-archive"
+    root.mkdir()
+    n = 2000
+    np.save(root / "y.npy", np.column_stack((np.linspace(0.1, 4.0, n), np.arange(n) % 2)))
+    np.save(root / "z.npy", np.full(n, 111, dtype=np.int64))
+    return root
