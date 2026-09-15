@@ -134,6 +134,21 @@ def test_shared_number_formatter_boundaries_missing_values_and_identifiers():
     ]
 
 
+def test_flag_measurements_use_raw_numbers_and_keep_database_counts():
+    flags = [
+        {"message": "ip_mean = 8.92e+05 > 1e+05: configured limit", "value": 892400,
+         "limit": 100000, "source": "config"},
+        {"message": "ip_mean = 8.92e+05 is above the observed 1e+03-1e+05 range of 199607 shots in the database -- outside what has been run, not necessarily outside what is possible",
+         "value": 892400, "limit": 100000, "source": "envelope"},
+        {"message": "rule 2026 skipped: missing value", "value": None, "limit": None},
+    ]
+    assert run_js("input.map(formatFlag)", flags) == [
+        "ip_mean = 8.924e5 > 1e5: configured limit",
+        "ip_mean = 8.924e5; above observed range 1000–1e5 (199607 shots); not an operating limit",
+        "rule 2026 skipped: missing value",
+    ]
+
+
 def test_rendered_disclosures_summary_scalars_and_event_tooltips():
     script = r"""
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
