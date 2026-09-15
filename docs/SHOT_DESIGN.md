@@ -614,11 +614,11 @@ endpoint only if its URL and start time still match this run, then stops its chi
 To stop the GPU allocation, use `scancel JOB_ID` with the ID printed by `sbatch`;
 to renew it, wait for that job to exit and submit the same script again.
 
-## Shot Designer: Search, Shot and Locate
+## Shot Designer: Search, Shot, Locate and Info
 
 Shot Designer uses a white page, a dark teal-green banner (`#2f6f66`), and light
 neutral panels. The header shows the shot count and range; the build SHA remains
-available in `/api/meta`. The local browser UI wraps the existing MCP tool functions and the
+available in **Info** and `/api/meta`. The local browser UI wraps the existing MCP tool functions and the
 `shot_design phenomenon --json` retrieval path. It reads the database without building or
 updating it. Start it on Stellar from this worktree:
 
@@ -644,6 +644,18 @@ and require/avoid labels. Search scores come from `search_shots`; titles come fr
 `describe_shot`. The results table has a Summary column in place of the quote.
 Both replies' caveats stay available in the result row.
 
+All numeric form fields are text inputs, so mouse-wheel scrolling and ArrowUp /
+ArrowDown do not increment their values. Shot and Reference shot use
+`inputmode="numeric"`, `pattern="[0-9]*"`, and `autocomplete="off"`; identifiers
+must contain only digits and fit a JavaScript safe integer. Results, Hits, Start,
+End and Minimum confidence use `inputmode="decimal"`. Explicit parsing accepts
+finite decimal/scientific values, requires positive whole result/hit counts,
+checks confidence within 0..1, and requires End after Start when both are given.
+Blank optional fields stay absent. Invalid submissions show a short message beside
+the form, such as **Shot must be a whole number**, and make no request. Validation
+and responses never rewrite typed values; navigating to a shot populates the Shot
+form and resets its event window.
+
 Summary uses the existing `blurb` and `blurb_source` columns in `shots.parquet`.
 The record, search results and Locate hits all carry both fields. When
 `blurb_source != "llm"`, a small muted **auto** tag appears next to the text;
@@ -657,9 +669,10 @@ the updated snapshot.
 
 Shot starts with the available summary, followed by server-built `describe_parts`:
 header, selected segment's scalar grid, labels, outcome, one complete attributed
-operator quote, and a phenomena table. Each phenomenon row has its observed count,
-observed intervals with a single expandable preview, forecast count, and coverage
-with qualifications. Expanding an interval cell shows every observed interval.
+operator quote, and a phenomena table with **Phenomenon / Observed / Forecasts /
+Coverage** columns. Intervals now appear in the timeline's **Phenomena** lanes;
+the table has no **First intervals** column. Coverage retains its qualifications
+and one expansion control per cell.
 Missing coverage does not turn an absent observation into a measured zero. Run/MP
 metadata, stored flags, all segment scalars and the full logbook follow. The original
 `describe()` string remains available to CLI/MCP callers; the browser does not parse it.
@@ -680,7 +693,7 @@ than the available cell width may break. Tables scroll horizontally inside their
 own containers, including on a 400 px phone viewport, without widening the page.
 
 Table cells have a **320-character / five-line** preview. Run/MP titles, caveats,
-flags, coverage notes and intervals within one cell share a single **more / less**
+flags and coverage notes within one cell share a single **more / less**
 toggle, with line breaks between items. There is no separate `+N more` note;
 expansion reveals the whole cell. Shot-page blocks (Summary, Outcome, operator
 quote and the caveats list) use **600 characters / eight lines**. A toggle is
@@ -692,6 +705,16 @@ reported evidence kind, and forecast lanes, curated database intervals and text
 mentions remain separate. Event bars expose time, phenomenon, evidence kind and
 confidence in hover titles; there are no per-event bullet lists. Coverage rows
 without intervals retain their status and reason. Missing values display as `—`.
+
+The **Events** timeline starts with a **Phenomena** group above the per-source
+lanes, in registry order. Each lane shows the phenomenon title with its ID muted
+underneath and every observed interval. Named text/database claims can have an
+empty lane; that is not a measured absence. The **Forecasts (model estimates)**
+timeline has a separate phenomenon lane for each phenomenon with forecasts, above
+its source lanes. Tooltips include the phenomenon, source, evidence kind, true
+span, confidence and caveats; frequency bands appear only in the tooltip.
+Both groups share the existing axis, clipping and collapse controls. The all-event
+context opened from Locate uses the same renderer and registry lanes.
 
 The shot timeline domain is computed server-side from the record's `full` segment,
 converting its stored millisecond endpoints to seconds:
@@ -726,9 +749,31 @@ Locate hits show summaries, intervals, duration and caveats, and open Shot with 
 phenomenon selected.
 
 `/api/search` preserves the MCP tool JSON. Successful `/api/shot/{shot}/events`
-replies preserve all MCP evidence and status fields and add
+replies preserve MCP evidence and status fields by default and add
 `domain: {t0_s, t1_s, source: "full segment" | "segments" | "default"}`. The browser
 uses that domain directly; clients reading the HTTP API see the same numbers.
+The additive `phenomena` list shares `describe_parts()`'s evidence builder and row
+selection, including model labels and named text/database claims, in registry order:
+
+```text
+phenomena: [{id, title, intervals: [Interval], n_forecast,
+             forecast_intervals: [Interval], coverage_note,
+             coverage_windows: [[t0_s, t1_s]], caveats: [string],
+             n_observed, first_intervals: [Interval], coverage_partial}]
+```
+
+The event endpoint searches the whole shot unless `t0_s` / `t1_s` restrict it;
+`describe_parts` still describes its selected segment. Interval overlap includes
+touching endpoints; neither request-window filtering nor classification changes
+true event endpoints. Coverage windows intersect the requested window. A literal
+`phenomenon` filter selects that registry row and only the exact event-name matches
+returned by `get_events`; the unfiltered context shows classifications derived
+from other names. Untimed rows remain in the unwindowed event payload and cannot
+create phenomenon bars. The HTTP-only `min_confidence` parameter filters events
+and forecasts, updates their counts, and reports excluded rows. At a positive
+threshold, unscored rows are excluded; at zero they are retained. Named text and
+curated-list claims and the coverage-derived status remain available. Confidence
+must be finite and within 0..1. MCP `get_events` has no added parameter.
 Error replies, MCP tool descriptions and `get_events` semantics remain unchanged.
 `/api/shot/{shot}` retains `description`, `record`, `frame_codes` and
 `caveats`, and exposes `blurb` and `blurb_source` both at top level and in `record`.
@@ -746,7 +791,7 @@ describe_parts: {
   outcome: {...stored Outcome fields, end_time_s: number | null},
   operator_quote: {text, role, author, time} | null,
   phenomena: [{id, title, n_observed: integer | null, first_intervals: [Interval],
-               intervals: [Interval],
+               intervals: [Interval], forecast_intervals: [Interval],
                n_forecast, coverage_note, coverage_windows: [[t0_s, t1_s]],
                coverage_partial, caveats: [string]}],
   caveats: [string]
@@ -755,8 +800,8 @@ describe_parts: {
 
 `coverage_note` carries the registry coverage state. `first_intervals` contains at
 most three observed `Interval` records for existing clients; the additive
-`intervals` field contains every observed interval for full cell expansion.
-Forecasts never enter either list. Missing selected
+`intervals` field contains every observed interval for other clients.
+Forecasts occupy `forecast_intervals` and never enter either observed list. Missing selected
 segments return no scalars, without substituting another segment. Units are
 unscaled registry strings: `ip_mean: "A"`, `ip_slope: "A/s"`,
 `ne_line_mean: "m/cm3"`; dimensionless or unregistered quantities use `""`.
@@ -767,6 +812,38 @@ above. CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
 response header and are displayed above the hits. `/api/meta` summarizes the
 manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
 sources. Unknown API paths return JSON 404.
+
+**Info**, after Locate, loads `GET /api/scoring` and explains:
+
+- **Search score:** weighted reciprocal rank fusion,
+  `score = Σ_c w_c / (k0 + rank_c)`, with the loaded `k0`. Ranks start at one;
+  scores indicate ordering, not probability. Each registered channel appears with
+  its weight and comparison: scalar segment embeddings, MiniLM proposal/logbook
+  text, BM25 words, IGNITE codec embeddings, or resolved phenomenon evidence.
+  A channel absent from configured weights displays **1 (default)**. Hard filters
+  apply before fusion; logbook-text cosine deduplication, run-day diversity decay
+  and the optional successful-outcome penalty follow. Their displayed thresholds
+  and factors come from the endpoint.
+- **Phenomenon score:**
+  `label × max_p + event × (1 − exp(−n_events / saturation_n)) + text × tanh(hits / 2) + database`,
+  with configured weights and saturation count. `n_events` sums matching registry
+  rule weights, not raw rows. The class order is **OBSERVED > LABELLED > FORECAST >
+  DATABASE > TEXTUAL**, then score within class. Text-only scores have the shared
+  lexicon ceiling. Forecasts set the evidence class but add no event term.
+- **Database:** shot count, shot range, build SHA and build time, from the same
+  loaded snapshot as `/api/meta`. The banner continues to omit the SHA.
+
+The response is
+`{method, formula, k0, channels: [{name, weight, weight_source, compares}],
+dedup_threshold, run_diversity_decay, outcome_penalty, hard_filters,
+phenomenon: {formula, weights, saturation_n, class_order, text_only_ceiling, terms},
+db: {n_shots, shot_range, git_sha, built}, score_range}`.
+Retrieval values use `rank.load_cfg()` and the database snapshot's cached
+`phenomena._config()` settings from `retrieval.yaml`, matching Search's actual
+configuration reads; channel names use `channels.CHANNELS`. Reload the database
+snapshot after changing phenomenon scoring settings. The explanatory
+`score_range` (about 0.01–0.04) is illustrative, not a bound or calibrated
+probability. No scoring settings or channel values are hardcoded in browser JS.
 
 The browser reads only `server` from `configs/shot_design/ui.yaml`; the file's `landing` and
 `actuation` blocks belong to `retrieval.scenarios` and `retrieval.actuation`, which
