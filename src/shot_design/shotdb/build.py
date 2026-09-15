@@ -33,6 +33,7 @@ import subprocess
 import tempfile
 import time
 import warnings
+from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -809,31 +810,42 @@ def _blurb_provenance(client=None) -> dict[str, str | int]:
     }
 
 
-def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, str | int]:
+def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, object]:
     col = shots_df["blurb_source"] if "blurb_source" in shots_df.columns else pd.Series(dtype=str)
+    versions = pd.to_numeric(
+        shots_df.get("blurb_prompt_version", pd.Series(dtype="Int64")), errors="coerce"
+    ).dropna().astype(int).value_counts().sort_index()
     return {
         **{k: int(col.eq(k).sum()) for k in ("llm", "template")},
         **_blurb_provenance(client),
+        "prompt_versions": {str(version): int(count) for version, count in versions.items()},
     }
 
 
 def write_blurbs(
     paths: config.Paths, client, only_missing: bool = True, *,
-    limit: int | None = None, dry_run: bool = False,
+    limit: int | None = None, dry_run: bool = False, shots: Sequence[int] | None = None,
 ) -> int:
     """Backfill blurbs into shots.parquet with the model; rewrite the file atomically.
     Return the number of accepted model replies. Select templates, empty blurbs and stale or
-    unknown prompt versions in shot order, then apply `limit`. Dry runs print each candidate,
-    gate verdict and final text without writing database files or the client's request cache.
+    unknown prompt versions in shot order, or exactly the sorted unique targeted `shots` regardless
+    of `only_missing`, then apply `limit`. Dry runs print each candidate, gate verdict and final
+    text without writing database files or the client's request cache.
     """
     from ..retrieval import blurb as _blurb
     from .store import ShotDB
 
     if limit is not None and limit < 0:
         raise ValueError("blurb limit must be non-negative")
-    provenance = _blurb_provenance(client)
     db = ShotDB.load(paths.db_dir)
     df = db.shots.copy()
+    targeted = sorted({int(shot) for shot in shots}) if shots is not None else None
+    if targeted is not None:
+        known = {int(shot) for shot in df.index}
+        unknown = [shot for shot in targeted if shot not in known]
+        if unknown:
+            raise ValueError(f"shot not in shots.parquet: {unknown}")
+    provenance = _blurb_provenance(client)
     for col, default in (("blurb", ""), ("blurb_source", "template"), ("blurb_model", None)):
         if col not in df:
             df[col] = default
@@ -844,7 +856,9 @@ def write_blurbs(
         | df["blurb"].fillna("").str.strip().eq("")
         | df["blurb_prompt_version"].fillna(0).lt(provenance["prompt_version"])
     )
-    todo = (df.index[missing] if only_missing else df.index).sort_values()
+    todo = targeted if targeted is not None else list(
+        (df.index[missing] if only_missing else df.index).sort_values()
+    )
     if limit is not None:
         todo = todo[:limit]
     if not len(todo):

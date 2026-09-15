@@ -519,7 +519,7 @@ the function signatures and docstrings there *are* the tool schemas the assistan
 the client is unavailable and builds use the existing header + outcome template.
 The UI reads stored blurbs; loading a page does not generate them.
 
-Prompt v5 asks for exactly **three plain sentences**, at most **90 words**:
+Prompt v6 asks for exactly **three plain sentences**, at most **90 words**:
 
 1. What the shot or experiment set out to do.
 2. Whether it succeeded, plainly naming a disruption, fast current quench or early
@@ -530,12 +530,33 @@ Prompt v5 asks for exactly **three plain sentences**, at most **90 words**:
 The model uses the mini-proposal title/purpose, run title, shot brief, up to eight
 quotable operator entries, chief-operator status, outcome and verdict. It writes
 in its own words, without quotation marks, headings, lists or invented/rounded
-numbers. The gate rejects empty text, overlong text, double/curly quotation marks,
-numbers or shot references absent from the source, and anything other than three
-complete sentences. Sentence terminators are `.`, `!` and `?` followed by whitespace
-or end of text; decimal points do not split sentences. A rejected reply retains
-the header + outcome template. These mechanical checks do not establish semantic
-accuracy: inspect the dry-run candidates before the full backfill.
+numbers. Abbreviations, acronyms and symbols must be copied verbatim, never expanded,
+translated or explained, even when the model thinks it knows their meaning; it may
+not introduce an abbreviation absent from the source. Quantities must use digits
+and the unit exactly as given, or be omitted; numbers must never be written as words
+(such as `thirteen`, `several hundred` or `two-one`). The 2026-09-15 audit of the v5
+backfill motivated these rules: shot 200729 incorrectly expanded the source's `AE`
+to `aeroelastic instabilities`.
+
+The gate rejects empty text, overlong text, double/curly quotation marks, numbers
+or shot references absent from the source, and anything other than three complete
+sentences. Before counting sentences, it also checks:
+
+- `number written as a word: [...]`: a number word absent as a whole word from
+  the source, ignoring case and splitting candidate text on whitespace and hyphens.
+  The list covers two through nineteen, tens through ninety, hundred, thousand,
+  million and dozen. `one` and ordinals are exempt; source wording such as
+  `two-day experiment` may be retained.
+- `abbreviation not in source: [...]`: an ALL-CAPS token of two to six letters,
+  with an optional plural `s`, absent from the source. The comparison removes
+  hyphens, ignores case, strips the token's plural `s`, and matches substrings:
+  `L-H` passes for `PLH`, `ELMs` for `ELM`, and `NTMs` for `NTM`. `DIII` is always
+  allowed; single letters, including the `D` in `DIII-D`, are exempt.
+
+Sentence terminators are `.`, `!` and `?` followed by whitespace or end of text;
+decimal points do not split sentences. A rejected reply retains the header + outcome
+template. These mechanical checks do not establish semantic accuracy: inspect the
+dry-run candidates before the full backfill.
 
 Every generated table row carries `blurb`, `blurb_source` (`llm` or `template`),
 `blurb_model` (resolved tag, e.g. `gemma4:26b`) and `blurb_prompt_version` (integer).
@@ -543,15 +564,25 @@ The latter two record the configuration used for the attempt, including template
 fallbacks; `blurb_source` says whether the model supplied the final text. Legacy
 rows retain unknown provenance until processed. `manifest.json["blurbs"]` contains
 the whole table's `llm` and `template` counts plus the latest pass's `model` and
-`prompt_version`; a limited pass may leave a mix of row versions.
+`prompt_version`. Its `prompt_versions` histogram counts every non-null row version
+with string keys, for example `{"5": 502, "6": 2}`, making mixed versions visible;
+legacy rows with unknown versions are excluded. Builds and additions update the
+same histogram.
 
 `blurb` normally selects templates, empty blurbs, and rows with missing or older
 prompt versions. `--all` selects every row, including current model blurbs.
-`--limit N` takes the first N eligible shots in shot order (`0` does nothing).
+`--shots N [N ...]` regenerates exactly the named shots in ascending order, regardless
+of their existing text or prompt version; unknown shots fail before any model call.
+Combining `--shots` with `--all` reports an error on stderr and exits with status 2.
+`--limit N` takes the first N eligible shots after selection (`0` does nothing).
 `--dry-run` prints each shot number, source-text character count, candidate, gate
 verdict/reason and final text; it writes neither database files nor request cache.
 A normal pass atomically replaces `shots.parquet`, then atomically updates the
 manifest. Those are two file replacements, not a transaction across both files.
+
+For a targeted preview, use `shot_design blurb --shots 200729 190511 --dry-run`;
+remove `--dry-run` to regenerate those rows. Invoke the CLI directly for `--shots`:
+the `blurb_all.sh` wrapper already supplies `--all`.
 
 ### Operator runbook (after merge)
 
