@@ -8,12 +8,12 @@ agnostic: naming what a lit region *is* happens later, from the shape of
 its track and the state of the plasma around it, not here.
 
 **Why the code is copied rather than imported.** Upstream is a research
-repository under active development on a scratch filesystem; labelmaker's
+repository under active development on a scratch filesystem; labeler's
 output has to be reproducible years from now, from this checkout alone. So
 the forward pass lives here, the checkpoint is pinned by sha256, and one
-golden output (`tests/labelmaker/data/unet_golden.npz`, written by
-`scripts/labelmaker/pin_unet.py`) proves that the copy and the original
-agree to the last bit. Nothing in labelmaker imports `tokeye`.
+golden output (`tests/labeler/data/unet_golden.npz`, written by
+`scripts/labeler/pin_unet.py`) proves that the copy and the original
+agree to the last bit. Nothing in labeler imports `tokeye`.
 
 Vendored verbatim, apart from the `BigTFUNetConfig` dataclass (upstream's is
 a plain class taking `**kwargs`; the field names, defaults and therefore the
@@ -27,11 +27,11 @@ last changed in 05f68664ce40049393264f29ea63811f3da8e755, 2025-12-26).
 Attribute names are load bearing - they are the state-dict keys - so
 `in_conv.conv.0.weight` and friends must keep resolving exactly as upstream.
 
-This is **not** a labelmaker model in the `models/` sense: there is no card,
+This is **not** a labeler model in the `models/` sense: there is no card,
 no adapter and no runner, because it produces masks for the event layer
 rather than a label column on the 25 ms grid. What it does share with those
 models is where its weights live - `$LABELMAKER_ROOT/models/tokeye/` - so
-one data root still holds every weight file labelmaker reads.
+one data root still holds every weight file labeler reads.
 """
 from __future__ import annotations
 
@@ -284,7 +284,7 @@ class BigTFUNetModel(nn.Module):
 
 
 # --------------------------------------------------------------------------
-# Everything below is labelmaker's, not TokEye's.
+# Everything below is labeler's, not TokEye's.
 # --------------------------------------------------------------------------
 
 
@@ -315,7 +315,7 @@ def load_unet(
     """The pinned U-Net, in `eval()` mode on `device`.
 
     `path=None` resolves to `$LABELMAKER_ROOT/models/tokeye/` - the same data
-    root every other weight file labelmaker loads lives under. The checkpoint
+    root every other weight file labeler loads lives under. The checkpoint
     is a bare `state_dict`, so it loads with `weights_only=True`: nothing in
     the file is executed.
 

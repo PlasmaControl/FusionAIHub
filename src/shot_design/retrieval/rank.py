@@ -44,7 +44,7 @@ from .channels import (
 
 
 def load_cfg() -> dict:
-    """The `retrieval:` block of configs/ideate/retrieval.yaml.
+    """The `retrieval:` block of configs/shot_design/retrieval.yaml.
 
     The YAML is the one source of every tuned number. This used to carry its own fallback for
     each knob "so a config that predates a knob still runs", and the fallbacks drifted: the YAML
@@ -62,7 +62,7 @@ def load_cfg() -> dict:
         ("outcome_penalty", float),
     ):
         if key not in r:
-            raise KeyError(f"configs/ideate/retrieval.yaml: retrieval.{key} is missing")
+            raise KeyError(f"configs/shot_design/retrieval.yaml: retrieval.{key} is missing")
         out[key] = cast(r[key])
     return out
 
@@ -125,7 +125,7 @@ def rerank(
     already-kept one is dropped (a shot with no text vector is always kept -- no vector is not
     evidence of duplication), and the m-th survivor from a run day is multiplied by decay^(m-1).
 
-    `dedup_threshold` and `decay` default to configs/ideate/retrieval.yaml's values, read when they
+    `dedup_threshold` and `decay` default to configs/shot_design/retrieval.yaml's values, read when they
     are not given -- not to numbers written here. A literal default (0.7) sat beside a YAML tuned
     to 0.9, so a direct call silently reranked with a decay the config had abandoned.
     `outcome_penalty` defaults to 1.0 because 1.0 means "off", which is not a tuned number.
@@ -178,7 +178,7 @@ _STAT_SUFFIXES = ("_on_frac", "_slope", "_mean", "_peak", "_min", "_std")
 # numbers on the line, never from the unit alone: `units: A` covers both Ip (median 1.14e6 A) and
 # an I-coil peak (median 14.6 A), so a blanket /1e6 printed a 14.6 A coil current as
 # "1.46e-05 MA". Everything else -- T, m, G, "V (raw valve command)", and the honest "[?]" ones --
-# prints in the unit configs/ideate/ declares, unscaled. An unverified unit never gets a prefix
+# prints in the unit configs/shot_design/ declares, unscaled. An unverified unit never gets a prefix
 # invented for it.
 _PREFIXABLE = frozenset({"A", "V", "W", "J", "G"})
 
@@ -192,10 +192,10 @@ def split_stat(col: str) -> tuple[str, str]:
 
 @functools.lru_cache(maxsize=1)
 def units() -> dict[str, str]:
-    """Quantity -> the unit the registry declares, straight from configs/ideate/ -- never a unit
+    """Quantity -> the unit the registry declares, straight from configs/shot_design/ -- never a unit
     guessed here. Several are honestly `[?]` (the line-integrated density, the neutron rate) and
     print that way; an unverified unit is not silently upgraded to a plausible one. Shared with
-    `ideate show`, so the two cannot disagree about what a column is measured in.
+    `shot_design show`, so the two cannot disagree about what a column is measured in.
 
     Shot-independent, so computed once per process: a signal's unit does not change with the
     campaign, and `include_not_installed=True` lists every actuator member whatever the shot.
@@ -480,7 +480,7 @@ def _enrich(
 ) -> tuple[str, list]:
     """The result's description and operating-limit flags. Neither is a term in the score.
 
-    The description is `describe.describe`, the one template `ideate show` and `ideate export`
+    The description is `describe.describe`, the one template `shot_design show` and `shot_design export`
     also print -- there is no second renderer here, so a query result and `show` cannot disagree
     about a shot's numbers. `rule_cfg` is `load_rules()`'s output, loaded once by `search`.
     """

@@ -4,11 +4,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from labelmaker.config import Paths
-from labelmaker.features import namespace as ns
-from labelmaker.features.store import FeatureArray
-from labelmaker.models import registry
-from labelmaker.models.d3d_tearing_onset_cnn1d import spec as tm
+from labeler.config import Paths
+from labeler.features import namespace as ns
+from labeler.features.store import FeatureArray
+from labeler.models import registry
+from labeler.models.d3d_tearing_onset_cnn1d import spec as tm
 
 UPSTREAM = Path(
     "/projects/EKOLEMEN/simple_ae_predictor/models/rt_multi_io/mse_bin_os_w"

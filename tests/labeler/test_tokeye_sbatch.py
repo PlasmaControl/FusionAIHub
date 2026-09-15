@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labelmaker"
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labeler"
 
 
 def _script(name):
@@ -62,9 +62,9 @@ def test_prepass_stages_the_site_jobstats_client_for_compute_nodes():
 def test_afterok_rebuilds_before_the_gate_and_preserves_both_captures():
     text = _script("tokeye_masks_afterok.sbatch")
     assert "--dependency=afterok:" in text
-    assert text.index("--rebuild-index") < text.index('"$REPO/scripts/labelmaker/jobstats_check.py"')
+    assert text.index("--rebuild-index") < text.index('"$REPO/scripts/labeler/jobstats_check.py"')
     assert '--index-out "$ROOT/events/events_index.parquet"' in text
-    assert '"$REPO/scripts/labelmaker/jobstats_check.py"' in text
+    assert '"$REPO/scripts/labeler/jobstats_check.py"' in text
     for flag in ('--job-id "$JOBID"', '--preserve-dir "$ROOT/runs/slurm"',
                  '--out "$ROOT/runs/slurm/jobstats.json"', "--wait-for-data 300"):
         assert flag in text

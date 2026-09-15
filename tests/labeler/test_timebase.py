@@ -1,10 +1,10 @@
-"""The time-base conventions labelmaker shares with IGNITE."""
+"""The time-base conventions labeler shares with IGNITE."""
 import warnings
 
 import numpy as np
 import pytest
 
-from labelmaker.timebase import (
+from labeler.timebase import (
     decimate_to_step,
     index_at,
     sample_at,

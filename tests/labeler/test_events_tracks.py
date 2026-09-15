@@ -21,7 +21,7 @@ import math
 import numpy as np
 import pytest
 
-from labelmaker.events import masks, schema, tracks
+from labeler.events import masks, schema, tracks
 
 from .conftest import (
     SYNTH_BIN_KHZ,

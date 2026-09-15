@@ -65,7 +65,7 @@ INPUT_SPEC = InputSpec(
             # A NON-FINITE reading is different - nothing is known - and
             # counts as invented, which is what lets the pair rule below flag
             # a row where neither the power nor the location was measured.
-            # NOTE this is labelmaker's own conservatism, NOT upstream
+            # NOTE this is labeler's own conservatism, NOT upstream
             # fidelity: train.py:80 clips a NaN power to 0 and KEEPS the row,
             # because column 9 is de-NaN'd before the `isnan(x0).sum() == 0`
             # test at train.py:81. It coincides with upstream on the archive
@@ -95,7 +95,7 @@ INPUT_SPEC = InputSpec(
         #    coverage differs from the location's.
         # 2. What the rule mostly does here is invalidate the rows where BOTH
         #    are NaN, which upstream also dropped via `x0[:, 10] >= 0`.
-        #    Verified: over all 2,409 paired shots, the set labelmaker
+        #    Verified: over all 2,409 paired shots, the set labeler
         #    invalidates and the set upstream drops are IDENTICAL - zero rows
         #    either way.
         #
@@ -164,7 +164,7 @@ INPUT_SPEC = InputSpec(
     # could never fire. The clause is not lost, though: it moved into the
     # pair rule above, which sees that the fill CHANGED the value and so
     # treats the row's location as unknown. Upstream dropped such rows;
-    # labelmaker keeps the row, feeds the model the 0.0 that is the upstream
+    # labeler keeps the row, feeds the model the 0.0 that is the upstream
     # ECH-off convention, and marks the row invalid unless the power is known
     # to have been off. Said here rather than left as dead code that looks
     # live.

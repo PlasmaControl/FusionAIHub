@@ -9,7 +9,7 @@ catches everything else: a silently reordered layer, a changed padding, a
 torch upgrade that moves an arithmetic result. Together they mean a label
 produced by this network next year is the label it would have been today.
 
-The golden was written by `scripts/labelmaker/pin_unet.py`, which also ran
+The golden was written by `scripts/labeler/pin_unet.py`, which also ran
 the original `tokeye` implementation on the same input and recorded the
 difference; `test_the_golden_records_a_faithful_vendoring` is what makes
 that number part of the suite rather than a line in a report.
@@ -24,7 +24,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker.events import unet
+from labeler.events import unet
 
 GOLDEN = Path(__file__).parent / "data" / "unet_golden.npz"
 CHECKPOINT = unet.default_checkpoint_path()
@@ -93,7 +93,7 @@ def test_load_unet_returns_an_evaluating_cpu_model(model):
 
 @needs_checkpoint
 def test_the_checkpoint_on_disk_has_the_pinned_hash():
-    from labelmaker.config import sha256_of
+    from labeler.config import sha256_of
 
     assert sha256_of(CHECKPOINT) == unet.CHECKPOINT_SHA256
 
@@ -110,7 +110,7 @@ def test_a_corrupted_checkpoint_is_refused_and_both_hashes_are_named(tmp_path):
         unet.load_unet(bad)
     message = str(excinfo.value)
     assert unet.CHECKPOINT_SHA256 in message     # what was expected
-    from labelmaker.config import sha256_of
+    from labeler.config import sha256_of
     assert sha256_of(bad) in message             # and what is actually there
 
 

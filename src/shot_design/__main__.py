@@ -1,4 +1,4 @@
-"""Run the ideate command line interface."""
+"""Run the shot_design command line interface."""
 
 from .cli import main
 

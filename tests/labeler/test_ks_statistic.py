@@ -4,14 +4,14 @@
 and `import torch` binds the SYSTEM `/lib64/libstdc++.so.6` - which lacks
 `GLIBCXX_3.4.29` - ahead of the pixi env's own newer copy, unless something
 puts the latter first on the loader's path. Unpatched, that made
-`import scipy.stats` after `import labelmaker.validate` fail with
+`import scipy.stats` after `import labeler.validate` fail with
 `ImportError: version 'GLIBCXX_3.4.29' not found`. This is NOT a defect
 unique to scipy: the identical loader-ordering problem is what silently
-disabled labelmaker's entire fdp scaling path (Task 16b - see
+disabled labeler's entire fdp scaling path (Task 16b - see
 `features/resolve_fdp.py`'s module docstring), whose fix,
 `pyproject.toml`'s `tool.pixi.feature.fdp` activation table, now puts the
 pixi env's own `libstdc++` first via `LD_LIBRARY_PATH` for the whole
-`labelmaker` environment - which also fixes this scipy import, in any
+`labeler` environment - which also fixes this scipy import, in any
 context, not just under pytest. No import-order fix inside `validate.py`
 alone would have been sufficient regardless (a later task's `--stage all`
 loads torch via the `infer` stage before `validate` is imported at all), so
@@ -29,7 +29,7 @@ importable here.
 import numpy as np
 import pytest
 
-from labelmaker.validate import _ks_statistic
+from labeler.validate import _ks_statistic
 
 scipy_stats = pytest.importorskip("scipy.stats", reason="scipy not importable here")
 

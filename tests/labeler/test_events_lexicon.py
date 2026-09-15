@@ -1,7 +1,7 @@
 """The phenomenon lexicon and its matcher, on text and nothing else.
 
 Split out of `test_events_text_weak.py` with the module it tests: this half
-is what ideate reads and what a phrase has to survive to become evidence,
+is what shot_design reads and what a phrase has to survive to become evidence,
 and it never touches a corpus. Every lexicon a test needs is written into
 `tmp_path`, except the shipped one, which is the point of the first few.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from labelmaker.events import lexicon as lx
+from labeler.events import lexicon as lx
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def _lexicon(tmp_path, body: str, name: str = "lex.yaml"):
 def test_the_shipped_lexicon_carries_the_round_one_ids_and_the_ids_added_since(lex):
     # Plan 5.6's round-1 twelve, `transient`, the three q-min regime ids task
     # L-D2 added, and the `fast_ion` topic the I11 review added. This file is
-    # the SINGLE source of them: ideate reads it too, so an id renamed here is
+    # the SINGLE source of them: shot_design reads it too, so an id renamed here is
     # renamed there.
     assert lex.version == 1
     # Same ids in the same order: the tuple is the file's table of contents.
@@ -51,7 +51,7 @@ def test_the_q_min_regime_ids_are_the_rules_own_band_names(lex):
     the other is a phenomenon with events and no name (or a name and no
     events).
     """
-    from labelmaker.events import heuristics
+    from labeler.events import heuristics
 
     assert [band[0] for band in heuristics.QMIN_BANDS] == [
         "qmin_hybrid", "qmin_elevated", "qmin_high",

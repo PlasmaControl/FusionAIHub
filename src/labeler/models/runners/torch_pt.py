@@ -2,7 +2,7 @@
 
 Unlike `keras_h5` and `dsm_pickle`, which reconstruct somebody else's graph
 from a serialized description, this runner loads a network whose class lives
-in labelmaker (`labelmaker.ae.model.AeSeldNet`). The checkpoint carries the
+in labeler (`labeler.ae.model.AeSeldNet`). The checkpoint carries the
 constructor's arguments under `config`, so the file is self-describing and the
 adapter never hard-codes an architecture that a retrained checkpoint might
 change.

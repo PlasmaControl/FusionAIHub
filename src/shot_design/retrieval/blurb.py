@@ -7,7 +7,7 @@ quotation mark, and may not run longer than the configured word cap. It is a pla
 summary in the model's own words, not a quotation: the blurb does not quote the operators --
 the card's "more" section already shows a verbatim operator quote (`describe.best_quote`), so
 faithfulness there is that function's job, not this one's. Fail the gate and the template
-stands, marked so on the card. The page never waits on the model; `ideate blurb` backfills.
+stands, marked so on the card. The page never waits on the model; `shot_design blurb` backfills.
 
 
 Ported from shot-recommender-system (shotrec) @565d548.
@@ -21,9 +21,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ideate import config
-from ideate.retrieval import describe
-from ideate.schema import ShotRecord
+from shot_design import config
+from shot_design.retrieval import describe
+from shot_design.schema import ShotRecord
 
 _log = logging.getLogger(__name__)
 

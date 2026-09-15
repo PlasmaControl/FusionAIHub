@@ -23,9 +23,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate import cli, config
-from ideate.schema import ShotSummary
-from ideate.shotdb import build, text
+from shot_design import cli, config
+from shot_design.schema import ShotSummary
+from shot_design.shotdb import build, text
 
 STAGED_DIR = Path("/scratch/gpfs/EKOLEMEN/d3d_fusion_data")
 GATE = STAGED_DIR / "160904.h5"
@@ -90,7 +90,7 @@ def test_build_record_from_the_staged_store(real_paths):
     # is `pending` (a fetch to-do), never `unavailable`.
     assert rec.coverage["pnbi_15L"] == "present"
     assert rec.coverage["q95"] == "pending"
-    # The five corpus/labelmaker-only signals (nbi_torque_total, nbi_voltage_mean,
+    # The five corpus/labeler-only signals (nbi_torque_total, nbi_voltage_mean,
     # gasflow_total, rmp_total, pcbcoil) have no d3d_fusion_data address at all, so on this
     # reader they are `unavailable` -- not `pending`, which would promise a fetch could get them.
     assert set(rec.coverage.values()) == {"present", "pending", "unavailable"}
@@ -112,7 +112,7 @@ def test_build_record_from_the_staged_store(real_paths):
 def test_the_qh_database_cannot_label_this_era(real_paths):
     """`regime_source: "database"` is unreachable for these shots and the test says so out loud:
     QH_Database.csv covers 173694-175544, which does not intersect the 2014-15 staged store or
-    configs/ideate/shot_lists/poc_v1.yaml. Regimes here come from the logbook text or from
+    configs/shot_design/shot_lists/poc_v1.yaml. Regimes here come from the logbook text or from
     geometry."""
     qh = build._qh_shots(str(real_paths.qh_database_csv))
     assert (min(qh), max(qh)) == (173694, 175544)
@@ -160,10 +160,10 @@ def test_cli_coverage_table_over_the_real_build(real_db, capsys):
 def test_minilm_loads_offline_from_the_local_cache():
     """The operational fact a demo trips over: sentence_transformers calls huggingface_hub even
     with the checkpoint cached, and on a node with no outbound route that call hangs rather than
-    failing. ideate.cli defaults HF_HUB_OFFLINE=1 so this returns in seconds."""
+    failing. shot_design.cli defaults HF_HUB_OFFLINE=1 so this returns in seconds."""
     import os
 
-    assert os.environ.get("HF_HUB_OFFLINE") == "1"  # set at ideate.cli import
+    assert os.environ.get("HF_HUB_OFFLINE") == "1"  # set at shot_design.cli import
     cache = Path.home() / ".cache" / "huggingface" / "hub"
     if not list(cache.glob("models--sentence-transformers--all-MiniLM-L6-v2")):
         pytest.skip("MiniLM checkpoint is not in the local HF cache")

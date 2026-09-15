@@ -1,4 +1,4 @@
-"""Retrieval: channels, RRF fusion, reranking, explanations, and the `ideate query` command.
+"""Retrieval: channels, RRF fusion, reranking, explanations, and the `shot_design query` command.
 
 The synthetic database here is built by the production path -- `build.records_to_tables`,
 `fit_scalar_embedding`, `project_scalar` -- from hand-written ShotRecords, so a change to how a
@@ -23,9 +23,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate import cli
-from ideate.retrieval import channels, rank
-from ideate.schema import (
+from shot_design import cli
+from shot_design.retrieval import channels, rank
+from shot_design.schema import (
     HumanTier,
     Labels,
     LogEntry,
@@ -35,8 +35,8 @@ from ideate.schema import (
     Segment,
     ShotRecord,
 )
-from ideate.shotdb import build, text
-from ideate.shotdb.store import ShotDB
+from shot_design.shotdb import build, text
+from shot_design.shotdb.store import ShotDB
 
 REAL_STAGED = Path("/scratch/gpfs/EKOLEMEN/d3d_fusion_data")
 REAL_SHOTS = [161172, 161164, 160904, 161173]
@@ -216,7 +216,7 @@ def test_an_actuator_name_resolves_through_the_registry(db):
 def test_the_scalar_channel_and_the_flag_rules_resolve_an_actuator_to_one_column(db):
     """`--actuator nbi.15L=2e6` used to mean pnbi_15L_mean to scalar_knn and pnbi_15L_peak to
     evaluate_flags -- one flag, two quantities. Both read flags.rules.actuator_columns now."""
-    from ideate.flags import rules
+    from shot_design.flags import rules
 
     col = channels._actuator_column("nbi.15L", db)
     assert col == rules.actuator_columns()["nbi.15L"] == "pnbi_15L_peak"
@@ -226,7 +226,7 @@ def test_the_scalar_channel_and_the_flag_rules_resolve_an_actuator_to_one_column
 
 def test_search_checks_the_proposal_itself_against_the_operating_limits(db):
     """QueryState.actuators was never handed to evaluate_flags: the rules ran on the RESULT rows
-    only, so a 50 MW beam request -- 2.5x configs/ideate/flags.yaml's nbi_total_max -- raised
+    only, so a 50 MW beam request -- 2.5x configs/shot_design/flags.yaml's nbi_total_max -- raised
     nothing."""
     found = rank.search(QueryState(actuators={"nbi.total": 5e7}, n=3), db)
     errors = [f for f in found.proposal_flags if f.severity == "error"]
@@ -257,7 +257,7 @@ def test_text_knn_scores_a_shot_by_its_better_matching_text():
 
 def _text_knn_with(db, q, qvec):
     """text_knn with the encoder replaced by a fixed vector -- MiniLM is not under test here."""
-    import ideate.shotdb.text as text_mod
+    import shot_design.shotdb.text as text_mod
 
     old = text_mod.embed_texts
     text_mod.embed_texts = lambda texts: qvec
@@ -331,7 +331,7 @@ def test_a_negative_matches_whole_words_not_substrings():
 
 
 def test_ignite_knn_is_registered_and_empty_until_the_build_wrote_its_matrix(db):
-    """Registered in CHANNELS so rank.py picks it up unchanged; silent until `ideate build` has
+    """Registered in CHANNELS so rank.py picks it up unchanged; silent until `shot_design build` has
     written emb_ignite_seg.npy AND the manifest block that says how its columns are laid out."""
     assert "ignite_knn" in channels.CHANNELS
     assert channels.ignite_knn(QueryState(ref_shot=100), db) == []
@@ -399,14 +399,14 @@ def test_rerank_spreads_results_across_run_days(db):
 
 
 def test_the_run_day_decay_has_one_source_the_yaml(db, monkeypatch):
-    """configs/ideate/retrieval.yaml says 0.9 (tuned, with its reasoning in a comment); load_cfg's
+    """configs/shot_design/retrieval.yaml says 0.9 (tuned, with its reasoning in a comment); load_cfg's
     fallback and rerank's default both still said 0.7, so a direct rerank() call silently used a
     number the config had abandoned."""
     import inspect
 
     import yaml
 
-    from ideate import config
+    from shot_design import config
 
     yaml_value = yaml.safe_load((config.CONFIG_DIR / "retrieval.yaml").read_text())["retrieval"][
         "run_diversity_decay"
@@ -420,7 +420,7 @@ def test_the_run_day_decay_has_one_source_the_yaml(db, monkeypatch):
     # a config that lacks the knob is an error naming it, not a second value
     monkeypatch.setattr(config, "load_yaml", lambda name: {"retrieval": {"k0": 60}})
     with pytest.raises(
-        KeyError, match=r"configs/ideate/retrieval\.yaml: retrieval\.dedup_threshold is missing"
+        KeyError, match=r"configs/shot_design/retrieval\.yaml: retrieval\.dedup_threshold is missing"
     ):
         rank.load_cfg()
 
@@ -446,7 +446,7 @@ def test_values_print_in_the_units_the_registry_declares():
 
 
 def test_the_si_prefix_comes_from_the_magnitude_not_the_unit_name():
-    """configs/ideate/actuators.yaml declares the RMP coils in amps, the same unit as Ip. A blanket
+    """configs/shot_design/actuators.yaml declares the RMP coils in amps, the same unit as Ip. A blanket
     /1e6 printed a 14.6 A coil current as "1.46e-05 MA" -- right number, useless label."""
     assert rank.display("irmp_C19_peak", 14.6) == "14.6 A"
     assert rank.display("irmp_IL210_peak", 958.25) == "958 A"
@@ -466,7 +466,7 @@ def test_the_prefix_is_chosen_after_rounding_to_the_printed_precision():
 
 
 def test_an_unverified_unit_never_gets_a_prefix_invented_for_it():
-    """neutrons' unit is honestly "[?]" in configs/ideate/signals.yaml. 1.11e14 of an unknown
+    """neutrons' unit is honestly "[?]" in configs/shot_design/signals.yaml. 1.11e14 of an unknown
     thing is not 111 T-of-that-thing. (ne_line used to be the example until its unit was
     confirmed.)"""
     assert rank.display("neutrons_mean", 1.11e14).startswith("1.11e+14 [?]")
@@ -562,7 +562,7 @@ def test_search_returns_n_explained_results_and_never_the_reference_itself(db):
     assert first.description and first.explanation.channel_ranks
     assert first.score == max(r.score for r in results)
     # the one renderer: a result's description is describe.describe for its own segment
-    from ideate.retrieval import describe
+    from shot_design.retrieval import describe
 
     assert first.description == describe.describe(db.get(first.shot), "flat_top", db=db)
     assert (
@@ -649,7 +649,7 @@ def real_query_db(tmp_path_factory):
         mp.setenv("IDEATE_DATA_ROOT", str(tmp_path_factory.mktemp("ideate-query")))
         mp.delenv("IDEATE_PATHS", raising=False)
         mp.setattr(text, "embed_texts", lambda texts: np.zeros((len(texts), 384), np.float32))
-        from ideate.config import load_paths
+        from shot_design.config import load_paths
 
         paths = load_paths()
         report = build.build(REAL_SHOTS, paths, build.load_build_cfg(), workers=1, encode=False)

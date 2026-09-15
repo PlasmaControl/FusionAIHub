@@ -7,7 +7,7 @@ instead, which is why every test here checks the two things together: the sideca
 should, and the payload it describes is untouched.
 
 Nothing here reads the production store: the synthetic caches are `torch.save`d dicts in
-`tmp_path` and the run manifests are the JSON `ideate encode` writes, hand-built.
+`tmp_path` and the run manifests are the JSON `shot_design encode` writes, hand-built.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from ideate.design import provenance
+from shot_design.design import provenance
 
 
 def _cache(out_dir: Path, shot: int, frames: int = 3) -> Path:
@@ -38,7 +38,7 @@ def _cache(out_dir: Path, shot: int, frames: int = 3) -> Path:
 
 
 def _run_manifest(runs_dir: Path, stamp: str, out_dir: Path, device: str, shots) -> Path:
-    """What `ideate encode` writes under `runs/encode/` -- `seed.encode_many`'s report."""
+    """What `shot_design encode` writes under `runs/encode/` -- `seed.encode_many`'s report."""
     runs_dir.mkdir(parents=True, exist_ok=True)
     path = runs_dir / f"encode_{stamp}_0of1.json"
     path.write_text(
@@ -177,11 +177,11 @@ def test_backfill_writes_one_sidecar_per_cache_from_the_run_manifests(tmp_path):
     assert cuda["backfilled"] is True
     assert cuda["device_source"].startswith("run manifest")
     assert cuda["run_manifest"].endswith("encode_20260907T154930_0of1.json")
-    assert cuda["torch_threads"] == 1  # scripts/ideate/encode.sbatch: OMP_NUM_THREADS=1
+    assert cuda["torch_threads"] == 1  # scripts/shot_design/encode.sbatch: OMP_NUM_THREADS=1
 
     cpu = provenance.read_sidecar(codes, 190090)
     assert cpu["device"] == "cpu"
-    assert cpu["torch_threads"] == 4  # scripts/ideate/encode_cpu.sbatch: OMP_NUM_THREADS=4
+    assert cpu["torch_threads"] == 4  # scripts/shot_design/encode_cpu.sbatch: OMP_NUM_THREADS=4
 
     orphan = provenance.read_sidecar(codes, 204346)
     assert orphan["run_manifest"] is None
@@ -342,7 +342,7 @@ def test_the_backfill_script_is_a_thin_wrapper_over_the_module():
     is the module's, and this is what keeps the two from being two implementations."""
     import importlib.util
 
-    path = Path(__file__).resolve().parents[2] / "scripts" / "ideate" / "frame_codes_provenance.py"
+    path = Path(__file__).resolve().parents[2] / "scripts" / "shot_design" / "frame_codes_provenance.py"
     spec = importlib.util.spec_from_file_location("frame_codes_provenance_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -364,7 +364,7 @@ def test_the_audit_flag_writes_nothing_and_prints_the_census(tmp_path, capsys):
     )
     before = sorted((p.name, p.stat().st_mtime_ns) for p in codes.iterdir())
 
-    path = Path(__file__).resolve().parents[2] / "scripts" / "ideate" / "frame_codes_provenance.py"
+    path = Path(__file__).resolve().parents[2] / "scripts" / "shot_design" / "frame_codes_provenance.py"
     spec = importlib.util.spec_from_file_location("frame_codes_provenance_audit", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

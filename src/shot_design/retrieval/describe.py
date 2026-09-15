@@ -2,16 +2,16 @@
 
 The template is the source of truth. `describe` renders only fields the record actually has --
 a missing number is an omitted clause, never the string "None" and never a plausible default --
-and it is the ONE renderer: `ideate show` prints `segment_line`, `ideate export` stores
-`describe`, and every `ideate query` result carries `describe`. Units and k/M prefixes come from
-`rank.display`, which reads them from configs/ideate/, so a physicist reading a search result and a
-physicist reading `ideate show` are reading the same numbers in the same units.
+and it is the ONE renderer: `shot_design show` prints `segment_line`, `shot_design export` stores
+`describe`, and every `shot_design query` result carries `describe`. Units and k/M prefixes come from
+`rank.display`, which reads them from configs/shot_design/, so a physicist reading a search result and a
+physicist reading `shot_design show` are reading the same numbers in the same units.
 
 `polish` is the seam where a language model may rewrite that paragraph, and `check_facts` is the
 gate it has to pass: every number and every shot number in the candidate must match the template
 as a multiset, in both directions, or the template is returned unchanged -- a fluent paraphrase
 that quietly changes 1.21 MA into 1.2 MA is worse than no paraphrase at all. The call goes
-through `ideate.llm.client`, which opens no socket when `configs/ideate/llm.yaml` says
+through `shot_design.llm.client`, which opens no socket when `configs/shot_design/llm.yaml` says
 `provider: off` and none when no endpoint file has been published; with no model running the
 template is simply the answer, silently.
 
@@ -79,7 +79,7 @@ END_REASONS = {
 def _unit(name: str) -> str:
     """The registry's unit for a quantity `display` cannot prefix, shortened to `[?]` when it is
     honestly unconfirmed: "9.82e+13 [?]" in a one-line description rather than the registry's
-    full "[?] line-integrated (node declares V)", which `ideate show --full` still prints."""
+    full "[?] line-integrated (node declares V)", which `shot_design show --full` still prints."""
     u = units().get(name, "")
     return "[?]" if u.startswith("[?]") else u
 
@@ -148,7 +148,7 @@ def segment_line(rec: schema.ShotRecord, segment: str) -> str | None:
     registry and the magnitude -- the same call the query's `similar`/`differs` lines make. This
     used to hardcode `/1e6 -> MA` and `/1e6 -> MW` alongside a second copy in cli.py with
     different precisions (`q95 {:.1f}` here, `q95 {:.2f}` there), so `show` and `query` printed
-    the same shot differently. `ideate show` prints this line as its headline.
+    the same shot differently. `shot_design show` prints this line as its headline.
     """
     seg = rec.segment(segment)  # type: ignore[arg-type]
     if seg is None:
@@ -399,7 +399,7 @@ def check_facts(template: str, candidate: str) -> bool:
 
 def _client_for_polish():
     """The shared client, or None when the config says off. Separate so tests can swap it."""
-    from ideate.llm.client import (
+    from shot_design.llm.client import (
         LLMClient,  # optional at import time: describe is used by the CLI
     )
 

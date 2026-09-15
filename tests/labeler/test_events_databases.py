@@ -8,10 +8,10 @@ import pandas as pd
 import pytest
 import yaml
 
-from labelmaker.config import Paths
-from labelmaker.events import databases as db
-from labelmaker.events import schema
-from labelmaker.events.lexicon import load_lexicon
+from labeler.config import Paths
+from labeler.events import databases as db
+from labeler.events import schema
+from labeler.events.lexicon import load_lexicon
 
 
 def _manifest(root, entries, *, version=1):

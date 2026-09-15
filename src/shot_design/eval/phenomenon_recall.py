@@ -95,7 +95,7 @@ def load_sheet(root: Path | str, phenomenon: str) -> pd.DataFrame:
     manifest = sheet.with_name("manifest.parquet")
     if not sheet.exists():
         raise RecallRefused(
-            f"no annotation sheet at {sheet}. Render one with labelmaker's annotate stage and "
+            f"no annotation sheet at {sheet}. Render one with labeler's annotate stage and "
             "have it filled in; recall against nothing is not a number."
         )
     if not manifest.exists():

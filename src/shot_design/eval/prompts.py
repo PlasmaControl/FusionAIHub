@@ -24,7 +24,7 @@ What is measured, and why each one is here rather than a single "accuracy":
 * **the proxy grade** -- a narrow, machine-checkable stand-in for the 20 hand grades, which
   announces itself as a proxy in `ProxyGrade.caveat`. See there.
 
-**The split.** `configs/ideate/evalsets/split.yaml` cuts the 500 `recommender_v1` shots into
+**The split.** `configs/shot_design/evalsets/split.yaml` cuts the 500 `recommender_v1` shots into
 `dev` (~400) and `eval` (~100) by a sha256 of the RUN ID, so no run day straddles the boundary.
 That is the only cut that means anything here: two shots of one run day share a session leader, a
 mini-proposal, a machine configuration and usually a logbook sentence, so a shot-wise split would
@@ -34,7 +34,7 @@ any process and from any shot list; `split.yaml` is the frozen result of applyin
 committed `recommender_v1.yaml`, and a test re-derives it.
 
 Nothing in this module tunes anything. It runs the frozen prompts through `retrieval.rank.search`
-exactly as `ideate query` would and writes down what came back.
+exactly as `shot_design query` would and writes down what came back.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ SPLIT_RULE = (
     "eval iff int(sha256(run_id)[:8], 16) % 1000 < 200 -- a run day, never a shot, decides"
 )
 
-# The top-k the diversity and duplicate numbers are read off. Ten because that is `ideate query`'s
+# The top-k the diversity and duplicate numbers are read off. Ten because that is `shot_design query`'s
 # own default; the proxy grade looks at five because the hand rubrics are written about a top-5.
 TOP_K = 10
 PROXY_K = 5
@@ -453,7 +453,7 @@ def failed_bars(report: EvalReport) -> list[str]:
 
     Both bars, not just the first. `markdown` has always printed `FAIL` beside a barred category
     whose resolution is under 80 %, but the exit code read only `coverage` -- so a CI job gating
-    on `ideate eval prompts` would have reported "eval passed" on a run whose `fast_ions`
+    on `shot_design eval prompts` would have reported "eval passed" on a run whose `fast_ions`
     resolution was 0 %, as long as coverage held. The two are computed here, once, and both the
     exit code and any other caller read this.
 

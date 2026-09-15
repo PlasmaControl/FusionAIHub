@@ -13,9 +13,9 @@ import time
 import httpx
 import pytest
 
-from ideate import config
-from ideate.llm.client import LLMClient, LLMUnavailable, Reply
-from ideate.retrieval import describe
+from shot_design import config
+from shot_design.llm.client import LLMClient, LLMUnavailable, Reply
+from shot_design.retrieval import describe
 
 CFG = {
     "provider": "openai_compatible",
@@ -123,8 +123,8 @@ def test_provider_off_raises_without_opening_a_socket(paths):
     )
     assert c.endpoint() is None
     # the hint names the config file the reader has to edit, at its real path
-    assert c.available() == (False, "configs/ideate/llm.yaml has provider: off")
-    with pytest.raises(LLMUnavailable, match=r"configs/ideate/llm\.yaml has provider: off"):
+    assert c.available() == (False, "configs/shot_design/llm.yaml has provider: off")
+    with pytest.raises(LLMUnavailable, match=r"configs/shot_design/llm\.yaml has provider: off"):
         c.chat([{"role": "user", "content": "x"}])
 
 

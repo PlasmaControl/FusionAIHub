@@ -12,7 +12,7 @@ def test_rendered_source_bars_do_not_fill_a_gap_or_an_empty_interval_set():
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node is needed to exercise the JavaScript renderer")
-    app = Path(__file__).resolve().parents[2] / "src/ideate/ui/static/app.js"
+    app = Path(__file__).resolve().parents[2] / "src/shot_design/ui/static/app.js"
     script = r"""
 const fs = require('fs');
 const vm = require('vm');

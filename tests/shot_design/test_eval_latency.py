@@ -13,15 +13,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate.eval import latency as lat
-from ideate.schema import LatencyRow
+from shot_design.eval import latency as lat
+from shot_design.schema import LatencyRow
 
 from .conftest import shot_record, write_db
 
 
 @pytest.fixture(autouse=True)
 def _no_minilm(monkeypatch):
-    from ideate.shotdb import text as text_mod
+    from shot_design.shotdb import text as text_mod
 
     monkeypatch.setattr(
         text_mod, "embed_texts", lambda texts: np.tile([1.0, 0.0, 0.0], (len(texts), 1))

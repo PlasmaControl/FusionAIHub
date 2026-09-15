@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from labelmaker.events import databases as db
+from labeler.events import databases as db
 
 
 def format_frame(**over):

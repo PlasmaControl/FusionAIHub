@@ -3,8 +3,8 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker.features import namespace as ns
-from labelmaker.features import resolve_archive as ra
+from labeler.features import namespace as ns
+from labeler.features import resolve_archive as ra
 
 REAL = ra.ARCHIVE_FILES[0]
 

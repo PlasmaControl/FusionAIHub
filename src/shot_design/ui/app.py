@@ -44,7 +44,7 @@ def create_app(
     paths = paths or config.load_paths()
     if db_dir is not None:
         paths = paths.model_copy(update={"db_dir": Path(db_dir)})
-    app = FastAPI(title="IDEATE", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="shot_design", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.paths = paths
     app.state.token = token or secrets.token_hex(16)
 
@@ -62,7 +62,7 @@ def create_app(
             return response
         cookie = request.cookies.get(COOKIE, "")
         if not cookie or not secrets.compare_digest(cookie.encode("utf-8"), expected):
-            return _unauthorized(request, "no token: reopen the link printed by ideate serve")
+            return _unauthorized(request, "no token: reopen the link printed by shot_design serve")
         # ContextVar follows this request into FastAPI's synchronous worker thread.
         with config.using_paths(app.state.paths):
             response = await call_next(request)

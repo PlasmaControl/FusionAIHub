@@ -5,10 +5,10 @@ import numpy as np
 import pytest
 import yaml
 
-from labelmaker import analyze, run
-from labelmaker.labels.schema import LabelSpec
-from labelmaker.labels.store import write_labels
-from labelmaker.models.base import Decoded
+from labeler import analyze, run
+from labeler.labels.schema import LabelSpec
+from labeler.labels.store import write_labels
+from labeler.models.base import Decoded
 
 from .test_run import SLUG
 
@@ -206,7 +206,7 @@ def test_panels_carry_the_archived_truth_when_there_is_some(tmp_path):
 
 @pytest.fixture
 def band_labels(wired):
-    from labelmaker.config import Paths
+    from labeler.config import Paths
 
     paths = Paths(root=wired["root"], corpus=wired["corpus"])
     t = np.array([0.0, 0.5, 1.0, 1.5, 2.0])
@@ -270,9 +270,9 @@ def test_p50_summary_uses_nearest_grid_row_and_respects_validity(band_labels, on
 def test_analyze_stage_passes_truth_to_p50_summary(wired, band_labels, tmp_path, monkeypatch):
     from dataclasses import replace
 
-    from labelmaker import validate
-    from labelmaker.models import registry
-    from labelmaker.models.base import OutputField, OutputSpec
+    from labeler import validate
+    from labeler.models import registry
+    from labeler.models.base import OutputField, OutputSpec
 
     adapter = registry.load_adapter(SLUG)
     adapter = replace(adapter, output_spec=OutputSpec(fields=tuple(

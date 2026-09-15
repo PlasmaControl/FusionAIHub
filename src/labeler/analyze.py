@@ -36,7 +36,7 @@ _TRUTH = "#4a3aa7"
 
 
 class ConfigError(ValueError):
-    """The analysis config asks for something labelmaker cannot produce."""
+    """The analysis config asks for something labeler cannot produce."""
 
 
 @dataclass(frozen=True)

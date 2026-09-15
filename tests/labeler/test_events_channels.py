@@ -21,7 +21,7 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker.events import channels
+from labeler.events import channels
 
 #: Channel counts of the real corpus groups, so a fixture that says
 #: "everything is here" is the shape of a shot that really has everything.

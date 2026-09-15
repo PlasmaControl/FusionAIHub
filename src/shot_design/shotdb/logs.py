@@ -4,7 +4,7 @@ The text corpus under `$IDEATE_TEXT_ROOT/shotsummary/` is not this project's out
 output of **PlasmaControl/d3dlogfetching** (`main.py` scrapes a run day off the DIII-D logbook into
 `data/runs/<run_id>/`; `textprocess.py` turns each of those into one `shot_<N>.txt` per shot), and
 that tool can only run on a machine inside the GA fusion network -- not on Stellar, not on Omega.
-So a shot with no `shot_<N>.txt` cannot be fixed from here at all. What ideate can do is exactly
+So a shot with no `shot_<N>.txt` cannot be fixed from here at all. What shot_design can do is exactly
 two things, and this module is both of them:
 
 * **`missing`** -- say which shots have no bundle and print the exact commands to run over there,
@@ -191,7 +191,7 @@ def format_missing(
         "",
         "Finally rsync the runs/ tree back and run:",
         "",
-        "  ideate logs import <runs_dir>",
+        "  shot_design logs import <runs_dir>",
     ]
     return "\n".join(lines)
 

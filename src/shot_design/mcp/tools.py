@@ -47,7 +47,7 @@ SEGMENT_ALIASES = {"flattop": "flat_top", "flat-top": "flat_top", "rampup": "ram
                    "ramp-up": "ramp_up", "rampdown": "ramp_down", "ramp-down": "ramp_down"}
 
 #: Said when there is no `events.parquet`. Exact, because a caller keys on it.
-NO_EVENTS = "no events table yet (labelmaker events not joined)"
+NO_EVENTS = "no events table yet (labeler events not joined)"
 
 _FORECAST_CAVEAT = (
     "{n} forecast row(s) are in `forecasts`, not in `events`: a forecast is a model's claim "
@@ -87,7 +87,7 @@ def _incomplete_db() -> list[str]:
     return [
         (
             f"the database at {db_dir} has a manifest but no {', '.join(missing)}: it is being "
-            f"rebuilt or is incomplete -- retry, or run `ideate build`"
+            f"rebuilt or is incomplete -- retry, or run `shot_design build`"
         )
     ]
 
@@ -130,13 +130,13 @@ def _load_db(db_dir: str):
 def _db():
     """`(db, None)` or `(None, error_dict)` -- the loaded database, or why there isn't one.
 
-    The error is the sentence `ideate query` prints for the same condition, so an assistant that
+    The error is the sentence `shot_design query` prints for the same condition, so an assistant that
     relays it to a person gives them the command that fixes it.
     """
     paths = config.load_paths()
     if not (paths.db_dir / "manifest.json").exists():
         return None, _error(
-            f"no database at {paths.db_dir} -- run `ideate build --list poc_v1` first"
+            f"no database at {paths.db_dir} -- run `shot_design build --list poc_v1` first"
         )
     return _load_db(str(paths.db_dir)), None
 
@@ -243,7 +243,7 @@ def search_shots(
         span = f"{held[0]}-{held[-1]}" if held else "(empty)"
         return _error(
             f"shot {state.ref_shot} is not in the database ({len(held)} shots, {span}). "
-            f"Add it with `ideate add {state.ref_shot}`.",
+            f"Add it with `shot_design add {state.ref_shot}`.",
             caveats,
         )
     if state.ref_shot is not None and f"{state.ref_shot}:{seg}" not in db.segments.index:
@@ -330,7 +330,7 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
         span = f"{held[0]}-{held[-1]}" if held else "(empty)"
         return _error(
             f"shot {shot} is not in the database ({len(held)} shots, {span}). "
-            f"Add it with `ideate add {shot}`.",
+            f"Add it with `shot_design add {shot}`.",
             caveats,
         )
     from ..retrieval import describe as describe_mod
@@ -404,7 +404,7 @@ _NO_DETECTION_CAVEAT = (
 )
 
 #: Which `evidence_kind` values decide `status`. An allow-list, the same two
-#: `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` and `retrieval.phenomena.OBSERVED_KINDS`
+#: `labeler.events.windows.DIAGNOSTIC_EVIDENCE` and `retrieval.phenomena.OBSERVED_KINDS`
 #: name: a `forecast` is a model's estimate, a `text` row is a word in a logbook, a `database`
 #: row is an entry in a curated table and a `human`/`model` row is neither a diagnostic nor a
 #: heuristic. None of them is somebody having looked at this shot's plasma, so none of them may
@@ -519,7 +519,7 @@ def get_events(
         return {
             **_error(
                 f"shot {shot} is not in the database ({len(held)} shots, {span}). "
-                f"Add it with `ideate add {shot}`.",
+                f"Add it with `shot_design add {shot}`.",
                 caveats,
             ),
             "status": "unindexed",
@@ -855,7 +855,7 @@ NO_EVIDENCE = (
 
 #: The standing rule about what a hit's RANK means, built from the registry's own sentences so
 #: that the ordering is stated once (`phenomena.RANKING_SENTENCE`, which `retrieval.yaml` and
-#: `docs/IDEATE.md` are pinned equal to) and the two classes that are not observations are named
+#: `docs/SHOT_DESIGN.md` are pinned equal to) and the two classes that are not observations are named
 #: with the caveats the hits themselves carry.
 _TIER_CAVEAT = (
     "hits are ordered by evidence CLASS before score -- {ranking} -- so a hit's rank is not its "

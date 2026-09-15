@@ -4,15 +4,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labelmaker.labels.schema import LabelSpec, artifact_digest, group_path
-from labelmaker.labels.store import (
+from labeler.labels.schema import LabelSpec, artifact_digest, group_path
+from labeler.labels.store import (
     append_index,
     index_rows,
     labelled,
     read_label,
     write_labels,
 )
-from labelmaker.models.base import Decoded
+from labeler.models.base import Decoded
 
 SLUG = "d3d_tearing_onset_cnn1d"
 T = 0.025 * np.arange(6)
@@ -244,9 +244,9 @@ def test_read_label_raises_for_an_absent_label(tmp_path):
 def test_output_field_attrs_round_trip(tmp_path):
     from dataclasses import replace
 
-    from labelmaker.labels.schema import specs_for
-    from labelmaker.models import registry
-    from labelmaker.models.base import OutputField, OutputSpec
+    from labeler.labels.schema import specs_for
+    from labeler.models import registry
+    from labeler.models.base import OutputField, OutputSpec
 
     adapter = replace(registry.load_adapter(SLUG), output_spec=OutputSpec((
         OutputField("tm_prob", "binary", 0, attrs=(("calibration_fit_on", '{"shots":[1]}'),)),

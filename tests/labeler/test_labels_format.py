@@ -10,13 +10,13 @@ import pandas as pd
 import pytest
 import yaml
 
-from labelmaker.events import databases as db
+from labeler.events import databases as db
 
 REPO = Path(__file__).resolve().parents[2]
 
 
 def converter():
-    return runpy.run_path(str(REPO / "scripts/labelmaker/labels_format.py"))["main"]
+    return runpy.run_path(str(REPO / "scripts/labeler/labels_format.py"))["main"]
 
 
 def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):

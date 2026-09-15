@@ -1,4 +1,4 @@
-"""The labelmaker CLI: `python -m labelmaker.run <stage>`.
+"""The labeler CLI: `python -m labeler.run <stage>`.
 
 Stages, each independently rerunnable, with a per-shot HDF5 file
 between the first two:
@@ -185,7 +185,7 @@ class RunContext:
 
 def build_parser() -> ArgumentParser:
     parser = ArgumentParser(
-        prog="python -m labelmaker.run",
+        prog="python -m labeler.run",
         description="Run trained models over the FAITH shot corpus.",
     )
     parser.add_argument("stage", choices=STAGES)

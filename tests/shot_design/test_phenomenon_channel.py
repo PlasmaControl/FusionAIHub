@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from ideate.retrieval import channels, rank
-from ideate.schema import QueryState, Range
+from shot_design.retrieval import channels, rank
+from shot_design.schema import QueryState, Range
 
 from .test_phenomena import _claim, _db_with, _event, _label_row
 
@@ -30,7 +30,7 @@ def test_the_channel_uses_the_existing_score_and_tier_order(ideate_db):
 
 def test_no_resolved_phenomenon_is_exactly_no_vote_in_rrf(ideate_db, monkeypatch):
     db = _db_with(ideate_db, [_event(100, 'seen')])
-    from ideate.shotdb import text
+    from shot_design.shotdb import text
 
     monkeypatch.setattr(text, 'embed_texts', lambda texts: db.emb['text_log'][:1])
     q = QueryState(text='plasma current', ref_shot=101)

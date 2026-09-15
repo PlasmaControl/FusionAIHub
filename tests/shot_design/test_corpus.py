@@ -3,7 +3,7 @@
 The corpus layout is not ours and it has three traps this file pins, because every one of them
 was found by measurement on the real corpus and every one of them is silent if unhandled:
 
-* the timebase is SECONDS while the rest of ideate is milliseconds;
+* the timebase is SECONDS while the rest of shot_design is milliseconds;
 * an absent diagnostic is written as a `(C, 1)` placeholder, not as a missing group -- and the
   time axis is the LAST one, so `shape[0] > 1` (what the old shotsearch manifest tested) counts
   a placeholder as present;
@@ -17,9 +17,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate import config
-from ideate.shotdb.corpus import CorpusReader
-from ideate.shotdb.reader import Reader, ShotFailed, Unavailable
+from shot_design import config
+from shot_design.shotdb.corpus import CorpusReader
+from shot_design.shotdb.reader import Reader, ShotFailed, Unavailable
 
 from .conftest import CORPUS_ABSENT as MISSING
 from .conftest import CORPUS_FULL as SHOT

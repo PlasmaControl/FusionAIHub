@@ -1,6 +1,6 @@
 """Common label-table schema and the format/ curated-table loader.
 
-Original lists live in raw/ and only scripts/labelmaker/labels_format.py
+Original lists live in raw/ and only scripts/labeler/labels_format.py
 converts them. This module reads format/<format_stem>.csv, preserving its
 stored evidence kind, confidence and JSON attributes. A listing is not a
 coverage claim: events and source records keep NaN coverage, and a shot

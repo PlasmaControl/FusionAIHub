@@ -22,7 +22,7 @@ than this field supports -- which is exactly why the kind is recorded rather tha
 `fingerprint(path, sha256=True)` is available for the cases where the cost is worth paying.
 
 THE BACKFILL IS A RECONSTRUCTION. `backfill()` writes sidecars for caches that predate this
-module, from the run manifests `ideate encode` left under `runs/encode/`. Those manifests record
+module, from the run manifests `shot_design encode` left under `runs/encode/`. Those manifests record
 the output directory, the device and which shots the task encoded; they record no commit and no
 thread count. So `git_sha` is null -- not inferred from a timestamp -- and `torch_threads` is the
 number the sbatch that ran the job exports, marked as coming from the script rather than from the
@@ -83,8 +83,8 @@ SIDECAR_KEYS: tuple[str, ...] = (
 #: and `torch_threads_source` says that is what it is doing.
 SBATCH_THREADS = {"cuda": 1, "cpu": 4}
 SBATCH_FOR = {
-    "cuda": "scripts/ideate/encode.sbatch",
-    "cpu": "scripts/ideate/encode_cpu.sbatch",
+    "cuda": "scripts/shot_design/encode.sbatch",
+    "cpu": "scripts/shot_design/encode_cpu.sbatch",
 }
 
 
@@ -141,7 +141,7 @@ def _bundle_identity(bundle: Path | str | None) -> tuple[str | None, str | None,
 
     The bundle is 3.5 GB, so the digest is of `codecs/MANIFEST.json` -- a few kilobytes that name
     every codec file, its source and its size, and which changes whenever the pinned snapshot
-    does. The revision is the Hugging Face one from `configs/ideate/ignite_modalities.yaml`.
+    does. The revision is the Hugging Face one from `configs/shot_design/ignite_modalities.yaml`.
     """
     revision = None
     try:

@@ -3,7 +3,7 @@ trained past the point where its shipped fit stopped.
 
 The shipped checkpoint (`d3d_tearing_time_to_event_dsm`) ran 20 epochs at
 lr 1e-5 with its validation NLL still falling monotonically; auton-survival's
-early stop never fired. `scripts/labelmaker/retrain_tearing_dsm.py` continues
+early stop never fired. `scripts/labeler/retrain_tearing_dsm.py` continues
 that fit from those weights - no pretraining, so the learned per-component
 shape/scale parameters survive - at lr 1e-4 until the fork's own patience rule
 ends it, and writes `rt_fixed_rot_continued.pkl` beside a copy of the same
@@ -14,7 +14,7 @@ Everything except the weight file is the base model's: the same 14 scalars and
 columns, the same evaluator. This module therefore imports the base spec's
 pieces and builds its loader with the base spec's own `make_load`, so the two
 models can never drift apart in anything but their weights. The card carries
-the comparison of the two on labelmaker's 500-shot pool.
+the comparison of the two on labeler's 500-shot pool.
 
 The base `load` also reads `calibration.json` from the model directory when one
 is there. This model has its own, fitted on its own scores on held-out shots by
@@ -41,7 +41,7 @@ __all__ = ["ADAPTER", "ARTIFACTS", "CARD_ID", "HORIZONS_MS", "INPUT_SPEC", "OUTP
 
 SLUG = "d3d_tearing_time_to_event_dsm_continued"
 CARD_ID = "plasmacontrol/d3d-tearing-time-to-event-dsm-continued"
-#: Trained here, not upstream: the artifact directory is labelmaker's own.
+#: Trained here, not upstream: the artifact directory is labeler's own.
 UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/"
                 "d3d_tearing_time_to_event_dsm_continued")
 ARTIFACTS = ("rt_fixed_rot_continued.pkl", "rt_normalizations_dict.pkl")

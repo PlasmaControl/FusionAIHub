@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from ideate import config
+from shot_design import config
 
 BEAMS = ["15l", "15r", "21l", "21r", "30l", "30r", "33l", "33r"]
 OUR_SCHEMA = "ideate-raw-v1"  # scripts/fetch_shots.SCHEMA; pinned equal in test_fetch_plan
@@ -522,7 +522,7 @@ def census_frame(rows, *, openable: bool = True) -> pd.DataFrame:
     Built through `census.table` rather than by hand so that a change to the census's own columns
     breaks the selection tests here instead of silently giving them a table the real one is not.
     """
-    from ideate.shotdb import census
+    from shot_design.shotdb import census
 
     made = [
         {
@@ -556,7 +556,7 @@ CORPUS_BARE_SHOT = 100011  # a corpus file with none of the addressed groups
 
 #: Samples per corpus fixture group, on a 0-6 s axis at 500 ms. Real actuator groups run at
 #: 100 kHz for six seconds; what matters here is only that the axis SPANS the discharge, so that
-#: a segment cut from a labelmaker `ip` (0-6 s) actually contains samples of it.
+#: a segment cut from a labeler `ip` (0-6 s) actually contains samples of it.
 CORPUS_N = 13
 
 
@@ -620,12 +620,12 @@ def signal_corpus(paths) -> int:
 
 
 def write_feature_file(features_dir: Path, shot: int, arrays: dict, missing: dict) -> Path:
-    """A `<shot>_features.h5` written by labelmaker's own writer, never by hand.
+    """A `<shot>_features.h5` written by labeler's own writer, never by hand.
 
     `arrays` maps a canonical feature name to `(x_seconds, y (C, T), resolver)`; a hand-written
     file would be this module's guess at that layout rather than the layout `read_feature` reads.
     """
-    from labelmaker.features.store import FeatureArray, write_features
+    from labeler.features.store import FeatureArray, write_features
 
     features_dir.mkdir(parents=True, exist_ok=True)
     write_features(
@@ -683,7 +683,7 @@ def shot_record(shot: int, run: str, ip: float, pnbi: float, text: str, **over):
     """One synthetic `ShotRecord` with a flat top and a ramp-up, so `segment` has to select."""
     import datetime as dt
 
-    from ideate.schema import HumanTier, Labels, LogEntry, Outcome, Segment, ShotRecord
+    from shot_design.schema import HumanTier, Labels, LogEntry, Outcome, Segment, ShotRecord
 
     flat = Segment(
         name="flat_top",
@@ -733,7 +733,7 @@ def write_db(db_dir: Path, records) -> None:
     hand-written unit vectors and not MiniLM: nothing that reads this fixture is a statement
     about the encoder, and loading one would cost every test that uses it several seconds.
     """
-    from ideate.shotdb import build
+    from shot_design.shotdb import build
 
     shapes = {r.shot: {s.name: np.zeros(0, np.float32) for s in r.segments} for r in records}
     shots_df, segments_df, shape_mat = build.records_to_tables(records, shapes)
@@ -762,7 +762,7 @@ def ideate_db(tmp_path: Path, monkeypatch) -> Path:
     anything that has to LOAD a database -- the MCP tools, a client roundtrip -- where what
     matters is that `ShotDB.load` finds every file it needs, not what ranks above what.
     """
-    root = tmp_path / "ideate"
+    root = tmp_path / "shot_design"
     (root / "db").mkdir(parents=True)
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)

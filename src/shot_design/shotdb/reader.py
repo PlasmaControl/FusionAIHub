@@ -1,4 +1,4 @@
-"""The raw-signal layer as an interface, so that the rest of ideate names a contract rather than
+"""The raw-signal layer as an interface, so that the rest of shot_design names a contract rather than
 a file layout.
 
 There are two raw layouts, and they are not variants of each other. The d3d_fusion_data layout
@@ -11,7 +11,7 @@ common -- is that you can ask them for a shot's groups and for a group's samples
 So the contract is split in two, deliberately:
 
 * `Reader` is that common file layer, in MILLISECONDS, which is the unit every other module of
-  ideate (features, segments, retrieval, the schema) already speaks. Both readers implement it.
+  shot_design (features, segments, retrieval, the schema) already speaks. Both readers implement it.
 * `SignalReader` adds the spec-level half -- `read_shot`, `read_signal`, `signal_status` -- which
   is what `build`, `cli` and `retrieval.actuation` call today. These take a `SignalSpec`: a
   registry entry naming a group, a column, a scale, a null sentinel. That vocabulary is the
@@ -19,7 +19,7 @@ So the contract is split in two, deliberately:
   real content (which corpus group is the beam power, and what a "total" means over its channels)
   that belongs to the corpus build, not here. `corpus.CorpusReader` therefore implements `Reader`
   only, and `corpus_signals.CorpusSignalReader` -- which is the one that reads `actuators.yaml`'s
-  `corpus:` block and labelmaker's feature store -- implements `SignalReader` on top of it.
+  `corpus:` block and labeler's feature store -- implements `SignalReader` on top of it.
 
 Both protocols are `runtime_checkable`, which for a Protocol means `isinstance` checks method
 NAMES only -- not signatures. That is enough for what it is used for here: an assertion in the
@@ -76,9 +76,9 @@ class Signal:
     source: Literal["staged", "fetched", "corpus", "labelmaker"]
     group: str
     col: str
-    # Finer provenance, when the layer has more than one source of its own: labelmaker resolves a
+    # Finer provenance, when the layer has more than one source of its own: labeler resolves a
     # feature per shot from the archive, the corpus or fdp and records which, and those three do
-    # not agree to better than a few percent (see labelmaker.features.namespace). None on the
+    # not agree to better than a few percent (see labeler.features.namespace). None on the
     # legacy layout, where `source` is already the whole answer.
     resolver: str | None = None
 

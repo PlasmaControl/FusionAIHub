@@ -81,7 +81,7 @@ def nan_excluded(q: QueryState, db: ShotDB) -> dict[str, int]:
 def _actuator_column(name: str, db: ShotDB) -> str | None:
     """`nbi.total` / `ech.LUKE` -> the segments column that holds it, or a column name as given.
 
-    `flags.rules.actuator_columns` is the one resolver, built from configs/ideate/actuators.yaml,
+    `flags.rules.actuator_columns` is the one resolver, built from configs/shot_design/actuators.yaml,
     so a new actuator system is reachable from a query the moment it is in the registry -- and so
     the value after `--actuator` names the same column here as in the operating-limit rules. This
     used to try `_mean` first while the rules took `_peak`, making one flag two quantities. A key
@@ -399,7 +399,7 @@ def ignite_knn(q: QueryState, db: ShotDB) -> list[tuple[str, float]]:
     shot lacks the modality, so similarity is the mean over the modalities BOTH shots have of the
     per-modality cosine (each block centred on the database mean and L2-normalised, so a 256-dim
     spectro block and a 128-dim Thomson block count once each); a shot sharing no modality with
-    the query is not a candidate. Nothing here needs the model: it reads what `ideate build` wrote.
+    the query is not a candidate. Nothing here needs the model: it reads what `shot_design build` wrote.
     """
     meta = db.manifest.get("ignite", {})
     emb = db.emb.get("ignite_seg")
@@ -504,7 +504,7 @@ def phenomenon(q: QueryState, db: ShotDB) -> list[tuple[str, float]]:
 
 
 # The registry. One function, one line here, and rank.py picks it up; weights live in
-# configs/ideate/retrieval.yaml under `retrieval.weights` and default to 1.0 for a channel not
+# configs/shot_design/retrieval.yaml under `retrieval.weights` and default to 1.0 for a channel not
 # named.
 CHANNELS = {
     "scalar_knn": scalar_knn,

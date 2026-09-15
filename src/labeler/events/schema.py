@@ -304,7 +304,7 @@ def read_events(path, *, source: str | None = None,
 #: many events that turned out to be - zero included.
 SOURCE_STATUSES = ("ok", "skipped", "error")
 
-#: Column order of `events/<shot>_sources.parquet`. CONTRACT: ideate's
+#: Column order of `events/<shot>_sources.parquet`. CONTRACT: shot_design's
 #: consumer is built against this list, so a column may be appended and
 #: none may be renamed, reordered or dropped.
 SOURCE_COLUMNS = (

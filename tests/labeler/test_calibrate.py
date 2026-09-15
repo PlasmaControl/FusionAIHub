@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from labelmaker import calibrate
-from labelmaker.validate import binary_metrics
+from labeler import calibrate
+from labeler.validate import binary_metrics
 
 
 def test_prior_shift_identity_odds_and_clipping():

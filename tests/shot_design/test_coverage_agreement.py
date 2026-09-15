@@ -4,19 +4,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate.labels import event_sources as es
-from ideate.mcp import tools
-from ideate.retrieval import phenomena as ph
-from ideate.shotdb.store import ShotDB
+from shot_design.labels import event_sources as es
+from shot_design.mcp import tools
+from shot_design.retrieval import phenomena as ph
+from shot_design.shotdb.store import ShotDB
 
 
 @pytest.fixture
 def gap_chain(ideate_db, tmp_path, monkeypatch):
-    from ideate import cli
-    from labelmaker.config import Paths
-    from labelmaker.events import pipeline
+    from shot_design import cli
+    from labeler.config import Paths
+    from labeler.events import pipeline
 
-    from ..labelmaker.coverage_fixture import gapped_filterscopes
+    from ..labeler.coverage_fixture import gapped_filterscopes
     from .conftest import shot_record, write_db
 
     paths = Paths(root=tmp_path / "products", corpus=tmp_path / "corpus")
@@ -28,13 +28,13 @@ def gap_chain(ideate_db, tmp_path, monkeypatch):
     records = [shot_record(s, "run", 1e6, 5e6, "ELMs and sawteeth")
                for s in (198658, 101, 200, 201)]
     # Named segments give evidence/locate/describe the SAME windows as MCP.
-    from ideate.schema import Segment
+    from shot_design.schema import Segment
     records[0].segments = []
     for name, a, b in (("flat_top", 1.2, 1.8), ("ramp_up", .5, 1.5), ("ramp_down", 2.5, 3.0)):
         records[0].segments.append(Segment(name=name, t0_ms=a * 1000, t1_ms=b * 1000))
     write_db(ideate_db / "db", records)
     assert cli.main([
-        "labels", "join", "--shots", "198658", "--labelmaker-root", str(paths.root),
+        "labels", "join", "--shots", "198658", "--labeler-root", str(paths.root),
         "--db", str(ideate_db / "db"), "--no-text",
     ]) == 0
     tools.reset_cache()
@@ -52,7 +52,7 @@ def test_real_pipeline_join_and_all_consumers_preserve_the_gap(
 ):
     import json
 
-    from ideate.retrieval.describe import describe
+    from shot_design.retrieval.describe import describe
 
     root, expected = gap_chain
     db = ShotDB.load(root / "db")
@@ -98,7 +98,7 @@ def test_real_stdio_mcp_preserves_the_pipeline_dropout(gap_chain):
                HF_HUB_OFFLINE="1", PYTHONDONTWRITEBYTECODE="1",
                PYTHONPATH=os.pathsep.join([str(repo / "src"), env.get("PYTHONPATH", "")]))
     env.pop("IDEATE_PATHS", None)
-    params = StdioServerParameters(command=sys.executable, args=["-m", "ideate.mcp"],
+    params = StdioServerParameters(command=sys.executable, args=["-m", "shot_design.mcp"],
                                    cwd=str(repo), env=env)
 
     async def go():
@@ -184,7 +184,7 @@ def test_gap_qualification_does_not_confuse_source_and_requested_hulls(gap_chain
 
 
 def test_mcp_evidence_and_describe_call_the_same_window_function(gap_chain, monkeypatch):
-    from ideate.retrieval.describe import describe
+    from shot_design.retrieval.describe import describe
 
     root, _ = gap_chain
     db = ShotDB.load(root / "db")
@@ -207,7 +207,7 @@ def test_mcp_evidence_and_describe_call_the_same_window_function(gap_chain, monk
 
 
 def test_text_only_empty_coverage_is_unprocessed_and_never_unknown(ideate_db):
-    from ideate.retrieval.describe import describe
+    from shot_design.retrieval.describe import describe
 
     es.write_sources(ideate_db / "db/event_sources.parquet", [
         es.source_row(100, "text", intervals="[]", min_gap_s=0, n_events=1),
@@ -239,7 +239,7 @@ def test_text_only_empty_coverage_is_unprocessed_and_never_unknown(ideate_db):
 
 @pytest.mark.parametrize("legacy_events", [False, True])
 def test_older_source_and_event_hulls_are_disclosed_by_all_readers(ideate_db, legacy_events):
-    from ideate.retrieval.describe import describe
+    from shot_design.retrieval.describe import describe
 
     from .test_phenomena import _db_with, _elm_clock
 

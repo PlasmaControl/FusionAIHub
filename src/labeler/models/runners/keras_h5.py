@@ -2,7 +2,7 @@
 
 The group's Keras artifacts were saved by Keras 2.8. TensorFlow is not a
 dependency of this environment: the frozen reference under
-tests/labelmaker/data/ was produced once, in a throwaway `uv` environment
+tests/labeler/data/ was produced once, in a throwaway `uv` environment
 with tensorflow-cpu 2.15.1, and is all that is ever needed of it. The graphs
 in the roster are small feed-forward networks whose layers have closed-form
 inference semantics, so instead of a framework we read the serialized config
@@ -17,7 +17,7 @@ Supported layers: InputLayer, BatchNormalization, Conv1D, MaxPooling1D,
 Flatten, Dense, Concatenate, Dropout (identity at inference). Anything else
 raises UnsupportedLayer, naming the class, rather than silently skipping it.
 
-Equality with TensorFlow is not assumed: `labelmaker.validate.adapter_fidelity`
+Equality with TensorFlow is not assumed: `labeler.validate.adapter_fidelity`
 compares this evaluator against real Keras outputs frozen for the same weight
 files. Measured there: max abs diff 5.6e-5 on a logit column that reaches
 20.7, median 7.65e-7 - float32 rounding amplified through a ~15-layer chain

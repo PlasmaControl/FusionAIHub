@@ -1,7 +1,7 @@
 """Every model folder is discoverable and its card is machine-readable."""
 import pytest
 
-from labelmaker.models import registry
+from labeler.models import registry
 
 REQUIRED_TOP = ("pipeline_tag", "tags", "library_name", "labelmaker")
 REQUIRED_LM = ("status", "slug", "card_id", "framework", "upstream", "inputs", "outputs")
@@ -29,7 +29,7 @@ def test_every_model_folder_has_a_well_formed_card():
             assert key in card, f"{slug}: card is missing {key}"
         lm = card["labelmaker"]
         for key in REQUIRED_LM:
-            assert key in lm, f"{slug}: labelmaker block is missing {key}"
+            assert key in lm, f"{slug}: labeler block is missing {key}"
         assert lm["slug"] == slug
         assert lm["card_id"] == f"plasmacontrol/{slug.replace('_', '-')}"
         assert lm["status"] in ("implemented", "scaffold")

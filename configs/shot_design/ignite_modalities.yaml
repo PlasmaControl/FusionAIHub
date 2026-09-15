@@ -31,7 +31,7 @@ version: 1
 # `pad_note` says why the source is short. A staged group can also be WIDER than n_channels
 # (cer_ti/cer_rot carry 80 columns for 48 IGNITE channels): the list, not the group, decides.
 model:
-  # The Hugging Face bundle, copied once into <models_dir>/<local_name> by `ideate model --download`
+  # The Hugging Face bundle, copied once into <models_dir>/<local_name> by `shot_design model --download`
   # and read from disk after that (shotdb/ignite.py:download_bundle). Private repo: the token in
   # ~/.cache/huggingface/token must have access. The revision is PINNED: a re-upload must not be
   # able to change every embedding in the database without a config change here.
@@ -50,7 +50,7 @@ model:
   # bundle's frame_codes/190090.pt, 0.0 reproduces all 239 frames of all 12 non-video modalities
   # bit for bit, while 1.0 matches only the five modalities that are flat on that shot.
   t0_start_s: 0.0
-  # Fragment-query windows (`ideate query --ref-window`): 5 frames pooled, stored per shot in
+  # Fragment-query windows (`shot_design query --ref-window`): 5 frames pooled, stored per shot in
   # emb_ignite_win.npy / windows.parquet. 250 ms is ~48 rows per 12 s shot.
   window_ms: 250
 frame_ms: 50

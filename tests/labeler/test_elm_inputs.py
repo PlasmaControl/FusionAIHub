@@ -3,15 +3,15 @@
 **Two orders exist and they differ in 118 of 124 columns.**
 `CURRENT_DIAGNOSTIC_ORDER` (ECE at slots 6-53, BES last) is the Keras graphs'
 order; `SPLIT_COLUMN_ORDER` (BES at 12-75, ECE last) is the order of
-`train_test_split_model10.pkl`, the rows labelmaker fitted on - measured, not
+`train_test_split_model10.pkl`, the rows labeler fitted on - measured, not
 read, to a worst relative error of 1.2e-12 (see the module docstring and
-`scripts/labelmaker/elm_write_normalization.py --verify-split`). Feeding one to
+`scripts/labeler/elm_write_normalization.py --verify-split`). Feeding one to
 weights fitted on the other produces silent garbage, so column sets are selected
 by NAME and these tests pin both the names and the positions they resolve to.
 """
 import pytest
 
-from labelmaker.models import elm_inputs
+from labeler.models import elm_inputs
 
 
 def test_the_keras_order_is_the_124_columns_with_ece_early():

@@ -1,7 +1,7 @@
 # The phenomenon lexicon: what a DIII-D operator calls each thing.
 #
 # THIS FILE IS THE SINGLE SOURCE of the round-1 phenomenon ids and their
-# aliases (plan 5.6). ideate reads it too - `configs/ideate/phenomena.yaml`
+# aliases (plan 5.6). shot_design reads it too - `configs/shot_design/phenomena.yaml`
 # adds the scoring machinery (labels, events, bands, diagnostics, priors)
 # around these ids and does NOT restate the alias lists - so an id renamed
 # here is renamed in both, and an alias added here is added to both.
@@ -20,7 +20,7 @@
 # "elm-free" is one token, and " elm " is not inside it. `load_lexicon`
 # runs the matcher on each negative phrase alone and refuses one that
 # fires nothing, because "sawtooth-free", "eho-free" and "ae-free" shipped
-# without their alias and were silently dead. (ideate's `exclude` is the
+# without their alias and were silently dead. (shot_design's `exclude` is the
 # same idea under its own name.) They are otherwise deliberately sparse:
 # only phrasings seen in the corpus, because a missing negative costs a
 # little and one that fires wrongly silences a real mention.
@@ -207,8 +207,8 @@ phenomena:
   qmin_hybrid:
     title: Hybrid scenario (q-min 0.95-1.5)
     aliases:
-      # The id itself, as for `fast_ion`: every id is a phrase `ideate phenomenon <id>`
-      # must accept (ideate pins it), and an underscore is not a word.
+      # The id itself, as for `fast_ion`: every id is a phrase `shot_design phenomenon <id>`
+      # must accept (shot_design pins it), and an underscore is not a word.
       - qmin_hybrid
       - hybrid
       - hybrid scenario
@@ -219,8 +219,8 @@ phenomena:
   qmin_elevated:
     title: Elevated q-min (1.5-2)
     aliases:
-      # The id itself, as for `fast_ion`: every id is a phrase `ideate phenomenon <id>`
-      # must accept (ideate pins it), and an underscore is not a word.
+      # The id itself, as for `fast_ion`: every id is a phrase `shot_design phenomenon <id>`
+      # must accept (shot_design pins it), and an underscore is not a word.
       - qmin_elevated
       - elevated q-min
       - elevated qmin
@@ -229,8 +229,8 @@ phenomena:
   qmin_high:
     title: High q-min (above 2)
     aliases:
-      # The id itself, as for `fast_ion`: every id is a phrase `ideate phenomenon <id>`
-      # must accept (ideate pins it), and an underscore is not a word.
+      # The id itself, as for `fast_ion`: every id is a phrase `shot_design phenomenon <id>`
+      # must accept (shot_design pins it), and an underscore is not a word.
       - qmin_high
       - high q-min
       - high qmin
@@ -254,7 +254,7 @@ phenomena:
     title: Fast-ion physics
     aliases:
       # The id itself. Nobody writes an underscore in a logbook, but every id
-      # in this file is a phrase that `ideate phenomenon <id>` and the "try one
+      # in this file is a phrase that `shot_design phenomenon <id>` and the "try one
       # of" line it prints must both accept, and `fast_ion` is the first id
       # that is not a bare word. A test pins the rule for every id.
       - fast_ion

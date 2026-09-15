@@ -1,7 +1,7 @@
 """`labels.event_sources`: the contract that lets "nobody looked" be told from "nothing happened".
 
-labelmaker writes `events/<shot>_sources.parquet`; ideate reads it. That side of the work is
-being done in labelmaker, so everything here is built against the CONTRACT with synthetic
+labeler writes `events/<shot>_sources.parquet`; shot_design reads it. That side of the work is
+being done in labeler, so everything here is built against the CONTRACT with synthetic
 fixtures -- which is also what the contract is for: two codebases writing and reading the same
 file need one definition of it, and `write_sources` is it.
 """
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate.labels import event_sources as es
+from shot_design.labels import event_sources as es
 
 
 def test_formatted_bounds_do_not_exclude_a_window_the_source_covers():
@@ -203,7 +203,7 @@ def test_a_source_with_no_recorded_coverage_does_not_pretend_to_have_any():
 
 def test_a_text_source_that_ran_is_not_an_observation_and_covers_nothing():
     """`text` runs the lexicon over the shot's logbook entries. That it RAN says nothing about
-    what any diagnostic showed -- the policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE`
+    what any diagnostic showed -- the policy `labeler.events.windows.DIAGNOSTIC_EVIDENCE`
     states for rows, applied to the source that writes them -- so a shot whose only completed
     source is `text` has no observed product, and the shot span its row carries covers no
     window. Otherwise a logbook-only shot would come back `observed`: "0 detections inside

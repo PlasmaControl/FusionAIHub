@@ -358,7 +358,7 @@ def values_at(vertices: list[Vertex], t_s: np.ndarray) -> np.ndarray:
 
 def descriptions() -> dict[str, str]:
     """`nbi.total` / `ech.LUKE` -> the one-line `description:` from
-    configs/ideate/actuators.yaml (the system's line for a total); keys without one are absent."""
+    configs/shot_design/actuators.yaml (the system's line for a total); keys without one are absent."""
     out: dict[str, str] = {}
     for name, sysdef in config.load_yaml("actuators.yaml")["systems"].items():
         if sysdef.get("description"):

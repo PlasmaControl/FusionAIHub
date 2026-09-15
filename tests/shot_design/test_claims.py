@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from ideate.labels import claims
+from shot_design.labels import claims
 
 from .conftest import text_bundle
 
@@ -284,15 +284,15 @@ def test_the_lexicon_reads_a_bare_alias_list(tmp_path):
 
 
 def config_dir():
-    from ideate import config
+    from shot_design import config
 
     return config.CONFIG_DIR
 
 
 def test_the_lexicon_falls_back_to_ideates_own_themes(tmp_path):
-    """`labelmaker/events/lexicons.yaml` lands from the labelmaker workstream. Until it does, the
-    themes of `configs/ideate/labels.yaml` are the alias lists."""
-    from ideate import config
+    """`labeler/events/lexicons.yaml` lands from the labeler workstream. Until it does, the
+    themes of `configs/shot_design/labels.yaml` are the alias lists."""
+    from shot_design import config
 
     lex = claims.load_lexicon(config.CONFIG_DIR / "labels.yaml")
 

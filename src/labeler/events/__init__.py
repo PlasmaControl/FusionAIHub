@@ -6,8 +6,8 @@ heuristics, forecasts, text and human annotation all land in one table
 (`events/<shot>_events.parquet`) so a consumer can ask "who says so" of
 every row. See docs/superpowers/specs/2026-09-07-recommender-labelmaker-v2.md.
 
-`lexicons.yaml` sits here too, and is not only labelmaker's: it is the
-single source of the round-1 phenomenon ids and their aliases, and ideate
+`lexicons.yaml` sits here too, and is not only labeler's: it is the
+single source of the round-1 phenomenon ids and their aliases, and shot_design
 reads this very file rather than keeping a second list (plan 5.6).
 `lexicon.py` is its reader and its matcher - what a phrase means, over
 text and nothing else - and `text_weak.py` is where the text comes from:

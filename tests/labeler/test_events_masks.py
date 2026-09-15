@@ -25,9 +25,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker.ae import labels as ae_labels
-from labelmaker.ae import transform
-from labelmaker.events import masks, schema
+from labeler.ae import labels as ae_labels
+from labeler.ae import transform
+from labeler.events import masks, schema
 
 #: Shot 198658, the pilot shot the A1 constants were measured on.
 REAL_SHOT = 198658
@@ -793,7 +793,7 @@ def test_a_failed_write_leaves_the_old_file_whole(tmp_path, monkeypatch):
 
 
 def test_the_written_name_is_the_one_the_paths_hand_out(tmp_path):
-    from labelmaker.config import Paths
+    from labeler.config import Paths
 
     path = Paths(root=tmp_path).masks_file(198658)
     masks.write_masks(path, 198658, [masks.block_arrays(_block(), unet_sha256=SHA)])

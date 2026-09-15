@@ -25,7 +25,7 @@ Regime = Literal["L", "H", "neg_tri", "QH", "unknown"]
 
 
 class Provenance(BaseModel):
-    tool: str  # "EFIT", "d3d_fusion_data", "toksearch", "QH_Database", "ideate"
+    tool: str  # "EFIT", "d3d_fusion_data", "toksearch", "QH_Database", "shot_design"
     version: str | None = None  # "01" (EFIT01), "kinetic", ...
     tree: str | None = None  # MDSplus tree, e.g. "efit01"
     run_id: str | None = None  # CAKE/OMFIT run id when applicable
@@ -168,7 +168,7 @@ class Vertex(BaseModel):
     """A breakpoint of a piecewise-linear actuator waveform: PCS's Vertex(x, y) shape."""
 
     t_s: float  # seconds from shot time 0 (the IGNITE/PCS convention)
-    y: float  # in the actuator's units (configs/ideate/actuators.yaml)
+    y: float  # in the actuator's units (configs/shot_design/actuators.yaml)
 
 
 class ActuatorWaveform(BaseModel):
@@ -245,7 +245,7 @@ class ResultItem(BaseModel):
 class Interval(BaseModel):
     """One stretch of one shot that one source claims a phenomenon occupied.
 
-    `evidence_kind` is labelmaker's (`detector`, `heuristic`, `forecast`, `text`, ...) and is what
+    `evidence_kind` is labeler's (`detector`, `heuristic`, `forecast`, `text`, ...) and is what
     separates the two lists a `PhenomenonHit` keeps: an observation and a forecast are both
     intervals and are never the same claim. A point event -- an ELM, an L-H transition -- has
     `t1_s == t0_s`; a spectrogram track carries its frequency extent and a transient carries none.
@@ -274,7 +274,7 @@ class EventRef(BaseModel):
     shot: int
     event_id: str
     source: str
-    phenomenon: str  # the SOURCE's own string ("coherent_mode", "elm_free"), not ideate's id
+    phenomenon: str  # the SOURCE's own string ("coherent_mode", "elm_free"), not shot_design's id
     t0_s: float
     t1_s: float
 
@@ -383,7 +383,7 @@ def to_summary(rec: ShotRecord, description: str = "") -> ShotSummary:
 
 
 class EvalPrompt(BaseModel):
-    """One row of `configs/ideate/evalsets/reference_shot_prompts.csv`.
+    """One row of `configs/shot_design/evalsets/reference_shot_prompts.csv`.
 
     `expect_phenomena` is what a DIII-D physicist typing this sentence MEANS, written down when
     the prompt was authored and never afterwards. It is deliberately not "what `resolve` returns":

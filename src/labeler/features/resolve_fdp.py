@@ -17,7 +17,7 @@ configuration. Without it PTDATA fails with `getservbyname failed for task
 'PTSERVER'` and MDSplus with `TREE-E-FOPENR`.
 
 Imports of toksearch are deferred into `available()` and the fetch helpers,
-so importing labelmaker in an environment without the `fdp` feature never
+so importing labeler in an environment without the `fdp` feature never
 touches it.
 
 MEASUREMENT RECORD - node probe, 2026-09-04, shot 185945, fdp 0.5.1 /
@@ -326,7 +326,7 @@ def _import_diagnosis() -> str | None:
 
 
 def available() -> bool:
-    """True when toksearch can be imported (the `labelmaker`/`fdp` envs).
+    """True when toksearch can be imported (the `labeler`/`fdp` envs).
 
     A bool, not the diagnosis: kept as the simple gate `resolve()` and any
     other caller can branch on. `resolve()` uses `_import_diagnosis()`

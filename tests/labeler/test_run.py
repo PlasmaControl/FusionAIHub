@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labelmaker import run
-from labelmaker.features import namespace as ns
-from labelmaker.features.store import is_complete, write_features
-from labelmaker.labels.store import labelled, read_label
-from labelmaker.models.base import (
+from labeler import run
+from labeler.features import namespace as ns
+from labeler.features.store import is_complete, write_features
+from labeler.labels.store import labelled, read_label
+from labeler.models.base import (
     InputField,
     InputSpec,
     ModelAdapter,
@@ -187,7 +187,7 @@ def test_infer_refuses_to_run_against_unverified_weights(tmp_path, monkeypatch):
     # otherwise asserts the pipeline reaches its only weight guard. Here the
     # card names a digest for a file that is absent, so the run must abort
     # before writing any label rather than failing every shot in turn.
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
     monkeypatch.setattr(
@@ -209,7 +209,7 @@ def test_the_weight_guard_runs_before_the_features_stage(tmp_path, monkeypatch):
     # could never be trusted. The guard is therefore before either pool
     # forks, not merely before the infer pool: with a digest the artifact
     # cannot match, nothing at all is written.
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
     monkeypatch.setattr(
@@ -234,7 +234,7 @@ def test_the_weight_guard_is_called_for_every_model_before_any_shot(
     # Proves the guard is *reached*, not merely that a broken artifact
     # happens to fail: it records the call and what the run had written by
     # the time it happened.
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     seen = []
 
@@ -271,7 +271,7 @@ def test_the_weight_guard_is_called_for_every_model_before_any_shot(
 def test_a_model_that_cannot_be_loaded_is_a_run_level_fault(tmp_path, monkeypatch):
     # A scaffold spec raises NotImplementedError at import. That is not a
     # per-shot error to be repeated N times.
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     def boom(slug):
         raise NotImplementedError(f"{slug} is a scaffold")
@@ -369,7 +369,7 @@ def test_validate_writes_summary_even_when_fidelity_fails(wired, monkeypatch):
     no real golden file, so a genuine failure isn't reachable here) and
     checks the run directory still gets its summary and exit code.
     """
-    from labelmaker import validate as validation
+    from labeler import validate as validation
 
     monkeypatch.setattr(
         validation, "adapter_fidelity",
@@ -431,7 +431,7 @@ def test_a_single_source_shot_is_not_flagged(wired, monkeypatch):
     # The other half of the previous test: `mixed` has to be able to say no,
     # or flagging everything would be indistinguishable from flagging the
     # right thing.
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     monkeypatch.setattr(registry, "load_adapter", lambda slug: _archive_only_adapter())
     assert run.main(_argv(wired, "features")) == 0
@@ -460,7 +460,7 @@ def _import_probe(module: str) -> list[str]:
         "import sys\n"
         f"import {module}\n"
         "print(repr(sorted(m for m in sys.modules if 'toksearch' in m "
-        "or m == 'labelmaker.features.resolve_fdp')))\n"
+        "or m == 'labeler.features.resolve_fdp')))\n"
     )
     # Fixed argv, no shell, no caller input.
     out = subprocess.run(
@@ -477,9 +477,9 @@ def test_importing_the_runner_imports_neither_toksearch_nor_the_fdp_resolver():
     # would NOT make toksearch appear. The second probe is the one that goes
     # red for that mutation; the first covers the case where resolve_fdp
     # stops deferring.
-    assert _import_probe("labelmaker.run") == []
-    assert _import_probe("labelmaker.features.resolve_fdp") == [
-        "labelmaker.features.resolve_fdp"
+    assert _import_probe("labeler.run") == []
+    assert _import_probe("labeler.features.resolve_fdp") == [
+        "labeler.features.resolve_fdp"
     ]
 
 
@@ -624,7 +624,7 @@ def test_infer_log_row_says_why_rows_are_invalid(wired):
 
 @pytest.mark.parametrize('broken', [False, True])
 def test_validate_writes_alarm_quality_for_archive_labels(wired, monkeypatch, broken):
-    from labelmaker import validate
+    from labeler import validate
 
     monkeypatch.setitem(validate.ARCHIVE_TRUTH, f'{SLUG}/score',
                         {'kind': 'column', 'column': 1, 'task': 'binary'})
@@ -653,7 +653,7 @@ def test_validate_without_archive_truth_writes_no_alarm_report(wired):
 
 def test_validate_writes_no_calibration_study_without_onset_within_truth(wired, monkeypatch):
     """A slug whose only archive truth is a column has nothing to calibrate."""
-    from labelmaker import validate
+    from labeler import validate
 
     monkeypatch.setitem(validate.ARCHIVE_TRUTH, f"{SLUG}/score",
                         {"kind": "column", "column": 1, "task": "binary"})
@@ -673,7 +673,7 @@ def test_validate_writes_no_calibration_study_without_onset_within_truth(wired, 
 @pytest.mark.parametrize("broken", [False, True])
 def test_validate_writes_calibration_study_for_survival(wired, monkeypatch, broken, slug):
     """Every slug with an `onset_within` truth is calibrated, not just the base one."""
-    from labelmaker import validate
+    from labeler import validate
 
     def study(*args, **kwargs):
         if broken:

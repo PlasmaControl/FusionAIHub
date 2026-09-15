@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate import config
-from ideate.shotdb import legacy_raw
+from shot_design import config
+from shot_design.shotdb import legacy_raw
 
 from .conftest import stamp_ours, write_frame
 
@@ -122,7 +122,7 @@ def test_missing_channels_comma_joined_string_is_split(paths):
     "DIII-D has no data" -> unavailable. A staged file's only means the staged producer did not
     record the column; q0/q95/qmin are listed on every real d3d_fusion_data file yet all three
     fetch cleanly from EFIT01, so from a staged file the honest answer is `pending` -- there is
-    something left for `ideate fetch` to do. Both directions are pinned below.
+    something left for `shot_design fetch` to do. Both directions are pinned below.
     """
     te = np.arange(100.0, 5800.0, 25.0)
     df = pd.DataFrame({"qpsi0.00": np.full(te.size, 9.4, dtype=np.float32)}, index=pd.Index(te))
@@ -614,7 +614,7 @@ def _recording_h5(monkeypatch) -> list[bool | None]:
 def test_every_read_only_open_disables_the_hdf5_lock(paths, dual_shot_d, monkeypatch):
     """scripts/fetch_shots.py holds a write lock on the file it is writing, and a plain
     `h5py.File(path, "r")` against it raises BlockingIOError -- an OSError, which _warn_once
-    swallowed, so a `ideate build` during a fetch silently built the shot with zero signals. Every
+    swallowed, so a `shot_design build` during a fetch silently built the shot with zero signals. Every
     entry point has to go through legacy_raw.open_h5 (locking=False); this pins all of them, on a shot
     that exists in both locations so both files are opened."""
     opens = _recording_h5(monkeypatch)

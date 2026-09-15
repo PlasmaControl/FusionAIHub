@@ -1,7 +1,7 @@
-"""The ideate CLI: build, add, show, export, coverage, query, model, llm and actuation.
+"""The shot_design CLI: build, add, show, export, coverage, query, model, llm and actuation.
 
 Build from legacy raw signals and operator text, retrieve similar shots, and inspect
-saved actuator sets. Thresholds, node names and units live in configs/ideate/.
+saved actuator sets. Thresholds, node names and units live in configs/shot_design/.
 
 Ported from shot-recommender-system (shotrec) @565d548.
 """
@@ -34,7 +34,7 @@ from .shotdb.reader import ShotFailed
 # checkpoint is already in ~/.cache/huggingface/hub. On a compute node with no outbound route that
 # call does not fail -- it hangs, for minutes, inside httpx.connect_tcp (measured during Task 12;
 # the same load takes ~5 s with HF_HUB_OFFLINE=1). Set here rather than in the Makefile so that
-# `uv run ideate build` behaves the same however it is invoked, and at import time so the build's
+# `uv run shot_design build` behaves the same however it is invoked, and at import time so the build's
 # worker processes inherit it. Below the imports is early enough -- huggingface_hub reads this
 # variable when IT is imported, which is lazily, inside text._load_model. IDEATE_HF_ONLINE=1 opts
 # out, which is what a first run on a machine with no cached checkpoint needs.
@@ -59,7 +59,7 @@ def _shots(args, default_list: str | None = None) -> list[int]:
     """--shots, --list and --list-file, unioned.
     `default_list` applies only if none of the three was given.
 
-    Not `elif`: `ideate build --list poc_v1 --list-file extra.yaml` silently built only the
+    Not `elif`: `shot_design build --list poc_v1 --list-file extra.yaml` silently built only the
     extra file's shots and dropped all 200 of poc_v1's when these were exclusive branches.
     """
     shots = set(getattr(args, "shots", None) or [])
@@ -131,7 +131,7 @@ def _brief(shots: list[int], n: int = 8) -> str:
 def _open_db(paths: config.Paths) -> store.ShotDB | None:
     if not (paths.db_dir / "manifest.json").exists():
         print(
-            f"no database at {paths.db_dir} -- run `ideate build --list poc_v1` first",
+            f"no database at {paths.db_dir} -- run `shot_design build --list poc_v1` first",
             file=sys.stderr,
         )
         return None
@@ -144,7 +144,7 @@ def _record(db: store.ShotDB, shot: int) -> ShotRecord | None:
         span = f"{held[0]}-{held[-1]}" if held else "(empty)"
         print(
             f"shot {shot} is not in the database ({len(held)} shots, {span}). "
-            f"Add it with `ideate add {shot}`.",
+            f"Add it with `shot_design add {shot}`.",
             file=sys.stderr,
         )
         return None
@@ -321,10 +321,10 @@ def _announce_root(command: str, destination: str, paths: config.Paths | None = 
     try:
         paths = paths or config.load_paths()
     except (OSError, ValueError):
-        print(f"ideate {command}: no data root resolved -> {destination}", file=sys.stderr)
+        print(f"shot_design {command}: no data root resolved -> {destination}", file=sys.stderr)
         return
     print(
-        f"ideate {command}: data root {paths.data_root} "
+        f"shot_design {command}: data root {paths.data_root} "
         f"({config.data_root_origin()}) -> {destination}",
         file=sys.stderr,
     )
@@ -415,7 +415,7 @@ def cmd_model(args) -> int:
             return 1
     manifest = ignite.codec_manifest(target)
     if not manifest.exists():
-        print(f"no bundle at {target} -- run `ideate model --download`")
+        print(f"no bundle at {target} -- run `shot_design model --download`")
         return 1
     entries = json.loads(manifest.read_text())["modalities"]
     have = [n for n in entries if (target / "codecs" / n / "codec_best.pt").exists()]
@@ -439,7 +439,7 @@ def cmd_add(args) -> int:
     _announce_root("add", f"db {paths.db_dir}", paths)
     if not (paths.db_dir / "manifest.json").exists():
         print(
-            f"no database at {paths.db_dir} -- `ideate build` before `ideate add`", file=sys.stderr
+            f"no database at {paths.db_dir} -- `shot_design build` before `shot_design add`", file=sys.stderr
         )
         return 1
     report = build_mod.add(args.shots, paths, cfg, workers=args.workers)
@@ -531,7 +531,7 @@ def cmd_encode(args) -> int:
     )
     # The commit the encode ran at, in the run manifest as well as in every sidecar: the
     # manifests written before this change carry none, and their shots' sidecars can only be
-    # backfilled with a null (see `scripts/ideate/frame_codes_provenance.py`).
+    # backfilled with a null (see `scripts/shot_design/frame_codes_provenance.py`).
     report["git_sha"] = provenance.build_sidecar(0, device="", input_file=None, bundle=None)["git_sha"]
     report["run_manifest"] = str(manifest)
     manifest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -742,7 +742,7 @@ def _query_header(state: QueryState, report: dict, fired: dict[str, int]) -> Non
 
 
 def _print_proposal(state: QueryState, flags) -> None:
-    """The user's own `--actuator` settings checked against configs/ideate/flags.yaml, printed
+    """The user's own `--actuator` settings checked against configs/shot_design/flags.yaml, printed
     before the results. "Can DIII-D do this at all" is a separate answer from "what has it done
     like this", and it was not being given: the rules ran on the result rows only, so
     `--actuator nbi.total=5e7` (2.5x the installed beam power) printed no flag."""
@@ -840,12 +840,12 @@ def _shot_file(path: str) -> list[int]:
 
 def cmd_corpus_select(args) -> int:
     """`corpus select`: the shot list of plan §5.7, written as YAML and as a plain shot-per-line
-    file for the labelmaker mask job.
+    file for the labeler mask job.
 
     Two passes over rule (d). Pass one estimates the Ip flat-top for the whole 13,313-shot pool;
     `--verify-flattop` adds pass two, which measures it for the 500 SELECTED shots and refills what
     the measurement drops (`select.verify_flattop`). A selected shot with no feature file comes out
-    of pass two as `pending` and is written to `--pending-out` for labelmaker's features stage;
+    of pass two as `pending` and is written to `--pending-out` for labeler's features stage;
     `--allow-pending` is what lets such a list be written at all, and `--finalize` is the second
     invocation that will not.
 
@@ -909,7 +909,7 @@ def cmd_corpus_select(args) -> int:
         paths = config.load_paths()
         census_path = census_path or paths.db_dir / "corpus_coverage.parquet"
     if not census_path.exists():
-        print(f"no census at {census_path}; run `ideate corpus scan` first", file=sys.stderr)
+        print(f"no census at {census_path}; run `shot_design corpus scan` first", file=sys.stderr)
         return 1
     text_dir = Path(args.text_dir) if args.text_dir else paths.per_shot_txt_dir
     # Both of these have exactly one definition, and it is not here: the feature store is
@@ -1006,7 +1006,7 @@ def cmd_corpus_select(args) -> int:
             noun = "listed" if listed is not None else "selected"
             print(
                 f"{len(pending)} {noun} shot(s) have no measured flat-top; refusing to write "
-                f"{args.name}. Run labelmaker's features stage over "
+                f"{args.name}. Run labeler's features stage over "
                 f"{pending_out or 'those shots (set $LABELMAKER_ROOT or --pending-out)'} and "
                 "repeat with --finalize, or pass --allow-pending to write the list as it stands.",
                 file=sys.stderr,
@@ -1023,7 +1023,7 @@ def cmd_corpus_select(args) -> int:
             f"refusing to finalize a short list: {len(selected)} of {quotas.n} shot(s). "
             f"{len(holes)} dropped shot(s) had no measured replacement available "
             f"({_brief(holes)}). Fetch features for more of the eligible pool "
-            "(scripts/labelmaker/fetch_features.py) and repeat.",
+            "(scripts/labeler/fetch_features.py) and repeat.",
             file=sys.stderr,
         )
         return 1
@@ -1090,10 +1090,10 @@ _SELECT_COLUMNS = ["shot", "group", "present", "t0_s", "t1_s"]
 
 
 def _pending_path(args) -> Path | None:
-    """Where the selected shots that still need a labelmaker features run are listed.
+    """Where the selected shots that still need a labeler features run are listed.
 
     `$LABELMAKER_ROOT/<name>_pending_features.txt` by default: the file is a work order for
-    labelmaker's features stage, so it belongs next to the feature store that stage writes into
+    labeler's features stage, so it belongs next to the feature store that stage writes into
     and not in this repo. None when neither `--pending-out` nor `$LABELMAKER_ROOT` says where --
     in which case the count is still printed and the list is still refused, because not knowing
     where to file the work order is not a reason to publish an unverified list.
@@ -1170,7 +1170,7 @@ def cmd_logs(args) -> int:
 
             parquet = Path(args.census) if args.census else paths.db_dir / "corpus_coverage.parquet"
             if not parquet.exists():
-                print(f"no census at {parquet}; run `ideate corpus scan` first", file=sys.stderr)
+                print(f"no census at {parquet}; run `shot_design corpus scan` first", file=sys.stderr)
                 return 1
             shots = sorted(set(pd.read_parquet(parquet, columns=["shot"])["shot"].astype(int)))
         else:
@@ -1217,12 +1217,12 @@ def cmd_logs(args) -> int:
 
 
 def cmd_labels(args) -> int:
-    """`labels join`: labelmaker's per-time labels and events become the DB's three label tables.
+    """`labels join`: labeler's per-time labels and events become the DB's three label tables.
 
     Succeeds with `n_shots_with_events = 0` when `$LABELMAKER_ROOT/events/` does not exist -- it
     does not until the mask job has run, and the labels are useful before then.
     """
-    from labelmaker.config import Paths as LabelmakerPaths
+    from labeler.config import Paths as LabelmakerPaths
 
     from .labels import join as join_mod
 
@@ -1264,7 +1264,7 @@ def cmd_labels(args) -> int:
     for slug, n in sorted(Counter(result.labels_wide["slug"]).items()):
         print(f"  {slug:<45} {n:>7,}")
     if not result.labels_wide.empty:
-        # Whose threshold each row carries: a card's operating point, ideate's own alarm level, or
+        # Whose threshold each row carries: a card's operating point, shot_design's own alarm level, or
         # none at all. An aggregate count cannot say it per row, but it can say how far it reaches.
         sources = Counter(result.labels_wide["thr_source"])
         print("  thr_source " + ", ".join(
@@ -1331,7 +1331,7 @@ def cmd_eval(args) -> int:
     paths = config.load_paths()
     db_dir = Path(args.db) if args.db else paths.db_dir
     if not (db_dir / "manifest.json").exists():
-        print(f"no database at {db_dir} -- run `ideate build` first", file=sys.stderr)
+        print(f"no database at {db_dir} -- run `shot_design build` first", file=sys.stderr)
         return 1
 
     if args.what == "latency":
@@ -1361,7 +1361,7 @@ def cmd_eval(args) -> int:
     db = store.ShotDB.load(db_dir)
 
     if args.what == "recall":
-        from labelmaker.config import Paths as LabelmakerPaths
+        from labeler.config import Paths as LabelmakerPaths
 
         root = Path(args.labelmaker_root) if args.labelmaker_root else LabelmakerPaths.from_env().root
         try:
@@ -1373,7 +1373,7 @@ def cmd_eval(args) -> int:
             print(f"unknown phenomenon {args.phenomenon!r}; it is one of {titles}", file=sys.stderr)
             return 2
         except rec_mod.RecallRefused as e:
-            print(f"ideate eval recall: {e}", file=sys.stderr)
+            print(f"shot_design eval recall: {e}", file=sys.stderr)
             return 2
         print(json.dumps(report.model_dump(mode="json"), indent=1, default=str)
               if args.json else rec_mod.markdown(report))
@@ -1442,7 +1442,7 @@ def _phenomenon_table(hits, resolved_id: str) -> None:
 
 
 def cmd_phenomenon(args) -> int:
-    """`ideate phenomenon TEXT`: which shots show a phenomenon, and what kind of evidence says so.
+    """`shot_design phenomenon TEXT`: which shots show a phenomenon, and what kind of evidence says so.
 
     Exit 2 on text that resolves to no phenomenon, with the registry's titles listed: an empty
     table would read as "no shot has one", and the two are opposite answers.
@@ -1471,7 +1471,7 @@ def cmd_phenomenon(args) -> int:
     paths = config.load_paths()
     db_dir = Path(args.db) if args.db else paths.db_dir
     if not (db_dir / "manifest.json").exists():
-        print(f"no database at {db_dir} -- run `ideate build` first", file=sys.stderr)
+        print(f"no database at {db_dir} -- run `shot_design build` first", file=sys.stderr)
         return 1
     db = store.ShotDB.load(db_dir)
     top = resolved[0][0]
@@ -1520,7 +1520,7 @@ def cmd_describe(args) -> int:
 
 
 def cmd_query(args) -> int:
-    """Multi-channel retrieval over the built database. See ideate.retrieval.search."""
+    """Multi-channel retrieval over the built database. See shot_design.retrieval.search."""
     from .retrieval.phenomena import PhenomenaError
 
     paths = config.load_paths()
@@ -1540,7 +1540,7 @@ def cmd_query(args) -> int:
         return 2
     except KeyError as e:
         print(
-            f"{e.args[0]}. Columns are the ones `ideate show SHOT --full` prints.", file=sys.stderr
+            f"{e.args[0]}. Columns are the ones `shot_design show SHOT --full` prints.", file=sys.stderr
         )
         return 2
     except ValueError as e:
@@ -1569,7 +1569,7 @@ def cmd_query(args) -> int:
     if not any(fired.values()):
         print(
             "no channel had anything to search on -- give --ref SHOT, --text, --where or "
-            "--actuator (`ideate query --help`).",
+            "--actuator (`shot_design query --help`).",
             file=sys.stderr,
         )
         return 2
@@ -1584,14 +1584,14 @@ def cmd_query(args) -> int:
 
 
 def _add_selection(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--list", help="configs/ideate/shot_lists/<name>.yaml")
+    p.add_argument("--list", help="configs/shot_design/shot_lists/<name>.yaml")
     p.add_argument("--list-file", help="a shot-list YAML at an explicit path")
     p.add_argument("--shots", type=int, nargs="*", help="explicit shot numbers")
 
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        prog="ideate",
+        prog="shot_design",
         description="DIII-D shot database: build from local signals, retrieve and inspect shots.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1686,7 +1686,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--name", default="recommender_v1", help="the list's name in the YAML")
     s.add_argument("--census", help="corpus_coverage.parquet (default: <db_dir>/...)")
     s.add_argument("--text-dir", help="per_shot_txt directory (default: paths.yaml's)")
-    s.add_argument("--out", help="shot-list YAML (default: configs/ideate/shot_lists/<name>.yaml)")
+    s.add_argument("--out", help="shot-list YAML (default: configs/shot_design/shot_lists/<name>.yaml)")
     s.add_argument("--txt-out", help="also write one shot per line here (the mask job reads it)")
     s.add_argument(
         "--seed",
@@ -1695,7 +1695,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"the list is a function of it (default {select_mod.DEFAULT_SEED}, or the seed "
         "--from-list's document recorded)",
     )
-    s.add_argument("--features", help="labelmaker feature store (default: $LABELMAKER_ROOT/features)")
+    s.add_argument("--features", help="labeler feature store (default: $LABELMAKER_ROOT/features)")
     s.add_argument("--frame-codes", help="IGNITE frame_codes directory")
     s.add_argument("--logs", help="sql/logs.jsonl, the source of mpid (default: paths.yaml's)")
     s.add_argument(
@@ -1748,16 +1748,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--force", action="store_true", help="rewrite an existing per-shot bundle")
     p.set_defaults(func=cmd_logs)
 
-    p = sub.add_parser("labels", help="labelmaker's labels and events -> the ideate DB")
+    p = sub.add_parser("labels", help="labeler's labels and events -> the shot_design DB")
     what = p.add_subparsers(dest="what", required=True)
     s = what.add_parser("join", help="labels_wide.parquet, events.parquet, text_claims.parquet")
-    s.add_argument("--list", help="configs/ideate/shot_lists/<name>.yaml (default: recommender_v1)")
+    s.add_argument("--list", help="configs/shot_design/shot_lists/<name>.yaml (default: recommender_v1)")
     s.add_argument("--list-file", help="a shot-list YAML at an explicit path")
     s.add_argument("--shots", type=int, nargs="*", help="explicit shot numbers")
-    s.add_argument("--labelmaker-root", help="$LABELMAKER_ROOT (default: labelmaker's own)")
+    s.add_argument("--labeler-root", help="$LABELMAKER_ROOT (default: labeler's own)")
     s.add_argument("--db", help="database directory (default: paths.yaml's db_dir)")
     s.add_argument("--text-root", help="the text corpus root (default: paths.yaml's)")
-    s.add_argument("--lexicon", help="phenomenon aliases (default: labelmaker's lexicons.yaml)")
+    s.add_argument("--lexicon", help="phenomenon aliases (default: labeler's lexicons.yaml)")
     s.add_argument("--no-text", action="store_true", help="skip the text claims entirely")
     p.set_defaults(func=cmd_labels)
 
@@ -1769,7 +1769,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = what.add_parser("prompts", help="the frozen 200-prompt evalset against the database")
     s.add_argument(
         "--split", default="eval", choices=["eval", "dev", "all"],
-        help="which side of configs/ideate/evalsets/split.yaml (default: eval)",
+        help="which side of configs/shot_design/evalsets/split.yaml (default: eval)",
     )
     s.add_argument("--evalset", help="an evalset CSV (default: the frozen one)")
     s.add_argument("-n", "--n", type=int, default=10, help="results per prompt (default 10)")
@@ -1786,7 +1786,7 @@ def build_parser() -> argparse.ArgumentParser:
         "recall", help="detector recall vs an annotation sheet; exits 2 below 20 labelled rows"
     )
     s.add_argument("phenomenon", help="which sheet, e.g. eho")
-    s.add_argument("--labelmaker-root", help="$LABELMAKER_ROOT (default: labelmaker's own)")
+    s.add_argument("--labeler-root", help="$LABELMAKER_ROOT (default: labeler's own)")
     for name, s in what.choices.items():
         # `recall` alone defaults to the whole discharge: an annotation window is indexed against
         # the shot, and clipping it to the flat top would score a ramp-down ELM as a miss.
@@ -1898,7 +1898,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except (OSError, ValueError) as e:
-        print(f"ideate: {e}", file=sys.stderr)
+        print(f"shot_design: {e}", file=sys.stderr)
         return 1
     except SystemExit as e:
         # No `cmd_*` raises SystemExit itself, but a library one calls can, and with either shape:

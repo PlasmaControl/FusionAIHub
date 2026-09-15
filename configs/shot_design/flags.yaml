@@ -27,7 +27,7 @@ version: 1
 # /scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/db (Sep 2026 build), not copied from anywhere.
 # `n` is how many of those 105 flat tops actually recorded the field -- the rest skip.
 
-# Bare names a person types (`ideate query --actuator nbi.total=5e6`, `q95=3.5`) mapped onto the
+# Bare names a person types (`shot_design query --actuator nbi.total=5e6`, `q95=3.5`) mapped onto the
 # database's {quantity}_{stat} columns. One bare name may stand for several columns: a user who
 # says "q95 3.5" means the whole flat top, so the value is checked against both the mean and the
 # minimum rule. Actuator keys of the form <system>.<member|total> are expanded automatically from

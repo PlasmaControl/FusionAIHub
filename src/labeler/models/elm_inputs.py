@@ -14,7 +14,7 @@ out verbatim in cell 43 of
   `data/reordered_model10.pkl`, and cell 47 builds
   `data/train_test_split_model10.pkl` **from that reordered file**.
 
-So the split pickle - the rows labelmaker fits on - is in `SPLIT_COLUMN_ORDER`.
+So the split pickle - the rows labeler fits on - is in `SPLIT_COLUMN_ORDER`.
 MEASURED 2026-09-06, not assumed: the pickle carries both `*_final_x` (raw) and
 `*_final_x_normalized`, so the per-column normalisation upstream applied is
 recoverable exactly as `s = std(raw)/std(norm)`, `m = mean(raw) - s*mean(norm)`,
@@ -31,7 +31,7 @@ Under `SPLIT_COLUMN_ORDER` the blocks are:
     12-75   bes_slow_channel_1..64
     76-123  ece_slow_channel_1..48
 
-Two sets matter for labelmaker:
+Two sets matter for labeler:
 
 * `all124` - everything, what upstream fitted;
 * `no_bes` - the 60 columns that are not BES, i.e. slots 0-11 and 76-123. BES

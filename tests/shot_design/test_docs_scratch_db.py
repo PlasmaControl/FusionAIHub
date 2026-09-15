@@ -12,10 +12,10 @@ import re
 import tomllib
 from pathlib import Path
 
-from ideate import config
+from shot_design import config
 
 REPO = Path(__file__).resolve().parents[2]
-DOCS = REPO / "docs" / "IDEATE.md"
+DOCS = REPO / "docs" / "SHOT_DESIGN.md"
 HEADING = "## Scratch databases and the pixi activation env"
 
 
@@ -30,7 +30,7 @@ def test_the_section_names_every_variable_the_ideate_features_pin():
     """`pixi run -e ideate*` overrides these, whatever the caller exported -- which is what
     replaced the production database with a one-shot one."""
     pinned = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    env = pinned["tool"]["pixi"]["feature"]["ideate"]["target"]["unix"]["activation"]["env"]
+    env = pinned["tool"]["pixi"]["feature"]["shot_design"]["target"]["unix"]["activation"]["env"]
     text = section()
     for name in ("IDEATE_DATA_ROOT", "LABELMAKER_ROOT", "IDEATE_CORPUS"):
         assert name in env, f"{name} is no longer pinned; the docs section is now wrong"
@@ -39,7 +39,7 @@ def test_the_section_names_every_variable_the_ideate_features_pin():
 
 def test_the_section_gives_both_ways_to_build_a_scratch_database():
     text = section()
-    assert ".pixi/envs/ideate-cpu/bin/python -m ideate" in text
+    assert ".pixi/envs/ideate-cpu/bin/python -m shot_design" in text
     assert "IDEATE_PATHS=" in text
 
 

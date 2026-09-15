@@ -13,11 +13,11 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from labelmaker import run
-from labelmaker.config import Paths
-from labelmaker.events import windows
-from labelmaker.features import namespace as ns
-from labelmaker.features import resolve_events
+from labeler import run
+from labeler.config import Paths
+from labeler.events import windows
+from labeler.features import namespace as ns
+from labeler.features import resolve_events
 
 from .test_events_windows import (
     SHOT,
@@ -190,7 +190,7 @@ def test_asking_this_resolver_for_someone_elses_feature_is_a_programming_error(
 
 
 def test_the_served_array_round_trips_through_the_feature_store(tmp_path):
-    from labelmaker.features.store import read_feature, write_features
+    from labeler.features.store import read_feature, write_features
 
     paths = _shot_files(tmp_path)
     arrays, missing = resolve_events.resolve(SHOT, [NAME], paths=paths)
@@ -220,7 +220,7 @@ def test_run_dispatches_the_events_source_to_this_resolver(tmp_path, monkeypatch
 
 def test_the_other_sources_still_dispatch_where_they_did(tmp_path, monkeypatch):
     """The events branch must not shadow the fdp fall-through."""
-    from labelmaker.features import resolve_fdp
+    from labeler.features import resolve_fdp
 
     monkeypatch.setattr(
         resolve_fdp, "resolve", lambda shot, names: ({"fdp": shot}, {})
@@ -234,7 +234,7 @@ def test_the_other_sources_still_dispatch_where_they_did(tmp_path, monkeypatch):
 
 def test_the_resolver_has_the_same_shape_as_the_other_two(tmp_path):
     """`(arrays, missing)`, keyed by canonical name, values `FeatureArray`."""
-    from labelmaker.features.store import FeatureArray
+    from labeler.features.store import FeatureArray
 
     paths = _shot_files(tmp_path)
     arrays, missing = resolve_events.resolve(SHOT, [NAME], paths=paths)

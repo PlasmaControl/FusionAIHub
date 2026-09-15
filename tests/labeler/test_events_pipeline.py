@@ -34,9 +34,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker import run
-from labelmaker.config import Paths
-from labelmaker.events import (
+from labeler import run
+from labeler.config import Paths
+from labeler.events import (
     heuristics,
     masks,
     schema,
@@ -45,8 +45,8 @@ from labelmaker.events import (
     transients,
     unet,
 )
-from labelmaker.events import lexicon as lx
-from labelmaker.events import pipeline as pl
+from labeler.events import lexicon as lx
+from labeler.events import pipeline as pl
 
 from .conftest import SYNTH_COUNTER_S
 
@@ -746,7 +746,7 @@ def test_text_source_has_documented_non_diagnostic_empty_coverage(
     assert text.status == "ok" and text.n_events == 1
     assert json.loads(text.intervals) == []
     assert np.isnan(text.t_cov0_s) and np.isnan(text.t_cov1_s)
-    docs = Path(__file__).resolve().parents[2] / "docs/LABELMAKER.md"
+    docs = Path(__file__).resolve().parents[2] / "docs/LABELER.md"
     assert "The `text` source is non-diagnostic and carries no coverage" in docs.read_text()
 
 
@@ -1183,7 +1183,7 @@ def _write_features(paths, shot, synth, *, qmin=True, ip=True,
     whole record; `qmin` is a 20 ms axis - EFIT01's cadence - holding
     `qmin_value` over `FEATURE_QMIN_BAND` and 0.8 (no regime) either side.
     """
-    from labelmaker.features import store as fs
+    from labeler.features import store as fs
 
     paths.features.mkdir(parents=True, exist_ok=True)
     arrays = {}
@@ -1436,7 +1436,7 @@ def test_a_missing_flattop_makes_the_qh_source_itself_skipped(shot_file, paths,
 
     Before this, a shot with no `ip` wrote TWO incompatible rows -
     `qh_flattop skipped NaN..NaN` and `qh_proxy ok -0.097..4.097 0 events`
-    - so ideate read `coverage_state: observed` for a phenomenon nobody
+    - so shot_design read `coverage_state: observed` for a phenomenon nobody
     could compute (measured on shot 198658). The proxy's OWN row has to
     carry the skip, because that is the source the registry consults.
     """
@@ -1560,7 +1560,7 @@ def test_all_multi_input_source_rows_preserve_each_inputs_interior_gaps(
 def test_qh_unions_published_blocks_without_filling_the_gap_between_them():
     from types import SimpleNamespace
 
-    from labelmaker.events.coverage import Coverage
+    from labeler.events.coverage import Coverage
 
     runs = [SimpleNamespace(t_cov=(a, b), t_s=np.linspace(a, b, 101))
             for a, b in ((0, 1), (3, 4))]
@@ -1571,7 +1571,7 @@ def test_qh_unions_published_blocks_without_filling_the_gap_between_them():
 
 
 def test_qmin_and_feature_rows_preserve_interior_missing_samples(paths, synth_shot):
-    from labelmaker.features.store import FeatureArray, write_features
+    from labeler.features.store import FeatureArray, write_features
 
     _write_features(paths, SHOT, synth_shot)
     t = np.linspace(0, .8, 41)

@@ -10,10 +10,10 @@ import pickle
 
 import numpy as np
 
-from labelmaker.models import registry
-from labelmaker.models.base import BuiltInputs
-from labelmaker.models.d3d_tearing_time_to_event_dsm import spec as base
-from labelmaker.models.d3d_tearing_time_to_event_dsm_continued import spec as cont
+from labeler.models import registry
+from labeler.models.base import BuiltInputs
+from labeler.models.d3d_tearing_time_to_event_dsm import spec as base
+from labeler.models.d3d_tearing_time_to_event_dsm_continued import spec as cont
 
 
 def _built(n=7, seed=0):
@@ -50,7 +50,7 @@ def test_card_matches_the_spec_and_declares_the_same_columns_as_the_base_card():
     want = registry.read_card(base.SLUG)["labelmaker"]
     assert got["outputs"] == want["outputs"]
     assert got["inputs"] == want["inputs"]
-    assert got["upstream"]["training_code"] == "scripts/labelmaker/retrain_tearing_dsm.py"
+    assert got["upstream"]["training_code"] == "scripts/labeler/retrain_tearing_dsm.py"
 
 
 def test_load_reads_the_continued_weights_and_leaves_isotonic_columns_nan(
@@ -100,7 +100,7 @@ def test_a_missing_continued_weight_file_is_an_error_not_a_fallback(tmp_path):
 def test_the_variant_is_scored_against_the_same_archived_truth_as_the_base():
     """Without these entries the variant's published labels are unscoreable:
     `_pooled_onset_rows` only reads labels that have an `ARCHIVE_TRUTH` rule."""
-    from labelmaker import validate
+    from labeler import validate
 
     for name in ("tm_risk_250ms", "tm_risk_500ms", "tm_risk_1s", "tm_time_p50"):
         assert (validate.ARCHIVE_TRUTH[f"{cont.SLUG}/{name}"]

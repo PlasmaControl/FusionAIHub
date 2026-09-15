@@ -1,6 +1,6 @@
 """Sampling a per-shot record at chosen times.
 
-These are IGNITE's conventions, copied rather than imported: labelmaker
+These are IGNITE's conventions, copied rather than imported: labeler
 depends on no model code (see ignite/gate.py's reuse note). The original
 and the reason both halves matter are in
 src/tokamak_foundation_model/ignite/train_dynamics.py:177-192.

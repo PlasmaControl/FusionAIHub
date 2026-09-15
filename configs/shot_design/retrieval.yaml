@@ -13,7 +13,7 @@ scalar_embedding:
   n_components: 24
   waveform_points: 20
 
-# Phase 2 retrieval. `weights` is per channel in ideate.retrieval.channels.CHANNELS; a channel
+# Phase 2 retrieval. `weights` is per channel in shot_design.retrieval.channels.CHANNELS; a channel
 # not named here votes with weight 1.0, so registering a new channel needs no config change.
 retrieval:
   k0: 60                       # RRF damping: sum_c w_c / (k0 + rank_c)
@@ -38,7 +38,7 @@ retrieval:
   run_diversity_decay: 0.9
   outcome_penalty: 0.5         # --prefer-outcome success: factor on a bad verdict / missed Ip target
 
-# Phenomenon retrieval (`ideate phenomenon`, ideate.retrieval.phenomena.locate). One score per
+# Phenomenon retrieval (`shot_design phenomenon`, shot_design.retrieval.phenomena.locate). One score per
 # shot out of four evidence classes:
 #
 #   score = label * max_p + event * (1 - exp(-n_events / saturation_n)) + text * tanh(hits / 2)
@@ -50,9 +50,9 @@ retrieval:
 # work: an observed hit outranks a label-only hit, which outranks a forecast-only hit, which
 # outranks a curated-list hit, which outranks a text-only hit, whatever the arithmetic says
 # (plan §7; the order is `phenomena.OBSERVED > LABELLED > FORECAST > DATABASE > TEXTUAL`, and a
-# test asserts this sentence appears here and in docs/IDEATE.md). A label is a model's claim
+# test asserts this sentence appears here and in docs/SHOT_DESIGN.md). A label is a model's claim
 # about the PRESENT and a forecast is a claim about the FUTURE, which is why the present-tense
-# one ranks higher. Text alone is additionally capped at labelmaker's `TEXT_ONLY_CEILING` (0.25,
+# one ranks higher. Text alone is additionally capped at labeler's `TEXT_ONLY_CEILING` (0.25,
 # four independent mentions) and carries the caveat "TEXT ONLY".
 #
 # `saturation_n` is the count at which the event term reaches 1 - 1/e = 0.63: three detections is

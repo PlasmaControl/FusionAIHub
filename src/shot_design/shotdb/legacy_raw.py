@@ -38,7 +38,7 @@ _log = logging.getLogger(__name__)
 
 # The file-level marker scripts/fetch_shots.py stamps on every file it writes (its SCHEMA). It is
 # duplicated here rather than imported because the fetcher runs in the fdp environment and cannot
-# import ideate; tests/test_fetch_plan.py pins the two equal.
+# import shot_design; tests/test_fetch_plan.py pins the two equal.
 SCHEMA = "ideate-raw-v1"
 
 # The dtype a column is read as. Every data-bearing column in BOTH stores is float32 on disk: our
@@ -93,7 +93,7 @@ def open_h5(path: Path) -> h5py.File:
     that shot, and a plain `h5py.File(path, "r")` against a locked file raises BlockingIOError
     instead of reading it -- measured while a 198-shot fetch was in flight. Before this opener was
     shared, legacy_raw still opened with the lock: BlockingIOError is an OSError, `_warn_once`
-    swallowed it, and `ideate build` during a fetch silently built the shot with zero signals. We
+    swallowed it, and `shot_design build` during a fetch silently built the shot with zero signals. We
     only ever read here, and the torn-write hazard the lock would guard against is covered by the
     fetcher's `complete = True` attr, stamped last and checked by `_incomplete` below.
     """
@@ -367,7 +367,7 @@ def _read_specs(
                             # d3d_fusion_data file lists "q0,q95,qmin" (verified on 160904,
                             # 161172, 163119) yet all three fetch cleanly from EFIT01, which is
                             # exactly what the fetch plan does for the breadth shots. Leaving
-                            # those `pending` is what lets `ideate fetch` back-fill them instead
+                            # those `pending` is what lets `shot_design fetch` back-fill them instead
                             # of writing them off forever.
                             settled.add(s.name)
                 except (OSError, KeyError, RuntimeError) as e:

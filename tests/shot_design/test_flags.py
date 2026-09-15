@@ -2,7 +2,7 @@
 
 Two halves. The first runs on rule sets written inline, so the mechanism (globs, aliases,
 derived quantities, envelopes, ordering) is tested independently of whatever limits happen to be
-in configs/ideate/flags.yaml. The second runs the shipped config over the real database and
+in configs/shot_design/flags.yaml. The second runs the shipped config over the real database and
 asserts the calibration claim the config's comments make -- a limit that fires on most good shots
 is a wrong limit, and that has to fail a test rather than be noticed on a demo screen.
 
@@ -19,8 +19,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from ideate import config
-from ideate.flags import rules
+from shot_design import config
+from shot_design.flags import rules
 
 DB_DIR = Path("/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/db")
 
@@ -222,7 +222,7 @@ def test_an_alias_that_is_neither_a_name_nor_a_list_is_refused(tmp_path):
 
 def test_actuator_keys_come_from_the_registry_not_the_flags_config(tmp_path):
     """`nbi.total` and `ech.LUKE` are the shapes QueryState.actuators uses. They are expanded from
-    configs/ideate/actuators.yaml, so adding a gyrotron never needs an edit here."""
+    configs/shot_design/actuators.yaml, so adding a gyrotron never needs an edit here."""
     cfg = cfg_from(
         tmp_path,
         {
@@ -367,11 +367,11 @@ def test_member_caps_expand_from_the_actuator_registry(tmp_path, monkeypatch):
     cfg = cfg_from(tmp_path, {"rules": []})
     (cap,) = [r for r in cfg["rules"] if r["id"] == "nbi_member_cap"]
     assert cap["field"] == "pnbi_*_peak" and cap["exclude"] == ["pnbi_total_*"]
-    assert cap["source"] == "configs/ideate/actuators.yaml"
-    assert "configs/ideate/actuators.yaml" in cap["message"]
+    assert cap["source"] == "configs/shot_design/actuators.yaml"
+    assert "configs/shot_design/actuators.yaml" in cap["message"]
     flags = rules.evaluate_flags({"pnbi_15L_peak": 2.6e6, "pnbi_total_peak": 1.1e7}, None, cfg)
     assert [f.value for f in flags] == [2.6e6]
-    assert flags[0].source == "configs/ideate/actuators.yaml"
+    assert flags[0].source == "configs/shot_design/actuators.yaml"
     assert "provisional" not in flags[0].message  # a declared cap is measured, not guessed
 
 
@@ -412,7 +412,7 @@ def test_envelopes_from_frame_drops_thin_columns():
 
 def test_shipped_rules_are_well_formed():
     cfg = rules.load_rules()
-    assert cfg["rules"], "configs/ideate/flags.yaml has no rules"
+    assert cfg["rules"], "configs/shot_design/flags.yaml has no rules"
     for r in cfg["rules"]:
         assert r["op"] in rules.OPS, r
         assert r["severity"] in ("info", "warn", "error"), r
@@ -426,7 +426,7 @@ def test_shipped_rules_are_well_formed():
 @pytest.mark.real_data
 @pytest.mark.skipif(not DB_DIR.exists(), reason=f"{DB_DIR} not mounted")
 def test_shipped_limits_do_not_fire_on_most_good_shots():
-    """The calibration claim configs/ideate/flags.yaml makes, as a test.
+    """The calibration claim configs/shot_design/flags.yaml makes, as a test.
 
     A limit that fires on a large fraction of real, successful shots is evidence the number is
     wrong, not evidence the shots were. The two coil rules are the interesting case: real good

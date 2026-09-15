@@ -2,8 +2,8 @@
 
 Three rules hold across this package, and they are the reason it exists at all:
 
-* **The evalset is frozen before anything is tuned.** `configs/ideate/evalsets/` is authored
-  once and its sha256 is asserted by `tests/ideate/test_evalset_frozen.py`. A retrieval change
+* **The evalset is frozen before anything is tuned.** `configs/shot_design/evalsets/` is authored
+  once and its sha256 is asserted by `tests/shot_design/test_evalset_frozen.py`. A retrieval change
   that makes a number move is a change to retrieval; a prompt edit that makes a number move is
   unmeasurable, so the second is locked out.
 * **A miss is a finding.** Nothing here decides what "good" is beyond the two bars the plan
@@ -15,7 +15,7 @@ Three rules hold across this package, and they are the reason it exists at all:
 
 Out of scope here, deliberately: the *physical* quality of the detectors themselves. Agreement
 with a TokEye or teacher label is not physical accuracy, and establishing the latter is the
-labelmaker workstream's task, not this harness's.
+labeler workstream's task, not this harness's.
 """
 
 from __future__ import annotations

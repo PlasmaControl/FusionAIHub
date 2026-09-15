@@ -14,10 +14,10 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from ideate import config
-from ideate.flags import rules
-from ideate.retrieval import actuation
-from ideate.schema import ActuationSet, ActuatorWaveform, Vertex
+from shot_design import config
+from shot_design.flags import rules
+from shot_design.retrieval import actuation
+from shot_design.schema import ActuationSet, ActuatorWaveform, Vertex
 
 CFG = {"rdp_tol_frac": 0.03, "max_vertices": 12, "grid_ms": 50}
 

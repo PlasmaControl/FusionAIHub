@@ -2,11 +2,11 @@
 upstream did it, risk as one minus the fork's survival probability."""
 import numpy as np
 
-from labelmaker.config import Paths
-from labelmaker.models import registry
-from labelmaker.models.base import BuiltInputs
-from labelmaker.models.d3d_tearing_time_to_event_dsm import spec as dsm
-from labelmaker.models.runners import dsm_pickle
+from labeler.config import Paths
+from labeler.models import registry
+from labeler.models.base import BuiltInputs
+from labeler.models.d3d_tearing_time_to_event_dsm import spec as dsm
+from labeler.models.runners import dsm_pickle
 
 # get_survival_from_shot.py, verbatim
 SCALARS = ['bmspinj', 'bmstinj', 'betan_EFITRT2', 'qmin_EFITRT2', 'ech_pwr_total', 'ip',
@@ -33,7 +33,7 @@ def test_the_training_shots_are_committed_beside_the_spec():
     """Half the 500-shot pool is in this set, so every pool number needs it.
 
     The list is generated from the upstream per-row shot pickle by
-    `scripts/labelmaker/write_training_shots.py` and committed, because the
+    `scripts/labeler/write_training_shots.py` and committed, because the
     split has to be reproducible where `/projects` is not mounted.
     """
     shots = dsm.TRAINING_SHOTS
@@ -159,9 +159,9 @@ def test_loaded_calibration_reaches_predictions_and_hdf5(tmp_path, monkeypatch):
     import pickle
     from types import SimpleNamespace
 
-    from labelmaker import run
-    from labelmaker.calibrate import IsotonicMap
-    from labelmaker.labels.store import read_label
+    from labeler import run
+    from labeler.calibrate import IsotonicMap
+    from labeler.labels.store import read_label
 
     from .test_dsm_pickle import _fake_pickle
 

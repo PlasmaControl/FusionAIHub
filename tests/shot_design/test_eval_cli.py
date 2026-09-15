@@ -1,4 +1,4 @@
-"""`ideate eval prompts|latency|recall`: the exit codes, the flags, and what each one prints.
+"""`shot_design eval prompts|latency|recall`: the exit codes, the flags, and what each one prints.
 
 The exit codes carry meaning here and are asserted rather than assumed: 0 measured and within the
 bar, 2 refused (there is nothing to measure), 3 measured and outside the bar. A harness that
@@ -14,15 +14,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate import cli
-from ideate.eval import prompts as ev
+from shot_design import cli
+from shot_design.eval import prompts as ev
 
 from .conftest import shot_record, write_db
 
 
 @pytest.fixture(autouse=True)
 def _no_minilm(monkeypatch):
-    from ideate.shotdb import text as text_mod
+    from shot_design.shotdb import text as text_mod
 
     monkeypatch.setattr(
         text_mod, "embed_texts", lambda texts: np.tile([1.0, 0.0, 0.0], (len(texts), 1))
@@ -31,7 +31,7 @@ def _no_minilm(monkeypatch):
 
 @pytest.fixture
 def db_root(tmp_path: Path, monkeypatch) -> Path:
-    root = tmp_path / "ideate"
+    root = tmp_path / "shot_design"
     (root / "db").mkdir(parents=True)
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(root))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
@@ -202,7 +202,7 @@ def test_eval_latency_json_carries_every_row_and_the_machine(db_root, capsys):
 
 
 def test_eval_latency_exits_three_when_a_budgeted_row_is_over(db_root, monkeypatch, capsys):
-    from ideate.eval import latency as lat_mod
+    from shot_design.eval import latency as lat_mod
 
     monkeypatch.setitem(lat_mod.BUDGETS_S, "load", 0.0)
     code = cli.main(["eval", "latency", "--repeats", "1", "--runs", "2"])
@@ -215,7 +215,7 @@ def test_a_load_dependent_row_is_named_on_stderr_and_is_not_a_failure(
 ):
     """Neither PASS nor FAIL: the node would not let the measurement be made. Folding it into the
     exit code either way would be inventing a verdict."""
-    from ideate.eval import latency as lat_mod
+    from shot_design.eval import latency as lat_mod
 
     real = lat_mod.measure
 
@@ -236,7 +236,7 @@ def test_a_load_dependent_row_is_named_on_stderr_and_is_not_a_failure(
 
 
 def test_eval_recall_exits_two_when_there_is_no_sheet(db_root, tmp_path, capsys):
-    code = cli.main(["eval", "recall", "eho", "--labelmaker-root", str(tmp_path)])
+    code = cli.main(["eval", "recall", "eho", "--labeler-root", str(tmp_path)])
     assert code == 2
     assert "no annotation sheet at" in capsys.readouterr().err
 
@@ -247,7 +247,7 @@ def test_eval_recall_exits_two_for_a_phenomenon_no_detector_writes_and_prints_no
     """`fast_ion` is a text-only topic: no event rule, no label head. A recall over it is 0.0 by
     construction, so the command must refuse it the way it refuses a sheet that is too thin --
     exit 2 and nothing on stdout, never a table with a zero in it."""
-    code = cli.main(["eval", "recall", "fast_ion", "--labelmaker-root", str(tmp_path)])
+    code = cli.main(["eval", "recall", "fast_ion", "--labeler-root", str(tmp_path)])
     assert code == 2
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -255,7 +255,7 @@ def test_eval_recall_exits_two_for_a_phenomenon_no_detector_writes_and_prints_no
 
 
 def test_eval_recall_refuses_an_unknown_phenomenon_with_the_registry(db_root, tmp_path, capsys):
-    code = cli.main(["eval", "recall", "sawtoth", "--labelmaker-root", str(tmp_path)])
+    code = cli.main(["eval", "recall", "sawtoth", "--labeler-root", str(tmp_path)])
     assert code == 2
     err = capsys.readouterr().err
     assert "unknown phenomenon" in err and "sawtooth" in err
@@ -277,4 +277,4 @@ def test_every_eval_subcommand_says_so_when_there_is_no_database(tmp_path, monke
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     for argv in (["eval", "prompts"], ["eval", "latency"], ["eval", "recall", "eho"]):
         assert cli.main(argv) == 1
-    assert capsys.readouterr().err.count("run `ideate build` first") == 3
+    assert capsys.readouterr().err.count("run `shot_design build` first") == 3

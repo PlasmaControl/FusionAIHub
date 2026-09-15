@@ -10,10 +10,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from labelmaker import validate
-from labelmaker.config import Paths
-from labelmaker.models.d3d_tearing_onset_cnn1d import spec as tm
-from labelmaker.models.runners.keras_h5 import load_ensemble, predict_members
+from labeler import validate
+from labeler.config import Paths
+from labeler.models.d3d_tearing_onset_cnn1d import spec as tm
+from labeler.models.runners.keras_h5 import load_ensemble, predict_members
 
 GOLDEN = Path(__file__).parent / "data" / "tearing_golden.npz"
 UPSTREAM = Path(
@@ -103,7 +103,7 @@ def test_adapter_fidelity_report_is_a_pass(tmp_path):
 
 def test_adapter_fidelity_gate_is_conjunctive():
     """A tightened gate on any one of the three measurements alone fails."""
-    from labelmaker.validate import FidelityTolerances
+    from labeler.validate import FidelityTolerances
 
     report = validate.adapter_fidelity(
         "d3d_tearing_onset_cnn1d",

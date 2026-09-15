@@ -13,12 +13,12 @@ interchangeable:
   (plan §2, §7, Appendix C item 7). It lives in its own field, `PhenomenonHit.forecasts`, and it
   never merges into `intervals`;
 * an **operator wrote it down** -- a `text_claims` row. Never a label by itself (plan §2): a
-  hit resting on nothing but text is capped at labelmaker's `TEXT_ONLY_CEILING` and carries the
+  hit resting on nothing but text is capped at labeler's `TEXT_ONLY_CEILING` and carries the
   caveat "TEXT ONLY".
 
 So the ranking is a class order first and arithmetic second. `locate` sorts by evidence class
 before it sorts by score, and a shot with one observed interval outranks a shot with a hundred
-forecast rows however the weights are set. The weights, in `configs/ideate/retrieval.yaml`, are
+forecast rows however the weights are set. The weights, in `configs/shot_design/retrieval.yaml`, are
 not fitted -- there is no labelled set of "shots with an EHO" to fit them against.
 
 **Absence is not evidence.** Every route out of this module distinguishes "the diagnostic looked
@@ -28,10 +28,10 @@ is also what `avoid` turns on -- `--avoid phenomenon:elm` drops the shots whose 
 and KEEPS, with a caveat, the shots where no ELM detector ran at all. Dropping those would be
 reading a gap in the data as a physics result.
 
-**The vocabulary is labelmaker's.** The phenomenon ids and their aliases come from
-`src/labelmaker/events/lexicons.yaml`, which is the single source of both (plan §5.6), and
-`resolve` matches text by calling labelmaker's own `hits()` rather than by carrying a second
-tokenizer that would drift from the first correction onwards. `configs/ideate/phenomena.yaml`
+**The vocabulary is labeler's.** The phenomenon ids and their aliases come from
+`src/labeler/events/lexicons.yaml`, which is the single source of both (plan §5.6), and
+`resolve` matches text by calling labeler's own `hits()` rather than by carrying a second
+tokenizer that would drift from the first correction onwards. `configs/shot_design/phenomena.yaml`
 adds only the scoring machinery around those ids, and an `aliases:` key in it is an error.
 """
 
@@ -49,13 +49,13 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from labelmaker.events import lexicon as lexicon_mod
+from labeler.events import lexicon as lexicon_mod
 
 from .. import config
 from ..schema import EventRef, Interval, PhenomenonHit
 from . import describe as describe_mod
 
-#: The registry file, under `configs/ideate/`.
+#: The registry file, under `configs/shot_design/`.
 CONFIG_NAME = "phenomena.yaml"
 
 #: The `retrieval.yaml` block `locate` reads its weights from.
@@ -73,7 +73,7 @@ CORPUS_GROUPS: tuple[str, ...] = ("bes", "co2", "ece", "filterscopes", "mhr", "m
 #: The four states `PhenomenonHit.coverage_state` can be in, worst-informed first. They are not
 #: degrees of one thing: only `observed` is an answer to "was it there?", and the other three are
 #: three different ways of saying the database cannot tell you. The names and the order are
-#: `ideate.mcp.tools.EVENT_STATES`, so a `get_events` reply and a phenomenon hit describe the
+#: `shot_design.mcp.tools.EVENT_STATES`, so a `get_events` reply and a phenomenon hit describe the
 #: same shot with the same word.
 #:
 #:   unindexed    the shot is absent from db.shots
@@ -83,7 +83,7 @@ CORPUS_GROUPS: tuple[str, ...] = ("bes", "co2", "ece", "filterscopes", "mhr", "m
 COVERAGE_STATES: tuple[str, ...] = ("unindexed", "unprocessed", "uncovered", "observed")
 
 #: Which `evidence_kind` values are OBSERVATIONS. An allow-list, not "anything that is not a
-#: forecast": labelmaker's `EVIDENCE_KINDS` also holds `text`, `model`, `human` and `database`,
+#: forecast": labeler's `EVIDENCE_KINDS` also holds `text`, `model`, `human` and `database`,
 #: and one `source="tokeye_track", evidence_kind="model"` row would otherwise be reported as a
 #: diagnostic sighting by the same code path that reports a detector's. The registry's source
 #: pins keep those rows out today; this keeps them out when a source starts writing both.
@@ -99,7 +99,7 @@ FORECAST_KIND = "forecast"
 #: entry (from a model card) overrides it for that label, which is what `thr` is for.
 DEFAULT_LABEL_FLOOR = 0.5
 
-#: The tier order, in one sentence, so `retrieval.yaml` and `docs/IDEATE.md` cannot state it
+#: The tier order, in one sentence, so `retrieval.yaml` and `docs/SHOT_DESIGN.md` cannot state it
 #: differently from the code that sorts by it. A test asserts both files contain this string.
 RANKING_SENTENCE = (
     "an observed hit outranks a label-only hit, which outranks a forecast-only hit, which "
@@ -280,7 +280,7 @@ class LabelRef:
 class EventRule:
     """Which `events.parquet` rows are OBSERVED evidence for a phenomenon.
 
-    `phenomenon` is the string the SOURCE writes, which is deliberately not ideate's id:
+    `phenomenon` is the string the SOURCE writes, which is deliberately not shot_design's id:
     `tokeye_track` writes `coherent_mode` for every track it finds, and what makes one of them an
     EHO rather than a tearing mode is the band and the harmonic count, not the detector's label.
 
@@ -291,7 +291,7 @@ class EventRule:
     `tokeye_transient` writes `phenomenon="transient"` and has its own rule.
 
     `max_bandwidth_khz` bounds the track's width. `band_khz` alone matches on the centroid, and
-    a track spanning 0.5-248 kHz has a centroid somewhere: on the three real labelmaker shots
+    a track spanning 0.5-248 kHz has a centroid somewhere: on the three real labeler shots
     5-12 % of the rows the tearing rule matched are that wide. The rule of thumb the registry
     follows is that a track has to FIT INSIDE the band it is claimed to be in.
     """
@@ -341,12 +341,12 @@ class EventRule:
 
 @dataclass(frozen=True)
 class Phenomenon:
-    """One registry entry: labelmaker's names, and ideate's evidence rules around them."""
+    """One registry entry: labeler's names, and shot_design's evidence rules around them."""
 
     id: str
     title: str
     aliases: tuple[str, ...]
-    exclude: tuple[str, ...]  # labelmaker calls these `negatives`; same idea, its name
+    exclude: tuple[str, ...]  # labeler calls these `negatives`; same idea, its name
     labels: tuple[LabelRef, ...] = ()
     events: tuple[EventRule, ...] = ()
     forecasts: tuple[str, ...] = ()
@@ -440,7 +440,7 @@ class Evidence:
 
 @functools.lru_cache(maxsize=2)
 def _lexicon(path: str | None = None) -> lexicon_mod.Lexicon:
-    """labelmaker's parsed lexicon: the ids, the aliases and the negatives, from its own reader."""
+    """labeler's parsed lexicon: the ids, the aliases and the negatives, from its own reader."""
     return lexicon_mod.load_lexicon(path)
 
 
@@ -450,11 +450,11 @@ _CACHE: dict[str, tuple[int, int, dict[str, Phenomenon]]] = {}
 
 
 def registry(path: Path | str | None = None) -> dict[str, Phenomenon]:
-    """The validated registry, by phenomenon id, with labelmaker's aliases merged in.
+    """The validated registry, by phenomenon id, with labeler's aliases merged in.
 
     Validated rather than trusted, because every mistake this file can make is silent: an id that
-    is not one of labelmaker's registered ids joins to no label, no event and no claim. A re-stated
-    alias list is a second vocabulary that drifts from labelmaker's on the first correction.
+    is not one of labeler's registered ids joins to no label, no event and no claim. A re-stated
+    alias list is a second vocabulary that drifts from labeler's on the first correction.
     """
     p = Path(path) if path is not None else config.CONFIG_DIR / CONFIG_NAME
     try:
@@ -487,7 +487,7 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
     if want != got:
         missing, extra = sorted(want - got), sorted(got - want)
         raise PhenomenaError(
-            f"{source}: the registry must name exactly labelmaker's round-1 phenomena. "
+            f"{source}: the registry must name exactly labeler's round-1 phenomena. "
             f"missing {missing}, unknown {extra}"
         )
     out: dict[str, Phenomenon] = {}
@@ -497,7 +497,7 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
         for banned in ("aliases", "exclude", "negatives"):
             if banned in body:
                 raise PhenomenaError(
-                    f"{source}: {pid} carries `{banned}:`. The alias lists live in labelmaker's "
+                    f"{source}: {pid} carries `{banned}:`. The alias lists live in labeler's "
                     f"{lex_path()} and are read from there -- one file, two readers (plan §5.6). "
                     "Add the phrase there instead."
                 )
@@ -541,7 +541,7 @@ def _build(doc: Mapping, source: Path) -> dict[str, Phenomenon]:
 
 
 def lex_path() -> Path:
-    """Where the alias lists live. labelmaker's file, never a copy of it."""
+    """Where the alias lists live. labeler's file, never a copy of it."""
     return Path(lexicon_mod.DEFAULT_LEXICON)
 
 
@@ -608,7 +608,7 @@ def _events(source: Path, pid: str, value) -> tuple[EventRule, ...]:
             raise PhenomenaError(
                 f"{source}: {pid} `events.caveat` {caveat!r} is not one of "
                 f"{sorted(EVENT_CAVEATS)}. The strings are constants in "
-                "`ideate.retrieval.phenomena` because callers key on them."
+                "`shot_design.retrieval.phenomena` because callers key on them."
             )
         weight = float(item.get("weight", 1.0))
         if not 0.0 < weight <= 1.0:
@@ -653,7 +653,7 @@ def _band(source: Path, pid: str, value) -> tuple[float | None, float | None] | 
 def resolve(text: str | None) -> list[tuple[str, float]]:
     """`"edge harmonic oscillation"` -> `[("eho", 1.0)]`. Longest alias wins; a denial vetoes.
 
-    Matching is labelmaker's `hits()` and not a second tokenizer: it is the function that knows a
+    Matching is labeler's `hits()` and not a second tokenizer: it is the function that knows a
     `.` between two digits is part of the number, that `elm-free` is one token so " elm " is not
     inside it, and that a sentence is the span a negation applies over. A phenomenon whose every
     mention in `text` is a denial ("no EHO this shot") resolves to nothing rather than to itself,
@@ -734,7 +734,7 @@ def _centroid_khz(row: Mapping, attrs: Mapping) -> float | None:
 
 def _bandwidth_khz(row: Mapping, attrs: Mapping) -> float | None:
     """How WIDE the track is, in kHz. `attrs.bandwidth_khz` is recorded on every real
-    `tokeye_track` row (0 missing of 1,147 on the three labelmaker shots); the `f0-f1` extent is
+    `tokeye_track` row (0 missing of 1,147 on the three labeler shots); the `f0-f1` extent is
     the fallback. None when neither is recorded -- and None never rejects a row."""
     bw = _f(attrs.get("bandwidth_khz"))
     if bw is not None:
@@ -1146,15 +1146,15 @@ def _database_shots(path_key: str) -> frozenset[int]:
 
 @functools.lru_cache(maxsize=4)
 def _table_shots(stems: tuple[str, ...]) -> frozenset[int]:
-    """The shots labelmaker's curated tables name, by manifest stem.
+    """The shots labeler's curated tables name, by manifest stem.
 
     The second way a `database:` block can point at a list, and the one new tables use:
     `data/events/tables.yaml` already declares where the CSV is and what its columns mean, so
-    the registry names the STEM and labelmaker resolves it. A stem the manifest does not know,
+    the registry names the STEM and labeler resolves it. A stem the manifest does not know,
     or a manifest that cannot be read at all, is an empty set and not an exception -- the
     tables are optional data and a database built without them must still rank.
     """
-    from labelmaker.events import databases as label_tables
+    from labeler.events import databases as label_tables
 
     try:
         specs = {spec.stem: spec for spec in label_tables.load_manifest()}
@@ -1177,7 +1177,7 @@ def _in_database(ph: Phenomenon, shot: int) -> bool:
 
     `_tier` puts DATABASE below FORECAST, so a shot whose only evidence is a curated listing
     can never come back in the observed class, and `DATABASE_ONLY` is the caveat it carries.
-    That is the same rule labelmaker writes on the rows themselves (NaN coverage, NaN
+    That is the same rule labeler writes on the rows themselves (NaN coverage, NaN
     confidence): a list names a shot, it does not measure one.
     """
     if ph.database is None:
@@ -1256,9 +1256,9 @@ def sat(n: float, saturation_n: float = DEFAULT_SATURATION_N) -> float:
 
 
 def score(ev: Evidence, weights: Mapping[str, float] | None = None, saturation_n: float | None = None) -> float:
-    """The four-term score. See `configs/ideate/retrieval.yaml`'s `phenomenon:` block.
+    """The four-term score. See `configs/shot_design/retrieval.yaml`'s `phenomenon:` block.
 
-    Text alone is capped at labelmaker's `TEXT_ONLY_CEILING` -- four independent mentions and no
+    Text alone is capped at labeler's `TEXT_ONLY_CEILING` -- four independent mentions and no
     more, which is what one mention is worth times four -- because a shot whose only evidence is
     that somebody typed the word is not a shot where the thing was measured.
     """
@@ -1448,7 +1448,7 @@ def _shot_row(db, shot: int) -> dict | None:
 
 
 def _mentions(text: str, pid: str) -> bool:
-    """Does this sentence NAME the phenomenon? labelmaker's matcher, so the quote picker and
+    """Does this sentence NAME the phenomenon? labeler's matcher, so the quote picker and
     `resolve` agree about what counts as a mention, including its denials."""
     return any(h.polarity == "pos" for h in lexicon_mod.hits(text, _lexicon()).get(pid, ()))
 

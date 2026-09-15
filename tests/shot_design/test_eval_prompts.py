@@ -19,10 +19,10 @@ import pandas as pd
 import pytest
 import yaml
 
-from ideate.eval import prompts as ev
-from ideate.retrieval import channels as ch_mod
-from ideate.schema import EvalReport, Range
-from ideate.shotdb import store
+from shot_design.eval import prompts as ev
+from shot_design.retrieval import channels as ch_mod
+from shot_design.schema import EvalReport, Range
+from shot_design.shotdb import store
 
 from .conftest import shot_record, write_db
 
@@ -35,7 +35,7 @@ DEV_RUN, EVAL_RUN = "20210412", "20230616"
 def _no_minilm(monkeypatch):
     """A fixed query vector. The text channel is then a deterministic cosine against the
     hand-written database vectors, which is what every test here actually wants."""
-    from ideate.shotdb import text as text_mod
+    from shot_design.shotdb import text as text_mod
 
     monkeypatch.setattr(
         text_mod, "embed_texts", lambda texts: np.tile([1.0, 0.0, 0.0], (len(texts), 1))
@@ -266,7 +266,7 @@ def test_resolution_is_reported_per_category_and_skipped_where_nothing_expects_o
 
 
 def _write_claim(db_dir: Path, shot: int, phenomenon: str) -> None:
-    from ideate.labels.claims import CLAIMS_DTYPES
+    from shot_design.labels.claims import CLAIMS_DTYPES
 
     pd.DataFrame(
         [{
@@ -424,7 +424,7 @@ def test_the_proxy_grade_reads_evidence_at_the_floor_locate_uses(
     `evidence()` at the label floor `locate` passes -- explicitly, not by defaulting to it. A
     configured floor that `locate` honoured and this call left implicit would let the two drift
     apart silently the day the default and the configured value differ."""
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     seen: list = []
     real = ph.evidence

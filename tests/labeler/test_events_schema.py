@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labelmaker.events.schema import (
+from labeler.events.schema import (
     COLUMNS,
     DTYPES,
     EVIDENCE_KINDS,
@@ -314,7 +314,7 @@ def test_index_rows_summarise_each_source_and_phenomenon(tmp_path):
 
 
 def test_index_rows_feed_a_keyed_events_index(tmp_path):
-    from labelmaker.labels.store import append_index
+    from labeler.labels.store import append_index
 
     path = tmp_path / f"{SHOT}_events.parquet"
     write_events(path, SHOT, [_event(), _event(phenomenon="qcm", t0_s=2.0,
@@ -364,7 +364,7 @@ def _source(**kw) -> dict:
 
 
 def test_the_sources_contract_is_the_documented_columns_and_dtypes():
-    # CONTRACT: ideate's consumer is built against this list. A column may
+    # CONTRACT: shot_design's consumer is built against this list. A column may
     # be appended; none may be renamed, reordered or dropped.
     assert SOURCE_COLUMNS == (
         "shot", "source", "status", "reason", "t_cov0_s", "t_cov1_s",

@@ -5,7 +5,7 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker.features import resolve_corpus as rc
+from labeler.features import resolve_corpus as rc
 
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 
@@ -128,7 +128,7 @@ def test_every_summed_corpus_feature_has_a_scale():
     units, so each must be ABSENT from the dict rather than present with a 1.0.
     An entry there would say a scale had been decided for a path that has none.
     """
-    from labelmaker.features import namespace as ns
+    from labeler.features import namespace as ns
 
     corpus_features = ns.by_source("corpus")
 

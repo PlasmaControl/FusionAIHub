@@ -18,9 +18,9 @@ phenomenon only once three things are recorded with it, and this module's job is
   their own and their bundle carries only the session's text. That text is a claim about the run.
   So is everything before the bundle's shot-specific marker, on every shot.
 
-The phenomenon names and their aliases are labelmaker's `events/lexicons.yaml` where it exists, so
-that the two packages agree on what "eho" means; until it lands from the labelmaker workstream the
-fallback is the `themes:` block of `configs/ideate/labels.yaml`, whose ids are curation themes
+The phenomenon names and their aliases are labeler's `events/lexicons.yaml` where it exists, so
+that the two packages agree on what "eho" means; until it lands from the labeler workstream the
+fallback is the `themes:` block of `configs/shot_design/labels.yaml`, whose ids are curation themes
 (`qh_mode`, `tearing_mhd`) rather than phenomena. `load_lexicon` records which file it read and
 the join's manifest carries it, so a table can always be traced to the vocabulary that made it.
 """
@@ -115,16 +115,16 @@ class Lexicon:
 
 
 def labelmaker_lexicon_path() -> Path:
-    """Where labelmaker's `events/lexicons.yaml` is, whether or not it exists yet."""
-    from labelmaker import events as lm_events
+    """Where labeler's `events/lexicons.yaml` is, whether or not it exists yet."""
+    from labeler import events as lm_events
 
     return Path(lm_events.__file__).resolve().parent / "lexicons.yaml"
 
 
 def default_lexicon_path() -> Path:
-    """labelmaker's lexicon if it is on this branch, else ideate's own themes.
+    """labeler's lexicon if it is on this branch, else shot_design's own themes.
 
-    Single source, one direction: ideate reads labelmaker's aliases, never the other way round.
+    Single source, one direction: shot_design reads labeler's aliases, never the other way round.
     """
     path = labelmaker_lexicon_path()
     return path if path.exists() else config.CONFIG_DIR / "labels.yaml"
@@ -133,11 +133,11 @@ def default_lexicon_path() -> Path:
 def _alias_lists(doc: Mapping) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """The three shapes a lexicon file is written in, as `(aliases, exclude)`.
 
-    * labelmaker's / `phenomena.yaml`'s: `phenomena: {id: {aliases: [...], exclude: [...]}}`,
+    * labeler's / `phenomena.yaml`'s: `phenomena: {id: {aliases: [...], exclude: [...]}}`,
     * the same mapping at the top level, or with a bare list instead of the `aliases:` key,
-    * ideate's `labels.yaml`: `themes: [{id: ..., keywords: [...]}]`.
+    * shot_design's `labels.yaml`: `themes: [{id: ..., keywords: [...]}]`.
 
-    Tolerant on purpose: `events/lexicons.yaml` lands from the parallel labelmaker workstream and
+    Tolerant on purpose: `events/lexicons.yaml` lands from the parallel labeler workstream and
     this side must read it the day it appears, not the day someone notices the key is spelled
     differently. A document that is none of these raises rather than yielding no phenomena, which
     would look exactly like "the operators said nothing".
@@ -161,7 +161,7 @@ def _alias_lists(doc: Mapping) -> tuple[dict[str, list[str]], dict[str, list[str
             exclude[str(name)] = [str(a) for a in entry.get("exclude") or []]
         else:
             # ValueError, not TypeError, despite ruff's TRY004, for the reason
-            # `labelmaker.models.registry.parse_card` gives at the same choice: `doc` came out of
+            # `labeler.models.registry.parse_card` gives at the same choice: `doc` came out of
             # a YAML file, so this is a malformed *data file*, not a caller passing the wrong
             # type, and the sibling branch above raises ValueError for the same category.
             raise ValueError(  # noqa: TRY004

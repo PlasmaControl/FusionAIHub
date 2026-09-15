@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
-from labelmaker.ae.labels import (
+from labeler.ae.labels import (
     BAND_HI_BIN,
     BAND_LO_BIN,
     N_FFT,

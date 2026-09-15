@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate.eval import phenomenon_recall as rec
-from ideate.shotdb import store
+from shot_design.eval import phenomenon_recall as rec
+from shot_design.shotdb import store
 
 from .conftest import shot_record, write_db
 
@@ -46,7 +46,7 @@ def db(tmp_path: Path) -> store.ShotDB:
 
 
 def _event(shot: int, event_id: str, **over) -> dict:
-    from labelmaker.events import schema as events_schema
+    from labeler.events import schema as events_schema
 
     row = {
         "shot": shot,
@@ -77,7 +77,7 @@ def _event(shot: int, event_id: str, **over) -> dict:
 
 
 def _events(db_dir: Path, rows: list[dict]) -> None:
-    from labelmaker.events import schema as events_schema
+    from labeler.events import schema as events_schema
 
     pd.DataFrame(rows, columns=list(events_schema.COLUMNS)).astype(
         events_schema.DTYPES

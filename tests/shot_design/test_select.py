@@ -1,4 +1,4 @@
-"""`ideate corpus select`: the 500-shot `recommender_v1` development universe (plan 5.7).
+"""`shot_design corpus select`: the 500-shot `recommender_v1` development universe (plan 5.7).
 
 Everything iterations 0-3 is developed on comes out of this rule, so what these tests pin is
 that each clause of it can reject on its own and say which one did -- a shot that fell out for
@@ -18,8 +18,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from ideate import cli
-from ideate.shotdb import census, select, text
+from shot_design import cli
+from shot_design.shotdb import census, select, text
 
 from .conftest import census_frame, text_bundle
 
@@ -910,7 +910,7 @@ def test_the_yaml_document_carries_every_key_the_spec_names():
 
 
 def test_the_document_round_trips_through_the_project_shot_list_loader(tmp_path):
-    from ideate import config
+    from shot_design import config
 
     got = select.diversify(candidates(60, per_run=20), quotas(n=10), seed=99)
     doc = select.document(got, select.summarize(n_candidates=60, reasons=Counter(), selected=got, quotas=quotas(n=10)), name="x", seed=99, n=10)
@@ -1035,7 +1035,7 @@ def test_cli_select_reads_mpid_out_of_a_logbook_when_there_is_one(
 
 
 def _write_features(dirpath, shot: int, flattop_s: float) -> None:
-    """A labelmaker-shaped `<shot>_features.h5` whose `ip` group has a flat-top of `flattop_s`."""
+    """A labeler-shaped `<shot>_features.h5` whose `ip` group has a flat-top of `flattop_s`."""
     import h5py
 
     dirpath.mkdir(parents=True, exist_ok=True)
@@ -1050,7 +1050,7 @@ def _write_features(dirpath, shot: int, flattop_s: float) -> None:
 def test_cli_select_verify_flattop_marks_the_unmeasured_rows_and_lists_them(
     selection_inputs, tmp_path, capsys
 ):
-    """The pending list is the point of the pass: it is the exact input to labelmaker's features
+    """The pending list is the point of the pass: it is the exact input to labeler's features
     stage, so the second invocation can measure what the first could only estimate."""
     txt_dir, parquet = selection_inputs
     feats = tmp_path / "features"
@@ -1308,7 +1308,7 @@ def test_the_two_commands_ask_one_definition_where_frame_codes_live(paths):
     """`build` counted <data_root>/frame_codes AND <models_dir>/IGNITE/frame_codes; `corpus
     select` was handed only the second, so the two commands could disagree about whether the same
     shot has codes. One function names the locations and both call sites take it."""
-    from ideate.shotdb import build
+    from shot_design.shotdb import build
 
     (paths.data_root / "frame_codes").mkdir(parents=True, exist_ok=True)
     (paths.data_root / "frame_codes" / "190123.pt").write_bytes(b"")
@@ -1381,9 +1381,9 @@ def test_the_summary_records_which_list_a_re_verification_verified():
     got = candidates(5, per_run=1)
     s = select.summarize(
         n_candidates=9, reasons=Counter(), selected=got, quotas=quotas(n=5),
-        finalized=True, from_list="configs/ideate/shot_lists/recommender_v1.yaml",
+        finalized=True, from_list="configs/shot_design/shot_lists/recommender_v1.yaml",
     )
-    assert s["from_list"] == "configs/ideate/shot_lists/recommender_v1.yaml"
+    assert s["from_list"] == "configs/shot_design/shot_lists/recommender_v1.yaml"
     assert "recommender_v1.yaml" in select.format_summary(s)
 
 
@@ -1508,7 +1508,7 @@ def test_cli_select_from_list_refuses_a_finalized_list_shorter_than_it_asked_for
 def test_finalize_txt_out_applies_review_and_names_the_effective_changes(
     selection_inputs, tmp_path, capsys,
 ):
-    from ideate import config
+    from shot_design import config
 
     txt_dir, parquet = selection_inputs
     features = tmp_path / "features"

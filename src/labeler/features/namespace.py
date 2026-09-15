@@ -39,7 +39,7 @@ KINDS = ("scalar", "profile", "waveform")
 #: a source anywhere but the end reorders every existing feature's
 #: cheapest-first resolution. `events` is last, and would be even if order
 #: were free: it is not an alternative to the other three but the only
-#: source of one derived feature, computed off labelmaker's own mask and
+#: source of one derived feature, computed off labeler's own mask and
 #: event files rather than fetched from anywhere.
 SOURCES = ("archive", "corpus", "fdp", "events")
 
@@ -364,7 +364,7 @@ FEATURES: tuple[FeatureSpec, ...] = (
         notes="stands in for cer_temp_csaps_1d, the CER ion temperature fit. "
               "Same tree and layout as te_zipfit; not priced against any "
               "archive (the survival model's training data are not on disk "
-              "in a form labelmaker reads)",
+              "in a form labeler reads)",
     ),
     # Added for d3d_ae_activity_seldnet (2026-09-06). The first `waveform`
     # feature: 4 chords at 500 kHz over the whole record, kept at the native
@@ -509,7 +509,7 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "ECOILFWDCL/REVCL are V and cannot substitute for this current",
     ),
     # Added for the phenomenon recommender (2026-09-07). The first feature
-    # labelmaker COMPUTES rather than fetches: its source is the package's
+    # labeler COMPUTES rather than fetches: its source is the package's
     # own `masks/<shot>_masks.npz` and `events/<shot>_events.parquet`.
     FeatureSpec(
         name="phenomenon_window_features", kind="waveform", units="",

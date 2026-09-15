@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from labelmaker import jobstats
+from labeler import jobstats
 
 DATA = Path(__file__).parent / "data" / "jobstats"
 
@@ -451,10 +451,10 @@ class _completed:
 
 def test_the_script_is_a_thin_wrapper_over_the_library():
     script = (
-        Path(__file__).parents[2] / "scripts" / "labelmaker" / "jobstats_check.py"
+        Path(__file__).parents[2] / "scripts" / "labeler" / "jobstats_check.py"
     )
     body = script.read_text()
-    assert "from labelmaker.jobstats import main" in body
+    assert "from labeler.jobstats import main" in body
     assert "SystemExit(main())" in body
 
 

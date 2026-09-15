@@ -1,4 +1,4 @@
-"""labelmaker's labels and events -> `labels_wide.parquet` and `events.parquet`.
+"""labeler's labels and events -> `labels_wide.parquet` and `events.parquet`.
 
 Two semantics from the plan (section 2 "Label semantics", Appendix C item 7) are enforced here and
 are the reason this module exists at all rather than a `pd.concat`:
@@ -8,33 +8,33 @@ are the reason this module exists at all rather than a `pd.concat`:
   operating threshold there is and what that threshold did (`frac_above`, `first_above_t_s`,
   `n_intervals`, `longest_interval_s`). Where there is no operating threshold those columns are
   null, never zero: "nobody chose a threshold" and "the alarm never fired" are different facts and
-  a stored 0.0 destroys the difference. Every statistic is over the samples labelmaker marked
+  a stored 0.0 destroys the difference. Every statistic is over the samples labeler marked
   valid, because an invalid sample is not a measurement of a low probability.
 * **A threshold says whose it is.** `thr_source` is `card` when the number is the model card's own
-  operating point and `config` when it is the alarm level `configs/ideate/labels.yaml` chose, and
+  operating point and `config` when it is the alarm level `configs/shot_design/labels.yaml` chose, and
   `""` where there is no threshold at all. One map (`_threshold_map`, card over config) feeds both
   `labels_wide` and the forecast events, so the two tables cannot disagree about the number an
   alarm was raised at, and each forecast event repeats the pair in its `attrs`.
 * **A forecast is not an observation.** The DSM risk heads answer "will this happen within h?", so
   a run of one above its threshold becomes an event with `evidence_kind="forecast"`, a finite
   `horizon_s` and `source="label_forecast"` -- and never `evidence_kind="detector"`. Which label
-  series are risks, at what threshold and horizon, is `configs/ideate/labels.yaml`'s `forecasts:`
+  series are risks, at what threshold and horizon, is `configs/shot_design/labels.yaml`'s `forecasts:`
   block, and the labels.yaml comment there says which numbers are the card's and which are ours.
 
 `db/event_sources.parquet` is the fourth table and the one that makes an empty answer readable:
-labelmaker writes `events/<shot>_sources.parquet` saying which detector RAN over which shot, span
+labeler writes `events/<shot>_sources.parquet` saying which detector RAN over which shot, span
 and channel -- including the ones that completed with zero detections -- and this join ingests
 every file that exists. A shot with no file contributes no rows, which is how the database says
 "nobody looked here" rather than returning a silent empty list. See `labels.event_sources`.
 
-The event schema is labelmaker's, imported and reused: `COLUMNS`, `DTYPES`, `Event` (whose
+The event schema is labeler's, imported and reused: `COLUMNS`, `DTYPES`, `Event` (whose
 `__post_init__` is what rejects a forecast with no horizon) and `read_events`, which already reads
 an absent file as an empty typed frame -- `events/` does not exist until the mask job has run, and
 a join must not care.
 
 ## The sample-duration convention
 
-A label is a series on a uniform grid: labelmaker writes one value every `time_step_ms`. A run of
+A label is a series on a uniform grid: labeler writes one value every `time_step_ms`. A run of
 samples `i..j` above a threshold is read here as the half-open span `[t[i], t[j] + dt)`, `dt` being
 the grid step, so a single sample above the threshold is one time step of alarm rather than an
 instant of zero duration. `t_cov` follows the same reading of the same grid. Everything downstream
@@ -54,11 +54,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from labelmaker.config import Paths as LabelmakerPaths
-from labelmaker.config import atomic_path
-from labelmaker.events import schema as events_schema
-from labelmaker.labels import store as label_store
-from labelmaker.models import registry
+from labeler.config import Paths as LabelmakerPaths
+from labeler.config import atomic_path
+from labeler.events import schema as events_schema
+from labeler.labels import store as label_store
+from labeler.models import registry
 
 from .. import config
 from . import claims as claims_mod
@@ -116,7 +116,7 @@ _NO_THRESHOLD: tuple[float, str] = (_NAN, "")
 
 @dataclass(frozen=True)
 class ForecastRule:
-    """One risk label read as a forecast: `configs/ideate/labels.yaml`'s `forecasts:` entries."""
+    """One risk label read as a forecast: `configs/shot_design/labels.yaml`'s `forecasts:` entries."""
 
     slug: str
     label: str
@@ -131,13 +131,13 @@ class ForecastRule:
 
 @dataclass(frozen=True)
 class JoinResult:
-    """The three tables and the manifest of one `ideate labels join`."""
+    """The three tables and the manifest of one `shot_design labels join`."""
 
     labels_wide: pd.DataFrame
     events: pd.DataFrame
     claims: pd.DataFrame
     #: `db/event_sources.parquet`: which detector RAN over which shot and span, including the
-    #: ones that emitted nothing. Empty for a shot labelmaker has not processed, which is what
+    #: ones that emitted nothing. Empty for a shot labeler has not processed, which is what
     #: lets `get_events` say "unprocessed" instead of returning a silent empty list.
     sources: pd.DataFrame = field(default_factory=lambda: es.empty_sources())
     manifest: dict = field(default_factory=dict)
@@ -155,7 +155,7 @@ def _shots(shots: Iterable[int]) -> list[int]:
 
 
 def empty_events() -> pd.DataFrame:
-    """No events, labelmaker's columns, labelmaker's dtypes."""
+    """No events, labeler's columns, labeler's dtypes."""
     return pd.DataFrame(
         {name: pd.Series(dtype=events_schema.DTYPES[name]) for name in events_schema.COLUMNS}
     )
@@ -181,7 +181,7 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
 def _series(
     path: Path, slug: str, label: str
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-    """`(t, y, valid, attrs)` for one label, through labelmaker's own reader.
+    """`(t, y, valid, attrs)` for one label, through labeler's own reader.
 
     A label whose `(C, T)` payload has more than one channel is a profile label; the label schema
     stores it, but there is no honest one-number summary of a profile and averaging the channels
@@ -221,7 +221,7 @@ def thresholds_from_card(card: Mapping) -> dict[str, float]:
 
 
 def card_thresholds() -> dict[str, float]:
-    """Every operating threshold recorded by every model card, via labelmaker's registry.
+    """Every operating threshold recorded by every model card, via labeler's registry.
 
     None of the five implemented cards records one today -- the tearing DSM card publishes a
     threshold sweep and says in as many words that it is "not a threshold recommendation" -- so
@@ -236,7 +236,7 @@ def card_thresholds() -> dict[str, float]:
 
 
 def forecast_rules(rules: Sequence[Mapping] | None = None) -> tuple[ForecastRule, ...]:
-    """The `forecasts:` block of `configs/ideate/labels.yaml`, or an explicit list of the same."""
+    """The `forecasts:` block of `configs/shot_design/labels.yaml`, or an explicit list of the same."""
     if rules is None:
         rules = config.load_yaml("labels.yaml").get("forecasts") or []
     return tuple(
@@ -476,7 +476,7 @@ def label_forecast_events(
                     )
                 )
         if events:
-            # labelmaker's own row builder, not a copy of it: `event_id` numbering
+            # labeler's own row builder, not a copy of it: `event_id` numbering
             # ("{shot}-{source}-{n:05d}", per source in t0 order), the column order and the dtype
             # cast are the schema's, and a second implementation of them here would be exactly the
             # redefinition the schema module exists to prevent.
@@ -518,10 +518,10 @@ def events_union(
 
 
 def _git_sha_of(events: pd.DataFrame) -> str | None:
-    """The labelmaker commit the events on disk were written by, if they say.
+    """The labeler commit the events on disk were written by, if they say.
 
-    Only the rows labelmaker wrote: the forecast rows carry this checkout's sha, which is ideate's
-    provenance, not labelmaker's, and mixing the two would misattribute both.
+    Only the rows labeler wrote: the forecast rows carry this checkout's sha, which is shot_design's
+    provenance, not labeler's, and mixing the two would misattribute both.
     """
     if events.empty:
         return None
@@ -624,7 +624,7 @@ def join(
 def _write_parquet(path: Path, df: pd.DataFrame) -> None:
     """Rename into place, so a reader sees the whole old table or the whole new one.
 
-    `labelmaker.config.atomic_path` rather than a second copy of it: it is the tested
+    `labeler.config.atomic_path` rather than a second copy of it: it is the tested
     implementation of this and it also removes the temporary sibling when the write raises, which
     is what keeps a full disk from leaving `.tmp` files across the DB.
     """
@@ -644,8 +644,8 @@ def write_tables(
     Returns the block that was written.
 
     `join_block` is written under `labels_join` beside it and holds what the join did to the
-    database rather than what it read out of labelmaker -- today the refreshed `has_frame_codes`
-    count. Two blocks rather than one because `labels` is a description of labelmaker's product
+    database rather than what it read out of labeler -- today the refreshed `has_frame_codes`
+    count. Two blocks rather than one because `labels` is a description of labeler's product
     and a reader comparing two databases' `labels` blocks must not see it move because an encode
     job finished in between.
     """

@@ -1,4 +1,4 @@
-"""`ideate logs missing|import`: the d3dlogfetching contract.
+"""`shot_design logs missing|import`: the d3dlogfetching contract.
 
 The text corpus is the output of a private tool (PlasmaControl/d3dlogfetching) that only runs
 inside the GA network, so this side of the boundary can do exactly two things: say precisely what
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from ideate import cli, config
-from ideate.shotdb import logs
+from shot_design import cli, config
+from shot_design.shotdb import logs
 
 # ------------------------------------------------------------------------------ fixtures
 

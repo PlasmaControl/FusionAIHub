@@ -76,7 +76,7 @@ def load_adapter(slug: str) -> ModelAdapter:
     A scaffold's `spec.py` raises `NotImplementedError` at import, which is
     the intended behaviour: the folder documents a model that cannot run yet.
     """
-    module = importlib.import_module(f"labelmaker.models.{slug}.spec")
+    module = importlib.import_module(f"labeler.models.{slug}.spec")
     adapter = getattr(module, "ADAPTER", None)
     if adapter is None:
         raise AttributeError(f"{slug}/spec.py defines no ADAPTER")
@@ -174,14 +174,14 @@ def update_model_index(slug: str, results: list[dict]) -> None:
     verbatim - so a card keeps its human-written sections while its numbers
     stay generated. The front matter carries no comments, so a `safe_load`/
     `safe_dump` round trip is lossless in *content*. It is not necessarily
-    lossless in *formatting*: a card's `labelmaker.approximations` block (a
+    lossless in *formatting*: a card's `labeler.approximations` block (a
     list of long prose entries) can be reflowed by the round trip even
     though its content is untouched - see the task-16 report for the
     measured diff on this card, since that changes on every validation run
     and is worth knowing about rather than discovering by surprise.
 
     This function **writes into the repo's source tree**
-    (`card_path` resolves to `src/labelmaker/models/<slug>/README.md`), so
+    (`card_path` resolves to `src/labeler/models/<slug>/README.md`), so
     running validation dirties the git working tree - deliberate, per the
     plan's "the card is the one place to read how a model performed", but a
     caller should not have to discover that by `git status`. After a write,

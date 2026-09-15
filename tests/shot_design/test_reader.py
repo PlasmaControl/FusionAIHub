@@ -12,10 +12,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ideate import config
-from ideate.shotdb import build, legacy_raw
-from ideate.shotdb.corpus import CorpusReader
-from ideate.shotdb.reader import Reader, ShotFailed, SignalReader, Unavailable
+from shot_design import config
+from shot_design.shotdb import build, legacy_raw
+from shot_design.shotdb.corpus import CorpusReader
+from shot_design.shotdb.reader import Reader, ShotFailed, SignalReader, Unavailable
 
 
 def spec(name="ip", group="ip", col="ipsip", **kw) -> config.SignalSpec:
@@ -34,7 +34,7 @@ def test_the_file_level_and_spec_level_corpus_readers_are_kept_apart(paths, tmp_
     """`CorpusReader` is the file layer and answers about GROUPS; the spec-level half arrived
     with the corpus build as a separate class, so a caller holding the plain reader still gets
     `isinstance` telling it what it has rather than a NotImplementedError at call time."""
-    from ideate.shotdb.corpus_signals import CorpusSignalReader
+    from shot_design.shotdb.corpus_signals import CorpusSignalReader
 
     plain = CorpusReader(tmp_path)
     assert isinstance(plain, Reader) and not isinstance(plain, SignalReader)

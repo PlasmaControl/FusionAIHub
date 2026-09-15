@@ -24,7 +24,7 @@ import math
 import numpy as np
 import pytest
 
-from labelmaker.events import (
+from labeler.events import (
     coverage,
     heuristics,
     masks,
@@ -505,7 +505,7 @@ def test_sources_persist_intervals_and_merge_an_older_hull_row(tmp_path):
 
     import pandas as pd
 
-    from labelmaker.events import schema
+    from labeler.events import schema
 
     cov = coverage.Coverage(((0, 1), (2, 4)), .003)
     records = coverage.source_records(100, ran={

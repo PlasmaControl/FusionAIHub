@@ -6,11 +6,11 @@ from time import perf_counter
 import pandas as pd
 import pytest
 
-from ideate.labels import event_sources as es
-from ideate.retrieval import channels
-from ideate.retrieval import phenomena as ph
-from ideate.schema import QueryState
-from ideate.shotdb.store import ShotDB
+from shot_design.labels import event_sources as es
+from shot_design.retrieval import channels
+from shot_design.retrieval import phenomena as ph
+from shot_design.schema import QueryState
+from shot_design.shotdb.store import ShotDB
 
 from .conftest import shot_record, write_db
 from .test_phenomena import _claim, _event, _label_row, _write_tables

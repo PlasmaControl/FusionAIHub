@@ -10,10 +10,10 @@ import json
 import pandas as pd
 import pytest
 
-from ideate.llm.client import Reply
-from ideate.retrieval import blurb
-from ideate.schema import ResultItem
-from ideate.shotdb import build, store
+from shot_design.llm.client import Reply
+from shot_design.retrieval import blurb
+from shot_design.schema import ResultItem
+from shot_design.shotdb import build, store
 
 from .test_build_store import stub_embeddings  # noqa: F401
 
@@ -142,7 +142,7 @@ def test_write_blurbs_updates_the_manifest_counts(
 ):
     """The backfill rewrites shots.parquet, so the manifest's blurb counts -- the only place a
     reader can see how much of the database the model actually wrote -- have to follow it, or
-    `ideate blurb` leaves a database claiming 0 llm blurbs while every row has one."""
+    `shot_design blurb` leaves a database claiming 0 llm blurbs while every row has one."""
     build.build(
         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False
     )
@@ -166,8 +166,8 @@ def test_result_item_carries_the_blurb(
     text_fixtures,
     stub_embeddings,  # noqa: F811
 ):
-    from ideate.retrieval import rank
-    from ideate.schema import QueryState
+    from shot_design.retrieval import rank
+    from shot_design.schema import QueryState
 
     build.build(
         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False

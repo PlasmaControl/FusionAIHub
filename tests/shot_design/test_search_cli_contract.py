@@ -2,9 +2,9 @@
 
 import json
 
-from ideate import cli
-from ideate.mcp import tools
-from ideate.shotdb import text
+from shot_design import cli
+from shot_design.mcp import tools
+from shot_design.shotdb import text
 
 from .test_phenomena import _db_with
 

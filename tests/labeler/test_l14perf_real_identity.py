@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labelmaker.config import Paths
-from labelmaker.events import driver, masks, pipeline, schema, unet
+from labeler.config import Paths
+from labeler.events import driver, masks, pipeline, schema, unet
 
 
 def _digest_masks(path):

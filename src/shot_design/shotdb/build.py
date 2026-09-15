@@ -265,7 +265,7 @@ def _provenance(specs, signals: dict[str, Signal | None]) -> dict[str, Provenanc
         for k in ("tool", "version", "tree", "run_id"):
             if fields.get(k) is not None:
                 fields[k] = str(fields[k])
-        # A labelmaker feature resolved from the archive store carries no EFIT run id either
+        # A labeler feature resolved from the archive store carries no EFIT run id either
         # (its `archive_file` attr names the store, not the run), so it makes exactly the claim
         # `assumed_for_staged` describes: the value is real, its provenance is inferred.
         prov[s.name] = Provenance(
@@ -280,7 +280,7 @@ def make_reader(kind: str, paths: config.Paths) -> SignalReader:
 
     A worker process is handed `reader_kind` and `paths`, never a constructed reader: an HDF5
     handle must not be forked, and a reader is cheap to build. `corpus_signals` is imported here
-    rather than at module scope so that a legacy build does not import labelmaker.
+    rather than at module scope so that a legacy build does not import labeler.
     """
     if kind == "legacy":
         return legacy_raw.LegacyReader(paths)
@@ -840,7 +840,7 @@ def refresh_frame_codes(db_dir: Path, paths: config.Paths) -> dict:
     The column is set at BUILD time from the caches that existed then, and encoding is a separate,
     later job -- so a database built before the encode says false for every shot the encode has
     since written. It said 13 true / 487 false while all 500 production caches existed, and a
-    reader has no way to tell a stale flag from a shot that really has no codes. `ideate labels
+    reader has no way to tell a stale flag from a shot that really has no codes. `shot_design labels
     join` calls this because the join is the step that runs after the long jobs and republishes,
     and because a rebuild to fix one boolean costs an hour.
 
@@ -888,7 +888,7 @@ def _move_onto(src: Path, dst: Path) -> None:
     The rename is the path that matters and stays first: it is atomic, so a reader of `dst` sees
     the whole of one file or the whole of the other. But the caller stages the text subset beside
     db_dir while `text_cache_dir` is wherever the paths file says, and an `IDEATE_PATHS` file that
-    puts them on different mounts -- exactly the scratch-database workflow docs/IDEATE.md
+    puts them on different mounts -- exactly the scratch-database workflow docs/SHOT_DESIGN.md
     recommends -- makes `os.replace` raise EXDEV. The fallback copies, so it is not atomic; that
     is acceptable here and only here, because what it moves is a cache the next build rewrites.
     """
@@ -905,8 +905,8 @@ def _move_onto(src: Path, dst: Path) -> None:
 #: exactly these, and `store.ShotDB.load` reads exactly these back.
 #:
 #: This list is the ONLY thing a publish is allowed to delete. The rule is that way round on
-#: purpose: db_dir has more than one producer -- `ideate corpus scan` writes its census there and
-#: `ideate labels join` writes labels_wide/events/text_claims.parquet -- and a rule phrased as
+#: purpose: db_dir has more than one producer -- `shot_design corpus scan` writes its census there and
+#: `shot_design labels join` writes labels_wide/events/text_claims.parquet -- and a rule phrased as
 #: "carry the foreign files across" has to name every one of them correctly or it deletes a
 #: table, which is what happened to the join's three. Phrased as "delete only what I write", a
 #: producer this module has never heard of is safe by default, and the failure mode of getting
@@ -915,7 +915,7 @@ def _move_onto(src: Path, dst: Path) -> None:
 #: Stale build-owned files must still go: an emb_ignite_*.npy left beside a database built with
 #: --no-encode is worse than a missing file, it is a database that lies about what it holds.
 #:
-#: manifest.json IS build-owned, so a rebuild still drops the `labels` block `ideate labels join`
+#: manifest.json IS build-owned, so a rebuild still drops the `labels` block `shot_design labels join`
 #: merges into it while keeping the join's three tables. That asymmetry is deliberate and is the
 #: marker: tables with no `labels` block in the manifest were not written for THIS build, and the
 #: join has to be re-run before they are quoted against it.
@@ -1282,7 +1282,7 @@ def _reuse_encodings(
 
     Encoding is the expensive half of a rebuild -- ~15 s a shot on the V100S, 50 min for 200 --
     while the scalar half takes a minute, so without this every features/flags change would cost
-    an hour. `ideate build --reencode` forces the full path when the raw inputs have changed.
+    an hour. `shot_design build --reencode` forces the full path when the raw inputs have changed.
     """
     from .store import ShotDB
 

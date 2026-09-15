@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from labelmaker.features import namespace as ns
+from labeler.features import namespace as ns
 
 
 def test_grids_match_the_upstream_reference_file():

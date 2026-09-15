@@ -20,7 +20,7 @@ import math
 import numpy as np
 import pytest
 
-from labelmaker.events import masks, schema, transients
+from labeler.events import masks, schema, transients
 
 
 def test_slow_baseline_with_gap_contains_no_elm_spikes():

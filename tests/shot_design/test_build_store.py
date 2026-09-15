@@ -21,8 +21,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate.schema import Range
-from ideate.shotdb import build, corpus_signals, store, text
+from shot_design.schema import Range
+from shot_design.shotdb import build, corpus_signals, store, text
 
 from .conftest import CORPUS_BARE_SHOT
 
@@ -328,7 +328,7 @@ def test_a_rebuild_has_nothing_to_reuse_without_a_previous_encoded_database(path
 def test_build_record_from_the_corpus_reader(
     paths, signal_corpus, labelmaker_features, stub_embeddings
 ):
-    """The whole record, built through `CorpusSignalReader`: segments off a labelmaker `ip`,
+    """The whole record, built through `CorpusSignalReader`: segments off a labeler `ip`,
     actuator totals off the corpus's channel arrays, and the provenance of both written down."""
     rec, _ = build.build_record(
         signal_corpus,
@@ -350,7 +350,7 @@ def test_build_record_from_the_corpus_reader(
 def test_an_efit_scalar_from_the_archive_is_flagged_assumed(
     paths, signal_corpus, labelmaker_features, stub_embeddings
 ):
-    """A labelmaker feature resolved from the archive store carries no EFIT run id either -- the
+    """A labeler feature resolved from the archive store carries no EFIT run id either -- the
     same claim the staged files' `assumed_for_staged` makes, and the same answer."""
     rec, _ = build.build_record(
         signal_corpus,
@@ -443,7 +443,7 @@ def test_no_encode_skips_the_ignite_channel_and_nothing_else(
 def test_a_rebuild_keeps_the_census_another_command_left_in_the_db_dir(
     paths, staged_shot_a, text_fixtures, stub_embeddings
 ):
-    """`ideate corpus scan` writes corpus_coverage.parquet into db_dir and `build` swaps that
+    """`shot_design corpus scan` writes corpus_coverage.parquet into db_dir and `build` swaps that
     whole directory. Without carrying the census across, a build would delete a 16,909-file
     census as a side effect of writing shots.parquet."""
     paths.db_dir.mkdir(parents=True, exist_ok=True)
@@ -458,8 +458,8 @@ def test_a_rebuild_keeps_the_census_another_command_left_in_the_db_dir(
 def test_a_rebuild_removes_only_the_files_the_build_owns(
     paths, staged_shot_a, text_fixtures, stub_embeddings
 ):
-    """db_dir has more than one producer. `ideate labels join` writes three tables into it and
-    `ideate corpus scan` a census, and a build that swapped the whole directory took all of them
+    """db_dir has more than one producer. `shot_design labels join` writes three tables into it and
+    `shot_design corpus scan` a census, and a build that swapped the whole directory took all of them
     with it -- silently. The rule is inverted: `build` names the files it writes and may delete
     nothing else, so a stale IGNITE matrix from a previous encode still goes (a database that
     kept it would lie about what it holds) and everything else stays byte for byte."""

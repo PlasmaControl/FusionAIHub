@@ -3,12 +3,12 @@
 import numpy as np
 import pytest
 
-from ideate import cli
-from ideate.labels import event_sources as es
-from ideate.mcp import tools
-from ideate.retrieval import phenomena as ph
-from ideate.retrieval import rank
-from ideate.schema import QueryState
+from shot_design import cli
+from shot_design.labels import event_sources as es
+from shot_design.mcp import tools
+from shot_design.retrieval import phenomena as ph
+from shot_design.retrieval import rank
+from shot_design.schema import QueryState
 
 from .test_phenomena import _claim, _db_with, _event, _label_row
 

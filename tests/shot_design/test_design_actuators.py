@@ -14,9 +14,9 @@ import h5py
 import numpy as np
 import pytest
 
-from ideate.design import actuators as act
-from ideate.schema import ActuationSet, ActuatorWaveform, Vertex
-from ideate.shotdb.corpus import CorpusReader
+from shot_design.design import actuators as act
+from shot_design.schema import ActuationSet, ActuatorWaveform, Vertex
+from shot_design.shotdb.corpus import CorpusReader
 
 SHOT = 990088
 #: 10 kHz over [-0.5, 2.0] s -- 25001 samples, so `fs = (n - 1) / span` is exactly 10000 Hz and

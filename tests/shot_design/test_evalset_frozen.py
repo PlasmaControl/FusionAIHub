@@ -23,15 +23,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ideate import config
-from ideate.eval import prompts as ev
-from ideate.retrieval import phenomena as ph_mod
-from ideate.schema import SegName
+from shot_design import config
+from shot_design.eval import prompts as ev
+from shot_design.retrieval import phenomena as ph_mod
+from shot_design.schema import SegName
 
 REPO = Path(__file__).resolve().parents[2]
-EVALSET = REPO / "configs" / "ideate" / "evalsets" / "reference_shot_prompts.csv"
-README = REPO / "configs" / "ideate" / "evalsets" / "README.md"
-SPLIT = REPO / "configs" / "ideate" / "evalsets" / "split.yaml"
+EVALSET = REPO / "configs" / "shot_design" / "evalsets" / "reference_shot_prompts.csv"
+README = REPO / "configs" / "shot_design" / "evalsets" / "README.md"
+SPLIT = REPO / "configs" / "shot_design" / "evalsets" / "split.yaml"
 
 # The frozen hash. Authored 2026-09-13 (task I11) and never edited to make a number pass.
 #
@@ -73,7 +73,7 @@ def test_the_evalset_hash_is_the_one_this_test_and_the_readme_both_record():
     digest = hashlib.sha256(EVALSET.read_bytes()).hexdigest()
     assert digest == EVALSET_SHA256, (
         "the frozen evalset changed. If that was deliberate, say so in the report and update "
-        "BOTH this constant and the hash in configs/ideate/evalsets/README.md."
+        "BOTH this constant and the hash in configs/shot_design/evalsets/README.md."
     )
     text = README.read_text(encoding="utf-8")
     assert EVALSET_SHA256 in text

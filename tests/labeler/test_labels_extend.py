@@ -7,14 +7,14 @@ import pandas as pd
 import pytest
 import yaml
 
-from labelmaker.events import databases as db
-from labelmaker.events import schema
+from labeler.events import databases as db
+from labeler.events import schema
 
 REPO = Path(__file__).resolve().parents[2]
 
 
 def extend():
-    return runpy.run_path(str(REPO / "scripts/labelmaker/labels_extend.py"))["main"]
+    return runpy.run_path(str(REPO / "scripts/labeler/labels_extend.py"))["main"]
 
 
 def setup_export(tmp_path, producer="elm_clock"):

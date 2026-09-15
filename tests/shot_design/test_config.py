@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ideate import config
+from shot_design import config
 
 # A minimal but complete Paths YAML: every field the model requires, all but data_root
 # fixed to an arbitrary literal so tests only need to vary the one field they care about.
@@ -91,7 +91,7 @@ def test_load_yaml_reads_configs_dir():
 
 def test_config_discovery_is_independent_of_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    assert config.CONFIG_DIR == Path(config.__file__).resolve().parents[2] / "configs" / "ideate"
+    assert config.CONFIG_DIR == Path(config.__file__).resolve().parents[2] / "configs" / "shot_design"
     assert "signals" in config.load_yaml("signals.yaml")
 
 
@@ -100,14 +100,14 @@ def test_config_dir_environment_override(tmp_path, monkeypatch):
     import subprocess
     import sys
 
-    (tmp_path / "custom.yaml").write_text("port: ideate\n")
+    (tmp_path / "custom.yaml").write_text("port: shot_design\n")
     monkeypatch.setenv("IDEATE_CONFIG_DIR", str(tmp_path))
     result = subprocess.run(
-        [sys.executable, "-c", "from ideate.config import load_yaml; print(load_yaml('custom.yaml')['port'])"],
+        [sys.executable, "-c", "from shot_design.config import load_yaml; print(load_yaml('custom.yaml')['port'])"],
         cwd=tmp_path, env=os.environ.copy(), capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "ideate\n"
+    assert result.stdout == "shot_design\n"
 
 
 def test_default_models_and_corpus_paths_remain_read_only(monkeypatch):

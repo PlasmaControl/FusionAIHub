@@ -4,9 +4,9 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker.features import namespace as ns
-from labelmaker.features import resolve_fdp as rf
-from labelmaker.features.store import missing_names, present, write_features
+from labeler.features import namespace as ns
+from labeler.features import resolve_fdp as rf
+from labeler.features.store import missing_names, present, write_features
 
 POINTS = [
     ("lh_power", r"\RF::LH_POWER", "rf", "kW", "kW", 1.0),
