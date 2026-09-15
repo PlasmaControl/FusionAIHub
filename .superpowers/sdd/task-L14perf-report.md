@@ -517,3 +517,183 @@ c707b26 labelmaker: overlap compact TokEye inference while preserving output byt
 5d7deee labelmaker: L14perf WIP snapshot at pause (user, 2026-09-14) - unverified
 bba8e8f labelmaker: record L14perf pre-change CUDA profile
 ```
+
+## Fix loop
+
+### Outcome and scope
+
+Applied F1–F13 in `/scratch/gpfs/nc1514/FusionAIHub-L14perf` on
+`recommender-L14perf`. The review and binding fix brief were already committed
+at `6978f6e` on entry. Blocking fixes were committed before the **one** new
+submission, pilot **2932066_0**, at **56d4521**. It completed all 20 shots but
+missed CPU, CPU-memory and GPU utilization: **FAIL (exempt)**. Production
+remains unvalidated and was **not submitted**. No further pilot was submitted.
+
+### Findings and changes
+
+Paths below are relative to the worktree; line numbers describe the final source.
+
+| Finding | Change and evidence |
+|---|---|
+| F1 | `src/labelmaker/events/masks.py:648` retries a failed reference transfer once after `empty_cache`; a second OOM marks only its spans. `masks.py:507` drains failed blocks and releases partial groups across buffers. Regression: `tests/labelmaker/test_l14perf_identity.py:374`, transient and repeated failures, including a split forward group and successful later shots. |
+| F2 | Replaced the withdrawn 10 CPU / 6 prep / 3 tail / 31G / four-minute proposal with measurements from exactly the prescribed 12 CPU / 7 prep / 4 tail / prefetch 8 / 32G / 12-minute pilot. Derived capacity is below; the failed utilization gate remains a finding. |
+| F3 | `masks.py:709` attributes shared-batch StageTimeout only to expired spans and retries healthy spans; `src/labelmaker/events/driver.py:1080` supplies each shot's remaining time. Regressions at `test_l14perf_identity.py:428` and `:502` cover two shots in a four-tile batch, both default and opt-in CPU schedules. |
+| F4 | `masks.py:667` resets reduced forward size on entering each block and stops reduced slices at its boundary. `test_l14perf_identity.py:402` pins recovery inside a pooled buffer. |
+| F5 | Conditional identity is explicit in this report, `docs/LABELMAKER.md:494`, and the driver docstring: **byte-identical when no OOM halving occurs or when it occurs identically**. Different OOM decisions can change AMP forward shapes. |
+| F6 | Prep failure/death, unreadable corpus, wedged worker, unpicklable tail, task exception/timeout, worker crash and hung tail tests now cover both `pooled=False/True` in `tests/labelmaker/test_tokeye_masks.py` (notably `:654`, `:773`, `:1119`, `:1144`). This exposed an additional pooled task-TimeoutError restart: `driver.py:1022` now distinguishes it from an expired future wait. `driver.py:1591` rejects multiple index writers via argparse before model loading; regression at `test_tokeye_masks.py:1351`. |
+| F7 | `driver.py:1032` resubmits tail futures in their existing deque positions. `test_tokeye_masks.py:1314` forces BrokenProcessPool with two workers and mixed completed/pending tails; only the unfinished payload is repeated and rows retain shot order. |
+| F8 | `masks.py:568` defaults reference forward groups on **every device**, pinned by CPU-runnable CPU/CUDA-device tests at `test_l14perf_identity.py:366` and the existing transfer/forward-boundary probe. `driver.py:1469` exposes `--pool-cpu-forwards`; CUDA and legacy-schedule combinations are refused. CPU pooling exactness remains empirical for the pinned single-threaded setup. |
+| F9 | `scripts/labelmaker/tokeye_masks.sbatch:2` records pilot 2, with measured capacity defaults at `:29` and pool settings at `:48`. `:65` opens the full log under resolved ROOT; Slurm's bootstrap `--output=/dev/null` avoids a hard-coded production write. An explicit submission `--output` captures bootstrap diagnostics. `tests/labelmaker/test_tokeye_sbatch.py:28` checks CPUs = prep + tail + 1; `:92` checks the actual ROOT log and `:142` pins pilot-derived defaults. |
+| F10 | Restored the recovered shared-index/text lost-update rationale, CPU-per-channel note, memory arithmetic and SIGALRM semantics in `driver.py:34`. Restored the runnable pre-pass/array/afterok workflow and staged jobstats-client explanation at `docs/LABELMAKER.md:529`. CPU companions now use the mandatory frozen **no-install** invocation (`tokeye_text_subset.sh:23`, `tokeye_masks_afterok.sbatch:43`) and offline exports. |
+| F11 | `driver.py:1215` passes an explicit options dictionary; the surface regression at `test_tokeye_masks.py:1364` rejects stray locals such as `bad` and `pooled`. |
+| F12 | `masks.py:506` and `:557` raise RuntimeError for malformed reference groups, retaining checks under `python -O`; tests at `test_l14perf_identity.py:467`. |
+| F13 | Clarified that IDEATE's 132.69 s and 126.47 s were different historical runs. Float32 versus float64 overlap accumulation is indistinguishable at TILE 512 / STRIDE 448: at most two tiles per column, with exact halving. Float64 is extra protection matching the oracle, not a test-proven requirement. CPU default preservation removes reliance on single-threaded cross-block exactness. |
+| Compact activity coupling | `src/labelmaker/events/pipeline.py:825` asserts `transients.ACTIVITY_THR == masks.PROB_THRESHOLD` at substitution; regression at `test_l14perf_identity.py:485`. No threshold or tolerance changed. |
+
+TDD evidence: inference checks first **13 failed**; after adding the timeout
+callback seam alone, the shared-batch regression specifically reproduced the
+healthy shot receiving StageTimeout (**1 failed, 1 passed**). Default/opt-in
+checks first **3 failed**. After fixes, **34 identity tests passed**, plus
+**2 driver deadline tests**. Scheduler red: **4 failed, 21 passed**; green:
+**75 passed**. Launcher/workflow red: **4 failed, 5 passed**; green: **9 passed**.
+The later measured-default test failed first; all **10 launcher tests** then
+passed. CUDA compaction/copy-stream checks: **2 passed in 3.92 s**, using the
+phase3 Python on stellar-vis2 with `CUDA_VISIBLE_DEVICES=1`.
+
+### Second A100 pilot: measured result
+
+**2932066_0**, source **56d4521**, stellar-m01g5, A100-PCIE-40GB, GPU 1,
+initially **0 MiB used**. SLURM start/end **2026-09-14 20:01:08–20:02:30 EDT**;
+**82 s**, all steps **COMPLETED**, exit **0:0**. `squeue` emptied.
+
+| Measurement | Observed value |
+|---|---:|
+| Request | 12 CPUs; 7 prep, 4 tail, prefetch 8; 32G; 00:12:00; one A100; batch 96; AMP; readonly text; no index |
+| Completion | **20/20 shots, 244 blocks, 7,478 tiles, 26,913 events** |
+| Driver wall / throughput | **76.87 s / 97.29 tiles/s** |
+| CPU, detailed jobstats | **31.3%** (sampled CPU time 00:05:07) |
+| CPU memory, jobstats | **9.8GB / 32GB = 30.6%** |
+| GPU, jobstats | **7.4%** |
+| GPU memory, jobstats maximum | **38.6GB / 40GB = 96.6%** |
+| sacct MaxRSS, numbered step | **13,559,492K = 12.931339263916016 GiB**; 40.4104% of 32G |
+| sacct TotalCPU | **06:20.657 = 380.657 s** for the job; numbered step 06:20.619 |
+| Torch peak allocated | **18.211864471435547 GiB** |
+| Parent / largest worker VmHWM | **6.050 / 2.573 GiB**, 7 live prep and 4 live tail PIDs |
+| Prep wait / pooled inference timer | **44.823 / 64.781 s** |
+| Description / finishing worker service | **26.365 / 82.895 s** |
+| Tail-result wait | **5.803 s** |
+
+Jobstats summary bars are 31/31/7/97; the table uses detailed gate values.
+Sampled CPU time and sacct TotalCPU differ; neither replaces the other.
+Per-PID peaks are not additive because of shared pages. The pooled inference
+timer includes input/planning waits; do not add it to prep wait or add
+concurrent worker service to driver wall.
+
+Exact submission and gate, from the worktree (directories and readonly text
+copy were prepared under the printed pilot root first):
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 TMPDIR=/tmp/l14perf
+REPO=/scratch/gpfs/nc1514/FusionAIHub-L14perf ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot2-l14perf SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt PREP_WORKERS=7 PREFETCH=8 TAIL_WORKERS=4 TILE_BATCH=96 N_CHUNKS=1 sbatch --parsable --job-name=tokeye-L14perf --cpus-per-task=12 --mem=32G --time=00:12:00 --array=0-0%1 --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot2-l14perf/slurm/%A_%a.out scripts/labelmaker/tokeye_masks.sbatch
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m labelmaker.jobstats --job-id 2932066_0 --pilot --preserve-dir /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm --out /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/jobstats.json
+```
+
+Gate output, **exit 0 due to pilot exemption**, with no threshold changes:
+
+```text
+2932066_0  CPU 31.3 %  CPU-mem 30.6 %  GPU 7.4 %  GPU-mem 96.6 %  FAIL (exempt)
+    cpu 31.3 % < 70 % (jobstats)
+    cpu_mem 30.6 % < 70 % (jobstats)
+    gpu 7.4 % < 70 % (jobstats)
+```
+
+**Diagnosis:** throughput fell 30.4% from 139.81 tiles/s, while remaining
+1.987× L12's 48.97. Prep wait rose from 0.002 to 44.823 s (58.3% of driver
+wall), whereas tail wait fell from 8.344 to 5.803 s. This is direct evidence
+of an exposed input-feeding bottleneck with the smaller pools. Low aggregate
+CPU use does not establish that fewer workers would feed the GPU: startup,
+I/O and IPC can leave allocated CPUs idle while preparation is awaited.
+This pilot did not separately profile those causes, so their contributions
+remain unresolved. GPU memory includes allocator cache and cannot establish
+GPU activity. The short reports expose no sample count; the previous 100%
+and current 7.4% are retained as measured, without extrapolating continuous
+utilization. The GPU miss invokes the stop rule: no more jobs or production.
+
+### Completion and exact hash finding
+
+All per-shot block/event counts match run rows; sources were read and include
+`intervals`/`min_gap_s`; `text_subset_missing` is empty. The same five L-A shots
+completed: 185962 (14 blocks / 1,537 events), 185980 (14 / 1,421), 185982
+(14 / 1,800), 186090 (10 / 588), 186196 (10 / 1,241).
+
+Compared every product to pilot 2931999_0 and revalidated that pilot's recorded
+hashes. **NPZ: 20/20 hashes equal. Events: 0/20 equal. Sources: 0/20 equal.**
+The requested cross-pilot hash equality therefore **fails** for both parquet
+products. Their only differing frame columns are `git_sha`, `run_id`, and
+`written_at`. Dropping only the contract's `run_id`/`written_at` still fails
+because git_sha changed from `5a8386e` to `56d4521`. As a separate diagnosis,
+all other columns compare exactly, including coverage; that is **not** a
+relaxed identity pass. No product, provenance or tolerance was changed to
+make hashes match. Same-HEAD synthetic identity remains exact.
+
+Per-shot hashes, strict frame hashes, changed columns, counts, source-status
+counts and worker measurements are preserved in
+`runs/l14perf/pilot2-l14perf/completion-evidence.json` and `comparison.log`.
+The reproducible comparison script is `runs/l14perf/evidence-fix/check_pilot.py`.
+
+### Derived production capacity — report only, utilization unvalidated
+
+| Resource | Derivation / request |
+|---|---|
+| CPUs / pools | Keep the measured pools: **7 prep + 4 tail + 1 parent = 12 CPUs**, prefetch **8**. Changing pools again would invalidate the measured memory/throughput basis. |
+| Memory | `ceil(12.931339263916016 × 1.3)` = **17G** (16.810741 GiB before rounding). |
+| Time for 60 shots | Startup `82 − 76.87 = 5.13 s`, plus one **240 s timeout**, plus `60 × (76.87 / 20) × 1.3` = **544.923 s**, rounded up to **00:10:00**. |
+| GPU / array | **One A100**, batch **96**, AMP; proposed **8 × 60 shots**, `--array=0-7%2`, `N_CHUNKS=8`. |
+
+These capacity figures set the sbatch defaults, but **are not a validated
+production request**: three gates failed at the measured pool sizes. The
+pilot allocation remained 12 CPUs / 32G / 12 minutes; no smaller hypothetical
+allocation was sent through the gate. Mean sacct demand was 4.642 cores, but
+that aggregate is not evidence for reducing prep concurrency after observing
+44.823 s of prep wait. Production was not submitted.
+
+### Final verification and limits
+
+Final source/scripts/tests snapshot: **02a8b16**. From the worktree, with the
+exports above and the main checkout's existing environments:
+
+```bash
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m pytest tests/labelmaker -q -W error -p no:cacheprovider
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m pytest tests/ideate -q -W error -p no:cacheprovider
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker ruff check --no-cache src/labelmaker src/ideate scripts/labelmaker tests/labelmaker tests/ideate
+```
+
+- Labelmaker: **1,655 passed, 3 skipped in 277.32 s; exit 0**.
+- IDEATE: **1,252 passed in 133.03 s; exit 0**.
+- Ruff: **All checks passed, exit 0** over all five required paths.
+- All logs and exit files are under `runs/l14perf/evidence-fix/`. Labelmaker's
+  XRootD atexit FutureWarning printed after its successful summary; exit stayed 0.
+- The two live FDP tests (`test_live_fetch_of_the_reference_points_for_one_shot`
+  and `test_live_ip_matches_the_archive_in_amps`) stayed skipped by the existing
+  opt-in gate: neither `--run-live` nor `LABELMAKER_FDP=1` was requested.
+- The opt-in fresh real-shot CPU identity test was not rerun in this loop;
+  its earlier exact evidence is retained, and this loop ran synthetic identity,
+  CUDA edge/stream checks and the full 20-shot real A100 comparison. Profiles
+  were not repeated: the fix brief requested one second pilot, not a new profile.
+- The restored afterok workflow is documentation; no companion or production
+  was submitted. Feature-dependent skips remain consistent with the first
+  pilot because scratch roots do not contain production feature stores.
+- No production masks/events/labels/features or IDEATE data writes, no edits
+  to `docs/superpowers/plans/**`, no installation, no worktree `.pixi`, and no
+  commit while a suite ran. Scratch files use `/tmp/l14perf`; persistent data
+  uses `runs/l14perf/` plus the three prescribed `runs/slurm/` gate captures.
+
+Evidence SHA-256:
+
+| Artifact | SHA-256 |
+|---|---|
+| `runs/slurm/2932066_0.jobstats.txt` | `8a4ea76069f62df7305d91cb53f7a29899ef3b9663cfbd44f08074b6307d4be7` |
+| `runs/slurm/2932066_0.sacct.txt` | `3abce5420d66afb1c9576547123b0769fcde6f2531983c32882ac976a1038978` |
+| `pilot2-l14perf/completion-evidence.json` | `f94d4aa5e17667e69db85625d46659347bffdeca7b18c4df77f4481eb4f9b6a1` |
+| `pilot2-l14perf/runs/events/tokeye-2932066_c0of1_r0.json` | `c04096075d21134a466c42a9e855bd2d405c20645f5855123d1413cf4efa0f05` |
