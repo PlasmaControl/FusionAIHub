@@ -2,7 +2,7 @@
 // Keep shotrec's DOM helpers and API-driven presentation. No retrieval or physics here.
 const $ = (selector) => document.querySelector(selector);
 const S = { shot: null, shotRequest: 0, eventRequest: 0 };
-const FORECAST_TITLE = "forecasts — a model's risk estimate, not an observation";
+const FORECAST_TITLE = "Forecasts (model estimates)";
 // Categorical colours identify the supplied evidence_kind, never quality or severity.
 const COLOURS = { detector: "#4b74a8", heuristic: "#688591", forecast: "#827299", database: "#87817a" };
 
@@ -19,16 +19,182 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Measurements: 4 significant digits, no trailing zeros. Use scientific notation
+// for |x| >= 1e5 or 0 < |x| < 1e-3 (thresholds use the original magnitude).
+// Times are seconds with 3 decimals; confidence also has 3 decimals. Identifiers,
+// dates, years and counts bypass rounding. Missing/non-finite values are always —.
+// Eight examples: 7.13e14 -> 7.13e14; 892400 -> 8.924e5; .00012 -> 1.2e-4;
+// 2.82 -> 2.82; .945678 -> 0.9457; 892 -> 892; 100000 -> 1e5; .001 -> 0.001.
+function formatNumber(value, kind = "measurement") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (kind === "identifier") return String(value);
+  if (kind === "time" || kind === "confidence") return value.toFixed(3);
+  const magnitude = Math.abs(value);
+  if (magnitude >= 1e5 || (magnitude > 0 && magnitude < 1e-3)) {
+    const [mantissa, exponent] = value.toExponential(3).split("e");
+    return `${Number(mantissa)}e${Number(exponent)}`;
+  }
+  return String(Number(value.toPrecision(4)));
+}
+
+const identifier = (key) => /^(?:shot|refshot|ref_shot|source_shots|shot_range|year|campaign|run_id|mpid|mp_step|channel|cluster|schema_version|prompt_version|torch_threads|n|n_.*|.*_count)$/.test(key);
+const timeSpan = (a, b) => `${formatNumber(a, "time")}–${formatNumber(b, "time")} s`;
+
 // A missing measurement never becomes a zero, including nested records and invalid floats.
-function display(value) {
+function display(value, key = "") {
   if (value === null || value === undefined || value === "" ||
       (typeof value === "number" && !Number.isFinite(value)) ||
       (typeof value === "string" && /^(?:nan|[+-]?infinity)$/i.test(value))) return "—";
   if (typeof value === "object") {
-    if (Array.isArray(value)) return value.length ? value.map(display).join(", ") : "—";
-    return Object.entries(value).map(([k, v]) => `${k}: ${display(v)}`).join("; ") || "—";
+    if (Array.isArray(value)) return value.length ? value.map((v) => display(v, key)).join(", ") : "—";
+    return Object.entries(value).map(([k, v]) => `${fieldName(k)}: ${display(v, k)}`).join("; ") || "—";
+  }
+  if (typeof value === "number") {
+    if (identifier(key)) return formatNumber(value, "identifier");
+    if (key.endsWith("_ms")) return formatNumber(value / 1000, "time");
+    if (key.endsWith("_s")) return formatNumber(value, "time");
+    return formatNumber(value, key === "confidence" ? "confidence" : "measurement");
   }
   return String(value);
+}
+
+function fieldName(key) { return key.endsWith("_ms") ? key.slice(0, -3) + " (s)" : key; }
+
+// Browser-only wording. Unknown caveats pass through unchanged; MCP strings and
+// status semantics are untouched. Never apply these rewrites to operator quotations.
+function caption(value) {
+  let text = String(value ?? "—");
+  const dropped = text.match(/^(\d+) of those drops rest on evidence that carries: (.*)$/);
+  if (dropped) return `${dropped[1]} excluded shots: ${caption(dropped[2])}`;
+  const rules = [
+    [/^text evidence is run scope:.*$/, "Run-level text, not shot-specific"],
+    [/^no diagnostic coverage recorded; absence is not evidence$/, "Coverage unrecorded; absence unmeasured"],
+    [/^no detector registered for (.*); text\/database evidence only$/, "$1: no detector; text/database evidence only"],
+    [/^no detector for (.*) has run on this shot; absence is not evidence$/, "$1: detectors not run; absence unmeasured"],
+    [/^the (.*) detectors ran on this shot but not over the (.*) window;.*$/, "$1: no coverage of $2; absence unmeasured"],
+    [/^the (.*) detectors covered only (.*) of the (.*) window;.*$/, "$1: covered $2 of $3 only; outside unmeasured"],
+    [/^the (.*) coverage of the (.*) window has (\d+) gap\(s\):.*$/, "$1: $3 gaps in $2 coverage; see covered intervals"],
+    [/^observed via tokeye_transient, a class-agnostic transient detector:.*$/, "Class-agnostic transient; may be ELM-like, a sawtooth or a disruption precursor"],
+    [/^(\d+) row\(s\) of evidence_kind (.*) match this phenomenon's rules.*$/, "$1 $2 rows; neither observations nor forecasts"],
+    [/^(.*) scored ([\d.]+), below the ([\d.]+) evidence floor:.*$/, (_m, key, p, floor) => `${key}: ${formatNumber(Number(p), "confidence")}, below evidence floor ${formatNumber(Number(floor), "confidence")}`],
+    [/^the quote is this shot's most informative logbook entry and does not mention (.*)$/, "Shot logbook quote; does not mention $1"],
+    [/^this database holds (\d+) event row\(s\), all of them forecasts:.*$/, "$1 indexed rows, all forecasts; no observations"],
+    [/^TEXT ONLY$/, "Text only"],
+    [/^ranked on forecasts:.*$/, "Ranked on forecasts (model estimates)"],
+    [/^ranked on model labels:.*score \(([^)]+)\).*$/, "Ranked on model labels ($1); no diagnostic evidence"],
+    [/^ranked on a curated human list:.*$/, "Curated list only; no detector, model or logbook evidence"],
+    [/^no observed evidence:.*$/, "No detector evidence for this phenomenon"],
+    [/^no label evidence:.*$/, "No label model for this phenomenon"],
+    [/^label not run on this shot, or no valid samples:.*$/, "Label unavailable: not run or no valid samples"],
+    [/^no operator text names this phenomenon on this shot$/, "No shot-specific operator mention"],
+    [/^operator log says NOT (.*)$/, "Operator reports no $1"],
+    [/^no (.*) segment on this shot; the whole record was searched$/, "No $1 segment; searched whole record"],
+    [/^(\d+) forecast row\(s\) are in `forecasts`.*$/, "$1 forecasts (model estimates) shown separately"],
+    [/^(\d+) row\(s\) are in `database_intervals`.*$/, "$1 database intervals (curated lists); coverage unknown; absence unmeasured"],
+    [/^(\d+) row\(s\) are in `text_mentions`.*$/, "$1 logbook word matches; not observations"],
+    [/^(\d+) row\(s\) have no recorded time.*$/, "$1 rows excluded: time unknown, not outside window"],
+    [/^\d+ source\(s\) ran over shot \d+ and recorded NO coverage -- (.*): ran; coverage unknown --.*$/, "$1: coverage unknown"],
+    [/^no observed-event product for shot (\d+):.*$/, "Shot $1: no completed covering detector; unprocessed, not quiet"],
+    [/^no source with recorded coverage ran over shot (\d+)(.*): the sources that completed.*$/, "Shot $1: coverage unknown$2; absence unmeasured"],
+    [/^(.*?) source\(s\) ran over shot (\d+) and reported 0 detections inside their coverage(.*?)\. This IS.*$/, "Shot $2: $1 sources, 0 detections within coverage$3"],
+    [/^(\d+) source\(s\) FAILED on shot (\d+):.*$/, "Shot $2: $1 sources failed; evidence missing"],
+    [/coverage recorded as a hull by an older writer; interior gaps unknown/g, "Legacy coverage hull; interior gaps unknown"],
+    [/: ran; coverage unknown; absence is not evidence$/, ": coverage unknown; absence unmeasured"],
+    [/^(\d+) event\(s\) not shown: the source recorded no confidence, so they cannot be shown to reach min_confidence (.*)$/, (_m, n, limit) => `${n} events excluded: confidence unrecorded; minimum ${formatNumber(Number(limit), "confidence")}`],
+    [/^kept despite --avoid (.*): nothing looked for (.*) on this shot,.*$/, "Kept with avoid $1: $2 unexamined; absence unmeasured"],
+    [/^kept despite --avoid (.*): no detector for (.*) has run on this shot,.*$/, "Kept with avoid $1: $2 detectors not run; absence unmeasured"],
+    [/^kept despite --avoid (.*): the (.*) detectors ran on this shot but not over the window searched,.*$/, "Kept with avoid $1: $2 coverage outside window; absence unmeasured"],
+    [/^kept despite --avoid (.*): the (.*) detectors covered only part of the window searched,.*$/, "Kept with avoid $1: $2 coverage partial; outside unmeasured"],
+    [/^--avoid (.*): dropped (\d+) shot\(s\) with observed (.*) evidence$/, "Avoid $1: excluded $2 shots with observed $3"],
+    [/^--avoid (.*): excluded (\d+) (.*) segment\(s\) with (.*) coverage; absence is not evidence$/, "Avoid $1: excluded $2 $3 segments; $4 coverage, absence unmeasured"],
+    [/^--avoid (.*): detectors covered ([\d.]+)% of the (.*) window; absence outside that coverage is unmeasured$/, (_m, token, percent, segment) => `Avoid ${token}: covered ${formatNumber(Number(percent))}% of ${segment}; outside unmeasured`],
+    [/^the window (.*?) is outside every source's coverage of shot (\d+), whose display hull is (.*?) to (.*?) s; covered intervals: (.*?) --.*$/, (_m, window, shot, a, b, intervals) => `Shot ${shot}: ${window} outside coverage; hull ${timeSpan(Number(a), Number(b))}; covered intervals: ${intervals}; requested window unmeasured`],
+    [/^the frame-code cache for shot (\d+) has no provenance sidecar:.*$/, "Shot $1: frame-code device and thread count unrecorded; codes vary with both"],
+    [/^shot (\d+) has no (.*) segment; the description falls back to `full`$/, "Shot $1: no $2 segment scalars"],
+    [/^no channel had anything to search on -- give ref_shot, text, constraints or actuators$/, "Enter a reference shot, text, constraints or actuators"],
+    [/^excluded for having no recorded value: (.*)$/, "Missing values excluded: $1"],
+  ];
+  for (const [pattern, replacement] of rules) text = text.replace(pattern, replacement);
+  return text.replace(/\[([\d.e+\-]+|None), ([\d.e+\-]+|None)\] s/g,
+    (_m, a, b) => timeSpan(a === "None" ? null : Number(a), b === "None" ? null : Number(b)));
+}
+
+let disclosureId = 0;
+// Recheck after layout and viewport changes, including text loaded asynchronously.
+// No observers retain detached result rows when another search replaces them.
+const disclosures = new Set();
+let disclosureFramePending = false;
+function scheduleDisclosures() {
+  if (typeof requestAnimationFrame !== "function" || disclosureFramePending) return;
+  disclosureFramePending = true;
+  requestAnimationFrame(() => { disclosureFramePending = false; updateDisclosures(); });
+}
+function watchDisclosure(root, update) {
+  if (typeof requestAnimationFrame !== "function") return;
+  disclosures.add({ root, update });
+  scheduleDisclosures();
+}
+function updateDisclosures() {
+  for (const item of disclosures) {
+    if (!item.root.isConnected) disclosures.delete(item);
+    else item.update();
+  }
+}
+
+function inlineText(text) {
+  return text.split(/(\b[Ss]hot \d+\b|\b[12]\d{5}\b)/g).map((part, i) =>
+    i % 2 ? el("span", { class: "shot-number" }, part) : part);
+}
+
+function longText(value) {
+  const text = display(value);
+  const cut = text.lastIndexOf(" ", 140);
+  const preview = text.length > 140 ? text.slice(0, cut > 0 ? cut : 140).trimEnd() + "…" : text;
+  const content = el("span", { class: "text-content", id: `text-${++disclosureId}` }, inlineText(preview));
+  let expanded = false;
+  const button = el("button", { type: "button", class: "text-toggle", "aria-expanded": "false",
+    "aria-controls": content.id, onclick: (event) => {
+      event.stopPropagation();
+      expanded = !expanded;
+      content.replaceChildren(...inlineText(expanded ? text : preview));
+      root.classList.toggle("expanded", expanded);
+      button.textContent = expanded ? "less" : "more";
+      button.setAttribute("aria-expanded", String(expanded));
+      updateDisclosures();
+    } }, "more");
+  button.hidden = text.length <= 140;
+  const root = el("div", { class: "long-text" }, content, button);
+  watchDisclosure(root, () => {
+    button.hidden = !expanded && text.length <= 140 && content.scrollHeight <= content.clientHeight + 1;
+  });
+  return root;
+}
+
+function collapsible(content) {
+  const body = el("div", { class: "collapse-body", id: `section-${++disclosureId}` }, content);
+  let expanded = false;
+  const button = el("button", { type: "button", class: "section-toggle", "aria-expanded": "false",
+    "aria-controls": body.id, onclick: (event) => {
+      event.stopPropagation();
+      expanded = !expanded;
+      root.classList.toggle("expanded", expanded);
+      button.textContent = expanded ? "Show less" : "Show all";
+      button.setAttribute("aria-expanded", String(expanded));
+      updateDisclosures();
+    } }, "Show all");
+  const root = el("div", { class: "collapsible" }, body, button);
+  watchDisclosure(root, () => {
+    const overflow = body.scrollHeight > 260;
+    button.hidden = !overflow;
+    root.classList.toggle("overflowing", overflow);
+    // Hidden content must not receive keyboard focus until expanded.
+    for (const node of body.querySelectorAll("button, a, [tabindex]")) {
+      const clipped = !expanded && node.getBoundingClientRect().bottom > body.getBoundingClientRect().bottom;
+      if (clipped) node.setAttribute("tabindex", "-1");
+      else node.removeAttribute("tabindex");
+    }
+  });
+  return root;
 }
 
 function parseWire(text) {
@@ -47,7 +213,8 @@ async function api(path, options = {}) {
 }
 
 function caveats(items) {
-  return items?.length ? el("ul", { class: "caveats" }, items.map((c) => el("li", {}, display(c)))) : null;
+  return items?.length ? collapsible(el("ul", { class: "caveats" },
+    [...new Set(items)].map((c) => el("li", {}, longText(caption(c)))))) : null;
 }
 
 function notes(target, data = {}, extra = []) {
@@ -57,8 +224,10 @@ function notes(target, data = {}, extra = []) {
   if (list) target.append(list);
 }
 
-function fields(record) {
-  return el("dl", {}, Object.entries(record || {}).flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, display(v))]));
+function fields(record, units = {}) {
+  return el("dl", {}, Object.entries(record || {}).flatMap(([k, v]) => [
+    el("dt", {}, fieldName(k)), el("dd", { class: identifier(k) ? "identifier" : "" },
+      longText(`${display(v, k)}${units[k] && display(v, k) !== "—" ? ` ${units[k]}` : ""}`))]));
 }
 
 function showView(view) {
@@ -69,6 +238,7 @@ function showView(view) {
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   }
+  scheduleDisclosures();
 }
 
 function bindForm(id, target, action) {
@@ -90,19 +260,19 @@ function shotLink(shot, phenomenon = "", segment = "flat_top") {
 
 function resultsTable(rows, segment) {
   return el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Shot", "Score", "Run / mini-proposal", "Quote", "Caveats"].map((t) => el("th", {}, t)))),
+    el("thead", {}, el("tr", {}, ["Shot", "Score", "Run / mini-proposal", "Summary", "Caveats"].map((t) => el("th", {}, t)))),
     el("tbody", {}, rows.map((row) => {
       const open = () => { location.hash = shotLink(row.shot, "", row.segment || segment); };
-      const title = el("td", {}, display(row.run_id), el("p", {}, "Loading title…"));
+      const title = el("td", {}, display(row.run_id, "run_id"), el("p", {}, "Loading title…"));
       const rowNotes = el("td", {}, caveats(row.caveats),
-        ...(row.flags || []).map((flag) => el("p", {}, display(flag.message ?? flag))));
+        ...(row.flags || []).map((flag) => longText(caption(flag.message ?? flag))));
       // Titles are absent from search's ResultItem. Read the existing describe route;
       // its caveats/errors remain visible in this same row, and scores stay untouched.
       api(`/api/shot/${row.shot}?${new URLSearchParams({ segment: row.segment || segment })}`)
         .then(({ data }) => {
           const human = data.record?.human;
-          title.replaceChildren(display(row.run_id), el("p", {}, display(human?.run_title)),
-            el("p", {}, display(human?.mp_title)));
+          title.replaceChildren(display(row.run_id, "run_id"), longText(human?.run_title),
+            longText(human?.mp_title));
           if (data.error) rowNotes.append(el("p", { class: "error" }, display(data.error)));
           const extra = caveats(data.caveats);
           if (extra) rowNotes.append(extra);
@@ -111,10 +281,10 @@ function resultsTable(rows, segment) {
           rowNotes.append(el("p", { class: "error" }, error.message));
         });
       return el("tr", { class: "clickable", onclick: open },
-        el("td", {}, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot))),
+        el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot"))),
         el("td", {}, display(row.score)),
         title,
-        el("td", {}, el("blockquote", {}, display(row.explanation?.text_highlight))),
+        el("td", { class: "summary-cell" }, longText(row.summary)),
         rowNotes);
     }))));
 }
@@ -129,7 +299,7 @@ function colour(kind) { return COLOURS[kind] || "#77869b"; }
 function timeline(rows, domain = bounds(rows || []), coverage = false) {
   const root = el("div", { class: "timeline" });
   if (!Array.isArray(rows)) { root.append(el("p", { class: "muted" }, "—")); return root; }
-  if (!rows.length) { root.append(el("p", { class: "muted" }, "No rows returned.")); return root; }
+  if (!rows.length) { root.append(el("p", { class: "muted" }, "No indexed intervals")); return root; }
   const groups = new Map();
   for (const row of rows) {
     const source = display(row.source);
@@ -141,30 +311,36 @@ function timeline(rows, domain = bounds(rows || []), coverage = false) {
       el("i", { class: "swatch", style: `--evidence:${colour(kind)}` }), display(kind)))));
   for (const [source, items] of groups) {
     const track = el("div", { class: "track", "aria-label": `${source}, seconds` });
-    const detail = el("ul", { class: "lane-details" });
+    const details = [];
     for (const item of items) {
+      const values = coverage ?
+        { status: item.status, reason: item.reason, diag: item.diag, channel: item.channel, pass_name: item.pass_name, n_events: item.n_events, min_gap_s: item.min_gap_s } :
+        { phenomenon: item.phenomenon, evidence_kind: item.evidence_kind, confidence: item.confidence };
+      const tooltip = `${timeSpan(item.t0_s, item.t1_s)} · ${display(values)}${item.caveats?.length ? ` · ${item.caveats.map(caption).join("; ")}` : ""}`;
       if (domain && finite(item.t0_s) && finite(item.t1_s) && item.t1_s >= item.t0_s) {
         const span = domain[1] - domain[0];
         const left = span ? 100 * (item.t0_s - domain[0]) / span : 50;
         const width = span ? 100 * (item.t1_s - item.t0_s) / span : 0;
         track.append(el("span", {
           class: `mark${item.t0_s === item.t1_s ? " point" : ""}`,
+          title: tooltip, "aria-label": tooltip,
           style: `left:${left}%;width:${width}%;--evidence:${coverage ? "#8995a5" : colour(item.evidence_kind)}`,
         }));
+      } else if (!coverage) {
+        details.push(longText(tooltip));
       }
-      const values = coverage ?
-        { status: item.status, reason: item.reason, diag: item.diag, channel: item.channel, pass_name: item.pass_name, n_events: item.n_events, min_gap_s: item.min_gap_s } :
-        { phenomenon: item.phenomenon, evidence_kind: item.evidence_kind, confidence: item.confidence };
-      detail.append(el("li", {}, `${display(item.t0_s)} – ${display(item.t1_s)} s · ${display(values)}`, caveats(item.caveats)));
+      if (coverage) details.push(tooltip);
     }
-    root.append(el("div", { class: "lane" }, el("div", { class: "lane-name" }, source), track, detail));
+    // Coverage rows with no intervals still show status/reason; no invented bars.
+    root.append(el("div", { class: "lane" }, el("div", { class: "lane-name" }, longText(source)), track,
+      coverage ? el("div", { class: "coverage-detail" }, longText([...new Set(details)].join("; "))) : details));
   }
   if (domain) {
     const labels = domain[0] === domain[1] ? [domain[0]] : [domain[0], (domain[0] + domain[1]) / 2, domain[1]];
     root.append(el("div", { class: `axis${labels.length === 1 ? " single" : ""}` },
-      labels.map((time) => el("span", {}, `${Number(time.toPrecision(6))} s`))));
+      labels.map((time) => el("span", {}, `${formatNumber(time, "time")} s`))));
   } else root.append(el("p", { class: "muted" }, "Recorded time: —"));
-  return root;
+  return collapsible(root);
 }
 
 function renderEvents(data, prefix = "") {
@@ -179,7 +355,7 @@ function renderEvents(data, prefix = "") {
     unindexed: /not in the database/,
   };
   const meaning = (data.caveats || []).find((c) => patterns[data.status]?.test(c));
-  target("event-meaning").textContent = display(meaning);
+  target("event-meaning").replaceChildren(longText(caption(meaning)));
   notes(target("event-notes"), data);
   const coverage = (data.coverage?.sources || []).flatMap((s) => {
     const diagnostic = s.source !== "text" && s.source !== "database" && !s.source?.startsWith("database:");
@@ -198,8 +374,8 @@ function renderEvents(data, prefix = "") {
   target("forecast-lanes").replaceChildren(timeline(data.forecasts, domain));
   target("database-lanes").replaceChildren(timeline(data.database_intervals, domain));
   target("coverage-lanes").replaceChildren(timeline(coverage, domain, true));
-  target("text-mentions").replaceChildren(el("ul", {},
-    (data.text_mentions || []).map((mention) => el("li", {}, fields(mention)))));
+  target("text-mentions").replaceChildren(collapsible(el("ul", {},
+    (data.text_mentions || []).map((mention) => el("li", {}, fields(mention))))));
 }
 
 async function loadEvents() {
@@ -225,26 +401,81 @@ async function loadEvents() {
   ]);
 }
 
+function scalarGrid(scalars) {
+  return el("div", { class: "scalar-grid" }, scalars.map(({ name, value, units }) =>
+    el("div", { class: "scalar" }, el("span", { class: "scalar-name" }, name),
+      el("span", { class: "scalar-value" }, `${formatNumber(value)}${units && finite(value) ? ` ${units}` : ""}`))));
+}
+
+function attributedQuote(entry) {
+  return el("figure", { class: "quote" }, el("blockquote", {}, longText(entry.text)),
+    el("figcaption", { class: "muted small" }, [entry.role, entry.author, entry.time].filter(Boolean).join(" · ") || "—"));
+}
+
+function outcomeFields(outcome) {
+  const target = (value) => value === null || value === undefined ? "—" : value ? "hit" : "missed";
+  const percent = (value) => finite(value) ? `${formatNumber(value * 100)} %` : "—";
+  return fields({
+    "Ip target": target(outcome.ip_target_hit), "Ip error": percent(outcome.ip_target_err),
+    "NBI target": target(outcome.nbi_target_hit), "NBI error": percent(outcome.nbi_target_err),
+    "NBI target units": outcome.nbi_target_unit,
+    "Flat top": finite(outcome.flat_top_ms) ? `${formatNumber(outcome.flat_top_ms / 1000, "time")} s` : null,
+    "Ended early": outcome.ended_early, "Fast quench": outcome.fast_quench,
+    "End reason": outcome.end_reason?.replaceAll("_", " "),
+    "End time": finite(outcome.end_time_s) ? `${formatNumber(outcome.end_time_s, "time")} s` : null,
+    "Faults": outcome.fault_strings,
+  });
+}
+
+function phenomenaTable(rows) {
+  return el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["Phenomenon", "Observed", "First intervals", "Forecasts", "Coverage"].map((t) => el("th", {}, t)))),
+    el("tbody", {}, rows.map((row) => el("tr", {},
+      el("td", {}, longText(row.title), el("span", { class: "small muted" }, row.id)),
+      el("td", {}, display(row.n_observed, "n")),
+      el("td", {}, longText(row.first_intervals.map((iv) => timeSpan(iv.t0_s, iv.t1_s)).join(", ") || "—"),
+        row.n_observed > 3 ? el("span", { class: "small muted" }, `+${row.n_observed - 3} more`) : null),
+      el("td", {}, display(row.n_forecast, "n")),
+      el("td", {}, longText(row.coverage_note),
+        longText(row.coverage_windows.map(([a, b]) => timeSpan(a, b)).join(", ") || "—"),
+        row.coverage_partial ? el("span", { class: "small muted" }, "Partial coverage; outside unmeasured") : null,
+        caveats(row.caveats)),
+    )))));
+}
+
 function renderShot(data) {
   notes($("#shot-notes"), data);
   const root = $("#shot-record");
   root.replaceChildren();
   if (!data.record) return;
   const record = data.record;
-  root.append(el("p", { class: "prose" }, display(data.description)),
+  const parts = data.describe_parts;
+  if (record.summary) root.append(el("div", { class: "summary-block" },
+    el("h3", {}, "Summary"), longText(record.summary)));
+  if (parts) {
+    root.append(longText(parts.header));
+    if (parts.segment) root.append(el("h3", {}, display(parts.segment.name)),
+      el("p", { class: "muted" }, timeSpan(parts.segment.t0_s, parts.segment.t1_s)));
+    root.append(collapsible(scalarGrid(parts.scalars)), el("h3", {}, "Labels"), fields(parts.labels),
+      el("h3", {}, "Outcome"), collapsible(outcomeFields(parts.outcome)));
+    if (parts.operator_quote) root.append(el("h3", {}, "Operator quote"), attributedQuote(parts.operator_quote));
+    root.append(el("h3", {}, "Phenomena"), collapsible(phenomenaTable(parts.phenomena)), caveats(parts.caveats));
+  }
+  root.append(el("h3", {}, "Run / mini-proposal"),
     fields({ shot_date: record.shot_date, campaign: record.campaign,
-      run_id: record.human?.run_id, run_title: record.human?.run_title, mp_title: record.human?.mp_title }));
-  root.append(el("h3", {}, "Stored flags and groups"), fields(Object.fromEntries(
-    Object.entries(record).filter(([key]) => key.startsWith("has_") || key === "raw_groups"))));
-  root.append(el("h3", {}, "Scalars per segment"), el("div", { class: "scalars" },
+      run_id: record.human?.run_id, run_title: record.human?.run_title, mpid: record.human?.mpid,
+      mp_title: record.human?.mp_title }));
+  root.append(el("h3", {}, "Flags and groups"), collapsible(fields(Object.fromEntries(
+    Object.entries(record).filter(([key]) => key.startsWith("has_") || key === "raw_groups")))));
+  root.append(el("h3", {}, "Scalars per segment"), collapsible(el("div", { class: "scalars" },
     (record.segments || []).map((seg) => el("div", { class: "card" },
-      el("h3", {}, display(seg.name)), el("p", { class: "muted" }, `${display(seg.t0_ms)} – ${display(seg.t1_ms)} ms`),
-      fields({ ...seg.raw, ...seg.derived })))));
-  root.append(el("h3", {}, "Logbook quotes"), ...(record.human?.log_entries || []).map((entry) =>
-    el("div", {}, el("p", { class: "small muted" }, `${display(entry.role)} · ${display(entry.author)} · ${display(entry.time)}`),
-      el("blockquote", {}, display(entry.text)))));
-  root.append(el("h3", {}, "Frame codes"), fields(data.frame_codes),
-    el("details", {}, el("summary", {}, "Complete stored record"), fields(record)));
+      el("h3", {}, display(seg.name)), el("p", { class: "muted" },
+        timeSpan(finite(seg.t0_ms) ? seg.t0_ms / 1000 : null, finite(seg.t1_ms) ? seg.t1_ms / 1000 : null)),
+      collapsible(fields({ ...seg.raw, ...seg.derived }, data.units)))))));
+  root.append(el("h3", {}, "Logbook"), collapsible(el("div", {},
+    (record.human?.log_entries || []).map(attributedQuote))));
+  root.append(el("h3", {}, "Frame codes"), collapsible(fields(data.frame_codes)),
+    el("details", { ontoggle: updateDisclosures }, el("summary", {}, "Complete stored record"), collapsible(fields(record))));
 }
 
 async function openShot(shot, phenomenon = "", segment = "flat_top") {
@@ -268,16 +499,16 @@ async function openShot(shot, phenomenon = "", segment = "flat_top") {
 
 function renderHit(hit, segment) {
   const card = el("article", { class: "card" }, el("div", { class: "hit-head" },
-    el("a", { href: shotLink(hit.shot, hit.phenomenon, segment) }, `Shot ${display(hit.shot)}`),
-    el("span", {}, `score ${display(hit.score)}`), el("span", {}, `run ${display(hit.run_id)}`)),
-    el("p", {}, display(hit.mp_title)), caveats(hit.caveats),
+    el("a", { class: "shot-number", href: shotLink(hit.shot, hit.phenomenon, segment) }, `Shot ${display(hit.shot, "shot")}`),
+    el("span", {}, `score ${display(hit.score)}`), el("span", { class: "identifier" }, `run ${display(hit.run_id, "run_id")}`)),
+    longText(hit.mp_title), el("h3", {}, "Summary"), longText(hit.summary), caveats(hit.caveats),
     fields({ total_duration_s: hit.total_duration_s, coverage_state: hit.coverage_state }),
-    el("blockquote", {}, display(hit.quote)), el("p", { class: "muted small" }, display(hit.quote_role)),
-    el("h3", {}, "Observed intervals"), timeline(hit.intervals || []));
-  if (hit.forecasts?.length) card.append(el("h3", {}, FORECAST_TITLE), timeline(hit.forecasts));
+    el("h3", {}, "Observed intervals"), timeline((hit.intervals || []).map((iv) => ({ ...iv, phenomenon: hit.phenomenon }))));
+  if (hit.forecasts?.length) card.append(el("h3", {}, FORECAST_TITLE),
+    timeline(hit.forecasts.map((iv) => ({ ...iv, phenomenon: hit.phenomenon }))));
   if (hit.text_snippets?.length) card.append(el("h3", {}, "Text mentions"),
-    ...hit.text_snippets.map((text) => el("blockquote", {}, display(text))));
-  if (Object.keys(hit.label_evidence || {}).length) card.append(el("h3", {}, "Label evidence"), fields(hit.label_evidence));
+    collapsible(el("div", {}, hit.text_snippets.map((text) => el("blockquote", {}, longText(text))))));
+  if (Object.keys(hit.label_evidence || {}).length) card.append(el("h3", {}, "Label evidence"), collapsible(fields(hit.label_evidence)));
   return card;
 }
 
@@ -295,7 +526,7 @@ async function init() {
   for (const button of document.querySelectorAll("[data-view]")) button.addEventListener("click", () => { location.hash = button.dataset.view; });
   const [{ data: meta }, { data: registry }] = await Promise.all([api("/api/meta"), api("/api/phenomena")]);
   notes($("#global-notes"), meta);
-  if (meta.db) $("#dbinfo").textContent = `${display(meta.db.n_shots)} shots · ${display(meta.db.shot_range)} · build ${display(meta.db.git_sha)}`;
+  if (meta.db) $("#dbinfo").textContent = `${display(meta.db.n_shots, "n")} shots · ${meta.db.shot_range?.map((s) => display(s, "shot")).join("–") || "—"}`;
   else $("#dbinfo").textContent = "Database unavailable";
   for (const select of document.querySelectorAll(".segment")) {
     select.replaceChildren(...(meta.segments || []).map((s) => el("option", { value: s }, s)));
@@ -333,6 +564,7 @@ async function init() {
     $("#locate-results").replaceChildren(...(Array.isArray(data) ? data.map((hit) => renderHit(hit, form.get("segment"))) : []));
   });
   window.addEventListener("hashchange", () => route().catch((e) => notes($("#global-notes"), { error: e.message })));
+  window.addEventListener("resize", scheduleDisclosures);
   await route();
 }
 

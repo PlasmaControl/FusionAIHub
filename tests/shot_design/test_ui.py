@@ -236,7 +236,8 @@ def test_static_assets_and_three_views(client):
     parser = Assets()
     parser.feed(response.text)
     assert {"view-search", "view-shot", "view-locate"} <= parser.ids
-    assert "forecasts — a model's risk estimate, not an observation" in response.text
+    assert "Forecasts (model estimates)" in response.text
+    assert "<h1>Shot Designer</h1>" in response.text
     assert parser.paths
     for path in parser.paths:
         assert ":" not in path and not path.startswith("//")
