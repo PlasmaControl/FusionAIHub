@@ -385,9 +385,13 @@ def synth_shot():
 
 @pytest.fixture(autouse=True)
 def _isolate_package_environment(monkeypatch):
-    """Keep caller/pixi settings out of synthetic tests, including legacy fallbacks."""
+    """Strip legacy names still exported by the transitional main pixi manifest.
+
+    Preserve new names, including values set by module- or session-scoped fixtures.
+    Tests that need a new name absent must delete it explicitly.
+    """
     for name in tuple(os.environ):
-        if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_")):
+        if name.startswith(("IDEATE_", "LABELMAKER_")):
             monkeypatch.delenv(name)
 
 
