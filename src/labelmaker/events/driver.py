@@ -9,9 +9,11 @@ pool while the GPU processes later shots. Results retain plan and shot order.
 
 The full-probability per-block schedule remains available with
 `--probs-on-host` (or `run_shots(pooled=False)`). `pipeline.process_shot` uses
-that independent inference reference. Both schedules must preserve complete
-NPZ bytes and exact events/sources frames except run_id/written_at, including
-source coverage intervals and min_gap_s.
+that independent inference reference. Both schedules preserve complete NPZ
+bytes and exact events/sources frames except run_id/written_at, including
+source coverage intervals and min_gap_s, when no OOM halving occurs or when
+it occurs identically. Forward groups match the reference on every device;
+CPU cross-block forwards require the explicit --pool-cpu-forwards opt-in.
 
 Memory is bounded by the prep queue, two pinned tile batches, partial device
 stitches and the tail backlog. `--prefetch` is also prep concurrency; choosing
@@ -28,6 +30,72 @@ Prep and tail failures are isolated and broken pools are replaced; inferred
 tail payloads survive a restart. `PrepPool.close` terminates wedged workers
 rather than leaving interpreter shutdown waiting forever. Timeout alarms
 bound synchronous stages; future waits have explicit deadlines.
+
+Operating rationale retained from the original driver:
+
+**Job and split units.** Contiguous chunks let array tasks walk different
+regions of the corpus directory; strided ranks interleave within one node's
+shared page cache. One prep job is one `(channel, pass)`, so wide and zoom
+read a channel twice. On shot 185786 this cost ~3-6 % more CPU per channel
+and roughly doubled GPFS requests (~260 MB -> ~520 MB per shot), mostly
+served from the page cache because the passes are adjacent. This did not
+justify splitting the job unit.
+
+**Memory arithmetic.** A prepared block holds two `(512, T)` float32 arrays:
+the standardised spectrogram and raw log-power. At 64,000 columns these are
+131 MB each; a `--prefetch 4` queue alone is ~1.05 GB. Workers hold another
+pair while preparing, and the pooled schedule additionally holds input
+buffers, partial device groups and raw arrays awaiting tail description.
+Do not size the whole job from the prep queue alone.
+
+**The two files this driver does NOT own.** `masks/<shot>_masks.npz` and
+`events/<shot>_events.parquet` are per shot, so sixteen tasks writing
+sixteen shots never meet. Two other files belong to the whole root, and
+both are whole-file rewrites, which is a lost update rather than a torn
+file - the damage a pid-suffixed temporary does not prevent:
+
+* `events_index.parquet` (`labels.store.append_index`, called per shot by
+  `pipeline.finish_shot` through a FIXED `.tmp` sibling). Concurrent tasks
+  lose each other's rows AND can rename a half-written parquet into place,
+  after which the next shot's `read_parquet` raises inside the write guard
+  and a healthy shot is recorded `status == "error"`. **`--no-index`** is
+  the answer: the per-shot products are written and the shared file is
+  left alone, and `--rebuild-index` regenerates it from
+  `events/*_events.parquet` in one pass afterwards (it is derivable, so
+  the rebuild is exact and is idempotent even if a task died).
+* `text/logs_subset.jsonl` (`text_weak.build_logs_subset`), which is worse
+  because it changes what is WRITTEN: sixteen tasks read the same old
+  subset, each appends its own thirty shots and the last rename wins, so
+  fifteen tasks' records are gone before their shots are processed and
+  `finish_shot` files `skipped["text"]` for every one of them. **The
+  subset is built once, before the array** (`--build-text-subset`), and a
+  run with `--world` or `--n-chunks` above 1 reads it and never writes it
+  (`--text-subset auto`, or `readonly` to force it). A shot the pre-pass
+  did not cover is named in the run record and in its own `skipped["text"]`
+  with the command that fixes it. (`text_weak.text_events` re-checks the
+  subset per shot, which under `readonly` is always a no-op: it is only
+  reached for a shot whose record is already there, and
+  `build_logs_subset` returns without writing when it has nothing to add.)
+  **The pre-pass is REQUIRED for multi-rank or multi-chunk runs** to match
+  `python -m labelmaker.run events`: without it, `readonly` adds a `text`
+  skip and omits `text` from an uncovered shot's declared sources. A
+  covered record with no matches still declares `text` with zero events.
+  Check that every run JSON's `text_subset_missing` is empty.
+
+**Isolation and SIGALRM.** The legacy schedule places one alarm around a
+shot; the pooled schedule arms each synchronous stage from the remaining
+shot deadline and attributes a shared forward timeout only to expired shots.
+The alarm interrupts waits and Python execution; a native call may deliver
+it only when control returns to Python. Inside `pipeline.finish_shot`, a
+step's own guard can turn the alarm into that step's skip, after which the
+shot finishes without that timer, as in `process_shot`. A parent alarm does
+not reach spawned tail workers: their future waits have a separate timeout.
+A dead worker or an expired wait replaces the pool and resubmits retained
+payloads in their original positions; ordinary task exceptions, including a
+task-raised TimeoutError, leave the executor usable. Prep-pool replacement
+invalidates the old epoch's queued futures so remaining blocks are resubmitted.
+Closing pools terminates and then kills wedged workers: a shutdown sentinel
+alone cannot release CPython's interpreter-exit join of the manager thread.
 """
 from __future__ import annotations
 
@@ -951,17 +1019,17 @@ def _run_pooled(shots, **opts):
                     "error": type(exc).__name__,
                     "detail": str(exc)[:200],
                 }
-                if isinstance(exc, (BrokenExecutor, TimeoutError)):
+                wait_expired = isinstance(exc, TimeoutError) and not future.done()
+                if isinstance(exc, BrokenExecutor) or wait_expired:
                     tails.restart()
                     # Preserve inferred payloads already queued behind this job.
-                    for other, old, payload in list(pending):
+                    for position, (other, old, payload) in enumerate(pending):
                         if old is not None and (
                             not old.done()
                             or old.cancelled()
                             or isinstance(old.exception(), BrokenExecutor)
                         ):
-                            pending.remove((other, old, payload))
-                            pending.append((other, tails.submit(payload), payload))
+                            pending[position] = (other, tails.submit(payload), payload)
         state.timing.tail_wait_s += time.monotonic() - at
         row["seconds"] = round(time.monotonic() - state.started, 2)
         row.update(state.timing.as_row())
@@ -1144,8 +1212,15 @@ def run_shots(
     if pooled:
         if tail_workers > 1 and index:
             raise ValueError("multiple tail workers require index=False / --no-index")
-        options = dict(locals())
-        options.pop('shots')
+        options = {
+            "paths": paths, "model": model, "device": device, "corpus_dir": corpus_dir,
+            "plan": plan, "passes": passes, "tile_batch": tile_batch, "amp": amp, "norm": norm,
+            "prep_workers": prep_workers, "prefetch": prefetch, "timeout_s": timeout_s,
+            "write": write, "index": index, "lexicon": lexicon, "run_id": run_id,
+            "unet_sha256": unet_sha256, "skip_existing": skip_existing, "force": force,
+            "tail_workers": tail_workers, "text_missing": frozenset(text_missing),
+            "pool_cpu_forwards": pool_cpu_forwards, "echo": echo,
+        }
         return _run_pooled(shots, **options)
 
     started = time.monotonic()
@@ -1513,6 +1588,9 @@ def run_tag(run_id: str, args) -> str:
 def main(argv=None) -> int:
     parser = build_parser()
     args = settle(parser.parse_args(argv))
+    if (not args.probs_on_host and args.tail_workers > 1 and not args.no_index
+            and not (args.rebuild_index or args.build_text_subset)):
+        parser.error("multiple tail workers require --no-index")
     if args.pool_cpu_forwards and (args.device != "cpu" or args.probs_on_host):
         parser.error("--pool-cpu-forwards requires --device cpu and compact inference")
     if args.index_out is not None and not args.rebuild_index:
