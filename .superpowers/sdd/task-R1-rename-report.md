@@ -706,3 +706,52 @@ observed XRootD finalizer `FutureWarning` about `torch.distributed.reduce_op` du
 interpreter shutdown; the suite and process still exited 0, without suppression.
 Both suites finished before the fix commit. This follow-up created no worktree
 `.pixi` directory and changed only the four test files plus this report.
+
+## Second follow-up: session isolation for both manifests
+
+`git merge --no-edit recommender` fast-forwarded `0e0e9d4` to `548b0f7` without
+conflicts, bringing in only the expected ledger changes. No files under
+`docs/superpowers/**` were edited during this follow-up.
+
+The renamed main manifest exports new-name variables. The previous per-test
+legacy-only cleanup left those exports present, so they correctly took precedence
+over legacy values set by fallback tests. Before the fix, the focused
+`tests/shot_design/test_env.py` run reproduced **7 failed, 97 passed**.
+
+Fix commit `e33340a` replaces both autouse fixtures with session-scoped fixtures.
+Each uses its own `pytest.MonkeyPatch` context to remove all `SHOT_DESIGN_*`,
+`IDEATE_*`, `LABELER_*`, and `LABELMAKER_*` caller variables once before module and
+function fixtures run, then restores them at session teardown. Values set by
+later fixtures remain intact. Updated regression tests snapshot all four
+prefixes before the module fixture sets its root, assert the snapshot is empty,
+and retain the real config-reader assertion that the module root survives.
+The explicit fixture dependency makes the snapshot independent of test order.
+The caller-isolation tests failed before the fix and passed afterwards in both
+packages with legacy caller exports present.
+
+Changed files are `tests/shot_design/conftest.py`, `tests/labeler/conftest.py`,
+`tests/shot_design/test_environment_isolation.py`,
+`tests/labeler/test_environment_isolation.py`, and this report.
+
+All requested verification ran from this worktree using the frozen/no-install
+main-manifest pixi form, the exact requested environment settings, `-W error`,
+`-p no:cacheprovider -rs`, no interposer, and `LD_PRELOAD` absent. The full-suite
+commands are identical to those in the preceding follow-up section. For the
+legacy-export reruns, the shell exported `IDEATE_DATA_ROOT=/caller` and
+`LABELMAKER_ROOT=/caller`, then ran the corresponding `test_env.py` with the same
+pixi form and flags.
+
+| Requested check | Passed | Failed | Skipped | Exit |
+| --- | ---: | ---: | ---: | ---: |
+| 1. Full shot_design suite (`ideate-cpu`) | 1,375 | 0 | 0 | 0 |
+| 2. Full labeler suite (`labelmaker`) | 1,775 | 0 | 3 | 0 |
+| 3a. shot_design/test_env.py with legacy caller exports | 104 | 0 | 0 | 0 |
+| 3b. labeler/test_env.py with legacy caller exports | 118 | 0 | 0 | 0 |
+| 4. Ruff, both conftests and both packages' env/isolation test files | All checks passed | 0 diagnostics | N/A | 0 |
+
+The full suites took 129.95 seconds and 280.54 seconds respectively. Labeler's
+only skips were the unset `L14PERF_REAL_ROOT` and two live fdp opt-in tests. Its
+previously observed XRootD/PyTorch finalizer warning appeared during shutdown;
+the process exited 0 without suppression. Existing tests could read mounted
+production stores; production writes remained forbidden. All suites exited
+before either follow-up commit. No worktree `.pixi` directory was created.
