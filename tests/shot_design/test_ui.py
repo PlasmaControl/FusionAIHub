@@ -102,7 +102,11 @@ def test_transport_does_not_drop_new_fields_or_coerce_values(client, monkeypatch
 def test_shot_is_tool_json(client, shot, segment):
     response = client.get(f"/api/shot/{shot}", params={"segment": segment})
     assert response.status_code == 200
-    assert response.json() == wire(tools.describe_shot(shot, segment))
+    payload = response.json()
+    if "error" not in payload:
+        assert payload.pop("describe_parts")["header"].startswith(f"Shot {shot}")
+        assert isinstance(payload.pop("units"), dict)
+    assert payload == wire(tools.describe_shot(shot, segment))
 
 
 @pytest.fixture

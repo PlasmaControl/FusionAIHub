@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from .. import config
 from ..mcp import tools
 from ..retrieval import phenomena
+from ..retrieval.describe import describe_parts, scalar_units
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "ideate_token"
@@ -103,7 +104,23 @@ def create_app(
 
     @app.get("/api/shot/{shot}")
     def shot(shot: int, segment: str = "flat_top"):
-        return _json(tools.never_raises(tools.describe_shot)(shot, segment))
+        def structured():
+            payload = tools.describe_shot(shot, segment)
+            if "error" in payload:
+                return payload
+            db, error = tools._db()
+            if error:
+                return error
+            rec = db.get(shot)
+            return {
+                **payload,
+                "describe_parts": describe_parts(rec, payload["segment"], db=db),
+                "units": scalar_units(
+                    key for seg in rec.segments for key in {**seg.raw, **seg.derived}
+                ),
+            }
+
+        return _json(tools.never_raises(structured)())
 
     @app.get("/api/shot/{shot}/events")
     def events(

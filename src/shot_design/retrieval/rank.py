@@ -570,6 +570,7 @@ def _item(
         segment=q.segment,
         score=score,
         description=description,
+        summary=rec.summary,
         caveats=db.label_filter_shot_caveats(shot, q.segment, q.avoid_labels),
         explanation=explain(q, db, seg_id, ranks, scales, q_vals=q_vals),
         blurb=_blurb(db, shot),
