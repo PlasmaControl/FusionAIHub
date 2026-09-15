@@ -272,6 +272,14 @@ function shotLink(shot, phenomenon = "", segment = "flat_top") {
   return `#shot/${shot}?${new URLSearchParams({ phenomenon, segment })}`;
 }
 
+function blurbText(row) {
+  const text = row.blurb?.trim() ? row.blurb : null;
+  return el("div", { class: "blurb-text" }, longText(text),
+    text && row.blurb_source === "template"
+      ? el("span", { class: "blurb-auto small muted",
+        title: "Deterministic header + outcome; no model summary yet" }, "auto") : null);
+}
+
 function resultsTable(rows, segment) {
   return el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Shot", "Score", "Run / mini-proposal", "Summary", "Caveats"].map((t) => el("th", {}, t)))),
@@ -298,7 +306,7 @@ function resultsTable(rows, segment) {
         el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot"))),
         el("td", {}, display(row.score)),
         title,
-        el("td", { class: "summary-cell" }, longText(row.summary)),
+        el("td", { class: "summary-cell" }, blurbText(row)),
         el("td", {}, collapsible(rowNotes)));
     }))));
 }
@@ -464,8 +472,8 @@ function renderShot(data) {
   if (!data.record) return;
   const record = data.record;
   const parts = data.describe_parts;
-  if (record.summary) root.append(el("div", { class: "summary-block" },
-    el("h3", {}, "Summary"), longText(record.summary)));
+  if (record.blurb?.trim()) root.append(el("div", { class: "summary-block" },
+    el("h3", {}, "Summary"), blurbText(record)));
   if (parts) {
     root.append(longText(parts.header));
     if (parts.segment) root.append(el("h3", {}, display(parts.segment.name)),
@@ -515,7 +523,7 @@ function renderHit(hit, segment) {
   const card = el("article", { class: "card" }, el("div", { class: "hit-head" },
     el("a", { class: "shot-number", href: shotLink(hit.shot, hit.phenomenon, segment) }, `Shot ${display(hit.shot, "shot")}`),
     el("span", {}, `score ${display(hit.score)}`), el("span", { class: "identifier" }, `run ${display(hit.run_id, "run_id")}`)),
-    longText(hit.mp_title), el("h3", {}, "Summary"), longText(hit.summary), caveats(hit.caveats),
+    longText(hit.mp_title), el("h3", {}, "Summary"), blurbText(hit), caveats(hit.caveats),
     fields({ total_duration_s: hit.total_duration_s, coverage_state: hit.coverage_state }),
     el("h3", {}, "Observed intervals"), timeline((hit.intervals || []).map((iv) => ({ ...iv, phenomenon: hit.phenomenon }))));
   if (hit.forecasts?.length) card.append(el("h3", {}, FORECAST_TITLE),

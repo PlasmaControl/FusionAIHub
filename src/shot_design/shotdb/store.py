@@ -95,7 +95,6 @@ class ShotDB:
         labels_wide: pd.DataFrame | None = None,
         text_claims: pd.DataFrame | None = None,
         event_sources: pd.DataFrame | None = None,
-        summaries: pd.DataFrame | None = None,
     ):
         self.db_dir = Path(db_dir)
         self.shots = shots
@@ -104,10 +103,6 @@ class ShotDB:
         self.emb = emb
         self.pca = pca
         self.manifest = manifest
-        self.summaries = summaries
-        self._summaries = {} if summaries is None else summaries.set_index("shot")[
-            "summary"
-        ].to_dict()
         # windows.parquet: one row per 250 ms window of every encoded shot, aligned with
         # emb["ignite_win"]; only fragment queries (--ref-window) read it.
         self.windows = windows
@@ -153,23 +148,12 @@ class ShotDB:
         # into a protocol error on every MCP call, including ones that never touch events.
         label_tables: dict[str, pd.DataFrame] = {}
         load_errors: dict[str, str] = {}
-        for name in ("events", "labels_wide", "text_claims", "event_sources", "summaries"):
+        for name in ("events", "labels_wide", "text_claims", "event_sources"):
             p = db_dir / f"{name}.parquet"
             if not p.exists():
                 continue
             try:
                 table = pd.read_parquet(p)
-                if name == "summaries":
-                    required = {"shot", "summary", "goal", "outcome", "findings",
-                                "model", "prompt_version", "written_at"}
-                    if required - set(table):
-                        raise ValueError("summaries table is missing required columns")
-                    if table["shot"].isna().any() or table["shot"].duplicated().any():
-                        raise ValueError("summaries table requires one row per shot")
-                    if not pd.api.types.is_integer_dtype(table["shot"]):
-                        raise ValueError("summaries shot must be an integer")
-                    if any(not isinstance(v, str) for v in table["summary"].dropna()):
-                        raise ValueError("summary must be text or null")
                 label_tables[name] = table
             except Exception as exc:  # noqa: BLE001 - reported to the caller, never swallowed
                 load_errors[name] = f"{type(exc).__name__}: {exc}"
@@ -180,16 +164,24 @@ class ShotDB:
     # ------------------------------------------------------------------ single-row access
 
     def get(self, shot: int) -> ShotRecord:
-        """The full record, rehydrated from the JSON column. Parquet holds the flat view for
-        querying and the record verbatim for reading; this is the second one."""
+        """Rehydrate the JSON record with authoritative blurb fields from the parquet columns.
+
+        Offline backfills do not rewrite record_json. Missing columns or blank values clear
+        any build-time text/source in that JSON rather than presenting stale text.
+        """
         rec = ShotRecord.model_validate_json(self.shots.loc[shot, "record_json"])
-        rec.summary = self.summary(shot)
+        fields = self.blurb_fields(shot)
+        rec.blurb = fields["blurb"]
+        rec.blurb_source = fields["blurb_source"]
         return rec
 
-    def summary(self, shot: int) -> str | None:
-        """Offline text for this snapshot; missing rows never fall back to logbook text."""
-        value = self._summaries.get(int(shot))
-        return value if isinstance(value, str) and value.strip() else None
+    def blurb_fields(self, shot: int) -> dict[str, str | None]:
+        """Current table text and source; backfills update these independently of record_json."""
+        row = self.shots.loc[shot] if shot in self.shots.index else {}
+        return {
+            name: value if isinstance(value := row.get(name), str) and value.strip() else None
+            for name in ("blurb", "blurb_source")
+        }
 
     def row(self, seg_id: str) -> pd.Series:
         return self.segments.loc[seg_id]

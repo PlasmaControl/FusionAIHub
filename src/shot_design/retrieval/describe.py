@@ -435,7 +435,8 @@ def describe_parts(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None
     full = rec.segment("full")
     outcome["end_time_s"] = full.t1_ms / 1000 if full and rec.outcome.end_reason else None
     return {
-        "summary": rec.summary,
+        "blurb": rec.blurb,
+        "blurb_source": rec.blurb_source,
         "header": _header(rec),
         "segment": None if seg is None else {
             "name": seg.name, "t0_s": seg.t0_ms / 1000, "t1_s": seg.t1_ms / 1000,

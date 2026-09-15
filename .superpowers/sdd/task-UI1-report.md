@@ -10,7 +10,7 @@ Date: 2026-09-15
 1. **Title:** document title and banner read **Shot Designer**. The production metadata displays `504 shots · 185786–204925`.
 2. **Theme:** white page; `#2f6f66` banner, links and buttons; `#24574f` hover; `#f8faf9` panels; `#d6e2de` borders. White banner text and visible focus outlines. Mobile layout remains a single column.
 3. **Shot identifiers:** nowrap, tabular/monospace shot digits and an 8ch minimum Shot column. Result and Locate links, shot headings, reference inputs and shot references embedded in long text preserve whole shot numbers. Dates, counts, run IDs and MP IDs bypass numeric rounding.
-4. **Summary slot:** read-only, optional `summaries.parquet` snapshot join by shot. `ShotRecord.summary`, `ResultItem.summary`, `PhenomenonHit.summary` and its public alias `SearchHit.summary` default to `None`. Search/Locate show Summary instead of the logbook quote; the shot view hides its Summary block when missing. `describe_shot` and `/api/shot` expose summary at top level and in the record. No summary generation or production writes.
+4. **Summary slot (amended):** reads the existing `blurb` and `blurb_source` columns in `shots.parquet`. `ShotRecord`, `ResultItem`, `PhenomenonHit` and its public alias `SearchHit` carry both optional fields. Search/Locate and the shot Summary block render `blurb`; a small muted `auto` tag appears when text is present and its source is not `llm`. Missing text displays `—` in results and hides the shot Summary block. No separate summary table is loaded or generated; no summary generation or production writes.
 5. **Text expansion:** shared `longText` helper, about 140 characters and two CSS lines, with ellipsis and more/less buttons. Used for summaries, caveats, titles, notes, fields and logbook text across all views. Toggle buttons stop row-navigation propagation and expose expanded state and controlled element IDs. Quoted text is never rewritten; expansion restores the complete entry.
 6. **Numbers:** shared `formatNumber` applies four significant digits, strips trailing zeros, and uses scientific notation at the specified magnitude boundaries. Times convert milliseconds to seconds and use three decimals; confidences use three decimals. Invalid/nonfinite/missing values show `—`, never zero. Rules and eight examples are documented beside the formatter. Original numbers in operator prose and offline summary text remain verbatim.
 7. **Units:** API maps stored scalar columns through `split_stat` to the signal/actuator registry. `stat_slope` uses `np.polyfit(t / 1000.0, y, 1)`, so slopes use unit/s. Fractions and unregistered quantities use the empty unit string. Values remain unscaled, e.g. `ip_mean 8.924e5 A`.
@@ -22,33 +22,28 @@ Date: 2026-09-15
 
 `docs/SHOT_DESIGN.md` now documents the title, theme, summary contract, structured response, number/units rules and disclosure controls. Its launch directory is the UI1 worktree and the caveat response-header spelling is corrected to the existing `X-Ideate-Caveats`.
 
-## Summary table contract
+## Blurb column contract (amended)
 
-Location: `<db_dir>/summaries.parquet`. One row per shot; expected producer schema:
+Location: existing `<db_dir>/shots.parquet` rows. No new table:
 
 | Column | Type | Meaning |
 | --- | --- | --- |
-| shot | int32 | Join key |
-| summary | string | Three short sentences: goal, success/outcome, interesting finding |
-| goal | string | Goal sentence |
-| outcome | string | Outcome sentence |
-| findings | string | Finding sentence |
-| model | string | Offline producer model |
-| prompt_version | integer | Offline prompt version |
-| written_at | string | Producer timestamp |
+| blurb | string or null | Stored Summary text: LLM sentences or factual header + outcome template |
+| blurb_source | string or null | `llm` or `template`; unknown on legacy rows |
 
-The loader retains the full table in `ShotDB.summaries`; the browser consumes only `summary`. It requires the named columns, integer/non-null/unique shot keys, and text-or-null summary values. It accepts wider integer shot dtypes as well as int32. It does not assess sentence quality or generate missing text. Missing table/row/null/blank yields `None`. Unreadable or structurally invalid tables record `load_errors['summaries']` and preserve core records; `describe_shot` reports the summary failure. No changes are written into `shots.parquet`. Restart the server after publishing summaries to load the new snapshot.
+`ShotDB.get()` overlays both current table values on the stored `record_json`, because the offline backfill updates columns independently of that JSON. Missing columns/null/blank values become `None`. The same normalization supplies Locate hits. The renderer uses `blurb` directly and tags any non-LLM source `auto`, including unknown legacy provenance. `shot_design blurb --all` can replace the text in place with three LLM sentences. Restart the UI after backfilling to load the new snapshot. This amendment writes no production table. An obsolete `summaries.parquet`, if present, is ignored.
 
 ## API shapes
 
-`/api/search` retains the existing search result shape with an additive `results[].summary`. `/api/locate` retains its bare hit list with additive `summary`; `SearchHit` aliases the existing `PhenomenonHit` class. `describe_shot()` gains top-level `summary` and `record.summary`; its description string and docstring remain unchanged.
+`/api/search` retains the existing search result shape with `results[].blurb` and `results[].blurb_source`. `/api/locate` retains its bare hit list with both fields; `SearchHit` aliases `PhenomenonHit`. `describe_shot()` exposes both fields at top level and in `record`; its description string and docstring remain unchanged. The superseded `summary` fields were removed.
 
 `GET /api/shot/{shot}?segment=flat_top` preserves all of `describe_shot()` and adds:
 
 ```text
 units: { scalar_column: unit_string }
 describe_parts: {
-  summary: string | null,
+  blurb: string | null,
+  blurb_source: string | null,
   header: string,
   segment: {name: string, t0_s: number, t1_s: number} | null,
   scalars: [{name: string, value: number | null, units: string}],
@@ -262,9 +257,9 @@ Flags use their structured raw `value` and `limit` through the shared number for
 - Raw outcome keys → `Ip target`, `Ip error`, `NBI target`, `NBI error`, `NBI target units`, `Flat top`, `Ended early`, `Fast quench`, `End reason`, `End time`, `Faults`; target booleans become `hit` / `missed`, absent remains `—`, and end-reason underscores become spaces.
 - Unbounded text/sections → `more` / `less` and `Show all` / `Show less` controls. Locate's quote/role block moves to the shot's attributed logbook; its new Summary slot displays offline text or `—`.
 
-New API diagnostic: `summaries.parquet unavailable: <error>`. New structured missing-segment caveat: `No <segment> scalars recorded`. No previous wording was replaced at the shared source.
+New browser label from the amendment: `auto` (small and muted), next to a present blurb whose source is not `llm`. The superseded `summaries.parquet unavailable: <error>` diagnostic was removed with that loader. The structured missing-segment caveat remains `No <segment> scalars recorded`. No existing shared evidence wording was changed.
 
-## Verification
+## Original UI1 verification (before the Summary amendment)
 
 ### Test-first sequence
 
@@ -353,11 +348,51 @@ Final served HTML, JS and CSS checks also passed after the flag formatter change
 
 ## Boundaries and remaining work
 
-- Offline language-model summary generation is deliberately reserved for the follow-up task. Production has no summaries, so the present production UI displays `—` and hides the shot Summary block; hermetic tests cover present summaries.
+- Offline language-model blurb generation remains the follow-up task. The UI displays the existing factual template blurb with `auto` until LLM text arrives in that same column; missing text still displays `—` and hides the shot Summary block.
 - No browser engine is installed in this environment, so no pixel screenshot/manual browser layout review was performed. Node syntax/rendering checks and the served HTTP API were exercised; CSS layout/focus behavior was reviewed in source.
 - Production DB, labeler root, datasets and model artifacts were read-only. Test files were written only through existing/new tmp_path fixtures. No installs, lock/update commands, worktree `.pixi`, or generated runtime artifacts were added. No edits under `docs/superpowers/**`.
-- No MCP tool descriptions or event-status logic changed. The only changes in `mcp/tools.py` are the optional summary response field and a summary-table read-error caveat.
+- No MCP tool descriptions or event-status logic changed. The amendment replaces the optional summary response field and summary-table error caveat in `mcp/tools.py` with `blurb` and `blurb_source` response fields.
 - Commits use `shot_design:` and the required `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` trailer. No commits occurred while a suite was running.
+
+## Summary amendment verification
+
+The user amended item 4 after the original UI1 commits: render the existing
+`shots.parquet` blurb/source fields and a muted `auto` tag for non-LLM text.
+The brief, current contracts and documentation above now reflect that amendment.
+The original verification transcript is retained above as historical evidence;
+its `summary` keys and absent-summary production observations describe the
+superseded implementation.
+
+Tests were updated before implementation. The first focused run failed as
+expected: `13 failed, 19 passed in 3.99s`, covering missing record/hit fields,
+the old sidecar loader/API and the browser still reading `summary`. The
+absent-column fixture was then corrected to remove the template columns already
+present in the shared synthetic DB. After implementation, the focused API and
+Node renderer tests passed: `32 passed in 3.53s` with `-W error`.
+
+The new tests exercise authenticated `/api/search` and `/api/shot` calls through
+the existing httpx TestClient, using tmp_path tables. They verify stored LLM,
+template and unknown sources; absent/null/blank text; both hit models; read-only
+column hydration; and ignoring an obsolete sidecar. The Node harness executes
+the real render functions for Search, Locate and Shot, verifying the text and
+the presence/absence of the small muted `auto` tag for each source.
+
+Full shot_design verification (exit 0):
+
+```bash
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu env PYTHONPATH=/scratch/gpfs/nc1514/FusionAIHub-UI1/src PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 pytest /scratch/gpfs/nc1514/FusionAIHub-UI1/tests/shot_design -q -W error -p no:cacheprovider -rs
+```
+
+```text
+1407 passed in 135.67s (0:02:15)
+0 skipped; exit 0
+```
+
+The full labeler result follows after completion. Every actual browser JS module
+passed `node --check`. Ruff passed across `src/labeler src/shot_design
+scripts/labeler scripts/shot_design tests/labeler tests/shot_design` using the main
+checkout's labelmaker Ruff binary with `--no-cache` (`All checks passed!`).
+No production server, database, LLM or Slurm operation was needed for this amendment.
 
 ## Final disposition
 
