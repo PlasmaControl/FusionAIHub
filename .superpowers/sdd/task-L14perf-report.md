@@ -6,8 +6,8 @@ resumed work started at `38a3c13`, incorporating merge base `67f47e3` and C3fix.
 The L12 report is gone; comparison numbers come from the binding brief and
 `scripts/labelmaker/tokeye_masks.sbatch` header. Runtime products use
 `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/`; the prescribed gate
-captures use `runs/slurm/`. One A100 pilot was submitted. Production is a
-provisional report-only proposal and was not submitted.
+captures use `runs/slurm/`. One A100 pilot was submitted in the original loop; the authorized second
+pilot is recorded in the Fix loop below. Production remains report-only.
 
 ## Deliverable 1: profile before implementation
 
@@ -121,6 +121,14 @@ and float64-divide/float32-cast row and column fractions. The compact payload
 includes row-major sparse coherent float32 values. CPU description reconstructs
 only the coherent probability map; transient probabilities are unnecessary.
 The full-probability `process_shot` inference branch remains the oracle.
+Byte identity is conditional: byte-identical when no OOM halving occurs or
+when it occurs identically. Different allocation pressure can cause different
+forward batch shapes and therefore different AMP rounding.
+
+At TILE 512 / STRIDE 448, at most two tiles overlap any column; division by
+two is exact power-of-two scaling, so float32 versus float64 overlap
+accumulation is indistinguishable here. Float64 matches the oracle's intent
+and provides extra protection; these tests do not prove it is necessary.
 
 Input buffers pool consecutive tiles across channels, passes and shots. CUDA
 uses pinned host buffers, nonblocking transfers on a copy stream, readiness
@@ -145,8 +153,9 @@ stored row/column summaries. The unweakened comparison failed, exit 1.
 No threshold, probability rounding or tolerance was changed.
 
 Consequently CUDA pools full **input-transfer** batches but reconstructs the
-oracle's per-block forward groups on the device. CPU retains full cross-block
-forward batches. This is a deliberate deviation from full CUDA forward pooling
+oracle's per-block forward groups on the device. At that historical snapshot CPU retained full cross-block
+forward batches; the Fix loop defaults both devices to reference boundaries
+and makes CPU cross-block forwards opt-in. This is a deliberate deviation from full CUDA forward pooling
 to enforce output identity. It follows PyTorch's documented lack of bitwise
 equivalence across batch shapes:
 [PyTorch numerical accuracy](https://github.com/pytorch/pytorch/blob/main/docs/source/notes/numerical_accuracy.md).
@@ -233,7 +242,8 @@ workers. Multiple tail workers require `--no-index` to avoid shared-index races;
 SBATCH CPU reservations account for prep + tail + parent explicitly.
 
 Pre-profile implementation gate: labelmaker **1,621 passed, 3 skipped**, 214.74 s,
-exit **0**; IDEATE **1,252 passed**, 132.69 s, exit **0**; required Ruff command
+exit **0**; IDEATE **1,252 passed**, 132.69 s, exit **0** (the pre-profile
+run, distinct from the final 126.47 s rerun below); required Ruff command
 passed, exit **0**. The labelmaker atexit XRootD FutureWarning printed after the
 successful summary and did not change its exit code. No commit occurred while
 any suite or real identity test was running.
@@ -384,7 +394,11 @@ Thus the CPU capacity estimate was conservative: lazy worker creation, I/O,
 queue/serialization costs and a short cold run leave much of the 50-core
 reservation unused. More workers alone are not evidence of useful CPU demand.
 
-### Production sizing proposal — report only, unvalidated
+### Original production sizing proposal — withdrawn by F2
+
+The following historical proposal is superseded by the Fix loop. It placed
+both pools below measured demand and let one timeout consume the entire
+wall request; its memory measurement came from different pool sizes.
 
 GPU performance permits recording the requested **8 x 60 shots**,
 `--array 0-7%2`, `N_CHUNKS=8` proposal. It does **not** erase the two failed
