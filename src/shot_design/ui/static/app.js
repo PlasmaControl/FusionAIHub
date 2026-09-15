@@ -60,6 +60,11 @@ function display(value, key = "") {
 
 function fieldName(key) { return key.endsWith("_ms") ? key.slice(0, -3) + " (s)" : key; }
 
+// Disclosure limits: whole table cells get 320 characters / 5 CSS lines;
+// shot-page blocks get 600 characters / 8 CSS lines. See .text-content in CSS.
+const CELL_TEXT_LIMIT = 320;
+const BLOCK_TEXT_LIMIT = 600;
+
 function formatFlag(flag) {
   const message = String(flag.message ?? flag);
   const rule = message.match(/^(.+?) = \S+ ([<>=!]+) \S+: (.*)$/);
@@ -156,14 +161,14 @@ function updateDisclosures() {
 }
 
 function inlineText(text) {
-  return text.split(/(\b[Ss]hot \d+\b|\b[12]\d{5}\b)/g).map((part, i) =>
-    i % 2 ? el("span", { class: "shot-number" }, part) : part);
+  return text.split(/(\b[Ss]hot \d+\b|\b[12]\d{5}\b|[+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?(?:–[+-]?\d+(?:\.\d+)? s)?)/g).map((part, i) =>
+    i % 2 ? el("span", { class: /^(?:[Ss]hot |[12]\d{5}$)/.test(part) ? "shot-number" : "numeric" }, part) : part);
 }
 
-function longText(value) {
+function longText(value, { limit = BLOCK_TEXT_LIMIT, cell = false } = {}) {
   const text = display(value);
-  const cut = text.lastIndexOf(" ", 140);
-  const preview = text.length > 140 ? text.slice(0, cut > 0 ? cut : 140).trimEnd() + "…" : text;
+  const cut = text.slice(0, limit + 1).search(/\s+\S*$/);
+  const preview = text.length > limit ? text.slice(0, cut > 0 ? cut : limit).trimEnd() + "…" : text;
   const content = el("span", { class: "text-content", id: `text-${++disclosureId}` }, inlineText(preview));
   let expanded = false;
   const button = el("button", { type: "button", class: "text-toggle", "aria-expanded": "false",
@@ -176,12 +181,18 @@ function longText(value) {
       button.setAttribute("aria-expanded", String(expanded));
       updateDisclosures();
     } }, "more");
-  button.hidden = text.length <= 140;
-  const root = el("div", { class: "long-text" }, content, button);
+  button.hidden = text.length <= limit;
+  const root = el("div", { class: `long-text${cell ? " cell-text" : ""}` }, content, button);
   watchDisclosure(root, () => {
-    button.hidden = !expanded && text.length <= 140 && content.scrollHeight <= content.clientHeight + 1;
+    button.hidden = !expanded && text.length <= limit && content.scrollHeight <= content.clientHeight + 1;
   });
   return root;
+}
+
+function cellText(items, { limit = CELL_TEXT_LIMIT } = {}) {
+  // One disclosure owns all items, including titles, intervals and late API notes.
+  return longText(items.filter((item) => item !== null && item !== undefined && item !== "")
+    .map((item) => display(item)).join("\n") || "—", { limit, cell: true });
 }
 
 function collapsible(content) {
@@ -227,8 +238,8 @@ async function api(path, options = {}) {
 }
 
 function caveats(items) {
-  return items?.length ? collapsible(el("ul", { class: "caveats" },
-    [...new Set(items)].map((c) => el("li", {}, longText(caption(c)))))) : null;
+  return items?.length ? el("div", { class: "caveats" },
+    longText([...new Set(items)].map(caption).join("\n"))) : null;
 }
 
 function notes(target, data = {}, extra = []) {
@@ -240,8 +251,8 @@ function notes(target, data = {}, extra = []) {
 
 function fields(record, units = {}) {
   return el("dl", {}, Object.entries(record || {}).flatMap(([k, v]) => [
-    el("dt", {}, fieldName(k)), el("dd", { class: identifier(k) ? "identifier" : "" },
-      longText(`${display(v, k)}${units[k] && display(v, k) !== "—" ? ` ${units[k]}` : ""}`))]));
+    el("dt", {}, fieldName(k)), el("dd", { class: identifier(k) ? "identifier" : typeof v === "number" ? "numeric" : "" },
+      typeof v === "number" ? `${display(v, k)}${units[k] && finite(v) ? ` ${units[k]}` : ""}` : longText(display(v, k)))]));
 }
 
 function showView(view) {
@@ -272,10 +283,10 @@ function shotLink(shot, phenomenon = "", segment = "flat_top") {
   return `#shot/${shot}?${new URLSearchParams({ phenomenon, segment })}`;
 }
 
-function blurbText(row) {
+function blurbText(row, { cell = false } = {}) {
   const text = row.blurb?.trim() ? row.blurb : null;
   if (!text) return el("div", { class: "blurb-text" }, "—");
-  return el("div", { class: "blurb-text" }, longText(text),
+  return el("div", { class: "blurb-text" }, cell ? cellText([text]) : longText(text),
     row.blurb_source === "template"
       ? el("span", { class: "blurb-auto small muted",
         title: "Deterministic header + outcome; no model summary yet" }, "auto") : null);
@@ -286,50 +297,67 @@ function resultsTable(rows, segment) {
     el("thead", {}, el("tr", {}, ["Shot", "Score", "Run / mini-proposal", "Summary", "Caveats"].map((t) => el("th", {}, t)))),
     el("tbody", {}, rows.map((row) => {
       const open = () => { location.hash = shotLink(row.shot, "", row.segment || segment); };
-      const title = el("td", {}, display(row.run_id, "run_id"), el("p", {}, "Loading title…"));
-      const rowNotes = el("div", {}, caveats(row.caveats),
-        ...(row.flags || []).map((flag) => longText(formatFlag(flag))));
+      const title = el("td", { class: "prose-cell" }, cellText([display(row.run_id, "run_id"), "Loading title…"]));
+      const noteItems = [...(row.caveats || []).map(caption), ...(row.flags || []).map(formatFlag)];
+      const rowNotes = el("td", { class: "prose-cell" }, cellText(noteItems));
+      const refreshNotes = () => rowNotes.replaceChildren(cellText([...new Set(noteItems)]));
       // Titles are absent from search's ResultItem. Read the existing describe route;
       // its caveats/errors remain visible in this same row, and scores stay untouched.
       api(`/api/shot/${row.shot}?${new URLSearchParams({ segment: row.segment || segment })}`)
         .then(({ data }) => {
           const human = data.record?.human;
-          title.replaceChildren(display(row.run_id, "run_id"), longText(human?.run_title),
-            longText(human?.mp_title));
-          if (data.error) rowNotes.append(el("div", { class: "error" }, longText(data.error)));
-          const extra = caveats(data.caveats);
-          if (extra) rowNotes.append(extra);
+          title.replaceChildren(cellText([display(row.run_id, "run_id"), human?.run_title, human?.mp_title]));
+          if (data.error) noteItems.push(data.error);
+          noteItems.push(...(data.caveats || []).map(caption));
+          refreshNotes();
         }).catch((error) => {
-          title.replaceChildren(display(row.run_id, "run_id"), el("p", {}, "—"));
-          rowNotes.append(el("div", { class: "error" }, longText(error.message)));
+          title.replaceChildren(cellText([display(row.run_id, "run_id"), "—"]));
+          noteItems.push(error.message);
+          refreshNotes();
         });
       return el("tr", { class: "clickable", onclick: open },
         el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot"))),
-        el("td", {}, display(row.score)),
+        el("td", { class: "numeric" }, display(row.score)),
         title,
-        el("td", { class: "summary-cell" }, blurbText(row)),
-        el("td", {}, collapsible(rowNotes)));
+        el("td", { class: "summary-cell prose-cell" }, blurbText(row, { cell: true })),
+        rowNotes);
     }))));
 }
 
 // Only finite recorded times can place a mark. Axis interpolation is display geometry.
 const finite = (n) => typeof n === "number" && Number.isFinite(n);
-function bounds(rows) {
-  const times = rows.flatMap((r) => [r.t0_s, r.t1_s]).filter(finite);
-  return times.length ? [Math.min(...times), Math.max(...times)] : null;
-}
 function colour(kind) { return COLOURS[kind] || "#77869b"; }
-function timeline(rows, domain = bounds(rows || []), coverage = false) {
+function timelineDomain(data) {
+  // Events and Locate use the same server-derived full/other-segment domain.
+  // Missing replies use the documented default; coverage never widens it.
+  return finite(data.domain?.t0_s) && finite(data.domain?.t1_s) && data.domain.t1_s > data.domain.t0_s ?
+    [data.domain.t0_s, data.domain.t1_s] : [-2, 8];
+}
+
+function timeAxis(domain) {
+  const ticks = [];
+  for (let time = Math.ceil(domain[0]); time <= domain[1]; time++) {
+    ticks.push(el("span", { class: `axis-tick${time === 0 ? " zero" : ""}`,
+      style: `left:${100 * (time - domain[0]) / (domain[1] - domain[0])}%` },
+    el("span", {}, `${time} s`)));
+  }
+  return el("div", { class: "axis", "aria-label": "Time (seconds)" }, ticks);
+}
+
+function timeline(rows, domain = [-2, 8], coverage = false) {
   const root = el("div", { class: "timeline" });
+  // The top axis is outside the collapsible body, including for empty lanes.
+  root.append(timeAxis(domain));
   if (!Array.isArray(rows)) { root.append(el("p", { class: "muted" }, "—")); return root; }
   if (!rows.length) { root.append(el("p", { class: "muted" }, "No indexed intervals")); return root; }
+  const lanes = el("div", { class: "timeline-lanes" });
   const groups = new Map();
   for (const row of rows) {
     const source = display(row.source);
     if (!groups.has(source)) groups.set(source, []);
     groups.get(source).push(row);
   }
-  if (!coverage) root.append(el("div", { class: "legend" },
+  if (!coverage) lanes.append(el("div", { class: "legend" },
     [...new Set(rows.map((r) => r.evidence_kind))].map((kind) => el("span", {},
       el("i", { class: "swatch", style: `--evidence:${colour(kind)}` }), display(kind)))));
   for (const [source, items] of groups) {
@@ -339,13 +367,19 @@ function timeline(rows, domain = bounds(rows || []), coverage = false) {
       const values = coverage ?
         { status: item.status, reason: item.reason, diag: item.diag, channel: item.channel, pass_name: item.pass_name, n_events: item.n_events, min_gap_s: item.min_gap_s } :
         { phenomenon: item.phenomenon, evidence_kind: item.evidence_kind, confidence: item.confidence };
-      const tooltip = `${timeSpan(item.t0_s, item.t1_s)} · ${display(values)}${item.caveats?.length ? ` · ${item.caveats.map(caption).join("; ")}` : ""}`;
-      if (domain && finite(item.t0_s) && finite(item.t1_s) && item.t1_s >= item.t0_s) {
+      let tooltip = `${coverage ? "coverage " : ""}${timeSpan(item.t0_s, item.t1_s)}`;
+      const drawable = finite(item.t0_s) && finite(item.t1_s) && item.t1_s >= item.t0_s;
+      const clip = (time) => Math.max(domain[0], Math.min(domain[1], time));
+      const clippedLeft = drawable && item.t0_s < domain[0];
+      const clippedRight = drawable && item.t1_s > domain[1];
+      if (clippedLeft || clippedRight) tooltip += `, drawn ${display(clip(item.t0_s))}–${display(clip(item.t1_s))} s`;
+      tooltip += ` · ${display(values)}${item.caveats?.length ? ` · ${item.caveats.map(caption).join("; ")}` : ""}`;
+      if (drawable) {
         const span = domain[1] - domain[0];
-        const left = span ? 100 * (item.t0_s - domain[0]) / span : 50;
-        const width = span ? 100 * (item.t1_s - item.t0_s) / span : 0;
+        const left = 100 * (clip(item.t0_s) - domain[0]) / span;
+        const width = 100 * (clip(item.t1_s) - clip(item.t0_s)) / span;
         track.append(el("span", {
-          class: `mark${item.t0_s === item.t1_s ? " point" : ""}`,
+          class: `mark${item.t0_s === item.t1_s ? " point" : ""}${clippedLeft ? " clipped-left" : ""}${clippedRight ? " clipped-right" : ""}${left === 100 ? " at-right" : ""}`,
           title: tooltip, "aria-label": tooltip,
           style: `left:${left}%;width:${width}%;--evidence:${coverage ? "#8995a5" : colour(item.evidence_kind)}`,
         }));
@@ -355,15 +389,12 @@ function timeline(rows, domain = bounds(rows || []), coverage = false) {
       if (coverage) details.push(tooltip);
     }
     // Coverage rows with no intervals still show status/reason; no invented bars.
-    root.append(el("div", { class: "lane" }, el("div", { class: "lane-name" }, longText(source)), track,
+    lanes.append(el("div", { class: "lane" }, el("div", { class: "lane-name" }, longText(source)), track,
       coverage ? el("div", { class: "coverage-detail" }, longText([...new Set(details)].join("; "))) : details));
   }
-  if (domain) {
-    const labels = domain[0] === domain[1] ? [domain[0]] : [domain[0], (domain[0] + domain[1]) / 2, domain[1]];
-    root.append(el("div", { class: `axis${labels.length === 1 ? " single" : ""}` },
-      labels.map((time) => el("span", {}, `${formatNumber(time, "time")} s`))));
-  } else root.append(el("p", { class: "muted" }, "Recorded time: —"));
-  return collapsible(root);
+  lanes.append(timeAxis(domain));
+  root.append(collapsible(lanes));
+  return root;
 }
 
 function renderEvents(data, prefix = "") {
@@ -392,7 +423,7 @@ function renderEvents(data, prefix = "") {
     return intervals.length ? intervals.map(([t0_s, t1_s]) => ({ ...row, t0_s, t1_s })) :
       [{ ...row, t0_s: null, t1_s: null }];
   });
-  const domain = bounds([...(data.events || []), ...(data.forecasts || []), ...(data.database_intervals || []), ...coverage]);
+  const domain = timelineDomain(data);
   target("event-lanes").replaceChildren(timeline(data.events, domain));
   target("forecast-lanes").replaceChildren(timeline(data.forecasts, domain));
   target("database-lanes").replaceChildren(timeline(data.database_intervals, domain));
@@ -454,15 +485,15 @@ function phenomenaTable(rows) {
   return el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Phenomenon", "Observed", "First intervals", "Forecasts", "Coverage"].map((t) => el("th", {}, t)))),
     el("tbody", {}, rows.map((row) => el("tr", {},
-      el("td", {}, longText(row.title), el("span", { class: "small muted" }, row.id)),
-      el("td", {}, display(row.n_observed, "n")),
-      el("td", {}, longText(row.first_intervals.map((iv) => timeSpan(iv.t0_s, iv.t1_s)).join(", ") || "—"),
-        row.n_observed > 3 ? el("span", { class: "small muted" }, `+${row.n_observed - 3} more`) : null),
-      el("td", {}, display(row.n_forecast, "n")),
-      el("td", {}, longText(row.coverage_note),
-        longText(row.coverage_windows.map(([a, b]) => timeSpan(a, b)).join(", ") || "—"),
-        row.coverage_partial ? el("span", { class: "small muted" }, "Partial coverage; outside unmeasured") : null,
-        caveats(row.caveats)),
+      el("td", { class: "prose-cell" }, cellText([row.title, row.id])),
+      el("td", { class: "numeric" }, display(row.n_observed, "n")),
+      el("td", { class: "prose-cell" }, cellText((row.intervals || row.first_intervals || [])
+        .map((iv) => timeSpan(iv.t0_s, iv.t1_s)))),
+      el("td", { class: "numeric" }, display(row.n_forecast, "n")),
+      el("td", { class: "prose-cell" }, cellText([row.coverage_note,
+        ...(row.coverage_windows || []).map(([a, b]) => timeSpan(a, b)),
+        row.coverage_partial ? "Partial coverage; outside unmeasured" : null,
+        ...(row.caveats || []).map(caption)])),
     )))));
 }
 
@@ -521,14 +552,15 @@ async function openShot(shot, phenomenon = "", segment = "flat_top") {
 }
 
 function renderHit(hit, segment) {
+  const domain = timelineDomain(hit);
   const card = el("article", { class: "card" }, el("div", { class: "hit-head" },
     el("a", { class: "shot-number", href: shotLink(hit.shot, hit.phenomenon, segment) }, `Shot ${display(hit.shot, "shot")}`),
-    el("span", {}, `score ${display(hit.score)}`), el("span", { class: "identifier" }, `run ${display(hit.run_id, "run_id")}`)),
+    el("span", { class: "numeric" }, `score ${display(hit.score)}`), el("span", { class: "identifier" }, `run ${display(hit.run_id, "run_id")}`)),
     longText(hit.mp_title), el("h3", {}, "Summary"), blurbText(hit), caveats(hit.caveats),
     fields({ total_duration_s: hit.total_duration_s, coverage_state: hit.coverage_state }),
-    el("h3", {}, "Observed intervals"), timeline((hit.intervals || []).map((iv) => ({ ...iv, phenomenon: hit.phenomenon }))));
+    el("h3", {}, "Observed intervals"), timeline((hit.intervals || []).map((iv) => ({ ...iv, phenomenon: hit.phenomenon })), domain));
   if (hit.forecasts?.length) card.append(el("h3", {}, FORECAST_TITLE),
-    timeline(hit.forecasts.map((iv) => ({ ...iv, phenomenon: hit.phenomenon }))));
+    timeline(hit.forecasts.map((iv) => ({ ...iv, phenomenon: hit.phenomenon })), domain));
   if (hit.text_snippets?.length) card.append(el("h3", {}, "Text mentions"),
     collapsible(el("div", {}, hit.text_snippets.map((text) => el("blockquote", {}, longText(text))))));
   if (Object.keys(hit.label_evidence || {}).length) card.append(el("h3", {}, "Label evidence"), collapsible(fields(hit.label_evidence)));

@@ -31,24 +31,29 @@ label input, label select, label textarea { margin-top: 4px; color: var(--ink); 
 #tabs button:hover { background: var(--soft); color: var(--hover); }
 #top :focus-visible { outline-color: #fff; }
 main { max-width: 1680px; margin: auto; padding: 20px; }
-.view { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 12px; }
+.view { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 12px; min-width: 0; }
 section, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
 .query-panel { align-self: start; }
 .content-panel { min-width: 0; }
 .spaced { margin-top: 18px; }
 .card { margin: 10px 0; }
 .status { font-size: 30px; font-weight: 650; }
-.caveats { margin: 8px 0; padding: 8px 8px 8px 26px; background: var(--soft); border-left: 3px solid var(--accent); line-height: 1.5; }
+.caveats { margin: 8px 0; padding: 8px 12px; background: var(--soft); border-left: 3px solid var(--accent); line-height: 1.5; }
 .error { padding: 8px; border: 1px solid #667085; white-space: pre-wrap; }
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; vertical-align: top; padding: 9px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-th { font-size: 12px; color: var(--muted); }
+.table-wrap { overflow-x: auto; min-width: 0; max-width: 100%; }
+/* Automatic layout keeps each column at least as wide as its unbroken header.
+   Prose shares the available width; narrow screens scroll the table wrapper. */
+table { width: 100%; table-layout: auto; border-collapse: collapse; }
+th, td { text-align: left; vertical-align: top; padding: 9px 8px; border-bottom: 1px solid var(--line); overflow-wrap: normal; word-break: normal; }
+th { font-size: 12px; color: var(--muted); white-space: nowrap; overflow-wrap: normal; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: var(--soft); }
 .shot-number, .identifier, input[name="shot"], input[name="ref_shot"] { white-space: nowrap; overflow-wrap: normal; word-break: normal; font-variant-numeric: tabular-nums; }
 .shot-number { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.numeric, .scalar-value { white-space: nowrap; overflow-wrap: normal; word-break: normal; font-variant-numeric: tabular-nums; }
 td.shot-number { min-width: 8ch; width: 8ch; }
+.prose-cell { min-width: 16ch; }
+.cell-text { max-width: 60ch; }
 .summary-cell { min-width: 200px; width: 28%; }
 .blurb-text { display: flex; align-items: flex-start; gap: 6px; }
 .blurb-text .long-text { flex: 1; min-width: 0; }
@@ -62,13 +67,13 @@ pre { font-size: 12px; }
 .scalar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .scalar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 10px; border: 1px solid var(--line); background: #fff; border-radius: 5px; }
 .scalar-name { color: var(--muted); overflow-wrap: anywhere; }
-.scalar-value { font-variant-numeric: tabular-nums; }
 .summary-block { padding: 12px 16px; margin-bottom: 18px; border-left: 4px solid var(--accent); background: var(--soft); }
 .summary-block h3 { margin-top: 0; }
 .quote { margin: 8px 0; }
 .quote figcaption { padding-left: 12px; }
 .long-text { min-width: 0; margin: 3px 0; }
-.text-content { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
+.text-content { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8; overflow: hidden; overflow-wrap: break-word; word-break: normal; white-space: pre-wrap; line-height: 1.5; }
+.cell-text > .text-content { -webkit-line-clamp: 5; }
 .long-text.expanded > .text-content { display: block; -webkit-line-clamp: unset; }
 .text-toggle, .section-toggle { font-size: 12px; padding: 3px 6px; margin: 3px 0; }
 .text-toggle { border: 0; background: transparent; text-decoration: underline; }
@@ -80,11 +85,19 @@ dl { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 1fr); ga
 dt { color: var(--muted); overflow-wrap: anywhere; } dd { margin: 0; overflow-wrap: anywhere; }
 .lane { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; margin: 12px 0; }
 .lane-name { font-size: 12px; overflow-wrap: anywhere; }
-.track { position: relative; height: 26px; background: #f2f4f7; border-bottom: 1px solid #cbd2db; }
+.track { position: relative; height: 26px; overflow: hidden; background: #f2f4f7; border-bottom: 1px solid #cbd2db; }
 .mark { position: absolute; top: 5px; height: 16px; min-width: 1px; background: var(--evidence, #77869b); opacity: .85; }
-.mark.point { width: 2px; top: 1px; height: 24px; }
-.axis { display: flex; justify-content: space-between; margin: 2px 0 10px 162px; font-size: 11px; color: var(--muted); }
-.axis.single { justify-content: center; }
+.mark.point { min-width: 2px; top: 1px; height: 24px; }
+/* Pin a point or a wholly clipped span inside the right edge of the track. */
+.mark.at-right { left: auto !important; right: 0; }
+.mark.clipped-left::before, .mark.clipped-right::after { content: ""; position: absolute; top: 3px; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.mark.clipped-left::before { left: 0; border-right: 5px solid var(--ink); }
+.mark.clipped-right::after { right: 0; border-left: 5px solid var(--ink); }
+.axis { position: relative; height: 28px; margin: 2px 0 10px 162px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.axis-tick { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.axis-tick > span { display: inline-block; transform: translateX(-50%); background: var(--panel); }
+.axis-tick:last-child > span { transform: translateX(-100%); }
+.axis-tick.zero { color: var(--ink); font-weight: 700; border-color: var(--accent); }
 .coverage-detail { grid-column: 2; font-size: 12px; min-width: 0; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; }
 .swatch { display: inline-block; width: 10px; height: 10px; background: var(--evidence); margin-right: 4px; }
@@ -96,5 +109,5 @@ dt { color: var(--muted); overflow-wrap: anywhere; } dd { margin: 0; overflow-wr
   #dbinfo { flex-basis: 100%; }
   #tabs { margin-left: 0; }
   .lane { grid-template-columns: 100px minmax(0, 1fr); }
-  .axis { margin-left: 112px; }
+  .axis { margin-left: 112px; font-size: 10px; }
 }

@@ -150,8 +150,70 @@ def test_parts_separate_forecasts_and_bound_observed_intervals(ideate_db):
     assert row["n_observed"] == 5 and row["n_forecast"] == 1
     assert len(row["first_intervals"]) == 3
     assert all(iv["evidence_kind"] == "detector" for iv in row["first_intervals"])
+    assert [iv["event_id"] for iv in row["intervals"]] == [f"seen-{i}" for i in range(5)]
+    assert row["first_intervals"] == row["intervals"][:3]
+    assert all(iv["evidence_kind"] == "detector" for iv in row["intervals"])
     assert row["coverage_note"] and row["coverage_windows"]
     assert describe.describe_parts(db.get(100), db=db) == parts
+
+
+def test_locate_and_events_share_the_same_full_segment_domain(
+    client, ideate_db,  # noqa: F811
+):
+    _db_with(ideate_db, [_event(100, "observed")])
+    table = pd.read_parquet(ideate_db / "db/shots.parquet")
+    rec = json.loads(table.loc[100, "record_json"])
+    rec["segments"].append({"name": "full", "t0_ms": -3400, "t1_ms": 10501})
+    table.loc[100, "record_json"] = json.dumps(rec)
+    table.to_parquet(ideate_db / "db/shots.parquet")
+    tools.reset_cache()
+    hit = next(h for h in client.get("/api/locate?phenomenon=tearing").json()
+               if h["shot"] == 100)
+    events = client.get("/api/shot/100/events").json()
+    assert hit["domain"] == events["domain"] == {
+        "t0_s": -4, "t1_s": 12, "source": "full segment",
+    }
+
+
+@pytest.mark.parametrize("segments,expected", [
+    ([("full", 13, 6944), ("flat_top", -10000, 95000)],
+     {"t0_s": -2, "t1_s": 8, "source": "full segment"}),
+    ([("full", -3400, 10501)],
+     {"t0_s": -4, "t1_s": 12, "source": "full segment"}),
+    ([("ramp_up", -2100, 987), ("flat_top", 987, 5145), ("ramp_down", 5145, 8500)],
+     {"t0_s": -3, "t1_s": 9, "source": "segments"}),
+    ([], {"t0_s": -2, "t1_s": 8, "source": "default"}),
+    ([("full", float("nan"), 6944), ("flat_top", 987, 5145)],
+     {"t0_s": -2, "t1_s": 8, "source": "segments"}),
+    ([("full", 8000, 1000)], {"t0_s": -2, "t1_s": 8, "source": "default"}),
+])
+def test_events_domain_uses_record_segments_not_coverage(
+    client, ideate_db, segments, expected,  # noqa: F811
+):
+    """Shot 199607 spans 0.013..6.944 s despite actuator coverage -10..95 s."""
+    from shot_design.labels import event_sources
+
+    table = pd.read_parquet(ideate_db / "db/shots.parquet")
+    rec = json.loads(table.loc[100, "record_json"])
+    rec["segments"] = [
+        {"name": name, "t0_ms": a, "t1_ms": b} for name, a, b in segments
+    ]
+    table.loc[100, "record_json"] = json.dumps(rec)
+    table.to_parquet(ideate_db / "db/shots.parquet")
+    event_sources.write_sources(ideate_db / "db/event_sources.parquet", [
+        event_sources.source_row(100, "actuator", diag="ech_power_total",
+                                 t_cov0_s=-10, t_cov1_s=95, n_events=0),
+    ])
+    tools.reset_cache()
+    for params in ({}, {"t0_s": 1.0, "t1_s": 2.0, "phenomenon": "eho"}):
+        response = client.get("/api/shot/100/events", params=params)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload.pop("domain") == expected
+        assert payload == tools.get_events(100, **params)
+        if not params:  # The EHO filter correctly excludes actuator coverage.
+            coverage = payload["coverage"]["sources"][0]
+            assert (coverage["t_cov0_s"], coverage["t_cov1_s"]) == (-10, 95)
 
 
 @pytest.mark.parametrize("value,source", [

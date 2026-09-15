@@ -658,7 +658,8 @@ the updated snapshot.
 Shot starts with the available summary, followed by server-built `describe_parts`:
 header, selected segment's scalar grid, labels, outcome, one complete attributed
 operator quote, and a phenomena table. Each phenomenon row has its observed count,
-first three observed intervals, forecast count, and coverage with qualifications.
+observed intervals with a single expandable preview, forecast count, and coverage
+with qualifications. Expanding an interval cell shows every observed interval.
 Missing coverage does not turn an absent observation into a measured zero. Run/MP
 metadata, stored flags, all segment scalars and the full logbook follow. The original
 `describe()` string remains available to CLI/MCP callers; the browser does not parse it.
@@ -672,13 +673,47 @@ Units come from the signal/actuator registry by scalar column. Slopes are per se
 stay unitless. Explicit registry qualifications such as `[?]` remain visible.
 Operator text and offline summaries retain their original words and numbers.
 
-Long text has a two-line / roughly 140-character preview with **more / less**.
+Tables use automatic column sizing: headers stay on one line, so each column is
+at least as wide as its header. Scores, counts, times, confidences and scalar
+values use unbroken tabular digits. Prose wraps at word boundaries; a token longer
+than the available cell width may break. Tables scroll horizontally inside their
+own containers, including on a 400 px phone viewport, without widening the page.
+
+Table cells have a **320-character / five-line** preview. Run/MP titles, caveats,
+flags, coverage notes and intervals within one cell share a single **more / less**
+toggle, with line breaks between items. There is no separate `+N more` note;
+expansion reveals the whole cell. Shot-page blocks (Summary, Outcome, operator
+quote and the caveats list) use **600 characters / eight lines**. A toggle is
+hidden when neither limit clips the text. Expanding a cell does not navigate its
+row, and disclosure controls retain their accessible expanded state and target.
 Tall sections, including scalar cards and coverage, initially show at most 260 px
 with **Show all / Show less**. Timeline colours identify the
 reported evidence kind, and forecast lanes, curated database intervals and text
 mentions remain separate. Event bars expose time, phenomenon, evidence kind and
 confidence in hover titles; there are no per-event bullet lists. Coverage rows
 without intervals retain their status and reason. Missing values display as `—`.
+
+The shot timeline domain is computed server-side from the record's `full` segment,
+converting its stored millisecond endpoints to seconds:
+
+```text
+t_lo = min(-2, floor(full.t0_s))
+t_hi = max(8, ceil(full.t1_s + 0.5))
+```
+
+Without a valid `full` segment, the same rule uses the union of valid segments;
+without any valid segment it uses **−2..8 s**. Nonfinite or reversed segment spans
+cannot define the domain. Coverage and event-window filters never widen or zoom
+this axis. Shot 199607's `full` segment is 0.013..6.944 s, giving **−2..8 s**, even
+though actuator coverage runs −10..94.857 s. Events, forecasts, database intervals
+and coverage are clipped to the domain, with small `clipped-left` / `clipped-right`
+edge markers and hover titles retaining the true span and the drawn span, e.g.
+`coverage -10.000–94.857 s, drawn -2–8 s`. Spans entirely outside the domain remain
+as edge markers. Ticks and labels appear every second, with **0 s** emphasised.
+The axis appears above and below the lanes; the top axis stays outside the
+collapsible body. Each HTTP Locate hit carries the same record-derived `domain`
+for its observed and forecast timelines, including shots longer than eight seconds.
+
 Every events reply shows its status and caveats in concise browser wording; the
 MCP wording and `get_events` status semantics are unchanged. When there is no status
 explanation in the reply, the explanation displays `—` too.
@@ -690,7 +725,11 @@ with its own status and caveats, so the literal filter cannot hide that context.
 Locate hits show summaries, intervals, duration and caveats, and open Shot with the
 phenomenon selected.
 
-`/api/search` and `/api/shot/{shot}/events` preserve the MCP tool JSON.
+`/api/search` preserves the MCP tool JSON. Successful `/api/shot/{shot}/events`
+replies preserve all MCP evidence and status fields and add
+`domain: {t0_s, t1_s, source: "full segment" | "segments" | "default"}`. The browser
+uses that domain directly; clients reading the HTTP API see the same numbers.
+Error replies, MCP tool descriptions and `get_events` semantics remain unchanged.
 `/api/shot/{shot}` retains `description`, `record`, `frame_codes` and
 `caveats`, and exposes `blurb` and `blurb_source` both at top level and in `record`.
 `/api/search` rows and `SearchHit` also carry `blurb` and `blurb_source`. The shot
@@ -707,6 +746,7 @@ describe_parts: {
   outcome: {...stored Outcome fields, end_time_s: number | null},
   operator_quote: {text, role, author, time} | null,
   phenomena: [{id, title, n_observed: integer | null, first_intervals: [Interval],
+               intervals: [Interval],
                n_forecast, coverage_note, coverage_windows: [[t0_s, t1_s]],
                coverage_partial, caveats: [string]}],
   caveats: [string]
@@ -714,13 +754,16 @@ describe_parts: {
 ```
 
 `coverage_note` carries the registry coverage state. `first_intervals` contains at
-most three observed `Interval` records; forecasts never enter it. Missing selected
+most three observed `Interval` records for existing clients; the additive
+`intervals` field contains every observed interval for full cell expansion.
+Forecasts never enter either list. Missing selected
 segments return no scalars, without substituting another segment. Units are
 unscaled registry strings: `ip_mean: "A"`, `ip_slope: "A/s"`,
 `ne_line_mean: "m/cm3"`; dimensionless or unregistered quantities use `""`.
 
 Error dictionaries remain HTTP 200. `/api/locate` preserves the CLI's
-bare JSON list; CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
+bare JSON list and existing hit fields, adding only the per-shot `domain` described
+above. CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
 response header and are displayed above the hits. `/api/meta` summarizes the
 manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
 sources. Unknown API paths return JSON 404.
