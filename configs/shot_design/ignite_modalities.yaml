@@ -1,0 +1,252 @@
+version: 1
+# IGNITE (FusionAIHub) input map: one entry per modality the IGNITE codec set tokenises, saying
+# where that modality lives in a d3d_fusion_data file and how to fetch it for a shot that has no
+# staged file. scripts/fetch_shots.py reads this alongside signals.yaml and actuators.yaml.
+#
+# SCOPE. The modality list is not a guess: it is FROZEN_MODALITIES in
+# src/tokamak_foundation_model/ignite/dynamics_config.py, the canonical
+# per-frame token order: 4 spectro x 192 tok + 2 video x 108 + 7 slow-TS x 4 + filterscopes x 5,
+# i.e. 14 modalities. (dynamics_config's own header totals 1012 tokens/frame, which predates
+# filterscopes being added to the layout; the 14 entries below sum to 1017.) Exactly those 14
+# names appear below. The actuator signals that FusionAIHub's own data-generation config also
+# processes (pinj, tinj, beam_voltage, ech_*, gas_*, rmp, i_coil, ich) are NOT in the codec set
+# and are NOT duplicated here -- they are already covered, member by member, by
+# configs/actuators.yaml, and listing them twice would give two
+# different fetch nodes for one (group, col). That matters concretely for gas: FusionAIHub's
+# gas_flow reads \NEUTRALS::TOP.GASFLOW.GASA:FLOW, which is NOT what the staged `gas` group holds
+# (measured on 161172: the MDS leaf is 14.4x the staged column and declares Torr.L/s, while
+# PTDATA `gasa` matches it exactly), so writing IGNITE's gas_flow into the staged `gas` group
+# would silently corrupt it.
+#
+# NODES. Every node below was fetched on shot 161172 through the fdp/toksearch transport and
+# compared against the staged column named in `staged`: median(staged/fetched) over the staged
+# time grid, 0-6000 ms. The measured ratio is recorded per modality. Tree choice is load-bearing
+# -- the cross-subsystem "d3d" tree resolves many of these leaves but 10-20x slower, and for some
+# spellings not at all -- so `tree` is always the subsystem's own tree.
+#
+# CHANNEL ORDER AND PADDING. `n_channels` is what IGNITE expects (its <shot>_processed.h5 groups
+# are (n_channels, n_time) float32, with a (1,)-shaped placeholder when the modality is absent).
+# `staged.cols` lists the d3d_fusion_data columns in IGNITE channel order, index 0 first. When it
+# is shorter than n_channels the remaining channels are PADDED, never silently dropped, and
+# `pad_note` says why the source is short. A staged group can also be WIDER than n_channels
+# (cer_ti/cer_rot carry 80 columns for 48 IGNITE channels): the list, not the group, decides.
+model:
+  # The Hugging Face bundle, copied once into <models_dir>/<local_name> by `shot_design model --download`
+  # and read from disk after that (shotdb/ignite.py:download_bundle). Private repo: the token in
+  # ~/.cache/huggingface/token must have access. The revision is PINNED: a re-upload must not be
+  # able to change every embedding in the database without a config change here.
+  repo_id: nc1/IGNITE
+  revision: d0cfe4f73d0287d5e12d724f8d77ed651fcfa47a   # uploaded 2026-09-05 00:23 UTC
+  local_name: IGNITE
+  # Layout inside the bundle: codecs/MANIFEST.json + codecs/<modality>/codec_best.pt are the 14
+  # frozen Phase-A codecs (453 MB) the embedding needs; the dynamics checkpoint below is the
+  # Phase-B MaskGIT model (3.5 GB, prod_nfullrs2 @ step 13400, gen_ce 1.4223), which the Phase-5
+  # rollout will need and `--download` skips unless asked with --full.
+  dynamics_file: ignite_dynamics_prod_nfullrs2_step13400.pt
+  frozen_modalities: src/tokamak_foundation_model/ignite/dynamics_config.py
+  processed_dir_layout: "<shot>_processed.h5, one group per modality, {xdata: (n,) s, ydata: (ch, n)}"
+  # Frame 0 starts at shot time 0.0 s. That is the production frame-code cache's convention, not
+  # train_dynamics._single_shot_dataset's default of 1.0: measured on shot 190090 against the
+  # bundle's frame_codes/190090.pt, 0.0 reproduces all 239 frames of all 12 non-video modalities
+  # bit for bit, while 1.0 matches only the five modalities that are flat on that shot.
+  t0_start_s: 0.0
+  # Fragment-query windows (`shot_design query --ref-window`): 5 frames pooled, stored per shot in
+  # emb_ignite_win.npy / windows.parquet. 250 ms is ~48 rows per 12 s shot.
+  window_ms: 250
+frame_ms: 50
+pad_value: .nan
+
+modalities:
+  # ---- spectro (500 kHz raws, ~2-3 GB/shot: the expensive tier) ---------------------------
+  ece:
+    family: spectro
+    tier: spectro
+    n_tok: 192
+    n_channels: 48
+    target_fs: 500000
+    units: keV
+    staged: {group: ece_cali, cols: {template: "{:02d}", range: [1, 48]}}
+    # The staged group is `ece_cali` -- CALIBRATED. PTDATA `ecevs01` is the raw radiometer volts
+    # and does NOT reproduce it (measured ratio 1.0393421, units "v"); the TECEF leaf does
+    # (ratio exactly 1, units keV, same 5,000,192 samples). The cost is the catch: one TECEF
+    # channel took 108.4 s against 8.4 s for the PTDATA channel of the same length, so a full
+    # 48-channel ECE fetch is ~90 min/shot serial. Fetch this tier only where it is actually
+    # needed (the 2016-2018 gap, per .superpowers/sdd/progress.md).
+    fetch: {kind: mds, tree: electrons, nodes: {template: "\\ELECTRONS::TOP.ECE.TECEF:TECEF{:02d}", range: [1, 48]}}
+    measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 108.4}
+  bes:
+    family: spectro
+    tier: spectro
+    n_tok: 192
+    n_channels: 64
+    target_fs: 500000
+    units: "[?] (node declares none)"
+    staged: {group: bes, cols: {template: "{:02d}", range: [1, 64]}}
+    fetch: {kind: ptdata, nodes: {template: "besfu{:02d}", range: [1, 64]}}
+    measured: {shot: 161172, ratio: 1.0008919, seconds_per_channel: 4.4}   # 5,242,880 samples
+  mhr:
+    family: spectro
+    tier: spectro
+    n_tok: 192
+    n_channels: 8
+    target_fs: 500000
+    units: "[?] (node declares none)"
+    # Staged columns are b01..b08; the PTDATA pointnames are b1..b8 (no zero padding).
+    # The pointname returns 8,388,608 samples where the staged column has 4,194,305 -- the
+    # staged producer decimated 2:1 -- but the values agree exactly (ratio 1).
+    staged: {group: magnetics_high_resolution, cols: {template: "b{:02d}", range: [1, 8]}}
+    fetch: {kind: ptdata, nodes: {template: "b{:d}", range: [1, 8]}}
+    measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 4.4}
+  co2:
+    family: spectro
+    tier: spectro
+    n_tok: 192
+    n_channels: 4
+    target_fs: 500000
+    units: "[?] line-integrated (node declares 'f')"
+    # Channel order is FusionAIHub's: R0 first, then V1, V2, V3. The UF ("unfiltered") pointnames
+    # are the fast chords that feed co2_density; the SLOW version of the V2 chord is a different
+    # node (\BCI::DENV2) and belongs to co2_density_slow -- see signals.yaml `ne_line`.
+    staged: {group: co2_density, cols: [r0, v1, v2, v3]}
+    fetch: {kind: ptdata, nodes: [denr0uf, denv1uf, denv2uf, denv3uf]}
+    measured: {shot: 161172, ratio: 1.0000758, seconds_per_channel: 15.7}   # 14,992,000 samples
+
+  # ---- video (divertor cameras) -----------------------------------------------------------
+  # tangtv_lower/_upper are two views of ONE 7-channel TANGTV group: FusionAIHub keeps raw camera
+  # channels [0, 2] for lower (LODIV_240RM1 PAR intensified + LODIV_240RM1 PERP) and [4, 6] for
+  # upper (UPDIV_0RP1 PERP + UPDIV_0RP1 PAR); see ignite/config.py lines 279-280. These are
+  # VIDEO_IMAGES nodes, not waveforms: they do not fit the (time x channel) frame layout the raw
+  # files use, no staged d3d_fusion_data group holds them, and the IGNITE processed file we
+  # sampled (185601) carries only a (7, 1) placeholder for tangtv. They are declared here so the
+  # frame layout is complete and so a later task does not rediscover them, with fetch: null
+  # meaning "out of scope for this phase", never "unavailable".
+  tangtv_lower:
+    family: video
+    tier: video
+    n_tok: 108
+    n_channels: 2
+    target_fs: 20
+    staged: null
+    fetch: null
+    source_nodes: ["\\TANGTV::TOP.TANGTV:LODIV_240RM1:PAR:INTENSIFIED:VIDEO_IMAGES", "\\TANGTV::TOP.TANGTV:LODIV_240RM1:PERP:STANDARD:VIDEO_IMAGES"]
+  tangtv_upper:
+    family: video
+    tier: video
+    n_tok: 108
+    n_channels: 2
+    target_fs: 20
+    staged: null
+    fetch: null
+    source_nodes: ["\\TANGTV::TOP.TANGTV:UPDIV_0RP1:PERP:STANDARD:VIDEO_IMAGES", "\\TANGTV::TOP.TANGTV:UPDIV_0RP1:PAR:STANDARD:VIDEO_IMAGES"]
+
+  # ---- slow-TS (cheap; always fetched) ----------------------------------------------------
+  # The four Thomson modalities are single 2-D MDSplus leaves, not per-channel nodes: one fetch
+  # returns (n_channels, n_time). kind: mds2d marks that, and the fetcher settles the axis order
+  # from the array shape rather than asserting it (the same dim-order trap omnimode.py documents
+  # for psirz). Measured on 161172: \ELECTRONS::TOP.TS.BLESSED.CORE:DENSITY came back with a
+  # leading axis of 41, matching the 41 staged core columns, i.e. CHANNELS FIRST.
+  ts_core_density:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 44
+    target_fs: 100
+    units: m^-3
+    staged: {group: ts_core_density, cols: {template: "core.dens{:d}", range: [0, 43]}}
+    pad_note: "161172's staged group has 41 of the 44 channels; the rest pad."
+    fetch: {kind: mds2d, tree: electrons, node: "\\ELECTRONS::TOP.TS.BLESSED.CORE:DENSITY", n_channels: 44}
+  ts_core_temp:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 44
+    target_fs: 100
+    units: "[?] eV"
+    staged: {group: ts_core_temperature, cols: {template: "core.temp{:d}", range: [0, 43]}}
+    pad_note: "161172's staged group has 41 of the 44 channels; the rest pad."
+    fetch: {kind: mds2d, tree: electrons, node: "\\ELECTRONS::TOP.TS.BLESSED.CORE:TEMP", n_channels: 44}
+  ts_tangential_density:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 10
+    target_fs: 100
+    units: m^-3
+    staged: {group: ts_tangential_density, cols: {template: "tangential.dens{:d}", range: [0, 9]}}
+    pad_note: "161172's staged group has 6 of the 10 channels; the rest pad."
+    fetch: {kind: mds2d, tree: electrons, node: "\\ELECTRONS::TOP.TS.BLESSED.TANGENTIAL:DENSITY", n_channels: 10}
+  ts_tangential_temp:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 10
+    target_fs: 100
+    units: "[?] eV"
+    staged: {group: ts_tangential_temperature, cols: {template: "tangential.temp{:d}", range: [0, 9]}}
+    pad_note: "161172's staged group has 6 of the 10 channels; the rest pad."
+    fetch: {kind: mds2d, tree: electrons, node: "\\ELECTRONS::TOP.TS.BLESSED.TANGENTIAL:TEMP", n_channels: 10}
+  cer_ti:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 48
+    target_fs: 100
+    units: eV
+    # CERQUICK, not CERAUTO -- the staged column prefix "q." is literally the analysis name, and
+    # it is a real difference in the data, not a naming one. On 161172, CERQUICK TANGENTIAL
+    # CHANNEL05:TEMP matches staged q.ti.t05 BIT FOR BIT (649 samples, max |difference| exactly
+    # 0.0), while CERAUTO returns 604 samples that differ from the staged column by up to 10.8%
+    # of its range on the timestamps they share -- a different fit, not a resampling. FusionAIHub's
+    # own generate_data config reads CERAUTO, so the IGNITE <shot>_processed.h5 files carry
+    # CERAUTO while ours carry CERQUICK; that divergence is recorded here rather than papered
+    # over, because the alternative -- writing CERAUTO into a group whose staged half is CERQUICK
+    # -- would make one column mean two things depending on which store the shot came from.
+    # The staged group is 80 columns wide and the tree defines far fewer: on 161172 channel 32 and
+    # 40 are TreeNODATA and 48 is TreeNNF, so 24 of the 48 land in missing_channels. The range
+    # stays at IGNITE's 48 so availability is measured per shot instead of assumed.
+    staged: {group: cer_ti, cols: {template: "q.ti.t{:02d}", range: [1, 48]}}
+    fetch: {kind: mds, tree: ions, nodes: {template: "\\IONS::TOP.CER.CERQUICK.TANGENTIAL.CHANNEL{:02d}:TEMP", range: [1, 48]}}
+    measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 6.4}   # bit-exact against staged
+  cer_rot:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 48
+    target_fs: 100
+    units: km/s
+    # CERQUICK for the same reason as cer_ti: bit-exact against staged q.rot.t05 on 161172, where
+    # CERAUTO differs by up to 4.7% of the column's range.
+    staged: {group: cer_rot, cols: {template: "q.rot.t{:02d}", range: [1, 48]}}
+    fetch: {kind: mds, tree: ions, nodes: {template: "\\IONS::TOP.CER.CERQUICK.TANGENTIAL.CHANNEL{:02d}:ROT", range: [1, 48]}}
+    measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 6.1}   # bit-exact against staged
+  mse:
+    family: slowts
+    tier: core
+    n_tok: 4
+    n_channels: 69
+    target_fs: 100
+    units: degrees
+    staged: {group: mse, cols: {template: "{:02d}", range: [1, 69]}}
+    fetch: {kind: mds, tree: mse, nodes: {template: "\\MSE::TOP.ANALYSIS_01:MSEP{:02d}", range: [1, 69]}}
+    measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 3.9}
+
+  # ---- fast-TS ----------------------------------------------------------------------------
+  filterscopes:
+    family: fastts
+    tier: core
+    n_tok: 5
+    n_channels: 104
+    target_fs: 10000
+    units: ph/cm2/sr/s
+    # IGNITE's 104 channels are \SPECTROSCOPY::FS01..FS08 followed by 96 filterscope PMT leaves,
+    # so IGNITE channel 0 is FS01 and the list below starts there. The staged column name is the
+    # leaf number with no offset: FS00..FS05 each reproduce d_alpha/fs00..fs05 at ratio exactly 1
+    # (all six measured), while FS01 against d_alpha/fs00 gives 0.405 -- fs00 is its own leaf, not
+    # a renamed FS01, and it is therefore NOT one of IGNITE's channels. FS06/FS07/FS08 do exist
+    # (160,000 samples each on 161172) even though no staged file carries them, so a fetched shot
+    # fills all eight while a staged one fills five and pads channels 5-7. The 96 PMT channels
+    # pad everywhere: no staged group holds them and they are out of scope for this phase.
+    staged: {group: d_alpha, cols: {template: "fs{:02d}", range: [1, 8]}}
+    pad_note: "staged d_alpha holds fs01-fs05 of IGNITE's 104 channels (plus an fs00 IGNITE does not use); a fetched shot adds fs06-fs08; the 96 PMT channels always pad."
+    fetch: {kind: mds, tree: spectroscopy, nodes: {template: "\\SPECTROSCOPY::FS{:02d}", range: [1, 8]}}
+    measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 7.8}
