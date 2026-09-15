@@ -60,6 +60,20 @@ function display(value, key = "") {
 
 function fieldName(key) { return key.endsWith("_ms") ? key.slice(0, -3) + " (s)" : key; }
 
+function formatFlag(flag) {
+  const message = String(flag.message ?? flag);
+  const rule = message.match(/^(.+?) = \S+ ([<>=!]+) \S+: (.*)$/);
+  if (rule) return `${rule[1]} = ${formatNumber(flag.value)} ${rule[2]} ${formatNumber(flag.limit)}: ${rule[3]}`;
+  const envelope = message.match(/^(.+?) = \S+ is (below|above) the observed ([\d.e+\-]+|\?)-([\d.e+\-]+|\?) range(?: of (\d+) shots)? in the database -- .*$/);
+  if (envelope) {
+    const [, name, side, low, high, count] = envelope;
+    const lo = side === "below" ? flag.limit : Number(low);
+    const hi = side === "above" ? flag.limit : Number(high);
+    return `${name} = ${formatNumber(flag.value)}; ${side} observed range ${formatNumber(lo)}–${formatNumber(hi)} (${count ? `${count} shots` : "database"}); not an operating limit`;
+  }
+  return caption(message);
+}
+
 // Browser-only wording. Unknown caveats pass through unchanged; MCP strings and
 // status semantics are untouched. Never apply these rewrites to operator quotations.
 function caption(value) {
@@ -219,7 +233,7 @@ function caveats(items) {
 
 function notes(target, data = {}, extra = []) {
   target.replaceChildren();
-  if (data.error) target.append(el("p", { class: "error" }, display(data.error)));
+  if (data.error) target.append(el("div", { class: "error" }, longText(data.error)));
   const list = caveats([...(data.caveats || []), ...extra]);
   if (list) target.append(list);
 }
@@ -264,8 +278,8 @@ function resultsTable(rows, segment) {
     el("tbody", {}, rows.map((row) => {
       const open = () => { location.hash = shotLink(row.shot, "", row.segment || segment); };
       const title = el("td", {}, display(row.run_id, "run_id"), el("p", {}, "Loading title…"));
-      const rowNotes = el("td", {}, caveats(row.caveats),
-        ...(row.flags || []).map((flag) => longText(caption(flag.message ?? flag))));
+      const rowNotes = el("div", {}, caveats(row.caveats),
+        ...(row.flags || []).map((flag) => longText(formatFlag(flag))));
       // Titles are absent from search's ResultItem. Read the existing describe route;
       // its caveats/errors remain visible in this same row, and scores stay untouched.
       api(`/api/shot/${row.shot}?${new URLSearchParams({ segment: row.segment || segment })}`)
@@ -273,19 +287,19 @@ function resultsTable(rows, segment) {
           const human = data.record?.human;
           title.replaceChildren(display(row.run_id, "run_id"), longText(human?.run_title),
             longText(human?.mp_title));
-          if (data.error) rowNotes.append(el("p", { class: "error" }, display(data.error)));
+          if (data.error) rowNotes.append(el("div", { class: "error" }, longText(data.error)));
           const extra = caveats(data.caveats);
           if (extra) rowNotes.append(extra);
         }).catch((error) => {
-          title.replaceChildren(display(row.run_id), el("p", {}, "—"));
-          rowNotes.append(el("p", { class: "error" }, error.message));
+          title.replaceChildren(display(row.run_id, "run_id"), el("p", {}, "—"));
+          rowNotes.append(el("div", { class: "error" }, longText(error.message)));
         });
       return el("tr", { class: "clickable", onclick: open },
         el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot"))),
         el("td", {}, display(row.score)),
         title,
         el("td", { class: "summary-cell" }, longText(row.summary)),
-        rowNotes);
+        el("td", {}, collapsible(rowNotes)));
     }))));
 }
 
@@ -462,9 +476,9 @@ function renderShot(data) {
     root.append(el("h3", {}, "Phenomena"), collapsible(phenomenaTable(parts.phenomena)), caveats(parts.caveats));
   }
   root.append(el("h3", {}, "Run / mini-proposal"),
-    fields({ shot_date: record.shot_date, campaign: record.campaign,
+    collapsible(fields({ shot_date: record.shot_date, campaign: record.campaign,
       run_id: record.human?.run_id, run_title: record.human?.run_title, mpid: record.human?.mpid,
-      mp_title: record.human?.mp_title }));
+      mp_title: record.human?.mp_title })));
   root.append(el("h3", {}, "Flags and groups"), collapsible(fields(Object.fromEntries(
     Object.entries(record).filter(([key]) => key.startsWith("has_") || key === "raw_groups")))));
   root.append(el("h3", {}, "Scalars per segment"), collapsible(el("div", { class: "scalars" },
