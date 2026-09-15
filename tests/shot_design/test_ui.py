@@ -28,10 +28,11 @@ def wire(value):
 
 
 def event_payload(response, *, source="segments"):
-    """Only the browser's new domain is additive; all tool evidence stays verbatim."""
+    """Domain and registry lanes are additive; default tool evidence stays verbatim."""
     payload = response.json()
     if "error" not in payload:
         assert payload.pop("domain") == {"t0_s": -2, "t1_s": 8, "source": source}
+        assert isinstance(payload.pop("phenomena"), list)
     return payload
 
 
