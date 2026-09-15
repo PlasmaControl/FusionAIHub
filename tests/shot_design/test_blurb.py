@@ -262,17 +262,17 @@ def test_write_blurbs_updates_the_manifest_counts(
     before = json.loads((paths.db_dir / "manifest.json").read_text())
     provenance = {"model": "gemma4:26b", "prompt_version": 6}
     assert before["blurbs"] == {
-        "llm": 0, "template": 2, "prompt_versions": {"6": 2}, **provenance,
+        "llm": 0, "template": 2, "human": 0, "prompt_versions": {"6": 2}, **provenance,
     }
     build.write_blurbs(paths, FakeClient(GOOD, paths), True)
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     df = pd.read_parquet(paths.db_dir / "shots.parquet")
     assert manifest["blurbs"] == {
-        **{k: int((df["blurb_source"] == k).sum()) for k in ("llm", "template")},
+        **{k: int((df["blurb_source"] == k).sum()) for k in ("llm", "template", "human")},
         "prompt_versions": {"6": 2}, **provenance,
     }
     assert manifest["blurbs"] == {
-        "llm": 2, "template": 0, "prompt_versions": {"6": 2}, **provenance,
+        "llm": 2, "template": 0, "human": 0, "prompt_versions": {"6": 2}, **provenance,
     }
     assert manifest["n_shots"] == before["n_shots"]  # nothing else was rewritten
     assert not list(paths.db_dir.glob("*.part"))
@@ -349,7 +349,7 @@ def test_write_blurbs_uses_client_config_for_prompt_and_provenance(rec, paths):
     assert df["blurb_prompt_version"].iloc[0] == 6
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     assert manifest["blurbs"] == {
-        "llm": 1, "template": 0, "model": "gemma4:e4b", "prompt_version": 6,
+        "llm": 1, "template": 0, "human": 0, "model": "gemma4:e4b", "prompt_version": 6,
         "prompt_versions": {"6": 1},
     }
 
@@ -516,3 +516,38 @@ def test_default_ollama_without_endpoint_uses_template_without_a_request(rec, pa
     result = blurb.make(rec, client)
     assert result.source == "template" and result.reason == "no model"
     assert not list(paths.llm_cache_dir.rglob("*.json"))
+
+
+# --- hand-written blurbs: a third provenance, never overwritten by a model backfill ---------------
+
+
+def test_schema_accepts_a_hand_written_blurb_source(rec):
+    from shot_design.schema import PhenomenonHit, ShotRecord
+
+    fields = {"blurb": "Goal. Outcome. Finding.", "blurb_source": "human"}
+    assert ShotRecord.model_validate({**rec.model_dump(), **fields}).blurb_source == "human"
+    assert ResultItem.model_validate(
+        {"id": "1:flat_top", "shot": 1, "segment": "flat_top", "score": 1.0, "description": "d", **fields}
+    ).blurb_source == "human"
+    assert PhenomenonHit.model_validate(
+        {"shot": 1, "phenomenon": "elm", "score": 1.0, **fields}
+    ).blurb_source == "human"
+
+
+def test_write_blurbs_never_touches_a_hand_written_row(rec, paths):
+    """A `human` row has no prompt version (it was not prompted), so the staleness rule that
+    re-generates old model rows must not sweep it up: only_missing selects templates, blanks and
+    stale *llm* rows. `--shots` still rewrites it on purpose."""
+    table = paths.db_dir / "shots.parquet"
+    df = pd.read_parquet(table)
+    df["blurb"], df["blurb_source"], df["blurb_model"] = "By hand.", "human", "Claude"
+    df["blurb_prompt_version"] = pd.Series([pd.NA], index=df.index, dtype="Int64")
+    df.to_parquet(table)
+    client = FakeClient(GOOD, paths)
+    assert build.write_blurbs(paths, client) == 0 and client.calls == []
+    kept = pd.read_parquet(table)
+    assert kept["blurb"].iloc[0] == "By hand." and kept["blurb_source"].iloc[0] == "human"
+    counts = build._blurb_counts(kept, client)
+    assert counts["human"] == 1 and counts["llm"] == 0 and counts["template"] == 0
+    assert build.write_blurbs(paths, client, shots=[rec.shot]) == 1
+    assert pd.read_parquet(table)["blurb_source"].iloc[0] == "llm"

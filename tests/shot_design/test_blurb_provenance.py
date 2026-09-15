@@ -26,6 +26,6 @@ def test_add_to_legacy_database_keeps_unknown_versions_nullable_and_new_versions
     assert updated.loc[staged_shot_b, "blurb_model"] == "gemma4:26b"
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     assert manifest["blurbs"] == {
-        "llm": 0, "template": 2, "model": "gemma4:26b", "prompt_version": 6,
+        "llm": 0, "template": 2, "human": 0, "model": "gemma4:26b", "prompt_version": 6,
         "prompt_versions": {"6": 1},
     }

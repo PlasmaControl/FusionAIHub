@@ -558,12 +558,14 @@ decimal points do not split sentences. A rejected reply retains the header + out
 template. These mechanical checks do not establish semantic accuracy: inspect the
 dry-run candidates before the full backfill.
 
-Every generated table row carries `blurb`, `blurb_source` (`llm` or `template`),
+Every generated table row carries `blurb`, `blurb_source` (`llm`, `template`, or `human`
+for a summary written by hand from the shot's own text -- shown with a `hand` tag in
+the browser, never selected by a model backfill unless named with `--shots`),
 `blurb_model` (resolved tag, e.g. `gemma4:26b`) and `blurb_prompt_version` (integer).
 The latter two record the configuration used for the attempt, including template
 fallbacks; `blurb_source` says whether the model supplied the final text. Legacy
 rows retain unknown provenance until processed. `manifest.json["blurbs"]` contains
-the whole table's `llm` and `template` counts plus the latest pass's `model` and
+the whole table's `llm`, `template` and `human` counts plus the latest pass's `model` and
 `prompt_version`. Its `prompt_versions` histogram counts every non-null row version
 with string keys, for example `{"5": 502, "6": 2}`, making mixed versions visible;
 legacy rows with unknown versions are excluded. Builds and additions update the

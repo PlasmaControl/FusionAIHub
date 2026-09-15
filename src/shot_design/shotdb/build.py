@@ -816,7 +816,7 @@ def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, object]:
         shots_df.get("blurb_prompt_version", pd.Series(dtype="Int64")), errors="coerce"
     ).dropna().astype(int).value_counts().sort_index()
     return {
-        **{k: int(col.eq(k).sum()) for k in ("llm", "template")},
+        **{k: int(col.eq(k).sum()) for k in ("llm", "template", "human")},
         **_blurb_provenance(client),
         "prompt_versions": {str(version): int(count) for version, count in versions.items()},
     }
@@ -851,10 +851,13 @@ def write_blurbs(
             df[col] = default
     versions = df.get("blurb_prompt_version", pd.Series(index=df.index, dtype="Int64"))
     df["blurb_prompt_version"] = pd.to_numeric(versions, errors="coerce").astype("Int64")
+    source = df["blurb_source"].fillna("template")
+    # A hand-written row ("human") was never prompted, so it has no prompt version to be stale;
+    # only model rows age out. `shots=` still rewrites one on purpose.
     missing = (
-        df["blurb_source"].fillna("template").ne("llm")
+        ~source.isin(["llm", "human"])
         | df["blurb"].fillna("").str.strip().eq("")
-        | df["blurb_prompt_version"].fillna(0).lt(provenance["prompt_version"])
+        | (source.eq("llm") & df["blurb_prompt_version"].fillna(0).lt(provenance["prompt_version"]))
     )
     todo = targeted if targeted is not None else list(
         (df.index[missing] if only_missing else df.index).sort_values()
