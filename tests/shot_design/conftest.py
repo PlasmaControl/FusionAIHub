@@ -789,13 +789,16 @@ def ideate_db(tmp_path: Path, monkeypatch) -> Path:
     return root
 
 
-@pytest.fixture(autouse=True)
-def _isolate_package_environment(monkeypatch):
-    """Strip legacy names still exported by the transitional main pixi manifest.
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_package_environment():
+    """Clear caller/pixi package settings once for either manifest's variable names.
 
-    Preserve new names, including values set by module- or session-scoped fixtures.
+    Module/function fixtures can then set values without later autouse deletion.
     Tests that need a new name absent must delete it explicitly.
+    Restore the caller environment when the session ends.
     """
-    for name in tuple(os.environ):
-        if name.startswith(("IDEATE_", "LABELMAKER_")):
-            monkeypatch.delenv(name)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        for name in tuple(os.environ):
+            if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_")):
+                monkeypatch.delenv(name)
+        yield
