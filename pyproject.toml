@@ -50,8 +50,8 @@ path = "src/faith/__init__.py"
 [tool.hatch.build.targets.wheel]
 # Four top-level packages live under src/. Without this list hatchling
 # autodiscovers only the one matching the project name (faith), so
-# `import labelmaker` (and now `import ideate`) fails in every pixi env.
-packages = ["src/faith", "src/tokamak_foundation_model", "src/labelmaker", "src/ideate"]
+# `import labeler` (and now `import shot_design`) fails in every pixi env.
+packages = ["src/faith", "src/tokamak_foundation_model", "src/labeler", "src/shot_design"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "ga-fdp"]
@@ -122,8 +122,8 @@ platforms = ["linux-64"]
 
 [tool.pixi.feature.labelmaker.tasks]
 # `pixi run -e labelmaker label 187199`: every implemented model on one shot ->
-# labels as HDF5 + npz, a JSON summary and one figure (scripts/labelmaker/label_shot.sh).
-label = "bash scripts/labelmaker/label_shot.sh"
+# labels as HDF5 + npz, a JSON summary and one figure (scripts/labeler/label_shot.sh).
+label = "bash scripts/labeler/label_shot.sh"
 
 [tool.pixi.feature.labelmaker.dependencies]
 # labels_index.parquet. pandas 3 can write parquet only through pyarrow,
@@ -132,7 +132,7 @@ pyarrow = ">=17,<22"
 # registry.py parses every model card's YAML front matter. `yaml` currently
 # reaches this environment only transitively, via hydra-core -> omegaconf,
 # and hydra-core is declared in [project] for IGNITE's benefit, not
-# labelmaker's - anyone tidying IGNITE's dependencies would silently break
+# labeler's - anyone tidying IGNITE's dependencies would silently break
 # every card read in this package. Declare it directly.
 pyyaml = ">=6,<7"
 # Solving `labelmaker` (labelmaker + fdp + the implicit default feature)
@@ -174,15 +174,15 @@ torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/
 platforms = ["linux-64"]
 
 [tool.pixi.feature.ideate.tasks]
-# `pixi run -e ideate ideate search --text "..."`: the shot analysis and
+# `pixi run -e ideate shot_design search --text "..."`: the shot analysis and
 # experiment-design CLI (phenomenon search, events, IGNITE what-if).
-ideate = "python -m ideate"
+shot_design = "python -m shot_design"
 # The MCP server, stdio transport, for an assistant to connect to.
-ideate-mcp = "python -m ideate.mcp"
-ideate-test = "pytest tests/ideate -q"
+shot_design-mcp = "python -m shot_design.mcp"
+shot_design-test = "pytest tests/shot_design -q"
 
 [tool.pixi.feature.ideate.dependencies]
-# ideate is ported from the shot-recommender-system repo
+# shot_design is ported from the shot-recommender-system repo
 # (/scratch/gpfs/nc1514/shot-recommender-system), which pins its runtime
 # through a uv.lock. Every range here was checked on 2026-09-07 against the
 # versions that lock actually resolves - pydantic 2.13.5, fastapi 0.141.1,
@@ -202,7 +202,7 @@ ideate-test = "pytest tests/ideate -q"
 # so the two packages cannot end up wanting different pyarrow majors in an
 # environment that includes both; shotrec only asks for `pyarrow>=16`.
 pyarrow = ">=17,<22"
-# phenomena.yaml, actuators.yaml and the model cards ideate reads. Declared
+# phenomena.yaml, actuators.yaml and the model cards shot_design reads. Declared
 # directly for the same reason feature.labelmaker declares it: `yaml`
 # otherwise arrives only transitively through hydra-core -> omegaconf, which
 # is in [project] for IGNITE's sake and could be tidied away at any time.
@@ -214,19 +214,19 @@ pydantic = ">=2.12,<3"
 # Unpinned to match [project], which also lists a bare `scipy`.
 scipy = "*"
 scikit-learn = ">=1.5,<2"
-# Corpus reads: the DIII-D shot HDF5 files under $IDEATE_CORPUS.
+# Corpus reads: the DIII-D shot HDF5 files under $SHOT_DESIGN_CORPUS.
 h5py = ">=3.15,<4"
 tqdm = ">=4.66,<5"
 # Miniproposal PDFs -> the text that phenomenon search quotes from.
 pypdf = ">=4,<7"
-# summary.html -> the per-shot text bundles. `ideate logs import` re-runs
+# summary.html -> the per-shot text bundles. `shot_design logs import` re-runs
 # d3dlogfetching's own composition (shotdb/logs.py) over a synced runs/ tree,
 # and that composition parses the session summary with BeautifulSoup; the
 # output has to be byte-identical to the 22,950 bundles already in the
 # corpus, so the parser is not a free choice. 4.x is what the tool pins.
 beautifulsoup4 = ">=4.12,<5"
 httpx = ">=0.27,<1"
-# `ideate serve`: the browser UI. Kept in the base feature rather than a
+# `shot_design serve`: the browser UI. Kept in the base feature rather than a
 # separate one because the MCP server and the UI share the same query layer.
 fastapi = ">=0.115,<1"
 uvicorn = ">=0.30,<1"
@@ -240,7 +240,7 @@ pytest = ">=9,<10"
 # `wandb>=0.25.1,<0.26` (protobuf<7) cannot satisfy. Scoped to this feature;
 # the already-locked environments stay on their own solve.
 protobuf = "<7"
-# The shot/segment/label store ideate queries. conda-forge ships the Python
+# The shot/segment/label store shot_design queries. conda-forge ships the Python
 # bindings as `duckdb`.
 duckdb = ">=1.1,<2"
 
@@ -282,9 +282,9 @@ sentence-transformers = ">=6,<7"
 # tokenizer has been used; without this, every fork prints the HuggingFace
 # deadlock warning and the fast tokenizer disables its own threads anyway.
 [tool.pixi.feature.ideate.target.unix.activation.env]
-IDEATE_DATA_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/ideate"
-LABELMAKER_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"
-IDEATE_CORPUS = "/scratch/gpfs/EKOLEMEN/foundation_model"
+SHOT_DESIGN_DATA_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/ideate"
+LABELER_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"
+SHOT_DESIGN_CORPUS = "/scratch/gpfs/EKOLEMEN/foundation_model"
 HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"
 
@@ -295,7 +295,7 @@ platforms = ["linux-64"]
 # A CPU-only twin of the `ideate` environment, exactly as feature.labelmaker
 # does it. The workspace installs `faith` editable everywhere, which drags
 # torch in, and the cu124 wheels are ~3 GB that a laptop-shaped run of
-# ideate - phenomenon search, the events tables, the MiniLM encoder - never
+# shot_design - phenomenon search, the events tables, the MiniLM encoder - never
 # touches. Only `design_rollout` needs a GPU, and that is what the `ideate`
 # environment is for. Split into its own feature (rather than putting the
 # cpu index on `ideate` itself) so the two environments can differ in the
@@ -336,6 +336,7 @@ umap-learn   = ">=0.5.7,<0.6"
 setup-flash-attn = { cmd = "bash scripts/slurm_frontier/setup_frontier_env.sh", description = "Build & install flash-attn 2 into the frontier pixi env on a Frontier compute node (gfx90a). Auto-salloc's if run from a login node." }
 verify-flash-attn = { cmd = "python scripts/slurm_frontier/verify_flash_attn.py", description = "Smoke-test flash_attn on the local MI250X." }
 
+# Retain legacy environment/feature names: pixi rejects underscores in shot_design.
 [tool.pixi.environments]
 default = ["cuda"]
 fdp = ["fdp", "cuda"]

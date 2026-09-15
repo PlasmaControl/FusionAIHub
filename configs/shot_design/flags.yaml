@@ -1,0 +1,192 @@
+version: 1
+# Operating-limit rules: "is this shot, or this proposal, something DIII-D can actually do?"
+#
+# A rule is a plain triple -- {id, field, op, limit} -- plus a severity and a human message.
+# There is deliberately no expression language: a physicist adding a limit should not have to
+# read any Python, and a rule that cannot compute anything cannot fail in a surprising way.
+#
+#   field      a column name as the database writes it ({quantity}_{stat}), or a shell glob over
+#              those names (`irmp_I*_peak`). A glob matches every column it fits; each match is
+#              checked separately and every violation is reported.
+#   op         ge | gt | le | lt.  "op limit" is the ALLOWED side: `{op: ge, limit: 2.0}` means
+#              "must be >= 2.0", and a value below 2.0 is the violation.
+#   exclude    optional globs subtracted from a `field` glob's matches.
+#   severity   error (outside what the machine can do) | warn (at the edge) | info.
+#   when       optional {category_key: value-or-list} guard. Evaluated only when the caller
+#              supplied that category key; an unknown category never suppresses a safety rule.
+#   provisional  true = the NUMBER was chosen from published DIII-D practice, not measured here
+#              and not supplied by the machine's operators. evaluate_flags appends
+#              "[provisional limit]" to every message it produces from such a rule, so nothing on
+#              a demo screen looks more authoritative than it is.
+#
+# EVERY limit below is provisional. Nathan has not supplied operating limits; these are defensible
+# starting values, each with its source in a comment and each checked against the real database so
+# a miscalibrated number is visible rather than quiet.
+#
+# The "observed" line under each rule was MEASURED over the flat-top segments of the 105 shots in
+# /scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/db (Sep 2026 build), not copied from anywhere.
+# `n` is how many of those 105 flat tops actually recorded the field -- the rest skip.
+
+# Bare names a person types (`shot_design query --actuator nbi.total=5e6`, `q95=3.5`) mapped onto the
+# database's {quantity}_{stat} columns. One bare name may stand for several columns: a user who
+# says "q95 3.5" means the whole flat top, so the value is checked against both the mean and the
+# minimum rule. Actuator keys of the form <system>.<member|total> are expanded automatically from
+# configs/actuators.yaml and do not need an entry here.
+aliases:
+  ip: [ip_mean]
+  bt: [bt_mean]
+  q95: [q95_mean, q95_min]
+  qmin: [qmin_min]
+  betan: [betan_mean]
+  li: [li_mean]
+  kappa: [kappa_mean]
+  aminor: [aminor_mean]
+  ne_line: [ne_line_mean]
+  greenwald_frac: [greenwald_frac]
+
+rules:
+  # --------------------------------------------------------------------------- MHD stability
+  - id: q95_floor
+    field: q95_min
+    op: ge
+    limit: 2.0
+    severity: error
+    provisional: true
+    # q95 = 2 is the standard low-q operating boundary on DIII-D: below it the m/n = 2/1 tearing
+    # mode is essentially always destabilised and the discharge disrupts. Textbook/standard-
+    # practice number, not measured here.
+    # observed: n=34, min 2.60, p5 2.81, median 3.54, p95 6.44, max 9.78 -- 0 of 34 trip.
+    message: "at or below q95 = 2 the discharge sits on the disruptive low-q boundary"
+
+  - id: q95_low_warn
+    field: q95_min
+    op: ge
+    limit: 2.5
+    severity: warn
+    provisional: true
+    # A margin band above the hard floor, so "low q95" is visible before it is fatal.
+    # observed: n=34, min 2.60 -- 0 of 34 trip, but the lowest real shot is only 0.1 clear.
+    message: "low q95: inside the margin band above the q95 = 2 disruption boundary"
+
+  - id: betan_over_li
+    field: betan_over_li
+    op: le
+    limit: 4.0
+    severity: warn
+    provisional: true
+    # betaN/li ~ 4 is the usual no-wall ideal-kink proxy for the beta limit (the Troyon-like
+    # scaling written against internal inductance). A proxy, not a stability calculation.
+    # Derived here as betan_mean / li_mean -- see rules.py DERIVED.
+    # observed: n=105, p5 0.31, median 1.62, p95 2.52, max 3.09 -- 0 of 105 trip.
+    message: "betaN/li above the no-wall ideal-kink proxy limit"
+
+  # ------------------------------------------------------------------------------- density
+  # Both Greenwald rules SKIP on every shot in the database today, on purpose. The Greenwald
+  # fraction needs a volume-averaged electron density; the only density this project has is
+  # ne_line (the BCI V2 chord), whose unit configs/signals.yaml records as
+  # "[?] line-integrated (node declares V)" -- the node declares volts at |max| = 1.7e14, which
+  # cannot be right, and CLAUDE.md records that no confirmed density signal exists in this export.
+  # A Greenwald fraction computed on an unconfirmed unit would be a made-up number that looks
+  # like physics, so rules.py refuses to compute it and these rules report why instead. Confirm
+  # the unit (and the chord length, to get from line-integrated to line-averaged) and
+  # greenwald_frac starts producing values with no change here.
+  # Measured on the 201-shot database once the V2 chord unit was confirmed (2026-09-05): the
+  # fraction computes on 197/201 flat tops, p5 0.29, median 0.56, p95 0.91; 11 flat tops pass 0.9
+  # and 5 pass 1.0, several of them shots whose density channel is itself suspect (one reads
+  # 1.2e19 m/cm3 against a median of 1e14). The derivation is flags.rules._greenwald_frac.
+  - id: greenwald_warn
+    field: greenwald_frac
+    op: le
+    limit: 0.9
+    severity: warn
+    provisional: true
+    # 0.9 n_G is where DIII-D density-limit behaviour (MARFE, radiative collapse) typically starts.
+    # observed: never computed -- see the block above.
+    message: "approaching the Greenwald density limit"
+
+  - id: greenwald_error
+    field: greenwald_frac
+    op: le
+    limit: 1.0
+    severity: error
+    provisional: true
+    # n_G itself: the empirical disruptive density limit.
+    # observed: never computed -- see the block above.
+    message: "at or above the Greenwald density limit"
+
+  # ------------------------------------------------------------------------ machine envelope
+  - id: ip_max
+    field: ip_mean
+    op: le
+    limit: 2.0e+6
+    severity: error
+    provisional: true
+    # 2 MA is DIII-D's routine plasma-current ceiling (the 3 MA design value is not run).
+    # observed: n=105, p5 0.78 MA, median 1.14 MA, p95 1.53 MA, max 1.70 MA -- 0 of 105 trip.
+    message: "plasma current above the DIII-D operating ceiling"
+
+  - id: bt_max
+    field: bt_mean
+    op: le
+    limit: 2.25
+    severity: error
+    provisional: true
+    # Nominal on-axis |Bt| ceiling is 2.2 T. NOT set to 2.2: 4 of the 105 real flat tops measure
+    # 2.205-2.210 T (161026, 161027, 161103, 161105), i.e. good shots sit on the nominal number
+    # and the magnetics fit carries it slightly past. 2.25 T keeps the rule about proposals that
+    # are genuinely out of range rather than about the last digit of a fit.
+    # observed: n=105, p5 1.53 T, median 2.04 T, p95 2.19 T, max 2.21 T -- 0 of 105 trip at 2.25.
+    message: "toroidal field above the DIII-D operating ceiling"
+
+  # ------------------------------------------------------------------------------- heating
+  - id: nbi_total_max
+    field: pnbi_total_peak
+    op: le
+    limit: 2.0e+7
+    severity: error
+    provisional: true
+    # ~20 MW is the usual quoted DIII-D neutral-beam installed power (8 sources).
+    # observed: n=102, p5 2.08 MW, median 5.94 MW, p95 11.19 MW, max 11.67 MW -- 0 of 102 trip.
+    # The gap between 11.7 MW measured and 20 MW installed is real: this 105-shot database is a
+    # curated slice, not the whole machine, so it is not evidence that 20 MW is wrong.
+    message: "requested NBI power above the total installed beam power"
+
+  - id: ech_total_max
+    field: pech_total_peak
+    op: le
+    limit: 7.0e+6
+    severity: error
+    provisional: true
+    # ~7 MW injected from the full 12-gyrotron ECH system (~0.6 MW a tower at the torus).
+    # observed: n=26, p5 0.53 MW, median 1.82 MW, p95 3.10 MW, max 3.21 MW -- 0 of 26 trip. The
+    # 2014-15 shots that dominate this database had 3 gyrotrons, so the observed max is roughly
+    # a quarter of the 12-tower number and does not test the limit.
+    message: "requested ECH power above the total installed gyrotron power"
+
+  # -------------------------------------------------------------------------- 3D field coils
+  # There is NO documented per-coil supply limit available to this project (asked 2026-09-05: no
+  # source; PTDATA carries a blank units string for every coil pointname). So these two rules do
+  # not claim a limit. They say "above every current a shot in this database sustained", which is
+  # a statement about the data, at `info` -- the same standing as the envelope flags. Two rules,
+  # not one, because the I-coils and C-coils are different hardware with different supplies.
+  # observed (201-shot database, flat-top per-coil peaks, 2026-09-05):
+  #   I-coils: n=1977, p50 25 A, p95 4065 A, p99 6128 A; four shots pass 7 kA (161433 IU210 7083 A,
+  #            185803 IU150 7068 A, 185800 IU150 7024 A) and one reading is not believed: 203384
+  #            IL30 = 22715 A while every other coil on that shot reads ~30 A.
+  #   C-coils: n=975, p50 24 A, p95 1574 A, p99 3299 A, max 5893 A (three shots above 5 kA).
+  #   For scale, shot 205911 (2025) ran C79/C19 at +-1250 A with the I-coils idle at +-20 A.
+  - id: icoil_current
+    field: "irmp_I*_peak"
+    op: le
+    limit: 7.1e+3
+    severity: info
+    provisional: true
+    message: "I-coil current above every shot in this database (max sustained 7.08 kA); no documented supply limit"
+
+  - id: ccoil_current
+    field: "irmp_C*_peak"
+    op: le
+    limit: 5.9e+3
+    severity: info
+    provisional: true
+    message: "C-coil current above every shot in this database (max 5.89 kA); no documented supply limit"
