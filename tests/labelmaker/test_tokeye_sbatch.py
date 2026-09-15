@@ -137,3 +137,13 @@ def test_cpu_workflow_uses_existing_frozen_environment(name):
         if "pixi run" in line:
             assert "pixi run --frozen --no-install --manifest-path" in line
     assert "HF_HUB_OFFLINE=1" in text
+
+
+def test_defaults_record_second_pilot_capacity_and_failed_gpu_gate():
+    text = _script("tokeye_masks.sbatch")
+    for measured in ("2932066_0", "97.29 tiles/s", "GPU 7.4%", "13559492K"):
+        assert measured in text
+    for flag in ("--cpus-per-task=12", "--mem=17G", "--time=00:10:00"):
+        assert f"#SBATCH {flag}" in text
+    for name, value in (("PREP_WORKERS", 7), ("TAIL_WORKERS", 4), ("PREFETCH", 8)):
+        assert f'{name}="${{{name}:-{value}}}"' in text
