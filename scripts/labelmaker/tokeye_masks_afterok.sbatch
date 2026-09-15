@@ -36,14 +36,14 @@ fi
 export PATH="$ROOT/runs/slurm/jobstats-client:$PATH"
 export LABELMAKER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
-export HDF5_USE_FILE_LOCKING=FALSE PYTHONDONTWRITEBYTECODE=1
+export HDF5_USE_FILE_LOCKING=FALSE PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1
 export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-/tmp/l12-pixi}"
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-rebuild}"
 cd "$REPO"
-srun --cpu-bind=cores pixi run --frozen --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
+srun --cpu-bind=cores pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
     -e labelmaker python "$REPO/scripts/labelmaker/tokeye_masks.py" \
     --root "$ROOT" --rebuild-index --index-out "$ROOT/events/events_index.parquet"
-srun --cpu-bind=cores pixi run --frozen --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
+srun --cpu-bind=cores pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
     -e labelmaker python "$REPO/scripts/labelmaker/jobstats_check.py" \
     --job-id "$JOBID" "${gate_mode[@]}" --wait-for-data 300 \
     --preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"

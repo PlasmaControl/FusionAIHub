@@ -723,6 +723,7 @@ class PreparedBlock:
     fs_hz: float
     t_cov: tuple[float, float]
     norm_note: str = ""
+    prep_seconds: float = 0.0
 
     @property
     def key(self) -> str:
@@ -801,20 +802,30 @@ def describe_block(prepared: PreparedBlock, probs, *,
     """
     spec, pass_name = prepared.spec, prepared.pass_name
     raw, t_s = prepared.raw, prepared.t_s
+    compact = probs if isinstance(probs, masks.CompactMask) else None
+    if compact is not None:
+        coherent, coh_mask = compact.coherent_inputs()
+        probs = (coherent, masks.unpack(
+            compact.tra_packed, (masks.N_BINS, compact.n_cols)))
+    else:
+        coh_mask = probs[0] >= PROB_THRESHOLD
     block = masks.MaskBlock(
         diag=spec.diag, channel=spec.channel, pass_name=pass_name,
         coh=probs[0], tra=probs[1], raw_logpow=raw, t_s=t_s,
         meta=prepared.meta,
     )
-    arrays = masks.block_arrays(block, unet_sha256=unet_sha256)
-    coh_mask = probs[0] >= PROB_THRESHOLD
+    arrays = masks.block_arrays(block, unet_sha256=unet_sha256, compact=compact)
     freq_khz = masks.freq_axis_khz(prepared.fs_hz, int(prepared.meta["decim"]))
     found = [
         tracks.descriptors(group, prob=probs[0], raw_logpow=raw,
                            freq_khz=freq_khz, t_s=t_s)
         for group in tracks.merge(tracks.components(coh_mask))
     ]
-    activity = transients.column_activity(probs[1])
+    if compact is not None:
+        # Device compaction substitutes for column_activity at this threshold.
+        assert transients.ACTIVITY_THR == masks.PROB_THRESHOLD
+    activity = (compact.col_act if compact is not None else
+                transients.column_activity(probs[1]))
     return _BlockRun(
         diag=spec.diag, channel=spec.channel, pass_name=pass_name,
         prefix=block.prefix, arrays=arrays, tracks=found,

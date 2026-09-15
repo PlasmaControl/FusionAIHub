@@ -396,8 +396,9 @@ def test_the_driver_writes_exactly_what_process_shot_writes(
     assert not _sources(driven, SHOT).empty
 
 
+@pytest.mark.parametrize("pooled", [False, True])
 def test_a_block_whose_prep_fails_in_a_worker_is_a_skip_and_not_a_hang(
-    tmp_path, synth_shot, model,
+    tmp_path, synth_shot, model, pooled,
 ):
     """A prep worker that raises costs its block, and only its block.
 
@@ -426,7 +427,7 @@ def test_a_block_whose_prep_fails_in_a_worker_is_a_skip_and_not_a_hang(
     got = driver.run_shots([SHOT], paths=driven, model=model, device="cpu",
                            passes=("wide",), tile_batch=4, prep_workers=1,
                            prefetch=2, run_id="test-run",
-                           unet_sha256=FAKE_SHA, echo=_silently)
+                           unet_sha256=FAKE_SHA, echo=_silently, pooled=pooled)
 
     assert ref.n_blocks == 5                        # mhr 0/4, ece 8/20/40
     assert got.rows[0]["n_blocks"] == 5
@@ -438,8 +439,9 @@ def test_a_block_whose_prep_fails_in_a_worker_is_a_skip_and_not_a_hang(
         assert np.array_equal(_mask_keys(driven.masks_file(SHOT))[key], value)
 
 
+@pytest.mark.parametrize("pooled", [False, True])
 def test_an_unreadable_corpus_file_is_one_error_row_and_the_run_goes_on(
-    tmp_path, synth_shot, model,
+    tmp_path, synth_shot, model, pooled,
 ):
     corpus = tmp_path / "corpus"
     _write_corpus(corpus, SHOT, synth_shot)
@@ -450,7 +452,7 @@ def test_an_unreadable_corpus_file_is_one_error_row_and_the_run_goes_on(
     got = driver.run_shots([SHOT, SHOT + 1], paths=paths, model=model,
                            device="cpu", passes=("wide",), tile_batch=4,
                            prep_workers=0, unet_sha256=FAKE_SHA,
-                           echo=_silently)
+                           echo=_silently, pooled=pooled)
     rows = {row["shot"]: row for row in got.rows}
     assert rows[SHOT]["status"] == "ok"
     assert rows[SHOT + 1]["status"] == "error"
@@ -648,8 +650,9 @@ class _DeadPool:
         return None
 
 
+@pytest.mark.parametrize("pooled", [False, True])
 def test_a_dead_prep_worker_costs_its_block_and_the_pool_is_replaced(
-    tmp_path, synth_shot, model, monkeypatch,
+    tmp_path, synth_shot, model, monkeypatch, pooled,
 ):
     """A worker that DIES is a skip, not a hang, and not a lost shot.
 
@@ -692,7 +695,7 @@ def test_a_dead_prep_worker_costs_its_block_and_the_pool_is_replaced(
                         lambda self: (restarts.append(1), real_restart(self)))
     got = driver.run_shots([SHOT], paths=paths, model=model, device="cpu",
                            passes=("wide",), tile_batch=4, prep_workers=0,
-                           prefetch=2, unet_sha256=FAKE_SHA, echo=_silently)
+                           prefetch=2, unet_sha256=FAKE_SHA, echo=_silently, pooled=pooled)
 
     row = got.rows[0]
     assert row["status"] == "ok"                    # not an error, and not a hang
@@ -766,8 +769,9 @@ def test_closing_a_pool_kills_a_worker_that_is_wedged(tmp_path):
 
 
 @pytest.mark.parametrize("tail_workers", [0, 1])
+@pytest.mark.parametrize("pooled", [False, True])
 def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(
-    tmp_path, monkeypatch, tail_workers,
+    tmp_path, monkeypatch, tail_workers, pooled,
 ):
     """The same thing end to end, through `run_shots`.
 
@@ -794,7 +798,7 @@ def test_a_shot_wedged_in_a_worker_does_not_stop_the_run_exiting(
                            corpus_dir=corpus, passes=("wide",), tile_batch=4,
                            prep_workers=1, prefetch=2, timeout_s=4,
                            tail_workers=tail_workers,
-                           unet_sha256=FAKE_SHA, echo=_silently)
+                           unet_sha256=FAKE_SHA, echo=_silently, pooled=pooled)
     elapsed = time.monotonic() - at
 
     assert got.rows[0]["status"] == "error"
@@ -1111,10 +1115,12 @@ def _totals(tmp_path, name, shots, synth_shot, model, **kw):
     return paths, got
 
 
-def test_an_unpicklable_tail_costs_only_its_shot(tmp_path, synth_shot, model):
+@pytest.mark.parametrize("pooled", [False, True])
+def test_an_unpicklable_tail_costs_only_its_shot(tmp_path, synth_shot, model, pooled,
+):
     """A payload error must not kill the next tail already in the real pool."""
     paths, got = _totals(tmp_path, "unpicklable", SHOTS, synth_shot, model,
-                         tail_workers=1, lexicon=_UnpicklableOnce())
+                         tail_workers=1, lexicon=_UnpicklableOnce(), pooled=pooled)
 
     assert [r["shot"] for r in got.rows] == SHOTS
     assert got.rows[0]["error"] == "RuntimeError"
@@ -1134,8 +1140,9 @@ def test_an_unpicklable_tail_costs_only_its_shot(tmp_path, synth_shot, model):
     ("crash", "BrokenProcessPool"),
     ("timeout", "TimeoutError"),
 ])
+@pytest.mark.parametrize("pooled", [False, True])
 def test_a_failed_tail_worker_preserves_the_next_shots_gpu_work(
-    tmp_path, synth_shot, model, monkeypatch, failure, error,
+    tmp_path, synth_shot, model, monkeypatch, failure, error, pooled,
 ):
     """A restart must recover the queued job even if its future is broken."""
     monkeypatch.setattr(driver, "run_job", _run_with_bad_first_tail)
@@ -1154,17 +1161,17 @@ def test_a_failed_tail_worker_preserves_the_next_shots_gpu_work(
 
     monkeypatch.setattr(driver.PrepPool, "restart", restart)
     inferred = []
-    real_infer = pl.infer_block
+    real_forward = model.forward
 
-    def infer(prepared, **kwargs):
-        inferred.append(prepared.key)
-        return real_infer(prepared, **kwargs)
+    def forward(x):
+        inferred.extend(["mhr:0:wide"] * len(x))
+        return real_forward(x)
 
-    monkeypatch.setattr(pl, "infer_block", infer)
+    monkeypatch.setattr(model, "forward", forward)
     paths, got = _totals(
         tmp_path, failure, SHOTS, synth_shot, model,
         plan=(channels.ChannelSpec("mhr", 0, "magnetics"),),
-        tail_workers=1, timeout_s=30, lexicon=failure,
+        tail_workers=1, timeout_s=30, lexicon=failure, pooled=pooled,
     )
 
     assert [r["shot"] for r in got.rows] == SHOTS
@@ -1268,8 +1275,9 @@ def test_an_overlapped_run_writes_the_same_rows_in_the_same_order(
                                       _events(first, shot))
 
 
+@pytest.mark.parametrize("pooled", [False, True])
 def test_a_tail_that_raises_is_one_error_row_and_the_run_goes_on(
-    tmp_path, synth_shot, model, monkeypatch,
+    tmp_path, synth_shot, model, monkeypatch, pooled,
 ):
     """A failed tail costs its shot and not the run.
 
@@ -1283,7 +1291,7 @@ def test_a_tail_that_raises_is_one_error_row_and_the_run_goes_on(
 
     monkeypatch.setattr(pl, "finish_shot", boom)
     _, got = _totals(tmp_path, "boom", SHOTS[:2], synth_shot, model,
-                     tail_workers=0)
+                     tail_workers=0, pooled=pooled)
     assert [r["status"] for r in got.rows] == ["error", "error"]
     assert [r["shot"] for r in got.rows] == SHOTS[:2]
     assert all("the tail fell off" in r["detail"] for r in got.rows)
@@ -1301,3 +1309,75 @@ def test_the_tail_worker_default_follows_the_prep_pool(monkeypatch):
         ["--shots", "1", "--prep-workers", "0", "--tail-workers", "1"]
     ))
     assert args.tail_workers == 1
+
+
+def test_two_tail_workers_restart_without_reordering_pending_shots(
+    tmp_path, synth_shot, model, monkeypatch,
+):
+    shots = [SHOT + i for i in range(4)]
+    real_submit = driver.PrepPool.submit
+    submitted, restarts = [], []
+    # Deterministic mixed completion state with two configured tail workers.
+    monkeypatch.setattr(driver.PrepPool, "_start", lambda self: None)
+
+    def restart(self):
+        restarts.append(self.workers)
+
+    def submit(self, job):
+        if isinstance(job, driver.FinishJob):
+            submitted.append(job.res.shot)
+            if not restarts and job.res.shot in (shots[0], shots[2]):
+                future = Future()
+                if job.res.shot == shots[0]:
+                    future.set_exception(BrokenProcessPool("first tail died"))
+                return future
+        return real_submit(self, job)
+
+    monkeypatch.setattr(driver.PrepPool, "submit", submit)
+    monkeypatch.setattr(driver.PrepPool, "restart", restart)
+    paths, got = _totals(
+        tmp_path, "mixed", shots, synth_shot, model, pooled=True,
+        plan=(channels.ChannelSpec("mhr", 0, "magnetics"),),
+        tail_workers=2, index=False,
+    )
+    assert restarts == [2]
+    assert submitted == shots + [shots[2]]
+    assert [row["shot"] for row in got.rows] == shots
+    assert [row["status"] for row in got.rows] == ["error", "ok", "ok", "ok"]
+    for shot in shots[1:]:
+        assert masks.list_blocks(paths.masks_file(shot)) == ["mhr_00_wide"]
+
+
+def test_cli_refuses_multiple_index_writers_before_loading_the_model(staged,
+                                                                    monkeypatch,
+                                                                    capsys):
+    def load(*args, **kwargs):
+        pytest.fail("invalid writer configuration reached model loading")
+
+    monkeypatch.setattr(unet, "load_unet", load)
+    with pytest.raises(SystemExit) as exc:
+        driver.main(_argv(staged, "--shots", str(SHOT), "--tail-workers", "2"))
+    assert exc.value.code == 2
+    assert "--no-index" in capsys.readouterr().err
+
+
+def test_pooled_options_have_an_explicit_surface(paths, model, monkeypatch):
+    import inspect
+
+    seen = {}
+
+    def run(shots, **opts):
+        seen.update(opts)
+        return driver.DriverRun([], {})
+
+    monkeypatch.setattr(driver, "_run_pooled", run)
+    driver.run_shots([], paths=paths, model=model, pooled=True)
+    expected = set(inspect.signature(driver.run_shots).parameters) - {"shots", "pooled"}
+    assert set(seen) == expected
+
+
+@pytest.mark.parametrize("extra", [["--device", "cuda"], ["--probs-on-host"]])
+def test_cpu_forward_pooling_opt_in_refuses_other_schedules(staged, extra):
+    with pytest.raises(SystemExit) as exc:
+        driver.main(_argv(staged, "--shots", str(SHOT), "--pool-cpu-forwards", *extra))
+    assert exc.value.code == 2
