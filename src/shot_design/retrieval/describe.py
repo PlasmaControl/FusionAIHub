@@ -347,16 +347,44 @@ def _phenomenon_line(ev, rec: schema.ShotRecord) -> str:
 
 
 def _phenomenon_lines(rec: schema.ShotRecord, segment: str, db) -> list[str]:
+    return [_phenomenon_line(ev, rec) for _definition, ev in
+            _selected_phenomena(rec, segment, db)]
+
+
+def _selected_phenomena(rec, segment, db, *, phenomenon=None, **evidence_options):
+    """One registry-order selection for prose, structured parts and HTTP lanes."""
     from . import phenomena as ph
 
     text = " ".join(quotable(entry) or "" for entry in rec.human.log_entries)
     resolved = {pid for pid, _weight in ph.resolve(text)}
-    lines = []
-    for pid in ph.registry():
-        ev = db.phenomenon_evidence(rec.shot, pid, segment)
+    for pid, definition in ph.registry().items():
+        if phenomenon and pid != phenomenon:
+            continue
+        ev = (db.phenomenon_evidence(rec.shot, pid, segment) if segment is not None
+              else ph.evidence(rec.shot, definition, db, None, **evidence_options))
         if pid in resolved or ph.has_evidence(ev):
-            lines.append(_phenomenon_line(ev, rec))
-    return lines
+            yield definition, ev
+
+
+def phenomenon_rows(rec, segment="flat_top", *, db, **evidence_options) -> list[dict]:
+    """Structured registry evidence; forecasts never enter observed intervals.
+
+    Normal descriptions use the selected segment. HTTP timelines pass segment=None
+    and their filtered event rows/window, without changing cached segment evidence.
+    """
+    return [{
+        "id": definition.id, "title": definition.title,
+        "n_observed": len(ev.intervals) if ev.intervals or
+        ev.coverage_state == "observed" else None,
+        "first_intervals": [iv.model_dump(mode="json") for iv in ev.intervals[:3]],
+        "intervals": [iv.model_dump(mode="json") for iv in ev.intervals],
+        "n_forecast": len(ev.forecasts),
+        "forecast_intervals": [iv.model_dump(mode="json") for iv in ev.forecasts],
+        "coverage_note": ev.coverage_state,
+        "coverage_windows": [list(w) for w in ev.coverage_windows],
+        "coverage_partial": ev.coverage_partial,
+        "caveats": list(ev.caveats),
+    } for definition, ev in _selected_phenomena(rec, segment, db, **evidence_options)]
 
 
 def describe(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None) -> str:
@@ -400,8 +428,6 @@ def describe_parts(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None
     registry selection as the prose, with observed and forecast intervals separate.
     The selected quote is one complete entry, with its own attribution.
     """
-    from . import phenomena as ph
-
     seg = rec.segment(segment)
     values = {} if seg is None else {**seg.raw, **seg.derived}
     unit_map = scalar_units(values)
@@ -410,30 +436,10 @@ def describe_parts(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None
     if found is not None:
         entry, text = found
         quote = {"text": text, "role": entry.role, "author": entry.author, "time": entry.time}
-    rows, caveats = [], []
+    caveats = []
     if seg is None:
         caveats.append(f"No {segment} scalars recorded")
-    if db is not None:
-        text = " ".join(quotable(entry) or "" for entry in rec.human.log_entries)
-        resolved = {pid for pid, _weight in ph.resolve(text)}
-        for pid, definition in ph.registry().items():
-            ev = db.phenomenon_evidence(rec.shot, pid, segment)
-            if pid not in resolved and not ph.has_evidence(ev):
-                continue
-            rows.append({
-                "id": pid, "title": definition.title,
-                "n_observed": len(ev.intervals) if ev.intervals or
-                ev.coverage_state == "observed" else None,
-                "first_intervals": [iv.model_dump(mode="json") for iv in ev.intervals[:3]],
-                # Keep the legacy preview; the browser's single cell toggle needs
-                # every observed interval, with forecasts still separate.
-                "intervals": [iv.model_dump(mode="json") for iv in ev.intervals],
-                "n_forecast": len(ev.forecasts),
-                "coverage_note": ev.coverage_state,
-                "coverage_windows": [list(w) for w in ev.coverage_windows],
-                "coverage_partial": ev.coverage_partial,
-                "caveats": list(ev.caveats),
-            })
+    rows = phenomenon_rows(rec, segment, db=db) if db is not None else []
     outcome = rec.outcome.model_dump(mode="json")
     full = rec.segment("full")
     outcome["end_time_s"] = full.t1_ms / 1000 if full and rec.outcome.end_reason else None

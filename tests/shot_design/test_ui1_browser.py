@@ -231,7 +231,7 @@ assert(text(noteCell).includes('Existing note '.repeat(40)));
 """)
 
 
-def test_phenomena_cell_expands_every_interval_and_all_coverage_notes():
+def test_phenomena_table_keeps_counts_and_one_toggle_for_all_coverage_notes():
     run_dom(r"""
 const table = run(`phenomenaTable([{id:'elm', title:'ELM', n_observed:244, n_forecast:44,
   first_intervals:[{t0_s:0, t1_s:.01}],
@@ -239,20 +239,21 @@ const table = run(`phenomenaTable([{id:'elm', title:'ELM', n_observed:244, n_for
   coverage_note:'observed', coverage_windows:[[0, 1], [2, 4]], coverage_partial:true,
   caveats:['First coverage note '.repeat(30), 'Last coverage note '.repeat(30)]}])`);
 const cells = all(table).filter(n => n.tag === 'td');
-for (const index of [2, 4]) {
+assert.equal(cells.length, 4);
+assert(!text(table).includes('First intervals'));
+for (const index of [3]) {
   const buttons = byClass(cells[index], 'text-toggle');
   assert.equal(buttons.length, 1);
   buttons[0].events.click({stopPropagation() {}});
 }
 assert(!text(table).includes('+241 more'));
-assert(text(cells[2]).includes('2.430–2.440 s'));
-assert.equal((text(cells[2]).match(/ s/g) || []).length, 244);
-assert(text(cells[4]).includes('observed\n0.000–1.000 s\n2.000–4.000 s'));
-assert(text(cells[4]).includes('Partial coverage; outside unmeasured'));
-assert(text(cells[4]).includes('Last coverage note '.repeat(30)));
+assert.equal(text(cells[1]), '244');
+assert.equal(text(cells[2]), '44');
+assert(text(cells[3]).includes('observed\n0.000–1.000 s\n2.000–4.000 s'));
+assert(text(cells[3]).includes('Partial coverage; outside unmeasured'));
+assert(text(cells[3]).includes('Last coverage note '.repeat(30)));
 assert.equal(byClass(cells[1], 'numeric').length, 1);
-assert.equal(byClass(cells[3], 'numeric').length, 1);
-assert(byClass(cells[2], 'numeric').some(n => text(n) === '2.430–2.440 s'));
+assert.equal(byClass(cells[2], 'numeric').length, 1);
 """)
 
 

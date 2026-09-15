@@ -22,7 +22,8 @@ from fastapi.staticfiles import StaticFiles
 from .. import config, schema
 from ..mcp import tools
 from ..retrieval import phenomena
-from ..retrieval.describe import describe_parts, scalar_units
+from ..retrieval.describe import describe_parts, phenomenon_rows, scalar_units
+from .scoring import scoring_info
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "ideate_token"
@@ -39,6 +40,39 @@ def _registry() -> list[dict]:
          "sources": ph.sources, "covering_sources": ph.covering_sources}
         for pid, ph in sorted(phenomena.registry().items())
     ]
+
+
+def _db_summary(db) -> dict:
+    """Shared metadata for the banner and the scoring page."""
+    shots = sorted(int(s) for s in db.shots.index)
+    return {
+        "n_shots": len(shots),
+        "shot_range": [shots[0], shots[-1]] if shots else None,
+        "n_segments": db.manifest.get("n_segments", len(db.segments)),
+        "built_at": db.manifest.get("built_at"),
+        "git_sha": db.manifest.get("git_sha"),
+    }
+
+
+def _filter_confidence(payload: dict, limit: float) -> dict:
+    """HTTP-only filter on timed evidence; preserve MCP status and named claims."""
+    if limit == 0:
+        return payload
+    result = {**payload, "caveats": list(payload.get("caveats", []))}
+    for key, count in (("events", "n"), ("forecasts", "n_forecasts")):
+        rows = payload.get(key, [])
+        kept = [r for r in rows if phenomena._keeps_confidence(r, limit) is True]
+        result[key], result[count] = kept, len(kept)
+        if len(rows) != len(kept):
+            result["caveats"].append(
+                f"{len(rows) - len(kept)} {key} excluded: confidence below {limit} or unrecorded"
+            )
+        if key == "forecasts" and rows:
+            old = tools._FORECAST_CAVEAT.format(n=len(rows))
+            result["caveats"] = [c for c in result["caveats"] if c != old]
+            if kept:
+                result["caveats"].append(tools._FORECAST_CAVEAT.format(n=len(kept)))
+    return result
 
 
 def _timeline_domain(rec: schema.ShotRecord) -> dict:
@@ -107,17 +141,18 @@ def create_app(
             db, error = tools._db()
             if error:
                 return {**info, **error}
-            shots = sorted(int(s) for s in db.shots.index)
             return {
-                "db": {
-                    "n_shots": len(shots),
-                    "shot_range": [shots[0], shots[-1]] if shots else None,
-                    "n_segments": db.manifest.get("n_segments", len(db.segments)),
-                    "built_at": db.manifest.get("built_at"),
-                    "git_sha": db.manifest.get("git_sha"),
-                },
+                "db": _db_summary(db),
                 **info,
             }
+
+        return _json(tools.never_raises(summary)())
+
+    @app.get("/api/scoring")
+    def scoring():
+        def summary():
+            db, error = tools._db()
+            return error if error else scoring_info(_db_summary(db), db._phenomenon_config)
 
         return _json(tools.never_raises(summary)())
 
@@ -149,8 +184,11 @@ def create_app(
     def events(
         shot: int, phenomenon: str | None = None,
         t0_s: float | None = None, t1_s: float | None = None,
+        min_confidence: float = 0.0,
     ):
         def with_domain():
+            if not math.isfinite(min_confidence) or not 0 <= min_confidence <= 1:
+                return {"error": "Minimum confidence must be between 0 and 1", "caveats": []}
             payload = tools.get_events(
                 shot, phenomenon=phenomenon, t0_s=t0_s, t1_s=t1_s,
             )
@@ -159,7 +197,20 @@ def create_app(
             db, error = tools._db()
             if error:
                 return error
-            return {**payload, "domain": _timeline_domain(db.get(shot))}
+            payload = _filter_confidence(payload, min_confidence)
+            rec = db.get(shot)
+            window = None if t0_s is None and t1_s is None else (t0_s, t1_s)
+            # Untimed legacy claims remain in the tool payload. They cannot make
+            # a drawable Interval or break an otherwise valid event response.
+            timed = [r for r in payload.get("events", []) + payload.get("forecasts", [])
+                     if all(isinstance(r.get(k), (int, float)) and math.isfinite(r[k])
+                            for k in ("t0_s", "t1_s")) and r["t1_s"] >= r["t0_s"]]
+            rows = phenomenon_rows(
+                rec, None, db=db, phenomenon=phenomenon, window=window,
+                event_rows=timed,
+                min_confidence=min_confidence,
+            )
+            return {**payload, "domain": _timeline_domain(rec), "phenomena": rows}
 
         return _json(tools.never_raises(with_domain)())
 

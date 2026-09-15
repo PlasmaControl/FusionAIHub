@@ -120,6 +120,7 @@ function caption(value) {
     [/coverage recorded as a hull by an older writer; interior gaps unknown/g, "Legacy coverage hull; interior gaps unknown"],
     [/: ran; coverage unknown; absence is not evidence$/, ": coverage unknown; absence unmeasured"],
     [/^(\d+) event\(s\) not shown: the source recorded no confidence, so they cannot be shown to reach min_confidence (.*)$/, (_m, n, limit) => `${n} events excluded: confidence unrecorded; minimum ${formatNumber(Number(limit), "confidence")}`],
+    [/^(\d+) (events|forecasts) excluded: confidence below (\S+) or unrecorded$/, (_m, n, kind, limit) => `${n} ${kind} excluded: confidence below ${formatNumber(Number(limit), "confidence")} or unrecorded`],
     [/^kept despite --avoid (.*): nothing looked for (.*) on this shot,.*$/, "Kept with avoid $1: $2 unexamined; absence unmeasured"],
     [/^kept despite --avoid (.*): no detector for (.*) has run on this shot,.*$/, "Kept with avoid $1: $2 detectors not run; absence unmeasured"],
     [/^kept despite --avoid (.*): the (.*) detectors ran on this shot but not over the window searched,.*$/, "Kept with avoid $1: $2 coverage outside window; absence unmeasured"],
@@ -270,15 +271,49 @@ function bindForm(id, target, action) {
   $(id).addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = event.target.querySelector('button[type="submit"]');
+    const errorNote = event.target.querySelector('.form-error');
+    errorNote.textContent = '';
     button.disabled = true;
     try { await action(new FormData(event.target)); }
-    catch (error) { notes($(target), { error: error.message }); }
+    catch (error) { errorNote.textContent = error.message; notes($(target), { error: error.message }); }
     finally { button.disabled = false; }
   });
 }
 
 const tokens = (value) => String(value || "").split(",").map((v) => v.trim()).filter(Boolean);
-const optionalNumber = (value) => value === "" || value === null ? null : Number(value);
+function parseNumberField(value, label, { required = false, integer = false, identifier = false, min, max } = {}) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    if (required) throw new Error(`${label} is required`);
+    return null;
+  }
+  const number = Number(raw);
+  if (identifier && (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(number))) {
+    throw new Error(`${label} must be a whole number`);
+  }
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw) || !Number.isFinite(number)) {
+    throw new Error(`${label} must be a number`);
+  }
+  if (integer && !Number.isSafeInteger(number)) throw new Error(`${label} must be a whole number`);
+  if ((min !== undefined && number < min) || (max !== undefined && number > max)) {
+    throw new Error(min !== undefined && max !== undefined ? `${label} must be between ${min} and ${max}` :
+      min !== undefined ? `${label} must be at least ${min}` : `${label} must be at most ${max}`);
+  }
+  return number;
+}
+
+function eventParams(form) {
+  const params = new URLSearchParams();
+  if (form.get('phenomenon')) params.set('phenomenon', form.get('phenomenon'));
+  const t0 = parseNumberField(form.get('t0_s'), 'Start');
+  const t1 = parseNumberField(form.get('t1_s'), 'End');
+  if (t0 !== null && t1 !== null && t0 >= t1) throw new Error('End must be after start');
+  const confidence = parseNumberField(form.get('min_confidence'), 'Minimum confidence', {min:0, max:1});
+  for (const [key, value] of [['t0_s', t0], ['t1_s', t1], ['min_confidence', confidence]]) {
+    if (value !== null) params.set(key, value);
+  }
+  return params;
+}
 function shotLink(shot, phenomenon = "", segment = "flat_top") {
   return `#shot/${shot}?${new URLSearchParams({ phenomenon, segment })}`;
 }
@@ -344,12 +379,13 @@ function timeAxis(domain) {
   return el("div", { class: "axis", "aria-label": "Time (seconds)" }, ticks);
 }
 
-function timeline(rows, domain = [-2, 8], coverage = false) {
+function timeline(rows, domain = [-2, 8], coverage = false, phenomena = [], forecast = false) {
   const root = el("div", { class: "timeline" });
   // The top axis is outside the collapsible body, including for empty lanes.
   root.append(timeAxis(domain));
   if (!Array.isArray(rows)) { root.append(el("p", { class: "muted" }, "—")); return root; }
-  if (!rows.length) { root.append(el("p", { class: "muted" }, "No indexed intervals")); return root; }
+  const phenomenonGroups = phenomena.filter(p => !forecast || p.forecast_intervals?.length);
+  if (!rows.length && !phenomenonGroups.length) { root.append(el("p", { class: "muted" }, "No indexed intervals")); return root; }
   const lanes = el("div", { class: "timeline-lanes" });
   const groups = new Map();
   for (const row of rows) {
@@ -357,16 +393,27 @@ function timeline(rows, domain = [-2, 8], coverage = false) {
     if (!groups.has(source)) groups.set(source, []);
     groups.get(source).push(row);
   }
+  const phenomenonLanes = el('div', {class:'phenomenon-lanes'}, el('h4', {}, 'Phenomena'));
+  const sourceLanes = el('div', {class:'source-lanes'},
+    phenomenonGroups.length && rows.length ? el('h4', {}, 'Sources') : null);
+  const allRows = [...rows, ...phenomenonGroups.flatMap(p => forecast ? p.forecast_intervals || [] : p.intervals || [])];
   if (!coverage) lanes.append(el("div", { class: "legend" },
-    [...new Set(rows.map((r) => r.evidence_kind))].map((kind) => el("span", {},
+    [...new Set(allRows.map((r) => r.evidence_kind))].map((kind) => el("span", {},
       el("i", { class: "swatch", style: `--evidence:${colour(kind)}` }), display(kind)))));
-  for (const [source, items] of groups) {
+  const laneGroups = [
+    ...phenomenonGroups.map(p => ({source:p.title, phenomenon:p,
+      items:(forecast ? p.forecast_intervals || [] : p.intervals || []).map(iv => ({
+        ...iv, phenomenon:p.title, caveats:[...(p.caveats || []), ...(iv.caveats || [])],
+      }))})),
+    ...[...groups].map(([source, items]) => ({source, items})),
+  ];
+  for (const {source, items, phenomenon} of laneGroups) {
     const track = el("div", { class: "track", "aria-label": `${source}, seconds` });
     const details = [];
     for (const item of items) {
       const values = coverage ?
         { status: item.status, reason: item.reason, diag: item.diag, channel: item.channel, pass_name: item.pass_name, n_events: item.n_events, min_gap_s: item.min_gap_s } :
-        { phenomenon: item.phenomenon, evidence_kind: item.evidence_kind, confidence: item.confidence };
+        { phenomenon: item.phenomenon, source: item.source, evidence_kind: item.evidence_kind, confidence: item.confidence };
       let tooltip = `${coverage ? "coverage " : ""}${timeSpan(item.t0_s, item.t1_s)}`;
       const drawable = finite(item.t0_s) && finite(item.t1_s) && item.t1_s >= item.t0_s;
       const clip = (time) => Math.max(domain[0], Math.min(domain[1], time));
@@ -374,6 +421,7 @@ function timeline(rows, domain = [-2, 8], coverage = false) {
       const clippedRight = drawable && item.t1_s > domain[1];
       if (clippedLeft || clippedRight) tooltip += `, drawn ${display(clip(item.t0_s))}–${display(clip(item.t1_s))} s`;
       tooltip += ` · ${display(values)}${item.caveats?.length ? ` · ${item.caveats.map(caption).join("; ")}` : ""}`;
+      if (finite(item.f0_khz) || finite(item.f1_khz)) tooltip += ` · ${display(item.f0_khz)}–${display(item.f1_khz)} kHz`;
       if (drawable) {
         const span = domain[1] - domain[0];
         const left = 100 * (clip(item.t0_s) - domain[0]) / span;
@@ -389,9 +437,15 @@ function timeline(rows, domain = [-2, 8], coverage = false) {
       if (coverage) details.push(tooltip);
     }
     // Coverage rows with no intervals still show status/reason; no invented bars.
-    lanes.append(el("div", { class: "lane" }, el("div", { class: "lane-name" }, longText(source)), track,
+    (phenomenon ? phenomenonLanes : sourceLanes).append(el("div", { class: "lane" },
+      el("div", { class: "lane-name" }, longText(source),
+        phenomenon ? el('div', {class:'muted'}, phenomenon.id) : null), track,
       coverage ? el("div", { class: "coverage-detail" }, longText([...new Set(details)].join("; "))) : details));
   }
+  if (phenomenonGroups.length) {
+    lanes.append(phenomenonLanes);
+  }
+  lanes.append(sourceLanes);
   lanes.append(timeAxis(domain));
   root.append(collapsible(lanes));
   return root;
@@ -424,8 +478,8 @@ function renderEvents(data, prefix = "") {
       [{ ...row, t0_s: null, t1_s: null }];
   });
   const domain = timelineDomain(data);
-  target("event-lanes").replaceChildren(timeline(data.events, domain));
-  target("forecast-lanes").replaceChildren(timeline(data.forecasts, domain));
+  target("event-lanes").replaceChildren(timeline(data.events, domain, false, data.phenomena));
+  target("forecast-lanes").replaceChildren(timeline(data.forecasts, domain, false, data.phenomena, true));
   target("database-lanes").replaceChildren(timeline(data.database_intervals, domain));
   target("coverage-lanes").replaceChildren(timeline(coverage, domain, true));
   target("text-mentions").replaceChildren(collapsible(el("ul", {},
@@ -434,9 +488,8 @@ function renderEvents(data, prefix = "") {
 
 async function loadEvents() {
   if (S.shot === null) return;
+  const params = eventParams(new FormData($("#events-form")));
   const request = ++S.eventRequest;
-  const params = new URLSearchParams();
-  for (const [key, value] of new FormData($("#events-form"))) if (value !== "") params.set(key, value);
   const shot = S.shot;
   const filtered = params.has("phenomenon");
   $("#event-context").hidden = !filtered;
@@ -483,12 +536,10 @@ function outcomeFields(outcome) {
 
 function phenomenaTable(rows) {
   return el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Phenomenon", "Observed", "First intervals", "Forecasts", "Coverage"].map((t) => el("th", {}, t)))),
+    el("thead", {}, el("tr", {}, ["Phenomenon", "Observed", "Forecasts", "Coverage"].map((t) => el("th", {}, t)))),
     el("tbody", {}, rows.map((row) => el("tr", {},
       el("td", { class: "prose-cell" }, cellText([row.title, row.id])),
       el("td", { class: "numeric" }, display(row.n_observed, "n")),
-      el("td", { class: "prose-cell" }, cellText((row.intervals || row.first_intervals || [])
-        .map((iv) => timeSpan(iv.t0_s, iv.t1_s)))),
       el("td", { class: "numeric" }, display(row.n_forecast, "n")),
       el("td", { class: "prose-cell" }, cellText([row.coverage_note,
         ...(row.coverage_windows || []).map(([a, b]) => timeSpan(a, b)),
@@ -567,6 +618,37 @@ function renderHit(hit, segment) {
   return card;
 }
 
+function renderScoring(data) {
+  notes($('#info-notes'), data);
+  const root = $('#info-content');
+  root.replaceChildren();
+  if (data.error) return;
+  const ph = data.phenomenon;
+  const range = (data.score_range || []).map(n => formatNumber(n)).join('–');
+  root.append(el('section', {}, el('h2', {}, 'Search score'),
+    el('p', {}, `Each channel ranks every candidate; the score is a ${data.method.toLowerCase()}: ${data.formula}, k0 = ${display(data.k0)}. Scores are small${range ? ` (about ${range})` : ''} and only their order matters.`),
+    el('div', {class:'table-wrap'}, el('table', {},
+      el('thead', {}, el('tr', {}, ['Channel','Weight','What it compares'].map(t => el('th', {}, t)))),
+      el('tbody', {}, data.channels.map(c => el('tr', {},
+        el('td', {class:'identifier'}, c.name),
+        el('td', {class:'numeric'}, display(c.weight), c.weight_source === 'default' ? el('span', {class:'small muted'}, ' (default)') : null),
+        el('td', {class:'prose-cell'}, cellText([c.compares]))))))),
+    el('p', {}, `Hard filters (${data.hard_filters.join(', ')}) apply before fusion.`),
+    el('p', {}, `Duplicate shots above cosine ${display(data.dedup_threshold)} in logbook-text space collapse.`),
+    el('p', {}, `The m-th hit from one run day is multiplied by ${display(data.run_diversity_decay)}^(m−1).`),
+    el('p', {}, `With “prefer successful outcomes”, a failed verdict or missed Ip target is multiplied by ${display(data.outcome_penalty)}.`)),
+  el('section', {}, el('h2', {}, 'Phenomenon score'),
+    el('p', {class:'prose'}, ph.formula),
+    fields({...ph.weights, saturation_n:ph.saturation_n}),
+    ph.terms ? el('p', {}, ph.terms) : null,
+    el('p', {}, `Evidence class comes first: ${ph.class_order.join(' > ')}. Score orders hits within each class.`),
+    el('p', {}, `Text-only ceiling: ${display(ph.text_only_ceiling)}.`)),
+  el('section', {}, el('h2', {}, 'Database'),
+    fields({'Shots':display(data.db.n_shots, 'n'),
+      'Shot range':data.db.shot_range?.map(s => display(s, 'shot')).join('–') || '—',
+      'Build SHA':data.db.git_sha, 'Built':data.db.built})));
+}
+
 async function route() {
   const hash = location.hash.slice(1) || "search";
   if (hash.startsWith("shot/")) {
@@ -574,6 +656,11 @@ async function route() {
     const params = new URLSearchParams(query);
     const shot = Number(path.split("/")[1]);
     if (Number.isInteger(shot)) await openShot(shot, params.get("phenomenon") || "", params.get("segment") || "flat_top");
+  } else if (hash === 'info') {
+    showView('info');
+    $('#info-content').replaceChildren(el('p', {}, 'Loading…'));
+    const {data} = await api('/api/scoring');
+    renderScoring(data);
   } else showView(["search", "shot", "locate"].includes(hash) ? hash : "search");
 }
 
@@ -594,8 +681,8 @@ async function init() {
   }
   bindForm("#search-form", "#search-notes", async (form) => {
     const constraints = form.get("constraints").trim();
-    const body = { text: form.get("text"), ref_shot: optionalNumber(form.get("ref_shot")),
-      segment: form.get("segment"), n: Number(form.get("n")),
+    const body = { text: form.get("text"), ref_shot: parseNumberField(form.get("ref_shot"), 'Reference shot', {identifier:true}),
+      segment: form.get("segment"), n: parseNumberField(form.get("n"), 'Results', {required:true, integer:true, min:1}),
       constraints: constraints ? JSON.parse(constraints) : null,
       require_labels: tokens(form.get("require_labels")), avoid_labels: tokens(form.get("avoid_labels")) };
     $("#search-results").replaceChildren(el("p", {}, "Searching…"));
@@ -604,13 +691,19 @@ async function init() {
     $("#search-results").replaceChildren(data.error ? el("p") : resultsTable(data.results || [], body.segment));
   });
   bindForm("#shot-form", "#shot-notes", async (form) => {
-    const hash = shotLink(Number(form.get("shot")), $("#events-form").elements.phenomenon.value, form.get("segment"));
+    const hash = shotLink(parseNumberField(form.get("shot"), 'Shot', {required:true, identifier:true}), $("#events-form").elements.phenomenon.value, form.get("segment"));
     if (location.hash === hash) await route(); else location.hash = hash;
   });
   bindForm("#events-form", "#event-notes", loadEvents);
-  $("#events-form").addEventListener("change", () => loadEvents().catch((e) => notes($("#event-notes"), { error: e.message })));
+  $("#events-form").addEventListener("change", () => {
+    const errorNote = $('#events-form').querySelector('.form-error');
+    errorNote.textContent = '';
+    loadEvents().catch(e => { errorNote.textContent = e.message; notes($('#event-notes'), {error:e.message}); });
+  });
   bindForm("#locate-form", "#locate-notes", async (form) => {
     const params = new URLSearchParams(form);
+    params.set('n', parseNumberField(form.get('n'), 'Hits', {required:true, integer:true, min:1}));
+    params.set('min_confidence', parseNumberField(form.get('min_confidence'), 'Minimum confidence', {required:true, min:0, max:1}));
     params.delete("avoid");
     for (const token of tokens(form.get("avoid"))) params.append("avoid", token);
     $("#locate-results").replaceChildren(el("p", {}, "Locating…"));

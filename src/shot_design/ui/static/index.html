@@ -15,6 +15,7 @@
     <button data-view="search" class="active" aria-current="page">Search</button>
     <button data-view="shot">Shot</button>
     <button data-view="locate">Locate</button>
+    <button data-view="info">Info</button>
   </nav>
 </header>
 <main>
@@ -22,14 +23,15 @@
   <div id="view-search" class="view">
     <section class="query-panel">
       <h2>Search shots</h2>
-      <form id="search-form">
+      <form id="search-form" novalidate>
         <label>Text<input name="text" placeholder="QH-mode at low torque"></label>
-        <label>Reference shot<input name="ref_shot" type="number" step="1"></label>
+        <label>Reference shot<input name="ref_shot" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></label>
         <label>Segment<select name="segment" class="segment"></select></label>
-        <label>Results<input name="n" type="number" value="10" min="1" step="1" required></label>
+        <label>Results<input name="n" type="text" inputmode="decimal" value="10" required></label>
         <label>Constraints (JSON)<textarea name="constraints" rows="5" placeholder='{"ip_mean": {"lo": 1000000}}'></textarea></label>
         <label>Require labels (comma separated)<input name="require_labels" placeholder="H"></label>
         <label>Avoid labels (comma separated)<input name="avoid_labels" placeholder="dud"></label>
+        <p class="form-error" aria-live="polite"></p>
         <button class="primary" type="submit">Search</button>
       </form>
     </section>
@@ -42,16 +44,19 @@
   <div id="view-shot" class="view" hidden>
     <section class="query-panel">
       <h2>Open a shot</h2>
-      <form id="shot-form">
-        <label>Shot<input name="shot" type="number" step="1" required></label>
+      <form id="shot-form" novalidate>
+        <label>Shot<input name="shot" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required></label>
         <label>Segment<select name="segment" class="segment"></select></label>
+        <p class="form-error" aria-live="polite"></p>
         <button class="primary" type="submit">Open shot</button>
       </form>
       <h2 class="spaced">Event window</h2>
-      <form id="events-form">
+      <form id="events-form" novalidate>
         <label>Event name (exact match)<select name="phenomenon" class="phenomenon" data-all="true"></select></label>
-        <label>Start (s)<input name="t0_s" type="number" step="any"></label>
-        <label>End (s)<input name="t1_s" type="number" step="any"></label>
+        <label>Start (s)<input name="t0_s" type="text" inputmode="decimal"></label>
+        <label>End (s)<input name="t1_s" type="text" inputmode="decimal"></label>
+        <label>Minimum confidence<input name="min_confidence" type="text" inputmode="decimal" value="0"></label>
+        <p class="form-error" aria-live="polite"></p>
         <button type="submit">Update events</button>
       </form>
     </section>
@@ -94,12 +99,13 @@
   <div id="view-locate" class="view" hidden>
     <section class="query-panel">
       <h2>Locate a phenomenon</h2>
-      <form id="locate-form">
+      <form id="locate-form" novalidate>
         <label>Phenomenon<select name="phenomenon" class="phenomenon" required></select></label>
         <label>Segment<select name="segment" class="segment"></select></label>
-        <label>Hits<input name="n" type="number" value="20" min="1" step="1" required></label>
-        <label>Minimum confidence<input name="min_confidence" type="number" value="0" step="any" min="0" max="1" required></label>
+        <label>Hits<input name="n" type="text" inputmode="decimal" value="20" required></label>
+        <label>Minimum confidence<input name="min_confidence" type="text" inputmode="decimal" value="0" required></label>
         <label>Avoid (comma separated)<input name="avoid" placeholder="phenomenon:elm"></label>
+        <p class="form-error" aria-live="polite"></p>
         <button class="primary" type="submit">Locate</button>
       </form>
     </section>
@@ -108,6 +114,10 @@
       <div id="locate-notes" aria-live="polite"></div>
       <div id="locate-results"><p class="muted">Choose a phenomenon.</p></div>
     </section>
+  </div>
+  <div id="view-info" class="view" hidden>
+    <div id="info-notes" aria-live="polite"></div>
+    <div id="info-content"><p class="muted">Loading…</p></div>
   </div>
 </main>
 <script type="module" src="app.js"></script>
