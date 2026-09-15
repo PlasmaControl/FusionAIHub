@@ -586,6 +586,18 @@ could consume the entire wall allocation. The authorized second pilot and
 its derived defaults are recorded in the
 [L14-perf report, Fix loop](../.superpowers/sdd/task-L14perf-report.md#fix-loop).
 
+Pilot 2932066_0 completed 20/20 shots at **97.29 tiles/s**. Jobstats measured
+CPU **31.3%**, CPU memory **30.6%**, GPU **7.4%**, GPU memory **96.6%**:
+**FAIL (exempt)**, with 44.823 s of prep wait. MaxRSS was 13,559,492K
+(12.931339 GiB) and TotalCPU 06:20.657 over 82 s. The capacity defaults are
+12 CPUs (7 prep + 4 tail + parent), prefetch 8, 17G (MaxRSS × 1.3), and
+10 minutes (startup + one 240 s timeout + 60 measured per-shot times × 1.3).
+These are report-only production capacity figures; failed utilization gates
+leave production unvalidated. The pilot itself kept its 32G / 12-minute request.
+All 20 NPZ hashes match the first pilot. All events/sources file hashes differ;
+exact frame diagnosis finds only `git_sha`, `run_id`, and `written_at` changed.
+The cross-pilot hash check is recorded as a finding, not a passed identity gate.
+
 Worktrees use the main checkout's existing pixi environments with the frozen,
 no-install command above. GPU work uses the independent phase3 Python.
 The pilot exemption can return exit 0 with missed thresholds; read all four

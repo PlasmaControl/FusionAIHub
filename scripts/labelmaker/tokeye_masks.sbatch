@@ -1,25 +1,24 @@
 #!/bin/bash
-# README: L12 measured A100 requests; production is a proposal, NEVER submitted.
-# Completed cold pilot 2931065_0: 20 attempts / 15 ok / 5 coverage errors,
-# 7478 tiles / 152.72 driver seconds = 48.97 tiles/s; SLURM wall 161 seconds.
-# Six prep workers + parent + tail = 8 CPUs. CPU 27.1%, sampled CPU memory
-# 4.7GB/24GB = 19.6%, GPU 6.9%, GPU memory 37.9GB/40GB = 94.7%.
-# sacct MaxRSS 6750340K = 6.438 GiB; x1.30 = 8.37 GiB -> request 9G.
-# Parent VmHWM 2.589 GiB, each prep 0.951 GiB, tail 2.431 GiB (shared pages
-# mean these must NOT be summed as a cgroup measurement).
-# Prefetch 6 feeds all six workers. Batch 96 was measured; actual blocks are
-# 10-55 tiles, so increasing this cap cannot improve this pilot's GPU use.
-# For proposed 60-shot chunks: 161/20*60*1.30 = 627.9 s -> time 00:11:00.
-# Single-element default is safe for a pilot; production shape is 0-7%2 with
-# N_CHUNKS=8 and the separate remaining-480-shot list. One GPU per task AND
-# per node describes the same one-GPU allocation (confirmed by sacct).
-# At 9G, sampled CPU-memory projects only 52.2%; CPU and GPU also MISS 70%.
-# Completed pilot 2931084_0 (1 prep/2 prefetch/3 CPUs/9G) fell to 24.99 tiles/s,
-# with prep wait 184.11s vs 32.53s. CPU 39.2%, CPU-mem 35.6%, GPU 3.8%:
-# fewer workers worsened throughput and still missed all three gates.
-# Workflow: bash scripts/labelmaker/tokeye_text_subset.sh; sbatch this file;
-# sbatch --dependency=afterok:$JOBID scripts/labelmaker/tokeye_masks_afterok.sbatch "$JOBID" --pilot
-# See docs/LABELMAKER.md and .superpowers/sdd/task-L12-report.md for exact commands.
+# README: L14 pilot 2 capacity basis; production is report-only, NOT validated.
+# Cold A100 pilot 2932066_0 at source 56d4521 completed 20/20 shots,
+# 244 blocks / 7478 tiles / 26913 events in 76.87 driver seconds = 97.29 tiles/s.
+# Its allocation was 12 CPUs (7 prep + 4 tail + 1 parent), prefetch 8,
+# 32G, 00:12:00, one A100, batch 96, AMP, readonly text, --no-index.
+# Jobstats: CPU 31.3%, CPU memory 9.8GB/32GB = 30.6%, GPU 7.4%,
+# GPU memory 38.6GB/40GB = 96.6%. FAIL (pilot-exempt); no production submitted.
+# sacct: 82s wall, TotalCPU 06:20.657, MaxRSS 13559492K = 12.931339 GiB.
+# Memory capacity: ceil(12.931339 * 1.3) = 17G at the SAME pool sizes.
+# Time for 60 shots: startup (82 - 76.87) + one timeout 240 +
+# 60 * (76.87 / 20) * 1.3 = 544.923s -> 00:10:00.
+# Keep 7 prep / 4 tail / prefetch 8: changing pools invalidates this memory basis.
+# Prep wait 44.823s, tail wait 5.803s. GPU feeding still failed; the following
+# defaults describe capacity only and do not establish production readiness.
+# Parent VmHWM 6.050 GiB, max worker 2.573 GiB; shared pages mean per-PID
+# peaks must NOT be added as a cgroup measurement. Live workers: 7 prep, 4 tail.
+# Single-element default is for a pilot; proposed production shape remains
+# --array=0-7%2, N_CHUNKS=8 (8 x 60 shots), pending resolution of failed gates.
+# Workflow: tokeye_text_subset.sh, this array, tokeye_masks_afterok.sbatch.
+# See docs/LABELMAKER.md and .superpowers/sdd/task-L14perf-report.md (Fix loop).
 #SBATCH --job-name=tokeye-masks
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu-stellar
@@ -27,16 +26,16 @@
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=9G
-#SBATCH --time=00:11:00
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=17G
+#SBATCH --time=00:10:00
 #SBATCH --array=0-0%1
 # Slurm cannot expand ROOT in a directive. The shell below opens the full log
 # under the resolved ROOT; an explicit --output captures bootstrap diagnostics.
 #SBATCH --output=/dev/null
 
 set -euo pipefail
-REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-L}"
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-L14perf}"
 ROOT="${ROOT:-${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}}"
 RUNTIME_ROOT="${RUNTIME_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
 PHASE3_PYTHON="${PHASE3_PYTHON:-$RUNTIME_ROOT/envs/phase3/bin/python}"
@@ -46,10 +45,10 @@ printf 'Resolved root: %s\n' "$ROOT"
 CORPUS="${LABELMAKER_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 SHOT_FILE="${SHOT_FILE:?set SHOT_FILE to the pilot or remaining-shot list}"
 N_CHUNKS="${N_CHUNKS:-1}"
-PREP_WORKERS="${PREP_WORKERS:-6}"
-PREFETCH="${PREFETCH:-6}"
+PREP_WORKERS="${PREP_WORKERS:-7}"
+PREFETCH="${PREFETCH:-8}"
 TILE_BATCH="${TILE_BATCH:-96}"
-TAIL_WORKERS="${TAIL_WORKERS:-1}"
+TAIL_WORKERS="${TAIL_WORKERS:-4}"
 if (( PREFETCH < PREP_WORKERS )); then
     echo "PREFETCH must be >= PREP_WORKERS" >&2
     exit 2
