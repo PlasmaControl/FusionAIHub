@@ -54,7 +54,8 @@ class LLMUnavailable(RuntimeError):
 
 def start_hint(paths: Paths) -> str:
     return (
-        "no language model is configured: set base_url in configs/shot_design/llm.yaml "
+        "no language model is configured: start it with "
+        "sbatch scripts/shot_design/serve_llm.sbatch, set base_url in configs/shot_design/llm.yaml "
         "to an OpenAI-compatible server, or write its URL to "
         f"{paths.data_root / 'llm' / 'endpoint.json'}"
     )

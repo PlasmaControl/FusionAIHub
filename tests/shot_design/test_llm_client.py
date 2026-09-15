@@ -53,11 +53,16 @@ def _transport(handler_calls: list, reply):
 
 def test_llm_yaml_matches_the_shape_the_client_reads():
     cfg = config.load_yaml("llm.yaml")
-    assert cfg["provider"] == "off"
+    assert cfg["provider"] == "ollama"
     assert cfg["models"] == {"quality": "gemma4:26b", "fast": "gemma4:e4b"}
     assert cfg["default"] == "quality"
     assert cfg["max_tool_rounds"] == 8 and cfg["timeout_s"] == 120
     assert cfg["endpoint_file"] == "llm/endpoint.json"
+    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 5}
+    root = "/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender"
+    assert cfg["ollama_bin_dir"] == f"{root}/bin/ollama"
+    assert cfg["ollama_models_dir"] == f"{root}/models/ollama"
+    assert cfg["ollama_home_dir"] == f"{root}/ollama_home"
 
 
 def test_no_endpoint_means_unavailable_with_the_start_command(paths):
