@@ -29,7 +29,7 @@ reasoning_effort: "none"
 blurb:
   model: quality
   max_words: 90
-  prompt_version: 5              # part of the prompt: bump to invalidate every cached blurb
+  prompt_version: 6              # part of the prompt: bump to invalidate every cached blurb
                                   # v2: states the word cap explicitly and targets 40-60 words,
                                   # so a reply naturally lands under gate's max_words cutoff
                                   # v3: owner decision -- exactly two sentences, no quotation
@@ -41,3 +41,9 @@ blurb:
                                   # v5: exactly three sentences: goal; success/failure; one
                                   # finding or "No notable findings were logged." The gate
                                   # enforces three complete sentences; word cap is 90.
+                                  # v6: abbreviations verbatim, never expanded; numbers never as
+                                  # words; gate adds number-word and unknown-acronym rules. Audit
+                                  # of the 2026-09-15 v5 backfill found AE->aeroelastic,
+                                  # EHO->edge helical, QH->quasi-high, FPP->flat pressure profile,
+                                  # PCS->power control system, betan->poloidal beta, V.s->volts,
+                                  # and spelled-out numerals.

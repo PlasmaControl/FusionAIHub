@@ -58,7 +58,7 @@ def test_llm_yaml_matches_the_shape_the_client_reads():
     assert cfg["default"] == "quality"
     assert cfg["max_tool_rounds"] == 8 and cfg["timeout_s"] == 120
     assert cfg["endpoint_file"] == "llm/endpoint.json"
-    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 5}
+    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 6}
     root = "/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender"
     assert cfg["ollama_bin_dir"] == f"{root}/bin/ollama"
     assert cfg["ollama_models_dir"] == f"{root}/models/ollama"
