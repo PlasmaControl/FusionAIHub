@@ -194,21 +194,50 @@ const toggle = all(section).find(n => n.tag === 'button');
 toggle.events.click(event); assert.equal(text(toggle), 'Show less');
 toggle.events.click(event); assert.equal(text(toggle), 'Show all');
 run(`renderShot({description: 'NEVER_PARSE_OR_DISPLAY_THIS', units: {ip_mean: 'A'},
- record: {shot: 199607, summary: 'Goal. Outcome. Finding.', segments: [
+ record: {shot: 199607, blurb: 'Goal. Outcome. Finding.', blurb_source: 'template', segments: [
  {name: 'flat_top', t0_ms: 1321, t1_ms: 1792, raw: {ip_mean: 892400}}]},
  describe_parts: {header: 'Shot 199607.', scalars: [{name:'ip_mean', value:892400, units:'A'}],
  segment:{name:'flat_top',t0_s:1.321,t1_s:1.792}, labels:{}, outcome:{}, phenomena:[], caveats:[]}})`);
 const shot = targets['#shot-record'];
 assert.equal(shot.children[0].attrs.class, 'summary-block');
+assert(text(shot.children[0]).includes('Goal. Outcome. Finding.'));
+assert.equal(text(byClass(shot.children[0], 'blurb-auto')[0]), 'auto');
 assert(text(shot).includes('8.924e5 A')); assert(text(shot).includes('1.321–1.792 s'));
 assert(!text(shot).includes('NEVER_PARSE'));
-run(`renderShot({record: {summary:null, segments:[]}})`);
+run(`renderShot({record: {blurb:null, blurb_source:'template', segments:[]}})`);
 assert.equal(byClass(shot, 'summary-block').length, 0);
 run(`api = async () => ({data: {record: {human: {}}}})`);
-const results = run(`resultsTable([{shot:199607, score:.945678, summary:'Offline summary', caveats:[]}], 'flat_top')`);
+const results = run(`resultsTable([{shot:199607, score:.945678, blurb:'Offline summary', blurb_source:'llm', caveats:[]}], 'flat_top')`);
 assert(text(results).includes('Summary')); assert(!text(results).includes('Quote'));
 assert(text(results).includes('199607')); assert(text(results).includes('0.9457'));
-const hit = run(`renderHit({shot:199607, score:.5, phenomenon:'tearing', summary:'Offline summary', intervals:[
+assert(text(results).includes('Offline summary')); assert.equal(byClass(results, 'blurb-auto').length, 0);
+for (const source of ['llm', 'template', null, undefined, '']) {
+  const row = JSON.stringify({shot:199607, blurb:'Stored summary', blurb_source:source, segments:[]});
+  run(`renderShot({record: ${row}})`);
+  const cell = run(`resultsTable([${row}], 'flat_top')`);
+  const located = run(`renderHit(${row}, 'flat_top')`);
+  for (const root of [shot.children[0], cell, located]) {
+    assert(text(root).includes('Stored summary'));
+    const tags = byClass(root, 'blurb-auto');
+    assert.equal(tags.length, source === 'template' ? 1 : 0);
+    if (tags.length) {
+      assert.equal(text(tags[0]), 'auto');
+      assert(tags[0].attrs.class.includes('muted'));
+      assert(tags[0].attrs.class.includes('small'));
+      assert.equal(tags[0].attrs.title, 'Deterministic header + outcome; no model summary yet');
+    }
+  }
+}
+for (const blurb of [null, undefined, '', '  \t\n']) {
+  const row = JSON.stringify({shot:199607, blurb, blurb_source:'template', segments:[]});
+  run(`renderShot({record: ${row}})`);
+  assert.equal(byClass(shot, 'summary-block').length, 0);
+  const cell = byClass(run(`resultsTable([${row}], 'flat_top')`), 'summary-cell')[0];
+  assert.equal(text(cell), '—');
+  assert.equal(byClass(cell, 'blurb-auto').length, 0);
+  assert.equal(byClass(run(`renderHit(${row}, 'flat_top')`), 'blurb-auto').length, 0);
+}
+const hit = run(`renderHit({shot:199607, score:.5, phenomenon:'tearing', blurb:'Offline summary', blurb_source:'llm', intervals:[
  {source:'detector', evidence_kind:'detector', t0_s:1.32123, t1_s:1.79221, confidence:.945678}]}, 'flat_top')`);
 assert(text(hit).includes('Offline summary'));
 const bar = byClass(hit, 'mark')[0];

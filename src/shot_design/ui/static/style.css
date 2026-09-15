@@ -50,6 +50,9 @@ tr.clickable:hover { background: var(--soft); }
 .shot-number { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 td.shot-number { min-width: 8ch; width: 8ch; }
 .summary-cell { min-width: 200px; width: 28%; }
+.blurb-text { display: flex; align-items: flex-start; gap: 6px; }
+.blurb-text .long-text { flex: 1; min-width: 0; }
+.blurb-auto { flex: none; margin-top: 2px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
 .prose, pre { white-space: pre-wrap; overflow-wrap: anywhere; }

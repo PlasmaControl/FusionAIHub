@@ -1,4 +1,6 @@
-"""Read-only summary slots and structured descriptions; all tables live in tmp_path."""
+"""Stored blurbs and structured descriptions; all tables live in tmp_path."""
+
+import json
 
 import pandas as pd
 import pytest
@@ -12,57 +14,88 @@ from .test_describe import entries, record
 from .test_phenomena import _db_with, _event
 from .test_ui import client, local_auxiliary_paths  # noqa: F401
 
-
-def write_summaries(db_dir, **over):
-    values = {
-        "shot": pd.Series([100], dtype="int32"),
-        "summary": ["Reach H-mode. Target met. An EHO appeared."],
-        "goal": ["Reach H-mode."], "outcome": ["Target met."],
-        "findings": ["An EHO appeared."], "model": ["offline-model"],
-        "prompt_version": [1], "written_at": ["2026-09-15T00:00:00Z"],
-    }
-    values.update(over)
-    pd.DataFrame(values).to_parquet(db_dir / "summaries.parquet", index=False)
+BLURB = "Reach H-mode. Target met. An EHO appeared."
 
 
-def test_absent_summary_is_none_on_records_search_and_locate(ideate_db):
-    db = _db_with(ideate_db, [_event(100, "observed")])
-    assert db.get(100).summary is None
-    assert rank.search(schema.QueryState(ref_shot=101), db).items[0].summary is None
-    assert phenomena.locate("tearing", db)[0].summary is None
-    assert schema.SearchHit(shot=100, phenomenon="tearing", score=1).summary is None
+def write_blurb(db_dir, value=BLURB, source="llm"):
+    table = pd.read_parquet(db_dir / "shots.parquet")
+    table["record_json"] = table["record_json"].map(lambda raw: json.dumps({
+        **json.loads(raw), "blurb": "Stale build-time text.", "blurb_source": "template",
+    }))
+    table["blurb"] = pd.Series(index=table.index, dtype="string")
+    table["blurb_source"] = pd.Series(index=table.index, dtype="string")
+    table["blurb_model"] = "private-model-provenance"
+    table["blurb_prompt_version"] = 5
+    table.loc[100, ["blurb", "blurb_source"]] = [value, source]
+    table.to_parquet(db_dir / "shots.parquet")
 
 
-def test_summary_table_is_joined_by_shot_without_mutating_stored_records(ideate_db):
-    db_dir = ideate_db / "db"
-    before = (db_dir / "shots.parquet").read_bytes()
+def assert_blurb_fields(row, value, source):
+    fields = row if isinstance(row, dict) else row.model_dump(mode="json")
+    assert fields["blurb"] == value
+    assert fields["blurb_source"] == source
+    assert not {"summary", "summaries", "blurb_model", "blurb_prompt_version"} & fields.keys()
+    if not isinstance(row, dict):
+        assert not hasattr(row, "summary") and not hasattr(row, "summaries")
+
+
+def test_absent_blurb_is_none_on_records_search_and_locate(ideate_db):
     _db_with(ideate_db, [_event(100, "observed")])
-    write_summaries(db_dir)
+    write_blurb(ideate_db / "db")
+    pd.read_parquet(ideate_db / "db/shots.parquet").drop(
+        columns=["blurb", "blurb_source"],
+    ).to_parquet(
+        ideate_db / "db/shots.parquet"
+    )
+    db = ShotDB.load(ideate_db / "db")
+    for row in (db.get(100), rank.search(schema.QueryState(ref_shot=101), db).items[0],
+                phenomena.locate("tearing", db)[0],
+                schema.SearchHit(shot=100, phenomenon="tearing", score=1)):
+        assert_blurb_fields(row, None, None)
+
+
+@pytest.mark.parametrize("source", ["llm", "template", None])
+def test_blurb_columns_reach_records_search_and_locate_without_writes(ideate_db, source):
+    db_dir = ideate_db / "db"
+    _db_with(ideate_db, [_event(100, "observed")])
+    write_blurb(db_dir, source=source)
+    before = (db_dir / "shots.parquet").read_bytes()
     db = ShotDB.load(db_dir)
-    summary = "Reach H-mode. Target met. An EHO appeared."
-    assert db.get(100).summary == summary
-    assert db.get(101).summary is None
-    assert db.summaries.iloc[0]["model"] == "offline-model"
-    assert next(h for h in rank.search(schema.QueryState(ref_shot=101), db).items
-                if h.shot == 100).summary == summary
-    assert phenomena.locate("tearing", db)[0].summary == summary
+    hit = next(h for h in rank.search(schema.QueryState(ref_shot=101), db).items
+               if h.shot == 100)
+    for row in (db.get(100), hit, phenomena.locate("tearing", db)[0]):
+        assert_blurb_fields(row, BLURB, source)
+    assert_blurb_fields(db.get(101), None, None)
+    assert not hasattr(db, "summary") and not hasattr(db, "summaries")
+    assert "summaries" not in db.load_errors
     assert (db_dir / "shots.parquet").read_bytes() == before
     tools.reset_cache()
-    assert tools.describe_shot(100)["summary"] == summary
-    assert tools.describe_shot(100)["record"]["summary"] == summary
+    reply = tools.describe_shot(100)
+    assert_blurb_fields(reply, BLURB, source)
+    assert_blurb_fields(reply["record"], BLURB, source)
+    assert schema.SearchHit is schema.PhenomenonHit
 
 
-@pytest.mark.parametrize("value", [None, ""])
-def test_null_or_empty_summary_is_none(ideate_db, value):
-    write_summaries(ideate_db / "db", summary=[value])
-    assert ShotDB.load(ideate_db / "db").get(100).summary is None
+@pytest.mark.parametrize("value", [None, float("nan"), pd.NA, "", "  \t\n"])
+def test_null_or_empty_blurb_fields_are_none(ideate_db, value):
+    write_blurb(ideate_db / "db", value=value, source=value)
+    assert_blurb_fields(ShotDB.load(ideate_db / "db").get(100), None, None)
 
 
-def test_corrupt_summary_table_does_not_hide_core_records(ideate_db):
-    (ideate_db / "db/summaries.parquet").write_bytes(b"torn parquet")
-    db = ShotDB.load(ideate_db / "db")
-    assert db.get(100).summary is None
-    assert "summaries" in db.load_errors
+@pytest.mark.parametrize("column", ["blurb", "blurb_source"])
+def test_missing_blurb_column_never_uses_record_json(ideate_db, column):
+    write_blurb(ideate_db / "db")
+    path = ideate_db / "db/shots.parquet"
+    pd.read_parquet(path).drop(columns=[column]).to_parquet(path)
+    rec = ShotDB.load(ideate_db / "db").get(100)
+    assert_blurb_fields(rec, None if column == "blurb" else BLURB,
+                        None if column == "blurb_source" else "llm")
+
+
+def test_record_rejects_unknown_blurb_source():
+    data = record().model_dump(mode="json")
+    with pytest.raises(ValueError, match="blurb_source"):
+        schema.ShotRecord.model_validate({**data, "blurb_source": "unknown"})
 
 
 @pytest.mark.parametrize("column,unit", [
@@ -82,7 +115,7 @@ def test_parts_preserve_raw_values_units_and_one_complete_attributed_quote():
                                ("CHIEF_OPERATOR", "b", "10:05", "Other note.")))
     parts = describe.describe_parts(rec)
     assert parts["header"] == "Shot 161172 (2015-01-13)."
-    assert parts["summary"] is None
+    assert parts["blurb"] is None and parts["blurb_source"] is None
     assert parts["segment"] == {"name": "flat_top", "t0_s": .5295, "t1_s": 5.199}
     scalars = {s["name"]: s for s in parts["scalars"]}
     assert scalars["ip_mean"] == {"name": "ip_mean", "value": 985281.3, "units": "A"}
@@ -121,19 +154,23 @@ def test_parts_separate_forecasts_and_bound_observed_intervals(ideate_db):
     assert describe.describe_parts(db.get(100), db=db) == parts
 
 
-def test_shot_api_adds_parts_units_and_optional_summary(client, ideate_db):  # noqa: F811
-    write_summaries(ideate_db / "db")
+@pytest.mark.parametrize("value,source", [
+    (BLURB, "llm"), (BLURB, "template"), (BLURB, None), (None, None),
+])
+def test_shot_search_locate_apis_carry_stored_blurb_fields(
+    client, ideate_db, value, source,  # noqa: F811
+):
+    _db_with(ideate_db, [_event(100, "observed")])
+    write_blurb(ideate_db / "db", value=value, source=source)
     tools.reset_cache()
     data = client.get("/api/shot/100").json()
-    assert data["summary"] == data["record"]["summary"] == data["describe_parts"]["summary"]
+    for row in (data, data["record"], data["describe_parts"]):
+        assert_blurb_fields(row, value, source)
     assert data["units"]["ip_mean"] == "A"
     assert data["description"] == tools.describe_shot(100)["description"]
     assert data["describe_parts"]["scalars"]
-
-
-def test_bad_summary_table_is_reported_by_shot_api(client, ideate_db):  # noqa: F811
-    (ideate_db / "db/summaries.parquet").write_bytes(b"broken")
-    tools.reset_cache()
-    data = client.get("/api/shot/100").json()
-    assert data["summary"] is None
-    assert any("summaries.parquet" in c for c in data["caveats"])
+    results = client.post("/api/search", json={"ref_shot": 101}).json()["results"]
+    hit = next(row for row in results if row["shot"] == 100)
+    assert_blurb_fields(hit, value, source)
+    located = client.get("/api/locate", params={"phenomenon": "tearing"}).json()
+    assert_blurb_fields(next(row for row in located if row["shot"] == 100), value, source)

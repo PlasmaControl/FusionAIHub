@@ -336,8 +336,6 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
     from ..retrieval import describe as describe_mod
 
     rec = db.get(shot)
-    if "summaries" in db.load_errors:
-        caveats.append(f"summaries.parquet unavailable: {db.load_errors['summaries']}")
     if rec.segment(seg) is None:
         caveats.append(f"shot {shot} has no {seg} segment; the description falls back to `full`")
     codes = _frame_codes(shot, caveats)
@@ -345,7 +343,8 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
         "shot": shot,
         "segment": seg,
         "description": describe_mod.describe(rec, seg, db=db),
-        "summary": rec.summary,
+        "blurb": rec.blurb,
+        "blurb_source": rec.blurb_source,
         "record": rec.model_dump(mode="json"),
         "frame_codes": codes,
         "caveats": caveats,

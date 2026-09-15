@@ -543,15 +543,16 @@ and require/avoid labels. Search scores come from `search_shots`; titles come fr
 `describe_shot`. The results table has a Summary column in place of the quote.
 Both replies' caveats stay available in the result row.
 
-The summary slot reads optional `<db_dir>/summaries.parquet`, one row per shot:
-`shot` (int32), `summary`, `goal`, `outcome`, `findings`, `model`, `written_at`
-(strings), and `prompt_version` (integer). An offline follow-up process supplies
-three short sentences: goal, outcome, and finding. The browser never generates
-summaries. A missing table, shot row, null or blank summary yields `None` in the
-record and search/Locate hits, displayed as `—`; the shot's Summary block is hidden.
-An unreadable or invalid table leaves the core database usable and reports the
-summary error. `ShotDB` loads this table as part of its read-only snapshot; restart
-the server after publishing a replacement table.
+Summary uses the existing `blurb` and `blurb_source` columns in `shots.parquet`.
+The record, search results and Locate hits all carry both fields. When
+`blurb_source != "llm"`, a small muted **auto** tag appears next to the text;
+template blurbs contain the factual header + outcome line. The offline
+`shot_design blurb --all` pipeline writes LLM text into the same column, so a
+three-sentence blurb needs no UI or table changes. The browser never generates
+text. Missing columns, nulls or blank text yield `None`, displayed as `—` in
+results; the shot Summary block is hidden when there is no text. No separate
+summary table is loaded. Restart the UI after backfilling `shots.parquet` to load
+the updated snapshot.
 
 Shot starts with the available summary, followed by server-built `describe_parts`:
 header, selected segment's scalar grid, labels, outcome, one complete attributed
@@ -589,12 +590,15 @@ Locate hits show summaries, intervals, duration and caveats, and open Shot with 
 phenomenon selected.
 
 `/api/search` and `/api/shot/{shot}/events` preserve the MCP tool JSON.
-`/api/shot/{shot}` retains `description`, `record`, `summary`, `frame_codes` and
-`caveats`, adding `units: {scalar_column: unit_string}` for all stored segments and:
+`/api/shot/{shot}` retains `description`, `record`, `frame_codes` and
+`caveats`, and exposes `blurb` and `blurb_source` both at top level and in `record`.
+`/api/search` rows and `SearchHit` also carry `blurb` and `blurb_source`. The shot
+response adds `units: {scalar_column: unit_string}` for all stored segments and:
 
 ```text
 describe_parts: {
-  summary: string | null,
+  blurb: string | null,
+  blurb_source: string | null,
   header: string,
   segment: {name, t0_s, t1_s} | null,
   scalars: [{name, value: number | null, units: string}],

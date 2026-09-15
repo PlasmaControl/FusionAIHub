@@ -98,7 +98,8 @@ class Outcome(BaseModel):
 class ShotRecord(BaseModel):
     schema_version: str = "1"
     shot: int
-    summary: str | None = None  # optional offline summaries.parquet slot
+    blurb: str | None = None  # offline text from shots.parquet
+    blurb_source: Literal["llm", "template"] | None = None
     shot_date: date | None = None
     campaign: str
     segments: list[Segment]
@@ -233,10 +234,10 @@ class ResultItem(BaseModel):
     segment: SegName
     score: float
     description: str
-    summary: str | None = None
     caveats: list[str] = Field(default_factory=list)
     polished: bool = False
-    blurb: str | None = None  # the offline two-sentence summary from shots.parquet
+    blurb: str | None = None  # the offline summary from shots.parquet
+    blurb_source: Literal["llm", "template"] | None = None
     explanation: Explanation = Field(default_factory=Explanation)
     flags: list[Flag] = Field(default_factory=list)
     labels: Labels = Field(default_factory=Labels)
@@ -311,7 +312,8 @@ class PhenomenonHit(BaseModel):
     # in the record) are three different ways of saying the database cannot tell you.
     coverage_state: Literal["unindexed", "unprocessed", "uncovered", "observed"] | None = None
     quote: str | None = None
-    summary: str | None = None
+    blurb: str | None = None
+    blurb_source: Literal["llm", "template"] | None = None
     quote_role: str | None = None
     text_snippets: list[str] = Field(default_factory=list)
     actuators_at_onset: dict[str, float | None] = Field(default_factory=dict)
