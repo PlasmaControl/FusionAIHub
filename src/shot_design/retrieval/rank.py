@@ -542,15 +542,6 @@ def search(q: QueryState, db: ShotDB, cfg: dict | None = None) -> SearchResult:
     return SearchResult(items, rankings, proposal)
 
 
-def _blurb(db: ShotDB, shot: int) -> str | None:
-    """The stored offline blurb, or None -- for a database built before there were any, and for a
-    row an `add()` onto such a database left empty (a float NaN, not a string)."""
-    if "blurb" not in db.shots.columns:
-        return None
-    value = db.shots.loc[shot, "blurb"]
-    return value if isinstance(value, str) and value else None
-
-
 def _item(
     seg_id: str,
     score: float,
@@ -572,7 +563,8 @@ def _item(
         description=description,
         caveats=db.label_filter_shot_caveats(shot, q.segment, q.avoid_labels),
         explanation=explain(q, db, seg_id, ranks, scales, q_vals=q_vals),
-        blurb=_blurb(db, shot),
+        blurb=rec.blurb,
+        blurb_source=rec.blurb_source,
         flags=flags,
         labels=rec.labels or Labels(),
         outcome=rec.outcome or Outcome(),

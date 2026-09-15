@@ -102,7 +102,11 @@ def test_transport_does_not_drop_new_fields_or_coerce_values(client, monkeypatch
 def test_shot_is_tool_json(client, shot, segment):
     response = client.get(f"/api/shot/{shot}", params={"segment": segment})
     assert response.status_code == 200
-    assert response.json() == wire(tools.describe_shot(shot, segment))
+    payload = response.json()
+    if "error" not in payload:
+        assert payload.pop("describe_parts")["header"].startswith(f"Shot {shot}")
+        assert isinstance(payload.pop("units"), dict)
+    assert payload == wire(tools.describe_shot(shot, segment))
 
 
 @pytest.fixture
@@ -232,7 +236,8 @@ def test_static_assets_and_three_views(client):
     parser = Assets()
     parser.feed(response.text)
     assert {"view-search", "view-shot", "view-locate"} <= parser.ids
-    assert "forecasts — a model's risk estimate, not an observation" in response.text
+    assert "Forecasts (model estimates)" in response.text
+    assert "<h1>Shot Designer</h1>" in response.text
     assert parser.paths
     for path in parser.paths:
         assert ":" not in path and not path.startswith("//")
