@@ -210,6 +210,7 @@ def test_events_domain_uses_record_segments_not_coverage(
         assert response.status_code == 200
         payload = response.json()
         assert payload.pop("domain") == expected
+        assert isinstance(payload.pop("phenomena"), list)
         assert payload == tools.get_events(100, **params)
         if not params:  # The EHO filter correctly excludes actuator coverage.
             coverage = payload["coverage"]["sources"][0]

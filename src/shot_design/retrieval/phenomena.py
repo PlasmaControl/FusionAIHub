@@ -913,17 +913,23 @@ def evidence(
     shot: int,
     ph: str | Phenomenon,
     db,
-    segment: str = "flat_top",
+    segment: str | None = "flat_top",
     *,
     min_confidence: float = 0.0,
     label_floor: float | None = None,
     shot_metadata: Mapping | None = None,
+    window: tuple[float | None, float | None] | None = None,
+    event_rows: Sequence[Mapping] | None = None,
 ) -> Evidence:
     """Every class of evidence for one phenomenon on one shot, kept apart and never merged.
 
     `segment` is the window the observed intervals and the forecasts are clipped to; a shot with
     no such segment is searched whole and says so in a caveat, because silently widening the
     window would make a ramp-down ELM answer a question about the flat top.
+    With `segment=None`, use the explicit `window`, or the whole shot if omitted.
+    Either explicit bound can be None; coverage ends at the recorded span there.
+    `event_rows` lets the HTTP timeline classify its already filtered events through
+    these same registry rules. Coverage, labels and named claims still use the DB.
 
     `min_confidence` drops events below the bar. A row whose source recorded NO confidence is
     kept when the bar is 0 and dropped above it -- it cannot be shown to clear a bar it was never
@@ -944,12 +950,19 @@ def evidence(
         )
     if label_floor is None:
         label_floor = _config()[2]
-    window = _window(db, shot, segment)
+    if segment is not None:
+        window = _window(db, shot, segment)
+    coverage_window = window
+    if window is not None:
+        # Infinite overlap bounds simplify interval selection, but are not an
+        # infinite coverage request: keep the omitted edges for coverage below.
+        window = (float("-inf") if window[0] is None else window[0],
+                  float("inf") if window[1] is None else window[1])
     caveats: list[str] = []
-    if window is None:
+    if window is None and segment is not None:
         caveats.append(NO_SEGMENT.format(segment=segment))
 
-    rows = db.evidence_rows('events', shot)
+    rows = db.evidence_rows('events', shot) if event_rows is None else event_rows
     intervals: list[Interval] = []
     refs: list[EventRef] = []
     forecasts: list[Interval] = []
@@ -1013,7 +1026,7 @@ def evidence(
         )
     caveats.extend(dict.fromkeys(rule_caveats))
     state, coverage, cov_windows, partial, cov_caveats = _coverage_for(
-        db, shot, ph, window, segment
+        db, shot, ph, coverage_window, segment or "requested"
     )
     caveats.extend(cov_caveats)
     caveats.extend(
