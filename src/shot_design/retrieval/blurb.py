@@ -1,9 +1,9 @@
-"""The two-sentence summary that leads every result card.
+"""The three-sentence summary that leads every result card.
 
 Written once, offline, from the shot's own text (mini-proposal title and purpose, run title,
 the shot brief, the operators' entries, the outcome), stored in shots.parquet, and gated: a
 blurb may not state a number or a shot number that is absent from its source, may not contain a
-quotation mark, and may not run longer than the configured word cap. It is a plain-language
+quotation mark, must have three complete sentences, and must fit the word cap. It is a plain-language
 summary in the model's own words, not a quotation: the blurb does not quote the operators --
 the card's "more" section already shows a verbatim operator quote (`describe.best_quote`), so
 faithfulness there is that function's job, not this one's. Fail the gate and the template
@@ -31,23 +31,19 @@ _WS = re.compile(r"\s+")
 
 
 def _system(max_words: int) -> str:
-    """The system prompt: exactly two plain sentences, no quotes, no invented numbers.
-
-    Owner's decision (2026-09-06): this is a find-your-shot summary, not a quoted excerpt --
-    "i just want a 2 sentence summary of the shot. dont overcomplicate." So the prompt asks for
-    two sentences only (what the experiment/shot set out to do, then how it went), in the
-    model's own words, with no quotation marks at all -- a verbatim operator quote already has
-    its own place on the card (`describe.best_quote`), so the blurb is not the place fabrication
-    or splicing could hide behind a quote mark.
-    """
+    """Prompt v5: goal, success/failure, then one finding or the literal no-findings sentence."""
     return (
         "You summarise DIII-D tokamak shots for physicists scanning a list of past shots to find "
-        "one worth looking at. Write exactly two plain sentences: the first says what the "
-        "experiment or this shot set out to do, the second says how it went. Use only the text "
-        "given. Do not invent or round numbers; prefer no numbers at all. Do not use quotation "
+        "one worth looking at. Write exactly three plain sentences: the first says what the "
+        "experiment or this shot set out to do; the second says whether it succeeded "
+        "(say when success is unknown); the third gives one interesting finding from the "
+        "operator entries or shot brief. When nothing notable is recorded, the third sentence "
+        "must be exactly: No notable findings were logged. "
+        "Use only the text given. Do not invent or round numbers; prefer no numbers at all. "
+        "Do not use quotation "
         "marks -- write in your own words, never quote the operators. If the shot ended in a "
         "disruption, a fast current quench or was terminated early, the second sentence must say "
-        "so plainly. No headings, no lists, no preamble, no more than two sentences, and never "
+        "so plainly. No headings, no lists, no preamble, exactly three sentences, and never "
         f"more than {max_words} words."
     )
 
@@ -56,6 +52,7 @@ class Blurb(BaseModel):
     text: str
     source: Literal["llm", "template"]
     reason: str | None = None
+    candidate: str | None = None  # kept for dry-run inspection, including a rejected reply
 
 
 def _norm(s: str) -> str:
@@ -112,10 +109,17 @@ def gate(source: str, candidate: str, rec: ShotRecord, max_words: int) -> str | 
     # to the one check that matches what extract_facts actually hands back.
     if not set(nums) <= set(src_nums):
         return f"number not in source: {sorted(set(nums) - set(src_nums))}"
+    # Count terminator groups followed by whitespace/end; decimal points stay inside words.
+    # Unit abbreviations such as "kA." terminate a sentence here. No NLP dependency is needed.
+    sentences = len(re.findall(r"[.!?]+(?=\s|$)", candidate))
+    if sentences != 3 or not candidate.rstrip().endswith((".", "!", "?")):
+        return f"expected exactly three complete sentences (found {sentences} terminators)"
     return None
 
 
-def make(rec: ShotRecord, client, cfg: dict | None = None) -> Blurb:
+def make(
+    rec: ShotRecord, client, cfg: dict | None = None, *, cache: bool | None = None,
+) -> Blurb:
     """The blurb for one record: the model's sentences when they pass the gate, else the template
     with the reason kept. `client` is an LLMClient or None.
 
@@ -125,7 +129,7 @@ def make(rec: ShotRecord, client, cfg: dict | None = None) -> Blurb:
     tightened gate or a re-generated blurb could not change a stored answer without a hand-deleted
     directory.
     """
-    bcfg = (cfg or config.load_yaml("llm.yaml"))["blurb"]
+    bcfg = (cfg or getattr(client, "cfg", None) or config.load_yaml("llm.yaml"))["blurb"]
     if client is None or not client.available()[0]:
         return Blurb(text=fallback(rec), source="template", reason="no model")
     src = source_text(rec)
@@ -143,6 +147,7 @@ def make(rec: ShotRecord, client, cfg: dict | None = None) -> Blurb:
             ],
             model=bcfg["model"],
             max_tokens=220,
+            cache=cache,
         )
         candidate = _norm(reply.content)
         reason = gate(src, candidate, rec, max_words)
@@ -150,5 +155,5 @@ def make(rec: ShotRecord, client, cfg: dict | None = None) -> Blurb:
         candidate, reason = "", f"model error: {type(exc).__name__}"
         _log.warning("blurb for shot %s fell back: %s", rec.shot, exc)
     if reason is None:
-        return Blurb(text=candidate, source="llm")
-    return Blurb(text=fallback(rec), source="template", reason=reason)
+        return Blurb(text=candidate, source="llm", candidate=candidate)
+    return Blurb(text=fallback(rec), source="template", reason=reason, candidate=candidate)

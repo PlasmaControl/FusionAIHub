@@ -58,6 +58,7 @@ SHOT_COLS = (
     "shot", "shot_date", "campaign", "run_id", "mpid", "mp_title", "verdict", "regime",
     "regime_source", "operational", "ip_target_hit", "end_reason", "n_segments",
     "coverage_fraction", "text_mp", "text_log", "record_json", "blurb", "blurb_source",
+    "blurb_model", "blurb_prompt_version",
     "reader", "groups_filled", "has_bes", "has_co2", "has_ece", "has_filterscopes", "has_mhr",
     "has_mirnov", "feature_resolvers", "has_frame_codes",
 )  # fmt: skip
@@ -518,6 +519,8 @@ def records_to_tables(
     shots_df = (
         pd.DataFrame(shot_rows).set_index("shot", drop=False) if shot_rows else _empty_shots()
     )
+    # Nullable integers survive an add to a legacy table whose retained rows have no version.
+    shots_df["blurb_prompt_version"] = shots_df["blurb_prompt_version"].astype("Int64")
     if seg_rows:
         segments_df = pd.DataFrame(seg_rows).set_index("id")
         feature_cols = [c for c in segments_df.columns if c not in ID_COLS]
@@ -556,6 +559,7 @@ def _shot_row(rec: ShotRecord, blurb_client=None) -> dict:
         "record_json": rec.model_dump_json(),
         "blurb": b.text,
         "blurb_source": b.source,
+        **{f"blurb_{k}": v for k, v in _blurb_provenance(blurb_client).items()},
         # Which raw layer this row was built from, and what it saw there. `groups_filled` counts
         # every group the reader listed, not only the six that get a column of their own.
         "reader": rec.reader,
@@ -573,7 +577,9 @@ def _shot_row(rec: ShotRecord, blurb_client=None) -> dict:
 
 
 def _empty_shots() -> pd.DataFrame:
-    return pd.DataFrame(columns=list(SHOT_COLS)).set_index(pd.Index([], name="shot"))
+    return pd.DataFrame(columns=list(SHOT_COLS)).set_index(pd.Index([], name="shot")).astype(
+        {"blurb_prompt_version": "Int64"}
+    )
 
 
 def _scalar_matrix(
@@ -793,31 +799,78 @@ def _blurb_client():
     return client if client.available()[0] else None
 
 
-def _blurb_counts(shots_df: pd.DataFrame) -> dict[str, int]:
+def _blurb_provenance(client=None) -> dict[str, str | int]:
+    """Configuration used for this pass, including when a row falls back to a template."""
+    cfg = client.cfg if client is not None else config.load_yaml("llm.yaml")
+    key = cfg["blurb"]["model"]
+    return {
+        "model": str(cfg["models"].get(key, key)),
+        "prompt_version": int(cfg["blurb"]["prompt_version"]),
+    }
+
+
+def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, str | int]:
     col = shots_df["blurb_source"] if "blurb_source" in shots_df.columns else pd.Series(dtype=str)
-    return {k: int(col.eq(k).sum()) for k in ("llm", "template")}
+    return {
+        **{k: int(col.eq(k).sum()) for k in ("llm", "template")},
+        **_blurb_provenance(client),
+    }
 
 
-def write_blurbs(paths: config.Paths, client, only_missing: bool = True) -> int:
+def write_blurbs(
+    paths: config.Paths, client, only_missing: bool = True, *,
+    limit: int | None = None, dry_run: bool = False,
+) -> int:
     """Backfill blurbs into shots.parquet with the model; rewrite the file atomically.
-    Returns how many rows the model wrote. `only_missing` skips rows already from the model."""
+    Return the number of accepted model replies. Select templates, empty blurbs and stale or
+    unknown prompt versions in shot order, then apply `limit`. Dry runs print each candidate,
+    gate verdict and final text without writing database files or the client's request cache.
+    """
     from ..retrieval import blurb as _blurb
     from .store import ShotDB
 
+    if limit is not None and limit < 0:
+        raise ValueError("blurb limit must be non-negative")
+    provenance = _blurb_provenance(client)
     db = ShotDB.load(paths.db_dir)
     df = db.shots.copy()
-    if "blurb" not in df.columns:
-        df["blurb"], df["blurb_source"] = "", "template"
-    todo = df.index if not only_missing else df.index[df["blurb_source"] != "llm"]
+    for col, default in (("blurb", ""), ("blurb_source", "template"), ("blurb_model", None)):
+        if col not in df:
+            df[col] = default
+    versions = df.get("blurb_prompt_version", pd.Series(index=df.index, dtype="Int64"))
+    df["blurb_prompt_version"] = pd.to_numeric(versions, errors="coerce").astype("Int64")
+    missing = (
+        df["blurb_source"].fillna("template").ne("llm")
+        | df["blurb"].fillna("").str.strip().eq("")
+        | df["blurb_prompt_version"].fillna(0).lt(provenance["prompt_version"])
+    )
+    todo = (df.index[missing] if only_missing else df.index).sort_values()
+    if limit is not None:
+        todo = todo[:limit]
+    if not len(todo):
+        return 0
     n = 0
     for shot in todo:
-        b = _blurb.make(db.get(int(shot)), client)
-        df.loc[shot, ["blurb", "blurb_source"]] = [b.text, b.source]
+        rec = db.get(int(shot))
+        b = _blurb.make(rec, client, cache=False if dry_run else None)
+        if dry_run:
+            verdict = "PASS" if b.reason is None else f"FAIL ({b.reason})"
+            print(
+                f"Shot {shot}\nSource text: {len(_blurb.source_text(rec))} chars\n"
+                f"Candidate: {b.candidate or '(none)'}\nGate: {verdict}\n"
+                f"Final ({b.source}): {b.text}\n"
+            )
+        else:
+            df.loc[shot, ["blurb", "blurb_source", "blurb_model", "blurb_prompt_version"]] = [
+                b.text, b.source, provenance["model"], provenance["prompt_version"],
+            ]
         n += int(b.source == "llm")
+    if dry_run:
+        return n
     tmp = paths.db_dir / "shots.parquet.part"
     df.to_parquet(tmp)
     os.replace(tmp, paths.db_dir / "shots.parquet")
-    counts = _blurb_counts(df)
+    counts = _blurb_counts(df, client)
     # The manifest's counts are what `build()` and `add()` write and what a reader consults to see
     # how much of the database the model wrote; leaving them behind would have a fully backfilled
     # database still claiming 0 llm blurbs. Written the same way as the parquet: tmp + replace.
