@@ -1,7 +1,7 @@
 """What the operators call each phenomenon, and how a phrase becomes a hit.
 
 `lexicons.yaml` is the list of names - the single source of the round-1
-phenomenon ids and their aliases, read by ideate as well as by labelmaker
+phenomenon ids and their aliases, read by shot_design as well as by labeler
 (plan 5.6) - and this module is its reader and its matcher. Nothing here
 knows where text comes from: `hits` takes TEXT, not a shot or a path, so
 the corpus can be swapped under it without touching a line of the matching
@@ -27,7 +27,7 @@ import yaml
 #: Plan 5.6's round-1 ids, and the ids added since: `transient`, the three
 #: `qmin_*` rule labels and the `fast_ion` topic. The lexicon may not name
 #: anything else: a phenomenon id is a join key against labels, events and
-#: ideate's `phenomena.yaml`, and a typo that loads silently is a
+#: shot_design's `phenomena.yaml`, and a typo that loads silently is a
 #: phenomenon that quietly has no evidence.
 #:
 #: The three `qmin_*` ids are `events/heuristics.py`'s q-min regime bands
@@ -44,7 +44,7 @@ import yaml
 #: make a diagnostic name and a transport topic resolve to a mode
 #: observation, and every consumer that reads an `ae` hit as "this shot had
 #: an Alfven eigenmode" would then be reading a topic match. `fast_ion` is
-#: a TOPIC: no detector writes it, no model scores it, and ideate's
+#: a TOPIC: no detector writes it, no model scores it, and shot_design's
 #: registry gives it text evidence only.
 PHENOMENON_IDS = (
     "ae", "eho", "elm", "transient", "tearing", "sawtooth", "fishbone", "qcm",
@@ -52,7 +52,7 @@ PHENOMENON_IDS = (
     "qmin_hybrid", "qmin_elevated", "qmin_high", "fast_ion",
 )
 
-#: The alias lists themselves. Shipped beside this module because ideate
+#: The alias lists themselves. Shipped beside this module because shot_design
 #: reads it too - one file, two readers.
 DEFAULT_LEXICON = Path(__file__).with_name("lexicons.yaml")
 

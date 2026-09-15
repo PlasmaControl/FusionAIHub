@@ -1,4 +1,4 @@
-"""The `ideate` command line, end to end over the synthetic fixtures.
+"""The `shot_design` command line, end to end over the synthetic fixtures.
 
 Every assertion here is about what a user sees or gets back: an exit code, a line of terminal
 output, a file on disk. The CLI owns no physics -- build/store/legacy_raw are tested elsewhere -- so
@@ -20,9 +20,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate import cli
-from ideate.schema import ShotRecord, ShotSummary
-from ideate.shotdb import text
+from shot_design import cli
+from shot_design.schema import ShotRecord, ShotSummary
+from shot_design.shotdb import text
 
 
 @pytest.fixture
@@ -122,8 +122,8 @@ def test_show_and_export_use_the_one_describe_template(built, paths, staged_shot
     rank._fallback_description) printed the same shot differently -- `q95 3.38` in show and
     `q95 3.4` in query. There is one now: show prints describe.segment_line, export stores
     describe.describe, and a query result carries describe.describe."""
-    from ideate.retrieval import describe as D
-    from ideate.shotdb import store
+    from shot_design.retrieval import describe as D
+    from shot_design.shotdb import store
 
     rec = store.ShotDB.load(paths.db_dir).get(staged_shot_a)
     assert cli.main(["show", str(staged_shot_a)]) == 0
@@ -157,7 +157,7 @@ def test_show_json_round_trips_through_record(built, staged_shot_a, capsys):
 def test_show_says_so_when_the_shot_is_not_in_the_database(built, capsys):
     assert cli.main(["show", "123456"]) == 1
     err = capsys.readouterr().err
-    assert "123456" in err and "ideate add" in err
+    assert "123456" in err and "shot_design add" in err
 
 
 def test_commands_refuse_cleanly_without_a_database(paths, capsys):
@@ -227,8 +227,8 @@ def test_coverage_splits_the_encoded_shots_by_the_device_that_encoded_them(built
     """"500 shots are encoded" is not actionable on its own: the codes differ between cuda and
     cpu, and between cpu at four threads and cpu at eight. The census has to show the split, and
     show a cache with no provenance sidecar as unknown rather than folding it into a device."""
-    from ideate.design import provenance
-    from ideate.shotdb import build as build_mod
+    from shot_design.design import provenance
+    from shot_design.shotdb import build as build_mod
 
     codes = build_mod.frame_codes_dirs(paths)[0]
     codes.mkdir(parents=True, exist_ok=True)
@@ -300,7 +300,7 @@ def test_query_rejects_a_malformed_constraint(capsys):
 
 
 def test_query_prints_the_proposals_own_flags_before_the_results(built, capsys):
-    """`ideate query --actuator nbi.total=5e7` -- 2.5x the installed beam power -- printed no flag,
+    """`shot_design query --actuator nbi.total=5e7` -- 2.5x the installed beam power -- printed no flag,
     because the rules ran on the result rows only. The two-shot fixture database has no fitted
     PCA, so no channel fires and the command exits 2; the proposal is still answered first."""
     assert cli.main(["query", "--actuator", "nbi.total=5e7"]) == 2
@@ -378,13 +378,13 @@ def test_the_eval_subcommand_is_the_harness_and_not_the_old_stub(capsys):
 
 
 def test_console_script_is_installed_and_runnable():
-    for argv in (["-m", "ideate", "--help"], ["-m", "ideate", "show", "--help"]):
+    for argv in (["-m", "shot_design", "--help"], ["-m", "shot_design", "show", "--help"]):
         r = subprocess.run([sys.executable, *argv], capture_output=True, text=True, check=False)
         assert r.returncode == 0, r.stderr
     assert (
         "build"
         in subprocess.run(
-            [sys.executable, "-m", "ideate", "--help"], capture_output=True, text=True, check=False
+            [sys.executable, "-m", "shot_design", "--help"], capture_output=True, text=True, check=False
         ).stdout
     )
 
@@ -429,8 +429,8 @@ def test_retired_commands_and_restored_serve(command):
 
 
 def test_actuation_list_and_show(paths, capsys):
-    from ideate.retrieval import actuation
-    from ideate.schema import ActuationSet, ActuatorWaveform, Vertex
+    from shot_design.retrieval import actuation
+    from shot_design.schema import ActuationSet, ActuatorWaveform, Vertex
 
     assert cli.main(["actuation", "list"]) == 0
     assert "no saved actuation sets" in capsys.readouterr().out

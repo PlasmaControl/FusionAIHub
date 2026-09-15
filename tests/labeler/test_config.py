@@ -1,7 +1,7 @@
 """Paths resolve from the environment and nothing else hard-codes a root."""
 from pathlib import Path
 
-from labelmaker.config import Paths, git_sha
+from labeler.config import Paths, git_sha
 
 
 def test_default_root_is_group_storage():
@@ -50,7 +50,7 @@ def test_the_text_root_is_a_third_input_root(monkeypatch, tmp_path):
         "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
         "/shotsummary/processed/per_shot_txt"
     )
-    # Not `tmp_path / "text"`: that is `text_cache`, which labelmaker owns
+    # Not `tmp_path / "text"`: that is `text_cache`, which labeler owns
     # and `mkdirs` does create.
     bundles = tmp_path / "bundles"
     monkeypatch.setenv("LABELMAKER_TEXT_ROOT", str(bundles))
@@ -71,7 +71,7 @@ def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
     monkeypatch, tmp_path,
 ):
     # The shot-scope text source: one 616 MB file with a JSON record per
-    # line, read-only like the corpus. What labelmaker writes is the SUBSET
+    # line, read-only like the corpus. What labeler writes is the SUBSET
     # of it for the shots in hand, under our own root, so the cache is a
     # thing we own and can delete and the source is a thing we never touch.
     assert Paths().logs_jsonl == Path(

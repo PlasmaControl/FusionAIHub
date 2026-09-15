@@ -17,8 +17,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from labelmaker.config import Paths
-from labelmaker.events import masks, schema, windows
+from labeler.config import Paths
+from labeler.events import masks, schema, windows
 
 SHOT = 198658
 SHA = "0" * 64
@@ -889,7 +889,7 @@ def test_the_realistic_synthetic_channel_runs_end_to_end(synth_mask, tmp_path):
     actual mode structure in it - an EHO with two harmonics, a split mode,
     a fishbone chirp, salt, and a receiver line across the whole record.
     """
-    from labelmaker.events import tracks
+    from labeler.events import tracks
 
     prob, raw, _, t_s = synth_mask()
     paths = _paths(tmp_path)

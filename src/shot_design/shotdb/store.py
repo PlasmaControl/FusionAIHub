@@ -50,13 +50,13 @@ def _empty(dtypes: dict[str, str]) -> pd.DataFrame:
 
 # The three optional label tables' schemas are defined once, by the modules that WRITE them, and
 # imported here lazily -- inside the functions rather than at module scope, because
-# `ideate.labels.claims` imports `ideate.shotdb.text`, and a top-level import would close that
+# `shot_design.labels.claims` imports `shot_design.shotdb.text`, and a top-level import would close that
 # circle through this package's own `__init__`.
 
 
 def empty_events() -> pd.DataFrame:
-    """No events, labelmaker's own columns and dtypes."""
-    from labelmaker.events import schema as events_schema
+    """No events, labeler's own columns and dtypes."""
+    from labeler.events import schema as events_schema
 
     return _empty({name: events_schema.DTYPES[name] for name in events_schema.COLUMNS})
 
@@ -106,7 +106,7 @@ class ShotDB:
         # windows.parquet: one row per 250 ms window of every encoded shot, aligned with
         # emb["ignite_win"]; only fragment queries (--ref-window) read it.
         self.windows = windows
-        # The three label tables (`ideate labels join`). Optional on disk and never None here:
+        # The three label tables (`shot_design labels join`). Optional on disk and never None here:
         # a database built before the join, or one whose join found no events, gets the EMPTY
         # TYPED frame rather than None, so a caller filters `db.events` without first asking
         # whether there is a table -- and gets zero rows, which is what "nobody has looked yet"

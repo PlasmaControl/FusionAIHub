@@ -1,4 +1,4 @@
-"""The batch driver: `events/driver.py` and `scripts/labelmaker/tokeye_masks.py`.
+"""The batch driver: `events/driver.py` and `scripts/labeler/tokeye_masks.py`.
 
 Hermetic. The corpus is `test_events_pipeline.py`'s synthetic shot written into
 `tmp_path`, the network is that module's `PaintedNet`, and every assertion here
@@ -29,9 +29,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker.config import Paths
-from labelmaker.events import channels, driver, masks, schema, text_weak, unet
-from labelmaker.events import pipeline as pl
+from labeler.config import Paths
+from labeler.events import channels, driver, masks, schema, text_weak, unet
+from labeler.events import pipeline as pl
 
 from .test_events_pipeline import (
     FAKE_SHA,
@@ -168,7 +168,7 @@ def test_an_empty_subset_is_legal():
 
 def test_the_chunk_is_contiguous_and_the_rank_is_strided():
     # Contiguous chunks so two array tasks walk two regions of the corpus
-    # directory (`ideate.design.seed.chunk_of`'s reason); strided ranks so
+    # directory (`shot_design.design.seed.chunk_of`'s reason); strided ranks so
     # the two ranks of ONE task, which share a node and its page cache,
     # interleave.
     shots = list(range(10))

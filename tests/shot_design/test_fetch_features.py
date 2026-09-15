@@ -1,16 +1,16 @@
-"""`scripts/labelmaker/fetch_features.py`: the login-node fetch that fills ideate's feature gaps.
+"""`scripts/labeler/fetch_features.py`: the login-node fetch that fills shot_design's feature gaps.
 
-The script lives under `scripts/labelmaker/` but it exists for `ideate`, which is why its tests
+The script lives under `scripts/labeler/` but it exists for `shot_design`, which is why its tests
 are here. Two invariants carry the weight:
 
 * **it never creates a feature file.** `select.preferred_shots` and the corpus census both read
   the mere EXISTENCE of `<shot>_features.h5` as "this shot has features", so a run that created
-  one holding nothing but the features it just fetched would silently promote a shot labelmaker
+  one holding nothing but the features it just fetched would silently promote a shot labeler
   has never featured. The `path.exists()` guard is on every path, the successful one included.
 * **it merges.** `store.write_features(..., merge=True)`; every group already in the file stays.
 
 Loaded by path rather than imported: `scripts/` is not a package, and making it one to reach one
-module would put it on every environment's import path. Nothing here imports labelmaker -- the
+module would put it on every environment's import path. Nothing here imports labeler -- the
 resolver and the store are reached through `_resolver()`/`_store()`, which exist so the worker
 imports toksearch after the fork and which a test can substitute.
 """
@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "labelmaker" / "fetch_features.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "labeler" / "fetch_features.py"
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def script():
 
 
 class _Recorder:
-    """A stand-in for `labelmaker.features.store`, recording every write it is asked for."""
+    """A stand-in for `labeler.features.store`, recording every write it is asked for."""
 
     def __init__(self) -> None:
         self.writes: list[tuple[Path, int, list[str], dict]] = []

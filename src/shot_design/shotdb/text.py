@@ -412,7 +412,7 @@ def _clause(
 # Scope guards: text inside a log entry that is not a report about *this* shot.
 #
 # Both of these were added in task-10 fix wave 1, after shot 175676 shipped into
-# configs/ideate/shot_lists/poc_v1.yaml labelled `verdict: bad, fault: locked mode;dud trip` when
+# configs/shot_design/shot_lists/poc_v1.yaml labelled `verdict: bad, fault: locked mode;dud trip` when
 # the operators had recorded the opposite. Its whole record (run 20180227) reads:
 #   [CHIEF_OPERATOR]  "10:32 Plasma shot ok."
 #   [SESSION_LEADER]  "Postshot: Density increased a little too high, but should still have
@@ -992,7 +992,7 @@ _PURPOSE = re.compile(r"(?:Purpose|Goal|Objective)[^\n]*\n", re.IGNORECASE)
 # A symbol-font glyph a PDF maps outside Unicode comes back from pypdf as an UNPAIRED surrogate,
 # which is a str Python will hold but cannot encode: pydantic's model_dump_json raises
 # PydanticSerializationError on it, and it does so in records_to_tables -- after every shot in the
-# build has already been read. Measured on configs/ideate/shot_lists/poc_v1.yaml: 8 of its 200
+# build has already been read. Measured on configs/shot_design/shot_lists/poc_v1.yaml: 8 of its 200
 # shots, from 4 run days (20170307, 20220630A, 20240626B, 20240821A), carry them in mp_purpose;
 # nothing else in the human tier does, and sql/logs.jsonl has none in any of its 53,179 records.
 # U+FFFD is the honest replacement -- "a character was here that could not be decoded" -- and it

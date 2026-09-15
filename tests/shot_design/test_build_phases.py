@@ -15,7 +15,7 @@ import math
 import numpy as np
 import pytest
 
-from ideate.shotdb import build, text
+from shot_design.shotdb import build, text
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ def test_the_manifest_totals_the_build_so_the_untimed_residual_is_visible(timed_
 
 
 def test_the_phase_times_are_logged_when_the_build_ends(timed_db, caplog):
-    with caplog.at_level(logging.INFO, logger="ideate.shotdb.build"):
+    with caplog.at_level(logging.INFO, logger="shot_design.shotdb.build"):
         run_build(timed_db)
     logged = [r.getMessage() for r in caplog.records if "phase" in r.getMessage()]
     assert logged, "the build logged no phase timing line"

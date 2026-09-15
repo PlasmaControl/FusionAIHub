@@ -2,9 +2,9 @@
 import numpy as np
 import pytest
 
-from labelmaker.features import namespace as ns
-from labelmaker.features.store import FeatureArray
-from labelmaker.models.base import (
+from labeler.features import namespace as ns
+from labeler.features.store import FeatureArray
+from labeler.models.base import (
     ARCHIVE_WINDOW_S,
     TRANSFORMS,
     BuiltInputs,
@@ -17,7 +17,7 @@ from labelmaker.models.base import (
     Transform,
     UnknownWhenActive,
 )
-from labelmaker.timebase import sample_at, window_mean
+from labeler.timebase import sample_at, window_mean
 
 GRID = 0.025 * np.arange(6)          # 0.000 .. 0.125 s
 

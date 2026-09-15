@@ -9,9 +9,9 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from labelmaker import run
-from labelmaker.events import databases as db
-from labelmaker.events import schema
+from labeler import run
+from labeler.events import databases as db
+from labeler.events import schema
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -98,12 +98,12 @@ def test_rwm_500_scan_exports_empty_table_with_completed_run_provenance(
     tmp_path, monkeypatch,
 ):
     monkeypatch.setenv("LABELMAKER_LABEL_TABLES", str(REPO / "data/events"))
-    shot_list = REPO / "configs/ideate/shot_lists/recommender_v1.yaml"
+    shot_list = REPO / "configs/shot_design/shot_lists/recommender_v1.yaml"
     shots = [r["shot"] for r in yaml.safe_load(shot_list.read_text())["shots"]]
     assert len(shots) == 500
     assert run.main(["events", "--databases-only", "--root", str(tmp_path),
                      "--run-id", "rwm-zero", "--shots", *map(str, shots)]) == 0
-    main = runpy.run_path(str(REPO / "scripts/labelmaker/labels_extend.py"))["main"]
+    main = runpy.run_path(str(REPO / "scripts/labeler/labels_extend.py"))["main"]
     out = tmp_path / "resistive_wall_mode/extend_rwm/recommender_v1.csv"
     assert main(["--category", "resistive_wall_mode", "--producer", "rwm",
                  "--shot-list", str(shot_list), "--root", str(tmp_path),

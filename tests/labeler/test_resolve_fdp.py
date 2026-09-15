@@ -15,8 +15,8 @@ import textwrap
 import numpy as np
 import pytest
 
-from labelmaker.features import namespace as ns
-from labelmaker.features import resolve_fdp as rf
+from labeler.features import namespace as ns
+from labeler.features import resolve_fdp as rf
 
 
 def _zipfit_record(n_t=8, n_x=121, units="10^19 m^-3"):
@@ -160,7 +160,7 @@ def test_resolve_records_a_miss_when_toksearch_is_unavailable(monkeypatch):
     }
     # The literal prefix survives the diagnosis, so the miss is still
     # classified transient (retryable by a plain re-run) - see store.py.
-    from labelmaker.features.store import is_transient
+    from labeler.features.store import is_transient
 
     assert is_transient(missing["ip"])
 
@@ -381,7 +381,7 @@ def test_available_is_false_without_toksearch(monkeypatch):
 #: so this stays True regardless of whether the GLIBCXX loader-ordering bug
 #: (Task 16b) is present - it would be wrong to gate this test on anything
 #: that the bug itself makes False, which would make it skip exactly when it
-#: is needed. `labelmaker`'s environment always has `toksearch`, so this
+#: is needed. `labeler`'s environment always has `toksearch`, so this
 #: never skips there; it exists only so the test also collects harmlessly in
 #: an environment that genuinely lacks the package.
 _HAS_TOKSEARCH = importlib.util.find_spec("toksearch") is not None
@@ -425,7 +425,7 @@ def test_available_survives_a_fork_after_torch_is_already_loaded():
         def _child():
             # First touch of toksearch in this process happens here, fresh,
             # after the fork - exactly like a real worker's first fetch.
-            from labelmaker.features import resolve_fdp
+            from labeler.features import resolve_fdp
             sys.exit(0 if resolve_fdp.available() else 1)
 
         ctx = multiprocessing.get_context("fork")
@@ -475,8 +475,8 @@ def test_live_fetch_of_the_reference_points_for_one_shot():
 
 @pytest.mark.live
 def test_live_ip_matches_the_archive_in_amps():
-    from labelmaker.features import resolve_archive as ra
-    from labelmaker.timebase import window_mean
+    from labeler.features import resolve_archive as ra
+    from labeler.timebase import window_mean
 
     arch, _ = ra.resolve(185945, ["ip"])
     fdp, missing = rf.resolve(185945, ["ip"])

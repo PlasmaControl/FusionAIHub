@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-from labelmaker.models.runners import dsm_pickle
+from labeler.models.runners import dsm_pickle
 
 UPSTREAM = Path("/projects/EKOLEMEN/survival_tm_2/models/rt_fixed_rot.pkl")
 GOLDEN = Path(__file__).with_name("data") / "tearing_dsm_golden.npz"

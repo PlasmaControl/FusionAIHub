@@ -9,9 +9,9 @@ from html.parser import HTMLParser
 
 import pytest
 
-from ideate import cli, config
-from ideate.mcp import tools
-from ideate.retrieval import phenomena
+from shot_design import cli, config
+from shot_design.mcp import tools
+from shot_design.retrieval import phenomena
 
 # Starlette 1.6's import-time type alias uses AnyIO 4.15's deprecated spelling.
 # Ignore only this upstream import warning; all test execution remains under -W error.
@@ -50,7 +50,7 @@ def local_auxiliary_paths(ideate_db, tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(ideate_db):
-    from ideate.ui.app import create_app
+    from shot_design.ui.app import create_app
 
     tools.reset_cache()
     with TestClient(create_app(token="test-token")) as client:
@@ -76,7 +76,7 @@ def test_search_is_tool_json(client, body):
 def test_text_search_uses_tools_without_loading_a_model(client, monkeypatch):
     import numpy as np
 
-    from ideate.shotdb import text
+    from shot_design.shotdb import text
 
     # Only the external encoder is substituted; the ranking and route are real.
     monkeypatch.setattr(text, "embed_texts", lambda texts: np.tile(
@@ -173,7 +173,7 @@ def test_registry_classification_and_literal_events_stay_distinct(client, event_
     (100, {}, "observed"), (100, {"t0_s": 20.0}, "uncovered"),
 ])
 def test_each_event_status_survives_transport(client, event_db, shot, params, status):
-    from ideate.labels import event_sources
+    from shot_design.labels import event_sources
 
     event_sources.write_sources(event_db / "db/event_sources.parquet", [
         event_sources.source_row(100, "tokeye_track", diag="mhr", channel=0,
@@ -194,7 +194,7 @@ def test_incomplete_database_uses_the_mcp_guard(ideate_db, client):
 
 @pytest.mark.parametrize("path", ["/", "/api/meta"])
 def test_token_gate_and_cookie(ideate_db, path):
-    from ideate.ui.app import COOKIE, create_app
+    from shot_design.ui.app import COOKIE, create_app
 
     with TestClient(create_app(token="a token & more")) as client:
         assert client.get(path).status_code == 401
@@ -224,7 +224,7 @@ class Assets(HTMLParser):
 
 
 def test_static_assets_and_three_views(client):
-    from ideate.ui.app import STATIC
+    from shot_design.ui.app import STATIC
 
     response = client.get("/")
     assert response.status_code == 200
@@ -259,7 +259,7 @@ def test_meta_and_registry(client):
 
 
 def test_unbuilt_db_preserves_tool_errors(ideate_db, tmp_path, monkeypatch):
-    from ideate.ui.app import create_app
+    from shot_design.ui.app import create_app
 
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "unbuilt"))
     with TestClient(create_app(token="test")) as client:
@@ -279,7 +279,7 @@ def test_unbuilt_db_preserves_tool_errors(ideate_db, tmp_path, monkeypatch):
 
 
 def test_app_paths_are_isolated_between_concurrent_requests(ideate_db, tmp_path):
-    from ideate.ui.app import create_app
+    from shot_design.ui.app import create_app
 
     original = config.load_paths()
     missing = tmp_path / "custom-db"
@@ -300,7 +300,7 @@ def test_app_paths_are_isolated_between_concurrent_requests(ideate_db, tmp_path)
 
 
 def test_locate_does_not_reuse_another_apps_curated_list(ideate_db, tmp_path):
-    from ideate.ui.app import create_app
+    from shot_design.ui.app import create_app
 
     paths = config.load_paths()
     a_csv, b_csv = tmp_path / "a.csv", tmp_path / "b.csv"

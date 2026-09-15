@@ -4,7 +4,7 @@
 import json
 from datetime import UTC, datetime
 
-from ideate import schema
+from shot_design import schema
 
 
 def _record() -> schema.ShotRecord:

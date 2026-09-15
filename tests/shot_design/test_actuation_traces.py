@@ -1,4 +1,4 @@
-"""Raw-file reads behind an actuator seed (`ideate.retrieval.actuation`'s trace helpers).
+"""Raw-file reads behind an actuator seed (`shot_design.retrieval.actuation`'s trace helpers).
 
 These are the tests of `Trace`, `decimate`, `_clip`, `_json_values`, `_trace`, `_empty_trace`
 and `read_traces` -- the block that lived in `shotrec.ui.waveforms` upstream and moved into
@@ -25,7 +25,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ideate.retrieval import actuation
+from shot_design.retrieval import actuation
 
 from .conftest import BEAMS, write_frame
 

@@ -158,7 +158,7 @@ TRANSFORMS: dict[str, Transform] = {
     "clip_negative_to_zero": Transform(_nonpositive_to_zero, fills=False),
     # A FILL. A negative deposition location is not a location, so overwriting
     # one invents a value. This is why train.py:81's filter DROPPED those rows rather
-    # than correcting them; labelmaker keeps the row and marks it untrustworthy
+    # than correcting them; labeler keeps the row and marks it untrustworthy
     # instead.
     "nonneg_zero_fill": Transform(_nonpositive_to_zero, fills=True),
 }
@@ -606,7 +606,7 @@ class OutputSpec:
 
 @dataclass(frozen=True)
 class ModelAdapter:
-    """Everything labelmaker needs to run one trained model."""
+    """Everything labeler needs to run one trained model."""
 
     slug: str
     card_id: str
@@ -623,6 +623,6 @@ class ModelAdapter:
     #: cannot have its pool numbers split into held-out and in-sample halves,
     #: and `validate` reports every such shot as held out. The survival models
     #: know theirs (`training_shots.txt` beside their spec); the tearing CNN's
-    #: training store IS the archive labelmaker scores against, which is a
+    #: training store IS the archive labeler scores against, which is a
     #: different problem its own card states.
     training_shots: frozenset[int] = frozenset()

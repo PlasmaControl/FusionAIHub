@@ -1,4 +1,4 @@
-# What `python -m labelmaker.run analyze` produces and plots for a shot.
+# What `python -m labeler.run analyze` produces and plots for a shot.
 # Edit a copy and pass it with --config; this file is the default.
 
 # Labels, as <model folder>/<output name>, plotted top to bottom in this order.

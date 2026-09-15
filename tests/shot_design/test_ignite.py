@@ -11,8 +11,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate.config import load_paths
-from ideate.shotdb import build, ignite
+from shot_design.config import load_paths
+from shot_design.shotdb import build, ignite
 
 
 def test_input_defaults_to_existing_processed_corpus(paths, tmp_path):
@@ -53,7 +53,7 @@ def test_load_codecs_says_what_to_do_when_the_directory_is_absent(tmp_path):
     with pytest.raises(ignite.CheckpointMissing) as e:
         ignite.load_codecs(tmp_path / "nope")
     msg = str(e.value)
-    assert "ideate model --download" in msg and "models_dir" in msg
+    assert "shot_design model --download" in msg and "models_dir" in msg
 
 
 def test_load_codecs_distinguishes_an_empty_directory_from_an_absent_one(tmp_path):
@@ -64,7 +64,7 @@ def test_load_codecs_distinguishes_an_empty_directory_from_an_absent_one(tmp_pat
 
 
 def test_encode_db_reports_not_installed_instead_of_raising(paths):
-    """`ideate build` must survive a missing model: a scalar-only database is fully usable and
+    """`shot_design build` must survive a missing model: a scalar-only database is fully usable and
     the manifest has to make the difference visible."""
     out = ignite.encode_db(paths.db_dir, [], paths)
     assert out["status"] == "not_installed" and out["channels"] == []
@@ -73,7 +73,7 @@ def test_encode_db_reports_not_installed_instead_of_raising(paths):
 
 def test_build_still_takes_the_not_installed_path_now_that_this_module_exists(paths):
     """Before this module existed, build._encode synthesised `not_installed` from its own
-    ImportError. Creating ideate.shotdb.ignite stops that branch firing, so the status now has to
+    ImportError. Creating shot_design.shotdb.ignite stops that branch firing, so the status now has to
     come from encode_db -- and it must be the same status, or every built manifest changes
     meaning."""
     out = build._encode(paths.db_dir, [], paths)
@@ -122,7 +122,7 @@ def test_windows_are_cut_on_a_fixed_grid_from_t0_and_keep_a_partial_tail():
 
 
 def test_segment_matrix_follows_the_segment_table_order_and_nans_unencoded_shots():
-    from ideate.schema import Segment
+    from shot_design.schema import Segment
 
     class Rec:
         def __init__(self, shot, segs):
@@ -177,7 +177,7 @@ def test_coverage_is_read_off_the_final_matrix_per_shot():
 _bundle = Path(os.environ.get("IDEATE_IGNITE_CKPT", ignite.bundle_dir(load_paths())))
 needs_weights = pytest.mark.skipif(
     not ignite.codec_manifest(_bundle).exists(),
-    reason=f"no IGNITE bundle at {_bundle} (ideate model --download)",
+    reason=f"no IGNITE bundle at {_bundle} (shot_design model --download)",
 )
 FM_DIR = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 

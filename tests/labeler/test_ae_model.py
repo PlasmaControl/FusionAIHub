@@ -1,10 +1,10 @@
-"""`labelmaker.ae.model` - shapes, pool arithmetic and loss behaviour.
+"""`labeler.ae.model` - shapes, pool arithmetic and loss behaviour.
 
 Torch lives only in the phase-3 venv, so this module is skipped in the pixi
 test env. It is run once against the venv that trains:
 
     /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python \
-        -m pytest tests/labelmaker/test_ae_model.py -q -W error -p no:cacheprovider
+        -m pytest tests/labeler/test_ae_model.py -q -W error -p no:cacheprovider
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from labelmaker.ae.model import (
+from labeler.ae.model import (
     DEFAULT_POOL_SIZES,
     AeLossConfig,
     AeSeldNet,

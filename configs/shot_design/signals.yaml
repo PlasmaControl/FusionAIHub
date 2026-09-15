@@ -89,7 +89,7 @@ signals:
   zxpt1:     {group: divertor_geo, col: zxpt1, units: m, tier: derived, null_value: -9.99, stats: [mean], provenance: *efit, fetch: {kind: mds, tree: efit01, node: "\\EFIT01::TOP.RESULTS.AEQDSK:ZXPT1"}}
   ne0:       {group: e_dens_fit, col: "edensfit0.00", units: "[?]", tier: derived, stats: [mean], provenance: {tool: profile_fit, version: "[?]"}, fetch: null, labelmaker: {feature: ne_zipfit, reduce: core, units: "1e19 m^-3"}}
   te0:       {group: e_temp_fit, col: "etempfit0.00", units: "[?] keV", tier: derived, stats: [mean], provenance: {tool: profile_fit, version: "[?]"}, fetch: null, labelmaker: {feature: te_zipfit, reduce: core, units: "keV"}}
-  # ---- quantities only the corpus or labelmaker layer carries -----------------------------
+  # ---- quantities only the corpus or labeler layer carries -----------------------------
   # No d3d_fusion_data group exists for these, so they carry no group/col and no fetch: on the
   # legacy reader they read `unavailable`, which is what that layout's answer is.
   nbi_torque_total: {units: "N m", tier: raw, stats: [mean, peak], fetch: null, corpus: {actuator: nbi_torque}}

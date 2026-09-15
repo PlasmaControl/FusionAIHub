@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker.features.store import (
+from labeler.features.store import (
     FeatureArray,
     is_complete,
     is_transient,

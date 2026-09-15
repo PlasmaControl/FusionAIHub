@@ -19,7 +19,7 @@ is fitted:
 
 Pure numpy: no scipy, no torch, no I/O. ``persist_open`` is a run-length
 rewrite of ``scipy.ndimage.binary_opening(mask, structure=np.ones((1, frames)))``
-and ``tests/labelmaker/test_ae_labels.py`` pins the two together on random
+and ``tests/labeler/test_ae_labels.py`` pins the two together on random
 input; the rewrite is used because the dataset script opens 180 x 4 arrays of
 (512, 7820).
 """

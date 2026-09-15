@@ -1,6 +1,6 @@
-"""Every filesystem root labelmaker reads or writes.
+"""Every filesystem root labeler reads or writes.
 
-Nothing else in the package hard-codes a path, so pointing labelmaker at a
+Nothing else in the package hard-codes a path, so pointing labeler at a
 different data root (a scratch copy, a test fixture) is one environment
 variable. Defaults are group storage: Nathan's own scratch is near quota.
 """
@@ -25,7 +25,7 @@ DEFAULT_TEXT = Path(
 #: The logbook dump `events/text_weak.py` takes its SHOT-scope text from:
 #: one 616 MB file, one JSON record per line, every line beginning
 #: `{"shot": <digits>,`. Read-only, like the corpus and the bundles; what
-#: labelmaker writes is the subset of it for the shots in hand, under
+#: labeler writes is the subset of it for the shots in hand, under
 #: `text_cache`.
 DEFAULT_LOGS_JSONL = Path(
     "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/sql/logs.jsonl"
@@ -36,7 +36,7 @@ DEFAULT_LOGS_JSONL = Path(
 #: resolves relative to this FILE rather than to the caller's cwd - a run
 #: from a SLURM scratch directory finds the committed manifest the same way
 #: a run from the repo does. That resolution is a SOURCE CHECKOUT's (which
-#: is every way labelmaker is run today: `PYTHONPATH=$PWD/src`, or an
+#: is every way labeler is run today: `PYTHONPATH=$PWD/src`, or an
 #: editable install); from a non-editable wheel the tables are outside the
 #: package and `LABELMAKER_LABEL_TABLES` is the answer. Overridable anyway,
 #: because a table too large or too restricted to commit lives on /scratch.
@@ -45,7 +45,7 @@ DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
 
 @dataclass(frozen=True)
 class Paths:
-    """Where labelmaker's inputs and outputs live."""
+    """Where labeler's inputs and outputs live."""
 
     root: Path = DEFAULT_ROOT
     corpus: Path = DEFAULT_CORPUS
@@ -122,7 +122,7 @@ class Paths:
 
         A miss is a fact about the source at the time, not forever, so
         there are two ways back: `text_weak.build_logs_subset(
-        refresh_missing=True)` - which `python -m labelmaker.run events
+        refresh_missing=True)` - which `python -m labeler.run events
         --refresh-text` is the production owner of - re-asks for the shots
         listed here, and DELETING this file forgets every recorded miss.
         """

@@ -23,11 +23,11 @@ import json
 import numpy as np
 import pytest
 
-from labelmaker.config import Paths
-from labelmaker.events import lexicon as lx
-from labelmaker.events import schema, windows
-from labelmaker.events import text_weak as tw
-from labelmaker.features import resolve_events
+from labeler.config import Paths
+from labeler.events import lexicon as lx
+from labeler.events import schema, windows
+from labeler.events import text_weak as tw
+from labeler.features import resolve_events
 
 from .test_events_windows import SHOT, _block, _t_grid, _write_masks
 

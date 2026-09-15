@@ -4,9 +4,9 @@
 import numpy as np
 import pytest
 
-from ideate import config
-from ideate.schema import Segment
-from ideate.shotdb import features, legacy_raw
+from shot_design import config
+from shot_design.schema import Segment
+from shot_design.shotdb import features, legacy_raw
 
 CFG = config.load_yaml("retrieval.yaml")["segments"]
 

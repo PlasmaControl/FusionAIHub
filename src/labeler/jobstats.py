@@ -44,11 +44,11 @@ ones - because the bar is what a human quotes back at you ("23/6/1/97" for the
 old AE dataset job) and the decimal is what a threshold at 70 % needs.
 
 USE
-    from labelmaker.jobstats import parse_jobstats, gate
+    from labeler.jobstats import parse_jobstats, gate
     stats = parse_jobstats(Path("2925387_0.jobstats.txt").read_text())
     verdict = gate(stats, min_cpu=70, min_cpu_mem=70, cpu_only=None)
 
-or, from SLURM, through `scripts/labelmaker/jobstats_check.py`:
+or, from SLURM, through `scripts/labeler/jobstats_check.py`:
 
     sbatch --dependency=afterany:$JOBID --wrap "... jobstats_check.py \
         --job-id $JOBID --wait-for-data 300 --preserve-dir $ROOT/runs/slurm"
@@ -898,7 +898,7 @@ def default_out() -> Path:
     Under the DATA root, not the repository: nothing this project runs writes
     a new file into the source tree.
     """
-    from labelmaker.config import Paths
+    from labeler.config import Paths
 
     return Paths.from_env().runs / "slurm" / "jobstats.json"
 

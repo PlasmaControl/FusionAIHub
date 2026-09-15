@@ -5,8 +5,8 @@ import json
 import numpy as np
 import pytest
 
-from ideate import cli
-from ideate.shotdb import build, text
+from shot_design import cli
+from shot_design.shotdb import build, text
 
 
 @pytest.fixture

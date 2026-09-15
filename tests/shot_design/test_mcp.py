@@ -3,7 +3,7 @@
 Two levels, deliberately. The tool FUNCTIONS are tested directly against the synthetic database
 (`conftest.ideate_db`) because that is where the behaviour is -- what a caveat says, what a
 missing table returns, that a forecast never lands in `events`. The SERVER is tested once, over
-a real `python -m ideate.mcp` subprocess, because the things a wrapper gets wrong are invisible
+a real `python -m shot_design.mcp` subprocess, because the things a wrapper gets wrong are invisible
 in-process: a tool whose signature will not turn into a JSON schema, a module that writes to
 stdout and corrupts the transport, an entry point that does not exist.
 
@@ -25,8 +25,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate.mcp import server as server_mod
-from ideate.mcp import tools
+from shot_design.mcp import server as server_mod
+from shot_design.mcp import tools
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -43,7 +43,7 @@ def _no_cached_db():
 
 
 def _event(shot: int, phenomenon: str, t0: float, t1: float, **over) -> dict:
-    from labelmaker.events import schema as events_schema
+    from labeler.events import schema as events_schema
 
     row = {
         "shot": shot,
@@ -73,7 +73,7 @@ def _event(shot: int, phenomenon: str, t0: float, t1: float, **over) -> dict:
 
 
 def write_events(db_dir: Path, rows: list[dict]) -> None:
-    from labelmaker.events import schema as events_schema
+    from labeler.events import schema as events_schema
 
     df = pd.DataFrame(rows, columns=list(events_schema.COLUMNS)).astype(events_schema.DTYPES)
     df.to_parquet(db_dir / "events.parquet", index=False)
@@ -122,7 +122,7 @@ def test_search_shots_filters_on_labels(ideate_db):
 
 def test_a_reference_shot_the_database_does_not_hold_is_an_error_with_the_hint(ideate_db):
     got = tools.search_shots(ref_shot=999999)
-    assert "999999" in got["error"] and "ideate add" in got["error"]
+    assert "999999" in got["error"] and "shot_design add" in got["error"]
 
 
 def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_report(
@@ -132,9 +132,9 @@ def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_repo
     the candidate count, on top of the pass every channel makes for itself. A query that
     constrains NOTHING admits every row of its segment, which is one comparison on one column --
     so the tool adds no pass of its own, and the count it reports is the same number."""
-    from ideate.retrieval import channels
-    from ideate.retrieval import rank as rank_mod
-    from ideate.shotdb.store import ShotDB
+    from shot_design.retrieval import channels
+    from shot_design.retrieval import rank as rank_mod
+    from shot_design.shotdb.store import ShotDB
 
     real, calls = channels.hard_filter, []
 
@@ -150,7 +150,7 @@ def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_repo
     calls.clear()
     db = ShotDB.load(ideate_db / "db")
     rank_mod.search(
-        __import__("ideate.schema", fromlist=["QueryState"]).QueryState(
+        __import__("shot_design.schema", fromlist=["QueryState"]).QueryState(
             ref_shot=100, segment="flat_top", n=3
         ),
         db,
@@ -192,8 +192,8 @@ def test_describe_shot_says_which_device_encoded_the_frame_codes(ideate_db, monk
     """The four-key cache payload records no device, and the codes are not bit-identical across
     devices or across BLAS thread counts. A description that says "this shot is encoded" without
     saying how is the state the encode product shipped in."""
-    from ideate import config
-    from ideate.design import provenance
+    from shot_design import config
+    from shot_design.design import provenance
 
     codes = Path(config.load_paths().data_root) / "frame_codes"
     codes.mkdir(parents=True, exist_ok=True)
@@ -221,7 +221,7 @@ def test_a_missing_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     got = tools.describe_shot(100)
-    assert "no database" in got["error"] and "ideate build" in got["error"]
+    assert "no database" in got["error"] and "shot_design build" in got["error"]
     assert got["caveats"] == []
 
 
@@ -229,14 +229,14 @@ def test_a_missing_database_is_the_error_the_cli_prints(tmp_path, monkeypatch):
 
 
 def write_sources(db_dir: Path, rows: list[dict]) -> None:
-    """`db/event_sources.parquet` -- what `ideate labels join` ingests from labelmaker."""
-    from ideate.labels import event_sources as es
+    """`db/event_sources.parquet` -- what `shot_design labels join` ingests from labeler."""
+    from shot_design.labels import event_sources as es
 
     es.write_sources(db_dir / "event_sources.parquet", rows)
 
 
 def _source(shot: int, name: str = "tokeye_track", **over) -> dict:
-    from ideate.labels import event_sources as es
+    from shot_design.labels import event_sources as es
 
     over.setdefault("t_cov0_s", 0.0)
     over.setdefault("t_cov1_s", 6.0)
@@ -249,13 +249,13 @@ def test_get_events_without_a_database_is_the_error_the_cli_prints(tmp_path, mon
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "root"))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     got = tools.get_events(shot=1)
-    assert "error" in got and "ideate build" in got["error"]
+    assert "error" in got and "shot_design build" in got["error"]
 
 
 def test_get_events_without_an_events_table_says_the_join_has_not_run(ideate_db):
     got = tools.get_events(shot=100)
     assert got["events"] == [] and got["n"] == 0 and got["forecasts"] == []
-    assert "no events table yet (labelmaker events not joined)" in got["caveats"]
+    assert "no events table yet (labeler events not joined)" in got["caveats"]
 
 
 # --------------------------------------------------------- the four states of an empty answer
@@ -292,7 +292,7 @@ def test_an_indexed_shot_nobody_processed_is_unprocessed(ideate_db):
 
 
 def test_a_shot_where_only_the_text_ran_is_unprocessed_not_observed(ideate_db):
-    """labelmaker records `text` as a source that RAN (over the shot's own span). A lexicon hit is
+    """labeler records `text` as a source that RAN (over the shot's own span). A lexicon hit is
     not a detector, so a shot with a logbook and no detector run is `unprocessed` - its mention
     is in `text_mentions` and its empty `events` is not "0 detections inside coverage"."""
     write_sources(ideate_db / "db", [_source(100, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1)])
@@ -592,7 +592,7 @@ def test_a_missing_value_of_any_pandas_flavour_becomes_null(ideate_db):
 
 
 def _database_row(shot: int, t: float, **over) -> dict:
-    """A curated-table row as `labelmaker.events.databases` writes one."""
+    """A curated-table row as `labeler.events.databases` writes one."""
     return _event(
         shot, over.pop("phenomenon", "rwm"), t, t,
         source=over.pop("source", "database:rwm_onsets_2017"),
@@ -689,7 +689,7 @@ def _claim(shot: int, phenomenon: str, **over) -> dict:
 
 
 def write_claims(db_dir: Path, rows: list[dict]) -> None:
-    from ideate.labels.claims import CLAIMS_DTYPES
+    from shot_design.labels.claims import CLAIMS_DTYPES
 
     pd.DataFrame(rows, columns=list(CLAIMS_DTYPES)).astype(CLAIMS_DTYPES).to_parquet(
         db_dir / "text_claims.parquet", index=False
@@ -741,7 +741,7 @@ def test_phenomenon_locate_resolves_an_alias_and_ranks_by_evidence_class_first(p
     assert [h["shot"] for h in got["hits"]] == [100, 101, 200]
     assert got["n"] == 3
     assert 201 not in [h["shot"] for h in got["hits"]]  # nothing said anything: not a hit
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     # Each hit still carries its own caveats, and they say which class it rests on.
     assert ph.FORECAST_ONLY in got["hits"][1]["caveats"]
@@ -814,7 +814,7 @@ def test_phenomenon_locate_says_when_the_database_holds_only_forecasts(ideate_db
     """What the CLI prints under `resolved:`, for the same reason: on a database with no
     observation in it no hit below can be an observed one, and that changes what every row
     means."""
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     write_events(
         ideate_db / "db",
@@ -845,7 +845,7 @@ def test_phenomenon_locate_on_a_half_published_database_is_the_shared_error(
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     got = _registered("phenomenon_locate")("NTM")
     assert "FileNotFoundError" in got["error"] and "shots.parquet" in got["error"]
-    assert any("rebuilt" in c and "ideate build" in c for c in got["caveats"])
+    assert any("rebuilt" in c and "shot_design build" in c for c in got["caveats"])
 
 
 def test_phenomenon_locate_without_a_database_at_all_names_the_build_command(
@@ -854,7 +854,7 @@ def test_phenomenon_locate_without_a_database_at_all_names_the_build_command(
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(tmp_path / "empty"))
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     got = tools.phenomenon_locate("NTM")
-    assert "no database" in got["error"] and "ideate build" in got["error"]
+    assert "no database" in got["error"] and "shot_design build" in got["error"]
 
 
 # --------------------------------------------------- fix loop 1 (review I10), findings F1-F7
@@ -885,7 +885,7 @@ def test_phenomenon_locate_with_no_hits_says_which_absence_it_is(phenomenon_db):
     """F2. Constraints that pass nothing produce the same `{"n": 0, "hits": []}` as a database
     nobody has looked at, and an unqualified empty list from a phenomenon tool reads as "no shot
     has one" -- the answer `NOTHING_RESOLVED` exists to stop this tool giving by accident."""
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     got = tools.phenomenon_locate("NTM", n=10, constraints={"ip_mean": {"lo": 1e12}})
     assert "error" not in got and got["hits"] == [] and got["n"] == 0
@@ -897,7 +897,7 @@ def test_phenomenon_locate_says_when_no_detector_covers_the_phenomenon(phenomeno
     """F2. `rwm` has no `covering_sources`, so an empty list could never have held an observed
     hit: the absence is a fact about the detectors, not about the shots. `get_events` says it
     with `NO_DETECTOR` and this tool says it with the same sentence, not a second spelling."""
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     got = tools.phenomenon_locate("resistive wall mode", n=10)
     assert "error" not in got
@@ -905,10 +905,10 @@ def test_phenomenon_locate_says_when_no_detector_covers_the_phenomenon(phenomeno
 
 
 def test_the_server_instructions_quote_the_ranking_rule_verbatim():
-    """F5. `docs/IDEATE.md` and `configs/ideate/retrieval.yaml` are pinned equal to
+    """F5. `docs/SHOT_DESIGN.md` and `configs/shot_design/retrieval.yaml` are pinned equal to
     `RANKING_SENTENCE` by a test; `INSTRUCTIONS` hand-copies it across a line wrap and nothing
     pinned the copy, so a reword would drift silently on the surface that matters most."""
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     assert ph.RANKING_SENTENCE in " ".join(server_mod.INSTRUCTIONS.split())
 
@@ -918,7 +918,7 @@ def test_every_registry_id_is_accepted_as_the_phenomenon_argument(phenomenon_db)
     with a bare id. That works only because each id is also its own alias in the lexicon, which
     another front edits -- and a dropped alias would put a model in a loop against this tool's
     own error message."""
-    from ideate.retrieval import phenomena as ph
+    from shot_design.retrieval import phenomena as ph
 
     for pid in ph.registry():
         got = tools.phenomenon_locate(pid, n=1)
@@ -957,7 +957,7 @@ def test_a_registered_tool_that_raises_anything_at_all_answers_with_an_error_dic
     nothing to act on. The guard has to sit at registration so the plain function keeps raising
     for its own tests, and has to use `functools.wraps` so the signature and docstring -- which
     ARE the tool schema -- survive it."""
-    from ideate.mcp.tools import never_raises
+    from shot_design.mcp.tools import never_raises
 
     @never_raises
     def boom(shot: int, segment: str = "flat_top") -> dict:
@@ -976,7 +976,7 @@ def test_a_registered_tool_that_raises_anything_at_all_answers_with_an_error_dic
 
 
 def test_a_half_published_database_is_an_error_dict_naming_the_rebuild(tmp_path, monkeypatch):
-    """`db/manifest.json` present, the tables not yet: `ideate build` publishes per file, so a
+    """`db/manifest.json` present, the tables not yet: `shot_design build` publishes per file, so a
     build in flight IS this state. `_db()`'s existence check passes and `ShotDB.load` then
     raises on `shots.parquet` -- which is the unanticipated exception, on a state the database
     is really in."""
@@ -987,7 +987,7 @@ def test_a_half_published_database_is_an_error_dict_naming_the_rebuild(tmp_path,
     monkeypatch.delenv("IDEATE_PATHS", raising=False)
     got = _registered("describe_shot")(shot=100)
     assert "FileNotFoundError" in got["error"] and "shots.parquet" in got["error"]
-    assert any("rebuilt" in c and "ideate build" in c for c in got["caveats"])
+    assert any("rebuilt" in c and "shot_design build" in c for c in got["caveats"])
 
 
 def test_an_events_table_with_the_wrong_columns_is_an_error_dict_not_a_key_error(ideate_db):
@@ -1009,7 +1009,7 @@ def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db
         async with Client(server_mod.build_server()) as client:
             tool_list = await client.list_tools()
             resources = await client.list_resources()
-            manifest = await client.read_resource("ideate://manifest")
+            manifest = await client.read_resource("shot_design://manifest")
             return tool_list, resources, manifest
 
     tool_list, resources, manifest = asyncio.run(go())
@@ -1018,7 +1018,7 @@ def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db
     ]
     for t in tool_list.tools:
         assert t.description and t.input_schema["type"] == "object"
-    assert [str(r.uri) for r in resources.resources] == ["ideate://manifest"]
+    assert [str(r.uri) for r in resources.resources] == ["shot_design://manifest"]
     assert json.loads(manifest.contents[0].text)["reader"] == "test"
     # The guard at registration must not eat the schema: a `*args` wrapper that did would leave
     # every tool with an empty property set and the model guessing at argument names.
@@ -1036,7 +1036,7 @@ def test_the_manifest_resource_carries_the_missing_database_error(tmp_path, monk
 
     async def go():
         async with Client(server_mod.build_server()) as client:
-            return await client.read_resource("ideate://manifest")
+            return await client.read_resource("shot_design://manifest")
 
     doc = json.loads(asyncio.run(go()).contents[0].text)
     assert "no database" in doc["error"]
@@ -1046,7 +1046,7 @@ def test_the_manifest_resource_carries_the_missing_database_error(tmp_path, monk
 
 
 def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
-    """`python -m ideate.mcp` in a real subprocess, spoken to over stdin/stdout.
+    """`python -m shot_design.mcp` in a real subprocess, spoken to over stdin/stdout.
 
     The data root is the state the I7 review reproduced this failure on: `db/manifest.json`
     published and the tables not (a build writes per file, so a build in flight IS this). Two
@@ -1071,13 +1071,13 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     env.update(IDEATE_DATA_ROOT=str(root), HF_HUB_OFFLINE="1", PYTHONUNBUFFERED="1")
     env.pop("IDEATE_PATHS", None)
     # THIS checkout's src first, exactly as the suite is run. Without it the subprocess imports
-    # whichever `ideate` is installed in the environment -- the main checkout -- and the test
+    # whichever `shot_design` is installed in the environment -- the main checkout -- and the test
     # silently exercises somebody else's code, which is how a worktree passes a test it breaks.
     env["PYTHONPATH"] = os.pathsep.join(
         [str(REPO / "src"), *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])]
     )
     params = StdioServerParameters(
-        command=sys.executable, args=["-m", "ideate.mcp"], cwd=str(REPO), env=env
+        command=sys.executable, args=["-m", "shot_design.mcp"], cwd=str(REPO), env=env
     )
 
     async def go():
@@ -1108,7 +1108,7 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
         assert not outcome.is_error
         doc = json.loads(outcome.content[0].text)
         assert "FileNotFoundError" in doc["error"] and "shots.parquet" in doc["error"]
-        assert any("rebuilt" in c and "ideate build" in c for c in doc["caveats"])
+        assert any("rebuilt" in c and "shot_design build" in c for c in doc["caveats"])
 
     # ... and the documented LIMIT of that promise, exercised rather than asserted in prose: an
     # argument of the wrong TYPE never reaches the function, so it cannot carry `caveats`. The
@@ -1177,8 +1177,8 @@ def test_the_project_mcp_config_points_at_this_server():
     """`.mcp.json` is what makes `claude` in this checkout see the server at all. It is the one
     file nothing else in the suite would notice going stale."""
     cfg = json.loads((REPO / ".mcp.json").read_text(encoding="utf-8"))
-    entry = cfg["mcpServers"]["ideate"]
-    assert entry["args"][-2:] == ["-m", "ideate.mcp"]
+    entry = cfg["mcpServers"]["shot_design"]
+    assert entry["args"][-2:] == ["-m", "shot_design.mcp"]
     assert os.path.isabs(entry["cwd"])
     # A shared config can launch any checkout root of this repository,
     # including the primary checkout when tested from a linked worktree.
@@ -1189,7 +1189,7 @@ def test_an_unreadable_optional_table_is_recorded_by_the_store_not_raised(ideate
     """`ShotDB.load` reads the label tables eagerly since I9a; a torn `events.parquet` used to
     raise there, turning every MCP call into a protocol error. The core tables load, the
     failure is on `load_errors`, and the events reader reports it in its own words."""
-    from ideate.shotdb.store import ShotDB
+    from shot_design.shotdb.store import ShotDB
 
     (ideate_db / "db" / "events.parquet").write_bytes(b"not parquet")
     db = ShotDB.load(ideate_db / "db")

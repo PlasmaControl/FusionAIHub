@@ -7,11 +7,11 @@ by number in the tests below that exist because of it.
 import numpy as np
 import pytest
 
-from labelmaker import validate
-from labelmaker.catalog import TM_ARCHIVE
-from labelmaker.config import Paths
-from labelmaker.models import registry
-from labelmaker.models.base import (
+from labeler import validate
+from labeler.catalog import TM_ARCHIVE
+from labeler.config import Paths
+from labeler.models import registry
+from labeler.models.base import (
     InputField,
     InputSpec,
     ModelAdapter,
@@ -117,7 +117,7 @@ def test_rankdata_matches_scipy_oracle_with_ties(seed):
     """Addendum item 1: `_rankdata` replaces `scipy.stats.rankdata` at
     runtime (scipy must not be imported by validate.py - see the module's
     reasoning on `_ks_statistic`, which this mirrors: a loader-ordering
-    problem shared with labelmaker's fdp scaling path, Task 16b - not a
+    problem shared with labeler's fdp scaling path, Task 16b - not a
     defect unique to scipy). This test is the proof: it imports scipy
     itself, as an independent oracle, exactly the way `test_ks_statistic.py`
     does, guarded with `importorskip` so it degrades gracefully wherever
@@ -141,7 +141,7 @@ def test_rankdata_matches_scipy_oracle_continuous():
 
 
 def test_score_field_separates_published_from_all_matched_rows():
-    """Addendum item 6: labelmaker masks invalid rows out of what it
+    """Addendum item 6: labeler masks invalid rows out of what it
     publishes, so scoring every matched row measures something the package
     never emits. The two invalid rows here are deliberately mis-scored so
     `all_matched` and `published` diverge, not merely differ in `n`.
@@ -176,7 +176,7 @@ def test_label_quality_asserts_the_truth_column_mapping(monkeypatch):
     before any shot is touched (and before the model's weights are loaded,
     so this test needs no real weights on disk).
     """
-    import labelmaker.validate as validate_mod
+    import labeler.validate as validate_mod
 
     original = dict(validate_mod._TRUTH_COLUMNS)
     validate_mod._TRUTH_COLUMNS = {"tm_prob": 0, "betan": 1}  # swapped
@@ -194,7 +194,7 @@ def test_label_quality_asserts_the_match_column_mapping():
     needs the same loud guard - checked before adapter.load, so this test
     needs no real weights on disk either.
     """
-    import labelmaker.validate as validate_mod
+    import labeler.validate as validate_mod
 
     original = validate_mod.MATCH_COLUMNS
     validate_mod.MATCH_COLUMNS = (1, 0, 6, 7, 8)  # bt/ip swapped
@@ -368,7 +368,7 @@ def test_model_index_results_reads_the_published_reconstructed_score():
 
 def test_model_index_results_dataset_name_states_shots_and_rows():
     """A card-only reader must be able to see the
-    row denominators and that labelmaker's validity mask was applied,
+    row denominators and that labeler's validity mask was applied,
     without opening the JSON - "d3d overlap shots (n=31)" alone hid that
     the headline numbers were a 31-of-100-shot, valid-rows-only measurement.
     """
@@ -469,7 +469,7 @@ def test_update_model_index_leaves_card_discrepancies_empty(monkeypatch, tmp_pat
 
 def test_update_model_index_preserves_approximations_content(monkeypatch, tmp_path):
     """`card_discrepancies` never inspects
-    `labelmaker.approximations`, so a future `safe_dump` change that mangled
+    `labeler.approximations`, so a future `safe_dump` change that mangled
     those prose entries would pass the whole suite silently. A
     `yaml.safe_load` before/after equality test on that block closes it
     cheaply, against the real card - the one this rewrite actually touches.
@@ -537,8 +537,8 @@ def test_reconstruction_penalty_is_computed_row_matched_not_from_all_matched(mon
     penalty computed from the wrong pair would land far from the row-matched
     one, not merely differ in the last decimal place.
     """
-    import labelmaker.validate as validate_mod
-    from labelmaker.models import registry as registry_mod
+    import labeler.validate as validate_mod
+    from labeler.models import registry as registry_mod
 
     n = 6
     n_invalid = 2

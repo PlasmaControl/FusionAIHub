@@ -1,4 +1,4 @@
-"""The phenomenon registry, the evidence classes, and what `ideate phenomenon` may claim.
+"""The phenomenon registry, the evidence classes, and what `shot_design phenomenon` may claim.
 
 Everything here is about ONE distinction repeated at four scales: an observation, a model's
 opinion about the present, a model's opinion about the future, and a sentence somebody typed are
@@ -16,9 +16,9 @@ import pandas as pd
 import pytest
 import yaml
 
-from ideate import cli
-from ideate.retrieval import phenomena as ph
-from ideate.shotdb import store
+from shot_design import cli
+from shot_design.retrieval import phenomena as ph
+from shot_design.shotdb import store
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -50,7 +50,7 @@ def test_elm_clock_points_are_observed_hits_and_transients_never_are(
     assert [h.shot for h in ph.locate("transient", db)] == [101]
     assert cli.main(["phenomenon", "ELM", "--json"]) == 0
     assert [h["shot"] for h in json.loads(capsys.readouterr().out)] == [100]
-    from ideate.mcp import tools as mcp_tools
+    from shot_design.mcp import tools as mcp_tools
 
     reply = mcp_tools.get_events(100, phenomenon="elm")
     assert reply["n"] == 1
@@ -63,7 +63,7 @@ def test_elm_clock_points_are_observed_hits_and_transients_never_are(
 
 @pytest.mark.parametrize("source_table", [False, True])
 def test_legacy_mask_clock_coverage_is_not_dalpha_coverage(ideate_db, source_table):
-    from ideate.labels import event_sources as es
+    from shot_design.labels import event_sources as es
 
     events = [_event(100, "100-elm_clock-00000", source="elm_clock",
                      evidence_kind="heuristic", phenomenon="elm_free",
@@ -100,7 +100,7 @@ OBSERVED_SHOT, FORECAST_SHOT, TEXT_SHOT, SILENT_SHOT = 100, 101, 200, 201
 
 
 def _event(shot: int, event_id: str, **over) -> dict:
-    from labelmaker.events import schema as events_schema
+    from labeler.events import schema as events_schema
 
     row = {
         "shot": shot,
@@ -166,9 +166,9 @@ def _claim(shot: int, phenomenon: str, **over) -> dict:
 
 
 def _write_tables(db_dir: Path, events: list[dict], labels: list[dict], claims: list[dict]) -> None:
-    from ideate.labels.claims import CLAIMS_DTYPES
-    from ideate.labels.join import LABELS_WIDE_DTYPES
-    from labelmaker.events import schema as events_schema
+    from shot_design.labels.claims import CLAIMS_DTYPES
+    from shot_design.labels.join import LABELS_WIDE_DTYPES
+    from labeler.events import schema as events_schema
 
     pd.DataFrame(events, columns=list(events_schema.COLUMNS)).astype(
         events_schema.DTYPES
@@ -233,7 +233,7 @@ def phen_db(ideate_db: Path) -> store.ShotDB:
     # Shot 100's logbook says what its detector saw. That is what makes it the hit that lacks
     # NOTHING -- no missing evidence class, and a quote that is about the phenomenon rather than
     # the shot's best sentence on some other subject.
-    from ideate.schema import LogEntry
+    from shot_design.schema import LogEntry
 
     rec = db.get(OBSERVED_SHOT)
     rec.human.log_entries.append(
@@ -247,11 +247,11 @@ def phen_db(ideate_db: Path) -> store.ShotDB:
 
 
 def test_the_registry_names_exactly_labelmakers_round_one_phenomena():
-    from labelmaker.events.lexicon import PHENOMENON_IDS
+    from labeler.events.lexicon import PHENOMENON_IDS
 
     reg = ph.registry()
     assert set(reg) == set(PHENOMENON_IDS)
-    # And the names come from labelmaker's file, not from a second copy of them here.
+    # And the names come from labeler's file, not from a second copy of them here.
     assert reg["eho"].aliases == tuple(ph._lexicon()["eho"].aliases)
     assert reg["elm"].exclude == tuple(ph._lexicon()["elm"].negatives)
 
@@ -280,7 +280,7 @@ def test_resolve_separates_the_fast_ion_topic_from_the_alfven_mode():
 
 
 def test_every_registry_id_resolves_to_itself():
-    """`ideate phenomenon <query>` matches TEXT, and its refusal prints the registry's ids.
+    """`shot_design phenomenon <query>` matches TEXT, and its refusal prints the registry's ids.
 
     So an id that does not appear in its own alias list is advertised by the error message and
     then rejected when it is typed -- which is what `fast_ion` did, and what `lh` did before it
@@ -294,7 +294,7 @@ def test_every_registry_id_resolves_to_itself():
 
 
 def _registry_file(tmp_path: Path, mutate) -> Path:
-    doc = yaml.safe_load((REPO / "configs" / "ideate" / "phenomena.yaml").read_text())
+    doc = yaml.safe_load((REPO / "configs" / "shot_design" / "phenomena.yaml").read_text())
     mutate(doc)
     path = tmp_path / "phenomena.yaml"
     path.write_text(yaml.safe_dump(doc), encoding="utf-8")
@@ -325,7 +325,7 @@ def test_restating_the_alias_list_here_is_refused(tmp_path):
 
 
 def test_the_shipped_registry_states_no_aliases_and_no_excludes():
-    doc = yaml.safe_load((REPO / "configs" / "ideate" / "phenomena.yaml").read_text())
+    doc = yaml.safe_load((REPO / "configs" / "shot_design" / "phenomena.yaml").read_text())
     for pid, body in doc["phenomena"].items():
         assert not ({"aliases", "exclude", "negatives"} & set(body)), pid
 
@@ -333,7 +333,7 @@ def test_the_shipped_registry_states_no_aliases_and_no_excludes():
 def test_every_configured_label_exists_in_the_built_labels_wide_or_in_labels_yaml():
     """`labels:` may not name a series nobody produces: it would score as permanently
     unavailable, which reads as "the model says no"."""
-    from ideate.labels.join import forecast_rules
+    from shot_design.labels.join import forecast_rules
 
     # The five slugs the real join produced, and the risk labels labels.yaml names.
     produced = {
@@ -496,7 +496,7 @@ def test_an_unscored_event_cannot_be_shown_to_clear_a_bar_and_says_so(phen_db):
 def test_the_event_refs_point_back_at_the_rows_they_summarise(phen_db):
     refs = ph.evidence(OBSERVED_SHOT, "tearing", phen_db).refs
     assert refs[0].event_id == "100-tokeye_track-00000"
-    # The SOURCE's own word, not ideate's id: the detector never said "tearing".
+    # The SOURCE's own word, not shot_design's id: the detector never said "tearing".
     assert refs[0].phenomenon == "coherent_mode"
     assert refs[0].shot == OBSERVED_SHOT
 
@@ -511,7 +511,7 @@ def test_observed_outranks_forecast_only_which_outranks_text_only(phen_db):
 
 
 def test_a_text_only_hit_is_capped_and_labelled_as_one(phen_db):
-    from labelmaker.events.lexicon import TEXT_ONLY_CEILING
+    from labeler.events.lexicon import TEXT_ONLY_CEILING
 
     hit = next(h for h in ph.locate("tearing", phen_db, 10) if h.shot == TEXT_SHOT)
     assert hit.score <= TEXT_ONLY_CEILING == 0.25
@@ -552,7 +552,7 @@ def test_min_confidence_reaches_the_ranking(phen_db):
 
 
 def test_constraints_narrow_the_candidates(phen_db):
-    from ideate.schema import Range
+    from shot_design.schema import Range
 
     hits = ph.locate("tearing", phen_db, 10, constraints={"ip_mean": Range(lo=1.3e6)})
     assert [h.shot for h in hits] == [TEXT_SHOT]  # 100 and 101 are under 1.3 MA
@@ -589,7 +589,7 @@ def test_every_hit_names_the_evidence_classes_it_lacks_and_only_those(phen_db):
     """Caveats are informative, not boilerplate. Shot 100 has an observation, a label and the
     operators' word. Its older event hull still needs the gap-uncertainty caveat;
     explicit interval coverage removes that uncertainty and carries none."""
-    from ideate.labels import event_sources as es
+    from shot_design.labels import event_sources as es
 
     hits = {h.shot: h for h in ph.locate("tearing", phen_db, 10)}
     assert hits[OBSERVED_SHOT].caveats == [f"tokeye_track: {es.LEGACY_HULL_CAVEAT}"]
@@ -632,7 +632,7 @@ def test_the_store_loads_the_three_label_tables_when_they_are_there(phen_db):
 
 
 def test_the_store_tolerates_their_absence_with_empty_typed_frames(ideate_db):
-    from labelmaker.events import schema as events_schema
+    from labeler.events import schema as events_schema
 
     db = store.ShotDB.load(ideate_db / "db")
     assert db.events.empty and list(db.events.columns) == list(events_schema.COLUMNS)
@@ -676,7 +676,7 @@ def test_the_cli_lists_the_registry(capsys):
     assert cli.main(["phenomenon", "--list"]) == 0
     out = capsys.readouterr().out
     assert "eho          Edge harmonic oscillation" in out
-    assert "edge harmonic oscillation" in out  # the aliases, from labelmaker's file
+    assert "edge harmonic oscillation" in out  # the aliases, from labeler's file
 
 
 def test_the_cli_passes_avoid_through(phen_db, capsys):
@@ -935,7 +935,7 @@ def test_the_label_only_caveat_says_what_the_model_actually_scored(ideate_db):
 
 def test_the_config_and_the_docs_state_the_ranking_the_code_implements():
     assert ph.OBSERVED > ph.LABELLED > ph.FORECAST > ph.DATABASE > ph.TEXTUAL
-    for path in (REPO / "configs" / "ideate" / "retrieval.yaml", REPO / "docs" / "IDEATE.md"):
+    for path in (REPO / "configs" / "shot_design" / "retrieval.yaml", REPO / "docs" / "SHOT_DESIGN.md"):
         text = " ".join(path.read_text().replace("#", " ").split())
         assert ph.RANKING_SENTENCE in text, path
 
@@ -992,7 +992,7 @@ def test_a_forecast_label_may_not_be_listed_as_label_evidence(tmp_path):
 
 
 def _with_log(db: store.ShotDB, shot: int, texts: list[str]) -> None:
-    from ideate.schema import LogEntry
+    from shot_design.schema import LogEntry
 
     rec = db.get(shot)
     rec.human.log_entries = [LogEntry(role="PHYSICS_OPERATOR", text=t) for t in texts]
@@ -1022,7 +1022,7 @@ def test_a_quote_that_does_not_mention_the_phenomenon_says_so(ideate_db):
 
 
 def test_shorten_takes_a_width_so_the_table_does_not_cut_mid_word():
-    from ideate.retrieval import describe as describe_mod
+    from shot_design.retrieval import describe as describe_mod
 
     text = ("Alex restores all GPU feedback settings from 186533 Error field correction "
             "enabled at 2 s")
@@ -1116,7 +1116,7 @@ def rwm_tables(tmp_path, monkeypatch):
 def test_the_shipped_registry_names_both_rwm_tables_and_the_manifest_knows_them():
     """The registry entry and `data/events/tables.yaml` are two files that have to agree, and
     nothing else checks that they do: a stem typo here is a silent empty set, not an error."""
-    from labelmaker.events import databases as label_tables
+    from labeler.events import databases as label_tables
 
     entry = ph.registry()["rwm"].database
     assert entry is not None

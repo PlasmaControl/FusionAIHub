@@ -19,15 +19,15 @@ import h5py
 import numpy as np
 import pytest
 
-from ideate.config import load_paths
-from ideate.design import seed
-from ideate.shotdb import ignite
-from ideate.shotdb.corpus import CorpusReader
+from shot_design.config import load_paths
+from shot_design.design import seed
+from shot_design.shotdb import ignite
+from shot_design.shotdb.corpus import CorpusReader
 
 SHIPPED = 190090
 #: The eight modalities whose codecs consume a handful of kilobytes per frame. The four spectro
 #: modalities want 500 kHz arrays and the two video ones want 240x720 frames; neither belongs in
-#: a unit test, and the G-ENC gate (scripts/ideate/g_enc.py) covers them on real shots.
+#: a unit test, and the G-ENC gate (scripts/shot_design/g_enc.py) covers them on real shots.
 CHEAP = (
     "ts_core_density",
     "ts_core_temp",
@@ -125,7 +125,7 @@ def test_encode_frame_codes_writes_the_shipped_dict_structure(bundle, tmp_path):
 
     # ... and the provenance goes BESIDE it, not into it. The payload above is the compatibility
     # contract; the sidecar is where device/threads/revision/input identity live.
-    from ideate.design import provenance
+    from shot_design.design import provenance
 
     side = provenance.read_sidecar(tmp_path, SHIPPED)
     assert set(side) == set(provenance.SIDECAR_KEYS)
@@ -262,8 +262,8 @@ def _touch(out_dir, shot):
 # ------------------------------------------------------------------- the G-ENC gate's compare
 
 def _g_enc():
-    """`scripts/ideate/g_enc.py`, imported by path -- it is a script, not a package module."""
-    path = Path(__file__).resolve().parents[2] / "scripts" / "ideate" / "g_enc.py"
+    """`scripts/shot_design/g_enc.py`, imported by path -- it is a script, not a package module."""
+    path = Path(__file__).resolve().parents[2] / "scripts" / "shot_design" / "g_enc.py"
     spec = importlib.util.spec_from_file_location("g_enc_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

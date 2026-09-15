@@ -1,7 +1,7 @@
 # The phenomenon registry: what counts as EVIDENCE for each of plan §5.6's round-1 phenomena.
 #
-# The ids and the alias lists are NOT here. `src/labelmaker/events/lexicons.yaml` is the single
-# source of both (plan §5.6, and that file's own header says so); `ideate.retrieval.phenomena`
+# The ids and the alias lists are NOT here. `src/labeler/events/lexicons.yaml` is the single
+# source of both (plan §5.6, and that file's own header says so); `shot_design.retrieval.phenomena`
 # reads it and merges the aliases onto these entries. An `aliases:` or `exclude:` key in this file
 # is a `PhenomenaError`, not a second opinion -- a test pins that.
 #
@@ -23,9 +23,9 @@
 #                    model slugs) or are named in `labels.yaml` are listed. Fourteen of the sixteen
 #                    phenomena have no label model at all: that is a gap in the label corpus, and
 #                    an empty list is how it is stated.
-#   events           which labelmaker event rows count as OBSERVED evidence. `source` is the
+#   events           which labeler event rows count as OBSERVED evidence. `source` is the
 #                    detector; `phenomenon` is the string THAT DETECTOR writes, which is not
-#                    ideate's id -- `tokeye_track` writes "coherent_mode" for every track and
+#                    shot_design's id -- `tokeye_track` writes "coherent_mode" for every track and
 #                    "pickup" for a receiver line, `elm_clock` writes "elm"/"elm_free", `dalpha_lh`
 #                    writes "lh_transition"/"hl_transition". `band_khz` is matched against the
 #                    track's `attrs.f_centroid_khz` (the probability-weighted centre; `f0/f1_khz`
@@ -36,14 +36,14 @@
 #                    `max_bandwidth_khz` bounds `attrs.bandwidth_khz` (the f0-f1 extent when a
 #                    source records no bandwidth; a row that records NEITHER is not rejected for
 #                    it). The centroid alone puts a track spanning 0.5-248 kHz in whatever band
-#                    its middle lands in: measured on the three real labelmaker shots, 5-12 % of
+#                    its middle lands in: measured on the three real labeler shots, 5-12 % of
 #                    the rows the tearing rule matched are wider than the whole tearing band.
 #                    The rule of thumb here is that a track must FIT INSIDE the band it is
 #                    claimed to be in, so the bound is the band's own width (and a declared cap
 #                    where the band is open-topped).
 #                    `weight` is what one matching row is worth in the event term (default 1.0,
 #                    the value for a detector that detects the class it is registered under).
-#                    `caveat` names a constant in `ideate.retrieval.phenomena` that every hit
+#                    `caveat` names a constant in `shot_design.retrieval.phenomena` that every hit
 #                    built on the rule carries. The two exist for the same case: a detector
 #                    whose output is not a classification of THIS phenomenon.
 #   forecasts        event SOURCES whose rows for this phenomenon are forecasts. A forecast is
@@ -59,7 +59,7 @@
 #                    unknown -- which is the honest answer.
 #   band_khz         where the mode lives, for display and for a frequency caveat. Physics, not a
 #                    filter: `events.band_khz` is what actually selects rows.
-#   diags            the `diag` strings labelmaker writes on this phenomenon's own rows.
+#   diags            the `diag` strings labeler writes on this phenomenon's own rows.
 #                    Documentation only; these do not filter coverage or events.
 #   coverage_diags   optional list of allowed diagnostics for COVERING sources (event detectors
 #                    plus `coverage_sources`). When non-empty, both source coverage rows and
@@ -77,7 +77,7 @@
 #                    only route to those two.
 #   database         a curated shot list, when one exists, named ONE of two ways: `path_key`, a
 #                    key of paths.yaml rather than an absolute path, or `tables`, the manifest
-#                    stems of `data/events/tables.yaml` resolved through labelmaker's own
+#                    stems of `data/events/tables.yaml` resolved through labeler's own
 #                    reader. Either way it is MEMBERSHIP and not observation: a hit ranks in
 #                    the DATABASE class, below a forecast, and its coverage stays unknown.
 #
@@ -250,7 +250,7 @@ phenomena:
     title: Resistive wall mode
     labels: []
     # No DETECTOR writes rwm. The two curated tables below do, through
-    # `labelmaker.events.databases`, and their rows carry `evidence_kind: database` with NaN
+    # `labeler.events.databases`, and their rows carry `evidence_kind: database` with NaN
     # coverage -- so they are never an observation and never donate coverage. Text is the only
     # other route (see the caveats).
     events: []
@@ -262,7 +262,7 @@ phenomena:
     database:
       name: RWM_Onsets
       # Manifest stems, not a path: `data/events/tables.yaml` says where each CSV is and what
-      # its columns mean, and `_table_shots` resolves them through labelmaker's own reader.
+      # its columns mean, and `_table_shots` resolves them through labeler's own reader.
       tables: [rwm_onsets_2017, rwm_onsets_2024]
       note: >-
         Jeremy Hansen's onset databases: 56 rows, 33 distinct shots, 156785-176092 -- and 0 of
@@ -272,7 +272,7 @@ phenomena:
         would light it up. A hit here ranks in the DATABASE class, below a forecast and never as
         an observation.
 
-  # The three q-min regime bands (labelmaker `events/heuristics.py::qmin_regimes`, task L-D2).
+  # The three q-min regime bands (labeler `events/heuristics.py::qmin_regimes`, task L-D2).
   # Scenario ids, not instability ids: they say what the discharge WAS, and the only producer is
   # a threshold rule on EFIT01's q-min inside the Ip flat-top. Three things follow from that.
   #

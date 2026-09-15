@@ -1,6 +1,6 @@
 version: 2
 # The local language model behind the design chat, the offline shot blurbs and describe.polish.
-# Ollama serves Gemma 4 through its OpenAI-compatible endpoint; the client (ideate.llm.client)
+# Ollama serves Gemma 4 through its OpenAI-compatible endpoint; the client (shot_design.llm.client)
 # speaks chat completions with tool calling over httpx. A hosted provider later is a base_url and
 # a key in the environment (LLM_API_KEY), never a code change.
 provider: "off"      # "off" disables every model call; templates are the answer

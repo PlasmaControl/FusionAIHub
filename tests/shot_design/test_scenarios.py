@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from ideate import config
-from ideate.retrieval import scenarios
-from ideate.shotdb import build, store
+from shot_design import config
+from shot_design.retrieval import scenarios
+from shot_design.shotdb import build, store
 
 from .test_build_store import stub_embeddings  # noqa: F401  (fixture)
 

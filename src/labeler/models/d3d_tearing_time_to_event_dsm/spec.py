@@ -17,9 +17,9 @@ multiplied by 1.69861e-5 before normalising, as upstream does (the line
 commented 'fix BT'); beam power is converted kW -> MW to match `bmspinj`.
 
 Substitutions: offline EFIT01 for every EFITRT2 quantity; ZIPFIT fits for the
-mtanh/csaps profiles; labelmaker's 25 ms grid and 50 ms input window for
+mtanh/csaps profiles; labeler's 25 ms grid and 50 ms input window for
 upstream's 20 ms samples. Unlike the tearing CNN, this model's training rows
-are not on disk in a form labelmaker reads, so none of these is priced against
+are not on disk in a form labeler reads, so none of these is priced against
 its own training archive. Published labels are scored against the aligned
 tearing CNN archive; the card distinguishes fidelity from label quality.
 """
@@ -82,7 +82,7 @@ INPUT_SPEC = InputSpec(
     rho_grid=ns.RHO_GRID,
     nan_policy="zero",
     # Upstream applied no range filter, only `check_all_signals` (every input
-    # finite), which is the finiteness part of labelmaker's validity mask.
+    # finite), which is the finiteness part of labeler's validity mask.
     domain=(),
 )
 
@@ -118,9 +118,9 @@ _RHO_65 = np.linspace(0.0, 1.0, 65)
 
 #: The 8,923 DIII-D shots (140444-193373) whose rows this checkpoint was fitted
 #: on, one per line, written from the upstream per-row shot pickle by
-#: `scripts/labelmaker/write_training_shots.py`. It is committed rather than
-#: read from `/projects` because the spec must load wherever labelmaker runs,
-#: and because half of labelmaker's own 500-shot pool is in it: without this
+#: `scripts/labeler/write_training_shots.py`. It is committed rather than
+#: read from `/projects` because the spec must load wherever labeler runs,
+#: and because half of labeler's own 500-shot pool is in it: without this
 #: list every pool number silently mixes memorised shots with held-out ones.
 #: `validate` splits every survival metric on it.
 TRAINING_SHOTS = frozenset(

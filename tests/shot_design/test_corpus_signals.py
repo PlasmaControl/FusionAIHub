@@ -1,4 +1,4 @@
-"""`CorpusSignalReader` -- the signal registry resolved against the FAITH corpus + labelmaker.
+"""`CorpusSignalReader` -- the signal registry resolved against the FAITH corpus + labeler.
 
 Three things are pinned here, and they are the three ways a corpus build can quietly lie:
 
@@ -8,7 +8,7 @@ Three things are pinned here, and they are the three ways a corpus build can qui
 * **which reduction** it uses. `sum` over eight beams and `mean` over eight accelerating voltages
   are not interchangeable, and neither is either with `first`.
 * **what an absence means.** A corpus group that is not there is `unavailable` -- DIII-D did not
-  record it. A labelmaker feature that is not there yet is `pending` -- fdp can still fetch it.
+  record it. A labeler feature that is not there yet is `pending` -- fdp can still fetch it.
   Neither is ever 0, and the two are never each other.
 """
 
@@ -19,10 +19,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate import config
-from ideate.shotdb import legacy_raw
-from ideate.shotdb.corpus_signals import CorpusSignalReader
-from ideate.shotdb.reader import Reader, ShotFailed, SignalReader
+from shot_design import config
+from shot_design.shotdb import legacy_raw
+from shot_design.shotdb.corpus_signals import CorpusSignalReader
+from shot_design.shotdb.reader import Reader, ShotFailed, SignalReader
 
 from .conftest import CORPUS_BARE_SHOT, write_feature_file
 
@@ -72,7 +72,7 @@ def test_a_member_is_found_by_name_even_when_the_channel_order_differs(paths, si
 
 def test_the_system_total_is_the_sum_over_the_corpus_channels(paths, signal_corpus):
     """What `build` gets out of `features.system_totals` over the members read above."""
-    from ideate.shotdb import features
+    from shot_design.shotdb import features
 
     r = CorpusSignalReader(paths)
     specs = registry(signal_corpus)
@@ -119,8 +119,8 @@ def test_a_group_the_corpus_did_not_record_is_unavailable_and_never_zero(paths, 
 
 
 def test_a_signal_with_no_corpus_address_is_unavailable_not_pending(paths, signal_corpus):
-    """q95 lives in EFIT and neither the corpus nor labelmaker carries it. `pending` would
-    promise `ideate fetch` could get it, and on this reader nothing can."""
+    """q95 lives in EFIT and neither the corpus nor labeler carries it. `pending` would
+    promise `shot_design fetch` could get it, and on this reader nothing can."""
     r = CorpusSignalReader(paths)
     _, coverage = r.read_shot(signal_corpus, registry(signal_corpus))
     assert coverage["q95"] == "unavailable"
@@ -140,7 +140,7 @@ def test_an_uninstalled_member_is_not_installed(paths, signal_corpus):
 def test_one_read_per_corpus_group_however_many_specs_share_it(paths, signal_corpus, monkeypatch):
     """Eight beams share `pinj`. Reading the group once per spec would be eight opens of the same
     file for one shot, and the registry has thirty-odd corpus specs."""
-    from ideate.shotdb import corpus
+    from shot_design.shotdb import corpus
 
     seen: list[str] = []
     real = corpus.CorpusReader.read
@@ -164,7 +164,7 @@ def test_a_corpus_file_that_cannot_be_read_is_a_failed_shot_not_an_absent_diagno
         CorpusSignalReader(paths).read_shot(CORPUS_SIGNAL_SHOT, registry(CORPUS_SIGNAL_SHOT))
 
 
-# --------------------------------------------------------------- the labelmaker address kind
+# --------------------------------------------------------------- the labeler address kind
 
 
 def test_a_stored_feature_is_read_with_its_resolver(paths, signal_corpus, labelmaker_features):
@@ -178,7 +178,7 @@ def test_a_stored_feature_is_read_with_its_resolver(paths, signal_corpus, labelm
 
 def test_a_labelmaker_scale_is_not_the_legacy_one(paths, signal_corpus, labelmaker_features):
     """`ip`'s registry `scale: 1e6` corrects a d3d_fusion_data storage convention (megaamps in a
-    column declared amps). labelmaker's `ip` is already amps; applying that scale would report a
+    column declared amps). labeler's `ip` is already amps; applying that scale would report a
     1.2 MA shot as 1.2 TA."""
     r = CorpusSignalReader(paths)
     ip = r.read_signal(signal_corpus, spec_named(signal_corpus, "ip"))
@@ -186,7 +186,7 @@ def test_a_labelmaker_scale_is_not_the_legacy_one(paths, signal_corpus, labelmak
 
 
 def test_segments_are_found_from_a_labelmaker_ip(paths, signal_corpus, labelmaker_features):
-    from ideate.shotdb import build, features
+    from shot_design.shotdb import build, features
 
     r = CorpusSignalReader(paths)
     ip = r.read_signal(signal_corpus, spec_named(signal_corpus, "ip"))
@@ -229,7 +229,7 @@ def test_a_profile_feature_is_reduced_to_a_scalar(
     """`ne_zipfit` is (33 rho, T). core is rho = 0, edge is rho = 1, peak is the largest of the
     33 -- the fixture puts its peak at rho index 16 so the three cannot alias."""
     spec = config.SignalSpec(
-        name="ne_probe", labelmaker={"feature": "ne_zipfit", "reduce": reduce}
+        name="ne_probe", labeler={"feature": "ne_zipfit", "reduce": reduce}
     )
     sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
     assert sig is not None and np.allclose(sig.y, expected)
@@ -353,12 +353,12 @@ def test_a_group_stored_three_dimensional_is_unavailable_not_a_failed_shot(paths
 def test_the_corpus_answers_first_when_a_spec_carries_both_addresses(
     paths, signal_corpus, labelmaker_features
 ):
-    """The documented rule: corpus first, labelmaker as the fallback."""
+    """The documented rule: corpus first, labeler as the fallback."""
     spec = config.SignalSpec(
         name="ip",
         units="A",
         corpus=config.CorpusAddress(group="pinj", channels=[0], reduce="first"),
-        labelmaker=config.LabelmakerAddress(feature="ip"),
+        labeler=config.LabelerAddress(feature="ip"),
     )
     sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
     assert sig is not None and sig.source == "corpus" and np.allclose(sig.y, 1.0e5)
@@ -371,7 +371,7 @@ def test_a_corpus_miss_falls_back_to_the_feature_store(paths, signal_corpus, lab
         name="ip",
         units="A",
         corpus=config.CorpusAddress(group="not_a_corpus_group", reduce="first"),
-        labelmaker=config.LabelmakerAddress(feature="ip"),
+        labeler=config.LabelerAddress(feature="ip"),
     )
     r = CorpusSignalReader(paths)
     sig = r.read_signal(signal_corpus, spec)
@@ -385,7 +385,7 @@ def test_the_corpus_actuator_map_is_built_once_not_once_per_spec(
     """`address()` rebuilt it per spec -- a deep copy of actuators.yaml plus a dozen pydantic
     constructions, ~85 times per shot, in a module that is otherwise careful to do each piece of
     work once per group."""
-    from ideate.shotdb import corpus_signals as mod
+    from shot_design.shotdb import corpus_signals as mod
 
     mod._corpus_actuators_cached.cache_clear()
     calls = []

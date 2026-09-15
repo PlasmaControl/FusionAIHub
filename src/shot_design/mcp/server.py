@@ -1,4 +1,4 @@
-"""`build_server()`: the four tools of `tools.py` and the `ideate://manifest` resource.
+"""`build_server()`: the four tools of `tools.py` and the `shot_design://manifest` resource.
 
 `TOOLS` is the registry -- one list, appended to as later tasks add tools -- so there is one
 place that says what this server offers and `test_mcp` can assert against it. Registration is
@@ -85,8 +85,8 @@ Quote the operator logbook only from `record.human.log_entries`, verbatim.
 def build_server() -> MCPServer:
     """The configured server. Transport is the caller's: `__main__` runs it on stdio."""
     server = MCPServer(
-        name="ideate",
-        title="ideate: DIII-D shot retrieval",
+        name="shot_design",
+        title="shot_design: DIII-D shot retrieval",
         version=__version__,
         instructions=INSTRUCTIONS,
     )
@@ -94,9 +94,9 @@ def build_server() -> MCPServer:
         server.add_tool(fn)
 
     @server.resource(
-        "ideate://manifest",
+        "shot_design://manifest",
         name="manifest",
-        title="ideate database manifest",
+        title="shot_design database manifest",
         description="What the built database contains: shot counts, reader, PCA, labels join.",
         mime_type="application/json",
     )
@@ -109,7 +109,7 @@ def build_server() -> MCPServer:
         path = paths.db_dir / "manifest.json"
         if not path.exists():
             return {
-                "error": f"no database at {paths.db_dir} -- run `ideate build --list poc_v1` first"
+                "error": f"no database at {paths.db_dir} -- run `shot_design build --list poc_v1` first"
             }
         try:
             return json.loads(path.read_text(encoding="utf-8"))

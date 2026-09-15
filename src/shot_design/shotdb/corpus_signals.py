@@ -1,4 +1,4 @@
-"""The signal registry resolved against the FAITH corpus and labelmaker's feature store.
+"""The signal registry resolved against the FAITH corpus and labeler's feature store.
 
 `corpus.CorpusReader` answers for a NAMED GROUP: give it `pinj` and it gives you eight unnamed
 channels on a millisecond axis. `build` does not speak that language -- it speaks `SignalSpec`,
@@ -15,16 +15,16 @@ of them is a silent, plausible-looking error when it is wrong:
   line-integrated density is one chord and not a total at all. `reduce: sum|mean|first` is
   per address, never a default applied to whatever a group happens to hold.
 
-The second source is labelmaker's `$LABELMAKER_ROOT/features/<shot>_features.h5`, which is where
+The second source is labeler's `$LABELMAKER_ROOT/features/<shot>_features.h5`, which is where
 the EFIT and plasma scalars live for corpus shots (the corpus itself carries no EFIT). Those are
-read through `labelmaker.features.store`, not through h5py here, so that the resolver provenance
+read through `labeler.features.store`, not through h5py here, so that the resolver provenance
 (`archive` / `corpus` / `fdp`, which differ by a few percent and by a 25 ms row lag -- see
-`labelmaker.features.namespace`) and the recorded miss causes are the ones labelmaker itself
+`labeler.features.namespace`) and the recorded miss causes are the ones labeler itself
 records rather than this module's reading of them.
 
 **The order of the two layers, for a spec that carries both addresses: the corpus first, the
 feature store as the fallback.** The corpus is the raw instrument channel at its own rate; a
-labelmaker feature is a resolved quantity on the 25 ms grid, from whichever of three sources
+labeler feature is a resolved quantity on the 25 ms grid, from whichever of three sources
 answered that day. So the corpus wins where it has the signal, and a corpus MISS falls through to
 the feature store rather than ending as `unavailable` -- reporting "no source has this" while the
 value sits on disk is the worst of the four answers. No shipped spec carries both today; the rule
@@ -39,14 +39,14 @@ and "we have not fetched it yet" has to survive all the way into that table:
 | the group / feature is there | `present` |
 | the corpus group is absent or is a `(C, 1)` placeholder | `unavailable` |
 | the group has fewer channels than the address names, or is stored 3-D | `unavailable` + reason |
-| the signal has no corpus and no labelmaker address at all | `unavailable` |
+| the signal has no corpus and no labeler address at all | `unavailable` |
 | the stored feature holds no finite sample | `unavailable` |
-| labelmaker recorded a miss that will fail again identically | `unavailable` |
+| labeler recorded a miss that will fail again identically | `unavailable` |
 | no feature file, no record of a miss, or a miss worth retrying | `pending` |
 | the member is not installed on this shot | `not_installed` |
 
 Never 0, and never NaN standing in for either. `pending` is a work order -- the shots it names
-are exactly the ones `labelmaker.run features` (under the `fdp run` wrapper) can still fill in --
+are exactly the ones `labeler.run features` (under the `fdp run` wrapper) can still fill in --
 so it must not be spent on a quantity no source has.
 
 A corpus file that does not open at all (~2.3 % of them, truncated writes) raises `ShotFailed`
@@ -74,7 +74,7 @@ from ..schema import Status
 from .corpus import CorpusReader
 from .reader import ShotFailed, Signal, Unavailable
 
-#: The corpus is float32 on disk and so is `Signal.y` everywhere else in ideate; the arithmetic in
+#: The corpus is float32 on disk and so is `Signal.y` everywhere else in shot_design; the arithmetic in
 #: between (a sum over eight beams, a mean over eight filterscope views) is float64, because
 #: D-alpha runs at ~1e15-1e18 and a float32 sum of squares of that overflows -- the same reason
 #: `features._finite` casts.
@@ -84,9 +84,9 @@ DTYPE = np.float32
 def default_features_dir(root: str | os.PathLike | None = None) -> Path | None:
     """`$LABELMAKER_ROOT/features`, or None when the variable is not set.
 
-    None rather than labelmaker's own default root: a build that silently read another user's
+    None rather than labeler's own default root: a build that silently read another user's
     feature store would report coverage this repo's environment cannot reproduce. With no root
-    set, every labelmaker-addressed signal is `pending`, which is true and is a work order.
+    set, every labeler-addressed signal is `pending`, which is true and is a work order.
     """
     root = root or os.environ.get("LABELMAKER_ROOT")
     return Path(root) / "features" if root else None
@@ -123,7 +123,7 @@ class Address:
 
 
 class CorpusSignalReader(CorpusReader):
-    """The FAITH corpus + labelmaker features as a `SignalReader`.
+    """The FAITH corpus + labeler features as a `SignalReader`.
 
     Constructed from `Paths` (not from two directories) so that a worker process can rebuild one
     from a picklable argument: `build._build_many` sends `reader_kind` and `paths` down to each
@@ -164,7 +164,7 @@ class CorpusSignalReader(CorpusReader):
         """
         signals: dict[str, Signal | None] = {s.name: None for s in specs}
         # Everything starts unavailable -- "no source carries this for this shot" -- and only a
-        # labelmaker miss that is worth retrying moves a name to `pending`. The default is the
+        # labeler miss that is worth retrying moves a name to `pending`. The default is the
         # conservative one: `pending` is a promise that a fetch would help.
         status: dict[str, Status] = {}
         self.reasons = reasons = {}
@@ -181,10 +181,10 @@ class CorpusSignalReader(CorpusReader):
             signals.update(got)
             reasons.update(why)
         # Corpus first, feature store second -- for a spec that carries BOTH addresses as well as
-        # for one that carries only the labelmaker's. A corpus miss must not shadow a feature that
+        # for one that carries only the labeler's. A corpus miss must not shadow a feature that
         # is on disk: `unavailable` where the value exists is the worst of the four answers.
-        labelmaker = [s for s in installed if s.labelmaker is not None and signals[s.name] is None]
-        for name, sig, st in self._read_features(shot, labelmaker):
+        labeler = [s for s in installed if s.labelmaker is not None and signals[s.name] is None]
+        for name, sig, st in self._read_features(shot, labeler):
             signals[name] = sig
             if sig is None:
                 status[name] = st
@@ -318,21 +318,21 @@ class CorpusSignalReader(CorpusReader):
             )
         return out, reasons
 
-    # ------------------------------------------------------------------------ labelmaker
+    # ------------------------------------------------------------------------ labeler
 
     def _read_features(
         self, shot: int, specs: list[SignalSpec]
     ) -> list[tuple[str, Signal | None, Status]]:
-        """Every labelmaker-addressed spec, with the status a miss earns.
+        """Every labeler-addressed spec, with the status a miss earns.
 
         The file is interrogated twice (what it holds, what it recorded as missed) and then read
-        once per stored feature, all through `labelmaker.features.store`: the miss causes and the
-        transient/permanent rule are labelmaker's own, and a copy of them here would be a second
+        once per stored feature, all through `labeler.features.store`: the miss causes and the
+        transient/permanent rule are labeler's own, and a copy of them here would be a second
         opinion about someone else's file.
         """
         if not specs:
             return []
-        from labelmaker.features import store
+        from labeler.features import store
 
         path = self.features_dir / f"{int(shot)}_features.h5" if self.features_dir else None
         if path is None or not path.exists():
@@ -385,7 +385,7 @@ def _prepare(rows: np.ndarray, spec: SignalSpec, scale: float) -> np.ndarray:
     Order matters and is the same as `legacy_raw._signal`'s, with one deliberate difference:
     `scale` comes from the ADDRESS, never from `spec.scale`. A registry `scale` corrects a
     d3d_fusion_data storage convention (`ipsip` is stored in megaamps in a column declared amps);
-    applying it to labelmaker's `ip`, which is already amps, would report a 1.2 MA shot as 1.2 TA.
+    applying it to labeler's `ip`, which is already amps, would report a 1.2 MA shot as 1.2 TA.
 
     `abs` is the spec's, because it is a claim about the QUANTITY (Ip's sign is a machine
     convention, an RMP coil's is a phase), and it runs per channel BEFORE the reduction -- which

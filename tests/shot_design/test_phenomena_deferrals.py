@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from ideate import cli
-from ideate.retrieval import phenomena as ph
+from shot_design import cli
+from shot_design.retrieval import phenomena as ph
 
 from .test_phenomena import _claim, _db_with, _event, _label_row
 
@@ -69,8 +69,8 @@ def test_excerpt_centres_on_a_mention_inside_one_long_sentence():
     ('[[0, 2], [3, 6]]', ph.AVOID_PARTIAL),
 ])
 def test_avoid_cannot_turn_an_interior_gap_into_a_negative(ideate_db, intervals, template):
-    from ideate.labels import event_sources as es
-    from ideate.shotdb.store import ShotDB
+    from shot_design.labels import event_sources as es
+    from shot_design.shotdb.store import ShotDB
 
     _db_with(ideate_db, [], claims=[_claim(100, 'tearing')])
     es.write_sources(ideate_db / 'db/event_sources.parquet', [

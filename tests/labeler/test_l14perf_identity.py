@@ -8,7 +8,7 @@ import json
 import pandas as pd
 import pytest
 
-from labelmaker.events import driver, masks, pipeline, schema
+from labeler.events import driver, masks, pipeline, schema
 
 from .test_events_pipeline import FAKE_SHA, SHOT, PaintedNet, _write_corpus
 from .test_tokeye_masks import _paths_under
@@ -431,7 +431,7 @@ def test_shared_batch_timeout_only_fails_the_expired_shot(monkeypatch, preserve)
     import numpy as np
     import torch
 
-    from labelmaker.run import StageTimeout, time_limit
+    from labeler.run import StageTimeout, time_limit
 
     class SlowOnce(torch.nn.Module):
         slow = True
@@ -484,7 +484,7 @@ def test_reference_group_invariants_raise_real_exceptions(broken):
 
 def test_compact_activity_rejects_a_different_threshold(tmp_path, synth_shot,
                                                        monkeypatch):
-    from labelmaker.events import channels, transients
+    from labeler.events import channels, transients
 
     corpus = tmp_path / "corpus"
     _write_corpus(corpus, SHOT, synth_shot)
@@ -504,7 +504,7 @@ def test_driver_shared_batch_deadlines_are_attributed_per_shot(
 ):
     import time
 
-    from labelmaker.events import channels
+    from labeler.events import channels
 
     corpus = tmp_path / "corpus"
     paths = _paths_under(tmp_path, "deadlines", corpus)

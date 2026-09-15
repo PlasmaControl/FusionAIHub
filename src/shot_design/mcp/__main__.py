@@ -1,4 +1,4 @@
-"""`python -m ideate.mcp`: the server on stdio. What `.mcp.json` and `pixi run ideate-mcp` start.
+"""`python -m shot_design.mcp`: the server on stdio. What `.mcp.json` and `pixi run shot_design-mcp` start.
 
 stdio is the transport, so **stdout belongs to the protocol**. Anything this process prints there
 corrupts the stream and the client sees a parse error rather than the message. Nothing in

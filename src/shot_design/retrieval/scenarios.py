@@ -17,10 +17,10 @@ from collections.abc import Iterable
 
 from pydantic import BaseModel, Field
 
-from ideate import config
-from ideate.retrieval import describe, rank
-from ideate.schema import QueryState
-from ideate.shotdb.store import ShotDB
+from shot_design import config
+from shot_design.retrieval import describe, rank
+from shot_design.schema import QueryState
+from shot_design.shotdb.store import ShotDB
 
 _LABELS = {
     "startup_checkout": "startup / checkout",

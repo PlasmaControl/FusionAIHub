@@ -1,7 +1,7 @@
 """Opt-in gating for the tests that fetch live data through fdp.
 
 Everything else in this directory is hermetic: it must pass under a plain
-`pixi run -e labelmaker python -m pytest tests/labelmaker`, with no server,
+`pixi run -e labelmaker python -m pytest tests/labeler`, with no server,
 no token and no network. A live test is marked `live` and is skipped unless
 it is asked for explicitly, either with `--run-live` or with
 `LABELMAKER_FDP=1` (the environment switch the plan's command blocks use).
@@ -10,7 +10,7 @@ A live run also needs the `fdp run` wrapper, which supplies the server
 configuration: without it PTDATA fails with `getservbyname failed for task
 'PTSERVER'` and MDSplus with `TREE-E-FOPENR`.
 
-    pixi run -e labelmaker fdp run python -m pytest tests/labelmaker \
+    pixi run -e labelmaker fdp run python -m pytest tests/labeler \
         -q -W error --run-live
 
 It is also where the fixtures more than one test module needs live: `wired`,
@@ -65,7 +65,7 @@ def wired(tmp_path, monkeypatch):
     Lives here rather than in test_run.py so test_analyze.py can use it
     without re-importing another test module's fixture.
     """
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     from .test_run import _archive, _corpus, _fake_adapter
 
@@ -166,7 +166,7 @@ def synth_mask():
     Returned rather than cached because a test may want a different record
     length; `T` shorter than the last feature is refused.
     """
-    from labelmaker.events import masks
+    from labeler.events import masks
 
     def build(T: int = SYNTH_T):
         T = int(T)

@@ -34,7 +34,7 @@ through the same loader with the presence test bypassed, which reproduces the sh
 codes exactly (bes = 51210, co2 = 312 on 190090). Dropping them instead would produce a cache
 `validate_shot` rejects.
 
-VERIFIED. `scripts/ideate/g_enc.py` compares freshly encoded shots with the caches shipped in
+VERIFIED. `scripts/shot_design/g_enc.py` compares freshly encoded shots with the caches shipped in
 the bundle. Over all ten, on a V100S against production's MI250X: nine of the fourteen
 modalities are bit-identical on every shot, `mhr` on 8/10, `co2` on 4/10 and `ece` on 3/10 (the
 misses agree on >= 99.2 % of tokens), the two video modalities on 8/10 and 6/10, and the 88

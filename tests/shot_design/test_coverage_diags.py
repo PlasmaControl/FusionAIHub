@@ -2,10 +2,10 @@
 
 import pytest
 
-from ideate.labels import event_sources as es
-from ideate.mcp import tools
-from ideate.retrieval import phenomena as ph
-from ideate.shotdb import store
+from shot_design.labels import event_sources as es
+from shot_design.mcp import tools
+from shot_design.retrieval import phenomena as ph
+from shot_design.shotdb import store
 
 from .test_phenomena import _claim, _db_with, _event, _registry_file
 

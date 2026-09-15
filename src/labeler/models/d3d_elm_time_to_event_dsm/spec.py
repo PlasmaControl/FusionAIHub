@@ -1,5 +1,5 @@
 """d3d_elm_time_to_event_dsm - probability of an ELM within 5, 10, 20 and 50 ms,
-from a Deep Survival Machines model labelmaker fitted itself.
+from a Deep Survival Machines model labeler fitted itself.
 
 The weights are **not** upstream's. Upstream's Keras graphs take 124 inputs and
 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled shots, so a
@@ -14,7 +14,7 @@ not BES. The 60-column fit is what this adapter serves
 Column order was the whole difficulty and it is settled by measurement rather
 than by reading: the split pickle is in `new_diagnostic_order`
 (`elm_inputs.SPLIT_COLUMN_ORDER`), not `current_diagnostic_order`, which puts
-ECE last and BES at slots 12-75. See `labelmaker.models.elm_inputs`.
+ECE last and BES at slots 12-75. See `labeler.models.elm_inputs`.
 
 The chain, per shot:
 
@@ -47,17 +47,17 @@ probability, so the series exists and says on its face where not to trust it.
 Substitutions from what upstream fitted on, each measured on shot 185808, which
 is in both the corpus and the staged `<shot>_slow.h5` store upstream read:
 
-* `bt`: upstream computed `1.69861e-5 * pcbcoil`; labelmaker uses the canonical
+* `bt`: upstream computed `1.69861e-5 * pcbcoil`; labeler uses the canonical
   `bt` in tesla, which is archive- and fdp-served and therefore covers far more
   shots. At t = 2.0 s on shot 185808 the two read -2.0910 T and -2.0306 T, a
   3.0% difference (the archive column is its own 50 ms boxcar);
 * `ech`: upstream took column 1 of the staged `ech` group (`echpwrc`);
-  labelmaker uses `ech_power_total`, the 12-gyrotron corpus sum or the
+  labeler uses `ech_power_total`, the 12-gyrotron corpus sum or the
   archive's `EC.PECH`. `namespace.py`'s `ech_power_total` note has the measured
   spread between those two;
 * `gas`, `ece`, `co2_<chord>`: same instrument, same channel order, measured
   against the staged groups - see each feature's note in `namespace.py`;
-* the grid: upstream's rows are 1 ms means, labelmaker's are 25 ms. That is a
+* the grid: upstream's rows are 1 ms means, labeler's are 25 ms. That is a
   sampling change, not a model change; the card says so.
 """
 from __future__ import annotations
@@ -97,7 +97,7 @@ T_OFFSET_MS = 1.0
 ECE_CHANNELS = np.arange(1.0, 49.0)
 #: Upstream low-passes the raw `pinj` and `tinj` columns with a 100-sample
 #: boxcar on its 1 ms grid, because NBI is modulated
-#: (`data_processing.ipynb` cell 34). 100 ms is four samples of labelmaker's
+#: (`data_processing.ipynb` cell 34). 100 ms is four samples of labeler's
 #: 25 ms grid.
 NBI_BOXCAR_MS = 100.0
 #: Columns no corpus group can serve, filled at the training mean on every row.
@@ -253,7 +253,7 @@ ADAPTER = ModelAdapter(
     ensemble_n=1,
     # The split's own `train_final_shots_list` holds 327 shots, but they are
     # wide-pedestal-QH shots from a different era than the FAITH corpus and
-    # none of labelmaker's pool is in it. Left empty rather than half-written:
+    # none of labeler's pool is in it. Left empty rather than half-written:
     # `validate` then reports every shot as held out, which is the honest
     # reading until the list is actually extracted and committed.
     training_shots=frozenset(),

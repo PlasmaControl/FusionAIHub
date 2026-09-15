@@ -4,7 +4,7 @@ The production dynamics checkpoint (`cfg_actuator_dim = 88`) consumes one 88-wid
 per 50 ms frame, and the code that built those vectors is in no git branch: the committed
 `train_dynamics._ACT_SPEC` sums to 70 channels, the previous generation, and the bundle's own
 README says the extra 18 are undocumented. This module is the reconstruction, and it is not a
-guess -- `scripts/ideate/g_enc.py` rebuilds the actuator block of the ten caches shipped in the
+guess -- `scripts/shot_design/g_enc.py` rebuilds the actuator block of the ten caches shipped in the
 bundle and compares it with what production wrote. Measured 2026-09-07 over all ten:
 
     88/88 channels BIT-IDENTICAL in float16 on 190090, 190729, 192473, 200241, 201885,
@@ -49,7 +49,7 @@ a Phase-5 seed mean anything (getting it wrong costs ~0.04 z on all twelve `rmp`
 `_record_length`). The consequence is that EVERY shot encoded from now on carries production's
 zero-averaged end-of-record frame, by design. `frame_means` is therefore the right function for
 building a model input and the WRONG one to hand to anyone doing physics on the last frame of a
-record -- for that, average over the samples that exist. `tests/ideate/test_design_actuators.py`
+record -- for that, average over the samples that exist. `tests/shot_design/test_design_actuators.py`
 pins the quirk with an exact 100 * 200 / 201 case so it cannot be "simplified" away silently.
 """
 
@@ -312,7 +312,7 @@ def build_actuators(
 def corpus_systems() -> dict[str, tuple[str, tuple[str, ...]]]:
     """`{registry system: (corpus group, member ids in the corpus's channel order)}`.
 
-    Read from `configs/ideate/actuators.yaml:corpus`, which is the only place the pairing lives:
+    Read from `configs/shot_design/actuators.yaml:corpus`, which is the only place the pairing lives:
     a corpus group is an unnamed `(C, n)` array with no units and no labels, and the member order
     is the corpus producer's, not the registry's (the corpus lists its twelve gyrotrons
     alphabetically while `systems.ech` lists them by installation date). Only the four entries

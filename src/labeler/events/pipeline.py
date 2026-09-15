@@ -187,7 +187,7 @@ NO_FLATTOP = (
 #: The critic's iteration-0 re-run (defect 2) found the previous shape of
 #: this: `qh_flattop` was recorded as a skip while `qh_proxy` itself was
 #: recorded `ok` over the magnetics reference span with 0 events, so a
-#: MISSING PREREQUISITE reached ideate as an evaluated empty result and
+#: MISSING PREREQUISITE reached shot_design as an evaluated empty result and
 #: `coverage_state` came back `observed` on shot 198658. A step that could
 #: not be evaluated now writes no `ran` row at all, so the source's own row
 #: is `skipped` with this reason and NaN coverage - and when it CAN be
@@ -557,7 +557,7 @@ def _qh_coverage(
     That distinction is the whole of the critic's iteration-0 defect 2.
     Before the features store reached this stage there was never a
     flat-top, and the proxy still declared `ok` over the magnetics
-    reference span with 0 events - so on shot 198658 ideate read a
+    reference span with 0 events - so on shot 198658 shot_design read a
     phenomenon nobody could compute as `coverage_state: observed`. A
     missing input now returns a reason here, the caller records it against
     `qh_proxy` itself, and no `ran` row is written.
@@ -596,7 +596,7 @@ def _read_group(corpus_file, diag: str, *, stop: int | None = None):
     via `envelope`, `lh_transitions` via `_usable_span`), a filterscope
     record's NaN head and tail are part of what they are written to handle,
     and stripping on channel 0's behalf would move every other channel's
-    samples. This is also what `scripts/labelmaker/sawtooth_reference_check.py`
+    samples. This is also what `scripts/labeler/sawtooth_reference_check.py`
     reads, so the pipeline's sawtooth count is the one that script pins.
 
     `stop` reads only the first `stop` channels - D-alpha is filterscopes

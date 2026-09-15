@@ -1,4 +1,4 @@
-"""The corpus census: `ideate corpus scan` and the table it writes.
+"""The corpus census: `shot_design corpus scan` and the table it writes.
 
 The census exists because the availability question was answered wrongly once already: the old
 shotsearch manifest counted a group as populated when `shape[0] > 1`, which is the CHANNEL axis,
@@ -17,8 +17,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate import cli
-from ideate.shotdb import census
+from shot_design import cli
+from shot_design.shotdb import census
 
 from .conftest import CORPUS_ABSENT, CORPUS_FULL, CORPUS_SMALL, CORPUS_TRUNCATED
 

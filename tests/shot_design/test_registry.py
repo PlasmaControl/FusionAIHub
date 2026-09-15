@@ -4,7 +4,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ideate import config
+from shot_design import config
 
 
 def test_campaign_for_shot():
@@ -17,7 +17,7 @@ def test_expand_registry_members_and_templates():
     specs = {s.name: s for s in config.expand_registry(161172)}
     assert specs["pnbi_15L"].group == "p_inj" and specs["pnbi_15L"].col == "pinjf_15l"
     # Task 11 measured all three of these against the staged columns of 161172; the values they
-    # replace were guesses that did not fetch at all (see configs/ideate/actuators.yaml for the
+    # replace were guesses that did not fetch at all (see configs/shot_design/actuators.yaml for the
     # evidence).
     assert specs["pnbi_15L"].fetch == {
         "kind": "mds",
@@ -101,7 +101,7 @@ def test_signalspec_accepts_scale_and_null_value_but_still_rejects_unknown_key()
 
 
 def test_installed_boundary_edges_are_inclusive():
-    # No member in configs/ideate/actuators.yaml has a concrete numeric since/until: every window
+    # No member in configs/shot_design/actuators.yaml has a concrete numeric since/until: every window
     # is either fully open (key absent entirely, e.g. the base NBI/coil_rmp members) or an explicit
     # `since: null` [?] placeholder awaiting a real installation shot (the later ECH gyrotrons,
     # LOB1/LOB2/PFX1-3/UOB gas valves) -- so there is no real registry entry to pin the edges

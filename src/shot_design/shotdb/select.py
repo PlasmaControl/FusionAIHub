@@ -19,11 +19,11 @@ a diversity quota. This module is the rules; `cli.cmd_corpus` is the I/O around 
   (`corpus_coverage.parquet`), never off a group's channel count.
 * **(d) Ip flat-top >= 1 s** -- in TWO passes. The first estimates it from `PULSE-LENGTH` for
   every shot of the 13,313-bundle pool (`PROXY_RAMP_S`, and the measured Ip trace wherever a
-  labelmaker feature file already exists); the second (`verify_flattop`, `--verify-flattop`) runs
+  labeler feature file already exists); the second (`verify_flattop`, `--verify-flattop`) runs
   over the 500 SELECTED shots only, where the per-shot cost of a real measurement is affordable,
   replaces every proxy with the measured number it can, drops what the measurement rejects and
   fills the hole from the same theme. A selected shot with no feature file is `pending`, not
-  `pulse_length_proxy`: it is listed for labelmaker's features stage, and the run that finishes
+  `pulse_length_proxy`: it is listed for labeler's features stage, and the run that finishes
   it is `--finalize --from-list <the committed yaml>` (`reverify_flattop`), which re-measures
   EXACTLY the committed shots and never re-selects -- a plain re-run sees a bigger feature store
   than the selection did and returns a different list, so the loop would never converge.
@@ -43,7 +43,7 @@ and each is recorded here and in the generated YAML's `rule:` string because the
 
 **Diversity** is `diversify()`: caps (<= 3 per run day, <= 5 per mini-proposal), a floor per lexicon
 theme, floors for the three sparse groups, a ceiling on any one year, and a preference for shots
-that already have labelmaker features or IGNITE frame codes -- capped so they cannot dominate.
+that already have labeler features or IGNITE frame codes -- capped so they cannot dominate.
 
 Two deviations from a literal reading of §5.7, both measured, both reported by `summarize()`:
 
@@ -129,10 +129,10 @@ DIVERSITY_GROUPS = ("co2", "bes", "tangtv")
 
 # The one theme that is a statement about the MACHINE and not about the physics, and the only one
 # §5.7 excludes from the quotas. `assign_theme` gives it last (see there); `Quotas.exclude_theme`
-# keeps it out of the floors. It is deliberately NOT moved to the end of `configs/ideate/labels.yaml`
+# keeps it out of the floors. It is deliberately NOT moved to the end of `configs/shot_design/labels.yaml`
 # instead: `retrieval.scenarios.themes_of` returns every matching theme and `labels.claims` keys a
 # dict by id, so neither depends on the order -- but `labels.yaml` is also read by the parallel
-# labelmaker workstream, and a selection rule is the wrong place from which to renumber a shared
+# labeler workstream, and a selection rule is the wrong place from which to renumber a shared
 # lexicon.
 FALLBACK_THEME = "startup_checkout"
 
@@ -152,14 +152,14 @@ FLATTOP_FRACTION = 0.8
 
 # The pulse-length proxy for flat-top, and the whole reason it exists.
 #
-# §5.7 wants Ip flat-top from EFIT/Ip. There are two sources: labelmaker's feature files
+# §5.7 wants Ip flat-top from EFIT/Ip. There are two sources: labeler's feature files
 # (`<shot>_features.h5`, group `ip`) exist for 526 shots, and fdp can produce the rest -- but only
 # if the shortlist is small enough to be worth a per-shot fdp call. It was not: after rules
 # (a)-(c) the pool is 5,572 shots, six times the ~900 the brief set as the ceiling for that path.
 # So the proxy answers rule (d) for the shots with no feature file, and `flattop_source` records
 # which of the two answered for every shot in the list.
 #
-# The constant is measured, not assumed. Over the 319 shots that have BOTH a labelmaker `ip`
+# The constant is measured, not assumed. Over the 319 shots that have BOTH a labeler `ip`
 # feature and a `PULSE-LENGTH` in their bundle, `PULSE-LENGTH - flattop_from_ip(ip)` has median
 # 1.276 s (IQR 1.06-1.74) -- the ramp-up plus the ramp-down. At 1.27 the proxy agrees with the
 # measured flat-top on the >= 1 s question for 316 of those 319 shots (99.1 %), and all three
@@ -170,7 +170,7 @@ PROXY_RAMP_S = 1.27
 
 # What answered rule (d) for a shot. `pending` is not a measurement and not an estimate: it is a
 # selected shot whose flat-top nobody has measured yet, carrying the proxy number as its estimate
-# and waiting for labelmaker's features stage. A list that still has any is refused by
+# and waiting for labeler's features stage. A list that still has any is refused by
 # `--finalize` and by `corpus select --verify-flattop` unless `--allow-pending` is given.
 FLATTOP_PROXY = "pulse_length_proxy"
 FLATTOP_MEASURED = "features_ip"
@@ -458,7 +458,7 @@ def eligible(
 
 
 def lexicon_themes() -> list[dict]:
-    """The 14 keyword themes of configs/ideate/labels.yaml, in file order (first match wins)."""
+    """The 14 keyword themes of configs/shot_design/labels.yaml, in file order (first match wins)."""
     return list(config.load_yaml("labels.yaml").get("themes") or [])
 
 
@@ -602,7 +602,7 @@ def _by_year(candidates: Sequence[Candidate], seed: int) -> Iterator[Candidate]:
     buckets: dict[int | None, list[Candidate]] = defaultdict(list)
     for c in _shuffled(candidates, seed):
         buckets[c.year].append(c)
-    # Within a year, a preferred shot goes first. This is §5.7's "prefer the labelmaker-featured
+    # Within a year, a preferred shot goes first. This is §5.7's "prefer the labeler-featured
     # and IGNITE frame-code shots when they qualify" applied where it belongs -- as a tie-break
     # inside every phase, so a shot whose features already exist is the one a theme quota takes
     # when it has a free choice, rather than as a phase that spends run-day slots ahead of the
@@ -641,7 +641,7 @@ def diversify(
        candidates that theme had, because the two ways to fall short look identical in the count.
     2. **group floors** -- `co2`, `bes`, `tangtv` up to `group_min`, from the candidates that carry
        the group.
-    3. **preferred** -- shots that already have labelmaker features or IGNITE frame codes, up to
+    3. **preferred** -- shots that already have labeler features or IGNITE frame codes, up to
        `preferred_cap`. AFTER the floors, deliberately. §5.7 states the theme and group quotas as
        floors (">= 20 per theme where available") and the preferred list as a preference with a
        ceiling ("prefer ... capped at 150"); running the preference first spends run-day slots that
@@ -745,7 +745,7 @@ def reverify_flattop(
 
     This is the second invocation (`corpus select --finalize --from-list <yaml>`), and it exists
     because the first one changes the world it ran in. `--verify-flattop` writes a pending file;
-    labelmaker's features stage runs over it; and the store that comes back is BIGGER than the one
+    labeler's features stage runs over it; and the store that comes back is BIGGER than the one
     the selection saw -- which moves `eligible` (a measured flat-top replaces the proxy for those
     shots) and moves the `preferred` tie-break in `diversify`. Re-running the whole selection on
     the new store therefore returns a DIFFERENT list -- measured on the real corpus: 78 of 500
@@ -1012,7 +1012,7 @@ def document(
 
 
 def format_summary(summary: Mapping) -> str:
-    """The summary block as the text `ideate corpus select` prints."""
+    """The summary block as the text `shot_design corpus select` prints."""
     head = (
         f"{summary['n_eligible']:,} eligible -> {summary['n_selected']:,} selected"
         f"  ({summary['runs']} run days, {summary['mpids']} mini-proposals,"
@@ -1119,7 +1119,7 @@ def candidates_from_rows(
     re-selecting under another name.
 
     `preferred` is the ONE fact the document does not carry, because it is not a property of the
-    shot: it is "this shot already had labelmaker features when the list was made", and by the
+    shot: it is "this shot already had labeler features when the list was made", and by the
     time a list is finalized the features stage has run over the list itself, so it is true of
     nearly every row. It is passed in from today's store and reported (`summary.preferred`); it
     does not gate anything on this path. The preferred CEILING is off for a re-verification --
@@ -1207,7 +1207,7 @@ def store_fingerprint(
 def preferred_shots(
     *, features_dir: Path | None, frame_codes_dirs: Path | Iterable[Path] | None
 ) -> set[int]:
-    """Shots whose labelmaker features or IGNITE frame codes already exist.
+    """Shots whose labeler features or IGNITE frame codes already exist.
 
     §5.7 prefers them because they are the shots a training run can use today: their features are
     computed and their codes are encoded, so admitting them costs nothing that has not been paid.
@@ -1258,10 +1258,10 @@ def mpid_index(logs_jsonl: Path | None, shots: Iterable[int]) -> dict[int, str |
 
 
 def measured_flattop(shot: int, features_dir: Path | None) -> float | None:
-    """Ip flat-top from labelmaker's `<shot>_features.h5`, or None when there is no such file.
+    """Ip flat-top from labeler's `<shot>_features.h5`, or None when there is no such file.
 
-    Read through h5py directly rather than through `labelmaker.features.store` so that `ideate`
-    does not import `labelmaker` for one array; the layout (`ip/xdata`, `ip/ydata`) is the one
+    Read through h5py directly rather than through `labeler.features.store` so that `shot_design`
+    does not import `labeler` for one array; the layout (`ip/xdata`, `ip/ydata`) is the one
     that module writes and the one the corpus uses everywhere else.
     """
     if not features_dir:

@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 import torch
 
-from labelmaker.models import registry
-from labelmaker.models.base import BuiltInputs
-from labelmaker.models.d3d_elm_time_to_event_dsm import spec as elm
-from labelmaker.models.elm_inputs import COLUMN_SETS
-from labelmaker.models.runners import dsm_pickle
+from labeler.models import registry
+from labeler.models.base import BuiltInputs
+from labeler.models.d3d_elm_time_to_event_dsm import spec as elm
+from labeler.models.elm_inputs import COLUMN_SETS
+from labeler.models.runners import dsm_pickle
 
 from .test_dsm_pickle import (
     _FakeDsm,

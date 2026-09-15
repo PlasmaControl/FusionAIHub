@@ -7,7 +7,7 @@ the database cannot tell those apart -- `get_events(198658)` returned `n: 0` wit
 `caveats` list for a shot that is not in the 500-shot database at all. Completion and coverage
 have to be persisted even when a detector emits zero events, and this is the table that does it.
 
-THE CONTRACT. labelmaker WRITES it, ideate READS it. One row per `(source, diag, channel, pass)`
+THE CONTRACT. labeler WRITES it, shot_design READS it. One row per `(source, diag, channel, pass)`
 that ran or was deliberately skipped, with `status` in {ok, skipped, error} and `reason` saying
 why for the last two. `intervals` records disjoint finite coverage and `min_gap_s` its
 resolution; `t_cov0_s`/`t_cov1_s` are display hulls only. Neither may be borrowed
@@ -15,7 +15,7 @@ from a sibling input, which is the second half of the same defect: actuator even
 the union of the gas, NBI and RMP time axes, so an NBI event carried coverage from -10 to 94.9 s
 because the gas recorder happened to run that long.
 
-`ideate labels join` ingests every file that exists into `db/event_sources.parquet` with the same
+`shot_design labels join` ingests every file that exists into `db/event_sources.parquet` with the same
 columns. A shot whose file is absent contributes NO ROWS, and that absence is what `get_events`
 reports as `unprocessed`: nobody has run a detector over this shot, so its empty event list is
 not evidence of a quiet shot.
@@ -26,7 +26,7 @@ TWO ROWS THAT ARE NOT COVERAGE. An `ok` row whose `t_cov` pair is NaN ran and re
 (`is_non_diagnostic`). Neither can make a window observed, and a reply has to say which of the
 two it is holding instead of counting either as "a source that looked".
 
-`write_sources` is the fixture writer for the contract: labelmaker's tests and ideate's build the
+`write_sources` is the fixture writer for the contract: labeler's tests and shot_design's build the
 same table through it, so the two sides cannot drift into two shapes of the same file.
 """
 
@@ -42,7 +42,7 @@ import numpy as np
 import pandas as pd
 
 #: Column order and dtype of `events/<shot>_sources.parquet` and of `db/event_sources.parquet`.
-#: `object` is pandas' dtype for python strings, matching `labelmaker.events.schema.DTYPES`.
+#: `object` is pandas' dtype for python strings, matching `labeler.events.schema.DTYPES`.
 SOURCES_DTYPES: dict[str, str] = {
     "shot": "int32",
     "source": "object",
@@ -82,7 +82,7 @@ def row_intervals(row: Mapping) -> tuple[tuple[float, float], ...]:
     if legacy_hull(row):
         lo, hi = float(row["t_cov0_s"]), float(row["t_cov1_s"])
         return ((lo, hi),) if isfinite(lo) and isfinite(hi) and hi >= lo else ()
-    from labelmaker.events.coverage import Coverage
+    from labeler.events.coverage import Coverage
 
     value = row["intervals"]
     intervals = json.loads(value) if isinstance(value, str) else value
@@ -111,9 +111,9 @@ def format_intervals(intervals) -> str:
 STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 
 #: Sources whose `ok` row is NOT an observation of the plasma. `text` runs the lexicon over the
-#: shot's own logbook entries and labelmaker records that it ran, with no coverage -- but
+#: shot's own logbook entries and labeler records that it ran, with no coverage -- but
 #: "the word was looked for" says nothing about what any diagnostic showed, which is the same
-#: policy `labelmaker.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
+#: policy `labeler.events.windows.DIAGNOSTIC_EVIDENCE` states for rows, applied here to the
 #: source that writes them. `database` is the same kind of claim from the other direction: a
 #: curated table is a list somebody published of shots that had a thing, and a listing is not a
 #: measurement of this shot -- its rows carry NaN coverage for exactly that reason. Excluded from
@@ -121,7 +121,7 @@ STATUSES: tuple[str, ...] = ("ok", "skipped", "error")
 #: detector run is `unprocessed`, not "0 detections inside coverage".
 NON_DIAGNOSTIC_SOURCES: tuple[str, ...] = ("text", "database")
 
-#: The same rule for the per-table sources labelmaker writes as `database:<stem>` (one row per
+#: The same rule for the per-table sources labeler writes as `database:<stem>` (one row per
 #: curated file). A PREFIX, not a substring: `databases_of_rwm` would be somebody's detector.
 NON_DIAGNOSTIC_SOURCE_PREFIXES: tuple[str, ...] = ("database:",)
 
@@ -135,7 +135,7 @@ SUFFIX = "_sources.parquet"
 
 
 def sources_file(events_dir: Path | str, shot: int) -> Path:
-    """`<events_dir>/<shot>_sources.parquet`. `events_dir` is `labelmaker.Paths.events`."""
+    """`<events_dir>/<shot>_sources.parquet`. `events_dir` is `labeler.Paths.events`."""
     return Path(events_dir) / f"{int(shot)}{SUFFIX}"
 
 
@@ -256,7 +256,7 @@ def read_sources(path: Path | str) -> pd.DataFrame:
 
     A missing file is the normal case and means "nobody has processed this shot", which the
     caller reports as `unprocessed` -- so it must not be an error here, exactly as
-    `labelmaker.events.schema.read_events` treats a missing events file.
+    `labeler.events.schema.read_events` treats a missing events file.
     """
     path = Path(path)
     if not path.exists():

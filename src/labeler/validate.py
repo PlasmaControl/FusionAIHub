@@ -30,13 +30,13 @@ from .models import registry
 from .models.runners.keras_h5 import load_ensemble, predict_members
 
 # This resolves correctly from a source checkout (three parents up from
-# src/labelmaker/validate.py lands on the repo root), but not from an
+# src/labeler/validate.py lands on the repo root), but not from an
 # installed wheel - tests/ is not packaged, so the file would not exist at
 # this path there. `adapter_fidelity` takes `golden=` so any caller that
 # needs to run outside a checkout can point it elsewhere; there is no
 # fallback search implemented here.
 GOLDEN = Path(__file__).resolve().parents[2] / (
-    "tests/labelmaker/data/tearing_golden.npz"
+    "tests/labeler/data/tearing_golden.npz"
 )
 
 
@@ -682,7 +682,7 @@ def _ks_statistic(a: np.ndarray, b: np.ndarray) -> float:
     the loader order). That fix makes scipy importable again; the numpy
     version stays because fewer runtime dependencies is strictly better and
     it is four lines. Verified against scipy as an exact oracle in
-    `tests/labelmaker/test_ks_statistic.py`, which does import scipy.
+    `tests/labeler/test_ks_statistic.py`, which does import scipy.
 
     Both samples are sorted and the right-continuous ECDF of each is
     evaluated at every value in the pooled sample via `searchsorted`; the
@@ -834,7 +834,7 @@ def reconstruction_fidelity(
                     )
                     n_pooled_shots[f.model_name] = n_pooled_shots.get(f.model_name, 0) + 1
                 # `pooled` prices every matched row regardless of
-                # `built.valid`, so a row for which labelmaker would publish
+                # `built.valid`, so a row for which labeler would publish
                 # no label is priced alongside one it would. Not filtered out
                 # here (that would need re-deriving each pair's row count per
                 # feature), but counted, so a reader can see how much of the
@@ -917,7 +917,7 @@ def _rankdata(a: np.ndarray) -> np.ndarray:
     Replaces `scipy.stats.rankdata(a, method="average")`, for the same
     reason `_ks_statistic` replaces `ks_2samp`: no scipy at runtime.
     Verified against scipy as an exact oracle in
-    `tests/labelmaker/test_label_quality.py`.
+    `tests/labeler/test_label_quality.py`.
 
     Mid-ranks - the average of the ordinal ranks tied values would otherwise
     occupy, not the first or last of them - are required, not a stylistic
@@ -1093,9 +1093,9 @@ def _assert_truth_column_shapes(archive: Path) -> None:
 
 def _score_field(task: str, pred: np.ndarray, truth: np.ndarray, valid: np.ndarray) -> dict:
     """Score one output field twice: every matched row, and only the rows
-    labelmaker's own validity rule would actually publish a label for.
+    labeler's own validity rule would actually publish a label for.
 
-    labelmaker masks invalid rows out of what it
+    labeler masks invalid rows out of what it
     emits, so a metric computed over every matched row measures something
     the package would never publish - misstating the one number this whole
     task exists to produce. `all_matched` is kept for reference and
@@ -1134,8 +1134,8 @@ def label_quality(
 
     - `archived_inputs_all`: the model's ceiling, every matched row.
     - `archived_inputs_valid`: the same ceiling, restricted to the rows
-      labelmaker's own validity rule would publish a label for.
-    - `reconstructed_inputs_valid`: what labelmaker actually publishes - its
+      labeler's own validity rule would publish a label for.
+    - `reconstructed_inputs_valid`: what labeler actually publishes - its
       own reconstructed features, valid rows only.
     - `reconstructed_inputs_all`: reconstructed features over every matched
       row regardless of validity, kept for diagnosis only.
@@ -1270,7 +1270,7 @@ def label_quality(
             "(archived vs. reconstructed), never also in which rows were "
             "counted. archived_inputs_all and reconstructed_inputs_all "
             "additionally score every matched row regardless of "
-            "labelmaker's validity flag, kept for reference only; computing "
+            "labeler's validity flag, kept for reference only; computing "
             "the penalty from *_all instead (or from *_valid on one side "
             "and *_all on the other, as an earlier version of this function "
             "did) mixes a row-selection change into the reconstruction "
@@ -1359,7 +1359,7 @@ def model_index_results(reports: dict) -> list[dict]:
     `label_quality`'s docstring). `dataset.name` states both denominators a
     card-only reader needs to see this is a like-for-like comparison: how
     many of the requested shots were used, and how many of the matched rows
-    passed labelmaker's own validity mask - without them, "d3d overlap shots
+    passed labeler's own validity mask - without them, "d3d overlap shots
     (n=31)" alone hides that the headline numbers are a 31-of-100-shot,
     valid-rows-only measurement.
     """
@@ -1372,7 +1372,7 @@ def model_index_results(reports: dict) -> list[dict]:
             f"d3d overlap shots (n_shots={quality.get('n_shots_used')}"
             f"/{quality.get('n_shots_requested')} requested, "
             f"n_rows={n_valid}/{n_valid + n_invalid} valid after "
-            "labelmaker's validity mask)"
+            "labeler's validity mask)"
         )
     else:
         # No rows scored (e.g. n_shots_used == 0) - fall back to the shot
@@ -1435,7 +1435,7 @@ ARCHIVE_TRUTH: dict[str, dict] = {
 
 
 def archived_truth(shot: int, paths: Paths, archive: Path = TM_ARCHIVE) -> dict:
-    """One shot's archived truth, placed on labelmaker's own time grid.
+    """One shot's archived truth, placed on labeler's own time grid.
 
     The archive carries no time axis: its rows are identified by their
     feature values, so the only way to say *when* a row is is the same match
@@ -1496,10 +1496,10 @@ def score_against_truth(
 ) -> dict:
     """How one published label did on one shot, against the archived truth.
 
-    `y` and `valid` are the label's full series on labelmaker's grid; the
+    `y` and `valid` are the label's full series on labeler's grid; the
     archived rows are a subset of it (`truth["index"]`). Only rows the
     validity mask would publish are scored - a flagged row is not a
-    prediction labelmaker stands behind - and how many were dropped is
+    prediction labeler stands behind - and how many were dropped is
     reported so a good-looking score on three rows cannot pass for one on
     three hundred.
 
@@ -1763,7 +1763,7 @@ def alarm_quality(slug, shots, paths, *, archive=TM_ARCHIVE,
     Every metric is reported three ways - over all scored shots, over the
     shots held out of the model's training set, and over the shots that were
     in it - because a survival model's pool numbers are otherwise part
-    in-sample without saying so (214 of labelmaker's 500 pool shots are
+    in-sample without saying so (214 of labeler's 500 pool shots are
     training shots of both survival checkpoints).
 
     Plain AUROC counts quiet rows as negatives even when censored before h;
@@ -1880,7 +1880,7 @@ def calibration_study(
 
     The published map may not be fitted on shots the model was trained on: an
     isotonic map fitted on memorised rows is calibrated to memorisation, and
-    214 of labelmaker's 500 pool shots are training shots of both survival
+    214 of labeler's 500 pool shots are training shots of both survival
     checkpoints. So the 50/50 seeded shot split is applied WITHIN the held-out
     shots, and every metric is then reported on three populations - the
     held-out report half, the in-training shots, and `all`, which is both

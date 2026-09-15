@@ -57,7 +57,7 @@ def download_bundle(paths: Paths, full: bool = False, revision: str | None = Non
     reads the local directory only. By default the 3.5 GB dynamics checkpoint is left out -- the
     retrieval embedding needs the 14 codecs (453 MB) and `ignite_min`; `full=True` adds the
     dynamics model for the Phase-5 rollout. `snapshot_download` skips files already present, so
-    re-running is a no-op check. The revision is pinned in configs/ideate/ignite_modalities.yaml so
+    re-running is a no-op check. The revision is pinned in configs/shot_design/ignite_modalities.yaml so
     a re-upload cannot silently change every embedding in the database.
     """
     from huggingface_hub import snapshot_download
@@ -109,20 +109,20 @@ def load_codecs(
     if not ckpt_dir.is_dir():
         raise CheckpointMissing(
             f"no IGNITE bundle at {ckpt_dir}. Download it once with\n"
-            f"    ideate model --download\n"
+            f"    shot_design model --download\n"
             f"(repo {model_cfg()['repo_id']}, needs a Hugging Face token with access); the "
             f"location is paths.yaml:models_dir / ignite_modalities.yaml:model.local_name."
         )
     # Look for the weights BEFORE importing FusionAIHub. The common case by far is "the bundle
     # has not arrived yet", and that has to report a missing checkpoint -- not whatever import
-    # error an unrelated submodule happens to raise, which `ideate build` would classify as a
+    # error an unrelated submodule happens to raise, which `shot_design build` would classify as a
     # failed encode rather than an absent model.
     manifest = codec_manifest(ckpt_dir)
     if not manifest.exists():
         raise CheckpointMissing(
             f"{ckpt_dir} exists but holds no codec checkpoints: expected "
             f"codecs/MANIFEST.json and codecs/<modality>/codec_best.pt. Re-run "
-            f"`ideate model --download`."
+            f"`shot_design model --download`."
         )
     entries = json.loads(manifest.read_text())["modalities"]
     td = _dynamics()
@@ -548,7 +548,7 @@ def encode_db(
     except CheckpointMissing as e:
         return {
             "status": "not_installed",
-            "reason": f"ideate.shotdb.ignite has no checkpoint: {e}",
+            "reason": f"shot_design.shotdb.ignite has no checkpoint: {e}",
             "channels": [],
         }
     segments = pd.read_parquet(Path(tmp) / "segments.parquet", columns=["shot"])

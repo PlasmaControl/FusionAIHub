@@ -1,4 +1,4 @@
-"""The one feature labelmaker computes for itself.
+"""The one feature labeler computes for itself.
 
 Every other resolver fetches: the archive store, the corpus, MDSplus. This
 one reads two files the package wrote earlier in the same pipeline -

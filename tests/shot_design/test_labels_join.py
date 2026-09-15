@@ -1,4 +1,4 @@
-"""`ideate labels join`: labelmaker's per-time probabilities and events -> the ideate DB.
+"""`shot_design labels join`: labeler's per-time probabilities and events -> the shot_design DB.
 
 Two rules of the plan are what these tests exist to hold (plan section 2 "Label semantics",
 Appendix C item 7):
@@ -10,9 +10,9 @@ Appendix C item 7):
 * a DSM risk is a **forecast**: it becomes an event with `evidence_kind="forecast"` and a finite
   `horizon_s`, and never one with `evidence_kind="detector"`.
 
-Everything here is synthetic and written through labelmaker's own writers
-(`labelmaker.labels.store.write_labels`, `labelmaker.events.schema.write_events`), so a change to
-either layout breaks these tests rather than silently giving ideate a file the real one is not.
+Everything here is synthetic and written through labeler's own writers
+(`labeler.labels.store.write_labels`, `labeler.events.schema.write_events`), so a change to
+either layout breaks these tests rather than silently giving shot_design a file the real one is not.
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ideate import cli
-from ideate.labels import join
-from labelmaker.events import schema as ev
-from labelmaker.labels import store as label_store
-from labelmaker.labels.schema import LabelSpec
-from labelmaker.models.base import Decoded
+from shot_design import cli
+from shot_design.labels import join
+from labeler.events import schema as ev
+from labeler.labels import store as label_store
+from labeler.labels.schema import LabelSpec
+from labeler.models.base import Decoded
 
 # One label file's worth of hand-built numbers. dt is 0.1 s so every duration below is exact in
 # binary and can be asserted without a tolerance on the time axis.
@@ -67,7 +67,7 @@ def write_labels(
     sha: str = "deadbeef",
     attrs: tuple[tuple[str, str], ...] = (),
 ) -> Path:
-    """One model's labels for one shot, through labelmaker's own writer."""
+    """One model's labels for one shot, through labeler's own writer."""
     path = Path(root) / "labels" / f"{shot}_labels.h5"
     path.parent.mkdir(parents=True, exist_ok=True)
     specs = [_spec(slug, name, sha=sha, attrs=attrs) for name in series]
@@ -339,8 +339,8 @@ def test_union_sorts_by_shot_then_time(tmp_path):
 
 
 def test_a_forecast_row_on_disk_is_replaced_by_this_joins_own(tmp_path):
-    """`label_forecast` rows are ideate's to compute: they come out of the labels and this join's
-    threshold map. If labelmaker ever writes some of its own into `events/`, keeping both would
+    """`label_forecast` rows are shot_design's to compute: they come out of the labels and this join's
+    threshold map. If labeler ever writes some of its own into `events/`, keeping both would
     put two rows with different thresholds over the same stretch of the same shot into one table."""
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
                  {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
@@ -376,7 +376,7 @@ def test_no_events_directory_at_all_is_an_empty_typed_frame(tmp_path):
 
 def test_a_curated_table_row_reaches_the_union_with_its_coverage_still_null(tmp_path):
     """`events_union` reads each shot's file wholesale, so a curated label table
-    (`labelmaker.events.databases`) needs no wiring here - but it needs a guard. The two things
+    (`labeler.events.databases`) needs no wiring here - but it needs a guard. The two things
     that must survive the join are the NaN coverage, which is what says nobody declared an
     examined interval, and the NaN confidence, which is what stops a ranker treating a human's
     list as a perfectly confident detector. A join that filled either with a default would turn
@@ -406,7 +406,7 @@ def test_a_curated_table_row_reaches_the_union_with_its_coverage_still_null(tmp_
 
 
 def _sources(root: Path, shot: int, rows):
-    from ideate.labels import event_sources as es
+    from shot_design.labels import event_sources as es
 
     return es.write_sources(es.sources_file(Path(root) / "events", shot), rows)
 
@@ -414,7 +414,7 @@ def _sources(root: Path, shot: int, rows):
 def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_path):
     """`events.parquet` says what was FOUND. This table says who LOOKED, so a shot with no rows
     can be reported as unprocessed rather than as a quiet shot."""
-    from ideate.labels import event_sources as es
+    from shot_design.labels import event_sources as es
 
     _sources(tmp_path, 900001, [
         es.source_row(900001, "tokeye_track", t_cov0_s=0.0, t_cov1_s=6.0, n_events=0, diag="mhr"),
@@ -443,12 +443,12 @@ def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_
 
 
 def test_a_sources_file_labelmaker_itself_wrote_is_ingested_as_is(tmp_path):
-    """The other tests here build the table through ideate's fixture writer. This one writes it
-    through labelmaker's REAL `schema.write_sources` - the producer - and reads it back through
+    """The other tests here build the table through shot_design's fixture writer. This one writes it
+    through labeler's REAL `schema.write_sources` - the producer - and reads it back through
     the join, so the two sides' definitions of the contract cannot drift apart unnoticed: the
     columns, their order, their dtypes, and the file's name and place."""
-    from ideate.labels import event_sources as es
-    from labelmaker.config import Paths as LabelmakerPaths
+    from shot_design.labels import event_sources as es
+    from labeler.config import Paths as LabelmakerPaths
 
     assert tuple(ev.SOURCE_COLUMNS) == es.SOURCES_COLUMNS
     assert dict(ev.SOURCE_DTYPES) == es.SOURCES_DTYPES
@@ -477,7 +477,7 @@ def test_a_sources_file_labelmaker_itself_wrote_is_ingested_as_is(tmp_path):
 
 
 def test_a_join_with_no_source_files_at_all_still_writes_a_typed_empty_table(tmp_path):
-    from ideate.labels import event_sources as es
+    from shot_design.labels import event_sources as es
 
     db = tmp_path / "db"
     db.mkdir()
@@ -496,9 +496,9 @@ def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, ideate_
     """The column is set at BUILD time and the encode is a later job, so a database built before
     the encode said 13 true while all 500 caches existed. The join is the step that runs after
     the long jobs, so it is where the flag is brought back in line."""
-    from ideate import config
-    from ideate.schema import ShotRecord
-    from ideate.shotdb import build as build_mod
+    from shot_design import config
+    from shot_design.schema import ShotRecord
+    from shot_design.shotdb import build as build_mod
 
     db_dir = ideate_db / "db"
     paths = config.load_paths()
@@ -526,8 +526,8 @@ def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, ideate_
 
 
 def test_refreshing_twice_changes_nothing_and_a_missing_table_is_not_an_error(tmp_path, ideate_db):
-    from ideate import config
-    from ideate.shotdb import build as build_mod
+    from shot_design import config
+    from shot_design.shotdb import build as build_mod
 
     db_dir = ideate_db / "db"
     paths = config.load_paths()
@@ -573,7 +573,7 @@ def test_write_tables_writes_three_tables_and_merges_the_counts(tmp_path):
     back = pd.read_parquet(db / "labels_wide.parquet")
     assert list(back.columns) == list(join.LABELS_WIDE_COLUMNS)
     assert back["n_intervals"].dtype == "Int32"  # the null survives the round trip
-    # Read back through labelmaker's own reader, which is how a consumer reads a table in this
+    # Read back through labeler's own reader, which is how a consumer reads a table in this
     # schema and is what restores its dtypes: pyarrow hands a string column back as pandas' `str`,
     # and `read_events`'s `.astype(DTYPES)` is the cast that makes a thousand shots concatenate.
     assert {c: str(d) for c, d in ev.read_events(db / "events.parquet").dtypes.items()} == dict(
@@ -630,8 +630,8 @@ def test_the_real_cards_thresholds_are_all_finite_and_named():
 
 
 def test_the_configured_forecast_rules_name_real_models_and_real_labels():
-    """`configs/ideate/labels.yaml`'s `forecasts:` block against the model cards it points at."""
-    from labelmaker.models import registry
+    """`configs/shot_design/labels.yaml`'s `forecasts:` block against the model cards it points at."""
+    from labeler.models import registry
 
     rules = join.forecast_rules()
     assert rules, "labels.yaml records no forecast rules"
@@ -650,7 +650,7 @@ TM = "d3d_tearing_time_to_event_dsm/tm_risk_250ms"
 
 def test_a_card_threshold_and_a_config_threshold_are_told_apart(tmp_path):
     """`thr` alone cannot say whose number it is. A card's operating point is the model authors'
-    word about their own model; the `forecasts:` block's level is ideate's alarm choice, and a
+    word about their own model; the `forecasts:` block's level is shot_design's alarm choice, and a
     consumer weighing an alarm has to be able to tell one from the other row by row."""
     y = np.full(T.size, 0.9)
     write_labels(tmp_path, 900001, "slug_a", {"p": y, "q": y, "r": y}, np.ones(T.size, bool))
@@ -742,7 +742,7 @@ def test_cli_labels_join(tmp_path, capsys, paths):
 
     code = cli.main([
         "labels", "join", "--shots", "900001", "900002",
-        "--labelmaker-root", str(tmp_path), "--db", str(paths.db_dir), "--no-text",
+        "--labeler-root", str(tmp_path), "--db", str(paths.db_dir), "--no-text",
     ])
 
     assert code == 0

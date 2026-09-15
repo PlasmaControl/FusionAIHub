@@ -15,9 +15,9 @@ import shutil
 import numpy as np
 import pytest
 
-from ideate import cli, config
-from ideate.design import seed
-from ideate.shotdb import text
+from shot_design import cli, config
+from shot_design.design import seed
+from shot_design.shotdb import text
 
 from .conftest import write_corpus_group
 from .test_select import select_argv, selection_inputs  # noqa: F401
@@ -38,14 +38,14 @@ def test_origin_names_the_paths_file_when_it_alone_is_set(paths, tmp_path):
 def test_origin_names_the_repo_default_when_neither_is_set(paths, monkeypatch):
     monkeypatch.delenv("IDEATE_PATHS")
     assert config.data_root_origin() == f"{config.CONFIG_DIR / 'paths.yaml'} default"
-    assert config.data_root_origin().endswith("configs/ideate/paths.yaml default")
+    assert config.data_root_origin().endswith("configs/shot_design/paths.yaml default")
 
 
 def test_origin_names_the_paths_file_an_overridden_config_dir_actually_reads(
     paths, tmp_path, monkeypatch
 ):
     """`IDEATE_CONFIG_DIR` moves the packaged config directory, so "the default" is then a
-    different file -- and a line that named `configs/ideate/paths.yaml` would be naming a file
+    different file -- and a line that named `configs/shot_design/paths.yaml` would be naming a file
     that settled nothing. The label has to be the path `load_paths` reads.
 
     `config.CONFIG_DIR` is resolved once, at import, from that variable: exporting it inside a
@@ -101,7 +101,7 @@ def test_build_names_the_env_root_before_writing(writing_inputs, monkeypatch, ca
     paths = writing_inputs
     monkeypatch.setenv("IDEATE_DATA_ROOT", str(paths.data_root))
     expected = (
-        f"ideate build: data root {paths.data_root} (IDEATE_DATA_ROOT env) -> db {paths.db_dir}"
+        f"shot_design build: data root {paths.data_root} (IDEATE_DATA_ROOT env) -> db {paths.db_dir}"
     )
     capsys.readouterr()
     seen = watch_first_write(monkeypatch, capsys, paths.data_root)
@@ -122,7 +122,7 @@ def test_writers_name_the_root_before_writing(
     elif command == "labels join":
         lm = paths.data_root / "labelmaker"
         (lm / "labels").mkdir(parents=True)
-        argv = ["labels", "join", "--shots", "900001", "--labelmaker-root", str(lm), "--no-text"]
+        argv = ["labels", "join", "--shots", "900001", "--labeler-root", str(lm), "--no-text"]
     elif command == "encode":
 
         def encode_many(shots, *, out_dir, **kwargs):
@@ -142,7 +142,7 @@ def test_writers_name_the_root_before_writing(
         argv = ["corpus", "scan", "--workers", "1"]
         destination = f"census {paths.db_dir / 'corpus_coverage.parquet'}"
     expected = (
-        f"ideate {command}: data root {paths.data_root} "
+        f"shot_design {command}: data root {paths.data_root} "
         f"(IDEATE_PATHS={tmp_path / 'paths.yaml'}) -> {destination}"
     )
     capsys.readouterr()
@@ -160,7 +160,7 @@ def test_select_names_the_root_even_when_every_path_is_explicit(
     txt, parquet = selection_inputs
     out = writing_inputs.data_root / "selection.yaml"
     expected = (
-        f"ideate corpus select: data root {writing_inputs.data_root} "
+        f"shot_design corpus select: data root {writing_inputs.data_root} "
         f"(IDEATE_PATHS={tmp_path / 'paths.yaml'}) -> shot list {out}"
     )
     capsys.readouterr()
@@ -180,5 +180,5 @@ def test_a_command_with_no_resolvable_root_still_names_its_destination(
     capsys.readouterr()
     assert cli.main(select_argv(txt, parquet, tmp_path, **{"--out": str(out)})) == 0
     assert capsys.readouterr().err.splitlines()[0] == (
-        f"ideate corpus select: no data root resolved -> shot list {out}"
+        f"shot_design corpus select: no data root resolved -> shot list {out}"
     )

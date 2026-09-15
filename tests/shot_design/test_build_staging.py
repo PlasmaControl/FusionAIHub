@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ideate.shotdb import build, text
+from shot_design.shotdb import build, text
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def test_the_staged_text_subset_lands_when_the_cache_is_on_another_filesystem(
     staging_db, staged_shot_a, monkeypatch
 ):
     """The staging directory is a sibling of db_dir, but an `IDEATE_PATHS` file -- the scratch
-    database workflow docs/IDEATE.md recommends -- is free to put `text_cache_dir` on a different
+    database workflow docs/SHOT_DESIGN.md recommends -- is free to put `text_cache_dir` on a different
     mount, and `os.replace` across mounts raises EXDEV. The subset must still land."""
     subset = text.subset_path(staging_db)
     real = os.replace

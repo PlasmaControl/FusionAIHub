@@ -1,4 +1,4 @@
-# Browser UI (src/ideate/ui): the thin Search / Shot / Locate page reads only `server`.
+# Browser UI (src/shot_design/ui): the thin Search / Shot / Locate page reads only `server`.
 # `landing` and `actuation` are read by retrieval.scenarios and retrieval.actuation (the
 # scenario cards and the actuation-sketch defaults), which predate the thin UI and still
 # take their defaults from this file.

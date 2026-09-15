@@ -23,8 +23,8 @@ none.
 The acceptance for that port is **47 +/- 3 crashes with a 69 +/- 5 ms
 median period on shot 198658, in under a second**. Those are the
 REFERENCE's own numbers, checked crash-for-crash by
-`scripts/labelmaker/sawtooth_reference_check.py` (its 198658 output is
-committed at `tests/labelmaker/data/sawtooth_198658_reference.json`); the
+`scripts/labeler/sawtooth_reference_check.py` (its 198658 output is
+committed at `tests/labeler/data/sawtooth_198658_reference.json`); the
 plan's "45 sawteeth, 76 ms" was a different measurement of the same shot
 and is not what this detector - or the reference it is a port of -
 produces. The median is not a stable statistic here in any case: the

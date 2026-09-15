@@ -1,15 +1,15 @@
 # The frozen dev/eval split of the `recommender_v1` development universe (task I11).
 #
 # FROZEN. Authored 2026-09-13, before any retrieval number was measured against it, and asserted
-# by `tests/ideate/test_evalset_frozen.py`. Re-deriving it from the rule below over
-# `configs/ideate/shot_lists/recommender_v1.yaml` reproduces it exactly -- it is not a magic list
+# by `tests/shot_design/test_evalset_frozen.py`. Re-deriving it from the rule below over
+# `configs/shot_design/shot_lists/recommender_v1.yaml` reproduces it exactly -- it is not a magic list
 # -- but it is committed so that a later edit to the shot list cannot silently move the boundary
 # under a published number.
 #
 # A RUN DAY decides, never a shot. Two shots of one run day share a session leader, a
 # mini-proposal, a machine configuration and usually a logbook sentence: a shot-wise split would
 # leave a near-copy of every eval shot in dev, and every text channel would then be scored on its
-# own neighbours. `src/ideate/eval/prompts.py::run` excludes the whole complement from the
+# own neighbours. `src/shot_design/eval/prompts.py::run` excludes the whole complement from the
 # database before searching, so the hard filter, the BM25 corpus statistics and the k-NN
 # neighbourhoods are all computed on one side only.
 #

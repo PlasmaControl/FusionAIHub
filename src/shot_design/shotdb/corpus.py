@@ -4,8 +4,8 @@ The corpus is 16,909 files (shots 185601-204999) written for the foundation mode
 and four of its properties decide almost everything in this module. All four are measured, and
 all four are silent failures if ignored:
 
-* **Seconds.** `xdata` is a seconds axis. Everything else in ideate -- features, segments, the
-  schema, every threshold in configs/ideate -- is milliseconds. The conversion happens here, at
+* **Seconds.** `xdata` is a seconds axis. Everything else in shot_design -- features, segments, the
+  schema, every threshold in configs/shot_design -- is milliseconds. The conversion happens here, at
   the boundary, exactly once.
 * **`(C, 1)` placeholders.** A diagnostic the corpus did not record for a shot is still written,
   as a one-sample placeholder: `ydata` of shape `(C, 1)` and `xdata` of shape `(1,)`, all NaN.

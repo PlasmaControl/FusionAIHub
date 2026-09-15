@@ -1,7 +1,7 @@
 """Configuration loading: paths, YAML configs, and the signal/actuator registry.
 
 This is the only module that reads YAML. Everything per-campaign (actuator members, signal
-node names, thresholds) lives in configs/ideate/ so adding a gyrotron is a config change.
+node names, thresholds) lives in configs/shot_design/ so adding a gyrotron is a config change.
 
 
 Ported from shot-recommender-system (shotrec) @565d548.
@@ -20,7 +20,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-CONFIG_DIR = Path(os.environ.get("IDEATE_CONFIG_DIR", Path(__file__).resolve().parents[2] / "configs" / "ideate"))
+CONFIG_DIR = Path(os.environ.get("IDEATE_CONFIG_DIR", Path(__file__).resolve().parents[2] / "configs" / "shot_design"))
 _VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -64,7 +64,7 @@ class Paths(BaseModel):
     sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-_PATHS_OVERRIDE: ContextVar[Paths | None] = ContextVar("ideate_paths", default=None)
+_PATHS_OVERRIDE: ContextVar[Paths | None] = ContextVar("shot_design_paths", default=None)
 
 
 @contextmanager
@@ -101,7 +101,7 @@ def data_root_origin() -> str:
     This is the environment precedence `load_paths` applies above, in its order. A per-request
     `using_paths` override is a server concern and no writing command runs under one.
 
-    The third label names the file in full rather than saying "configs/ideate/paths.yaml":
+    The third label names the file in full rather than saying "configs/shot_design/paths.yaml":
     `CONFIG_DIR` follows `IDEATE_CONFIG_DIR`, so the packaged path is not always the one that was
     read, and a label naming a file that settled nothing is the same failure as an unlabelled
     root one level up.
@@ -122,11 +122,11 @@ _YAML_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
 
 
 def load_yaml(name: str) -> dict[str, Any]:
-    """A parsed config from configs/ideate/, cached on (path, size, mtime_ns), returned as a
+    """A parsed config from configs/shot_design/, cached on (path, size, mtime_ns), returned as a
     deep copy.
 
     Measured on the 105-shot database: signals.yaml parses in 24 ms and actuators.yaml in 9 ms,
-    and one `ideate query` read them dozens of times -- once per result for the unit lookup, twice
+    and one `shot_design query` read them dozens of times -- once per result for the unit lookup, twice
     per result for the flag rules. Keying on size and mtime means an edited config is picked up on
     the next call with no restart; the deep copy means a caller that mutates what it got back
     cannot poison the next caller's view.
@@ -158,7 +158,7 @@ class CorpusAddress(BaseModel):
     units: str | None = None
 
 
-class LabelmakerAddress(BaseModel):
+class LabelerAddress(BaseModel):
     """One canonical feature of `$LABELMAKER_ROOT/features/<shot>_features.h5`.
 
     `reduce` says how a stored `(C, T)` array becomes one series: a scalar feature is `(1, T)` and
@@ -179,14 +179,14 @@ class SignalSpec(BaseModel):
 
     name: str  # DB column prefix, e.g. "ip", "pnbi_15L", "betan"
     # The d3d_fusion_data address. Empty for a quantity that layout does not carry at all (a
-    # corpus- or labelmaker-only signal): `legacy_raw` then finds no such group and reports it
+    # corpus- or labeler-only signal): `legacy_raw` then finds no such group and reports it
     # `unavailable`, which is what that layout's answer honestly is.
     group: str = ""
     col: str = ""
     # The other two raw layouts. Absent means "this signal has no address there", which is a
     # coverage fact and not a fetchable gap -- see `corpus_signals` for the status rules.
     corpus: CorpusAddress | None = None
-    labelmaker: LabelmakerAddress | None = None
+    labelmaker: LabelerAddress | None = None
     units: str | None = None
     tier: str = "raw"  # "raw" | "derived"
     abs: bool = False
@@ -281,7 +281,7 @@ class CorpusActuator(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str  # ideate's name for the actuator, e.g. "nbi_torque"
+    name: str  # shot_design's name for the actuator, e.g. "nbi_torque"
     group: str  # the corpus group, e.g. "tinj"
     channels: list[int] | None = None  # None is the config's "all"
     reduce: Literal["sum", "mean", "first"] = "sum"  # what a TOTAL over those channels means
@@ -299,7 +299,7 @@ class CorpusActuator(BaseModel):
 
 
 def corpus_actuators() -> dict[str, CorpusActuator]:
-    """The `corpus:` block of actuators.yaml: ideate's actuator names -> corpus groups.
+    """The `corpus:` block of actuators.yaml: shot_design's actuator names -> corpus groups.
 
     A mapping and not a lookup table in code, because it is a claim about someone else's data
     that we may have to correct: the corpus groups are unnamed channel arrays with no units and
@@ -335,7 +335,7 @@ def actuator_systems(shot: int) -> dict[str, SystemSpec]:
 
 
 def load_shot_list(name: str = "poc_v1", path: Path | None = None) -> list[int]:
-    """Shots from configs/ideate/shot_lists/<name>.yaml with the hand_review block applied.
+    """Shots from configs/shot_design/shot_lists/<name>.yaml with the hand_review block applied.
 
     hand_review is the human gate on a generated list: `drop` removes a shot the reviewer
     rejected, `add` pins one the greedy allocator missed. Drops are applied before adds, so a

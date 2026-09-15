@@ -13,7 +13,7 @@ may be a plan for the next shot, a complaint about a diagnostic, or a note
 about a different shot entirely. So a hit's confidence is capped at
 `TEXT_ONLY_CEILING` for a single mention and reaches 1.0 only after four,
 and its place in the pipeline is to PRIORITISE - which chunks a human is
-asked to annotate, which shots ideate ranks - never to decide.
+asked to annotate, which shots shot_design ranks - never to decide.
 
 TWO SOURCES, and which one a hit came from is the whole of what it means:
 
@@ -209,7 +209,7 @@ def build_logs_subset(shots: Iterable[int], *,
     does not do. Appending in place is what produces the torn trailing line
     `_subset_records` tolerates; a line of the old file that lacks its
     newline is such a tail, is not carried over, and its shot is fetched
-    again.) Mirrors `ideate.shotdb.text.build_logs_subset`, which is where
+    again.) Mirrors `shot_design.shotdb.text.build_logs_subset`, which is where
     the pattern and the failure it fixes were measured.
 
     A build that finds NOTHING does not touch the subset at all: rewriting

@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from ideate import schema
-from ideate.retrieval import describe as D
-from ideate.retrieval import rank
+from shot_design import schema
+from shot_design.retrieval import describe as D
+from shot_design.retrieval import rank
 
 DB_DIR = Path("/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/db")
 WS = re.compile(r"\s+")
@@ -91,8 +91,8 @@ def test_the_header_carries_date_run_and_mini_proposal():
 
 
 def test_the_segment_line_prints_every_number_through_rank_display():
-    """One renderer. `ideate show` prints this same line as its headline, and the units and k/M
-    prefixes are `rank.display`'s -- read from configs/ideate/, chosen from the magnitude -- not a
+    """One renderer. `shot_design show` prints this same line as its headline, and the units and k/M
+    prefixes are `rank.display`'s -- read from configs/shot_design/, chosen from the magnitude -- not a
     hardcoded `/1e6 -> MA` table. (Two such tables, with different precisions, used to make
     `show` and `query` print the same shot differently: `q95 3.38` vs `q95 3.4`.)"""
     got = line(D.describe(record()), "Flat top")
@@ -305,7 +305,7 @@ def test_polish_opens_no_socket_when_the_provider_is_off(monkeypatch):
     fail fast, it hangs for minutes inside connect."""
     import socket
 
-    from ideate import config
+    from shot_design import config
 
     real = config.load_yaml
     monkeypatch.setattr(
@@ -337,7 +337,7 @@ def test_polish_returns_the_template_when_no_endpoint_is_published(paths):
 @pytest.mark.real_data
 @pytest.mark.skipif(not DB_DIR.exists(), reason=f"{DB_DIR} not mounted")
 def test_every_real_quote_is_a_verbatim_prefix_of_one_attributed_entry():
-    from ideate.shotdb import store
+    from shot_design.shotdb import store
 
     db = store.ShotDB.load(DB_DIR)
     pattern = re.compile(r'^Operator: "(.*)" \((.+)\)\.$')

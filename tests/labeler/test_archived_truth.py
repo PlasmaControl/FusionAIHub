@@ -1,6 +1,6 @@
 """Ground truth for one shot, and scoring a published label against it.
 
-The tearing archive is the only ground truth labelmaker has, and it carries no
+The tearing archive is the only ground truth labeler has, and it carries no
 time axis of its own - its rows are placed on our grid by the same match
 `validate` uses to score a pool. These helpers expose that per shot, so
 `analyze` can say how a label did on the shot in front of you.
@@ -8,8 +8,8 @@ time axis of its own - its rows are placed on our grid by the same match
 import numpy as np
 import pytest
 
-from labelmaker import validate
-from labelmaker.config import Paths
+from labeler import validate
+from labeler.config import Paths
 
 N = 6
 
@@ -136,7 +136,7 @@ def test_scoring_an_unavailable_truth_repeats_its_reason(monkeypatch):
 
 
 def test_only_rows_labelmaker_would_publish_are_scored(monkeypatch):
-    """A row the validity mask rejects is not a prediction labelmaker stands
+    """A row the validity mask rejects is not a prediction labeler stands
     behind, so it must not count for or against the model."""
     _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])
     truth = validate.archived_truth(190000, Paths.from_env())
@@ -183,9 +183,9 @@ def test_quiet_spike_is_any_row_but_not_final_alarm(monkeypatch):
 
 @pytest.mark.parametrize('last_horizon', [1., 2.])
 def test_pooled_rows_and_alarm_quality(wired, monkeypatch, last_horizon):
-    from labelmaker.labels.schema import LabelSpec
-    from labelmaker.labels.store import write_labels
-    from labelmaker.models.base import Decoded
+    from labeler.labels.schema import LabelSpec
+    from labeler.labels.store import write_labels
+    from labeler.models.base import Decoded
 
     slug = 'd3d_tearing_time_to_event_dsm'
     paths = Paths(root=wired['root'], corpus=wired['corpus'])
@@ -248,7 +248,7 @@ def _adapter_with_training_shots(monkeypatch, shots):
     """
     from dataclasses import replace
 
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     from .test_run import _fake_adapter
 
@@ -259,9 +259,9 @@ def _adapter_with_training_shots(monkeypatch, shots):
 
 def _write_pooled_labels(paths, slug, shots, names):
     """One published trace per shot: eight steps, one invalid and one NaN."""
-    from labelmaker.labels.schema import LabelSpec
-    from labelmaker.labels.store import write_labels
-    from labelmaker.models.base import Decoded
+    from labeler.labels.schema import LabelSpec
+    from labeler.labels.store import write_labels
+    from labeler.models.base import Decoded
 
     specs = tuple(LabelSpec(name=n, task="binary", activation="none", units="",
                             classes=(), slug=slug, card_id="test/model", time_step_ms=25,
@@ -382,9 +382,9 @@ def test_pool_isolates_rejected_and_failed_matches(wired, monkeypatch):
 
 
 def test_column_pool_keeps_archived_positives_and_whole_trace_alarm(wired, monkeypatch):
-    from labelmaker.labels.schema import LabelSpec
-    from labelmaker.labels.store import write_labels
-    from labelmaker.models.base import Decoded
+    from labeler.labels.schema import LabelSpec
+    from labeler.labels.store import write_labels
+    from labeler.models.base import Decoded
 
     slug = 'd3d_tearing_onset_cnn1d'
     paths = Paths(root=wired['root'], corpus=wired['corpus'])
@@ -427,7 +427,7 @@ def test_empty_valid_population_has_no_alarm_verdict(monkeypatch):
 
 
 def test_grid_boundary_truth_is_shared_by_plain_and_ipcw_metrics(monkeypatch):
-    from labelmaker import alarm
+    from labeler import alarm
 
     t = .025 * np.array([1, 2, 3])
     onset = .025 * 12
@@ -496,7 +496,7 @@ def test_time_to_onset_drops_nonpositive_nonfinite_predictions(monkeypatch, bad)
 def test_calibration_study_splits_shots_and_publishes_only_all_rows(wired, monkeypatch):
     import json
 
-    from labelmaker.calibrate import IsotonicMap, prior_shift
+    from labeler.calibrate import IsotonicMap, prior_shift
 
     slug = "d3d_tearing_time_to_event_dsm"
     paths = Paths(root=wired["root"], corpus=wired["corpus"])
@@ -583,7 +583,7 @@ def test_calibration_fits_on_held_out_shots_and_reports_three_ways(wired, monkey
     """
     import json
 
-    from labelmaker.calibrate import IsotonicMap
+    from labeler.calibrate import IsotonicMap
 
     slug, name = "d3d_tearing_time_to_event_dsm", "tm_risk_1s"
     paths = Paths(root=wired["root"], corpus=wired["corpus"])

@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from labelmaker.alarm import (
+from labeler.alarm import (
     any_row_call,
     horizon_integral,
     ipcw_auc,
@@ -10,7 +10,7 @@ from labelmaker.alarm import (
     pool_rates,
     shot_alarm,
 )
-from labelmaker.validate import binary_metrics
+from labeler.validate import binary_metrics
 
 
 @pytest.mark.parametrize(('onset', 'risk', 'verdict'), [

@@ -1,6 +1,6 @@
 """Multi-channel retrieval: channels -> RRF fusion -> rerank -> explained results.
 
-    from ideate.retrieval import search
+    from shot_design.retrieval import search
     found = search(query_state, shot_db)
     found.items      # the explained top n
     found.rankings   # each channel's own candidates, before fusion
@@ -29,8 +29,8 @@ from .rank import (
 )
 
 # suggest (the function) is intentionally not re-exported here: since Python 3.7, submodule
-# attribute access (`import ideate.retrieval.suggest as sg`) binds through this package's
-# namespace, so a `suggest` name here would shadow the `ideate.retrieval.suggest` submodule
+# attribute access (`import shot_design.retrieval.suggest as sg`) binds through this package's
+# namespace, so a `suggest` name here would shadow the `shot_design.retrieval.suggest` submodule
 # itself. Import the function from the submodule directly: `from .suggest import suggest`.
 from .suggest import ActuatorSuggestion, Suggestion
 

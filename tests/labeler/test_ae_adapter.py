@@ -12,13 +12,13 @@ import numpy as np
 import pytest
 import torch
 
-from labelmaker.ae import transform as tr
-from labelmaker.ae.model import AeSeldNet, AeSeldNetConfig
-from labelmaker.features import namespace as ns
-from labelmaker.features.store import FeatureArray
-from labelmaker.models import registry
-from labelmaker.models.d3d_ae_activity_seldnet import spec as ae
-from labelmaker.models.runners import torch_pt
+from labeler.ae import transform as tr
+from labeler.ae.model import AeSeldNet, AeSeldNetConfig
+from labeler.features import namespace as ns
+from labeler.features.store import FeatureArray
+from labeler.models import registry
+from labeler.models.d3d_ae_activity_seldnet import spec as ae
+from labeler.models.runners import torch_pt
 
 FS_HZ = 5.0e5
 #: Eight 25 ms rows: enough for the aggregation and the record-edge rules,

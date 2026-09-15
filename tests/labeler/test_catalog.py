@@ -5,8 +5,8 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker import catalog
-from labelmaker.config import Paths
+from labeler import catalog
+from labeler.config import Paths
 
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 TM = catalog.TM_ARCHIVE

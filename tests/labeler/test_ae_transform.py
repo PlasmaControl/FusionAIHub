@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from scipy import signal
 
-from labelmaker.ae import transform as tr
+from labeler.ae import transform as tr
 
 
 def _sine(f_khz: float, *, fs_hz: float = 5.0e5, n: int = 60_000,

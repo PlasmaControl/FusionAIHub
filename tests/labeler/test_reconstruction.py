@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from labelmaker import validate
-from labelmaker.catalog import TM_ARCHIVE
-from labelmaker.config import Paths
-from labelmaker.models.base import BuiltInputs
+from labeler import validate
+from labeler.catalog import TM_ARCHIVE
+from labeler.config import Paths
+from labeler.models.base import BuiltInputs
 
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 
@@ -244,7 +244,7 @@ def test_reconstruction_fidelity_asserts_the_match_column_mapping():
     than failing. The check must run before any per-shot work, so it is a
     loud `ValueError`, not an entry in `skipped`.
     """
-    import labelmaker.validate as validate_mod
+    import labeler.validate as validate_mod
 
     original = validate_mod.MATCH_COLUMNS
     validate_mod.MATCH_COLUMNS = (1, 0, 6, 7, 8)  # bt/ip swapped
@@ -297,7 +297,7 @@ def test_match_columns_match_on_archive_served_and_tiebreak_on_the_rest():
     or collides rows (measured on 24 of the 101 proof-of-concept shots) - and
     the reconstructed ones are kept only to break exact geometry ties.
     """
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     spec = registry.load_adapter("d3d_tearing_onset_cnn1d").input_spec
     geometry = {"tritop": "archive", "tribot": "archive", "gapin": "archive"}
@@ -325,7 +325,7 @@ def test_match_columns_use_the_geometry_when_nothing_is_archive_served():
     five-column match, colliding rows where EFIT01 held for two grid steps)
     aligns the same way a mixed shot does: geometry matches, bt/ip break ties.
     """
-    from labelmaker.models import registry
+    from labeler.models import registry
 
     spec = registry.load_adapter("d3d_tearing_onset_cnn1d").input_spec
     b = _built()

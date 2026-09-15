@@ -1,8 +1,8 @@
 """d3d_ae_activity_seldnet - Alfven-eigenmode activity, and the mode's
 frequency, from the four CO2 interferometer chords.
 
-Upstream is this repository: the network is `labelmaker.ae.model.AeSeldNet`
-and the checkpoint was trained by `scripts/labelmaker/ae_train.py` on task
+Upstream is this repository: the network is `labeler.ae.model.AeSeldNet`
+and the checkpoint was trained by `scripts/labeler/ae_train.py` on task
 7a's dataset (180 hand-annotated DIII-D shots, 170659-178879, 120 train /
 60 validation). Nothing about it is somebody else's artifact, which is why
 this is the one adapter whose `upstream` is a path inside our own data root.
@@ -11,7 +11,7 @@ The chain, per shot:
 
     co2 (4, ~4.5e6) at 500 kHz
       -> clipped to the output grid's span
-      -> labelmaker.ae.transform.model_input: per-chord STFT (hann 1024,
+      -> labeler.ae.transform.model_input: per-chord STFT (hann 1024,
          hop 128, |.|, log1p, DC dropped, 1/99 percentile clip), per-channel
          standardisation, bins 164:512  ->  (4, 348, frames)
       -> AeSeldNet, in time windows                     ->  (frames, 2)
@@ -93,7 +93,7 @@ FREQ_CAVEAT = (
 )
 NOTCH_RULE = (
     "training label only: a (channel, bin) row lit in more than 0.8 of the "
-    "record was zeroed before the activity decision (labelmaker.ae.labels, "
+    "record was zeroed before the activity decision (labeler.ae.labels, "
     "task 7a). Not applied at inference - there is no mask to threshold - so "
     "the spectrogram the network reads here is un-notched"
 )
@@ -190,7 +190,7 @@ def aggregate(
     """Frame series -> `(ae_active, ae_frequency, n_frames)` on the grid.
 
     Row `k` summarises the half-open window `(grid[k] - 25 ms, grid[k]]`, the
-    causal convention every other labelmaker model's inputs follow. Row 0's
+    causal convention every other labeler model's inputs follow. Row 0's
     window therefore ends at t = 0 and normally holds no frames, which is the
     same record-edge outcome the scalar path has at row 0.
     """

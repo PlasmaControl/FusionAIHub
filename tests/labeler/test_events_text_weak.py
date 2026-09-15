@@ -19,9 +19,9 @@ import os
 
 import pytest
 
-from labelmaker.config import Paths
-from labelmaker.events import lexicon as lx
-from labelmaker.events import text_weak as tw
+from labeler.config import Paths
+from labeler.events import lexicon as lx
+from labeler.events import text_weak as tw
 
 MARKER = "## Shot-specific context (from summary.html)"
 

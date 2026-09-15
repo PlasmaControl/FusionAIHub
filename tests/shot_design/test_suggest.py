@@ -1,4 +1,4 @@
-"""The suggested configuration (ideate.retrieval.suggest): what the successful matches ran, as a
+"""The suggested configuration (shot_design.retrieval.suggest): what the successful matches ran, as a
 median with a quartile range per actuator key, each value traceable to its shots.
 
 Fixture facts (conftest): shot 900001 has beams 15L 2.0 MW, 30L 1.5 MW, 33L 1.0 MW and gas A;
@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from ideate.retrieval import suggest as sg
-from ideate.shotdb import build, store
+from shot_design.retrieval import suggest as sg
+from shot_design.shotdb import build, store
 
 from .test_build_store import stub_embeddings  # noqa: F401  (fixture)
 

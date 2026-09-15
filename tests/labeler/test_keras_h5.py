@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 import pytest
 
-from labelmaker.models.runners.keras_h5 import (
+from labeler.models.runners.keras_h5 import (
     UnsupportedLayer,
     load_ensemble,
     load_graph,

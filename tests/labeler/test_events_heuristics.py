@@ -25,8 +25,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from labelmaker.events import coverage, heuristics, schema
-from labelmaker.events.tracks import Track
+from labeler.events import coverage, heuristics, schema
+from labeler.events.tracks import Track
 
 from .conftest import (
     SYNTH_CORE_CH,
@@ -364,7 +364,7 @@ def test_the_ece_array_has_to_be_the_ece_array(synth_shot):
 
 
 def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
-    # `scripts/labelmaker/sawtooth_reference_check.py` runs omnimode's own
+    # `scripts/labeler/sawtooth_reference_check.py` runs omnimode's own
     # `find_sawteeth` and this port over the WHOLE of shot 198658 and writes
     # what it found here. The port is only a port if somebody has compared
     # the two crash for crash on real data, and this is that comparison's
@@ -400,7 +400,7 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     # `labelmaker_sha` is HEAD at run time, which is the PARENT of the
     # commit carrying the record - the script has to run before the commit
     # its output goes into. That names the tree that was MEASURED only if
-    # nothing under `src/labelmaker` was uncommitted when it ran, so the
+    # nothing under `src/labeler` was uncommitted when it ran, so the
     # stanza says which, and this asserts it was clean.
     assert rerun["dirty"] is False
 
@@ -1278,7 +1278,7 @@ def test_a_regime_row_is_one_the_events_table_accepts(tmp_path):
 
 # ------------------------------- what the rule does on the real distribution
 
-#: The census `scripts/labelmaker/qmin_regime_census.py` wrote, from the
+#: The census `scripts/labeler/qmin_regime_census.py` wrote, from the
 #: real features store over the 500 shots of `recommender_v1`. Committed
 #: rather than recomputed, because the store is not in this repository and
 #: the suite is hermetic - and read on every run rather than quoted in a

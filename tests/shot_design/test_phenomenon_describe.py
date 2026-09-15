@@ -1,9 +1,9 @@
 """Descriptions keep observations, forecasts and operator quotations apart."""
 
-from ideate import cli
-from ideate.mcp import tools
-from ideate.retrieval import describe
-from ideate.retrieval import phenomena as ph
+from shot_design import cli
+from shot_design.mcp import tools
+from shot_design.retrieval import describe
+from shot_design.retrieval import phenomena as ph
 
 from .test_phenomena import _claim, _db_with, _event
 

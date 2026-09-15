@@ -1,7 +1,7 @@
-"""Make tests/labelmaker/data/tearing_dsm_golden.npz - ONCE, with the fork.
+"""Make tests/labeler/data/tearing_dsm_golden.npz - ONCE, with the fork.
 
 Run in a throwaway environment that has torch, scikit-learn, scikit-survival
-and the auton-survival fork on sys.path; labelmaker's own environment has none
+and the auton-survival fork on sys.path; labeler's own environment has none
 of them, by design. The file holds z-scored inputs drawn N(0, 1) (the model's
 inputs are z-scored, so this is its domain) and the survival probabilities the
 fork's own `predict_survival` returns for them.

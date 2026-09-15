@@ -77,7 +77,7 @@ file - the damage a pid-suffixed temporary does not prevent:
   reached for a shot whose record is already there, and
   `build_logs_subset` returns without writing when it has nothing to add.)
   **The pre-pass is REQUIRED for multi-rank or multi-chunk runs** to match
-  `python -m labelmaker.run events`: without it, `readonly` adds a `text`
+  `python -m labeler.run events`: without it, `readonly` adds a `text`
   skip and omits `text` from an uncovered shot's declared sources. A
   covered record with no matches still declares `text` with zero events.
   Check that every run JSON's `text_subset_missing` is empty.
@@ -449,7 +449,7 @@ def _init_worker() -> None:
     Only `torch.set_num_threads(1)` bites here. It is a runtime call, so it
     takes effect whenever it is made; the four environment variables do not,
     because with `spawn` the child unpickles the worker bootstrap - which
-    resolves this function by IMPORTING `labelmaker.events.driver`, and with
+    resolves this function by IMPORTING `labeler.events.driver`, and with
     it numpy, scipy and torch - before this body runs, and by then
     OpenBLAS and MKL have already sized their pools from the environment
     they were exec'd with. They are set in the parent instead
@@ -1407,7 +1407,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Run the pinned TokEye U-Net over a chunk of a shot list, "
             "preparing the next blocks on CPU while the current one infers. "
             "Writes masks/<shot>_masks.npz and events/<shot>_events.parquet, "
-            "the same files `python -m labelmaker.run events` writes."
+            "the same files `python -m labeler.run events` writes."
         ),
     )
     # Not `required=True`: `--rebuild-index` runs over what is already on

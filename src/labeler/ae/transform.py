@@ -3,7 +3,7 @@
 Task 7a built the training dataset by calling ``tokeye.transforms.compute_stft``
 once per CO2 channel and then standardising the stack the way
 ``tokeye.inference.model_infer`` does. tokeye is importable only from
-``/scratch/gpfs/nc1514/tokeye/.venv`` (read-only, torch 2.9), so labelmaker
+``/scratch/gpfs/nc1514/tokeye/.venv`` (read-only, torch 2.9), so labeler
 cannot depend on it at inference time - the pixi env has to run this on its
 own. ``compute_stft`` is fifteen lines of scipy, so it is ported here verbatim
 rather than reimplemented, and
