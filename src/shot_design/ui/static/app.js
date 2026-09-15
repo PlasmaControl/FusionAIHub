@@ -274,8 +274,9 @@ function shotLink(shot, phenomenon = "", segment = "flat_top") {
 
 function blurbText(row) {
   const text = row.blurb?.trim() ? row.blurb : null;
+  if (!text) return el("div", { class: "blurb-text" }, "—");
   return el("div", { class: "blurb-text" }, longText(text),
-    text && row.blurb_source === "template"
+    row.blurb_source === "template"
       ? el("span", { class: "blurb-auto small muted",
         title: "Deterministic header + outcome; no model summary yet" }, "auto") : null);
 }
