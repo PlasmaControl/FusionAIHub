@@ -425,6 +425,9 @@ def describe_parts(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None
                 "n_observed": len(ev.intervals) if ev.intervals or
                 ev.coverage_state == "observed" else None,
                 "first_intervals": [iv.model_dump(mode="json") for iv in ev.intervals[:3]],
+                # Keep the legacy preview; the browser's single cell toggle needs
+                # every observed interval, with forecasts still separate.
+                "intervals": [iv.model_dump(mode="json") for iv in ev.intervals],
                 "n_forecast": len(ev.forecasts),
                 "coverage_note": ev.coverage_state,
                 "coverage_windows": [list(w) for w in ev.coverage_windows],

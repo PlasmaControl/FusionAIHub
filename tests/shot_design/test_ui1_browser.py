@@ -149,8 +149,7 @@ def test_flag_measurements_use_raw_numbers_and_keep_database_counts():
     ]
 
 
-def test_rendered_disclosures_summary_scalars_and_event_tooltips():
-    script = r"""
+DOM_HARNESS = r"""
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 class Element {
   constructor(tag) { this.tag = tag; this.children = []; this.attrs = {}; this.events = {};
@@ -179,13 +178,217 @@ const run = (code) => vm.runInContext(code, context);
 const all = (el) => el instanceof Element ? [el, ...el.children.flatMap(all)] : [];
 const text = (el) => el instanceof Element ? el.children.map(text).join('') : String(el);
 const byClass = (el, cls) => all(el).filter(n => n.attrs.class?.split(' ').includes(cls));
+"""
+
+
+def run_dom(script):
+    result = subprocess.run(
+        ["node", "-e", DOM_HARNESS + "\n(async () => {\n" + script +
+         "\n})().catch(error => { console.error(error); process.exitCode = 1; });", str(APP)],
+        capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_cells_have_one_toggle_for_all_items_including_async_notes():
+    run_dom(r"""
+run(`api = async () => ({data: {record: {human: {
+  run_title: 'Run title '.repeat(40), mp_title: 'MP title '.repeat(40)}},
+  caveats: ['API caveat '.repeat(40)], error: 'Partial title data'}})`);
+const table = run(`resultsTable([{shot:199607, score:.03062, run_id:'r2026',
+  blurb:'Summary '.repeat(60), caveats:['First caveat '.repeat(40), 'Second caveat '.repeat(40)],
+  flags:[{message:'Flag detail '.repeat(40)}]}], 'flat_top')`);
+await new Promise(resolve => setImmediate(resolve));
+const cells = all(table).filter(n => n.tag === 'td');
+assert.equal(cells.length, 5);
+let stopped = 0;
+for (const cell of cells.slice(2)) {
+  const buttons = byClass(cell, 'text-toggle');
+  assert.equal(buttons.length, 1, 'one toggle per whole cell');
+  assert.equal(byClass(cell, 'section-toggle').length, 0);
+  assert.equal((text(cell).match(/…/g) || []).length, 1);
+  const button = buttons[0];
+  assert(button.attrs['aria-controls']);
+  button.events.click({stopPropagation: () => stopped++});
+  assert.equal(button.attrs['aria-expanded'], 'true');
+  assert.equal(text(button), 'less');
+  assert(!text(cell).includes('…'));
+}
+assert.equal(stopped, 3);
+assert(text(cells[2]).includes('r2026\n' + 'Run title '.repeat(40) + '\n' + 'MP title '.repeat(40)));
+for (const expected of ['First caveat ', 'Second caveat ', 'Flag detail ', 'API caveat ']) {
+  assert(text(cells[4]).includes(expected.repeat(40)));
+}
+assert(text(cells[4]).includes('Partial title data'));
+run(`api = async () => { throw new Error('Title request failed'); }`);
+const failed = run(`resultsTable([{shot:199607, caveats:['Existing note '.repeat(40)]}], 'flat_top')`);
+await new Promise(resolve => setImmediate(resolve));
+const noteCell = all(failed).filter(n => n.tag === 'td')[4];
+assert.equal(byClass(noteCell, 'text-toggle').length, 1);
+byClass(noteCell, 'text-toggle')[0].events.click({stopPropagation() {}});
+assert(text(noteCell).includes('Title request failed'));
+assert(text(noteCell).includes('Existing note '.repeat(40)));
+""")
+
+
+def test_phenomena_cell_expands_every_interval_and_all_coverage_notes():
+    run_dom(r"""
+const table = run(`phenomenaTable([{id:'elm', title:'ELM', n_observed:244, n_forecast:44,
+  first_intervals:[{t0_s:0, t1_s:.01}],
+  intervals:Array.from({length:244}, (_, i) => ({t0_s:i/100, t1_s:i/100+.01})),
+  coverage_note:'observed', coverage_windows:[[0, 1], [2, 4]], coverage_partial:true,
+  caveats:['First coverage note '.repeat(30), 'Last coverage note '.repeat(30)]}])`);
+const cells = all(table).filter(n => n.tag === 'td');
+for (const index of [2, 4]) {
+  const buttons = byClass(cells[index], 'text-toggle');
+  assert.equal(buttons.length, 1);
+  buttons[0].events.click({stopPropagation() {}});
+}
+assert(!text(table).includes('+241 more'));
+assert(text(cells[2]).includes('2.430–2.440 s'));
+assert.equal((text(cells[2]).match(/ s/g) || []).length, 244);
+assert(text(cells[4]).includes('observed\n0.000–1.000 s\n2.000–4.000 s'));
+assert(text(cells[4]).includes('Partial coverage; outside unmeasured'));
+assert(text(cells[4]).includes('Last coverage note '.repeat(30)));
+assert.equal(byClass(cells[1], 'numeric').length, 1);
+assert.equal(byClass(cells[3], 'numeric').length, 1);
+assert(byClass(cells[2], 'numeric').some(n => text(n) === '2.430–2.440 s'));
+""")
+
+
+def test_text_clamp_limits_and_short_content_hide_toggle():
+    run_dom(r"""
+assert.equal(run('CELL_TEXT_LIMIT'), 320);
+assert.equal(run('BLOCK_TEXT_LIMIT'), 600);
+for (const [expression, limit] of [["cellText([input])", 320], ["longText(input)", 600]]) {
+  for (const size of [140, limit, limit+1]) {
+    context.input = 'x'.repeat(size);
+    const block = run(expression), content = byClass(block, 'text-content')[0];
+    const toggle = byClass(block, 'text-toggle')[0];
+    assert.equal(toggle.hidden, size <= limit);
+    assert.equal(text(content), size <= limit ? context.input : 'x'.repeat(limit) + '…');
+    if (size > limit) {
+      toggle.events.click({stopPropagation() {}});
+      assert.equal(text(content), context.input);
+    }
+  }
+}
+run(`renderShot({record:{blurb:'x'.repeat(500), segments:[]}, describe_parts:{
+  header:'Shot 199607.', scalars:[], labels:{}, outcome:{fault_strings:['y'.repeat(650)]},
+  phenomena:[], operator_quote:{text:'z'.repeat(650)}, caveats:['a'.repeat(350), 'b'.repeat(350)]}})`);
+const shot = targets['#shot-record'];
+assert(byClass(shot, 'summary-block').some(n => text(n).includes('x'.repeat(500))));
+for (const ch of ['y', 'z', 'a']) assert(text(shot).includes(ch.repeat(350)));
+assert(text(shot).includes('y'.repeat(600) + '…'));
+assert(text(shot).includes('z'.repeat(600) + '…'));
+assert.equal(byClass(byClass(shot, 'caveats')[0], 'text-toggle').length, 1);
+""")
+
+
+def test_table_css_preserves_headers_numbers_word_boundaries_and_local_scroll():
+    run_dom(r"""
+const css = fs.readFileSync(process.argv[1].replace('app.js', 'style.css'), 'utf8');
+const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+const style = (selector) => Object.fromEntries(rules.filter(([, selectors]) =>
+  selectors.split(',').map(s => s.trim()).includes(selector)).flatMap(([, , body]) =>
+  body.split(';').filter(s => s.includes(':')).map(s => s.split(':').map(s => s.trim()))));
+assert.equal(style('th')['white-space'], 'nowrap');
+assert.equal(style('th')['overflow-wrap'], 'normal');
+assert.equal(style('td')['overflow-wrap'], 'normal');
+assert.equal(style('td')['word-break'], 'normal');
+assert.equal(style('.numeric')['white-space'], 'nowrap');
+assert.equal(style('.numeric')['font-variant-numeric'], 'tabular-nums');
+assert.equal(style('table')['table-layout'], 'auto');
+assert.equal(style('.table-wrap')['overflow-x'], 'auto');
+assert.equal(style('.table-wrap')['max-width'], '100%');
+assert.equal(style('.table-wrap')['min-width'], '0');
+assert.equal(style('.view')['min-width'], '0');
+assert.equal(style('.text-content')['overflow-wrap'], 'break-word');
+assert.equal(style('.text-content')['-webkit-line-clamp'], '8');
+assert.equal(style('.cell-text > .text-content')['-webkit-line-clamp'], '5');
+run(`api = async () => ({data:{}})`);
+const table = run(`resultsTable([{shot:199607, score:.03062}], 'flat_top')`);
+assert.equal(table.attrs.class, 'table-wrap');
+const cells = all(table).filter(n => n.tag === 'td');
+assert.equal(text(cells[1]), '0.03062');
+assert.equal(byClass(cells[1], 'numeric').length, 1);
+const hit = run(`renderHit({shot:199607, score:.03062}, 'flat_top')`);
+assert(byClass(hit, 'numeric').some(n => text(n) === 'score 0.03062'));
+const scalars = run(`fields({ip_mean:892400, confidence:.9456, t0_s:1.321})`);
+assert.equal(byClass(scalars, 'numeric').filter(n => n.tag === 'dd').length, 3);
+""")
+
+
+def test_timeline_uses_shot_domain_clips_true_spans_and_keeps_top_ticks_visible():
+    run_dom(r"""
+run(`renderEvents({status:'observed', domain:{t0_s:-2,t1_s:8,source:'full segment'},
+  events:[{source:'detector',phenomenon:'elm',evidence_kind:'detector',confidence:.9,t0_s:1,t1_s:7},
+    {source:'early',t0_s:-5,t1_s:-3}, {source:'late',t0_s:9,t1_s:10},
+    {source:'point',t0_s:8,t1_s:8}],
+  forecasts:[{source:'model',evidence_kind:'forecast',t0_s:7,t1_s:10}],
+  database_intervals:[{source:'database',evidence_kind:'database',t0_s:-3,t1_s:0}],
+  coverage:{sources:[{source:'actuator',status:'ok',intervals:[[-10,94.857]]}]}})`);
+for (const id of ['event', 'forecast', 'database', 'coverage']) {
+  const root = targets['#'+id+'-lanes'], axes = byClass(root, 'axis');
+  assert.equal(axes.length, 2);
+  const nodes = all(root), lane = byClass(root, 'lane')[0];
+  assert(nodes.indexOf(axes[0]) < nodes.indexOf(lane));
+  assert(nodes.indexOf(axes[1]) > nodes.indexOf(byClass(root, 'lane').at(-1)));
+  assert(!byClass(root, 'collapse-body').some(body => all(body).includes(axes[0])));
+  assert.deepEqual(axes[0].children.map(text), ['-2 s','-1 s','0 s','1 s','2 s','3 s','4 s','5 s','6 s','7 s','8 s']);
+  const zero = byClass(axes[0], 'zero')[0];
+  assert.equal(text(zero), '0 s'); assert(zero.attrs.style.includes('left:20%'));
+  for (const mark of byClass(root, 'mark')) {
+    const [left, width] = [...mark.attrs.style.matchAll(/(?:left|width):([\d.]+)%/g)].map(m => +m[1]);
+    assert(left >= 0 && width >= 0 && left+width <= 100);
+  }
+}
+const eventMarks = byClass(targets['#event-lanes'], 'mark');
+assert(eventMarks[0].attrs.style.startsWith('left:30%;width:60%;'));
+assert.equal(byClass(targets['#event-lanes'], 'clipped-left').length, 1);
+assert.equal(byClass(targets['#event-lanes'], 'clipped-right').length, 1);
+assert(eventMarks[1].attrs.title.includes('-5.000–-3.000 s, drawn -2–-2 s'));
+assert(eventMarks[2].attrs.title.includes('9.000–10.000 s, drawn 8–8 s'));
+const mark = byClass(targets['#coverage-lanes'], 'mark')[0];
+assert(mark.attrs.class.includes('clipped-left') && mark.attrs.class.includes('clipped-right'));
+assert(mark.attrs.title.includes('coverage -10.000–94.857 s, drawn -2–8 s'));
+assert.equal(mark.attrs['aria-label'], mark.attrs.title);
+assert(byClass(targets['#forecast-lanes'], 'mark')[0].attrs.class.includes('clipped-right'));
+assert(byClass(targets['#database-lanes'], 'mark')[0].attrs.class.includes('clipped-left'));
+assert(byClass(targets['#forecast-lanes'], 'mark')[0].attrs.title.includes('evidence_kind: forecast'));
+// Missing data uses the documented default, never the available coverage hull.
+run(`renderEvents({coverage:{sources:[{source:'actuator',status:'ok',intervals:[[-10,95]]}]}})`);
+assert.equal(text(byClass(targets['#coverage-lanes'], 'axis')[0].children.at(-1)), '8 s');
+""")
+
+
+def test_locate_timelines_use_the_supplied_full_segment_domain():
+    run_dom(r"""
+const hit = run(`renderHit({shot:199607, domain:{t0_s:-4,t1_s:12,source:'full segment'},
+  intervals:[{source:'detector',evidence_kind:'detector',t0_s:9,t1_s:10}],
+  forecasts:[{source:'model',evidence_kind:'forecast',t0_s:9,t1_s:10}]}, 'flat_top')`);
+const marks = byClass(hit, 'mark');
+assert.equal(marks.length, 2);
+for (const mark of marks) {
+  assert(!mark.attrs.class.includes('clipped'));
+  assert(mark.attrs.style.startsWith('left:81.25%;width:6.25%;'));
+}
+for (const axis of byClass(hit, 'axis')) {
+  assert.equal(text(axis.children[0]), '-4 s');
+  assert.equal(text(axis.children.at(-1)), '12 s');
+}
+""")
+
+
+def test_rendered_disclosures_summary_scalars_and_event_tooltips():
+    run_dom(r"""
 let stopped = 0;
 const event = {stopPropagation: () => stopped++};
-const long = run(`longText('Full quote for shot 199607. '.repeat(15))`);
+const long = run(`longText('Full quote for shot 199607. '.repeat(30))`);
 const button = all(long).find(n => n.tag === 'button');
 assert(button.attrs['aria-controls']);
 assert(text(long).includes('…')); button.events.click(event);
-assert(text(long).includes('Full quote for shot 199607. '.repeat(15)));
+assert(text(long).includes('Full quote for shot 199607. '.repeat(30)));
 assert.equal(button.attrs['aria-expanded'], 'true');
 button.events.click(event); assert.equal(button.attrs['aria-expanded'], 'false');
 assert.equal(stopped, 2); assert(byClass(long, 'shot-number').length);
@@ -245,9 +448,4 @@ assert(bar.attrs.title.includes('1.321–1.792 s'));
 assert(bar.attrs.title.includes('phenomenon: tearing'));
 assert(bar.attrs.title.includes('confidence: 0.946'));
 assert.equal(byClass(hit, 'lane-details').length, 0);
-process.stdout.write('PASS');
-"""
-    result = subprocess.run(["node", "-e", script, str(APP)], capture_output=True,
-                            text=True, timeout=20, check=False)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == "PASS"
+""")
