@@ -13,7 +13,7 @@ One folder per trained model. A folder is `<slug>/` with:
 `d3d_tearing_time_to_event_dsm_continued` is the `[_<variant>]` case of the slug
 grammar below: the same architecture, inputs and outputs as the model it names,
 with weights that continue that model's under-trained fit
-(`scripts/labelmaker/retrain_tearing_dsm.py`). Its `spec.py` imports the base
+(`scripts/labeler/retrain_tearing_dsm.py`). Its `spec.py` imports the base
 spec's pieces rather than copying them.
 
 Slug grammar: `<device>_<phenomenon>_<what-is-predicted>_<architecture>[_<variant>]`,
@@ -33,20 +33,20 @@ would be called. Label groups in `<shot>_labels.h5` use the folder name.
 | `d3d_inpa_image_cnn` | `plasmacontrol/d3d-inpa-image-cnn` | image regression | scaffold |
 | `d3d_ae_activity_seldnet` | `plasmacontrol/d3d-ae-activity-seldnet` | binary + regression | implemented |
 
-`status: scaffold` means the folder documents a model that labelmaker cannot run
+`status: scaffold` means the folder documents a model that labeler cannot run
 yet; its card's `blocked_on` list says exactly what is missing, and importing its
 `spec.py` raises `NotImplementedError`.
 
-Two models carry weights labelmaker **fitted itself**.
+Two models carry weights labeler **fitted itself**.
 `d3d_elm_time_to_event_dsm` is one: upstream's Keras graphs need 64 BES inputs
-the FAITH corpus fills on 2 of 24 sampled shots, so labelmaker refitted the same
+the FAITH corpus fills on 2 of 24 sampled shots, so labeler refitted the same
 architecture on upstream's own rows using only the 60 columns that are not BES -
 which, measured, is the better model of the two (see its card).
 
 `d3d_ae_activity_seldnet` is the other, and the one whose architecture is ours
 too - no upstream artifact answers "is an Alfven eigenmode present now, and at
-what frequency". Its network is `src/labelmaker/ae/model.py`, its label construction
-`src/labelmaker/ae/labels.py`, its training `scripts/labelmaker/ae_train.py`,
+what frequency". Its network is `src/labeler/ae/model.py`, its label construction
+`src/labeler/ae/labels.py`, its training `scripts/labeler/ae_train.py`,
 and its design is `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
 section 5. It is also the only model whose input is a **waveform**: the raw
 4-chord CO2 record at 500 kHz, kept at its native rate through the feature layer
@@ -70,4 +70,4 @@ Recorded so they are not re-added by mistake:
 - Anything from `tokamak_deploy_bench`'s `models/` directory. That repo is a
   latency benchmark: it feeds random noise to models and stores only timings. It
   is a useful *index* of what exists (`MODEL_ROSTER.md`), never a source of
-  weights. Labelmaker loads every model from its upstream source of truth.
+  weights. labeler loads every model from its upstream source of truth.

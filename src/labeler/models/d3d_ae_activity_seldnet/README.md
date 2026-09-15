@@ -27,14 +27,14 @@ labelmaker:
   upstream:
     path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet
     trained: 2026-09-06
-    training_code: scripts/labelmaker/ae_train.py
-    reference_harness: scripts/labelmaker/ae_evaluate.py
+    training_code: scripts/labeler/ae_train.py
+    reference_harness: scripts/labeler/ae_evaluate.py
     artifacts:
     - ae_seldnet_threeway_sce.pt
     sha256:
       ae_seldnet_threeway_sce.pt: f2d5314a7673a53c49e287cdbb2d5e7232bbf192b8ba830d3215c8c9124079ab
     notes: >-
-      Ours, not a third party's: the network is src/labelmaker/ae/model.py (AeSeldNet,
+      Ours, not a third party's: the network is src/labeler/ae/model.py (AeSeldNet,
       440,514 parameters, pool_sizes (6, 2, 29)) and the checkpoint is task 7b's
       `threeway_sce` run (SLURM job 2924037, best epoch 6 of 12 run, early stopped,
       val_loss 0.4065, git_sha 4779ee6). Trained on task 7a's dataset: the 180
@@ -114,7 +114,7 @@ labelmaker:
 # d3d_ae_activity_seldnet
 
 Frame-level Alfven-eigenmode activity from the four CO2 interferometer chords,
-aggregated onto labelmaker's 25 ms grid. Two labels per shot:
+aggregated onto labeler's 25 ms grid. Two labels per shot:
 
 | label | task | units | meaning |
 |---|---|---|---|
@@ -126,7 +126,7 @@ float32 beside a `_valid` mask.
 
 ## What it is
 
-`labelmaker.ae.model.AeSeldNet`: three 2-D convolution blocks that pool along
+`labeler.ae.model.AeSeldNet`: three 2-D convolution blocks that pool along
 **frequency only** (6, then 2, then 29 - 348 bins to 1), two bidirectional
 GRUs whose directions are multiplied, and a small feed-forward head giving two
 outputs per frame. 440,514 parameters. Because nothing pools time, the output
@@ -145,9 +145,9 @@ has one row per input frame and a record of any length is a legal input.
       -> col 1 * 170 + 80                              -> kHz
       -> mean / probability-weighted mean over (t-25 ms, t]
 
-The transform is `src/labelmaker/ae/transform.py`, a port of
+The transform is `src/labeler/ae/transform.py`, a port of
 `tokeye.transforms.compute_stft` plus `tokeye.inference.model_infer`'s
-normalisation. labelmaker must not import tokeye (it lives in a read-only venv
+normalisation. labeler must not import tokeye (it lives in a read-only venv
 with its own torch), so the port is **pinned against tokeye's own output on a
 real corpus record**: shot 198279, 0-6 s, `(4, 512, 23445)`, values 23.60 to
 29.40 - **max absolute difference 0.0** at every stage (raw STFT,

@@ -39,8 +39,8 @@ labelmaker:
       Training shots: 8,923 unique DIII-D shots, 140444-193373, over 914,898 training rows,
       read from /projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl
       (sha256 f89286ed88bdf20bfa6af0abd49a881e7902f77b78e6ecf811f3d9aab5f03288) and committed
-      beside this card as training_shots.txt by scripts/labelmaker/write_training_shots.py.
-      214 of labelmaker's 500 pool shots, 208 of the 463 scored shots and 41 of the 80 onset
+      beside this card as training_shots.txt by scripts/labeler/write_training_shots.py.
+      214 of labeler's 500 pool shots, 208 of the 463 scored shots and 41 of the 80 onset
       shots are in that list; every pool number below is split on it.
   inputs:
   - bmspinj <- pinj_total
@@ -150,9 +150,9 @@ labelmaker:
     measured at 2.1e-3 (R0), 2.8e-3 (kappa) and 3.0e-2 (1/q) median relative difference against real-time
     EFIT on 486 shots; the others are unpriced
   - the four kinetic profiles (Te, Ti, ne, rotation) are ZIPFIT fits standing in for the pipeline's own mtanh
-    and csaps fits; unpriced for this model (its training rows are not on disk in a form labelmaker reads);
+    and csaps fits; unpriced for this model (its training rows are not on disk in a form labeler reads);
     for the three the tearing CNN shares, 6.0e-2 to 1.24e-1 median relative difference
-  - inputs are sampled on labelmaker's 25 ms grid as 50 ms window means, where upstream used the real-time
+  - inputs are sampled on labeler's 25 ms grid as 50 ms window means, where upstream used the real-time
     data dictionary's 20 ms samples; the model has no temporal structure, so this changes which instants are
     labelled, not how
   - the rotation profile is fed in the archive column's units (kHz, see features/namespace.py) and normalised
@@ -169,7 +169,7 @@ against archived onsets (see Evaluation).
 Time to tearing-mode onset as a survival problem: a Deep Survival Machines
 model (auton-survival, the group's fork) with a k=3 log-normal mixture over
 onset time, conditioned on a 38-dimensional embedding of 14 real-time scalars
-and 6 fitted profiles. Labelmaker publishes the risk of an onset within 250 ms,
+and 6 fitted profiles. labeler publishes the risk of an onset within 250 ms,
 500 ms and 1 s: `1 - S(horizon | x)`. Complements `d3d_tearing_onset_cnn1d`,
 which answers the fixed-horizon "is a mode present 25 ms from now" question
 with a different architecture and input set.
@@ -218,7 +218,7 @@ have (below).
 - The same 2024-shot caveats as the tearing CNN apply to any model fed offline
   EFIT01 and ZIPFIT: the substitutions are unpriced here.
 - Rows are valid where every input is finite; upstream applied no other filter,
-  so labelmaker applies none, and out-of-domain inputs are not flagged.
+  so labeler applies none, and out-of-domain inputs are not flagged.
 - The rotation profile is absent on ~22% of shots and the ion-temperature fit
   on some more; a row missing either is invalid.
 - Upstream's own evaluation is per **shot**, not per row (`metrics_helpers.py`):
@@ -344,8 +344,8 @@ validation row also have training rows, so **the stored validation curve is
 optimistic**: it is not a by-shot holdout and does not measure generalisation
 to unseen shots. Everything else in this section - the hyperparameters, the
 absence of balancing, the row statistics - is unaffected. The measurement is
-`$LABELMAKER_ROOT/runs/task4_split_search.py`, and
-`scripts/labelmaker/retrain_tearing_dsm.py` gates on reproducing 0.4713 before
+`$LABELER_ROOT/runs/task4_split_search.py`, and
+`scripts/labeler/retrain_tearing_dsm.py` gates on reproducing 0.4713 before
 it will continue the fit.
 
 Training rows (`rt_filtered_{e,t}_bms_pcb_rot.pkl`): 914,898 rows, **15.07%
@@ -361,9 +361,9 @@ were **not** used for this model. Details in
 ## Evaluation
 
 Adapter fidelity is checked as a test rather than a `validate` report:
-`tests/labelmaker/test_dsm_pickle.py` compares labelmaker's evaluator against
+`tests/labeler/test_dsm_pickle.py` compares labeler's evaluator against
 the fork's own `predict_survival` on 256 inputs
-(`tests/labelmaker/data/tearing_dsm_golden.npz`, made once by
+(`tests/labeler/data/tearing_dsm_golden.npz`, made once by
 `make_tearing_dsm_golden.py`) to 1e-9 in float64, and
 `test_tearing_dsm_adapter.py` checks the preprocessing step by step against
 the upstream script. Reconstruction fidelity and label quality need a truth
@@ -430,7 +430,7 @@ onset only (28,290 rows) and truth "onset within the next horizon":
 The risk ranks pre-onset rows better than the CNN's present-mode probability
 does, and is calibrated, but the absolute discrimination is modest and the
 best F1 is low because onsets are rare in the windows (1.3% to 5.5% of rows).
-Inputs were labelmaker's reconstruction (offline EFIT01, ZIPFIT), so this is
+Inputs were labeler's reconstruction (offline EFIT01, ZIPFIT), so this is
 the published label's quality, not the model's ceiling; the truth is the
 archive's 25 ms `tm_label`, whose own onset timing is unexamined.
 
@@ -499,7 +499,7 @@ AUROC exceeds IPCW AUC by 0.001826, 0.002344 and 0.000231 at the three
 horizons, respectively. These are descriptive pool
 results, not a new held-out evaluation or a threshold recommendation.
 The complete threshold sweep, warning quartiles, jump histograms and
-horizon integrals are in `$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm/alarm_quality.json`,
+horizon integrals are in `$LABELER_ROOT/validation/d3d_tearing_time_to_event_dsm/alarm_quality.json`,
 each of them under `labels.<name>.subsets.{all,held_out,in_training}`. The two
 tables above are the `all` subset; "Held out against in training" gives the
 same numbers split, and the held-out figures are in

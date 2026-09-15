@@ -1,4 +1,4 @@
-# `ideate` evaluation sets
+# `shot_design` evaluation sets
 
 Two frozen files and a rule:
 
@@ -7,7 +7,7 @@ Two frozen files and a rule:
 | `reference_shot_prompts.csv` | 200 prompts a DIII-D physicist would type into a shot recommender |
 | `split.yaml` | the dev / eval split of the 500 `recommender_v1` shots, cut by run day |
 
-Both are **frozen**. `tests/ideate/test_evalset_frozen.py` asserts the CSV's sha256 against a
+Both are **frozen**. `tests/shot_design/test_evalset_frozen.py` asserts the CSV's sha256 against a
 literal in the test *and* against the hash recorded below, and re-derives `split.yaml` from the
 rule over the committed shot list. Editing the evalset therefore takes three deliberate edits in
 three files and shows up in every diff.
@@ -29,8 +29,8 @@ An independent review of v1.0 found eleven prompts with defects in the **questio
 whose emptiness needed recording. These are corrections to what is asked, not to what was
 answered: nothing in retrieval, the ranking, the scoring or the lexicon-matching code changed
 alongside them, and the re-run is reported against both hashes. The `fast_ion` phenomenon id that
-four of these rows now expect was added at the same time — to `src/labelmaker/events/lexicons.yaml`
-and `configs/ideate/phenomena.yaml` as a **text-only topic with no detector and no label**,
+four of these rows now expect was added at the same time — to `src/labeler/events/lexicons.yaml`
+and `configs/shot_design/phenomena.yaml` as a **text-only topic with no detector and no label**,
 deliberately *not* as four new aliases on `ae` (see the note in either file).
 
 **Eleven prompts changed:**
@@ -100,10 +100,10 @@ read-only:
    w RMP + Li", "3-5 kA n=3 RMP in even parity during 2.5-6s", "cut early gas (0 < t < 200ms)".
    Several prompts are these sentences nearly verbatim, because that is how the question actually
    arrives.
-3. **The 12 phenomena of `configs/ideate/phenomena.yaml`** and the alias lists in
-   `src/labelmaker/events/lexicons.yaml`, for `expect_phenomena`.
-4. **The 14 curation themes of `configs/ideate/labels.yaml`** (`shotdb.select.lexicon_themes` /
-   `assign_theme`), which is the vocabulary `ideate corpus select` filed the 500 shots under.
+3. **The 12 phenomena of `configs/shot_design/phenomena.yaml`** and the alias lists in
+   `src/labeler/events/lexicons.yaml`, for `expect_phenomena`.
+4. **The 14 curation themes of `configs/shot_design/labels.yaml`** (`shotdb.select.lexicon_themes` /
+   `assign_theme`), which is the vocabulary `shot_design corpus select` filed the 500 shots under.
    There is no `themes.yaml`.
 
 Prompts were **not** written by checking what `retrieval.phenomena.resolve` returns.
@@ -153,7 +153,7 @@ hit must be labelled as a forecast and must not outrank an observed one", "no de
 detachment, so every hit here is text-only by construction and must say so"). They are spread over
 at least 12 categories, at most 2 per category.
 
-`src/ideate/eval/prompts.py` computes a **proxy** for these — does any of the top 5 carry evidence
+`src/shot_design/eval/prompts.py` computes a **proxy** for these — does any of the top 5 carry evidence
 of every expected phenomenon, or do all 5 satisfy the expected constraints — and every report
 carries `ProxyGrade.caveat` saying, in the report itself, that it is not the human grade. A prompt
 can pass the proxy with five useless shots and fail it while returning the five a physicist would

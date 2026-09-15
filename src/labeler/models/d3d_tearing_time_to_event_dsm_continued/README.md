@@ -27,7 +27,7 @@ labelmaker:
   upstream:
     path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_tearing_time_to_event_dsm_continued
     trained: 2026-09-05
-    training_code: scripts/labelmaker/retrain_tearing_dsm.py
+    training_code: scripts/labeler/retrain_tearing_dsm.py
     reference_harness: /projects/EKOLEMEN/survival_tm/get_survival_from_shot.py
     continued_from: /projects/EKOLEMEN/survival_tm_2/models/rt_fixed_rot.pkl (sha256 2a7b65a9e7484c91)
     artifacts:
@@ -37,13 +37,13 @@ labelmaker:
       rt_fixed_rot_continued.pkl: 4b1745ddd641c61bb826edd2f4969647213a6d94e365b3f8fd3c671470bfa5be
       rt_normalizations_dict.pkl: fa515c7b591f3e1ea5f710d75a825b1a7831cbd63e06543f9ccb87ff87a73fbe
     notes: >-
-      trained by labelmaker, not upstream; rt_normalizations_dict.pkl is byte-identical to the base
+      trained by labeler, not upstream; rt_normalizations_dict.pkl is byte-identical to the base
       model's copy of /projects/EKOLEMEN/survival_tm/data/rt_normalizations_dict.pkl.
       Training shots: the continuation ran on the shipped checkpoint's own rows, so this model's
       training set IS the base model's - the same 8,923 shots (140444-193373, 914,898 rows) from
       /projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl
       (sha256 f89286ed88bdf20bfa6af0abd49a881e7902f77b78e6ecf811f3d9aab5f03288), read from the base
-      model's committed training_shots.txt rather than copied. 214 of labelmaker's 500 pool shots,
+      model's committed training_shots.txt rather than copied. 214 of labeler's 500 pool shots,
       208 of the 463 scored shots and 41 of the 80 onset shots are in that list.
   inputs:
   - bmspinj <- pinj_total
@@ -153,9 +153,9 @@ labelmaker:
     measured at 2.1e-3 (R0), 2.8e-3 (kappa) and 3.0e-2 (1/q) median relative difference against real-time
     EFIT on 486 shots; the others are unpriced
   - the four kinetic profiles (Te, Ti, ne, rotation) are ZIPFIT fits standing in for the pipeline's own mtanh
-    and csaps fits; unpriced for this model (its training rows are not on disk in a form labelmaker reads);
+    and csaps fits; unpriced for this model (its training rows are not on disk in a form labeler reads);
     for the three the tearing CNN shares, 6.0e-2 to 1.24e-1 median relative difference
-  - inputs are sampled on labelmaker's 25 ms grid as 50 ms window means, where upstream used the real-time
+  - inputs are sampled on labeler's 25 ms grid as 50 ms window means, where upstream used the real-time
     data dictionary's 20 ms samples; the model has no temporal structure, so this changes which instants are
     labelled, not how
   - the rotation profile is fed in the archive column's units (kHz, see features/namespace.py) and normalised
@@ -196,12 +196,12 @@ scores and never transfer to different weights.
 Offline label generation over the FAITH shot corpus, for the comparison in
 Evaluation below. Not a drop-in replacement for the base model: the default in
 `analyze_default.yaml` is unchanged, and the decision of which checkpoint
-should be labelmaker's tearing survival label is open (phase3 design section 7,
+should be labeler's tearing survival label is open (phase3 design section 7,
 question 5).
 
 ## Training details
 
-`scripts/labelmaker/retrain_tearing_dsm.py`, run on one stellar CPU node
+`scripts/labeler/retrain_tearing_dsm.py`, run on one stellar CPU node
 (SLURM job 2923879, partition `all`, 8 CPUs, 32 GB). It continues the
 shipped checkpoint's own `torch_model` rather than refitting: auton-survival's
 `train_dsm` begins with `pretrain_dsm` and then **overwrites** the learned
@@ -271,7 +271,7 @@ put through.
   even there 214 of the 500 pool shots contributed rows to the training set.
 - Every caveat of the base model applies unchanged: offline EFIT01 substituted
   for EFITRT2, ZIPFIT fits for the pipeline's own mtanh/csaps profiles,
-  labelmaker's 25 ms grid and 50 ms window for upstream's 20 ms samples, rows
+  labeler's 25 ms grid and 50 ms window for upstream's 20 ms samples, rows
   valid only where every input is finite, no out-of-domain flagging, and the
   rotation profile missing on ~22% of shots.
 - The isotonic columns come from a map fitted on 127 held-out pool shots of
@@ -289,7 +289,7 @@ on 2026-09-05 once the held-out isotonic maps existed), then scored exactly as
 the base model was:
 `validate.alarm_quality` and `validate.calibration_study` with the same seed-0
 shot split. Reports:
-`$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm_continued/{alarm_quality,calibration_study}.json`.
+`$LABELER_ROOT/validation/d3d_tearing_time_to_event_dsm_continued/{alarm_quality,calibration_study}.json`.
 
 Row sets: **AUROC, IPCW AUC, lead time, FPR and FNR** are over all **28,290
 pre-onset valid rows of the 463 scored shots** (383 quiet, 80 tearing);
@@ -368,7 +368,7 @@ model, whose raw scores it makes worse. The onset-only maps are fitted but not
 published, and this model's onset-only isotonic map is degenerate - its
 isotonic AUROC at 1 s is exactly 0.5000 on all three subsets, a single-plateau
 map. Full report:
-`$LABELMAKER_ROOT/validation/d3d_tearing_time_to_event_dsm_continued/calibration_study.json`.
+`$LABELER_ROOT/validation/d3d_tearing_time_to_event_dsm_continued/calibration_study.json`.
 
 The seven Phase 2 figures re-rendered for this model, with the comparison
 table and the CNN panels unchanged, are in
@@ -388,7 +388,7 @@ weights in the artifact directory.
 
 ## Citation
 
-Unpublished internal model, retrained by labelmaker from the PlasmaControl
+Unpublished internal model, retrained by labeler from the PlasmaControl
 group's `rt_fixed_rot` checkpoint. Attribute to the PlasmaControl group,
 Princeton.
 

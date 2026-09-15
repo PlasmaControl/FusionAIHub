@@ -38,7 +38,7 @@ labelmaker:
 
 # plasmacontrol/d3d-kinetic-equilibrium-rtcakenn
 
-**Status: scaffold.** Labelmaker cannot run this model yet. Nothing here loads
+**Status: scaffold.** labeler cannot run this model yet. Nothing here loads
 weights and no labels are produced; the folder exists so the roster, the naming
 scheme and the known upstream location are recorded in one place.
 
@@ -55,7 +55,7 @@ Evaluation section.
 
 ## Bias, risks and limitations
 
-Unmeasured. This model has not been run through labelmaker's validation, so
+Unmeasured. This model has not been run through labeler's validation, so
 nothing is known here about how its labels behave on corpus shots.
 
 ## Training details
@@ -66,7 +66,7 @@ feature list and preprocessing constants is part of the work listed in
 
 ## Evaluation
 
-None yet. When implemented, `python -m labelmaker.run validate --models d3d_kinetic_equilibrium_rtcakenn`
+None yet. When implemented, `python -m labeler.run validate --models d3d_kinetic_equilibrium_rtcakenn`
 writes adapter fidelity, reconstruction fidelity and label quality into
 `model-index` above.
 
