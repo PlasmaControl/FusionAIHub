@@ -1422,6 +1422,7 @@ def _hit(ev: Evidence, tier: int, value: float, extra: list[str], db, segment: s
         coverage_windows=[tuple(w) for w in ev.coverage_windows],
         coverage_state=ev.coverage_state,
         quote=quote,
+        **db.blurb_fields(ev.shot),
         quote_role=role,
         text_snippets=list(ev.text_snippets),
         actuators_at_onset=_actuators(db, ev.shot, segment),

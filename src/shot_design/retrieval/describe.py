@@ -31,10 +31,10 @@ import html
 import math
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from .. import schema
-from .rank import display, units
+from .rank import display, split_stat, units
 
 # Roles worth quoting, best first. PCS/RF/DIAGNOSTICS/BEAMS entries are settings dumps and
 # tab-separated status tables (measured across the database: every RF entry is a gyrotron table),
@@ -376,6 +376,82 @@ def describe(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None) -> s
     if db is not None:
         lines.extend(_phenomenon_lines(rec, segment, db))
     return "\n".join(line for line in lines if line)
+
+
+def scalar_units(columns: Iterable[str]) -> dict[str, str]:
+    """Stored scalar column -> registry unit, without rescaling the value.
+
+    features.stat_slope fits against t_ms / 1000, so slopes are per second.
+    Fractions and unknown quantities stay unitless; no unit is inferred from a name.
+    """
+    registry_units = units()
+    out = {}
+    for column in columns:
+        signal, stat = split_stat(column)
+        unit = "" if stat == "on_frac" else registry_units.get(signal, "")
+        out[column] = f"{unit}/s" if stat == "slope" and unit else unit
+    return out
+
+
+def describe_parts(rec: schema.ShotRecord, segment: str = "flat_top", *, db=None) -> dict:
+    """Deterministic browser sections alongside the unchanged describe() string.
+
+    Numbers remain raw for the browser's shared formatter. Evidence uses the same
+    registry selection as the prose, with observed and forecast intervals separate.
+    The selected quote is one complete entry, with its own attribution.
+    """
+    from . import phenomena as ph
+
+    seg = rec.segment(segment)
+    values = {} if seg is None else {**seg.raw, **seg.derived}
+    unit_map = scalar_units(values)
+    found = best_quote(rec)
+    quote = None
+    if found is not None:
+        entry, text = found
+        quote = {"text": text, "role": entry.role, "author": entry.author, "time": entry.time}
+    rows, caveats = [], []
+    if seg is None:
+        caveats.append(f"No {segment} scalars recorded")
+    if db is not None:
+        text = " ".join(quotable(entry) or "" for entry in rec.human.log_entries)
+        resolved = {pid for pid, _weight in ph.resolve(text)}
+        for pid, definition in ph.registry().items():
+            ev = db.phenomenon_evidence(rec.shot, pid, segment)
+            if pid not in resolved and not ph.has_evidence(ev):
+                continue
+            rows.append({
+                "id": pid, "title": definition.title,
+                "n_observed": len(ev.intervals) if ev.intervals or
+                ev.coverage_state == "observed" else None,
+                "first_intervals": [iv.model_dump(mode="json") for iv in ev.intervals[:3]],
+                "n_forecast": len(ev.forecasts),
+                "coverage_note": ev.coverage_state,
+                "coverage_windows": [list(w) for w in ev.coverage_windows],
+                "coverage_partial": ev.coverage_partial,
+                "caveats": list(ev.caveats),
+            })
+    outcome = rec.outcome.model_dump(mode="json")
+    full = rec.segment("full")
+    outcome["end_time_s"] = full.t1_ms / 1000 if full and rec.outcome.end_reason else None
+    return {
+        "blurb": rec.blurb,
+        "blurb_source": rec.blurb_source,
+        "header": _header(rec),
+        "segment": None if seg is None else {
+            "name": seg.name, "t0_s": seg.t0_ms / 1000, "t1_s": seg.t1_ms / 1000,
+        },
+        "scalars": [
+            {"name": name, "value": value if value is not None and
+             math.isfinite(value) else None, "units": unit_map[name]}
+            for name, value in values.items()
+        ],
+        "labels": rec.labels.model_dump(mode="json"),
+        "outcome": outcome,
+        "operator_quote": quote,
+        "phenomena": rows,
+        "caveats": caveats,
+    }
 
 
 def extract_facts(text: str) -> tuple[set[str], set[str]]:

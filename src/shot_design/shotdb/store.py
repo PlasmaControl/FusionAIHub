@@ -153,7 +153,8 @@ class ShotDB:
             if not p.exists():
                 continue
             try:
-                label_tables[name] = pd.read_parquet(p)
+                table = pd.read_parquet(p)
+                label_tables[name] = table
             except Exception as exc:  # noqa: BLE001 - reported to the caller, never swallowed
                 load_errors[name] = f"{type(exc).__name__}: {exc}"
         db = cls(db_dir, shots, segments, emb, pca, manifest, shapes, windows, **label_tables)
@@ -163,9 +164,24 @@ class ShotDB:
     # ------------------------------------------------------------------ single-row access
 
     def get(self, shot: int) -> ShotRecord:
-        """The full record, rehydrated from the JSON column. Parquet holds the flat view for
-        querying and the record verbatim for reading; this is the second one."""
-        return ShotRecord.model_validate_json(self.shots.loc[shot, "record_json"])
+        """Rehydrate the JSON record with authoritative blurb fields from the parquet columns.
+
+        Offline backfills do not rewrite record_json. Missing columns or blank values clear
+        any build-time text/source in that JSON rather than presenting stale text.
+        """
+        rec = ShotRecord.model_validate_json(self.shots.loc[shot, "record_json"])
+        fields = self.blurb_fields(shot)
+        rec.blurb = fields["blurb"]
+        rec.blurb_source = fields["blurb_source"]
+        return rec
+
+    def blurb_fields(self, shot: int) -> dict[str, str | None]:
+        """Current table text and source; backfills update these independently of record_json."""
+        row = self.shots.loc[shot] if shot in self.shots.index else {}
+        return {
+            name: value if isinstance(value := row.get(name), str) and value.strip() else None
+            for name in ("blurb", "blurb_source")
+        }
 
     def row(self, seg_id: str) -> pd.Series:
         return self.segments.loc[seg_id]

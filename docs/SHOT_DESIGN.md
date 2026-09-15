@@ -614,14 +614,16 @@ endpoint only if its URL and start time still match this run, then stops its chi
 To stop the GPU allocation, use `scancel JOB_ID` with the ID printed by `sbatch`;
 to renew it, wait for that job to exit and submit the same script again.
 
-## Browser UI: Search, Shot and Locate
+## Shot Designer: Search, Shot and Locate
 
-The local browser UI wraps the existing MCP tool functions and the
+Shot Designer uses a white page, a dark teal-green banner (`#2f6f66`), and light
+neutral panels. The header shows the shot count and range; the build SHA remains
+available in `/api/meta`. The local browser UI wraps the existing MCP tool functions and the
 `shot_design phenomenon --json` retrieval path. It reads the database without building or
 updating it. Start it on Stellar from this worktree:
 
 ```bash
-cd /scratch/gpfs/nc1514/FusionAIHub-build
+cd /scratch/gpfs/nc1514/FusionAIHub
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src
 export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate \
        LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
@@ -638,24 +640,87 @@ without that cookie receive 401. `--db-dir PATH` selects another built database;
 browser assets or tunnel services.
 
 Search supports text, a reference shot, segment, result count, JSON constraints,
-and require/avoid labels. Search scores and quotes come from `search_shots`; titles
-come from `describe_shot`. Both replies' caveats stay visible in the result row.
-Shot shows stored scalars, flags, quotes and events. Timeline colours identify the
+and require/avoid labels. Search scores come from `search_shots`; titles come from
+`describe_shot`. The results table has a Summary column in place of the quote.
+Both replies' caveats stay available in the result row.
+
+Summary uses the existing `blurb` and `blurb_source` columns in `shots.parquet`.
+The record, search results and Locate hits all carry both fields. When
+`blurb_source != "llm"`, a small muted **auto** tag appears next to the text;
+template blurbs contain the factual header + outcome line. The offline
+`shot_design blurb --all` pipeline writes LLM text into the same column, so a
+three-sentence blurb needs no UI or table changes. The browser never generates
+text. Missing columns, nulls or blank text yield `None`, displayed as `—` in
+results; the shot Summary block is hidden when there is no text. No separate
+summary table is loaded. Restart the UI after backfilling `shots.parquet` to load
+the updated snapshot.
+
+Shot starts with the available summary, followed by server-built `describe_parts`:
+header, selected segment's scalar grid, labels, outcome, one complete attributed
+operator quote, and a phenomena table. Each phenomenon row has its observed count,
+first three observed intervals, forecast count, and coverage with qualifications.
+Missing coverage does not turn an absent observation into a measured zero. Run/MP
+metadata, stored flags, all segment scalars and the full logbook follow. The original
+`describe()` string remains available to CLI/MCP callers; the browser does not parse it.
+
+Measured numbers use one formatter: four significant digits without trailing zeros,
+scientific notation for magnitudes at least `1e5` or below `1e-3` (except zero).
+Times use seconds with three decimals, and confidence uses three decimals.
+Identifiers, dates and counts retain their original digits; shot numbers never wrap.
+Units come from the signal/actuator registry by scalar column. Slopes are per second
+(`stat_slope` fits time in seconds), while fractions and unregistered quantities
+stay unitless. Explicit registry qualifications such as `[?]` remain visible.
+Operator text and offline summaries retain their original words and numbers.
+
+Long text has a two-line / roughly 140-character preview with **more / less**.
+Tall sections, including scalar cards and coverage, initially show at most 260 px
+with **Show all / Show less**. Timeline colours identify the
 reported evidence kind, and forecast lanes, curated database intervals and text
-mentions remain separate. Missing values display as `—`. Every events reply shows
-its status and supplied caveats; when there is no status explanation in the reply,
-the explanation displays `—` too.
+mentions remain separate. Event bars expose time, phenomenon, evidence kind and
+confidence in hover titles; there are no per-event bullet lists. Coverage rows
+without intervals retain their status and reason. Missing values display as `—`.
+Every events reply shows its status and caveats in concise browser wording; the
+MCP wording and `get_events` status semantics are unchanged. When there is no status
+explanation in the reply, the explanation displays `—` too.
 
 The Shot phenomenon filter matches literal event names, while Locate uses registry
 classification rules. For example, an EHO can be classified from a `coherent_mode`
 row. Selecting a phenomenon therefore also shows an **all event names** timeline
 with its own status and caveats, so the literal filter cannot hide that context.
-Locate hits show intervals, duration, quote and caveats, and open Shot with the
+Locate hits show summaries, intervals, duration and caveats, and open Shot with the
 phenomenon selected.
 
-`/api/search`, `/api/shot/{shot}` and `/api/shot/{shot}/events` preserve the MCP tool
-JSON, including error dictionaries (HTTP 200). `/api/locate` preserves the CLI's
-bare JSON list; CLI stderr notes travel as the JSON-encoded `X-shot_design-Caveats`
+`/api/search` and `/api/shot/{shot}/events` preserve the MCP tool JSON.
+`/api/shot/{shot}` retains `description`, `record`, `frame_codes` and
+`caveats`, and exposes `blurb` and `blurb_source` both at top level and in `record`.
+`/api/search` rows and `SearchHit` also carry `blurb` and `blurb_source`. The shot
+response adds `units: {scalar_column: unit_string}` for all stored segments and:
+
+```text
+describe_parts: {
+  blurb: string | null,
+  blurb_source: string | null,
+  header: string,
+  segment: {name, t0_s, t1_s} | null,
+  scalars: [{name, value: number | null, units: string}],
+  labels: {regime, regime_source, operational, cluster},
+  outcome: {...stored Outcome fields, end_time_s: number | null},
+  operator_quote: {text, role, author, time} | null,
+  phenomena: [{id, title, n_observed: integer | null, first_intervals: [Interval],
+               n_forecast, coverage_note, coverage_windows: [[t0_s, t1_s]],
+               coverage_partial, caveats: [string]}],
+  caveats: [string]
+}
+```
+
+`coverage_note` carries the registry coverage state. `first_intervals` contains at
+most three observed `Interval` records; forecasts never enter it. Missing selected
+segments return no scalars, without substituting another segment. Units are
+unscaled registry strings: `ip_mean: "A"`, `ip_slope: "A/s"`,
+`ne_line_mean: "m/cm3"`; dimensionless or unregistered quantities use `""`.
+
+Error dictionaries remain HTTP 200. `/api/locate` preserves the CLI's
+bare JSON list; CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
 response header and are displayed above the hits. `/api/meta` summarizes the
 manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
 sources. Unknown API paths return JSON 404.

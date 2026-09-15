@@ -343,6 +343,8 @@ def describe_shot(shot: int, segment: str = "flat_top") -> dict:
         "shot": shot,
         "segment": seg,
         "description": describe_mod.describe(rec, seg, db=db),
+        "blurb": rec.blurb,
+        "blurb_source": rec.blurb_source,
         "record": rec.model_dump(mode="json"),
         "frame_codes": codes,
         "caveats": caveats,
