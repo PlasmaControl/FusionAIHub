@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# One command, one shot (or several): every implemented labelmaker model runs on
+# One command, one shot (or several): every implemented labeler model runs on
 # the shot and you get the labels as HDF5 and as a numpy .npz, a JSON summary and
 # one figure with a panel per prediction.
 #
-#   scripts/labelmaker/label_shot.sh 187199            # one shot
-#   scripts/labelmaker/label_shot.sh 187199 186545     # several
-#   LABELMAKER_DEMO_OUT=/some/dir scripts/labelmaker/label_shot.sh 199597
+#   scripts/labeler/label_shot.sh 187199            # one shot
+#   scripts/labeler/label_shot.sh 187199 186545     # several
+#   LABELER_DEMO_OUT=/some/dir scripts/labeler/label_shot.sh 199597
 #
-# Output, per shot, under $LABELMAKER_DEMO_OUT (default outputs/labelmaker/analysis in
-# this repo; the cached features and the canonical labels file stay under $LABELMAKER_ROOT):
+# Output, per shot, under $LABELER_DEMO_OUT (default outputs/labelmaker/analysis in
+# this repo; the cached features and the canonical labels file stay under $LABELER_ROOT):
 #   <shot>/<shot>_labels.h5        every label:  <model>/<label>/{xdata,ydata}
 #   <shot>/<shot>_labels.npz       the same as numpy: time_s + "<model>/<label>"
 #   <shot>/<shot>_analysis.json    per label: rows, valid fraction, peak, first
 #                                  threshold crossing, archived-truth scores
 #   <shot>/<shot>_labels.png       the figure
 #
-# Which models and labels: src/labelmaker/analyze_default.yaml (pass your own
-# with LABELMAKER_DEMO_CONFIG=path). Fetching features that are not in the
+# Which models and labels: src/labeler/analyze_default.yaml (pass your own
+# with LABELER_DEMO_CONFIG=path). Fetching features that are not in the
 # corpus needs an fdp token (`pixi run -e labelmaker fdp login`, once).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
-OUT="${LABELMAKER_DEMO_OUT:-$REPO/outputs/labelmaker/analysis}"
-CONFIG="${LABELMAKER_DEMO_CONFIG:-$REPO/src/labelmaker/analyze_default.yaml}"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+OUT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_OUT "$REPO/outputs/labelmaker/analysis")"
+CONFIG="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_CONFIG "$REPO/src/labeler/analyze_default.yaml")"
 
 if [ "$#" -lt 1 ]; then
     echo "usage: $(basename "$0") SHOT [SHOT ...]" >&2
@@ -36,9 +36,10 @@ for shot in "$@"; do
 done
 
 cd "$REPO"
-export LABELMAKER_ROOT="$ROOT"
-pixi run -q -e labelmaker fdp run python -m labelmaker.run analyze \
-    --shots "$@" --config "$CONFIG" --out "$OUT" ${LABELMAKER_DEMO_FORCE:+--force}
+FORCE="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_FORCE)"
+export LABELER_ROOT="$ROOT"
+pixi run -q -e labelmaker fdp run python -m labeler.run analyze \
+    --shots "$@" --config "$CONFIG" --out "$OUT" ${FORCE:+--force}
 
 # Put the canonical label file next to the figure, and a numpy copy of it.
 pixi run -q -e labelmaker python - "$ROOT" "$OUT" "$@" <<'PY'

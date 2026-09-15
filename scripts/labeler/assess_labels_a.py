@@ -15,8 +15,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from labelmaker.config import Paths, git_sha, sha256_of
-from labelmaker.events import coverage, heuristics, schema
+from labeler.config import Paths, git_sha, sha256_of
+from labeler.events import coverage, heuristics, schema
 
 
 def grouped(frame, keys):

@@ -23,7 +23,7 @@ which is a **row-level** split: 8,685 of the 8,690 shots with a validation row
 also have training rows. The stored validation curve is therefore optimistic,
 and so is every continuation number measured on the same rows. It is still the
 right split to continue on - it is the only one on which "before" and "after"
-mean the same thing - and the honest out-of-sample comparison is labelmaker's
+mean the same thing - and the honest out-of-sample comparison is labeler's
 own 500-shot pool, of which 214 shots contributed training rows. The card says
 all of this.
 
@@ -52,7 +52,7 @@ What the script does, in order:
    elbo=False)`, every epoch's `state_dict` kept, the argmin reloaded at the
    end, and the same "no improvement for `patience` epochs" stop;
 6. saves `[[model, train_losses, val_losses, params]]` - the shape upstream's
-   own pickle has, so `labelmaker.models.runners.dsm_pickle.load_dsm` reads it
+   own pickle has, so `labeler.models.runners.dsm_pickle.load_dsm` reads it
    - plus `training.json`, `PROVENANCE.json`, `loss_curve.png`, and a copy of
    the normalisation constants beside the weights.
 
@@ -64,8 +64,8 @@ Two continuation choices are recorded rather than hidden:
 * Adam's moment estimates are not in the pickle, so the optimiser restarts
   cold. That is a real difference from an uninterrupted run.
 
-Runs in the Phase 3 uv venv (`scripts/labelmaker/make_phase3_env.sh`), not in
-the labelmaker pixi env, and imports nothing from `labelmaker`.
+Runs in the Phase 3 uv venv (`scripts/labeler/make_phase3_env.sh`), not in
+the labeler pixi env, and imports nothing from `labeler`.
 """
 from __future__ import annotations
 
@@ -83,6 +83,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from labeler.env import getenv
 
 DATA_DIR = Path("/projects/EKOLEMEN/survival_tm_2/data")
 CFG = Path("/projects/EKOLEMEN/survival_tm/outputs/rt_fixed_rotconfig")
@@ -389,8 +391,8 @@ def main() -> int:
         "artifact": weights.name,
         "sha256": {weights.name: sha256_of(weights),
                    NORMALIZATIONS.name: sha256_of(out_dir / NORMALIZATIONS.name)},
-        "produced_by": "scripts/labelmaker/retrain_tearing_dsm.py",
-        "git_sha": os.environ.get("LABELMAKER_GIT_SHA"),
+        "produced_by": "scripts/labeler/retrain_tearing_dsm.py",
+        "git_sha": getenv("LABELER_GIT_SHA"),
         "slurm_job_id": job_id,
         "jobstats": None,   # filled in from `jobstats <jobid>` after the job ends
         "upstream_data": {

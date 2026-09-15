@@ -19,9 +19,9 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from labelmaker.catalog import corpus_shots, sample_shots
-from labelmaker.config import Paths
-from labelmaker.models.d3d_ae_activity_seldnet import spec as ae
+from labeler.catalog import corpus_shots, sample_shots
+from labeler.config import Paths
+from labeler.models.d3d_ae_activity_seldnet import spec as ae
 
 
 def _shot_row(paths: Paths, shot: int) -> dict:

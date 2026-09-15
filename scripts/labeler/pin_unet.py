@@ -1,12 +1,12 @@
 """Pin the vendored TokEye U-Net: hash, parameter count and a golden output.
 
-`src/labelmaker/events/unet.py` is a copy of TokEye's `big_tf_unet` forward
+`src/labeler/events/unet.py` is a copy of TokEye's `big_tf_unet` forward
 pass. A copy is only trustworthy if somebody has checked it against the
 original, and only *stays* trustworthy if that check is repeated by the test
 suite - so this script does the checking once, against the real `tokeye`
 package, and writes what it found into
-`tests/labelmaker/data/unet_golden.npz`, which
-`tests/labelmaker/test_events_unet.py` then reads on every run.
+`tests/labeler/data/unet_golden.npz`, which
+`tests/labeler/test_events_unet.py` then reads on every run.
 
 What it does:
 
@@ -18,12 +18,12 @@ What it does:
 3. runs the **vendored** module on it (CPU, fp32, one thread, `no_grad`);
 4. runs the **original** `tokeye` module on the same input and records
    `max_abs_diff_vs_tokeye`. `tokeye` is put on `sys.path` here and nowhere
-   else: no library code in labelmaker may import it;
+   else: no library code in labeler may import it;
 5. writes the golden.
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labelmaker/pin_unet.py
+        -e labelmaker python scripts/labeler/pin_unet.py
 
 Run it in the environment the **test suite** uses, so the golden's
 `max_abs_diff` is 0 there. Re-run it only when the checkpoint or the vendored
@@ -44,14 +44,14 @@ sys.path.insert(0, str(REPO / "src"))
 # from a checkout rather than an installed package.
 import torch
 
-from labelmaker.config import sha256_of
-from labelmaker.events import unet
+from labeler.config import sha256_of
+from labeler.events import unet
 
 #: Read only here. Library code resolves the checkpoint through
 #: `unet.default_checkpoint_path()` and never mentions this path.
 TOKEYE_SRC = Path("/scratch/gpfs/nc1514/tokeye/src")
 
-GOLDEN = REPO / "tests" / "labelmaker" / "data" / "unet_golden.npz"
+GOLDEN = REPO / "tests" / "labeler" / "data" / "unet_golden.npz"
 
 
 def tokeye_probabilities(checkpoint: Path, x: torch.Tensor,

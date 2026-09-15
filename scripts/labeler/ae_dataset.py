@@ -5,7 +5,7 @@ hand-annotated shots and said GO, but it also showed why the raw mask cannot be
 the label as it stands: 61.3 % of all frames were called active at occupancy
 0.01 (the annotation says 21.0 %), because broadband ELM-like streaks leak into
 the coherent channel. This script cleans the mask first, with rules fixed by the
-task 7a brief and implemented in ``labelmaker.ae.labels``:
+task 7a brief and implemented in ``labeler.ae.labels``:
 
     coherent = sigmoid(ch0) >= 0.2
     transient = sigmoid(ch1) >= 0.2
@@ -71,7 +71,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
-from labelmaker.ae.labels import (  # the sys.path insert above makes this work
+from labeler.ae.labels import (  # the sys.path insert above makes this work
     BAND_HI_BIN,
     BAND_LO_BIN,
     HOP,
@@ -123,7 +123,7 @@ PROTECT_MAX_SHOTS = NOTCH_PROTECT_MAX_SHOTS  # per BIN, over shots
 #: the smallest", 0.5. A bin lit in half of a 2 s record can be a real long-lived
 #: mode rather than receiver pickup, so the controller fixed the applied value at
 #: 0.8 (task 6's first-pass value; plan `docs/superpowers/plans/
-#: 2026-09-05-labelmaker-phase3.md`, "Notch decision" under task 7b).
+#: 2026-09-05-labeler-phase3.md`, "Notch decision" under task 7b).
 APPLIED_NOTCH = 0.8
 APPLIED_NOTCH_REASON = (
     "the sweep's protected-bin rule never bound (zero protected bins removed on "

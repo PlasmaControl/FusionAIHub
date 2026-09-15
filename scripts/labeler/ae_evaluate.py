@@ -47,7 +47,7 @@ from ae_train import (
     load_record,
 )
 
-from labelmaker.ae.model import (
+from labeler.ae.model import (
     AeSeldNet,
     AeSeldNetConfig,
     denormalise_freq,

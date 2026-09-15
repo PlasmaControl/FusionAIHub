@@ -22,7 +22,7 @@ export OMP_NUM_THREADS=8
 export MKL_NUM_THREADS=8
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-export LABELMAKER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
+export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
 export PYTHONPATH="$REPO/src"
 
 SETS=(all124 no_bes)
@@ -30,7 +30,7 @@ COLUMN_SET=${SETS[$SLURM_ARRAY_TASK_ID]}
 
 mkdir -p "$ROOT/runs/slurm"
 
-srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labelmaker/elm_dsm_train.py" \
+srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labeler/elm_dsm_train.py" \
   --out-dir "$ROOT/models/d3d_elm_time_to_event_dsm" \
   --column-set "$COLUMN_SET" \
   --iters 1000 --max-hours 4.5 \

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from labelmaker.features import resolve_fdp
+from labeler.features import resolve_fdp
 
 
 def describe(values) -> dict:

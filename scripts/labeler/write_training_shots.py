@@ -4,16 +4,16 @@ The shipped tearing-survival checkpoint (`rt_fixed_rot.pkl`) was fitted on
 `/projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl`, a
 per-ROW array of shot numbers - one entry per training row, 914,898 of them,
 8,923 distinct shots. Nothing in the artifact records which shots those were,
-so every number labelmaker measures on its own pool is silently part in-sample
+so every number labeler measures on its own pool is silently part in-sample
 until this list is on disk beside the model: 214 of the 500 pool shots are
 training shots.
 
 The list is committed rather than read from `/projects` at import time because
-`spec.py` must load it wherever labelmaker runs, including where that tree is
+`spec.py` must load it wherever labeler runs, including where that tree is
 not mounted, and because a committed file is what makes the split reproducible.
 It is one integer per line, sorted ascending, unique.
 
-    pixi run -e labelmaker python scripts/labelmaker/write_training_shots.py
+    pixi run -e labelmaker python scripts/labeler/write_training_shots.py
 
 Prints the source pickle's sha256 and the line count; both belong in the card's
 `upstream.notes`. The retrained variant shares the file: it continued this fit
@@ -27,10 +27,10 @@ from pathlib import Path
 
 import numpy as np
 
-from labelmaker.config import atomic_path, sha256_of
+from labeler.config import atomic_path, sha256_of
 
 SOURCE = Path("/projects/EKOLEMEN/survival_tm_2/data/rt_filtered_shots_pcb_rot.pkl")
-DESTINATION = (Path(__file__).resolve().parents[2] / "src/labelmaker/models"
+DESTINATION = (Path(__file__).resolve().parents[2] / "src/labeler/models"
                / "d3d_tearing_time_to_event_dsm" / "training_shots.txt")
 
 

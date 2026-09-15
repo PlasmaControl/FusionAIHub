@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from labelmaker.events.databases import (
+from labeler.events.databases import (
     FORMAT_COLUMNS,
     FORMAT_SCHEMA_VERSION,
     UNITS,
@@ -92,6 +92,7 @@ def convert(spec: TableSpec, root: Path) -> Path:
             "raw_file": raw_path.relative_to(root).as_posix(),
             "sha256": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
         },
+        # Stable provenance identifier: reproduces the committed metadata bytes.
         "made_by": f"scripts/labelmaker/labels_format.py:{spec.converter}",
         "made_at": spec.made_at,
     })

@@ -5,8 +5,8 @@ decide almost everything it says - the Ip flat-top gate and the 500 ms
 minimum band - and neither can be justified from a synthetic trace. This
 script runs the rule over a real shot list through the features store and
 writes what it found to
-`tests/labelmaker/data/qmin_regimes_recommender_v1.json`, which
-`tests/labelmaker/test_events_heuristics.py` reads on every run.
+`tests/labeler/data/qmin_regimes_recommender_v1.json`, which
+`tests/labeler/test_events_heuristics.py` reads on every run.
 
 The number that matters most is the one for the variant that is NOT
 shipped. `qmin > 0.95` for 500 ms anywhere in the record - the same rule
@@ -18,7 +18,7 @@ fail when somebody removed it.
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labelmaker/qmin_regime_census.py \\
+        -e labelmaker python scripts/labeler/qmin_regime_census.py \\
         --shot-file /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/recommender_v1.txt \\
         --write
 
@@ -28,7 +28,7 @@ threshold, since the committed thresholds are checked against the module's
 by the test suite and a change to either makes the record stale.
 
 The store is READ-ONLY here: nothing in this script writes outside the
-repository's own `tests/labelmaker/data`.
+repository's own `tests/labeler/data`.
 """
 from __future__ import annotations
 
@@ -43,12 +43,12 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from labelmaker.config import Paths
-from labelmaker.events import heuristics
-from labelmaker.features import store as feature_store
+from labeler.config import Paths
+from labeler.events import heuristics
+from labeler.features import store as feature_store
 
 #: Where the committed record lives, and what the test reads.
-RECORD = REPO / "tests" / "labelmaker" / "data" / "qmin_regimes_recommender_v1.json"
+RECORD = REPO / "tests" / "labeler" / "data" / "qmin_regimes_recommender_v1.json"
 
 #: The shot list the shipped record was measured over.
 DEFAULT_SHOT_FILE = Path(
@@ -125,7 +125,7 @@ def census(shots, paths: Paths) -> dict:
     n = len(shots)
     return {
         "note": (
-            "Written by scripts/labelmaker/qmin_regime_census.py. The "
+            "Written by scripts/labeler/qmin_regime_census.py. The "
             "`ungated` block is the rule with the Ip flat-top gate REMOVED "
             "and is the justification for having the gate at all."
         ),
@@ -155,8 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--shot-file", type=Path, default=DEFAULT_SHOT_FILE)
     parser.add_argument("--root", type=Path, default=None,
-                        help="labelmaker root holding features/ (default: "
-                             "LABELMAKER_ROOT)")
+                        help="labeler root holding features/ (default: "
+                             "LABELER_ROOT)")
     parser.add_argument("--write", action="store_true",
                         help=f"rewrite {RECORD.name} instead of comparing")
     args = parser.parse_args(argv)

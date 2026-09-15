@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ideate-encode-cpu
+#SBATCH --job-name=shot_design-encode-cpu
 #SBATCH --partition=pppl
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
@@ -12,7 +12,7 @@
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
 
 # IGNITE frame-code caches for the 500 recommender_v1 shots, encoded on CPU. This is the
-# alternative to `scripts/ideate/encode.sbatch` (same command, `--device cuda`, `gpu` partition);
+# alternative to `scripts/shot_design/encode.sbatch` (same command, `--device cuda`, `gpu` partition);
 # the controller picks one. NEITHER is submitted by the implementer.
 #
 # REPO is the MAIN checkout, not the I8 worktree: written on branch recommender-I8, run after
@@ -29,7 +29,7 @@
 # `gpu-stellar` queue as well.
 #
 # ------------------------------------------------- sizing (measured 2026-09-07, login node)
-# `ideate encode --list recommender_v1 --device cpu --limit 2 --workers 8`, /usr/bin/time -v
+# `shot_design encode --list recommender_v1 --device cpu --limit 2 --workers 8`, /usr/bin/time -v
 # around it and a 0.5 s process-tree sampler over /proc/*/smaps_rollup, 40-core login node at
 # load ~4, two shots (185786, 185955):
 #
@@ -113,10 +113,10 @@ set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller runs the job from one while the
 # branch is under review); the pixi environment always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
-ENV="${IDEATE_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate}"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
+ENV="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_ENV "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
-export IDEATE_DATA_ROOT="$ROOT"
+export SHOT_DESIGN_DATA_ROOT="$ROOT"
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
 export CUDA_VISIBLE_DEVICES=""
@@ -126,7 +126,7 @@ mkdir -p "$ROOT/runs/slurm" "$ROOT/frame_codes"
 cd "$REPO"
 echo "job ${SLURM_ARRAY_JOB_ID:-none}_${SLURM_ARRAY_TASK_ID:-0} on $(hostname) at $(date -Is)"
 
-srun "$ENV/bin/python" -m ideate encode \
+srun "$ENV/bin/python" -m shot_design encode \
     --list "${SHOT_LIST:-recommender_v1}" \
     --out "$ROOT/frame_codes" \
     --device cpu \

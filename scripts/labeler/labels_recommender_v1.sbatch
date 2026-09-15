@@ -10,13 +10,13 @@
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 
-# Task I6b: labelmaker over the 500 recommender_v1 shots -- features, then infer for the four
-# shipped models (`ideate labels join` wants the LABELS; the features stage alone writes none).
+# Task I6b: labeler over the 500 recommender_v1 shots -- features, then infer for the four
+# shipped models (`shot_design labels join` wants the LABELS; the features stage alone writes none).
 # Validate is deliberately NOT run: see the model-card note at the bottom of this header.
 #
 # All 500 shots already have a <shot>_features.h5 (Task I5 wrote them and back-filled `ip` through
 # fdp): 0 of 500 lack one, checked 2026-09-07. What this run still does per shot is retry the
-# misses labelmaker recorded as TRANSIENT (`store.TRANSIENT_CAUSES` -- TreeFOPENR, PtDataError,
+# misses labeler recorded as TRANSIENT (`store.TRANSIENT_CAUSES` -- TreeFOPENR, PtDataError,
 # timeouts), which is where its time goes, and then infer.
 #
 # ------------------------------------------------------ !! fdp reachability, read before submitting
@@ -34,7 +34,7 @@
 #
 # So: this job will produce labels for all 500 shots from the features already on disk either way.
 # If the node cannot reach fdp, the features stage records the same transient misses again (a few
-# seconds per shot, not a failure) and the fdp-only scalars stay missing -- which `ideate build`
+# seconds per shot, not a failure) and the fdp-only scalars stay missing -- which `shot_design build`
 # reports as `pending`, honestly, rather than as data. The ~23 s per shot of fdp work measured
 # below is LOGIN-NODE work; if fdp is unreachable the job is much shorter, not longer.
 # The alternative, if those scalars are wanted, is to run the same command on the login node,
@@ -43,7 +43,7 @@
 # ------------------------------------------------------------------ sizing (measured 2026-09-07)
 #
 # Login node (stellar-vis2), `/usr/bin/time -v` plus a 0.5 s process-tree RSS sampler, over
-# `pixi run -e labelmaker fdp run python -m labelmaker.run all --models <the four> ...`, ten shots
+# `pixi run -e labelmaker fdp run python -m labeler.run all --models <the four> ...`, ten shots
 # spread across the list (every 50th), each set of ten never run before:
 #
 #   workers   wall      s/shot   CPU    max RSS (main)   tree peak RSS   features   infer (40 pairs)
@@ -71,16 +71,16 @@
 # ---------------------------------------------------------------- stage `all` REWRITES model cards
 #
 # The validate stage writes its results into the model card in the REPO
-# (src/labelmaker/models/<slug>/README.md, `model-index`), keyed by nothing but the run: the
+# (src/labeler/models/<slug>/README.md, `model-index`), keyed by nothing but the run: the
 # 10-shot pilot for this script replaced d3d_tearing_onset_cnn1d's committed 486-shot metrics with
 # 3-shot ones and dropped its tm_prob AUROC entry outright. That revert was made by hand.
 # So: run stage `all` at FULL scale only. A small-N smoke test of this pipeline should use
-# `features` + `infer`, never `all`, and `git status src/labelmaker` is worth a look after any run
+# `features` + `infer`, never `all`, and `git status src/labeler` is worth a look after any run
 # of it.
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 ENV="$REPO/.pixi/envs/labelmaker"
 MODELS="d3d_tearing_onset_cnn1d d3d_tearing_time_to_event_dsm d3d_elm_time_to_event_dsm d3d_ae_activity_seldnet"
 
@@ -88,18 +88,18 @@ MODELS="d3d_tearing_onset_cnn1d d3d_tearing_time_to_event_dsm d3d_elm_time_to_ev
 # here so the environment's python can be called directly and the ~1 GB `pixi run` launcher is not
 # counted against --mem.
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
-export LABELMAKER_ROOT="$ROOT" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
+export LABELER_ROOT="$ROOT" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 
 # `fdp run` for the device configuration and bearer token; without it every fdp fetch fails per
 # signal (see the note above). It execs the command, so `srun` still owns the process tree.
 # Controller decision (2026-09-07): stages `features` then `infer`, NEVER `all` -- the validate
-# stage rewrites the committed model cards (see above) and `ideate labels join` needs only the
-# labels. The EFIT/plasma scalars ideate reads (betan, kappa, ... ne_zipfit) are not inputs of these
-# four models and are fetched separately on the login node (scripts/labelmaker/fetch_features.py).
+# stage rewrites the committed model cards (see above) and `shot_design labels join` needs only the
+# labels. The EFIT/plasma scalars shot_design reads (betan, kappa, ... ne_zipfit) are not inputs of these
+# four models and are fetched separately on the login node (scripts/labeler/fetch_features.py).
 for STAGE in features infer; do
-    srun "$ENV/bin/fdp" run "$ENV/bin/python" -m labelmaker.run "$STAGE" \
+    srun "$ENV/bin/fdp" run "$ENV/bin/python" -m labeler.run "$STAGE" \
         --models $MODELS \
         --shot-file "${SHOT_FILE:-$ROOT/recommender_v1.txt}" \
         --workers 12 --timeout 600

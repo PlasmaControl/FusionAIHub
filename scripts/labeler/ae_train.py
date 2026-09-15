@@ -34,7 +34,7 @@ window-edge effects and cover every frame of the 60 validation shots.
 
 Usage (inside the phase-3 venv, with ``src`` on PYTHONPATH):
 
-    python scripts/labelmaker/ae_train.py --target threeway --loss sce
+    python scripts/labeler/ae_train.py --target threeway --loss sce
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
-from labelmaker.ae.model import (
+from labeler.ae.model import (
     AeLossConfig,
     AeSeldNet,
     AeSeldNetConfig,
@@ -68,6 +68,7 @@ from labelmaker.ae.model import (
     denormalise_freq,
     normalise_freq,
 )
+from labeler.env import getenv
 
 DEFAULT_DATASET = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae/dataset")
 DEFAULT_OUT = Path(
@@ -342,7 +343,7 @@ def evaluate(
 
 
 def git_sha() -> str:
-    sha = os.environ.get("LABELMAKER_GIT_SHA")
+    sha = getenv("LABELER_GIT_SHA")
     if sha:
         return sha
     try:

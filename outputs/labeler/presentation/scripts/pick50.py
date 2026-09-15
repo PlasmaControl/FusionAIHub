@@ -1,8 +1,8 @@
 """Shots with archived ground truth AND an actual onset, for the shot-level set."""
 import json, numpy as np
-from labelmaker import validate, catalog
-from labelmaker.config import Paths
-from labelmaker.labels.store import read_label
+from labeler import validate, catalog
+from labeler.config import Paths
+from labeler.labels.store import read_label
 
 p = Paths.from_env()
 shots = catalog.read_shot_file(p.root / "shots_500.txt")

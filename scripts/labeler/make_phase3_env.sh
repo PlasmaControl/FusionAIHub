@@ -2,15 +2,16 @@
 # Build the Phase 3 training venv on group storage. Idempotent: re-running
 # re-resolves the requirements into the same prefix.
 #
-#     bash scripts/labelmaker/make_phase3_env.sh
+#     bash scripts/labeler/make_phase3_env.sh
 #
-# The venv lives under $LABELMAKER_ROOT/envs, never under /scratch/gpfs/nc1514
+# The venv lives under $LABELER_ROOT/envs, never under /scratch/gpfs/nc1514
 # (near quota), and so does uv's cache, so wheels hardlink into the venv
 # instead of being copied across filesystems.
 set -euo pipefail
 
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UV=${UV:-/home/nc1514/.local/bin/uv}
-ROOT=${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}
+ROOT=$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 VENV=${VENV:-$ROOT/envs/phase3}
 REQ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/phase3-requirements.txt"
 

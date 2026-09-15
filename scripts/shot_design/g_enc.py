@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """G-ENC: re-encode shots from the corpus and compare with the caches shipped in the bundle.
 
-    python scripts/ideate/g_enc.py --shots 190090 202537 204346 --device cuda
+    python scripts/shot_design/g_enc.py --shots 190090 202537 204346 --device cuda
 
 The bundle ships ten production `frame_codes/<shot>.pt` files. This gate rebuilds three of them
-from `<shot>_processed.h5` with `ideate.design.seed.encode_frame_codes` and asserts:
+from `<shot>_processed.h5` with `shot_design.design.seed.encode_frame_codes` and asserts:
 
 * every non-actuator modality's codes are BIT-IDENTICAL (`torch.equal`), and
 * the 88 actuator channels agree within float16 tolerance (max |dz| <= 2e-3) on >= 82 of 88,
@@ -129,11 +129,11 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
-from ideate import config
-from ideate.design import actuators as act
-from ideate.design import seed
-from ideate.shotdb import ignite
-from ideate.shotdb.corpus import CorpusReader
+from shot_design import config
+from shot_design.design import actuators as act
+from shot_design.design import seed
+from shot_design.shotdb import ignite
+from shot_design.shotdb.corpus import CorpusReader
 
 DEFAULT_SHOTS = (190090, 202537, 204346)
 

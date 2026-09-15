@@ -10,10 +10,10 @@
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 
-# labelmaker `features` for the recommender_v1 shots that have no
-# <shot>_features.h5 yet (the list `ideate corpus select --verify-flattop`
+# labeler `features` for the recommender_v1 shots that have no
+# <shot>_features.h5 yet (the list `shot_design corpus select --verify-flattop`
 # writes as recommender_v1_pending_features.txt). Once these exist,
-# `ideate corpus select --finalize` verifies rule (d) (Ip flat-top >= 1 s)
+# `shot_design corpus select --finalize` verifies rule (d) (Ip flat-top >= 1 s)
 # on measured `ip` instead of the pulse-length proxy.
 #
 # ---------------------------------------------------------------- sizing (measured 2026-09-07, login node)
@@ -27,13 +27,13 @@
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT="${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 ENV="$REPO/.pixi/envs/labelmaker"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
-export LABELMAKER_ROOT="$ROOT" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
+export LABELER_ROOT="$ROOT" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
-srun "$ENV/bin/python" -m labelmaker.run features \
+srun "$ENV/bin/python" -m labeler.run features \
     --models d3d_tearing_onset_cnn1d d3d_tearing_time_to_event_dsm d3d_elm_time_to_event_dsm d3d_ae_activity_seldnet \
     --shot-file "${SHOT_FILE:-$ROOT/recommender_v1_pending_features.txt}" \
     --workers 8 --timeout 600

@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Fetch named canonical features through fdp for shots whose feature file lacks them, and merge.
 
-WHY THIS EXISTS. `python -m labelmaker.run features --models ...` resolves only the features the
-named models consume. `ideate` reads more than that: `corpus select`'s rule (d) needs `ip`, and
-`ideate build --reader corpus` addresses the EFIT/plasma scalars `configs/ideate/signals.yaml`
+WHY THIS EXISTS. `python -m labeler.run features --models ...` resolves only the features the
+named models consume. `shot_design` reads more than that: `corpus select`'s rule (d) needs `ip`, and
+`shot_design build --reader corpus` addresses the EFIT/plasma scalars `configs/shot_design/signals.yaml`
 names in its `labelmaker: {feature: ...}` blocks -- `bt betan kappa tritop tribot li qmin gapin
 aminor volume r0 pcbcoil ne_zipfit te_zipfit`. None of those is an input of any shipped model, so
 no features job ever fetches them, and I6b's build reported 4,615 (shot, field) pairs `pending`
@@ -17,14 +17,14 @@ WHERE IT RUNS. The LOGIN node, not SLURM. The compute nodes have no route to DII
 server, so this is not a batch job and there are no jobstats for it. And it must run under the
 `fdp run` wrapper, which supplies the server configuration:
 
-    pixi run -e labelmaker fdp run python scripts/labelmaker/fetch_features.py \
-        --shot-file $LABELMAKER_ROOT/recommender_v1.txt \
+    pixi run -e labelmaker fdp run python scripts/labeler/fetch_features.py \
+        --shot-file $LABELER_ROOT/recommender_v1.txt \
         --features bt betan kappa tritop tribot li qmin gapin aminor volume r0 pcbcoil \
                    ne_zipfit te_zipfit \
         --workers 4 --retries 5
 
 Without the wrapper every PTDATA fetch fails with `PtDataError` and the process reports
-`getservbyname failed for task 'PTSERVER'` -- see `labelmaker.features.store.TRANSIENT_CAUSES`,
+`getservbyname failed for task 'PTSERVER'` -- see `labeler.features.store.TRANSIENT_CAUSES`,
 where that trap is recorded, and `resolve_fdp`'s module docstring.
 
 HOW IT IS SAFE. `store.write_features(..., merge=True)` keeps every group already in the file and
@@ -33,7 +33,7 @@ renames, so a file is never left half-written.
 
 **This script never CREATES a feature file** -- `select.preferred_shots` and the corpus census
 both read the mere existence of one as "this shot has features", so a file holding nothing but
-what this run fetched would promote a shot labelmaker has never featured. The `path.exists()`
+what this run fetched would promote a shot labeler has never featured. The `path.exists()`
 guard is therefore on EVERY path, the successful one included, and it is checked before the
 network call rather than only before the write: there is nothing this run may do for such a shot,
 so spending a fetch on it is waste. Those shots are reported `failed / no features file`.
@@ -44,22 +44,23 @@ holds it only as a recorded miss (a miss leaves no group, so the same test catch
 rerun over the same list is nearly free and does retry what a previous run could not reach.
 
 The worker pool is forked before toksearch is imported anywhere (its ptserver reader is not
-fork-safe), which is why the labelmaker imports sit inside `_resolver()`/`_store()` and those are
+fork-safe), which is why the labeler imports sit inside `_resolver()`/`_store()` and those are
 called from `_fetch`. They are functions rather than a bare `from ... import` so a test can
-substitute them without importing labelmaker at all. `--workers 1` skips the pool entirely and
+substitute them without importing labeler at all. `--workers 1` skips the pool entirely and
 runs in this process, which is what a smoke test and a debugger want.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import time
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from multiprocessing import Pool
 from pathlib import Path
+
+from labeler.env import getenv
 
 #: What a bare invocation fetches -- what `fetch_ip_features.py` fetched.
 DEFAULT_FEATURES = ("ip",)
@@ -103,10 +104,10 @@ def unresolvable(names: Sequence[str]) -> dict[str, str]:
     `resolve_fdp.resolve` raises KeyError on a name with no fdp source -- correctly, it is a
     programming error and not a per-shot gap -- but it raises it inside a worker, once per shot,
     after the pool has been forked and the wrapper has connected. A typo in a flag belongs on the
-    first line of output instead. `labelmaker.features.namespace` is a pure table: importing it
+    first line of output instead. `labeler.features.namespace` is a pure table: importing it
     here does not import toksearch, so the fork rule above is untouched.
     """
-    from labelmaker.features import namespace as ns
+    from labeler.features import namespace as ns
 
     bad: dict[str, str] = {}
     for name in names:
@@ -120,7 +121,7 @@ def unresolvable(names: Sequence[str]) -> dict[str, str]:
 def present_features(path: Path, names: Sequence[str]) -> set[str]:
     """Which of `names` the file already holds in a form a consumer could use.
 
-    The test is the CONSUMER's, not the store's: `ideate.shotdb.select.measured_flattop` wants
+    The test is the CONSUMER's, not the store's: `shot_design.shotdb.select.measured_flattop` wants
     `<name>/xdata` and `<name>/ydata` with something in them, so a group that exists but carries
     one sample -- the corpus' "signal absent" sentinel, and what `store.write_features` demotes a
     degenerate fetch into -- is not a feature for this purpose. A recorded miss leaves no group
@@ -152,20 +153,20 @@ def _init(features_dir: str, features: Sequence[str], retries: int) -> None:
 
 
 def _resolver():
-    """labelmaker's fdp resolver, imported HERE and not at module scope.
+    """labeler's fdp resolver, imported HERE and not at module scope.
 
     The parent process must never import toksearch -- its ptserver reader is not fork-safe, and
     the pool below is forked. Deferring the import into a function called from the worker keeps
-    that true and, as a side effect, lets a test substitute the resolver without labelmaker.
+    that true and, as a side effect, lets a test substitute the resolver without labeler.
     """
-    from labelmaker.features import resolve_fdp
+    from labeler.features import resolve_fdp
 
     return resolve_fdp
 
 
 def _store():
-    """labelmaker's feature-file writer. Deferred for the same reason as `_resolver`."""
-    from labelmaker.features import store
+    """labeler's feature-file writer. Deferred for the same reason as `_resolver`."""
+    from labeler.features import store
 
     return store
 
@@ -269,9 +270,9 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=list(DEFAULT_FEATURES),
         metavar="NAME",
-        help="canonical feature names (labelmaker.features.namespace); default: ip",
+        help="canonical feature names (labeler.features.namespace); default: ip",
     )
-    ap.add_argument("--features-dir", help="default: $LABELMAKER_ROOT/features")
+    ap.add_argument("--features-dir", help="default: $LABELER_ROOT/features")
     ap.add_argument(
         "--workers", type=int, default=4, help="network-bound; 4 is polite. 1 skips the pool"
     )
@@ -284,14 +285,14 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     features = canonical(args.features)
 
-    root = os.environ.get("LABELMAKER_ROOT")
+    root = getenv("LABELER_ROOT")
     features_dir = (
         Path(args.features_dir)
         if args.features_dir
         else (Path(root) / "features" if root else None)
     )
     if features_dir is None:
-        print("no --features-dir and no $LABELMAKER_ROOT", file=sys.stderr)
+        print("no --features-dir and no $LABELER_ROOT", file=sys.stderr)
         return 2
     if not features_dir.is_dir():
         print(f"no feature store at {features_dir}", file=sys.stderr)
@@ -353,7 +354,7 @@ def main(argv=None) -> int:
         for cause, n in causes.most_common():
             print(f"  {n:>6,}  {cause}")
     # Any feature this run was asked for and did not get, transient or not. A partial run must
-    # not look like a complete one to whatever wrapper called it; `labelmaker.features.store`'s
+    # not look like a complete one to whatever wrapper called it; `labeler.features.store`'s
     # `is_transient` is what says which of the causes above a rerun would clear.
     return 1 if verdicts["failed"] else 0
 

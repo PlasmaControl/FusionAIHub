@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ideate-encode
+#SBATCH --job-name=shot_design-encode
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu-stellar
 #SBATCH --nodes=1
@@ -28,7 +28,7 @@
 # `%2` letting them run concurrently. Set `N_CHUNKS` and the array range together to use more.
 #
 # ------------------------------------------------- sizing (measured 2026-09-07, login V100S)
-# Four pilot runs, 30 shots total, `ideate encode --device cuda --workers 8`:
+# Four pilot runs, 30 shots total, `shot_design encode --device cuda --workers 8`:
 #     10 shots  23.36 s/shot mean   378 % of one cpu
 #      4 shots  21.11 s/shot mean   378 %
 #      6 shots  19.85 s/shot mean   403 %
@@ -78,7 +78,7 @@
 # Re-runnable: `--skip-existing` leaves a cache already written, so a task that hits the wall
 # clock can simply be resubmitted.
 #
-# THE CPU-ONLY ALTERNATIVE. `scripts/ideate/encode_cpu.sbatch` runs the same command with
+# THE CPU-ONLY ALTERNATIVE. `scripts/shot_design/encode_cpu.sbatch` runs the same command with
 # `--device cpu` on the `pppl` partition. Measured 40.4 s/shot at OMP_NUM_THREADS=4 against
 # 17-22 s/shot here, i.e. ~2x, for no GPU at all -- and plan section 13.3 judges a CPU-only job
 # on CPU and CPU-memory alone, which is the gate this workload can actually meet. Read the
@@ -87,10 +87,10 @@
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT="${IDEATE_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
 ENV="$REPO/.pixi/envs/ideate"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
-export IDEATE_DATA_ROOT="$ROOT"
+export SHOT_DESIGN_DATA_ROOT="$ROOT"
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 mkdir -p "$ROOT/runs/slurm" "$ROOT/frame_codes"
@@ -98,7 +98,7 @@ cd "$REPO"
 echo "job ${SLURM_ARRAY_JOB_ID:-none}_${SLURM_ARRAY_TASK_ID:-0} on $(hostname) at $(date -Is)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-srun "$ENV/bin/python" -m ideate encode \
+srun "$ENV/bin/python" -m shot_design encode \
     --list "${SHOT_LIST:-recommender_v1}" \
     --out "$ROOT/frame_codes" \
     --device cuda \

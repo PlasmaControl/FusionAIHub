@@ -18,7 +18,7 @@
 # Single-element default is for a pilot; proposed production shape remains
 # --array=0-7%2, N_CHUNKS=8 (8 x 60 shots), pending resolution of failed gates.
 # Workflow: tokeye_text_subset.sh, this array, tokeye_masks_afterok.sbatch.
-# See docs/LABELMAKER.md and .superpowers/sdd/task-L14perf-report.md (Fix loop).
+# See docs/LABELER.md and .superpowers/sdd/task-L14perf-report.md (Fix loop).
 #SBATCH --job-name=tokeye-masks
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu-stellar
@@ -35,14 +35,14 @@
 #SBATCH --output=/dev/null
 
 set -euo pipefail
-REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-L14perf}"
-ROOT="${ROOT:-${LABELMAKER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}}"
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
+ROOT="${ROOT:-$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")}"
 RUNTIME_ROOT="${RUNTIME_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
 PHASE3_PYTHON="${PHASE3_PYTHON:-$RUNTIME_ROOT/envs/phase3/bin/python}"
 UNET="${UNET:-$RUNTIME_ROOT/models/tokeye/big_tf_unet_251210.pt}"
 ROOT="$(realpath -m -- "$ROOT")"
 printf 'Resolved root: %s\n' "$ROOT"
-CORPUS="${LABELMAKER_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
+CORPUS="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
 SHOT_FILE="${SHOT_FILE:?set SHOT_FILE to the pilot or remaining-shot list}"
 N_CHUNKS="${N_CHUNKS:-1}"
 PREP_WORKERS="${PREP_WORKERS:-7}"
@@ -64,7 +64,7 @@ fi
 mkdir -p "$ROOT/runs/slurm"
 exec > "$ROOT/runs/slurm/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.out" 2>&1
 printf 'Resolved root: %s\n' "$ROOT"
-export LABELMAKER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
+export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export HDF5_USE_FILE_LOCKING=FALSE PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID}"
@@ -73,7 +73,7 @@ cd "$REPO"
 echo "job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID} on $(hostname) at $(date -Is)"
 nvidia-smi --query-gpu=name,uuid,memory.total,memory.used,utilization.gpu --format=csv
 srun --cpu-bind=cores "$PHASE3_PYTHON" -u \
-    "$REPO/scripts/labelmaker/tokeye_masks.py" \
+    "$REPO/scripts/labeler/tokeye_masks.py" \
     --shot-file "$SHOT_FILE" --chunk "$SLURM_ARRAY_TASK_ID" \
     --n-chunks "$N_CHUNKS" --rank 0 --world 1 \
     --root "$ROOT" --unet "$UNET" --corpus "$CORPUS" --device cuda --plan round1 \
