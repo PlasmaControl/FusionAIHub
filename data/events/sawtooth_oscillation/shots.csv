@@ -1,4 +1,9 @@
-shot,tier,reviewers,verified_on,notes
-1,gold,alice;bob,2026-01-01,EXAMPLE - replace with a real shot
-2,silver,alice,2026-01-01,EXAMPLE - replace with a real shot
-3,unverified,,,EXAMPLE - replace with a real shot
+shot,tier,holdout,reviewers,verified_on,notes
+178642,gold,false,,,
+179310,gold,false,,,
+180090,gold,true,,,
+180406,gold,false,,,
+180627,gold,false,,,
+184084,gold,true,,,
+192238,gold,true,,,
+195032,gold,true,,,

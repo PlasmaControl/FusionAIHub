@@ -148,7 +148,8 @@ def _roster(root, event):
     path.parent.mkdir(parents=True, exist_ok=True)
     write_roster(
         pd.DataFrame(
-            [[185601, "unverified", "", "", ""]], columns=list(ROSTER_COLUMNS)
+            [[185601, "unverified", "false", "", "", ""]],
+            columns=list(ROSTER_COLUMNS),
         ),
         path,
     )
@@ -197,7 +198,7 @@ def test_marking_a_range_then_saving_writes_both_files(tmp_path):
     assert corrections.shot.tolist() == [185601, 185601]
 
     roster = read_roster(tmp_path / "fishbone" / "shots.csv")
-    assert roster.iloc[0].tier == "silver"
+    assert roster.iloc[0].tier == "unverified"
     assert roster.iloc[0].reviewers == "alice"
 
 
@@ -268,7 +269,7 @@ def test_verify_with_no_marks_writes_the_roster_but_no_corrections_file(tmp_path
 
     assert not review_path("fishbone", 185601, root=tmp_path).exists()
     roster = read_roster(tmp_path / "fishbone" / "shots.csv")
-    assert roster.iloc[0].tier == "silver"
+    assert roster.iloc[0].tier == "unverified"
     assert roster.iloc[0].reviewers == "alice"
 
 

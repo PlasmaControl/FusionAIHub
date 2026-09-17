@@ -4,15 +4,17 @@
 table. A shot enters it when somebody puts it up for review; the interval
 tables under `format/` and `extend_*/` stay the record of what is labelled.
 
-`tier` counts independent reviews and says nothing about label quality:
-two or more reviewers is `gold`, one is `silver`, none is `unverified`. It is
-redundant with `reviewers` by construction, and is written out anyway because
-people read this file by eye. `validate_roster` is what keeps the two honest.
+`tier` is a hand-set curation call, not a count: `validate_roster` only
+checks that it is one of `unverified`, `silver`, `gold`, and nothing derives
+it from the reviewer list. `holdout` is a required boolean reserving a shot
+from training and tuning for final evaluation only. `reviewers` and
+`verified_on` keep their own meaning — who pressed Verify and when — and
+their own rule: blank iff there are no reviewers. Pressing Verify records a
+reviewer and a date and does not touch `tier`.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -21,15 +23,11 @@ import pandas as pd
 from ..config import Paths
 from .databases import DatabaseError
 
-ROSTER_COLUMNS = ("shot", "tier", "reviewers", "verified_on", "notes")
+ROSTER_COLUMNS = ("shot", "tier", "holdout", "reviewers", "verified_on", "notes")
 TIERS = ("unverified", "silver", "gold")
+HOLDOUT_VALUES = ("false", "true")
 REVIEWER_SEPARATOR = ";"
 ROSTER_NAME = "shots.csv"
-
-
-def tier_for(reviewers: Sequence[str]) -> str:
-    """The tier a shot has after this many independent reviews."""
-    return TIERS[min(len(reviewers), 2)]
 
 
 def split_reviewers(value) -> list[str]:
@@ -50,7 +48,7 @@ def validate_roster(frame: pd.DataFrame) -> pd.DataFrame:
     if tuple(frame.columns) != ROSTER_COLUMNS:
         raise DatabaseError(f"Expected columns {ROSTER_COLUMNS}")
     result = frame.copy()
-    for column in ("tier", "reviewers", "verified_on", "notes"):
+    for column in ("tier", "holdout", "reviewers", "verified_on", "notes"):
         result[column] = result[column].fillna("").astype(str)
     shots = pd.to_numeric(result["shot"], errors="coerce")
     if not (shots.notna() & (shots % 1 == 0) & (shots >= 0)).all():
@@ -65,10 +63,10 @@ def validate_roster(frame: pd.DataFrame) -> pd.DataFrame:
             raise DatabaseError(f"duplicate reviewer on shot {row.shot}")
         if row.tier not in TIERS:
             raise DatabaseError(f"tier {row.tier!r} is not one of {TIERS}")
-        if row.tier != tier_for(reviewers):
+        if row.holdout not in HOLDOUT_VALUES:
             raise DatabaseError(
-                f"shot {row.shot}: tier {row.tier!r} disagrees with "
-                f"{len(reviewers)} reviewer(s), which is {tier_for(reviewers)!r}"
+                f"shot {row.shot}: holdout {row.holdout!r} is not one of "
+                f"{HOLDOUT_VALUES}"
             )
         if bool(reviewers) != bool(row.verified_on):
             raise DatabaseError(
@@ -102,11 +100,11 @@ def record_review(
     on: date | None = None,
     notes: str | None = None,
 ) -> pd.DataFrame:
-    """Append one reviewer to a shot's row, promoting its tier.
+    """Append one reviewer to a shot's row. `tier` is left untouched.
 
-    A reviewer who has already reviewed this shot re-dates the row and does
-    not promote it: `gold` means two *independent* reviews. A shot not yet in
-    the roster is added. Returns the roster as written.
+    A reviewer who has already reviewed this shot re-dates the row rather
+    than appearing twice. A shot not yet in the roster is added, with
+    `tier="unverified"` and `holdout="false"`. Returns the roster as written.
     """
     frame = read_roster(path)
     on = datetime.now(UTC).date() if on is None else on
@@ -115,12 +113,11 @@ def record_review(
         index = rows[0]
     else:
         index = len(frame)
-        frame.loc[index] = [int(shot), "unverified", "", "", ""]
+        frame.loc[index] = [int(shot), "unverified", "false", "", "", ""]
     reviewers = split_reviewers(frame.at[index, "reviewers"])
     if reviewer not in reviewers:
         reviewers.append(reviewer)
     frame.at[index, "reviewers"] = REVIEWER_SEPARATOR.join(reviewers)
-    frame.at[index, "tier"] = tier_for(reviewers)
     frame.at[index, "verified_on"] = on.isoformat()
     if notes is not None:
         frame.at[index, "notes"] = notes
