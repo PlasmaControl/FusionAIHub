@@ -119,3 +119,18 @@ def test_notes_stay_on_one_line(tmp_path):
     write_roster(_frame([[1, "unverified", "", "", ""]]), path)
     with pytest.raises(DatabaseError, match="one line"):
         record_review(path, 1, "alice", on=date(2026, 1, 1), notes="two\nlines")
+
+
+def test_every_category_has_a_valid_roster():
+    from labeler.config import Paths
+    from labeler.events.rosters import ROSTER_NAME, read_roster
+
+    root = Paths.from_env().label_tables
+    categories = sorted(p.name for p in root.iterdir() if p.is_dir())
+    assert len(categories) == 16
+    for category in categories:
+        path = root / category / ROSTER_NAME
+        assert path.is_file(), f"{category} has no {ROSTER_NAME}"
+        frame = read_roster(path)
+        assert len(frame) == 3, f"{category} should ship three example rows"
+        assert frame.tier.tolist() == ["gold", "silver", "unverified"]
