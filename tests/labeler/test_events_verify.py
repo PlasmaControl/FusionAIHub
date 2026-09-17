@@ -350,3 +350,34 @@ def test_every_category_has_a_verification_notebook():
         # what must not survive the rename is the MODULE path.
         assert "labelmaker.events" not in sources, category
         assert "from labelmaker" not in sources, category
+
+
+@pytest.mark.real_data
+def test_the_generic_notebook_names_features_that_exist():
+    """The scaffolded panels shipped `ne_line`, which the store has never held.
+
+    A notebook naming a missing feature raises KeyError on the cell a reviewer
+    runs first, so it is dead on arrival and nothing in the suite noticed.
+    """
+    import glob
+    import re
+    from pathlib import Path
+
+    from labeler.config import Paths
+    from labeler.features.store import present
+
+    scaffold = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "labeler"
+        / "make_verification_notebook.py"
+    )
+    named = set(re.findall(r'trace\("([^"]+)"', scaffold.read_text()))
+    assert named, "no trace(...) calls found; did the scaffold change shape?"
+
+    files = sorted(glob.glob(str(Paths.from_env().features / "*_features.h5")))
+    if not files:
+        pytest.skip("no feature files on this host")
+    everywhere = set.intersection(*(present(f) for f in files[:40]))
+    missing = sorted(named - everywhere)
+    assert not missing, f"generic panels name features no shot has: {missing}"

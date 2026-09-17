@@ -182,7 +182,7 @@ otherwise would be the panel asserting something its inputs cannot support.
 
 ### Panels: the other twelve categories
 
-`ip`, `betan`, and `ne_line` from the feature store, plus the label row. Enough
+`ip`, `betan`, and `pinj_total` from the feature store, plus the label row. Enough
 to confirm a shot exists and its labels sit inside the discharge; not enough to
 verify a phenomenon. Each notebook says so in its first markdown cell.
 
