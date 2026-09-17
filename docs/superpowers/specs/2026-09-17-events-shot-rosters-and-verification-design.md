@@ -118,7 +118,8 @@ Builds a stacked `plotly.graph_objects.FigureWidget`: one row per panel, a
 shared time axis in milliseconds, and a final row showing the current labels
 read from the category's `.npz` grid. Box-select on any row captures a time
 range; `Mark present` / `Mark absent` turn that range into a correction row;
-`Verify` appends `$USER` to the roster and promotes the tier; `Save` writes
+`Verify` records `$USER` and today's date on the roster row, leaving
+`tier` alone; `Save` writes
 both files. Nothing is written until a button is pressed.
 
 `FigureWidget` requires `anywidget`, which is not currently installed — one
@@ -259,9 +260,10 @@ category README gains a link to its `verification.ipynb`, beside the
 
 - `validate_shots` accepts the placeholder file and rejects each way tier and
   reviewer count can disagree, a duplicate shot, and a duplicate reviewer;
-- the roster writer promotes `unverified` to `silver` to `gold` across two
-  reviewers, and a repeated Verify by the same reviewer updates `verified_on`
-  without promoting;
+- the roster writer appends each new reviewer and leaves `tier` alone, and a
+  repeated Verify by the same reviewer updates `verified_on` without
+  appearing twice;
+- `holdout` is required and rejects anything but `true` or `false`;
 - corrections round-trip through `validate_intervals`;
 - `corpus_signal` slices rather than loading, and raises `NoDataError` for an
   absent file and for the `(C, 1)` sentinel;
