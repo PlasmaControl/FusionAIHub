@@ -41,11 +41,9 @@ hand in that file, not derived from who has reviewed a shot.
 SETUP = """%load_ext autoreload
 %autoreload 2"""
 
-PANELS = '''import numpy as np
-
-from labeler.config import Paths
-from labeler.features.store import read_feature
+PANELS = '''from labeler.config import Paths
 from labeler.events.verify import Panel, review
+from labeler.features.store import read_feature
 
 event = "{event}"
 shot = 1  # replace with a shot from shots.csv
