@@ -2,9 +2,20 @@
 
 import h5py
 import numpy as np
+import pandas as pd
 import pytest
 
-from labeler.events.verify import NoDataError, corpus_signal
+from labeler.events.interval_tables import INTERVAL_COLUMNS
+from labeler.events.rosters import ROSTER_COLUMNS, read_roster, write_roster
+from labeler.events.verify import (
+    NoDataError,
+    Panel,
+    ReviewSession,
+    corpus_signal,
+    read_corrections,
+    review_path,
+    write_corrections,
+)
 
 
 def _corpus(tmp_path, shot, groups):
@@ -127,3 +138,91 @@ def test_a_missing_group_is_named(tmp_path):
     _corpus(tmp_path, 185601, {"ece": (np.zeros(10), np.zeros((48, 10)))})
     with pytest.raises(NoDataError, match="mhr"):
         corpus_signal(185601, "mhr", corpus=tmp_path)
+
+
+def _roster(root, event):
+    path = root / event / "shots.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_roster(
+        pd.DataFrame(
+            [[185601, "unverified", "", "", ""]], columns=list(ROSTER_COLUMNS)
+        ),
+        path,
+    )
+    return path
+
+
+def test_corrections_round_trip_through_the_interval_schema(tmp_path):
+    path = tmp_path / "review" / "185601.csv"
+    frame = pd.DataFrame(
+        [[185601, 1, 1200.0, 1450.0, ""], [185601, 0, 1450.0, 1600.0, ""]],
+        columns=list(INTERVAL_COLUMNS),
+    )
+    write_corrections(frame, path)
+    got = read_corrections(path)
+    assert list(got.columns) == list(INTERVAL_COLUMNS)
+    assert got.t_start.tolist() == [1200.0, 1450.0]
+    assert got.category.tolist() == [1, 0]
+
+
+def test_review_path_is_under_the_category(tmp_path):
+    got = review_path("fishbone", 185601, root=tmp_path)
+    assert got == tmp_path / "fishbone" / "review" / "185601.csv"
+
+
+def test_marking_a_range_then_saving_writes_both_files(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.mark(1200.0, 1450.0, category=1)
+    session.mark(1450.0, 1600.0, category=0)
+    session.verify()
+    session.save()
+
+    corrections = read_corrections(review_path("fishbone", 185601, root=tmp_path))
+    assert len(corrections) == 2
+    assert corrections.shot.tolist() == [185601, 185601]
+
+    roster = read_roster(tmp_path / "fishbone" / "shots.csv")
+    assert roster.iloc[0].tier == "silver"
+    assert roster.iloc[0].reviewers == "alice"
+
+
+def test_nothing_is_written_before_save(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.mark(1200.0, 1450.0, category=1)
+    assert not review_path("fishbone", 185601, root=tmp_path).exists()
+    assert read_roster(tmp_path / "fishbone" / "shots.csv").iloc[0].tier == "unverified"
+
+
+def test_a_backwards_range_is_refused(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    with pytest.raises(ValueError, match="t_end"):
+        session.mark(1450.0, 1200.0, category=1)
+
+
+def test_a_figure_stacks_one_row_per_panel(tmp_path):
+    _roster(tmp_path, "fishbone")
+    panels = [
+        Panel(title="mhr B1", x=np.arange(10.0), y=np.zeros((1, 10)), ylabel="T/s"),
+        Panel(
+            title="spectrogram",
+            kind="heatmap",
+            x=np.arange(10.0),
+            y=np.arange(5.0),
+            z=np.zeros((5, 10)),
+            ylabel="kHz",
+        ),
+    ]
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=panels, root=tmp_path, reviewer="alice"
+    )
+    assert len(session.figure.data) >= 2
+    assert "185601" in session.figure.layout.title.text
