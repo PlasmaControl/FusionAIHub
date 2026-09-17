@@ -169,6 +169,14 @@ protobuf = "<7"
 # duplicate cu124.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
+# The verification notebooks are built on plotly's FigureWidget: a stacked
+# figure whose box-select callback turns a dragged time range into a label
+# correction. `plotly` currently reaches this environment only transitively,
+# and `FigureWidget` imports `anywidget` at construction time, so a bare
+# `import plotly` succeeding says nothing about whether the widget works.
+# Declare both rather than depend on another package's requirements.
+plotly = ">=6.9,<7"
+anywidget = ">=0.9,<1"
 
 [tool.pixi.feature.ideate]
 platforms = ["linux-64"]
