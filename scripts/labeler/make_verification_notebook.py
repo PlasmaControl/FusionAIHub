@@ -1,0 +1,114 @@
+"""Scaffold a category's verification.ipynb.
+
+The generic notebook plots `ip`, `betan` and `ne_line` from the feature store
+against the saved labels. That is enough to confirm a shot exists and that its
+labels sit inside the discharge, and nowhere near enough to verify a
+phenomenon - which is the point. Whoever takes a category on replaces the
+panel cell with the traces that actually settle it, the way
+`minimum_safety_factor`, `sawtooth_oscillation`, `alfven_eigenmode` and
+`fishbone` already have.
+
+    pixi run -e labelmaker python scripts/labeler/make_verification_notebook.py \
+        --event detachment
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import nbformat
+
+from labeler.config import Paths
+
+HEADER = """# {title} - verification
+
+Use the **Python (FAITH labelmaker)** kernel. Set `shot` below, drag a time
+range on any panel, then press *Mark present* / *Mark absent*, *Verify* and
+*Save*.
+
+**These are generic panels.** `ip`, `betan` and `ne_line` show that the shot
+exists and that its labels sit inside the discharge. They do not show whether
+{title} actually happened. Replace the panel cell below with the traces that
+settle this phenomenon, then delete this paragraph.
+
+*Save* writes two files: the corrected intervals to
+`review/<shot>.csv`, and your review to `shots.csv`, which promotes the shot
+to `silver` (one reviewer) or `gold` (two).
+"""
+
+SETUP = """%load_ext autoreload
+%autoreload 2"""
+
+PANELS = '''import numpy as np
+
+from labeler.config import Paths
+from labeler.features.store import read_feature
+from labeler.events.verify import Panel, review
+
+event = "{event}"
+shot = 1  # replace with a shot from shots.csv
+source = "format/shots"
+
+features = Paths.from_env().features_file(shot)
+
+def trace(name, ylabel):
+    """One scalar feature as a panel; seconds on disk, milliseconds on the plot."""
+    array = read_feature(features, name)
+    return Panel(title=name, x=array.x * 1000.0, y=array.y, ylabel=ylabel)
+
+panels = [
+    trace("ip", "A"),
+    trace("betan", ""),
+    trace("ne_line", "m^-3"),
+]'''
+
+REVIEW = """session = review(event, shot, panels, source=source)
+session"""
+
+FOOTER = """After pressing *Save*, check what was written:
+
+```python
+from labeler.events.verify import read_corrections, review_path
+read_corrections(review_path(event, shot))
+```
+"""
+
+
+def build(event: str) -> nbformat.NotebookNode:
+    """The generic verification notebook for one category."""
+    title = event.replace("_", " ")
+    notebook = nbformat.v4.new_notebook()
+    notebook.cells = [
+        nbformat.v4.new_markdown_cell(HEADER.format(title=title)),
+        nbformat.v4.new_code_cell(SETUP),
+        nbformat.v4.new_code_cell(PANELS.format(event=event)),
+        nbformat.v4.new_code_cell(REVIEW),
+        nbformat.v4.new_markdown_cell(FOOTER),
+    ]
+    notebook.metadata["kernelspec"] = {
+        "display_name": "Python (FAITH labelmaker)",
+        "language": "python",
+        "name": "faith-labelmaker",
+    }
+    return notebook
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--event", required=True)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--root", type=Path, default=None)
+    args = parser.parse_args()
+
+    root = Paths.from_env().label_tables if args.root is None else args.root
+    path = root / args.event / "verification.ipynb"
+    if path.exists() and not args.force:
+        raise SystemExit(f"{path} exists; pass --force to overwrite")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    nbformat.write(build(args.event), path)
+    print("wrote", path)
+
+
+if __name__ == "__main__":
+    main()

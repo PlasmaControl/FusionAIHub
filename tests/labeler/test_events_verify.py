@@ -326,3 +326,26 @@ def test_marking_present_twice_on_one_selection_records_one_row(tmp_path):
     present.click()
 
     assert len(session.corrections) == 1
+
+
+def test_every_category_has_a_verification_notebook():
+    import json
+
+    from labeler.config import Paths
+
+    root = Paths.from_env().label_tables
+    categories = sorted(p.name for p in root.iterdir() if p.is_dir())
+    assert len(categories) == 16
+    for category in categories:
+        path = root / category / "verification.ipynb"
+        assert path.is_file(), f"{category} has no verification.ipynb"
+        notebook = json.loads(path.read_text())
+        assert notebook["nbformat"] == 4
+        sources = "".join(
+            "".join(cell["source"]) for cell in notebook["cells"]
+        )
+        assert "from labeler.events.verify import" in sources, category
+        # The kernel is still called "Python (FAITH labelmaker)" on purpose;
+        # what must not survive the rename is the MODULE path.
+        assert "labelmaker.events" not in sources, category
+        assert "from labelmaker" not in sources, category
