@@ -153,9 +153,9 @@ class ReviewSession:
 
     Marks accumulate in memory. `save()` is the only thing that touches disk,
     and it writes two files: the corrections under `review/` and the roster
-    row in `shots.csv`. `verify()` records the intent to promote; without it
-    `save()` writes corrections alone, which is what a half-finished review
-    should leave behind.
+    row in `shots.csv`. `verify()` records that this reviewer looked; without
+    it `save()` writes corrections alone, which is what a half-finished
+    review should leave behind.
     """
 
     def __init__(
@@ -203,7 +203,7 @@ class ReviewSession:
         self._marks.append((float(t_start), float(t_end), int(category)))
 
     def verify(self, *, notes: str | None = None) -> None:
-        """Say this reviewer has looked; `save()` then promotes the tier."""
+        """Say this reviewer has looked; `save()` then records them."""
         self._verify = True
         self._notes = notes
 

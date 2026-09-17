@@ -33,8 +33,9 @@ exists and that its labels sit inside the discharge. They do not show whether
 settle this phenomenon, then delete this paragraph.
 
 *Save* writes two files: the corrected intervals to
-`review/<shot>.csv`, and your review to `shots.csv`, which promotes the shot
-to `silver` (one reviewer) or `gold` (two).
+`review/<shot>.csv`, and your review to `shots.csv`, which records you as a
+reviewer with today's date. `tier` and `holdout` are curation calls set by
+hand in that file, not derived from who has reviewed a shot.
 """
 
 SETUP = """%load_ext autoreload

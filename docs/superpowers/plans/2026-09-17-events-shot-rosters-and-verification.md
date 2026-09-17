@@ -2531,24 +2531,28 @@ It is not the category's shot list: a shot enters it when somebody puts it up
 for review, and the interval tables stay the record of what is labelled.
 
 ```csv
-shot,tier,reviewers,verified_on,notes
-170815,gold,nc1514;aj17,2026-09-17,retimed first onset -30 ms
-178631,silver,nc1514,2026-09-17,
-185945,unverified,,,
+shot,tier,holdout,reviewers,verified_on,notes
+170815,gold,false,nc1514;aj17,2026-09-17,retimed first onset -30 ms
+178631,silver,false,nc1514,2026-09-17,
+185945,unverified,false,,,
 ```
 
-`tier` counts *independent* reviews and says nothing about label quality: two
-or more reviewers is `gold`, one is `silver`, none is `unverified`. Reviewer
+`tier` is a curation judgement, set by hand, and says nothing about how many
+people have reviewed a shot: `gold`/`silver`/`unverified` are legal values,
+not a count. `holdout` is a required `true`/`false` reserving a shot from
+training and tuning for final evaluation only; blank is invalid. Reviewer
 ids are `$USER`, separated by `;`, in the order they reviewed. A reviewer
-appears at most once per shot, so pressing Verify twice re-dates the row and
-does not promote it. `verified_on` is the most recent review, blank when
+appears at most once per shot, so pressing Verify twice re-dates the row
+without touching `tier`. `verified_on` is the most recent review, blank when
 unverified. `notes` is one line.
 
 Ten gold shots per category is the target, not something the file enforces.
 The three placeholder rows every category ships are meant to be deleted.
 
-`labeler.events.rosters.validate_roster` validates this schema and keeps the
-written `tier` honest against the reviewer list.
+`labeler.events.rosters.validate_roster` validates this schema: legal `tier`
+and `holdout` values, no duplicate shots or reviewers, and `verified_on`
+agreeing with `reviewers`. It does not check `tier` against the reviewer
+list.
 
 ## Verification notebooks
 

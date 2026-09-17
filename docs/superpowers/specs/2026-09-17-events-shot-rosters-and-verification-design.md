@@ -37,32 +37,38 @@ any formatter, and the repository-wide `labelmaker`/`ideate` rename sweep.
 ## Roster schema: `data/events/<category>/shots.csv`
 
 ```csv
-shot,tier,reviewers,verified_on,notes
-000001,gold,alice;bob,2026-01-01,EXAMPLE - replace
-000002,silver,alice,2026-01-01,EXAMPLE - replace
-000003,unverified,,,EXAMPLE - replace
+shot,tier,holdout,reviewers,verified_on,notes
+000001,gold,false,alice;bob,2026-01-01,EXAMPLE - replace
+000002,silver,false,alice,2026-01-01,EXAMPLE - replace
+000003,unverified,false,,,EXAMPLE - replace
 ```
 
 | Column | Meaning |
 | --- | --- |
 | `shot` | DIII-D shot number, integer, unique within the file |
 | `tier` | `gold`, `silver`, or `unverified` |
+| `holdout` | `true` or `false`, required on every row |
 | `reviewers` | `;`-separated reviewer ids, in the order they reviewed |
 | `verified_on` | ISO date of the most recent review; blank when unverified |
 | `notes` | free text, one line |
 
-Tier is a count of *independent* reviews, not a judgement of the labels:
+`tier` is a curation judgement, set by hand, not something derived from the
+review count:
 
-- `gold` — two or more reviewers, each having pressed Verify on this shot.
-- `silver` — exactly one reviewer.
-- `unverified` — nobody has reviewed it.
+- `gold` — a shot the curator trusts as a clean, representative example.
+- `silver` — usable but less certain, or not yet fully checked.
+- `unverified` — no curation judgement has been made.
 
-`tier` is written explicitly because people scan the file by eye, and it is
-redundant with `reviewers` by construction. `validate_shots` enforces the
-agreement — `len(reviewers) >= 2` iff `gold`, `== 1` iff `silver`, `== 0` iff
-`unverified` — the same way `validate_intervals` guards the interval schema.
-A reviewer id is `$USER`, and a reviewer appears at most once per shot;
-pressing Verify twice updates `verified_on` and does not promote the tier.
+`validate_shots` checks only that `tier` is one of the three legal values; it
+does not compare it against `reviewers`, the same way `validate_intervals`
+guards the interval schema without judging label quality. A reviewer id is
+`$USER`, and a reviewer appears at most once per shot; pressing Verify
+records that reviewer and today's date and leaves `tier` untouched.
+
+`holdout` marks a shot as reserved from training and tuning, used only for
+final evaluation. It is required and has no default: a blank value is
+invalid, and `validate_shots` rejects it the same way it rejects an unknown
+`tier`.
 
 Ten gold shots per category is the target, not a rule the file enforces. The
 roster is not the category's shot list: a shot enters it when someone puts it
