@@ -250,6 +250,10 @@ class ReviewSession:
                         z=panel.z,
                         showscale=False,
                         legend=legend_name,
+                        # plotly.js lists heatmap under "showLegend", so with
+                        # the figure-wide showlegend now on, a label row would
+                        # otherwise emit a nameless "trace N" entry beside it.
+                        showlegend=False,
                     ),
                     row=index,
                     col=1,
