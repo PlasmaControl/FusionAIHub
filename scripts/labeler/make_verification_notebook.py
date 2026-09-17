@@ -1,6 +1,6 @@
 """Scaffold a category's verification.ipynb.
 
-The generic notebook plots `ip`, `betan` and `ne_line` from the feature store
+The generic notebook plots `ip`, `betan` and `pinj_total` from the feature store
 against the saved labels. That is enough to confirm a shot exists and that its
 labels sit inside the discharge, and nowhere near enough to verify a
 phenomenon - which is the point. Whoever takes a category on replaces the
@@ -27,7 +27,7 @@ Use the **Python (FAITH labelmaker)** kernel. Set `shot` below, drag a time
 range on any panel, then press *Mark present* / *Mark absent*, *Verify* and
 *Save*.
 
-**These are generic panels.** `ip`, `betan` and `ne_line` show that the shot
+**These are generic panels.** `ip`, `betan` and `pinj_total` show that the shot
 exists and that its labels sit inside the discharge. They do not show whether
 {title} actually happened. Replace the panel cell below with the traces that
 settle this phenomenon, then delete this paragraph.
@@ -61,7 +61,7 @@ def trace(name, ylabel):
 panels = [
     trace("ip", "A"),
     trace("betan", ""),
-    trace("ne_line", "m^-3"),
+    trace("pinj_total", "kW"),
 ]'''
 
 REVIEW = """session = review(event, shot, panels, source=source)
