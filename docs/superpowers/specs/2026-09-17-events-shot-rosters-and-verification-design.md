@@ -18,14 +18,18 @@ of them at the same unknown standard as each other.
 
 ## Scope
 
-Fifteen category directories under `data/events/`, each gaining:
+Sixteen category directories under `data/events/`, each gaining:
 
 - `shots.csv` — the review roster, three placeholder rows.
 - `verification.ipynb` — the review surface.
 
-Three categories get real, hand-written panel definitions:
-`minimum_safety_factor`, `sawtooth_oscillation`, `alfven_eigenmode`. The other
-twelve get a generic fallback panel set until somebody writes theirs.
+Four categories get real, hand-written panel definitions:
+`minimum_safety_factor`, `sawtooth_oscillation`, `alfven_eigenmode` and
+`fishbone`. The other twelve get a generic fallback panel set until somebody
+writes theirs.
+
+`fishbone` is a new, empty category directory: it gets the full skeleton
+(`README.md`, `raw/`, `format/`) as well as the roster and the notebook.
 
 Out of scope: choosing the actual gold shots (none are chosen yet), rerunning
 any formatter, and the repository-wide `labelmaker`/`ideate` rename sweep.
@@ -136,23 +140,38 @@ with `scipy.signal.csd` over the 500 kHz record, plotted as log magnitude
 against time and frequency with the 80–250 kHz AE band marked. The corpus
 `co2` group carries the four chords in order `r0, v1, v2, v3`.
 
-Two data facts constrain this panel, and the notebook states both rather than
-failing silently:
+The CO2 the corpus holds does not cover this category. The 180 annotated AE
+shots span 170659-178879 and the corpus covers 185601-204999, so none of them
+has a corpus file; and where the corpus does carry `co2`, it is filled on only
+about half of its shots, all of them above 198279.
 
-1. **The 180 annotated AE shots are outside the corpus.** They span
-   170659–178879; the corpus covers 185601–204999. None of the 180 has a
-   corpus file or a feature file.
-2. **Corpus `co2` is sparse.** It is filled on roughly half of corpus shots,
-   and the filled ones measured so far are all above shot 198279.
+So the panel fetches. When the corpus has no CO2 for a shot, it pulls
+`DENR0UF`, `DENV1UF`, `DENV2UF` and `DENV3UF` through
+`toksearch_d3d.PtDataSignal` and caches the arrays under the review directory,
+keyed by shot. The `co2` feature declares `sources=("corpus",)` and has no fdp
+resolver, so this fetch lives in the notebook rather than in the feature
+namespace.
 
-So `alfven_eigenmode` gets an fdp fallback: when the corpus has no CO2 for a
-shot, fetch `DENR0UF`, `DENV1UF`, `DENV2UF`, `DENV3UF` through
-`toksearch_d3d.PtDataSignal` and cache the result under the review directory.
-This is new code — the `co2` feature declares `sources=("corpus",)` and has no
-fdp resolver today. The fetch requires the kernel to have been launched under
-the `fdp run` wrapper and a valid SciToken; without them PTDATA fails with
-`getservbyname failed for task 'PTSERVER'`, so the fallback checks first and
-raises a message naming the wrapper rather than surfacing that error.
+The fetch needs the kernel started under the `fdp run` wrapper. The only
+reviewer today has it, so the notebook does not work around its absence: it
+checks, and if the wrapper is missing it says so and names the command to
+restart under.
+
+### Panels: `fishbone`
+
+The magnetic spectrogram. `scipy.signal.spectrogram` of the corpus `mhr` group
+(8 probes, `B1`-`B8`, 500 kHz), plotted as log power against time and frequency
+over 0-40 kHz with the 2-30 kHz fishbone band marked, plus the cross-phase
+between a probe pair on the row beneath it.
+
+What the reviewer is looking for is a burst that chirps *downward* - the test
+fixture's synthetic fishbone sweeps 20 -> 12 kHz at -0.8 kHz/ms, which is the
+shape - repeating on the beam-heated part of the discharge.
+
+The toroidal mode number is judged, not computed. The corpus does not record
+the probes' toroidal angles, so the notebook shows the pair cross-phase and
+leaves n = 1 to the reviewer's eye; it does not claim to measure n. Saying
+otherwise would be the panel asserting something its inputs cannot support.
 
 ### Panels: the other twelve categories
 
@@ -191,12 +210,42 @@ Three things keep their old names on purpose, matching the R1 decision:
 The wider sweep — about 190 files, mostly historical run records under
 `outputs/` — is a separate job and is not part of this work.
 
+## New category: `fishbone`
+
+`data/events/fishbone/` exists and is empty. It gets the same skeleton every
+other category has - `README.md`, `raw/`, `format/` - plus the roster and the
+notebook.
+
+Its `README.md` follows the section order the other categories use
+(Description, Method, Provenance, Models, Alias, Reference, Contact, Tables,
+Category), with:
+
+- **Description** - the bursting m/n = 1/1 internal kink driven by fast ions
+  resonating with the trapped-ion toroidal precession, named for the burst
+  envelope on Mirnov signals, first seen on PDX under near-perpendicular NBI
+  (McGuire et al. 1983). On DIII-D a burst sits in roughly 2-30 kHz and chirps
+  downward as the resonant fast-ion energy falls. Fishbones expel fast ions and
+  can seed sawteeth and NTMs.
+- **Method** - the magnetic spectrogram: look for the n = 1 chirp. No detector
+  exists, so this is the stated method, not a description of one that runs.
+- **Provenance** - none. No curated table, so `raw/` is empty.
+- **Models** - none, at stable, latest and all.
+- **Alias** - `fishbone`, `fishbones`, matching the `fishbone` entry already in
+  `src/labeler/events/lexicons.yaml`.
+- **Tables** - inventory row `Fishbone`, lexicon id `fishbone`, no registered
+  raw table. The row is already in `discrete_labels.csv`.
+- **Category** - the default 0 = absent / 1 = present mapping.
+
+Nothing is registered in `events.yaml`: that file lists datasets that a
+formatter produces, and fishbone has neither. The lexicon entry already exists
+and is not changed.
+
 ## Documentation
 
 `data/events/README.md` gains a section covering the roster schema, the tier
 rules, the review directory, and how to run a verification notebook. Each
-category README links its `verification.ipynb` beside the existing
-`example.ipynb` link.
+category README gains a link to its `verification.ipynb`, beside the
+`example.ipynb` link where the category has one - eight of the sixteen do.
 
 ## Testing
 
