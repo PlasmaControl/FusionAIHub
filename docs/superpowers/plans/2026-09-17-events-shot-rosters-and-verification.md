@@ -801,7 +801,7 @@ EOF
   - `review_path(event: str, shot: int, *, root: Path | None = None) -> Path` — `data/events/<event>/review/<shot>.csv`
   - `read_corrections(path) -> pd.DataFrame`
   - `write_corrections(frame: pd.DataFrame, path) -> None`
-  - `class ReviewSession` with `.event`, `.shot`, `.corrections -> pd.DataFrame`, `.mark(t_start, t_end, category)`, `.verify(reviewer=None, notes=None)`, `.save()`, `.figure`, `.controls`, `._ipython_display_()`
+  - `class ReviewSession` with `.event`, `.shot`, `.corrections -> pd.DataFrame`, `.mark(t_start, t_end, category)`, `.verify(*, notes=None)` (the reviewer is fixed at construction; `ReviewSession(...)` is keyword-only), `.save()`, `.figure`, `.controls`, `._ipython_display_()`
   - `review(event: str, shot: int, panels: Sequence[Panel], *, source: str = "format/shots", root: Path | None = None, reviewer: str | None = None) -> ReviewSession`
 
 - [ ] **Step 1: Write the failing tests**
