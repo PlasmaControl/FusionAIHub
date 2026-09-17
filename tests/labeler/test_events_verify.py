@@ -3,16 +3,19 @@
 import h5py
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import pytest
 
-from labeler.events.interval_tables import INTERVAL_COLUMNS
+from labeler.events.interval_tables import INTERVAL_COLUMNS, write_label_grid
 from labeler.events.rosters import ROSTER_COLUMNS, read_roster, write_roster
 from labeler.events.verify import (
     NoDataError,
     Panel,
     ReviewSession,
     corpus_signal,
+    label_panel,
     read_corrections,
+    review,
     review_path,
     write_corrections,
 )
@@ -152,6 +155,15 @@ def _roster(root, event):
     return path
 
 
+def _button(session, description):
+    """The control button with this description, out of the row of four."""
+    return next(
+        b
+        for b in session.controls.children[0].children
+        if b.description == description
+    )
+
+
 def test_corrections_round_trip_through_the_interval_schema(tmp_path):
     path = tmp_path / "review" / "185601.csv"
     frame = pd.DataFrame(
@@ -190,13 +202,15 @@ def test_marking_a_range_then_saving_writes_both_files(tmp_path):
 
 
 def test_nothing_is_written_before_save(tmp_path):
-    _roster(tmp_path, "fishbone")
+    roster_file = _roster(tmp_path, "fishbone")
+    before = roster_file.read_text()
     session = ReviewSession(
         event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
     )
     session.mark(1200.0, 1450.0, category=1)
-    assert not review_path("fishbone", 185601, root=tmp_path).exists()
-    assert read_roster(tmp_path / "fishbone" / "shots.csv").iloc[0].tier == "unverified"
+    session.verify()
+    assert not review_path("fishbone", 185601, root=tmp_path).parent.exists()
+    assert roster_file.read_text() == before
 
 
 def test_a_backwards_range_is_refused(tmp_path):
@@ -226,3 +240,89 @@ def test_a_figure_stacks_one_row_per_panel(tmp_path):
     )
     assert len(session.figure.data) >= 2
     assert "185601" in session.figure.layout.title.text
+
+
+def test_save_without_verify_writes_corrections_but_leaves_tier_unverified(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.mark(1200.0, 1450.0, category=1)
+    session.save()
+
+    corrections = read_corrections(review_path("fishbone", 185601, root=tmp_path))
+    assert len(corrections) == 1
+
+    roster = read_roster(tmp_path / "fishbone" / "shots.csv")
+    assert roster.iloc[0].tier == "unverified"
+    assert roster.iloc[0].reviewers == ""
+
+
+def test_verify_with_no_marks_writes_the_roster_but_no_corrections_file(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.verify()
+    session.save()
+
+    assert not review_path("fishbone", 185601, root=tmp_path).exists()
+    roster = read_roster(tmp_path / "fishbone" / "shots.csv")
+    assert roster.iloc[0].tier == "silver"
+    assert roster.iloc[0].reviewers == "alice"
+
+
+def test_label_panel_orientation_matches_x_and_y(tmp_path):
+    time_ms = np.arange(0.0, 500.0, 50.0)
+    labels = np.zeros((len(time_ms), 20))
+    labels[:, 0] = 1
+    write_label_grid(
+        tmp_path / "fishbone" / "format" / "shots" / "185601.npz", time_ms, labels
+    )
+
+    panel = label_panel("fishbone", 185601, source="format/shots", root=tmp_path)
+
+    assert panel.kind == "heatmap"
+    assert panel.z.shape == (len(panel.y), len(panel.x))
+
+
+def test_review_with_no_saved_grid_warns_and_keeps_only_given_panels(tmp_path):
+    _roster(tmp_path, "fishbone")
+    panels = [
+        Panel(title="mhr B1", x=np.arange(10.0), y=np.zeros((1, 10)), ylabel="T/s"),
+    ]
+    with pytest.warns(UserWarning, match="fishbone"):
+        session = review("fishbone", 185601, panels, root=tmp_path, reviewer="alice")
+
+    assert len(session.panels) == len(panels)
+    assert all(a is b for a, b in zip(session.panels, panels, strict=True))
+
+
+def test_a_lasso_selection_reports_a_readable_error_from_the_button(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.figure.layout.selections = [
+        go.layout.Selection(type="path", path="M0,0L1,1Z")
+    ]
+    _button(session, "Mark present").click()
+
+    status = session.controls.children[1]
+    assert "Box Select" in status.value
+    assert session.corrections.empty
+
+
+def test_marking_present_twice_on_one_selection_records_one_row(tmp_path):
+    _roster(tmp_path, "fishbone")
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.figure.layout.selections = [
+        go.layout.Selection(type="rect", x0=1200.0, x1=1450.0, y0=0.0, y1=1.0)
+    ]
+    present = _button(session, "Mark present")
+    present.click()
+    present.click()
+
+    assert len(session.corrections) == 1

@@ -14,14 +14,19 @@ interval, and writing the two files a review produces - the corrections under
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ..config import Paths
 from ..features.store import FeatureArray
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 #: A corpus group whose `ydata` is this narrow carries the absent-signal
 #: sentinel - `(C, 1)` - rather than a record. `resolve_corpus` writes it for
@@ -125,7 +130,7 @@ def review_path(event: str, shot: int, *, root: Path | None = None) -> Path:
     return root / event / REVIEW_DIRECTORY / f"{int(shot)}.csv"
 
 
-def read_corrections(path):
+def read_corrections(path) -> pd.DataFrame:
     """Read one shot's corrections through the public interval schema."""
     import pandas as pd
 
@@ -178,7 +183,7 @@ class ReviewSession:
         self.controls = self._build_controls()
 
     @property
-    def corrections(self):
+    def corrections(self) -> pd.DataFrame:
         import pandas as pd
 
         from .interval_tables import INTERVAL_COLUMNS
@@ -231,33 +236,58 @@ class ReviewSession:
             subplot_titles=[panel.title for panel in self.panels] or [""],
         )
         for index, panel in enumerate(self.panels, start=1):
+            # Each row gets its own legend (plotly's multiple-legend support:
+            # a trace's `legend` names a `layout[legend_name]` object), so a
+            # multi-row figure shows names beside their own row instead of
+            # one merged box - or none at all, which is what a single
+            # figure-wide `showlegend=False` used to do.
+            legend_name = f"legend{index}"
             if panel.kind == "heatmap":
                 figure.add_trace(
-                    go.Heatmap(x=panel.x, y=panel.y, z=panel.z, showscale=False),
+                    go.Heatmap(
+                        x=panel.x,
+                        y=panel.y,
+                        z=panel.z,
+                        showscale=False,
+                        legend=legend_name,
+                    ),
                     row=index,
                     col=1,
                 )
-            else:
+            elif panel.kind == "line":
                 names = panel.legend or [f"ch {i}" for i in range(len(panel.y))]
-                for values, name in zip(panel.y, names, strict=False):
+                for values, name in zip(panel.y, names, strict=True):
                     figure.add_trace(
-                        go.Scattergl(x=panel.x, y=values, name=name, mode="lines"),
+                        go.Scattergl(
+                            x=panel.x,
+                            y=values,
+                            name=name,
+                            mode="lines",
+                            legend=legend_name,
+                        ),
                         row=index,
                         col=1,
                     )
+            else:
+                raise ValueError(
+                    f"panel {panel.title!r} has unknown kind {panel.kind!r}"
+                )
             for low, high in panel.bands:
                 figure.add_hrect(
                     y0=low, y1=high, line_width=0, fillcolor="black", opacity=0.08,
                     row=index, col=1,
                 )
             figure.update_yaxes(title_text=panel.ylabel, row=index, col=1)
+            axis_name = "yaxis" if index == 1 else f"yaxis{index}"
+            y0, y1 = figure.layout[axis_name].domain
+            figure.layout[legend_name] = {"y": (y0 + y1) / 2, "yanchor": "middle"}
         figure.update_xaxes(title_text="Time (ms)", row=rows, col=1)
         figure.update_layout(
             title=f"{self.event} - shot {self.shot} ({self.source})",
             height=200 * rows + 120,
             dragmode="select",
             selectdirection="h",
-            showlegend=False,
+            showlegend=True,
             margin={"l": 60, "r": 20, "t": 60, "b": 40},
         )
         return go.FigureWidget(figure)
@@ -289,6 +319,14 @@ class ReviewSession:
             if not selections:
                 raise ValueError("drag a time range on the figure first")
             box = selections[-1]
+            # The default modebar offers Lasso Select alongside Box Select.
+            # A lasso writes `{type: "path", path: "M...Z"}` with x0/x1 both
+            # None, so reject anything that is not a plain rectangle before
+            # touching x0/x1 - checking `x0 is None` too, not just the type
+            # string, so a future plotly spelling the type differently is
+            # still caught.
+            if box.type != "rect" or box.x0 is None or box.x1 is None:
+                raise ValueError("use the Box Select tool, not Lasso")
             return float(min(box.x0, box.x1)), float(max(box.x0, box.x1))
 
         def on_mark(category):
@@ -299,6 +337,11 @@ class ReviewSession:
                 except ValueError as error:
                     status.value = f"<b style='color:#b2182b'>{error}</b>"
                     return
+                # Clear the drag so a second click cannot silently record the
+                # same interval twice, and so a reviewer who drags again
+                # faster than the comm round trip sees an empty selection
+                # rather than a stale one being recorded underneath them.
+                self.figure.layout.selections = ()
                 status.value = self._status()
 
             return handler
@@ -308,7 +351,11 @@ class ReviewSession:
             status.value = self._status()
 
         def on_save(_):
-            self.save()
+            try:
+                self.save()
+            except (ValueError, OSError) as error:
+                status.value = f"<b style='color:#b2182b'>{error}</b>"
+                return
             status.value = self._status() + " <b>saved</b>"
 
         present.on_click(on_mark(1))
@@ -345,8 +392,11 @@ def review(
     panels = list(panels)
     try:
         panels.append(label_panel(event, shot, source=source, root=root))
-    except (FileNotFoundError, OSError):
-        pass
+    except OSError as error:
+        warnings.warn(
+            f"no saved label grid for {event!r} shot {shot}: {error}",
+            stacklevel=2,
+        )
     return ReviewSession(
         event=event,
         shot=shot,
