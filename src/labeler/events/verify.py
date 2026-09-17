@@ -15,6 +15,7 @@ interval, and writing the two files a review produces - the corrections under
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -92,4 +93,282 @@ def corpus_signal(
             "channels": ",".join(str(row) for row in rows),
             "units": "ms",
         },
+    )
+
+
+REVIEW_DIRECTORY = "review"
+
+
+@dataclass
+class Panel:
+    """One row of a review figure, already computed by the notebook.
+
+    `kind="line"` draws each row of `y` against `x`. `kind="heatmap"` draws
+    `z`, shaped `(len(y), len(x))`, with `y` as the vertical axis - which is
+    how a spectrogram arrives. `bands` shades horizontal regions of interest,
+    such as the 80-250 kHz AE band.
+    """
+
+    title: str
+    x: np.ndarray
+    y: np.ndarray
+    kind: str = "line"
+    z: np.ndarray | None = None
+    ylabel: str = ""
+    legend: Sequence[str] | None = None
+    bands: Sequence[tuple[float, float]] = ()
+
+
+def review_path(event: str, shot: int, *, root: Path | None = None) -> Path:
+    """Where one shot's corrections live."""
+    root = Paths.from_env().label_tables if root is None else Path(root)
+    return root / event / REVIEW_DIRECTORY / f"{int(shot)}.csv"
+
+
+def read_corrections(path):
+    """Read one shot's corrections through the public interval schema."""
+    import pandas as pd
+
+    from .interval_tables import validate_intervals
+
+    return validate_intervals(pd.read_csv(path, keep_default_na=False))
+
+
+def write_corrections(frame, path) -> None:
+    """Validate and write one shot's corrections."""
+    from .interval_tables import validate_intervals
+
+    validated = validate_intervals(frame)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    validated.to_csv(path, index=False)
+
+
+class ReviewSession:
+    """One reviewer, one shot: the figure, the marks, and what gets written.
+
+    Marks accumulate in memory. `save()` is the only thing that touches disk,
+    and it writes two files: the corrections under `review/` and the roster
+    row in `shots.csv`. `verify()` records the intent to promote; without it
+    `save()` writes corrections alone, which is what a half-finished review
+    should leave behind.
+    """
+
+    def __init__(
+        self,
+        *,
+        event: str,
+        shot: int,
+        panels: Sequence[Panel],
+        root: Path | None = None,
+        reviewer: str | None = None,
+        source: str = "format/shots",
+    ) -> None:
+        import os
+
+        self.event = event
+        self.shot = int(shot)
+        self.panels = list(panels)
+        self.source = source
+        self.root = Paths.from_env().label_tables if root is None else Path(root)
+        self.reviewer = reviewer or os.environ.get("USER", "unknown")
+        self._marks: list[tuple[float, float, int]] = []
+        self._verify = False
+        self._notes: str | None = None
+        self.figure = self._build_figure()
+        self.controls = self._build_controls()
+
+    @property
+    def corrections(self):
+        import pandas as pd
+
+        from .interval_tables import INTERVAL_COLUMNS
+
+        return pd.DataFrame(
+            [
+                [self.shot, category, t_start, t_end, ""]
+                for t_start, t_end, category in self._marks
+            ],
+            columns=list(INTERVAL_COLUMNS),
+        )
+
+    def mark(self, t_start: float, t_end: float, category: int = 1) -> None:
+        """Record one corrected interval, in milliseconds."""
+        if t_end < t_start:
+            raise ValueError(f"t_end {t_end} precedes t_start {t_start}")
+        self._marks.append((float(t_start), float(t_end), int(category)))
+
+    def verify(self, *, notes: str | None = None) -> None:
+        """Say this reviewer has looked; `save()` then promotes the tier."""
+        self._verify = True
+        self._notes = notes
+
+    def save(self) -> None:
+        """Write the corrections, and the roster row when verified."""
+        from .rosters import record_review, roster_path
+
+        if self._marks:
+            write_corrections(
+                self.corrections, review_path(self.event, self.shot, root=self.root)
+            )
+        if self._verify:
+            record_review(
+                roster_path(self.event, root=self.root),
+                self.shot,
+                self.reviewer,
+                notes=self._notes,
+            )
+
+    def _build_figure(self):
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        rows = max(len(self.panels), 1)
+        figure = make_subplots(
+            rows=rows,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            subplot_titles=[panel.title for panel in self.panels] or [""],
+        )
+        for index, panel in enumerate(self.panels, start=1):
+            if panel.kind == "heatmap":
+                figure.add_trace(
+                    go.Heatmap(x=panel.x, y=panel.y, z=panel.z, showscale=False),
+                    row=index,
+                    col=1,
+                )
+            else:
+                names = panel.legend or [f"ch {i}" for i in range(len(panel.y))]
+                for values, name in zip(panel.y, names, strict=False):
+                    figure.add_trace(
+                        go.Scattergl(x=panel.x, y=values, name=name, mode="lines"),
+                        row=index,
+                        col=1,
+                    )
+            for low, high in panel.bands:
+                figure.add_hrect(
+                    y0=low, y1=high, line_width=0, fillcolor="black", opacity=0.08,
+                    row=index, col=1,
+                )
+            figure.update_yaxes(title_text=panel.ylabel, row=index, col=1)
+        figure.update_xaxes(title_text="Time (ms)", row=rows, col=1)
+        figure.update_layout(
+            title=f"{self.event} - shot {self.shot} ({self.source})",
+            height=200 * rows + 120,
+            dragmode="select",
+            selectdirection="h",
+            showlegend=False,
+            margin={"l": 60, "r": 20, "t": 60, "b": 40},
+        )
+        return go.FigureWidget(figure)
+
+    def _build_controls(self):
+        import ipywidgets as widgets
+
+        present = widgets.Button(description="Mark present", button_style="primary")
+        absent = widgets.Button(description="Mark absent")
+        verify = widgets.Button(description="Verify", button_style="success")
+        save = widgets.Button(description="Save", button_style="warning")
+        status = widgets.HTML(value=self._status())
+
+        def selected() -> tuple[float, float]:
+            # Box/lasso select (`dragmode="select"`) writes a persistent,
+            # axis-level entry to `layout.selections` regardless of trace
+            # type - confirmed against plotly 6.9.0: `go.Heatmap` carries no
+            # `selectedpoints` attribute, so the older per-trace
+            # `on_selection`/`plotly_selected` callback (built on
+            # `selectedpoints`) never fires for a heatmap row, and this
+            # figure always has at least one (the label panel). Reading
+            # `layout.selections` here, lazily, is what works uniformly
+            # across every panel kind. `[-1]` is the most recent drag: the
+            # docs describe Shift as how a user *accumulates* more than one
+            # persistent selection, so a plain new drag should replace the
+            # prior one, but taking the last rather than the first is
+            # correct either way.
+            selections = self.figure.layout.selections
+            if not selections:
+                raise ValueError("drag a time range on the figure first")
+            box = selections[-1]
+            return float(min(box.x0, box.x1)), float(max(box.x0, box.x1))
+
+        def on_mark(category):
+            def handler(_):
+                try:
+                    t_start, t_end = selected()
+                    self.mark(t_start, t_end, category)
+                except ValueError as error:
+                    status.value = f"<b style='color:#b2182b'>{error}</b>"
+                    return
+                status.value = self._status()
+
+            return handler
+
+        def on_verify(_):
+            self.verify()
+            status.value = self._status()
+
+        def on_save(_):
+            self.save()
+            status.value = self._status() + " <b>saved</b>"
+
+        present.on_click(on_mark(1))
+        absent.on_click(on_mark(0))
+        verify.on_click(on_verify)
+        save.on_click(on_save)
+        return widgets.VBox(
+            [widgets.HBox([present, absent, verify, save]), status]
+        )
+
+    def _status(self) -> str:
+        verified = "verified" if self._verify else "not verified"
+        return (
+            f"{len(self._marks)} correction(s), {verified}, "
+            f"reviewer <code>{self.reviewer}</code>"
+        )
+
+    def _ipython_display_(self):
+        from IPython.display import display
+
+        display(self.figure, self.controls)
+
+
+def review(
+    event: str,
+    shot: int,
+    panels: Sequence[Panel],
+    *,
+    source: str = "format/shots",
+    root: Path | None = None,
+    reviewer: str | None = None,
+) -> ReviewSession:
+    """Open a review of one shot, with the label row appended to the panels."""
+    panels = list(panels)
+    try:
+        panels.append(label_panel(event, shot, source=source, root=root))
+    except (FileNotFoundError, OSError):
+        pass
+    return ReviewSession(
+        event=event,
+        shot=shot,
+        panels=panels,
+        root=root,
+        reviewer=reviewer,
+        source=source,
+    )
+
+
+def label_panel(
+    event: str, shot: int, *, source: str = "format/shots", root: Path | None = None
+) -> Panel:
+    """The saved label grid as a heatmap row, unknown cells left as NaN."""
+    from .notebooks import load_shot
+
+    grid = load_shot(event, shot, source=source, root=root)
+    return Panel(
+        title=f"labels ({source})",
+        kind="heatmap",
+        x=grid["time_ms"],
+        y=grid["rho_edges"][:-1],
+        z=grid["label"].T,
+        ylabel="rho",
     )
