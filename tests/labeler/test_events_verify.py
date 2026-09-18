@@ -6,7 +6,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import pytest
 
-from labeler.events.interval_tables import INTERVAL_COLUMNS, write_label_grid
+from labeler.events.interval_tables import (
+    INTERVAL_COLUMNS,
+    SAMPLE_MS,
+    write_label_grid,
+)
 from labeler.events.rosters import ROSTER_COLUMNS, read_roster, write_roster
 from labeler.events.verify import (
     NoDataError,
@@ -555,7 +559,196 @@ def test_label_panel_orientation_matches_x_and_y(tmp_path):
     panel = label_panel("fishbone", 185601, source="format/shots", root=tmp_path)
 
     assert panel.kind == "heatmap"
-    assert panel.z.shape == (len(panel.y), len(panel.x))
+    # Plotly reads N+1 coordinates as cell EDGES and N as cell CENTRES, so a
+    # label row built from the grid's own left edges has to hand over one more
+    # coordinate than it has columns. Nothing on screen distinguishes the two,
+    # which is why the edges are asserted here rather than only the shape.
+    assert panel.z.shape == (len(panel.y) - 1, len(panel.x) - 1)
+    assert panel.x[0] == pytest.approx(time_ms[0])
+    assert panel.x[1] - panel.x[0] == pytest.approx(SAMPLE_MS)
+    assert panel.x[-1] == pytest.approx(time_ms[-1] + SAMPLE_MS)
+    assert panel.y[0] == pytest.approx(0.0)
+    assert panel.y[-1] == pytest.approx(1.0)
+
+
+def test_the_label_row_colour_scale_spans_the_grids_own_categories(tmp_path):
+    """Autoscaled, an all-class-1 shot renders in the colours of an all-class-4
+    one, and two shots reviewed back to back use different colour->class maps.
+    The grid declares its classes, so the scale comes from there.
+    """
+    time_ms = np.arange(0.0, 500.0, 50.0)
+    labels = np.ones((len(time_ms), 20))
+    write_label_grid(
+        tmp_path / "minimum_safety_factor" / "format" / "shots" / "185601.npz",
+        time_ms,
+        labels,
+        categories={
+            "0": "absent",
+            "1": "low",
+            "2": "hybrid",
+            "3": "elevated",
+            "4": "high",
+        },
+    )
+
+    panel = label_panel(
+        "minimum_safety_factor", 185601, source="format/shots", root=tmp_path
+    )
+
+    assert (panel.zmin, panel.zmax) == (0.0, 4.0)
+    session = ReviewSession(
+        event="minimum_safety_factor", shot=185601, panels=[panel], root=tmp_path
+    )
+    heatmap = session.figure.data[0]
+    assert (heatmap.zmin, heatmap.zmax) == (0.0, 4.0)
+
+
+def test_a_grid_without_a_category_mapping_leaves_the_scale_to_plotly(tmp_path):
+    time_ms = np.arange(0.0, 500.0, 50.0)
+    write_label_grid(
+        tmp_path / "fishbone" / "format" / "shots" / "185601.npz",
+        time_ms,
+        np.zeros((len(time_ms), 20)),
+    )
+    panel = label_panel("fishbone", 185601, source="format/shots", root=tmp_path)
+    assert panel.zmin is None
+    assert panel.zmax is None
+
+
+def test_a_heatmap_without_z_is_refused():
+    """Plotly renders `z=None` as an empty row and reports nothing."""
+    with pytest.raises(ValueError, match="needs z"):
+        Panel(
+            title="spectrogram",
+            kind="heatmap",
+            x=np.arange(10.0),
+            y=np.arange(5.0),
+        )
+
+
+def test_a_transposed_heatmap_is_refused_and_names_all_three_lengths():
+    with pytest.raises(ValueError, match=r"z is \(10, 5\)") as raised:
+        Panel(
+            title="spectrogram",
+            kind="heatmap",
+            x=np.arange(10.0),
+            y=np.arange(5.0),
+            z=np.zeros((10, 5)),
+        )
+    message = str(raised.value)
+    assert "len(y)=5" in message
+    assert "len(x)=10" in message
+    assert "spectrogram" in message
+
+
+def test_both_legitimate_heatmap_shapes_are_accepted():
+    """Bin CENTRES, as a spectrogram arrives, and bin EDGES, as the label row
+    hands over - plotly reads N coordinates as centres and N+1 as edges, and
+    both are correct. Only these two.
+    """
+    centres = Panel(
+        title="centres",
+        kind="heatmap",
+        x=np.arange(10.0),
+        y=np.arange(5.0),
+        z=np.zeros((5, 10)),
+    )
+    edges = Panel(
+        title="edges",
+        kind="heatmap",
+        x=np.arange(11.0),
+        y=np.arange(6.0),
+        z=np.zeros((5, 10)),
+    )
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[centres, edges], root="data/events"
+    )
+    assert [trace.type for trace in session.figure.data] == ["heatmap", "heatmap"]
+
+
+def test_a_one_dimensional_line_y_is_refused():
+    with pytest.raises(ValueError, match="channels"):
+        Panel(title="qmin", x=np.arange(10.0), y=np.zeros(10))
+
+
+def test_a_line_whose_y_is_shorter_than_x_is_refused():
+    """Plotly truncates to the shorter and draws the trace at the wrong times -
+    on the one surface whose output is corrected timings.
+    """
+    with pytest.raises(ValueError, match="truncate"):
+        Panel(title="qmin", x=np.arange(10.0), y=np.zeros((2, 7)))
+
+
+def test_a_band_on_a_heatmap_is_boundary_lines_not_a_wash_over_the_data(tmp_path):
+    """plotly's `shape.layer` defaults to "above", so a filled band darkens
+    the image under review; `layer="below"` would hide it behind the image.
+    """
+    _roster(tmp_path, "fishbone")
+    panel = Panel(
+        title="spectrogram",
+        kind="heatmap",
+        x=np.arange(10.0),
+        y=np.arange(5.0),
+        z=np.zeros((5, 10)),
+        bands=[(2.0, 30.0)],
+    )
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[panel], root=tmp_path
+    )
+    shapes = list(session.figure.layout.shapes)
+    assert [shape.type for shape in shapes] == ["line", "line"]
+    assert sorted(shape.y0 for shape in shapes) == [2.0, 30.0]
+    assert not any(shape.fillcolor for shape in shapes)
+
+
+def test_a_band_on_a_line_panel_is_filled_below_the_traces(tmp_path):
+    _roster(tmp_path, "minimum_safety_factor")
+    panel = Panel(
+        title="qmin",
+        x=np.arange(10.0),
+        y=np.zeros((1, 10)),
+        bands=[(0.95, 1.5)],
+    )
+    session = ReviewSession(
+        event="minimum_safety_factor", shot=185601, panels=[panel], root=tmp_path
+    )
+    (shape,) = session.figure.layout.shapes
+    assert shape.type == "rect"
+    assert shape.layer == "below"
+    assert (shape.y0, shape.y1) == (0.95, 1.5)
+
+
+def test_hlines_reach_the_figure(tmp_path):
+    """A threshold is a line. Shading 0.01 of an axis spanning 0.8-3 at 8%
+    opacity, which is what a band had to fake, is invisible.
+    """
+    _roster(tmp_path, "minimum_safety_factor")
+    panel = Panel(
+        title="qmin",
+        x=np.arange(10.0),
+        y=np.zeros((1, 10)),
+        ylabel="q",
+        hlines=[0.95, 1.5, 2.0],
+    )
+    session = ReviewSession(
+        event="minimum_safety_factor", shot=185601, panels=[panel], root=tmp_path
+    )
+    shapes = list(session.figure.layout.shapes)
+    assert [shape.type for shape in shapes] == ["line"] * 3
+    assert [shape.y0 for shape in shapes] == [0.95, 1.5, 2.0]
+    assert all(shape.line.dash == "dash" for shape in shapes)
+
+
+def test_a_missing_label_grid_is_named_in_the_figure_title(tmp_path):
+    """The `warnings.warn` goes to stderr above the widget, which is not where
+    the reviewer is looking.
+    """
+    _roster(tmp_path, "fishbone")
+    panels = [Panel(title="mhr B1", x=np.arange(10.0), y=np.zeros((1, 10)))]
+    with pytest.warns(UserWarning, match="fishbone"):
+        session = review("fishbone", 185601, panels, root=tmp_path, reviewer="alice")
+
+    assert "NO LABEL ROW" in session.figure.layout.title.text
 
 
 def test_review_with_no_saved_grid_warns_and_keeps_only_given_panels(tmp_path):
