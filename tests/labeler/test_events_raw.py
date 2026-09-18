@@ -56,9 +56,25 @@ def test_channels_and_t_range_slice_the_way_the_corpus_does(roots):
     write_corpus_file(roots.corpus / "4_processed.h5", "co2", times, values)
     got = raw.raw_signal(4, "co2", channels=[1, 3], t_range=(10.0, 20.0),
                          paths=roots)
-    assert got.y.shape == (2, 11)
-    assert np.allclose(got.x, np.arange(10.0, 21.0))
-    assert np.allclose(got.y[0], values[1, 10:21])
+    # The window is asserted in SAMPLE SPACINGS, not in absolute ms, because
+    # the edge is exact only up to one sample. `xdata` is float32 seconds, so
+    # 10 ms round-trips to 9.9999998 ms - just below the bound - and
+    # `corpus_signal`'s searchsorted(side="left") therefore starts one sample
+    # late. Here a sample is 1 ms; on real CO2 at 1.667 MHz it is 0.6 us.
+    #
+    # This cannot bias a recorded correction. A mark's times come from the
+    # reviewer's drag on the figure, never from this array's extent.
+    spacing = 1.0
+    assert 10.0 <= got.x[0] <= 10.0 + spacing
+    assert 20.0 - spacing <= got.x[-1] <= 20.0
+    assert got.y.shape[0] == 2
+    assert got.y.shape[-1] == got.x.shape[-1]
+    # Whatever the window's edges, the rows are the ones asked for and the
+    # values line up with the times - which is what would break if `channels`
+    # were applied before the time slice, or to the wrong axis.
+    start = round(float(got.x[0]))
+    assert np.allclose(got.y[0], values[1, start : start + got.y.shape[-1]])
+    assert np.allclose(got.y[1], values[3, start : start + got.y.shape[-1]])
 
 
 def test_a_group_the_file_lacks_and_cannot_be_fetched_raises(roots):
