@@ -22,7 +22,7 @@ data/events/<category>/
     <shot-list>/
       <shot>.npz                            # sampled time × rho labels
   review/
-    <shot>.csv                              # what a human asserts after looking
+    <shot>__<reviewer>__<stamp>.csv         # what a human asserts; append-only
     _cache/                                 # fetch cache, not a claim; deletable
 ```
 
@@ -99,13 +99,24 @@ reviewer's own marks are then that category's first labels.
 
 Set `shot`, drag a time range on any panel, then press *Mark present* /
 *Mark absent*, *Verify* and *Save*. Nothing touches disk until *Save*, which
-writes two files: the corrected intervals to `review/<shot>.csv`, in the same
-five-column schema as `format/`, and the reviewer's name into `shots.csv`.
+writes two files.
 
-Corrections under `review/` are a separate claim from `format/` and
-`extend_*/`: they are what a human asserts after looking. No formatter reads
-or overwrites them, and merging them back into a formatted table is not yet
-decided.
+The corrected intervals go to `review/<shot>__<reviewer>__<stamp>.csv`, in the
+same five-column schema as `format/`, where `<stamp>` is the moment of the
+save in UTC (`20260918T142530Z`). **Corrections are append-only.** Every press
+of *Save* writes a new file and the tooling never overwrites or deletes one -
+`write_corrections` refuses a path that exists at all - so a second reviewer,
+or the same reviewer in a later session, adds to the record instead of
+replacing it. `corrections_for(event, shot)` lists a shot's files oldest
+first and `read_latest_corrections(event, shot)` reads the newest.
+
+Merging those rows into `format/` is a **manual step**: the repository author
+reads the files and copies what he accepts into the formatted table by hand.
+No formatter reads `review/`, and nothing promotes a correction on its own.
+
+The reviewer's name goes into `shots.csv`, which is the one file a review
+edits in place. It only ever gains a reviewer and today's date; `tier` and
+`holdout` stay as they were.
 
 `review/_cache/` is the one thing under `review/` that is not a human claim.
 The two fetching notebooks cache each shot's raw fetched record there, as
@@ -115,7 +126,8 @@ per fetched `sawtooth_oscillation` shot**. It has no cap and no eviction. It is
 safe to delete at any time - the next open of that shot simply refetches it -
 and `*.npz` is gitignored (`.gitignore:261`), so it cannot be committed by
 accident. Anything that later reads reviewer output by globbing `review/*` has
-to skip it.
+to skip it, which is why `corrections_for` globs `<shot>__*.csv` rather than
+everything in the directory.
 
 Four categories have panels chosen for the phenomenon -
 `minimum_safety_factor` (qmin against the rule's class thresholds),
