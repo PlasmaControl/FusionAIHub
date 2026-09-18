@@ -109,3 +109,73 @@ def test_the_registry_covers_the_events_with_bespoke_panels():
         "minimum_safety_factor",
         "sawtooth_oscillation",
     }
+
+
+from labeler.events.panels import alfven_eigenmode as ae
+
+
+def test_crosspower_takes_its_rate_from_the_span_not_a_median_diff():
+    """A float32 time vector quantises its spacing at t ~ 3 s.
+
+    Successive differences of such a vector are wrong by percents and in a
+    biased direction; the span is exact. A 120 kHz tone must land at 120 kHz
+    on a time base that starts at 3000 ms, not merely on one starting at 0.
+    """
+    rate = 1_000_000.0
+    n = 200_000
+    t_ms = (3000.0 + np.arange(n) / rate * 1000.0).astype("float32")
+    tone = np.sin(2 * np.pi * 120_000.0 * np.arange(n) / rate).astype("float32")
+    freq_khz, _, power = ae.crosspower(t_ms.astype("float64"), tone, tone)
+    peak = freq_khz[np.argmax(power.mean(axis=1))]
+    assert abs(peak - 120.0) < 1.0
+
+
+def test_crosspower_caps_its_time_bins():
+    rate = 1_000_000.0
+    n = 400_000
+    t_ms = np.arange(n) / rate * 1000.0
+    noise = np.random.default_rng(0).normal(size=n).astype("float32")
+    _, t_out, power = ae.crosspower(t_ms, noise, noise, max_bins=250)
+    assert power.shape[1] <= 250
+    assert len(t_out) == power.shape[1]
+
+
+def test_crosspower_averages_power_before_taking_the_log():
+    """A geometric mean would be dragged down by the quiet bins in a block.
+
+    That is exactly what suppresses a short burst - the thing the panel
+    exists to show. One loud block among quiet ones must survive averaging.
+    """
+    rate = 1_000_000.0
+    n = 200_000
+    t_ms = np.arange(n) / rate * 1000.0
+    rng = np.random.default_rng(1)
+    signal = rng.normal(scale=1e-3, size=n)
+    signal[100_000:110_000] += 5.0 * np.sin(
+        2 * np.pi * 120_000.0 * np.arange(10_000) / rate
+    )
+    freq_khz, t_out, power = ae.crosspower(t_ms, signal, signal, max_bins=40)
+    band = (freq_khz > 110.0) & (freq_khz < 130.0)
+    profile = power[band].mean(axis=0)
+    burst = np.argmax(profile)
+    assert 95.0 < t_out[burst] < 115.0
+    assert profile[burst] > np.median(profile) + 1.0
+
+
+def test_alfven_panels_are_three_crosspower_heatmaps(monkeypatch):
+    from labeler.events import panels as registry
+    from labeler.features.store import FeatureArray
+
+    rate = 1_000_000.0
+    n = 60_000
+    fake = FeatureArray(
+        x=np.arange(n) / rate * 1000.0,
+        y=np.random.default_rng(2).normal(size=(4, n)).astype("float32"),
+        attrs={"tier": "cache"},
+    )
+    monkeypatch.setattr(ae, "raw_signal", lambda *a, **k: fake)
+    built = registry.build("alfven_eigenmode", 178642)
+    assert len(built) == 3
+    assert {p.kind for p in built} == {"heatmap"}
+    assert all(p.bands == [(80.0, 250.0)] for p in built)
+    assert all(p.ylabel == "kHz" for p in built)
