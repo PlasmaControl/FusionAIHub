@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import os
 import secrets
 import warnings
 import zipfile
@@ -33,7 +35,13 @@ from ...config import Paths
 from .. import panels as registry
 from .. import rosters
 from ..raw import UpstreamError, WindowEmptyError
-from ..verify import NoDataError, corrections_for, label_panel
+from ..verify import (
+    NoDataError,
+    correction_path,
+    corrections_for,
+    label_panel,
+    write_corrections,
+)
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -49,6 +57,17 @@ BAD_TOKEN = "bad token"
 #: heatmap whose `z` has a dynamic range below ~0.01 must not use this
 #: default.
 DECIMALS = 3
+
+#: The largest `|t|` a mark may carry, in milliseconds. A DIII-D shot runs
+#: for a few seconds, so 10,000 s is already absurd; the point is not to
+#: police the edges of a plausible window but to stop a value that cannot be
+#: a dragged range - a 1e30 out of a broken axis transform, say - from being
+#: written into a label file that later feeds training.
+MAX_ABS_TIME_MS = 1e7
+
+#: Marks per save. A review is a handful of intervals; four figures of them
+#: is a loop in the page, and this endpoint writes what it is given.
+MAX_MARKS = 1000
 
 log = logging.getLogger(__name__)
 
@@ -150,6 +169,30 @@ def require_event(event: str, paths: Paths) -> str:
     if not found:
         raise HTTPException(status_code=404, detail=f"unknown event {event!r}")
     return event
+
+
+class _Malformed(ValueError):
+    """A posted field of the wrong shape: a 422, before any value is judged."""
+
+
+def _number(value, where: str) -> float:
+    """One posted number, refusing the things `float()` would accept.
+
+    `float("early")` raises, but `float("2100")` and `float(True)` do not,
+    and neither is a time a figure produced. The wire is JSON: a time is a
+    JSON number or it is malformed.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _Malformed(f"{where} must be a number, not {type(value).__name__}")
+    return float(value)
+
+
+def _whole(value, where: str) -> int:
+    """One posted integer. `int(1.5)` truncates, which is a silent wrong label."""
+    number = _number(value, where)
+    if not number.is_integer():
+        raise _Malformed(f"{where} must be a whole number, not {value!r}")
+    return int(number)
 
 
 def _finite(value):
@@ -393,6 +436,128 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 "panels": [_panel_json(p) for p in built],
             }
         )
+
+    @app.post("/api/save")
+    async def save(request: Request):
+        """Persist one reviewer's corrected intervals, and nothing else.
+
+        The ONLY endpoint in this app that writes. Two things follow from
+        that. First, `event` is checked by `require_event` before a path is
+        built from it: on the read endpoints an unchecked `event` served a
+        foreign file, but here it would be an arbitrary-directory write.
+        Second, this goes straight to `write_corrections` and deliberately
+        NOT through `ReviewSession.save()`, which also calls `record_review`
+        and so edits `shots.csv` - the one file this surface promises never
+        to touch.
+        """
+        import pandas as pd
+
+        from ..interval_tables import INTERVAL_COLUMNS
+
+        try:
+            body = await request.json()
+        except ValueError:
+            return _json({"error": "body is not valid JSON"}, status_code=422)
+        if not isinstance(body, dict):
+            return _json({"error": "body must be a JSON object"}, status_code=422)
+        if not isinstance(body.get("event"), str):
+            return _json({"error": "event must be a string"}, status_code=422)
+        # First, before a path exists to write to.
+        event = require_event(body["event"], app.state.paths)
+        try:
+            shot = _whole(body.get("shot"), "shot")
+            marks = body.get("marks")
+            if not isinstance(marks, list):
+                raise _Malformed("marks must be a list of intervals")
+            rows = []
+            for index, mark in enumerate(marks):
+                if not isinstance(mark, dict):
+                    raise _Malformed(f"marks[{index}] must be an object")
+                for field in ("t_start", "t_end", "category"):
+                    if field not in mark:
+                        raise _Malformed(f"marks[{index}] has no {field}")
+                # Milliseconds, like `t_range` and every other time on this
+                # wire. The corpus stores seconds; nothing here converts.
+                t_start = _number(mark["t_start"], f"marks[{index}].t_start")
+                t_end = _number(mark["t_end"], f"marks[{index}].t_end")
+                category = _whole(mark["category"], f"marks[{index}].category")
+                rows.append([shot, category, t_start, t_end, ""])
+        except _Malformed as error:
+            return _json({"error": str(error)}, status_code=422)
+
+        if not rows:
+            return _json(
+                {"error": "no marks to save; drag a range and mark it first"},
+                status_code=400,
+            )
+        if len(rows) > MAX_MARKS:
+            return _json(
+                {
+                    "error": (
+                        f"{len(rows)} marks in one save is more than the "
+                        f"{MAX_MARKS} a review can hold"
+                    )
+                },
+                status_code=400,
+            )
+        for row in rows:
+            t_start, t_end = row[2], row[3]
+            if not (math.isfinite(t_start) and math.isfinite(t_end)):
+                # json.loads accepts the bare `NaN` and `Infinity` tokens.
+                return _json(
+                    {"error": "mark times must be finite milliseconds"},
+                    status_code=400,
+                )
+            if max(abs(t_start), abs(t_end)) > MAX_ABS_TIME_MS:
+                return _json(
+                    {
+                        "error": (
+                            f"{t_start}-{t_end} is not a window on a shot; "
+                            f"times are milliseconds"
+                        )
+                    },
+                    status_code=400,
+                )
+            if t_end <= t_start:
+                # `validate_intervals` would take t_end == t_start, but a
+                # drag that never moved marks nothing, and `/api/panels`
+                # refuses the same window rather than rendering it.
+                return _json(
+                    {"error": f"t_end {t_end} does not follow t_start {t_start}"},
+                    status_code=400,
+                )
+
+        reviewer = body.get("reviewer") or os.environ.get("USER", "unknown")
+        paths = app.state.paths
+        try:
+            # `correction_path` mints a name that is free and
+            # `write_corrections` refuses one that is not, so two reviewers
+            # cannot collide and a second save cannot erase a first.
+            target = correction_path(
+                event, shot, reviewer=str(reviewer), root=paths.label_tables
+            )
+            frame = pd.DataFrame(rows, columns=list(INTERVAL_COLUMNS))
+            write_corrections(frame, target)
+        except ValueError as error:
+            # `DatabaseError` out of `validate_intervals` and the unusable
+            # reviewer id out of `correction_path` are both about what was
+            # posted, and both name the field, so the text is safe to show.
+            return _json({"error": str(error)}, status_code=400)
+        except OSError:
+            # A full disk, a read-only mount, an `event` whose name survived
+            # the guard but not the filesystem. Nothing was written, and the
+            # errno and absolute path belong in the log, not on the page.
+            log.exception("writing %s corrections for shot %s", event, shot)
+            return _json(
+                {
+                    "error": (
+                        f"could not write the corrections for shot {shot}; "
+                        f"the server log has the details"
+                    )
+                },
+                status_code=500,
+            )
+        return _json({"written": target.name, "n": len(rows)})
 
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
