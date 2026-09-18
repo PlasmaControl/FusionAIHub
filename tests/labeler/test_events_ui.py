@@ -893,11 +893,43 @@ def test_save_refuses_a_body_that_is_not_json(client, tables):
     assert not (tables / "alfven_eigenmode" / "review").exists()
 
 
+def test_a_deeply_nested_body_reads_as_malformed_json_not_a_bare_500(client, tables):
+    """`json.loads` raises `RecursionError`, not `ValueError`, past ~1000 levels.
+
+    Unhandled, that falls through this endpoint's own `except ValueError`
+    and Starlette answers with its plain-text 500, which breaks the one
+    `{"error": ...}` shape every other refusal on this endpoint reads.
+    """
+    body = b"[" * 60_000
+    response = client.post(
+        "/api/save", content=body, headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 422
+    assert set(response.json()) == {"error"}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
 def test_save_refuses_an_absurd_number_of_marks(client, tables):
     mark = {"t_start": 2100.0, "t_end": 2150.0, "category": 1}
     response = client.post("/api/save", json=_body(marks=[mark] * 5000))
     assert response.status_code == 400
     assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_the_mark_cap_boundary_is_unmoved_by_checking_it_early(client, tables):
+    """The cap now guards the parse loop instead of following it - same edge."""
+    from labeler.events.ui.app import MAX_MARKS
+
+    mark = {"t_start": 2100.0, "t_end": 2150.0, "category": 1}
+
+    at_cap = client.post("/api/save", json=_body(marks=[mark] * MAX_MARKS))
+    assert at_cap.status_code == 200
+    assert at_cap.json()["n"] == MAX_MARKS
+
+    over_cap = client.post("/api/save", json=_body(marks=[mark] * (MAX_MARKS + 1)))
+    assert over_cap.status_code == 400
+    assert f"{MAX_MARKS + 1} marks in one save" in over_cap.json()["error"]
+    assert f"{MAX_MARKS} a review can hold" in over_cap.json()["error"]
 
 
 def test_a_traversing_event_writes_nothing(client, foreign):
@@ -926,17 +958,48 @@ def test_saving_to_an_overlong_event_is_not_found_not_a_500(client):
 
 
 def test_a_reviewer_id_cannot_escape_the_review_directory(client, tables, tmp_path):
-    """`reviewer` reaches a filename; `correction_path` sanitises it."""
+    """`reviewer` reaches a filename; `correction_path` sanitises it.
+
+    An unsanitised `../../evil` is embedded inside one filename component
+    (`<shot>__<reviewer>__<stamp>.csv`), so an escape it somehow achieved
+    would land under the EVENT directory, not at `tmp_path` - `review/..`
+    only reaches `alfven_eigenmode/`, two levels short of `tmp_path` itself.
+    """
     payload = client.post("/api/save", json=_body(reviewer="../../evil")).json()
     written = tables / "alfven_eigenmode" / "review" / payload["written"]
     assert written.is_file()
     assert "/" not in payload["written"] and ".." not in payload["written"]
-    assert not (tmp_path / "evil").exists()
+    assert not (tables / "alfven_eigenmode" / "evil").exists()
 
 
 def test_a_reviewer_id_with_nothing_usable_is_refused(client, tables):
     response = client.post("/api/save", json=_body(reviewer="///"))
     assert response.status_code == 400
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_a_non_string_reviewer_is_refused_like_every_other_typed_field(client, tables):
+    """`reviewer` was the one posted field with no type check.
+
+    Unchecked, `178642` and `["a"]` both survive `str()` into a filename
+    (`178642__178642__...csv`) - harmless after sanitisation, but out of
+    step with the strict typing every other field on this endpoint gets.
+    """
+    for reviewer in (178642, ["a"], 1.5, False):
+        response = client.post("/api/save", json=_body(reviewer=reviewer))
+        assert response.status_code == 422, reviewer
+        assert set(response.json()) == {"error"}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_an_overlong_reviewer_is_a_400_not_a_500(client, tables):
+    """A 5000-character id survives sanitisation and then raises `ENAMETOOLONG`
+    on `path.exists()`, which is a client-caused refusal, not a server fault -
+    the same reasoning commit 70b561f applied to an over-long `event`.
+    """
+    response = client.post("/api/save", json=_body(reviewer="r" * 5000))
+    assert response.status_code == 400
+    assert set(response.json()) == {"error"}
     assert not (tables / "alfven_eigenmode" / "review").exists()
 
 
@@ -953,6 +1016,26 @@ def test_a_refused_save_leaves_an_existing_review_directory_exactly_as_it_was(
     assert client.post("/api/save", json=_body(event="../secret")).status_code == 404
     assert [p.name for p in review.iterdir()] == [existing.name]
     assert (existing.read_bytes(), existing.stat().st_mtime_ns) == before
+
+
+def test_an_unwritable_disk_does_not_put_a_server_path_on_the_page(
+    client, tables, monkeypatch
+):
+    """Mirrors `test_unreadable_bytes_do_not_put_a_server_path_on_the_page`
+    for `/api/panels`: the errno and the absolute path get logged, and the
+    reviewer's page gets a sentence.
+    """
+    from labeler.events.ui import app as app_module
+
+    def broken(frame, path):
+        raise OSError(28, "No space left on device: /scratch/gpfs/EKOLEMEN/foo")
+
+    monkeypatch.setattr(app_module, "write_corrections", broken)
+    response = client.post("/api/save", json=_body())
+    assert response.status_code == 500
+    message = response.json()["error"]
+    assert "/scratch" not in message and "Errno" not in message
+    assert not (tables / "alfven_eigenmode" / "review").exists()
 
 
 def test_a_save_shows_up_in_the_shot_list(client):

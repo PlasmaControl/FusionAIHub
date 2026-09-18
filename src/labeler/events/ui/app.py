@@ -69,6 +69,13 @@ MAX_ABS_TIME_MS = 1e7
 #: is a loop in the page, and this endpoint writes what it is given.
 MAX_MARKS = 1000
 
+#: Longest a posted `reviewer` id may be. `correction_path` sanitises the id
+#: but not its length, and `<shot>__<reviewer>__<stamp>.csv` already has
+#: ~30 characters of its own overhead against a filesystem's ~255-character
+#: name limit; staying well under that margin buys a 400 here instead of an
+#: `ENAMETOOLONG` off `path.exists()`.
+MAX_REVIEWER_LEN = 200
+
 log = logging.getLogger(__name__)
 
 
@@ -134,6 +141,9 @@ def require_event(event: str, paths: Paths) -> str:
     server's uid can read, because pathlib's `/` discards the left operand.
     Every endpoint taking an `event` must come through here first - the read
     endpoints today, and any endpoint that later WRITES under `event`.
+    `/api/save` is such an endpoint now, not later: the same 404 stands
+    between a client-supplied `event` and an arbitrary-directory WRITE,
+    not only a foreign read.
 
     The check is a name test plus one `is_file`, not a scan of `_events`:
     this runs on every pan and every zoom, and reading and parsing all
@@ -456,7 +466,12 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
 
         try:
             body = await request.json()
-        except ValueError:
+        except (ValueError, RecursionError):
+            # A deeply nested body (tens of thousands of `[`) makes the C
+            # parser blow the recursion limit instead of raising ValueError,
+            # and an unhandled RecursionError here would fall through to
+            # Starlette's bare-text 500 - a different shape than every other
+            # refusal on this endpoint reads.
             return _json({"error": "body is not valid JSON"}, status_code=422)
         if not isinstance(body, dict):
             return _json({"error": "body must be a JSON object"}, status_code=422)
@@ -469,6 +484,24 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             marks = body.get("marks")
             if not isinstance(marks, list):
                 raise _Malformed("marks must be a list of intervals")
+        except _Malformed as error:
+            return _json({"error": str(error)}, status_code=422)
+
+        # Ahead of the parse loop, not after it: the cap exists so a
+        # ridiculous post cannot buy itself the cost of being parsed, and
+        # checking it only once `rows` was already built defeats that.
+        if len(marks) > MAX_MARKS:
+            return _json(
+                {
+                    "error": (
+                        f"{len(marks)} marks in one save is more than the "
+                        f"{MAX_MARKS} a review can hold"
+                    )
+                },
+                status_code=400,
+            )
+
+        try:
             rows = []
             for index, mark in enumerate(marks):
                 if not isinstance(mark, dict):
@@ -488,16 +521,6 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         if not rows:
             return _json(
                 {"error": "no marks to save; drag a range and mark it first"},
-                status_code=400,
-            )
-        if len(rows) > MAX_MARKS:
-            return _json(
-                {
-                    "error": (
-                        f"{len(rows)} marks in one save is more than the "
-                        f"{MAX_MARKS} a review can hold"
-                    )
-                },
                 status_code=400,
             )
         for row in rows:
@@ -527,7 +550,31 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                     status_code=400,
                 )
 
-        reviewer = body.get("reviewer") or os.environ.get("USER", "unknown")
+        reviewer = body.get("reviewer")
+        if reviewer is not None and not isinstance(reviewer, str):
+            # Every other field on this endpoint is type-checked before it is
+            # used; `reviewer` was the one exception, and an int or a list
+            # sails through `str()` into a filename like `178642__178642__...`.
+            return _json(
+                {"error": f"reviewer must be a string, not {type(reviewer).__name__}"},
+                status_code=422,
+            )
+        reviewer = reviewer or os.environ.get("USER", "unknown")
+        if len(reviewer) > MAX_REVIEWER_LEN:
+            # Past this length, sanitisation still leaves it long enough for
+            # `path.exists()` to raise `ENAMETOOLONG` - a client-caused
+            # refusal that must not be dressed up as the `OSError` -> 500
+            # branch below, the same reasoning commit 70b561f applied to
+            # `event`.
+            return _json(
+                {
+                    "error": (
+                        f"reviewer id is {len(reviewer)} characters; the "
+                        f"limit is {MAX_REVIEWER_LEN}"
+                    )
+                },
+                status_code=400,
+            )
         paths = app.state.paths
         try:
             # `correction_path` mints a name that is free and
