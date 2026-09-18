@@ -47,8 +47,21 @@ def crosspower(time_ms, a, b, *, nperseg=2048, max_khz=300.0, max_bins=MAX_TIME_
     differences: a float32 time vector quantises its spacing at t ~ 3 s, and
     the resulting rate is wrong by percents, in a biased direction, with
     nothing on screen to give it away.
+
+    Downsampling to `max_bins` drops the final partial bin, so up to
+    `width - 1` columns fall off the right edge of the window - about 8 ms of
+    a 2 s window at the default cap. That is deliberate: a partial bin
+    averages fewer segments than its neighbours, so it would be brighter or
+    dimmer for a reason that has nothing to do with the plasma.
     """
     time_ms = np.asarray(time_ms, dtype="float64")
+    if len(time_ms) < 2 or time_ms[-1] == time_ms[0]:
+        raise ValueError(
+            "crosspower needs a time vector spanning more than one instant; "
+            f"got {len(time_ms)} sample(s). An out-of-range t_range slices the "
+            "signal to an empty or single-sample window, which divides to nan "
+            "and draws a blank panel."
+        )
     rate = (len(time_ms) - 1) / ((time_ms[-1] - time_ms[0]) / 1000.0)
     kwargs = {
         "fs": rate,
@@ -70,11 +83,12 @@ def crosspower(time_ms, a, b, *, nperseg=2048, max_khz=300.0, max_bins=MAX_TIME_
     # the quiet bins in a block and so suppresses exactly the short bursts
     # this panel exists to show.
     if magnitude.shape[1] > max_bins:
-        # Ceiling division: shape[1] // max_bins floors to 0 whenever
-        # shape[1] < 2 * max_bins (e.g. 389 columns, max_bins=250 -> 1),
-        # which is a width that reduces nothing and leaves the cap broken
-        # silently - the reshape below still "succeeds", just on more
-        # columns than max_bins.
+        # Ceiling division: floor division rounds the width DOWN, so it
+        # leaves the cap broken silently whenever max_bins does not divide
+        # shape[1] - 389 columns at max_bins=250 floor to width 1, which
+        # reduces nothing, and 3300 at max_bins=1000 floor to width 3, which
+        # still ships 1100 bins. The reshape below "succeeds" either way,
+        # just on more columns than max_bins.
         width = -(-magnitude.shape[1] // max_bins)
         usable = (magnitude.shape[1] // width) * width
         magnitude = magnitude[:, :usable].reshape(len(freq_khz), -1, width).mean(axis=2)

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from labeler.config import Paths
 from labeler.events import panels as registry
+from labeler.events.panels import alfven_eigenmode as ae
 from labeler.features.store import FeatureArray
 
 #: Seconds on disk, like the corpus - deliberately not round thousands, so a
@@ -111,9 +113,6 @@ def test_the_registry_covers_the_events_with_bespoke_panels():
     }
 
 
-from labeler.events.panels import alfven_eigenmode as ae
-
-
 def test_crosspower_takes_its_rate_from_the_span_not_a_median_diff():
     """A float32 time vector quantises its spacing at t ~ 3 s.
 
@@ -163,19 +162,65 @@ def test_crosspower_averages_power_before_taking_the_log():
 
 
 def test_alfven_panels_are_three_crosspower_heatmaps(monkeypatch):
-    from labeler.events import panels as registry
-    from labeler.features.store import FeatureArray
+    """The whole unit seam, on a shot-like time base rather than one at zero.
 
+    `raw_signal` hands back MILLISECONDS and `t_range` is milliseconds, so a
+    time base starting at 0 hides both halves of the bug this plan has hit
+    twice: a dropped window offset and a second, spurious seconds-to-ms
+    conversion both leave the panels sitting at t ~ 0 on such a base.
+    """
     rate = 1_000_000.0
     n = 60_000
+    start_ms = 2000.0
     fake = FeatureArray(
-        x=np.arange(n) / rate * 1000.0,
+        x=start_ms + np.arange(n) / rate * 1000.0,
         y=np.random.default_rng(2).normal(size=(4, n)).astype("float32"),
         attrs={"tier": "cache"},
     )
-    monkeypatch.setattr(ae, "raw_signal", lambda *a, **k: fake)
-    built = registry.build("alfven_eigenmode", 178642)
+    seen = []
+
+    def fake_raw_signal(shot, group, **kwargs):
+        seen.append((shot, group, kwargs))
+        return fake
+
+    monkeypatch.setattr(ae, "raw_signal", fake_raw_signal)
+    window = (start_ms, start_ms + 60.0)
+    built = registry.build("alfven_eigenmode", 178642, t_range=window)
     assert len(built) == 3
     assert {p.kind for p in built} == {"heatmap"}
     assert all(p.bands == [(80.0, 250.0)] for p in built)
     assert all(p.ylabel == "kHz" for p in built)
+
+    # The pairing IS the diagnostic - the reference chord against each
+    # vertical one - so the titles pin channel identity, not just the count.
+    assert [panel.title for panel in built] == [
+        "CO2 crosspower DENR0UF x DENV1UF",
+        "CO2 crosspower DENR0UF x DENV2UF",
+        "CO2 crosspower DENR0UF x DENV3UF",
+    ]
+
+    # Every panel must be drawn inside the window that was fetched.
+    end_ms = start_ms + (n - 1) / rate * 1000.0
+    for panel in built:
+        assert panel.x.min() >= start_ms
+        assert panel.x.max() <= end_ms
+
+    # The window has to reach the fetch: without it a reviewer wanting a
+    # 60 ms look waits on a whole shot of PTDATA.
+    assert seen == [(178642, "co2", {"t_range": window, "paths": None})]
+
+
+def test_crosspower_rejects_a_degenerate_window():
+    """An out-of-range `t_range` slices the signal to nothing.
+
+    A zero span divides to nan and silently draws a blank panel; an empty one
+    used to die on an IndexError far from the cause.
+    """
+    one = np.array([1.0])
+    two = np.array([1.0, 2.0])
+    with pytest.raises(ValueError, match="more than one instant"):
+        ae.crosspower(np.array([]), np.array([]), np.array([]))
+    with pytest.raises(ValueError, match="more than one instant"):
+        ae.crosspower(np.array([2000.0]), one, one)
+    with pytest.raises(ValueError, match="more than one instant"):
+        ae.crosspower(np.array([2000.0, 2000.0]), two, two)
