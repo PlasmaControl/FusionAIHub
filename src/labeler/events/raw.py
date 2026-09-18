@@ -240,6 +240,16 @@ def _holds_record(shot: int, group: str, root: Path) -> bool:
 
     A sentinel-width group is NOT a record: the diagnostic did not run, and
     the fetch tier is exactly the right next thing to try for it.
+
+    `raw_signal`'s tier loop stops at the first tier this says holds ANY
+    record - it does not compare how much of the shot each tier's record
+    covers. If a narrower record ever sat in an earlier tier than a wider
+    one (say, the corpus holding less of a shot than the cache), a window
+    the corpus's record does not cover but the cache's does would raise
+    WindowEmptyError here instead of falling through to the tier that could
+    have answered it. Unreachable today - `write_group` always writes a
+    whole record and `promote` moves whole files, never partial ones - but
+    a future partial-record cache would need to guard against this.
     """
     import h5py
 
