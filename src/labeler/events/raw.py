@@ -14,6 +14,8 @@ corpus; `promote` does, deliberately and by hand.
 
 from __future__ import annotations
 
+import threading
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -26,6 +28,24 @@ from .verify import NoDataError, corpus_signal
 #: A group whose `ydata` is this narrow carries the corpus' absent-signal
 #: sentinel rather than a record.
 SENTINEL_WIDTH = 1
+
+#: One lock per resolved path, so two `write_group` calls for different
+#: shots don't wait on each other, but two threads targeting the same shot
+#: do. Only covers this process - see `write_group`'s docstring.
+_write_locks: dict[Path, threading.Lock] = {}
+#: Guards `_write_locks` itself. Without this, two threads racing to write
+#: the SAME new path for the first time could each create their own Lock,
+#: defeating the point - both would proceed thinking they hold "the" lock.
+_write_locks_guard = threading.Lock()
+
+
+def _lock_for(path: Path) -> threading.Lock:
+    """The lock serializing writers to one resolved path, within this process."""
+    with _write_locks_guard:
+        lock = _write_locks.get(path)
+        if lock is None:
+            lock = _write_locks[path] = threading.Lock()
+        return lock
 
 
 def cache_path(shot: int, *, paths: Paths | None = None) -> Path:
@@ -53,6 +73,17 @@ def write_group(path, group: str, times_ms, values) -> None:
     240 MB of CO2 away. Atomic because it is doing that concurrently with
     itself, and a reader must never meet a half-written group.
 
+    The server calling this runs synchronous routes in Starlette's
+    threadpool, so "concurrently with itself" means multiple THREADS in one
+    process, not separate processes - `co2` and `ece` for the same shot can
+    land on different threads at once. This function serializes those
+    threads against each other (see `_lock_for`), so the additivity promise
+    above actually holds. It does NOT serialize across separate OS
+    processes: this module's own CLI running alongside the server, or a
+    future multi-worker deployment, could still race. No file locking is
+    used to close that gap - this deployment is single-process, and adding
+    it now would guard against a case that doesn't exist yet.
+
     `times_ms` arrives in milliseconds, the convention `corpus_signal` and
     `fdp_signal` both return, and is stored in SECONDS, the convention the
     corpus file itself uses. That conversion is the whole reason this
@@ -73,31 +104,44 @@ def write_group(path, group: str, times_ms, values) -> None:
         )
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    scratch = path.with_name(f".{path.name}.{id(values):x}.tmp")
-    try:
-        if path.is_file():
-            # h5py cannot add to a file another process may be reading, and
-            # cannot shrink one in place either. Copy, add, rename.
-            import shutil
+    # uuid4, not id(values): id() is a memory address, not a unique token -
+    # it isn't unique across processes and gets reused once an object is
+    # garbage collected, so two unrelated writes could end up sharing a
+    # scratch name. A plain fixed ".tmp" suffix has the same collision
+    # problem one level out: it's only safe here because the lock below
+    # keeps writers to one path from overlapping, and that lock is
+    # process-local (see the docstring), so a second process writing the
+    # same path would still be free to clash on a fixed name.
+    scratch = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    # Serializes the whole copy-modify-rename sequence per resolved path so
+    # two threads writing different groups to the same shot can't both copy
+    # the pre-write file, each add only their own group, and have the
+    # loser's `scratch.replace(path)` silently discard the winner's group.
+    with _lock_for(path.resolve()):
+        try:
+            if path.is_file():
+                # h5py cannot add to a file another process may be reading, and
+                # cannot shrink one in place either. Copy, add, rename.
+                import shutil
 
-            shutil.copy2(path, scratch)
-        with h5py.File(scratch, "a") as f:
-            if group in f:
-                del f[group]
-            g = f.create_group(group)
-            g.create_dataset("xdata", data=(times_ms / 1000.0).astype("float32"))
-            # Chunked per channel: a whole-channel read touches contiguous
-            # chunks and a time slice touches one chunk per channel. No
-            # compression - the record is broadband noise that gzip barely
-            # shrinks while costing minutes per shot.
-            g.create_dataset(
-                "ydata",
-                data=values,
-                chunks=(1, min(values.shape[-1], 1 << 20)),
-            )
-        scratch.replace(path)
-    finally:
-        scratch.unlink(missing_ok=True)
+                shutil.copy2(path, scratch)
+            with h5py.File(scratch, "a") as f:
+                if group in f:
+                    del f[group]
+                g = f.create_group(group)
+                g.create_dataset("xdata", data=(times_ms / 1000.0).astype("float32"))
+                # Chunked per channel: a whole-channel read touches contiguous
+                # chunks and a time slice touches one chunk per channel. No
+                # compression - the record is broadband noise that gzip barely
+                # shrinks while costing minutes per shot.
+                g.create_dataset(
+                    "ydata",
+                    data=values,
+                    chunks=(1, min(values.shape[-1], 1 << 20)),
+                )
+            scratch.replace(path)
+        finally:
+            scratch.unlink(missing_ok=True)
 
 
 def raw_signal(

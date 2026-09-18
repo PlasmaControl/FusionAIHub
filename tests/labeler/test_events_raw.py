@@ -1,6 +1,9 @@
 """The three-tier raw read, and the cache file it writes."""
 from __future__ import annotations
 
+import shutil
+import threading
+
 import h5py
 import numpy as np
 import pytest
@@ -106,3 +109,95 @@ def test_write_group_stores_seconds_so_the_corpus_can_read_it(tmp_path):
     raw.write_group(path, "co2", np.array([0.0, 1000.0]), np.zeros((1, 2)))
     with h5py.File(path, "r") as f:
         assert np.allclose(f["co2"]["xdata"][:], [0.0, 1.0])
+
+
+def test_write_group_leaves_no_partial_file_when_the_h5py_write_fails(
+    tmp_path, monkeypatch
+):
+    """The pre-flight ValueError test above never touches h5py.File at all.
+
+    This exercises the OTHER half of the atomicity claim: a failure once the
+    scratch copy already exists, which is what the `finally: scratch.unlink`
+    block in `write_group` is for. `h5py.File` is patched to succeed on the
+    first call (the real `co2` write, establishing a baseline) and raise on
+    the second (the `ece` write, after `shutil.copy2` has already produced a
+    scratch file to write into).
+    """
+    path = tmp_path / "9_processed.h5"
+    real_file = h5py.File
+    calls = {"n": 0}
+
+    def flaky_file(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated failure mid-write")
+        return real_file(*args, **kwargs)
+
+    monkeypatch.setattr(h5py, "File", flaky_file)
+
+    raw.write_group(path, "co2", np.arange(4.0), np.zeros((1, 4)))
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        raw.write_group(path, "ece", np.arange(4.0), np.ones((1, 4)))
+
+    # The original file is exactly what it was before the failed write -
+    # still holding co2, not holding a half-written ece.
+    assert raw.groups_in(path) == {"co2"}
+    with h5py.File(path, "r") as f:
+        assert np.allclose(f["co2"]["ydata"][:], 0.0)
+    # And the scratch file the failed write created is gone, not left
+    # behind as a stray `.tmp` sibling.
+    assert list(tmp_path.glob(".*")) == []
+
+
+def test_write_group_survives_concurrent_writers_to_the_same_path(
+    tmp_path, monkeypatch
+):
+    """Two threads adding different groups to one shot must not race.
+
+    The server this feeds runs synchronous routes in Starlette's threadpool,
+    so `co2` and `ece` landing on the same shot at once is a real scenario:
+    two THREADS in one process, not two processes. A barrier placed right
+    after `shutil.copy2` forces both threads to have copied the SAME
+    pre-write file before either writes its own group and renames over it -
+    exactly the window `write_group`'s per-path lock exists to close.
+
+    Against the unfixed function this reliably reproduces the lost update
+    (confirmed by hand before this test was committed - see the fix report).
+    Against the fixed one, the second thread is still waiting on the lock
+    when the first reaches the barrier, so the barrier just times out
+    harmlessly and the assertion is what actually matters: both groups
+    survive.
+    """
+    path = tmp_path / "10_processed.h5"
+    write_corpus_file(path, "base", np.arange(4.0), np.zeros((1, 4)))
+
+    barrier = threading.Barrier(2)
+    real_copy2 = shutil.copy2
+
+    def synced_copy2(*args, **kwargs):
+        result = real_copy2(*args, **kwargs)
+        try:
+            barrier.wait(timeout=2.0)
+        except threading.BrokenBarrierError:
+            pass
+        return result
+
+    monkeypatch.setattr(shutil, "copy2", synced_copy2)
+
+    errors = []
+
+    def run(group, values):
+        try:
+            raw.write_group(path, group, np.arange(4.0), values)
+        except Exception as exc:  # noqa: BLE001 - surfaced via `errors`, not swallowed
+            errors.append(exc)
+
+    t1 = threading.Thread(target=run, args=("co2", np.zeros((1, 4))))
+    t2 = threading.Thread(target=run, args=("ece", np.ones((1, 4))))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    assert not errors
+    assert raw.groups_in(path) == {"base", "co2", "ece"}
