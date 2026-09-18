@@ -43,6 +43,7 @@ algorithms; `raw/` is empty until a table arrives.
 ## Contact
 - **Cheolsik Byun**: csbyun [at] princeton [dot] edu
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
+
 ## Verification
 
 [`verification.ipynb`](verification.ipynb) plots one shot's signals against its

@@ -9,6 +9,8 @@ data/events/<category>/
   raw/                                      # unchanged original data
   formatter.py
   example.ipynb                             # executed reading/plotting example
+  shots.csv                                 # review roster: who looked at what
+  verification.ipynb                        # review one shot, take corrections
   format/
     <dataset>.csv
     <dataset>.meta.json
@@ -19,6 +21,9 @@ data/events/<category>/
     <shot-list>.meta.json
     <shot-list>/
       <shot>.npz                            # sampled time × rho labels
+  review/
+    <shot>.csv                              # what a human asserts after looking
+    _cache/                                 # fetch cache, not a claim; deletable
 ```
 
 ## Interval CSVs
@@ -80,11 +85,17 @@ list.
 ## Verification notebooks
 
 `verification.ipynb` in each category shows one shot's signals against its
-saved labels and takes back corrections:
+saved labels, where there are any, and takes back corrections:
 
 ```bash
 pixi run -e labelmaker jupyter lab data/events/<category>/verification.ipynb
 ```
+
+A category with no saved grid yet - `fishbone` and `sawtooth_oscillation`
+among the four hand-written ones, and any category whose `format/shots/` and
+`extend_*/` are still empty - has no label row to show. `review()` warns, puts
+`NO LABEL ROW` in the figure title and stacks the signal panels alone; the
+reviewer's own marks are then that category's first labels.
 
 Set `shot`, drag a time range on any panel, then press *Mark present* /
 *Mark absent*, *Verify* and *Save*. Nothing touches disk until *Save*, which
@@ -96,9 +107,19 @@ Corrections under `review/` are a separate claim from `format/` and
 or overwrites them, and merging them back into a formatted table is not yet
 decided.
 
+`review/_cache/` is the one thing under `review/` that is not a human claim.
+The two fetching notebooks cache each shot's raw fetched record there, as
+`<shot>_<group>.npz`, so that reopening a shot costs nothing: about **240 MB
+per `alfven_eigenmode` shot** (four CO2 chords at 1.667 MHz) and about **62 MB
+per fetched `sawtooth_oscillation` shot**. It has no cap and no eviction. It is
+safe to delete at any time - the next open of that shot simply refetches it -
+and `*.npz` is gitignored (`.gitignore:261`), so it cannot be committed by
+accident. Anything that later reads reviewer output by globbing `review/*` has
+to skip it.
+
 Four categories have panels chosen for the phenomenon -
 `minimum_safety_factor` (qmin against the rule's class thresholds),
-`sawtooth_oscillation` (raw ECE channels 20-36, four to a row),
+`sawtooth_oscillation` (raw ECE channels 20-35, four to a row),
 `alfven_eigenmode` (CO2 crosspower R0xV1/V2/V3) and `fishbone` (the magnetic
 spectrogram). The rest carry generic `ip`/`betan`/`pinj_total` panels, which show
 that a shot exists and not that a phenomenon happened; each says so and asks
@@ -108,9 +129,16 @@ to be replaced. Scaffold a new one with:
 pixi run -e labelmaker python scripts/labeler/make_verification_notebook.py --event <category>
 ```
 
-`alfven_eigenmode` fetches: its 180 annotated shots are 170659-178879 and the
-corpus covers 185601-204999, so its notebook pulls the CO2 chords from PTDATA
-and needs its kernel started under the `fdp run` wrapper.
+Two categories fetch, and both need their kernel started under the `fdp run`
+wrapper (`pixi run -e labelmaker fdp run jupyter lab`):
+
+- `alfven_eigenmode`, for every shot: its 180 annotated shots are
+  170659-178879 and the corpus covers 185601-204999, so its notebook pulls
+  the CO2 chords from PTDATA.
+- `sawtooth_oscillation`, for 8 of its 10 rostered shots (178640, 178641,
+  178642, 179310, 180090, 180406, 180627 and 184084 all predate the corpus),
+  over MDSplus, at 80-145 s PER CHANNEL on the first fetch. Only 192238 and
+  195032 are in the corpus.
 
 ## Per-shot sampled grids
 
