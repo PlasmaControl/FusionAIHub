@@ -13,6 +13,7 @@ from labeler.events.verify import (
     Panel,
     ReviewSession,
     corpus_signal,
+    fdp_signal,
     label_panel,
     read_corrections,
     review,
@@ -141,6 +142,166 @@ def test_a_missing_group_is_named(tmp_path):
     _corpus(tmp_path, 185601, {"ece": (np.zeros(10), np.zeros((48, 10)))})
     with pytest.raises(NoDataError, match="mhr"):
         corpus_signal(185601, "mhr", corpus=tmp_path)
+
+
+def _fake_fetch_mds(records, calls):
+    """A stand-in for `_fetch_mds` returning canned records, call-counted.
+
+    `records` maps expression -> the dict `_fetch_mds` would return; `calls`
+    is a list this appends the expression to, so a test can assert exactly
+    how many times the network path would have been taken.
+    """
+
+    def fake(expr, tree, shot, dims=()):
+        calls.append(expr)
+        return records[expr]
+
+    return fake
+
+
+def test_fdp_signal_returns_expressions_in_order(monkeypatch):
+    n = 10
+    ms = np.linspace(0.0, 20.0, n)
+    records = {
+        "a": {
+            "data": np.arange(n, dtype="float32"),
+            "dim0": ms,
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+        "b": {
+            "data": np.arange(n, dtype="float32") + 100,
+            "dim0": ms,
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+    }
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, [])
+    )
+    got = fdp_signal(178640, ["a", "b"])
+    assert got.y.shape == (2, n)
+    assert got.y.dtype == np.float32
+    assert got.y[0] == pytest.approx(records["a"]["data"])
+    assert got.y[1] == pytest.approx(records["b"]["data"])
+    assert got.x[0] == pytest.approx(0.0)
+    assert got.x[-1] == pytest.approx(20.0)
+
+
+def test_fdp_signal_t_range_slices_to_the_window(monkeypatch):
+    n = 100
+    ms = np.linspace(0.0, 990.0, n)
+    records = {
+        "a": {
+            "data": np.arange(n, dtype="float32"),
+            "dim0": ms,
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+    }
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, [])
+    )
+    got = fdp_signal(178640, ["a"], t_range=(200.0, 300.0))
+    assert got.x[0] >= 200.0
+    assert got.x[-1] <= 300.0
+
+
+def test_fdp_signal_rejects_a_non_millisecond_unit(monkeypatch):
+    n = 10
+    records = {
+        "a": {
+            "data": np.arange(n, dtype="float32"),
+            "dim0": np.linspace(0.0, 0.02, n),
+            "units": {"data": "keV", "dim0": "s"},
+        },
+    }
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, [])
+    )
+    with pytest.raises(NoDataError, match="'s'"):
+        fdp_signal(178640, ["a"])
+
+
+def test_fdp_signal_rejects_unequal_lengths(monkeypatch):
+    records = {
+        "a": {
+            "data": np.arange(10, dtype="float32"),
+            "dim0": np.linspace(0.0, 10.0, 10),
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+        "b": {
+            "data": np.arange(20, dtype="float32"),
+            "dim0": np.linspace(0.0, 10.0, 20),
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+    }
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, [])
+    )
+    with pytest.raises(NoDataError, match="10"):
+        fdp_signal(178640, ["a", "b"])
+    with pytest.raises(NoDataError, match="20"):
+        fdp_signal(178640, ["a", "b"])
+
+
+def test_fdp_signal_cache_is_not_refetched(tmp_path, monkeypatch):
+    n = 10
+    ms = np.linspace(0.0, 20.0, n)
+    records = {
+        "a": {
+            "data": np.arange(n, dtype="float32"),
+            "dim0": ms,
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+    }
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, calls)
+    )
+    cache = tmp_path / "178640_ece.npz"
+
+    first = fdp_signal(178640, ["a"], cache=cache)
+    assert cache.is_file()
+    assert len(calls) == 1
+
+    second = fdp_signal(178640, ["a"], cache=cache)
+    assert len(calls) == 1, "the second call must not touch the network"
+    np.testing.assert_array_equal(first.y, second.y)
+    np.testing.assert_array_equal(first.x, second.x)
+
+
+def test_fdp_signal_cache_holds_the_full_record_not_the_window(tmp_path, monkeypatch):
+    n = 100
+    ms = np.linspace(0.0, 990.0, n)
+    records = {
+        "a": {
+            "data": np.arange(n, dtype="float32"),
+            "dim0": ms,
+            "units": {"data": "keV", "dim0": "ms"},
+        },
+    }
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, calls)
+    )
+    cache = tmp_path / "178640_ece.npz"
+
+    narrow = fdp_signal(178640, ["a"], t_range=(100.0, 200.0), cache=cache)
+    assert len(calls) == 1
+    assert narrow.x[0] >= 100.0
+    assert narrow.x[-1] <= 200.0
+
+    wide = fdp_signal(178640, ["a"], t_range=(0.0, 900.0), cache=cache)
+    assert len(calls) == 1, "the wider window must be served from the cache"
+    assert wide.x[0] < narrow.x[0]
+    assert wide.x[-1] > narrow.x[-1]
+
+
+def test_fdp_signal_wraps_a_fetch_failure(monkeypatch):
+    def boom(expr, tree, shot, dims=()):
+        raise RuntimeError("TREE-E-FOPENR")
+
+    monkeypatch.setattr("labeler.features.resolve_fdp._fetch_mds", boom)
+    with pytest.raises(NoDataError, match="fdp run"):
+        fdp_signal(178640, ["a"])
 
 
 def _roster(root, event):

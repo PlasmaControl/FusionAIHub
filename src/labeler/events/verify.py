@@ -101,6 +101,113 @@ def corpus_signal(
     )
 
 
+#: The ECE tree and point spelling, from
+#: `src/tokamak_foundation_model/data/config/modalities/modalities.yaml`.
+#: `TECEF20`..`TECEF36` etc are the channel points on the `D3D` tree.
+ECE_TREE = "D3D"
+ECE_POINT = r"\D3D::TOP.ELECTRONS.ECE.TECEF:TECEF{channel:02d}"
+
+#: The wrapper every live fdp fetch has to run under. PTDATA and MDSplus
+#: both fail outside it - PTDATA with `getservbyname failed for task
+#: 'PTSERVER'`, MDSplus with `TREE-E-FOPENR` - so this is what a reviewer
+#: who has not started under it needs to see.
+FDP_RESTART_COMMAND = "pixi run -e labelmaker fdp run jupyter lab"
+
+
+def fdp_signal(
+    shot: int,
+    exprs: Sequence[str],
+    *,
+    tree: str = ECE_TREE,
+    t_range: tuple[float, float] | None = None,
+    cache: Path | None = None,
+) -> FeatureArray:
+    """One or more MDSplus points, fetched live or read back from a cache.
+
+    Deliberately mirrors `corpus_signal`'s contract: `x` in milliseconds,
+    `y` as `(C, T)` float32, one row per expression in `exprs` order - so a
+    `Panel` cannot tell a fetched array from a corpus one. Unlike the
+    corpus's on-disk `xdata`, which is seconds and gets multiplied by 1000,
+    MDSplus's `dim0` already comes back in milliseconds; this checks that
+    rather than trusting it, because a silent unit change would put every
+    recorded correction off by a factor of a thousand with nothing
+    downstream noticing.
+
+    `cache`, when given, holds the FULL record (never the `t_range` window),
+    so widening a window later costs nothing and a shot already on disk is
+    never refetched. Nothing is cached when `cache` is None.
+    """
+    exprs = list(exprs)
+    cache_path = None if cache is None else Path(cache)
+
+    if cache_path is not None and cache_path.is_file():
+        with np.load(cache_path) as npz:
+            times_ms = np.asarray(npz["x"], dtype="float64")
+            values = np.asarray(npz["y"], dtype="float32")
+    else:
+        # `_fetch_mds` is the one place in labeler that knows how to call
+        # toksearch (`MdsSignal(...).fetch(...)`); reused deliberately here
+        # rather than kept as a second copy of the same call.
+        from ..features.resolve_fdp import _fetch_mds
+
+        rows = []
+        times_ms = None
+        expected_length = None
+        first_expr = exprs[0] if exprs else None
+        for expr in exprs:
+            try:
+                record = _fetch_mds(expr, tree, int(shot), dims=["dim0"])
+            except Exception as error:
+                raise NoDataError(
+                    f"shot {int(shot)} {expr!r} failed to fetch over fdp: "
+                    f"{error}. If this kernel was not started under "
+                    f"'{FDP_RESTART_COMMAND}', restart it that way first."
+                ) from error
+            unit = record["units"]["dim0"]
+            if unit != "ms":
+                raise NoDataError(
+                    f"shot {int(shot)} {expr!r} dim0 units are {unit!r}, "
+                    f"not 'ms'; refusing to guess at a conversion that "
+                    f"would put every correction's timebase off."
+                )
+            data = np.asarray(record["data"], dtype="float32")
+            if expected_length is None:
+                expected_length = len(data)
+                times_ms = np.asarray(record["dim0"], dtype="float64")
+            elif len(data) != expected_length:
+                raise NoDataError(
+                    f"shot {int(shot)} expressions disagree on length: "
+                    f"{expected_length} for {first_expr!r} vs {len(data)} "
+                    f"for {expr!r}"
+                )
+            rows.append(data)
+        values = np.stack(rows).astype("float32")
+
+        if cache_path is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(cache_path, x=times_ms, y=values)
+
+    start, stop = 0, times_ms.shape[0]
+    if t_range is not None:
+        start = int(np.searchsorted(times_ms, t_range[0], side="left"))
+        stop = int(np.searchsorted(times_ms, t_range[1], side="right"))
+        if stop <= start:
+            raise NoDataError(
+                f"shot {int(shot)} has no samples in "
+                f"{t_range[0]}-{t_range[1]} ms"
+            )
+    return FeatureArray(
+        x=times_ms[start:stop],
+        y=values[:, start:stop].astype("float32"),
+        attrs={
+            "shot": str(int(shot)),
+            "channels": ",".join(exprs),
+            "units": "ms",
+            "source": "fdp",
+        },
+    )
+
+
 REVIEW_DIRECTORY = "review"
 
 
