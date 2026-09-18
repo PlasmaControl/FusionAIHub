@@ -17,17 +17,51 @@ from __future__ import annotations
 import threading
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from ..config import Paths
 from ..features.store import FeatureArray
-from .verify import NoDataError, corpus_signal
+from .verify import (
+    CO2_CHORDS,
+    ECE_POINT,
+    ECE_TREE,
+    NoDataError,
+    corpus_signal,
+    fdp_signal,
+)
 
 #: A group whose `ydata` is this narrow carries the corpus' absent-signal
 #: sentinel rather than a record.
 SENTINEL_WIDTH = 1
+
+#: ECE is 48 radiometer channels, matching the corpus group's channel order
+#: so a fetched shot and a corpus shot index the same.
+ECE_CHANNELS = tuple(range(1, 49))
+
+
+@dataclass(frozen=True)
+class FetchSpec:
+    """How to fetch one corpus group live, when neither tier has it."""
+
+    exprs: tuple[str, ...]
+    via: str
+    tree: str = ECE_TREE
+
+
+#: Only groups listed here can be fetched. An unlisted group missing from
+#: both tiers raises rather than guessing at a point name: a wrong guess
+#: puts the wrong diagnostic in front of a reviewer, which is worse than a
+#: refusal.
+FETCH_SPECS: dict[str, FetchSpec] = {
+    "co2": FetchSpec(exprs=CO2_CHORDS, via="ptdata"),
+    "ece": FetchSpec(
+        exprs=tuple(ECE_POINT.format(channel=c) for c in ECE_CHANNELS),
+        via="mds",
+    ),
+}
 
 #: One lock per resolved path, so two `write_group` calls for different
 #: shots don't wait on each other, but two threads targeting the same shot
@@ -171,9 +205,24 @@ def raw_signal(
 
 
 def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
-    # Filled in by Task 3. Until then, say so rather than returning
-    # something a panel would silently plot.
-    raise NoDataError(
-        f"shot {int(shot)} has no {group!r} in the corpus or the cache, and "
-        f"there is no fetch route for {group!r}"
+    """Fetch one group live, cache the WHOLE record, return the slice.
+
+    The cache is never the `t_range` window. Widening a window later would
+    otherwise refetch a shot that is already on disk - minutes, and hundreds
+    of megabytes over the wire, for a drag of the mouse.
+    """
+    spec = FETCH_SPECS.get(group)
+    if spec is None:
+        raise NoDataError(
+            f"shot {int(shot)} has no {group!r} in the corpus or the cache, "
+            f"and there is no fetch route for {group!r}; known routes are "
+            f"{sorted(FETCH_SPECS)}"
+        )
+    fetched = fdp_signal(
+        int(shot), list(spec.exprs), tree=spec.tree, via=spec.via
     )
+    write_group(cache_path(shot, paths=paths), group, fetched.x, fetched.y)
+    array = corpus_signal(
+        shot, group, channels=channels, t_range=t_range, corpus=paths.raw_cache
+    )
+    return FeatureArray(x=array.x, y=array.y, attrs={**array.attrs, "tier": "fetch"})

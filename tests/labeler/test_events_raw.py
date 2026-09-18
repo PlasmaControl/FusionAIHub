@@ -11,6 +11,7 @@ import pytest
 from labeler.config import Paths
 from labeler.events import raw
 from labeler.events.verify import NoDataError
+from labeler.features.store import FeatureArray
 
 
 def write_corpus_file(path, group, times_ms, values):
@@ -201,3 +202,72 @@ def test_write_group_survives_concurrent_writers_to_the_same_path(
 
     assert not errors
     assert raw.groups_in(path) == {"base", "co2", "ece"}
+
+
+def test_a_miss_fetches_and_fills_the_cache(roots, monkeypatch):
+    """The fetch runs once; the second read is served off disk."""
+    calls = []
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        calls.append((shot, tuple(exprs), via))
+        times = np.arange(50.0)
+        return FeatureArray(
+            x=times,
+            y=np.arange(4 * 50, dtype="float32").reshape(4, 50),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    first = raw.raw_signal(9, "co2", paths=roots)
+    assert first.attrs["tier"] == "fetch"
+    assert len(calls) == 1
+    assert calls[0][2] == "ptdata"
+
+    assert raw.cache_path(9, paths=roots).is_file()
+    second = raw.raw_signal(9, "co2", paths=roots)
+    assert second.attrs["tier"] == "cache"
+    assert len(calls) == 1, "a cached shot must not refetch"
+    assert np.allclose(second.y, first.y)
+
+
+def test_a_fetch_honours_channels_and_t_range_after_caching_everything(
+    roots, monkeypatch
+):
+    """The cache holds the WHOLE record; the slice is applied to the return."""
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        return FeatureArray(
+            x=np.arange(100.0),
+            y=np.arange(400.0, dtype="float32").reshape(4, 100),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    # Half-integer bounds, not (5.0, 9.0): xdata round-trips through seconds
+    # as float32 (see `write_group`), so an integer-ms boundary can land
+    # 1e-7 below its true value and lose the edge sample - the same
+    # single-sample slop `test_channels_and_t_range_slice_the_way_the_corpus_does`
+    # documents above. Sitting the bounds mid-sample keeps this assertion
+    # exact without depending on which way that rounding falls.
+    got = raw.raw_signal(10, "co2", channels=[0, 2], t_range=(4.5, 9.5),
+                         paths=roots)
+    assert got.y.shape == (2, 5)
+    with h5py.File(raw.cache_path(10, paths=roots), "r") as f:
+        assert f["co2"]["ydata"].shape == (4, 100), "the cache is not sliced"
+
+
+def test_ece_fetches_over_mds_not_ptdata(roots, monkeypatch):
+    seen = {}
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        seen.update(via=via, tree=tree, n=len(exprs))
+        return FeatureArray(
+            x=np.arange(10.0),
+            y=np.zeros((len(exprs), 10), dtype="float32"),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    raw.raw_signal(11, "ece", paths=roots)
+    assert seen["via"] == "mds"
+    assert seen["tree"] == "D3D"
+    assert seen["n"] == 48
