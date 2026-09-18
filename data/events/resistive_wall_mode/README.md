@@ -32,10 +32,7 @@ none of the 33 listed shots is in the corpus, and that is a completed zero, not 
 absence claim.
 
 ## Provenance
-Obtained using reference dataset from Jeremy Hanson: `rwm_onsets_2017.csv`
-(30 onsets, 20 shots, 156785-158023, 0.856-3.061 s) and `rwm_onsets_2024.csv`
-(26 onsets, 13 shots, 176067-176092, 1.654-4.400 s), 56 onsets over 33 distinct
-shots, kept byte-for-byte in `raw/`. All 33 predate the FAITH corpus (185601+).
+Reference dataset from Jeremy Hanson: `rwm_onsets_2017.csv` (20 shots, 156785-158023) and `rwm_onsets_2024.csv` (13 shots, 176067-176092), 56 onsets over 33 distinct shots in `raw/`.
 
 ## Models
 **stable**: none
@@ -74,7 +71,7 @@ a producer have no `extend_*` directory. See the [table guide](../README.md).
 Regenerate registered raw tables from the repository root:
 
 ```bash
-PYTHONPATH=src python scripts/labelmaker/labels_format.py
+pixi run -e labelmaker python data/events/resistive_wall_mode/formatter.py
 ```
 
 Registered tables: `rwm_onsets_2017` (30 events, 20 shots) and
@@ -82,3 +79,49 @@ Registered tables: `rwm_onsets_2017` (30 events, 20 shots) and
 `extend_rwm/recommender_v1.csv` records a completed zero-event scan;
 it does not establish absence of RWM. Its regeneration command is
 documented in the [table guide](../README.md#committed-rwm-evidence).
+
+## Local formatter and example
+
+[`formatter.py`](formatter.py) reads `../events.yaml` and writes a CSV containing
+only `shot,category,t_start,t_end,confidence` under `format/`. Source provenance and
+conversion assumptions are stored in its `.meta.json` sidecar. Raw files stay
+unchanged. The shared conversion implementation is in
+`src/labeler/events/source_formatters.py`.
+
+[`example.ipynb`](example.ipynb) opens the saved per-shot sparse labels and plots the rho–time grid.
+It also plots the original annotations through a shared helper and supports
+available `extend_*` datasets. For these sources
+without radial localization, each time label is broadcast across 20 rho bins.
+Use the labelmaker Python environment to rerun it. See the [storage guide](../README.md)
+for the sparse per-shot grid format used by extensions.
+
+
+## Category
+
+The CSV `category` column and grid values use integer IDs. The same mapping
+is recorded in each JSON sidecar under `categories`.
+
+| ID | Label |
+| --- | --- |
+| 0 | Absent |
+| 1 | Present |
+
+Unknown or unclassified grid cells are stored separately from 0. A dataset
+containing only positive annotations does not establish absence elsewhere.
+Sampled grids use 50 ms bins and 20 rho bins.
+
+Per-shot labels are saved in `format/shots/<shot>.npz`. Each file includes
+time and rho coordinates, sparse integer values, unknown-cell coordinates,
+and the category ID-to-name mapping. The formatted plot reads these saved files. A separate original-label plot
+reads the source annotations; neither plot reruns the formatter.
+
+The notebook's last cell plots the category's original annotations alongside
+the saved 50 ms grid. Original-label plots require the source files; the
+formatted and extended plots continue to read only their selected NPZ files.
+
+## Verification
+
+[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
+saved labels and takes back corrections. The review roster is
+[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
+schema.

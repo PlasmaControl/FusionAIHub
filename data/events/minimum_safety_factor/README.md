@@ -4,7 +4,7 @@
 The safety factor q is the number of toroidal turns a field line makes per poloidal
 turn,
 
-    q(r) ~= r * B_phi / (R * B_theta)
+$$q(r) \approx \frac{r B_{\phi}}{R B_{\theta}}$$
 
 and q_min is its minimum over the profile, set by the current-density profile
 (on-axis for a monotonic profile, off-axis for reversed shear). q_min < 1 admits
@@ -22,7 +22,7 @@ transport barriers. On DIII-D q_min comes from the EFIT equilibrium reconstructi
 - High
 
 ## Method
-`qmin_rule` (`labelmaker.events.heuristics.qmin_regimes`) thresholds the canonical
+`qmin_rule` (`labeler.events.heuristics.qmin_regimes`) thresholds the canonical
 `qmin` feature inside the Ip flat-top (|Ip| > 0.9 max) and writes exclusive interval
 events `qmin_hybrid` (0.95 < q <= 1.5), `qmin_elevated` (1.5 < q <= 2) and
 `qmin_high` (q > 2), each over a contiguous finite run lasting >= 500 ms. A sample
@@ -68,10 +68,11 @@ equilibrium (EFIT02 or CAKE) when available.
 
 ## Contact
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
+- **Kei Yasoda**: keiyasoda [at] princeton [dot] edu
 
 ## Tables
 
-Inventory row: High Q-Min; lexicon ids pending q-min producer task.
+Inventory row: High Q-Min; lexicon ids: qmin_hybrid, qmin_elevated, qmin_high.
 
 The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
 `raw/` holds the untouched provided lists; `format/` holds their
@@ -82,7 +83,46 @@ a producer have no `extend_*` directory. See the [table guide](../README.md).
 Regenerate registered raw tables from the repository root:
 
 ```bash
-PYTHONPATH=src python scripts/labelmaker/labels_format.py
+PYTHONPATH=src python scripts/labeler/labels_format.py
 ```
 
 No raw table is registered for this category yet.
+
+## Sampled integer-label example
+
+[`example.ipynb`](example.ipynb) reads the existing `extend_qmin_rule/` export:
+465 interval rows and 500 per-shot sparse grids. Every grid has 20 rho bins;
+scalar regime IDs are repeated across all bins. Class IDs are 1 (low), 2 (hybrid), 3 (elevated), and 4 (high).
+The current rule does not emit low-q intervals, so unclassified cells remain
+unknown rather than being assigned class 0. The interval CSV contains
+only `shot,category,t_start,t_end,confidence`; matching class IDs and radial values live in the
+per-shot files. See the [storage guide](../README.md).
+
+
+## Category
+
+The CSV `category` column and grid values use integer IDs. The same mapping
+is recorded in each JSON sidecar under `categories`.
+
+| ID | Label |
+| --- | --- |
+| 0 | Absent (reserved) |
+| 1 | Low |
+| 2 | Hybrid |
+| 3 | Elevated |
+| 4 | High |
+
+Unknown or unclassified grid cells are stored separately from 0. A dataset
+containing only positive annotations does not establish absence elsewhere.
+Sampled grids use 50 ms bins and 20 rho bins.
+
+The notebook's last cell plots the category's original annotations alongside
+the saved 50 ms grid. Original-label plots require the source files; the
+formatted and extended plots continue to read only their selected NPZ files.
+
+## Verification
+
+[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
+saved labels and takes back corrections. The review roster is
+[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
+schema.

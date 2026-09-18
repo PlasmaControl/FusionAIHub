@@ -84,5 +84,5 @@ Unknown or unclassified grid cells are stored separately from 0.
 
 [`verification.ipynb`](verification.ipynb) plots the magnetic spectrogram for
 one shot and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the tier
-rules.
+[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
+schema.
