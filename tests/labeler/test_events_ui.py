@@ -186,3 +186,67 @@ def test_reading_the_page_never_writes_the_roster(client, tables):
     client.get("/api/events")
     client.get("/api/shots?event=alfven_eigenmode")
     assert (roster.read_bytes(), roster.stat().st_mtime_ns) == before
+
+
+@pytest.fixture
+def foreign(tmp_path):
+    """A real, valid roster OUTSIDE label_tables, for the traversal tests."""
+    outside = tmp_path / "secret_area"
+    outside.mkdir()
+    (outside / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n999999,gold,false,,,\n"
+    )
+    return outside
+
+
+def test_a_traversing_event_is_not_found(client, foreign):
+    response = client.get("/api/shots", params={"event": "../secret_area"})
+    assert response.status_code == 404
+    assert "999999" not in response.text, "the foreign roster was read"
+
+
+def test_an_absolute_event_is_not_found(client, foreign):
+    # pathlib's `/` DISCARDS the root when the right operand is absolute, so
+    # an unchecked event name reaches any directory the server's uid can read.
+    response = client.get("/api/shots", params={"event": str(foreign)})
+    assert response.status_code == 404
+    assert "999999" not in response.text, "the foreign roster was read"
+
+
+def test_an_unknown_event_is_not_found(client):
+    response = client.get("/api/shots", params={"event": "no_such_event"})
+    assert response.status_code == 404
+
+
+def test_one_bad_roster_does_not_hide_the_others(client, tables):
+    bad = tables / "broken_event"
+    bad.mkdir()
+    (bad / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n170815,gold,True,,,\n"
+    )
+    payload = client.get("/api/events").json()
+    rows = {row["event"]: row for row in payload["events"]}
+    assert "alfven_eigenmode" in rows and "detachment" in rows
+    assert "holdout" in rows["broken_event"]["error"], "the reason is not reported"
+
+
+def test_a_missing_label_tables_root_is_not_a_crash(tmp_path):
+    app = create_app(paths=_tmp_paths(tmp_path, tmp_path / "absent"), token="secret")
+    transport = TestClient(app)
+    transport.cookies.set(COOKIE, "secret")
+    response = transport.get("/api/events")
+    assert response.status_code == 200
+    assert response.json() == {"events": []}
+
+
+def test_a_duplicated_token_takes_the_last_value(app):
+    """Starlette's QueryParams.get returns the LAST value; pin that."""
+    transport = TestClient(app, follow_redirects=False)
+    assert transport.get("/api/events?token=wrong&token=secret").status_code == 303
+    assert transport.get("/api/events?token=secret&token=wrong").status_code == 401
+
+
+def test_the_static_mount_is_behind_the_gate(app):
+    response = TestClient(app).get("/")
+    assert response.status_code == 401
+    assert response.json() == {"error": NO_TOKEN}
