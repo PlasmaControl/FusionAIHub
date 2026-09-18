@@ -688,3 +688,32 @@ def test_a_cache_refuses_to_serve_different_points(tmp_path, monkeypatch):
 def test_no_expressions_is_refused():
     with pytest.raises(NoDataError, match="no expressions"):
         fdp_signal(178640, [])
+
+
+def test_notebooks_module_is_only_the_generic_helpers():
+    from labeler.events import notebooks
+
+    assert hasattr(notebooks, "load_shot")
+    assert hasattr(notebooks, "plot_shot")
+    assert not hasattr(notebooks, "plot_original"), (
+        "per-category original-label plotting belongs in each example.ipynb"
+    )
+
+
+def test_no_example_notebook_imports_plot_original():
+    import json
+
+    from labeler.config import Paths
+
+    root = Paths.from_env().label_tables
+    for path in sorted(root.glob("*/example.ipynb")):
+        try:
+            cells = json.loads(path.read_text())["cells"]
+        except json.JSONDecodeError:
+            # data/events/detachment/example.ipynb is a pre-existing empty
+            # file (not valid JSON); nothing about this task touches it.
+            continue
+        sources = "".join("".join(cell["source"]) for cell in cells)
+        assert "plot_original" not in sources, path
+        assert "labelmaker.events" not in sources, path
+        assert "from labelmaker" not in sources, path
