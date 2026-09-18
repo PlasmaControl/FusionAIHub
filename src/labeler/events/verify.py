@@ -107,6 +107,14 @@ def corpus_signal(
 ECE_TREE = "D3D"
 ECE_POINT = r"\D3D::TOP.ELECTRONS.ECE.TECEF:TECEF{channel:02d}"
 
+#: The four CO2 interferometer chords, R0/V1/V2/V3, in the order every
+#: crosspower pair in `alfven_eigenmode/verification.ipynb` depends on.
+CO2_CHORDS = ("DENR0UF", "DENV1UF", "DENV2UF", "DENV3UF")
+
+#: The `via` values `fdp_signal` accepts. A typo here must raise, not
+#: silently fall back to `"mds"`.
+FDP_VIA_ROUTES = ("mds", "ptdata")
+
 #: The wrapper every live fdp fetch has to run under. PTDATA and MDSplus
 #: both fail outside it - PTDATA with `getservbyname failed for task
 #: 'PTSERVER'`, MDSplus with `TREE-E-FOPENR` - so this is what a reviewer
@@ -119,24 +127,32 @@ def fdp_signal(
     exprs: Sequence[str],
     *,
     tree: str = ECE_TREE,
+    via: str = "mds",
     t_range: tuple[float, float] | None = None,
     cache: Path | None = None,
 ) -> FeatureArray:
-    """One or more MDSplus points, fetched live or read back from a cache.
+    """One or more MDSplus or PTDATA points, fetched live or from a cache.
 
     Deliberately mirrors `corpus_signal`'s contract: `x` in milliseconds,
     `y` as `(C, T)` float32, one row per expression in `exprs` order - so a
-    `Panel` cannot tell a fetched array from a corpus one. Unlike the
-    corpus's on-disk `xdata`, which is seconds and gets multiplied by 1000,
-    MDSplus's `dim0` already comes back in milliseconds; this checks that
-    rather than trusting it, because a silent unit change would put every
-    recorded correction off by a factor of a thousand with nothing
-    downstream noticing.
+    `Panel` cannot tell a fetched array from a corpus one.
+
+    `via="mds"` (the default) fetches each expression with `_fetch_mds(expr,
+    tree, shot, dims=["dim0"])`; its time key is `dim0`. `via="ptdata"`
+    fetches with `_fetch_ptdata(expr, shot)` instead; its time key is
+    `times`, and `tree` is unused on this route. Either way the record's
+    time unit is checked rather than trusted, because a silent unit change
+    would put every recorded correction off by a factor of a thousand with
+    nothing downstream noticing. Any other `via` raises `ValueError` before
+    anything is fetched - a typo must not fall through to a default route.
 
     `cache`, when given, holds the FULL record (never the `t_range` window),
     so widening a window later costs nothing and a shot already on disk is
     never refetched. Nothing is cached when `cache` is None.
     """
+    if via not in FDP_VIA_ROUTES:
+        legal = " or ".join(repr(route) for route in FDP_VIA_ROUTES)
+        raise ValueError(f"fdp_signal: unknown via={via!r}; must be {legal}")
     exprs = list(exprs)
     if not exprs:
         raise NoDataError(f"shot {int(shot)}: no expressions to fetch")
@@ -158,10 +174,17 @@ def fdp_signal(
                 f"{exprs}. Delete it or pass a different cache path."
             )
     else:
-        # `_fetch_mds` is the one place in labeler that knows how to call
-        # toksearch (`MdsSignal(...).fetch(...)`); reused deliberately here
-        # rather than kept as a second copy of the same call.
-        from ..features.resolve_fdp import _fetch_mds
+        # `_fetch_mds` and `_fetch_ptdata` are the only places in labeler
+        # that know how to call toksearch; reused deliberately here rather
+        # than kept as a second copy of either call.
+        from ..features.resolve_fdp import _fetch_mds, _fetch_ptdata
+
+        time_key = "dim0" if via == "mds" else "times"
+
+        def fetch_one(expr: str) -> dict:
+            if via == "mds":
+                return _fetch_mds(expr, tree, int(shot), dims=["dim0"])
+            return _fetch_ptdata(expr, int(shot))
 
         rows = []
         times_ms = None
@@ -169,24 +192,24 @@ def fdp_signal(
         first_expr = exprs[0] if exprs else None
         for expr in exprs:
             try:
-                record = _fetch_mds(expr, tree, int(shot), dims=["dim0"])
+                record = fetch_one(expr)
             except Exception as error:
                 raise NoDataError(
                     f"shot {int(shot)} {expr!r} failed to fetch over fdp: "
                     f"{error}. If this kernel was not started under "
                     f"'{FDP_RESTART_COMMAND}', restart it that way first."
                 ) from error
-            unit = record["units"]["dim0"]
+            unit = record["units"][time_key]
             if unit != "ms":
                 raise NoDataError(
-                    f"shot {int(shot)} {expr!r} dim0 units are {unit!r}, "
-                    f"not 'ms'; refusing to guess at a conversion that "
-                    f"would put every correction's timebase off."
+                    f"shot {int(shot)} {expr!r} {time_key} units are "
+                    f"{unit!r}, not 'ms'; refusing to guess at a conversion "
+                    f"that would put every correction's timebase off."
                 )
             data = np.asarray(record["data"], dtype="float32")
             if expected_length is None:
                 expected_length = len(data)
-                times_ms = np.asarray(record["dim0"], dtype="float64")
+                times_ms = np.asarray(record[time_key], dtype="float64")
             elif len(data) != expected_length:
                 raise NoDataError(
                     f"shot {int(shot)} expressions disagree on length: "
