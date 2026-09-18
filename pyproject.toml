@@ -124,6 +124,10 @@ platforms = ["linux-64"]
 # `pixi run -e labelmaker label 187199`: every implemented model on one shot ->
 # labels as HDF5 + npz, a JSON summary and one figure (scripts/labeler/label_shot.sh).
 label = "bash scripts/labeler/label_shot.sh"
+# `pixi run -e labelmaker labeler-raw promote 178642 --partial`: move a
+# fetched shot out of the project's .cache/raw and into EKOLEMEN, which is
+# where bulk raw signal data lives long-term.
+labeler-raw = "python -m labeler.events.raw"
 
 [tool.pixi.feature.labelmaker.dependencies]
 # labels_index.parquet. pandas 3 can write parquet only through pyarrow,

@@ -226,3 +226,108 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
         shot, group, channels=channels, t_range=t_range, corpus=paths.raw_cache
     )
     return FeatureArray(x=array.x, y=array.y, attrs={**array.attrs, "tier": "fetch"})
+
+
+#: The 32 groups a complete corpus shot holds, from
+#: `src/tokamak_foundation_model/data/config/modalities/modalities.yaml`.
+#: `promote` compares against this to decide whether a cache entry is a
+#: whole shot or a verification fetch of one diagnostic.
+CORPUS_GROUPS: tuple[str, ...] = (
+    "mhr", "ece", "co2",
+    "gas", "gas_raw", "ech", "ech_raw", "pin", "tin",
+    "d_alpha", "mse", "ts_core_density", "ts_core_temp",
+    "ts_tan_density", "ts_tan_temp", "cer_rot", "filterscopes",
+    "ip", "betan", "pinj", "tinj", "li", "q95", "qmin", "qpsi",
+    "kappa", "tritop", "tribot", "aminor", "rmaxis", "zmaxis", "wmhd",
+)
+
+
+def promote(shot: int, *, partial: bool = False, paths: Paths | None = None) -> Path:
+    """Move a cached shot into the corpus, where it lives long-term.
+
+    Manual and separate from anything the reviewer clicks: this moves
+    hundreds of megabytes, and a Save that did it as a side effect would be
+    a Save that can half-fail.
+
+    The default refuses an incomplete shot. Training loaders glob
+    `*_processed.h5` in the corpus root, and a verification fetch
+    materialises the one group a panel asked for - so a partial file there
+    is one those globs hand to training with the rest of the groups
+    missing.
+    """
+    paths = Paths.from_env() if paths is None else paths
+    source = cache_path(shot, paths=paths)
+    if not source.is_file():
+        raise FileNotFoundError(f"shot {int(shot)} is not in {paths.raw_cache}")
+    target = paths.corpus / source.name
+    if target.exists():
+        raise FileExistsError(
+            f"{target} already exists; promote never overwrites a corpus "
+            f"shot. Inspect both and remove one by hand."
+        )
+    present = groups_in(source)
+    if not partial and len(present) < len(CORPUS_GROUPS):
+        missing = sorted(set(CORPUS_GROUPS) - present)
+        raise ValueError(
+            f"shot {int(shot)} holds {len(present)} of {len(CORPUS_GROUPS)} "
+            f"groups; missing {', '.join(missing)}. Training globs "
+            f"*_processed.h5 in the corpus root and would read this as a "
+            f"whole shot. Pass --partial if that is what you want."
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # `replace` is atomic within a filesystem and falls back to copy+unlink
+    # across one, which the cache and the corpus may well be.
+    try:
+        source.replace(target)
+    except OSError:
+        import shutil
+
+        shutil.copy2(source, target)
+        source.unlink()
+    return target
+
+
+def clean(*, paths: Paths | None = None) -> int:
+    """Delete the whole fetch cache; return the bytes recovered."""
+    import shutil
+
+    paths = Paths.from_env() if paths is None else paths
+    root = paths.raw_cache
+    if not root.is_dir():
+        return 0
+    freed = sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
+    shutil.rmtree(root)
+    return freed
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """`python -m labeler.events.raw promote 178642 [--partial]` / `clean`."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="labeler.events.raw")
+    sub = parser.add_subparsers(dest="command", required=True)
+    move = sub.add_parser("promote", help="move a cached shot into the corpus")
+    move.add_argument("shot", type=int)
+    move.add_argument(
+        "--partial", action="store_true",
+        help="promote a shot that does not hold all 32 groups",
+    )
+    sub.add_parser("clean", help="delete the whole fetch cache")
+    args = parser.parse_args(argv)
+
+    paths = Paths.from_env()
+    if args.command == "clean":
+        freed = clean(paths=paths)
+        print(f"removed {freed / 1e9:.2f} GB from {paths.raw_cache}")
+        return 0
+    try:
+        landed = promote(args.shot, partial=args.partial, paths=paths)
+    except (ValueError, FileExistsError, FileNotFoundError) as error:
+        print(f"error: {error}")
+        return 1
+    print(f"promoted {args.shot} -> {landed}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
