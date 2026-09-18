@@ -304,6 +304,116 @@ def test_fdp_signal_wraps_a_fetch_failure(monkeypatch):
         fdp_signal(178640, ["a"])
 
 
+def _fake_fetch_ptdata(records, calls):
+    """A stand-in for `_fetch_ptdata` returning canned records, call-counted.
+
+    `records` maps point name -> the dict `_fetch_ptdata` would return, with
+    the PTDATA time key `times` and `units["times"]` rather than `dim0`.
+    `calls` is a list this appends the name to.
+    """
+
+    def fake(name, shot):
+        calls.append(name)
+        return records[name]
+
+    return fake
+
+
+def test_fdp_signal_via_ptdata_returns_expressions_in_order(monkeypatch):
+    n = 10
+    ms = np.linspace(0.0, 20.0, n)
+    records = {
+        "DENR0UF": {
+            "data": np.arange(n, dtype="float32"),
+            "times": ms,
+            "units": {"data": "f", "times": "ms"},
+        },
+        "DENV1UF": {
+            "data": np.arange(n, dtype="float32") + 100,
+            "times": ms,
+            "units": {"data": "f", "times": "ms"},
+        },
+    }
+    mds_calls: list[str] = []
+    ptdata_calls: list[str] = []
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds({}, mds_calls)
+    )
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_ptdata",
+        _fake_fetch_ptdata(records, ptdata_calls),
+    )
+    got = fdp_signal(178642, ["DENR0UF", "DENV1UF"], via="ptdata")
+    assert got.y.shape == (2, n)
+    assert got.y.dtype == np.float32
+    assert got.y[0] == pytest.approx(records["DENR0UF"]["data"])
+    assert got.y[1] == pytest.approx(records["DENV1UF"]["data"])
+    assert got.x[0] == pytest.approx(0.0)
+    assert got.x[-1] == pytest.approx(20.0)
+    assert ptdata_calls == ["DENR0UF", "DENV1UF"]
+    assert mds_calls == [], "the ptdata route must never call the mds fetch"
+
+
+def test_fdp_signal_via_ptdata_rejects_a_non_millisecond_unit(monkeypatch):
+    n = 10
+    records = {
+        "DENR0UF": {
+            "data": np.arange(n, dtype="float32"),
+            "times": np.linspace(0.0, 0.02, n),
+            "units": {"data": "f", "times": "s"},
+        },
+    }
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_ptdata",
+        _fake_fetch_ptdata(records, []),
+    )
+    with pytest.raises(NoDataError, match="'s'"):
+        fdp_signal(178642, ["DENR0UF"], via="ptdata")
+
+
+def test_fdp_signal_rejects_an_unknown_via(monkeypatch):
+    mds_calls: list[str] = []
+    ptdata_calls: list[str] = []
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds({}, mds_calls)
+    )
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_ptdata",
+        _fake_fetch_ptdata({}, ptdata_calls),
+    )
+    with pytest.raises(ValueError, match="mdsplus"):
+        fdp_signal(178642, ["a"], via="mdsplus")
+    assert mds_calls == []
+    assert ptdata_calls == []
+
+
+def test_fdp_signal_via_ptdata_cache_is_not_refetched(tmp_path, monkeypatch):
+    n = 10
+    ms = np.linspace(0.0, 20.0, n)
+    records = {
+        "DENR0UF": {
+            "data": np.arange(n, dtype="float32"),
+            "times": ms,
+            "units": {"data": "f", "times": "ms"},
+        },
+    }
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_ptdata",
+        _fake_fetch_ptdata(records, calls),
+    )
+    cache = tmp_path / "178642_co2.npz"
+
+    first = fdp_signal(178642, ["DENR0UF"], via="ptdata", cache=cache)
+    assert cache.is_file()
+    assert len(calls) == 1
+
+    second = fdp_signal(178642, ["DENR0UF"], via="ptdata", cache=cache)
+    assert len(calls) == 1, "the second call must not touch the network"
+    np.testing.assert_array_equal(first.y, second.y)
+    np.testing.assert_array_equal(first.x, second.x)
+
+
 def _roster(root, event):
     path = root / event / "shots.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
