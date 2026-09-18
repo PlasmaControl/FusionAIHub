@@ -1,4 +1,4 @@
-# locked mode
+# Locked Mode
 
 No description, method, provenance or table has been written for this
 category yet. The scope inventory row is in

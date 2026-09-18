@@ -59,7 +59,7 @@ review count:
 - `silver` — usable but less certain, or not yet fully checked.
 - `unverified` — no curation judgement has been made.
 
-`validate_shots` checks only that `tier` is one of the three legal values; it
+`validate_roster` checks only that `tier` is one of the three legal values; it
 does not compare it against `reviewers`, the same way `validate_intervals`
 guards the interval schema without judging label quality. A reviewer id is
 `$USER`, and a reviewer appears at most once per shot; pressing Verify
@@ -67,7 +67,7 @@ records that reviewer and today's date and leaves `tier` untouched.
 
 `holdout` marks a shot as reserved from training and tuning, used only for
 final evaluation. It is required and has no default: a blank value is
-invalid, and `validate_shots` rejects it the same way it rejects an unknown
+invalid, and `validate_roster` rejects it the same way it rejects an unknown
 `tier`.
 
 Ten gold shots per category is the target, not a rule the file enforces. The
@@ -258,7 +258,7 @@ category README gains a link to its `verification.ipynb`, beside the
 
 `tests/labeler/test_events_verify.py` covers, without a display or a kernel:
 
-- `validate_shots` accepts the placeholder file and rejects each way tier and
+- `validate_roster` accepts the placeholder file and rejects each way tier and
   reviewer count can disagree, a duplicate shot, and a duplicate reviewer;
 - the roster writer appends each new reviewer and leaves `tier` alone, and a
   repeated Verify by the same reviewer updates `verified_on` without
