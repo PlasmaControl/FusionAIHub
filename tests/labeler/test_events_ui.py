@@ -649,3 +649,323 @@ def test_the_whole_shot_render_stays_parseable(client, monkeypatch):
     # bytes), thin enough that a numpy or json repr change could flip this
     # green while that regression was back.
     assert size <= 4_000_000, f"{size} bytes for one whole-shot render"
+
+
+# --- /api/save: the one endpoint in this app that writes anything ---------
+
+
+def _body(**overrides):
+    """The payload the page posts, with a shot-like millisecond window."""
+    body = {
+        "event": "alfven_eigenmode",
+        "shot": 178642,
+        "reviewer": "nc1514",
+        "marks": [{"t_start": 2100.0, "t_end": 2150.0, "category": 1}],
+    }
+    body.update(overrides)
+    return body
+
+
+@pytest.fixture
+def no_roster_write(monkeypatch):
+    """Records every `record_review` call - i.e. every write of shots.csv.
+
+    `ReviewSession.save()` calls it, so a `/api/save` that went through the
+    session instead of `write_corrections` shows up here by name rather than
+    only as a byte difference in one other test.
+    """
+    from labeler.events import rosters
+
+    calls = []
+    real = rosters.record_review
+
+    def recording(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rosters, "record_review", recording)
+    return calls
+
+
+def test_save_writes_one_corrections_file(client, tables):
+    response = client.post("/api/save", json=_body())
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"written", "n"}
+    assert payload["n"] == 1
+    written = tables / "alfven_eigenmode" / "review" / payload["written"]
+    assert written.is_file()
+    assert payload["written"].startswith("178642__nc1514__")
+    assert payload["written"].endswith(".csv")
+    assert "178642,1,2100" in written.read_text().replace(".0", "")
+
+
+def test_a_saved_correction_round_trips_in_milliseconds(client, tables):
+    """The wire is milliseconds, and so is the file. No 1000x anywhere."""
+    from labeler.events.verify import corrections_for, read_corrections
+
+    assert client.post("/api/save", json=_body()).status_code == 200
+    saved = corrections_for("alfven_eigenmode", 178642, root=tables)
+    assert len(saved) == 1
+    frame = read_corrections(saved[0])
+    assert list(frame.columns) == ["shot", "category", "t_start", "t_end", "confidence"]
+    assert len(frame) == 1
+    row = frame.iloc[0]
+    assert int(row.shot) == 178642
+    assert int(row.category) == 1
+    assert float(row.t_start) == 2100.0
+    assert float(row.t_end) == 2150.0
+
+
+def test_every_mark_in_one_post_is_written(client, tables):
+    from labeler.events.verify import corrections_for, read_corrections
+
+    payload = client.post(
+        "/api/save",
+        json=_body(
+            marks=[
+                {"t_start": 2100.0, "t_end": 2150.0, "category": 1},
+                {"t_start": 2300.5, "t_end": 2400.5, "category": 2},
+            ]
+        ),
+    ).json()
+    assert payload["n"] == 2
+    frame = read_corrections(
+        corrections_for("alfven_eigenmode", 178642, root=tables)[0]
+    )
+    assert list(frame.t_start) == [2100.0, 2300.5]
+    assert list(frame.t_end) == [2150.0, 2400.5]
+    assert list(frame.category) == [1, 2]
+
+
+def test_a_second_save_writes_a_second_file_and_destroys_nothing(client, tables):
+    first = client.post("/api/save", json=_body()).json()["written"]
+    second = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": 2400.0, "t_end": 2900.0, "category": 0}]),
+    ).json()["written"]
+    assert first != second
+    review = tables / "alfven_eigenmode" / "review"
+    assert len(list(review.glob("178642__*.csv"))) == 2
+    assert "2100" in (review / first).read_text(), "the first save was rewritten"
+
+
+def test_save_does_not_touch_shots_csv(client, tables, no_roster_write):
+    """The guarantee the reviewer is given, asserted on the bytes.
+
+    An accidental `ReviewSession.save()` here would call `record_review` and
+    break this without any other test noticing.
+    """
+    roster = tables / "alfven_eigenmode" / "shots.csv"
+    before = (roster.read_bytes(), roster.stat().st_mtime_ns)
+    assert client.post("/api/save", json=_body()).status_code == 200
+    assert (roster.read_bytes(), roster.stat().st_mtime_ns) == before
+    assert no_roster_write == [], "a save edited the roster"
+
+
+def test_save_with_no_marks_is_refused(client, tables):
+    response = client.post("/api/save", json=_body(marks=[]))
+    assert response.status_code == 400
+    assert "no marks" in response.json()["error"]
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_an_interval_that_runs_backwards(client, tables):
+    response = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": 2150.0, "t_end": 2100.0, "category": 1}]),
+    )
+    assert response.status_code == 400
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_zero_length_interval(client, tables):
+    """A drag that never moved marks nothing; `/api/panels` refuses it too."""
+    response = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": 2100.0, "t_end": 2100.0, "category": 1}]),
+    )
+    assert response.status_code == 400
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_time_off_any_shot(client, tables):
+    """A stray 1e30 is a bug upstream, not a range anybody dragged."""
+    response = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": 2100.0, "t_end": 1e30, "category": 1}]),
+    )
+    assert response.status_code == 400
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_non_finite_time(client, tables):
+    """`json.loads` takes the bare `NaN` and `Infinity` tokens as floats."""
+    import json as jsonlib
+
+    body = jsonlib.dumps(_body()).replace("2150.0", "NaN")
+    assert "NaN" in body
+    response = client.post(
+        "/api/save", content=body, headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 400
+    # Named, not just refused: without this the NaN falls through to
+    # `validate_intervals`, which also refuses it, and the check here could
+    # be deleted with nothing going red.
+    assert "finite" in response.json()["error"]
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_non_numeric_time(client, tables):
+    response = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": "early", "t_end": 2150.0, "category": 1}]),
+    )
+    assert response.status_code == 422
+    assert set(response.json()) == {"error"}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_mark_missing_a_field(client, tables):
+    response = client.post(
+        "/api/save", json=_body(marks=[{"t_start": 2100.0, "category": 1}])
+    )
+    assert response.status_code == 422
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_fractional_category(client, tables):
+    """`int()` would truncate 1.5 to 1 and write a label nobody chose."""
+    response = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": 2100.0, "t_end": 2150.0, "category": 1.5}]),
+    )
+    assert response.status_code == 422
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_negative_category(client, tables):
+    """The interval schema owns this rule; the endpoint must not swallow it."""
+    response = client.post(
+        "/api/save",
+        json=_body(marks=[{"t_start": 2100.0, "t_end": 2150.0, "category": -1}]),
+    )
+    assert response.status_code == 400
+    assert "nonnegative" in response.json()["error"]
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_body_that_is_missing_fields(client, tables):
+    for body in ({}, {"event": "alfven_eigenmode"}, _body(shot=None)):
+        response = client.post("/api/save", json=body)
+        assert response.status_code == 422, body
+        assert set(response.json()) == {"error"}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_field_of_the_wrong_type(client, tables):
+    for body in (
+        _body(shot="178642"),
+        _body(marks={"t_start": 2100.0}),
+        _body(marks=[[2100.0, 2150.0, 1]]),
+        _body(event=178642),
+    ):
+        response = client.post("/api/save", json=body)
+        assert response.status_code == 422, body
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_body_that_is_not_an_object(client, tables):
+    """A bare list or string has no `.get`, so this is a 500 if unchecked."""
+    for body in ([_body()], "alfven_eigenmode", 7):
+        response = client.post("/api/save", json=body)
+        assert response.status_code == 422, body
+        assert set(response.json()) == {"error"}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_a_body_that_is_not_json(client, tables):
+    response = client.post(
+        "/api/save", content=b"not json", headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 422
+    assert set(response.json()) == {"error"}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_save_refuses_an_absurd_number_of_marks(client, tables):
+    mark = {"t_start": 2100.0, "t_end": 2150.0, "category": 1}
+    response = client.post("/api/save", json=_body(marks=[mark] * 5000))
+    assert response.status_code == 400
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_a_traversing_event_writes_nothing(client, foreign):
+    """The read endpoints leaked a file; here the same hole is a WRITE."""
+    response = client.post("/api/save", json=_body(event="../secret_area"))
+    assert response.status_code == 404
+    assert not (foreign / "review").exists(), "a correction was written outside"
+
+
+def test_an_absolute_event_writes_nothing(client, foreign):
+    response = client.post("/api/save", json=_body(event=str(foreign)))
+    assert response.status_code == 404
+    assert not (foreign / "review").exists(), "a correction was written outside"
+
+
+def test_saving_to_an_unknown_event_is_not_found(client, tables):
+    response = client.post("/api/save", json=_body(event="no_such_event"))
+    assert response.status_code == 404
+    assert not (tables / "no_such_event").exists(), "a directory was created"
+
+
+def test_saving_to_an_overlong_event_is_not_found_not_a_500(client):
+    response = client.post("/api/save", json=_body(event="a" * 5000))
+    assert response.status_code == 404
+    assert set(response.json()) == {"error"}
+
+
+def test_a_reviewer_id_cannot_escape_the_review_directory(client, tables, tmp_path):
+    """`reviewer` reaches a filename; `correction_path` sanitises it."""
+    payload = client.post("/api/save", json=_body(reviewer="../../evil")).json()
+    written = tables / "alfven_eigenmode" / "review" / payload["written"]
+    assert written.is_file()
+    assert "/" not in payload["written"] and ".." not in payload["written"]
+    assert not (tmp_path / "evil").exists()
+
+
+def test_a_reviewer_id_with_nothing_usable_is_refused(client, tables):
+    response = client.post("/api/save", json=_body(reviewer="///"))
+    assert response.status_code == 400
+    assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_a_refused_save_leaves_an_existing_review_directory_exactly_as_it_was(
+    client, tables
+):
+    review = tables / "alfven_eigenmode" / "review"
+    review.mkdir()
+    existing = review / "178642__alice__20260101T000000Z.csv"
+    existing.write_text("shot,category,t_start,t_end,confidence\n178642,1,10,20,\n")
+    before = (existing.read_bytes(), existing.stat().st_mtime_ns)
+    assert client.post("/api/save", json=_body(marks=[])).status_code == 400
+    assert client.post("/api/save", json=_body(shot="nope")).status_code == 422
+    assert client.post("/api/save", json=_body(event="../secret")).status_code == 404
+    assert [p.name for p in review.iterdir()] == [existing.name]
+    assert (existing.read_bytes(), existing.stat().st_mtime_ns) == before
+
+
+def test_a_save_shows_up_in_the_shot_list(client):
+    """The count `/api/shots` reports is files on disk, so a save moves it."""
+    before = client.get("/api/shots?event=alfven_eigenmode").json()["shots"]
+    assert {row["shot"]: row["n_corrections"] for row in before}[178642] == 0
+    client.post("/api/save", json=_body())
+    after = client.get("/api/shots?event=alfven_eigenmode").json()["shots"]
+    assert {row["shot"]: row["n_corrections"] for row in after}[178642] == 1
+
+
+def test_save_is_behind_the_token_gate(app, tables):
+    response = TestClient(app).post("/api/save", json=_body())
+    assert response.status_code == 401
+    assert response.json() == {"error": NO_TOKEN}
+    assert not (tables / "alfven_eigenmode" / "review").exists()
