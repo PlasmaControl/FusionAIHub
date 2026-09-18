@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -250,3 +251,207 @@ def test_the_static_mount_is_behind_the_gate(app):
     response = TestClient(app).get("/")
     assert response.status_code == 401
     assert response.json() == {"error": NO_TOKEN}
+
+
+def _co2_stub(seen, *, base_ms=2000.0, span_ms=200.0, rate_hz=1_000_000.0):
+    """A stand-in for `raw_signal` that slices the way the real one does.
+
+    It RECORDS its arguments, so a `t_range` the endpoint dropped or mangled
+    on its way through is visible here rather than hidden behind a window
+    that merely rendered something. The time base starts at a shot-like
+    2000 ms on purpose: the corpus stores seconds and `raw_signal` returns
+    milliseconds, and a base of 0 satisfies both, so it cannot fail.
+    """
+    from labeler.features.store import FeatureArray
+
+    count = int(span_ms * rate_hz / 1000.0)
+    x = base_ms + np.arange(count) / rate_hz * 1000.0
+    y = np.random.default_rng(4).normal(size=(4, count)).astype("float32")
+
+    def fake_raw_signal(shot, group, *, channels=None, t_range=None, paths=None):
+        seen["shot"] = shot
+        seen["group"] = group
+        seen["t_range"] = t_range
+        seen["paths"] = paths
+        if t_range is None:
+            return FeatureArray(x=x, y=y, attrs={})
+        keep = (x >= t_range[0]) & (x <= t_range[1])
+        return FeatureArray(x=x[keep], y=y[:, keep], attrs={})
+
+    return fake_raw_signal
+
+
+@pytest.fixture
+def co2(monkeypatch):
+    """The only layer stubbed: the one that reads bytes off disk."""
+    from labeler.events.panels import alfven_eigenmode as ae
+
+    seen = {}
+    monkeypatch.setattr(ae, "raw_signal", _co2_stub(seen))
+    return seen
+
+
+def test_panels_honours_the_window_it_is_given(client, co2):
+    response = client.get(
+        "/api/panels?event=alfven_eigenmode&shot=178642&t0=2100&t1=2150"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    # Milliseconds all the way across the wire, floats on both sides.
+    assert co2["t_range"] == (2100.0, 2150.0)
+    assert co2["shot"] == 178642
+    assert co2["group"] == "co2"
+    assert payload["t_range"] == [2100.0, 2150.0]
+    assert payload["event"] == "alfven_eigenmode"
+    assert payload["shot"] == 178642
+    assert len(payload["panels"]) == 3
+    first = payload["panels"][0]
+    assert first["kind"] == "heatmap"
+    assert first["ylabel"] == "kHz"
+    assert first["title"] == "CO2 crosspower DENR0UF x DENV1UF"
+    assert first["bands"] == [[80.0, 250.0]]
+    assert first["hlines"] == []
+    assert len(first["z"]) == len(first["y"])
+    assert len(first["z"][0]) == len(first["x"])
+    assert 2100.0 <= min(first["x"]) and max(first["x"]) <= 2150.0
+
+
+def test_panels_without_a_window_asks_for_the_whole_shot(client, co2):
+    payload = client.get("/api/panels?event=alfven_eigenmode&shot=178642").json()
+    assert co2["t_range"] is None
+    assert payload["t_range"] is None
+    assert min(payload["panels"][0]["x"]) >= 2000.0
+
+
+def test_panels_is_given_the_apps_own_paths_not_the_environments(client, co2, tables):
+    """A `Paths` that fell back to `from_env` would read the real corpus."""
+    client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    assert co2["paths"] is not None
+    assert co2["paths"].label_tables == tables
+
+
+def test_panels_reports_a_missing_signal_as_a_message_not_a_500(client, monkeypatch):
+    """A shot no tier has and no fetch route can reach is an ordinary outcome."""
+    from labeler.events import raw
+    from labeler.events.panels import alfven_eigenmode as ae
+
+    def absent(*args, **kwargs):
+        raise raw.NoDataError("shot 999999 has no 'co2' in the corpus or the cache")
+
+    monkeypatch.setattr(ae, "raw_signal", absent)
+    response = client.get("/api/panels?event=alfven_eigenmode&shot=999999")
+    assert response.status_code == 502
+    assert "999999" in response.json()["error"]
+
+
+def test_panels_refuses_a_window_the_shot_has_no_samples_in(client, co2):
+    """The builder raises on a degenerate window; that is the user's input."""
+    response = client.get(
+        "/api/panels?event=alfven_eigenmode&shot=178642&t0=9000&t1=9100"
+    )
+    assert response.status_code == 400
+    assert "0 sample(s)" in response.json()["error"]
+
+
+def test_panels_refuses_a_malformed_window(client, co2):
+    response = client.get(
+        "/api/panels?event=alfven_eigenmode&shot=178642&t0=early&t1=2150"
+    )
+    assert response.status_code == 422
+    assert "t0" in response.json()["error"]
+    assert "t_range" not in co2, "the builder ran on an unparsed window"
+
+
+def test_panels_says_when_there_is_no_label_row(client, co2):
+    payload = client.get("/api/panels?event=alfven_eigenmode&shot=178642").json()
+    assert payload["note"] == "NO LABEL ROW"
+    assert len(payload["panels"]) == 3
+
+
+def test_panels_appends_the_label_row_when_there_is_one(client, co2, tables):
+    from labeler.events.interval_tables import write_label_grid
+
+    time_ms = np.arange(2000.0, 2500.0, 50.0)
+    labels = np.zeros((len(time_ms), 20))
+    labels[2:4, :] = 1.0
+    labels[0, :] = np.nan
+    write_label_grid(
+        tables / "alfven_eigenmode" / "format" / "shots" / "178642.npz",
+        time_ms,
+        labels,
+        categories={"0": "none", "1": "ae"},
+    )
+    payload = client.get("/api/panels?event=alfven_eigenmode&shot=178642").json()
+    assert payload["note"] == ""
+    assert len(payload["panels"]) == 4
+    row = payload["panels"][-1]
+    assert row["title"] == "labels (format/shots)"
+    assert row["kind"] == "heatmap"
+    assert row["zmin"] == 0.0 and row["zmax"] == 1.0
+    # Cell EDGES: one more coordinate on each axis than the grid has cells.
+    assert len(row["z"]) == len(row["y"]) - 1
+    assert len(row["z"][0]) == len(row["x"]) - 1
+    assert row["x"][0] == 2000.0 and row["x"][-1] == 2500.0
+    # NaN is not JSON. An unknown cell must arrive as null, which plotly
+    # draws as a gap; a bare NaN token makes `JSON.parse` throw on the lot.
+    assert row["z"][0][0] is None
+    assert (
+        "NaN" not in client.get("/api/panels?event=alfven_eigenmode&shot=178642").text
+    )
+
+
+def test_panels_for_an_unknown_event_is_not_found(client):
+    response = client.get("/api/panels?event=no_such_event&shot=178642")
+    assert response.status_code == 404
+    assert response.json() == {"error": "unknown event 'no_such_event'"}
+
+
+def test_a_traversing_event_has_no_panels(client, foreign):
+    response = client.get("/api/panels", params={"event": "../secret_area", "shot": 1})
+    assert response.status_code == 404
+    assert "999999" not in response.text
+
+
+def test_an_absolute_event_has_no_panels(client, foreign):
+    response = client.get("/api/panels", params={"event": str(foreign), "shot": 1})
+    assert response.status_code == 404
+    assert "999999" not in response.text
+
+
+def test_drawing_panels_never_writes_the_roster(client, co2, tables):
+    roster = tables / "alfven_eigenmode" / "shots.csv"
+    before = (roster.read_bytes(), roster.stat().st_mtime_ns)
+    client.get("/api/panels?event=alfven_eigenmode&shot=178642&t0=2100&t1=2150")
+    assert (roster.read_bytes(), roster.stat().st_mtime_ns) == before
+
+
+def test_a_generic_events_panels_come_back_as_lines_in_milliseconds(
+    client, monkeypatch
+):
+    """`_generic` reads seconds off disk; the wire is milliseconds either way."""
+    from labeler.events.panels import _generic
+    from labeler.features.store import FeatureArray
+
+    seen = []
+
+    def fake_read_feature(path, name):
+        seen.append(name)
+        seconds = np.arange(2.0, 2.2, 0.001)
+        return FeatureArray(x=seconds, y=np.ones((1, len(seconds))) * 7.0, attrs={})
+
+    monkeypatch.setattr(_generic, "read_feature", fake_read_feature)
+    payload = client.get(
+        "/api/panels?event=detachment&shot=178642&t0=2100&t1=2150"
+    ).json()
+    assert seen == ["ip", "betan", "pinj_total"]
+    assert [panel["title"] for panel in payload["panels"]] == seen
+    first = payload["panels"][0]
+    assert first["kind"] == "line"
+    assert first["legend"] == ["ch 0"]
+    assert first["y"] == [[7.0] * len(first["x"])]
+    assert "z" not in first
+    # Seconds on disk would have put this window at 2.1-2.15, i.e. empty.
+    # The sample spacing is 1 ms, so the window's edges land within one of it.
+    assert first["x"][0] == pytest.approx(2101.0, abs=1.0)
+    assert first["x"][-1] == pytest.approx(2150.0, abs=1.0)
+    assert len(first["x"]) == pytest.approx(50, abs=1)
