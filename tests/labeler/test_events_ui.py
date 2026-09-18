@@ -224,6 +224,18 @@ def test_an_unknown_event_is_not_found(client):
     assert response.status_code == 404
 
 
+def test_an_overlong_event_is_not_found_not_a_500(client):
+    """`Path.is_file` re-raises ENAMETOOLONG rather than reporting False -
+
+    it is not in pathlib's `_IGNORED_ERRNOS` - so an unchecked `is_file` call
+    turns a client-supplied `event` this long into an unhandled 500 instead
+    of the same 404 every other rejected `event` gets.
+    """
+    response = client.get("/api/shots", params={"event": "a" * 5000})
+    assert response.status_code == 404
+    assert set(response.json()) == {"error"}
+
+
 def test_one_bad_roster_does_not_hide_the_others(client, tables):
     bad = tables / "broken_event"
     bad.mkdir()
@@ -385,15 +397,24 @@ def test_unreadable_bytes_do_not_put_a_server_path_on_the_page(client, monkeypat
 
 
 def test_a_builder_bug_is_not_reported_as_a_bad_window(client, monkeypatch):
-    """A genuine regression must not read to the reviewer as bad input."""
+    """A genuine regression must not read to the reviewer as bad input.
+
+    It is a 500 - the decision that a builder bug is a server error rather
+    than a dressed-up 400 is correct and stays - but the body must still be
+    this module's one {"error": ...} shape, and must not carry the raw
+    exception text, which is logged instead.
+    """
     from labeler.events.panels import alfven_eigenmode as ae
 
     def buggy(*args, **kwargs):
         raise ValueError("operands could not be broadcast together")
 
     monkeypatch.setattr(ae, "raw_signal", buggy)
-    with pytest.raises(ValueError):
-        client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    response = client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    assert response.status_code == 500
+    body = response.json()
+    assert set(body) == {"error"}
+    assert "operands could not be broadcast together" not in body["error"]
 
 
 def test_a_bad_window_says_which_window(client, co2):
@@ -511,6 +532,13 @@ def test_a_traversing_event_has_no_panels(client, foreign):
     assert "999999" not in response.text
 
 
+def test_an_overlong_event_has_no_panels_not_a_500(client):
+    """Same ENAMETOOLONG hazard as `/api/shots`, on the other endpoint."""
+    response = client.get("/api/panels", params={"event": "a" * 5000, "shot": 1})
+    assert response.status_code == 404
+    assert set(response.json()) == {"error"}
+
+
 def test_an_absolute_event_has_no_panels(client, foreign):
     response = client.get("/api/panels", params={"event": str(foreign), "shot": 1})
     assert response.status_code == 404
@@ -616,4 +644,8 @@ def test_the_whole_shot_render_stays_parseable(client, monkeypatch):
         len(panel["z"]) * len(panel["z"][0]) for panel in response.json()["panels"]
     )
     assert cells <= 500_000, f"{cells} heatmap cells in one whole-shot render"
-    assert size <= 6_000_000, f"{size} bytes for one whole-shot render"
+    # The real render is ~2.4 MB; 4,000,000 is 1.7x headroom. 6,000,000 left
+    # only a 0.4% margin against the DECIMALS=None mutation (6,025,699
+    # bytes), thin enough that a numpy or json repr change could flip this
+    # green while that regression was back.
+    assert size <= 4_000_000, f"{size} bytes for one whole-shot render"

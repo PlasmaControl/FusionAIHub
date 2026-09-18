@@ -42,7 +42,12 @@ BAD_TOKEN = "bad token"
 
 #: Figures carry log10 magnitudes and physical coordinates; neither is known
 #: to seventeen significant digits, and full-precision float64 text is most
-#: of the bytes in a heatmap response.
+#: of the bytes in a heatmap response. `clean(row, DECIMALS)` applies this to
+#: every heatmap's `z` regardless of builder or units - safe today for all
+#: four (AE log-magnitude, `minimum_safety_factor`'s q ~ 0.8-8, `fishbone`'s
+#: +-pi cross-phase, and the label grid's integer codes), but any future
+#: heatmap whose `z` has a dynamic range below ~0.01 must not use this
+#: default.
 DECIMALS = 3
 
 log = logging.getLogger(__name__)
@@ -115,18 +120,34 @@ def require_event(event: str, paths: Paths) -> str:
     this runs on every pan and every zoom, and reading and parsing all
     sixteen rosters to test one string for membership put that whole cost on
     each interactive frame. It is also STRICTER than membership was. The
-    accepted set is unchanged - a direct child of `label_tables` holding a
-    roster - but it is decided on the name before any path is joined, so
-    `..`, a separator and an absolute value are refused by inspection rather
-    than by failing to match a listing. Nothing is cached, so an event added
-    while the server runs shows up on the next request.
+    accepted set is unchanged - a direct child ENTRY of `label_tables`
+    holding a roster - but it is decided on the name before any path is
+    joined, so `..`, a separator and an absolute value are refused by
+    inspection rather than by failing to match a listing. Nothing is cached,
+    so an event added while the server runs shows up on the next request.
+
+    "Direct child entry" is deliberate: this does not resolve symlinks. A
+    directory entry that is itself a symlink to somewhere outside
+    `label_tables`, or a real child whose `shots.csv` is a symlink to a
+    foreign roster, both pass and serve their target's content. That is
+    unchanged from the membership test this replaced, and `label_tables` is
+    a hand-maintained tree, so a symlinked entry is trusted rather than
+    resolved and rechecked.
     """
     # `Path(event).name` is `event` itself only for a bare filename: it is
     # "b" for "a/b", "secret_area" for "/tmp/secret_area", and "" for "..",
     # ".", "" and any trailing-slash form. A NUL cannot be in a path at all.
     if event != Path(event).name or event in {"", ".", ".."} or "\0" in event:
         raise HTTPException(status_code=404, detail=f"unknown event {event!r}")
-    if not (paths.label_tables / event / rosters.ROSTER_NAME).is_file():
+    try:
+        found = (paths.label_tables / event / rosters.ROSTER_NAME).is_file()
+    except OSError:
+        # `is_file` re-raises rather than reporting False for some failures
+        # pathlib treats as ignorable ones - ENAMETOOLONG among them - so an
+        # over-long `event` must be caught here, not left to become an
+        # unhandled 500 that breaks the module's one-error-shape contract.
+        found = False
+    if not found:
         raise HTTPException(status_code=404, detail=f"unknown event {event!r}")
     return event
 
@@ -317,9 +338,23 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             if t_range is None:
                 # With no window there is no window to blame, so this is a
                 # builder bug. Reporting it as a 400 told the reviewer their
-                # input was bad and hid the regression.
+                # input was bad and hid the regression - surfacing it as a
+                # 500 is right and stays. Only the shape was wrong: a bare
+                # `raise` gave Starlette's plain-text response instead of
+                # this module's one {"error": ...} shape, which is what
+                # every other refusal reads and what the page's JavaScript
+                # depends on. The exception text itself is logged, not put
+                # in the response, the same as the OSError branch above.
                 log.exception("building %s panels for shot %s", event, shot)
-                raise
+                return _json(
+                    {
+                        "error": (
+                            f"internal error building {event} panels for "
+                            f"shot {int(shot)}; see the server log"
+                        )
+                    },
+                    status_code=500,
+                )
             return _json(
                 {"error": f"window {t_range[0]}-{t_range[1]} ms: {error}"},
                 status_code=400,
