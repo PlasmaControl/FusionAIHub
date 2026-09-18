@@ -274,12 +274,45 @@ def test_fishbone_draws_b1_power_and_the_b1_x_b5_cross_phase(monkeypatch):
         assert panel.x.max() <= end_ms
         assert panel.y.max() <= 40.0
         assert panel.z.shape == (len(panel.y), len(panel.x))
+        # The panel must actually SPAN the requested window, not merely lie
+        # inside it - a dropped `* 1000.0` on the seconds-valued spectrogram
+        # time axis would still land inside [start_ms, end_ms] but collapse
+        # the panel to a near-zero-width stripe at its left edge.
+        assert panel.x.max() - panel.x.min() > 0.5 * (window[1] - window[0])
 
     # Cross-phase is an angle: it must span roughly -pi to pi, which a
     # spectrogram of a complex signal built from the two probes would not.
     assert built[1].z.min() < -3.0 and built[1].z.max() > 3.0
     # ...and the power panel is a log magnitude, so it must NOT.
     assert built[0].z.max() < 3.0
+
+
+def test_fishbone_rejects_a_degenerate_window(monkeypatch):
+    """A one-sample (or zero-span) window divides to nan, not an exception.
+
+    `scipy.signal.spectrogram` then runs with `fs=nan` and returns
+    `freq=[nan]`; `freq <= MAX_HZ` is all-False since nan comparisons are
+    always False, so the panel would render as a silent 0-row heatmap
+    instead of failing loudly. Mirrors
+    `test_crosspower_rejects_a_degenerate_window`.
+    """
+
+    def fake_raw_signal(shot, group, *, channels=None, t_range=None, paths=None):
+        return FeatureArray(x=one, y=np.zeros((2, len(one)), dtype="float32"))
+
+    monkeypatch.setattr(fb, "raw_signal", fake_raw_signal)
+
+    one = np.array([])
+    with pytest.raises(ValueError, match="more than one instant"):
+        fb.panels(192238)
+
+    one = np.array([1500.0])
+    with pytest.raises(ValueError, match="more than one instant"):
+        fb.panels(192238)
+
+    one = np.array([1500.0, 1500.0])
+    with pytest.raises(ValueError, match="more than one instant"):
+        fb.panels(192238)
 
 
 def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):

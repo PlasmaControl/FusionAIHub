@@ -26,6 +26,18 @@ def panels(shot, *, t_range=None, paths=None):
     mhr = raw_signal(
         int(shot), "mhr", channels=list(PROBES), t_range=t_range, paths=paths
     )
+    # A window this thin (or a zero-span one) divides to nan below rather
+    # than raising: `scipy.signal.spectrogram` then runs with `fs=nan`,
+    # returns `freq=[nan]`, and `freq <= MAX_HZ` is all-False since nan
+    # comparisons are always False - a 0-row heatmap that renders blank
+    # instead of erroring. Mirror alfven_eigenmode.crosspower's guard.
+    if mhr.x.shape[0] < 2 or mhr.x[-1] == mhr.x[0]:
+        raise ValueError(
+            "fishbone needs a time vector spanning more than one instant; "
+            f"got {mhr.x.shape[0]} sample(s). An out-of-range t_range slices "
+            "the signal to an empty or single-sample window, which divides "
+            "to nan and draws a blank panel."
+        )
     # The rate comes from the SPAN, never from a median diff: xdata is
     # float32 and its spacing quantises at t ~ 3 s.
     rate = (mhr.x.shape[0] - 1) / ((mhr.x[-1] - mhr.x[0]) / 1000.0)
