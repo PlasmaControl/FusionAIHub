@@ -254,10 +254,20 @@ REVIEW_DIRECTORY = "review"
 class Panel:
     """One row of a review figure, already computed by the notebook.
 
-    `kind="line"` draws each row of `y` against `x`. `kind="heatmap"` draws
-    `z`, shaped `(len(y), len(x))`, with `y` as the vertical axis - which is
-    how a spectrogram arrives. `bands` shades horizontal regions of interest,
-    such as the 80-250 kHz AE band.
+    `kind="line"` draws each row of `y` against `x`, so `y` is `(C, len(x))`.
+    `kind="heatmap"` draws `z` with `y` as the vertical axis.
+
+    A heatmap has TWO legitimate shapes, because plotly reads N coordinates
+    against N columns as cell CENTRES and N+1 as cell EDGES. A spectrogram
+    arrives on centres (`z.shape == (len(y), len(x))`); `label_panel` hands
+    over the label grid's own bin edges (`z.shape == (len(y)-1, len(x)-1)`).
+    Both render correctly and both are accepted; anything else is a mistake
+    plotly would draw without complaining, so it raises here instead.
+
+    `bands` marks horizontal regions of interest, such as the 80-250 kHz AE
+    band. `hlines` draws single dashed lines, such as a class threshold -
+    a band 0.01 wide is not a line. `zmin`/`zmax` pin a heatmap's colour
+    scale so one value means one colour across every shot.
     """
 
     title: str
@@ -268,6 +278,51 @@ class Panel:
     ylabel: str = ""
     legend: Sequence[str] | None = None
     bands: Sequence[tuple[float, float]] = ()
+    hlines: Sequence[float] = ()
+    zmin: float | None = None
+    zmax: float | None = None
+
+    def __post_init__(self) -> None:
+        # `FeatureArray` two modules over validates its own arrays in
+        # `__post_init__`; a panel that disagrees with itself is worse,
+        # because plotly renders most of these silently - a transposed `z`
+        # as-is, a `z=None` as an empty row, and a `y` shorter than `x` as a
+        # trace truncated to the shorter, i.e. drawn at the wrong times on
+        # the one surface whose output is corrected timings.
+        self.x = np.asarray(self.x)
+        self.y = np.asarray(self.y)
+        if self.kind == "heatmap":
+            if self.z is None:
+                raise ValueError(
+                    f"panel {self.title!r}: kind='heatmap' needs z; without it "
+                    f"plotly draws an empty row and reports nothing"
+                )
+            self.z = np.asarray(self.z)
+            rows, columns = (len(self.y), len(self.x))
+            if self.z.ndim != 2 or (
+                self.z.shape[0] not in (rows, rows - 1)
+                or self.z.shape[1] not in (columns, columns - 1)
+            ):
+                raise ValueError(
+                    f"panel {self.title!r}: z is {self.z.shape} against "
+                    f"len(y)={rows} and len(x)={columns}; a heatmap needs "
+                    f"({rows}, {columns}) for bin centres or "
+                    f"({rows - 1}, {columns - 1}) for bin edges"
+                )
+        elif self.kind == "line":
+            if self.y.ndim != 2:
+                raise ValueError(
+                    f"panel {self.title!r}: kind='line' needs y as "
+                    f"(channels, len(x)); got {self.y.ndim}-D {self.y.shape}"
+                )
+            if self.y.shape[-1] != len(self.x):
+                raise ValueError(
+                    f"panel {self.title!r}: y is {self.y.shape} against "
+                    f"len(x)={len(self.x)}; plotly would truncate to the "
+                    f"shorter and put the trace at the wrong times"
+                )
+        # An unknown `kind` is left to `_build_figure`, which names the panel
+        # and the kind - validating it twice would make that branch dead.
 
 
 def review_path(event: str, shot: int, *, root: Path | None = None) -> Path:
@@ -313,6 +368,7 @@ class ReviewSession:
         root: Path | None = None,
         reviewer: str | None = None,
         source: str = "format/shots",
+        note: str = "",
     ) -> None:
         import os
 
@@ -320,6 +376,10 @@ class ReviewSession:
         self.shot = int(shot)
         self.panels = list(panels)
         self.source = source
+        # Something the reviewer must not miss, shown in the figure title
+        # rather than only as a warning above the widget: `review()` sets it
+        # to "NO LABEL ROW" when no saved grid exists for this shot.
+        self.note = note
         self.root = Paths.from_env().label_tables if root is None else Path(root)
         self.reviewer = reviewer or os.environ.get("USER", "unknown")
         self._marks: list[tuple[float, float, int]] = []
@@ -394,6 +454,13 @@ class ReviewSession:
                         x=panel.x,
                         y=panel.y,
                         z=panel.z,
+                        # Pinned by the panel, not autoscaled per shot: with
+                        # `minimum_safety_factor`'s five classes an all-class-1
+                        # shot would otherwise render in exactly the colours of
+                        # an all-class-4 one. None leaves plotly autoscaling,
+                        # which is right for a spectrogram.
+                        zmin=panel.zmin,
+                        zmax=panel.zmax,
                         showscale=False,
                         legend=legend_name,
                         # plotly.js lists heatmap under "showLegend", so with
@@ -423,17 +490,39 @@ class ReviewSession:
                     f"panel {panel.title!r} has unknown kind {panel.kind!r}"
                 )
             for low, high in panel.bands:
-                figure.add_hrect(
-                    y0=low, y1=high, line_width=0, fillcolor="black", opacity=0.08,
-                    row=index, col=1,
+                if panel.kind == "heatmap":
+                    # plotly's `shape.layer` defaults to "above", so a filled
+                    # rect washes 8% black over the very image under review -
+                    # darker reads as less power on every sequential colormap,
+                    # biasing the reviewer toward under-calling the mode. And
+                    # `layer="below"` would hide the marker behind the image
+                    # entirely. Boundary lines mark the band without touching
+                    # what is inside it.
+                    for edge in (low, high):
+                        figure.add_hline(
+                            y=edge, line_width=1, line_dash="dot",
+                            line_color="black", row=index, col=1,
+                        )
+                else:
+                    figure.add_hrect(
+                        y0=low, y1=high, line_width=0, fillcolor="black",
+                        opacity=0.08, layer="below", row=index, col=1,
+                    )
+            for level in panel.hlines:
+                figure.add_hline(
+                    y=level, line_width=1, line_dash="dash",
+                    line_color="#b2182b", row=index, col=1,
                 )
             figure.update_yaxes(title_text=panel.ylabel, row=index, col=1)
             axis_name = "yaxis" if index == 1 else f"yaxis{index}"
             y0, y1 = figure.layout[axis_name].domain
             figure.layout[legend_name] = {"y": (y0 + y1) / 2, "yanchor": "middle"}
         figure.update_xaxes(title_text="Time (ms)", row=rows, col=1)
+        title = f"{self.event} - shot {self.shot} ({self.source})"
+        if self.note:
+            title = f"{title} - {self.note}"
         figure.update_layout(
-            title=f"{self.event} - shot {self.shot} ({self.source})",
+            title=title,
             height=200 * rows + 120,
             dragmode="select",
             selectdirection="h",
@@ -540,6 +629,7 @@ def review(
 ) -> ReviewSession:
     """Open a review of one shot, with the label row appended to the panels."""
     panels = list(panels)
+    note = ""
     try:
         panels.append(label_panel(event, shot, source=source, root=root))
     except OSError as error:
@@ -547,6 +637,9 @@ def review(
             f"no saved label grid for {event!r} shot {shot}: {error}",
             stacklevel=2,
         )
+        # The warning goes to stderr above the widget, which is not where the
+        # reviewer is looking. Say it on the figure too.
+        note = "NO LABEL ROW"
     return ReviewSession(
         event=event,
         shot=shot,
@@ -554,6 +647,7 @@ def review(
         root=root,
         reviewer=reviewer,
         source=source,
+        note=note,
     )
 
 
@@ -561,14 +655,28 @@ def label_panel(
     event: str, shot: int, *, source: str = "format/shots", root: Path | None = None
 ) -> Panel:
     """The saved label grid as a heatmap row, unknown cells left as NaN."""
+    from .interval_tables import SAMPLE_MS
     from .notebooks import load_shot
 
     grid = load_shot(event, shot, source=source, root=root)
+    # `time_ms` holds each half-open 50 ms bin's LEFT edge, so the edge array
+    # is one longer than the grid - exactly what `plot_shot` builds for
+    # pcolormesh's `shading="flat"`. Plotly reads N coordinates against N
+    # columns as cell CENTRES and N+1 as cell EDGES, so passing the N left
+    # edges alone drew every label cell 25 ms early and half a rho bin low,
+    # with nothing on screen to give it away - on the surface whose whole job
+    # is deciding whether a label boundary sits on the right feature.
+    ids = sorted(int(key) for key in grid.get("categories", {}))
     return Panel(
         title=f"labels ({source})",
         kind="heatmap",
-        x=grid["time_ms"],
-        y=grid["rho_edges"][:-1],
+        x=np.r_[grid["time_ms"], grid["time_ms"][-1] + SAMPLE_MS],
+        y=grid["rho_edges"],
         z=grid["label"].T,
         ylabel="rho",
+        # The grid's own declared class ids, derived the way `plot_shot`
+        # derives them, so a class keeps one colour from shot to shot. A grid
+        # written without a category mapping leaves plotly to autoscale.
+        zmin=float(min(ids)) if ids else None,
+        zmax=float(max(ids)) if ids else None,
     )
