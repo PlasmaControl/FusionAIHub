@@ -59,6 +59,15 @@ def validate_roster(frame: pd.DataFrame) -> pd.DataFrame:
         raise DatabaseError(f"duplicate shot {int(duplicated.iloc[0])}")
     for row in result.itertuples():
         reviewers = split_reviewers(row.reviewers)
+        # `split_reviewers` drops empty segments, so "alice;;bob" and
+        # ";alice" read back as clean lists and the malformed cell survives
+        # every round trip unremarked. Round-tripping it here is what makes
+        # the separator a rule rather than a convention.
+        if row.reviewers and REVIEWER_SEPARATOR.join(reviewers) != row.reviewers:
+            raise DatabaseError(
+                f"shot {row.shot}: reviewers {row.reviewers!r} is not a "
+                f"clean {REVIEWER_SEPARATOR!r}-separated list"
+            )
         if len(set(reviewers)) != len(reviewers):
             raise DatabaseError(f"duplicate reviewer on shot {row.shot}")
         if row.tier not in TIERS:
