@@ -32,10 +32,16 @@ exists and that its labels sit inside the discharge. They do not show whether
 {title} actually happened. Replace the panel cell below with the traces that
 settle this phenomenon, then delete this paragraph.
 
-*Save* writes two files: the corrected intervals to
-`review/<shot>.csv`, and your review to `shots.csv`, which records you as a
-reviewer with today's date. `tier` and `holdout` are curation calls set by
-hand in that file, not derived from who has reviewed a shot.
+*Save* writes two files. The corrected intervals go to a NEW file,
+`review/<shot>__<reviewer>__<stamp>.csv`, in the same five-column schema as
+`format/`; corrections are append-only, so every press of *Save* writes its
+own file and nothing under `review/` is ever overwritten or deleted by this
+tooling - a second reviewer cannot destroy the first's work. Merging rows
+into `format/` is a manual step the repository author does by hand. Your
+review also goes into `shots.csv`, which is the one file edited in place and
+only ever gains a reviewer and today's date. `tier` and `holdout` are
+curation calls set by hand in that file, not derived from who has reviewed a
+shot.
 """
 
 SETUP = """%load_ext autoreload
@@ -65,12 +71,18 @@ panels = [
 REVIEW = """session = review(event, shot, panels, source=source)
 session"""
 
-FOOTER = """After pressing *Save*, check what was written:
+FOOTER = """After pressing *Save*, check what was written. Every save writes its
+own file, so list what this shot now has and read back the most recent one:
 
 ```python
-from labeler.events.verify import read_corrections, review_path
-read_corrections(review_path(event, shot))
+from labeler.events.verify import corrections_for, read_latest_corrections
+
+for path in corrections_for(event, shot):
+    print(path.name)
+read_latest_corrections(event, shot)
 ```
+
+These files are never overwritten; the rows are merged into `format/` by hand.
 """
 
 
