@@ -138,12 +138,25 @@ def fdp_signal(
     never refetched. Nothing is cached when `cache` is None.
     """
     exprs = list(exprs)
+    if not exprs:
+        raise NoDataError(f"shot {int(shot)}: no expressions to fetch")
     cache_path = None if cache is None else Path(cache)
 
     if cache_path is not None and cache_path.is_file():
         with np.load(cache_path) as npz:
             times_ms = np.asarray(npz["x"], dtype="float64")
             values = np.asarray(npz["y"], dtype="float32")
+            # The cache is keyed only by its filename, which says nothing
+            # about WHICH points it holds. Without this check, asking for
+            # four channels against a cache of five returns five rows
+            # silently mislabelled as the four - wrong data in front of a
+            # reviewer, with nothing to see.
+            cached = [str(e) for e in npz.get("exprs", np.array([]))]
+        if cached != exprs:
+            raise NoDataError(
+                f"{cache_path} holds {cached or 'unrecorded points'}, not "
+                f"{exprs}. Delete it or pass a different cache path."
+            )
     else:
         # `_fetch_mds` is the one place in labeler that knows how to call
         # toksearch (`MdsSignal(...).fetch(...)`); reused deliberately here
@@ -185,7 +198,10 @@ def fdp_signal(
 
         if cache_path is not None:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            np.savez(cache_path, x=times_ms, y=values)
+            # A fixed-width unicode array, not dtype=object: an object array
+            # would only load back under allow_pickle, and nothing should
+            # unpickle a file off disk to read a channel list.
+            np.savez(cache_path, x=times_ms, y=values, exprs=np.array(exprs))
 
     start, stop = 0, times_ms.shape[0]
     if t_range is not None:

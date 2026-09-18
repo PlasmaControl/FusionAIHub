@@ -542,3 +542,39 @@ def test_the_generic_notebook_names_features_that_exist():
     everywhere = set.intersection(*(present(f) for f in files[:40]))
     missing = sorted(named - everywhere)
     assert not missing, f"generic panels name features no shot has: {missing}"
+
+
+def test_a_cache_refuses_to_serve_different_points(tmp_path, monkeypatch):
+    """The cache is keyed by filename, which says nothing about its channels.
+
+    Without this check, asking for two points against a cache built from
+    three returns three rows silently mislabelled as the two - wrong data in
+    front of a reviewer, with nothing on screen to give it away.
+    """
+    n = 10
+    ms = np.linspace(0.0, 20.0, n)
+
+    def record(offset):
+        return {
+            "data": np.arange(n, dtype="float32") + offset,
+            "dim0": ms,
+            "units": {"data": "keV", "dim0": "ms"},
+        }
+
+    calls = []
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds",
+        _fake_fetch_mds({"a": record(0), "b": record(100), "c": record(200)}, calls),
+    )
+    cache = tmp_path / "178640_ece.npz"
+    fdp_signal(178640, ["a", "b", "c"], cache=cache)
+    assert len(calls) == 3
+
+    with pytest.raises(NoDataError, match="Delete it"):
+        fdp_signal(178640, ["a", "b"], cache=cache)
+    assert len(calls) == 3, "the refusal must not fall through to a fetch"
+
+
+def test_no_expressions_is_refused():
+    with pytest.raises(NoDataError, match="no expressions"):
+        fdp_signal(178640, [])
