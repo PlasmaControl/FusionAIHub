@@ -259,7 +259,7 @@ def test_ece_fetches_over_mds_not_ptdata(roots, monkeypatch):
     seen = {}
 
     def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
-        seen.update(via=via, tree=tree, n=len(exprs))
+        seen.update(via=via, tree=tree, n=len(exprs), exprs=list(exprs))
         return FeatureArray(
             x=np.arange(10.0),
             y=np.zeros((len(exprs), 10), dtype="float32"),
@@ -271,3 +271,31 @@ def test_ece_fetches_over_mds_not_ptdata(roots, monkeypatch):
     assert seen["via"] == "mds"
     assert seen["tree"] == "D3D"
     assert seen["n"] == 48
+
+
+def test_ece_fetches_the_channels_a_corpus_row_would_index(roots, monkeypatch):
+    """Fetched row i must be the same channel corpus row i is.
+
+    The corpus group's row i holds TECEF i+1, so the fetch has to start at
+    TECEF01 and run in ascending order. The two paths used to disagree here,
+    which put a reviewer's ECE panel one channel off depending only on
+    whether the shot happened to be in the corpus - a difference nothing on
+    screen would reveal. Asserted rather than left to inspection, because a
+    later `range(0, 48)` would reintroduce it silently.
+    """
+    seen = {}
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        seen["exprs"] = list(exprs)
+        return FeatureArray(
+            x=np.arange(10.0),
+            y=np.zeros((len(exprs), 10), dtype="float32"),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    raw.raw_signal(12345, "ece", paths=roots)
+    assert seen["exprs"][0].endswith("TECEF01")
+    assert seen["exprs"][-1].endswith("TECEF48")
+    assert seen["exprs"] == sorted(seen["exprs"]), "ascending, like a corpus row"
+    assert len(set(seen["exprs"])) == 48, "no channel fetched twice"
