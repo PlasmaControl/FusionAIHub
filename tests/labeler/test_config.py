@@ -1,7 +1,7 @@
 """Paths resolve from the environment and nothing else hard-codes a root."""
 from pathlib import Path
 
-from labeler.config import Paths, git_sha
+from labeler.config import DEFAULT_RAW_CACHE, Paths, git_sha
 
 
 def test_default_root_is_group_storage():
@@ -108,3 +108,17 @@ def test_the_label_tables_root_is_the_repo_and_is_overridable(
     # An input, like the corpus and the bundles: `mkdirs` does not make it.
     Paths(root=tmp_path, label_tables=tables).mkdirs()
     assert not tables.exists()
+
+
+def test_raw_cache_defaults_under_the_repo():
+    # Label DATA lives under data/events for the same reason: a run from a
+    # SLURM scratch directory must find the same place a run from the repo
+    # does, so this resolves off this file, never off cwd.
+    assert Paths().raw_cache == DEFAULT_RAW_CACHE
+    assert DEFAULT_RAW_CACHE.name == "raw"
+    assert DEFAULT_RAW_CACHE.parent.name == ".cache"
+
+
+def test_raw_cache_honours_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("LABELER_RAW_CACHE", str(tmp_path / "elsewhere"))
+    assert Paths.from_env().raw_cache == tmp_path / "elsewhere"
