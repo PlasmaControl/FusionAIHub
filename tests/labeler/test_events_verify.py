@@ -240,10 +240,16 @@ def test_fdp_signal_rejects_unequal_lengths(monkeypatch):
     monkeypatch.setattr(
         "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, [])
     )
-    with pytest.raises(NoDataError, match="10"):
+    with pytest.raises(NoDataError) as raised:
         fdp_signal(178640, ["a", "b"])
-    with pytest.raises(NoDataError, match="20"):
-        fdp_signal(178640, ["a", "b"])
+    message = str(raised.value)
+    assert "10 for 'a'" in message
+    assert "20 for 'b'" in message
+
+    # The FIRST expression sets the expected length, so the same pair the
+    # other way round names the other one as the reference.
+    with pytest.raises(NoDataError, match="20 for 'b' vs 10 for 'a'"):
+        fdp_signal(178640, ["b", "a"])
 
 
 def test_fdp_signal_cache_is_not_refetched(tmp_path, monkeypatch):
@@ -499,9 +505,20 @@ def test_a_backwards_range_is_refused(tmp_path):
 
 
 def test_a_figure_stacks_one_row_per_panel(tmp_path):
+    """One subplot row per panel, and every trace on its own panel's row.
+
+    A trace count alone says nothing about the stacking: two panels whose
+    traces all landed on row 1 would satisfy it, so this follows each trace
+    to its y axis instead.
+    """
     _roster(tmp_path, "fishbone")
     panels = [
-        Panel(title="mhr B1", x=np.arange(10.0), y=np.zeros((1, 10)), ylabel="T/s"),
+        Panel(
+            title="mhr B1-B2",
+            x=np.arange(10.0),
+            y=np.zeros((2, 10)),
+            ylabel="T/s",
+        ),
         Panel(
             title="spectrogram",
             kind="heatmap",
@@ -510,12 +527,59 @@ def test_a_figure_stacks_one_row_per_panel(tmp_path):
             z=np.zeros((5, 10)),
             ylabel="kHz",
         ),
+        Panel(title="ip", x=np.arange(10.0), y=np.zeros((1, 10)), ylabel="A"),
     ]
     session = ReviewSession(
         event="fishbone", shot=185601, panels=panels, root=tmp_path, reviewer="alice"
     )
-    assert len(session.figure.data) >= 2
-    assert "185601" in session.figure.layout.title.text
+    figure = session.figure
+
+    layout = figure.layout.to_plotly_json()
+    rows = sorted(key for key in layout if key.startswith("yaxis"))
+    assert rows == ["yaxis", "yaxis2", "yaxis3"]
+    # two traces from panel 1, one from panel 2, one from panel 3
+    assert [trace.yaxis for trace in figure.data] == ["y", "y", "y2", "y3"]
+    assert [trace.type for trace in figure.data] == [
+        "scattergl",
+        "scattergl",
+        "heatmap",
+        "scattergl",
+    ]
+    assert [layout[row]["title"]["text"] for row in rows] == ["T/s", "kHz", "A"]
+    assert "185601" in figure.layout.title.text
+
+
+def test_an_unknown_panel_kind_names_the_panel_and_the_kind(tmp_path):
+    """`__post_init__` deliberately leaves an unknown kind alone so this
+    branch, which names both, is the one that reports it.
+    """
+    _roster(tmp_path, "fishbone")
+    panel = Panel(
+        title="mystery", kind="contour", x=np.arange(10.0), y=np.zeros((1, 10))
+    )
+    with pytest.raises(ValueError, match="unknown kind 'contour'") as raised:
+        ReviewSession(event="fishbone", shot=185601, panels=[panel], root=tmp_path)
+    assert "mystery" in str(raised.value)
+
+
+def test_a_failing_save_reports_on_the_button_instead_of_raising(tmp_path):
+    """The Save handler runs inside a widget callback, where an exception is a
+    traceback in the log the reviewer is not reading. It has to land in the
+    status line.
+    """
+    # No roster written, so `record_review` cannot read one.
+    session = ReviewSession(
+        event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+    )
+    session.mark(1200.0, 1450.0, category=1)
+    session.verify()
+
+    _button(session, "Save").click()
+
+    status = session.controls.children[1]
+    assert "#b2182b" in status.value
+    assert "shots.csv" in status.value
+    assert not (tmp_path / "fishbone" / "shots.csv").exists()
 
 
 def test_save_without_verify_writes_corrections_but_leaves_tier_unverified(tmp_path):
@@ -800,7 +864,11 @@ def test_every_category_has_a_verification_notebook():
 
     root = Paths.from_env().label_tables
     categories = sorted(p.name for p in root.iterdir() if p.is_dir())
-    assert len(categories) == 16
+    # No count: a pinned 16 fails the next time a category is added or
+    # removed, which happened twice while this surface was being built, and
+    # fails as `assert 17 == 16`. The per-category assertions below are the
+    # content of this test.
+    assert categories, f"no category directories under {root}"
     for category in categories:
         path = root / category / "verification.ipynb"
         assert path.is_file(), f"{category} has no verification.ipynb"

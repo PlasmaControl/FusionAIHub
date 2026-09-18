@@ -133,6 +133,31 @@ def test_reviewing_an_unrostered_shot_adds_it(tmp_path):
     assert got.notes.tolist() == ["new"]
 
 
+def test_a_malformed_reviewer_cell_is_refused():
+    """`split_reviewers` drops empty segments, so "alice;;bob" round-trips as
+    a clean pair and the malformed cell is never reported. The separator is a
+    schema rule, so `validate_roster` is where it is enforced.
+    """
+    for cell in ("alice;;bob", ";alice", "alice;"):
+        with pytest.raises(DatabaseError, match="clean"):
+            validate_roster(
+                _frame([[1, "gold", "false", cell, "2026-01-01", ""]])
+            )
+
+
+def test_a_review_with_no_date_given_is_dated_today(tmp_path):
+    """`record_review(on=None)` is the path the Save button takes; every date
+    in every roster comes from this default.
+    """
+    from datetime import UTC, datetime
+
+    path = tmp_path / "shots.csv"
+    write_roster(_frame([[1, "unverified", "false", "", "", ""]]), path)
+    record_review(path, 1, "alice")
+    got = read_roster(path)
+    assert got.verified_on.tolist() == [datetime.now(UTC).date().isoformat()]
+
+
 def test_notes_stay_on_one_line(tmp_path):
     path = tmp_path / "shots.csv"
     write_roster(_frame([[1, "unverified", "false", "", "", ""]]), path)
@@ -146,7 +171,9 @@ def test_every_category_has_a_valid_roster():
 
     root = Paths.from_env().label_tables
     categories = sorted(p.name for p in root.iterdir() if p.is_dir())
-    assert len(categories) == 16
+    # No count, for the same reason the roster lengths below are not pinned:
+    # a hardcoded 16 fails the next time a category is added or removed.
+    assert categories, f"no category directories under {root}"
     for category in categories:
         path = root / category / ROSTER_NAME
         assert path.is_file(), f"{category} has no {ROSTER_NAME}"
