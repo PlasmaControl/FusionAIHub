@@ -66,3 +66,10 @@ PYTHONPATH=src python scripts/labeler/labels_format.py
 ```
 
 No raw table is registered for this category yet.
+
+## Verification
+
+[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
+saved labels and takes back corrections. The review roster is
+[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
+schema.
