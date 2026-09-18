@@ -77,9 +77,9 @@ the record of what is labelled.
 
 The three placeholder rows ship in every category and are meant to be deleted.
 
-## Corrections: `data/events/<category>/review/<shot>.csv`
+## Corrections: `data/events/<category>/review/<shot>__<reviewer>__<stamp>.csv`
 
-A reviewer's edits are written per shot, in the public interval schema already
+A reviewer's edits are written per save, in the public interval schema already
 documented in `data/events/README.md`:
 
 ```csv
@@ -87,10 +87,23 @@ shot,category,t_start,t_end,confidence
 170815,1,450.0,700.0,
 ```
 
+**Corrections are append-only** (revised 2026-09-18; this section originally
+specified one file per shot, `review/<shot>.csv`, rewritten on every save).
+One file per shot cannot hold two reviewers: the second save destroyed the
+first's rows while `shots.csv` truthfully recorded both names, and the same
+reviewer returning in a later session silently replaced their own earlier
+work. So each save mints its own path -
+`correction_path(event, shot, reviewer=...)`, stamped to the second in UTC and
+disambiguated with `-2`, `-3` on a collision - and `write_corrections` raises
+`FileExistsError` on any path that already exists, at the lowest level, so no
+caller can reach around it. `corrections_for(event, shot)` lists a shot's
+saves oldest first; `read_latest_corrections(event, shot)` reads the newest.
+
 The review directory is a separate claim from `format/` and `extend_*/`: it is
 what a human asserts after looking, and no formatter reads or overwrites it.
-Merging reviews back into a formatted table is a later decision, deliberately
-not made here.
+Merging reviews back into a formatted table is a deliberately manual step -
+the author reads the files and copies what he accepts across by hand - which
+is exactly why nothing under `review/` may be rewritten by tooling.
 
 ## Verification notebook
 
@@ -119,8 +132,10 @@ shared time axis in milliseconds, and a final row showing the current labels
 read from the category's `.npz` grid. Box-select on any row captures a time
 range; `Mark present` / `Mark absent` turn that range into a correction row;
 `Verify` records `$USER` and today's date on the roster row, leaving
-`tier` alone; `Save` writes
-both files. Nothing is written until a button is pressed.
+`tier` alone; `Save` writes both files - a new, never-reused corrections file
+under `review/`, and the roster row in `shots.csv`, which is the one file
+edited in place and only ever gains a reviewer. Nothing is written until a
+button is pressed.
 
 `FigureWidget` requires `anywidget`, which is not currently installed — one
 entry in `[tool.pixi.feature.labelmaker.pypi-dependencies]` and a lock update.
@@ -265,6 +280,11 @@ category README gains a link to its `verification.ipynb`, beside the
   appearing twice;
 - `holdout` is required and rejects anything but `true` or `false`;
 - corrections round-trip through `validate_intervals`;
+- two saves of one shot leave two files, two reviewers leave two files with
+  neither's rows lost, and `write_corrections` refuses an existing path with
+  its bytes intact;
+- `correction_path` sanitises a reviewer id into the filename and does not
+  return a path already taken;
 - `corpus_signal` slices rather than loading, and raises `NoDataError` for an
   absent file and for the `(C, 1)` sentinel;
 - the AE fallback raises its wrapper message when toksearch is unavailable.
@@ -274,6 +294,7 @@ none is executed in the suite, because execution needs the corpus.
 
 ## What this does not decide
 
-Which shots become gold. How a review merges back into `format/`. Whether a
+Which shots become gold. Which rows of which correction file a human accepts
+when merging back into `format/`, and by what tooling if any. Whether a
 third reviewer's disagreement demotes a shot. Panel definitions for the
 twelve categories on the generic fallback.
