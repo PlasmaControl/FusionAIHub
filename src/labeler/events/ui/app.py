@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import json
 import secrets
+import warnings
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -27,7 +30,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ...config import Paths
 from .. import panels as registry
 from .. import rosters
-from ..verify import corrections_for
+from ..verify import NoDataError, corrections_for, label_panel
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -96,6 +99,40 @@ def require_event(event: str, paths: Paths) -> str:
     return event
 
 
+def _panel_json(panel) -> dict:
+    """One `Panel` as the plain arrays plotly.js wants.
+
+    NaN is not JSON, and a label grid is full of it where a cell is unknown.
+    `json.dumps` would emit a bare `NaN` token that `JSON.parse` rejects, so
+    every non-finite value becomes `null` - which plotly draws as a gap,
+    which is what an unknown cell is.
+    """
+
+    def clean(array):
+        values = np.asarray(array, dtype="float64")
+        return np.where(np.isfinite(values), values, None).tolist()
+
+    payload = {
+        "title": panel.title,
+        "kind": panel.kind,
+        "ylabel": panel.ylabel,
+        "x": clean(panel.x),
+        "bands": [[float(low), float(high)] for low, high in panel.bands],
+        "hlines": [float(level) for level in panel.hlines],
+        "zmin": None if panel.zmin is None else float(panel.zmin),
+        "zmax": None if panel.zmax is None else float(panel.zmax),
+    }
+    if panel.kind == "heatmap":
+        payload["y"] = clean(panel.y)
+        payload["z"] = [clean(row) for row in panel.z]
+    else:
+        payload["y"] = [clean(row) for row in panel.y]
+        payload["legend"] = list(
+            panel.legend or [f"ch {i}" for i in range(len(panel.y))]
+        )
+    return payload
+
+
 def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     paths = Paths.from_env() if paths is None else paths
     app = FastAPI(
@@ -130,6 +167,17 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         """One error shape for the page: every refusal reads `{"error": ...}`."""
         return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
 
+    @app.exception_handler(RequestValidationError)
+    async def as_bad_query(request: Request, exc: RequestValidationError) -> Response:
+        """A `t0=early` is a refusal too, and reads like every other one.
+
+        FastAPI's own handler answers with `{"detail": [...]}`, so the page
+        would have to carry a second error shape for this one case.
+        """
+        first = exc.errors()[0]
+        where = ".".join(str(part) for part in first["loc"][1:]) or "query"
+        return JSONResponse({"error": f"{where}: {first['msg']}"}, status_code=422)
+
     @app.get("/api/events")
     def events():
         return _json({"events": _events(app.state.paths)})
@@ -162,6 +210,56 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 }
             )
         return _json({"event": event, "shots": rows})
+
+    @app.get("/api/panels")
+    def panels_for(
+        event: str, shot: int, t0: float | None = None, t1: float | None = None
+    ):
+        paths = app.state.paths
+        # First, before anything is built from `event`: it is a path segment
+        # for `label_panel` below, so an unchecked one reaches any directory
+        # the server's uid can read.
+        event = require_event(event, paths)
+        # Milliseconds on the wire, milliseconds into the builders. The
+        # corpus stores seconds and `raw_signal` converts; nothing here does.
+        t_range = None if t0 is None or t1 is None else (float(t0), float(t1))
+        try:
+            built = registry.build(event, shot, t_range=t_range, paths=paths)
+        except (NoDataError, OSError) as error:
+            # A shot the corpus does not have and fdp cannot reach is an
+            # ordinary outcome here, not a bug: say so at the top of the
+            # page rather than dropping a traceback in the log.
+            return _json({"error": str(error)}, status_code=502)
+        except ValueError as error:
+            # A window with no samples in it, or one instant wide. That is
+            # the reviewer's scroll wheel, not a server fault, so it reads
+            # as a refusal of the request rather than a 500 with no body.
+            return _json({"error": str(error)}, status_code=400)
+
+        # The label row is appended the way `verify.review` appends it, and
+        # its absence is said on the page rather than only in a warning on
+        # stderr, which is not where the reviewer is looking.
+        note = ""
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                built.append(
+                    label_panel(
+                        event, shot, source="format/shots", root=paths.label_tables
+                    )
+                )
+        except OSError:
+            note = "NO LABEL ROW"
+
+        return _json(
+            {
+                "event": event,
+                "shot": int(shot),
+                "t_range": None if t_range is None else list(t_range),
+                "note": note,
+                "panels": [_panel_json(p) for p in built],
+            }
+        )
 
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
