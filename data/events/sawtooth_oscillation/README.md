@@ -18,7 +18,7 @@ X-rays and core Thomson scattering as simultaneous drops in the core channels an
 rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 
 ## Method
-`ece_sawtooth` (`labelmaker.events.heuristics.sawtooth_events`), a port of the
+`ece_sawtooth` (`labeler.events.heuristics.sawtooth_events`), a port of the
 omnimode `mrms.ece` inversion test with the envelope computed ONCE per shot
 (1.55 s/shot instead of ~3.5 min): a 1 ms envelope over the 48 ECE channels;
 candidate bins where >= 2 channels lose > 2% of their level in one bin, at least
@@ -72,7 +72,7 @@ a producer have no `extend_*` directory. See the [table guide](../README.md).
 Regenerate registered raw tables from the repository root:
 
 ```bash
-PYTHONPATH=src python scripts/labelmaker/labels_format.py
+PYTHONPATH=src python scripts/labeler/labels_format.py
 ```
 
 No raw table is registered for this category yet.
