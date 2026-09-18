@@ -53,8 +53,13 @@ def tables(tmp_path):
 
 
 @pytest.fixture
-def app(tables, tmp_path):
-    return create_app(paths=_tmp_paths(tmp_path, tables), token="secret")
+def paths(tables, tmp_path):
+    return _tmp_paths(tmp_path, tables)
+
+
+@pytest.fixture
+def app(paths):
+    return create_app(paths=paths, token="secret")
 
 
 @pytest.fixture
@@ -331,7 +336,10 @@ def test_panels_is_given_the_apps_own_paths_not_the_environments(client, co2, ta
 
 
 def test_panels_reports_a_missing_signal_as_a_message_not_a_500(client, monkeypatch):
-    """A shot no tier has and no fetch route can reach is an ordinary outcome."""
+    """A shot no tier has and no fetch route can reach is an ordinary outcome.
+
+    404, not 502: nothing upstream failed, the shot is simply not here.
+    """
     from labeler.events import raw
     from labeler.events.panels import alfven_eigenmode as ae
 
@@ -340,8 +348,99 @@ def test_panels_reports_a_missing_signal_as_a_message_not_a_500(client, monkeypa
 
     monkeypatch.setattr(ae, "raw_signal", absent)
     response = client.get("/api/panels?event=alfven_eigenmode&shot=999999")
-    assert response.status_code == 502
+    assert response.status_code == 404
     assert "999999" in response.json()["error"]
+
+
+def test_an_upstream_fetch_failure_is_the_only_bad_gateway(client, monkeypatch):
+    from labeler.events import raw
+    from labeler.events.panels import alfven_eigenmode as ae
+
+    def unreachable(*args, **kwargs):
+        raise raw.UpstreamError("PTDATA: getservbyname failed for task PTSERVER")
+
+    monkeypatch.setattr(ae, "raw_signal", unreachable)
+    response = client.get("/api/panels?event=alfven_eigenmode&shot=999999")
+    assert response.status_code == 502
+    assert "PTSERVER" in response.json()["error"]
+
+
+def test_unreadable_bytes_do_not_put_a_server_path_on_the_page(client, monkeypatch):
+    """The reviewer gets a sentence; the errno and the absolute path get logged."""
+    from labeler.events.panels import alfven_eigenmode as ae
+
+    def broken(*args, **kwargs):
+        raise OSError(
+            2,
+            "Unable to synchronously open file (unable to open file: "
+            "name = '/scratch/gpfs/EKOLEMEN/foundation_model/178642_features.h5')",
+        )
+
+    monkeypatch.setattr(ae, "raw_signal", broken)
+    response = client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    assert response.status_code == 502
+    message = response.json()["error"]
+    assert "178642" in message
+    assert "/scratch" not in message and "Errno" not in message
+
+
+def test_a_builder_bug_is_not_reported_as_a_bad_window(client, monkeypatch):
+    """A genuine regression must not read to the reviewer as bad input."""
+    from labeler.events.panels import alfven_eigenmode as ae
+
+    def buggy(*args, **kwargs):
+        raise ValueError("operands could not be broadcast together")
+
+    monkeypatch.setattr(ae, "raw_signal", buggy)
+    with pytest.raises(ValueError):
+        client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+
+
+def test_a_bad_window_says_which_window(client, co2):
+    """With a window, a ValueError IS about the window - and names it."""
+    response = client.get(
+        "/api/panels?event=alfven_eigenmode&shot=178642&t0=2100&t1=2100.0001"
+    )
+    assert response.status_code == 400
+    assert "2100.0" in response.json()["error"]
+
+
+def test_a_corrupt_label_grid_is_not_the_same_as_a_missing_one(client, co2, tables):
+    grid = tables / "alfven_eigenmode" / "format" / "shots" / "178642.npz"
+    grid.parent.mkdir(parents=True, exist_ok=True)
+    grid.write_bytes(b"PK\x03\x04 not really a zip")
+    payload = client.get("/api/panels?event=alfven_eigenmode&shot=178642").json()
+    assert payload["note"] == "LABEL ROW UNREADABLE"
+    assert len(payload["panels"]) == 3, "the diagnostic panels survived"
+
+
+def test_a_non_finite_band_edge_still_leaves_valid_json(client, monkeypatch):
+    """`bands`/`hlines`/`zmin`/`zmax` are floats too, and NaN is not JSON."""
+    from labeler.events import panels as registry
+    from labeler.events.verify import Panel
+
+    def one_panel(event, shot, *, t_range=None, paths=None):
+        return [
+            Panel(
+                title="t",
+                kind="line",
+                x=np.array([0.0, 1.0]),
+                y=np.array([[0.0, 1.0]]),
+                ylabel="",
+                bands=[(np.nan, 250.0)],
+                hlines=[np.inf],
+                zmin=np.nan,
+            )
+        ]
+
+    monkeypatch.setattr(registry, "build", one_panel)
+    response = client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    assert response.status_code == 200
+    assert "NaN" not in response.text and "Infinity" not in response.text
+    panel = response.json()["panels"][0]
+    assert panel["bands"] == [[None, 250.0]]
+    assert panel["hlines"] == [None]
+    assert panel["zmin"] is None
 
 
 def test_panels_refuses_a_window_the_shot_has_no_samples_in(client, co2):
@@ -455,3 +554,66 @@ def test_a_generic_events_panels_come_back_as_lines_in_milliseconds(
     assert first["x"][0] == pytest.approx(2101.0, abs=1.0)
     assert first["x"][-1] == pytest.approx(2150.0, abs=1.0)
     assert len(first["x"]) == pytest.approx(50, abs=1)
+
+
+def _write_corpus_co2(paths, shot, *, base_ms=2000.0, span_ms=200.0, rate_hz=1e6):
+    """A real corpus-layout file, so `raw_signal` runs for real in the test."""
+    from labeler.events import raw
+
+    count = int(span_ms * rate_hz / 1000.0)
+    times_ms = base_ms + np.arange(count) / rate_hz * 1000.0
+    values = np.random.default_rng(7).normal(size=(4, count)).astype("float32")
+    raw.write_group(paths.corpus / f"{shot}_processed.h5", "co2", times_ms, values)
+
+
+@pytest.fixture
+def never_fetch(monkeypatch):
+    """Records every live fetch. The reviewer's scroll wheel must never fire one.
+
+    A live PTDATA fetch moves ~240 MB and takes minutes, so it is a thing the
+    server may do on a deliberate first open of a shot and never as a side
+    effect of panning past the end of one.
+    """
+    from labeler.events import raw
+
+    calls = []
+
+    def recording(shot, exprs, **kwargs):
+        calls.append(shot)
+        raise AssertionError("a live fetch ran")
+
+    monkeypatch.setattr(raw, "fdp_signal", recording)
+    return calls
+
+
+def test_a_window_past_the_end_of_a_shot_does_not_fetch(client, paths, never_fetch):
+    _write_corpus_co2(paths, 178642)
+    response = client.get(
+        "/api/panels?event=alfven_eigenmode&shot=178642&t0=9000&t1=9100"
+    )
+    assert never_fetch == [], "scrolling past the end of a shot fetched it live"
+    assert response.status_code == 400
+    assert "9000" in response.json()["error"]
+
+
+def test_a_backwards_window_is_refused_before_anything_is_read(client, never_fetch):
+    response = client.get(
+        "/api/panels?event=alfven_eigenmode&shot=178642&t0=2150&t1=2100"
+    )
+    assert response.status_code == 400
+    assert never_fetch == []
+
+
+def test_the_whole_shot_render_stays_parseable(client, monkeypatch):
+    """The default open of every shot is the widest render the server can make."""
+    from labeler.events.panels import alfven_eigenmode as ae
+
+    monkeypatch.setattr(ae, "raw_signal", _co2_stub({}, span_ms=1000.0))
+    response = client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    assert response.status_code == 200
+    size = len(response.content)
+    cells = sum(
+        len(panel["z"]) * len(panel["z"][0]) for panel in response.json()["panels"]
+    )
+    assert cells <= 500_000, f"{cells} heatmap cells in one whole-shot render"
+    assert size <= 6_000_000, f"{size} bytes for one whole-shot render"

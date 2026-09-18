@@ -42,6 +42,24 @@ SENTINEL_WIDTH = 1
 ECE_CHANNELS = tuple(range(1, 49))
 
 
+class WindowEmptyError(NoDataError):
+    """The record is on disk; the window asked for falls outside it.
+
+    A subclass so every existing `except NoDataError` keeps catching it -
+    this narrows what a caller CAN say about the failure, it does not change
+    what reaches one that does not care.
+    """
+
+
+class UpstreamError(NoDataError):
+    """A live fetch reached fdp and fdp could not answer.
+
+    The only one of these that is a server-side fault rather than "this shot
+    is not here", which is why it is the only one a caller should report as
+    a bad gateway.
+    """
+
+
 @dataclass(frozen=True)
 class FetchSpec:
     """How to fetch one corpus group live, when neither tier has it."""
@@ -197,11 +215,44 @@ def raw_signal(
                 shot, group, channels=channels, t_range=t_range, corpus=root
             )
         except NoDataError:
+            # `corpus_signal` says "not here" and "here, but your window
+            # selects nothing" with the same exception, and only the first
+            # of those is a reason to try the next tier. Treating the second
+            # as a miss walks all the way to `_fetch`, which pulls ~240 MB
+            # over PTDATA for minutes and then slices the same empty window
+            # out of it - so a reviewer scrolling past the end of a shot
+            # hangs the server. Asking the tier whether it holds the record
+            # is a metadata-only open and settles it without reading the
+            # exception's prose.
+            if t_range is not None and _holds_record(shot, group, root):
+                raise WindowEmptyError(
+                    f"shot {int(shot)} {group!r} has no samples in "
+                    f"{t_range[0]}-{t_range[1]} ms; the record is on disk, "
+                    f"so this window is outside the shot"
+                ) from None
             continue
-        return FeatureArray(
-            x=array.x, y=array.y, attrs={**array.attrs, "tier": tier}
-        )
+        return FeatureArray(x=array.x, y=array.y, attrs={**array.attrs, "tier": tier})
     return _fetch(shot, group, channels=channels, t_range=t_range, paths=paths)
+
+
+def _holds_record(shot: int, group: str, root: Path) -> bool:
+    """Whether this tier holds a real record for `group` - metadata only.
+
+    A sentinel-width group is NOT a record: the diagnostic did not run, and
+    the fetch tier is exactly the right next thing to try for it.
+    """
+    import h5py
+
+    path = Path(root) / f"{int(shot)}_processed.h5"
+    if not path.is_file():
+        return False
+    try:
+        with h5py.File(path, "r") as f:
+            if group not in f:
+                return False
+            return f[group]["ydata"].shape[-1] > SENTINEL_WIDTH
+    except (OSError, KeyError):
+        return False
 
 
 def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
@@ -218,9 +269,13 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
             f"and there is no fetch route for {group!r}; known routes are "
             f"{sorted(FETCH_SPECS)}"
         )
-    fetched = fdp_signal(
-        int(shot), list(spec.exprs), tree=spec.tree, via=spec.via
-    )
+    try:
+        fetched = fdp_signal(int(shot), list(spec.exprs), tree=spec.tree, via=spec.via)
+    except NoDataError as error:
+        # fdp being unreachable, or answering with nothing, is the one
+        # failure here that is about the upstream rather than about this
+        # shot not existing on disk.
+        raise UpstreamError(str(error)) from error
     write_group(cache_path(shot, paths=paths), group, fetched.x, fetched.y)
     array = corpus_signal(
         shot, group, channels=channels, t_range=t_range, corpus=paths.raw_cache
