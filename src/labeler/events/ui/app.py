@@ -16,8 +16,10 @@ writes that file.
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import warnings
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ...config import Paths
 from .. import panels as registry
 from .. import rosters
+from ..raw import UpstreamError, WindowEmptyError
 from ..verify import NoDataError, corrections_for, label_panel
 
 STATIC = Path(__file__).parent / "static"
@@ -37,10 +40,24 @@ COOKIE = "labeler_verify_token"
 NO_TOKEN = "no token: reopen the link printed by the verify server"
 BAD_TOKEN = "bad token"
 
+#: Figures carry log10 magnitudes and physical coordinates; neither is known
+#: to seventeen significant digits, and full-precision float64 text is most
+#: of the bytes in a heatmap response.
+DECIMALS = 3
+
+log = logging.getLogger(__name__)
+
 
 def _json(value, **kwargs) -> Response:
+    # `allow_nan=False` on purpose: the default emits a bare `NaN` token,
+    # which is not JSON and makes `JSON.parse` throw on the WHOLE response,
+    # so one unknown cell loses the entire figure. Raising here instead
+    # turns that into a server error a log records, and keeps every new
+    # float-carrying field honest about going through `_finite` first.
     return Response(
-        json.dumps(value, default=str), media_type="application/json", **kwargs
+        json.dumps(value, default=str, allow_nan=False),
+        media_type="application/json",
+        **kwargs,
     )
 
 
@@ -93,10 +110,33 @@ def require_event(event: str, paths: Paths) -> str:
     server's uid can read, because pathlib's `/` discards the left operand.
     Every endpoint taking an `event` must come through here first - the read
     endpoints today, and any endpoint that later WRITES under `event`.
+
+    The check is a name test plus one `is_file`, not a scan of `_events`:
+    this runs on every pan and every zoom, and reading and parsing all
+    sixteen rosters to test one string for membership put that whole cost on
+    each interactive frame. It is also STRICTER than membership was. The
+    accepted set is unchanged - a direct child of `label_tables` holding a
+    roster - but it is decided on the name before any path is joined, so
+    `..`, a separator and an absolute value are refused by inspection rather
+    than by failing to match a listing. Nothing is cached, so an event added
+    while the server runs shows up on the next request.
     """
-    if event not in {row["event"] for row in _events(paths)}:
+    # `Path(event).name` is `event` itself only for a bare filename: it is
+    # "b" for "a/b", "secret_area" for "/tmp/secret_area", and "" for "..",
+    # ".", "" and any trailing-slash form. A NUL cannot be in a path at all.
+    if event != Path(event).name or event in {"", ".", ".."} or "\0" in event:
+        raise HTTPException(status_code=404, detail=f"unknown event {event!r}")
+    if not (paths.label_tables / event / rosters.ROSTER_NAME).is_file():
         raise HTTPException(status_code=404, detail=f"unknown event {event!r}")
     return event
+
+
+def _finite(value):
+    """One scalar as JSON: `null` where it is None or not finite."""
+    if value is None:
+        return None
+    value = float(value)
+    return value if np.isfinite(value) else None
 
 
 def _panel_json(panel) -> dict:
@@ -108,23 +148,33 @@ def _panel_json(panel) -> dict:
     which is what an unknown cell is.
     """
 
-    def clean(array):
+    def clean(array, decimals=None):
         values = np.asarray(array, dtype="float64")
-        return np.where(np.isfinite(values), values, None).tolist()
+        if decimals is not None:
+            values = np.round(values, decimals)
+        if values.size and not np.isfinite(values).all():
+            # Only this branch builds an object array, i.e. a boxed Python
+            # float per element. A heatmap is ~1.8 M elements and normally
+            # all finite, so the fast path below is worth the extra pass.
+            return np.where(np.isfinite(values), values, None).tolist()
+        return values.tolist()
 
     payload = {
         "title": panel.title,
         "kind": panel.kind,
         "ylabel": panel.ylabel,
         "x": clean(panel.x),
-        "bands": [[float(low), float(high)] for low, high in panel.bands],
-        "hlines": [float(level) for level in panel.hlines],
-        "zmin": None if panel.zmin is None else float(panel.zmin),
-        "zmax": None if panel.zmax is None else float(panel.zmax),
+        # Through `_finite` like everything else: these are small, but a NaN
+        # in any one of them is the same invalid-JSON response as a NaN in
+        # `z`, and being small is not a reason to find that out in the field.
+        "bands": [[_finite(low), _finite(high)] for low, high in panel.bands],
+        "hlines": [_finite(level) for level in panel.hlines],
+        "zmin": _finite(panel.zmin),
+        "zmax": _finite(panel.zmax),
     }
     if panel.kind == "heatmap":
         payload["y"] = clean(panel.y)
-        payload["z"] = [clean(row) for row in panel.z]
+        payload["z"] = [clean(row, DECIMALS) for row in panel.z]
     else:
         payload["y"] = [clean(row) for row in panel.y]
         payload["legend"] = list(
@@ -223,18 +273,57 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         # Milliseconds on the wire, milliseconds into the builders. The
         # corpus stores seconds and `raw_signal` converts; nothing here does.
         t_range = None if t0 is None or t1 is None else (float(t0), float(t1))
+        if t_range is not None and t_range[1] <= t_range[0]:
+            # Refused before a byte is read. A window that cannot contain a
+            # sample has no answer worth going to disk - let alone to
+            # PTDATA - for, and the builders only find that out after they
+            # have already paid for it.
+            return _json(
+                {"error": f"window {t_range[0]}-{t_range[1]} ms ends before it starts"},
+                status_code=400,
+            )
         try:
             built = registry.build(event, shot, t_range=t_range, paths=paths)
-        except (NoDataError, OSError) as error:
-            # A shot the corpus does not have and fdp cannot reach is an
-            # ordinary outcome here, not a bug: say so at the top of the
-            # page rather than dropping a traceback in the log.
-            return _json({"error": str(error)}, status_code=502)
-        except ValueError as error:
-            # A window with no samples in it, or one instant wide. That is
-            # the reviewer's scroll wheel, not a server fault, so it reads
-            # as a refusal of the request rather than a 500 with no body.
+        except WindowEmptyError as error:
+            # The record IS on disk and this window is off the end of it -
+            # a scroll wheel, not a fault. `raw_signal` raises this INSTEAD
+            # of falling through to the live fetch tier, which is what keeps
+            # a pan past the end of a shot from costing ~240 MB and minutes.
             return _json({"error": str(error)}, status_code=400)
+        except UpstreamError as error:
+            # fdp itself could not answer. The only bad-gateway case here.
+            return _json({"error": str(error)}, status_code=502)
+        except NoDataError as error:
+            # This shot is simply not here - no corpus file, an absent-signal
+            # sentinel, no fetch route. An ordinary outcome, and a 404 says
+            # which of the two it is without the reviewer reading the prose.
+            return _json({"error": str(error)}, status_code=404)
+        except OSError:
+            # Unreadable bytes: a truncated HDF5 file, a permission, a dead
+            # mount. The raw message carries absolute server paths and errno
+            # noise, which belongs in the log, not at the top of a reviewer's
+            # page.
+            log.exception("reading %s panels for shot %s", event, shot)
+            return _json(
+                {
+                    "error": (
+                        f"could not read the data for shot {int(shot)}; "
+                        f"the server log has the details"
+                    )
+                },
+                status_code=502,
+            )
+        except ValueError as error:
+            if t_range is None:
+                # With no window there is no window to blame, so this is a
+                # builder bug. Reporting it as a 400 told the reviewer their
+                # input was bad and hid the regression.
+                log.exception("building %s panels for shot %s", event, shot)
+                raise
+            return _json(
+                {"error": f"window {t_range[0]}-{t_range[1]} ms: {error}"},
+                status_code=400,
+            )
 
         # The label row is appended the way `verify.review` appends it, and
         # its absence is said on the page rather than only in a warning on
@@ -248,8 +337,17 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                         event, shot, source="format/shots", root=paths.label_tables
                     )
                 )
-        except OSError:
+        except FileNotFoundError:
             note = "NO LABEL ROW"
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+            # `data/events` is a hand-maintained tree, so a half-written or
+            # truncated `.npz` (BadZipFile, or ValueError out of np.load) and
+            # a grid saved without `rho_edges` (KeyError) are both realistic.
+            # Neither is a reason to lose the diagnostic panels the reviewer
+            # came for, and neither reads as "there is no label row" - the
+            # file is there and it is broken, which is a different errand.
+            log.exception("reading the %s label grid for shot %s", event, shot)
+            note = "LABEL ROW UNREADABLE"
 
         return _json(
             {
