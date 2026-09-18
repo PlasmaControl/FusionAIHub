@@ -1,5 +1,7 @@
 """Reading corpus signals for a review, and what a review writes."""
 
+from datetime import UTC, datetime
+
 import h5py
 import numpy as np
 import pandas as pd
@@ -17,13 +19,18 @@ from labeler.events.verify import (
     Panel,
     ReviewSession,
     corpus_signal,
+    correction_path,
+    corrections_for,
     fdp_signal,
     label_panel,
     read_corrections,
+    read_latest_corrections,
     review,
-    review_path,
     write_corrections,
 )
+
+#: A fixed stamp, so the path tests read as the filenames a reviewer sees.
+_STAMP = datetime(2026, 9, 18, 12, 0, 0, tzinfo=UTC)
 
 
 def _corpus(tmp_path, shot, groups):
@@ -459,9 +466,135 @@ def test_corrections_round_trip_through_the_interval_schema(tmp_path):
     assert got.category.tolist() == [1, 0]
 
 
-def test_review_path_is_under_the_category(tmp_path):
-    got = review_path("fishbone", 185601, root=tmp_path)
-    assert got == tmp_path / "fishbone" / "review" / "185601.csv"
+def test_two_saves_leave_two_files(tmp_path):
+    """The whole point: a second save adds a file, it does not replace one."""
+    _roster(tmp_path, "fishbone")
+    for t_start in (1200.0, 1600.0):
+        session = ReviewSession(
+            event="fishbone", shot=185601, panels=[], root=tmp_path, reviewer="alice"
+        )
+        session.mark(t_start, t_start + 100.0, category=1)
+        session.save()
+
+    files = sorted((tmp_path / "fishbone" / "review").glob("*.csv"))
+    assert len(files) == 2, [path.name for path in files]
+    starts = [read_corrections(path).t_start.tolist() for path in files]
+    assert sorted(starts) == [[1200.0], [1600.0]]
+
+
+def test_write_corrections_refuses_to_overwrite(tmp_path):
+    """The safety property, at the lowest level: the bytes on disk survive."""
+    path = tmp_path / "review" / "185601__alice__20260918T120000Z.csv"
+    first = pd.DataFrame(
+        [[185601, 1, 1200.0, 1450.0, ""]], columns=list(INTERVAL_COLUMNS)
+    )
+    write_corrections(first, path)
+    before = path.read_bytes()
+
+    second = pd.DataFrame(
+        [[185601, 0, 9000.0, 9100.0, ""]], columns=list(INTERVAL_COLUMNS)
+    )
+    with pytest.raises(FileExistsError, match="185601__alice__20260918T120000Z"):
+        write_corrections(second, path)
+    assert path.read_bytes() == before
+
+
+def test_correction_path_is_under_the_category(tmp_path):
+    got = correction_path(
+        "fishbone", 185601, reviewer="alice", stamp=_STAMP, root=tmp_path
+    )
+    assert got == (
+        tmp_path / "fishbone" / "review" / "185601__alice__20260918T120000Z.csv"
+    )
+
+
+def test_correction_path_sanitises_the_reviewer(tmp_path):
+    """A `$USER` with a slash in it must not write outside `review/`."""
+    got = correction_path(
+        "fishbone", 185601, reviewer="a/../../b", stamp=_STAMP, root=tmp_path
+    )
+    assert got.parent == tmp_path / "fishbone" / "review"
+    assert got.name == "185601__a_______b__20260918T120000Z.csv"
+
+
+def test_an_empty_reviewer_id_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="reviewer"):
+        correction_path("fishbone", 185601, reviewer="///", root=tmp_path)
+
+
+def test_two_saves_in_the_same_second_get_different_paths(tmp_path):
+    """The stamp has one-second resolution, so the collision is real."""
+    first = correction_path(
+        "fishbone", 185601, reviewer="alice", stamp=_STAMP, root=tmp_path
+    )
+    first.parent.mkdir(parents=True, exist_ok=True)
+    first.touch()
+    second = correction_path(
+        "fishbone", 185601, reviewer="alice", stamp=_STAMP, root=tmp_path
+    )
+    assert second != first
+    assert second.name == "185601__alice__20260918T120000Z-2.csv"
+
+
+def test_two_reviewers_saving_one_shot_keep_both_sets_of_rows(tmp_path):
+    _roster(tmp_path, "fishbone")
+    for reviewer, t_start in (("alice", 1200.0), ("bob", 1600.0)):
+        session = ReviewSession(
+            event="fishbone",
+            shot=185601,
+            panels=[],
+            root=tmp_path,
+            reviewer=reviewer,
+        )
+        session.mark(t_start, t_start + 100.0, category=1)
+        session.save()
+
+    files = corrections_for("fishbone", 185601, root=tmp_path)
+    assert len(files) == 2
+    assert {path.name.split("__")[1] for path in files} == {"alice", "bob"}
+    starts = sorted(read_corrections(path).t_start.iloc[0] for path in files)
+    assert starts == [1200.0, 1600.0]
+
+
+def test_corrections_for_lists_oldest_first(tmp_path):
+    assert corrections_for("fishbone", 185601, root=tmp_path) == []
+
+    frame = pd.DataFrame(
+        [[185601, 1, 1200.0, 1450.0, ""]], columns=list(INTERVAL_COLUMNS)
+    )
+    stamps = ["20260918T120000Z", "20260101T000000Z", "20260918T115959Z"]
+    for stamp in stamps:
+        write_corrections(
+            frame, tmp_path / "fishbone" / "review" / f"185601__alice__{stamp}.csv"
+        )
+    # A shot the directory does not hold is not this shot's business.
+    write_corrections(
+        frame.assign(shot=185602),
+        tmp_path / "fishbone" / "review" / "185602__alice__20260918T120001Z.csv",
+    )
+
+    got = corrections_for("fishbone", 185601, root=tmp_path)
+    assert [path.name.split("__")[2] for path in got] == [
+        "20260101T000000Z.csv",
+        "20260918T115959Z.csv",
+        "20260918T120000Z.csv",
+    ]
+
+
+def test_read_latest_corrections_takes_the_newest_save(tmp_path):
+    assert read_latest_corrections("fishbone", 185601, root=tmp_path) is None
+
+    for stamp, t_start in (("20260101T000000Z", 1200.0), ("20260918T120000Z", 1600.0)):
+        write_corrections(
+            pd.DataFrame(
+                [[185601, 1, t_start, t_start + 100.0, ""]],
+                columns=list(INTERVAL_COLUMNS),
+            ),
+            tmp_path / "fishbone" / "review" / f"185601__alice__{stamp}.csv",
+        )
+
+    latest = read_latest_corrections("fishbone", 185601, root=tmp_path)
+    assert latest.t_start.tolist() == [1600.0]
 
 
 def test_marking_a_range_then_saving_writes_both_files(tmp_path):
@@ -474,9 +607,10 @@ def test_marking_a_range_then_saving_writes_both_files(tmp_path):
     session.verify()
     session.save()
 
-    corrections = read_corrections(review_path("fishbone", 185601, root=tmp_path))
+    corrections = read_latest_corrections("fishbone", 185601, root=tmp_path)
     assert len(corrections) == 2
     assert corrections.shot.tolist() == [185601, 185601]
+    assert session.saved_to == corrections_for("fishbone", 185601, root=tmp_path)[0]
 
     roster = read_roster(tmp_path / "fishbone" / "shots.csv")
     assert roster.iloc[0].tier == "unverified"
@@ -491,7 +625,8 @@ def test_nothing_is_written_before_save(tmp_path):
     )
     session.mark(1200.0, 1450.0, category=1)
     session.verify()
-    assert not review_path("fishbone", 185601, root=tmp_path).parent.exists()
+    assert not (tmp_path / "fishbone" / "review").exists()
+    assert session.saved_to is None
     assert roster_file.read_text() == before
 
 
@@ -590,7 +725,7 @@ def test_save_without_verify_writes_corrections_but_leaves_tier_unverified(tmp_p
     session.mark(1200.0, 1450.0, category=1)
     session.save()
 
-    corrections = read_corrections(review_path("fishbone", 185601, root=tmp_path))
+    corrections = read_latest_corrections("fishbone", 185601, root=tmp_path)
     assert len(corrections) == 1
 
     roster = read_roster(tmp_path / "fishbone" / "shots.csv")
@@ -606,7 +741,8 @@ def test_verify_with_no_marks_writes_the_roster_but_no_corrections_file(tmp_path
     session.verify()
     session.save()
 
-    assert not review_path("fishbone", 185601, root=tmp_path).exists()
+    assert corrections_for("fishbone", 185601, root=tmp_path) == []
+    assert session.saved_to is None
     roster = read_roster(tmp_path / "fishbone" / "shots.csv")
     assert roster.iloc[0].tier == "unverified"
     assert roster.iloc[0].reviewers == "alice"

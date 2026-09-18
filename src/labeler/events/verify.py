@@ -8,15 +8,18 @@ in each category's `verification.ipynb` rather than here.
 
 What is shared is everything else: reading the corpus without loading it,
 stacking the panels on one time axis, turning a dragged range into an
-interval, and writing the two files a review produces - the corrections under
-`review/` and the roster row in `shots.csv`.
+interval, and writing the two files a review produces - a fresh corrections
+file under `review/`, never one that already exists, and the roster row in
+`shots.csv`, the one file a review edits in place.
 """
 
 from __future__ import annotations
 
+import re
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -325,10 +328,70 @@ class Panel:
         # and the kind - validating it twice would make that branch dead.
 
 
-def review_path(event: str, shot: int, *, root: Path | None = None) -> Path:
-    """Where one shot's corrections live."""
+#: The stamp in a corrections filename: UTC, zero-padded and fixed-width, so
+#: sorting the names sorts the saves chronologically.
+CORRECTION_STAMP = "%Y%m%dT%H%M%SZ"
+
+
+def correction_path(
+    event: str,
+    shot: int,
+    *,
+    reviewer: str,
+    stamp: datetime | None = None,
+    root: Path | None = None,
+) -> Path:
+    """A fresh, never-reused path for one save of one shot's corrections.
+
+    `<root>/<event>/review/<shot>__<reviewer>__<stamp>.csv`. Corrections are
+    append-only: a second reviewer, or the same reviewer in a later session,
+    gets a new file rather than replacing the first, and the author merges
+    what he wants of them into `format/` by hand.
+    """
     root = Paths.from_env().label_tables if root is None else Path(root)
-    return root / event / REVIEW_DIRECTORY / f"{int(shot)}.csv"
+    stamp = datetime.now(UTC) if stamp is None else stamp
+    # `$USER` reaches the filename, so a reviewer id with a `/` in it would
+    # otherwise write outside `review/` - or, with a `..`, outside the
+    # category. Nothing of the original surviving means there is no id here.
+    if not re.sub(r"[^A-Za-z0-9_-]", "", str(reviewer)):
+        raise ValueError(
+            f"reviewer {reviewer!r} has no usable characters for a filename; "
+            f"pass a reviewer id containing letters, digits, '_' or '-'"
+        )
+    who = re.sub(r"[^A-Za-z0-9_-]", "_", str(reviewer))
+    directory = root / event / REVIEW_DIRECTORY
+    base = f"{int(shot)}__{who}__{stamp.strftime(CORRECTION_STAMP)}"
+    path = directory / f"{base}.csv"
+    # The stamp resolves to one second, and pressing Save twice inside one
+    # second is a thing a reviewer does. Returning the taken path would make
+    # `write_corrections` raise on a save that is perfectly legitimate.
+    suffix = 1
+    while path.exists():
+        suffix += 1
+        path = directory / f"{base}-{suffix}.csv"
+    return path
+
+
+def corrections_for(event: str, shot: int, *, root: Path | None = None) -> list[Path]:
+    """Every saved correction file for one shot, oldest first.
+
+    Sorted by filename, which is chronological because the stamp is
+    zero-padded and fixed-width. No `review/` directory is the normal state
+    today, not an error, so that returns `[]`.
+    """
+    root = Paths.from_env().label_tables if root is None else Path(root)
+    directory = root / event / REVIEW_DIRECTORY
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob(f"{int(shot)}__*.csv"))
+
+
+def read_latest_corrections(
+    event: str, shot: int, *, root: Path | None = None
+) -> pd.DataFrame | None:
+    """The most recent save for one shot, or None if nothing is saved."""
+    saved = corrections_for(event, shot, root=root)
+    return read_corrections(saved[-1]) if saved else None
 
 
 def read_corrections(path) -> pd.DataFrame:
@@ -341,9 +404,20 @@ def read_corrections(path) -> pd.DataFrame:
 
 
 def write_corrections(frame, path) -> None:
-    """Validate and write one shot's corrections."""
+    """Validate and write one shot's corrections to a path that is free.
+
+    The refusal to overwrite lives here, at the lowest level, rather than in
+    `save()`: a future caller that builds its own path cannot then reach
+    around it and destroy a review someone else saved.
+    """
     from .interval_tables import validate_intervals
 
+    path = Path(path)
+    if path.exists():
+        raise FileExistsError(
+            f"{path} already holds corrections and corrections are never "
+            f"overwritten; pass a different path (`correction_path` mints one)"
+        )
     validated = validate_intervals(frame)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     validated.to_csv(path, index=False)
@@ -353,10 +427,13 @@ class ReviewSession:
     """One reviewer, one shot: the figure, the marks, and what gets written.
 
     Marks accumulate in memory. `save()` is the only thing that touches disk,
-    and it writes two files: the corrections under `review/` and the roster
-    row in `shots.csv`. `verify()` records that this reviewer looked; without
-    it `save()` writes corrections alone, which is what a half-finished
-    review should leave behind.
+    and it writes two files: a NEW corrections file under `review/`, named
+    for the shot, the reviewer and the moment, and the roster row in
+    `shots.csv`. Nothing under `review/` is ever overwritten - press Save
+    twice and there are two files - and `shots.csv` is the one file edited in
+    place, where a review only ever adds a reviewer. `verify()` records that
+    this reviewer looked; without it `save()` writes corrections alone, which
+    is what a half-finished review should leave behind.
     """
 
     def __init__(
@@ -383,6 +460,9 @@ class ReviewSession:
         self.root = Paths.from_env().label_tables if root is None else Path(root)
         self.reviewer = reviewer or os.environ.get("USER", "unknown")
         self._marks: list[tuple[float, float, int]] = []
+        #: The file the last `save()` wrote, so the reviewer can be told
+        #: which of several files under `review/` is theirs.
+        self.saved_to: Path | None = None
         self._verify = False
         self._notes: str | None = None
         self.figure = self._build_figure()
@@ -418,9 +498,10 @@ class ReviewSession:
         from .rosters import record_review, roster_path
 
         if self._marks:
-            write_corrections(
-                self.corrections, review_path(self.event, self.shot, root=self.root)
+            self.saved_to = correction_path(
+                self.event, self.shot, reviewer=self.reviewer, root=self.root
             )
+            write_corrections(self.corrections, self.saved_to)
         if self._verify:
             record_review(
                 roster_path(self.event, root=self.root),
@@ -595,7 +676,14 @@ class ReviewSession:
             except (ValueError, OSError) as error:
                 status.value = f"<b style='color:#b2182b'>{error}</b>"
                 return
-            status.value = self._status() + " <b>saved</b>"
+            # Several files can sit under `review/` for one shot now, so say
+            # which one this press wrote.
+            written = (
+                f"to <code>{self.saved_to.name}</code>"
+                if self.saved_to is not None
+                else "the roster only - no marks, so no corrections file"
+            )
+            status.value = f"{self._status()} <b>saved</b> {written}"
 
         present.on_click(on_mark(1))
         absent.on_click(on_mark(0))
