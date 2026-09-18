@@ -299,3 +299,62 @@ def test_ece_fetches_the_channels_a_corpus_row_would_index(roots, monkeypatch):
     assert seen["exprs"][-1].endswith("TECEF48")
     assert seen["exprs"] == sorted(seen["exprs"]), "ascending, like a corpus row"
     assert len(set(seen["exprs"])) == 48, "no channel fetched twice"
+
+
+def test_promote_refuses_a_partial_shot_and_names_what_is_missing(roots):
+    raw.write_group(raw.cache_path(12, paths=roots), "co2",
+                    np.arange(4.0), np.zeros((1, 4)))
+    with pytest.raises(ValueError) as caught:
+        raw.promote(12, paths=roots)
+    message = str(caught.value)
+    assert "1 of 32" in message
+    assert "ece" in message, "the refusal must name groups that are missing"
+    assert "--partial" in message
+    assert raw.cache_path(12, paths=roots).is_file(), "nothing moved"
+
+
+def test_promote_moves_a_partial_shot_when_told_to(roots):
+    raw.write_group(raw.cache_path(13, paths=roots), "co2",
+                    np.arange(4.0), np.ones((1, 4)))
+    landed = raw.promote(13, partial=True, paths=roots)
+    assert landed == roots.corpus / "13_processed.h5"
+    assert landed.is_file()
+    assert not raw.cache_path(13, paths=roots).exists(), "a move, not a copy"
+
+
+def test_a_promoted_shot_reads_identically_from_tier_one(roots):
+    times, values = np.arange(10.0), np.arange(20.0).reshape(2, 10)
+    raw.write_group(raw.cache_path(14, paths=roots), "co2", times, values)
+    before = raw.raw_signal(14, "co2", paths=roots)
+    assert before.attrs["tier"] == "cache"
+    raw.promote(14, partial=True, paths=roots)
+    after = raw.raw_signal(14, "co2", paths=roots)
+    assert after.attrs["tier"] == "corpus"
+    assert np.allclose(before.x, after.x)
+    assert np.allclose(before.y, after.y)
+
+
+def test_promote_refuses_to_clobber_a_corpus_shot(roots):
+    write_corpus_file(roots.corpus / "15_processed.h5", "co2",
+                      np.arange(4.0), np.zeros((1, 4)))
+    raw.write_group(raw.cache_path(15, paths=roots), "co2",
+                    np.arange(4.0), np.ones((1, 4)))
+    with pytest.raises(FileExistsError):
+        raw.promote(15, partial=True, paths=roots)
+
+
+def test_clean_empties_the_cache_and_a_read_refetches(roots, monkeypatch):
+    calls = []
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        calls.append(shot)
+        return FeatureArray(x=np.arange(10.0),
+                            y=np.zeros((4, 10), dtype="float32"),
+                            attrs={"units": "ms"})
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    raw.raw_signal(16, "co2", paths=roots)
+    assert raw.clean(paths=roots) > 0
+    assert not raw.cache_path(16, paths=roots).exists()
+    raw.raw_signal(16, "co2", paths=roots)
+    assert len(calls) == 2
