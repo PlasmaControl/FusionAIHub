@@ -42,6 +42,13 @@ DEFAULT_LOGS_JSONL = Path(
 #: package and `LABELER_LABEL_TABLES` is the answer. Overridable anyway,
 #: because a table too large or too restricted to commit lives on /scratch.
 DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
+#: Where a live fetch parks a shot's raw record. Deliberately the PROJECT
+#: directory and not the corpus: EKOLEMEN is the long-term home for bulk raw
+#: signal data and has the capacity for it, while this directory is meant for
+#: temporary and smaller things. A fetch lands here as scratch and stays
+#: scratch until `raw.promote` moves it. `.cache` is gitignored, and deleting
+#: this directory at any time is safe - the next read refetches.
+DEFAULT_RAW_CACHE = Path(__file__).resolve().parents[2] / ".cache" / "raw"
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,7 @@ class Paths:
     text_root: Path = DEFAULT_TEXT
     logs_jsonl: Path = DEFAULT_LOGS_JSONL
     label_tables: Path = DEFAULT_LABEL_TABLES
+    raw_cache: Path = DEFAULT_RAW_CACHE
 
     @classmethod
     def from_env(cls) -> Paths:
@@ -65,6 +73,8 @@ class Paths:
                                            str(DEFAULT_LOGS_JSONL))),
             label_tables=Path(getenv("LABELER_LABEL_TABLES",
                                              str(DEFAULT_LABEL_TABLES))),
+            raw_cache=Path(getenv("LABELER_RAW_CACHE",
+                                          str(DEFAULT_RAW_CACHE))),
         )
 
     @property
