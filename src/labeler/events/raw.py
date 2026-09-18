@@ -228,17 +228,22 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
     return FeatureArray(x=array.x, y=array.y, attrs={**array.attrs, "tier": "fetch"})
 
 
-#: The 32 groups a complete corpus shot holds, from
+#: The 32 groups a complete corpus shot holds - measured by opening a real
+#: corpus file, `/scratch/gpfs/EKOLEMEN/foundation_model/185601_processed.h5`,
+#: and listing its groups, which match the `signals:` keys in
 #: `src/tokamak_foundation_model/data/config/modalities/modalities.yaml`.
 #: `promote` compares against this to decide whether a cache entry is a
-#: whole shot or a verification fetch of one diagnostic.
+#: whole shot or a verification fetch of one diagnostic. No EFIT scalars
+#: (ip, betan, q95, ...) belong here: the corpus holds raw diagnostics and
+#: actuators only, never equilibrium or fitted-profile quantities - see
+#: `src/labeler/features/resolve_corpus.py`'s docstring.
 CORPUS_GROUPS: tuple[str, ...] = (
-    "mhr", "ece", "co2",
-    "gas", "gas_raw", "ech", "ech_raw", "pin", "tin",
-    "d_alpha", "mse", "ts_core_density", "ts_core_temp",
-    "ts_tan_density", "ts_tan_temp", "cer_rot", "filterscopes",
-    "ip", "betan", "pinj", "tinj", "li", "q95", "qmin", "qpsi",
-    "kappa", "tritop", "tribot", "aminor", "rmaxis", "zmaxis", "wmhd",
+    "beam_voltage", "bes", "bolo", "cer_rot", "cer_ti", "co2", "ece",
+    "ech_pol_angle", "ech_polarization", "ech_power", "ech_tor_angle",
+    "filterscopes", "gas_flow", "gas_raw", "i_coil", "ich", "irtv",
+    "langmuir", "mhr", "mirnov", "mse", "neutron_rate", "pinj", "rmp",
+    "sxr", "tangtv", "tinj", "ts_core_density", "ts_core_temp",
+    "ts_tangential_density", "ts_tangential_temp", "vib",
 )
 
 
@@ -266,8 +271,12 @@ def promote(shot: int, *, partial: bool = False, paths: Paths | None = None) -> 
             f"shot. Inspect both and remove one by hand."
         )
     present = groups_in(source)
-    if not partial and len(present) < len(CORPUS_GROUPS):
-        missing = sorted(set(CORPUS_GROUPS) - present)
+    # WHICH groups are missing, computed before branching, not just how
+    # many. A shot can hold 32 groups that aren't the right 32 - e.g. a
+    # cache polluted by a differently-shaped fetch - and a count-only check
+    # would wave that through.
+    missing = sorted(set(CORPUS_GROUPS) - present)
+    if not partial and missing:
         raise ValueError(
             f"shot {int(shot)} holds {len(present)} of {len(CORPUS_GROUPS)} "
             f"groups; missing {', '.join(missing)}. Training globs "
@@ -275,15 +284,46 @@ def promote(shot: int, *, partial: bool = False, paths: Paths | None = None) -> 
             f"whole shot. Pass --partial if that is what you want."
         )
     target.parent.mkdir(parents=True, exist_ok=True)
-    # `replace` is atomic within a filesystem and falls back to copy+unlink
-    # across one, which the cache and the corpus may well be.
-    try:
-        source.replace(target)
-    except OSError:
-        import shutil
+    import os
+    import shutil
 
-        shutil.copy2(source, target)
-        source.unlink()
+    # The `exists()` check above is only the friendly early message for the
+    # common case; it cannot BE the no-clobber guarantee because a second
+    # `promote` for the same shot can pass it before this one finishes. The
+    # guarantee actually lives here: `os.link` stakes the target name
+    # atomically and raises `FileExistsError` itself on collision, straight
+    # from the filesystem, so there is no gap between checking and acting.
+    try:
+        os.link(source, target)
+    except FileExistsError:
+        raise FileExistsError(
+            f"{target} already exists; promote never overwrites a corpus "
+            f"shot. Inspect both and remove one by hand."
+        ) from None
+    except OSError:
+        # `os.link`, like `replace`, cannot cross filesystems - which the
+        # cache and the corpus may well be. Copy to a scratch name IN
+        # `target.parent` first, so the commit step below lands on one
+        # filesystem: a `shutil.copy2` straight to `target` would leave a
+        # truncated `*_processed.h5` sitting exactly where the training
+        # glob looks for a whole shot if it died partway - full disk,
+        # killed process, flaky network filesystem are all realistic on
+        # this cross-filesystem path.
+        scratch = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            shutil.copy2(source, scratch)
+            # Same guarantee as the direct-link branch above, just staked
+            # on the scratch copy instead of `source`.
+            try:
+                os.link(scratch, target)
+            except FileExistsError:
+                raise FileExistsError(
+                    f"{target} already exists; promote never overwrites a "
+                    f"corpus shot. Inspect both and remove one by hand."
+                ) from None
+        finally:
+            scratch.unlink(missing_ok=True)
+    source.unlink()
     return target
 
 
@@ -322,7 +362,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     try:
         landed = promote(args.shot, partial=args.partial, paths=paths)
-    except (ValueError, FileExistsError, FileNotFoundError) as error:
+    # OSError covers FileExistsError and FileNotFoundError already, plus
+    # the plain OSErrors the copy/unlink fallback and `clean`'s rmtree can
+    # raise on the destructive paths - disk full, permission denied, a
+    # stale NFS handle - which deserve `error: ...` and exit 1, not a
+    # traceback.
+    except (ValueError, OSError) as error:
         print(f"error: {error}")
         return 1
     print(f"promoted {args.shot} -> {landed}")

@@ -1,6 +1,7 @@
 """The three-tier raw read, and the cache file it writes."""
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 
@@ -332,6 +333,75 @@ def test_a_promoted_shot_reads_identically_from_tier_one(roots):
     assert after.attrs["tier"] == "corpus"
     assert np.allclose(before.x, after.x)
     assert np.allclose(before.y, after.y)
+
+
+def test_corpus_groups_matches_a_real_corpus_shot(roots):
+    """Pin CORPUS_GROUPS against reality so it cannot silently rot.
+
+    The 32 names below are hardcoded independently of `raw.CORPUS_GROUPS` -
+    measured by hand off a real corpus file,
+    `/scratch/gpfs/EKOLEMEN/foundation_model/185601_processed.h5` - so this
+    cannot become tautological by looping over `raw.CORPUS_GROUPS` itself.
+    A synthetic cache file holding exactly these must pass the completeness
+    gate without `--partial`. If `CORPUS_GROUPS` ever drifts from what a
+    real `*_processed.h5` actually holds - an invented name added, a real
+    one dropped - this either refuses a genuinely complete shot or, worse,
+    accepts a genuinely incomplete one.
+    """
+    real_groups = (
+        "beam_voltage", "bes", "bolo", "cer_rot", "cer_ti", "co2", "ece",
+        "ech_pol_angle", "ech_polarization", "ech_power", "ech_tor_angle",
+        "filterscopes", "gas_flow", "gas_raw", "i_coil", "ich", "irtv",
+        "langmuir", "mhr", "mirnov", "mse", "neutron_rate", "pinj", "rmp",
+        "sxr", "tangtv", "tinj", "ts_core_density", "ts_core_temp",
+        "ts_tangential_density", "ts_tangential_temp", "vib",
+    )
+    assert len(real_groups) == 32
+    path = raw.cache_path(17, paths=roots)
+    for group in real_groups:
+        raw.write_group(path, group, np.arange(4.0), np.zeros((1, 4)))
+    landed = raw.promote(17, paths=roots)
+    assert landed == roots.corpus / "17_processed.h5"
+    assert raw.groups_in(landed) == set(real_groups)
+
+
+def test_promote_survives_a_cross_filesystem_copy_failure(roots, monkeypatch):
+    """`os.link` failing on the direct source->target step must not corrupt.
+
+    Forces the fallback branch `promote` takes when the cache and the
+    corpus are on different filesystems (`os.link`, like `replace`, cannot
+    cross them). `os.link` is patched to raise `OSError` on its first call
+    only - the direct `source -> target` attempt - and to behave normally
+    after, so the second call (`scratch -> target`, inside the fallback)
+    succeeds. Against the unfixed function (a bare `shutil.copy2` straight
+    to `target`) this same failure mode would have to be simulated on
+    `copy2` instead, and would leave a truncated file sitting in the
+    corpus root; here the assertion is that the shot arrives intact and no
+    scratch file is left behind.
+    """
+    times, values = np.arange(4.0), np.ones((1, 4))
+    raw.write_group(raw.cache_path(18, paths=roots), "co2", times, values)
+
+    real_link = os.link
+    calls = {"n": 0}
+
+    def flaky_link(src, dst, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("simulated cross-filesystem failure")
+        return real_link(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", flaky_link)
+
+    landed = raw.promote(18, partial=True, paths=roots)
+
+    assert calls["n"] == 2, "the fallback must retry via the scratch copy"
+    assert landed == roots.corpus / "18_processed.h5"
+    with h5py.File(landed, "r") as f:
+        assert np.allclose(f["co2"]["ydata"][:], 1.0)
+    assert not raw.cache_path(18, paths=roots).exists(), "a move, not a copy"
+    leftovers = [p for p in roots.corpus.glob(".*") if p.is_file()]
+    assert leftovers == [], "no scratch file left behind"
 
 
 def test_promote_refuses_to_clobber_a_corpus_shot(roots):
