@@ -59,6 +59,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import asdict, dataclass, field
@@ -611,6 +612,119 @@ def req_mem_bytes(rows: list[SacctRow]) -> int | None:
     return None
 
 
+# --------------------------------------------------------------- frontier
+
+#: The header `scripts/slurm_frontier/_gpu_sampler.sh` writes, and the order of
+#: its columns: `epoch_s,gpu_pct,vram_used_mb,vram_total_mb`.
+GPU_SAMPLE_HEADER = "epoch_s,gpu_pct,vram_used_mb,vram_total_mb"
+
+
+def frontier_backend() -> bool:
+    """Is this a cluster with `sacct` but no `jobstats`? (Frontier is.)
+
+    `jobstats` is a Princeton tool; OLCF does not have it, and on Frontier the
+    gate would otherwise read every check as `undetermined` and fail every job
+    it was pointed at. Detected rather than configured so the same command line
+    works on both clusters.
+    """
+    return shutil.which("jobstats") is None and shutil.which("sacct") is not None
+
+
+def parse_gpu_samples(text: str | None) -> tuple[float | None, float | None]:
+    """`_gpu_sampler.sh`'s CSV -> `(mean GPU busy %, peak VRAM %)`.
+
+    MEAN for utilisation and PEAK for memory, which is the pairing the rest of
+    this module already uses: a job is sized on the memory it needed at its
+    worst and on the compute it used on average. Malformed lines - the header,
+    a final line truncated by the job's death - are skipped, and a sample whose
+    `vram_total_mb` is 0 (the sampler's placeholder when `rocm-smi` failed)
+    cannot be a denominator.
+    """
+    busy: list[float] = []
+    used: list[float] = []
+    total: list[float] = []
+    for line in (text or "").splitlines():
+        parts = line.strip().split(",")
+        if len(parts) < 4:
+            continue
+        try:
+            sample = [float(p) for p in parts[1:4]]
+        except ValueError:
+            continue                             # the header, or a torn line
+        busy.append(sample[0])
+        used.append(sample[1])
+        total.append(sample[2])
+    mean = round(sum(busy) / len(busy), 1) if busy else None
+    cap = round(max(total)) if total else 0
+    peak = _ratio_pct(round(max(used)), cap) if used and cap else None
+    return mean, peak
+
+
+def parse_frontier(sacct_text: str, rocm_samples: str | None) -> JobStats:
+    """A `JobStats` built from `sacct` and, if the job had one, the GPU samples.
+
+    `TotalCPU / (Elapsed * AllocCPUS)` is the same CPU efficiency `jobstats`
+    prints, computed from the accounting record instead of read off a report.
+    The peak `MaxRSS` over the steps against `ReqMem` is the memory figure -
+    `sacct_memory_pct`, refusals included, so an absurd ratio or a batch-shell
+    MaxRSS stays `None` here exactly as it does on Stellar.
+
+    The GPU keys go into `overall_pct` ONLY when there are samples: that is
+    what `_has_gpu` reads, so a CPU job is auto-detected as CPU-only and is not
+    failed for the GPU it never had.
+    """
+    rows = parse_sacct(sacct_text)
+    job = next((r for r in rows if not r.is_step), rows[0] if rows else SacctRow())
+    steps = [r.total_cpu_s for r in rows if r.is_step and r.total_cpu_s]
+    total_cpu_s = max(steps) if steps else job.total_cpu_s
+    core_seconds = (job.elapsed_s or 0.0) * (job.alloc_cpus or 0)
+    cpu_util = (round(100.0 * total_cpu_s / core_seconds, 1)
+                if total_cpu_s and core_seconds else None)
+    cpu_mem, _ = sacct_memory_pct(rows)
+    gpu_util, gpu_mem = parse_gpu_samples(rocm_samples)
+    req = req_mem_bytes(rows)
+
+    overall: dict[str, float | None] = {"cpu": cpu_util, "cpu_mem": cpu_mem}
+    if rocm_samples is not None:
+        overall["gpu"] = gpu_util
+        overall["gpu_mem"] = gpu_mem
+    return JobStats(
+        job_id=job.job_id,
+        state=job.state,
+        cpu_cores=job.alloc_cpus,
+        cpu_mem_gb=None if req is None else round(req / 1024 ** 3, 3),
+        run_time_s=job.elapsed_s,
+        cpu_util_pct=cpu_util,
+        cpu_mem_pct=cpu_mem,
+        gpu_util_pct=gpu_util,
+        gpu_mem_pct=gpu_mem,
+        overall_pct=overall,
+        notes=["utilisation computed from sacct"
+               + (" and rocm-smi samples" if rocm_samples is not None else "")
+               + ": this cluster has no jobstats"],
+    )
+
+
+def gpu_samples_path(job_id: str) -> Path:
+    """Where `_gpu_sampler.sh` left this job's samples.
+
+    Under the shot_design data root, beside the job's own `.out`, because that
+    is the directory the sbatch `--output` line already points at. The labeler
+    root is the fallback for a job submitted without the shot_design env.
+    """
+    root = os.environ.get("SHOT_DESIGN_DATA_ROOT") or os.environ.get("IDEATE_DATA_ROOT")
+    base = Path(root) / "runs" / "slurm" if root else default_out().parent
+    return base / f"{job_id}.gpu.csv"
+
+
+def read_gpu_samples(job_id: str) -> str | None:
+    """The job's GPU samples, or `None` - a CPU job, or a sampler that never ran."""
+    try:
+        return gpu_samples_path(job_id).read_text()
+    except OSError:
+        return None
+
+
 # ------------------------------------------------------------------- gate
 
 @dataclass
@@ -998,6 +1112,8 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.out) if args.out else default_out()
     preserve = Path(args.preserve_dir) if args.preserve_dir else None
 
+    # A saved report is replayed as what it is, whatever cluster reads it back.
+    frontier = frontier_backend() and not args.jobstats_file
     if args.jobstats_file:
         path = Path(args.jobstats_file)
         sacct_text = (
@@ -1006,13 +1122,14 @@ def main(argv: list[str] | None = None) -> int:
         captures = [(path.name.split(".")[0], path.read_text(), "", sacct_text, "")]
     else:
         captures = [
-            (task, *_capture_task(task, args.wait_for_data))
+            (task, *_capture_task(task, args.wait_for_data, frontier))
             for task in _tasks(args.job_id)
         ]
 
     failed = False
     for name, jobstats_text, jobstats_err, sacct_text, sacct_err in captures:
-        stats = parse_jobstats(jobstats_text)
+        stats = (parse_frontier(sacct_text, read_gpu_samples(name)) if frontier
+                 else parse_jobstats(jobstats_text))
         rows = parse_sacct(sacct_text)
         tool_error = (f"jobstats: {jobstats_err}" if jobstats_err
                       else (f"sacct: {sacct_err}" if sacct_err else ""))
@@ -1066,7 +1183,14 @@ def _tasks(job_id: str) -> list[str]:
     return expand_array(job_id, listing)
 
 
-def _capture_task(task: str, wait_for_data: float) -> tuple[str, str, str, str]:
+def _capture_task(task: str, wait_for_data: float,
+                  frontier: bool = False) -> tuple[str, str, str, str]:
+    if frontier:
+        # There is no `jobstats` here to run or to wait for, and calling it
+        # would fill the record's `jobstats_stderr` with a "no such file"
+        # that the gate then reports as the reason a job failed.
+        sacct_text, sacct_err = fetch_sacct(task)
+        return "", "", sacct_text, sacct_err
     text, err, _ = fetch_jobstats(task, wait_for_data)
     sacct_text, sacct_err = fetch_sacct(task)
     return text, err, sacct_text, sacct_err

@@ -18,6 +18,16 @@
 # wall clock resubmittable. Set N_CHUNKS and the --array range together.
 # `extended` for the same reason as shot_design_build.sh: `batch` caps a one-node job at 2 h.
 source "$(dirname "$0")/_shot_design_common.sh"
+
+# GPU samples for the utilisation gate: OLCF has no `jobstats`, so this file is the only
+# record of how much of the GCD the job used. Named after the id `sacct` reports -- for an
+# array element that is <arrayjobid>_<taskid>, not $SLURM_JOB_ID, which is what
+# labeler.jobstats.read_gpu_samples looks for.
+JOB_TAG="${SLURM_ARRAY_JOB_ID:+${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}}"
+bash "$REPO/scripts/slurm_frontier/_gpu_sampler.sh" \
+    "$ROOT/runs/slurm/${JOB_TAG:-${SLURM_JOB_ID:-local}}.gpu.csv" &
+trap 'kill %1 2>/dev/null || true' EXIT
+
 srun "$PY" -m shot_design encode --list "${SHOT_LIST:-recommender_frontier_v1}" \
     --out "$ROOT/frame_codes" --device cuda --workers 6 --skip-existing \
     --chunk "$SLURM_ARRAY_TASK_ID" --n-chunks "${N_CHUNKS:-8}"
