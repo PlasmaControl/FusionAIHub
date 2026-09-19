@@ -35,6 +35,11 @@ SPLIT_SEED="${SPLIT_SEED:-0}"     # MUST match the training run's split seed
 
 EXTRA=()
 [ -n "${CODEC_TMPL}" ] && EXTRA+=(--codec_tmpl "${CODEC_TMPL}")
+# ACTUATOR COUNTERFACTUAL. Never exposed before, so no trained IGNITE model has ever been
+# tested for whether it USES the actuators. Anything but "real" re-runs the identical rollout
+# under real actuators with the same RNG and reports divergence_vs_real -- if that is ~0 the
+# forecast is unconditional, which no amount of tokenisation or capacity would fix.
+[ -n "${ACTUATOR_MODE:-}" ] && EXTRA+=(--actuator_mode "${ACTUATOR_MODE}")
 if [ "${VAL_TAIL}" != "0" ]; then
   # resolved at RUN time inside eval_dynamics (same split_shots as the trainer), so eval
   # jobs can be chained behind training before the cache/split exists.
