@@ -1,0 +1,6 @@
+trees:
+  MHD:
+    - \MHD::N1RMS
+    - \MHD::N2RMS
+
+server: atlas.gat.com

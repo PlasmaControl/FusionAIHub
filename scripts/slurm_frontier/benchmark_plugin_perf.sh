@@ -82,7 +82,9 @@ srun --overlap -N "$SLURM_JOB_NUM_NODES" --ntasks-per-node=1 -c 1 \
 SAMPLER_PID=$!
 trap 'kill "$SAMPLER_PID" 2>/dev/null || true' EXIT
 
-PLUGIN_PATH="$HOME/aws-ofi-nccl/install/lib"
+# OLCF rccl-net-plugin module (loaded by _frontier_common.sh when
+# RCCL_PLUGIN=1, the default) — replaces the old hand-built ~/aws-ofi-nccl.
+PLUGIN_PATH="${OLCF_OFI_NCCL_ROOT:-/sw/frontier/rccl-plugins/aws-ofi-nccl/1.19.2/rocm/7.1.1}/lib"
 echo "=== Pre-benchmark env (should show plugin loaded) ==="
 echo "  LD_LIBRARY_PATH first entry: ${LD_LIBRARY_PATH%%:*}"
 echo "  Plugin lib present:          $(test -f $PLUGIN_PATH/libnccl-net.so && echo YES || echo NO)"
@@ -114,6 +116,9 @@ rm -rf "${BENCH_CKPT_DIR}"/*
 # ─────────────────────────────────────────────────────────────────────
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH//${PLUGIN_PATH}:/}"
 export NCCL_NET_PLUGIN=none
+# _frontier_common.sh sets NCCL_NET=OFI on multi-node jobs to fail loudly if
+# the plugin can't init — run 2 deliberately has no plugin, so lift it.
+unset NCCL_NET
 
 echo "=== Run 2: WITHOUT plugin ($(date '+%H:%M:%S')) ==="
 echo "  LD_LIBRARY_PATH first entry: ${LD_LIBRARY_PATH%%:*}"
