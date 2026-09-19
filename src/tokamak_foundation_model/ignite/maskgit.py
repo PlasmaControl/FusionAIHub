@@ -312,7 +312,14 @@ class MaskGITDynamics(nn.Module):
         zero-weighted term keeps every parameter in the graph with a zero gradient.
         """
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator, text=text)
-        n_sf = int(getattr(self.cfg, "sf_frames", 0))
+        # A caller that pins the mask (``mask_ratio`` given: _gen_val_loss's cold-start
+        # diagnostic) asked for exactly that layout. The SF and CTF arms below are
+        # TRAINING curricula; letting them win here would silently score a random
+        # CTF/SF window under --ctf_frac>0 / --sf_frames>0 and call it the generation
+        # loss. Skip both arms without touching the RNG so the pinned path is a bare
+        # _random_mask stream.
+        pinned = mask_ratio is not None
+        n_sf = 0 if pinned else int(getattr(self.cfg, "sf_frames", 0))
         sf_at = None                  # end of the self-rolled window, once one has been built
         if n_sf > 0:
             ref_ctx = context[self.cfg.modalities[0].name]
@@ -342,7 +349,7 @@ class MaskGITDynamics(nn.Module):
                     # suffix follows them: the Self-Forcing conditional, structurally.
                     sf_at = min(b + n_sf, Fr - 1)
         use_ctf = False
-        if self.cfg.ctf_frac > 0.0:
+        if not pinned and self.cfg.ctf_frac > 0.0:
             # Draw on the CODES' device: a device-typed generator (as _val_loss passes on GPU)
             # only accepts draws on its own device. Same convention as _random_mask; on CPU the
             # explicit device leaves the RNG stream bit-identical.
