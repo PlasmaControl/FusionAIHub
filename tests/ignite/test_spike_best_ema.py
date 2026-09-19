@@ -487,3 +487,25 @@ def test_resume_best_score_reads_existing_best(tmp_path):
     assert abs(spike.resume_best_score(tmp_path) - 2.2065) < 1e-9
     (tmp_path / "codec_best.pt").write_bytes(b"corrupt")           # unreadable -> -inf
     assert spike.resume_best_score(tmp_path) == float("-inf")
+
+
+def test_gate_score_ignores_the_full_spectrogram_keys():
+    """Best-checkpoint selection must NOT move when the new full-spectrogram reconstruction
+    keys (``spec_nrmse`` / ``spec_corr2d`` / the ``base_*`` trivial baselines) appear in the
+    decode dict. They are informational; ``gate_score`` reads only envelope_corr + peak_f1.
+
+    Asserted BIT-identical (``==``, not approx) across a spread of injected values, including
+    ones that would dominate any score that accidentally consumed them.
+    """
+    for nrmse, corr2d in ((0.0, 1.0), (0.98, 0.05), (float("nan"), float("nan")), (7.5, -1.0)):
+        g = _gate(margin_tr=0.07, min_dim_entropy=0.6, peak_f1=0.42, collapsed=False)
+        before = spike.gate_score(g)
+        g["decode"].update({
+            "spec_nrmse": nrmse, "spec_corr2d": corr2d, "spec_valid_frac": 1.0,
+            "spec_nrmse_band": nrmse, "spec_corr2d_band": corr2d,
+            "base_self_spec_nrmse": 0.0, "base_self_spec_corr2d": 1.0,
+            "base_tmean_spec_nrmse": 0.55, "base_tmean_spec_corr2d": 0.83,
+            "base_cfmean_spec_nrmse": 0.9, "base_cfmean_spec_corr2d": 0.4,
+            "base_wcmean_spec_nrmse": 1.0, "base_wcmean_spec_corr2d": 0.0,
+        })
+        assert spike.gate_score(g) == before

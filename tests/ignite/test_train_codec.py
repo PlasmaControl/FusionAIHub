@@ -423,8 +423,17 @@ def test_tangential_thomson_gets_present_fraction_stratification():
 
 def test_refine_depth_is_video_only_cli_override():
     """--refine_depth parses, lands on VideoCodecConfig (which has the field), and must be
-    rejected for families whose configs lack it (mirrors main()'s guard)."""
-    from tokamak_foundation_model.ignite.config import SpectroCodecConfig, VideoCodecConfig
+    rejected for families whose configs lack it (mirrors main()'s guard).
+
+    2026-09-03: the conv REFINEMENT head was ported from the video decoder to the SPECTRO
+    decoder (patch-lattice fix, config.py SpectroCodecConfig.refine_depth), so spectro is no
+    longer a config that lacks the field. The "must be rejected where the field is absent" leg
+    now asserts against the two families that genuinely have no refinement head — slow-TS and
+    fast-TS, whose decoders are 1-D and have no patch lattice to notch.
+    """
+    from tokamak_foundation_model.ignite.config import (
+        FastTSCodecConfig, SlowTSCodecConfig, SpectroCodecConfig, VideoCodecConfig,
+    )
     args = tc.build_arg_parser().parse_args(
         ["--modality", "tangtv_lower", "--out_dir", "/tmp/x", "--refine_depth", "4"]
     )
@@ -433,7 +442,11 @@ def test_refine_depth_is_video_only_cli_override():
     assert vcfg.refine_depth == 0          # default OFF (byte-identical decoder)
     vcfg.refine_depth = int(args.refine_depth)
     assert vcfg.refine_depth == 4
-    assert not hasattr(SpectroCodecConfig(channels=4), "refine_depth")
+    # spectro now HAS the field (ported 2026-09-03) and defaults OFF, so the CLI flag is a
+    # no-op there unless asked for.
+    assert SpectroCodecConfig(channels=4).refine_depth == 0
+    assert not hasattr(SlowTSCodecConfig(), "refine_depth")
+    assert not hasattr(FastTSCodecConfig(), "refine_depth")
 
 
 def test_prod_recipe_overrides_win_over_activity_and_defaults():
@@ -578,3 +591,90 @@ def test_main_dispatches_filterscopes_to_fastts_trainer(tmp_path, monkeypatch):
     # train/eval split derived from the shot list (eval = last 1; train = first 3).
     assert captured["eval_shots"] == ["900003"]
     assert captured["train_shots"] == ["900000", "900001", "900002"]
+
+
+# --------------------------------------------------------------------------------------- #
+# NVIDIA Spectral Codec recipe knobs (arXiv 2406.05298) — CLI + no-op-at-default guarantees
+# --------------------------------------------------------------------------------------- #
+def test_spectral_codec_recipe_flags_parse_and_default_to_none():
+    """Every new flag exists and defaults to None, so omitting them changes nothing."""
+    p = tc.build_arg_parser()
+    a = p.parse_args(["--out_dir", "/tmp/x"])
+    for f in ("stft_n_fft", "stft_hop", "freq_bins", "time_frames", "conv_dec_base_ch",
+              "conv_dec_res_blocks", "conv_dec_min_ch", "disc_update_every",
+              "adam_beta1", "adam_beta2", "lr_decay_gamma", "lr_decay_every"):
+        assert getattr(a, f) is None, f
+    b = p.parse_args([
+        "--out_dir", "/tmp/x", "--stft_n_fft", "512", "--stft_hop", "256",
+        "--freq_bins", "256", "--time_frames", "96", "--patch_f", "8", "--patch_t", "16",
+        "--conv_dec_base_ch", "1024", "--conv_dec_min_ch", "128",
+        "--disc_update_every", "2", "--adam_beta1", "0.8", "--adam_beta2", "0.99",
+        "--lr_decay_gamma", "0.998", "--lr_decay_every", "1000",
+    ])
+    assert (b.stft_n_fft, b.freq_bins, b.patch_f, b.patch_t) == (512, 256, 8, 16)
+    assert (b.disc_update_every, b.adam_beta1, b.adam_beta2) == (2, 0.8, 0.99)
+    assert (b.lr_decay_gamma, b.lr_decay_every) == (0.998, 1000)
+
+
+def test_spectral_codec_recipe_config_defaults_are_todays_behaviour():
+    """The cfg defaults must reproduce today's training EXACTLY."""
+    from tokamak_foundation_model.ignite.config import (
+        STFT_HOP, STFT_N_FFT, SpectroCodecConfig,
+    )
+    cfg = SpectroCodecConfig(channels=4)
+    assert (cfg.stft_n_fft, cfg.stft_hop) == (STFT_N_FFT, STFT_HOP)
+    assert cfg.disc_update_every == 1            # discriminator every step
+    assert (cfg.adam_beta1, cfg.adam_beta2) == (0.9, 0.999)   # torch.optim.Adam defaults
+    assert cfg.lr_decay_gamma == 1.0             # constant LR
+    assert cfg.conv_dec_min_ch == 64             # the previously hard-coded floor
+
+
+def test_lr_decay_is_a_noop_at_gamma_one_and_exponential_otherwise():
+    """gamma 1.0 must not touch param_groups at all; gamma 0.998/1k must match the paper."""
+    from tokamak_foundation_model.ignite.config import SpectroCodecConfig
+
+    opt = torch.optim.Adam([torch.zeros(1, requires_grad=True)], lr=7e-4)
+    cfg = SpectroCodecConfig(channels=4)
+    for step in (0, 1, 5_000, 100_000):
+        tc._apply_lr_decay([opt], [7e-4], step, cfg)
+        assert opt.param_groups[0]["lr"] == 7e-4
+
+    cfg.lr_decay_gamma, cfg.lr_decay_every = 0.998, 1000
+    for step, want in ((0, 2e-4), (1000, 2e-4 * 0.998), (100_000, 2e-4 * 0.998 ** 100)):
+        tc._apply_lr_decay([opt], [2e-4], step, cfg)
+        assert abs(opt.param_groups[0]["lr"] - want) < 1e-12, (step, want)
+
+    # computed from the ABSOLUTE step, so a resume lands where an unbroken run would have
+    tc._apply_lr_decay([opt], [2e-4], 40_000, cfg)
+    lr_direct = opt.param_groups[0]["lr"]
+    tc._apply_lr_decay([opt], [2e-4], 0, cfg)
+    tc._apply_lr_decay([opt], [2e-4], 40_000, cfg)
+    assert opt.param_groups[0]["lr"] == lr_direct
+
+
+def test_disc_update_every_skips_the_optimizer_step_but_still_reports_a_loss():
+    """cfg.disc_update_every=2 must leave the discriminator UNCHANGED on odd steps."""
+    from tokamak_foundation_model.ignite.codec import SpectroCodec
+    from tokamak_foundation_model.ignite.config import SpectroCodecConfig
+    from tokamak_foundation_model.ignite.discriminator import FreqAwarePatchGAN
+
+    cfg = SpectroCodecConfig(channels=1, freq_bins=32, time_frames=16, patch_f=16,
+                             patch_t=16, d_model=32, enc_depth=1, dec_depth=1, heads=2)
+    cfg.disc_update_every = 2
+    torch.manual_seed(0)
+    codec, disc = SpectroCodec(cfg), FreqAwarePatchGAN(cfg)
+    opt_g = torch.optim.Adam(codec.parameters(), lr=1e-4)
+    opt_d = torch.optim.Adam(disc.parameters(), lr=1e-4)
+    adapter = tc._GenLossAdapter(codec)
+    x = torch.randn(2, 1, 32, 16)
+    xs = torch.randn_like(x)
+
+    before = [p.detach().clone() for p in disc.parameters()]
+    _g, d_loss = tc._ddp_codec_train_step(adapter, codec, disc, disc, opt_g, opt_d,
+                                          x, xs, cfg, step=1)          # ODD -> skipped
+    assert torch.isfinite(d_loss)                                       # still reported
+    assert all(torch.equal(a, b) for a, b in zip(before, disc.parameters()))
+
+    _g, _d = tc._ddp_codec_train_step(adapter, codec, disc, disc, opt_g, opt_d,
+                                      x, xs, cfg, step=2)              # EVEN -> updated
+    assert any(not torch.equal(a, b) for a, b in zip(before, disc.parameters()))

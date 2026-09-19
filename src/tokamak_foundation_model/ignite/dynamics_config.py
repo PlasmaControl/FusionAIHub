@@ -48,6 +48,11 @@ FROZEN_MODALITIES: Tuple[ModalitySpec, ...] = (
     ModalitySpec("bes", "spectro", 192, 1000),
     ModalitySpec("mhr", "spectro", 192, 1000),
     ModalitySpec("co2", "spectro", 192, 1000),
+    # mirnov joined with the band-power codecs. cache_modality_specs() iterates THIS tuple and
+    # skips any name the cache lacks, so a modality missing here is dropped SILENTLY: the
+    # all-spectrogram union cache (4000 tok/frame) built a 3072-token frame and trained on 4 of
+    # its 5 modalities with no warning. Caches without mirnov are unaffected by this entry.
+    ModalitySpec("mirnov", "spectro", 192, 1000),
     # video — 108 tokens each divertor
     ModalitySpec("tangtv_lower", "video", 108, 1000),
     ModalitySpec("tangtv_upper", "video", 108, 1000),
@@ -144,6 +149,34 @@ class DynamicsConfig:
     # has no unconditional branch, so guidance cannot be applied at inference. Adds NO parameters.
     # 0.0 = off (original behaviour, bit-identical).
     actuator_dropout_p: float = 0.0
+
+    # --- generation-mode masking (train the task rollout actually performs) ------------------
+    # Fraction of SAMPLES whose mask is built like rollout(): frames before a split point t
+    # (drawn in [k0_seed, F)) stay fully visible and unscored, frames from t on ride the reveal
+    # ladder including a full cold start. 0.0 = the historical cosine-prior-on-every-frame
+    # scheme, bit-for-bit. Motivation (measured 2026-08-15, bp128_big best): under the true
+    # rollout condition the model scores 1.5804 vs a model-free bigram's ~1.70, while its
+    # tracked val CE is 0.9228 — it interpolates inside a half-given frame instead of predicting
+    # the next one. 20% of val weight sits at mask ratio > 0.95 and carries a third of the loss.
+    gen_mask_p: float = 0.0
+
+    # Lag-k own-column code embeddings added in FrameTokenizer.embed (0 = off, no new params).
+    # At the generation condition a per-column count table over a column's own last 3 codes beats
+    # the 270M model (1.5539 vs 1.6090), and the per-modality deficit tracks own-history value
+    # (co2 gains 0.188 nats from it and the model loses by 0.143; mhr gains 0.064 and the model
+    # already wins). k=3 hands the head that exact context so the table is representable rather
+    # than something optimization has to rediscover through 16 shared-parameter layers.
+    lag_embed_k: int = 0
+    # Horizon sampling for generation mode (see maskgit._mask). 0.0 = uniform split point (the
+    # historical behaviour, byte-identical). alpha > 0 draws horizon h ~ h^-alpha and sets
+    # t = Fr - h, so training matches the ONE-STEP task rollout() actually performs.
+    gen_horizon_alpha: float = 0.0
+    # Horizon UNIFORM in [1, gen_horizon_max] (0 = off). Preferred over alpha: keeps the
+    # horizon short WITHOUT collapsing the scored-frame count to 1 (see maskgit._random_mask).
+    gen_horizon_max: int = 0
+    # Per-token cross-attention from frame tokens to the 70 actuator channels, replacing the
+    # single additive vector. False = historical additive-only path, byte-identical.
+    act_cross_attn: bool = False
 
     # --- actuator conditioning (additive; causal) --------------------------------------------
     actuator_dim: int = 70                 # 7 modalities / 70 channels

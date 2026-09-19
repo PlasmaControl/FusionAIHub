@@ -674,9 +674,14 @@ def compute_gate(
     ----------
     codec : SpectroCodec
         The (partially) trained codec.
-    eval_pairs : list of (spec_a, spec_b)
+    eval_pairs : list of (spec_a, spec_b) or (spec_a, spec_b, mask)
         Held-out δ-shift pairs; used for **stability** (codes of a vs b) and
-        **decode_fidelity** (recon of a vs a).
+        **decode_fidelity** (recon of a vs a). A third element, when present, is the
+        ``(B, C, T)`` per-(channel, STFT-frame) validity mask for ``spec_a`` (built by
+        ``data.spectro_frame_mask`` when ``cfg.mask_missing`` is set) and is forwarded to
+        ``gate.decode_fidelity``, so every reconstruction statistic AND every trivial
+        baseline is taken over real diagnostic data only. A 2-element pair passes ``None``
+        and the gate is byte-identical to the pre-2026-09-03 one.
     frame_seq : (B, n_frames, C, F, T)
         Consecutive world-model frames; used for **persistence** (frame t vs t+1) and
         **forecastability** (whole sequence of codes).
@@ -697,14 +702,46 @@ def compute_gate(
     dec_corr: List[float] = []
     dec_f1: List[float] = []
     dec_sharp: List[float] = []
-    for spec_a, spec_b in eval_pairs:
+    # PATCH-LATTICE (checkerboard / patch-seam) artifact keys — reported for the recon AND
+    # for the ground-truth control (``target_*``). Informational only: gate_score does not
+    # read them, so best-ckpt selection is byte-identical to before.
+    _lat_keys = (
+        "patch_lattice_ratio", "lattice_energy_frac", "seam_ratio_freq", "seam_ratio_time",
+    )
+    # FULL-SPECTROGRAM reconstruction keys (gate.full_spectro_metrics + its trivial
+    # baselines) — the only metrics in the decode dict that compare the spectrogram to the
+    # spectrogram; envelope_corr / peak_f1 average the whole time axis away first and
+    # sharpness is a scalar HF ratio dominated by the patch lattice. Carried in every
+    # gate_*.json from now on, but — exactly like the lattice keys — gate_score does NOT
+    # read them, so best-checkpoint selection is bit-identical to before.
+    _full_keys = ("spec_nrmse", "spec_corr2d", "spec_valid_frac",
+                  "spec_nrmse_band", "spec_corr2d_band")
+    _base_keys = tuple(
+        f"base_{b}_{m}"
+        for b in ("self", "tmean", "cfmean", "wcmean")
+        for m in ("spec_nrmse", "spec_corr2d", "spec_nrmse_band", "spec_corr2d_band")
+    )
+    dec_lat: Dict[str, List[float]] = {}
+    for _pair in eval_pairs:
+        spec_a, spec_b = _pair[0], _pair[1]
+        pair_mask = _pair[2] if len(_pair) > 2 else None
         out_a = codec.forward(spec_a)
         _, codes_b = codec.quantize(codec.encode(spec_b))
         stab_vals.append(gate.stability(out_a["codes"], codes_b))
-        dm = gate.decode_fidelity(out_a["recon"], spec_a)
+        dm = gate.decode_fidelity(
+            out_a["recon"], spec_a, patch_f=cfg.patch_f, patch_t=cfg.patch_t,
+            full_spec=True, mask=pair_mask,
+        )
         dec_corr.append(dm["envelope_corr"])
         dec_f1.append(dm["peak_f1"])
         dec_sharp.append(dm["sharpness"])
+        for k in _lat_keys:
+            for kk in (k, f"target_{k}"):
+                if kk in dm:
+                    dec_lat.setdefault(kk, []).append(float(dm[kk]))
+        for kk in _full_keys + _base_keys:
+            if kk in dm:
+                dec_lat.setdefault(kk, []).append(float(dm[kk]))
 
     stability_val = float(sum(stab_vals) / len(stab_vals))
     decode = {
@@ -712,6 +749,8 @@ def compute_gate(
         "peak_f1": float(sum(dec_f1) / len(dec_f1)),
         "sharpness": float(sum(dec_sharp) / len(dec_sharp)),
     }
+    for k, v in dec_lat.items():
+        decode[k] = float(sum(v) / len(v))
 
     # --- persistence + forecastability on the consecutive-frame sequence --------------
     B, n_frames = frame_seq.shape[0], frame_seq.shape[1]
@@ -753,13 +792,29 @@ def _fmt_gate(step: int, g: Dict[str, object]) -> str:
         f"stab={g['stability']:.3f}({'ok' if g['pass_stability'] else 'x'}) "
         f"persist={g['persistence']:.3f}({'ok' if g['pass_persistence'] else 'x'}) "
         f"util[frac={ut['frac_codes_used']:.4f} "  # type: ignore[index]
+        # .get: synthetic / older gate dicts need not carry the count + joint-entropy fields.
+        f"ncode={ut.get('n_distinct_codes', '?')}/{ut.get('codebook_size', '?')} "  # type: ignore[union-attr]
+        f"eff={ut.get('effective_codes', float('nan')):.1f} "  # type: ignore[union-attr]
         f"minH={ut['min_dim_entropy']:.3f}]"  # type: ignore[index]
         f"({'ok' if g['pass_utilization'] else 'COLLAPSED'}) "
         f"forecast_margin_tr={fc['margin_transition']:+.4f}"  # type: ignore[index]
         f"(beats={fc['beats_persistence']}) "  # type: ignore[index]
         f"decode[corr={dec['envelope_corr']:.3f} "  # type: ignore[index]
         f"f1={dec['peak_f1']:.3f} "  # type: ignore[index]
-        f"sharp={dec['sharpness']:.3f}]"  # type: ignore[index]
+        f"sharp={dec['sharpness']:.3f}"  # type: ignore[index]
+        # patch-lattice (checkerboard) artifact: recon value / ground-truth control.
+        # .get so synthetic / older gate dicts (which carry no patch size) still format.
+        + (f" lattice={dec.get('patch_lattice_ratio', float('nan')):.2f}"  # type: ignore[union-attr]
+           f"/gt{dec.get('target_patch_lattice_ratio', float('nan')):.2f}"  # type: ignore[union-attr]
+           if "patch_lattice_ratio" in dec else "")  # type: ignore[operator]
+        # FULL-spectrogram recon (nothing collapsed), printed beside the time-averaged
+        # env_corr above; /tm = the trivial time-mean-envelope baseline in the same units.
+        + (f" nrmse={dec.get('spec_nrmse', float('nan')):.3f}"  # type: ignore[union-attr]
+           f"/tm{dec.get('base_tmean_spec_nrmse', float('nan')):.3f}"  # type: ignore[union-attr]
+           f" corr2d={dec.get('spec_corr2d', float('nan')):.3f}"  # type: ignore[union-attr]
+           f"/tm{dec.get('base_tmean_spec_corr2d', float('nan')):.3f}"  # type: ignore[union-attr]
+           if "spec_corr2d" in dec else "")  # type: ignore[operator]
+        + "]"
     )
 
 

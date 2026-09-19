@@ -771,3 +771,153 @@ def test_video_generator_losses_pure_recipe_gan_free():
     out2 = codec.generator_losses(x, disc, cfg, step=0)
     assert torch.allclose(out1["total"], out2["total"], atol=1e-5), (
         float(out1["total"]), float(out2["total"]))
+
+
+# ===================================================================================== #
+# MISSING-DATA (dead camera) EXCLUSION — 2026-09-03
+#
+# Measured over all 8753 shots (foundation_model_meta/video_channel_liveness.pt):
+# tangtv_lower has NO live camera in 51.30% of shots and tangtv_upper in 68.58%; among the
+# shots that do have one, a further 19.0% / 16.9% of channel-slots are a zero slab. Those
+# zeros previously reached the discriminator as "real" frames, the feature-matching term and
+# the FSQ entropy statistic — only the pixel anchor was masked, and the mask the dataset
+# emitted was an UNCONDITIONAL all-ones vector, so it excluded nothing at all.
+# ===================================================================================== #
+def _mask_cfg(**kw):
+    from tokamak_foundation_model.ignite.config import VideoCodecConfig
+    base = dict(channels=2, frames=5, height=40, width=60, patch_t=5, patch_h=20,
+                patch_w=20, d_model=32, enc_depth=1, dec_depth=1, heads=4)
+    base.update(kw)
+    return VideoCodecConfig(**base)
+
+
+def test_masking_default_path_is_bit_identical():
+    """mask=None, an all-ones (B,T) mask and an all-ones (B,C,T) mask must agree EXACTLY.
+
+    This is the no-op proof: the pre-2026-09-03 trainer always passed an all-ones (B,T) mask,
+    so the new adversarial / feature-matching / entropy masking must reproduce it bit for bit.
+    """
+    import torch
+    from tokamak_foundation_model.ignite.video_codec import VideoCodec
+    from tokamak_foundation_model.ignite.video_discriminator import FramePatchGAN
+    from tokamak_foundation_model.ignite.train_codec import _video_discriminator_loss
+
+    torch.manual_seed(0)
+    cfg = _mask_cfg()
+    codec, disc = VideoCodec(cfg).eval(), FramePatchGAN(cfg).eval()
+    B, C, T = 3, cfg.channels, cfg.frames
+    x = torch.randn(B, C, T, cfg.height, cfg.width) * 5 + 100
+
+    def terms(mask):
+        torch.manual_seed(7)
+        g = codec.generator_losses(x, disc, cfg, step=0, frame_mask=mask)
+        return {k: float(v.detach()) for k, v in g.items()
+                if torch.is_tensor(v) and v.ndim == 0}
+
+    a = terms(None)
+    b = terms(torch.ones(B, T))
+    c = terms(torch.ones(B, C, T))
+    assert a.keys() == b.keys() == c.keys()
+    for k in a:
+        assert a[k] == b[k] == c[k], f"{k}: {a[k]} vs {b[k]} vs {c[k]}"
+
+    out = codec.forward(x)
+    r, xs = out["recon"].detach(), out["x_std"].detach()
+    d0 = float(_video_discriminator_loss(disc, xs, r, cfg, None))
+    assert d0 == float(_video_discriminator_loss(disc, xs, r, cfg, torch.ones(B, T)))
+    assert d0 == float(_video_discriminator_loss(disc, xs, r, cfg, torch.ones(B, C, T)))
+
+
+def test_masking_excludes_dead_frames_from_every_term():
+    """A real mask must move the ADVERSARIAL, FEATURE-MATCHING and ENTROPY terms, not only pixel."""
+    import torch
+    from tokamak_foundation_model.ignite.video_codec import VideoCodec
+    from tokamak_foundation_model.ignite.video_discriminator import FramePatchGAN
+    from tokamak_foundation_model.ignite.train_codec import _video_discriminator_loss
+
+    torch.manual_seed(1)
+    cfg = _mask_cfg()
+    codec, disc = VideoCodec(cfg).eval(), FramePatchGAN(cfg).eval()
+    B, C, T = 4, cfg.channels, cfg.frames
+    x = torch.randn(B, C, T, cfg.height, cfg.width) * 5 + 100
+    x[0, 1] = 0.0                       # clip 0, camera 1 = dead (zero slab)
+    m = torch.ones(B, C, T)
+    m[0, 1] = 0.0
+    m[1, :, 3:] = 0.0                   # clip 1, last two frames dead
+
+    def terms(mask):
+        torch.manual_seed(9)
+        g = codec.generator_losses(x, disc, cfg, step=0, frame_mask=mask)
+        return {k: float(v.detach()) for k, v in g.items()
+                if torch.is_tensor(v) and v.ndim == 0}
+
+    a, b = terms(None), terms(m)
+    for k in ("adversarial", "feature_matching", "entropy", "pixel"):
+        assert a[k] != b[k], f"{k} did not respond to the mask"
+
+    out = codec.forward(x)
+    r, xs = out["recon"].detach(), out["x_std"].detach()
+    assert (float(_video_discriminator_loss(disc, xs, r, cfg, None))
+            != float(_video_discriminator_loss(disc, xs, r, cfg, m)))
+
+
+def test_all_dead_batch_falls_back_instead_of_producing_nan():
+    """A batch in which EVERY frame is invalid must stay finite (no empty discriminator input)."""
+    import math
+
+    import torch
+    from tokamak_foundation_model.ignite.video_codec import VideoCodec
+    from tokamak_foundation_model.ignite.video_discriminator import FramePatchGAN
+
+    torch.manual_seed(2)
+    cfg = _mask_cfg()
+    codec, disc = VideoCodec(cfg).eval(), FramePatchGAN(cfg).eval()
+    B, C, T = 2, cfg.channels, cfg.frames
+    x = torch.zeros(B, C, T, cfg.height, cfg.width)
+    g = codec.generator_losses(x, disc, cfg, step=0, frame_mask=torch.zeros(B, C, T))
+    for k, v in g.items():
+        if torch.is_tensor(v) and v.ndim == 0:
+            assert math.isfinite(float(v.detach())), f"{k} is not finite"
+
+
+def test_select_frames_packs_only_valid_frames():
+    """The discriminator selector must hand D exactly the surviving frames, in (b, t) order."""
+    import torch
+    from tokamak_foundation_model.ignite.video_codec import VideoCodec
+
+    B, C, T, H, W = 3, 2, 4, 5, 6
+    x = torch.arange(B * C * T * H * W, dtype=torch.float32).reshape(B, C, T, H, W)
+    m = torch.ones(B, C, T)
+    m[0, 0, 1] = 0.0        # one channel dead on (0, 1) -> whole frame excluded
+    m[2, :, :] = 0.0        # clip 2 entirely dead
+    keep = VideoCodec._disc_frame_selector(m, x.shape)
+    sel = VideoCodec._select_frames(x, keep)
+    assert sel.shape == (1, C, int(keep.sum()), H, W)
+    assert int(keep.sum()) == B * T - 1 - T
+    # order check: the first surviving frame is (b=0, t=0)
+    assert torch.equal(sel[0, :, 0], x[0, :, 0])
+    # an all-valid mask returns None (the bit-identical short-circuit)
+    assert VideoCodec._disc_frame_selector(torch.ones(B, C, T), x.shape) is None
+    assert VideoCodec._disc_frame_selector(None, x.shape) is None
+
+
+def test_refine_head_dilation_widens_receptive_field_beyond_the_patch():
+    """refine_dilated must give depth-4 a receptive field > the 20-pixel patch (was 9)."""
+    from tokamak_foundation_model.ignite.video_nets import VideoDecoder
+
+    plain = VideoDecoder(_mask_cfg(refine_depth=4, refine_hidden=8))
+    dil = VideoDecoder(_mask_cfg(refine_depth=4, refine_hidden=8, refine_dilated=True))
+    import torch.nn as nn
+
+    def rf(dec):
+        r = 1
+        for layer in dec.refine:
+            if isinstance(layer, nn.Conv2d):
+                r += (layer.kernel_size[0] - 1) * layer.dilation[0]
+        return r
+
+    assert rf(plain) == 9           # 2*depth+1, BELOW the 20-pixel patch
+    assert rf(dil) == 31            # 2^(depth+1)-1, above it
+    # shapes are unchanged, so a dilated head still loads a plain head's weights
+    for a, b in zip(plain.refine.parameters(), dil.refine.parameters()):
+        assert a.shape == b.shape

@@ -11,10 +11,12 @@ from tokamak_foundation_model.ignite.dynamics_config import (
 from tokamak_foundation_model.ignite.frame_layout import FrameTokenizer
 
 
-def test_frame_layout_totals_1017():
+def test_frame_layout_totals_1209():
+    # v4 layout: mirnov joined the band-power spectro codecs (5 spectro, 15 modalities), so the
+    # frame grew 1017 -> 1209 tokens. The v2 numbers (1017 / 14) describe the SUPERSEDED table.
     cfg = DynamicsConfig()
-    assert cfg.tokens_per_frame == 1017           # 192*4 + 108*2 + 4*7 + 5*1 (fast-TS)
-    assert cfg.n_modalities == 14                 # 4 spectro + 2 video + 7 slow-TS + 1 fast-TS
+    assert cfg.tokens_per_frame == 1209           # 192*5 + 108*2 + 4*7 + 5*1 (fast-TS)
+    assert cfg.n_modalities == 15                 # 5 spectro + 2 video + 7 slow-TS + 1 fast-TS
     assert cfg.max_frames == cfg.k0_seed + cfg.n_predict == 100  # 20 + 80
 
 
@@ -95,7 +97,7 @@ def test_all_four_codec_families_present():
     names = [m.name for m in FROZEN_MODALITIES]
     assert "mse" in names and "co2" in names and "filterscopes" in names
     assert "tangtv_lower" in names and "tangtv_upper" in names          # video included
-    assert len([m for m in FROZEN_MODALITIES if m.family == "spectro"]) == 4
+    assert len([m for m in FROZEN_MODALITIES if m.family == "spectro"]) == 5   # + mirnov (v4)
     assert len([m for m in FROZEN_MODALITIES if m.family == "video"]) == 2
     assert len([m for m in FROZEN_MODALITIES if m.family == "slowts"]) == 7
     assert len([m for m in FROZEN_MODALITIES if m.family == "fastts"]) == 1   # the missed 4th family

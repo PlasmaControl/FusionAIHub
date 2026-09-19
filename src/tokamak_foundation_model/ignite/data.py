@@ -99,19 +99,28 @@ def _crop_pad_freq_time(spec: torch.Tensor, freq_bins: int, time_frames: int) ->
     return spec
 
 
-def _stft_log_power(sig: torch.Tensor, window: torch.Tensor) -> torch.Tensor:
+def _stft_log_power(
+    sig: torch.Tensor,
+    window: torch.Tensor,
+    n_fft: int = STFT_N_FFT,
+    hop_length: int = STFT_HOP,
+) -> torch.Tensor:
     """Log-power STFT of a (..., W) signal → (..., n_fft//2, n_frames).
 
     Mirrors data_loader._compute_stft: Hann window, ``return_complex=True``,
     ``center=True`` (torch default), DC bin dropped. torch.stft accepts (W,) or
     (batch, W); flatten leading dims to a single batch axis, apply, then restore.
+
+    ``n_fft`` / ``hop_length`` default to the module globals, so a call that omits them is
+    byte-identical to the pre-2026-09-03 signature. :func:`log_power_stft` passes the
+    PER-CODEC ``cfg.stft_n_fft`` / ``cfg.stft_hop`` (whose own defaults are those globals).
     """
     *lead, W = sig.shape
     flat = sig.reshape(-1, W)  # (N, W)
     spec = torch.stft(
         flat,
-        n_fft=STFT_N_FFT,
-        hop_length=STFT_HOP,
+        n_fft=n_fft,
+        hop_length=hop_length,
         window=window,
         return_complex=True,
     )  # (N, n_fft//2+1, n_frames)
@@ -167,8 +176,12 @@ def log_power_stft(raw: ArrayLike, cfg: SpectroCodecConfig) -> torch.Tensor:
         rm = torch.as_tensor(cfg.raw_mean, dtype=x.dtype, device=x.device)  # (C,)
         rs = torch.as_tensor(cfg.raw_std, dtype=x.dtype, device=x.device)   # (C,)
         x = (x - rm[None, :, None]) / rs[None, :, None]
-    window = torch.hann_window(STFT_N_FFT, dtype=x.dtype, device=x.device)
-    spec = _stft_log_power(x, window)  # (B, C, n_fft//2, n_frames)
+    # PER-CODEC STFT grid. getattr with the module-global fallback keeps OLD pickled configs
+    # (which have no such field) on exactly the 1024/256 path they were built with.
+    n_fft = int(getattr(cfg, "stft_n_fft", STFT_N_FFT))
+    hop = int(getattr(cfg, "stft_hop", STFT_HOP))
+    window = torch.hann_window(n_fft, dtype=x.dtype, device=x.device)
+    spec = _stft_log_power(x, window, n_fft=n_fft, hop_length=hop)  # (B, C, n_fft//2, n_frames)
     spec = _crop_pad_freq_time(spec, cfg.freq_bins, cfg.time_frames)  # (B, C, F, T)
     # Per-freq log-power z-standardization for THIN modalities (co2): subtract the per-(channel,
     # freq) mean and divide by the per-freq std (clamped to a floor so near-constant "noise" bins
@@ -202,7 +215,102 @@ def log_power_stft(raw: ArrayLike, cfg: SpectroCodecConfig) -> torch.Tensor:
             spec = (spec - mu) / sd
         else:
             spec = (spec - mu) / (sd + 1e-5)
+    # BAND-POWER pooling, LAST. Mean-pools freq_bins into cfg.band_pool equal bands, matching the
+    # order analysis/_specport_plateau.py --band_pool measured (it pooled the dataset OUTPUT, i.e.
+    # after crop + per-freq log-z + instance norm). Doing it earlier would invalidate the (C, F)
+    # log-z stats, which are defined at the unpooled width. No-op when band_pool <= 0.
+    _bp = int(getattr(cfg, "band_pool", 0) or 0)
+    if _bp > 0:
+        F = spec.shape[-2]
+        if F % _bp:
+            raise ValueError(f"band_pool {_bp} must divide freq_bins {F}")
+        spec = spec.reshape(*spec.shape[:-2], _bp, F // _bp, spec.shape[-1]).mean(dim=-2)
     return spec
+
+
+def spectro_frame_mask(
+    raw: ArrayLike,
+    nan_mask: ArrayLike,
+    cfg: SpectroCodecConfig,
+) -> torch.Tensor:
+    """Per-(channel, STFT-frame) VALIDITY mask for one raw window -> ``(C, cfg.time_frames)``.
+
+    The spectro analogue of the video ``channel_valid`` flag and of the slow-TS ``valid``
+    mask. ``1.0`` = this (channel, frame) is real diagnostic data; ``0.0`` = it is fill.
+
+    Parameters
+    ----------
+    raw : (C, W)
+        The RAW window exactly as ``TokamakH5Dataset._load_signal_raw`` returns it (already
+        at ``STFT_FS``, NaN replaced by 0, out-of-range positions zero-padded).
+    nan_mask : (C, W)
+        The loader's companion mask: ``1.0`` where the HDF5 value was literally NaN.
+    cfg : SpectroCodecConfig
+        Supplies the PER-CODEC STFT grid (``stft_n_fft`` / ``stft_hop``, defaulting to the
+        module globals) and ``time_frames`` for the crop/pad.
+
+    What counts as missing
+    ----------------------
+    Two independent things, because the loader represents absence in two different ways:
+
+    1. **NaN** — the diagnostic recorded but the value is NaN. Projected from raw-sample to
+       STFT-frame coordinates with EXACTLY the production rule
+       (``data_loader._raw_to_frame_mask``): a frame is invalid if ANY sample inside its
+       ``n_fft``-wide support was invalid, implemented as a ``max_pool1d`` of the INVALID
+       indicator with ``kernel=n_fft, stride=hop, padding=n_fft//2`` — the same support
+       ``torch.stft(center=True)`` actually reads. Reusing that rule (rather than inventing
+       one) is what keeps the codec's notion of "missing" identical to the FM's.
+
+    2. **All-zero support** — the diagnostic did NOT record. ``_load_signal_raw`` zero-fills
+       (a) an absent / empty HDF5 group, (b) a channel that is a zero slab, and (c) any part
+       of the window outside ``[xdata[0], xdata[-1]]``, and it sets NO nan flag for any of
+       them, so rule 1 alone calls all three VALID. A real 500 kHz digitiser trace is never
+       identically 0.0 across a whole 1024-sample STFT support, so ``max|raw| == 0`` over the
+       support is an exact, false-positive-free detector for those three cases. This is the
+       spectro form of the slow-TS ``zero_is_missing`` policy, lifted from the sample to the
+       STFT-frame level so it cannot fire on an ordinary zero-crossing sample.
+
+    A frame is VALID iff rule 1 says "no NaN" AND rule 2 says "not an all-zero support" AND
+    the raw support is finite.
+
+    Time crop/pad mirrors :func:`_crop_pad_freq_time` exactly (right crop / right pad), with
+    PADDED frames marked INVALID — they are the log-eps floor, not data.
+
+    Returns
+    -------
+    (C, cfg.time_frames) float32 tensor of 1.0 / 0.0.
+    """
+    x = _as_tensor(raw)
+    m = _as_tensor(nan_mask)
+    if x.dim() != 2:
+        raise ValueError(f"spectro_frame_mask expects raw (C, W); got {tuple(x.shape)}")
+    if m.shape != x.shape:
+        raise ValueError(
+            f"spectro_frame_mask: nan_mask {tuple(m.shape)} != raw {tuple(x.shape)}"
+        )
+    n_fft = int(getattr(cfg, "stft_n_fft", STFT_N_FFT))
+    hop = int(getattr(cfg, "stft_hop", STFT_HOP))
+
+    invalid = ((m >= 0.5) | ~torch.isfinite(x)).to(torch.float32).unsqueeze(0)  # (1, C, W)
+    # rule 1: production _raw_to_frame_mask, verbatim (max over each frame's n_fft support).
+    inv_f = torch.nn.functional.max_pool1d(
+        invalid, kernel_size=n_fft, stride=hop, padding=n_fft // 2
+    ).squeeze(0)                                                    # (C, n_frames)
+    # rule 2: the same support, but on |raw| -- an identically-zero support is fill.
+    absx = torch.nan_to_num(x.abs(), nan=0.0, posinf=0.0, neginf=0.0).unsqueeze(0)
+    max_f = torch.nn.functional.max_pool1d(
+        absx, kernel_size=n_fft, stride=hop, padding=n_fft // 2
+    ).squeeze(0)                                                    # (C, n_frames)
+    valid = (inv_f < 0.5) & (max_f > 0.0)
+
+    # time crop / right-pad to cfg.time_frames; PADDED frames are invalid (log-eps floor).
+    C, n_frames = valid.shape
+    T = int(cfg.time_frames)
+    if n_frames >= T:
+        valid = valid[:, :T]
+    else:
+        valid = torch.cat([valid, valid.new_zeros((C, T - n_frames))], dim=1)
+    return valid.to(torch.float32)
 
 
 def raw_pair_windows(
@@ -315,22 +423,47 @@ def shift_pair_windows(
 
 
 # =========================================================================== #
-# Fast-TS (filterscopes) — ELM ACTIVITY ENVELOPE transform + δ-shift pair.
+# Fast-TS (filterscopes) — RAW-SAMPLE window transform + delta-shift pair.
 # =========================================================================== #
-# Design (docs/IGNITE_DESIGN.md §4.3): the fast-TS codec's statistic is the ELM ACTIVITY
-# ENVELOPE (rate / amplitude), NOT the raw spike waveform. `elm_envelope` maps a raw
-# filterscope window (C, W) -> a coarse (C, E) envelope by:
-#   1. detrend      — subtract a slow moving-mean baseline (removes DC / slow drift),
-#   2. rectify      — square the detrended signal (energy),
-#   3. RMS-pool     — mean over non-overlapping `pool`-sample bins, then sqrt (per-bin RMS),
-#   4. compress     — log1p(env / eps) so the dynamic range of ELM bursts is bounded.
-# The sub-bin spike TIMING (which sample within a `pool`-bin a spike lands on) is discarded —
-# that is the realization nuisance, the fast-TS analogue of STFT phase. The per-bin burst
-# amplitude and the WHEN of a burst at bin resolution are kept — that is the statistic.
+# 2026-09-03 REDESIGN. This section used to build an ELM ACTIVITY ENVELOPE (detrend ->
+# rectify -> RMS-pool -> log1p, 500 raw samples -> 5 numbers). That whole statistics layer is
+# GONE. `fastts_raw_window` now returns the RAW 10 kHz samples themselves, per-channel
+# standardized and non-finite-sanitized, and NOTHING else: (B, C, W) in, (B, C, W) out. The
+# codec reconstructs those samples one by one.
 #
-# Sanitation mirrors `log_power_stft`: filterscopes can carry non-finite / absurd sentinel
-# samples; they are mapped to 0 (→ a quiet envelope) so a pathological window can never inject
-# inf/nan into the codec loss.
+# The only transform left is the per-channel standardization (x - mean) / std, which the
+# production data_loader applies to filterscopes anyway (SignalConfig preprocess
+# method="standardize"). It is an AFFINE map per channel, so it cannot add or destroy any
+# information; it exists purely to put the ~1e15-magnitude raw signal on the O(1) scale the
+# network is sized for, and the gate's nRMSE (which divides by each (window, channel)'s own
+# std) is exactly invariant to it.
+
+
+def _standardize_channels(x: torch.Tensor, cfg: FastTSCodecConfig) -> torch.Tensor:
+    """Per-channel standardize a (B, C, W) raw window using ``cfg.channel_mean/std``.
+
+    The SCALE FIX for the fast-TS raw window. Mirrors ``data_loader._apply_preprocessing``'s
+    ``method="standardize"`` branch EXACTLY: ``(x - mean) / std.clamp(min=1e-3)`` with the SAME
+    per-channel raw mean/std the FM model consumes for the ``filterscopes`` modality. GLOBAL /
+    per-channel (broadcast over the sample axis) — NOT per-window — so the relative ELM activity
+    LEVEL is preserved (quiet windows stay small, active windows stay large). ``cfg.channel_mean``
+    or ``cfg.channel_std`` being ``None`` is the identity (no-op, byte-identical to the pre-fix
+    path). ``channel_std`` / ``channel_mean`` must have length ``C``.
+    """
+    if cfg.channel_mean is None or cfg.channel_std is None:
+        return x
+    C = x.shape[-2]
+    mean = torch.as_tensor(cfg.channel_mean, dtype=x.dtype, device=x.device)
+    std = torch.as_tensor(cfg.channel_std, dtype=x.dtype, device=x.device)
+    if mean.numel() != C or std.numel() != C:
+        raise ValueError(
+            f"fastts channel stats length {mean.numel()}/{std.numel()} != C={C}"
+        )
+    mean = mean.reshape(1, C, 1)
+    std = std.reshape(1, C, 1).clamp(min=1e-3)  # matches data_loader std.clamp(min=1e-3)
+    return (x - mean) / std
+
+
 _FASTTS_ENV_FLOOR: float = 0.0        # log1p(0) = 0: a silent (no-activity) envelope
 _FASTTS_ENV_CEIL: float = 30.0        # sane upper bound on log1p(env/eps); guards pathological bins
 
@@ -358,31 +491,6 @@ def _moving_mean(x: torch.Tensor, win: int) -> torch.Tensor:
         out, (0, W - out.shape[-1]), mode="replicate"
     )
     return out.reshape(*lead, W)
-
-
-def _standardize_channels(x: torch.Tensor, cfg: FastTSCodecConfig) -> torch.Tensor:
-    """Per-channel standardize a (B, C, W) raw window using ``cfg.channel_mean/std``.
-
-    The SCALE FIX for the fast-TS ELM envelope. Mirrors ``data_loader._apply_preprocessing``'s
-    ``method="standardize"`` branch EXACTLY: ``(x - mean) / std.clamp(min=1e-3)`` with the SAME
-    per-channel raw mean/std the FM model consumes for the ``filterscopes`` modality. GLOBAL /
-    per-channel (broadcast over the sample axis) — NOT per-window — so the relative ELM activity
-    LEVEL is preserved (quiet windows stay small, active windows stay large). ``cfg.channel_mean``
-    or ``cfg.channel_std`` being ``None`` is the identity (no-op, byte-identical to the pre-fix
-    path). ``channel_std`` / ``channel_mean`` must have length ``C``.
-    """
-    if cfg.channel_mean is None or cfg.channel_std is None:
-        return x
-    C = x.shape[-2]
-    mean = torch.as_tensor(cfg.channel_mean, dtype=x.dtype, device=x.device)
-    std = torch.as_tensor(cfg.channel_std, dtype=x.dtype, device=x.device)
-    if mean.numel() != C or std.numel() != C:
-        raise ValueError(
-            f"elm_envelope channel stats length {mean.numel()}/{std.numel()} != C={C}"
-        )
-    mean = mean.reshape(1, C, 1)
-    std = std.reshape(1, C, 1).clamp(min=1e-3)  # matches data_loader std.clamp(min=1e-3)
-    return (x - mean) / std
 
 
 def elm_envelope(raw: ArrayLike, cfg: FastTSCodecConfig) -> torch.Tensor:
@@ -460,6 +568,53 @@ def _crop_pad_env(env: torch.Tensor, env_bins: int) -> torch.Tensor:
     return torch.cat([env, pad], dim=-1)
 
 
+
+def fastts_raw_window(raw: ArrayLike, cfg: FastTSCodecConfig) -> torch.Tensor:
+    """RAW filterscope samples, sanitized + per-channel standardized — the codec target.
+
+    The 2026-09-03 replacement for ``elm_envelope``. It does NOT summarize the window: every
+    one of the ``W`` samples per channel is kept.
+
+    Parameters
+    ----------
+    raw : (B, C, W_in) tensor or ndarray
+        Raw multi-channel filterscope windows at ``FASTTS_FS``. ``W_in`` is cropped / zero-
+        padded to exactly ``cfg.window`` samples.
+    cfg : FastTSCodecConfig
+        Provides ``channel_mean`` / ``channel_std`` (the standardization; ``None`` = identity)
+        and ``window`` (the output length).
+
+    Returns
+    -------
+    (B, C, cfg.window) float32 tensor
+        Sanitized, standardized raw samples. Non-finite / absurd-magnitude sentinel samples
+        are mapped to 0 BEFORE standardization (mirroring ``log_power_stft``) so a
+        pathological window can never inject inf/nan into the codec loss.
+    """
+    x = _as_tensor(raw)
+    if x.dim() != 3:
+        raise ValueError(f"fastts_raw_window expects (B, C, W); got shape {tuple(x.shape)}")
+    # Sanitize raw: map non-finite / absurd-magnitude samples to 0 so a sentinel/garbage
+    # window becomes a silent window instead of inf/nan. BEFORE standardization, so absurd
+    # sentinels cannot poison the standardized signal.
+    x = torch.where(torch.isfinite(x) & (x.abs() < 1e20), x, torch.zeros_like(x))
+    # per-channel standardization: the ONLY transform (affine, information-preserving).
+    x = _standardize_channels(x, cfg)
+    x = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    return _crop_pad_window(x.to(torch.float32), int(cfg.window))
+
+
+def _crop_pad_window(x: torch.Tensor, window: int) -> torch.Tensor:
+    """Crop or right-pad the (..., W_in) raw window to (..., window) with zeros."""
+    W = x.shape[-1]
+    if W == window:
+        return x
+    if W > window:
+        return x[..., :window]
+    pad = x.new_zeros((*x.shape[:-1], window - W))
+    return torch.cat([x, pad], dim=-1)
+
+
 def fastts_raw_pair_windows(
     raw_shot: ArrayLike,
     t0: float,
@@ -504,19 +659,20 @@ def fastts_shift_pair_windows(
     return_delta: bool = False,
     seed: Union[int, None] = None,
 ):
-    """Build a δ-shift consistency PAIR of ELM envelopes from a raw filterscope shot.
+    """Build a delta-shift PAIR of RAW standardized filterscope windows.
 
-    The fast-TS analogue of :func:`shift_pair_windows`. The two windows share ~all ELM
-    activity (the envelope statistic) but differ in sub-bin spike TIMING (the realization),
-    so ``‖enc(env_a) − enc(env_b)‖²`` on the PRE-FSQ features trains timing-invariant
-    (statistics-first) features. δ ~ ``U`` over ``cfg.consistency_delta_ms`` when not given.
+    Window A starts at ``t0``; window B is the SAME window shifted by delta. For the
+    envelope codec these two carried the same statistic and the pair fed a consistency loss.
+    For the RAW-SAMPLE codec they do NOT carry the same target — a shift moves every sample —
+    so ``FastTSCodecConfig.consistency_weight`` defaults to 0.0 and the pair survives only so
+    the gate can still REPORT ``stability`` (how much the codes move under a shift). Expect
+    that number to be low now; ``spike.gate_score`` does not read it.
 
     Returns
     -------
-    (env_a, env_b)               if ``return_delta`` is False
-    (env_a, env_b, delta_ms)     if ``return_delta`` is True
-        ``env_*`` are ``(C, cfg.env_bins)`` envelope tensors. (Channel count follows
-        ``raw_shot``'s leading dim.)
+    (win_a, win_b)               if ``return_delta`` is False
+    (win_a, win_b, delta_ms)     if ``return_delta`` is True
+        ``win_*`` are ``(C, cfg.window)`` raw standardized tensors.
     """
     if delta_ms is None:
         lo, hi = cfg.consistency_delta_ms
@@ -524,12 +680,16 @@ def fastts_shift_pair_windows(
         delta_ms = float(gen.uniform(lo, hi))
 
     win_a, win_b = fastts_raw_pair_windows(raw_shot, t0=t0, cfg=cfg, delta_ms=delta_ms)
-    env_a = elm_envelope(win_a.unsqueeze(0), cfg)[0]  # (C, E)
-    env_b = elm_envelope(win_b.unsqueeze(0), cfg)[0]  # (C, E)
+    # ENVELOPE mode (the DEFAULT) reproduces the original pair EXACTLY; RAW mode returns the
+    # standardized raw samples. getattr-style `cfg.is_raw` so pre-2026-09-03 pickled configs
+    # (which carry no `target` field) take the envelope path.
+    fn = fastts_raw_window if cfg.is_raw else (lambda w, c: elm_envelope(w, c))
+    win_a = fn(win_a.unsqueeze(0), cfg)[0]
+    win_b = fn(win_b.unsqueeze(0), cfg)[0]
 
     if return_delta:
-        return env_a, env_b, delta_ms
-    return env_a, env_b
+        return win_a, win_b, delta_ms
+    return win_a, win_b
 
 
 # --------------------------------------------------------------------------- #

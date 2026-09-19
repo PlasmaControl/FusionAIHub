@@ -310,15 +310,40 @@ class TokamakMultiFileDataset(TokamakH5Dataset):
                 lengths = self._scan_lengths_local(max_duration_s)
 
                 if lengths_cache_path is not None:
-                    # Atomic write: write to .tmp then rename, so a crashed
-                    # write never leaves a half-written zip that the next
+                    # Atomic write: write to a PER-PROCESS .tmp then rename, so a
+                    # crashed write never leaves a half-written zip that the next
                     # torch.load would barf on.
-                    tmp_path = Path(str(lengths_cache_path) + ".tmp")
-                    torch.save(
-                        {"paths": paths_as_str, "lengths": lengths}, tmp_path,
-                    )
-                    tmp_path.replace(Path(lengths_cache_path))
-                    print(f"Saved file lengths to cache: {lengths_cache_path}")
+                    #
+                    # The tmp name MUST carry the pid. 2026-09-03: an 8-arm
+                    # `srun --multi-prog` codec job (8 INDEPENDENT single-process
+                    # runs on 8 nodes, all sharing one --lengths_cache_dir) on a
+                    # modality with no pre-warmed sidecar had all 8 arms scan and
+                    # then write the SAME `<cache>.tmp`. The first `replace()`
+                    # renamed it away; the other 7 raised
+                    #   FileNotFoundError: ... '<cache>.tmp' -> '<cache>'
+                    # and the whole job died after 1h21m of scanning
+                    # (job 5411169, 7 of 8 tasks exit 1). A shared fixed tmp name
+                    # is not safe against concurrent writers even though the
+                    # rename itself is atomic; a pid-suffixed one is.
+                    tmp_path = Path(f"{lengths_cache_path}.tmp.{os.getpid()}")
+                    try:
+                        torch.save(
+                            {"paths": paths_as_str, "lengths": lengths}, tmp_path,
+                        )
+                        tmp_path.replace(Path(lengths_cache_path))
+                        print(f"Saved file lengths to cache: {lengths_cache_path}")
+                    except OSError as e:
+                        # A cache write is an OPTIMIZATION; losing the race (or a
+                        # read-only / full filesystem) must never kill a run that
+                        # has already computed the lengths it needs.
+                        print(
+                            f"Warning: could not write lengths cache "
+                            f"{lengths_cache_path} ({e}); continuing without it."
+                        )
+                        try:
+                            tmp_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
 
         if distributed:
             payload = [lengths] if rank == 0 else [None]

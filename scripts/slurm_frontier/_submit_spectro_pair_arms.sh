@@ -1,0 +1,959 @@
+#!/bin/bash
+# Submit ONE 8-node job carrying 4 arms of modality A and 4 arms of modality B.
+#
+# WHY PAIRED. The account's QOS caps NODES, not jobs (measured: with prod_nfulldecay_95 on 8
+# nodes, a second 8-node job runs and a third sits in QOSMaxNodePerUserLimit -> the cap is 16
+# nodes). So exactly ONE 8-node codec job can run at a time while the production chain holds
+# its slot. Splitting those 8 nodes across two modalities buys per-modality coverage per
+# 2-hour leg instead of depth on one modality.
+#
+# The 4 arms per modality are: masked CONTROL, the anti-collapse lever (joint_entropy_weight),
+# the sharpness lever (ms_ssim_weight, with the control being its own weight-0 arm), and a
+# NO-MASK arm so the masking fix itself stays attributable.
+#
+# `--modality` and `--logpow_stats_path` are set PER ARM (arm args are appended last, so they
+# win over EXTRA_ARGS), which is what lets one job carry two modalities.
+#
+# SWEEP MODES (env `SWEEP`, default "mask" = the arm layout described above):
+#
+#   SWEEP=mask    masked CONTROL / joint-entropy / ms_ssim / no-mask   (the original)
+#   SWEEP=mssim   the MODE-STRUCTURE sweep. 2026-09-04 CORRECTION: these codecs feed a world
+#                 model whose job is predicting how MODES EVOLVE, so the ranking key is
+#                 `hf_ratio` toward GT (read WITH patch_lattice_ratio, GT ~1.1-1.16) and
+#                 visible mode tracks in the figure -- NOT spec_nrmse, and specifically NOT
+#                 "get close to ~tmean" (tmean is the time-AVERAGED spectrum: it has zero
+#                 temporal structure by construction, so optimising toward it optimises
+#                 toward the one predictor that carries no mode information at all).
+#                 MEASURED cause of the flat plates: every masked arm of 2026-09-03 ran
+#                 ms_ssim_weight 0 with adversarial 0 and fm 0, i.e. a pure
+#                 L1 + avg-pooled-multiscale objective whose exact minimiser IS the blur
+#                 (mirnov ctl_s1 hf 0.008, co2 ctl hf 0.015). ms_ssim is the only term in the
+#                 objective that penalises local flatness (its CONTRAST factor
+#                 2*sd_x*sd_y/(sd_x^2+sd_y^2) collapses where the recon is flatter than the
+#                 target), and it is the lever that produced mhr's resolved mode lines at
+#                 weight 50. The sweep is therefore ms_ssim_weight against a weight-0 control.
+#                 A modality that already HAS a weight-0 control at the same recipe spends its
+#                 slots on 2 weights x 2 SEEDS instead (mirnov, per its measured 0.050-0.120
+#                 seed spread).
+#   ARMS_EXTRA    appended to EVERY arm of this submit (e.g. "--gain_shape --gain_tokens 8").
+#
+# Usage: _submit_spectro_pair_arms.sh <modA> <modB> [steps] [walltime]
+set -e
+# $1 may be a COMMA LIST ("ece,mirnov,co2"); $2 is then optional. The 2-positional form
+# <modA> <modB> is unchanged. Arms are emitted per modality and must total <= 8 (one node
+# each), which the launcher checks against SLURM_NTASKS.
+A="${1:?modality A (or a comma list)}"
+B="${2:-}"
+MODS="$(printf '%s' "${A}${B:+,${B}}" | tr ',' ' ')"
+STEPS_IN="${3:-30000}"
+WALL="${4:-02:00:00}"
+STATS=/lustre/orion/fus187/proj-shared/models/ignite_codecs_noinorm/stats
+
+BASE="--fsq_levels 8,5,5,5 --consistency_weight 0.0 --eval_batches 32 --seed 1"
+BASE="${BASE} --adam_beta1 0.8 --adam_beta2 0.99 --lr_decay_gamma 0.998 --lr_decay_every 1000"
+BASE="${BASE} --disc_update_every 2 --adv_warmup_steps 0 --joint_entropy_ramp_steps 2000"
+BASE="${BASE} --refine_depth 6 --refine_dilated --pixel_anchor_weight 5.0"
+BASE="${BASE} --multiscale_recon_weight 2.0 --adversarial_weight 0.0 --fm_weight 0.0"
+BASE="${BASE} --joint_entropy_weight 1.0"
+
+SWEEP="${SWEEP:-mask}"
+ARMS_EXTRA="${ARMS_EXTRA:-}"
+ARMS_STR=""
+for M in ${MODS}; do
+    SFLAG=""
+    [ -f "${STATS}/codec_${M}_perfreq_stats.pt" ] && \
+        SFLAG="--logpow_stats_path ${STATS}/codec_${M}_perfreq_stats.pt"
+    P="--modality ${M} ${SFLAG}"
+    # PRESENCE FILTER IS PER MODALITY, and the gate is whether its own lengths SIDECAR is warm.
+    # `--spectro_presence any` changes the shot list, so it needs codec_<mod>_presence_lengths.pt;
+    # with that file cold the arm spends the WHOLE leg scanning (measured: mirnov job 5416298,
+    # zero gates in 2 h). Warm today: bes, mirnov. NOT warm: ece, co2, mhr.
+    # ece is also the modality the filter matters least for -- 7632/8753 shots keep a live
+    # channel (87%) and 87.2% of its streamed tensor is real data (vs bes 0.376 / co2 0.547) --
+    # and --mask_missing already excludes the dead (channel, frame) cells inside the loss. So
+    # ece runs masked-but-unfiltered rather than burning a leg on a cold scan.
+    MSK="--mask_missing"
+    # CORRECTION 2026-09-04: co2 is NOT exempt. It looked exempt because job 5416277 wrote
+    # gate_0 two minutes after launch with --spectro_presence any and no co2 sidecar -- its
+    # 4789-shot filtered list happened to match what was cached. But the list DRIFTS: job
+    # 5420031 resolved 4787 shots (the liveness/presence caches moved by 2 shots), the stored
+    # path list no longer matched, and both co2 arms sat for 40+ minutes with an EMPTY output
+    # directory, cold-scanning 4787 files at ~0.77 s each. A shot-count coincidence is not an
+    # exemption. The rule is now uniform: presence needs its own sidecar, and
+    # `--build_presence_lengths` derives one in seconds by subsetting the unfiltered cache.
+    if [ -f "/lustre/orion/fus187/proj-shared/foundation_model_meta/codec_${M}_presence_lengths.pt" ]; then
+        MSK="${MSK} --spectro_presence any"
+    else
+        echo "[submit] ${M}: no warm codec_${M}_presence_lengths.pt -> masked but UNFILTERED." >&2
+        echo "[submit]   build one first (seconds, no HDF5 scan):" >&2
+        echo "[submit]   python -m tokamak_foundation_model.ignite.train_codec --modality ${M} \\" >&2
+        echo "[submit]     --n_shots 9000 --eval_n_shots 16 --spectro_presence any \\" >&2
+        echo "[submit]     --build_presence_lengths --out_dir /tmp/x \\" >&2
+        echo "[submit]     --lengths_cache_dir /lustre/orion/fus187/proj-shared/foundation_model_meta" >&2
+    fi
+    if [ "${SWEEP}" = "ececrop64" ]; then
+        # REPLICATE + std ladder on the FIRST ece configuration that renders modes.
+        #
+        # ece_cr64_s1 (freq_bins 64 = 0-31.25 kHz at full 0.49 kHz resolution, patch 4x8,
+        # n_tok 192): nRMSE 1.0271, peakF1 0.5271 = 89.7% of a NON-degenerate 0.5874 patchmean
+        # ceiling, std_r 0.468 (raw-STFT was pinned 0.12-0.32), and the render shows a SHARP
+        # continuous mode track descending 15 -> 10 kHz on ch20 of shot 204983 -- the first ece
+        # reconstruction all session with visible modes.
+        #
+        # IT IS ONE ARM AT ONE SEED. ece seed spread has run 0.019-0.05 elsewhere, and shipping a
+        # single draw is exactly the trap co2_r_m_s2 fell into (its twin scored 0.5964 with no
+        # track, so it had to be flagged best-of-N rather than reproducible). Three more seeds.
+        #
+        # std ladder DOWNWARD: at weight 2 the amplitude term drove std_r to 0.959 but overshot
+        # hf to 1.31 against a 0.252 coherent ceiling and pushed nRMSE 1.21 -> 1.66 -- it matched
+        # amplitude by injecting noise. 0.1/0.25/0.5 brackets the useful range from below, and
+        # cr64 still has std_r 0.468, so there is real room if it can be had without the noise.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4"
+        C64="--freq_bins 64 --patch_f 4 --patch_t 8"
+        for _sd in 2 3 4; do
+            ARMS_STR="${ARMS_STR};${M}_cr64_s${_sd}|${P} ${MSK} ${MIR} ${B} ${C64} --seed ${_sd}"
+        done
+        ARMS_STR="${ARMS_STR};${M}_cr64_sw0p1|${P} ${MSK} ${MIR} ${B} ${C64} --std_weight 0.1 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr64_sw0p25|${P} ${MSK} ${MIR} ${B} ${C64} --std_weight 0.25 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr64_sw0p5|${P} ${MSK} ${MIR} ${B} ${C64} --std_weight 0.5 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "ececrop" ]; then
+        # ece BAND CROP: keep 0.49 kHz resolution, discard RANGE not RESOLUTION.
+        #
+        # WHY, measured 2026-09-05 and it overturned my own earlier call. I refuted a restricted
+        # band using the flat band VARIANCE profile (std 0.887-0.943 across 16 bands) -- but
+        # variance is not mode information, the same error class as ranking on nRMSE. The raw
+        # 512-bin render at 0-60 kHz shows ece DOES have mode tracks: a thin line descending
+        # 15 -> 8 kHz through 2.5-5.5 s on ch20 of shot 204983, i.e. in the bottom ~8% of the
+        # 0-250 kHz range, and the raw codec even reproduces a faint version of it.
+        #
+        # BAND-POWER IS REJECTED BECAUSE IT SMEARS EXACTLY THAT. At 64 bands (3.91 kHz) the track
+        # is absent from the GROUND TRUTH itself; at 16 bands (15.6 kHz) the whole track fits in
+        # one band and patchmean peak_f1 hits 1.0000, i.e. the metric stops carrying information.
+        # Cropping instead keeps every bin the modes occupy at full resolution and drops the
+        # broadband range that consumes most of the token budget:
+        #     512 bins -> 1.97M values, 0.0010 bits/value   (floor 1.0063, ABOVE the anchor)
+        #     128 bins -> 0.49M values, 0.0039 bits/value   0-62.5 kHz, modes fully resolved
+        #
+        # n_tok STAYS 192 -- verified by the guard, which now reads --freq_bins:
+        #     128 bins, patch 8x8 -> 16 x 12 = 192   (2560 values/token)
+        #      64 bins, patch 4x8 -> 16 x 12 = 192   (1280 values/token)
+        # The per-freq log-z stats are SLICED to the crop (they are per-bin, so still valid).
+        #
+        # std_weight ladder runs DOWNWARD: at 2 the term drove ece std_r 0.12-0.32 -> 0.959, which
+        # is the fix working, but overshot hf to 1.31 against a 0.252 coherent ceiling and pushed
+        # nRMSE 1.21 -> 1.66. It matches amplitude by injecting noise. 0.1/0.25/0.5 brackets the
+        # useful range from below.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4"
+        C128="--freq_bins 128 --patch_f 8 --patch_t 8"
+        ARMS_STR="${ARMS_STR};${M}_cr128_s1|${P} ${MSK} ${MIR} ${B} ${C128} --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr128_s2|${P} ${MSK} ${MIR} ${B} ${C128} --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_cr128_sw0p1|${P} ${MSK} ${MIR} ${B} ${C128} --std_weight 0.1 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr128_sw0p25|${P} ${MSK} ${MIR} ${B} ${C128} --std_weight 0.25 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr128_sw0p5|${P} ${MSK} ${MIR} ${B} ${C128} --std_weight 0.5 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_cr64_s1|${P} ${MSK} ${MIR} ${B} --freq_bins 64 --patch_f 4 --patch_t 8 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "eceband" ]; then
+        # ece IN BAND-POWER SPACE. The first representation change of the session, and the first
+        # measurement that says ece CAN work.
+        #
+        # MEASURED 2026-09-05, out-of-sample rank-192 linear floor (analysis/_specport_plateau.py
+        # --band_pool), ece unless noted:
+        #     raw 512 bins  1.0063  corr2d 0.1214   0.0010 bits/value  <- ABOVE the 1.0 anchor
+        #     64 bands      0.9843         0.2605   0.0078
+        #     16 bands      0.9274         0.4346   0.0311
+        #      8 bands      0.8826         0.5254   0.0623
+        #     mirnov raw    0.8708         0.4336  (the modality that SHIPPED today)
+        #     mirnov 16     0.7292         0.6895  (control: pooling flatters mirnov too)
+        #
+        # HOW TO READ THAT, because it is not a free lunch: the floor tracks bits/value almost
+        # exactly, since pooling shrinks the TARGET (1.97M values -> 30720 at pool 8). Floors at
+        # different pools are DIFFERENT TARGETS and are not comparable to each other or to raw.
+        # What the numbers do establish is that a rank-192 linear code beats a per-window constant
+        # in band-power space and cannot in raw space -- i.e. the raw representation was not
+        # expressible at this token budget, which is why std_r stayed pinned at 0.232-0.267 across
+        # six arms and why 37 checkpoints failed.
+        #
+        # n_tok STAYS 192 -- the patch is chosen per pool, verified by the guard above:
+        #     16 bands, patch 1x8  -> 16 x 12 = 192   (320 values/token)
+        #      8 bands, patch 1x4  ->  8 x 24 = 192   (160 values/token)
+        # BOTH pools run: 8 has the better floor, 16 keeps 2x the frequency resolution
+        # (15.6 kHz vs 31.2 kHz per band) and the floor is NOT the ranking key -- the one that
+        # renders modes wins.
+        #
+        # RECIPE = mirnov's, the one that produced today's shippable codec: ms_ssim 20 +
+        # multiscale critic + adversarial 0.2 + multiscale D, LR 2e-4. NOT 1e-4 (measured -0.052
+        # on ece). NO gain-shape (ece's worst arms; collapsed to 1 code on mirnov at 8x32).
+        # 2 seeds on each pool.
+        #
+        # EVERY ece CALIBRATION NUMBER IS RAW-STFT AND DOES NOT TRANSFER: patchmean 0.4672,
+        # tmean 0.9688, the hf coherent ceiling 0.178 and the 0.9915 linear floor are all in the
+        # old space. Re-derive them in-space BEFORE ranking any arm from this leg.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4"
+        # CRITIC DEPTH LIMITS THE POOL -- measured by CPU forward smoke, not assumed:
+        #   bp64 (F=64) + multiscale D  OK
+        #   bp16 (F=16) + multiscale D  FAILS (downsamples 16->8->4, then a 4x4 kernel on 3 rows)
+        #   bp16 (F=16) + PATCH D       OK
+        #   bp8  (F=8)  + either        FAILS -- too few rows for a 4-layer critic
+        # So bp8, which has the BEST floor (0.8826), is BLOCKED on a discriminator-depth knob
+        # (MultiScaleSpectroGAN takes n_layers/scales as constructor defaults, not cfg fields).
+        # Not adding that knob mid-launch; bp16 already clears the anchor by 0.073 and keeps 2x
+        # the frequency resolution of bp8 (15.6 vs 31.2 kHz per band), which is what modes need.
+        # NOTE bp16 therefore runs the PATCH critic, which DESTABILISED on raw spectro
+        # (co2_a02/a05 inverted, mirnov_a02 peak_f1 0.365->0.239). That verdict was measured in
+        # raw-STFT space at F=512; at F=16 the tiled-texture shortcut it exploits barely exists.
+        # Untested there, so bp64+multiscale is carried as the safe arm alongside it.
+        ARMS_STR="${ARMS_STR};${M}_bp64_s1|${P} ${MSK} ${MIR} ${B} --band_pool 64 --patch_f 4 --patch_t 8 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_bp64_s2|${P} ${MSK} ${MIR} ${B} --band_pool 64 --patch_f 4 --patch_t 8 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_bp16_s1|${P} ${MSK} ${MIR} ${BP} --band_pool 16 --patch_f 1 --patch_t 8 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_bp16_s2|${P} ${MSK} ${MIR} ${BP} --band_pool 16 --patch_f 1 --patch_t 8 --seed 2"
+        # amplitude term re-tested IN THE NEW SPACE: at a 1.0063 floor it was pushing on a locked
+        # door, so this is its first fair test. One per pool.
+        ARMS_STR="${ARMS_STR};${M}_bp64_sw2|${P} ${MSK} ${MIR} ${B} --band_pool 64 --patch_f 4 --patch_t 8 --std_weight 2 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_bp16_sw2|${P} ${MSK} ${MIR} ${BP} --band_pool 16 --patch_f 1 --patch_t 8 --std_weight 2 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "ecestd" ]; then
+        # ece: the AMPLITUDE-RATIO term, ablated. This is the first lever aimed at ece's actual
+        # measured defect rather than at geometry or optimisation.
+        #
+        # WHY NOW. std_r sat at 0.232-0.267 across the SIX arms of the ecestab 2x2 -- two patch
+        # geometries, two learning rates, EMA -- and 0.12-0.32 across all 24 earlier checkpoints.
+        # Nothing in the objective addresses an amplitude RATIO: pixel_anchor_weight matches
+        # PIXELS and is already at its optimum 5.0, and nRMSE is blind by construction because
+        # its exact minimiser IS the conditional mean, so shrinking amplitude IMPROVES it.
+        # --std_weight adds |log std(recon) - log std(target)| per (window, channel), the exact
+        # quantity the audit reports as std_ratio. Unit-tested: 0.0 at ratio 1, symmetric in
+        # over/undershoot, and 1.386 at ece's measured 0.25.
+        #
+        # BASE = the WINNING cell of the 2x2: 8x32 at LR 2e-4 (peakF1 0.3784). NOT LR 1e-4 --
+        # that was a measured NEGATIVE for ece (-0.052 at matched aspect, and it tripled the
+        # lattice). The control arm is NOT re-run: ece_p832_lr2 IS that cell, already audited at
+        # 320 windows, so all six nodes buy ablation points instead.
+        #
+        # WEIGHT SCALE: recon_ref carries pixel_anchor 5.0 x pixel (~2.5-5 in practice), so the
+        # std term at weight W contributes ~1.4W at ece's current amplitude. 0.5 is a nudge, 2 is
+        # comparable to the pixel anchor, 8 and 20 are dominant -- the ablation brackets the point
+        # where it starts trading away peakF1, which is the failure mode to watch for.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+        B="${B} --patch_f 8 --patch_t 32 --lr 2e-4"
+        ARMS_STR="${ARMS_STR};${M}_sw0p5|${P} ${MSK} ${MIR} ${B} --std_weight 0.5 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_sw2|${P} ${MSK} ${MIR} ${B} --std_weight 2 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_sw2_s2|${P} ${MSK} ${MIR} ${B} --std_weight 2 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_sw8|${P} ${MSK} ${MIR} ${B} --std_weight 8 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_sw20|${P} ${MSK} ${MIR} ${B} --std_weight 20 --seed 1"
+        # does the std term need the aspect change, or does it work on the production grid?
+        ARMS_STR="${ARMS_STR};${M}_sw2_p16|${P} ${MSK} ${MIR} --ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2 --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --lr 2e-4 --std_weight 2 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "ecestab" ]; then
+        # ece: GEOMETRY *AND* STABILITY, AS A 2x2 SO THE EFFECT IS ATTRIBUTABLE.
+        #
+        # MEASURED 2026-09-05 on the CORRECT per-freq-log-z pool (the earlier ece table mixed two
+        # standardisations and is void -- see the pool guard in spectro_final_fig.py):
+        #   patchmean 16x16 0.4672 | 8x32 0.5257 (+0.0585) | 32x8 0.4293 (inverts)
+        #   best arm ece_m02_s2 @18001 peakF1 0.3620 = 77.5% of its own 16x16 ceiling
+        # ece matches mirnov on both diagnostics (aspect gain +12.5% relative, 32x8 inverts) and
+        # NOT co2 (+5.3%, 32x8 wins in practice). So the aspect lever transfers.
+        #
+        # BUT the binding defect is AMPLITUDE, and it is orthogonal to geometry: all 24 audited
+        # ece checkpoints sit at std_r 0.12-0.32 against an ideal of 1.0 (mirnov's ship candidate
+        # 0.622, co2's 0.802), every one fails the 1.0 anchor, and tmean 0.9688 beats all of them.
+        # Running geometry alone would rediscover the same std_r at a higher ceiling.
+        #
+        # THE 2x2 IS THE POINT. Two new levers at once cannot be attributed from a 2-arm leg, and
+        # the 16x16 @ 2e-4 cell ALREADY EXISTS (ece_m02_s2, 0.3620, same recipe), so the other
+        # three cells cost 4 nodes and make the attribution complete:
+        #        patch \ LR      2e-4                     1e-4
+        #        16x16           ece_m02_s2 (measured)     b16_lr1        <- isolates LR
+        #         8x32           p832_lr2   <- isolates    p832_s1/_s2    <- both levers
+        #                                     the aspect
+        # Plus p328_lr1 (the 32x8 control, which INVERTS on the oracle, so it is a real control
+        # here as it was for mirnov) and p832_ema (EMA on top of the best cell).
+        #
+        # LR 1e-4 is the MEASURED codec optimum (sweep 1e-3/3e-4/1e-4/3e-5/1e-5, gate-to-gate
+        # spread falling monotonically as LR drops); every ece arm to date ran 2e-4. --lr and
+        # --ema in an arm's args win, because arm args are appended last.
+        #
+        # NO gain-shape: ece's gs/gsadv are its WORST arms (peakF1 0.244-0.303) despite having its
+        # highest std_r, and mirnov's p832gs collapsed to 1 code. ece's gain path is also the most
+        # bit-starved of the three -- 40ch x 16 freq x 2 stats = 1280 values/gain token at ~9.97
+        # bits = 0.0078 bits/value, vs mirnov 0.0107 and co2 0.078.
+        #
+        # NOTE: there is no explicit amplitude/std term in the trainer, and pixel_anchor_weight is
+        # already at its documented optimum 5.0 (20 collapses to 1 code). LR and EMA are the
+        # available stabilisers without a code change, which I am not making blind mid-session.
+        MIR="--eval_batches 8"
+        B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+        P832="--patch_f 8 --patch_t 32"
+        ARMS_STR="${ARMS_STR};${M}_p832_s1|${P} ${MSK} ${MIR} ${B} ${P832} --lr 1e-4 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p832_s2|${P} ${MSK} ${MIR} ${B} ${P832} --lr 1e-4 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_p832_ema|${P} ${MSK} ${MIR} ${B} ${P832} --lr 1e-4 --ema --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p832_lr2|${P} ${MSK} ${MIR} ${B} ${P832} --lr 2e-4 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_b16_lr1|${P} ${MSK} ${MIR} ${B} --lr 1e-4 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p328_lr1|${P} ${MSK} ${MIR} ${B} --patch_f 32 --patch_t 8 --lr 1e-4 --seed 1"
+        continue
+    fi
+    if [ "${SWEEP}" = "aspect" ]; then
+        # PATCH ASPECT AT CONSTANT n_tok -- the one geometry axis that has never been varied
+        # and does NOT touch FRAME_LAYOUT.
+        #
+        #   n_tok = (freq_bins // patch_f) * (time_frames // patch_t) = (512//F) * (96//T)
+        #   8x32 -> 64 * 3 = 192      16x16 -> 32 * 6 = 192 (production)      32x8 -> 16 * 12 = 192
+        #
+        # Same 192 tokens, same [8,5,5,5] vocab, same values-per-token (the patch AREA is 256
+        # either way) -- only the frequency/time SPLIT of the window moves. So this is in scope
+        # without a FRAME_LAYOUT decision.
+        #
+        # WHY freq-finer is the motivated direction: the ranking key is computed on a FREQUENCY
+        # PROFILE. gate._peak_overlap_f1 runs on _power_envelope = spec.mean(-1), i.e. all 96
+        # STFT frames are averaged away before peaks are detected -- which is why the tsmooth5
+        # oracle (GT low-passed in TIME) scores peak_f1 0.9936 while the patchmean oracle at
+        # 16x16 scores only 0.6537. Modes are thin in frequency and extended in time (co2 GT
+        # lag-1 autocorrelation along the frame axis is 0.61-0.68), so 8x32 buys resolution
+        # where the metric and the physics both live and spends it where the signal is
+        # redundant. 32x8 is the OPPOSITE-direction control: without it a win at 8x32 cannot be
+        # distinguished from "any change off the incumbent grid helps".
+        #
+        # These arms train FROM SCRATCH -- the patch size changes the encoder/decoder shapes, so
+        # there is nothing to resume from.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        # ms_ssim: co2 50 / mirnov 20 -- these are NOT the per-modality optima (co2's is 5),
+        # they are the weights of each modality's own audited 16x16 BASELINE, so that
+        # <mod>_p832_* differs from an existing 320-window number in EXACTLY the patch aspect:
+        #   co2_p832_*   vs co2_m02        (ms_ssim 50, adv 0.2, multiscale D) peakF1 0.6243
+        #   mirnov_p832_* vs mirnov_a02d_s2 (ms_ssim 20, adv 0.2, multiscale D) peakF1 0.4951
+        # Do NOT "fix" co2 to ms_ssim 5 here without also moving the baseline -- that would make
+        # the aspect effect unattributable. NOTE ms_ssim 50 is only a closed negative for co2
+        # with the PATCH discriminator (co2_a02 0.5286 / co2_a05 0.3427, both patch-D); with the
+        # multiscale critic it is co2's second-best arm ever.
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+        # gain_tokens 64 = one per freq patch at 8x32 (the documented natural default is
+        # n_freq_patch); it must divide freq_bins and stay < n_tok, and 64 does both.
+        ARMS_STR="${ARMS_STR};${M}_p832_s1|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_p832_s2|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --seed 2"
+        # gain-shape arm for co2 ONLY: measured 2026-09-04, it is a CLOSED NEGATIVE on mirnov
+        # (every gsm arm peakF1 0.2737-0.3572 vs a02d 0.4847-0.4951 despite lattice 1.44-3.19 --
+        # the blur corner with none of the benefit it has on co2, because the envelope path gets
+        # 0.0107 bits/value at C=29 vs 0.078 at C=4).
+        [ "${M}" = "mirnov" ] || \
+        ARMS_STR="${ARMS_STR};${M}_p832gs|${P} ${MSK} ${MIR} ${B} --patch_f 8 --patch_t 32 --gain_shape --gain_tokens 64"
+        ARMS_STR="${ARMS_STR};${M}_p328|${P} ${MSK} ${MIR} ${B} --patch_f 32 --patch_t 8"
+        continue
+    fi
+    if [ "${SWEEP}" = "co2conf" ]; then
+        # LEG 2, THE "co2_r_gsm HELD UP" BRANCH: confirm the leader on more seeds and close the
+        # two flags that separate it from its nearest sibling. Same asymmetry as gsm2 -- mirnov
+        # CONTINUES its four gsm arms with byte-identical flags (needs the steps), co2 gets
+        # fresh arms -- so submit with DEP_AFTER=<gsmulti> and OUT_DIR_TAG=gsmulti.
+        #
+        # co2_r_gsm is the documented co2 recipe (ms_ssim 5 / joint_entropy 0.5 / adversarial
+        # 0.05 + fm 0.5) with the MULTISCALE critic and the envelope/shape split, and it ran the
+        # whole second half of its 30k steps at patch lattice 1.92-2.36 against a GT control of
+        # 1.09 while its gate peakF1 climbed to 0.71. A ONE-SEED co2 claim is not a claim
+        # though: m02 (seed 1) audits peakF1 0.6243 and m02s2 (seed 2) audits 0.5287 on the same
+        # recipe at the same step, a 0.096 spread against a 0.007 m02-vs-ms5 gap. Hence two more
+        # seeds, not one.
+        #
+        # The two knobs: ms_ssim 20 is tried AGAIN even though 20 was measured to TRIPLE co2's
+        # lattice (8.40 -> 20.51), because that measurement was made WITHOUT gain_shape, and
+        # gain_shape suppresses the lattice by construction (recon.std(-1) IS a transmitted
+        # code, so the decoder cannot buy HF energy from the tiled basis). If the two interact,
+        # the old verdict does not carry. multiscale_recon_scales 1,2,4 is the ONLY other flag
+        # separating co2_r_gsm from the gsmulti co2_gsm32 arms besides the adversarial level, so
+        # it is worth one node to attribute the difference rather than infer it.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in
+            mirnov)
+                B="--ms_ssim_weight 20 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+                B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsm16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+                ARMS_STR="${ARMS_STR};${M}_gsm8|${P} ${MSK} ${MIR} ${B} --gain_tokens 8"
+                ;;
+            co2)
+                # EXACTLY co2_r_gsm's flags (SWEEP=co2fix + --discriminator multiscale
+                # --gain_shape --gain_tokens 32), then one change per arm.
+                R="--ms_ssim_weight 5 --joint_entropy_weight 0.5 --adversarial_weight 0.05"
+                R="${R} --fm_weight 0.5 --adv_warmup_steps 1500 --pixel_anchor_weight 5.0"
+                R="${R} --discriminator multiscale --gain_shape --gain_tokens 32"
+                ARMS_STR="${ARMS_STR};${M}_rg_s2|${P} ${MSK} ${MIR} ${R} --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_rg_s3|${P} ${MSK} ${MIR} ${R} --seed 3"
+                ARMS_STR="${ARMS_STR};${M}_rg_ms20|${P} ${MSK} ${MIR} ${R} --ms_ssim_weight 20"
+                ARMS_STR="${ARMS_STR};${M}_rg_sc124|${P} ${MSK} ${MIR} ${R} --multiscale_recon_scales 1,2,4"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "gsm2" ]; then
+        # LEG 2 OF THE GAIN-SHAPE CELL, and it is DELIBERATELY ASYMMETRIC because the two
+        # modalities are at different distances from their bar.
+        #
+        # mirnov: CONTINUATION, byte-identical flags to SWEEP=gsmulti so the launcher's
+        #   ${OUT_DIR}/<arm>/codec_last.pt auto-resume picks each arm up where the first leg
+        #   timed out. It needs the steps: the arm it must beat (a02d_s2) was still improving
+        #   at 51k gate steps (nRMSE 0.9687, peak_f1 0.4079) and the gsm arms only reach ~18k
+        #   in one 2 h leg, so a verdict on them before ~40k would be a verdict on the wrong
+        #   part of the trajectory. MUST be submitted with DEP_AFTER=<gsmulti job> and
+        #   OUT_DIR_TAG=gsmulti: two legs writing one arm's codec_last.pt concurrently would
+        #   interleave checkpoints.
+        # co2: FRESH arms, because co2's gsm arms are nearly done (~27k of 30k) and the open
+        #   question is not more steps, it is whether the envelope/shape split can be carried
+        #   by the objective that actually won the 320-window table (ms_ssim 50 + adv 0.2 +
+        #   multiscale critic) rather than by the documented-recipe control. Fourth co2 slot is
+        #   a THIRD SEED of the current leader with no gain-shape, because m02 (0.6243) and
+        #   m02s2 (0.5287) disagree by 0.096 and the leader is otherwise a one-seed claim.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gsm32_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsm16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+                ARMS_STR="${ARMS_STR};${M}_gsm8|${P} ${MSK} ${MIR} ${B} --gain_tokens 8"
+                ;;
+            co2)
+                B50="--ms_ssim_weight 50 --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+                B50="${B50} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale"
+                ARMS_STR="${ARMS_STR};${M}_gsm50_s1|${P} ${MSK} ${MIR} ${B50} --gain_shape --gain_tokens 32 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gsm50_s2|${P} ${MSK} ${MIR} ${B50} --gain_shape --gain_tokens 32 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsm50_16|${P} ${MSK} ${MIR} ${B50} --gain_shape --gain_tokens 16"
+                ARMS_STR="${ARMS_STR};${M}_m02_s3|${P} ${MSK} ${MIR} ${B50} --seed 3"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "gsm50" ]; then
+        # GAIN-SHAPE ON THE ARM THAT ACTUALLY WON, not on the documented-recipe control.
+        #
+        # The 320-window co2 table ranks by peakF1: co2_m02 0.6243 (ms_ssim 50 + adv 0.2 + fm 1.0
+        # + multiscale critic + scales 1,2,4, NO gain-shape) at lattice 9.64, and its _last
+        # 0.6200 at 5.75. Every gain-shape arm so far was built on a DIFFERENT objective --
+        # co2_gs/co2_gsadv carry ms_ssim 5 and a PATCH discriminator -- and they land at
+        # peakF1 0.5959-0.6006 with lattice 2.01-2.43. The rendered band figure says the same
+        # thing the numbers do: gsadv reproduces the burst TIMES as 16-frame blocks and none of
+        # the mode tracks, while m02_last reproduces the 2.25-2.5 s braid at the right
+        # frequencies. So the missing cell is m02's objective PLUS the envelope/shape split, not
+        # a third variation on the low-ms_ssim recipe.
+        #
+        # SEEDS ARE LOAD-BEARING ON co2 TOO. m02 (seed 1) audits 0.6243 and m02s2 (seed 2)
+        # audits 0.5287 at the same step -- a 0.096 spread that DWARFS the m02-vs-ms5 gap of
+        # 0.007. A single-seed co2 verdict is not a verdict, so the headline arm runs twice.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+        ARMS_STR="${ARMS_STR};${M}_gsm50_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_gsm50_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_gsm50_16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+        ARMS_STR="${ARMS_STR};${M}_m02_s3|${P} ${MSK} ${MIR} ${B%% --gain_shape} --seed 3"
+        continue
+    fi
+    if [ "${SWEEP}" = "gsmulti" ]; then
+        # THE UNEXPLORED CELL: ENVELOPE/SHAPE SPLIT **x** MULTISCALE CRITIC, plus the RATE
+        # lever. Both corners of the 320-window tables are unshippable in opposite ways:
+        #
+        #   co2     arm            nRMSE   hf_r  peakF1  lattice  %rate ceiling
+        #           co2_m02       0.7028  0.166  0.6243    9.64   92.5   best peakF1
+        #           co2_gsadv     0.7300  0.237  0.5959    2.01   73.0   best hf AND lattice
+        #   mirnov  a02d_s2_last  1.0004  0.215  0.5022   14.60   85.5   best peakF1
+        #           gs_s2         1.1178  0.103  0.3558    2.20   78.5   best lattice
+        #
+        # Adversarial+multiscale buys peak placement at a 9-24x lattice (GT control 1.12-1.18);
+        # gain-shape buys a near-GT lattice (2.01 / 2.20) but loses peakF1 AND spends only
+        # 66-78% of the achievable bit rate against 85-94% for the sharp arms. Never run
+        # together. This leg runs them together.
+        #
+        # RATE LEVER: the gain-shape deficit is structural -- `gain_tokens` of the 192 carry
+        # the per-(channel, frequency) ENVELOPE, which is smooth across windows and therefore
+        # LOW-ENTROPY, so those token positions deliver few bits. Sweeping gain_tokens
+        # 32 -> 16 -> 8 hands the shape path 160 -> 176 -> 184 tokens and should walk the rate
+        # back toward 90%. If gain-shape reaches ~90% rate while holding lattice near 2, that
+        # is the win for both modalities. gain_tokens must DIVIDE freq_bins (512).
+        #
+        # NOT swept here, with reasons:
+        #   pixel_anchor_weight -- already AT its documented optimum 5.0 in BASE (0.05 was the
+        #     old default; 1.0 is worse than 5.0 on co2 on both axes; 20 collapses to 1 code).
+        #   decoder receptive field -- refine_depth 6 + refine_dilated gives RF 2^(6+1)-1 = 127
+        #     against patch_f 16, i.e. already 8x the patch, so the lattice on the adversarial
+        #     arms is NOT an RF shortfall.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        # Per-modality objective = each modality's OWN best-measured sharp arm, + gain-shape.
+        # co2: ms_ssim 5 (its documented optimum; 20 triples its lattice, 50 was my error).
+        # mirnov: ms_ssim 20 -- the 320-window audit REFUTES my 2-seed ms_ssim-50 screen, the
+        #   a02d arms (ms_ssim 20 + multiscale + adversarial) beat every ms50 arm on peakF1,
+        #   0.5022 vs 0.4471. Build on a02d.
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --adversarial_weight 0.2"
+        B="${B} --fm_weight 1.0 --adv_warmup_steps 1500 --discriminator multiscale --gain_shape"
+        ARMS_STR="${ARMS_STR};${M}_gsm32_s1|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_gsm32_s2|${P} ${MSK} ${MIR} ${B} --gain_tokens 32 --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_gsm16|${P} ${MSK} ${MIR} ${B} --gain_tokens 16"
+        ARMS_STR="${ARMS_STR};${M}_gsm8|${P} ${MSK} ${MIR} ${B} --gain_tokens 8"
+        continue
+    fi
+    if [ "${SWEEP}" = "co2fix" ]; then
+        # CORRECTION LEG. Every co2 arm launched earlier today used ms_ssim_weight 50,
+        # joint_entropy_weight 1.0 and adversarial 0.2-0.5 + fm 1.0. The MEASURED co2 optima
+        # (project-per-modality-codec-tuning-required, from controlled full arms) are
+        # ms_ssim 5, joint_entropy 0.5, and adversarial 0.05 + fm 0.5 -- and ms_ssim 20 was
+        # measured to cost nRMSE 1.0084->1.0560, collapse sharpness 0.0278->0.0043 and TRIPLE
+        # the lattice 8.40->20.51 on co2. I overrode that from a 96-window decoder-only screen,
+        # which is exactly the kind of low-window evidence that produced a wrong co2 MS-SSIM
+        # verdict once before. The patch-discriminator arms then INVERTED at step 3000
+        # (peak_f1 0.000, corr2d -0.349, envelope_corr -0.682).
+        #
+        # What is kept from today's work, because it is measured and new: the MULTISCALE
+        # CRITIC. On the same full-training leg it was the only thing that stopped the
+        # adversarial term destabilising (mirnov a02d peak_f1 0.375 stable vs a02 0.365->0.239
+        # with nRMSE 1.778; co2 patch-D inverted while co2 multiscale-D reached gate nRMSE
+        # 0.852 / peak_f1 0.710 on TWO seeds). And the ENVELOPE/SHAPE SPLIT, which gave the
+        # lowest patch lattice ever recorded here (co2_gs gate lattice 2.1 against a GT
+        # control of ~1.16-1.26, vs 4.4-6.5 for every non-gain-shape arm).
+        MIR="--eval_batches 8"
+        DOC="--ms_ssim_weight 5 --joint_entropy_weight 0.5 --adversarial_weight 0.05"
+        DOC="${DOC} --fm_weight 0.5 --adv_warmup_steps 1500 --pixel_anchor_weight 5.0"
+        case "${M}" in
+            co2)
+                ARMS_STR="${ARMS_STR};${M}_r_ctl|${P} ${MSK} ${MIR} ${DOC}"
+                ARMS_STR="${ARMS_STR};${M}_r_m|${P} ${MSK} ${MIR} ${DOC} --discriminator multiscale"
+                ARMS_STR="${ARMS_STR};${M}_r_m_s2|${P} ${MSK} ${MIR} ${DOC} --discriminator multiscale --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_r_gsm|${P} ${MSK} ${MIR} ${DOC} --discriminator multiscale --gain_shape --gain_tokens 32"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "advmulti" ]; then
+        # THE MULTISCALE CRITIC IS WHAT MAKES ADVERSARIAL PRESSURE USABLE.
+        #
+        # MEASURED at FULL training, job 5420031 (advbest), where the ONLY difference between
+        # these arms is the discriminator family:
+        #
+        #   arm              D          step    hf      peak_f1  nRMSE   lattice  corr2d
+        #   mirnov_a02d_s1   multiscale 15000   0.1260  0.375    1.061   21.1     0.286
+        #   mirnov_a02d_s2   multiscale 15000   0.0809  0.354    1.123   15.1     0.346
+        #   mirnov_a02_s1    patch      14000   0.1883  0.239    1.778   16.7     0.197
+        #   ece_a02d         multiscale 10000   0.0060  0.285    1.304   27.2     0.105
+        #   ece_a02          patch      10000   0.0404  0.256    1.409   34.0     0.063
+        #   co2_a02          patch       3000   0.0021  0.000    1.220   19.6    -0.349
+        #   co2_a05          patch       3000   0.0018  0.000    1.190   24.6    -0.347
+        #
+        # The patch-discriminator arms DESTABILISE: mirnov_a02_s1's peak_f1 fell 0.365 -> 0.239
+        # between steps 8000 and 14000 while its nRMSE rose to 1.778, and both co2 arms went
+        # ANTI-correlated (envelope_corr -0.68, peak_f1 0.000) within 1500 steps of the
+        # adversarial term switching on. The multiscale arms are stable and are the best
+        # numbers either modality has produced.
+        #
+        # This is the same mechanism as the lattice: a PATCH critic is satisfiable by one fixed
+        # tiled texture, so under pressure the generator races toward that degenerate solution;
+        # a critic that scores the WHOLE spectrogram at 1x/2x/4x cannot be answered that way.
+        # NOTE the decoder-only screen did NOT predict this -- it fine-tunes an already
+        # CONVERGED decoder, where the patch critic is harmless (co2 patch-D combo read hf 82%
+        # of ceiling, lattice 6.7). The instability only appears when the ENCODER is also
+        # moving. A screen orders levers; only a full arm decides.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --fm_weight 1.0"
+        B="${B} --adv_warmup_steps 1500 --discriminator multiscale"
+        case "${M}" in
+            co2)
+                # co2 has never had the multiscale critic at full training, and its patch-D
+                # arms are the ones that inverted.
+                ARMS_STR="${ARMS_STR};${M}_m02|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2"
+                ARMS_STR="${ARMS_STR};${M}_m05|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5"
+                ARMS_STR="${ARMS_STR};${M}_m02s2|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 2"
+                ;;
+            mirnov)
+                # 3rd seed of the leading recipe -- mirnov's seed spread (0.050-0.120) is wider
+                # than the gap between recipes, so two seeds is the minimum and three is better.
+                ARMS_STR="${ARMS_STR};${M}_m02_s3|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 3"
+                ARMS_STR="${ARMS_STR};${M}_m05_s1|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5 --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_m02_s2|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_m05|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5"
+                ARMS_STR="${ARMS_STR};${M}_m02ms50|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --ms_ssim_weight 50"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "advbest" ]; then
+        # THE MEASURED RECIPE. Screened on the login GPU with
+        # analysis/probe_spectro_objective.py (decoder-only, codes FROZEN so every arm sees the
+        # identical codebook, discriminator trained, 1200 steps, 96 held-out windows). co2 from
+        # the shipped ms5 @55001, as % of that pool's coherent hf ceiling (0.322):
+        #
+        #   arm                                              hf   %ceil  lattice  std_r  nRMSE
+        #   base (ms_ssim 5, adv 0, fm 0)                0.0472      15      5.1  0.766  0.5447
+        #   freq_grad 5 / 20 / 60                    0.0461-0.0442   14   5.4-6.7  0.763  0.5417
+        #   target_time_smooth 5                         0.0277       9      5.2  0.743  0.5463
+        #   ms_ssim 20 / 50                          0.0551/0.0616  17/19   6.0/5.4 0.763 0.5396
+        #   multiscale_recon_scales 1,2,4                0.0665      21      5.2  0.772  0.5428
+        #   adversarial 0.2 + fm 1.0                     0.1460      45      7.2  0.790  0.5553
+        #   adversarial 0.5 + fm 1.0                     0.2532      79      7.4  0.793  0.5522
+        #   adversarial 1.0 + fm 1.0                     1.2025     374     10.1  0.881  0.6612
+        #   adv 0.2 + fm 1.0 + ms_ssim 50 + scales 1,2,4 0.2626      82      6.7  0.813  0.5541
+        #
+        # So: ADVERSARIAL IS THE LEVER (15% -> 45-79% of ceiling), and it was set to 0.0 in
+        # every arm of the flat-plate cohort. ms_ssim 50 and scales 1,2,4 each add a few points
+        # and cost nothing. freq_grad is a NEGATIVE at all three weights and target smoothing
+        # is a NEGATIVE -- both are closed, do not re-run them. adversarial 1.0 OVERSHOOTS
+        # (374% of ceiling, nRMSE 0.6612), so the ladder here stops at 0.5.
+        #
+        # --adv_warmup_steps 1500 is MANDATORY: the recorded failure is that filterscopes ran
+        # adversarial_weight 1.0 with ZERO warmup, so D hammered a from-scratch encoder from
+        # step 0 and drove an adversarial 1-code collapse.
+        #
+        # MIRNOV DIFFERS AND GETS THE MULTISCALE CRITIC. On the same screen (from
+        # mirnov_ms20_s2), every hf gain came with a LATTICE EXPLOSION -- base 13.1, adv 0.2
+        # 31.6, adv 0.5 42.5, against a GT control of 1.16 -- with nRMSE and corr2d getting
+        # WORSE. That is checkerboard, not modes: a PATCH discriminator is satisfiable by one
+        # fixed tiled texture, which is exactly the documented lattice mechanism, and mirnov
+        # has 7424 values per token so the tiled basis is the cheapest way to raise HF energy.
+        # discriminator=multiscale scores the WHOLE spectrogram at 1x/2x/4x and cannot be
+        # fooled that way; on co2 it matched the patch-D combo exactly (hf 83% vs 82%,
+        # lattice 6.8 vs 6.7), so it costs nothing where the patch D already works.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=50 ;; *) W=20 ;; esac
+        B="--ms_ssim_weight ${W} --multiscale_recon_scales 1,2,4 --fm_weight 1.0 --adv_warmup_steps 1500"
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_a02d_s1|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --discriminator multiscale --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_a02d_s2|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --discriminator multiscale --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_a02_s1|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_a02d|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --discriminator multiscale"
+                ARMS_STR="${ARMS_STR};${M}_a02|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2"
+                # ece's decoder maps ONE 256-column basis to 40*16*16 = 10240 outputs per
+                # token (6.7x mhr) and its measured lattice is 127-282 against GT 1.04, so it
+                # also gets the only in-scope capacity lever: a wider codec (n_tok, vocab and
+                # FRAME_LAYOUT are untouched).
+                ARMS_STR="${ARMS_STR};${M}_a02w|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2 --codec_d_model 512"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_a02|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.2"
+                ARMS_STR="${ARMS_STR};${M}_a05|${P} ${MSK} ${MIR} ${B} --adversarial_weight 0.5"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "smooth" ]; then
+        # THE PREDICTABLE-TARGET sweep: --target_time_smooth.
+        #
+        # This is the one lever aimed at the CAUSE rather than a symptom. MEASURED per
+        # modality on 320 held-out windows (--mode structure), the GT's lag-1 autocorrelation
+        # along the STFT-frame axis is 0.61-0.68 (co2), 0.42-0.48 (mirnov), 0.29-0.37 (ece),
+        # with a coherent variance share of 0.42 / ~0.37 / 0.32. Training to reconstruct the
+        # RAW window therefore asks the decoder for ~60-70% unpredictable realization speckle,
+        # and the exact minimiser of every L-p term in the objective is the conditional mean --
+        # so the decoder correctly answers with a low-amplitude blur. THAT is the flat plate;
+        # the measured std(recon)/std(GT) of 0.15-0.32 is the arithmetic of it, not a bug.
+        #
+        # Smoothing the TARGET removes the unpredictable part from the ask, so the optimum
+        # becomes the coherent structure AT FULL AMPLITUDE. The encoder still sees the raw
+        # window and the audit still scores against RAW GT, so nothing is being graded on a
+        # curve. The ceiling is the tsmooth5 oracle in the same table, which already beats
+        # every trained arm on BOTH the ranking key and the nRMSE floor:
+        #     co2     hf 0.250 / nRMSE 0.3842   vs  ms5    hf 0.037 / 0.6812
+        #     mirnov  hf 0.290 / nRMSE 0.6299   vs  ctl_s1 hf 0.022 / 1.1086
+        #
+        # K=5 is where the oracle was measured; co2 also gets K=3 because it is the most
+        # coherent of the three and may not need as much low-passing.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        FG="--freq_grad_weight 20"
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_sm5_s1|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_sm5_s2|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_sm5fg_s1|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} ${FG} --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_sm5|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W}"
+                ARMS_STR="${ARMS_STR};${M}_sm5fg|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} ${FG}"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_sm5|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W}"
+                ARMS_STR="${ARMS_STR};${M}_sm5fg|${P} ${MSK} ${MIR} --target_time_smooth 5 --ms_ssim_weight ${W} ${FG}"
+                ARMS_STR="${ARMS_STR};${M}_sm3|${P} ${MSK} ${MIR} --target_time_smooth 3 --ms_ssim_weight ${W}"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "sharp" ]; then
+        # THE MODE-LINE sweep: freq_grad_weight, the one term in the objective whose gradient
+        # actually PAYS for putting a line inside a patch.
+        #
+        # WHY, from the zoomed co2 figure (ms5, shot 204984 ch 2, 0-60 kHz): the GT has thin
+        # coherent tracks 1-2 STFT bins wide (a rising line at 10-20 kHz through 1.3-1.7 s, a
+        # multi-line braid at 20-50 kHz through 2.3-2.5 s) and the reconstruction has NONE --
+        # it is visibly blocky on the 16-bin x 16-frame patch lattice, i.e. near-constant
+        # inside each patch, which is what the patchmean oracle (hf 0.015) looks like.
+        #
+        # The gradient argument for the lever: a line occupies ~1-2 of a patch's 16 frequency
+        # bins, so turning a flat patch into "line in the right bin" barely moves pixel-L1
+        # (~10% of the patch area improves, the rest gets marginally worse) -- L1 does not pay
+        # for it. losses.freq_gradient_loss is L1 on the FREQUENCY DERIVATIVE, where a line is
+        # a large +/- spike and a flat patch is ~0, so the same change moves it a lot. It is
+        # also half of the ranking metric by construction (hf_ratio is HF gradient energy over
+        # frequency AND time). It has been 0.0 in every production arm to date.
+        #
+        # multiscale_recon_scales 1,2,4 is the paired control on the OTHER end: at the default
+        # (2,4) every multiscale term is L1 on an AVG-POOLED (low-passed) copy, so the recipe
+        # carries a 2.0-weighted "match my blurred spectrogram" term and never scores full
+        # resolution at all. Adding scale 1 makes it a real multi-resolution pyramid.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        case "${M}" in
+            mirnov)
+                ARMS_STR="${ARMS_STR};${M}_fg20_s1|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_fg20_s2|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_fg20msc_s1|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --multiscale_recon_scales 1,2,4 --seed 1"
+                ;;
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_fg5|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 5"
+                ARMS_STR="${ARMS_STR};${M}_fg20|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_fg5|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 5"
+                ARMS_STR="${ARMS_STR};${M}_fg20|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20"
+                ARMS_STR="${ARMS_STR};${M}_fg20msc|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} --freq_grad_weight 20 --multiscale_recon_scales 1,2,4"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "struct" ]; then
+        # STRUCTURE sweep: the two levers MEASURED to raise hf_ratio, plus the structural one.
+        #
+        #   ADVERSARIAL. co2 audit 2026-09-04 (320 held-out windows, per-band hf_ratio):
+        #   ctl (adv 0, ms_ssim 0) reads hf 0.015 full-band / 0.075 at 0-10 kHz; ms5 reads
+        #   0.037 / 0.138; and the `adv` arm -- which is only adversarial_weight 0.05 with
+        #   fm 0.5 and NO ms_ssim -- reads 0.073 / 0.217, i.e. roughly DOUBLE ms5 in every
+        #   one of the five bands. The winning masked recipe runs adversarial_weight 0.0, so
+        #   this lever was switched off in every arm of the flat-plate cohort.
+        #   0.2 (not 1.0) because under the adaptive scheme 1.0 is gradient PARITY with the
+        #   whole reconstruction reference, and a run-away lam is the documented cause of the
+        #   2026-07 co2/video NCCL crash.
+        #
+        #   ENVELOPE/SHAPE SPLIT (--gain_shape). Makes recon.std(-1) a TRANSMITTED code, so
+        #   amplitude collapse is not representable at all -- the direct structural attack on
+        #   std_ratio 0.15-0.28. 32 gain tokens = one per freq patch, 160 left for the shape.
+        #
+        # CALIBRATION for reading the results: GT hf_ratio 1.0 is NOT the target. 75% of the
+        # GT's HF gradient energy is frame-to-frame realization speckle -- the tsmooth5 oracle
+        # (GT low-passed over 5 STFT frames) reads hf 0.250 on co2 -- so ~0.25 is the ceiling
+        # for a codec that reproduces all COHERENT structure and no speckle.
+        GS="--gain_shape --gain_tokens 32"
+        ADV="--adversarial_weight 0.2 --fm_weight 1.0 --adv_warmup_steps 1500"
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        # per-modality ms_ssim optimum, MEASURED: mhr 20-50, bes 20, co2 5 (co2 at 20 is
+        # 0.7015 vs 0.6812 at 5). ece has no measurement yet -> 20, the mhr/bes value.
+        case "${M}" in co2) W=5 ;; *) W=20 ;; esac
+        case "${M}" in
+            ece)
+                ARMS_STR="${ARMS_STR};${M}_gs|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W}"
+                ARMS_STR="${ARMS_STR};${M}_gsadv|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W} ${ADV}"
+                ;;
+            mirnov)
+                # 2 SEEDS on the headline arm: mirnov's measured seed spread (0.050-0.120)
+                # exceeds the gap between recipes, so a 1-seed mirnov verdict is not a verdict.
+                ARMS_STR="${ARMS_STR};${M}_gs_s1|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W} --seed 1"
+                ARMS_STR="${ARMS_STR};${M}_gs_s2|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W} --seed 2"
+                ARMS_STR="${ARMS_STR};${M}_gsadv_s1|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W} ${ADV} --seed 1"
+                ;;
+            *)
+                ARMS_STR="${ARMS_STR};${M}_gs|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W}"
+                ARMS_STR="${ARMS_STR};${M}_gsadv|${P} ${MSK} ${MIR} ${GS} --ms_ssim_weight ${W} ${ADV}"
+                # adv WITHOUT the split, so the two levers stay attributable to each other.
+                ARMS_STR="${ARMS_STR};${M}_adv|${P} ${MSK} ${MIR} --ms_ssim_weight ${W} ${ADV}"
+                ;;
+        esac
+        continue
+    fi
+    if [ "${SWEEP}" = "mssim" ]; then
+        # MODE-STRUCTURE sweep (see header). mirnov ALREADY has its weight-0 control at this
+        # exact recipe (ignite_codecs_mirnov_msk/ctl_s{1,2}, 30k steps, ms_ssim_weight 0.0
+        # confirmed in the checkpoint cfg), so its slots buy 2 weights x 2 seeds; every other
+        # modality gets a 0/5/20/50 ladder with the 0 arm as its own control.
+        # --eval_batches 8 for EVERY mssim arm (BASE says 32). The gate set is rebuilt
+        # SINGLE-PROCESS at every start AND every resume, and at 29-40 channels one
+        # _build_pair is ~29-40 Lustre seeks + 2 STFTs; 32x4=128 of those cost minutes of
+        # every leg and buy nothing, because these arms are ranked by the >=300-window audit
+        # (analysis/spectro_final_fig.py --mode score), never by the 32-window gate.
+        # --skip_activity_override for mirnov only: it is the one modality here with an
+        # _activity_overrides entry (min_activity 0.10 / active_bias 0.5), whose per-item
+        # re-draws cost ~1 h of a 2 h leg. ece has no entry, so nothing to skip.
+        MIR="--eval_batches 8"
+        [ "${M}" = "mirnov" ] && MIR="${MIR} --skip_activity_override"
+        if [ "${M}" = "mirnov" ]; then
+            ARMS_STR="${ARMS_STR};${M}_ms20_s1|${P} ${MSK} ${MIR} --ms_ssim_weight 20 --seed 1"
+            ARMS_STR="${ARMS_STR};${M}_ms20_s2|${P} ${MSK} ${MIR} --ms_ssim_weight 20 --seed 2"
+            ARMS_STR="${ARMS_STR};${M}_ms50_s1|${P} ${MSK} ${MIR} --ms_ssim_weight 50 --seed 1"
+            ARMS_STR="${ARMS_STR};${M}_ms50_s2|${P} ${MSK} ${MIR} --ms_ssim_weight 50 --seed 2"
+        else
+            for W in 0 5 20 50; do
+                ARMS_STR="${ARMS_STR};${M}_ms${W}|${P} ${MSK} ${MIR} --ms_ssim_weight ${W}"
+            done
+        fi
+        continue
+    fi
+    if [ "${M}" = "mirnov" ]; then
+        # mirnov has NEVER had a codec, so it trains FROM SCRATCH -- the regime where 27 of 28
+        # arms ended at 1 code and the same recipe at the same seed spanned lattice 61.02-22.86.
+        # Its 4 slots buy 2 configurations x 2 SEEDS instead of 4 one-shot knobs, and the axis
+        # is the anti-collapse lever, not sharpness.
+        # MEASURED 2026-09-04 (job 5416298): mirnov wrote ZERO files in 70 minutes while the
+        # bes arms beside it reached step 3000-20000 -- it never finished step 0's gate. Cause:
+        # _activity_overrides gives mirnov min_activity 0.10 / active_bias 0.5, so
+        # _stratified_draw does up to 8 re-draws PER ITEM, each a full _build_pair (a 29-channel
+        # strided HDF5 read, ~29 Lustre seeks at ~13 ms, plus 2 STFTs), and _stream_eval_data
+        # builds --eval_batches 32 x --eval_batch_size 4 = 128 such items SINGLE-PROCESS before
+        # training starts. That is ~1 h of every 2 h leg, and it is paid again on every resume
+        # because the eval set is rebuilt, never cached.
+        #
+        # --skip_activity_override removes it. The stratification was introduced to stop mirnov
+        # collapsing on degenerate windows -- but the 2026-09-03 audit shows those "degenerate
+        # windows" were overwhelmingly the 28-of-29 DEAD CHANNELS that the new mask now excludes
+        # properly (only 0.5% of mirnov shots are absent; the loss is temporal). So the hack was
+        # compensating for the missing mask and is now redundant as well as ruinously expensive.
+        # It only clears min_activity/active_bias here: the adv_warmup_steps / adversarial_weight
+        # it also carries are already overridden by BASE (--adversarial_weight 0.0
+        # --adv_warmup_steps 0), and CLI wins over _activity_overrides either way.
+        # --eval_batches 8 (the script default) cuts the remaining build another 4x.
+        MIR="--skip_activity_override --eval_batches 8"
+        ARMS_STR="${ARMS_STR};${M}_ctl_s1|${P} ${MSK} ${MIR} --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_ctl_s2|${P} ${MSK} ${MIR} --seed 2"
+        ARMS_STR="${ARMS_STR};${M}_je2_s1|${P} ${MSK} ${MIR} --joint_entropy_weight 2.0 --seed 1"
+        ARMS_STR="${ARMS_STR};${M}_je2_s2|${P} ${MSK} ${MIR} --joint_entropy_weight 2.0 --seed 2"
+    else
+        ARMS_STR="${ARMS_STR};${M}_ctl|${P} ${MSK}"
+        ARMS_STR="${ARMS_STR};${M}_je2|${P} ${MSK} --joint_entropy_weight 2.0"
+        ARMS_STR="${ARMS_STR};${M}_ms20|${P} ${MSK} --ms_ssim_weight 20"
+        ARMS_STR="${ARMS_STR};${M}_nomask|${P}"
+    fi
+done
+ARMS_STR="${ARMS_STR#;}"
+# ARMS_EXTRA is appended to EVERY arm (after its own args, so it wins over both BASE and the
+# arm), by splicing it before each ';' separator and at the end.
+if [ -n "${ARMS_EXTRA}" ]; then
+    ARMS_STR="$(printf '%s' "${ARMS_STR}" | sed "s#;# ${ARMS_EXTRA};#g") ${ARMS_EXTRA}"
+fi
+
+# ---------------------------------------------------------------------------------------- #
+# HARD GUARD: n_tok MUST STAY 192. USER CONSTRAINT, NOT A PREFERENCE.
+#
+# n_tok = (freq_bins // patch_f) * (time_frames // patch_t) = (512 // pf) * (96 // pt).
+# Legal aspects: 16x16 (32x6), 8x32 (64x3), 32x8 (16x12), 64x4 (8x24). Anything else is
+# forbidden and this loop refuses to submit it.
+#
+# WHY IT IS ABSOLUTE: the v3 production frame-code cache is BUILT at 1017 tokens/frame over
+# 8753/8753 shots. 1017 matches v2, which is the only reason the MEASURED 2.9055 no-skill CE
+# baseline still applies. Changing any modality's n_tok invalidates the cache (a ~3.6 h
+# 8-node rebuild) AND makes every CE number in the project incomparable. FRAME_LAYOUT is a
+# USER decision. If a modality genuinely needs a different width: STOP, do not launch, report.
+_FB=512; _TF=96; _WANT=192
+_IFS_SAVE="$IFS"; IFS=';'
+for _arm in ${ARMS_STR}; do
+    IFS="$_IFS_SAVE"
+    _name="${_arm%%|*}"; _args="${_arm#*|}"
+    _pf=16; _pt=16; _bp=0
+    case "${_args}" in *--patch_f*) _pf=$(printf '%s\n' "${_args}" | sed 's/.*--patch_f  *\([0-9]*\).*/\1/') ;; esac
+    case "${_args}" in *--patch_t*) _pt=$(printf '%s\n' "${_args}" | sed 's/.*--patch_t  *\([0-9]*\).*/\1/') ;; esac
+    # BAND-POWER changes the MODEL's frequency width: n_tok is computed on eff_freq_bins, not on
+    # the 512 STFT bins. Without this the guard would compute (512//16)*(96//16)=192 for
+    # band_pool 16 + patch 16x16 and PASS a leg whose real n_tok is 6.
+    case "${_args}" in *--band_pool*) _bp=$(printf '%s\n' "${_args}" | sed 's/.*--band_pool  *\([0-9]*\).*/\1/') ;; esac
+    # BAND CROP: --freq_bins narrows the modelled array before any pooling, so the guard must
+    # read it too. Without this a crop to 128 bins would be checked against 512 and REFUSED
+    # (or, with a different patch, silently passed at the wrong width).
+    case "${_args}" in *--freq_bins*) _FBA=$(printf '%s\n' "${_args}" | sed 's/.*--freq_bins  *\([0-9]*\).*/\1/') ;; *) _FBA=${_FB} ;; esac
+    _EFF=${_FBA}
+    if [ "${_bp}" -gt 0 ]; then
+        if [ $(( _FBA % _bp )) -ne 0 ]; then
+            echo "FATAL: arm ${_name}: band_pool ${_bp} does not divide freq_bins ${_FBA}." >&2; exit 2
+        fi
+        _EFF=${_bp}
+    fi
+    if [ $(( _EFF % _pf )) -ne 0 ] || [ $(( _TF % _pt )) -ne 0 ]; then
+        echo "FATAL: arm ${_name}: patch ${_pf}x${_pt} does not divide ${_EFF}x${_TF} (band_pool=${_bp})." >&2; exit 2
+    fi
+    _ntok=$(( (_EFF / _pf) * (_TF / _pt) ))
+    if [ "${_ntok}" -ne "${_WANT}" ]; then
+        echo "FATAL: arm ${_name}: band_pool ${_bp} patch ${_pf}x${_pt} -> n_tok ${_ntok}, but FRAME_LAYOUT requires ${_WANT}." >&2
+        echo "       Refusing to submit. n_tok is a USER decision -- report, do not launch." >&2
+        exit 2
+    fi
+    echo "[ntok-guard] ${_name}: freq_bins ${_FBA} band_pool ${_bp} eff_F ${_EFF} patch ${_pf}x${_pt} -> n_tok ${_ntok} OK"
+    IFS=';'
+done
+IFS="$_IFS_SAVE"
+
+export MODALITY="${MODS%% *}" # per-arm --modality overrides this; only names the default
+export N_SHOTS=9000           # MANDATORY: a wrong N cold-scans (33 min > NCCL watchdog)
+export EVAL_N_SHOTS=16
+export STEPS="${STEPS_IN}"
+export EVAL_EVERY=1000
+export BATCH_SIZE=8
+export NUM_WORKERS=6
+# LR IS OVERRIDABLE, and it is the measured STABILITY lever, not just a speed knob. The
+# sweep 1e-3/3e-4/1e-4/3e-5/1e-5 found gate-to-gate spread falling MONOTONICALLY with LR
+# (0.090 -> 0.031) and the fine-tune optimum at 1e-4; "gate noise" and "training longer makes
+# it worse" were mostly LR instability. That matters here because co2's mode track turned out
+# to be a per-seed lottery driven by exactly that thrash -- co2_r_m seed 1 spikes gate nRMSE
+# to 2.168/1.110 over its last 8 gates and never places the track, while its stable seed 2
+# does. Lowering LR attacks the MEAN; more seeds only samples the tail.
+export LR="${LR:-2e-4}"
+# OUT_DIR is TAGGED by the sweep: the launcher auto-resumes every arm from
+# ${OUT_DIR}/<arm>/codec_last.pt, so reusing one dir across sweeps would silently continue a
+# DIFFERENT recipe's checkpoint under the new arm's flags. OUT_DIR_TAG overrides it.
+_TAG="$(printf '%s' "${MODS}" | tr ' ' '_')"
+# An explicit OUT_DIR wins. NEEDED for a SINGLE-MODALITY CONTINUATION of a leg that was
+# submitted as a PAIR: the default name is built from MODS, so re-submitting just mirnov would
+# resolve to ignite_codecs_mirnov_gsmulti while its arms actually live in
+# ignite_codecs_co2_mirnov_gsmulti -- the launcher would find no codec_last.pt and silently
+# RESTART all four arms from scratch instead of resuming them.
+export OUT_DIR="${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_codecs_${_TAG}_${OUT_DIR_TAG:-${SWEEP}}}"
+export EXTRA_ARGS="${BASE}"
+export ARMS="${ARMS_STR}"
+mkdir -p "${OUT_DIR}"
+
+# --dependency=afterany:<id> via DEP_AFTER: MANDATORY when a later leg shares this OUT_DIR,
+# so two legs can never write the same arm's codec_last.pt concurrently.
+DEP_FLAG=""
+[ -n "${DEP_AFTER:-}" ] && DEP_FLAG="--dependency=afterany:${DEP_AFTER}"
+# NODES: one node per arm. The QOS cap is 16 and prod_nfulldecay permanently holds 8, so a
+# 4-arm leg must ask for 4 nodes, not 8 -- the launcher srun's exactly ${#arms} tasks and the
+# spare nodes would sit idle while blocking a production leg.
+NODES="${NODES:-8}"
+JID=$(sbatch --parsable -J codec_${_TAG}_${OUT_DIR_TAG:-${SWEEP}} -N "${NODES}" -t "${WALL}" \
+      ${DEP_FLAG} --export=ALL \
+      scripts/slurm_frontier/ignite_codec_prod.sh)
+echo "[submit] ${MODS} (${SWEEP}) -> job ${JID}"
+scontrol update JobId="${JID}" Partition=extended,batch,g1 && echo "[submit] ${JID} partitions=extended,batch,g1"

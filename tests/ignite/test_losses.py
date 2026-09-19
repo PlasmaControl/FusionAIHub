@@ -4,6 +4,7 @@ Small synthetic CPU tensors only. Written test-first (TDD).
 """
 from __future__ import annotations
 
+import pytest
 import torch
 
 from tokamak_foundation_model.ignite import losses
@@ -148,3 +149,46 @@ def test_discriminator_loss_differentiable():
     grads = [p.grad for p in disc.parameters() if p.grad is not None]
     assert len(grads) > 0
     assert all(torch.isfinite(g).all() for g in grads)
+
+
+# --------------------------------------------------------------------------------------- #
+# MS-SSIM loss — the DIFFERENTIABLE twin of the gate's ranking metric
+# --------------------------------------------------------------------------------------- #
+def test_ms_ssim_loss_is_zero_on_self_positive_on_blur_and_differentiable():
+    from tokamak_foundation_model.ignite.losses import ms_ssim_loss
+
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 128, 64)
+    for t in range(64):                       # a moving narrow ridge
+        x[:, :, 40 + t // 8, t] += 12.0
+    assert float(ms_ssim_loss(x, x)) == pytest.approx(0.0, abs=1e-5)
+
+    blur = x.mean(dim=-1, keepdim=True).expand_as(x).contiguous()
+    assert float(ms_ssim_loss(blur, x)) > 0.3     # the blur is PENALISED
+
+    a = x.clone().requires_grad_(True)
+    ms_ssim_loss(a, x + 0.5).backward()
+    assert torch.isfinite(a.grad).all() and float(a.grad.abs().sum()) > 0
+
+
+def test_ms_ssim_penalises_blur_where_l1_prefers_it():
+    """The core argument: L1 ranks the conditional mean BEST, MS-SSIM ranks it worst.
+
+    Against a ridge target, the time-mean has LOWER L1 than a noisy but structured candidate,
+    yet HIGHER 1-MS-SSIM. That inversion is exactly why spec_nrmse cannot be the ranking key.
+    """
+    from tokamak_foundation_model.ignite.losses import ms_ssim_loss
+
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 128, 64)
+    for t in range(64):
+        x[:, :, 40 + t // 8, t] += 12.0
+    blur = x.mean(dim=-1, keepdim=True).expand_as(x).contiguous()
+    noisy = x + torch.randn_like(x) * 1.2          # keeps structure, adds error
+
+    l1_blur = float(torch.mean(torch.abs(blur - x)))
+    l1_noisy = float(torch.mean(torch.abs(noisy - x)))
+    ss_blur = float(ms_ssim_loss(blur, x))
+    ss_noisy = float(ms_ssim_loss(noisy, x))
+    assert l1_blur < l1_noisy          # L1 PREFERS the blur
+    assert ss_blur > ss_noisy          # MS-SSIM prefers the structured candidate

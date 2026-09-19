@@ -418,3 +418,68 @@ def test_entropy_loss_diversity_gradient_scaled_by_world_size() -> None:
     assert torch.allclose(grad_mock, expected, atol=1e-5), (
         float((grad_mock - expected).abs().max())
     )
+
+
+# ------------------------------------------------------------------------------------- #
+# FSQ-native anti-collapse knobs (cfg.fsq_noise_dropout / cfg.fsq_preserve_symmetry)
+# ------------------------------------------------------------------------------------- #
+def test_fsq_knobs_default_off_and_reach_the_fsq_constructor() -> None:
+    """Defaults must reproduce the library defaults exactly (byte-identical FSQ)."""
+    cfg = SpectroCodecConfig()
+    assert cfg.fsq_noise_dropout == 0.0 and cfg.fsq_preserve_symmetry is False
+    q = SpectroQuantizer(_small_cfg())
+    assert q.fsq.noise_dropout == 0.0 and q.fsq.preserve_symmetry is False
+    cfg2 = _small_cfg()
+    cfg2.fsq_preserve_symmetry = True
+    cfg2.fsq_noise_dropout = 0.25
+    q2 = SpectroQuantizer(cfg2)
+    assert q2.fsq.noise_dropout == 0.25 and q2.fsq.preserve_symmetry is True
+
+
+def test_fsq_noise_dropout_requires_preserve_symmetry() -> None:
+    """The library asserts this; we raise it with the REASON (the confound) attached."""
+    import pytest
+
+    cfg = _small_cfg()
+    cfg.fsq_noise_dropout = 0.25          # preserve_symmetry left False
+    with pytest.raises(ValueError, match="fsq_preserve_symmetry"):
+        SpectroQuantizer(cfg)
+
+
+def test_pre_quant_levels_round_recovers_codes_under_preserve_symmetry() -> None:
+    """`preserve_symmetry` swaps FSQ's bound AND its level<->code map.
+
+    `pre_quant_levels` hand-replicates that math and feeds the entropy / joint-entropy
+    regularizers, so if it did not follow the flag those terms would silently shape a
+    quantity that is NOT the emitted code.
+    """
+    cfg = _small_cfg()
+    cfg.fsq_preserve_symmetry = True
+    q = SpectroQuantizer(cfg)
+    q.eval()                               # noise dropout is training-only anyway
+    feats = 3.0 * torch.randn(4, cfg.n_tok, cfg.d_model)
+    _, codes = q.quantize(feats)
+    lvl = q.pre_quant_levels(feats)
+    assert torch.equal(lvl.round().long(), codes)
+    for i, L in enumerate(cfg.fsq_levels):
+        assert float(lvl[..., i].min()) >= -1e-4 and float(lvl[..., i].max()) <= L - 1 + 1e-4
+
+
+def test_noise_dropout_perturbs_the_decoder_latent_but_not_the_indices() -> None:
+    """FSQ applies the noise AFTER codes_to_indices, so indices stay clean; and it is
+    training-only."""
+    torch.manual_seed(0)
+    cfg = _small_cfg()
+    cfg.fsq_preserve_symmetry = True
+    cfg.fsq_noise_dropout = 0.5
+    q = SpectroQuantizer(cfg)
+    feats = 3.0 * torch.randn(6, cfg.n_tok, cfg.d_model)
+    q.eval()
+    quant_eval, codes_eval = q.quantize(feats)
+    quant_eval2, _ = q.quantize(feats)
+    assert torch.equal(quant_eval, quant_eval2)          # eval: deterministic
+    q.train()
+    quant_a, codes_a = q.quantize(feats)
+    quant_b, codes_b = q.quantize(feats)
+    assert torch.equal(codes_a, codes_b) and torch.equal(codes_a, codes_eval)  # indices clean
+    assert not torch.equal(quant_a, quant_b)             # decoder latent is jittered

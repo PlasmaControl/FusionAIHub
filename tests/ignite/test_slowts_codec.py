@@ -347,6 +347,52 @@ def test_slowts_decode_fidelity_mask_used():
 
 
 # --------------------------------------------------------------------------------------- #
+# gate.full_slowts_metrics — the AMPLITUDE (std-ratio) diagnostic (2026-09-03)
+# --------------------------------------------------------------------------------------- #
+# WHY: slowts_nrmse is a SQUARED error, whose exact minimizer is the conditional MEAN, so an
+# under-capacity decoder minimises it by SHRINKING toward the mean and a variance-collapsed
+# reconstruction is rewarded, not punished. corr cannot see it either (scale-invariant). The
+# retrained cer_ti recon swings 0.2-0.7 against a 0-2.3 target and still scores nrmse 0.8752.
+# These guards pin the diagnostic that makes that a number.
+def test_slowts_std_ratio_self_and_scaled():
+    """std_ratio is EXACTLY 1.0 for a perfect recon and EXACTLY the scale for a shrunk one."""
+    torch.manual_seed(0)
+    x = torch.randn(16, 12, 5) + torch.linspace(0, 3, 12)[None, :, None]
+    m = gate.full_slowts_metrics(x, x)
+    for k in ("slowts_std_ratio", "slowts_std_ratio_med", "slowts_std_ratio_pooled",
+              "slowts_std_ratio_t"):
+        assert abs(m[k] - 1.0) < 1e-9, (k, m[k])
+    # shrink each window about its own mean: nRMSE says 0.7 ("respectable"), std_ratio says 0.3.
+    mu = x.mean(dim=(1, 2), keepdim=True)
+    for a in (0.3, 2.0):
+        mm = gate.full_slowts_metrics(mu + a * (x - mu), x)
+        assert abs(mm["slowts_std_ratio_pooled"] - a) < 1e-6, (a, mm["slowts_std_ratio_pooled"])
+        assert abs(mm["slowts_std_ratio_t"] - a) < 1e-6, (a, mm["slowts_std_ratio_t"])
+        assert mm["slowts_corr"] > 0.999          # corr is BLIND to the collapse
+    assert abs(gate.full_slowts_metrics(mu + 0.3 * (x - mu), x)["slowts_nrmse_pooled"]
+               - 0.7) < 1e-6   # nRMSE only charges 0.7 for a 70 % amplitude loss
+
+
+def test_slowts_std_ratio_baselines_and_mask():
+    """tmean has ZERO temporal amplitude and wcmean zero amplitude at all — by construction."""
+    torch.manual_seed(1)
+    x = torch.randn(16, 12, 5) + torch.linspace(0, 3, 12)[None, :, None]
+    mask = (torch.rand(16, 12, 5) > 0.3).float()
+    b = gate.trivial_slowts_baselines(x, mask=mask)
+    assert abs(b["base_self_slowts_std_ratio_pooled"] - 1.0) < 1e-9
+    assert abs(b["base_self_slowts_std_ratio_t"] - 1.0) < 1e-9
+    assert abs(b["base_tmean_slowts_std_ratio_t"]) < 1e-9        # no time variation at all
+    assert 0.0 < b["base_tmean_slowts_std_ratio_pooled"] < 1.0   # but it does keep the profile
+    assert abs(b["base_wcmean_slowts_std_ratio_pooled"]) < 1e-9  # a constant has no spread
+    assert abs(b["base_wcmean_slowts_std_ratio_t"]) < 1e-9
+    # a flat-in-time recon with the RIGHT profile: nrmse looks fine, std_ratio_t reads 0.
+    flat = x.mean(dim=-1, keepdim=True).expand_as(x)
+    mm = gate.full_slowts_metrics(flat, x, mask=mask)
+    assert abs(mm["slowts_std_ratio_t"]) < 1e-9
+    assert mm["slowts_nrmse_pooled"] < 1.0                       # still "beats a constant"
+
+
+# --------------------------------------------------------------------------------------- #
 # synthetic slow-TS HDF5 shots + SlowTSCodecPairDataset
 # --------------------------------------------------------------------------------------- #
 def _write_slowts_shot(path: Path, signal: str, channels: int, duration_s: float, seed: int,
@@ -942,6 +988,74 @@ def test_train_slowts_codec_loop_writes_artifacts(slowts_shots, tmp_path, monkey
     assert 0.0 <= final_gate["persistence"] <= 1.0
     assert sorted(out_dir.glob("gate_*.json"))
     assert (out_dir / "codec_last.pt").exists()
+
+
+def test_train_slowts_codec_freeze_encoder(slowts_shots, tmp_path, monkeypatch):
+    """--slowts_freeze_encoder trains the DECODER ONLY: encoder + quantizer weights and the
+    emitted CODES are bit-identical after training, the decoder's weights move.
+
+    Guards the decoder-only diagnostic (see train_slowts_codec's freeze_encoder note: a
+    93-parameter linear read-out of the frozen codes beats the trained decoder by 0.16-0.36
+    pooled nRMSE, so the question is whether joint-training non-stationarity is the cause).
+    A silent failure here — the optimizer still holding encoder params, or requires_grad not
+    taking — would make the arm a plain continuation and the answer meaningless.
+    """
+    import copy
+
+    monkeypatch.delenv("WORLD_SIZE", raising=False)
+    cfg = _tiny_slowts_cfg()
+
+    # a "resumed" checkpoint: train 2 steps normally, then freeze-train from that state.
+    warm = tmp_path / "warm"
+    tc.train_slowts_codec(
+        cfg, slowts_shots["signal"], slowts_shots["shots"], slowts_shots["shots"],
+        steps=2, eval_every=2, batch_size=2, num_workers=0, data_dir=slowts_shots["dir"],
+        lr=1e-3, eval_batches=2, eval_batch_size=2, eval_frames=3, out_dir=warm, seed=0)
+    state = torch.load(warm / "codec_last.pt", map_location="cpu", weights_only=False)
+
+    before = copy.deepcopy(state["codec"])
+    x = torch.randn(3, cfg.padded_channels, cfg.time_steps)
+    ref = tc.SlowTSCodec(cfg)
+    ref.load_state_dict(state["codec"])
+    ref.eval()
+    with torch.no_grad():
+        codes_before = ref(x)["codes"].clone()
+
+    out_dir = tmp_path / "frozen"
+    tc.train_slowts_codec(
+        cfg, slowts_shots["signal"], slowts_shots["shots"], slowts_shots["shots"],
+        steps=4, eval_every=4, batch_size=2, num_workers=0, data_dir=slowts_shots["dir"],
+        lr=1e-2,                                  # large LR: any leak would show up loudly
+        eval_batches=2, eval_batch_size=2, eval_frames=3, out_dir=out_dir, seed=0,
+        resume_state=state, freeze_encoder=True)
+    after = torch.load(out_dir / "codec_last.pt", map_location="cpu",
+                       weights_only=False)["codec"]
+
+    enc_keys = [k for k in before if k.startswith(("encoder.", "quantizer."))]
+    dec_keys = [k for k in before if k.startswith("decoder.")]
+    assert enc_keys and dec_keys
+    for k in enc_keys:
+        assert torch.equal(before[k], after[k]), f"FROZEN param moved: {k}"
+    assert any(not torch.equal(before[k], after[k]) for k in dec_keys), \
+        "decoder did not train at all"
+
+    # the CODES — the thing the read-out was measured on — must be unchanged.
+    post = tc.SlowTSCodec(cfg)
+    post.load_state_dict(after)
+    post.eval()
+    with torch.no_grad():
+        assert torch.equal(post(x)["codes"], codes_before)
+
+
+def test_slowts_freeze_encoder_cli_guards():
+    """--slowts_freeze_encoder is slow-TS-only and REQUIRES --resume (a frozen random
+    encoder would fix meaningless codes)."""
+    args = tc.build_arg_parser().parse_args(
+        ["--modality", "cer_ti", "--out_dir", "/tmp/x", "--slowts_freeze_encoder",
+         "--resume", "/tmp/ckpt.pt"])
+    assert args.slowts_freeze_encoder is True and args.resume == "/tmp/ckpt.pt"
+    plain = tc.build_arg_parser().parse_args(["--modality", "cer_ti", "--out_dir", "/tmp/x"])
+    assert plain.slowts_freeze_encoder is False       # default OFF = byte-identical
 
 
 def test_train_slowts_codec_cli_main(slowts_shots, tmp_path, monkeypatch):

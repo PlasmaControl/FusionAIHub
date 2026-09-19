@@ -326,6 +326,12 @@ def _load_codec_set(repo: Path):
     entries, skipped = [], []
     for spec in FROZEN_MODALITIES:
         name = spec.name
+        # A modality can be in FROZEN_MODALITIES without ever having a codec -- mirnov was
+        # added to the layout on 2026-08-15 and its codec never converged (4 attempts). It
+        # used to raise KeyError here and take the whole loader down.
+        if name not in td.FROZEN_CODEC_CKPTS:
+            skipped.append((name, "no entry in FROZEN_CODEC_CKPTS (no codec exists)"))
+            continue
         fam = td.FROZEN_CODEC_CKPTS[name][0]
         cands = ([t.format(m=name) for t in CKPT_TMPLS]
                  + [td.FROZEN_CODEC_CKPTS[name][1]])

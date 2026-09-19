@@ -1,17 +1,24 @@
-"""1-D PatchGAN discriminator (IGNITE Phase-A fast-TS / filterscopes envelope codec).
+"""1-D PatchGAN discriminator (IGNITE Phase-A fast-TS / filterscopes RAW-SAMPLE codec).
 
 The fast-TS analogue of ``discriminator.FreqAwarePatchGAN``. Fresh code (no FAITH model
 reuse); uses only ``torch.nn`` + ``config.py``.
 
 Design (docs/IGNITE_DESIGN.md §4.2/§4.3):
-- The codec target is the 1-D ELM activity ENVELOPE ``(B, C, E)`` (E = envelope-time bins),
-  so the discriminator is a 1-D (over the envelope-time axis) multi-scale PatchGAN with the
-  ``C`` filterscope channels as conv input channels.
-- Like the spectrogram (and unlike video), the envelope-time axis is NOT purely
-  translation-invariant — WHEN in the 50 ms window an ELM burst sits carries physical meaning
-  (ramp / flat-top phase). A fully-convolutional PatchGAN is time-shift-equivariant, the wrong
-  bias, so we break that symmetry with a small sinusoidal TIME positional-encoding channel
-  concatenated to the input (the 1-D analogue of ``FreqAwarePatchGAN``'s freq-PE).
+- The codec target is the RAW 10 kHz waveform ``(B, C, W)`` (W = cfg.window = 500 samples in
+  a 50 ms frame), so the discriminator is a 1-D (over the SAMPLE axis) multi-scale PatchGAN
+  with the ``C`` filterscope channels as conv input channels. (2026-09-03: it used to judge a
+  5-bin ELM envelope; the length is now 100x larger, which is why the adaptive body below
+  simply runs its full stride-2 stack again.)
+- Like the spectrogram (and unlike video), the time axis is NOT purely translation-invariant
+  — WHEN in the 50 ms window a burst sits carries physical meaning (ramp / flat-top phase). A
+  fully-convolutional PatchGAN is time-shift-equivariant, the wrong bias, so we break that
+  symmetry with a small sinusoidal TIME positional-encoding channel concatenated to the input
+  (the 1-D analogue of ``FreqAwarePatchGAN``'s freq-PE).
+
+- DEFAULT OFF. ``FastTSCodecConfig.adversarial_weight`` and ``fm_weight`` are both 0.0 for the
+  raw-sample codec: a GAN synthesizes plausible-but-uncorrelated high-frequency detail, which
+  RAISES sample-wise nRMSE (objective 1). The module stays wired so the trade-off can be
+  measured with ``--adversarial_weight``.
 - Multi-scale: the body is applied at a couple of input scales (full + a time-downsampled
   copy) so both fine burst texture and coarse activity structure are judged.
 - Hinge-ready: heads emit RAW patch scores (no final sigmoid). ``return_features=True`` also
@@ -111,9 +118,9 @@ class _Env1DPatchGANBody(nn.Module):
 
 
 class Env1DPatchGAN(nn.Module):
-    """Multi-scale, time-aware 1-D PatchGAN discriminator for the fast-TS envelope codec.
+    """Multi-scale, time-aware 1-D PatchGAN discriminator for the fast-TS RAW-sample codec.
 
-    Forward: ``(B, C, E) -> list[Tensor]`` of raw patch-score maps (one per scale), each
+    Forward: ``(B, C, W) -> list[Tensor]`` of raw patch-score maps (one per scale), each
     ``(B, 1, e)``. Hinge-ready (no final sigmoid).
 
     ``forward(x, return_features=True) -> (list[score], list[feat])`` additionally returns a
@@ -137,7 +144,8 @@ class Env1DPatchGAN(nn.Module):
         # would collapse the body); this keeps 2 scales at the old 50-bin grid but folds to 1 at
         # E=5. Each body is then sized for its OWN pooled length so no conv empties out.
         lengths: List[int] = []
-        L = int(cfg.env_bins)
+        # envelope mode judges an E=5 curve; raw mode a W=500 waveform.
+        L = int(cfg.window if cfg.is_raw else cfg.env_bins)
         for si in range(scales):
             if si > 0:
                 L = -(-L // 2)  # ceil(L / 2), matching F.avg_pool1d(kernel=2, ceil_mode=True)
@@ -150,7 +158,7 @@ class Env1DPatchGAN(nn.Module):
         )
 
     def time_pe(self, x: torch.Tensor) -> torch.Tensor:
-        """Build the time positional-encoding channels for input ``x`` (B, C, E) -> (B, Cpe, E)."""
+        """Build the time positional-encoding channels for input ``x`` (B, C, W) -> (B, Cpe, W)."""
         b, _, env_bins = x.shape
         pe = _sinusoidal_time_pe(env_bins, self.n_pe_channels, x.device, x.dtype)  # (Cpe, E)
         return pe.unsqueeze(0).expand(b, self.n_pe_channels, env_bins)
@@ -166,9 +174,9 @@ class Env1DPatchGAN(nn.Module):
         return body.forward_features(xin)
 
     def forward(self, x: torch.Tensor, return_features: bool = False):
-        """``(B, C, E) -> list[score]``, or ``(list[score], list[feat])`` if requested."""
+        """``(B, C, W) -> list[score]``, or ``(list[score], list[feat])`` if requested."""
         if x.dim() != 3:
-            raise ValueError(f"Env1DPatchGAN expects (B, C, E); got {tuple(x.shape)}")
+            raise ValueError(f"Env1DPatchGAN expects (B, C, W); got {tuple(x.shape)}")
         maps: List[torch.Tensor] = []
         feats: List[torch.Tensor] = []
         cur = x

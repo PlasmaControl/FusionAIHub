@@ -45,6 +45,23 @@ class FrameTokenizer(nn.Module):
         self.modality_embed = nn.Embedding(cfg.n_modalities, d)
         self.frame_embed = nn.Embedding(cfg.max_frames, d)
         self._mod_index = {m.name: i for i, m in enumerate(cfg.modalities)}
+        # PER-COLUMN OWN-HISTORY (cfg.lag_embed_k > 0). MEASURED 2026-08-16: at the generation
+        # condition the d1024xL16 model scores 1.6090 while a per-column count table over the
+        # column's own last 3 codes scores 1.5539 — and the per-modality deficit tracks how much
+        # each modality gains from its own history (co2 +0.188 nats and the model loses by 0.143;
+        # mhr +0.064 and the model already wins). So the missing capability is specifically
+        # "column d attends to column d's own recent past", which a table indexes exactly and a
+        # backbone sharing parameters over 1280 columns dilutes.
+        # Adding lag-k code embeddings at the SAME token index makes that table representable by
+        # construction: the head sees (column identity, its own last k codes) directly.
+        # k=0 adds no parameters at all, so existing checkpoints load unchanged.
+        self.lag_k = int(getattr(cfg, "lag_embed_k", 0) or 0)
+        if self.lag_k > 0:
+            self.lag_embed = nn.ModuleDict(
+                {m.name: nn.ModuleList(
+                    [nn.Embedding(m.codebook_size + 1, d) for _ in range(self.lag_k)])
+                 for m in cfg.modalities}
+            )
 
     def _check(self, codes: Dict[str, torch.Tensor]) -> None:
         names = {m.name for m in self.cfg.modalities}
@@ -80,6 +97,17 @@ class FrameTokenizer(nn.Module):
                 + self.pos_embed[m.name](pos).view(1, 1, m.n_tok, -1)
                 + frame_e.view(1, F, 1, -1)
             )
+            for k in range(self.lag_k):
+                # Shift along the FRAME axis so token n at frame f sees token n at frame f-(k+1).
+                # `c` is the MASKED context the caller passed in, never the targets, so this adds
+                # no information the model does not already have -- it only makes it reachable
+                # without crossing attention layers. The first k+1 frames have no in-window
+                # history and are filled with the [MASK] id, the same "unknown" symbol used
+                # everywhere else.
+                lag = c.new_full(c.shape, self.mask_ids[m.name])
+                if F > k + 1:
+                    lag[:, k + 1:] = c[:, : F - (k + 1)]
+                e = e + self.lag_embed[m.name][k](lag)
             parts.append(e)
         return torch.cat(parts, dim=2)                              # (B, F, tokens_per_frame, d)
 
