@@ -1,1 +1,1 @@
-shot,t0_s,t1_s,phenomenon,evidence_kind,source,confidence,attrs
+shot,category,t_start,t_end,confidence

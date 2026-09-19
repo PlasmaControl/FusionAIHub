@@ -1,0 +1,31 @@
+{
+  "name": "co2_250_detector_adjust.pkl",
+  "derived_from": "alfven_eigenmode/raw/co2_250_detector.pkl",
+  "written_by": "alfven_eigenmode/adjust_labels.py",
+  "written": "2026-09-18T18:39:50+00:00",
+  "shots": 180,
+  "frames_per_shot": 3905,
+  "window_ms": [
+    0.0,
+    2000.0
+  ],
+  "shift_ms": -250.0,
+  "shift_frames": -488,
+  "shift_applied": "label array rolled; time_ms is the unshifted grid",
+  "unannotated_tail_bins": 488,
+  "shift_basis": "ridge/label cross-correlation, peak -278 ms over 179 shots, per-shot median -245 ms, objective flat from -200 to -300 ms",
+  "collapsed_classes": [
+    "bae",
+    "eae",
+    "rsae",
+    "tae"
+  ],
+  "excluded_classes": [
+    "lfm"
+  ],
+  "spectrograms": "dropped; labels and time only",
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  }
+}

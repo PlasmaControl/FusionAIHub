@@ -1,0 +1,170 @@
+version: 1
+
+interval_schema:
+  version: 1
+  columns:
+    - shot
+    - category
+    - t_start
+    - t_end
+    - confidence
+  time_units: ms
+
+label_grid:
+  formatted_shots: "format/shots/<shot>.npz"
+  extended_shots: "extend_<producer>/<shot-list>/<shot>.npz"
+  version: 1
+  sample_interval_ms: 50
+  axis_order: [time, rho]
+  time_units: ms
+  rho_bins: 20
+  rho_range: [0.0, 1.0]
+  classes:
+    default:
+      0: absent
+      1: present
+    minimum_safety_factor:
+      0: absent
+      1: low
+      2: hybrid
+      3: elevated
+      4: high
+
+format_datasets:
+  - name: resistive_wall_mode
+    raw_path: rwm_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: rwm
+    sources:
+      - rwm_onsets_2017
+      - rwm_onsets_2024
+  
+  - name: alfven_eigenmode
+    raw_path: alfven_eigenmode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: ae
+    sources:
+      - co2_detector_2021
+
+  - name: edge_localized_mode
+    raw_path: edge_localized_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: elm
+    sources:
+      - elm_labels
+      - elm_labels_wpqh
+
+  - name: wide_pedestal_quiescent_high_confinement_mode
+    raw_path: wide_pedestal_quiescent_high_confinement_mode_format_2026_v1.csv
+    date:
+    abbreviation: wpqh
+    sources:
+      - wpqh_on_off_times
+      - wpqh_phases
+
+  - name: neoclassical_tearing_mode
+    raw_path: neoclassical_tearing_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: ntm
+    sources:
+      - tm_labels_archive
+      - tm_labels_h5
+
+  - name: high_confinement_mode
+    raw_path: high_confinement_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: hmode
+    sources:
+      - jalal_hmode_confinement_2024
+
+  - name: low_confinement_mode
+    raw_path: low_confinement_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: lmode
+    sources:
+      - jalal_lmode_confinement_2024
+
+  - name: vertical_displacement_event
+    raw_path: vertical_displacement_event_format_2026_v1.csv
+    date:
+    abbreviation: vde
+    sources: []
+
+raw_datasets:
+  - stem: rwm_onsets_2017
+    path: resistive_wall_mode/raw/rwm_onsets_2017.csv
+    formatter: resistive_wall_mode/formatter.py
+    provenance: "Jeremy Hansen, 2017 campaign RWM onset database"
+    citation:
+
+  - stem: rwm_onsets_2024
+    path: resistive_wall_mode/raw/rwm_onsets_2024.csv
+    formatter: resistive_wall_mode/formatter.py
+    provenance: "Jeremy Hansen, 2024 campaign RWM onset database"
+    citation:
+
+  - stem: co2_detector_2021
+    path: alfven_eigenmode/raw/co2_250_detector.pkl
+    formatter: alfven_eigenmode/formatter.py
+    provenance: "Azarakhsh Jalalvand, CO2 alfven eigenmode detector data from 2021"
+    citation:
+
+  - stem: elm_labels
+    path: edge_localized_mode/raw/elm_labels_dict.pkl
+    formatter: edge_localized_mode/formatter.py
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_labels_dict.pkl"
+    citation:
+
+  - stem: elm_labels_wpqh
+    path: edge_localized_mode/raw/elm_labels_dict_wpqh.pkl
+    formatter: edge_localized_mode/formatter.py
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_labels_dict_wpqh.pkl"
+    citation:
+
+  - stem: elm_survival_labels
+    path: edge_localized_mode/raw/elm_survival_labels.pkl
+    formatter:
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_survival_labels.pkl"
+    citation:
+
+  - stem: elm_survival_labels_wpqh
+    path: edge_localized_mode/raw/elm_survival_labels_wpqh.pkl
+    formatter:
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_survival_labels_wpqh.pkl"
+    citation:
+
+  - stem: wpqh_on_off_times
+    path: wide_pedestal_quiescent_high_confinement_mode/raw/wpqh_on_off_times.pkl
+    formatter:
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/wpqh_on_off_times.pkl; also hard-linked in edge_localized_mode/raw/"
+    citation:
+
+  - stem: wpqh_phases
+    path: wide_pedestal_quiescent_high_confinement_mode/raw/WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1
+    formatter:
+    provenance: "Original phase-table directory copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/; attribution to the requested Jalalvand database remains unconfirmed"
+    citation:
+
+  - stem: tm_labels_archive
+    path: neoclassical_tearing_mode/raw/tm_labels.tar
+    formatter: neoclassical_tearing_mode/formatter.py
+    provenance: "Copied unchanged from /projects/EKOLEMEN/survival_tm_2/tm_labels.tar; retained as an archive to save space"
+    citation:
+
+  - stem: tm_labels_h5
+    path: neoclassical_tearing_mode/raw/tm_labels.h5
+    formatter: neoclassical_tearing_mode/formatter.py
+    provenance: "Copied unchanged from /projects/EKOLEMEN/survival_tm_2/tm_labels.h5"
+    citation:
+
+  - stem: jalal_hmode_confinement_2024
+    path: high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv
+    formatter: high_confinement_mode/formatter.py
+    provenance: "User-provided Jalal confinement regime interval table dated 28 April 2024"
+    citation:
+
+  - stem: jalal_lmode_confinement_2024
+    path: low_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv
+    formatter: low_confinement_mode/formatter.py
+    provenance: "User-provided Jalal confinement regime interval table dated 28 April 2024"
+    citation:

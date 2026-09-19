@@ -1,0 +1,92 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "low",
+    "2": "hybrid",
+    "3": "elevated",
+    "4": "high"
+  },
+  "category": "minimum_safety_factor",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "coverage": "Bounds of successful source coverage; not a claim of continuous coverage. Missing products and absent curated shots are not negatives.",
+  "full_events": "<full_events_root>/<shot>_events.parquet; a relative full_events_root is relative to --root ($LABELMAKER_ROOT)",
+  "full_events_root": "events",
+  "made_at": "2026-09-14T19:57:28+00:00",
+  "made_by": "scripts/labelmaker/labels_extend.py",
+  "made_from": [
+    {
+      "git_sha": "06baba0",
+      "producer": "qmin_rule",
+      "run_id": "rules504-20260914b"
+    }
+  ],
+  "missing_event_shots": {
+    "count": 0,
+    "first_20": [],
+    "full_list": "recommender_v1.missing_event_shots.json"
+  },
+  "n_events": 465,
+  "n_requested_shots": 500,
+  "n_rows": 465,
+  "n_shots": 337,
+  "n_shots_with_events": 337,
+  "per_shot_files": {
+    "axis_order": [
+      "time",
+      "rho"
+    ],
+    "classes": {
+      "0": "absent",
+      "1": "low",
+      "2": "hybrid",
+      "3": "elevated",
+      "4": "high"
+    },
+    "encoding": "sparse_sampled_integer_grid",
+    "label_origin": "any event overlapping each half-open bin; multiclass uses greatest overlap, ties favor larger ID",
+    "path": "recommender_v1/<shot>.npz",
+    "radial_mapping": "broadcast each scalar label across all 20 rho bins",
+    "rho_edges": [
+      0.0,
+      0.05,
+      0.1,
+      0.15000000000000002,
+      0.2,
+      0.25,
+      0.30000000000000004,
+      0.35000000000000003,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6000000000000001,
+      0.65,
+      0.7000000000000001,
+      0.75,
+      0.8,
+      0.8500000000000001,
+      0.9,
+      0.9500000000000001,
+      1.0
+    ],
+    "sample_interval_ms": 50.0,
+    "time_grid": "50 ms bin starts over 0..5950 ms",
+    "unclassified": "unknown; low is reserved but not emitted by the current producer",
+    "unknown": "unknown_indices; not interchangeable with zero"
+  },
+  "producer": "qmin_rule",
+  "schema_version": 5,
+  "shot_list": "recommender_v1.yaml",
+  "shot_list_sha256": "c08dd6b40cb8d544f9357d600fca6bfce4de80d87f7d9c2b248ebc4f5e4fe20b",
+  "source_status_counts": {
+    "ok": 500
+  },
+  "table_kind": "intervals",
+  "time_units": "ms"
+}

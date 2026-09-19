@@ -12,15 +12,47 @@
   <h1>Shot Designer</h1>
   <span id="dbinfo" class="identifier">Loading shots…</span>
   <nav id="tabs" aria-label="Views">
-    <button data-view="search" class="active" aria-current="page">Search</button>
+    <button data-view="create" class="active" aria-current="page">Design a shot</button>
+    <button data-view="search">Search</button>
     <button data-view="shot">Shot</button>
     <button data-view="locate">Locate</button>
+    <button data-view="design">Actuator editor</button>
     <button data-view="info">Info</button>
   </nav>
 </header>
 <main>
   <div id="global-notes" aria-live="polite"></div>
-  <div id="view-search" class="view">
+  <div id="view-create" class="view assistant-view">
+    <section class="content-panel assistant-panel">
+      <h2>Design a shot</h2>
+      <p class="muted">Describe the experiment you want. Gemma will find reference shots, propose actuation, and save a design you can adjust.</p>
+      <form id="assistant-form">
+        <label class="sr-only" for="assistant-prompt">What would you like to design?</label>
+        <textarea id="assistant-prompt" rows="4" maxlength="4000" required placeholder="Design a shot for tearing mode control using ECH, with a steady plasma and moderate NBI heating."></textarea>
+        <div class="assistant-form-actions">
+          <span class="small muted">Enter to design · Shift+Enter for a new line</span>
+          <label>Gemma mode<select id="assistant-model"><option value="quality">Quality</option><option value="fast">Fast</option></select></label>
+          <button id="assistant-submit" class="primary" type="submit">Design shot</button>
+        </div>
+      </form>
+      <div id="assistant-examples" class="assistant-examples" aria-label="Example requests"></div>
+      <p id="assistant-status" role="status" aria-live="polite">Describe your goal to begin.</p>
+      <ol id="assistant-stages" class="assistant-stages" aria-label="Design progress"></ol>
+      <p id="assistant-error" role="alert"></p>
+      <button id="assistant-retry" type="button" hidden>Retry</button>
+      <section id="assistant-result" class="assistant-result" hidden>
+        <h3>Design saved</h3>
+        <p id="assistant-summary"></p>
+        <p id="assistant-explanation" class="prose"></p>
+        <div id="assistant-checks"></div>
+        <div class="design-actions">
+          <button id="assistant-edit" type="button">Open in actuator editor</button>
+          <a id="assistant-download" class="button-link" hidden>Download actuator HDF5</a>
+        </div>
+      </section>
+    </section>
+  </div>
+  <div id="view-search" class="view" hidden>
     <section class="query-panel">
       <h2>Search shots</h2>
       <form id="search-form" novalidate>
@@ -115,11 +147,94 @@
       <div id="locate-results"><p class="muted">Choose a phenomenon.</p></div>
     </section>
   </div>
+  <div id="view-design" class="view design-view" hidden>
+    <section class="query-panel">
+      <h2>Shot program</h2>
+      <form id="design-form" novalidate>
+      <label>Reference shots
+        <input id="design-reference" name="reference_shots" type="text" placeholder="199597, 199793" autocomplete="off" aria-describedby="design-reference-help">
+      </label>
+      <p id="design-reference-help" class="small muted">Separate up to six shots with commas. The first supplies the initial state and default actuation.</p>
+      <button id="design-merge" type="button">Average reference actuation</button>
+      <p class="small muted">Creates an equal average of compatible channels and replaces current waveform edits.</p>
+      <p id="design-merge-status" class="small" role="status" aria-live="polite"></p>
+      <div class="design-time-fields">
+        <label>Prediction start (s)
+          <input id="design-start" name="start_s" type="text" inputmode="decimal" value="1">
+        </label>
+        <label>Prediction end (s)
+          <input id="design-end" name="end_s" type="text" inputmode="decimal" value="5">
+        </label>
+      </div>
+      <label>Notes<textarea id="design-notes" name="notes" rows="5" placeholder="Purpose, assumptions, and review notes"></textarea></label>
+      <div class="design-actions">
+        <button id="design-preview" type="button">Check preview</button>
+        <button id="design-save" class="primary" type="button">Save revision</button>
+        <button id="design-prepare" type="button" hidden>Prepare IGNITE input</button>
+      </div>
+      <p id="design-feedback" class="small" role="status" aria-live="polite">Enter a reference shot and click Check preview.</p>
+      <p id="design-prepare-status" class="small" role="status" aria-live="polite"></p>
+      <h3>Saved revisions</h3>
+      <label class="sr-only" for="design-revisions">Saved revision</label>
+      <select id="design-revisions"><option value="">No saved revisions</option></select>
+      <button id="design-reload" type="button">Open revision</button>
+      <div class="design-downloads" aria-label="Downloads">
+        <a id="design-json" class="button-link" hidden>Download design JSON</a>
+        <a id="design-ignite" class="button-link" hidden>Download IGNITE .pt</a>
+      </div>
+      <p id="design-dirty" class="small muted" aria-live="polite">Choose a reference shot.</p>
+      </form>
+    </section>
+    <section class="content-panel design-workspace">
+      <div class="design-heading">
+        <div>
+          <h2>Actuator waveform</h2>
+          <p class="muted">Click to add a joint; drag to adjust. First and last joints anchor the window. Shaded history is locked.</p>
+        </div>
+        <label>Channel
+          <select id="design-channel"></select>
+        </label>
+      </div>
+      <p id="design-channel-details" class="design-channel-details">Open a reference shot to load channels.</p>
+      <div class="design-chart-wrap">
+        <svg id="design-svg" class="design-chart" aria-label="Actuator waveform"></svg>
+      </div>
+      <div id="design-legend" class="design-legend" aria-label="Waveform legend">
+        <span><i class="legend-line reference"></i>Reference (seed)</span>
+        <span><i class="legend-line comparison"></i>Reference</span>
+        <span><i class="legend-line edit"></i>Editable program</span>
+        <span><i class="legend-history"></i>Locked history</span>
+      </div>
+      <div class="design-point-editor">
+        <label>Selected point time (s)
+          <input id="design-point-time" name="point_time_s" type="text" inputmode="decimal" disabled>
+        </label>
+        <label>Selected point value
+          <input id="design-point-value" name="point_value" type="text" inputmode="decimal" disabled>
+        </label>
+        <button id="design-apply-point" type="button" disabled>Apply point</button>
+        <button id="design-delete-point" type="button" disabled>Delete joint</button>
+        <button id="design-simplify" type="button" disabled>Simplify joints</button>
+        <button id="design-reset" type="button" disabled>Reset channel</button>
+      </div>
+      <p id="design-selection" class="small muted" aria-live="polite">Click the waveform area to add a joint. Select a joint to edit or delete it.</p>
+      <section class="design-checks" aria-labelledby="design-checks-title">
+        <div class="design-check-heading">
+          <h3 id="design-checks-title">Checks</h3>
+          <strong id="design-status" data-state="pending" aria-live="polite">Not checked</strong>
+        </div>
+        <div id="design-errors" aria-live="assertive"></div>
+        <div id="design-warnings" aria-live="polite"></div>
+      </section>
+    </section>
+  </div>
   <div id="view-info" class="view" hidden>
     <div id="info-notes" aria-live="polite"></div>
     <div id="info-content"><p class="muted">Loading…</p></div>
   </div>
 </main>
+<script src="design.js"></script>
+<script src="assistant.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

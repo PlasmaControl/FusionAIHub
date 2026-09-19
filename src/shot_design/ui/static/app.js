@@ -318,6 +318,14 @@ function shotLink(shot, phenomenon = "", segment = "flat_top") {
   return `#shot/${shot}?${new URLSearchParams({ phenomenon, segment })}`;
 }
 
+function useReferenceButton(shot) {
+  return el("button", { type: "button", class: "use-reference", onclick: (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    location.hash = `#design/${shot}`;
+  } }, "Use as reference");
+}
+
 function blurbText(row, { cell = false } = {}) {
   const text = row.blurb?.trim() ? row.blurb : null;
   if (!text) return el("div", { class: "blurb-text" }, "—");
@@ -354,7 +362,8 @@ function resultsTable(rows, segment) {
           refreshNotes();
         });
       return el("tr", { class: "clickable", onclick: open },
-        el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot"))),
+        el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot")),
+          useReferenceButton(row.shot)),
         el("td", { class: "numeric" }, display(row.score)),
         title,
         el("td", { class: "summary-cell prose-cell" }, blurbText(row, { cell: true })),
@@ -558,6 +567,7 @@ function renderShot(data) {
   if (!data.record) return;
   const record = data.record;
   const parts = data.describe_parts;
+  const referenceShot = Number(record.shot ?? S.shot);
   if (record.blurb?.trim()) root.append(el("div", { class: "summary-block" },
     el("h3", {}, "Summary"), blurbText(record)));
   if (parts) {
@@ -582,6 +592,8 @@ function renderShot(data) {
       collapsible(fields({ ...seg.raw, ...seg.derived }, data.units)))))));
   root.append(el("h3", {}, "Logbook"), collapsible(el("div", {},
     (record.human?.log_entries || []).map(attributedQuote))));
+  if (Number.isSafeInteger(referenceShot)) root.append(el("div", { class: "shot-actions" },
+    useReferenceButton(referenceShot)));
   root.append(el("h3", {}, "Frame codes"), collapsible(fields(data.frame_codes)),
     el("details", { ontoggle: updateDisclosures }, el("summary", {}, "Complete stored record"), collapsible(fields(record))));
 }
@@ -609,7 +621,8 @@ function renderHit(hit, segment) {
   const domain = timelineDomain(hit);
   const card = el("article", { class: "card" }, el("div", { class: "hit-head" },
     el("a", { class: "shot-number", href: shotLink(hit.shot, hit.phenomenon, segment) }, `Shot ${display(hit.shot, "shot")}`),
-    el("span", { class: "numeric" }, `score ${display(hit.score)}`), el("span", { class: "identifier" }, `run ${display(hit.run_id, "run_id")}`)),
+    el("span", { class: "numeric" }, `score ${display(hit.score)}`), el("span", { class: "identifier" }, `run ${display(hit.run_id, "run_id")}`),
+    useReferenceButton(hit.shot)),
     longText(hit.mp_title), el("h3", {}, "Summary"), blurbText(hit), caveats(hit.caveats),
     fields({ total_duration_s: hit.total_duration_s, coverage_state: hit.coverage_state }),
     el("h3", {}, "Observed intervals"), timeline((hit.intervals || []).map((iv) => ({ ...iv, phenomenon: hit.phenomenon })), domain));
@@ -653,18 +666,25 @@ function renderScoring(data) {
 }
 
 async function route() {
-  const hash = location.hash.slice(1) || "search";
+  const hash = location.hash.slice(1) || "create";
   if (hash.startsWith("shot/")) {
     const [path, query] = hash.split("?");
     const params = new URLSearchParams(query);
     const shot = Number(path.split("/")[1]);
     if (Number.isInteger(shot)) await openShot(shot, params.get("phenomenon") || "", params.get("segment") || "flat_top");
+  } else if (hash.startsWith("design-revision/")) {
+    showView("design");
+    await globalThis.ShotDesign?.openSavedDesign(hash.split("/")[1]);
+  } else if (hash === "design" || hash.startsWith("design/")) {
+    showView("design");
+    const shot = Number(hash.split("/")[1]);
+    if (Number.isSafeInteger(shot)) await globalThis.ShotDesign?.openDesign(shot);
   } else if (hash === 'info') {
     showView('info');
     $('#info-content').replaceChildren(el('p', {}, 'Loading…'));
     const {data} = await api('/api/scoring');
     renderScoring(data);
-  } else showView(["search", "shot", "locate"].includes(hash) ? hash : "search");
+  } else showView(["create", "search", "shot", "locate"].includes(hash) ? hash : "create");
 }
 
 async function init() {
@@ -682,6 +702,10 @@ async function init() {
     select.replaceChildren(...(select.dataset.all ? [el("option", { value: "" }, "All phenomena")] : []),
       ...registry.map((p) => el("option", { value: p.id }, `${p.title} (${p.id})${p.covering_sources.length ? "" : " — no detector"}`)));
   }
+  if (globalThis.ShotDesign) await globalThis.ShotDesign.initDesign({ api });
+  if (globalThis.ShotDesignAssistant) globalThis.ShotDesignAssistant.init({ api,
+    onOpenDesign: (id) => { location.hash = `design-revision/${encodeURIComponent(id)}`; },
+  });
   bindForm("#search-form", "#search-notes", async (form) => {
     const constraints = form.get("constraints").trim();
     const body = { text: form.get("text"), ref_shot: parseNumberField(form.get("ref_shot"), 'Reference shot', {identifier:true}),

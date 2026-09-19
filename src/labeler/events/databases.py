@@ -1,10 +1,9 @@
-"""Common label-table schema and the format/ curated-table loader.
+"""Load public interval CSVs and legacy event tables into internal events.
 
-Original lists live in raw/ and only scripts/labeler/labels_format.py
-converts them. This module reads format/<format_stem>.csv, preserving its
-stored evidence kind, confidence and JSON attributes. A listing is not a
-coverage claim: events and source records keep NaN coverage, and a shot
-absent from every table contributes neither an event nor a source row.
+Current public files contain shot, millisecond bounds and confidence; events.yaml
+supplies their dataset identity. Legacy tables.yaml and rich CSVs remain readable.
+Original sources are read only by formatters. Listing a shot never asserts full
+coverage, and missing shots never become negative labels.
 """
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ from ..config import Paths, atomic_path
 from .lexicon import LexiconError, load_lexicon
 from .schema import EVIDENCE_KINDS, Event
 
-#: One CSV projection for all format/ and extend_<producer>/ event tables.
+#: Internal event projection; public CSV columns live in interval_tables.py.
 FORMAT_COLUMNS = (
     "shot", "t0_s", "t1_s", "phenomenon", "evidence_kind", "source",
     "confidence", "attrs",
@@ -277,6 +276,41 @@ def _spec(where: str, entry: Any) -> TableSpec:
     )
 
 
+
+def _load_events_manifest(path: Path) -> tuple[TableSpec, ...]:
+    """Read dated combined outputs from events.yaml; undated entries are pending."""
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or raw.get("version") != 1:
+        raise DatabaseError(f"{path}: expected events manifest version 1")
+    rows = raw.get("format_datasets", [])
+    sources = {r["stem"]: r for r in raw.get("raw_datasets", [])}
+    specs, seen = [], set()
+    ids = set(load_lexicon().ids)
+    for row in rows:
+        if not row.get("date"):
+            continue
+        category, filename = row["name"], row["raw_path"]
+        if (Path(category).name != category or Path(filename).name != filename
+                or Path(filename).suffix != ".csv"):
+            raise DatabaseError(f"{path}: category and output must be plain names")
+        stem = Path(filename).stem
+        if stem in seen:
+            raise DatabaseError(f"{path}: duplicate output stem {stem}")
+        seen.add(stem)
+        phenomenon = {"ntm": "tearing"}.get(row["abbreviation"], row["abbreviation"])
+        if phenomenon not in ids:
+            raise DatabaseError(f"{path}: unregistered phenomenon {phenomenon}")
+        if not row.get("sources") or not set(row["sources"]) <= sources.keys():
+            raise DatabaseError(f"{path}: invalid raw sources for {stem}")
+        specs.append(TableSpec(
+            stem=stem, dir=category, phenomenon=phenomenon, kind="interval",
+            shot_col="shot", t_units="ms", t0_col="t_start", t1_col="t_end",
+            provenance="; ".join(sources[k].get("provenance", k) for k in row["sources"]),
+            format_stem=stem, converter=category, made_at=row["date"],
+        ))
+    return tuple(specs)
+
+
 def load_manifest(root=None) -> tuple[TableSpec, ...]:
     """Every table `tables.yaml` declares; every problem names the file.
 
@@ -287,6 +321,9 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
     unique would give two tables one source and make a re-run of either
     replace the other's rows.
     """
+    current = _root(root) / "events.yaml"
+    if current.exists():
+        return _load_events_manifest(current)
     path = _root(root) / MANIFEST
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -347,6 +384,15 @@ def _read_cached(spec: TableSpec, root=None) -> pd.DataFrame:
     hit = _CACHE.get(key)
     if hit is None:
         hit = _CACHE[key] = _parse(path)
+    # Public CSVs carry five columns; identity belongs to the manifest.
+    from .interval_tables import INTERVAL_COLUMNS
+    if tuple(hit.columns) == INTERVAL_COLUMNS:
+        hit = validate_format(pd.DataFrame({
+            "shot": hit.shot, "t0_s": hit.t_start / 1000,
+            "t1_s": hit.t_end / 1000, "phenomenon": spec.phenomenon,
+            "evidence_kind": "database", "source": spec.source,
+            "confidence": hit.confidence, "attrs": hit.category.map(lambda c: json.dumps({"table": spec.stem, "category": c})),
+        }, columns=FORMAT_COLUMNS), where=str(path))
     for col, expected in (("source", spec.source), ("phenomenon", spec.phenomenon)):
         if not (hit[col] == expected).all():
             raise DatabaseError(f"{path}: `{col}` must match manifest {expected!r}")
@@ -355,10 +401,22 @@ def _read_cached(spec: TableSpec, root=None) -> pd.DataFrame:
 
 def _parse(path: Path) -> pd.DataFrame:
     try:
-        raw = pd.read_csv(path, keep_default_na=False)
+        raw = pd.read_csv(path, keep_default_na=False).rename(
+            columns={"t_start_ms": "t_start", "t_end_ms": "t_end"}
+        )
     except (OSError, UnicodeDecodeError, pd.errors.ParserError,
             pd.errors.EmptyDataError) as exc:
         raise DatabaseError(f"{path}: unreadable as CSV: {exc}") from exc
+    from .interval_tables import (
+        INTERVAL_COLUMNS,
+        LEGACY_INTERVAL_COLUMNS,
+        project_intervals,
+        validate_intervals,
+    )
+    if tuple(raw.columns) == LEGACY_INTERVAL_COLUMNS:
+        return project_intervals(raw)
+    if tuple(raw.columns) == INTERVAL_COLUMNS:
+        return validate_intervals(raw)
     return validate_format(raw, where=str(path))
 
 
@@ -402,8 +460,12 @@ def events_for_shot(
         rows = frame[frame["shot"] == shot]
         if rows.empty:
             continue
+        n_events = 0
         for row in rows.to_dict("records"):
             attrs = json.loads(row["attrs"])
+            if attrs.get("category") == 0:
+                continue
+            n_events += 1
             events.append(
                 Event(
                     shot=shot,
@@ -427,7 +489,7 @@ def events_for_shot(
             # Empty by contract - see COVERAGE_REASON. The NaN coverage
             # below is what says the examined interval is unknown.
             "reason": "",
-            "n_events": len(rows),
+            "n_events": n_events,
             "t_cov0_s": _NAN,
             "t_cov1_s": _NAN,
             "diag": "",

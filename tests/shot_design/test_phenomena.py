@@ -1067,7 +1067,7 @@ def test_the_same_phenomenon_named_twice_is_one_constraint(phen_db, monkeypatch)
 # ------------------------- L-D1: the curated RWM tables reach the registry as MEMBERSHIP only
 
 
-def _label_tables(root: Path, shots: list[int], stem: str = "rwm_onsets_2017") -> Path:
+def _label_tables(root: Path, shots: list[int], stem: str = "rwm_format_2026_v1") -> Path:
     """A `data/events`-shaped fixture: one manifest, one CSV, the stems the registry names."""
     (root / "resistive_wall_mode/format").mkdir(parents=True, exist_ok=True)
     (root / "tables.yaml").write_text(yaml.safe_dump({
@@ -1113,14 +1113,14 @@ def rwm_tables(tmp_path, monkeypatch):
     ph._table_shots.cache_clear()
 
 
-def test_the_shipped_registry_names_both_rwm_tables_and_the_manifest_knows_them():
+def test_the_shipped_registry_names_the_combined_rwm_table_in_the_manifest():
     """The registry entry and `data/events/tables.yaml` are two files that have to agree, and
     nothing else checks that they do: a stem typo here is a silent empty set, not an error."""
     from labeler.events import databases as label_tables
 
     entry = ph.registry()["rwm"].database
     assert entry is not None
-    assert list(entry["tables"]) == ["rwm_onsets_2017", "rwm_onsets_2024"]
+    assert list(entry["tables"]) == ["rwm_format_2026_v1"]
     stems = {spec.stem for spec in label_tables.load_manifest()}
     assert set(entry["tables"]) <= stems
 

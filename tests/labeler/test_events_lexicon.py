@@ -33,7 +33,7 @@ def test_the_shipped_lexicon_carries_the_round_one_ids_and_the_ids_added_since(l
     assert lex.version == 1
     # Same ids in the same order: the tuple is the file's table of contents.
     assert list(lex.ids) == list(lx.PHENOMENON_IDS)
-    assert len(lex.ids) == 17
+    assert len(lex.ids) == 19
     for p in lex.phenomena:
         assert p.title and p.aliases and p.weight > 0.0
         assert all(a == a.lower() and a.strip() for a in p.aliases)

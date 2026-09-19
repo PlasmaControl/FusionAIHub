@@ -17,8 +17,8 @@ from labeler.events.databases import (
     DatabaseError,
     TableSpec,
     load_manifest,
-    write_format_table,
 )
+from labeler.events.interval_tables import project_intervals, write_interval_table
 
 
 def csv_adapter(spec: TableSpec, path: Path) -> pd.DataFrame:
@@ -86,7 +86,7 @@ def convert(spec: TableSpec, root: Path) -> Path:
     raw_path = spec.raw_path(root)
     frame = ADAPTERS[spec.converter](spec, raw_path)
     out = root / spec.dir / "format" / f"{spec.format_stem}.csv"
-    write_format_table(frame, out, {
+    write_interval_table(project_intervals(frame), out, {
         "schema_version": FORMAT_SCHEMA_VERSION,
         "made_from": {
             "raw_file": raw_path.relative_to(root).as_posix(),
@@ -112,7 +112,11 @@ def main(argv=None) -> int:
             parser.error(f"unknown table(s): {sorted(unknown)}")
         specs = tuple(s for s in specs if s.stem in args.table)
     for spec in specs:
-        print(convert(spec, args.root))
+        if (args.root / "events.yaml").exists():
+            from labeler.events.source_formatters import convert_category
+            print(convert_category(spec.dir, args.root))
+        else:
+            print(convert(spec, args.root))
     return 0
 
 

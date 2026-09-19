@@ -296,12 +296,12 @@ def test_the_per_table_sources_are_offered_as_documentation(table):
 # ------------------------------------------------- the committed RWM tables
 
 
-def test_the_committed_tables_are_the_two_rwm_onset_databases():
+def test_the_registered_outputs_include_rwm_ae_elm_and_tearing():
     specs = db.load_manifest(Paths().label_tables)
-    assert [s.stem for s in specs] == ["rwm_onsets_2017", "rwm_onsets_2024"]
-    assert {s.phenomenon for s in specs} == {"rwm"}
-    assert all(s.kind == "point" and s.t_units == "ms" for s in specs)
-    assert all("Hansen" in s.provenance for s in specs)
+    assert {s.phenomenon for s in specs} == {"rwm", "ae", "elm", "tearing", "hmode", "lmode"}
+    assert len(specs) == 6
+    assert all(s.kind == "interval" and s.t_units == "ms" for s in specs)
+    assert all(s.provenance for s in specs)
 
 
 def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
@@ -311,7 +311,7 @@ def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
     # lower bound catches.
     root = Paths().label_tables
     total, named = 0, set()
-    for spec in db.load_manifest(root):
+    for spec in (s for s in db.load_manifest(root) if s.phenomenon == "rwm"):
         frame = db.read_table(spec, root)
         total += len(frame)
         named |= set(frame["shot"].tolist())
@@ -319,9 +319,7 @@ def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
         assert (frame["shot"] > 100_000).all()
         assert frame["t0_s"].between(0.1, 20.0).all()
         assert (frame["t1_s"] == frame["t0_s"]).all()
-        attrs = frame["attrs"].map(json.loads)
-        assert {a["MODE_TYPE"] for a in attrs} <= {"rwm", "n2rwm"}
-        assert {a["NTOR"] for a in attrs} <= {1, 2}
+        assert set(frame.source) == {spec.source}
         assert spec.path(root).parent.name == "format"
     assert (total, len(named)) == (56, 33)
 
@@ -333,7 +331,7 @@ def test_the_rwm_tables_name_no_shot_the_corpus_holds():
     # loader had to land before a table that overlaps arrives.
     root = Paths().label_tables
     named: set[int] = set()
-    for spec in db.load_manifest(root):
+    for spec in (s for s in db.load_manifest(root) if s.phenomenon == "rwm"):
         named |= db.shots(spec, root)
     assert max(named) < 185601
 
