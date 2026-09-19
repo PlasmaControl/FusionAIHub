@@ -17,7 +17,9 @@ each modality's own vocab. See docs/IGNITE_DESIGN.md §5.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Tuple
 
 
@@ -62,6 +64,21 @@ FROZEN_MODALITIES: Tuple[ModalitySpec, ...] = (
     # collapsed like co2/mse were pre-fix), but the STATE includes it, so the layout does too.
     ModalitySpec("filterscopes", "fastts", 5, 1000),
 )
+
+
+def modalities_from_manifest(path: Path | str) -> Tuple[ModalitySpec, ...]:
+    """The frame layout of a PINNED codec bundle, read from its ``codecs/MANIFEST.json``.
+
+    FROZEN_MODALITIES above describes one codec generation; a bundle pinned later (v4 adds
+    mirnov, 15 modalities, 1209 tokens/frame) carries its own table, and a dynamics checkpoint
+    agrees with THAT one. JSON objects preserve insertion order, so the manifest's key order is
+    the canonical token order -- it is what the checkpoint was trained with.
+    """
+    entries = json.loads(Path(path).read_text())["modalities"]
+    return tuple(
+        ModalitySpec(name, e["family"], int(e["n_tok"]), int(e["codebook_size"]))
+        for name, e in entries.items()
+    )
 
 
 @dataclass

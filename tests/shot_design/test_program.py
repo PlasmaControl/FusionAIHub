@@ -10,14 +10,18 @@ from shot_design.design.actuators import build_actuators
 from shot_design.shotdb.corpus import CorpusReader
 
 SHOT = 990091
-# Verified against the shipped step13400 checkpoint and codec MANIFEST.json.
+# Generation v4: verified against ignite_prod_v4/runs/mskfull/dynamics_best.pt's own `modalities`
+# tuple (step 3200) -- 15 modalities, every codebook_size 1000. (v2's step13400 checkpoint had 14
+# and mixed 32768/64000/1000; a seed cache written for it is not readable by this generation,
+# which is exactly what program_reference's vocabulary check exists to catch.)
 PRODUCTION_VOCABS = {
-    "ece": 32768,
-    "bes": 64000,
-    "mhr": 32768,
-    "co2": 32768,
-    "tangtv_lower": 64000,
-    "tangtv_upper": 64000,
+    "ece": 1000,
+    "bes": 1000,
+    "mhr": 1000,
+    "co2": 1000,
+    "mirnov": 1000,
+    "tangtv_lower": 1000,
+    "tangtv_upper": 1000,
     "ts_core_density": 1000,
     "ts_core_temp": 1000,
     "ts_tangential_density": 1000,
@@ -908,12 +912,15 @@ def test_total_split_cannot_change_negative_member_noise(
         service().export_ignite(changed_noise, paths)
 
 
+# Vocabularies that are NOT generation v4's (which is 1000 everywhere). 32768/64000 are v2's
+# spectro and video sizes: a v2-era seed cache is exactly the mistake this check has to catch,
+# and its token values are in range for both generations, so only the metadata gives it away.
 @pytest.mark.parametrize(
     ("modality", "wrong_vocab"),
     [
         ("ece", 16),
-        ("ece", 1000),
-        ("bes", 32768),
+        ("ece", 32768),
+        ("bes", 64000),
         ("cer_ti", 64000),
     ],
 )

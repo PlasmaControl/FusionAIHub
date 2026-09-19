@@ -398,13 +398,26 @@ def cmd_build(args) -> int:
 
 
 def cmd_model(args) -> int:
-    """Where the IGNITE bundle is, what it holds, and -- with --download -- fetch it."""
+    """Where the IGNITE bundle is, what it holds, and how it is installed.
+
+    Generation v4 is pinned from local checkpoints (`--pin`) and verified by the sha256 manifest
+    that pin wrote (`--check`); generation v2 came from the Hub (`--download`). Which one applies
+    is `model.generation` in ignite_modalities.yaml, never a guess from the paths.
+    """
     from .shotdb import ignite
 
     paths = config.load_paths()
     mcfg = ignite.model_cfg()
     target = ignite.bundle_dir(paths)
+    generation = mcfg.get("generation", "v2")
     if args.download:
+        if generation != "v2":
+            print(
+                f"--download is not used for generation {generation}: its checkpoints are local, "
+                f"not published. Run `shot_design model --pin`.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"downloading {mcfg['repo_id']} @ {mcfg['revision'][:12]} -> {target}")
         try:
             ignite.download_bundle(paths, full=args.full)
@@ -416,24 +429,50 @@ def cmd_model(args) -> int:
                 file=sys.stderr,
             )
             return 1
+    if args.pin:
+        names = list(mcfg["n_tok"])
+        print(f"pinning {len(names)} codecs + {mcfg['dynamics_file']} -> {target}")
+        print(f"  codecs from {mcfg['codec_tmpl']}")
+        print(f"  dynamics from {mcfg['dynamics_src']}")
+        ignite.pin_bundle(
+            paths,
+            codec_tmpl=mcfg["codec_tmpl"],
+            dynamics_src=Path(mcfg["dynamics_src"]),
+            names=names,
+            t0_start=float(mcfg["t0_start_s"]),
+        )
+        print(f"pinned; sha256 of every copied file is in {ignite.codec_manifest(target)}")
+    if args.check:
+        bad = ignite.check_bundle(paths)
+        for line in bad:
+            print(line, file=sys.stderr)
+        print(f"{target}: {'ok -- every pinned file still matches' if not bad else 'CHANGED'}")
+        return 1 if bad else 0
     manifest = ignite.codec_manifest(target)
     if not manifest.exists():
-        print(f"no bundle at {target} -- run `shot_design model --download`")
+        install = "--download" if generation == "v2" else "--pin"
+        print(f"no bundle at {target} -- run `shot_design model {install}`")
         return 1
     entries = json.loads(manifest.read_text())["modalities"]
     have = [n for n in entries if (target / "codecs" / n / "codec_best.pt").exists()]
     dyn = target / mcfg["dynamics_file"]
-    print(f"bundle: {target}  ({mcfg['repo_id']} @ {mcfg['revision'][:12]})")
+    source = (
+        f"{mcfg['repo_id']} @ {mcfg['revision'][:12]}"
+        if generation == "v2"
+        else f"generation {generation}, pinned locally"
+    )
+    absent = "not downloaded (--download --full)" if generation == "v2" else "not pinned (--pin)"
+    print(f"bundle: {target}  ({source})")
     print(f"codecs: {len(have)}/{len(entries)} present -- {', '.join(have)}")
     print(
-        f"dynamics model: {'present' if dyn.exists() else 'not downloaded (--download --full)'} "
-        f"({mcfg['dynamics_file']})"
+        f"dynamics model: {'present' if dyn.exists() else absent} ({mcfg['dynamics_file']})"
     )
     for n, e in entries.items():
         mark = " " if n in have else "!"
-        print(
-            f"  {mark} {n:24s} {e['family']:8s} {e['channels']:3d} ch  vocab {e['codebook_size']}"
-        )
+        # v2 manifests carry `channels`; a pinned v4 manifest carries the token count instead,
+        # which is what the frame layout is made of.
+        size = f"{e['channels']:3d} ch" if "channels" in e else f"{e.get('n_tok', 0):4d} tok"
+        print(f"  {mark} {n:24s} {e['family']:8s} {size}  vocab {e['codebook_size']}")
     return 0
 
 
@@ -1649,8 +1688,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--workers", type=int, default=1)
     p.set_defaults(func=cmd_add)
 
-    p = sub.add_parser("model", help="IGNITE bundle status; --download copies it from the Hub")
-    p.add_argument("--download", action="store_true", help="snapshot the pinned revision once")
+    p = sub.add_parser("model", help="IGNITE bundle status; --pin installs it, --check verifies")
+    p.add_argument("--pin", action="store_true", help="copy the local v4 checkpoints + digest them")
+    p.add_argument("--check", action="store_true", help="re-hash the pinned files")
+    p.add_argument("--download", action="store_true", help="snapshot the pinned revision once (v2)")
     p.add_argument("--full", action="store_true", help="include the 3.5 GB dynamics checkpoint")
     p.set_defaults(func=cmd_model)
 
