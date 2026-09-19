@@ -272,3 +272,13 @@ phenomena:
       - epm
       - fast ion transport
     negatives: []
+
+  hmode:
+    title: High confinement mode
+    aliases: [hmode, high confinement mode]
+    negatives: []
+
+  lmode:
+    title: Low confinement mode
+    aliases: [lmode, low confinement mode]
+    negatives: []

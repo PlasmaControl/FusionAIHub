@@ -1,0 +1,52 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  },
+  "category": "alfven_eigenmode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "label_mapping": "1 if any BAE/EAE/RSAE/TAE is active; otherwise 0; LFM excluded",
+  "made_at": "2026-09-14T00:00:00Z",
+  "made_by": "alfven_eigenmode/formatter.py",
+  "made_from": [
+    {
+      "provenance": "Azarakhsh Jalalvand, CO2 alfven eigenmode detector data from 2021",
+      "raw_file": "alfven_eigenmode/raw/co2_250_detector.pkl",
+      "sha256": "6277743df29d94f72305d6e910b164301273807ab1916a80719dba99d5f01558",
+      "source": "co2_detector_2021"
+    }
+  ],
+  "n_rows": 612,
+  "n_shots": 180,
+  "per_shot_files": {
+    "classes": {
+      "0": "absent",
+      "1": "present"
+    },
+    "label_origin": "Formatted binary intervals; positive overlap wins; unannotated bins unknown",
+    "n_shots": 180,
+    "path": "shots/<shot>.npz",
+    "radial_mapping": "broadcast scalar label across all rho bins",
+    "rho_bins": 20,
+    "sample_interval_ms": 50.0,
+    "time_coordinate": "left edge of half-open bin"
+  },
+  "schema_version": 5,
+  "time_mapping": {
+    "excluded_class": "lfm",
+    "interval_bounds": "half_open_50ms_bins",
+    "limitation": "Original pickle has no timestamps; STFT times not recovered",
+    "method": "uniform_bins_over_declared_window_then_50ms_bins",
+    "reference": "aemodes/scripts/make_ts_dataset.py: time_range=(0, 2000)",
+    "sample_interval_ms": 50.0,
+    "start_s": 0.0,
+    "stop_s": 2.0
+  },
+  "time_units": "ms"
+}

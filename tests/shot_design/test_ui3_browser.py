@@ -38,7 +38,7 @@ def test_numeric_form_fields_are_text_with_explicit_keyboard_modes():
         if key in identifiers:
             assert field["pattern"] == "[0-9]*" and field["autocomplete"] == "off"
     assert not any(field.get("type") == "number" for field in forms.fields.values())
-    assert forms.tabs == ["search", "shot", "locate", "info"]
+    assert forms.tabs == ["create", "search", "shot", "locate", "design", "info"]
 
 
 @pytest.mark.parametrize("prefix", ["", "context-"])

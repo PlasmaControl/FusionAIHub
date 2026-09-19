@@ -1,0 +1,95 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  },
+  "category": "high_confinement_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "label_mapping": {
+    "aggregation": "Any overlap with a positive interval in each half-open 50 ms bin",
+    "confidence": "unknown",
+    "interval_bounds": "half_open_50ms_bins",
+    "positive_raw_regimes": [
+      "H",
+      "QH",
+      "WP"
+    ],
+    "raw_time_units": "ms",
+    "time_columns": [
+      "Confinement Start Time (ms)",
+      "Confinement Stop Time (ms)"
+    ],
+    "unknown": "No overlap with any explicitly labelled regime",
+    "zero": "Other explicitly labelled regimes; never unannotated gaps"
+  },
+  "made_at": "2026-09-14T00:00:00Z",
+  "made_by": "high_confinement_mode/formatter.py",
+  "made_from": [
+    {
+      "provenance": "User-provided Jalal confinement regime interval table dated 28 April 2024",
+      "raw_file": "high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv",
+      "sha256": "1f9be0a6ce881c699c348370d4dfff240b2bfd805763d45494560ba1c6c22131",
+      "source": "jalal_hmode_confinement_2024"
+    }
+  ],
+  "n_rows": 586,
+  "n_shots": 428,
+  "per_shot_files": {
+    "classes": {
+      "0": "absent",
+      "1": "present"
+    },
+    "n_shots": 434,
+    "path": "shots/<shot>.npz",
+    "radial_mapping": "broadcast scalar label across all rho bins",
+    "rho_bins": 20,
+    "sample_interval_ms": 50.0,
+    "time_coordinate": "left edge of half-open bin",
+    "time_range": "0..6000 ms, extended if a labelled interval ends later"
+  },
+  "schema_version": 5,
+  "source_audit": {
+    "duplicate_intervals_removed": 1,
+    "labelled_rows": 1965,
+    "positive_raw_regimes": [
+      "H",
+      "QH",
+      "WP"
+    ],
+    "raw_rows": 1986,
+    "raw_shots": 434,
+    "test_only": "Retain explicitly labelled rows; no train/test split is generated",
+    "unlabelled_csv_rows": [
+      1961,
+      1962,
+      1963,
+      1964,
+      1971,
+      1972,
+      1973,
+      1974,
+      1975,
+      1976,
+      1977,
+      1978,
+      1979,
+      1980,
+      1981,
+      1982,
+      1983,
+      1984,
+      1985,
+      1986,
+      1987
+    ],
+    "unlabelled_rows": 21,
+    "unlabelled_rows_without_valid_bounds": 4
+  },
+  "time_units": "ms"
+}

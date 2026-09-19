@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Project a producer's per-shot events onto a shot-list table or bounded summary."""
+"""Export integer-category interval tables and sparse per-shot 50 ms grids."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +12,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -20,23 +22,35 @@ from labeler.events.databases import (
     FORMAT_SCHEMA_VERSION,
     load_manifest,
     validate_format,
-    write_csv,
-    write_format_table,
-    write_meta,
+)
+from labeler.events.interval_tables import (
+    INTERVAL_COLUMNS,
+    QMIN_CATEGORY_IDS,
+    SAMPLE_MS,
+    category_labels,
+    project_intervals,
+    sample_event_labels,
+    write_interval_table,
+    write_label_grid,
 )
 from labeler.events.schema import read_events, read_sources
 
-MAX_EVENT_ROWS = 50_000
-SUMMARY_COLUMNS = ("shot", "n_events", "t_first_s", "t_last_s", "t_cov0_s", "t_cov1_s")
 # Only categories with registered phenomenon IDs can yet be exported. Producer
 # tasks add the missing regime/q-min IDs here when they add them to the lexicon.
 CATEGORY_PHENOMENA = {
+    "high_confinement_mode": ("hmode",),
+    "low_confinement_mode": ("lmode",),
     "alfven_eigenmode": ("ae",),
     "detachment": ("detachment",),
     "edge_localized_mode": ("elm",),
     "resistive_wall_mode": ("rwm",),
     "sawtooth_oscillation": ("sawtooth",),
     "tearing_mode": ("tearing",),
+    "neoclassical_tearing_mode": ("tearing",),
+    "minimum_safety_factor": ("qmin_low", "qmin_hybrid", "qmin_elevated", "qmin_high"),
+}
+CLASS_IDS = {
+    "minimum_safety_factor": QMIN_CATEGORY_IDS,
 }
 # Source records lack a phenomenon column. These unambiguous family producers
 # must be known even when every shot has zero events (or the source failed).
@@ -76,24 +90,50 @@ def _bound(values, *, last=False) -> float:
     return (max(finite) if last else min(finite)) if finite else float("nan")
 
 
+def database_sources(root, category, producer):
+    """Resolve curated producer IDs from the current or legacy manifest."""
+    root = Path(root)
+    if (root / "tables.yaml").exists():
+        return {
+            s.source
+            for s in load_manifest(root)
+            if s.dir == category and producer in (s.source, s.phenomenon)
+        }
+    path = root / "events.yaml"
+    if not path.exists():
+        return set()
+    manifest = yaml.safe_load(path.read_text())
+    rows = [r for r in manifest["format_datasets"] if r["name"] == category]
+    sources = {f"database:{stem}" for row in rows for stem in row["sources"]}
+    sources.update(f"database:{Path(row['raw_path']).stem}" for row in rows)
+    return sources if producer in CATEGORY_PHENOMENA[category] else sources & {producer}
+
+
 def export(args) -> Path:
-    """Read products without modifying them; retain at most 50,000 projected rows."""
+    """Read products without modifying them and retain compact interval rows."""
     shots = read_shots(args.shot_list)
     now = datetime.now(UTC).isoformat(timespec="seconds")
     frames, summaries, source_frames = [], [], []
     missing = []
     n_events = 0
     provenance = set()
+    grids = {}
     actual_sources = {args.producer}
     if args.producer in CATEGORY_PHENOMENA[args.category]:
         actual_sources.update(PHENOMENON_SOURCES.get(args.producer, ()))
-        actual_sources.update(s.source for s in load_manifest()
-                              if s.phenomenon == args.producer and s.dir == args.category)
+        actual_sources.update(
+            database_sources(
+                Paths.from_env().label_tables, args.category, args.producer
+            )
+        )
 
     def remember(frame):
-        provenance.update((str(r.source), str(r.run_id), str(r.git_sha))
-                          for r in frame[["source", "run_id", "git_sha"]]
-                          .drop_duplicates().itertuples(index=False))
+        provenance.update(
+            (str(r.source), str(r.run_id), str(r.git_sha))
+            for r in frame[["source", "run_id", "git_sha"]]
+            .drop_duplicates()
+            .itertuples(index=False)
+        )
 
     for shot in shots:
         path = args.events_root / f"{shot}_events.parquet"
@@ -103,25 +143,33 @@ def export(args) -> Path:
         if not (frame["shot"] == shot).all():
             raise ValueError(f"{path}: contains another shot's events")
         frame = frame[
-            ((frame["source"] == args.producer) | (frame["phenomenon"] == args.producer))
+            (
+                (frame["source"] == args.producer)
+                | (frame["phenomenon"] == args.producer)
+            )
             & frame["phenomenon"].isin(CATEGORY_PHENOMENA[args.category])
         ]
-        projected = validate_format(frame[list(FORMAT_COLUMNS)], where=str(path))
+        projected = project_intervals(
+            validate_format(frame[list(FORMAT_COLUMNS)], where=str(path))
+        )
+        grids[shot] = sample_event_labels(
+            frame, np.arange(0, 6000, SAMPLE_MS), class_ids=CLASS_IDS.get(args.category)
+        )
         n_events += len(frame)
         actual_sources.update(frame["source"])
         remember(frame)
-        if n_events <= MAX_EVENT_ROWS:
-            if not projected.empty:
-                frames.append(projected)
-        else:
-            frames.clear()
-        summaries.append({
-            "shot": shot, "n_events": len(frame),
-            "t_first_s": _bound(frame["t0_s"]),
-            "t_last_s": _bound(frame["t1_s"], last=True),
-            "t_cov0_s": _bound(frame["t_cov0_s"]),
-            "t_cov1_s": _bound(frame["t_cov1_s"], last=True),
-        })
+        if not projected.empty:
+            frames.append(projected)
+        summaries.append(
+            {
+                "shot": shot,
+                "n_events": len(frame),
+                "t_first_s": _bound(frame["t0_s"]),
+                "t_last_s": _bound(frame["t1_s"], last=True),
+                "t_cov0_s": _bound(frame["t_cov0_s"]),
+                "t_cov1_s": _bound(frame["t_cov1_s"], last=True),
+            }
+        )
         sources_path = args.events_root / f"{shot}_sources.parquet"
         sources = read_sources(sources_path)
         if not (sources["shot"] == shot).all():
@@ -139,9 +187,28 @@ def export(args) -> Path:
         if not ok.empty:
             row["t_cov0_s"] = _bound(ok["t_cov0_s"])
             row["t_cov1_s"] = _bound(ok["t_cov1_s"], last=True)
+        # Outside recorded coverage or positive events, leave cells unknown.
+        grid = grids[row["shot"]]
+        known = (
+            np.isfinite(grid["label"])
+            if args.category in CLASS_IDS
+            else grid["label"] > 0
+        )
+        bounds = list(ok[["t_cov0_s", "t_cov1_s"]].itertuples(index=False, name=None))
+        if not bounds:
+            bounds = [(row["t_cov0_s"], row["t_cov1_s"])]
+        for start, stop in bounds:
+            if math.isfinite(start) and math.isfinite(stop):
+                known |= (grid["time_ms"] >= start * 1000) & (
+                    grid["time_ms"] <= stop * 1000
+                )
+        grid["label"] = grid["label"].astype(float)
+        grid["label"][~known] = np.nan
 
-    made_from = [{"producer": source, "run_id": run_id, "git_sha": sha}
-                 for source, run_id, sha in sorted(provenance)]
+    made_from = [
+        {"producer": source, "run_id": run_id, "git_sha": sha}
+        for source, run_id, sha in sorted(provenance)
+    ]
     producing_sources = sorted({source for source, _, _ in provenance})
     if args.producer in CATEGORY_PHENOMENA[args.category]:
         if len(producing_sources) > 1:
@@ -155,31 +222,47 @@ def export(args) -> Path:
             if args.out.parent.name != directory:
                 raise ValueError(f"--out must use the producing source's {directory}/")
         elif args.out.parent.name != f"extend_{producer_slug(args.producer)}":
-            raise ValueError("no producing source found; use extend_<phenomenon>/ "
-                             "for an empty scan")
+            raise ValueError(
+                "no producing source found; use extend_<phenomenon>/ for an empty scan"
+            )
     # A databases-only run legitimately writes no per-shot products on an absent
     # shot. Its run JSON is the evidence for a complete zero-result scan.
     if args.run_id:
         run_path = args.root / "runs/events" / f"{args.run_id}.json"
         run = json.loads(run_path.read_text(encoding="utf-8"))
-        if (not run.get("settings", {}).get("databases_only")
-                or run.get("run_id") != args.run_id
-                or args.events_root.resolve() != (args.root / "events").resolve()):
+        if (
+            not run.get("settings", {}).get("databases_only")
+            or run.get("run_id") != args.run_id
+            or args.events_root.resolve() != (args.root / "events").resolve()
+        ):
             raise ValueError(f"{run_path}: expected the matching databases-only run")
-        tables = load_manifest(run["settings"]["label_tables"])
-        relevant = {s.source for s in tables if s.dir == args.category
-                    and args.producer in (s.source, s.phenomenon)}
+        relevant = database_sources(
+            run["settings"]["label_tables"], args.category, args.producer
+        )
         totals = run["totals"]
-        if (not relevant or not relevant.issubset(totals["tables"])
-                or totals["n_events"] != 0 or totals["n_source_records"] != 0):
-            raise ValueError(f"{run_path}: not a zero-event scan of the selected tables")
+        if (
+            not relevant
+            or not relevant.issubset(totals["tables"])
+            or totals["n_events"] != 0
+            or totals["n_source_records"] != 0
+        ):
+            raise ValueError(
+                f"{run_path}: not a zero-event scan of the selected tables"
+            )
         if {int(r["shot"]) for r in run["shots"]} != set(shots):
             raise ValueError(f"{run_path}: run shots disagree with the export list")
         if any(r["status"] != "ok" for r in run["shots"]):
-            raise ValueError(f"{run_path}: the producer run did not complete successfully")
+            raise ValueError(
+                f"{run_path}: the producer run did not complete successfully"
+            )
         if not made_from:
-            made_from = [{"producer": args.producer, "run_id": args.run_id,
-                          "git_sha": run["git_sha"]}]
+            made_from = [
+                {
+                    "producer": args.producer,
+                    "run_id": args.run_id,
+                    "git_sha": run["git_sha"],
+                }
+            ]
     try:
         events_root = str(args.events_root.absolute().relative_to(args.root.absolute()))
     except ValueError:
@@ -190,39 +273,69 @@ def export(args) -> Path:
         "made_from": made_from,
         "made_by": "scripts/labeler/labels_extend.py",
         "made_at": now,
-        "category": args.category, "producer": args.producer,
+        "category": args.category,
+        "producer": args.producer,
         "shot_list": args.shot_list.name,
         "shot_list_sha256": hashlib.sha256(args.shot_list.read_bytes()).hexdigest(),
-        "n_requested_shots": len(shots), "n_events": n_events,
+        "n_requested_shots": len(shots),
+        "n_events": n_events,
         "n_shots_with_events": sum(r["n_events"] > 0 for r in summaries),
-        "missing_event_shots": {"count": len(missing), "first_20": missing[:20],
-                                "full_list": missing_path.name},
+        "missing_event_shots": {
+            "count": len(missing),
+            "first_20": missing[:20],
+            "full_list": missing_path.name,
+        },
         "source_status_counts": dict(statuses),
         "full_events_root": events_root,
         "full_events": "<full_events_root>/<shot>_events.parquet; "
-                       "a relative full_events_root is relative to --root "
-                       "($LABELER_ROOT)",
+        "a relative full_events_root is relative to --root "
+        "($LABELER_ROOT)",
         "coverage": "Bounds of successful source coverage; not a claim of continuous "
-                    "coverage. Missing products and absent curated shots are not negatives.",
+        "coverage. Missing products and absent curated shots are not negatives.",
     }
     if args.run_id:
         meta["run_metadata"] = f"runs/events/{args.run_id}.json"
-    summary_path = args.out.with_suffix(".summary.csv")
-    if n_events > MAX_EVENT_ROWS:
-        out, stale = summary_path, args.out
-        frame = pd.DataFrame(summaries, columns=SUMMARY_COLUMNS)
-        meta.update(table_kind="per_shot_summary", n_rows=len(frame), n_shots=len(shots))
-        write_csv(frame, out)
-        write_meta(out, meta)
-    else:
-        out, stale = args.out, summary_path
-        frame = pd.concat(frames, ignore_index=True) if frames \
-            else pd.DataFrame(columns=FORMAT_COLUMNS)
-        meta["table_kind"] = "events"
-        write_format_table(frame, out, meta)
+    out = args.out
+    frame = (
+        pd.concat(frames, ignore_index=True)
+        if frames
+        else pd.DataFrame(columns=INTERVAL_COLUMNS)
+    )
+    meta["table_kind"] = "intervals"
+    meta["per_shot_files"] = {
+        "path": f"{out.stem}/<shot>.npz",
+        "encoding": "sparse_sampled_integer_grid",
+        "axis_order": ["time", "rho"],
+        "time_grid": "50 ms bin starts over 0..5950 ms",
+        "sample_interval_ms": SAMPLE_MS,
+        "rho_edges": np.linspace(0, 1, 21).tolist(),
+        "radial_mapping": "broadcast each scalar label across all 20 rho bins",
+        "classes": category_labels(args.category),
+        "unknown": "unknown_indices; not interchangeable with zero",
+        "label_origin": "any event overlapping each half-open bin; multiclass uses greatest overlap, ties favor larger ID",
+    }
+    if args.category == "minimum_safety_factor":
+        meta["per_shot_files"]["unclassified"] = (
+            "unknown; low is reserved but not emitted by the current producer"
+        )
+    grid_folder = out.with_suffix("")
+    grid_folder.mkdir(parents=True, exist_ok=True)
+    for shot, grid in grids.items():
+        write_label_grid(
+            grid_folder / f"{shot}.npz",
+            grid["time_ms"],
+            grid["label"],
+            categories=category_labels(args.category),
+        )
+    for stale_grid in grid_folder.glob("*.npz"):
+        if stale_grid.stem.isdecimal() and int(stale_grid.stem) not in set(shots):
+            stale_grid.unlink()
+    write_interval_table(frame, out, meta)
     missing_path.write_text(json.dumps(missing) + "\n", encoding="utf-8")
-    stale.unlink(missing_ok=True)
-    stale.with_suffix(".meta.json").unlink(missing_ok=True)
+    # Retire only the alternate outputs owned by the previous exporter.
+    summary_path = args.out.with_suffix(".summary.csv")
+    summary_path.unlink(missing_ok=True)
+    summary_path.with_suffix(".meta.json").unlink(missing_ok=True)
     print(f"{out}: {n_events} events on {len(shots)} requested shots")
     return out
 
@@ -232,10 +345,16 @@ def main(argv=None) -> int:
     parser.add_argument("--category", required=True, choices=sorted(CATEGORY_PHENOMENA))
     parser.add_argument("--producer", required=True)
     parser.add_argument("--shot-list", required=True, type=Path)
-    parser.add_argument("--root", type=Path, default=Paths.from_env().root,
-                        help="labeler root (read-only); also locates --run-id metadata")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Paths.from_env().root,
+        help="Labeler root (read-only); also locates --run-id metadata",
+    )
     parser.add_argument("--events-root", type=Path)
-    parser.add_argument("--run-id", help="Completed run JSON for a scan with no shot products")
+    parser.add_argument(
+        "--run-id", help="Completed run JSON for a scan with no shot products"
+    )
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
     if args.events_root is None:
@@ -245,10 +364,12 @@ def main(argv=None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     phenomenon_selector = args.producer in CATEGORY_PHENOMENA[args.category]
-    if ((not phenomenon_selector and args.out.parent.name != f"extend_{slug}")
-            or not args.out.parent.name.startswith("extend_")
-            or args.out.parent.parent.name != args.category
-            or args.out.name != f"{args.shot_list.stem}.csv"):
+    if (
+        (not phenomenon_selector and args.out.parent.name != f"extend_{slug}")
+        or not args.out.parent.name.startswith("extend_")
+        or args.out.parent.parent.name != args.category
+        or args.out.name != f"{args.shot_list.stem}.csv"
+    ):
         parser.error("--out must be <category>/extend_<producer>/<shot-list-stem>.csv")
     export(args)
     return 0

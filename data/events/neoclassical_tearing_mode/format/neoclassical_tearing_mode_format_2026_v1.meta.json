@@ -1,0 +1,47 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  },
+  "category": "neoclassical_tearing_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "made_at": "2026-09-14T00:00:00Z",
+  "made_by": "neoclassical_tearing_mode/formatter.py",
+  "made_from": [
+    {
+      "provenance": "Copied unchanged from /projects/EKOLEMEN/survival_tm_2/tm_labels.tar; retained as an archive to save space",
+      "raw_file": "neoclassical_tearing_mode/raw/tm_labels.tar",
+      "sha256": "dcf666e44d45d07d5484411bf2e7838716afc890e4a99b473526eccfd21a2429",
+      "source": "tm_labels_archive"
+    },
+    {
+      "provenance": "Copied unchanged from /projects/EKOLEMEN/survival_tm_2/tm_labels.h5",
+      "raw_file": "neoclassical_tearing_mode/raw/tm_labels.h5",
+      "sha256": "e6a5438c6a7f022cfdd88221806ab56281f754be61b1849da68791a361f858d3",
+      "source": "tm_labels_h5"
+    }
+  ],
+  "n_rows": 8682,
+  "n_shots": 4820,
+  "per_shot_files": {
+    "classes": {
+      "0": "absent",
+      "1": "present"
+    },
+    "label_origin": "Original sampled binary labels; any positive source sample wins; supplied zeros retained",
+    "n_shots": 28521,
+    "path": "shots/<shot>.npz",
+    "radial_mapping": "broadcast scalar label across all rho bins",
+    "rho_bins": 20,
+    "sample_interval_ms": 50.0,
+    "time_coordinate": "left edge of half-open bin"
+  },
+  "schema_version": 5,
+  "time_units": "ms"
+}

@@ -261,9 +261,9 @@ phenomena:
     prior: 0.012
     database:
       name: RWM_Onsets
-      # Manifest stems, not a path: `data/events/tables.yaml` says where each CSV is and what
+      # Manifest stems, not a path: `data/events/events.yaml` says where each CSV is and what
       # its columns mean, and `_table_shots` resolves them through labeler's own reader.
-      tables: [rwm_onsets_2017, rwm_onsets_2024]
+      tables: [rwm_format_2026_v1]
       note: >-
         Jeremy Hansen's onset databases: 56 rows, 33 distinct shots, 156785-176092 -- and 0 of
         the 33 are in the 500-shot recommender_v1 database or in the corpus (which starts at
@@ -354,3 +354,25 @@ phenomena:
     # 0.110, so it is the same number to within the `text_claims` temporality filter. Metadata
     # only: no term of the score reads it.
     prior: 0.004
+
+  hmode:
+    title: High confinement mode
+    labels: []
+    events:
+      - {source: database:high_confinement_mode_format_2026_v1, phenomenon: hmode}
+    forecasts: []
+    band_khz: null
+    diags: []
+    requires_group: []
+    prior: 0.0
+
+  lmode:
+    title: Low confinement mode
+    labels: []
+    events:
+      - {source: database:low_confinement_mode_format_2026_v1, phenomenon: lmode}
+    forecasts: []
+    band_khz: null
+    diags: []
+    requires_group: []
+    prior: 0.0

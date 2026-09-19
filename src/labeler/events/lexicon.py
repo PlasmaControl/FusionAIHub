@@ -49,7 +49,7 @@ import yaml
 PHENOMENON_IDS = (
     "ae", "eho", "elm", "transient", "tearing", "sawtooth", "fishbone", "qcm",
     "qh", "lh", "detachment", "pickup", "rwm",
-    "qmin_hybrid", "qmin_elevated", "qmin_high", "fast_ion",
+    "qmin_hybrid", "qmin_elevated", "qmin_high", "fast_ion", "hmode", "lmode",
 )
 
 #: The alias lists themselves. Shipped beside this module because shot_design

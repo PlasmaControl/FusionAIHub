@@ -1,0 +1,47 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  },
+  "category": "resistive_wall_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "made_at": "2026-09-14T00:00:00Z",
+  "made_by": "resistive_wall_mode/formatter.py",
+  "made_from": [
+    {
+      "provenance": "Jeremy Hansen, 2017 campaign RWM onset database",
+      "raw_file": "resistive_wall_mode/raw/rwm_onsets_2017.csv",
+      "sha256": "29a61a8f5ede9bd55fe52370862b185e0993c45eb37dbc6fd88abb7d90e234e6",
+      "source": "rwm_onsets_2017"
+    },
+    {
+      "provenance": "Jeremy Hansen, 2024 campaign RWM onset database",
+      "raw_file": "resistive_wall_mode/raw/rwm_onsets_2024.csv",
+      "sha256": "2ed54a04f3fc26909502c3bd18bfed5de1ad20bae3aca1c58cb730416579b8f1",
+      "source": "rwm_onsets_2024"
+    }
+  ],
+  "n_rows": 56,
+  "n_shots": 33,
+  "per_shot_files": {
+    "classes": {
+      "0": "absent",
+      "1": "present"
+    },
+    "label_origin": "Formatted binary intervals; positive overlap wins; unannotated bins unknown",
+    "n_shots": 33,
+    "path": "shots/<shot>.npz",
+    "radial_mapping": "broadcast scalar label across all rho bins",
+    "rho_bins": 20,
+    "sample_interval_ms": 50.0,
+    "time_coordinate": "left edge of half-open bin"
+  },
+  "schema_version": 5,
+  "time_units": "ms"
+}

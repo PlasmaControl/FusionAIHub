@@ -10,6 +10,11 @@ Typically found via divertor Langmuir probes (j_sat roll-over), divertor Thomson
 scattering (T_e), bolometry (radiation front) and, visible divertor cameras.
 
 ## Method
+Multi-Input Detachment Probability
+Combine LP, Bolometer, TangTV
+
+Should be between 0 to 1
+
 Not started. No detector writes `detachment`; the only route today is the operator
 logbook (`text_mentions`, which is a word somebody wrote and never an observation).
 Candidate methods from the inventory: a Langmuir-probe j_sat roll-over rule, or the

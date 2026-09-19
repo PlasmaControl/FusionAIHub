@@ -43,6 +43,25 @@ model:
   # Phase-B MaskGIT model (3.5 GB, prod_nfullrs2 @ step 13400, gen_ce 1.4223), which the Phase-5
   # rollout will need and `--download` skips unless asked with --full.
   dynamics_file: ignite_dynamics_prod_nfullrs2_step13400.pt
+  # Verified 2026-09-18 against this checkpoint's modalities tuples and the
+  # pinned bundle's codecs/MANIFEST.json. Repository DynamicsConfig defaults
+  # describe another codec generation (1000 everywhere); do not use them here.
+  # Re-verify this contract whenever the pinned bundle/checkpoint changes.
+  production_vocabs:
+    ece: 32768
+    bes: 64000
+    mhr: 32768
+    co2: 32768
+    tangtv_lower: 64000
+    tangtv_upper: 64000
+    ts_core_density: 1000
+    ts_core_temp: 1000
+    ts_tangential_density: 1000
+    ts_tangential_temp: 1000
+    cer_ti: 1000
+    cer_rot: 1000
+    mse: 1000
+    filterscopes: 1000
   frozen_modalities: src/tokamak_foundation_model/ignite/dynamics_config.py
   processed_dir_layout: "<shot>_processed.h5, one group per modality, {xdata: (n,) s, ydata: (ch, n)}"
   # Frame 0 starts at shot time 0.0 s. That is the production frame-code cache's convention, not

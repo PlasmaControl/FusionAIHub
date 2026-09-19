@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from labeler.events import databases as db
+from labeler.events.interval_tables import validate_intervals
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -21,32 +22,31 @@ def converter():
 
 def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):
     root = tmp_path / "labels"
-    shutil.copytree(REPO / "data/events", root)
-    snapshots = {}
-    for spec in db.load_manifest(root):
-        raw = spec.raw_path(root)
+    root.mkdir()
+    manifest = yaml.safe_load((REPO / "data/events/events.yaml").read_text())
+    manifest["format_datasets"] = [r for r in manifest["format_datasets"]
+                                   if r["name"] == "resistive_wall_mode"]
+    manifest["raw_datasets"] = [r for r in manifest["raw_datasets"]
+                                if r["stem"].startswith("rwm_onsets_")]
+    (root / "events.yaml").write_text(yaml.safe_dump(manifest))
+    for row in manifest["raw_datasets"]:
+        raw = root / row["path"]
+        raw.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO / "data/events" / row["path"], raw)
         original = subprocess.check_output([
-            "git", "show", f"6de489d:data/labels/{spec.dir}/{spec.raw_file}",
+            "git", "show", f"6de489d:data/labels/resistive_wall_mode/{raw.name}",
         ], cwd=REPO)
         assert raw.read_bytes() == original
-        formatted = spec.path(root)
-        for path in (formatted, formatted.with_suffix(".meta.json")):
-            snapshots[path] = path.read_bytes()
-            path.unlink()
     assert converter()(["--root", str(root)]) == 0
-    assert {p: p.read_bytes() for p in snapshots} == snapshots
+    (spec,) = db.load_manifest(root)
+    out = spec.path(root)
+    snapshots = out.read_bytes(), out.with_suffix(".meta.json").read_bytes()
     assert converter()(["--root", str(root)]) == 0
-    assert {p: p.read_bytes() for p in snapshots} == snapshots
-    for spec in db.load_manifest(root):
-        raw = spec.raw_path(root)
-        formatted = spec.path(root)
-        meta = json.loads(formatted.with_suffix(".meta.json").read_text())
-        assert meta["made_from"] == {
-            "raw_file": str(raw.relative_to(root)),
-            "sha256": hashlib.sha256(raw.read_bytes()).hexdigest(),
-        }
-        assert meta["n_rows"] in (30, 26)
-        assert meta["n_shots"] in (20, 13)
+    assert snapshots == (out.read_bytes(), out.with_suffix(".meta.json").read_bytes())
+    meta = json.loads(snapshots[1])
+    assert meta["n_rows"] == 56 and meta["n_shots"] == 33
+    for source in meta["made_from"]:
+        assert source["sha256"] == hashlib.sha256((root/source["raw_file"]).read_bytes()).hexdigest()
 
 
 def raw_fixture(root, *, kind="point", **over):
@@ -73,15 +73,13 @@ def test_adapter_sorts_preserves_duplicates_attributes_and_raw(tmp_path, kind):
     assert converter()(["--root", str(tmp_path)]) == 0
     assert raw.read_bytes() == before
     frame = pd.read_csv(out)
-    db.validate_format(frame)
+    validate_intervals(frame)
     assert frame.shot.tolist() == [156785, 158015, 158015]
-    assert frame.t0_s.tolist() == [0.856, 2.613, 2.613]
-    assert frame.t1_s.tolist() == ([1, 3, 3] if kind == "interval"
-                                  else [0.856, 2.613, 2.613])
+    assert frame.t_start.tolist() == [856, 2613, 2613]
+    assert frame.t_end.tolist() == ([1000, 3000, 3000] if kind == "interval"
+                                      else [856, 2613, 2613])
     assert frame.confidence.isna().all()
-    assert json.loads(frame["attrs"].iloc[1]) == {
-        "NTOR": 2, "NOTE": "NA", "table": "fixture",
-    }
+    assert list(frame.columns) == ["shot", "category", "t_start", "t_end", "confidence"]
 
 
 @pytest.mark.parametrize("over, match", [

@@ -1,0 +1,56 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  },
+  "category": "edge_localized_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "label_mapping": {
+    "aggregation": "category = 1 when the bin contains any labelled onset",
+    "cadence_ms": 1,
+    "interval_bounds": "half_open_50ms_bins",
+    "limitation": "Original labels simplify burst width to onset samples",
+    "overlap": "matching WPQH samples deduplicated; conflicts rejected",
+    "sample_interval_ms": 50.0,
+    "source_reference": "wpqh_elm_hiro/hiro_scripts/data_processing.ipynb",
+    "time_units": "ms"
+  },
+  "made_at": "2026-09-14T00:00:00Z",
+  "made_by": "edge_localized_mode/formatter.py",
+  "made_from": [
+    {
+      "provenance": "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_labels_dict.pkl",
+      "raw_file": "edge_localized_mode/raw/elm_labels_dict.pkl",
+      "sha256": "d251cfb1bdc504b2a8ffbd8d3ce70b648a2c16f6e77745a9b57b2cb34a302022",
+      "source": "elm_labels"
+    },
+    {
+      "provenance": "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_labels_dict_wpqh.pkl",
+      "raw_file": "edge_localized_mode/raw/elm_labels_dict_wpqh.pkl",
+      "sha256": "7574320be457e982b954ff31b308adbe60f1dd88c93cc3a376bc5e18399c6922",
+      "source": "elm_labels_wpqh"
+    }
+  ],
+  "n_rows": 5340,
+  "n_shots": 576,
+  "per_shot_files": {
+    "classes": {
+      "0": "absent",
+      "1": "present"
+    },
+    "event_count": "number of original positive onset samples in each bin",
+    "path": "shots/<shot>.npz",
+    "radial_mapping": "broadcast scalar label across all rho bins",
+    "rho_bins": 20,
+    "sample_interval_ms": 50.0,
+    "time_coordinate": "left edge of half-open bin"
+  },
+  "schema_version": 5,
+  "time_units": "ms"
+}

@@ -256,6 +256,12 @@ def create_app(
         # CLI stderr becomes a header; the bare hit list adds only UI domains.
         return _json(payload, headers={"X-Ideate-Caveats": json.dumps(notes)})
 
+    from .design_routes import router as design_router
+    from .assistant_routes import router as assistant_router
+
+    app.include_router(design_router)
+    app.include_router(assistant_router)
+
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def unknown_api(path: str):
         return JSONResponse({"error": f"unknown API route: /api/{path}"}, status_code=404)

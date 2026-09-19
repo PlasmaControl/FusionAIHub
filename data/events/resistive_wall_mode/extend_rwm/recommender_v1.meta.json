@@ -1,5 +1,16 @@
 {
+  "categories": {
+    "0": "absent",
+    "1": "present"
+  },
   "category": "resistive_wall_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
   "coverage": "Bounds of successful source coverage; not a claim of continuous coverage. Missing products and absent curated shots are not negatives.",
   "full_events": "<full_events_root>/<shot>_events.parquet; a relative full_events_root is relative to --root ($LABELMAKER_ROOT)",
   "full_events_root": "events",
@@ -43,11 +54,52 @@
   "n_rows": 0,
   "n_shots": 0,
   "n_shots_with_events": 0,
+  "per_shot_files": {
+    "axis_order": [
+      "time",
+      "rho"
+    ],
+    "classes": {
+      "0": "absent",
+      "1": "present"
+    },
+    "encoding": "sparse_sampled_integer_grid",
+    "label_origin": "unknown: historical export has no matching source annotations",
+    "path": "recommender_v1/<shot>.npz",
+    "radial_mapping": "broadcast each scalar label across all 20 rho bins",
+    "rho_edges": [
+      0.0,
+      0.05,
+      0.1,
+      0.15000000000000002,
+      0.2,
+      0.25,
+      0.30000000000000004,
+      0.35000000000000003,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6000000000000001,
+      0.65,
+      0.7000000000000001,
+      0.75,
+      0.8,
+      0.8500000000000001,
+      0.9,
+      0.9500000000000001,
+      1.0
+    ],
+    "sample_interval_ms": 50,
+    "time_grid": "50 ms bin starts over 0..5950 ms",
+    "unknown": "unknown_indices; all cells unknown because none of the listed RWM shots overlaps this shot list"
+  },
   "producer": "rwm",
   "run_metadata": "runs/events/ld1b-fix-rwm-recommender-v1.json",
-  "schema_version": 1,
+  "schema_version": 5,
   "shot_list": "recommender_v1.yaml",
   "shot_list_sha256": "8e55fa4204d83b57e7f7f80539abb3d277b036e047eda3a52172b35eb5e8ba64",
   "source_status_counts": {},
-  "table_kind": "events"
+  "table_kind": "intervals",
+  "time_units": "ms"
 }
