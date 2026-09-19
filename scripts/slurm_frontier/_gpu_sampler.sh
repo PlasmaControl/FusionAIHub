@@ -11,11 +11,22 @@
 #   card0,0,203885505,68702699520,10977280
 # behind a WARNING line and a blank one -- so the columns are found BY NAME and the rows
 # by their `card` prefix. A fixed `NR==2` would read the blank line and record 0 % for
-# the whole run. GPU use is averaged over the visible GCDs and the memory summed, so a
+# the whole run. GPU use is averaged over the sampled GCDs and the memory summed, so a
 # job given more than one GCD is measured on all of them.
+#
+# `-d` is not optional. rocm-smi ignores ROCR_VISIBLE_DEVICES and reports every card on
+# the node, so on an exclusive node a one-GCD job would be averaged against seven idle
+# siblings and read ~1/8 of the utilisation it actually got -- which is exactly the number
+# the gate then judges. `-d` takes one or more indices, so the comma-separated
+# ROCR_VISIBLE_DEVICES becomes a space-separated list. Unset (an interactive node, or a
+# job that was given the whole node) means sample everything.
 out="$1"; echo "epoch_s,gpu_pct,vram_used_mb,vram_total_mb" > "$out"
+devices=()
+if [[ -n "${ROCR_VISIBLE_DEVICES:-}" ]]; then
+  devices=(-d ${ROCR_VISIBLE_DEVICES//,/ })
+fi
 while true; do
-  sample=$(rocm-smi --showuse --showmeminfo vram --csv 2>/dev/null | awk -F, '
+  sample=$(rocm-smi "${devices[@]}" --showuse --showmeminfo vram --csv 2>/dev/null | awk -F, '
     /^device/ {
       for (i = 1; i <= NF; i++) {
         if ($i ~ /GPU use/)                  use_col = i
