@@ -248,6 +248,24 @@ def test_one_bad_roster_does_not_hide_the_others(client, tables):
     assert "holdout" in rows["broken_event"]["error"], "the reason is not reported"
 
 
+def test_a_bad_roster_is_a_json_error_from_shots_too(client, tables):
+    """The roster `/api/events` flagged answers here in the page's one shape.
+
+    Starlette's own 500 is bare text, and the page reads every refusal as
+    `{"error": ...}`; an event offered precisely so its broken roster can be
+    found must not be the one that breaks that contract.
+    """
+    bad = tables / "broken_event"
+    bad.mkdir()
+    (bad / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n170815,gold,True,,,\n"
+    )
+    response = client.get("/api/shots", params={"event": "broken_event"})
+    assert response.status_code == 500
+    assert set(response.json()) == {"error"}
+    assert "holdout" in response.json()["error"], "the reason is not reported"
+
+
 def test_a_missing_label_tables_root_is_not_a_crash(tmp_path):
     app = create_app(paths=_tmp_paths(tmp_path, tmp_path / "absent"), token="secret")
     transport = TestClient(app)
@@ -1087,6 +1105,16 @@ def test_label_data_is_still_never_cached(client):
     """
     for path in ("/", "/api/events", "/api/shots?event=alfven_eigenmode"):
         assert client.get(path).headers["cache-control"] == "no-store", path
+
+
+def test_the_panels_and_the_save_are_never_cached_either(client, co2, tables):
+    """The two responses carrying the most label data of any on this app."""
+    panels = client.get("/api/panels?event=alfven_eigenmode&shot=178642")
+    assert panels.status_code == 200
+    assert panels.headers["cache-control"] == "no-store"
+    saved = client.post("/api/save", json=_body())
+    assert saved.status_code == 200
+    assert saved.headers["cache-control"] == "no-store"
 
 
 def test_the_page_and_the_bundle_are_behind_the_token_gate(app):

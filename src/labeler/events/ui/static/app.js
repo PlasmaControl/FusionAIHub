@@ -23,10 +23,15 @@ let generation = 0;
 
 const $ = (id) => document.getElementById(id);
 
-function say(text, isError) {
+// `level` is `true`/falsey for the error/plain pair every call site started
+// with, plus "note": something the render wants said - NO LABEL ROW is the
+// one there is - which is information about the data, not a failure, and
+// must not be dressed in the red a failure gets.
+function say(text, level) {
   const status = $("status");
   status.textContent = text;
-  status.classList.toggle("error", Boolean(isError));
+  status.classList.toggle("error", level === true || level === "error");
+  status.classList.toggle("note", level === "note");
 }
 
 async function getJSON(url, signal) {
@@ -240,11 +245,22 @@ function waiting(text) {
 }
 
 async function loadPanels(t0, t1) {
-  if (currentEvent === null || !Number.isFinite(currentShot)) return;
+  // Cancel and invalidate BEFORE the guard, not after it. This call is how
+  // the page says the previous window is no longer wanted, and the case
+  // where it cannot draw a new one - an event whose roster is empty or
+  // unreadable - is exactly the case where the old request must not be
+  // left to land and paint the event the reviewer has already left, under
+  // a status line and a ticker still describing it.
   if (inFlight) inFlight.abort();
+  ++generation;
+  clearInterval(ticker);
+  if (currentEvent === null || !Number.isFinite(currentShot)) {
+    Plotly.purge($("figure"));
+    return;
+  }
   const controller = new AbortController();
   inFlight = controller;
-  const mine = ++generation;
+  const mine = generation;
   // Both or neither: `t0` alone is silently the whole shot, and the only
   // sign of it is a null `t_range` in the answer.
   const whole = t0 === undefined || t1 === undefined;
@@ -264,7 +280,7 @@ async function loadPanels(t0, t1) {
       ? `${Math.round(payload.t_range[0])}-${Math.round(payload.t_range[1])} ms`
       : "whole shot";
     say([span, payload.note].filter(Boolean).join(" - "),
-        Boolean(payload.note));
+        payload.note ? "note" : undefined);
   } catch (error) {
     // A request this page cancelled to make room for a newer one is not a
     // failure to report; the newer one owns the status line now.
@@ -371,10 +387,20 @@ async function save() {
     }
     const written = body.n;
     forgetMarks();
-    say(`saved ${written} correction(s) to ${body.written}`);
-    await loadShots(currentEvent, currentShot);
-    // The figure's mark rects came from `marks`, which is now empty.
-    Plotly.relayout($("figure"), { shapes: currentShapes() });
+    const saved = `saved ${written} correction(s) to ${body.written}`;
+    say(saved);
+    try {
+      await loadShots(currentEvent, currentShot);
+      // The figure's mark rects came from `marks`, which is now empty.
+      Plotly.relayout($("figure"), { shapes: currentShapes() });
+    } catch (error) {
+      // The file IS on disk; only the refresh after it failed. Reporting
+      // this as "save failed" would send the reviewer back to redo a
+      // correction that is already written, and corrections are
+      // append-only, so redoing one writes it twice.
+      say(`${saved}, but refreshing the view failed: ` +
+          `${error.message || error}`, true);
+    }
   } catch (error) {
     say(`save failed: ${error.message || error}`, true);
   } finally {
@@ -397,6 +423,10 @@ async function loadShots(event, keepShot) {
     // than showing a stale one from the previous event.
     select.textContent = "";
     currentShot = NaN;
+    // Like the empty-roster branch below: a tier and a holdout left standing
+    // from the previous event read as this event's curation calls.
+    $("tier").textContent = "";
+    $("holdout").textContent = "";
     $("roster-error").textContent =
       `${event}: could not read shots.csv - ${error.message || error}`;
     return;
