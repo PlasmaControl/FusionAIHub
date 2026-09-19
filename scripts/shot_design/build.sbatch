@@ -18,7 +18,7 @@
 # IGNITE encode is its own GPU job (plan section 8).
 #
 # The build was ALREADY RUN on the login node on 2026-09-07 (500 shots / 1977 segments in 143.4 s;
-# see .superpowers/sdd/task-I6b-report.md). This script exists so the run is reproducible on
+# see .claude/superpowers-runtime/sdd/task-I6b-report.md). This script exists so the run is reproducible on
 # SLURM -- for a rebuild after a config change, and for the full-corpus build of iteration 4.
 #
 # ------------------------------------------------------------------ sizing (measured 2026-09-07)

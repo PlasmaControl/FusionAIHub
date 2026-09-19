@@ -689,9 +689,9 @@ def test_the_cli_passes_avoid_through(phen_db, capsys):
 
 # ===================================================================== fix loop 1 (review I9a)
 #
-# One section per numbered finding of `.superpowers/sdd/task-I9a-review.md`. They are all the
-# same shape as the tests above: a claim this module must not make, and the fixture that would
-# have let it make one.
+# One section per numbered finding of `.claude/superpowers-runtime/sdd/task-I9a-review.md`.
+# They are all the same shape as the tests above: a claim this module must not make, and
+# the fixture that would have let it make one.
 
 
 def _db_with(ideate_db: Path, events: list[dict], labels=(), claims=()) -> store.ShotDB:

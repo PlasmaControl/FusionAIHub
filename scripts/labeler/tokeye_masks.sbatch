@@ -18,7 +18,7 @@
 # Single-element default is for a pilot; proposed production shape remains
 # --array=0-7%2, N_CHUNKS=8 (8 x 60 shots), pending resolution of failed gates.
 # Workflow: tokeye_text_subset.sh, this array, tokeye_masks_afterok.sbatch.
-# See docs/LABELER.md and .superpowers/sdd/task-L14perf-report.md (Fix loop).
+# See docs/LABELER.md and .claude/superpowers-runtime/sdd/task-L14perf-report.md (Fix loop).
 #SBATCH --job-name=tokeye-masks
 #SBATCH --partition=gpu
 #SBATCH --qos=gpu-stellar

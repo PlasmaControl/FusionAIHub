@@ -1,7 +1,7 @@
 """Stage-1 evaluation — Phase 1: metrics only.
 
 Implements the metric-collection half of the pipeline in
-``docs/eval_stage1_plan.md`` (§§2-4). Produces three CSV.gz tables:
+``.claude/notes/eval_stage1_plan.md`` (§§2-4). Produces three CSV.gz tables:
 
     per_window_metrics.csv.gz   one row per (shot, window, modality, split)
     per_shot_metrics.csv.gz     aggregated per (shot, modality, split)

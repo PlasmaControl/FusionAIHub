@@ -5,7 +5,16 @@ __pycache__/
 
 # Local-only directories
 logs/
-.claude/
+# .claude/ holds BOTH local-only state (settings.local.json, caches) and the
+# repo's tracked Claude material: superpowers specs/plans, the sdd runtime
+# archive, and working notes (docs/ is for documentation only). Ignore the
+# directory's entries by default and re-include the three tracked subtrees --
+# the `.claude/*` form is required, since a file cannot be re-included once
+# its parent DIRECTORY is excluded by `.claude/`.
+.claude/*
+!.claude/notes/
+!.claude/superpowers/
+!.claude/superpowers-runtime/
 
 # C extensions
 *.so

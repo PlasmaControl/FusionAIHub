@@ -12,8 +12,8 @@ Runs the group's trained models over the FAITH shot corpus and writes their
 predictions as per-shot label files in the corpus HDF5 layout, with a measured
 statement of how much each model's labels can be trusted.
 
-Design: `docs/superpowers/specs/2026-09-03-labelmaker-design.md`.
-Phase 1 build log: `docs/superpowers/plans/2026-09-03-labelmaker-phase1.md`.
+Design: `.claude/superpowers/specs/2026-09-03-labelmaker-design.md`.
+Phase 1 build log: `.claude/superpowers/plans-recommender/2026-09-03-labelmaker-phase1.md`.
 Code: `src/labeler/`. Tests: `tests/labeler/`.
 
 ## Running it
@@ -114,7 +114,7 @@ file's JSON `missing` attribute and create no zero-valued substitute group.
 The 500-shot pellet census found no records in `\PELLET::LGIHI_T`,
 `LGIDR_T`, `LGIAB_TMAX`, or `LGIHI_MASS`: `no_data_in_corpus` for lithium
 granules. PCS candidate records exist but do not establish pellet delivery;
-failed PCS reads remain unknown. The [LC2 report](../.superpowers/sdd/task-LC2-report.md)
+failed PCS reads remain unknown. The [LC2 report](../.claude/superpowers-runtime/sdd/task-LC2-report.md)
 contains the full census, pilot measurements, commands, and preservation hashes.
 
 ## One shot, all the labels you asked for
@@ -592,7 +592,7 @@ Its 50-CPU allocation over-reserved both pools. The earlier 10 CPU / 6 prep /
 measured demand, memory came from different pool sizes, and one timeout
 could consume the entire wall allocation. The authorized second pilot and
 its derived defaults are recorded in the
-[L14-perf report, Fix loop](../.superpowers/sdd/task-L14perf-report.md#fix-loop).
+[L14-perf report, Fix loop](../.claude/superpowers-runtime/sdd/task-L14perf-report.md#fix-loop).
 
 Pilot 2932066_0 completed 20/20 shots at **97.29 tiles/s**. Jobstats measured
 CPU **31.3%**, CPU memory **30.6%**, GPU **7.4%**, GPU memory **96.6%**:
@@ -841,7 +841,7 @@ one in its config.
   scored by `validate`, whose reports are specific to the CNN's training
   archive; its adapter fidelity is a test against the upstream fork's own
   outputs. The other five roster folders are scaffolds whose cards say what
-  blocks each of them; `docs/superpowers/specs/2026-09-05-labelmaker-phase2-design.md`
+  blocks each of them; `.claude/superpowers/specs/2026-09-05-labelmaker-phase2-design.md`
   records what the upstream archaeology found for each.
 - The survival model's calibration depends on which rows a report covers, and
   that is a property of its training population, not a defect: over all aligned
@@ -862,7 +862,7 @@ one in its config.
   (19.7% of in-training pool shots tear, against 15.3% of held-out ones). The
   tearing CNN is a separate case and not covered by this split: the archive it
   is scored against IS its training store, as its card says.
-- `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` carries the
+- `.claude/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` carries the
   next round: what the tearing-survival, ELM and Alfven-eigenmode training loops
   upstream actually do (measured, with the shipped survival model's
   hyperparameters decoded from its own pickle), the three agreed reliability
