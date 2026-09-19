@@ -873,7 +873,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           modality_loss_weight: str = "uniform", actuator_dropout_p: float = 0.0,
           sf_frames: int = 0, sf_decode_steps: int = 4, sf_prob: float = 1.0,
           text_embed_path: str = None, text_embed_dim: int = 0, text_dropout_p: float = 0.0,
-          text_key: str = "input",
+          text_key: str = "input", dropout: float = 0.0,
           log=print):
     """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
 
@@ -896,6 +896,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     if n_predict:
         cfg_kw["n_predict"] = n_predict
     cfg = DynamicsConfig(**cfg_kw)
+    if dropout:
+        # REGULARISATION (2026-08-14). dropout has been wired into both attentions and the FFN
+        # since the build but defaulted to 0.0 and was unreachable, so no IGNITE run has ever
+        # used it. The band-power run opened a memorisation gap at step 2750 (train 0.69 vs
+        # val 1.01) on 500 shots; dropout is the standard lever for exactly that.
+        cfg.dropout = float(dropout)
     if ss_final_frac is not None:
         # scheduled sampling's own-code sampling calls backbone.forward = FULL (B,F,1017,vocab)
         # logits (~400 GB at F=100) — infeasible until that path is made memory-efficient. Set 0 to
@@ -1319,6 +1325,9 @@ def build_arg_parser():
                         "ramp-up second so a K0=20 seed spans [0,1) s and PREDICTION STARTS "
                         "AT t=1.0 s (the standing convention). NOTE: the frozen codecs never "
                         "trained on ramp-up windows.")
+    p.add_argument("--dropout", type=float, default=0.0,
+                   help="attention + FFN dropout (DynamicsConfig.dropout). 0 = the historical "
+                        "behaviour every run so far used; >0 regularises against memorisation.")
     p.add_argument("--val_windows", type=int, default=32,
                    help="fixed validation windows, INDEPENDENT of batch_size. Was "
                         "4*batch_size, which tied val's statistical power to a memory "
@@ -1426,7 +1435,8 @@ def main(argv=None):
                  sf_frames=args.sf_frames, sf_decode_steps=args.sf_decode_steps,
                  sf_prob=args.sf_prob,
                  text_embed_path=args.text_embed_path, text_embed_dim=args.text_embed_dim,
-                 text_dropout_p=args.text_dropout_p, text_key=args.text_key)
+                 text_dropout_p=args.text_dropout_p, text_key=args.text_key,
+                 dropout=args.dropout)
 
 
 if __name__ == "__main__":

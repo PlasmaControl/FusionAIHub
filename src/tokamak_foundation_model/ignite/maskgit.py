@@ -15,6 +15,7 @@ deterministic and resume is reproducible (main scripts pass one; Date/rand globa
 from __future__ import annotations
 
 import math
+import os as _os
 from typing import Dict, Optional
 
 import torch
@@ -33,6 +34,11 @@ def _cosine_keep_fractions(n_steps: int) -> list:
     Starts fully masked (1.0 before step 0), ends fully revealed (0.0 after the last step).
     """
     return [math.cos(math.pi / 2 * (i + 1) / n_steps) for i in range(n_steps)]
+
+
+# Reveal-order noise scale for generate_frame (0 = the historical greedy reveal, so every
+# existing run and queued job is byte-identical unless this is set). See generate_frame.
+_GUMBEL_SCALE = float(_os.environ.get("IGNITE_MASKGIT_GUMBEL", "0"))
 
 
 class MaskGITDynamics(nn.Module):
@@ -295,7 +301,34 @@ class MaskGITDynamics(nn.Module):
                 s = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
                                       generator=generator).reshape(B, m.n_tok)
                 samp[m.name] = s
-                conf[m.name] = prob.gather(-1, s.unsqueeze(-1)).squeeze(-1)   # (B, n_tok)
+                c = prob.gather(-1, s.unsqueeze(-1)).squeeze(-1)   # (B, n_tok)
+                # ANNEALED-GUMBEL REVEAL (canonical MaskGIT; opt-in via
+                # IGNITE_MASKGIT_GUMBEL). Ranking purely on p(sampled) is
+                # deterministic-greedy: the tokens revealed first are those whose
+                # sample happened to land on the MARGINAL MODE, and the remaining
+                # steps then condition on that seed. Measured 2026-08-13 on the
+                # production ckpt at step 12500: p_max is only 0.15-0.21 for the
+                # turbulent spectros (perplexity 27-57 against a 64000 vocab), so
+                # the ranking carries no real confidence signal and the decode
+                # cascades into one code -- co2 emitted a SINGLE code for 95% of
+                # tokens and the rendered spectrograms/cameras were flat. The
+                # Gumbel term makes the reveal order stochastic rather than a
+                # deterministic function of probability; it anneals to 0 so late
+                # steps still prefer genuinely confident tokens.
+                #   Perturb in LOG space (log c + ann*g) but hand the policies a
+                # POSITIVE score: _global_reveal ranks on norm_log_confidence
+                # (1 + log c / log V), which needs c > 0. exp() of the perturbed
+                # log is the same ordering under BOTH reveal policies, and the
+                # clamp keeps the exponent inside fp32 for a large scale setting.
+                # Default 0 draws no rand at all, so the historical greedy path
+                # stays bit-identical (same RNG stream).
+                if _GUMBEL_SCALE > 0.0:
+                    u = torch.rand(c.shape, generator=generator,
+                                   device=dev).clamp_(1e-9, 1 - 1e-9)
+                    ann = _GUMBEL_SCALE * (1.0 - step / max(1, len(keep_masked)))
+                    g = -torch.log(-torch.log(u))
+                    c = (c.clamp_min(1e-12).log() + ann * g).clamp_(max=80.0).exp()
+                conf[m.name] = c
             # PASS 2 — choose what to reveal
             if sampler.global_pool:
                 take = self._global_reveal(conf, revealed, frac)
