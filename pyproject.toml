@@ -128,6 +128,11 @@ label = "bash scripts/labeler/label_shot.sh"
 # fetched shot out of the project's .cache/raw and into EKOLEMEN, which is
 # where bulk raw signal data lives long-term.
 labeler-raw = "python -m labeler.events.raw"
+# `pixi run -e labelmaker fdp run python -m labeler.events.ui`: the browser
+# review surface, on the loopback behind a token. The bare task below is the
+# corpus-only form; the fdp wrapper is what lets a shot outside the corpus
+# fetch, and `fdp run` execs a program, not a pixi task.
+labeler-verify = "python -m labeler.events.ui"
 
 [tool.pixi.feature.labelmaker.dependencies]
 # labels_index.parquet. pandas 3 can write parquet only through pyarrow,
@@ -164,6 +169,12 @@ pyyaml = ">=6,<7"
 # environment on the same already-known-good major version, the same way
 # `feature.cuda` pins torch's index rather than editing [project].
 protobuf = "<7"
+# `labeler-verify`: the browser review surface is a FastAPI app on the
+# loopback, reached over an SSH forward. Same ranges as feature.ideate,
+# which runs shot_design's UI, so an environment holding both cannot want
+# two different majors.
+fastapi = ">=0.115,<1"
+uvicorn = ">=0.30,<1"
 
 [tool.pixi.feature.labelmaker.pypi-dependencies]
 # The workspace installs `faith` editable into every environment, which
@@ -173,13 +184,17 @@ protobuf = "<7"
 # duplicate cu124.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
-# The verification notebooks are built on plotly's FigureWidget: a stacked
-# figure whose box-select callback turns a dragged time range into a label
-# correction. `plotly` currently reaches this environment only transitively,
-# and `FigureWidget` imports `anywidget` at construction time, so a bare
-# `import plotly` succeeding says nothing about whether the widget works.
-# Declare both rather than depend on another package's requirements.
+# NOT a dead dependency once the notebooks go: the browser verification
+# surface (`labeler.events.ui`) serves plotly.js to the page out of this
+# package's own `package_data/plotly.min.js`. The review node has no route
+# off the cluster, so a CDN link cannot work, and a vendored copy would
+# drift from whatever version this environment pins. `plotly` otherwise
+# reaches this environment only transitively, so declare it.
 plotly = ">=6.9,<7"
+# `FigureWidget` imports `anywidget` at construction time, so a bare
+# `import plotly` succeeding says nothing about whether the widget works.
+# That widget is the notebooks' surface only - the browser app never builds
+# one - so this pin lives and dies with them.
 anywidget = ">=0.9,<1"
 
 [tool.pixi.feature.ideate]
