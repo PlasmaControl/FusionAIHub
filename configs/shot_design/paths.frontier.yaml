@@ -1,0 +1,25 @@
+# Frontier (OLCF) copy of configs/shot_design/paths.yaml. Same keys, OLCF roots.
+# paths.yaml stays Stellar; this file is selected by SHOT_DESIGN_PATHS -- nothing
+# reads it by default, so a Stellar run is unaffected by anything written here.
+# ${var} refers to another key here or to an env var; SHOT_DESIGN_DATA_ROOT still
+# overrides data_root.
+data_root: /lustre/orion/fus187/proj-shared/nchen/shot_design
+raw_dir: ${data_root}/raw                       # our fetched per-shot files (d3d_fusion_data layout)
+db_dir: ${data_root}/db
+text_cache_dir: ${data_root}/text_cache
+ignite_inputs_dir: ${data_root}/ignite_inputs
+models_dir: ${data_root}/models                 # local copy of the IGNITE checkpoint bundle
+eval_dir: ${data_root}/eval
+sessions_dir: ${data_root}/sessions
+actuations_dir: ${data_root}/actuations       # saved actuator waveform sets (POST /api/actuation)
+llm_cache_dir: ${data_root}/llm_cache
+staged_raw_dir: /lustre/orion/fus187/proj-shared/nchen/shot_design/staged_raw     # none on Frontier; kept so Paths validates; reader treats a missing dir as "unavailable"
+text_root: /lustre/orion/fus187/proj-shared/foundation_model_text
+logs_jsonl: ${text_root}/sql/logs.jsonl
+shot_index_json: ${text_root}/sql/index.json
+shotsummary_raw_dir: ${text_root}/shotsummary/raw
+per_shot_txt_dir: ${text_root}/shotsummary/processed/per_shot_txt
+qh_database_csv: ${data_root}/external/QH_Database.csv
+foundation_model_processed_dir: /lustre/orion/fus187/proj-shared/foundation_model   # <shot>_processed.h5 (IGNITE inputs)
+fdp_project_dir: ${data_root}/fdp                                                 # MDSplus unreachable from OLCF
+sentence_transformers_model: sentence-transformers/all-MiniLM-L6-v2
