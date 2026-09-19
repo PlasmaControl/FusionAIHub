@@ -186,12 +186,13 @@ variables map one to one.
 
 ### What the recommender port needs
 
-1. **Environments.** `labelmaker`, `shot-design` and `shot-design-cpu` are `linux-64`
-   and should resolve on Frontier. `shot-design` pulls CUDA torch; on Frontier use
-   `shot-design-cpu` for the CLI and the `frontier` env for anything that needs a
-   GPU. The `fdp`/`labelmaker` envs depend on the `ga-fdp` conda channel
-   (`toksearch`, MDSplus); they will install but cannot fetch, since DIII-D
-   MDSplus is not reachable from OLCF. Do all fetching on Stellar.
+1. **Environments.** Done 2026-09-19: `shot-design-frontier` (ROCm torch plus the
+   `shot_design` and `labeler` dependencies) is the one environment installed on
+   Frontier for the CLI, the tests and the GPU jobs; `frontier` stays for IGNITE
+   training. `shot-design`/`shot-design-cpu` are Stellar-only (CUDA / CPU torch) and
+   are not materialised here. The `fdp`/`labelmaker` envs depend on the `ga-fdp`
+   conda channel (`toksearch`, MDSplus); they would install but cannot fetch, since
+   DIII-D MDSplus is not reachable from OLCF. Do all fetching on Stellar.
 2. **Activation paths.** The `[tool.pixi.feature.shot-design.target.unix.activation.env]`
    block in `pyproject.toml` hard-codes the three Stellar roots. Frontier
    needs either a second feature with its own activation block or the roots
