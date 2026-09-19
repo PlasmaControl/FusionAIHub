@@ -82,7 +82,7 @@ likelihood and does not improve out-of-sample discrimination.
 
 **Nothing here recommends switching the default.** `analyze_default.yaml`
 still points at `d3d_tearing_time_to_event_dsm`, and the open question in
-`docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 7
+`.claude/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 7
 (question 5) stays open with the shipped checkpoint as the default.
 
 | file | what it shows |

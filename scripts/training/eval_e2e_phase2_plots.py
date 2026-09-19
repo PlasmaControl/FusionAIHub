@@ -1,7 +1,7 @@
 """Stage-1 evaluation — Phase 2 plots.
 
 Consumes the CSV.gz tables produced by ``eval_e2e_stage1_phase1.py`` and
-produces the plots specified in ``docs/eval_stage1_plan.md`` §5.
+produces the plots specified in ``.claude/notes/eval_stage1_plan.md`` §5.
 
 This first cut delivers the **aggregate-quality scatter** only (§2-Q1):
 one scatter per (split, modality), one dot per shot, y = model MAE vs
@@ -76,7 +76,7 @@ def plot_aggregate_scatter(
 ) -> None:
     """Per-shot scatter of model MAE vs copy-baseline MAE.
 
-    See §5 of ``docs/eval_stage1_plan.md``.
+    See §5 of ``.claude/notes/eval_stage1_plan.md``.
 
     Parameters
     ----------

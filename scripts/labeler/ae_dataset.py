@@ -122,8 +122,8 @@ PROTECT_MAX_SHOTS = NOTCH_PROTECT_MAX_SHOTS  # per BIN, over shots
 #: PROTECT_MAX_SHOTS shots at ANY swept threshold - so it degenerated to "take
 #: the smallest", 0.5. A bin lit in half of a 2 s record can be a real long-lived
 #: mode rather than receiver pickup, so the controller fixed the applied value at
-#: 0.8 (task 6's first-pass value; plan `docs/superpowers/plans/
-#: 2026-09-05-labeler-phase3.md`, "Notch decision" under task 7b).
+#: 0.8 (task 6's first-pass value; plan `.claude/superpowers/plans-recommender/
+#: 2026-09-05-labelmaker-phase3.md`, "Notch decision" under task 7b).
 APPLIED_NOTCH = 0.8
 APPLIED_NOTCH_REASON = (
     "the sweep's protected-bin rule never bound (zero protected bins removed on "

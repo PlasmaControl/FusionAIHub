@@ -13,7 +13,7 @@ project's STFT (n_fft=1024, hop=256, drops DC), and produces:
                                        spectra (probes 2x8 grid layout)
 
 Outputs a markdown summary at
-``docs/spectrogram_step0_findings.md`` capturing:
+``.claude/notes/spectrogram_step0_findings.md`` capturing:
 - confirmed shapes
 - per-channel mean/std of standardized output (sanity vs preprocessing
   stats)
@@ -42,8 +42,10 @@ STATS_PATH = Path(
 OUT_DIR = Path("/scratch/gpfs/ps9551/FusionAIHub/inspect_spectrograms")
 FIG_DIR = OUT_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-DOCS_DIR = Path("/scratch/gpfs/ps9551/FusionAIHub/docs")
-SUMMARY_PATH = DOCS_DIR / "spectrogram_step0_findings.md"
+# Working notes live under .claude/notes/, not docs/: docs/ is documentation,
+# status/findings write-ups are Claude material (repo convention).
+NOTES_DIR = Path("/scratch/gpfs/ps9551/FusionAIHub/.claude/notes")
+SUMMARY_PATH = NOTES_DIR / "spectrogram_step0_findings.md"
 
 # Plan-locked params:
 N_FFT = 1024
@@ -295,7 +297,7 @@ def main() -> None:
             )
 
     # ── Markdown findings ────────────────────────────────────────────
-    DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
     summary = SUMMARY_PATH
     lines: List[str] = []
     lines.append("# Step 0 — Data Verification Findings")

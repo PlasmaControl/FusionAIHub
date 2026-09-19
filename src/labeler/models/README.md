@@ -47,7 +47,7 @@ which, measured, is the better model of the two (see its card).
 too - no upstream artifact answers "is an Alfven eigenmode present now, and at
 what frequency". Its network is `src/labeler/ae/model.py`, its label construction
 `src/labeler/ae/labels.py`, its training `scripts/labeler/ae_train.py`,
-and its design is `docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
+and its design is `.claude/superpowers/specs/2026-09-05-labelmaker-phase3-design.md`
 section 5. It is also the only model whose input is a **waveform**: the raw
 4-chord CO2 record at 500 kHz, kept at its native rate through the feature layer
 and transformed by the adapter itself.

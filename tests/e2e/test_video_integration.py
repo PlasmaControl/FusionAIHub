@@ -2,7 +2,7 @@
 modality.
 
 Five tests pin the contracts the user explicitly flagged as
-regression-risk in ``docs/phase_c_step1_status.md`` §12:
+regression-risk in ``.claude/notes/phase_c_step1_status.md`` §12:
 
 * **G1** — when a ``kind="video"`` diagnostic is added, every video
   ``TokenSlice`` must lie inside the diagnostic prefix

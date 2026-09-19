@@ -356,7 +356,7 @@ which truncates each shot at onset, so no post-onset row is ever a training row.
 The 1:1 event/censor undersampling and the `t < 600 ms` cut that appear in
 `train_survival_study.py` and `tm_survival.ipynb` belong to an Optuna study and
 were **not** used for this model. Details in
-`docs/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 2.1.
+`.claude/superpowers/specs/2026-09-05-labelmaker-phase3-design.md` section 2.1.
 
 ## Evaluation
 

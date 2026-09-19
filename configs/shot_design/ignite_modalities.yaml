@@ -90,7 +90,7 @@ modalities:
     # (ratio exactly 1, units keV, same 5,000,192 samples). The cost is the catch: one TECEF
     # channel took 108.4 s against 8.4 s for the PTDATA channel of the same length, so a full
     # 48-channel ECE fetch is ~90 min/shot serial. Fetch this tier only where it is actually
-    # needed (the 2016-2018 gap, per .superpowers/sdd/progress.md).
+    # needed (the 2016-2018 gap, per .claude/superpowers-runtime/sdd/progress.md).
     fetch: {kind: mds, tree: electrons, nodes: {template: "\\ELECTRONS::TOP.ECE.TECEF:TECEF{:02d}", range: [1, 48]}}
     measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 108.4}
   bes:
