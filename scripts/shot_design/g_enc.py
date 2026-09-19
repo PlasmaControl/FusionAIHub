@@ -427,7 +427,9 @@ def main(argv: list[str] | None = None) -> int:
         "torch": torch.__version__,
         "gpu": torch.cuda.get_device_name(0) if args.device == "cuda" else None,
         "bundle": str(bundle),
-        "revision": ignite.model_cfg()["revision"],
+        "generation": ignite.model_cfg().get("generation", "v2"),
+        # v2 only: a pinned v4 bundle is identified by its own sha256 manifest, not a Hub revision.
+        "revision": ignite.model_cfg().get("revision"),
         "corpus": str(paths.foundation_model_processed_dir),
         "include_video": not args.no_video,
         "actuator_tolerance_z": ACT_TOL,

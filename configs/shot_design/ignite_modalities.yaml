@@ -3,12 +3,16 @@ version: 1
 # where that modality lives in a d3d_fusion_data file and how to fetch it for a shot that has no
 # staged file. scripts/fetch_shots.py reads this alongside signals.yaml and actuators.yaml.
 #
-# SCOPE. The modality list is not a guess: it is FROZEN_MODALITIES in
-# src/tokamak_foundation_model/ignite/dynamics_config.py, the canonical
-# per-frame token order: 4 spectro x 192 tok + 2 video x 108 + 7 slow-TS x 4 + filterscopes x 5,
-# i.e. 14 modalities. (dynamics_config's own header totals 1012 tokens/frame, which predates
-# filterscopes being added to the layout; the 14 entries below sum to 1017.) Exactly those 14
-# names appear below. The actuator signals that FusionAIHub's own data-generation config also
+# SCOPE. The modality list is not a guess: it is the codec set of the PINNED generation, whose
+# canonical per-frame token order is the `modalities` key order of the pinned bundle's
+# codecs/MANIFEST.json (dynamics_config.modalities_from_manifest reads it). Generation v4:
+# 5 spectro x 192 tok + 2 video x 108 + 7 slow-TS x 4 + filterscopes x 5, i.e. 15 modalities
+# summing to 1209 tokens/frame -- verified against the modalities tuple of
+# ignite_prod_v4/runs/mskfull/dynamics_best.pt (step 3200). v4 adds `mirnov` to v2's 14 (1017
+# tokens) and moves every vocab to 1000. The static FROZEN_MODALITIES table in
+# src/tokamak_foundation_model/ignite/dynamics_config.py still describes v2's 14 and is NOT the
+# contract here. Exactly the 15 v4 names appear below.
+# The actuator signals that FusionAIHub's own data-generation config also
 # processes (pinj, tinj, beam_voltage, ech_*, gas_*, rmp, i_coil, ich) are NOT in the codec set
 # and are NOT duplicated here -- they are already covered, member by member, by
 # configs/actuators.yaml, and listing them twice would give two
@@ -31,47 +35,44 @@ version: 1
 # `pad_note` says why the source is short. A staged group can also be WIDER than n_channels
 # (cer_ti/cer_rot carry 80 columns for 48 IGNITE channels): the list, not the group, decides.
 model:
-  # The Hugging Face bundle, copied once into <models_dir>/<local_name> by `shot_design model --download`
-  # and read from disk after that (shotdb/ignite.py:download_bundle). Private repo: the token in
-  # ~/.cache/huggingface/token must have access. The revision is PINNED: a re-upload must not be
-  # able to change every embedding in the database without a config change here.
-  repo_id: nc1/IGNITE
-  revision: d0cfe4f73d0287d5e12d724f8d77ed651fcfa47a   # uploaded 2026-09-05 00:23 UTC
-  local_name: IGNITE
-  # Layout inside the bundle: codecs/MANIFEST.json + codecs/<modality>/codec_best.pt are the 14
-  # frozen Phase-A codecs (453 MB) the embedding needs; the dynamics checkpoint below is the
-  # Phase-B MaskGIT model (3.5 GB, prod_nfullrs2 @ step 13400, gen_ce 1.4223), which the Phase-5
-  # rollout will need and `--download` skips unless asked with --full.
-  dynamics_file: ignite_dynamics_prod_nfullrs2_step13400.pt
-  # Verified 2026-09-18 against this checkpoint's modalities tuples and the
-  # pinned bundle's codecs/MANIFEST.json. Repository DynamicsConfig defaults
-  # describe another codec generation (1000 everywhere); do not use them here.
-  # Re-verify this contract whenever the pinned bundle/checkpoint changes.
-  production_vocabs:
-    ece: 32768
-    bes: 64000
-    mhr: 32768
-    co2: 32768
-    tangtv_lower: 64000
-    tangtv_upper: 64000
-    ts_core_density: 1000
-    ts_core_temp: 1000
-    ts_tangential_density: 1000
-    ts_tangential_temp: 1000
-    cer_ti: 1000
-    cer_rot: 1000
-    mse: 1000
-    filterscopes: 1000
-  frozen_modalities: src/tokamak_foundation_model/ignite/dynamics_config.py
-  processed_dir_layout: "<shot>_processed.h5, one group per modality, {xdata: (n,) s, ydata: (ch, n)}"
-  # Frame 0 starts at shot time 0.0 s. That is the production frame-code cache's convention, not
-  # train_dynamics._single_shot_dataset's default of 1.0: measured on shot 190090 against the
-  # bundle's frame_codes/190090.pt, 0.0 reproduces all 239 frames of all 12 non-video modalities
-  # bit for bit, while 1.0 matches only the five modalities that are flat on that shot.
-  t0_start_s: 0.0
+  # The PINNED IGNITE generation. v4 is not published to a Hub: it is trained on this machine and
+  # lives in proj-shared, where `codec_best.pt` is a SYMLINK into whichever run currently holds
+  # the best checkpoint and the run directories keep training. `shot_design model --pin` therefore
+  # makes a real copy into <models_dir>/<local_name> (shotdb/ignite.py:pin_bundle) and records a
+  # sha256 of every copied file in the bundle's own codecs/MANIFEST.json; `--check` re-hashes and
+  # `load_codecs` refuses a bundle that no longer matches. That digest is v4's equivalent of v2's
+  # pinned Hub revision: the weights behind every embedding in the database cannot change without
+  # something here saying so.
+  generation: v4
+  local_name: IGNITE_v4
+  codec_tmpl: /lustre/orion/fus187/proj-shared/models/ignite_codecs_v4/{m}/codec_best.pt
+  dynamics_src: /lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/mskfull/dynamics_best.pt
+  # Layout inside the pinned bundle: codecs/MANIFEST.json + codecs/<modality>/codec_best.pt are
+  # the 15 frozen Phase-A codecs (994 MB) the embedding needs, and the Phase-B MaskGIT dynamics
+  # checkpoint (3.3 GB) is copied next to them under this name. `dynamics_src` is a `_best.pt`
+  # that the live run keeps rewriting, so the local name records WHICH one was taken.
+  dynamics_file: ignite_dynamics_prod_v4_mskfull_step3200.pt
+  # The production frame codes the v4 dynamics model was trained on. Not copied by --pin (it is a
+  # corpus, not a weight); it is the reference a frame-code parity check reads.
+  frame_codes_cache: /lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes
+  # Verified 2026-09-19 against dynamics_best.pt's own `modalities` tuple (step 3200): 15 entries,
+  # every codebook_size 1000, n_tok summing to 1209. The v2 table (32768/64000 for the spectro and
+  # video codecs, 14 modalities, 1017 tokens) does NOT apply to this generation, and neither do
+  # DynamicsConfig's repository defaults. Re-verify whenever the pinned checkpoint changes.
+  frame_tokens: 1209
+  # Frame 0 starts at shot time 1.0 s -- train_dynamics._single_shot_dataset's own default, which
+  # is what produced `frame_codes_cache`. (v2's shipped cache used 0.0; the origin is a property
+  # of the cache a generation was trained against, not a constant.) A bit-for-bit frame-code
+  # parity check against frame_codes_cache is the test that pins this, as it did for v2.
+  t0_start_s: 1.0
   # Fragment-query windows (`shot_design query --ref-window`): 5 frames pooled, stored per shot in
   # emb_ignite_win.npy / windows.parquet. 250 ms is ~48 rows per 12 s shot.
   window_ms: 250
+  production_vocabs: {ece: 1000, bes: 1000, mhr: 1000, co2: 1000, mirnov: 1000, tangtv_lower: 1000, tangtv_upper: 1000, ts_core_density: 1000, ts_core_temp: 1000, ts_tangential_density: 1000, ts_tangential_temp: 1000, cer_ti: 1000, cer_rot: 1000, mse: 1000, filterscopes: 1000}
+  families: {ece: spectro, bes: spectro, mhr: spectro, co2: spectro, mirnov: spectro, tangtv_lower: video, tangtv_upper: video, ts_core_density: slowts, ts_core_temp: slowts, ts_tangential_density: slowts, ts_tangential_temp: slowts, cer_ti: slowts, cer_rot: slowts, mse: slowts, filterscopes: fastts}
+  n_tok: {ece: 192, bes: 192, mhr: 192, co2: 192, mirnov: 192, tangtv_lower: 108, tangtv_upper: 108, ts_core_density: 4, ts_core_temp: 4, ts_tangential_density: 4, ts_tangential_temp: 4, cer_ti: 4, cer_rot: 4, mse: 4, filterscopes: 5}
+  # v2 bundle kept for reference / rollback: repo_id nc1/IGNITE rev d0cfe4f73d0287d5e12d724f8d77ed651fcfa47a
+  processed_dir_layout: "<shot>_processed.h5, one group per modality, {xdata: (n,) s, ydata: (ch, n)}"
 frame_ms: 50
 pad_value: .nan
 
@@ -129,6 +130,27 @@ modalities:
     staged: {group: co2_density, cols: [r0, v1, v2, v3]}
     fetch: {kind: ptdata, nodes: [denr0uf, denv1uf, denv2uf, denv3uf]}
     measured: {shot: 161172, ratio: 1.0000758, seconds_per_channel: 15.7}   # 14,992,000 samples
+  mirnov:
+    family: spectro
+    tier: spectro
+    n_tok: 192
+    n_channels: 29
+    target_fs: 500000
+    units: "[?] (node declares none)"
+    # NEW IN GENERATION v4 (v2 had no mirnov codec). The 29 channels and their order are
+    # FusionAIHub's own: data_loader.SIGNAL_CONFIGS declares mirnov as 29 channels at 500 kHz with
+    # STFT, and the pointnames in that order are the `input_key` list of
+    # src/tokamak_foundation_model/data/config/modalities/modalities.yaml:mirnov -- which is what
+    # produced the `mirnov` group of every <shot>_processed.h5 the codec was trained on. Note the
+    # list repeats MPI1A274D (indices 24 and 27); that duplication is IGNITE's channel layout and
+    # is reproduced here rather than deduplicated, because the codec's channel 27 is that column.
+    # UNVERIFIED against a staged d3d_fusion_data file: unlike every other entry above, no ratio
+    # was measured, because the staged store is not reachable from OLCF (paths.frontier.yaml's
+    # staged_raw_dir does not exist). `staged.group` is the processed-corpus group name, which is
+    # what the reader uses; a fetch path for this modality still has to be checked on a machine
+    # that can reach MDSplus.
+    staged: {group: mirnov, cols: [mpi1a322d, mpi3a322d, mpi5a322d, mpi89a322d, mpi79fa322d, mpi7fa322d, mpi67a322d, mpi6na322d, mpi1b322d, mpi3b322d, mpi5b322d, mpi89b322d, mpi79b322d, mpi7nb322d, mpi6fb322d, mpi66m322d, mpi66m132d, mpi66b137d, mpi66m312d, mpi66b312d, mpi66m020d, mpi66m097d, mpi66m307d, mpi1a011d, mpi1a274d, mpi1a109d, mpi1a199d, mpi1a274d, mpi1a341d]}
+    fetch: {kind: ptdata, nodes: [MPI1A322D, MPI3A322D, MPI5A322D, MPI89A322D, MPI79FA322D, MPI7FA322D, MPI67A322D, MPI6NA322D, MPI1B322D, MPI3B322D, MPI5B322D, MPI89B322D, MPI79B322D, MPI7NB322D, MPI6FB322D, MPI66M322D, MPI66M132D, MPI66B137D, MPI66M312D, MPI66B312D, MPI66M020D, MPI66M097D, MPI66M307D, MPI1A011D, MPI1A274D, MPI1A109D, MPI1A199D, MPI1A274D, MPI1A341D]}
 
   # ---- video (divertor cameras) -----------------------------------------------------------
   # tangtv_lower/_upper are two views of ONE 7-channel TANGTV group: FusionAIHub keeps raw camera

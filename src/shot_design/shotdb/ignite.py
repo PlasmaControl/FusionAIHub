@@ -10,12 +10,15 @@ Ported from shot-recommender-system (shotrec) @565d548.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import shutil
 import time
 import warnings
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,16 +41,139 @@ class CheckpointMissing(RuntimeError):
 
 
 def model_cfg() -> dict:
+    """The pinned IGNITE generation: `model:` in configs/shot_design/ignite_modalities.yaml.
+
+    Generation v2 was a Hugging Face snapshot (`repo_id` + `revision`, `download_bundle`);
+    generation v4 is a local copy taken with `pin_bundle` from `codec_tmpl`/`dynamics_src` and
+    verified by the sha256 table in its own manifest. `generation` says which, and it is the only
+    key that decides: nothing here infers the generation from the shape of the table.
+    """
     return load_yaml("ignite_modalities.yaml")["model"]
 
 
 def bundle_dir(paths: Paths) -> Path:
-    """Where the Hugging Face bundle lives locally: <models_dir>/<model.local_name>."""
+    """Where the pinned bundle lives locally: <models_dir>/<model.local_name>.
+
+    The name carries the generation (IGNITE_v4), so pinning a new generation lands beside the old
+    one rather than on top of it and a database built against either can still find its weights.
+    """
     return paths.models_dir / model_cfg()["local_name"]
 
 
 def codec_manifest(ckpt_dir: Path) -> Path:
     return Path(ckpt_dir) / "codecs" / "MANIFEST.json"
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def pin_bundle(
+    paths: Paths,
+    *,
+    codec_tmpl: str,
+    dynamics_src: Path,
+    names: list[str],
+    t0_start: float,
+) -> Path:
+    """Copy one generation's codecs + dynamics checkpoint into <models_dir> and digest them.
+
+    This is generation v4's replacement for `download_bundle`. The sources are training
+    directories, not a published snapshot: `codec_tmpl.format(m=name)` is typically a SYMLINK into
+    whichever run currently holds the best checkpoint, and those runs keep training. So the copy
+    is a real copy of the RESOLVED file (`shutil.copy2` after `Path.resolve()`, never a symlink
+    that would follow the run), and `codecs/MANIFEST.json` records a sha256 of every file written.
+    `check_bundle` re-hashes them, which makes "the weights behind the database changed" a
+    detectable event rather than a silent one.
+
+    The manifest is the same shape the v2 Hub bundle shipped -- `modalities` maps each name to its
+    family, n_tok and codebook_size, in canonical token order -- so `load_codecs` and
+    `dynamics_config.modalities_from_manifest` read either generation unchanged.
+    """
+    cfg = model_cfg()
+    families, n_tok, vocabs = cfg["families"], cfg["n_tok"], cfg["production_vocabs"]
+    unknown = [n for n in names if n not in families or n not in n_tok or n not in vocabs]
+    if unknown:
+        raise KeyError(
+            f"not modalities of generation {cfg.get('generation')}: {', '.join(unknown)}"
+        )
+    out = bundle_dir(paths)
+    out.mkdir(parents=True, exist_ok=True)
+    sha: dict[str, str] = {}
+    for name in names:
+        src = Path(codec_tmpl.format(m=name)).resolve()
+        if not src.is_file():
+            raise CheckpointMissing(f"no codec for {name} at {codec_tmpl.format(m=name)} -> {src}")
+        rel = f"codecs/{name}/codec_best.pt"
+        dst = out / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        sha[rel] = _sha256(dst)
+    dyn_src = Path(dynamics_src).resolve()
+    if not dyn_src.is_file():
+        raise CheckpointMissing(f"no dynamics checkpoint at {dynamics_src} -> {dyn_src}")
+    dyn_rel = cfg["dynamics_file"]
+    shutil.copy2(dyn_src, out / dyn_rel)
+    sha[dyn_rel] = _sha256(out / dyn_rel)
+    manifest = {
+        "_meta": {
+            "created": datetime.now(UTC).isoformat(timespec="seconds"),
+            "generation": cfg.get("generation"),
+            "codec_tmpl": codec_tmpl,
+            "dynamics_src": str(dynamics_src),
+            "copy_mode": "shutil.copy2, symlinks resolved",
+        },
+        "modalities": {
+            name: {
+                "family": families[name],
+                "n_tok": int(n_tok[name]),
+                "codebook_size": int(vocabs[name]),
+            }
+            for name in names
+        },
+        "t0_start_s": float(t0_start),
+        "frame_tokens": sum(int(n_tok[name]) for name in names),
+        "sha256": sha,
+    }
+    codec_manifest(out).write_text(json.dumps(manifest, indent=2) + "\n")
+    return out
+
+
+def _check_dir(ckpt_dir: Path) -> list[str]:
+    """What no longer matches the bundle's own manifest, one line each ([] = intact)."""
+    manifest = codec_manifest(ckpt_dir)
+    if not manifest.exists():
+        return [f"{manifest}: missing -- nothing is pinned here"]
+    man = json.loads(manifest.read_text())
+    bad: list[str] = []
+    for rel, want in man.get("sha256", {}).items():
+        path = Path(ckpt_dir) / rel
+        if not path.is_file():
+            bad.append(f"{rel}: missing")
+            continue
+        got = _sha256(path)
+        if got != want:
+            bad.append(f"{rel}: expected {want[:12]} got {got[:12]}")
+    # The vocabularies are the other thing that silently changes meaning: a codec generation with
+    # different codebook sizes produces codes a checkpoint trained on this one cannot read.
+    vocabs = model_cfg().get("production_vocabs", {})
+    for name, entry in man.get("modalities", {}).items():
+        want_v = vocabs.get(name)
+        if want_v is not None and int(entry["codebook_size"]) != int(want_v):
+            bad.append(
+                f"codecs/{name}: manifest vocab {entry['codebook_size']} != pinned "
+                f"production vocab {want_v}"
+            )
+    return bad
+
+
+def check_bundle(paths: Paths) -> list[str]:
+    """`_check_dir` for the configured bundle: [] when every pinned file still hashes the same."""
+    return _check_dir(bundle_dir(paths))
 
 
 def download_bundle(paths: Paths, full: bool = False, revision: str | None = None) -> Path:
@@ -63,6 +189,11 @@ def download_bundle(paths: Paths, full: bool = False, revision: str | None = Non
     from huggingface_hub import snapshot_download
 
     cfg = model_cfg()
+    if cfg.get("repo_id") is None:
+        raise RuntimeError(
+            f"generation {cfg.get('generation')} is not published to the Hub: it is pinned "
+            f"locally with `shot_design model --pin` (see pin_bundle)."
+        )
     ignore = None if full else [cfg["dynamics_file"], "frame_codes/*"]
     out = snapshot_download(
         cfg["repo_id"],
@@ -95,8 +226,9 @@ def load_codecs(
 ) -> dict[str, tuple[Any, Any, str]]:
     """Load the frozen Phase-A codecs from the LOCAL bundle -> {name: (codec, cfg, family)}.
 
-    `ckpt_dir` is the Hugging Face bundle (`download_bundle`): `codecs/MANIFEST.json` names the
-    14 modalities and their family, and each codec is `codecs/<modality>/codec_best.pt`, a
+    `ckpt_dir` is the pinned bundle (`pin_bundle`, or `download_bundle` for v2):
+    `codecs/MANIFEST.json` names the generation's modalities (v4: 15) and their family, plus a
+    sha256 per copied file, and each codec is `codecs/<modality>/codec_best.pt`, a
     torch.save dict carrying `cfg` (the codec's own config dataclass, with the per-channel
     standardisation statistics the trainer injected) and `codec` (the state dict). The dataclass
     unpickles against the sibling `tokamak_foundation_model.ignite.config` package,
@@ -108,10 +240,11 @@ def load_codecs(
     ckpt_dir = Path(ckpt_dir)
     if not ckpt_dir.is_dir():
         raise CheckpointMissing(
-            f"no IGNITE bundle at {ckpt_dir}. Download it once with\n"
-            f"    shot_design model --download\n"
-            f"(repo {model_cfg()['repo_id']}, needs a Hugging Face token with access); the "
-            f"location is paths.yaml:models_dir / ignite_modalities.yaml:model.local_name."
+            f"no IGNITE bundle at {ckpt_dir}. Install it once with\n"
+            f"    shot_design model --pin        (generation v4: copies the local checkpoints)\n"
+            f"    shot_design model --download   (generation v2: Hugging Face snapshot)\n"
+            f"whichever `generation` ignite_modalities.yaml pins; the location is "
+            f"paths.yaml:models_dir / ignite_modalities.yaml:model.local_name."
         )
     # Look for the weights BEFORE importing FusionAIHub. The common case by far is "the bundle
     # has not arrived yet", and that has to report a missing checkpoint -- not whatever import
@@ -122,9 +255,21 @@ def load_codecs(
         raise CheckpointMissing(
             f"{ckpt_dir} exists but holds no codec checkpoints: expected "
             f"codecs/MANIFEST.json and codecs/<modality>/codec_best.pt. Re-run "
-            f"`shot_design model --download`."
+            f"`shot_design model --pin` (or `--download` for generation v2)."
         )
-    entries = json.loads(manifest.read_text())["modalities"]
+    man = json.loads(manifest.read_text())
+    entries = man["modalities"]
+    # A pinned bundle carries digests of what was copied. Check them BEFORE loading anything: the
+    # sources are live training directories, so "the codec under this path is no longer the one
+    # the database was built with" is a real event, and it has to stop the run rather than quietly
+    # re-embed a corpus against different weights.
+    if man.get("sha256"):
+        bad = _check_dir(ckpt_dir)
+        if bad:
+            raise CheckpointMissing(
+                "pinned bundle changed on disk: " + "; ".join(bad) + f" (in {ckpt_dir}). "
+                "Re-pin with `shot_design model --pin`, and rebuild anything embedded with it."
+            )
     td = _dynamics()
 
     wanted = names or [n for n, e in entries.items() if e["family"] in ENCODABLE_FAMILIES]
@@ -516,8 +661,11 @@ def manifest_block(
         "modalities": names,
         "dims": [int(codecs[n][1].d_model) for n in names],
         "model": {
-            "repo_id": cfg["repo_id"],
-            "revision": cfg["revision"],
+            # v2 identified the weights by a Hub revision; v4 is pinned locally, so `revision` is
+            # absent and the bundle's own sha256 manifest is what `check_bundle` compares against.
+            "generation": cfg.get("generation", "v2"),
+            "repo_id": cfg.get("repo_id"),
+            "revision": cfg.get("revision"),
             "bundle_dir": str(bundle_dir(paths)),
         },
         "t0_start_s": float(cfg["t0_start_s"]),
