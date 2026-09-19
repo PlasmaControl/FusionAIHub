@@ -1124,3 +1124,167 @@ def test_the_page_and_the_bundle_are_behind_the_token_gate(app):
         response = transport.get(path)
         assert response.status_code == 401, path
         assert response.json() == {"error": NO_TOKEN}, path
+
+
+# --- the launcher -----------------------------------------------------------
+
+
+def _off_the_real_tree(monkeypatch, tmp_path):
+    """Point `Paths.from_env` at `tmp_path` so `main()` cannot open the corpus."""
+    paths = _tmp_paths(tmp_path, tmp_path / "events")
+    monkeypatch.setenv("LABELER_ROOT", str(paths.root))
+    monkeypatch.setenv("LABELER_CORPUS", str(paths.corpus))
+    monkeypatch.setenv("LABELER_TEXT_ROOT", str(paths.text_root))
+    monkeypatch.setenv("LABELER_LOGS_JSONL", str(paths.logs_jsonl))
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(paths.label_tables))
+    monkeypatch.setenv("LABELER_RAW_CACHE", str(paths.raw_cache))
+
+
+def _runner(monkeypatch, serve):
+    """Replace the only layer that would bind a socket, recording its call."""
+    calls = []
+
+    def fake(app, host, port):
+        calls.append({"app": app, "host": host, "port": port})
+        return 0
+
+    monkeypatch.setattr(serve, "_run", fake)
+    return calls
+
+
+def test_serve_refuses_any_host_but_the_loopback():
+    from labeler.events.ui import serve
+
+    with pytest.raises(ValueError, match="127.0.0.1"):
+        serve.main(host="0.0.0.0")
+
+
+def test_serve_prints_the_token_link_and_the_forward(monkeypatch, capsys, tmp_path):
+    from labeler.events.ui import serve
+
+    _off_the_real_tree(monkeypatch, tmp_path)
+    monkeypatch.setattr(serve, "_run", lambda app, host, port: 0)
+    serve.main(token="secret", port=9999)
+    printed = capsys.readouterr().out
+    assert "http://127.0.0.1:9999/?token=secret" in printed
+    assert "ssh -L 9999:localhost:9999" in printed
+
+
+def test_serve_binds_the_loopback_and_hands_over_the_gated_app(
+    monkeypatch, capsys, tmp_path
+):
+    """The real `main` path: what the runner is given, value by value."""
+    from labeler.events.ui import serve
+
+    _off_the_real_tree(monkeypatch, tmp_path)
+    calls = _runner(monkeypatch, serve)
+    assert serve.main(token="secret") == 0
+    capsys.readouterr()
+    assert len(calls) == 1
+    assert calls[0]["host"] == "127.0.0.1"
+    assert calls[0]["port"] == serve.DEFAULT_PORT == 8811
+    assert calls[0]["app"].state.token == "secret"
+
+
+def test_serve_never_puts_the_token_bearing_url_in_uvicorn_s_access_log(monkeypatch):
+    """The token rides in the query string, so an access log would print the
+    credential into the terminal and into anything capturing it.
+    """
+    import uvicorn
+
+    from labeler.events.ui import serve
+
+    seen = {}
+
+    def fake_run(app, **kwargs):
+        seen["app"] = app
+        seen.update(kwargs)
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+    sentinel = object()
+    assert serve._run(sentinel, "127.0.0.1", 8811) == 0
+    assert seen["app"] is sentinel
+    assert seen["access_log"] is False
+    assert seen["host"] == "127.0.0.1"
+    assert seen["port"] == 8811
+
+
+def test_serve_mints_an_unguessable_token_that_differs_between_runs(
+    monkeypatch, capsys, tmp_path
+):
+    from labeler.events.ui import serve
+
+    _off_the_real_tree(monkeypatch, tmp_path)
+    calls = _runner(monkeypatch, serve)
+    serve.main(port=9999)
+    first = capsys.readouterr().out
+    serve.main(port=9999)
+    second = capsys.readouterr().out
+
+    minted = [call["app"].state.token for call in calls]
+    assert minted[0] != minted[1]
+    # 16 bytes of hex: too wide to guess from the loopback, and every
+    # character accounted for so a truncated or non-hex source shows up.
+    for token in minted:
+        assert len(token) == 32
+        assert set(token) <= set("0123456789abcdef")
+    for token, printed in zip(minted, (first, second)):
+        assert f"http://127.0.0.1:9999/?token={token}" in printed
+
+    # The printed token is the only one that opens the page.
+    app = calls[0]["app"]
+    refused = TestClient(app).get(f"/api/events?token={minted[1]}")
+    assert refused.status_code == 401
+    assert refused.json() == {"error": BAD_TOKEN}
+
+
+def test_serve_takes_its_token_from_secrets(monkeypatch, capsys, tmp_path):
+    """A token from `random` would read the same but be predictable."""
+    from labeler.events.ui import serve
+
+    _off_the_real_tree(monkeypatch, tmp_path)
+    _runner(monkeypatch, serve)
+    seen = []
+    real = secrets.token_hex
+
+    def spy(n=None):
+        seen.append(n)
+        return real(n)
+
+    monkeypatch.setattr(secrets, "token_hex", spy)
+    serve.main(port=9999)
+    capsys.readouterr()
+    assert seen == [16]
+
+
+def test_serve_warns_when_the_process_is_not_under_the_fdp_wrapper(
+    monkeypatch, capsys, tmp_path
+):
+    """A shot outside the corpus needs a live fetch, and a live fetch needs
+    the wrapper; saying so at startup costs a restart, saying so at the first
+    fetch costs the review up to that point.
+    """
+    from labeler.events.ui import serve
+
+    _off_the_real_tree(monkeypatch, tmp_path)
+    _runner(monkeypatch, serve)
+    for marker in serve.FDP_MARKERS:
+        monkeypatch.delenv(marker, raising=False)
+    serve.main(token="secret")
+    assert serve.FDP_COMMAND in capsys.readouterr().out
+
+
+def test_serve_stays_quiet_when_it_is_under_the_fdp_wrapper(
+    monkeypatch, capsys, tmp_path
+):
+    """The markers are the ones `fdp run` really sets; a note on every single
+    run is a note nobody reads.
+    """
+    from labeler.events.ui import serve
+
+    _off_the_real_tree(monkeypatch, tmp_path)
+    _runner(monkeypatch, serve)
+    for marker in serve.FDP_MARKERS:
+        monkeypatch.setenv(marker, "set-by-fdp-run")
+    serve.main(token="secret")
+    assert "fdp" not in capsys.readouterr().out
