@@ -1,5 +1,5 @@
 :root { --ink: #1a1a1a; --quiet: #666; --rule: #ddd; --warn: #b2182b;
-        --present: #1b7837; --absent: #777; }
+        --present: #1b7837; --absent: #777; --note: #7a5c00; }
 * { box-sizing: border-box; }
 body {
   margin: 0; padding: 1rem 1.5rem; color: var(--ink);
@@ -21,6 +21,9 @@ select { font: inherit; padding: .2rem; max-width: 22rem; }
 }
 .status { min-height: 1.5rem; color: var(--quiet); }
 .status.error { color: var(--warn); font-weight: 600; }
+/* Something the render wants said about the data - that this shot has no
+   label row - reads as information, not as the failure red is reserved for. */
+.status.note { color: var(--note); font-weight: 600; }
 /* An empty error line must not hold open a gap above the figure. */
 .status.error:empty { min-height: 0; }
 .controls { display: flex; gap: .5rem; align-items: center; margin: .5rem 0;
