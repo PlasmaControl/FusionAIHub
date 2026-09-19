@@ -1,1 +1,69 @@
-<!doctype html><title>labeler verify</title>
+<!doctype html>
+<!-- Page structure follows src/shot_design/ui/static/index.html: one static
+     document, one stylesheet, one script, everything else fetched from the
+     app's own JSON endpoints. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>labeler verify</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/vendor/plotly.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>verify</h1>
+  <label>event <select id="event"></select></label>
+  <label>shot <select id="shot"></select></label>
+  <span id="builder" class="tag"></span>
+  <span id="tier" class="tag"></span>
+  <span id="holdout" class="tag"></span>
+</header>
+
+<p id="guidance" class="guidance"></p>
+<p id="roster-error" class="status error"></p>
+<p id="status" class="status" role="status" aria-live="polite"></p>
+
+<div id="figure"></div>
+
+<section class="controls">
+  <button id="present">Mark present</button>
+  <button id="absent">Mark absent</button>
+  <button id="save">Save</button>
+  <button id="clear">Clear marks</button>
+  <span id="marks"></span>
+</section>
+
+<p class="hint">
+  Drag across the figure to select a time range, then mark it. The scroll
+  wheel and the modebar zoom the whole figure; every pan and zoom re-renders
+  the visible window at full resolution on the server, and double-click
+  returns to the whole shot.
+</p>
+
+<details class="what">
+  <summary>What Save writes</summary>
+  <p>
+    One new file, <code>review/&lt;shot&gt;__&lt;reviewer&gt;__&lt;stamp&gt;.csv</code>,
+    in the same five-column schema as <code>format/</code>. Corrections are
+    append-only: every press writes its own file and nothing under
+    <code>review/</code> is ever overwritten or deleted, so a second reviewer
+    cannot destroy the first's work.
+  </p>
+  <p>
+    It writes <b>nothing else</b>. Not <code>shots.csv</code> &mdash; that is
+    edited by hand, and <code>tier</code> and <code>holdout</code> in it are
+    curation calls nothing here derives. Not <code>format/</code> &mdash;
+    merging rows into it is a manual step. And no raw data is promoted to
+    EKOLEMEN; that is <code>labeler-raw promote</code>, on purpose.
+  </p>
+</details>
+
+<section class="roster">
+  <h2>roster</h2>
+  <table id="roster"><tbody></tbody></table>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>
