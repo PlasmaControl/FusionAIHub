@@ -1298,16 +1298,15 @@ def _carry_over(
     dims = [int(codecs[n][1].d_model) for n in codecs]
     if dims != list(old.get("dims", [])) or list(codecs) != list(old.get("modalities", [])):
         raise RuntimeError("model changed since the database was built (modalities/dims differ)")
-    # v2 identified the weights by a pinned Hub revision. A pinned v4 bundle has none: it is
-    # identified by the sha256 manifest `load_codecs` above has already checked, so the "are these
-    # the same weights" question is answered before this line. What is left for this check is a
-    # switch to a different GENERATION, which changes the token layout and the vocabularies.
-    old_model, cfg = old.get("model", {}), ignite.model_cfg()
-    if (old_model.get("generation", "v2"), old_model.get("revision")) != (
-        cfg.get("generation", "v2"),
-        cfg.get("revision"),
-    ):
-        raise RuntimeError("model generation/revision changed since the database was built")
+    # v2 identified the weights by a pinned Hub revision. A pinned bundle has
+    # none, and its own sha256 table does not answer this question either:
+    # re-pinning rewrites the codecs and the manifest together, so a re-pinned
+    # bundle passes `load_codecs` above. The digest OF the manifest separates
+    # one pin from the next, and mixing two pins in one matrix is exactly what
+    # this guard exists to prevent.
+    changed = ignite.check_same_bundle(old.get("model", {}), paths)
+    if changed:
+        raise RuntimeError(changed)
     width = sum(dims)
     embeddings, errors = ignite.encode_records(new_records, codecs, paths, workers=workers)
     seg_ids = segments_df.index.tolist()

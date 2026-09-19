@@ -143,14 +143,46 @@ def pin_bundle(
     return out
 
 
-def _check_dir(ckpt_dir: Path) -> list[str]:
-    """What no longer matches the bundle's own manifest, one line each ([] = intact)."""
+def checkpoint_modalities(path: Path) -> list[tuple[str, str, int, int]] | None:
+    """A dynamics checkpoint's OWN layout: [(name, family, n_tok, codebook_size)].
+
+    Read with `mmap=True`, so the 3.3 GB of weights beside it are never
+    materialised. None when the checkpoint carries no `modalities` entry
+    (nothing to cross-check against).
+    """
+    import torch
+
+    ck = torch.load(Path(path), map_location="cpu", weights_only=False, mmap=True)
+    mods = ck.get("modalities") if isinstance(ck, dict) else None
+    if not mods:
+        return None
+    out = []
+    for m in mods:
+        if isinstance(m, list | tuple):
+            name, family, n_tok, vocab = m
+        else:  # a ModalitySpec, as older checkpoints stored it
+            name, family, n_tok, vocab = m.name, m.family, m.n_tok, m.codebook_size
+        out.append((str(name), str(family), int(n_tok), int(vocab)))
+    return out
+
+
+def _check_dir(ckpt_dir: Path, *, codecs_only: bool = False) -> list[str]:
+    """What no longer matches the bundle's own manifest, one line each ([] = intact).
+
+    `codecs_only` restricts the digests to the `codecs/` entries: that is what
+    `load_codecs` verifies, because it is what `load_codecs` reads. Hashing the
+    3.3 GB dynamics checkpoint on a per-request path (design/seed.py loads
+    codecs per prepare) costs seconds for a file that call never opens.
+    `model --check` runs the full check, dynamics and cross-check included.
+    """
     manifest = codec_manifest(ckpt_dir)
     if not manifest.exists():
         return [f"{manifest}: missing -- nothing is pinned here"]
     man = json.loads(manifest.read_text())
     bad: list[str] = []
     for rel, want in man.get("sha256", {}).items():
+        if codecs_only and not rel.startswith("codecs/"):
+            continue
         path = Path(ckpt_dir) / rel
         if not path.is_file():
             bad.append(f"{rel}: missing")
@@ -161,12 +193,42 @@ def _check_dir(ckpt_dir: Path) -> list[str]:
     # The vocabularies are the other thing that silently changes meaning: a codec generation with
     # different codebook sizes produces codes a checkpoint trained on this one cannot read.
     vocabs = model_cfg().get("production_vocabs", {})
-    for name, entry in man.get("modalities", {}).items():
+    entries = man.get("modalities", {})
+    for name, entry in entries.items():
         want_v = vocabs.get(name)
         if want_v is not None and int(entry["codebook_size"]) != int(want_v):
             bad.append(
                 f"codecs/{name}: manifest vocab {entry['codebook_size']} != pinned "
                 f"production vocab {want_v}"
+            )
+    # ... but that compares the manifest against the yaml it was WRITTEN from,
+    # so on its own it is tautological right after a pin. The dynamics
+    # checkpoint is the independent witness: it carries the layout it was
+    # actually trained with, and `modalities_from_manifest` claims the manifest
+    # IS that layout. Checked here, where the file is in hand, and not on the
+    # codecs-only path -- it is the one check that has to open the checkpoint.
+    dyn = Path(ckpt_dir) / model_cfg()["dynamics_file"]
+    if not codecs_only and entries and dyn.is_file():
+        mine = [
+            (n, e["family"], int(e["n_tok"]), int(e["codebook_size"]))
+            for n, e in entries.items()
+        ]
+        try:
+            theirs = checkpoint_modalities(dyn)
+        except Exception as e:  # noqa: BLE001 — an unreadable pin IS a finding
+            bad.append(
+                f"{dyn.name}: cannot read its modalities "
+                f"({type(e).__name__}: {e})"
+            )
+            theirs = None
+        if theirs is not None and theirs != mine:
+            differ = [a for a, b in zip(mine, theirs, strict=False) if a != b]
+            extra = {n for n, *_ in mine} ^ {n for n, *_ in theirs}
+            bad.append(
+                f"{dyn.name}: manifest modalities != the checkpoint's own "
+                f"({len(mine)} vs {len(theirs)}; differing: "
+                f"{', '.join(n for n, *_ in differ) or '-'}; only one side: "
+                f"{', '.join(sorted(extra)) or '-'})"
             )
     return bad
 
@@ -174,6 +236,42 @@ def _check_dir(ckpt_dir: Path) -> list[str]:
 def check_bundle(paths: Paths) -> list[str]:
     """`_check_dir` for the configured bundle: [] when every pinned file still hashes the same."""
     return _check_dir(bundle_dir(paths))
+
+
+def bundle_identity(paths: Paths) -> dict:
+    """What identifies the weights a database was built with: the generation
+    and the digest of the bundle's codec manifest.
+
+    v2 used the Hub `revision`; a pinned bundle has none, and its own sha256
+    table cannot serve either -- re-pinning rewrites the codecs, the dynamics
+    file AND the manifest together, so a re-pinned bundle passes its own check.
+    What separates one pin from the next is the digest OF the manifest, which
+    `design.provenance._bundle_identity` already computes for the encode
+    sidecars; it is reused rather than recomputed so both records mean the same
+    thing.
+    """
+    from ..design.provenance import _bundle_identity
+
+    _, manifest_sha, revision = _bundle_identity(bundle_dir(paths))
+    return {
+        "generation": model_cfg().get("generation", "v2"),
+        "revision": revision,
+        "manifest_sha256": manifest_sha,
+    }
+
+
+def check_same_bundle(old_model: dict, paths: Paths) -> str | None:
+    """Why the current bundle is not the one `old_model` records, or None when it is."""
+    now = bundle_identity(paths)
+    for key, label in (
+        ("generation", "model generation"),
+        ("revision", "model revision"),
+        ("manifest_sha256", "codec manifest digest"),
+    ):
+        was = old_model.get(key, "v2" if key == "generation" else None)
+        if was != now[key]:
+            return f"{label} changed since the database was built ({was} -> {now[key]})"
+    return None
 
 
 def download_bundle(paths: Paths, full: bool = False, revision: str | None = None) -> Path:
@@ -264,7 +362,7 @@ def load_codecs(
     # the database was built with" is a real event, and it has to stop the run rather than quietly
     # re-embed a corpus against different weights.
     if man.get("sha256"):
-        bad = _check_dir(ckpt_dir)
+        bad = _check_dir(ckpt_dir, codecs_only=True)
         if bad:
             raise CheckpointMissing(
                 "pinned bundle changed on disk: " + "; ".join(bad) + f" (in {ckpt_dir}). "
@@ -661,11 +759,12 @@ def manifest_block(
         "modalities": names,
         "dims": [int(codecs[n][1].d_model) for n in names],
         "model": {
-            # v2 identified the weights by a Hub revision; v4 is pinned locally, so `revision` is
-            # absent and the bundle's own sha256 manifest is what `check_bundle` compares against.
-            "generation": cfg.get("generation", "v2"),
+            # v2 identified the weights by a Hub revision; a pinned bundle is
+            # identified by the digest of its codec manifest, which is what
+            # `check_same_bundle` compares on an incremental add so that two
+            # pins cannot end up in one matrix.
+            **bundle_identity(paths),
             "repo_id": cfg.get("repo_id"),
-            "revision": cfg.get("revision"),
             "bundle_dir": str(bundle_dir(paths)),
         },
         "t0_start_s": float(cfg["t0_start_s"]),

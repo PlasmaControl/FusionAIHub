@@ -14,6 +14,7 @@ import json
 import pytest
 import torch
 
+from shot_design.config import load_paths
 from shot_design.shotdb import ignite
 
 
@@ -62,3 +63,127 @@ def test_model_cfg_declares_fifteen_v4_modalities():
     assert len(cfg["production_vocabs"]) == 15 and set(cfg["production_vocabs"].values()) == {1000}
     assert sum(cfg["n_tok"].values()) == cfg["frame_tokens"] == 1209
     assert cfg["t0_start_s"] == 1.0
+
+
+# --- fix round 1: what the digest actually has to protect ----------------------
+
+
+def _pin_fake(paths, tmp_path, names=("ece",), ck_mods=None):
+    """Pin dummy codecs + a dummy dynamics checkpoint; return the bundle dir.
+
+    Same shape as the test above, but parameterised: `ck_mods` is the
+    `modalities` tuple the fake dynamics checkpoint declares, which is what the
+    manifest is cross-checked against.
+    """
+    src = tmp_path / "src"
+    for name in names:
+        _fake_codec(src / name / "codec_best.pt")
+    dyn = tmp_path / "dyn.pt"
+    cfg = ignite.model_cfg()
+    default_mods = [
+        (n, cfg["families"][n], cfg["n_tok"][n], cfg["production_vocabs"][n])
+        for n in names
+    ]
+    torch.save(
+        {
+            "step": 3200,
+            "modalities": ck_mods if ck_mods is not None else default_mods,
+            "model": {},
+        },
+        dyn,
+    )
+    return ignite.pin_bundle(
+        paths,
+        codec_tmpl=str(src / "{m}" / "codec_best.pt"),
+        dynamics_src=dyn,
+        names=list(names),
+        t0_start=float(cfg["t0_start_s"]),
+    )
+
+
+@pytest.fixture
+def stub_codec_loader(monkeypatch):
+    """`_load_codec` without the real codec classes -- this is about digests."""
+    from types import SimpleNamespace
+
+    td = SimpleNamespace(
+        _load_codec=lambda family, path: (SimpleNamespace(), SimpleNamespace(d_model=8))
+    )
+    monkeypatch.setattr(ignite, "_dynamics", lambda: td)
+
+
+def test_load_codecs_hashes_the_codecs_not_the_dynamics_checkpoint(
+    paths, tmp_path, stub_codec_loader
+):
+    """`load_codecs` never reads the 3.3 GB dynamics file, and the design path
+    calls it per request -- so it must not pay to hash it. `--check` still does."""
+    out = _pin_fake(paths, tmp_path)
+    (out / ignite.model_cfg()["dynamics_file"]).write_bytes(b"a different checkpoint")
+    assert set(ignite.load_codecs(out)) == {"ece"}
+    bad = ignite.check_bundle(paths)
+    assert any(ignite.model_cfg()["dynamics_file"] in line for line in bad)
+    (out / "codecs" / "ece" / "codec_best.pt").write_bytes(b"tampered")
+    with pytest.raises(ignite.CheckpointMissing, match="changed on disk"):
+        ignite.load_codecs(out)
+
+
+def test_check_bundle_reports_a_manifest_disagreeing_with_the_checkpoint(
+    paths, tmp_path
+):
+    """The vocab check compares the manifest to the yaml it was generated from,
+    so alone it is tautological right after a pin. The checkpoint is the
+    independent witness."""
+    assert _pin_fake(paths, tmp_path) and ignite.check_bundle(paths) == []
+    _pin_fake(paths, tmp_path, ck_mods=[("ece", "spectro", 4, 1000)])
+    bad = ignite.check_bundle(paths)
+    assert any("checkpoint" in line and "ece" in line for line in bad), bad
+
+
+def test_bundle_identity_and_incremental_add_refuse_a_rebuilt_bundle(
+    paths, tmp_path, monkeypatch, stub_codec_loader
+):
+    """Re-pinning rewrites codecs, dynamics and manifest together, so a
+    re-pinned bundle passes its own sha256 check. What it must not pass is
+    `shot_design add` against a database built from the PREVIOUS pin -- that
+    would merge two codec generations into one matrix."""
+    from types import SimpleNamespace
+
+    from shot_design.shotdb import build as build_mod
+
+    _pin_fake(paths, tmp_path)
+    ident = ignite.bundle_identity(paths)
+    assert ident["generation"] == "v4" and len(ident["manifest_sha256"]) == 64
+    assert ignite.check_same_bundle(ident, paths) is None
+
+    db = SimpleNamespace(
+        manifest={"ignite": {"dims": [8], "modalities": ["ece"], "model": dict(ident)}}
+    )
+    one = {"ece": (None, SimpleNamespace(d_model=8), "spectro")}
+    monkeypatch.setattr(ignite, "load_codecs", lambda *a, **k: one)
+    _pin_fake(paths, tmp_path / "again", ck_mods=[("ece", "spectro", 192, 1000)])
+    assert ignite.bundle_identity(paths)["manifest_sha256"] != ident["manifest_sha256"]
+    with pytest.raises(RuntimeError, match="codec manifest digest"):
+        build_mod._carry_over(tmp_path, db, [], None, None, paths, 1)
+
+
+# --- the pinned bundle on this machine -----------------------------------------
+
+_real = ignite.bundle_dir(load_paths())
+_real_dyn = _real / ignite.model_cfg()["dynamics_file"]
+
+
+@pytest.mark.real_data
+@pytest.mark.skipif(
+    not _real_dyn.exists(), reason=f"no pinned dynamics checkpoint at {_real_dyn}"
+)
+def test_the_pinned_manifest_agrees_with_the_real_checkpoints_modalities():
+    """The manifest's table is written from hand-maintained yaml; the
+    checkpoint carries its own. `modalities_from_manifest` calls the manifest
+    "what the checkpoint was trained with", so that has to be checked against
+    the checkpoint itself, on the real pin, whenever this runs."""
+    man = json.loads(ignite.codec_manifest(_real).read_text())["modalities"]
+    assert ignite.checkpoint_modalities(_real_dyn) == [
+        (name, e["family"], e["n_tok"], e["codebook_size"]) for name, e in man.items()
+    ]
+    total = sum(e["n_tok"] for e in man.values())
+    assert total == ignite.model_cfg()["frame_tokens"] == 1209
