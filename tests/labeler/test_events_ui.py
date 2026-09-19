@@ -1052,3 +1052,47 @@ def test_save_is_behind_the_token_gate(app, tables):
     assert response.status_code == 401
     assert response.json() == {"error": NO_TOKEN}
     assert not (tables / "alfven_eigenmode" / "review").exists()
+
+
+def test_the_page_and_its_two_files_are_served(client):
+    """The reviewer opens `/` and gets the page, the script and the styles."""
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "/app.js" in page.text and "/style.css" in page.text
+    for path in ("/app.js", "/style.css"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.content, path
+
+
+def test_plotly_is_served_off_disk(client):
+    """No CDN link anywhere: this runs on a node with no route off the
+    cluster, reached through an SSH forward, so the bundle comes from the
+    installed plotly package instead.
+    """
+    assert "//cdn" not in client.get("/").text
+    response = client.get("/vendor/plotly.min.js")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/javascript")
+    # The real bundle, not a stub: megabytes of it.
+    assert len(response.content) > 1_000_000
+    # The one response allowed to be held; it carries nothing about any shot
+    # and re-sending 4.8 MB on every reload is a second of a reviewer's time.
+    assert response.headers["cache-control"] == "max-age=86400"
+
+
+def test_label_data_is_still_never_cached(client):
+    """`setdefault` on the gate's `Cache-Control` must not have let an answer
+    built from `label_tables` become cacheable.
+    """
+    for path in ("/", "/api/events", "/api/shots?event=alfven_eigenmode"):
+        assert client.get(path).headers["cache-control"] == "no-store", path
+
+
+def test_the_page_and_the_bundle_are_behind_the_token_gate(app):
+    """The static mount is inside the gate, not beside it."""
+    transport = TestClient(app)
+    for path in ("/", "/app.js", "/style.css", "/vendor/plotly.min.js"):
+        response = transport.get(path)
+        assert response.status_code == 401, path
+        assert response.json() == {"error": NO_TOKEN}, path

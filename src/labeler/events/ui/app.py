@@ -283,7 +283,13 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         if not cookie or not secrets.compare_digest(cookie.encode("utf-8"), expected):
             return _unauthorized(NO_TOKEN)
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        # `setdefault`, not assignment: every answer built from label data
+        # stays uncached, but a route that has already said how its bytes may
+        # be held keeps that. Only `/vendor/plotly.min.js` does, and it is
+        # 4.8 MB of third-party library that carries nothing about any shot -
+        # re-sending it on every reload is a second of a reviewer's time for
+        # no privacy the gate does not already provide.
+        response.headers.setdefault("Cache-Control", "no-store")
         return response
 
     @app.exception_handler(StarletteHTTPException)
@@ -310,7 +316,23 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def shots(event: str):
         paths = app.state.paths
         event = require_event(event, paths)
-        frame = rosters.read_roster(rosters.roster_path(event, root=paths.label_tables))
+        try:
+            frame = rosters.read_roster(
+                rosters.roster_path(event, root=paths.label_tables)
+            )
+        except Exception as error:  # any unreadable roster, like `_events`
+            # `/api/events` already reports a malformed roster this way, and
+            # the page offers such an event precisely so the reviewer can see
+            # which file to go and fix. Without this the same file answered
+            # here with Starlette's bare-text 500 - the one response on this
+            # app that is not `{"error": ...}`, which is the shape the page's
+            # single error path depends on. The message is the same one
+            # `/api/events` already shows for this file, so nothing new is
+            # disclosed by it.
+            log.exception("reading the %s roster", event)
+            return _json(
+                {"error": str(error) or error.__class__.__name__}, status_code=500
+            )
         rows = []
         for record in frame.to_dict("records"):
             shot = int(record["shot"])
@@ -605,6 +627,25 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 status_code=500,
             )
         return _json({"written": target.name, "n": len(rows)})
+
+    @app.get("/vendor/plotly.min.js")
+    def plotly_js():
+        # plotly's conda package ships the bundle it renders with. Serving
+        # that file is what lets this page work on a node with no route off
+        # the cluster, which is every node it will actually run on. It is
+        # served from the installed package rather than copied into
+        # `static/` so that a 4.8 MB minified blob stays out of the repo and
+        # cannot drift from the plotly the environment actually pins.
+        import plotly
+
+        bundle = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
+        if not bundle.is_file():
+            return _json({"error": f"no plotly bundle at {bundle}"}, status_code=500)
+        return Response(
+            bundle.read_bytes(),
+            media_type="application/javascript",
+            headers={"Cache-Control": "max-age=86400"},
+        )
 
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
