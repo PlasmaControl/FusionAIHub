@@ -2,7 +2,7 @@
   "mcpServers": {
     "shot_design": {
       "command": "pixi",
-      "args": ["run", "-e", "ideate-cpu", "python", "-m", "shot_design.mcp"],
+      "args": ["run", "-e", "shot-design-cpu", "python", "-m", "shot_design.mcp"],
       "cwd": "/scratch/gpfs/nc1514/FusionAIHub"
     }
   }

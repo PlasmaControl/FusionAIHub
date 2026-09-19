@@ -21,7 +21,7 @@
 # ---------------------------------------------------------------------------- sizing (measured)
 #
 # Pilot (login node, cold cache, 2026-09-07):
-#     /usr/bin/time -v pixi run -e ideate-cpu python -m shot_design corpus scan \
+#     /usr/bin/time -v pixi run -e shot-design-cpu python -m shot_design corpus scan \
 #         --limit 300 --workers 8 --out $SHOT_DESIGN_DATA_ROOT/db/census_pilot.parquet
 #   -> 300 files, 249 openable, 7,949 rows; scan wall 32.3 s (38.4 s including `pixi run`);
 #      max RSS 1,140,716 KB. A second, warm-cache run of the same 300 files took 2.5 s, which is
@@ -77,7 +77,7 @@ echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false SHOT_DESIGN_CORPUS="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
 export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
-srun "$REPO/.pixi/envs/ideate-cpu/bin/python" -m shot_design corpus scan \
+srun "$REPO/.pixi/envs/shot-design-cpu/bin/python" -m shot_design corpus scan \
     --workers 96 \
     --out "$SHOT_DESIGN_DATA_ROOT/db/corpus_coverage.parquet"
 

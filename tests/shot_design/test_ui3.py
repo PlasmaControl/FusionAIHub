@@ -17,9 +17,9 @@ from .test_ui import client, local_auxiliary_paths  # noqa: F401
 
 
 @pytest.fixture
-def phenomenon_db(ideate_db):
+def phenomenon_db(shot_design_db):
     config.load_paths().qh_database_csv.write_text("shot\n100\n")
-    _db_with(ideate_db, [
+    _db_with(shot_design_db, [
         _event(100, "early", t0_s=.1, t1_s=.2, confidence=.875),
         _event(100, "high", confidence=.875),
         _event(100, "low", t0_s=3, t1_s=4, confidence=.2),
@@ -103,9 +103,9 @@ def test_confidence_filter_is_http_only_and_does_not_mutate_cached_evidence(
 
 
 def test_untimed_registry_events_preserve_transport_without_inventing_intervals(
-    client, ideate_db,
+    client, shot_design_db,
 ):
-    _db_with(ideate_db, [_event(100, "untimed", t0_s=None, t1_s=None)])
+    _db_with(shot_design_db, [_event(100, "untimed", t0_s=None, t1_s=None)])
     tools.reset_cache()
     data = client.get("/api/shot/100/events").json()
     assert "error" not in data

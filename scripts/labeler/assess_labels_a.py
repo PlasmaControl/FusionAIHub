@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from collections import Counter
 from pathlib import Path
@@ -175,7 +176,10 @@ def main():
     pool = sorted(set(map(int, pool_file.read_text().split())))
     assert len(pool) == 500
     if args.mode == "census":
-        result = census(paths, paths.root.parent / "ideate/db", pool)
+        # SHOT_DESIGN_DATA_ROOT, not a sibling of the labeler root: the two roots are
+        # siblings on Stellar only, and the Frontier directory is named shot_design.
+        db = Path(os.environ["SHOT_DESIGN_DATA_ROOT"]) / "db"
+        result = census(paths, db, pool)
     else:
         shots = args.shots or [pool[i] for i in np.linspace(0, 499, 10, dtype=int)]
         outside = sorted(set(shots) - set(pool))

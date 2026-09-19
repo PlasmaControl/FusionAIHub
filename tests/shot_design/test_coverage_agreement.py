@@ -11,7 +11,7 @@ from shot_design.shotdb.store import ShotDB
 
 
 @pytest.fixture
-def gap_chain(ideate_db, tmp_path, monkeypatch):
+def gap_chain(shot_design_db, tmp_path, monkeypatch):
     from labeler.config import Paths
     from labeler.events import pipeline
     from shot_design import cli
@@ -32,13 +32,13 @@ def gap_chain(ideate_db, tmp_path, monkeypatch):
     records[0].segments = []
     for name, a, b in (("flat_top", 1.2, 1.8), ("ramp_up", .5, 1.5), ("ramp_down", 2.5, 3.0)):
         records[0].segments.append(Segment(name=name, t0_ms=a * 1000, t1_ms=b * 1000))
-    write_db(ideate_db / "db", records)
+    write_db(shot_design_db / "db", records)
     assert cli.main([
         "labels", "join", "--shots", "198658", "--labeler-root", str(paths.root),
-        "--db", str(ideate_db / "db"), "--no-text",
+        "--db", str(shot_design_db / "db"), "--no-text",
     ]) == 0
     tools.reset_cache()
-    yield ideate_db, expected
+    yield shot_design_db, expected
     tools.reset_cache()
 
 
@@ -206,14 +206,14 @@ def test_mcp_evidence_and_describe_call_the_same_window_function(gap_chain, monk
     assert calls, "describe must reach the shared decision through evidence"
 
 
-def test_text_only_empty_coverage_is_unprocessed_and_never_unknown(ideate_db):
+def test_text_only_empty_coverage_is_unprocessed_and_never_unknown(shot_design_db):
     from shot_design.retrieval.describe import describe
 
-    es.write_sources(ideate_db / "db/event_sources.parquet", [
+    es.write_sources(shot_design_db / "db/event_sources.parquet", [
         es.source_row(100, "text", intervals="[]", min_gap_s=0, n_events=1),
     ])
     tools.reset_cache()
-    db = ShotDB.load(ideate_db / "db")
+    db = ShotDB.load(shot_design_db / "db")
     summary = es.shot_summary(db.coverage_sources, 100)
     assert summary["n_sources_ok"] == 1
     assert summary["n_sources_unknown_coverage"] == 0
@@ -238,19 +238,19 @@ def test_text_only_empty_coverage_is_unprocessed_and_never_unknown(ideate_db):
 
 
 @pytest.mark.parametrize("legacy_events", [False, True])
-def test_older_source_and_event_hulls_are_disclosed_by_all_readers(ideate_db, legacy_events):
+def test_older_source_and_event_hulls_are_disclosed_by_all_readers(shot_design_db, legacy_events):
     from shot_design.retrieval.describe import describe
 
     from .test_phenomena import _db_with, _elm_clock
 
-    _db_with(ideate_db, [_elm_clock(100, "old", (0, 6))])
+    _db_with(shot_design_db, [_elm_clock(100, "old", (0, 6))])
     if not legacy_events:
         old = pd.DataFrame([es.source_row(100, "elm_clock", diag="filterscopes",
                                           t_cov0_s=0, t_cov1_s=6)])
         old.drop(columns=["intervals", "min_gap_s"]).to_parquet(
-            ideate_db / "db/event_sources.parquet", index=False)
+            shot_design_db / "db/event_sources.parquet", index=False)
     tools.reset_cache()
-    db = ShotDB.load(ideate_db / "db")
+    db = ShotDB.load(shot_design_db / "db")
     result = tools.get_events(100, "elm", 1.2, 1.8)
     ev = ph.evidence(100, "elm", db)
     assert result["status"] == ev.coverage_state == "observed"
@@ -279,15 +279,15 @@ def test_older_source_and_event_hulls_are_disclosed_by_all_readers(ideate_db, le
     ],
 )
 def test_both_tools_agree_on_the_report_tables_and_coverage_edges(
-    ideate_db, shot, pid, status, span, expected, filtered,
+    shot_design_db, shot, pid, status, span, expected, filtered,
 ):
     rows = [] if status is None else [es.source_row(
         100, 'elm_clock', diag='filterscopes', status=status,
         t_cov0_s=span[0], t_cov1_s=span[1],
     )]
-    es.write_sources(ideate_db / 'db/event_sources.parquet', rows)
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', rows)
     tools.reset_cache()
-    db = ShotDB.load(ideate_db / 'db')
+    db = ShotDB.load(shot_design_db / 'db')
     retrieval = ph.evidence(shot, pid, db)
     mcp = tools.get_events(shot, pid if filtered else None, 1, 5)
     if filtered:
@@ -306,7 +306,7 @@ def test_both_tools_agree_on_the_report_tables_and_coverage_edges(
     tools.reset_cache()
 
 
-def test_unknown_phenomenon_and_registered_no_detector_are_distinct(ideate_db):
+def test_unknown_phenomenon_and_registered_no_detector_are_distinct(shot_design_db):
     tools.reset_cache()
 
     unknown = tools.get_events(100, 'zzz_not_a_phenomenon')
@@ -319,8 +319,8 @@ def test_unknown_phenomenon_and_registered_no_detector_are_distinct(ideate_db):
     tools.reset_cache()
 
 
-def test_former_caps_cannot_borrow_the_long_gas_span_or_invent_qh_completion(ideate_db):
-    es.write_sources(ideate_db / "db/event_sources.parquet", [
+def test_former_caps_cannot_borrow_the_long_gas_span_or_invent_qh_completion(shot_design_db):
+    es.write_sources(shot_design_db / "db/event_sources.parquet", [
         es.source_row(100, "ece_sawtooth", diag="ece", t_cov0_s=-.05, t_cov1_s=6.143,
                       intervals="[[-0.05, 6.143]]", min_gap_s=.008),
         es.source_row(100, "actuator", diag="gas_a", t_cov0_s=-10, t_cov1_s=94.9,
@@ -328,7 +328,7 @@ def test_former_caps_cannot_borrow_the_long_gas_span_or_invent_qh_completion(ide
         es.source_row(100, "qh_proxy", status="skipped", reason="no Ip flat-top"),
     ])
     tools.reset_cache()
-    db = ShotDB.load(ideate_db / "db")
+    db = ShotDB.load(shot_design_db / "db")
     for pid, window, status in (("sawtooth", (14, 15), "uncovered"),
                                 ("qh", (3, 4), "unprocessed")):
         result = tools.get_events(100, pid, *window)
@@ -338,19 +338,19 @@ def test_former_caps_cannot_borrow_the_long_gas_span_or_invent_qh_completion(ide
     tools.reset_cache()
 
 
-def test_an_unrelated_detector_only_covers_an_unfiltered_mcp_call(ideate_db):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+def test_an_unrelated_detector_only_covers_an_unfiltered_mcp_call(shot_design_db):
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(100, 'ece_sawtooth', t_cov0_s=0, t_cov1_s=6),
     ])
     tools.reset_cache()
     assert tools.get_events(100, t0_s=1, t1_s=5)['status'] == 'observed'
     assert tools.get_events(100, 'elm', 1, 5)['status'] == 'unprocessed'
-    assert ph.evidence(100, 'elm', ShotDB.load(ideate_db / 'db')).coverage_state == 'unprocessed'
+    assert ph.evidence(100, 'elm', ShotDB.load(shot_design_db / 'db')).coverage_state == 'unprocessed'
     tools.reset_cache()
 
 
-def test_sources_are_an_optional_typed_table_loaded_once(ideate_db, monkeypatch):
-    db_dir = ideate_db / 'db'
+def test_sources_are_an_optional_typed_table_loaded_once(shot_design_db, monkeypatch):
+    db_dir = shot_design_db / 'db'
     absent = ShotDB.load(db_dir)
     pd.testing.assert_frame_equal(absent.event_sources, es.empty_sources())
     assert absent.load_errors == {}
@@ -367,9 +367,9 @@ def test_sources_are_an_optional_typed_table_loaded_once(ideate_db, monkeypatch)
     assert ph.evidence(100, 'elm', db).coverage_state == 'observed'
 
 
-def test_a_broken_sources_table_is_reported_by_both_readers(ideate_db):
-    (ideate_db / 'db/event_sources.parquet').write_text('torn parquet')
-    db = ShotDB.load(ideate_db / 'db')
+def test_a_broken_sources_table_is_reported_by_both_readers(shot_design_db):
+    (shot_design_db / 'db/event_sources.parquet').write_text('torn parquet')
+    db = ShotDB.load(shot_design_db / 'db')
     assert set(db.load_errors) == {'event_sources'}
     assert db.event_sources.empty
     tools.reset_cache()
@@ -378,10 +378,10 @@ def test_a_broken_sources_table_is_reported_by_both_readers(ideate_db):
     tools.reset_cache()
 
 
-def test_legacy_event_coverage_agrees_and_counts_one_source_once(ideate_db):
+def test_legacy_event_coverage_agrees_and_counts_one_source_once(shot_design_db):
     from .test_phenomena import _db_with, _elm_clock
 
-    db = _db_with(ideate_db, [
+    db = _db_with(shot_design_db, [
         _elm_clock(100, 'quiet-a', (0, 6)),
         _elm_clock(100, 'quiet-b', (0, 6)),
     ])
@@ -392,10 +392,10 @@ def test_legacy_event_coverage_agrees_and_counts_one_source_once(ideate_db):
     tools.reset_cache()
 
 
-def test_no_registered_detector_caveat_does_not_deny_returned_event_rows(ideate_db):
+def test_no_registered_detector_caveat_does_not_deny_returned_event_rows(shot_design_db):
     from .test_phenomena import _db_with, _event
 
-    _db_with(ideate_db, [_event(100, 'foreign-rwm', phenomenon='rwm')])
+    _db_with(shot_design_db, [_event(100, 'foreign-rwm', phenomenon='rwm')])
     tools.reset_cache()
     result = tools.get_events(100, 'rwm', 1, 5)
     assert result['status'] == 'unprocessed' and result['n'] == 1

@@ -99,10 +99,10 @@ Data roots (create, group `fus187`, setgid):
 
 `configs/shot_design/paths.yaml` keeps Stellar defaults; a new
 `configs/shot_design/paths.frontier.yaml` carries the Frontier values and is selected by the
-env's activation (`SHOT_DESIGN_PATHS`). `pyproject.toml` gets a feature `ideate-frontier`
-(ROCm torch from the `frontier` feature's index, ideate's PyPI deps, activation env with the
+env's activation (`SHOT_DESIGN_PATHS`). `pyproject.toml` gets a feature `shot-design-frontier`
+(ROCm torch from the `frontier` feature's index, the `shot-design` feature's PyPI deps, activation env with the
 three roots and `SHOT_DESIGN_PATHS`) and an environment
-`ideate-frontier = ["ideate", "ideate-frontier"]`. If `ideate` cannot resolve against ROCm
+`shot-design-frontier = ["shot-design", "shot-design-frontier"]`. If `shot-design` cannot resolve against ROCm
 torch in pixi, the fallback is a plain `uv` venv described in the docs; the activation
 contract (three roots + paths file) is the same either way.
 
@@ -252,7 +252,7 @@ no Claude or superpowers material.
 
 ## Testing
 
-- `tests/shot_design` green under the Frontier env (`pixi run -e ideate-frontier pytest`).
+- `tests/shot_design` green under the Frontier env (`pixi run --frozen -e shot-design-frontier pytest`).
 - New: manifest parse/pin (sha mismatch refuses), 15-modality frame layout equals 1209,
   `validate_shot` v2-vs-v4 rejection, `agy` provider (subprocess mocked: schema shape, tool
   call emulation, timeout), simulate module on a 4-frame synthetic cache (shapes, z-score

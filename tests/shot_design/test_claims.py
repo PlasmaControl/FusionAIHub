@@ -289,7 +289,7 @@ def config_dir():
     return config.CONFIG_DIR
 
 
-def test_the_lexicon_falls_back_to_ideates_own_themes(tmp_path):
+def test_the_lexicon_falls_back_to_shot_designs_own_themes(tmp_path):
     """`labeler/events/lexicons.yaml` lands from the labeler workstream. Until it does, the
     themes of `configs/shot_design/labels.yaml` are the alias lists."""
     from shot_design import config

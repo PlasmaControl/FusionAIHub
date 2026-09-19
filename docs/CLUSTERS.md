@@ -65,18 +65,20 @@ labelmaker/                     ideate/
 | `default` | cuda (torch cu124) | foundation-model training on NVIDIA |
 | `fdp` | fdp + cuda | direct DIII-D access via `toksearch` (ga-fdp channel, needs MDSplus) |
 | `labelmaker` | labelmaker + fdp | `labeler` package, CPU only |
-| `ideate` | ideate + cuda | `shot_design` package with GPU |
-| `ideate-cpu` | ideate | `shot_design` on login node / CPU |
+| `shot-design` | shot-design + cuda | `shot_design` package with GPU |
+| `shot-design-cpu` | shot-design | `shot_design` on login node / CPU |
 | `frontier` | frontier (torch rocm7.1) | training on Frontier MI250X |
 | `rocm` | (della-milan) | MI210 variant |
 
-Env names keep the old package names because pixi rejects underscores.
 Packages were renamed 2026-09-15: `ideate` -> `shot_design`, `labelmaker` ->
-`labeler`.
+`labeler`; the environments followed on 2026-09-19. An environment name uses the
+dash form (`shot-design`, not `shot_design`) because pixi rejects underscores in
+one; the package it installs is still `shot_design`. The `labelmaker` environment
+keeps its old name, its package having become `labeler`.
 
 ### Environment variables
 
-The `ideate`/`ideate-cpu` envs pin these on activation, so `pixi run -e ideate`
+The `shot-design`/`shot-design-cpu` envs pin these on activation, so `pixi run -e shot-design`
 always sees production paths, even if you exported something else:
 
 ```
@@ -86,7 +88,7 @@ SHOT_DESIGN_CORPUS    = /scratch/gpfs/EKOLEMEN/foundation_model
 ```
 
 To point at another root, use the env's interpreter directly, not `pixi run`:
-`.pixi/envs/ideate-cpu/bin/python -m shot_design ...` with your own exports.
+`.pixi/envs/shot-design-cpu/bin/python -m shot_design ...` with your own exports.
 Never run a `shot_design` write command through `pixi run` against a scratch
 target; it will write to production.
 
@@ -101,7 +103,7 @@ Run suites through pixi, never the bare `.pixi` interpreter, and do not
 redirect `HF_HOME`:
 
 ```bash
-pixi run -e ideate-cpu pytest tests/shot_design
+pixi run -e shot-design-cpu pytest tests/shot_design
 pixi run -e labelmaker pytest tests/labeler
 ```
 
@@ -126,7 +128,7 @@ pixi run -e labelmaker pytest tests/labeler
   `SHOT_DESIGN_DATA_ROOT/db`.
 - **LLM blurbs**: `sbatch scripts/shot_design/serve_llm.sbatch` starts Ollama
   (Gemma 4 26b) on one A100 for 4 h and writes the endpoint to
-  `ideate/llm/endpoint.json`; CPU clients on the login node read that file.
+  `/scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json`; CPU clients on the login node read that file.
   Binary and weights live under `shot-recommender/`.
 - **MCP server**: `shot_design` exposes `search_shots`, `describe_shot`,
   `get_events`, `phenomenon_locate`; config in `docs/SHOT_DESIGN.md`.
@@ -183,13 +185,13 @@ variables map one to one.
 
 ### What the recommender port needs
 
-1. **Environments.** `labelmaker`, `ideate` and `ideate-cpu` are `linux-64`
-   and should resolve on Frontier. `ideate` pulls CUDA torch; on Frontier use
-   `ideate-cpu` for the CLI and the `frontier` env for anything that needs a
+1. **Environments.** `labelmaker`, `shot-design` and `shot-design-cpu` are `linux-64`
+   and should resolve on Frontier. `shot-design` pulls CUDA torch; on Frontier use
+   `shot-design-cpu` for the CLI and the `frontier` env for anything that needs a
    GPU. The `fdp`/`labelmaker` envs depend on the `ga-fdp` conda channel
    (`toksearch`, MDSplus); they will install but cannot fetch, since DIII-D
    MDSplus is not reachable from OLCF. Do all fetching on Stellar.
-2. **Activation paths.** The `[tool.pixi.feature.ideate.target.unix.activation.env]`
+2. **Activation paths.** The `[tool.pixi.feature.shot-design.target.unix.activation.env]`
    block in `pyproject.toml` hard-codes the three Stellar roots. Frontier
    needs either a second feature with its own activation block or the roots
    exported by a wrapper before the interpreter runs. Do not edit the Stellar
@@ -226,7 +228,7 @@ Princeton and OLCF for anything over a few GB.
 | `EKOLEMEN/nc1514/labelmaker/features` | 29 GB | feature-based detectors; skip until needed |
 | `EKOLEMEN/nc1514/shot-recommender` | 128 GB | LLM blurbs |
 | `EKOLEMEN/big_d3d_data/foundation_model_text` | 27 GB | text corpus for the database build |
-| `EKOLEMEN/foundation_model` | 53 TB | already on Frontier as `proj-shared/foundation_model`; check shot coverage matches (`corpus_coverage.parquet` in `ideate/db` lists the 504 indexed shots) |
+| `EKOLEMEN/foundation_model` | 53 TB | already on Frontier as `proj-shared/foundation_model`; check shot coverage matches (`corpus_coverage.parquet` in `/scratch/gpfs/EKOLEMEN/nc1514/ideate/db` lists the 504 indexed shots) |
 | Repo-local raw label sources (below) | ~4 GB | re-running the event formatters |
 
 Raw label sources listed in `data/events/events.yaml` are kept out of git
@@ -246,10 +248,10 @@ The formatted outputs (`data/events/*/format/*_format_2026_v1.csv` and
 ### Checklist
 
 - [ ] `git clone -b recommender` into `/lustre/orion/fus187/scratch/$USER`
-- [ ] `pixi install -e ideate-cpu -e labelmaker -e frontier`
-- [ ] Create the three proposed roots under `proj-shared`, transfer `ideate` and the small `labelmaker` subdirs
+- [ ] `pixi install -e shot-design-cpu -e labelmaker -e frontier`
+- [ ] Create the three proposed roots under `proj-shared`, transfer `shot-design` and the small `labelmaker` subdirs
 - [ ] Add a Frontier activation block or wrapper for `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT`, `SHOT_DESIGN_CORPUS`
-- [ ] Populate the HF cache offline; `pixi run -e ideate-cpu pytest tests/shot_design` green
+- [ ] Populate the HF cache offline; `pixi run -e shot-design-cpu pytest tests/shot_design` green
 - [ ] `python -m shot_design describe 190736` returns the same record as on Stellar
 - [ ] Port one labeler sbatch to `scripts/slurm_frontier/`, run a 20-shot pilot, read `labeler.jobstats`
 - [ ] Decide on Ollama-on-ROCm before copying the 128 GB

@@ -29,13 +29,13 @@ def test_coverage_diags_rejects_non_lists_and_non_strings(tmp_path, value):
         ph.registry(_registry_file(tmp_path, change))
 
 
-def test_coverage_diags_parses_and_governs_another_registered_detector(ideate_db, tmp_path):
+def test_coverage_diags_parses_and_governs_another_registered_detector(shot_design_db, tmp_path):
     def change(doc):
         doc['phenomena']['sawtooth']['coverage_diags'] = ['mhr', 'filterscopes']
 
     entry = ph.registry(_registry_file(tmp_path, change))['sawtooth']
     assert entry.coverage_diags == ('mhr', 'filterscopes')
-    db = _db_with(ideate_db, [
+    db = _db_with(shot_design_db, [
         _event(100, 'allowed', source='ece_sawtooth', phenomenon='sawtooth', diag='mhr'),
         _event(101, 'rejected', source='ece_sawtooth', phenomenon='sawtooth', diag='ece'),
     ])
@@ -47,23 +47,23 @@ def test_coverage_diags_parses_and_governs_another_registered_detector(ideate_db
     assert rejected.coverage_state == 'unprocessed'
 
 
-def _clock_coverage_db(ideate_db, diag, source_table):
+def _clock_coverage_db(shot_design_db, diag, source_table):
     events = [] if source_table else [_event(
         100, 'clock-free', source='elm_clock', phenomenon='elm_free',
         evidence_kind='heuristic', diag=diag, t0_s=0, t1_s=6,
     )]
-    _db_with(ideate_db, events, claims=[_claim(100, 'elm')])
+    _db_with(shot_design_db, events, claims=[_claim(100, 'elm')])
     if source_table:
-        es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.write_sources(shot_design_db / 'db/event_sources.parquet', [
             es.source_row(100, 'elm_clock', diag=diag, t_cov0_s=0, t_cov1_s=6),
         ])
-    return store.ShotDB.load(ideate_db / 'db')
+    return store.ShotDB.load(shot_design_db / 'db')
 
 
 @pytest.mark.parametrize('source_table', [False, True])
 @pytest.mark.parametrize('diag,state', [('mhr', 'unprocessed'), ('filterscopes', 'observed')])
-def test_coverage_diags_controls_locate_coverage(ideate_db, diag, state, source_table):
-    db = _clock_coverage_db(ideate_db, diag, source_table)
+def test_coverage_diags_controls_locate_coverage(shot_design_db, diag, state, source_table):
+    db = _clock_coverage_db(shot_design_db, diag, source_table)
     ev = ph.evidence(100, 'elm', db)
     assert ev.coverage_state == state
     assert ev.coverage == ((1.0, 5.0) if state == 'observed' else None)
@@ -76,8 +76,8 @@ def test_coverage_diags_controls_locate_coverage(ideate_db, diag, state, source_
 
 @pytest.mark.parametrize('source_table', [False, True])
 @pytest.mark.parametrize('diag,state', [('mhr', 'unprocessed'), ('filterscopes', 'observed')])
-def test_coverage_diags_controls_mcp_coverage(ideate_db, diag, state, source_table):
-    _clock_coverage_db(ideate_db, diag, source_table)
+def test_coverage_diags_controls_mcp_coverage(shot_design_db, diag, state, source_table):
+    _clock_coverage_db(shot_design_db, diag, source_table)
     reply = tools.get_events(100, phenomenon='elm', t0_s=1, t1_s=5)
     assert reply['status'] == state
     assert reply['events'] == [] and reply['n'] == 0
@@ -91,8 +91,8 @@ def test_coverage_diags_controls_mcp_coverage(ideate_db, diag, state, source_tab
         assert not any('excluded' in c for c in reply['caveats'])
 
 
-def _clock_hits_db(ideate_db, source_table):
-    db = _db_with(ideate_db, [
+def _clock_hits_db(shot_design_db, source_table):
+    db = _db_with(shot_design_db, [
         _event(100, 'legacy-1', source='elm_clock', phenomenon='elm', diag='mhr'),
         _event(100, 'legacy-2', source='elm_clock', phenomenon='elm', diag='mhr'),
         _event(101, 'dalpha', source='elm_clock', phenomenon='elm', diag='filterscopes'),
@@ -102,17 +102,17 @@ def _clock_hits_db(ideate_db, source_table):
                evidence_kind='forecast', diag=''),
     ])
     if source_table:
-        es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.write_sources(shot_design_db / 'db/event_sources.parquet', [
             es.source_row(shot, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6)
             for shot in (100, 101)
         ])
-        db = store.ShotDB.load(ideate_db / 'db')
+        db = store.ShotDB.load(shot_design_db / 'db')
     return db
 
 
 @pytest.mark.parametrize('source_table', [False, True])
-def test_coverage_diags_rejects_legacy_hits_in_evidence(ideate_db, source_table):
-    db = _clock_hits_db(ideate_db, source_table)
+def test_coverage_diags_rejects_legacy_hits_in_evidence(shot_design_db, source_table):
+    db = _clock_hits_db(shot_design_db, source_table)
     rejected = ph.evidence(100, 'elm', db)
     assert rejected.intervals == ()
     assert rejected.refs == ()
@@ -127,8 +127,8 @@ def test_coverage_diags_rejects_legacy_hits_in_evidence(ideate_db, source_table)
 
 
 @pytest.mark.parametrize('source_table', [False, True])
-def test_coverage_diags_rejects_legacy_hits_in_mcp_with_a_count(ideate_db, source_table):
-    _clock_hits_db(ideate_db, source_table)
+def test_coverage_diags_rejects_legacy_hits_in_mcp_with_a_count(shot_design_db, source_table):
+    _clock_hits_db(shot_design_db, source_table)
     rejected = tools.get_events(100, phenomenon='elm')
     assert rejected['events'] == [] and rejected['n'] == 0
     assert rejected['status'] == ('observed' if source_table else 'unprocessed')
@@ -146,15 +146,15 @@ def test_coverage_diags_rejects_legacy_hits_in_mcp_with_a_count(ideate_db, sourc
 
 @pytest.mark.parametrize('source_table', [False, True])
 @pytest.mark.parametrize('diag', ['mhr', 'ece', 'filterscopes', ''])
-def test_empty_coverage_diags_leaves_sawtooth_rows_accepted(ideate_db, diag, source_table):
-    db = _db_with(ideate_db, [_event(
+def test_empty_coverage_diags_leaves_sawtooth_rows_accepted(shot_design_db, diag, source_table):
+    db = _db_with(shot_design_db, [_event(
         100, 'saw', source='ece_sawtooth', phenomenon='sawtooth', diag=diag,
     )])
     if source_table:
-        es.write_sources(ideate_db / 'db/event_sources.parquet', [
+        es.write_sources(shot_design_db / 'db/event_sources.parquet', [
             es.source_row(100, 'ece_sawtooth', diag=diag, t_cov0_s=0, t_cov1_s=6),
         ])
-        db = store.ShotDB.load(ideate_db / 'db')
+        db = store.ShotDB.load(shot_design_db / 'db')
     assert ph.registry()['sawtooth'].coverage_diags == ()
     ev = ph.evidence(100, 'sawtooth', db)
     assert ev.coverage_state == 'observed'
@@ -166,8 +166,8 @@ def test_empty_coverage_diags_leaves_sawtooth_rows_accepted(ideate_db, diag, sou
     assert not any('excluded' in c for c in reply['caveats'])
 
 
-def test_an_ineligible_diagnostic_cannot_fill_an_eligible_sources_gap(ideate_db):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+def test_an_ineligible_diagnostic_cannot_fill_an_eligible_sources_gap(shot_design_db):
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6,
                       intervals='[[0, 0.9], [5.1, 6]]', min_gap_s=.003),
         es.source_row(100, 'elm_clock', diag='mhr', t_cov0_s=0, t_cov1_s=6,
@@ -175,5 +175,5 @@ def test_an_ineligible_diagnostic_cannot_fill_an_eligible_sources_gap(ideate_db)
     ])
     reply = tools.get_events(100, 'elm', 1, 5)
     assert reply['status'] == 'uncovered'
-    db = store.ShotDB.load(ideate_db / 'db')
+    db = store.ShotDB.load(shot_design_db / 'db')
     assert ph.evidence(100, 'elm', db).coverage_state == 'uncovered'

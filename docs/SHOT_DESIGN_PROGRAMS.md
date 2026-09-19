@@ -6,7 +6,7 @@ listed reference supplies the initial state and default actuation.
 
 ## Design a program
 
-1. Run `pixi run -e ideate shot_design serve` and open its token link.
+1. Run `pixi run -e shot-design shot_design serve` and open its token link.
 2. Choose **Use as reference** on a search result or shot, or open **Actuator editor**
    and enter up to six reference shots separated by commas. The first supplies
    IGNITE's seed. **Average reference actuation** creates an equal physical-unit

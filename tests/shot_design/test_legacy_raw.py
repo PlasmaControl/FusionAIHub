@@ -654,6 +654,22 @@ def test_is_ours_reads_the_fetchers_markers_not_the_directory(paths):
         assert [legacy_raw.is_ours(f, f[g]) for g in "abcd"] == [True, True, True, False]
 
 
+def test_a_file_stamped_before_the_rename_is_still_ours(paths):
+    """Every raw file fetched before 2026-09-19 carries `ideate-raw-v1`. Renaming the constant
+    cannot rewrite 22,000 files, so `is_ours` reads the old tag as well as the new one -- without
+    which a build against the existing store would classify the whole corpus as somebody else's
+    and read it under the staged-layout rules."""
+    t = np.arange(0.0, 5.0)
+    old = paths.staged_raw_dir / "900043.h5"
+    write_frame(old, "ip", t, {"ipsip": t})
+    with h5py.File(old, "a") as f:
+        f.attrs["shot"] = 900043
+        f.attrs["schema"] = "ideate-raw-v1"
+    assert "ideate-raw-v1" in legacy_raw.LEGACY_SCHEMAS
+    with h5py.File(old, "r") as f:
+        assert legacy_raw.is_ours(f) is True
+
+
 def test_a_fetched_file_in_the_staged_directory_keeps_its_own_semantics(paths):
     """One of our files copied under staged_raw_dir: its torn group must still read as 'not
     there yet' and its missing_channels must still settle a column as unavailable -- the two rules

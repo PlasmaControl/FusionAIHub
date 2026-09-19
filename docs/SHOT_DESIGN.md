@@ -3,8 +3,8 @@
 Environment settings use the `SHOT_DESIGN_*` prefix. Legacy `IDEATE_*` settings
 remain fallbacks when the corresponding new name is unset; an explicitly empty
 new setting still wins. A fallback emits one log line naming the replacement.
-The pixi environments remain `ideate` and `ideate-cpu` because pixi rejects
-underscores in environment names. Tasks and Python modules use `shot_design`.
+The pixi environments are `shot-design` and `shot-design-cpu` (and `shot-design-frontier`
+on Frontier): pixi rejects underscores in an environment name. Tasks and Python modules use `shot_design`.
 The production data directory remains `/scratch/gpfs/EKOLEMEN/nc1514/ideate`.
 
 A shot database and retrieval layer for DIII-D: build a queryable record of a set of discharges
@@ -20,7 +20,7 @@ a GPU). Both set `SHOT_DESIGN_DATA_ROOT`, which is where the built database live
 ## The command line
 
 ```bash
-pixi run -e ideate-cpu shot_design <command>          # or: python -m shot_design <command>
+pixi run -e shot-design-cpu shot_design <command>          # or: python -m shot_design <command>
 ```
 
 | command | what it does |
@@ -47,8 +47,8 @@ database built from it is what the MCP server below serves.
 
 ## Scratch databases and the pixi activation env
 
-`pixi run -e ideate` and `-e ideate-cpu` set `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
-`SHOT_DESIGN_CORPUS` from `[tool.pixi.feature.shot_design.target.unix.activation.env]` in `pyproject.toml`.
+`pixi run -e shot-design` and `-e shot-design-cpu` set `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
+`SHOT_DESIGN_CORPUS` from `[tool.pixi.feature.shot-design.target.unix.activation.env]` in `pyproject.toml`.
 Activation runs *after* your shell, so a value you exported is replaced without a word. On
 2026-09-14 a one-shot scratch build, run through `pixi run` with `SHOT_DESIGN_DATA_ROOT` exported to a
 `/tmp` directory, published itself over the 500-shot production database.
@@ -58,14 +58,14 @@ with the variables exported:
 
 ```bash
 export SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db HF_HUB_OFFLINE=1
-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python -m shot_design build --shots 190000
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design-cpu/bin/python -m shot_design build --shots 190000
 ```
 
 or give it a paths file of its own — `SHOT_DESIGN_PATHS=<file>` — remembering that `SHOT_DESIGN_DATA_ROOT`
 still wins over it, so it has to be out of the environment:
 
 ```bash
-pixi run -e ideate-cpu env -u SHOT_DESIGN_DATA_ROOT SHOT_DESIGN_PATHS=/tmp/my-paths.yaml \
+pixi run -e shot-design-cpu env -u SHOT_DESIGN_DATA_ROOT SHOT_DESIGN_PATHS=/tmp/my-paths.yaml \
     python -m shot_design build --shots 190000
 ```
 
@@ -399,7 +399,7 @@ database directly instead of being handed a transcript of a CLI run. Four tools 
 `describe_shot`, `get_events` and `phenomenon_locate` — and one resource. stdio transport:
 
 ```bash
-pixi run -e ideate-cpu shot_design-mcp        # == python -m shot_design.mcp
+pixi run -e shot-design-cpu shot_design-mcp        # == python -m shot_design.mcp
 ```
 
 ### Attaching it in Claude Code
@@ -617,17 +617,17 @@ sbatch scripts/shot_design/serve_llm.sbatch
 # 2. Wait for readiness; check the job/log if this does not appear.
 until test -s /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json; do sleep 2; done
 cat /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design llm
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design llm
 
 # 3. Inspect five candidates, gate verdicts and final summaries without writing.
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design blurb --all --dry-run --limit 5
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design blurb --all --dry-run --limit 5
 
 # 4. After reviewing the preview, backfill all shots from the login node.
 bash scripts/shot_design/blurb_all.sh
 
 # 5. Stop the existing UI serve process with Ctrl-C in its terminal, then restart
 #    it so its loaded database snapshot contains the new blurbs.
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design serve --port 8765
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design serve --port 8765
 ```
 
 The blurb wrapper runs the mandated frozen Pixi command with
@@ -662,7 +662,7 @@ export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/idea
        LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
        SHOT_DESIGN_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  -e ideate-cpu python -m shot_design serve --port 8765
+  -e shot-design-cpu python -m shot_design serve --port 8765
 ```
 
 On your computer, run `ssh -L 8765:localhost:8765 stellar`, then open the token URL

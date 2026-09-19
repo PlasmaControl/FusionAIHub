@@ -19,7 +19,7 @@ import yaml
 from shot_design import config
 
 BEAMS = ["15l", "15r", "21l", "21r", "30l", "30r", "33l", "33r"]
-OUR_SCHEMA = "ideate-raw-v1"  # scripts/fetch_shots.SCHEMA; pinned equal in test_fetch_plan
+OUR_SCHEMA = "shot-design-raw-v1"  # scripts/fetch_shots.SCHEMA; pinned equal in test_fetch_plan
 
 
 def stamp_ours(path: Path, shot: int = 0) -> None:
@@ -763,7 +763,7 @@ def write_db(db_dir: Path, records) -> None:
 
 
 @pytest.fixture
-def ideate_db(tmp_path: Path, monkeypatch) -> Path:
+def shot_design_db(tmp_path: Path, monkeypatch) -> Path:
     """A four-shot database under `$SHOT_DESIGN_DATA_ROOT/db`, and the env pointing at it.
 
     Six shots over three run days would be a retrieval fixture; four over two is a fixture for

@@ -37,7 +37,7 @@ def event_payload(response, *, source="segments"):
 
 
 @pytest.fixture(autouse=True)
-def local_auxiliary_paths(ideate_db, tmp_path, monkeypatch):
+def local_auxiliary_paths(shot_design_db, tmp_path, monkeypatch):
     """The shared DB fixture relocates db, but not the curated CSV or model paths."""
     import yaml
 
@@ -58,7 +58,7 @@ def local_auxiliary_paths(ideate_db, tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(ideate_db):
+def client(shot_design_db):
     from shot_design.ui.app import create_app
 
     tools.reset_cache()
@@ -119,12 +119,12 @@ def test_shot_is_tool_json(client, shot, segment):
 
 
 @pytest.fixture
-def event_db(ideate_db):
+def event_db(shot_design_db):
     # Reuse the production-shaped event writer; it writes only in this fixture's tmp_path.
     from .test_mcp import _event, write_events
 
     config.load_paths().qh_database_csv.write_text("shot\n100\n")
-    write_events(ideate_db / "db", [
+    write_events(shot_design_db / "db", [
         _event(100, "coherent_mode", 2.0, 3.0, event_id="observed", source="tokeye_track",
                f0_khz=4.0, f1_khz=6.0, attrs={"n_harmonics": 3}),
         _event(100, "eho", 2.5, 2.5, event_id="point", evidence_kind="heuristic"),
@@ -134,7 +134,7 @@ def event_db(ideate_db):
         _event(100, "eho", 2.0, 3.0, event_id="database", evidence_kind="database"),
     ])
     tools.reset_cache()
-    return ideate_db
+    return shot_design_db
 
 
 @pytest.mark.parametrize("params", [{}, {"phenomenon": "eho", "t0_s": 2.0, "t1_s": 2.5},
@@ -202,8 +202,8 @@ def test_each_event_status_survives_transport(client, event_db, shot, params, st
     assert response.json()["status"] == status
 
 
-def test_incomplete_database_uses_the_mcp_guard(ideate_db, client):
-    (ideate_db / "db/segments.parquet").unlink()
+def test_incomplete_database_uses_the_mcp_guard(shot_design_db, client):
+    (shot_design_db / "db/segments.parquet").unlink()
     response = client.get("/api/shot/100")
     assert response.status_code == 200
     assert response.json() == wire(tools.never_raises(tools.describe_shot)(100))
@@ -211,7 +211,7 @@ def test_incomplete_database_uses_the_mcp_guard(ideate_db, client):
 
 
 @pytest.mark.parametrize("path", ["/", "/api/meta"])
-def test_token_gate_and_cookie(ideate_db, path):
+def test_token_gate_and_cookie(shot_design_db, path):
     from shot_design.ui.app import COOKIE, create_app
 
     with TestClient(create_app(token="a token & more")) as client:
@@ -277,7 +277,7 @@ def test_meta_and_registry(client):
         assert ph["has_detector"] == bool(reg[ph["id"]].covering_sources)
 
 
-def test_unbuilt_db_preserves_tool_errors(ideate_db, tmp_path, monkeypatch):
+def test_unbuilt_db_preserves_tool_errors(shot_design_db, tmp_path, monkeypatch):
     from shot_design.ui.app import create_app
 
     monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "unbuilt"))
@@ -297,7 +297,7 @@ def test_unbuilt_db_preserves_tool_errors(ideate_db, tmp_path, monkeypatch):
         assert "error" in client.get("/api/locate?phenomenon=eho").json()
 
 
-def test_app_paths_are_isolated_between_concurrent_requests(ideate_db, tmp_path):
+def test_app_paths_are_isolated_between_concurrent_requests(shot_design_db, tmp_path):
     from shot_design.ui.app import create_app
 
     original = config.load_paths()
@@ -318,7 +318,7 @@ def test_app_paths_are_isolated_between_concurrent_requests(ideate_db, tmp_path)
     assert not missing.exists()
 
 
-def test_locate_does_not_reuse_another_apps_curated_list(ideate_db, tmp_path):
+def test_locate_does_not_reuse_another_apps_curated_list(shot_design_db, tmp_path):
     from shot_design.ui.app import create_app
 
     paths = config.load_paths()
@@ -338,19 +338,19 @@ def test_locate_does_not_reuse_another_apps_curated_list(ideate_db, tmp_path):
         assert shots == [[100], [200]] * 3
 
 
-def test_serve_cli_prints_link_and_forwards_options(ideate_db, monkeypatch, capsys):
+def test_serve_cli_prints_link_and_forwards_options(shot_design_db, monkeypatch, capsys):
     import uvicorn
 
     calls = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **kw: calls.append((app, kw)))
     assert cli.main(["serve", "--port", "8767", "--token", "a&b",
-                     "--db-dir", str(ideate_db / "db")]) == 0
+                     "--db-dir", str(shot_design_db / "db")]) == 0
     output = capsys.readouterr().out
     assert "http://127.0.0.1:8767/?token=a%26b" in output
     assert "ssh -L 8767:localhost:8767 stellar" in output
     app, kw = calls[0]
     assert kw["host"] == "127.0.0.1" and kw["port"] == 8767
     assert kw["access_log"] is False
-    assert app.state.paths.db_dir == ideate_db / "db"
+    assert app.state.paths.db_dir == shot_design_db / "db"
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(["serve", "--host", "0.0.0.0"])

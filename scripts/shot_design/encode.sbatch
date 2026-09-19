@@ -88,7 +88,7 @@
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
-ENV="$REPO/.pixi/envs/ideate"
+ENV="$REPO/.pixi/envs/shot-design"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export SHOT_DESIGN_DATA_ROOT="$ROOT"
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE

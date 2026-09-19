@@ -21,7 +21,7 @@ def test_importing_the_module_entry_point_does_not_run_the_cli() -> None:
     assert importlib.reload(mod) is mod  # a second import is still not an invocation
 
 
-def test_python_dash_m_ideate_still_runs_the_cli() -> None:
+def test_python_dash_m_shot_design_still_runs_the_cli() -> None:
     r = subprocess.run(
         [sys.executable, "-m", "shot_design", "--help"], capture_output=True, text=True, check=False
     )

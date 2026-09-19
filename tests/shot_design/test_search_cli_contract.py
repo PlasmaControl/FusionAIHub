@@ -9,8 +9,8 @@ from shot_design.shotdb import text
 from .test_phenomena import _db_with
 
 
-def test_positional_query_text_matches_the_existing_text_option(ideate_db, monkeypatch, capsys):
-    db = _db_with(ideate_db, [])
+def test_positional_query_text_matches_the_existing_text_option(shot_design_db, monkeypatch, capsys):
+    db = _db_with(shot_design_db, [])
     monkeypatch.setattr(text, 'embed_texts', lambda texts: db.emb['text_log'][:1])
     assert cli.main(['query', 'edge harmonic oscillation', '--n', '5', '--json']) == 0
     positional = json.loads(capsys.readouterr().out)
@@ -18,7 +18,7 @@ def test_positional_query_text_matches_the_existing_text_option(ideate_db, monke
     assert json.loads(capsys.readouterr().out) == positional
 
 
-def test_a_filter_with_zero_covered_candidates_is_a_successful_empty_search(ideate_db, capsys):
+def test_a_filter_with_zero_covered_candidates_is_a_successful_empty_search(shot_design_db, capsys):
     assert cli.main(['query', '--ref', '100', '--avoid', 'phenomenon:rwm', '--json']) == 0
     reply = json.loads(capsys.readouterr().out)
     assert reply['results'] == []

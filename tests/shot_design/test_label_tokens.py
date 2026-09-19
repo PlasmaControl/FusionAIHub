@@ -13,8 +13,8 @@ from shot_design.schema import QueryState
 from .test_phenomena import _claim, _db_with, _event, _label_row
 
 
-def test_tokens_are_segment_scoped_and_only_observations_make_phenomenon_tokens(ideate_db):
-    db = _db_with(ideate_db, [
+def test_tokens_are_segment_scoped_and_only_observations_make_phenomenon_tokens(shot_design_db):
+    db = _db_with(shot_design_db, [
         _event(100, 'early', t0_s=.2, t1_s=.4),
         _event(101, 'forecast', source='label_forecast', phenomenon='tearing',
                evidence_kind='forecast'),
@@ -31,8 +31,8 @@ def test_tokens_are_segment_scoped_and_only_observations_make_phenomenon_tokens(
     assert db.segments.loc[mask, 'shot'].tolist() == [101]
 
 
-def test_label_tokens_require_valid_probability_above_the_operating_point(ideate_db):
-    db = _db_with(ideate_db, [], labels=[
+def test_label_tokens_require_valid_probability_above_the_operating_point(shot_design_db):
+    db = _db_with(shot_design_db, [], labels=[
         _label_row(100, 'tm_prob', max_valid=.8, thr=.7),
         _label_row(101, 'tm_prob', max_valid=.6, thr=.7),
         _label_row(200, 'tm_prob', max_valid=.9, n_valid=0, thr=.7),
@@ -42,18 +42,18 @@ def test_label_tokens_require_valid_probability_above_the_operating_point(ideate
     assert db.segments.loc[mask, 'shot'].tolist() == [100, 201]
 
 
-def _avoid_db(ideate_db):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+def _avoid_db(shot_design_db):
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
         es.source_row(101, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=.9),
         es.source_row(201, 'elm_clock', diag='filterscopes',
                       t_cov0_s=np.nan, t_cov1_s=np.nan),
     ])
-    return _db_with(ideate_db, [])
+    return _db_with(shot_design_db, [])
 
 
-def test_avoid_requires_relevant_coverage_and_reports_each_excluded_state(ideate_db):
-    db = _avoid_db(ideate_db)
+def test_avoid_requires_relevant_coverage_and_reports_each_excluded_state(shot_design_db):
+    db = _avoid_db(shot_design_db)
     q = QueryState(text='plasma', avoid_labels={'phenomenon:elm'})
     mask = db.mask(q.segment, avoid_labels=q.avoid_labels)
     assert db.segments.loc[mask, 'shot'].tolist() == [100]
@@ -64,12 +64,12 @@ def test_avoid_requires_relevant_coverage_and_reports_each_excluded_state(ideate
     assert any('coverage unknown' in c for c in report['caveats'])
 
 
-def test_avoid_excludes_observed_events_and_never_borrows_another_detector(ideate_db):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+def test_avoid_excludes_observed_events_and_never_borrows_another_detector(shot_design_db):
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
         es.source_row(101, 'ece_sawtooth', t_cov0_s=0, t_cov1_s=6),
     ])
-    db = _db_with(ideate_db, [_event(
+    db = _db_with(shot_design_db, [_event(
         100, 'elm', source='elm_clock', phenomenon='elm', diag='filterscopes',
         t0_s=2, t1_s=2,
     )])
@@ -79,8 +79,8 @@ def test_avoid_excludes_observed_events_and_never_borrows_another_detector(ideat
     assert any('no detector registered for rwm' in c for c in rank.search_report(q, db)['caveats'])
 
 
-def test_token_sets_and_coverage_are_cached_across_channel_masks(ideate_db, monkeypatch):
-    db = _avoid_db(ideate_db)
+def test_token_sets_and_coverage_are_cached_across_channel_masks(shot_design_db, monkeypatch):
+    db = _avoid_db(shot_design_db)
     first = db.mask('flat_top', avoid_labels=['phenomenon:elm'])
     tokens = db._label_tokens
 
@@ -92,8 +92,8 @@ def test_token_sets_and_coverage_are_cached_across_channel_masks(ideate_db, monk
     assert db._label_tokens is tokens
 
 
-def test_query_and_mcp_surface_coverage_exclusions_even_with_no_results(ideate_db, capsys):
-    _avoid_db(ideate_db)
+def test_query_and_mcp_surface_coverage_exclusions_even_with_no_results(shot_design_db, capsys):
+    _avoid_db(shot_design_db)
     tools.reset_cache()
     reply = tools.search_shots(ref_shot=100, avoid_labels=['phenomenon:rwm'])
     assert reply['results'] == []
@@ -103,11 +103,11 @@ def test_query_and_mcp_surface_coverage_exclusions_even_with_no_results(ideate_d
     tools.reset_cache()
 
 
-def test_observed_tokens_keep_transient_and_elm_provenance_distinct(ideate_db):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+def test_observed_tokens_keep_transient_and_elm_provenance_distinct(shot_design_db):
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(101, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
     ])
-    db = _db_with(ideate_db, [
+    db = _db_with(shot_design_db, [
         _event(100, 'transient', source='tokeye_transient', phenomenon='transient'),
         _event(101, 'elm', source='elm_clock', phenomenon='elm', diag='filterscopes'),
     ])
@@ -138,16 +138,16 @@ def test_observed_tokens_keep_transient_and_elm_provenance_distinct(ideate_db):
     assert not any(ph.TRANSIENT_NOT_CLASSIFIED in c for c in transient_report['caveats'])
 
 
-def test_require_rejects_unknown_phenomena_before_building_tokens(ideate_db):
-    db = _db_with(ideate_db, [])
+def test_require_rejects_unknown_phenomena_before_building_tokens(shot_design_db):
+    db = _db_with(shot_design_db, [])
     with pytest.raises(ph.PhenomenaError, match='sawtoot.*nearest.*sawtooth'):
         db.mask('flat_top', require_labels=['phenomenon:sawtoot'])
     assert '_label_tokens' not in db.__dict__
     assert not db.mask('flat_top', require_labels=['phenomenon:sawtooth']).any()
 
 
-def test_mcp_require_returns_an_error_with_the_bad_id_and_suggestions(ideate_db):
-    _db_with(ideate_db, [])
+def test_mcp_require_returns_an_error_with_the_bad_id_and_suggestions(shot_design_db):
+    _db_with(shot_design_db, [])
     tools.reset_cache()
     reply = tools.search_shots(ref_shot=100, require_labels=['phenomenon:sawtoot'])
     assert 'sawtoot' in reply.get('error', '')
@@ -167,24 +167,24 @@ def test_mcp_require_returns_an_error_with_the_bad_id_and_suggestions(ideate_db)
     ([(1, 2), (1.5, 2.5)], False),  # double counting would admit this
 ])
 def test_avoid_requires_half_the_segment_measured_without_changing_its_state(
-    ideate_db, spans, eligible,
+    shot_design_db, spans, eligible,
 ):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=a, t_cov1_s=b)
         for a, b in spans
     ])
-    db = _db_with(ideate_db, [])
+    db = _db_with(shot_design_db, [])
     assert ph.evidence(100, 'elm', db).coverage_state == 'observed'
     mask = db.mask('flat_top', avoid_labels=['phenomenon:elm'])
     assert db.segments.loc[mask, 'shot'].tolist() == ([100] if eligible else [])
 
 
-def test_retained_partial_negative_carries_its_fraction_on_the_shot(ideate_db, capsys):
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+def test_retained_partial_negative_carries_its_fraction_on_the_shot(shot_design_db, capsys):
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(101, 'elm_clock', diag='filterscopes', t_cov0_s=1, t_cov1_s=3),
         es.source_row(201, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6),
     ])
-    db = _db_with(ideate_db, [])
+    db = _db_with(shot_design_db, [])
     query = QueryState(ref_shot=100, avoid_labels={'phenomenon:elm'})
     result = rank.search(query, db)
     entries = {item.shot: item.model_dump() for item in result.items}
@@ -201,15 +201,15 @@ def test_retained_partial_negative_carries_its_fraction_on_the_shot(ideate_db, c
 
 
 @pytest.mark.parametrize('option', ['--require', '--avoid'])
-def test_cli_phenomenon_errors_do_not_offer_irrelevant_column_advice(ideate_db, capsys, option):
+def test_cli_phenomenon_errors_do_not_offer_irrelevant_column_advice(shot_design_db, capsys, option):
     assert cli.main(['query', '--ref', '100', option, 'phenomenon:sawtoot']) == 2
     error = capsys.readouterr().err
     assert 'sawtoot' in error and 'nearest' in error
     assert 'Columns are' not in error
 
 
-def test_avoid_coverage_runs_only_once_per_mcp_search(ideate_db, monkeypatch):
-    db = _avoid_db(ideate_db)
+def test_avoid_coverage_runs_only_once_per_mcp_search(shot_design_db, monkeypatch):
+    db = _avoid_db(shot_design_db)
     calls = []
     original = type(db)._avoid_coverage
 

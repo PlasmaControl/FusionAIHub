@@ -26,7 +26,7 @@
 # Login node (stellar-vis2, load average 1-7), `/usr/bin/time -v` plus a 0.5 s process-tree RSS
 # sampler (`ps -eo pid,ppid,rss` summed over the subtree; `ps` reports rss in KiB, and the
 # sampler divided by 1e6 -- so every "GB" in the last two columns is 1e6 KiB = 0.954 GiB, which
-# is the conversion the --mem arithmetic below uses), `.pixi/envs/ideate-cpu/bin/python` called
+# is the conversion the --mem arithmetic below uses), `.pixi/envs/shot-design-cpu/bin/python` called
 # directly (the `pixi run` launcher, ~1 GiB by itself, is bypassed so the memory measured is the
 # build's):
 #
@@ -90,7 +90,7 @@ set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller does this while another task edits
 # the main checkout); SHOT_DESIGN_PY is the interpreter, which always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-SHOT_DESIGN_PY="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_PY "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/ideate-cpu/bin/python")"
+SHOT_DESIGN_PY="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_PY "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design-cpu/bin/python")"
 SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
 LIST="${LIST:-recommender_v1}"
 

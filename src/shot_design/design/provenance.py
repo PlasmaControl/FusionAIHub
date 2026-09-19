@@ -51,7 +51,11 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-SCHEMA = "ideate-frame-codes-provenance-v1"
+#: The tag every sidecar written from here on carries. The sidecars already on disk carry the
+#: pre-rename `ideate-frame-codes-provenance-v1`, and nothing compares this constant -- `audit`
+#: only counts the value it finds, under `by_schema` -- so both tags keep reading, and the census
+#: shows the rename as two rows rather than hiding it.
+SCHEMA = "shot-design-frame-codes-provenance-v1"
 
 #: Every key a sidecar has, in this order. Asserted by `test_provenance`, so a field added here
 #: without a reader is visible rather than silently absent on the shots written yesterday.
