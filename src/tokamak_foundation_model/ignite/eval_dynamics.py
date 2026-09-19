@@ -20,6 +20,8 @@ See docs/IGNITE_DESIGN.md §5 for the frame layout / rollout contract.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -33,10 +35,16 @@ from .sampling import SamplerConfig
 from .scoring import best_of_n as _best_of_n
 
 # The exactly-11 modalities to render, and their family grouping for panel layout.
-EVAL_MODALITIES: Tuple[str, ...] = (
-    "ece", "bes", "mhr", "co2",
-    "ts_core_density", "ts_core_temp", "ts_tangential_density", "ts_tangential_temp", "cer_ti",
-    "tangtv_lower", "tangtv_upper",
+# IGNITE_EVAL_MODALITIES restricts the set (comma-separated). Needed because a single broken
+# decoder aborts the WHOLE eval before any modality is scored: `ece` is channel-factorized
+# (channel_groups=4 -> 4x192=768 tokens) and decode_flat feeds the flat 768 straight into a
+# decoder whose pos_emb is 192, so it raises and takes every other modality down with it.
+# Restricting the set is the workaround; fixing decode_flat's group reshape is the real repair.
+EVAL_MODALITIES: Tuple[str, ...] = tuple(
+    m for m in os.environ.get(
+        "IGNITE_EVAL_MODALITIES",
+        "ece,bes,mhr,co2,ts_core_density,ts_core_temp,ts_tangential_density,"
+        "ts_tangential_temp,cer_ti,tangtv_lower,tangtv_upper").split(",") if m.strip()
 )
 SPECTRO = ("ece", "bes", "mhr", "co2")
 VIDEO = ("tangtv_lower", "tangtv_upper")
@@ -70,6 +78,24 @@ FIG_SLOWTS = _fig_sel("IGNITE_FIG_SLOWTS",
 # is METRICALLY IDENTICAL to it (same advance widths) and is the standard substitute.
 import os as _os
 FIG_W_IN = float(_os.environ.get("IGNITE_FIG_WIDTH_IN", "6.5"))
+# IGNITE_FIG_SKILL=0 drops the "· skill +x.xx" tail from every panel annotation. Skill is a
+# claim about beating persistence and belongs in a results table, not on a comparison figure.
+_SHOW_SKILL = _os.environ.get("IGNITE_FIG_SKILL", "1") != "0"
+# IGNITE_FIG_R=0 drops the Pearson "r x.xxx ·" prefix from spectro/video annotations.
+_SHOW_R = _os.environ.get("IGNITE_FIG_R", "1") != "0"
+# IGNITE_FIG_CH=0 hides the best-channel index on the slow-TS traces.
+_SHOW_CH = _os.environ.get("IGNITE_FIG_CH", "1") != "0"
+# IGNITE_FIG_VRMSE=1 adds the per-frame video nRMSE(t) row under the video panels.
+_SHOW_VRMSE = _os.environ.get("IGNITE_FIG_VRMSE", "0") != "0"
+# GROUND-TRUTH-ONLY VARIANT. Draws the SAME figure with every prediction artist omitted:
+# no orange trace, no Prediction strip/frame, no per-panel r/nRMSE/skill annotation, no
+# video-nRMSE row, and a one-entry legend. Row set, row heights, fonts, colours, colormaps
+# and time axes are untouched -- a GT panel is byte-identical to the one in the full figure,
+# it just occupies the width its Prediction twin used to share.
+_GT_ONLY = _os.environ.get("IGNITE_FIG_GT_ONLY", "0") != "0"
+# IGNITE_FIG_TAG=0 drops the slow-TS location tag ("core", "tangential") from the
+# corner annotation; the ylabel already carries the quantity and its units.
+_SHOW_TAG = _os.environ.get("IGNITE_FIG_TAG", "1") != "0"
 FIG_PT = float(_os.environ.get("IGNITE_FIG_FONT_PT", "12"))
 # Colour maps (user 2026-08-12): spectrograms in a colourblind-safe sequential scheme,
 # video in greyscale (raw camera counts read naturally as luminance), differences on a
@@ -135,6 +161,23 @@ def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig
         kw["text_dropout_p"] = float(ck["cfg_text_dropout_p"])
     cfg = DynamicsConfig(**kw)
     cfg.grad_checkpointing = False                        # inference: no recompute
+    # ARCHITECTURE FROM THE WEIGHTS, never from a default. _ACT_SPEC grew 70 -> 88 channels when
+    # i_coil was added, so a DynamicsConfig default of 70 fails to load an 88-channel checkpoint
+    # with "size mismatch for backbone.act_embed.weight" and takes the whole eval down (job
+    # 5329757, all 4 checkpoints, 2026-08-23). Same class of failure as act_cross_attn and
+    # lag_embed_k before it: read the shape rather than trusting a config three files away.
+    sd = ck["model"]
+    if "backbone.act_embed.weight" in sd:
+        adim = int(sd["backbone.act_embed.weight"].shape[1])
+        if adim != int(getattr(cfg, "actuator_dim", -1)):
+            print(f"[eval] actuator_dim {getattr(cfg, 'actuator_dim', '?')} -> {adim} "
+                  f"(inferred from backbone.act_embed.weight)", flush=True)
+            cfg.actuator_dim = adim
+    for flag, key in (("act_cross_attn", "cfg_act_cross_attn"),
+                      ("dropout", "cfg_dropout")):
+        if key in ck:
+            setattr(cfg, flag, type(getattr(cfg, flag))(ck[key]))
+    cfg.dropout = 0.0                                     # inference: dropout off regardless
     model = MaskGITDynamics(cfg).to(device).eval()
     model.load_state_dict(ck["model"])
     step = int(ck.get("step", 0))
@@ -249,6 +292,17 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
 
     codes = cache["codes"]
     seed_codes = {n: codes[n][:K0].long().unsqueeze(0).to(device) for n in names}   # (1, K0, n_tok)
+    # Must match TRAINING: if the arm trained on dataset-wide-normalised actuators, scoring it
+    # with the per-shot z-scored column feeds the model a different input distribution than it
+    # ever saw. Same hard-error policy as the training path.
+    _agd = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+    if _agd:
+        _agp = Path(_agd) / f"{shot}.pt"
+        if not _agp.exists():
+            raise FileNotFoundError(f"IGNITE_ACT_GLOBAL={_agd} has no entry for shot {shot}")
+        _w = cache["actuators"].shape[-1]
+        cache["actuators"] = torch.load(_agp, map_location="cpu",
+                                        weights_only=False)["actuators_global"][:, :_w]
     act = cache["actuators"][:F].float()                                            # (F, 70)
     act = apply_actuator_mode(act, actuator_mode, K0, cache_dir=cache_dir, F=F)
     actuators = act.unsqueeze(0).to(device)                                         # (1, F, 70)
@@ -369,8 +423,38 @@ def load_raw_gt(shot: str, codecs: Dict, F: int, data_dir, t0_start: float = 1.0
     return out
 
 
+def bandpower_levels(edges: np.ndarray) -> np.ndarray:
+    """(N_LEV-1, D) interior quantile edges -> (N_LEV, D) representative value per level.
+
+    Band-power tokens are quantile bin INDICES, not FSQ codes — there is no learned decoder.
+    Interior levels take the bin midpoint; the two open-ended outer bins extrapolate by half
+    the adjacent bin width, which is the only choice that keeps the reconstruction monotone
+    in the level index.
+    """
+    q = np.asarray(edges, dtype=np.float64)
+    mid = 0.5 * (q[:-1] + q[1:])                                  # levels 1 .. N_LEV-2
+    first = q[0] - 0.5 * (q[1] - q[0])
+    last = q[-1] + 0.5 * (q[-1] - q[-2])
+    return np.concatenate([first[None, :], mid, last[None, :]], axis=0)
+
+
+def decode_bandpower(spec: Tuple[np.ndarray, int, int], codes: torch.Tensor) -> np.ndarray:
+    """Band-power token levels -> (F, C, n_band, 1) mean log-power.
+
+    The trailing length-1 axis is the intra-frame time axis the spectro renderer stitches
+    along, so a band-power frame contributes ONE column and ``_stitch`` yields a
+    (n_band, F) image — identical downstream handling to a real spectrogram decode.
+    """
+    values, C, n_band = spec
+    tk = np.asarray(codes.detach().cpu(), dtype=np.int64)          # (F, D)
+    D = tk.shape[1]
+    v = values[np.clip(tk, 0, values.shape[0] - 1), np.arange(D)[None, :]]
+    return v.reshape(tk.shape[0], C, n_band)[..., None].astype(np.float32)
+
+
 def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, device,
-               denorm: Dict = None, raw_gt: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
+               denorm: Dict = None, raw_gt: Dict = None,
+               bandpower: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
     """Decode BOTH gt + pred codes for every EVAL modality over the FULL window [0, F).
 
     The seed region [0, K0) is included (pred codes == real codes there) so the figure can show
@@ -387,6 +471,21 @@ def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, 
     """
     out = {}
     for name in EVAL_MODALITIES:
+        # BAND-POWER modalities carry quantile-bin levels, not FSQ codes, so they bypass the
+        # codec path entirely (there is no learned decoder to run). Everything downstream —
+        # persistence, nRMSE, skill, panel layout — is identical.
+        bp = (bandpower or {}).get(name)
+        if bp is not None:
+            gt = decode_bandpower(bp, gt_codes[name][:F])
+            pred = decode_bandpower(bp, pred_codes[name][:F])
+            pers = np.repeat(decode_bandpower(bp, gt_codes[name][K0 - 1:K0]), F, axis=0)
+            nr, nr_p = _nrmse(pred[K0:], gt[K0:]), _nrmse(pers[K0:], gt[K0:])
+            out[name] = {"gt": gt, "pred": pred, "gt_source": "decoded",
+                         "nrmse": nr, "nrmse_persistence": nr_p,
+                         "nrmse_skill": (1.0 - nr / nr_p) if nr_p > 0 else float("nan"),
+                         "activity": _temporal_activity(pred[K0:], gt[K0:]),
+                         "family": "spectro", "space": "band power"}
+            continue
         if name not in codecs:
             continue
         codec, _cfg, fam = codecs[name]
@@ -442,8 +541,34 @@ def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, 
                      "nrmse": nr, "nrmse_persistence": nr_p,
                      # skill > 0 => better than freezing; 1.0 => perfect; < 0 => worse
                      "nrmse_skill": (1.0 - nr / nr_p) if nr_p > 0 else float("nan"),
+                     # temporal amplitude ratio: 0 = frozen prediction, 1 = right amplitude.
+                     # Read this BEFORE skill -- skill alone prefers a flat trace.
+                     "activity": _temporal_activity(pred[K0:], gt[K0:]),
                      "family": fam, "space": space}
     return out
+
+
+def _temporal_activity(pred: np.ndarray, gt: np.ndarray) -> float:
+    """mean(std(pred, axis=time)) / mean(std(gt, axis=time)) over the SCORED frames.
+
+    THE metric that separates a forecast from a well-chosen constant. 0 = the prediction is
+    frozen in time; 1 = it reproduces the ground truth's temporal amplitude. Recorded 2026-08-18:
+    R2, nRMSE and skill ALL rank the FLATTEST model highest, because predicting the right LEVEL is
+    most of the variance -- an arm with 5.8% of GT temporal amplitude won on R2 over one with 85%.
+    So nrmse_skill must never be read without this alongside it.
+    MUST be the std ALONG TIME per column, not over the flattened array: the flattened form is
+    dominated by static cross-channel structure and read 0.853 for a prediction that was visibly
+    flat (that error produced a retracted result).
+    """
+    a, b = np.asarray(pred, dtype=np.float64), np.asarray(gt, dtype=np.float64)
+    if a.shape != b.shape or a.shape[0] < 2:
+        return float("nan")
+    sp = np.nanstd(a, axis=0)                      # axis 0 IS time here (frames, ...)
+    sg = np.nanstd(b, axis=0)
+    m = np.isfinite(sp) & np.isfinite(sg) & (sg > 0)
+    if not m.any():
+        return float("nan")
+    return float(np.nanmean(sp[m]) / np.nanmean(sg[m]))
 
 
 def self_check(decoded: Dict[str, Dict[str, np.ndarray]]) -> None:
@@ -538,8 +663,25 @@ def _annotate_static(ax, name: str) -> None:
 
 
 WARMUP_S = 1.0                     # window origin in shot time (windowing convention)
-_GT_C, _PR_C = "#1a1a19", "#eb6834"            # ground truth ink / prediction orange
-_VID_C = {"tangtv_lower": "#2a78d6", "tangtv_upper": "#eb6834"}
+# LINE + COLOUR SYSTEM. Okabe-Ito (colourblind-safe) throughout, and IDENTICAL to the
+# learning-curve figure (epoch_curve.py) so the two read as one system in the paper: same
+# palette, same weights, same dash for the secondary series. Change both together.
+OKABE = {"blue": "#0072B2", "orange": "#E69F00", "green": "#009E73",
+         "vermillion": "#D55E00", "purple": "#CC79A7", "sky": "#56B4E9", "black": "#000000"}
+_GT_C, _PR_C = "#1A1A1A", OKABE["vermillion"]   # ground truth ink / prediction
+_VID_C = {"tangtv_lower": OKABE["blue"], "tangtv_upper": OKABE["vermillion"]}
+LW_PRIMARY, LW_SECONDARY = 1.6, 1.2             # ground truth / prediction
+AX_LW, GRID_LW, GRID_ALPHA = 0.8, 0.5, 0.25     # spines/ticks, grid -- shared too
+DASH_SECONDARY = (0, (3.2, 1.5))                # the prediction dash, everywhere
+
+# DISPLAY NAMES: instrument acronyms are uppercase in the text, so they are uppercase here.
+_DISPLAY = {"ece": "ECE", "mhr": "MHR", "bes": "BES", "co2": "CO2", "mirnov": "Mirnov",
+            "tangtv_lower": "tangTV\nlower divertor",
+            "tangtv_upper": "tangTV\nupper divertor"}
+
+
+def _disp(name: str) -> str:
+    return _DISPLAY.get(name, name)
 # slow-TS display units: (scale, label) — the H5 stores eV / m^-3; temperatures display as
 # keV (x1e-3), matching eval_e2e_animation_tokamak._TRACE_SCALES / _TRACE_LABELS.
 # Compact symbols for the normalized case. The raw modality name is longer than a row is
@@ -596,7 +738,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         "font.size": _p, "axes.labelsize": _p, "axes.titlesize": _p,
         "xtick.labelsize": _p - 1, "ytick.labelsize": _p - 1, "legend.fontsize": _p - 1,
         "axes.spines.top": False, "axes.spines.right": False,
-        "axes.linewidth": 0.7, "xtick.major.width": 0.7, "ytick.major.width": 0.7,
+        "axes.linewidth": AX_LW, "xtick.major.width": AX_LW, "ytick.major.width": AX_LW,
         "pdf.fonttype": 42, "ps.fonttype": 42,
     })
     _fs = _p / 7.0                                # row heights scale with type size
@@ -656,9 +798,11 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
     base_rows: list = ([("slow", n) for n in dyn_slow]
                        + [("spec", n) for n in dyn_spec]
                        + [("vid", n) for n in dyn_vid]
+                       + ([("vrmse", None)] if (dyn_vid and _SHOW_VRMSE and not _GT_ONLY) else [])
                        + ([("static", None)] if statics else []))
     rows: list = []                # spacer rows between sections stop title/label collisions
-    _sect = {}                                    # (spectro is one row per modality)
+    # vrmse belongs to the video SECTION, so no section gap is inserted before it
+    _sect = {"vrmse": "vid"}                      # (spectro is one row per modality)
     for k, n in base_rows:
         if rows and _sect.get(rows[-1][0], rows[-1][0]) != _sect.get(k, k):
             rows.append(("gap", None))
@@ -733,8 +877,9 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         else:
             # unit is figure-global, so it goes in the corner annotation, not every y-label
             ylab = _SLOWTS_SYMBOL.get(name, name)
-        ax.plot(ts, tr_gt, color=_GT_C, lw=1.7, solid_capstyle="round", zorder=2)
-        ax.plot(ts, tr_pr, color=_PR_C, lw=0.9, ls=(0, (2.5, 1.6)), zorder=3)
+        ax.plot(ts, tr_gt, color=_GT_C, lw=LW_PRIMARY, solid_capstyle="round", zorder=2)
+        if not _GT_ONLY:
+            ax.plot(ts, tr_pr, color=_PR_C, lw=LW_SECONDARY, ls=DASH_SECONDARY, zorder=3)
         if legend_host is None:
             legend_host = ax
         # single-line ylabel (two-line labels bleed into neighbor rows on the one-page
@@ -742,9 +887,15 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         # Rotated 12 pt on a ~0.7 in tall row is taller than the row, so full-size y-labels
         # collide with the panels above and below. Shrink them to fit their own panel.
         ax.set_ylabel(_static_ylab(name, ylab), fontsize=_p - 4)
-        sk = d.get("nrmse_skill")
-        corner = (f"{tag} ch{bc:02d} · nRMSE {d['nrmse']:.3f}"
-                  + (f" · skill {sk:+.2f}" if sk is not None and np.isfinite(sk) else "")).lstrip()
+        sk = d.get("nrmse_skill") if _SHOW_SKILL else None
+        # join only the parts that exist: a modality with no unit tag (cer_ti) and no channel
+        # index used to render a dangling "· nRMSE ...".
+        _bits = [b for b in (tag if _SHOW_TAG else "",
+                             f"ch{bc:02d}" if _SHOW_CH else "") if b]
+        _bits.append(f"nRMSE {d['nrmse']:.3f}")
+        if sk is not None and np.isfinite(sk):
+            _bits.append(f"skill {sk:+.2f}")
+        corner = " · ".join(_bits)
         ax.text(0.995, 1.04, corner, transform=ax.transAxes, ha="right", va="bottom",
                 fontsize=_p - 3, color="0.35")
         _time_axis(ax, ticks=(i == last_of["slow"]), xlabel=False)
@@ -753,7 +904,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
             ax.text(t_roll + 0.02, 1.04, "prediction start",
                     transform=ax.get_xaxis_transform(), fontsize=_p - 3, color="0.45",
                     va="bottom", ha="left")
-        ax.grid(alpha=0.2, lw=0.4)
+        ax.grid(alpha=GRID_ALPHA, lw=GRID_LW)
 
     # ---- spectro: GT (left) | PREDICTION (right), shared colour scale ----------------------- #
     first_spec = min((i for i, (k, _n) in enumerate(rows) if k == "spec"), default=None)
@@ -763,7 +914,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         if kind != "spec":
             continue
         d = decoded[name]
-        inner = GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[i], wspace=0.06)
+        inner = GridSpecFromSubplotSpec(1, 1 if _GT_ONLY else 2, subplot_spec=outer[i], wspace=0.06)
         bc = _best_channel(d["gt"], axis_reduce=(2, 3))
         g_img, p_img = _stitch(d["gt"], bc), _stitch(d["pred"], bc)
         fin = g_img[np.isfinite(g_img)]
@@ -774,10 +925,10 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         # spectro row shares x with the first, so all time axes are locked together
         # (identical limits/ticks by construction, not by coincidence).
         ax_g = fig.add_subplot(inner[0], sharex=(_spec_ref[0] if _spec_ref else None))
-        ax_p = fig.add_subplot(inner[1], sharex=ax_g, sharey=ax_g)
+        ax_p = None if _GT_ONLY else fig.add_subplot(inner[1], sharex=ax_g, sharey=ax_g)
         if not _spec_ref:
             _spec_ref.append(ax_g)
-        for ax, img in ((ax_g, g_img), (ax_p, p_img)):
+        for ax, img in (((ax_g, g_img),) if _GT_ONLY else ((ax_g, g_img), (ax_p, p_img))):
             # The stitched spectrogram is ~512 x (F*n_time) -- far more pixels than the
             # panel gets on the page -- so "none" nearest-neighbours it and drops most
             # columns, which is what makes the image look blocky/aliased. "antialiased"
@@ -790,20 +941,25 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
             ax.tick_params(labelbottom=(i == last_spec))
             if i == last_spec:
                 ax.set_xlabel("Time (s)")
-        ax_p.tick_params(labelleft=False)          # shared scale -> one y-axis is enough
         from matplotlib.ticker import MaxNLocator
+        if not _GT_ONLY:
+            ax_p.tick_params(labelleft=False)      # shared scale -> one y-axis is enough
+            ax_p.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
         ax_g.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))  # no "1.00.0"
-        ax_p.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
-        ax_g.set_ylabel(_static_ylab(name, f"{name}\nFreq (kHz)"), fontsize=_p - 4)
-        _r, _sk = _corr(d["pred"][K0:], d["gt"][K0:]), d.get("nrmse_skill")
-        ax_p.text(0.98, 0.94, f"r {_r:.3f} · nRMSE {d['nrmse']:.3f}"
-                  + (f" · skill {_sk:+.2f}" if _sk is not None and np.isfinite(_sk) else ""),
-                  transform=ax_p.transAxes, ha="right", va="top", fontsize=_p - 3,
-                  color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
-                                          ec="none", alpha=0.8))
+        ax_g.set_ylabel(_static_ylab(name, f"{_disp(name)}\nFreq (kHz)"), fontsize=_p - 4)
+        _r = _corr(d["pred"][K0:], d["gt"][K0:])
+        _sk = d.get("nrmse_skill") if _SHOW_SKILL else None
+        if not _GT_ONLY:
+            ax_p.text(0.98, 0.94, (f"r {_r:.3f} · " if _SHOW_R else "")
+                      + f"nRMSE {d['nrmse']:.3f}"
+                      + (f" · skill {_sk:+.2f}" if _sk is not None and np.isfinite(_sk) else ""),
+                      transform=ax_p.transAxes, ha="right", va="top", fontsize=_p - 3,
+                      color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
+                                              ec="none", alpha=0.8))
         if i == first_spec:
             ax_g.set_title("Ground truth")
-            ax_p.set_title("Prediction")
+            if not _GT_ONLY:
+                ax_p.set_title("Prediction")
         _letter(ax_g)
 
     # ---- one compact row of time-mean power spectra (statistics check) ---------------------- #
@@ -822,11 +978,11 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
                 ps_p = np.nanmean(np.where(np.isfinite(d["pred"][K0:, bc]),
                                            d["pred"][K0:, bc], np.nan), axis=(0, 2))
             fb = np.arange(len(ps_g)) * khz_per_bin
-            ax_s.plot(fb, ps_g, color=_GT_C, lw=1.7, solid_capstyle="round", zorder=2)
-            ax_s.plot(fb, ps_p, color=_PR_C, lw=0.9, ls=(0, (2.5, 1.6)), zorder=3)
+            ax_s.plot(fb, ps_g, color=_GT_C, lw=LW_PRIMARY, solid_capstyle="round", zorder=2)
+            ax_s.plot(fb, ps_p, color=_PR_C, lw=LW_SECONDARY, ls=DASH_SECONDARY, zorder=3)
             ax_s.set_xlabel("Freq (kHz)", fontsize=6.5)
             ax_s.tick_params(labelsize=6)
-            ax_s.grid(alpha=0.2, lw=0.4)
+            ax_s.grid(alpha=GRID_ALPHA, lw=GRID_LW)
             ax_s.set_title(f"{name} power spectrum", fontsize=6.5)
             if j == 0:
                 ax_s.set_ylabel("log power", fontsize=6.5)
@@ -845,8 +1001,10 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         # reads as a spatial error map, but the prediction is a SAMPLE of a stochastic field —
         # the difference is dominated by which realization was drawn, not by where the model is
         # wrong. It made a collapsed prediction look like a structured error. GT | PRED only.
-        inner = GridSpecFromSubplotSpec(1, 3, subplot_spec=outer[i], wspace=0.30,
-                                        width_ratios=[1.0, 1.0, 0.05])
+        inner = (GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[i], wspace=0.30,
+                                         width_ratios=[1.0, 0.05]) if _GT_ONLY
+                 else GridSpecFromSubplotSpec(1, 3, subplot_spec=outer[i], wspace=0.30,
+                                              width_ratios=[1.0, 1.0, 0.05]))
         gt, pr = d["gt"], d["pred"]
         mid_t = gt.shape[2] // 2
         img_g, img_p = gt[mid, 0, mid_t], pr[mid, 0, mid_t]
@@ -880,26 +1038,32 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
         vmin, vmax = (float(np.percentile(fin, 1.0)), float(np.percentile(fin, 99.0))) \
             if fin.size else (0.0, 1.0)
         ax_g = fig.add_subplot(inner[0])
-        ax_p = fig.add_subplot(inner[1])
-        cax_p = fig.add_subplot(inner[2])
-        ax_g.imshow(img_g, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
-        im_p = ax_p.imshow(img_p, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
-        for a in (ax_g, ax_p):
+        ax_p = None if _GT_ONLY else fig.add_subplot(inner[1])
+        cax_p = fig.add_subplot(inner[1 if _GT_ONLY else 2])
+        im_g = ax_g.imshow(img_g, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
+        im_p = im_g if _GT_ONLY else ax_p.imshow(img_p, cmap=CMAP_VIDEO, vmin=vmin,
+                                                 vmax=vmax, aspect="auto")
+        for a in ((ax_g,) if _GT_ONLY else (ax_g, ax_p)):
             a.set_xticks([]); a.set_yticks([])
-        ax_g.set_ylabel(_static_ylab(name, name.replace("tangtv_", "tangtv\n")
+        ax_g.set_ylabel(_static_ylab(name, _disp(name)
                                      + ("\n(z-scored)" if mismatched else "")),
                         fontsize=_p - 4)
-        _rv, _skv = _corr(pr[K0:], gt[K0:]), d.get("nrmse_skill")
-        _ptxt = ("not scored (static GT)" if gt_static else
-                 f"r {_rv:.3f} · nRMSE {d['nrmse']:.3f}"
-                 + (f" · skill {_skv:+.2f}" if _skv is not None and np.isfinite(_skv) else ""))
-        ax_p.text(0.99, 0.04, _ptxt,
-                  transform=ax_p.transAxes, ha="right", va="bottom", fontsize=_p - 3,
-                  color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
-                                          ec="none", alpha=0.78))
+        _rv = _corr(pr[K0:], gt[K0:])
+        _skv = d.get("nrmse_skill") if _SHOW_SKILL else None
+        if not _GT_ONLY:
+            # honest annotation: a static (codec-collapsed) GT has no score to report.
+            _ptxt = ("not scored (static GT)" if gt_static else
+                     (f"r {_rv:.3f} · " if _SHOW_R else "")
+                     + f"nRMSE {d['nrmse']:.3f}"
+                     + (f" · skill {_skv:+.2f}" if _skv is not None and np.isfinite(_skv) else ""))
+            ax_p.text(0.99, 0.04, _ptxt,
+                      transform=ax_p.transAxes, ha="right", va="bottom", fontsize=_p - 3,
+                      color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
+                                              ec="none", alpha=0.78))
         if i == first_vid:
             ax_g.set_title(f"Ground truth (t = {t_origin + mid * FRAME_S:.2f} s)")
-            ax_p.set_title("Prediction")
+            if not _GT_ONLY:
+                ax_p.set_title("Prediction")
         for cb, im in ((cax_p, im_p),):
             fig.colorbar(im, cax=cb)
             cb.tick_params(labelsize=5.5, length=2, pad=1)
@@ -921,12 +1085,12 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
                 g = gt[f][m].astype(np.float64)
                 p = pr[f][m].astype(np.float64)
                 per.append(float(np.sqrt(np.mean((p - g) ** 2)) / (np.std(g) + 1e-12)))
-            ax.plot(ts[K0:], per, color=_VID_C.get(name, _GT_C), lw=1.2,
+            ax.plot(ts[K0:], per, color=_VID_C.get(name, _GT_C), lw=LW_PRIMARY,
                     label=name.replace("tangtv_", "").capitalize() + " divertor")
         ax.set_ylabel("video nRMSE")
         ax.set_ylim(bottom=0.0)
         ax.legend(frameon=False, fontsize=6.5, loc="upper left")
-        ax.grid(alpha=0.2, lw=0.4)
+        ax.grid(alpha=GRID_ALPHA, lw=GRID_LW)
         _time_axis(ax, ticks=True, xlabel=True)
         _letter(ax)
 
@@ -942,9 +1106,13 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
     # GT/prediction legend INSIDE the first panel (no figure-level header text — run
     # metadata belongs in the paper caption, not the figure)
     if legend_host is not None:
-        handles = [plt.Line2D([], [], color=_GT_C, lw=1.2, label="Ground truth"),
-                   plt.Line2D([], [], color=_PR_C, lw=1.2, label="Prediction")]
-        legend_host.legend(handles=handles, loc="upper left", frameon=True, ncol=2,
+        handles = [plt.Line2D([], [], color=_GT_C, lw=LW_PRIMARY, label="Ground truth")]
+        if not _GT_ONLY:
+            handles.append(plt.Line2D([], [], color=_PR_C, lw=LW_SECONDARY,
+                                      ls=DASH_SECONDARY, label="Prediction"))
+        legend_host.legend(handles=handles,
+                           loc=_os.environ.get("IGNITE_FIG_LEGEND_LOC", "upper left"),
+                           frameon=True, ncol=1 if _GT_ONLY else 2,
                            fontsize=_p - 2, borderaxespad=0.25, handlelength=1.6,
                            columnspacing=0.8, framealpha=0.9, edgecolor="none")
     out_dir = Path(out_dir)
@@ -1067,11 +1235,50 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
         f"frame_tokens={cfg.tokens_per_frame}", flush=True)
 
     from .train_dynamics import load_frozen_codecs as _lfc
+    # DEFAULT THE TEMPLATE FROM THE CACHE'S OWN MANIFEST. Without it resolve_codec_path prefers a
+    # repo-local path and can silently load a DIFFERENT codec than the one that encoded the cache:
+    # 2026-08-17 it picked eval_runs/ignite_d5_ece (192 tok, channel_groups=1) for a cache written
+    # by the 768-token g=4 ece codec, so decode raised a shape error that aborted the ENTIRE eval
+    # before any modality was scored. The cache records the right template -- use it.
+    if codec_tmpl is None:
+        _man = Path(cache_dir) / "_codec_manifest.json"
+        if _man.exists():
+            try:
+                codec_tmpl = json.loads(_man.read_text()).get("codec_tmpl") or None
+                if codec_tmpl:
+                    log(f"[eval] codec_tmpl from cache manifest: {codec_tmpl}", flush=True)
+            except Exception as _e:                     # noqa: BLE001 - manifest is advisory
+                log(f"[eval] WARNING unreadable _codec_manifest.json ({_e})", flush=True)
     codecs = _lfc(list(EVAL_MODALITIES), repo=repo, tmpl=codec_tmpl)
     for _n, (c, _c2, _f) in codecs.items():
         c.to(device)
     log(f"[eval] loaded {len(codecs)} frozen codecs "
         f"(tmpl={codec_tmpl or 'manifest'}): {sorted(codecs)}", flush=True)
+
+    # BAND-POWER modalities carry quantile-bin levels instead of FSQ codes, so no learned
+    # decoder exists for them. Detected from a bin_edges*.npz shipped beside the cache; the
+    # codec is still loaded (its cfg supplies the channel count) but is never run on them.
+    bandpower: Dict = {}
+    _edp = next((f for f in (Path(cache_dir) / "bin_edges_128.npz",
+                             Path(cache_dir).parent / "bin_edges_128.npz",
+                             Path(cache_dir) / "bin_edges.npz",
+                             Path(cache_dir).parent / "bin_edges.npz") if f.exists()), None)
+    if _edp is not None:
+        _ez = np.load(_edp)
+        for _n in _ez.files:
+            if _n not in EVAL_MODALITIES or _n not in codecs:
+                continue
+            _q = _ez[_n]
+            _C = int(getattr(codecs[_n][1], "channels", 0) or 0)
+            if _C <= 0 or _q.ndim != 2 or _q.shape[1] % _C:
+                log(f"[eval] band-power {_n}: edges {_q.shape} not divisible by C={_C}"
+                    " — falling back to the FSQ codec", flush=True)
+                continue
+            bandpower[_n] = (bandpower_levels(_q), _C, _q.shape[1] // _C)
+        if bandpower:
+            log(f"[eval] band-power decode from {_edp.name} for "
+                + ", ".join(f"{k} (C={v[1]}, {v[2]} bands)" for k, v in sorted(bandpower.items())),
+                flush=True)
 
     shots_all = [s.strip() for s in str(shot).split(",") if s.strip()]
     # (a) multi-GCD parallel eval (user go 2026-08-09): under the srun rank wrapper each
@@ -1143,7 +1350,8 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
             log(f"[eval] WARNING: could not archive codes for {sh}: {type(e).__name__}: {e}")
         raw = load_raw_gt(sh, codecs, F, data_dir, t0_start=cache_t0, log=log) \
             if use_raw_gt else None
-        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw)
+        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw,
+                             bandpower=bandpower)
         if si == 0:
             self_check(decoded)
         entry = {"token_accuracy": tok_acc,

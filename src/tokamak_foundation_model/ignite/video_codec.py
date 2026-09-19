@@ -178,13 +178,34 @@ class VideoCodec(nn.Module):
             Current global step (for ``cfg.adv_warmup_steps``). Default 0.
         frame_mask : (B, T) or (B, C, T) bool/float, optional
             Per-frame (optionally per-channel) validity mask. Off-filter tangtv cameras are
-            stored as fully-NaN slabs (already zero-filled by the loader) and flagged invalid;
-            when a mask is given the **pixel anchor** is computed only over valid frames so a
-            dead camera does not drag the reconstruction toward zero. ``None`` = all valid.
-            (The adversarial / feature-matching terms still see the whole clip — the
-            discriminator is judging realism per frame; the pixel weighting is where masking
-            matters most, matching the loader's "use the mask as a per-channel reconstruction
-            weighting" guidance.)
+            stored as fully-NaN slabs (already zero-filled by the loader) and flagged invalid.
+            ``None`` = all valid.
+
+            AS OF 2026-09-03 THE MASK IS HONOURED BY EVERY TERM, not just the pixel anchor:
+
+              * ``pixel``            — mean |recon - x| over VALID (b, c, t) positions
+                                       (unchanged behaviour).
+              * ``adversarial`` + ``feature_matching`` — the discriminator is run on the
+                                       SUBSET of frames in which EVERY channel is valid. A
+                                       half-dead frame is not a realistic camera image, and a
+                                       fully dead one is a constant-zero plate: feeding those
+                                       to D as "real" teaches it that a flat frame IS realistic,
+                                       which is a direct gradient toward the mean-collapsed
+                                       generator this codec is supposed to avoid.
+              * ``entropy``          — the FSQ statistic is accumulated over valid CLIPS only.
+                                       Tokens mix both channels (patch_dim = C*pt*ph*pw), so a
+                                       clip with a dead channel has every one of its 108 tokens
+                                       contaminated; there is no per-token repair, only
+                                       exclusion.
+
+            WHY IT MATTERS (measured over all 8753 shots, video_channel_liveness.pt):
+            51.30% of tangtv_lower shots and 68.58% of tangtv_upper shots have NO live camera
+            at all, and among the shots that do, a further 19.0% / 16.9% of channel-slots are
+            dead. Only 39.4% (lower) / 26.1% (upper) of the streamed tensor is real data.
+
+            NO-OP GUARANTEE: when the mask is ``None`` OR selects every frame, the code takes
+            the ORIGINAL tensors through the identical call sequence, so the default path is
+            bit-identical to the pre-2026-09-03 loss (verified by test).
 
         Returns
         -------
@@ -207,8 +228,15 @@ class VideoCodec(nn.Module):
         # make the loss (and the adaptive-adv gradient balance) inconsistent.
         x_std = out["x_std"]
 
+        # MISSING-DATA EXCLUSION. `keep` is the (B, T) "every channel valid" frame selector;
+        # None means "everything valid", in which case the ORIGINAL tensors are used and the
+        # whole path below is bit-identical to the unmasked loss.
+        keep = self._disc_frame_selector(frame_mask, recon.shape)
+        d_fake = recon if keep is None else self._select_frames(recon, keep)
+        d_real = x_std if keep is None else self._select_frames(x_std, keep)
+
         # ONE discriminator pass: patch scores (adversarial) + intermediate features (FM).
-        fake_scores, fake_feats = disc(recon, return_features=True)
+        fake_scores, fake_feats = disc(d_fake, return_features=True)
         fake_scores = _as_score_list(fake_scores)
         adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
 
@@ -216,10 +244,15 @@ class VideoCodec(nn.Module):
 
         # DETACHED real features: generator matches fake -> real (grad only via fake feats).
         with torch.no_grad():
-            _, real_feats = disc(x_std, return_features=True)
+            _, real_feats = disc(d_real, return_features=True)
         fm = feature_matching_loss(real_feats, fake_feats)
 
-        entropy = self.quantizer.entropy_loss(feats_x)
+        # ENTROPY over valid CLIPS only (a clip with a dead channel contaminates all its
+        # tokens). `_valid_clips` returns None when every clip is usable -> feats_x unchanged.
+        clips = self._valid_clips(frame_mask, recon.shape)
+        entropy = self.quantizer.entropy_loss(
+            feats_x if clips is None else feats_x[clips], step=step
+        )
 
         # VQGAN-canonical: adaptive weight balances adv against the RECONSTRUCTION reference
         # (pixel anchor + feature-matching), NOT the entropy regularizer.
@@ -252,6 +285,84 @@ class VideoCodec(nn.Module):
             "recon": recon,
             "codes": codes,
         }
+
+    # ------------------------------------------------------------------ #
+    # missing-data selectors (shared with the trainer's discriminator step)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _frame_validity(
+        frame_mask: Optional[torch.Tensor], shape
+    ) -> Optional[torch.Tensor]:
+        """``(B, T)`` bool "every channel of this frame is valid", or None if all valid.
+
+        ``shape`` is the ``(B, C, T, H, W)`` video shape. A ``(B, T)`` mask is already
+        per-frame; a ``(B, C, T)`` mask is reduced over C with AND, because the
+        discriminator's input channel axis IS C — there is no way to hide one dead camera
+        from a conv that consumes both. Returns ``None`` when nothing would be excluded, so
+        every caller can short-circuit to the original tensors (the bit-identical path).
+        """
+        if frame_mask is None:
+            return None
+        B, C, T = shape[0], shape[1], shape[2]
+        m = frame_mask
+        if m.dim() == 2:            # (B, T)
+            v = m > 0.5
+        elif m.dim() == 3:          # (B, C, T) -> AND over channels
+            v = (m > 0.5).all(dim=1)
+        else:
+            raise ValueError(f"frame_mask must be (B,T) or (B,C,T); got {tuple(m.shape)}")
+        if v.shape != (B, T):
+            raise ValueError(f"frame_mask implies {tuple(v.shape)}, expected {(B, T)}")
+        if bool(v.all()):
+            return None             # nothing excluded -> caller keeps the original tensors
+        return v
+
+    @classmethod
+    def _disc_frame_selector(
+        cls, frame_mask: Optional[torch.Tensor], shape
+    ) -> Optional[torch.Tensor]:
+        """:meth:`_frame_validity`, but also None when the mask would leave NO frame.
+
+        A batch in which every frame is invalid (a whole batch of dead cameras) would give the
+        discriminator an empty input; the term then has no gradient and the hinge mean is NaN.
+        In that degenerate case we fall back to the unmasked tensors, exactly as
+        :meth:`_masked_pixel_mae` falls back to the unmasked MAE.
+        """
+        v = cls._frame_validity(frame_mask, shape)
+        if v is None or not bool(v.any()):
+            return None
+        return v
+
+    @staticmethod
+    def _select_frames(x: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        """Gather the ``keep`` (B, T) frames of ``(B, C, T, H, W)`` into ``(1, C, N, H, W)``.
+
+        The FramePatchGAN reshapes ``(B, C, T, H, W) -> (B*T, C, H, W)`` and scores every frame
+        independently, so packing the surviving frames onto a single clip's time axis gives the
+        discriminator EXACTLY the valid frames and nothing else. Order is (batch, time)
+        row-major, matching the discriminator's own rearrange.
+        """
+        # (B, C, T, H, W) -> (B, T, C, H, W) -> select -> (N, C, H, W) -> (1, C, N, H, W)
+        sel = x.permute(0, 2, 1, 3, 4)[keep]          # (N, C, H, W)
+        return sel.permute(1, 0, 2, 3).unsqueeze(0)   # (1, C, N, H, W)
+
+    @classmethod
+    def _valid_clips(
+        cls, frame_mask: Optional[torch.Tensor], shape
+    ) -> Optional[torch.Tensor]:
+        """``(B,)`` bool "every (channel, frame) of this clip is valid", or None if all are.
+
+        Used to restrict the FSQ entropy statistic. Returns None when nothing would be
+        excluded AND when the selection would be empty (keeping the term finite and, under
+        DDP, keeping every rank's collective call shape well-defined).
+        """
+        v = cls._frame_validity(frame_mask, shape)
+        if v is None:
+            return None
+        clips = v.all(dim=1)                          # (B,)
+        if bool(clips.all()) or not bool(clips.any()):
+            return None
+        return clips
 
     # ------------------------------------------------------------------ #
     # masked pixel anchor

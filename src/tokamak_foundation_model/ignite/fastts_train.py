@@ -3,13 +3,18 @@
 The fast-TS analogue of :mod:`ignite.train_codec` (spectro / video). It REUSES the shared
 IGNITE infrastructure wholesale and only supplies the fast-TS-specific pieces:
 
+2026-09-03 REDESIGN: the codec target is the RAW 10 kHz waveform ``(B, C, W)`` (W = 500
+samples in a 50 ms frame), NOT the 5-bin ELM activity envelope. Everywhere below that used to
+say "envelope" now means "raw standardized samples"; the δ-pair survives only as the gate's
+``stability`` probe (``consistency_weight`` defaults to 0.0 — see ``fastts_codec``).
+
 * **Data** — :class:`FastTSCodecPairDataset` is a THIN subclass of
   :class:`~tokamak_foundation_model.data.multi_file_dataset.TokamakMultiFileDataset` (exactly
   like :class:`ignite.train_codec.CodecPairDataset`): it reuses the parent's global-idx →
   ``(file_idx, chunk_idx)`` binary-search map, the per-worker LRU HDF5 file-handle cache (with
   ``__getstate__`` / ``__setstate__`` pickling into DataLoader workers), the length-cache
   sidecar and the ``num_workers`` plumbing UNCHANGED, and overrides ONLY the per-item transform
-  hook :meth:`_getitem_standard` to return the codec's ``(env_a, env_b)`` δ-shift ELM-envelope
+  hook :meth:`_getitem_standard` to return the codec's ``(win_a, win_b)`` δ-shift RAW-sample
   pair for the ``filterscopes`` modality. It does **not** touch ``data_loader.py`` /
   ``multi_file_dataset.py``.
 * **Trainer** — reuses the SAME per-step generator/discriminator alternation MATH as the
@@ -20,14 +25,16 @@ IGNITE infrastructure wholesale and only supplies the fast-TS-specific pieces:
   best-ckpt+EMA+gate path, and the file-locality samplers + ``_epoch_cycler`` are all imported
   from :mod:`ignite.train_codec` / :mod:`ignite.spike` — nothing is re-implemented.
 * **Gate** — :func:`fastts_compute_gate` mirrors :func:`spike.compute_gate` but computes
-  **stability** on the δ-shift envelope pair, **envelope decode-fidelity** via
-  :func:`gate.fastts_decode_fidelity`, and **persistence** / **forecastability** / **utilization**
-  on a consecutive-window envelope-code sequence — returning the SAME key set so
+  **stability** on the δ-shift raw pair, **RAW-SAMPLE decode-fidelity** via
+  :func:`gate.fastts_decode_fidelity` + :func:`gate.full_fastts_metrics` (nRMSE and the trivial
+  baselines), and **persistence** / **forecastability** / **utilization**
+  on a consecutive-window code sequence — returning the SAME key set so
   :func:`spike.gate_score` (recon-floor -inf disqualification) consumes it unchanged.
 
-WHY fast-TS keeps the δ-pair (unlike video): the ELM spike TIMING is a realization nuisance
-(docs/IGNITE_DESIGN.md §4.3), the fast-TS analogue of the spectrogram's STFT phase — so the
-codec, like spectro, trains on a δ-shifted pair and enforces shift-consistency.
+WHY the δ-pair is now REPORTING-ONLY: the envelope codec enforced shift-consistency because
+spike TIMING was a nuisance to project out. A sample-wise codec must CARRY that timing, so the
+consistency term is OFF by default and the pair is kept purely so the gate can still report how
+far the codes move under a shift (``spike.gate_score`` does not read ``stability``).
 
 Reuse boundary (§7): only ``torch`` + sibling ``ignite`` modules + the read-only data pipeline
 (via the reused ``TokamakMultiFileDataset``). No FAITH *model* code.
@@ -65,7 +72,7 @@ DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
 
 # Canonical per-channel raw mean/std the data_loader uses to STANDARDIZE filterscopes (the
 # same file every eval/train script points --stats_path at). The fast-TS codec reads the
-# filterscopes 'raw' mean/std from here to standardize the envelope input (the SCALE FIX).
+# filterscopes 'raw' mean/std from here to standardize the raw input (the SCALE FIX).
 DEFAULT_STATS_PATH = "/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt"
 
 # The single fast-TS modality (a non-STFT SignalConfig in TokamakH5Dataset.SIGNAL_CONFIGS,
@@ -145,7 +152,7 @@ def fastts_channels(modality: str = FASTTS_MODALITY) -> int:
 # δ-shift-pair dataset — a THIN subclass of the production TokamakMultiFileDataset
 # ------------------------------------------------------------------------------------- #
 class FastTSCodecPairDataset(TokamakMultiFileDataset):
-    """``(env_a, env_b)`` δ-shift ELM-envelope pairs for the ``filterscopes`` modality.
+    """``(win_a, win_b)`` δ-shift RAW-SAMPLE pairs for the ``filterscopes`` modality.
 
     A **thin** subclass of :class:`~tokamak_foundation_model.data.multi_file_dataset.\
 TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.CodecPairDataset`
@@ -171,7 +178,7 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
     ``_getitem_standard`` loads the RAW δ-extended filterscope window via the parent's
     :meth:`TokamakH5Dataset._load_signal_raw` (already resampled to ``target_fs == FASTTS_FS``,
     zero-/NaN-padded), then builds the pair with :func:`ignite.data.fastts_shift_pair_windows`
-    (raw δ-shift + re-envelope). Degenerate windows (all-NaN / near-flat / past the real data
+    (raw δ-shift + per-channel standardization). Degenerate windows (all-NaN / near-flat / past the real data
     end) are re-drawn from nearby chunks, exactly as CodecPairDataset does.
     """
 
@@ -230,17 +237,19 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
 
     # -- the ONLY overridden hook: per-item δ-pair transform -------------------------- #
     def _getitem_standard(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore[override]
-        """Return one ``(env_a, env_b)`` δ-shift ELM-envelope pair for window ``idx``.
+        """Return one ``(win_a, win_b)`` δ-shift RAW-sample pair for window ``idx``.
 
         Called by the parent's ``__getitem__`` AFTER it has (a) binary-search-mapped the global
         index to ``(file_idx, chunk_idx)`` and (b) set ``self.h5_file`` to this shot's per-worker
         LRU handle. Here ``idx`` is the within-shot ``chunk_idx``.
 
         With ``cfg.active_bias > 0`` an activity-stratified re-draw
-        (:func:`ignite.train_codec._stratified_draw`) biases toward ELM-envelope windows with std
-        ``>= cfg.min_activity`` (most filterscope windows saturate the envelope ceiling to a
-        constant, std 0; the minority carry the ELM structure). With ``active_bias == 0`` (default)
-        this is byte-identical to the plain build+degenerate-redraw below.
+        (:func:`ignite.train_codec._stratified_draw`) biases toward RAW windows whose std is
+        ``>= cfg.min_activity``. Measured on 4 held-out shots, the TOP per-window std quartile is
+        by far the most reconstructable (oracle 0-1 kHz lowpass nRMSE 0.3956 there vs 0.68-0.73
+        in the lower three), so the bias pulls the batch toward the part of the signal that HAS
+        reconstructable structure. With ``active_bias == 0`` (default) this is byte-identical to
+        the plain build+degenerate-redraw below.
         """
         return _stratified_draw(
             idx, self._draw_valid_pair, lambda p: float(p[0].std()),
@@ -261,9 +270,10 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
             pair = self._build_pair(alt)
             if pair is not None:
                 return pair
-        # Last resort: a finite silence-floor envelope pair (rare; whole shot degenerate).
+        # Last resort: a finite silent raw pair (rare; whole shot degenerate).
         C = self._num_channels()
-        z = torch.zeros((C, self.codec_cfg.env_bins))
+        cc = self.codec_cfg
+        z = torch.zeros((C, cc.window if cc.is_raw else cc.env_bins))
         return z, z.clone()
 
     # -- helpers (all reuse parent state; no re-implementation of the index map) ------- #
@@ -290,10 +300,10 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
         gen = torch.Generator().manual_seed(self.pair_seed + 1_000_003 * int(chunk_idx) + 1)
         d = float(lo + (hi - lo) * float(torch.rand((), generator=gen)))
         # `raw` already starts at t_start -> rebase t0 to 0.0 for the pair slicer.
-        env_a, env_b = data.fastts_shift_pair_windows(
+        win_a, win_b = data.fastts_shift_pair_windows(
             raw, t0=0.0, cfg=self.codec_cfg, delta_ms=d
         )
-        return env_a, env_b
+        return win_a, win_b
 
     def _chunks_in_current_shot(self, chunk_idx: int) -> int:
         """Number of chunks in the shot on ``self.h5_file`` (best-effort; bounds the re-draw)."""
@@ -332,10 +342,10 @@ TokamakMultiFileDataset`, structurally identical to :class:`ignite.train_codec.C
 def _pair_collate(
     batch: List[Tuple[torch.Tensor, torch.Tensor]]
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Stack ``(env_a, env_b)`` pairs into ``(B, C, E)`` batched tensors."""
-    env_a = torch.stack([a for a, _ in batch], dim=0)
-    env_b = torch.stack([b for _, b in batch], dim=0)
-    return env_a, env_b
+    """Stack ``(win_a, win_b)`` RAW pairs into ``(B, C, W)`` batched tensors."""
+    win_a = torch.stack([a for a, _ in batch], dim=0)
+    win_b = torch.stack([b for _, b in batch], dim=0)
+    return win_a, win_b
 
 
 def make_fastts_loader(
@@ -352,7 +362,7 @@ def make_fastts_loader(
 
     Identical sampler/plumbing choice as :func:`ignite.train_codec.make_codec_loader` (the
     file-locality ``DistributedTwoLevelSampler`` under DDP, ``TwoLevelSampler`` single-process);
-    only the collate differs (``(env_a, env_b)`` envelope pairs).
+    only the collate differs (``(win_a, win_b)`` raw-sample pairs).
     """
     if world_size > 1:
         sampler: torch.utils.data.Sampler = DistributedTwoLevelSampler(
@@ -374,14 +384,14 @@ def make_fastts_loader(
 
 
 # ------------------------------------------------------------------------------------- #
-# per-step generator/discriminator alternation (mirrors spike.codec_train_step, envelope δ-pair)
+# per-step generator/discriminator alternation (mirrors spike.codec_train_step, raw δ-pair)
 # ------------------------------------------------------------------------------------- #
 def _fastts_discriminator_loss(
     disc: torch.nn.Module,
     real: torch.Tensor,
     fake: torch.Tensor,
 ) -> torch.Tensor:
-    """Hinge GAN discriminator loss for the 1-D envelope PatchGAN (shared hinge helpers).
+    """Hinge GAN discriminator loss for the 1-D raw-waveform PatchGAN (shared hinge helpers).
 
     Identical math to :func:`losses.discriminator_loss` (``E[relu(1-D(real))] +
     E[relu(1+D(fake))]`` over the per-scale score maps); a fast-TS-typed entry point (avoids
@@ -397,12 +407,12 @@ def fastts_codec_train_step(
     disc: Env1DPatchGAN,
     opt_g: torch.optim.Optimizer,
     opt_d: torch.optim.Optimizer,
-    env_a: torch.Tensor,
-    env_b: torch.Tensor,
+    win_a: torch.Tensor,
+    win_b: torch.Tensor,
     cfg: FastTSCodecConfig,
     step: int,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-    """ONE generator+discriminator alternation step on a δ-shift envelope pair (bare path).
+    """ONE generator+discriminator alternation step on a δ-shift RAW pair (bare path).
 
     The fast-TS analogue of :func:`spike.codec_train_step` — same alternation (generator step on
     the codec's δ-pair ``generator_losses``, then a fresh DETACHED-recon discriminator step).
@@ -411,7 +421,7 @@ def fastts_codec_train_step(
     codec.train()
 
     opt_g.zero_grad(set_to_none=True)
-    g_terms = codec.generator_losses(env_a, env_b, disc, cfg, step=step)
+    g_terms = codec.generator_losses(win_a, win_b, disc, cfg, step=step)
     g_terms["total"].backward()
     # Divergence guard (single-process path here; DDP-collective when world_size>1).
     if spike.is_step_diverged(g_terms["total"]):
@@ -421,8 +431,8 @@ def fastts_codec_train_step(
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
-        recon = codec.forward(env_a)["recon"]
-    d_loss = _fastts_discriminator_loss(disc, env_a, recon)
+        recon = codec.forward(win_a)["recon"]
+    d_loss = _fastts_discriminator_loss(disc, win_a, recon)
     d_loss.backward()
     if spike.is_step_diverged(d_loss):
         spike.note_skipped_step()
@@ -447,13 +457,13 @@ class _FastTSGenLossAdapter(torch.nn.Module):
 
     def forward(
         self,
-        env_a: torch.Tensor,
-        env_b: torch.Tensor,
+        win_a: torch.Tensor,
+        win_b: torch.Tensor,
         disc: torch.nn.Module,
         cfg: FastTSCodecConfig,
         step: int,
     ) -> Dict[str, torch.Tensor]:
-        return self.codec.generator_losses(env_a, env_b, disc, cfg, step=step)
+        return self.codec.generator_losses(win_a, win_b, disc, cfg, step=step)
 
 
 def _ddp_fastts_train_step(
@@ -463,8 +473,8 @@ def _ddp_fastts_train_step(
     disc_raw: Env1DPatchGAN,            # underlying raw discriminator
     opt_g: torch.optim.Optimizer,
     opt_d: torch.optim.Optimizer,
-    env_a: torch.Tensor,
-    env_b: torch.Tensor,
+    win_a: torch.Tensor,
+    win_b: torch.Tensor,
     cfg: FastTSCodecConfig,
     step: int,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
@@ -473,7 +483,7 @@ def _ddp_fastts_train_step(
     disc_raw.train()
 
     opt_g.zero_grad(set_to_none=True)
-    g_terms = gen_module(env_a, env_b, disc_raw, cfg, step)
+    g_terms = gen_module(win_a, win_b, disc_raw, cfg, step)
     g_terms["total"].backward()
     # DDP-safe divergence guard: uniform backward, then skip opt_g.step() identically on all ranks
     # if any rank's loss is non-finite.
@@ -484,8 +494,8 @@ def _ddp_fastts_train_step(
 
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
-        recon = codec.forward(env_a)["recon"]
-    d_loss = _fastts_discriminator_loss(disc, env_a, recon)
+        recon = codec.forward(win_a)["recon"]
+    d_loss = _fastts_discriminator_loss(disc, win_a, recon)
     d_loss.backward()
     if spike.is_step_diverged(d_loss):
         spike.note_skipped_step()
@@ -496,7 +506,7 @@ def _ddp_fastts_train_step(
 
 
 # ------------------------------------------------------------------------------------- #
-# fast-TS gate (mirrors spike.compute_gate for the envelope)
+# fast-TS gate (mirrors spike.compute_gate for the RAW waveform)
 # ------------------------------------------------------------------------------------- #
 @torch.no_grad()
 def fastts_compute_gate(
@@ -505,22 +515,49 @@ def fastts_compute_gate(
     frame_seq: torch.Tensor,
     cfg: FastTSCodecConfig,
 ) -> Dict[str, object]:
-    """Fast-TS analogue of :func:`spike.compute_gate` (§4.4 gate on envelope codes + recon).
+    """Fast-TS analogue of :func:`spike.compute_gate` — RAW-SAMPLE recon + code metrics.
 
     Parameters
     ----------
     codec : FastTSCodec
-    eval_pairs : list of (env_a, env_b)
-        Held-out δ-shift envelope pairs; used for **stability** (codes of env_a vs env_b) and
-        **envelope decode-fidelity** (recon of env_a vs env_a).
-    frame_seq : (B, n_frames, C, E)
-        Consecutive world-model windows' envelopes; used for **persistence** (window t vs t+1)
-        and **forecastability** (whole sequence of codes).
+    eval_pairs : list of (win_a, win_b)
+        Held-out δ-shift RAW window pairs; used for **stability** (codes of win_a vs win_b —
+        reported only, ``spike.gate_score`` does not read it) and for **decode-fidelity**
+        (recon of win_a vs win_a).
+    frame_seq : (B, n_frames, C, W)
+        Consecutive world-model windows; used for **persistence** (window t vs t+1) and
+        **forecastability** (whole sequence of codes).
     cfg : FastTSCodecConfig
 
     Returns the same key set as :func:`spike.compute_gate` so :func:`spike.gate_score` and the
     trainer plumbing consume it unchanged: ``stability`` / ``persistence`` /
-    ``forecastability`` / ``decode`` / ``utilization`` + the ``pass_*`` booleans.
+    ``forecastability`` / ``decode`` / ``utilization`` + the ``pass_*`` booleans — PLUS the
+    2026-09-03 additions inside ``decode``:
+
+      * ``fastts_nrmse``  — the PRIMARY number. RMSE / std(target) per (window, channel) over
+        the SAMPLE axis, averaged. 0.0 perfect; EXACTLY 1.0 = predicting that window-channel's
+        own constant mean.
+      * ``fastts_corr`` / ``fastts_global_nrmse`` / ``fastts_valid_frac``.
+      * ``fastts_ssim_cs`` / ``fastts_ssim_contrast`` / ``fastts_ssim_structure`` /
+        ``fastts_ms_ssim`` / ``fastts_std_ratio`` — :func:`gate.fastts_ssim_metrics`, the
+        STRUCTURAL read. nRMSE is a FLOOR, not the ranking key (its minimiser is the
+        conditional mean, so it rewards amplitude shrinkage); ``fastts_ssim_contrast`` and
+        ``fastts_std_ratio`` are what detect that (std_ratio 1.0 = right dynamic range).
+      * ``ref_*`` — :func:`gate.fastts_structural_references`: self / +noise / smoothed /
+        0.4x-shrunk / flat, scored with the same function on the same batch, so the metric is
+        re-validated every time it is used.
+      * ``base_*`` — :func:`gate.trivial_fastts_baselines` on the SAME eval batch. The two
+        MANDATORY self-checks are ``base_self_fastts_nrmse`` (must be 0.0000) and
+        ``base_wcmean_fastts_nrmse`` (must be exactly 1.0000); ``base_tmean_fastts_nrmse`` is
+        THE baseline to beat and, for a 1-D window, is the same predictor as ``wcmean`` so it
+        must also read 1.0000. ``base_binmean100_*`` is the OLD ELM-envelope resolution
+        (10 ms piecewise-constant) — the bar the envelope codec's representation could reach.
+
+    ``decode["envelope_corr"]``, which ``spike.gate_score`` reads, is now the SAMPLE-WISE
+    Pearson correlation on the raw waveform (``gate.fastts_decode_fidelity`` computes the
+    per-(window, channel) correlation over the last axis, which IS the sample axis here).
+    That number is intrinsically much smaller than an envelope correlation, which is why
+    ``cfg.gate_recon_floor`` was lowered to 0.02.
     """
     was_training = codec.training
     codec.eval()
@@ -529,14 +566,18 @@ def fastts_compute_gate(
     dec_corr: List[float] = []
     dec_f1: List[float] = []
     dec_sharp: List[float] = []
-    for env_a, env_b in eval_pairs:
-        out_a = codec.forward(env_a)
-        _, codes_b = codec.quantize(codec.encode(env_b))
+    recon_all: List[torch.Tensor] = []
+    target_all: List[torch.Tensor] = []
+    for win_a, win_b in eval_pairs:
+        out_a = codec.forward(win_a)
+        _, codes_b = codec.quantize(codec.encode(win_b))
         stab_vals.append(gate.stability(out_a["codes"], codes_b))
-        dm = gate.fastts_decode_fidelity(out_a["recon"], env_a)
+        dm = gate.fastts_decode_fidelity(out_a["recon"], win_a)
         dec_corr.append(dm["envelope_corr"])
         dec_f1.append(dm["peak_f1"])
         dec_sharp.append(dm["sharpness"])
+        recon_all.append(out_a["recon"].detach().float().cpu())
+        target_all.append(win_a.detach().float().cpu())
 
     stability_val = float(sum(stab_vals) / len(stab_vals))
     decode = {
@@ -544,9 +585,55 @@ def fastts_compute_gate(
         "peak_f1": float(sum(dec_f1) / len(dec_f1)),
         "sharpness": float(sum(dec_sharp) / len(dec_sharp)),
     }
+    # FULL-array raw-sample nRMSE + the trivial baselines, over the WHOLE eval batch at once
+    # (not a per-batch mean of means): the baselines must be scored against exactly the same
+    # target array as the codec row, or the comparison is not a comparison.
+    r_cat = torch.cat(recon_all, dim=0).numpy()
+    t_cat = torch.cat(target_all, dim=0).numpy()
+    decode.update(gate.full_fastts_metrics(r_cat, t_cat))
+    decode.update(gate.trivial_fastts_baselines(t_cat))
+    # The SSIM block is RAW-mode only: its window (17 samples = 1.7 ms) is meaningless against
+    # an E=5 envelope curve, and adding keys to an envelope run's gate json would change what
+    # existing consumers see. Envelope runs keep exactly their previous key set plus the
+    # (mode-agnostic) nRMSE + baselines.
+    if not cfg.is_raw:
+        # ENVELOPE mode: add the POOLED, GLOBAL-std read (gate.fastts_envelope_metrics) --
+        # the quantity this codec is actually judged on, and the one that carries the BAR.
+        # ``fastts_nrmse`` above normalises each window by its OWN std, which for an envelope
+        # whose variance is 96.2% between-window DC level makes that level free; ``env_nrmse``
+        # normalises by each channel's global std, so a constant scores 1.0000 and the level
+        # counts. ``env_base_ratematched`` is the trivial window-mean encoder at THIS codec's
+        # own bit budget (measured 0.1935 vs the shipped codec's 0.5252) -- the number every
+        # fast-TS arm has to beat -- and ``env_std_ratio`` / ``env_burst_keep`` are the
+        # amplitude checks nRMSE cannot make. Pure ADDITION: new, prefixed key names only, and
+        # ``spike.gate_score`` reads none of them.
+        decode.update(gate.fastts_envelope_metrics(
+            r_cat, t_cat, bits=cfg.n_tok * math.log2(float(cfg.codebook_size))))
+        return _finish_fastts_gate(codec, was_training, decode, frame_seq, cfg,
+                                   stability=stability_val)
+    # STRUCTURAL metrics + their validation references. nRMSE is a FLOOR (beat the 1.0000
+    # constant-mean anchor), NOT the ranking key: its minimiser is the conditional mean, so it
+    # rewards shrinking the output amplitude. fastts_ssim_contrast / fastts_std_ratio are what
+    # separate a codec that carries the waveform from one that emits a smooth, amplitude-
+    # compressed line with a flattering nRMSE. The ref_* rows are built from the target alone
+    # and so re-validate the metric on THIS batch every time it is reported.
+    _sw = int(getattr(cfg, "ssim_win", 17))
+    decode.update(gate.fastts_ssim_metrics(r_cat, t_cat, win=_sw))
+    decode.update(gate.fastts_structural_references(t_cat, win=_sw))
 
+    return _finish_fastts_gate(codec, was_training, decode, frame_seq, cfg,
+                               stability=stability_val)
+
+
+@torch.no_grad()
+def _finish_fastts_gate(codec, was_training, decode, frame_seq, cfg, stability: float = 0.0):
+    """Code-sequence half of the gate (persistence / forecastability / utilization).
+
+    Split out so the ENVELOPE path can return before the RAW-only SSIM block without
+    duplicating this. Identical arithmetic to the pre-2026-09-03 gate.
+    """
     B, n_frames = frame_seq.shape[0], frame_seq.shape[1]
-    flat = frame_seq.reshape(B * n_frames, *frame_seq.shape[2:])   # (B*Fr, C, E)
+    flat = frame_seq.reshape(B * n_frames, *frame_seq.shape[2:])   # (B*Fr, C, E|W)
     _, codes_flat = codec.quantize(codec.encode(flat))
     codes_seq = codes_flat.reshape(B, n_frames, cfg.n_tok, cfg.fsq_dim)
 
@@ -558,12 +645,12 @@ def fastts_compute_gate(
         codec.train()
 
     return {
-        "stability": stability_val,
+        "stability": stability,
         "persistence": float(persistence_val),
         "forecastability": forecast,
         "decode": decode,
         "utilization": util,
-        "pass_stability": bool(stability_val >= cfg.gate_stability),
+        "pass_stability": bool(stability >= cfg.gate_stability),
         "pass_persistence": bool(persistence_val >= cfg.gate_persistence),
         "pass_utilization": bool(not util["collapsed"]),
     }
@@ -586,9 +673,9 @@ def _stream_fastts_eval_data(
     """Materialize a small held-out gate set by streaming ``eval_shots`` on THIS rank only.
 
     Returns ``(eval_pairs, frame_seq)`` matching :func:`fastts_compute_gate`'s contract:
-    ``eval_pairs`` = list of ``(env_a, env_b)`` batches; ``frame_seq`` = ``(B, n_frames, C, E)``
-    consecutive-window envelope sequence. Reuses :class:`FastTSCodecPairDataset` for both (the
-    δ-pair gives env_a; consecutive dataset indices give the frame sequence).
+    ``eval_pairs`` = list of ``(win_a, win_b)`` batches; ``frame_seq`` = ``(B, n_frames, C, W)``
+    consecutive-window RAW sequence. Reuses :class:`FastTSCodecPairDataset` for both (the
+    δ-pair gives win_a; consecutive dataset indices give the frame sequence).
     """
     ds = FastTSCodecPairDataset(eval_shots, cfg, data_dir=data_dir, seed=seed)
     n_pairs = eval_batches * eval_batch_size
@@ -607,22 +694,22 @@ def _stream_fastts_eval_data(
         b = torch.stack([p[1] for p in chunk], dim=0).to(device)
         eval_pairs.append((a, b))
 
-    # consecutive-window envelope sequence for persistence / forecastability: env_a of blocks
+    # consecutive-window RAW sequence for persistence / forecastability: win_a of blocks
     # of `eval_frames` consecutive dataset windows (already the non-overlapping 50 ms cores).
     bsz = max(2, eval_batch_size // 2)
     n_windows = eval_frames
     seqs: List[torch.Tensor] = []
     b = 0
     while len(seqs) < bsz and (b + 1) * n_windows <= n_avail:
-        block = [ds[b * n_windows + k][0] for k in range(n_windows)]  # env_a per window
-        seqs.append(torch.stack(block, dim=0))  # (n_windows, C, E)
+        block = [ds[b * n_windows + k][0] for k in range(n_windows)]  # win_a per window
+        seqs.append(torch.stack(block, dim=0))  # (n_windows, C, W)
         b += 1
     if len(seqs) < bsz:
         raise RuntimeError(
             f"_stream_fastts_eval_data: only {len(seqs)} consecutive {n_windows}-window "
             f"sequences across eval shots; need {bsz}. Add more eval shots."
         )
-    frame_seq = torch.stack(seqs, dim=0).to(device)  # (bsz, n_windows, C, E)
+    frame_seq = torch.stack(seqs, dim=0).to(device)  # (bsz, n_windows, C, W)
     return eval_pairs, frame_seq
 
 
@@ -660,7 +747,7 @@ def train_fastts_codec(
     infrastructure (``_DDPState`` init/wrap, ``spike._EMA``, ``spike.gate_score`` /
     ``spike._fmt_gate`` / ``spike._write_gate_json`` / ``spike._save_{checkpoint,best_checkpoint,
     ema_checkpoint}`` best-ckpt+EMA+gate path) and differs only where fast-TS differs: a
-    :class:`FastTSCodec` + :class:`Env1DPatchGAN`, the ``(env_a, env_b)`` envelope δ-pair loader,
+    :class:`FastTSCodec` + :class:`Env1DPatchGAN`, the ``(win_a, win_b)`` raw δ-pair loader,
     the :func:`_ddp_fastts_train_step`, and :func:`fastts_compute_gate`. Rank-0 only logs +
     writes ``codec_last.pt`` / ``codec_best.pt`` / (optional) ``codec_ema.pt`` /
     ``gate_<step>.json`` (identical filenames + score contract as spectro/video).
@@ -722,13 +809,13 @@ def train_fastts_codec(
 
     for local_step in range(steps):
         step = start_step + local_step
-        env_a, env_b = next(stream)
-        env_a = env_a.to(device, non_blocking=True)
-        env_b = env_b.to(device, non_blocking=True)
+        win_a, win_b = next(stream)
+        win_a = win_a.to(device, non_blocking=True)
+        win_b = win_b.to(device, non_blocking=True)
 
         g_terms, d_loss = _ddp_fastts_train_step(
             gen_module, codec, disc, disc_raw, opt_g, opt_d,
-            env_a, env_b, cfg, step=step,
+            win_a, win_b, cfg, step=step,
         )
         if ema_shadow is not None:
             ema_shadow.update(codec)
@@ -784,7 +871,7 @@ def train_fastts_codec(
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m tokamak_foundation_model.ignite.fastts_train",
-        description="IGNITE Phase-A STREAMING, DDP fast-TS (filterscopes) ELM-envelope codec "
+        description="IGNITE Phase-A STREAMING, DDP fast-TS (filterscopes) RAW-SAMPLE codec "
                     "trainer (statistics-first; encodes the ELM ACTIVITY ENVELOPE, not spikes).",
     )
     p.add_argument("--modality", type=str, default=FASTTS_MODALITY,
@@ -815,9 +902,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="Directory of {shot}_processed.h5 files.")
     p.add_argument("--stats_path", type=str, default=DEFAULT_STATS_PATH,
                    help="preprocessing_stats.pt with per-channel raw filterscopes mean/std used "
-                        "to STANDARDIZE the envelope input (the SCALE FIX; same file the "
+                        "to STANDARDIZE the raw input (the SCALE FIX; same file the "
                         "data_loader / eval scripts use). Set to '' to DISABLE standardization "
-                        "(raw path — envelope will saturate; for debugging only).")
+                        "(unstandardized ~1e15 input; for debugging only).")
     p.add_argument("--lengths_cache_dir", type=str, default=None,
                    help="Directory for the per-file chunk-length sidecar cache "
                         "(codec_filterscopes_lengths.pt); reuses the parent dataset's cache.")
@@ -843,12 +930,12 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cfg.entropy_weight = float(args.entropy_weight)
     if args.consistency_weight is not None:
         cfg.consistency_weight = float(args.consistency_weight)
-    # anti-collapse overrides for filterscopes (envelope activity bias). No-op otherwise; shared
+    # anti-collapse overrides for filterscopes (raw-window activity bias). No-op otherwise; shared
     # with train_codec.main so `--modality filterscopes` gets the same treatment either entry point.
     from .train_codec import apply_activity_overrides
     apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
 
-    # SCALE FIX — inject per-channel raw mean/std so the envelope input is standardized to ~O(1)
+    # SCALE FIX — inject per-channel raw mean/std so the raw input is standardized to ~O(1)
     # (like the FM model sees) BEFORE detrend/rectify/RMS/log1p, instead of the unstandardized
     # ~1e15 raw that pins log1p at its ceiling and collapses the codec to one code. --stats_path=''
     # disables (raw path — for debugging only).
@@ -858,14 +945,14 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         cfg.channel_std = std
         if ddp.is_main:
             print(
-                f"[fastts_train] envelope standardization ON: per-channel raw stats from "
+                f"[fastts_train] raw standardization ON: per-channel raw stats from "
                 f"{args.stats_path} (C={len(mean)}, std range "
                 f"[{min(std):.3e}, {max(std):.3e}])",
                 flush=True,
             )
     elif ddp.is_main:
-        print("[fastts_train] WARNING: --stats_path='' -> envelope standardization OFF "
-              "(raw path; envelope will saturate). Debugging only.", flush=True)
+        print("[fastts_train] WARNING: --stats_path='' -> raw standardization OFF "
+              "(unstandardized ~1e15 input). Debugging only.", flush=True)
 
     if args.shots is not None:
         all_shots = [s.strip() for s in args.shots.split(",") if s.strip()]
@@ -886,7 +973,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     if ddp.is_main:
         print(
             f"[fastts_train] modality={args.modality} channels={channels} "
-            f"env_bins={cfg.env_bins} n_tok={cfg.n_tok} "
+            f"window={cfg.window} patch_w={cfg.patch_w} n_tok={cfg.n_tok} "
+            f"bits/value={cfg.bits_per_value:.4f} "
             f"train_shots={len(train_shots)} eval_shots={len(eval_shots)} "
             f"world_size={ddp.world_size} batch_size={args.batch_size} "
             f"num_workers={args.num_workers} steps={args.steps} device={device}",
@@ -926,7 +1014,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         summary["config"] = {
             "modality": args.modality,
             "channels": channels,
-            "env_bins": cfg.env_bins,
+            "window": cfg.window,
+            "patch_w": cfg.patch_w,
             "n_tok": cfg.n_tok,
             "n_train_shots": len(train_shots),
             "n_eval_shots": len(eval_shots),

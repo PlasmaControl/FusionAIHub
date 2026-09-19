@@ -81,6 +81,19 @@ else
     export FI_CXI_DEFAULT_CQ_SIZE=131072
 fi
 
+# HAND-BUILT AWS-OFI-NCCL ESCAPE HATCH (from dev-peter 2026-08-29). The module above is the
+# supported path; this is the per-job override for testing a locally built plugin. Set
+# OFI_PREFIX=<prefix> in a SINGLE job's --export (typically alongside RCCL_PLUGIN=0 so the two
+# plugin copies cannot both be on LD_LIBRARY_PATH). ps9551 rebuilt one against libfabric 2.3.1
+# on 2026-08-29 (the May build targeted 1.22.0, which the maintenance removed -- the most
+# likely cause of the 4700720/21 ALLREDUCE hangs):
+#   OFI_PREFIX=/ccs/home/ps9551/aws-ofi-nccl/install-20260829
+# Must come AFTER the pixi shell-hook, which overwrites LD_LIBRARY_PATH.
+if [ -n "${OFI_PREFIX:-}" ]; then
+    export LD_LIBRARY_PATH="${OFI_PREFIX}/lib:$LD_LIBRARY_PATH"
+    echo "[common] AWS-OFI-NCCL plugin ENABLED from ${OFI_PREFIX}"
+fi
+
 # Performance / correctness knobs
 export PYTORCH_ROCM_ARCH=gfx90a
 export OMP_NUM_THREADS=1

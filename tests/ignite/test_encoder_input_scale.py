@@ -132,25 +132,26 @@ def _slowts_input() -> Tuple[torch.Tensor, torch.Tensor]:
 
 
 def _fastts_input() -> Tuple[torch.Tensor, None]:
-    """Fast-TS encoder input = data.elm_envelope(raw, cfg) — standardized ELM envelope."""
+    """Fast-TS encoder input = data.fastts_raw_window(raw, cfg) — standardized RAW samples.
+
+    2026-09-03: the fast-TS codec no longer takes an ELM envelope; it takes the raw 10 kHz
+    window. The only transform left is the per-channel standardization, so 'sane scale' here
+    means exactly what it means for the FM model: mean ~0, std ~1 after (x - mean) / std.
+    """
     C = 8
     cfg = FastTSCodecConfig(channels=C)
     torch.manual_seed(0)
     W = cfg.window_samples
-    # RAW filterscope counts ~1e14 with ELM bursts that GROW across the window (so the standardized
-    # per-bin RMS envelope has real spread — mirrors the documented real-data env std p50 ~0.45,
-    # NOT a flat saturated line). Bursts recur ~every 16 samples with a rising amplitude ramp.
+    # RAW filterscope counts ~1e14 with ELM bursts that GROW across the window.
     raw = (torch.randn(1, C, W).abs() * 1e13)
-    ramp = torch.linspace(0.2, 4.0, W)                   # activity ramps up over the 50 ms window
+    ramp = torch.linspace(0.2, 4.0, W)
     burst = torch.zeros(W)
     burst[::16] = 1.0
     raw += (burst * ramp).reshape(1, 1, W) * 5e14        # ELM bursts, growing amplitude
     # real per-channel stats (as the loader's preprocessing_stats.pt would carry).
-    std = raw[0].std(dim=-1)
-    mean = raw[0].mean(dim=-1)
-    cfg.channel_mean = mean.tolist()
-    cfg.channel_std = std.tolist()
-    return data.elm_envelope(raw, cfg), None
+    cfg.channel_mean = raw[0].mean(dim=-1).tolist()
+    cfg.channel_std = raw[0].std(dim=-1).tolist()
+    return data.fastts_raw_window(raw, cfg), None
 
 
 ENCODER_INPUT_BUILDERS: Dict[str, Callable[[], Tuple[torch.Tensor, torch.Tensor | None]]] = {

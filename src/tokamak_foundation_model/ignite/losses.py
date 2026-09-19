@@ -126,6 +126,77 @@ def multiscale_recon_loss(recon: torch.Tensor, target: torch.Tensor,
     return loss / max(1, len(scales))
 
 
+def peak_l1_loss(recon: torch.Tensor, target: torch.Tensor,
+                 mask: torch.Tensor | None = None) -> torch.Tensor:
+    """L1 REWEIGHTED toward the target's spectral PEAKS -- the surrogate for peak_f1.
+
+    ``recon`` / ``target`` are ``(B, C, F, T)``. Per ``(b, c, t)`` column the weight is each
+    frequency bin's PROMINENCE over that column's own mean::
+
+        w = relu(target - target.mean(dim=F, keepdim=True))      # 0 on the floor, big on peaks
+        w = w / mean(w)                                          # mean weight 1
+        loss = mean(w * |recon - target|)
+
+    WHY A NEW TERM. MEASURED on 320 held-out co2 windows, ``peak_f1`` (top-k spectral peak
+    overlap -- whether the mode tracks are in the RIGHT PLACE):
+
+        tsmooth5 oracle (perfect coherent structure)  0.9936   <- the prize
+        patchmean oracle (exact patch means, free)    0.6537
+        shipped ms5 arm                               0.6116
+        best adversarial arm (hf 82% of ceiling)      0.6196
+
+    Both trained codecs sit BELOW the free patch-mean code, while 0.9936 is reachable. So the
+    codes carry essentially no sub-patch track information, and none of the sharpness levers
+    move it: adversarial pressure took hf from 15% to 82% of ceiling and std_ratio from 0.766
+    to 0.964 and bought +0.008 of peak_f1. The reason is that no term in the objective PAYS
+    for peak placement -- a mode line spans 1-2 of a patch's 16 frequency bins, so getting it
+    right moves plain L1 by ~10% of the patch's area and moves ms_ssim's local contrast only
+    slightly, while the adversarial term rewards the right TEXTURE STATISTICS anywhere.
+    Reweighting L1 by prominence makes the peaks most of the loss instead of a tenth of it.
+
+    ``mask`` is an optional ``(B, C, T)`` validity mask, broadcast over frequency; weights and
+    the mean are taken over valid positions only. Returns a scalar. Weight normalisation uses
+    the SAME masked positions, so the term's scale does not drift with missingness.
+    """
+    t_mean = target.mean(dim=-2, keepdim=True)                 # (B, C, 1, T)
+    w = torch.relu(target - t_mean)
+    if mask is not None:
+        m = mask.to(dtype=recon.dtype)
+        if m.dim() == 2:
+            m = m[:, None, None, :]
+        elif m.dim() == 3:
+            m = m.unsqueeze(2)
+        else:
+            raise ValueError(f"mask must be (B,T) or (B,C,T); got {tuple(mask.shape)}")
+        w = w * m
+        denom = w.sum()
+        if float(denom) <= 0.0:
+            return torch.mean(torch.abs(recon - target))
+        return (w * torch.abs(recon - target)).sum() / denom
+    denom = w.sum()
+    if float(denom) <= 0.0:                                    # a constant plate has no peaks
+        return torch.mean(torch.abs(recon - target))
+    return (w * torch.abs(recon - target)).sum() / denom
+
+
+def time_smooth(x: torch.Tensor, k: int) -> torch.Tensor:
+    """``k``-tap boxcar moving average along the TIME axis, edge-padded, shape-preserving.
+
+    ``x`` is ``(B, C, F, T)``; returns the same shape. ``k <= 1`` returns ``x`` ITSELF (the
+    identical object), so a disabled smoothing target is bit-identical, not merely equal.
+    """
+    if k <= 1:
+        return x
+    import torch.nn.functional as _F
+    pad_l, pad_r = k // 2, k - 1 - k // 2
+    # 'replicate' on a 4-D tensor pads the LAST TWO dims, so pad the time axis only by
+    # folding (C, F) into one batch-of-rows dim and using the 3-D form.
+    B, C, F, T = x.shape
+    xp = _F.pad(x.reshape(B * C, F, T), (pad_l, pad_r), mode="replicate")
+    ker = x.new_full((1, 1, k), 1.0 / float(k)).expand(F, 1, k)
+    return _F.conv1d(xp, ker, groups=F).reshape(B, C, F, T)
+
+
 def freq_gradient_loss(recon: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """L1 on the FREQUENCY-derivative — directly penalizes a smooth envelope. A mean reconstruction
     has ~0 freq-gradient where GT has sharp band structure, so matching ∂_F rewards exactly the
@@ -186,3 +257,64 @@ def _r1_penalty(disc: torch.nn.Module, real: torch.Tensor, gamma: float) -> torc
     )[0]
     penalty = grad.reshape(grad.shape[0], -1).pow(2).sum(dim=1).mean()
     return 0.5 * gamma * penalty
+
+
+# --------------------------------------------------------------------------------------- #
+# MS-SSIM reconstruction loss — the DIFFERENTIABLE form of the ranking metric
+# --------------------------------------------------------------------------------------- #
+def ms_ssim_loss(recon: torch.Tensor, target: torch.Tensor,
+                 win: int = 7, scales=(1, 2, 4), c1_frac: float = 0.01,
+                 c2_frac: float = 0.03) -> torch.Tensor:
+    """``1 - MS-SSIM`` between two (B, C, F, T) log-magnitude spectrograms.
+
+    WHY SSIM AND NOT AN L-p TERM. Written out,
+
+        SSIM = luminance x CONTRAST x STRUCTURE,
+        contrast factor = 2 sigma_x sigma_y / (sigma_x^2 + sigma_y^2)
+
+    A blurred reconstruction has local ``sigma_y << sigma_x`` exactly where a mode ridge was,
+    so its contrast factor collapses and SSIM penalises the blur EXPLICITLY. An L1/L2 term has
+    no variance factor at all — the conditional mean is its exact minimiser — which is the
+    measured failure here: the arm with the best ``spec_nrmse`` (0.9010) has ``hf_ratio``
+    0.0143 and no visible structure, while a worse-scoring arm (1.0972 / 0.8258) reproduces the
+    mode track. This term is the differentiable twin of ``gate.ms_ssim``, so the quantity being
+    trained and the quantity being judged are the SAME quantity.
+
+    This is also what the reference's own metric choice implies: ViSQOL is built on NSIM, a
+    structural-similarity measure over spectro-temporal patches of a gammatone spectrogram
+    (arXiv 2406.05298 reports MOS/ViSQOL/ESTOI and explicitly discounts time-domain error).
+
+    Implementation notes: local statistics use a uniform ``win x win`` window via ``avg_pool2d``
+    (separable box filter, cheap and differentiable); scales are produced by ``avg_pool2d``
+    downsampling; the stabilising constants are set from each (sample, channel) TARGET's own
+    dynamic range, so the term is invariant to the modality's units. Returns a scalar in
+    ``[0, ~2]`` that is 0 for a perfect reconstruction.
+    """
+    import torch.nn.functional as _F
+
+    def _box(z: torch.Tensor, k: int) -> torch.Tensor:
+        return _F.avg_pool2d(z, kernel_size=k, stride=1)
+
+    rng = (target.amax(dim=(-2, -1), keepdim=True)
+           - target.amin(dim=(-2, -1), keepdim=True)).clamp_min(1e-12)
+    c1 = (c1_frac * rng) ** 2
+    c2 = (c2_frac * rng) ** 2
+    terms = []
+    a, b = recon, target
+    for i, s in enumerate(scales):
+        if i > 0:
+            f = s // scales[i - 1] if scales[i - 1] > 0 else s
+            if f > 1:
+                a, b = _F.avg_pool2d(a, f), _F.avg_pool2d(b, f)
+        if min(a.shape[-2], a.shape[-1]) <= win:
+            break
+        mu_a, mu_b = _box(a, win), _box(b, win)
+        sa = (_box(a * a, win) - mu_a * mu_a).clamp_min(0.0)
+        sb = (_box(b * b, win) - mu_b * mu_b).clamp_min(0.0)
+        sab = _box(a * b, win) - mu_a * mu_b
+        ssim = (((2 * mu_a * mu_b + c1) * (2 * sab + c2))
+                / ((mu_a ** 2 + mu_b ** 2 + c1) * (sa + sb + c2)))
+        terms.append(ssim.mean())
+    if not terms:
+        return recon.new_zeros(())
+    return 1.0 - torch.stack(terms).mean()

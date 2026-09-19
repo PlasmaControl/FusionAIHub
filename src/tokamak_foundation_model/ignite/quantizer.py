@@ -12,12 +12,20 @@ FAITH model code is imported.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from vector_quantize_pytorch import FSQ
 
 from .config import SpectroCodecConfig
+
+# Upper bound on prod(fsq_levels) for which the JOINT-code entropy reward is allowed. The term
+# materializes an (N, codebook_size) soft-assignment tensor (N = batch_size * n_tok, e.g. 1536),
+# so cb=1000 costs ~6 MB but the 64000-code fsq6 configs would cost ~390 MB per forward plus the
+# autograd graph. Refuse loudly rather than silently OOM mid-run.
+_JOINT_ENTROPY_MAX_CODEBOOK: int = 4096
 
 
 class SpectroQuantizer(nn.Module):
@@ -34,11 +42,27 @@ class SpectroQuantizer(nn.Module):
         self.cfg = cfg
         # FSQ owns the d_model <-> fsq_dim projections (project_in/project_out)
         # and applies the straight-through estimator internally.
+        # FSQ-native anti-collapse knobs. getattr keeps the video / slow-TS / fast-TS
+        # configs (which do not carry these fields) constructing exactly as before, and the
+        # defaults (0.0 / False) are the library's own, so the FSQ is byte-identical unless a
+        # run explicitly asks for them. The library asserts preserve_symmetry whenever
+        # noise_dropout > 0; raise that here with the reason instead of a bare AssertionError.
+        noise_dropout = float(getattr(cfg, "fsq_noise_dropout", 0.0))
+        preserve_symmetry = bool(getattr(cfg, "fsq_preserve_symmetry", False))
+        if noise_dropout > 0.0 and not preserve_symmetry:
+            raise ValueError(
+                f"fsq_noise_dropout={noise_dropout} requires fsq_preserve_symmetry=True "
+                "(vector_quantize_pytorch.FSQ asserts this). preserve_symmetry ALSO changes "
+                "the emitted codes on its own, so run a preserve_symmetry-only control "
+                "alongside or the effect is unattributable."
+            )
         self.fsq = FSQ(
             levels=list(cfg.fsq_levels),
             dim=cfg.d_model,
             channel_first=False,
             return_indices=True,
+            noise_dropout=noise_dropout,
+            preserve_symmetry=preserve_symmetry,
         )
 
     @property
@@ -81,6 +105,16 @@ class SpectroQuantizer(nn.Module):
         z = fsq.project_in(feats)  # (B, n_tok, fsq_dim)
 
         levels = fsq._levels.to(device=z.device, dtype=z.dtype)  # (fsq_dim,)
+
+        # `cfg.fsq_preserve_symmetry` swaps FSQ's bounding function AND its level<->code
+        # mapping, so this replication has to follow it or the entropy / joint-entropy
+        # regularizers would be shaped on a quantity that is NOT the emitted code.
+        # FSQ.symmetry_preserving_bound: bracket = floor((L-1)(tanh z + 1)/2 + 0.5), and
+        # _scale_and_shift then maps the normalized code back to exactly that bracket. Since
+        # floor(u + 0.5) == round(u), the continuous level position is u itself:
+        if fsq.preserve_symmetry:
+            return (levels - 1) * (torch.tanh(z) + 1) / 2
+
         eps = 1e-3
         half_l = (levels - 1) * (1 + eps) / 2
         offset = torch.where(levels % 2 == 0, torch.tensor(0.5, dtype=z.dtype, device=z.device),
@@ -91,7 +125,8 @@ class SpectroQuantizer(nn.Module):
         # continuous level-index position; round() recovers the integer code.
         return bounded_z + half_width
 
-    def entropy_loss(self, feats: torch.Tensor, beta: float = 10.0) -> torch.Tensor:
+    def entropy_loss(self, feats: torch.Tensor, beta: float = 10.0,
+                     step: Optional[int] = None) -> torch.Tensor:
         """Differentiable anti-collapse (codebook-utilization) term. Returns a scalar.
 
         For each FSQ dimension ``i`` we soft-assign the continuous pre-quant level position
@@ -118,15 +153,47 @@ class SpectroQuantizer(nn.Module):
         Returned combined term::
 
             per_sample_entropy_mean - diversity_weight * entropy_of_batch_mean_prob
+                                    - joint_entropy_weight * entropy_of_batch_mean_JOINT
+                                    + decorrelation_weight * mean_offdiag_corr_squared
 
         This is LOW when the batch uses many codes diversely (small per-sample entropy,
         large batch-mean entropy) and HIGH when the batch collapses to one code (per-sample
         entropy ~0 but batch-mean entropy also ~0, so the subtracted reward vanishes). The
         caller multiplies the returned value by ``cfg.entropy_weight``.
 
+        JOINT-code diversity (``cfg.joint_entropy_weight``, default 0.0 = OFF, byte-identical).
+        The ``entropy_of_batch_mean_prob`` reward above is PER-DIMENSION and MARGINAL: it is
+        maximized by spreading each dim over its own grid independently of the others, which a
+        RANK-1 encoder does perfectly while using almost none of the joint codebook. Measured on
+        the production mhr codec (2026-09-02): min_dim_entropy 0.921 — 93% of its ln 8 ceiling,
+        so this term is SATURATED and raising ``entropy_weight`` can buy at most 0.15 nats — yet
+        only 42 of 32768 joint codes were used, because the 5 per-dim pre-quant level positions
+        were near-perfectly correlated (|r| >= 0.997; top covariance eigenvalue 99.9% of the
+        variance; encoder features participation-ratio effective rank 1.09). When
+        ``joint_entropy_weight > 0`` we additionally reward the entropy of the batch-mean
+        distribution over the FULL joint code space (MagViT-2 / LFQ "codebook entropy"). The
+        per-sample joint soft assignment is the outer product of the per-dim soft assignments
+        (the per-dim posteriors are independent given the pre-quant position, so this is exact),
+        giving an ``(N, prod(levels))`` tensor; its batch mean is GLOBAL under DDP exactly like
+        the per-dim term, with the same value-preserving gradient rescale (FIX 2). This is the
+        differentiable analogue of ``gate.utilization``'s ``frac_codes_used``; its maximum is
+        ``log(codebook_size)`` (6.908 nats at cb=1000). Cost is ``N * codebook_size`` floats, so
+        it is refused above ``_JOINT_ENTROPY_MAX_CODEBOOK`` codes.
+
+        DIM DECORRELATION (``cfg.decorrelation_weight``, default 0.0 = OFF, byte-identical).
+        A direct penalty on the rank-1 structure itself: the mean squared OFF-DIAGONAL entry of
+        the correlation matrix of the continuous pre-quant level positions across the batch. 0
+        when the FSQ dims carry independent information, ~1 when they are one scalar replicated.
+        Estimated on the LOCAL batch (1536 token positions at batch_size 8 / 192 tokens — ample
+        for a ``fsq_dim``-square correlation matrix); it is not all-reduced, so under DDP it is
+        a per-rank estimate whose gradients DDP averages.
+
         Args:
             feats: (B, n_tok, d_model) PRE-FSQ encoder features (``codec.encode(x)``).
             beta:  softmax sharpness on the (level-index) grid distances.
+            step:  current generator step; only used to apply
+                   ``cfg.joint_entropy_ramp_steps`` (a linear 0 -> ``joint_entropy_weight``
+                   ramp). ``None`` (every non-spectro caller) means no ramp.
 
         Returns:
             Scalar tensor, differentiable w.r.t. ``feats``.
@@ -195,4 +262,52 @@ class SpectroQuantizer(nn.Module):
                 w * entropy_of_batch_mean - (w - 1.0) * entropy_of_batch_mean.detach()
             )
 
-        return per_sample_entropy_mean - cfg.diversity_weight * entropy_of_batch_mean
+        total = per_sample_entropy_mean - cfg.diversity_weight * entropy_of_batch_mean
+
+        # ---- JOINT-code diversity reward (OFF by default; see the docstring) ------------
+        # getattr so the video / slow-TS / fast-TS configs, which do NOT carry these fields,
+        # keep the exact previous behavior.
+        joint_w = float(getattr(cfg, "joint_entropy_weight", 0.0))
+        ramp = int(getattr(cfg, "joint_entropy_ramp_steps", 0) or 0)
+        if joint_w != 0.0 and ramp > 0 and step is not None:
+            joint_w *= min(1.0, float(step) / float(ramp))
+        if joint_w != 0.0:
+            codebook_size = 1
+            for lv in levels:
+                codebook_size *= int(lv)
+            if codebook_size > _JOINT_ENTROPY_MAX_CODEBOOK:
+                raise ValueError(
+                    f"joint_entropy_weight={joint_w} needs an (N, codebook_size) soft-assignment "
+                    f"tensor, but codebook_size={codebook_size} (fsq_levels={levels}) exceeds the "
+                    f"{_JOINT_ENTROPY_MAX_CODEBOOK}-code limit. Use a smaller fsq_levels product "
+                    f"(e.g. [8,5,5,5] = 1000) or set joint_entropy_weight=0."
+                )
+            # per-sample joint soft assignment = outer product over dims (exact: the per-dim
+            # posteriors are independent given the pre-quant position). (N, prod(levels)).
+            pj = p[:, 0, : levels[0]]
+            for i in range(1, fsq_dim):
+                pj = (pj.unsqueeze(-1) * p[:, i, : levels[i]].unsqueeze(1)).reshape(N, -1)
+            pj_sum = pj.sum(dim=0)                                           # (codebook_size,)
+            n_total_j = N
+            if world_size > 1:
+                dist.all_reduce(pj_sum, op=dist.ReduceOp.SUM)
+                n_total_j = n_total       # same global sample count as the per-dim term
+            pj_mean = pj_sum / n_total_j
+            joint_entropy = -(pj_mean * torch.log(pj_mean + eps)).sum()
+            if world_size > 1:
+                w = float(world_size)
+                joint_entropy = w * joint_entropy - (w - 1.0) * joint_entropy.detach()
+            total = total - joint_w * joint_entropy
+
+        # ---- pre-quant dimension DECORRELATION penalty (OFF by default) -----------------
+        decor_w = float(getattr(cfg, "decorrelation_weight", 0.0))
+        if decor_w != 0.0 and fsq_dim > 1:
+            xc = x - x.mean(dim=0, keepdim=True)                             # (N, fsq_dim)
+            sd = xc.pow(2).mean(dim=0).clamp_min(1e-8).sqrt()
+            xn = xc / sd
+            corr = (xn.t() @ xn) / float(N)                                  # (fsq_dim, fsq_dim)
+            off = corr - torch.diag_embed(torch.diagonal(corr))
+            decorrelation = off.pow(2).sum() / float(fsq_dim * (fsq_dim - 1))
+            total = total + decor_w * decorrelation
+
+        return total

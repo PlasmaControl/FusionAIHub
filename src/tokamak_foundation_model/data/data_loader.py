@@ -313,6 +313,20 @@ class TokamakH5Dataset(Dataset):
             preprocess=PreprocessConfig(method="log_standardize"),
         ),
         SignalConfig(
+            name = "mirnov",
+            hdf5_keys=["mirnov"],
+            num_channels=29,
+            target_fs=500e3,                # same STFT front end as mhr
+            apply_stft=True,
+            # ALL 29 kept. Profiled over 9 shots: 27 channels sit within 0.59-2.65x the median
+            # sd, ch 4 is weak (0.02x) and ch 23 hot (10.75x), 0% NaN. The two outliers are not
+            # contiguous so no slice excludes both — and none is needed, because the band-power
+            # tokeniser quantile-bins PER (channel, band) column, so each channel carries its
+            # own quantiles and a scale outlier is absorbed by construction.
+            channels_to_use=slice(0, 29),
+            preprocess=PreprocessConfig(method="log_standardize"),
+        ),
+        SignalConfig(
             "ece",
             ["ece"],
             48,
