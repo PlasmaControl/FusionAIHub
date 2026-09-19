@@ -25,3 +25,8 @@ pixi run -e frontier setup-flash-attn
 - **NVIDIA/CUDA**: `pixi install` (default env), scripts in `scripts/slurm/`
 - **della-milan (MI210)**: `bash scripts/slurm_della_milan/setup_rocm_env.sh`,
   scripts in `scripts/slurm_della_milan/`
+
+## Cluster paths and porting
+
+See `docs/CLUSTERS.md` for Stellar paths, hardware, pixi environments, data
+roots, and the Stellar-to-Frontier path map and transfer list.
