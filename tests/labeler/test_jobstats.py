@@ -40,6 +40,20 @@ def out(tmp_path, monkeypatch):
     return tmp_path / "jobstats.json"
 
 
+@pytest.fixture(autouse=True)
+def a_cluster_that_has_jobstats(monkeypatch):
+    """Every test in this module describes a cluster with a `jobstats` on PATH.
+
+    The tests fake the cluster through `subprocess.run`, but `main` chooses its
+    backend by looking at the real PATH, so without this the module's result
+    would depend on which login node ran it: green on Stellar and three
+    failures on Frontier, where there is no `jobstats` and `parse_frontier`
+    takes over and never calls the faked binary. The Frontier backend is tested
+    in test_jobstats_frontier.py, on a cluster faked the other way.
+    """
+    monkeypatch.setattr(jobstats, "frontier_backend", lambda: False)
+
+
 # --------------------------------------------------------------- parsing
 
 def test_parses_the_header_of_a_cpu_only_task():
