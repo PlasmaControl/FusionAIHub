@@ -76,7 +76,6 @@ FIG_PT = float(_os.environ.get("IGNITE_FIG_FONT_PT", "12"))
 # diverging map centred at zero. Overridable per-run via env.
 CMAP_SPECTRO = _os.environ.get("IGNITE_CMAP_SPECTRO", "Blues")
 CMAP_VIDEO = _os.environ.get("IGNITE_CMAP_VIDEO", "gray")
-CMAP_DIFF = _os.environ.get("IGNITE_CMAP_DIFF", "RdBu_r")
 FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
 
 _DEFAULT_CACHE = "/lustre/orion/fus187/proj-shared/models/ignite_production/frame_codes"
@@ -569,8 +568,8 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
     dashed 'prediction start' marker; ground truth is ink-black, prediction orange, throughout.
     Sections: (a..) slow-TS best-channel physical traces; then per spectro modality a
     GT | prediction strip pair (stitched across the whole timeline) + a time-mean power-
-    spectrum side panel over the predicted region; then per video camera GT | prediction |
-    difference at mid-rollout; then per-frame video nRMSE(t). Static (codec-collapsed)
+    spectrum side panel over the predicted region; then per video camera GT | prediction
+    at mid-rollout; then per-frame video nRMSE(t). Static (codec-collapsed)
     modalities get an honest annotation strip. Saves PNG + PDF; returns paths.
     """
     import string
@@ -833,7 +832,7 @@ def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: in
                 ax_s.set_ylabel("log power", fontsize=6.5)
                 _letter(ax_s)
 
-    # ---- video: GT | PRED | difference at mid-rollout --------------------------------------- #
+    # ---- video: GT | PRED at mid-rollout ---------------------------------------------------- #
     first_vid = min((i for i, (k, _n) in enumerate(rows) if k == "vid"), default=None)
     for i, (kind, name) in enumerate(rows):
         if kind != "vid":
