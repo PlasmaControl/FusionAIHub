@@ -1005,10 +1005,41 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     def _sync_grads():
         if ddp.world_size <= 1:
             return
+        # Coalesce grads into ~128 MiB flat buckets (grouped by dtype): one
+        # all_reduce per bucket instead of one per parameter tensor. The old
+        # per-tensor loop issued hundreds of serialized, latency-bound
+        # collectives per step — with the RCCL net plugin disabled (TCP
+        # sockets, 2026-05-27..08-29) that dominated the step time at 64
+        # ranks. Bucketing amortizes it to a handful of bandwidth-bound
+        # collectives. Math is unchanged: SUM then divide by world size.
+        # 128 MiB caps the transient flat buffer — prod sits near the VRAM
+        # ceiling (~61/64 GiB reserved, job 5362345) — and each buffer is
+        # freed before the next bucket is flattened.
+        buckets: dict = {}
+        sizes: dict = {}
+
+        def _flush(dt):
+            grads = buckets.pop(dt, [])
+            sizes.pop(dt, None)
+            if not grads:
+                return
+            flat = torch._utils._flatten_dense_tensors(grads)
+            dist.all_reduce(flat, op=dist.ReduceOp.SUM)
+            flat /= ddp.world_size
+            for g, synced in zip(
+                    grads, torch._utils._unflatten_dense_tensors(flat, grads)):
+                g.copy_(synced)
+
         for p in model.parameters():
-            if p.grad is not None:
-                dist.all_reduce(p.grad, op=dist.ReduceOp.SUM)
-                p.grad /= ddp.world_size
+            if p.grad is None:
+                continue
+            dt = p.grad.dtype
+            buckets.setdefault(dt, []).append(p.grad)
+            sizes[dt] = sizes.get(dt, 0) + p.grad.numel() * p.grad.element_size()
+            if sizes[dt] >= 128 * 1024 * 1024:
+                _flush(dt)
+        for dt in list(buckets):
+            _flush(dt)
     # Optimizer / schedule. Defaults preserve the historical recipe (no warmup, wd 0.01,
     # beta2 0.999, cosine to 1% of peak) so existing runs are unchanged; the Genie-style
     # recipe is opt-in per argument (warmup_steps > 0, beta2 0.9, wd 1e-4, min_lr 10%).
