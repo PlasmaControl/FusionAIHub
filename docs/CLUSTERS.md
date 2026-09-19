@@ -67,6 +67,7 @@ labelmaker/                     ideate/
 | `labelmaker` | labelmaker + fdp | `labeler` package, CPU only |
 | `shot-design` | shot-design + cuda | `shot_design` package with GPU |
 | `shot-design-cpu` | shot-design | `shot_design` on login node / CPU |
+| `shot-design-frontier` | shot-design-frontier + shot-design (torch rocm7.1) | `shot_design` and `labeler` on Frontier; the only environment installed there |
 | `frontier` | frontier (torch rocm7.1) | training on Frontier MI250X |
 | `rocm` | (della-milan) | MI210 variant |
 
@@ -248,10 +249,13 @@ The formatted outputs (`data/events/*/format/*_format_2026_v1.csv` and
 ### Checklist
 
 - [ ] `git clone -b recommender` into `/lustre/orion/fus187/scratch/$USER`
-- [ ] `pixi install -e shot-design-cpu -e labelmaker -e frontier`
+- [ ] `pixi install --frozen -e shot-design-frontier -e frontier` (Frontier installs no other
+      environment: `shot-design`/`shot-design-cpu`/`labelmaker` are the CUDA and Stellar-CPU ones.
+      `--frozen` on every pixi command here, or pixi re-solves all environments for all platforms
+      and dies on the `default`/`win-64` pypi solve, which needs a Windows interpreter.)
 - [ ] Create the three proposed roots under `proj-shared`, transfer `shot-design` and the small `labelmaker` subdirs
 - [ ] Add a Frontier activation block or wrapper for `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT`, `SHOT_DESIGN_CORPUS`
-- [ ] Populate the HF cache offline; `pixi run -e shot-design-cpu pytest tests/shot_design` green
+- [ ] Populate the HF cache offline; `pixi run --frozen -e shot-design-frontier pytest tests/shot_design tests/labeler` green
 - [ ] `python -m shot_design describe 190736` returns the same record as on Stellar
 - [ ] Port one labeler sbatch to `scripts/slurm_frontier/`, run a 20-shot pilot, read `labeler.jobstats`
 - [ ] Decide on Ollama-on-ROCm before copying the 128 GB

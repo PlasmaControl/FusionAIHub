@@ -12,7 +12,8 @@
 # IGNITE frame-code caches for a shot list: the per-shot seeds a rollout starts from.
 # Each array task takes one contiguous slice of the SORTED list (--chunk/--n-chunks), so
 # the eight tasks walk different regions of the corpus directory instead of competing for
-# the same 2-5 GB files. One GCD and 7 cores each -- one MI250X node's worth in total.
+# the same 2-5 GB files. One GCD and 7 cores each, one task per node, so the array is eight
+# separate one-node jobs (8 nodes x 6 h), not one node shared eight ways.
 # The work is I/O-bound, not GPU-bound (Stellar measured ~10 % GPU utilisation ceiling),
 # so more GCDs per task would buy nothing. `--skip-existing` makes a task that hits the
 # wall clock resubmittable. Set N_CHUNKS and the --array range together.

@@ -25,3 +25,22 @@ def test_frontier_shot_design_scripts_follow_house_style(name):
     assert "/scratch/gpfs" not in text, "Stellar path leaked into a Frontier script"
     assert "gpu-stellar" not in text and "pppl" not in text
     assert "runs/slurm/%j" in text or "runs/slurm/%A_%a" in text
+
+
+def test_the_census_writes_the_parquet_name_every_consumer_defaults_to():
+    """`corpus scan --out`, `select` and `coverage` all default to
+    `<db_dir>/corpus_coverage.parquet`; a census under any other name is written and
+    then never read."""
+    text = (SLURM / "shot_design_census.sh").read_text()
+    n = text.count('"$ROOT/db/corpus_coverage.parquet"')
+    assert n == 2, "scan --out and summary must name the same file"
+    assert "db/census.parquet" not in text
+
+
+def test_the_gpu_sampler_measures_only_the_gcds_the_job_was_given():
+    """rocm-smi ignores ROCR_VISIBLE_DEVICES and prints every card on the node, so
+    without an explicit `-d` a one-GCD job on an exclusive node is averaged against idle
+    siblings -- and the utilisation gate then judges that eighth."""
+    text = (SLURM / "_gpu_sampler.sh").read_text()
+    assert "ROCR_VISIBLE_DEVICES" in text
+    assert "-d " in text
