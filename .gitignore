@@ -272,5 +272,5 @@ core
 # eval_runs (~53 GB of renders/exports): exclude bulk, keep only paper_facts docs
 eval_runs/*
 !eval_runs/paper_facts/
-# Live subagent-driven-development workspaces (ledgers, briefs, review packages).
-.superpowers/
+# Review packages are regenerable git diffs (hundreds of kB each); ledgers, briefs and reports are kept.
+.claude/superpowers-runtime/sdd/*/review-*.diff
