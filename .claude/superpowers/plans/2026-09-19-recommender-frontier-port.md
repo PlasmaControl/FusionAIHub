@@ -998,7 +998,7 @@ Expected: a reply containing `ready`. If `agy -p` needs a project/agent flag on 
 **Files:**
 - Modify: `src/shot_design/shotdb/build.py` (`write_blurbs(..., workers: int = 1)`), `src/shot_design/cli.py` (`blurb --workers N`, default 1)
 - Create: `scripts/shot_design/blurb_frontier.sh`
-- Delete: `scripts/shot_design/serve_llm.sbatch` is Stellar-only and stays; no Frontier serve script exists (nothing is served)
+- Note: no Frontier serve script exists (nothing is served on Frontier); `scripts/shot_design/serve_llm.sbatch` is Stellar-only and stays.
 - Test: `tests/shot_design/test_blurb_backfill.py`
 
 **Interfaces:**
