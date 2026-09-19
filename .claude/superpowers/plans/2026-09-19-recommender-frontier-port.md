@@ -4,7 +4,7 @@
 
 **Goal:** Consolidate `recommender` + `dev-peter` + the `nathan_fm` working tree into a new `nathan_dev`, run the Shot Designer recommender on Frontier against ~5000 shots with the IGNITE v4 codec/dynamics generation, add a simulation stage and two LLM providers, and replace `docs/` with a Docusaurus site.
 
-**Architecture:** The recommender (`src/shot_design`) already does interpret → retrieve → propose → validate → save and exports a v2-layout IGNITE seed. This plan (a) makes its IGNITE layer manifest-driven so the same code handles the 15-modality v4 set, (b) adds `shot_design.simulate` which turns a saved design into a paired IGNITE rollout on one Frontier GCD and renders panels, (c) adds an `agy` (Gemini Flash) LLM provider behind the existing `LLMClient.chat` contract and backfills the shot blurbs with it, (d) ports the Slurm/paths layer to Frontier via a `paths.frontier.yaml` + `ideate-frontier` pixi env, and (e) moves `docs/` under a Docusaurus site with Claude material relocated to `.claude/`.
+**Architecture:** The recommender (`src/shot_design`) already does interpret → retrieve → propose → validate → save and exports a v2-layout IGNITE seed. This plan (a) makes its IGNITE layer manifest-driven so the same code handles the 15-modality v4 set, (b) adds `shot_design.simulate` which turns a saved design into a paired IGNITE rollout on one Frontier GCD and renders panels, (c) adds an `agy` (Gemini Flash) LLM provider behind the existing `LLMClient.chat` contract and backfills the shot blurbs with it, (d) ports the Slurm/paths layer to Frontier via a `paths.frontier.yaml` + `shot-design-frontier` pixi env, and (e) moves `docs/` under a Docusaurus site with Claude material relocated to `.claude/`.
 
 **Tech Stack:** Python 3.11, pixi/uv, PyTorch 2.10 ROCm 7.1, FastAPI, pydantic v2, h5py, pytest; Slurm on Frontier (`-A fus187`); Docusaurus 3 (Node 22, TypeScript); `agy` 1.2.7 (Gemini 3.8 Flash).
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Repo: `/lustre/orion/fus187/scratch/nchen/FusionAIHub`. Work on branch `nathan_dev` (created in Task A1). Never force-push; never touch `nathan_fm`, `dev-nathan`, `main`.
-- Python for tests until the `ideate-frontier` env exists (Task B2): `.pixi/envs/frontier/bin/python` with `PYTHONPATH=src`. After B2: `pixi run -e ideate-frontier pytest tests/shot_design`.
+- Python for tests until the `shot-design-frontier` env exists (Task B2): `.pixi/envs/frontier/bin/python` with `PYTHONPATH=src`. After B2: `pixi run --frozen -e shot-design-frontier pytest tests/shot_design`.
 - Frontier data roots (spec §2): `SHOT_DESIGN_DATA_ROOT=/lustre/orion/fus187/proj-shared/nchen/shot_design`, `LABELER_ROOT=/lustre/orion/fus187/proj-shared/nchen/labeler`, `SHOT_DESIGN_CORPUS=/lustre/orion/fus187/proj-shared/foundation_model`. Never write there from a test; tests use the `paths` fixture (tmp_path).
 - v4 contract: 15 modalities (spec §"Facts"), every vocab 1000, `t0_start_s: 1.0`, 1209 tokens/frame, actuators `(F, 88)`. Codec template `/lustre/orion/fus187/proj-shared/models/ignite_codecs_v4/{m}/codec_best.pt`; cache `/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes`; dynamics `/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/mskfull/dynamics_best.pt` (step 3200). Pinned copies with sha256 live under `<models_dir>/IGNITE_v4/`.
 - Slurm: `-A fus187 -p batch`; short demo/validation jobs `-q debug` (≤ 2 h, one at a time). Logs to `$SHOT_DESIGN_DATA_ROOT/runs/slurm/%j.out`. Never run production writes (`build`, `add`, `labels join`) without the owner's go-ahead stated in the task.
@@ -222,24 +222,24 @@ git add configs/shot_design/paths.frontier.yaml tests/shot_design/test_paths_fro
 git commit -m "shot_design: Frontier paths file selected by SHOT_DESIGN_PATHS"
 ```
 
-### Task B2: `ideate-frontier` pixi environment
+### Task B2: `shot-design-frontier` pixi environment
 
 **Files:**
-- Modify: `pyproject.toml` (`[tool.pixi.feature.ideate-frontier...]`, `[tool.pixi.environments]`)
+- Modify: `pyproject.toml` (`[tool.pixi.feature.shot-design-frontier...]`, `[tool.pixi.environments]`)
 - Modify: `pixi.lock` (regenerated)
 
 **Interfaces:**
-- Produces: `pixi run -e ideate-frontier python -m shot_design ...` with `SHOT_DESIGN_PATHS`, `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT`, `SHOT_DESIGN_CORPUS`, `HF_HUB_OFFLINE=1`, `TOKENIZERS_PARALLELISM=false` set by activation.
+- Produces: `pixi run --frozen -e shot-design-frontier python -m shot_design ...` with `SHOT_DESIGN_PATHS`, `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT`, `SHOT_DESIGN_CORPUS`, `HF_HUB_OFFLINE=1`, `TOKENIZERS_PARALLELISM=false` set by activation.
 
 - [ ] **Step 1: Add the feature**
 
 Read `pyproject.toml` lines 211–372 first. Add after the `frontier` feature:
 
 ```toml
-[tool.pixi.feature.ideate-frontier]
+[tool.pixi.feature.shot-design-frontier]
 platforms = ["linux-64"]
 
-[tool.pixi.feature.ideate-frontier.pypi-dependencies]
+[tool.pixi.feature.shot-design-frontier.pypi-dependencies]
 torch       = { version = ">=2.10,<2.11", index = "https://download.pytorch.org/whl/rocm7.1" }
 torchvision = { version = ">=0.25,<0.27", index = "https://download.pytorch.org/whl/rocm7.1" }
 triton-rocm = { version = "*",            index = "https://download.pytorch.org/whl/rocm7.1" }
@@ -248,7 +248,7 @@ vector-quantize-pytorch = "*"
 einops = "*"
 loguru = "*"
 
-[tool.pixi.feature.ideate-frontier.target.unix.activation.env]
+[tool.pixi.feature.shot-design-frontier.target.unix.activation.env]
 SHOT_DESIGN_PATHS     = "/lustre/orion/fus187/scratch/nchen/FusionAIHub/configs/shot_design/paths.frontier.yaml"
 SHOT_DESIGN_DATA_ROOT = "/lustre/orion/fus187/proj-shared/nchen/shot_design"
 LABELER_ROOT          = "/lustre/orion/fus187/proj-shared/nchen/labeler"
@@ -257,35 +257,35 @@ HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"
 HDF5_USE_FILE_LOCKING = "FALSE"
 ```
-and `ideate-frontier = ["ideate", "ideate-frontier"]` under `[tool.pixi.environments]`. The `ideate` feature's own activation block also sets the three roots (Stellar values); pixi merges activation env with later features winning — confirm with step 3, and if `ideate`'s values win, rename this feature so it sorts after or move the three roots into a wrapper `scripts/shot_design/frontier_env.sh` that the sbatch scripts source (document which was needed).
+and `shot-design-frontier = ["shot-design", "shot-design-frontier"]` under `[tool.pixi.environments]`. The `shot-design` feature's own activation block also sets the three roots (Stellar values); pixi merges activation env with later features winning — confirm with step 3, and if `shot-design`'s values win, rename this feature so it sorts after or move the three roots into a wrapper `scripts/shot_design/frontier_env.sh` that the sbatch scripts source (document which was needed).
 
 - [ ] **Step 2: Solve and install**
 
 ```bash
-pixi install -e ideate-frontier 2>&1 | tail -5
+pixi install --frozen -e shot-design-frontier 2>&1 | tail -5
 ```
-If uv cannot resolve `ideate`'s `sentence-transformers` against ROCm torch, pin `sentence-transformers = ">=3,<6"` in the new feature. If pixi rejects the two torch sources, the fallback is a uv venv: `uv venv .venv-ideate-frontier --python 3.11 && uv pip install --index-url https://download.pytorch.org/whl/rocm7.1 torch torchvision && uv pip install -e . sentence-transformers ...` and a `scripts/shot_design/frontier_env.sh` exporting the same variables. Record the outcome in the commit body.
+If uv cannot resolve `shot-design`'s `sentence-transformers` against ROCm torch, pin `sentence-transformers = ">=3,<6"` in the new feature. If pixi rejects the two torch sources, the fallback is a uv venv: `uv venv .venv-shot-design-frontier --python 3.11 && uv pip install --index-url https://download.pytorch.org/whl/rocm7.1 torch torchvision && uv pip install -e . sentence-transformers ...` and a `scripts/shot_design/frontier_env.sh` exporting the same variables. Record the outcome in the commit body.
 
 - [ ] **Step 3: Verify the activation and the suite**
 
 ```bash
-pixi run -e ideate-frontier bash -c 'echo $SHOT_DESIGN_DATA_ROOT $SHOT_DESIGN_PATHS; python -c "import torch, shot_design, sentence_transformers; print(torch.__version__)"'
-pixi run -e ideate-frontier pytest tests/shot_design -q -x 2>&1 | tail -3
+pixi run --frozen -e shot-design-frontier bash -c 'echo $SHOT_DESIGN_DATA_ROOT $SHOT_DESIGN_PATHS; python -c "import torch, shot_design, sentence_transformers; print(torch.__version__)"'
+pixi run --frozen -e shot-design-frontier pytest tests/shot_design -q -x 2>&1 | tail -3
 ```
 Expected: the Frontier root and paths file printed, `2.10.0+rocm7.1`, suite green (or list failures verbatim; fix only ones caused by the env).
 
 - [ ] **Step 4: Pre-populate the sentence-transformers cache (login node, network)**
 
 ```bash
-HF_HUB_OFFLINE=0 pixi run -e ideate-frontier python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/all-MiniLM-L6-v2')"
-pixi run -e ideate-frontier python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/all-MiniLM-L6-v2'); print('offline ok')"
+HF_HUB_OFFLINE=0 pixi run --frozen -e shot-design-frontier python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/all-MiniLM-L6-v2')"
+pixi run --frozen -e shot-design-frontier python -c "from sentence_transformers import SentenceTransformer as S; S('sentence-transformers/all-MiniLM-L6-v2'); print('offline ok')"
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml pixi.lock
-git commit -m "pixi: ideate-frontier env (ROCm torch + shot_design deps, Frontier activation roots)"
+git commit -m "pixi: shot-design-frontier env (ROCm torch + shot_design deps, Frontier activation roots)"
 ```
 
 ### Task B3: Frontier Slurm wrappers for shot_design
@@ -295,7 +295,7 @@ git commit -m "pixi: ideate-frontier env (ROCm torch + shot_design deps, Frontie
 - Test: `tests/shot_design/test_slurm_frontier_scripts.py`
 
 **Interfaces:**
-- Produces: `_shot_design_common.sh` exporting `REPO`, `ROOT` (= `$SHOT_DESIGN_DATA_ROOT`), `PY` (= `$REPO/.pixi/envs/ideate-frontier/bin/python`), and sourcing `_frontier_settings.sh` with `RCCL_PLUGIN=0` (single-GPU jobs need no plugin).
+- Produces: `_shot_design_common.sh` exporting `REPO`, `ROOT` (= `$SHOT_DESIGN_DATA_ROOT`), `PY` (= `$REPO/.pixi/envs/shot-design-frontier/bin/python`), and sourcing `_frontier_settings.sh` with `RCCL_PLUGIN=0` (single-GPU jobs need no plugin).
 
 - [ ] **Step 1: Failing test (static checks on the scripts)**
 
@@ -339,12 +339,12 @@ export SHOT_DESIGN_CORPUS=/lustre/orion/fus187/proj-shared/foundation_model
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 ROOT="$SHOT_DESIGN_DATA_ROOT"
-PY="$REPO/.pixi/envs/ideate-frontier/bin/python"
+PY="$REPO/.pixi/envs/shot-design-frontier/bin/python"
 mkdir -p "$ROOT/runs/slurm"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 rocm-smi --showproductname 2>/dev/null | grep -m1 'Card series' || true
 ```
-`_frontier_settings.sh` prepends the `frontier` env to PATH; `PY` points at the `ideate-frontier` interpreter explicitly so the two envs cannot be confused.
+`_frontier_settings.sh` prepends the `frontier` env to PATH; `PY` points at the `shot-design-frontier` interpreter explicitly so the two envs cannot be confused.
 
 - [ ] **Step 4: Write the three data scripts**
 
@@ -452,6 +452,24 @@ git commit -m "labeler: jobstats Frontier backend from sacct + rocm-smi samples"
 ```
 
 ---
+
+### Task B5: Rename `ideate` to `shot-design` everywhere live
+
+User directive 2026-09-19 16:11: "rename all the ideate to shot_design". Pixi rejects underscores in environment names (measured: `Failed to parse environment name 'shot_design', please use only lowercase letters, numbers and dashes`), so environment/feature names use the dash form; the Python package stays `shot_design`.
+
+**Mapping (exact):**
+- pixi features and environments: `ideate` → `shot-design`, `ideate-cpu` → `shot-design-cpu`, `ideate-frontier` → `shot-design-frontier` (in `pyproject.toml` `[tool.pixi.feature.*]`, `[tool.pixi.environments]`, task/comment text; regenerate `pixi.lock` so its environment keys follow; the installed dir becomes `.pixi/envs/shot-design-frontier`).
+- `.mcp.json` `-e ideate-cpu` → `-e shot-design-cpu`; `src/shot_design/mcp/server.py` resource `ideate://manifest` → `shot-design://manifest`; `src/shot_design/ui/app.py` `COOKIE = "ideate_token"` → `"shot_design_token"`.
+- Schema tags: `src/shot_design/shotdb/legacy_raw.py` `SCHEMA = "ideate-raw-v1"` → `"shot-design-raw-v1"`, `src/shot_design/design/provenance.py` `SCHEMA = "ideate-frame-codes-provenance-v1"` → `"shot-design-frame-codes-provenance-v1"`; wherever a reader compares the tag, also accept the old string (`LEGACY_SCHEMAS = {"ideate-raw-v1"}`) so Stellar files still load. Test: a file stamped with the old tag validates.
+- Every `pixi run -e ideate*`, `.pixi/envs/ideate*` and prose "ideate" in `scripts/`, `src/`, `tests/`, `docs/`, `AGENTS.md`, `data/events/README.md`, `configs/shot_design/*.yaml` comments, and the CURRENT plan/spec (`.claude/superpowers/{plans,specs}/2026-09-19-*`).
+- Slurm scripts under `scripts/shot_design/*.sbatch` and `scripts/slurm_frontier/_shot_design_common.sh`: env dir names as above.
+
+**Do NOT rename:** the Stellar filesystem path string `/scratch/gpfs/EKOLEMEN/nc1514/ideate` (a real directory on another cluster; renaming the string cannot rename the directory), and the archival `.claude/superpowers/plans-recommender/`, `.claude/superpowers/specs/2026-09-0*`/`2026-09-1[0-8]*`, `.claude/superpowers-runtime/` files (history), and `tests/labeler/data/jobstats/*.txt` fixtures (verbatim Slurm output).
+
+- [ ] **Step 1:** `grep -rIn "ideate" --exclude-dir=.pixi --exclude-dir=.git --exclude-dir=.superpowers --exclude-dir=node_modules . | grep -v "^./.claude/superpowers-runtime\|^./.claude/superpowers/plans-recommender\|^./.claude/superpowers/specs/2026-09-0\|^./.claude/superpowers/specs/2026-09-1[0-8]\|/scratch/gpfs/EKOLEMEN/nc1514/ideate\|tests/labeler/data/jobstats" > /tmp/ideate_before.txt; wc -l /tmp/ideate_before.txt`
+- [ ] **Step 2:** Apply the mapping with `sed -i` per file class (dash form for env names, `shot_design_token` for the cookie, `shot-design://` for the MCP resource, `shot-design-` for schema tags, plain "shot design"/"shot_design" for prose as reads naturally). Add the legacy-tag acceptance + its test.
+- [ ] **Step 3:** Re-run the Step 1 grep: expected 0 lines. `pixi install --frozen -e shot-design-frontier` (this replaces B2's install if B2 has not finished); `pixi run --frozen -e shot-design-frontier pytest tests/shot_design tests/labeler -q`.
+- [ ] **Step 4:** `git mv` nothing (no file is named ideate outside archives); commit `git commit -m "repo: rename ideate environments and tags to shot-design"`.
 
 ## Phase C: IGNITE v4 migration
 
@@ -569,7 +587,7 @@ PYTHONPATH=src .pixi/envs/frontier/bin/python -m pytest tests/ignite/test_dynami
 - [ ] **Step 5: Pin the real bundle (login node, ~4 GB copy) and commit**
 
 ```bash
-pixi run -e ideate-frontier python -m shot_design model --pin && pixi run -e ideate-frontier python -m shot_design model --check
+pixi run --frozen -e shot-design-frontier python -m shot_design model --pin && pixi run --frozen -e shot-design-frontier python -m shot_design model --check
 ls -la /lustre/orion/fus187/proj-shared/nchen/shot_design/models/IGNITE_v4/codecs | head -20
 git add configs/shot_design/ignite_modalities.yaml src/shot_design/shotdb/ignite.py src/shot_design/cli.py src/tokamak_foundation_model/ignite/dynamics_config.py tests/ignite/test_dynamics_config_manifest.py tests/shot_design/test_ignite_v4.py
 git commit -m "ignite: v4 generation pinned by sha256 manifest; 15-modality table from manifest"
@@ -617,7 +635,7 @@ def test_wanted_modalities_includes_mirnov():
 - [ ] **Step 4: Live check on 3 cached shots (login node, CPU is fine for this)**
 
 ```bash
-pixi run -e ideate-frontier python - <<'EOF'
+pixi run --frozen -e shot-design-frontier python - <<'EOF'
 import torch
 from shot_design.config import load_paths
 from shot_design.design import program_reference as pr
@@ -632,7 +650,7 @@ Expected: three lines, 15 codes each, `(F, 88)`.
 - [ ] **Step 5: Run the suite, commit**
 
 ```bash
-pixi run -e ideate-frontier pytest tests/shot_design -q 2>&1 | tail -3
+pixi run --frozen -e shot-design-frontier pytest tests/shot_design -q 2>&1 | tail -3
 git add -A src/shot_design src/tokamak_foundation_model/ignite/train_dynamics.py tests/shot_design
 git commit -m "ignite v4: mirnov in the encode path, production cache first, vocab validation against the pinned generation"
 ```
@@ -983,7 +1001,7 @@ def test_nonzero_exit_is_unavailable():
 - [ ] **Step 5: Live smoke (login node)**
 
 ```bash
-pixi run -e ideate-frontier python -c "
+pixi run --frozen -e shot-design-frontier python -c "
 from shot_design.llm.client import LLMClient
 r = LLMClient().chat([{'role':'user','content':'Reply with the single word ready.'}], cache=False); print(repr(r.content))"
 ```
@@ -1027,7 +1045,7 @@ The full backfill itself is F2 Step 4.
 
 ### Task F1: Census and selection
 
-- [ ] **Step 1:** `sbatch scripts/slurm_frontier/shot_design_census.sh`; then `pixi run -e ideate-frontier python -m shot_design corpus summary $SHOT_DESIGN_DATA_ROOT/db/census.parquet | head -40`. Record eligible count.
+- [ ] **Step 1:** `sbatch scripts/slurm_frontier/shot_design_census.sh`; then `pixi run --frozen -e shot-design-frontier python -m shot_design corpus summary $SHOT_DESIGN_DATA_ROOT/db/census.parquet | head -40`. Record eligible count.
 - [ ] **Step 2:** Read `src/shot_design/shotdb/select.py` and `configs/shot_design/shot_lists/recommender_v1.yaml`. Run `python -m shot_design corpus select --n 5000 --name recommender_frontier_v1 --seed 20260919` with theme quotas ×10 (`fast_ion_ae` first). If eligible < 5000, take all eligible and say so.
 - [ ] **Step 3:** Commit the list: `git add configs/shot_design/shot_lists/recommender_frontier_v1.yaml && git commit -m "shot_design: recommender_frontier_v1 shot list (N shots, full Frontier corpus)"`.
 
@@ -1114,7 +1132,7 @@ rm -rf blog docs src/pages/index.tsx src/components
 - [ ] **Step 1:** Do the moves with `git mv`, add front matter (`title`, `sidebar_position`) to every page, fix relative links (`git grep -n "](docs/\|](\.\./\|\.md)" docs | ...`).
 - [ ] **Step 2:** Write the new pages listed above (each 60–200 lines, commands copied from the scripts in this plan, no Claude references).
 - [ ] **Step 3:** `cd website && npm run build 2>&1 | tail -20` → zero broken links; `npm run serve -- --port 3111 &` and `curl -s localhost:3111/ | grep -c FusionAIHub` ≥ 1; kill it.
-- [ ] **Step 4:** `pixi run -e ideate-frontier pytest tests/shot_design -q 2>&1 | tail -2` (the docs-path assertion).
+- [ ] **Step 4:** `pixi run --frozen -e shot-design-frontier pytest tests/shot_design -q 2>&1 | tail -2` (the docs-path assertion).
 - [ ] **Step 5:** `git add -A docs README.md tests/shot_design/test_phenomena.py && git commit -m "docs: reorganise into Docusaurus sections; Frontier, LLM providers, simulation and database pages"`
 
 ### Task H3: Examples page from the demo and final push

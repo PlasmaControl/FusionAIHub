@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 def test_elm_clock_points_are_observed_hits_and_transients_never_are(
-    ideate_db, capsys,
+    shot_design_db, capsys,
 ):
     events = [
         _event(100, "100-elm_clock-00000", source="elm_clock",
@@ -40,8 +40,8 @@ def test_elm_clock_points_are_observed_hits_and_transients_never_are(
         _event(200, "200-tokeye_transient-00000", source="tokeye_transient",
                phenomenon="elm", t0_s=2.4, t1_s=2.4),
     ]
-    _write_tables(ideate_db / "db", events, [], [])
-    db = store.ShotDB.load(ideate_db / "db")
+    _write_tables(shot_design_db / "db", events, [], [])
+    db = store.ShotDB.load(shot_design_db / "db")
     assert ph.resolve("ELM") == [("elm", 1.0)]
     hits = ph.locate("elm", db)
     assert [h.shot for h in hits] == [100]
@@ -62,22 +62,22 @@ def test_elm_clock_points_are_observed_hits_and_transients_never_are(
 
 
 @pytest.mark.parametrize("source_table", [False, True])
-def test_legacy_mask_clock_coverage_is_not_dalpha_coverage(ideate_db, source_table):
+def test_legacy_mask_clock_coverage_is_not_dalpha_coverage(shot_design_db, source_table):
     from shot_design.labels import event_sources as es
 
     events = [_event(100, "100-elm_clock-00000", source="elm_clock",
                      evidence_kind="heuristic", phenomenon="elm_free",
                      t0_s=1.0, t1_s=5.0, diag="mhr")]
-    _write_tables(ideate_db / "db", events, [], [])
+    _write_tables(shot_design_db / "db", events, [], [])
     if source_table:
-        es.write_sources(ideate_db / "db/event_sources.parquet", [
+        es.write_sources(shot_design_db / "db/event_sources.parquet", [
             es.source_row(100, "elm_clock", diag="mhr", channel=0,
                           t_cov0_s=0, t_cov1_s=6, n_events=1),
             # A rerun can leave both keys. Only this D-alpha span is valid.
             es.source_row(100, "elm_clock", diag="filterscopes", channel=0,
                           t_cov0_s=2, t_cov1_s=3, n_events=0),
         ])
-    db = store.ShotDB.load(ideate_db / "db")
+    db = store.ShotDB.load(shot_design_db / "db")
     ev = ph.evidence(100, "elm", db)
     assert not ev.intervals
     if source_table:
@@ -182,8 +182,8 @@ def _write_tables(db_dir: Path, events: list[dict], labels: list[dict], claims: 
 
 
 @pytest.fixture
-def phen_db(ideate_db: Path) -> store.ShotDB:
-    """`ideate_db`'s four shots, plus the three label tables written the way the join writes them."""
+def phen_db(shot_design_db: Path) -> store.ShotDB:
+    """`shot_design_db`'s four shots, plus the three label tables written the way the join writes them."""
     events = [
         # 100: three tracks in the tearing band inside the flat top, one of them barely scored,
         # plus an ELM a detector saw. The ELM row is what `--avoid phenomenon:elm` must find.
@@ -228,8 +228,8 @@ def phen_db(ideate_db: Path) -> store.ShotDB:
         _claim(TEXT_SHOT, "tearing", snippet="looked like a 2/1 tearing mode"),
         _claim(TEXT_SHOT, "tearing", snippet="the tearing mode locked"),
     ]
-    _write_tables(ideate_db / "db", events, labels, claims)
-    db = store.ShotDB.load(ideate_db / "db")
+    _write_tables(shot_design_db / "db", events, labels, claims)
+    db = store.ShotDB.load(shot_design_db / "db")
     # Shot 100's logbook says what its detector saw. That is what makes it the hit that lacks
     # NOTHING -- no missing evidence class, and a quote that is about the phenomenon rather than
     # the shot's best sentence on some other subject.
@@ -433,12 +433,12 @@ def test_a_phenomenon_no_model_labels_says_so_rather_than_reporting_nothing(phen
     assert ph.NO_LABEL_MODEL in ph.evidence(OBSERVED_SHOT, "eho", phen_db).caveats
 
 
-def test_a_negative_claim_becomes_a_caveat_in_the_operators_own_frame(ideate_db):
+def test_a_negative_claim_becomes_a_caveat_in_the_operators_own_frame(shot_design_db):
     _write_tables(
-        ideate_db / "db", [],
+        shot_design_db / "db", [],
         [], [_claim(OBSERVED_SHOT, "eho", polarity="neg", snippet="no EHO this shot")],
     )
-    db = store.ShotDB.load(ideate_db / "db")
+    db = store.ShotDB.load(shot_design_db / "db")
     got = ph.evidence(OBSERVED_SHOT, "eho", db)
     assert "operator log says NOT Edge harmonic oscillation" in got.caveats
     assert got.text_hits == 0  # a denial is not a weaker positive
@@ -565,9 +565,9 @@ def test_the_quote_is_one_logbook_entry_and_is_never_spliced(phen_db):
     assert any(hit.quote in e.text for e in rec.human.log_entries)
 
 
-def test_a_shot_with_no_quotable_entry_falls_back_to_a_flagged_claim_snippet(ideate_db):
-    _write_tables(ideate_db / "db", [], [], [_claim(TEXT_SHOT, "tearing", snippet="tearing at 3 s")])
-    db = store.ShotDB.load(ideate_db / "db")
+def test_a_shot_with_no_quotable_entry_falls_back_to_a_flagged_claim_snippet(shot_design_db):
+    _write_tables(shot_design_db / "db", [], [], [_claim(TEXT_SHOT, "tearing", snippet="tearing at 3 s")])
+    db = store.ShotDB.load(shot_design_db / "db")
     # `write_db`'s entries are SESSION_LEADER, which IS quotable, so blank the record's log.
     rec = db.get(TEXT_SHOT)
     rec.human.log_entries = []
@@ -631,10 +631,10 @@ def test_the_store_loads_the_three_label_tables_when_they_are_there(phen_db):
     assert len(phen_db.text_claims) == 3
 
 
-def test_the_store_tolerates_their_absence_with_empty_typed_frames(ideate_db):
+def test_the_store_tolerates_their_absence_with_empty_typed_frames(shot_design_db):
     from labeler.events import schema as events_schema
 
-    db = store.ShotDB.load(ideate_db / "db")
+    db = store.ShotDB.load(shot_design_db / "db")
     assert db.events.empty and list(db.events.columns) == list(events_schema.COLUMNS)
     assert db.labels_wide.empty and "max_valid" in db.labels_wide.columns
     assert db.text_claims.empty and "polarity" in db.text_claims.columns
@@ -645,7 +645,7 @@ def test_the_store_tolerates_their_absence_with_empty_typed_frames(ideate_db):
 # --------------------------------------------------------------------------------------- the CLI
 
 
-def test_the_cli_prints_the_hits_as_json(phen_db, ideate_db, capsys):
+def test_the_cli_prints_the_hits_as_json(phen_db, shot_design_db, capsys):
     code = cli.main(["phenomenon", "tearing mode", "--n", "5", "--json"])
     assert code == 0
     doc = json.loads(capsys.readouterr().out)
@@ -695,9 +695,9 @@ def test_the_cli_passes_avoid_through(phen_db, capsys):
 # the fixture that would have let it make one.
 
 
-def _db_with(ideate_db: Path, events: list[dict], labels=(), claims=()) -> store.ShotDB:
-    _write_tables(ideate_db / "db", events, list(labels), list(claims))
-    return store.ShotDB.load(ideate_db / "db")
+def _db_with(shot_design_db: Path, events: list[dict], labels=(), claims=()) -> store.ShotDB:
+    _write_tables(shot_design_db / "db", events, list(labels), list(claims))
+    return store.ShotDB.load(shot_design_db / "db")
 
 
 def _elm_clock(shot: int, event_id: str, cov: tuple[float, float]) -> dict:
@@ -713,11 +713,11 @@ def _elm_clock(shot: int, event_id: str, cov: tuple[float, float]) -> dict:
 # ------------------------------------------------------- finding 1: coverage and the window
 
 
-def test_coverage_that_misses_the_window_is_not_coverage_of_the_window(ideate_db):
+def test_coverage_that_misses_the_window_is_not_coverage_of_the_window(shot_design_db):
     """The ELM clock read 0.0-0.9 s. The question is about the flat top, 1.0-5.0 s. Nobody
     looked at the flat top for ELMs, and a coverage number that says otherwise turns a gap in
     the data into "we looked and there were none"."""
-    db = _db_with(ideate_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
+    db = _db_with(shot_design_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
     got = ph.evidence(TEXT_SHOT, "elm", db)
     assert got.coverage is None
     assert got.coverage_state == "uncovered"
@@ -726,9 +726,9 @@ def test_coverage_that_misses_the_window_is_not_coverage_of_the_window(ideate_db
     ) in got.caveats
 
 
-def test_avoid_keeps_and_caveats_a_shot_whose_coverage_missed_the_window(ideate_db):
+def test_avoid_keeps_and_caveats_a_shot_whose_coverage_missed_the_window(shot_design_db):
     db = _db_with(
-        ideate_db,
+        shot_design_db,
         [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))],
         claims=[_claim(TEXT_SHOT, "tearing")],
     )
@@ -739,9 +739,9 @@ def test_avoid_keeps_and_caveats_a_shot_whose_coverage_missed_the_window(ideate_
     ) in hit.caveats
 
 
-def test_partial_coverage_of_the_window_is_reported_as_partial(ideate_db):
+def test_partial_coverage_of_the_window_is_reported_as_partial(shot_design_db):
     db = _db_with(
-        ideate_db,
+        shot_design_db,
         [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (1.0, 3.0))],
         claims=[_claim(TEXT_SHOT, "tearing")],
     )
@@ -754,9 +754,9 @@ def test_partial_coverage_of_the_window_is_reported_as_partial(ideate_db):
     assert any("--avoid phenomenon:elm" in c for c in hit.caveats)
 
 
-def test_coverage_of_the_whole_window_is_a_real_negative_and_says_nothing(ideate_db):
+def test_coverage_of_the_whole_window_is_a_real_negative_and_says_nothing(shot_design_db):
     db = _db_with(
-        ideate_db,
+        shot_design_db,
         [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 6.0))],
         claims=[_claim(TEXT_SHOT, "tearing")],
     )
@@ -768,8 +768,8 @@ def test_coverage_of_the_whole_window_is_a_real_negative_and_says_nothing(ideate
     assert not any("--avoid" in c for c in hit.caveats)
 
 
-def test_the_four_coverage_states_are_distinguished(ideate_db):
-    db = _db_with(ideate_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
+def test_the_four_coverage_states_are_distinguished(shot_design_db):
+    db = _db_with(shot_design_db, [_elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 0.9))])
     assert ph.COVERAGE_STATES == ("unindexed", "unprocessed", "uncovered", "observed")
     assert ph.evidence(999, "elm", db).coverage_state == "unindexed"
     # The shot is indexed, but nothing in the pipeline looks for an RWM.
@@ -784,8 +784,8 @@ def test_the_four_coverage_states_are_distinguished(ideate_db):
 # ------------------------------------------------------- finding 7: the union, not the hull
 
 
-def test_two_disjoint_coverage_stretches_are_not_one_long_one(ideate_db):
-    db = _db_with(ideate_db, [
+def test_two_disjoint_coverage_stretches_are_not_one_long_one(shot_design_db):
+    db = _db_with(shot_design_db, [
         _elm_clock(TEXT_SHOT, "200-elm_clock-00000", (0.0, 1.5)),
         _elm_clock(TEXT_SHOT, "200-elm_clock-00001", (4.0, 6.0)),
     ])
@@ -801,11 +801,11 @@ def test_two_disjoint_coverage_stretches_are_not_one_long_one(ideate_db):
 # --------------------------- finding 1 / cross-workstream: db/event_sources.parquet
 
 
-def test_coverage_comes_from_the_source_table_when_the_database_has_one(ideate_db):
+def test_coverage_comes_from_the_source_table_when_the_database_has_one(shot_design_db):
     """`db/event_sources.parquet` (branch `recommender-fix`) records what RAN, including the
     detectors that emitted nothing. When it is there it is the answer; a `skipped` row is not
     coverage, it is a detector that was not run."""
-    db = _db_with(ideate_db, [])
+    db = _db_with(shot_design_db, [])
     db.event_sources = pd.DataFrame(
         [
             {"shot": TEXT_SHOT, "source": "elm_clock", "status": "ok",
@@ -893,8 +893,8 @@ def test_the_score_is_the_four_terms_the_config_documents(phen_db):
 # ------------------------------------ findings 4 and 5: what a label has to say to be evidence
 
 
-def test_a_label_the_model_scored_below_the_floor_is_reported_and_not_counted(ideate_db):
-    db = _db_with(ideate_db, [], labels=[_label_row(OBSERVED_SHOT, "tm_prob", max_valid=0.0104)])
+def test_a_label_the_model_scored_below_the_floor_is_reported_and_not_counted(shot_design_db):
+    db = _db_with(shot_design_db, [], labels=[_label_row(OBSERVED_SHOT, "tm_prob", max_valid=0.0104)])
     ev = ph.evidence(OBSERVED_SHOT, "tearing", db)
     assert ev.label_evidence["d3d_tearing_onset_cnn1d/tm_prob.max_valid"] == pytest.approx(0.0104)
     assert ev.max_label_p is None  # the model ran and said no; that is not evidence of a yes
@@ -903,9 +903,9 @@ def test_a_label_the_model_scored_below_the_floor_is_reported_and_not_counted(id
     ) in ev.caveats
 
 
-def test_the_model_saying_no_does_not_outrank_a_shot_the_operators_described(ideate_db):
+def test_the_model_saying_no_does_not_outrank_a_shot_the_operators_described(shot_design_db):
     db = _db_with(
-        ideate_db,
+        shot_design_db,
         [],
         labels=[_label_row(FORECAST_SHOT, "tm_prob", max_valid=0.0104)],
         claims=[_claim(TEXT_SHOT, "tearing")],
@@ -913,19 +913,19 @@ def test_the_model_saying_no_does_not_outrank_a_shot_the_operators_described(ide
     assert [h.shot for h in ph.locate("tearing", db, 10)] == [TEXT_SHOT]
 
 
-def test_a_published_operating_point_is_that_labels_floor(ideate_db, tmp_path):
+def test_a_published_operating_point_is_that_labels_floor(shot_design_db, tmp_path):
     def raise_thr(doc):
         doc["phenomena"]["tearing"]["labels"][0]["thr"] = 0.9
 
     entry = ph.registry(_registry_file(tmp_path, raise_thr))["tearing"]
-    db = _db_with(ideate_db, [], labels=[_label_row(OBSERVED_SHOT, "tm_prob", max_valid=0.8)])
+    db = _db_with(shot_design_db, [], labels=[_label_row(OBSERVED_SHOT, "tm_prob", max_valid=0.8)])
     assert ph.evidence(OBSERVED_SHOT, entry, db).max_label_p is None
     # the shipped registry publishes no operating point, so the declared floor decides
     assert ph.evidence(OBSERVED_SHOT, "tearing", db).max_label_p == pytest.approx(0.8)
 
 
-def test_the_label_only_caveat_says_what_the_model_actually_scored(ideate_db):
-    db = _db_with(ideate_db, [], labels=[_label_row(FORECAST_SHOT, "tm_prob", max_valid=0.62)])
+def test_the_label_only_caveat_says_what_the_model_actually_scored(shot_design_db):
+    db = _db_with(shot_design_db, [], labels=[_label_row(FORECAST_SHOT, "tm_prob", max_valid=0.62)])
     hit = next(h for h in ph.locate("tearing", db, 10) if h.shot == FORECAST_SHOT)
     assert ph.LABEL_ONLY.format(p=0.62) in hit.caveats
     assert any("0.620" in c for c in hit.caveats)  # the number, not just "a model's score"
@@ -944,9 +944,9 @@ def test_the_config_and_the_docs_state_the_ranking_the_code_implements():
 # -------------------------------------- finding 8: "observed" is an allow-list, not a default
 
 
-def test_a_row_of_an_unrecognised_evidence_kind_is_neither_observed_nor_forecast(ideate_db):
+def test_a_row_of_an_unrecognised_evidence_kind_is_neither_observed_nor_forecast(shot_design_db):
     db = _db_with(
-        ideate_db, [_event(OBSERVED_SHOT, "100-tokeye_track-09999", evidence_kind="model")]
+        shot_design_db, [_event(OBSERVED_SHOT, "100-tokeye_track-09999", evidence_kind="model")]
     )
     ev = ph.evidence(OBSERVED_SHOT, "tearing", db)
     assert ph.OBSERVED_KINDS == frozenset({"detector", "heuristic"})
@@ -958,8 +958,8 @@ def test_a_row_of_an_unrecognised_evidence_kind_is_neither_observed_nor_forecast
 # ---------------------------------------------- finding 9: a broadband smear is not a mode
 
 
-def test_a_broadband_smear_is_not_a_mode_in_the_band(ideate_db):
-    db = _db_with(ideate_db, [
+def test_a_broadband_smear_is_not_a_mode_in_the_band(shot_design_db):
+    db = _db_with(shot_design_db, [
         _event(OBSERVED_SHOT, "100-tokeye_track-00000",
                attrs={"f_centroid_khz": 10.0, "bandwidth_khz": 2.0}),
         _event(OBSERVED_SHOT, "100-tokeye_track-00001", t0_s=3.0, t1_s=3.2,
@@ -970,8 +970,8 @@ def test_a_broadband_smear_is_not_a_mode_in_the_band(ideate_db):
     assert ph.registry()["tearing"].events[0].max_bandwidth_khz == 30.0
 
 
-def test_a_track_that_records_no_bandwidth_is_not_rejected_for_not_recording_one(ideate_db):
-    db = _db_with(ideate_db, [_event(OBSERVED_SHOT, "100-tokeye_track-00000")])
+def test_a_track_that_records_no_bandwidth_is_not_rejected_for_not_recording_one(shot_design_db):
+    db = _db_with(shot_design_db, [_event(OBSERVED_SHOT, "100-tokeye_track-00000")])
     assert len(ph.evidence(OBSERVED_SHOT, "tearing", db).intervals) == 1
 
 
@@ -1000,8 +1000,8 @@ def _with_log(db: store.ShotDB, shot: int, texts: list[str]) -> None:
     db.shots.loc[shot, "record_json"] = rec.model_dump_json()
 
 
-def test_the_quote_prefers_a_logbook_entry_that_names_the_phenomenon(ideate_db):
-    db = _db_with(ideate_db, [], claims=[_claim(TEXT_SHOT, "tearing")])
+def test_the_quote_prefers_a_logbook_entry_that_names_the_phenomenon(shot_design_db):
+    db = _db_with(shot_design_db, [], claims=[_claim(TEXT_SHOT, "tearing")])
     _with_log(db, TEXT_SHOT, [
         "Restore 184833 Result: Dud trip on LM at appx 2.5 sec.",
         "clear 2/1 tearing mode from 3 s onwards, locked by 4",
@@ -1011,8 +1011,8 @@ def test_the_quote_prefers_a_logbook_entry_that_names_the_phenomenon(ideate_db):
     assert not any("does not mention" in c for c in hit.caveats)
 
 
-def test_a_quote_that_does_not_mention_the_phenomenon_says_so(ideate_db):
-    db = _db_with(ideate_db, [], claims=[_claim(TEXT_SHOT, "tearing")])
+def test_a_quote_that_does_not_mention_the_phenomenon_says_so(shot_design_db):
+    db = _db_with(shot_design_db, [], claims=[_claim(TEXT_SHOT, "tearing")])
     _with_log(db, TEXT_SHOT, ["Restore 184833 Result: Dud trip on LM at appx 2.5 sec."])
     hit = next(h for h in ph.locate("tearing", db, 10) if h.shot == TEXT_SHOT)
     assert hit.quote.startswith("Restore 184833")
@@ -1040,8 +1040,8 @@ def test_the_table_says_when_every_event_row_in_the_database_is_a_forecast(phen_
     assert ph.ALL_FORECASTS.format(n=10) not in out
 
 
-def test_a_database_of_nothing_but_forecasts_says_so_on_screen(ideate_db, capsys):
-    _write_tables(ideate_db / "db", [
+def test_a_database_of_nothing_but_forecasts_says_so_on_screen(shot_design_db, capsys):
+    _write_tables(shot_design_db / "db", [
         _event(FORECAST_SHOT, "101-label_forecast-00000", source="label_forecast",
                evidence_kind="forecast", phenomenon="tearing", horizon_s=1.0, diag="",
                confidence=0.35, attrs={"label": "tm_risk_1s"}),
@@ -1134,14 +1134,14 @@ def test_a_shot_a_curated_table_names_is_in_the_database_and_one_it_omits_is_not
 
 
 def test_a_database_only_shot_ranks_below_a_forecast_and_never_as_observed(
-    ideate_db, rwm_tables,
+    shot_design_db, rwm_tables,
 ):
     """The whole point of the fourth evidence class. A curated table names shot 200 and nothing
     else says a word about RWM on it: it must come back, because a human list IS evidence, and
     it must come back in the DATABASE class carrying the caveat that says so -- not in the
     observed class, where a reader would take it for a measurement."""
     rwm_tables([TEXT_SHOT])
-    db = _db_with(ideate_db, [])
+    db = _db_with(shot_design_db, [])
     hit = next(h for h in ph.locate("rwm", db, 10) if h.shot == TEXT_SHOT)
     assert ph.DATABASE_ONLY in hit.caveats
     assert hit.intervals == []

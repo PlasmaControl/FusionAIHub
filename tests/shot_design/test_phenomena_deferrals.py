@@ -10,8 +10,8 @@ from shot_design.retrieval import phenomena as ph
 from .test_phenomena import _claim, _db_with, _event, _label_row
 
 
-def test_missing_required_groups_are_caveated_when_the_corpus_was_inventoried(ideate_db):
-    db = _db_with(ideate_db, [_event(100, 'seen')])
+def test_missing_required_groups_are_caveated_when_the_corpus_was_inventoried(shot_design_db):
+    db = _db_with(shot_design_db, [_event(100, 'seen')])
     db.shots.loc[100, 'reader'] = 'corpus'
     db.shots.loc[100, 'has_mhr'] = False
     ev = ph.evidence(100, 'tearing', db)
@@ -21,16 +21,16 @@ def test_missing_required_groups_are_caveated_when_the_corpus_was_inventoried(id
     assert not any('required corpus group' in c for c in ph.evidence(100, 'tearing', db).caveats)
 
 
-def test_legacy_empty_inventory_and_unknown_flags_do_not_assert_missing_groups(ideate_db):
-    db = _db_with(ideate_db, [_event(100, 'seen')])
+def test_legacy_empty_inventory_and_unknown_flags_do_not_assert_missing_groups(shot_design_db):
+    db = _db_with(shot_design_db, [_event(100, 'seen')])
     assert not any('required corpus group' in c for c in ph.evidence(100, 'tearing', db).caveats)
     db.shots = db.shots.drop(columns=['has_mhr'])
     db.shots.loc[100, 'reader'] = 'corpus'
     assert not any('required corpus group' in c for c in ph.evidence(100, 'tearing', db).caveats)
 
 
-def test_label_only_displays_the_raw_probability_of_the_weighted_winning_label(ideate_db):
-    db = _db_with(ideate_db, [], labels=[_label_row(100, 'tm_prob', max_valid=.8)])
+def test_label_only_displays_the_raw_probability_of_the_weighted_winning_label(shot_design_db):
+    db = _db_with(shot_design_db, [], labels=[_label_row(100, 'tm_prob', max_valid=.8)])
     entry = ph.registry()['tearing']
     entry = replace(entry, labels=(replace(entry.labels[0], weight=.25),))
     hit = ph.locate(entry, db)[0]
@@ -39,8 +39,8 @@ def test_label_only_displays_the_raw_probability_of_the_weighted_winning_label(i
     assert ph.LABEL_ONLY.format(p=.2) not in hit.caveats
 
 
-def test_a_narrow_quote_keeps_the_late_phenomenon_mention_and_single_entry(ideate_db, capsys):
-    db = _db_with(ideate_db, [], claims=[_claim(100, 'tearing')])
+def test_a_narrow_quote_keeps_the_late_phenomenon_mention_and_single_entry(shot_design_db, capsys):
+    db = _db_with(shot_design_db, [], claims=[_claim(100, 'tearing')])
     rec = db.get(100)
     text = 'Repeated density scan. ' * 12 + 'A clear tearing mode locked late in the shot.'
     rec.human.log_entries[0].text = text
@@ -68,16 +68,16 @@ def test_excerpt_centres_on_a_mention_inside_one_long_sentence():
     ('[[0, 0.9], [5.1, 6]]', ph.AVOID_UNCOVERED),
     ('[[0, 2], [3, 6]]', ph.AVOID_PARTIAL),
 ])
-def test_avoid_cannot_turn_an_interior_gap_into_a_negative(ideate_db, intervals, template):
+def test_avoid_cannot_turn_an_interior_gap_into_a_negative(shot_design_db, intervals, template):
     from shot_design.labels import event_sources as es
     from shot_design.shotdb.store import ShotDB
 
-    _db_with(ideate_db, [], claims=[_claim(100, 'tearing')])
-    es.write_sources(ideate_db / 'db/event_sources.parquet', [
+    _db_with(shot_design_db, [], claims=[_claim(100, 'tearing')])
+    es.write_sources(shot_design_db / 'db/event_sources.parquet', [
         es.source_row(100, 'elm_clock', diag='filterscopes', t_cov0_s=0, t_cov1_s=6,
                       intervals=intervals, min_gap_s=.003),
     ])
-    (hit,) = ph.locate('tearing', ShotDB.load(ideate_db / 'db'), avoid=['elm'])
+    (hit,) = ph.locate('tearing', ShotDB.load(shot_design_db / 'db'), avoid=['elm'])
     assert hit.shot == 100
     assert template.format(token='phenomenon:elm', title=ph.registry()['elm'].title,
                            segment='flat_top') in hit.caveats

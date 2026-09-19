@@ -48,7 +48,7 @@ def _stub_embeddings(mp) -> None:
 @pytest.fixture(scope="module")
 def real_paths(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path_factory.mktemp("ideate-real")))
+        mp.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path_factory.mktemp("shot-design-real")))
         mp.delenv("SHOT_DESIGN_PATHS", raising=False)
         paths = config.load_paths()
         for d in (paths.raw_dir, paths.db_dir, paths.text_cache_dir):

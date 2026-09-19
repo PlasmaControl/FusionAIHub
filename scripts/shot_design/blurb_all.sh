@@ -5,4 +5,4 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONDONTWRITEBYTECODE=1
-exec pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -m shot_design blurb --all "$@"
+exec pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design blurb --all "$@"

@@ -39,15 +39,15 @@ def assert_blurb_fields(row, value, source):
         assert not hasattr(row, "summary") and not hasattr(row, "summaries")
 
 
-def test_absent_blurb_is_none_on_records_search_and_locate(ideate_db):
-    _db_with(ideate_db, [_event(100, "observed")])
-    write_blurb(ideate_db / "db")
-    pd.read_parquet(ideate_db / "db/shots.parquet").drop(
+def test_absent_blurb_is_none_on_records_search_and_locate(shot_design_db):
+    _db_with(shot_design_db, [_event(100, "observed")])
+    write_blurb(shot_design_db / "db")
+    pd.read_parquet(shot_design_db / "db/shots.parquet").drop(
         columns=["blurb", "blurb_source"],
     ).to_parquet(
-        ideate_db / "db/shots.parquet"
+        shot_design_db / "db/shots.parquet"
     )
-    db = ShotDB.load(ideate_db / "db")
+    db = ShotDB.load(shot_design_db / "db")
     for row in (db.get(100), rank.search(schema.QueryState(ref_shot=101), db).items[0],
                 phenomena.locate("tearing", db)[0],
                 schema.SearchHit(shot=100, phenomenon="tearing", score=1)):
@@ -55,9 +55,9 @@ def test_absent_blurb_is_none_on_records_search_and_locate(ideate_db):
 
 
 @pytest.mark.parametrize("source", ["llm", "template", None])
-def test_blurb_columns_reach_records_search_and_locate_without_writes(ideate_db, source):
-    db_dir = ideate_db / "db"
-    _db_with(ideate_db, [_event(100, "observed")])
+def test_blurb_columns_reach_records_search_and_locate_without_writes(shot_design_db, source):
+    db_dir = shot_design_db / "db"
+    _db_with(shot_design_db, [_event(100, "observed")])
     write_blurb(db_dir, source=source)
     before = (db_dir / "shots.parquet").read_bytes()
     db = ShotDB.load(db_dir)
@@ -77,17 +77,17 @@ def test_blurb_columns_reach_records_search_and_locate_without_writes(ideate_db,
 
 
 @pytest.mark.parametrize("value", [None, float("nan"), pd.NA, "", "  \t\n"])
-def test_null_or_empty_blurb_fields_are_none(ideate_db, value):
-    write_blurb(ideate_db / "db", value=value, source=value)
-    assert_blurb_fields(ShotDB.load(ideate_db / "db").get(100), None, None)
+def test_null_or_empty_blurb_fields_are_none(shot_design_db, value):
+    write_blurb(shot_design_db / "db", value=value, source=value)
+    assert_blurb_fields(ShotDB.load(shot_design_db / "db").get(100), None, None)
 
 
 @pytest.mark.parametrize("column", ["blurb", "blurb_source"])
-def test_missing_blurb_column_never_uses_record_json(ideate_db, column):
-    write_blurb(ideate_db / "db")
-    path = ideate_db / "db/shots.parquet"
+def test_missing_blurb_column_never_uses_record_json(shot_design_db, column):
+    write_blurb(shot_design_db / "db")
+    path = shot_design_db / "db/shots.parquet"
     pd.read_parquet(path).drop(columns=[column]).to_parquet(path)
-    rec = ShotDB.load(ideate_db / "db").get(100)
+    rec = ShotDB.load(shot_design_db / "db").get(100)
     assert_blurb_fields(rec, None if column == "blurb" else BLURB,
                         None if column == "blurb_source" else "llm")
 
@@ -138,8 +138,8 @@ def test_parts_never_fall_back_to_another_segment_or_invent_a_measurement():
     assert missing["operator_quote"] is None
 
 
-def test_parts_separate_forecasts_and_bound_observed_intervals(ideate_db):
-    db = _db_with(ideate_db, [
+def test_parts_separate_forecasts_and_bound_observed_intervals(shot_design_db):
+    db = _db_with(shot_design_db, [
         *[_event(100, f"seen-{i}", t0_s=2 + i / 10, t1_s=2.05 + i / 10)
           for i in range(5)],
         _event(100, "risk", source="label_forecast", evidence_kind="forecast",
@@ -158,14 +158,14 @@ def test_parts_separate_forecasts_and_bound_observed_intervals(ideate_db):
 
 
 def test_locate_and_events_share_the_same_full_segment_domain(
-    client, ideate_db,  # noqa: F811
+    client, shot_design_db,  # noqa: F811
 ):
-    _db_with(ideate_db, [_event(100, "observed")])
-    table = pd.read_parquet(ideate_db / "db/shots.parquet")
+    _db_with(shot_design_db, [_event(100, "observed")])
+    table = pd.read_parquet(shot_design_db / "db/shots.parquet")
     rec = json.loads(table.loc[100, "record_json"])
     rec["segments"].append({"name": "full", "t0_ms": -3400, "t1_ms": 10501})
     table.loc[100, "record_json"] = json.dumps(rec)
-    table.to_parquet(ideate_db / "db/shots.parquet")
+    table.to_parquet(shot_design_db / "db/shots.parquet")
     tools.reset_cache()
     hit = next(h for h in client.get("/api/locate?phenomenon=tearing").json()
                if h["shot"] == 100)
@@ -188,19 +188,19 @@ def test_locate_and_events_share_the_same_full_segment_domain(
     ([("full", 8000, 1000)], {"t0_s": -2, "t1_s": 8, "source": "default"}),
 ])
 def test_events_domain_uses_record_segments_not_coverage(
-    client, ideate_db, segments, expected,  # noqa: F811
+    client, shot_design_db, segments, expected,  # noqa: F811
 ):
     """Shot 199607 spans 0.013..6.944 s despite actuator coverage -10..95 s."""
     from shot_design.labels import event_sources
 
-    table = pd.read_parquet(ideate_db / "db/shots.parquet")
+    table = pd.read_parquet(shot_design_db / "db/shots.parquet")
     rec = json.loads(table.loc[100, "record_json"])
     rec["segments"] = [
         {"name": name, "t0_ms": a, "t1_ms": b} for name, a, b in segments
     ]
     table.loc[100, "record_json"] = json.dumps(rec)
-    table.to_parquet(ideate_db / "db/shots.parquet")
-    event_sources.write_sources(ideate_db / "db/event_sources.parquet", [
+    table.to_parquet(shot_design_db / "db/shots.parquet")
+    event_sources.write_sources(shot_design_db / "db/event_sources.parquet", [
         event_sources.source_row(100, "actuator", diag="ech_power_total",
                                  t_cov0_s=-10, t_cov1_s=95, n_events=0),
     ])
@@ -221,10 +221,10 @@ def test_events_domain_uses_record_segments_not_coverage(
     (BLURB, "llm"), (BLURB, "template"), (BLURB, None), (None, None),
 ])
 def test_shot_search_locate_apis_carry_stored_blurb_fields(
-    client, ideate_db, value, source,  # noqa: F811
+    client, shot_design_db, value, source,  # noqa: F811
 ):
-    _db_with(ideate_db, [_event(100, "observed")])
-    write_blurb(ideate_db / "db", value=value, source=source)
+    _db_with(shot_design_db, [_event(100, "observed")])
+    write_blurb(shot_design_db / "db", value=value, source=source)
     tools.reset_cache()
     data = client.get("/api/shot/100").json()
     for row in (data, data["record"], data["describe_parts"]):

@@ -8,8 +8,8 @@ from shot_design.retrieval import phenomena as ph
 from .test_phenomena import _claim, _db_with, _event
 
 
-def test_a_phenomenon_line_distinguishes_observed_and_forecast_ranges(ideate_db):
-    db = _db_with(ideate_db, [
+def test_a_phenomenon_line_distinguishes_observed_and_forecast_ranges(shot_design_db):
+    db = _db_with(shot_design_db, [
         _event(100, 'seen'),
         _event(100, 'risk', source='label_forecast', evidence_kind='forecast',
                phenomenon='tearing', t0_s=3, t1_s=4),
@@ -21,8 +21,8 @@ def test_a_phenomenon_line_distinguishes_observed_and_forecast_ranges(ideate_db)
     assert '\n' not in line
 
 
-def test_text_only_line_never_quotes_a_claim_snippet_or_joined_log(ideate_db, monkeypatch):
-    db = _db_with(ideate_db, [], claims=[_claim(100, 'tearing', snippet='not a log entry')])
+def test_text_only_line_never_quotes_a_claim_snippet_or_joined_log(shot_design_db, monkeypatch):
+    db = _db_with(shot_design_db, [], claims=[_claim(100, 'tearing', snippet='not a log entry')])
     rec = db.get(100)
     rec.human.log_entries[0].text = 'Repeated density. ' * 15 + 'A tearing mode locked late.'
     calls = []
@@ -42,8 +42,8 @@ def test_text_only_line_never_quotes_a_claim_snippet_or_joined_log(ideate_db, mo
     assert quote.strip(' .') in rec.human.log_entries[0].text
 
 
-def test_a_forecast_only_description_does_not_claim_an_observation(ideate_db):
-    db = _db_with(ideate_db, [_event(
+def test_a_forecast_only_description_does_not_claim_an_observation(shot_design_db):
+    db = _db_with(shot_design_db, [_event(
         100, 'risk', source='label_forecast', evidence_kind='forecast', phenomenon='tearing',
     )])
     line = describe._phenomenon_line(ph.evidence(100, 'tearing', db), db.get(100))
@@ -51,8 +51,8 @@ def test_a_forecast_only_description_does_not_claim_an_observation(ideate_db):
     assert 'observed ' not in line
 
 
-def test_mcp_and_cli_describe_include_each_evidenced_phenomenon_once(ideate_db, capsys):
-    _db_with(ideate_db, [_event(100, 'seen')], claims=[_claim(100, 'rwm')])
+def test_mcp_and_cli_describe_include_each_evidenced_phenomenon_once(shot_design_db, capsys):
+    _db_with(shot_design_db, [_event(100, 'seen')], claims=[_claim(100, 'rwm')])
     tools.reset_cache()
     response = tools.describe_shot(100)
     prose = response['description']
@@ -64,8 +64,8 @@ def test_mcp_and_cli_describe_include_each_evidenced_phenomenon_once(ideate_db, 
     tools.reset_cache()
 
 
-def test_description_retains_run_scope_and_operator_denial_caveats(ideate_db):
-    db = _db_with(ideate_db, [], claims=[
+def test_description_retains_run_scope_and_operator_denial_caveats(shot_design_db):
+    db = _db_with(shot_design_db, [], claims=[
         _claim(100, 'tearing', scope='run'),
         _claim(100, 'tearing', polarity='neg'),
     ])
@@ -74,7 +74,7 @@ def test_description_retains_run_scope_and_operator_denial_caveats(ideate_db):
     assert ph.NEGATIVE_CLAIM.format(title='Tearing mode') in line
 
 
-def test_description_reports_when_a_missing_segment_widens_the_search(ideate_db):
-    db = _db_with(ideate_db, [_event(100, 'seen')])
+def test_description_reports_when_a_missing_segment_widens_the_search(shot_design_db):
+    db = _db_with(shot_design_db, [_event(100, 'seen')])
     ev = ph.evidence(100, 'tearing', db, segment='ramp_down')
     assert ph.NO_SEGMENT.format(segment='ramp_down') in describe._phenomenon_line(ev, db.get(100))

@@ -39,7 +39,13 @@ _log = logging.getLogger(__name__)
 # The file-level marker scripts/fetch_shots.py stamps on every file it writes (its SCHEMA). It is
 # duplicated here rather than imported because the fetcher runs in the fdp environment and cannot
 # import shot_design; tests/test_fetch_plan.py pins the two equal.
-SCHEMA = "ideate-raw-v1"
+SCHEMA = "shot-design-raw-v1"
+
+# The tags this package stamped before the 2026-09-19 rename. Renaming a constant cannot rewrite
+# the files already on disk -- every raw file fetched to date carries `ideate-raw-v1` -- so a
+# reader accepts the old tags forever and only new stamps use SCHEMA. `is_ours` is the one place
+# the tag is compared.
+LEGACY_SCHEMAS = frozenset({"ideate-raw-v1"})
 
 # The dtype a column is read as. Every data-bearing column in BOTH stores is float32 on disk: our
 # fetcher writes `df.astype(np.float32)` (all 160 blocks of the first 20 raw files checked), and
@@ -116,8 +122,9 @@ def is_ours(f: h5py.File, g: h5py.Group | None = None) -> bool:
     scripts/fetch_shots.py?
 
     Decided from the markers the fetcher itself writes, never from the directory the file was
-    found in: `stamp_file` puts schema="ideate-raw-v1" on the file, and `write_group` puts
-    source="toksearch", fetcher_version and (last) complete on every group. A fetched file copied
+    found in: `stamp_file` puts schema=SCHEMA on the file (or, before the rename, one of
+    LEGACY_SCHEMAS), and `write_group` puts source="toksearch", fetcher_version and (last)
+    complete on every group. A fetched file copied
     into the staged directory, or a d3d_fusion_data copy placed under raw_dir, therefore reads
     exactly as it would in its home location. The staged files carry none of these: their root
     attrs are PyTables' CLASS/PYTABLES_FORMAT_VERSION/TITLE/VERSION and their group attrs pandas'
@@ -130,7 +137,7 @@ def is_ours(f: h5py.File, g: h5py.Group | None = None) -> bool:
     its first group, so that case is closed going forward; the group check keeps files written
     by the older stamp-last order honest.
     """
-    if _attr(f, "schema") == SCHEMA:
+    if _attr(f, "schema") in {SCHEMA, *LEGACY_SCHEMAS}:
         return True
     if g is None:
         return False

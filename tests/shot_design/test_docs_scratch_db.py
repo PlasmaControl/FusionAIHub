@@ -26,11 +26,11 @@ def section() -> str:
     return re.split(r"^## ", after, maxsplit=1, flags=re.MULTILINE)[0]
 
 
-def test_the_section_names_every_variable_the_ideate_features_pin():
-    """`pixi run -e ideate*` overrides these, whatever the caller exported -- which is what
+def test_the_section_names_every_variable_the_shot_design_features_pin():
+    """`pixi run -e shot-design*` overrides these, whatever the caller exported -- which is what
     replaced the production database with a one-shot one."""
     pinned = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    env = pinned["tool"]["pixi"]["feature"]["ideate"]["target"]["unix"]["activation"]["env"]
+    env = pinned["tool"]["pixi"]["feature"]["shot-design"]["target"]["unix"]["activation"]["env"]
     text = section()
     for name in ("SHOT_DESIGN_DATA_ROOT", "LABELER_ROOT", "SHOT_DESIGN_CORPUS"):
         assert name in env, f"{name} is no longer pinned; the docs section is now wrong"
@@ -39,7 +39,7 @@ def test_the_section_names_every_variable_the_ideate_features_pin():
 
 def test_the_section_gives_both_ways_to_build_a_scratch_database():
     text = section()
-    assert ".pixi/envs/ideate-cpu/bin/python -m shot_design" in text
+    assert ".pixi/envs/shot-design-cpu/bin/python -m shot_design" in text
     assert "SHOT_DESIGN_PATHS=" in text
 
 

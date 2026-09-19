@@ -49,9 +49,9 @@ def test_interpolate_leaves_unknown_variable_literal(monkeypatch):
 
 
 def test_load_paths_data_root_override(monkeypatch):
-    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", "/tmp/ideate-test")
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", "/tmp/shot-design-test")
     p = config.load_paths()
-    assert p.raw_dir == Path("/tmp/ideate-test/raw")
+    assert p.raw_dir == Path("/tmp/shot-design-test/raw")
     assert p.staged_raw_dir == Path("/scratch/gpfs/EKOLEMEN/d3d_fusion_data")
     # Covers the text_root -> logs_jsonl interpolation chain, not just that Pydantic can
     # coerce a string into a Path (it always can, even unresolved).
@@ -59,7 +59,7 @@ def test_load_paths_data_root_override(monkeypatch):
     assert str(p.logs_jsonl).endswith("/sql/logs.jsonl")
 
 
-def test_ideate_paths_env_selects_alternate_file(tmp_path, monkeypatch):
+def test_shot_design_paths_env_selects_alternate_file(tmp_path, monkeypatch):
     monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     alt = tmp_path / "alt_paths.yaml"
     alt.write_text(_PATHS_YAML_TEMPLATE.format(data_root="/alt/root"))
@@ -68,7 +68,7 @@ def test_ideate_paths_env_selects_alternate_file(tmp_path, monkeypatch):
     assert p.data_root == Path("/alt/root")
 
 
-def test_load_paths_explicit_path_overrides_ideate_paths_env(tmp_path, monkeypatch):
+def test_load_paths_explicit_path_overrides_shot_design_paths_env(tmp_path, monkeypatch):
     monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     env_file = tmp_path / "env_paths.yaml"
     env_file.write_text(_PATHS_YAML_TEMPLATE.format(data_root="/env/root"))

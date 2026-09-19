@@ -219,7 +219,7 @@ Export an existing producer's results without rerunning the producer:
 ```bash
 pixi run -e labelmaker python scripts/labeler/labels_extend.py \
   --category minimum_safety_factor --producer qmin_rule \
-  --shot-list configs/ideate/shot_lists/recommender_v1.yaml \
+  --shot-list configs/shot_design/shot_lists/recommender_v1.yaml \
   --out data/events/minimum_safety_factor/extend_qmin_rule/recommender_v1.csv
 ```
 

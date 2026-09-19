@@ -27,7 +27,7 @@ fi
 
 # ONE Pixi invocation resolves every setting and the interpreter for endpoint publication.
 # The absolute manifest reuses the main checkout's environment; PYTHONPATH selects this source.
-PYOUT="$(pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e ideate-cpu python -c '
+PYOUT="$(pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -c '
 import sys
 from shot_design import config
 cfg = config.load_yaml("llm.yaml")

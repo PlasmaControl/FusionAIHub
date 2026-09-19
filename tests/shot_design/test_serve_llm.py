@@ -38,7 +38,7 @@ def shim_env(paths, tmp_path, monkeypatch):
 import json, os, sys
 from pathlib import Path
 expected = ["run", "--frozen", "--no-install", "--manifest-path",
-            "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml", "-e", "ideate-cpu", "python"]
+            "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml", "-e", "shot-design-cpu", "python"]
 assert sys.argv[1:9] == expected, sys.argv
 with Path(os.environ["SHIM_CALLS"]).open("a") as f:
     f.write(json.dumps({"pixi": sys.argv[1:]}) + "\\n")
@@ -176,6 +176,6 @@ def test_blurb_wrapper_uses_frozen_environment_without_local_install(tmp_path, m
     )
     assert result.stdout.splitlines() == [
         "run", "--frozen", "--no-install", "--manifest-path", MANIFEST,
-        "-e", "ideate-cpu", "python", "-m", "shot_design", "blurb", "--all",
+        "-e", "shot-design-cpu", "python", "-m", "shot_design", "blurb", "--all",
         "--dry-run", "--limit", "5",
     ]

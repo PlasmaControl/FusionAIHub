@@ -815,7 +815,7 @@ def test_the_summary_says_whether_the_list_is_final_and_which_store_verified_it(
     summary has to carry which one this was, and against which feature store -- the number of
     files and the newest mtime, so a list can be told apart from one verified an hour later."""
     got = candidates(5, per_run=1)
-    by_dir = {"/data/ideate/frame_codes": 500, "/models/IGNITE/frame_codes": 10}
+    by_dir = {"/data/shot_design/frame_codes": 500, "/models/IGNITE/frame_codes": 10}
     store = {"n_featured": 878, "n_frame_codes": 507, "max_mtime": "2026-09-07T11:28:00+00:00",
              "frame_codes_by_dir": by_dir}
     s = select.summarize(
@@ -835,7 +835,7 @@ def test_the_summary_says_whether_the_list_is_final_and_which_store_verified_it(
     # production count; the line says so and shows the split, so nobody reads it as 507 encoded
     # production shots.
     assert "507" in text and "counted once" in text
-    assert "500  /data/ideate/frame_codes" in text and "10  /models/IGNITE/frame_codes" in text
+    assert "500  /data/shot_design/frame_codes" in text and "10  /models/IGNITE/frame_codes" in text
     # And what is and is not deterministic about the file two runs write: the rows, byte for
     # byte; not the header, which carries the clock and the store's fingerprint.
     assert "byte-identical" in text and "regenerated" in text

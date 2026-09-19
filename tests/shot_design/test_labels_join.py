@@ -492,7 +492,7 @@ def test_a_join_with_no_source_files_at_all_still_writes_a_typed_empty_table(tmp
 # ------------------------------------------------------------- refreshing has_frame_codes
 
 
-def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, ideate_db, monkeypatch):
+def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, shot_design_db, monkeypatch):
     """The column is set at BUILD time and the encode is a later job, so a database built before
     the encode said 13 true while all 500 caches existed. The join is the step that runs after
     the long jobs, so it is where the flag is brought back in line."""
@@ -500,7 +500,7 @@ def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, ideate_
     from shot_design.schema import ShotRecord
     from shot_design.shotdb import build as build_mod
 
-    db_dir = ideate_db / "db"
+    db_dir = shot_design_db / "db"
     paths = config.load_paths()
     codes = build_mod.frame_codes_dirs(paths)[0]
     codes.mkdir(parents=True, exist_ok=True)
@@ -525,11 +525,11 @@ def test_the_join_refreshes_has_frame_codes_from_the_directory(tmp_path, ideate_
     assert not ShotRecord.model_validate_json(after.loc[101, "record_json"]).has_frame_codes
 
 
-def test_refreshing_twice_changes_nothing_and_a_missing_table_is_not_an_error(tmp_path, ideate_db):
+def test_refreshing_twice_changes_nothing_and_a_missing_table_is_not_an_error(tmp_path, shot_design_db):
     from shot_design import config
     from shot_design.shotdb import build as build_mod
 
-    db_dir = ideate_db / "db"
+    db_dir = shot_design_db / "db"
     paths = config.load_paths()
     assert build_mod.refresh_frame_codes(db_dir, paths)["n_changed"] == 0
     before = (db_dir / "shots.parquet").read_bytes()

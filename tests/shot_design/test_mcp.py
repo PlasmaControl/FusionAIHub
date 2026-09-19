@@ -1,7 +1,7 @@
 """The MCP server: the four tool functions, and one real stdio roundtrip.
 
 Two levels, deliberately. The tool FUNCTIONS are tested directly against the synthetic database
-(`conftest.ideate_db`) because that is where the behaviour is -- what a caveat says, what a
+(`conftest.shot_design_db`) because that is where the behaviour is -- what a caveat says, what a
 missing table returns, that a forecast never lands in `events`. The SERVER is tested once, over
 a real `python -m shot_design.mcp` subprocess, because the things a wrapper gets wrong are invisible
 in-process: a tool whose signature will not turn into a JSON schema, a module that writes to
@@ -82,7 +82,7 @@ def write_events(db_dir: Path, rows: list[dict]) -> None:
 # ------------------------------------------------------------------------------- search_shots
 
 
-def test_search_shots_ranks_and_always_carries_caveats(ideate_db):
+def test_search_shots_ranks_and_always_carries_caveats(shot_design_db):
     got = tools.search_shots(ref_shot=100, n=3)
     assert "error" not in got
     assert isinstance(got["caveats"], list)
@@ -91,7 +91,7 @@ def test_search_shots_ranks_and_always_carries_caveats(ideate_db):
     assert {"shot", "segment", "score", "description"} <= set(got["results"][0])
 
 
-def test_search_shots_with_nothing_to_search_on_says_so_rather_than_returning_nothing(ideate_db):
+def test_search_shots_with_nothing_to_search_on_says_so_rather_than_returning_nothing(shot_design_db):
     """A model that gets `[]` will try again with different words. It has to be told that no
     CHANNEL fired -- that the query carried no text, no reference and no constraint -- because
     rephrasing cannot fix that and the next call would be wasted."""
@@ -100,7 +100,7 @@ def test_search_shots_with_nothing_to_search_on_says_so_rather_than_returning_no
     assert any("no channel" in c for c in got["caveats"])
 
 
-def test_search_shots_takes_constraints_as_a_mapping_or_a_pair(ideate_db):
+def test_search_shots_takes_constraints_as_a_mapping_or_a_pair(shot_design_db):
     a = tools.search_shots(ref_shot=100, constraints={"ip_mean": {"lo": 1.3e6}}, n=5)
     b = tools.search_shots(ref_shot=100, constraints={"ip_mean": [1.3e6, None]}, n=5)
     # The same two shots in the same order: the two spellings are one constraint, not two.
@@ -109,24 +109,24 @@ def test_search_shots_takes_constraints_as_a_mapping_or_a_pair(ideate_db):
 
 
 def test_search_shots_reports_an_unknown_constraint_column_as_an_error_not_an_exception(
-    ideate_db,
+    shot_design_db,
 ):
     got = tools.search_shots(ref_shot=100, constraints={"nope_mean": {"lo": 1.0}})
     assert "nope_mean" in got["error"] and isinstance(got["caveats"], list)
 
 
-def test_search_shots_filters_on_labels(ideate_db):
+def test_search_shots_filters_on_labels(shot_design_db):
     got = tools.search_shots(ref_shot=100, require_labels=["L"], avoid_labels=["dud"], n=5)
     assert [r["shot"] for r in got["results"]] == [200]
 
 
-def test_a_reference_shot_the_database_does_not_hold_is_an_error_with_the_hint(ideate_db):
+def test_a_reference_shot_the_database_does_not_hold_is_an_error_with_the_hint(shot_design_db):
     got = tools.search_shots(ref_shot=999999)
     assert "999999" in got["error"] and "shot_design add" in got["error"]
 
 
 def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_report(
-    ideate_db, monkeypatch
+    shot_design_db, monkeypatch
 ):
     """`search_report` recomputed the hard filter (and two more column passes) purely to report
     the candidate count, on top of the pass every channel makes for itself. A query that
@@ -148,7 +148,7 @@ def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_repo
     by_the_tool = len(calls)
 
     calls.clear()
-    db = ShotDB.load(ideate_db / "db")
+    db = ShotDB.load(shot_design_db / "db")
     rank_mod.search(
         __import__("shot_design.schema", fromlist=["QueryState"]).QueryState(
             ref_shot=100, segment="flat_top", n=3
@@ -162,7 +162,7 @@ def test_an_unconstrained_search_does_not_pass_over_the_table_again_for_its_repo
 # ------------------------------------------------------------------------------ describe_shot
 
 
-def test_describe_shot_returns_the_record_and_the_prose(ideate_db):
+def test_describe_shot_returns_the_record_and_the_prose(shot_design_db):
     got = tools.describe_shot(100)
     assert got["shot"] == 100 and got["segment"] == "flat_top"
     assert got["record"]["shot"] == 100 and got["record"]["human"]["run_id"] == "r1"
@@ -170,7 +170,7 @@ def test_describe_shot_returns_the_record_and_the_prose(ideate_db):
     assert got["caveats"] == []
 
 
-def test_describe_shot_accepts_the_segment_name_a_model_is_likely_to_type(ideate_db):
+def test_describe_shot_accepts_the_segment_name_a_model_is_likely_to_type(shot_design_db):
     """`flattop` is what a model writes; `flat_top` is what the schema calls it. Taking the
     first and saying so beats an error the model cannot act on."""
     got = tools.describe_shot(100, segment="flattop")
@@ -178,17 +178,17 @@ def test_describe_shot_accepts_the_segment_name_a_model_is_likely_to_type(ideate
     assert any("flat_top" in c for c in got["caveats"])
 
 
-def test_an_unknown_segment_name_is_an_error_that_lists_the_ones_there_are(ideate_db):
+def test_an_unknown_segment_name_is_an_error_that_lists_the_ones_there_are(shot_design_db):
     got = tools.describe_shot(100, segment="middle")
     assert "middle" in got["error"] and "flat_top" in got["error"]
 
 
-def test_describe_shot_on_a_shot_that_is_not_there_is_an_error_dict(ideate_db):
+def test_describe_shot_on_a_shot_that_is_not_there_is_an_error_dict(shot_design_db):
     got = tools.describe_shot(999999)
     assert "999999" in got["error"] and got["caveats"] == []
 
 
-def test_describe_shot_says_which_device_encoded_the_frame_codes(ideate_db, monkeypatch):
+def test_describe_shot_says_which_device_encoded_the_frame_codes(shot_design_db, monkeypatch):
     """The four-key cache payload records no device, and the codes are not bit-identical across
     devices or across BLAS thread counts. A description that says "this shot is encoded" without
     saying how is the state the encode product shipped in."""
@@ -252,7 +252,7 @@ def test_get_events_without_a_database_is_the_error_the_cli_prints(tmp_path, mon
     assert "error" in got and "shot_design build" in got["error"]
 
 
-def test_get_events_without_an_events_table_says_the_join_has_not_run(ideate_db):
+def test_get_events_without_an_events_table_says_the_join_has_not_run(shot_design_db):
     got = tools.get_events(shot=100)
     assert got["events"] == [] and got["n"] == 0 and got["forecasts"] == []
     assert "no events table yet (labeler events not joined)" in got["caveats"]
@@ -261,21 +261,21 @@ def test_get_events_without_an_events_table_says_the_join_has_not_run(ideate_db)
 # --------------------------------------------------------- the four states of an empty answer
 
 
-def test_a_shot_the_database_does_not_hold_is_unindexed_not_quiet(ideate_db):
+def test_a_shot_the_database_does_not_hold_is_unindexed_not_quiet(shot_design_db):
     """THE DEFECT. `get_events(198658)` returned `{"n": 0, "caveats": []}` for a shot that is not
     in the 500-shot database at all, while `describe_shot(198658)` correctly said so. An
     assistant reading the two together learns that the shot is in the database and was quiet."""
-    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+    write_events(shot_design_db / "db", [_event(100, "tearing", 1.0, 2.0)])
     got = tools.get_events(198658)
     assert got["status"] == "unindexed"
     assert "error" in got and "not in the database" in got["error"]
 
 
-def test_an_indexed_shot_nobody_processed_is_unprocessed(ideate_db):
+def test_an_indexed_shot_nobody_processed_is_unprocessed(shot_design_db):
     """No source rows and no non-forecast events: nobody ran a detector over this shot, so its
     empty event list is not a report that the shot was quiet."""
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(
                 100, "disruption", 3.0, 3.0, event_id="100-f-00001",
@@ -291,13 +291,13 @@ def test_an_indexed_shot_nobody_processed_is_unprocessed(ideate_db):
     assert got["coverage"]["has_observed_products"] is False
 
 
-def test_a_shot_where_only_the_text_ran_is_unprocessed_not_observed(ideate_db):
+def test_a_shot_where_only_the_text_ran_is_unprocessed_not_observed(shot_design_db):
     """labeler records `text` as a source that RAN (over the shot's own span). A lexicon hit is
     not a detector, so a shot with a logbook and no detector run is `unprocessed` - its mention
     is in `text_mentions` and its empty `events` is not "0 detections inside coverage"."""
-    write_sources(ideate_db / "db", [_source(100, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1)])
+    write_sources(shot_design_db / "db", [_source(100, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1)])
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [_event(100, "elm", 0.0, 0.0, source="text", evidence_kind="text", diag="", channel=-1,
                 pass_name="")],
     )
@@ -309,9 +309,9 @@ def test_a_shot_where_only_the_text_ran_is_unprocessed_not_observed(ideate_db):
     assert any("Absence is not evidence" in c for c in got["caveats"])
 
 
-def test_a_window_outside_every_sources_coverage_is_uncovered_and_names_the_span(ideate_db):
-    write_sources(ideate_db / "db", [_source(100, t_cov0_s=1.0, t_cov1_s=4.0)])
-    write_events(ideate_db / "db", [_event(100, "tearing", 1.5, 2.0)])
+def test_a_window_outside_every_sources_coverage_is_uncovered_and_names_the_span(shot_design_db):
+    write_sources(shot_design_db / "db", [_source(100, t_cov0_s=1.0, t_cov1_s=4.0)])
+    write_events(shot_design_db / "db", [_event(100, "tearing", 1.5, 2.0)])
 
     got = tools.get_events(100, t0_s=8.0, t1_s=9.0)
     assert got["status"] == "uncovered"
@@ -323,11 +323,11 @@ def test_a_window_outside_every_sources_coverage_is_uncovered_and_names_the_span
     assert inside["status"] == "observed" and inside["n"] == 1
 
 
-def test_a_source_that_ran_and_saw_nothing_says_so_in_as_many_words(ideate_db):
+def test_a_source_that_ran_and_saw_nothing_says_so_in_as_many_words(shot_design_db):
     """The state the whole contract exists for: somebody looked, over a known span, and there was
     nothing to see. That is an observation, and it must not read like an unexamined shot."""
     write_sources(
-        ideate_db / "db",
+        shot_design_db / "db",
         [_source(100, "tokeye_track", n_events=0), _source(100, "ece_sawtooth", n_events=0)],
     )
     got = tools.get_events(100)
@@ -337,9 +337,9 @@ def test_a_source_that_ran_and_saw_nothing_says_so_in_as_many_words(ideate_db):
     assert any("0 detections inside their coverage" in c for c in got["caveats"])
 
 
-def test_a_source_that_failed_is_reported_rather_than_counted_as_coverage(ideate_db):
+def test_a_source_that_failed_is_reported_rather_than_counted_as_coverage(shot_design_db):
     write_sources(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _source(100, "tokeye_track", n_events=0),
             _source(100, "ece_sawtooth", status="error", reason="ece read failed",
@@ -357,7 +357,7 @@ def test_a_source_that_failed_is_reported_rather_than_counted_as_coverage(ideate
     assert reasons["dalpha_lh"] == "no d_alpha on this shot"
 
 
-def test_an_ok_source_whose_coverage_is_unknown_never_makes_a_window_observed(ideate_db):
+def test_an_ok_source_whose_coverage_is_unknown_never_makes_a_window_observed(shot_design_db):
     """THE CORNER, from real shot 198658: `actuator/ech_power_total` is `ok` with NaN coverage --
     it ran, and nothing records over what span. The reply used to say `observed` and "0 detections
     inside their coverage" while its own `coverage` block said the coverage was None. A source
@@ -365,11 +365,11 @@ def test_an_ok_source_whose_coverage_is_unknown_never_makes_a_window_observed(id
     NOT observed; it is `uncovered`, and the caveat names the source rather than implying it saw
     nothing."""
     write_sources(
-        ideate_db / "db",
+        shot_design_db / "db",
         [_source(100, "actuator", diag="ech_power_total", n_events=0,
                  t_cov0_s=float("nan"), t_cov1_s=float("nan"))],
     )
-    write_events(ideate_db / "db", [])
+    write_events(shot_design_db / "db", [])
 
     got = tools.get_events(100, t0_s=3.0, t1_s=4.0)
     assert got["status"] == "uncovered"
@@ -383,19 +383,19 @@ def test_an_ok_source_whose_coverage_is_unknown_never_makes_a_window_observed(id
     assert whole_shot["status"] == "uncovered", "no window is not a covered window"
 
 
-def test_the_unknown_coverage_caveat_is_there_even_beside_real_coverage(ideate_db):
+def test_the_unknown_coverage_caveat_is_there_even_beside_real_coverage(shot_design_db):
     """A shot with one honest span and one unknown one is observed over the span -- and the
     reader still has to be told that one source's coverage is unrecorded, because "2 sources ran"
     would otherwise read as two sources having looked at the window."""
     write_sources(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _source(100, "actuator", diag="ech_power_total", n_events=0,
                     t_cov0_s=float("nan"), t_cov1_s=float("nan")),
             _source(100, "ece_sawtooth", diag="ece", t_cov0_s=0.0, t_cov1_s=6.0, n_events=0),
         ],
     )
-    write_events(ideate_db / "db", [])
+    write_events(shot_design_db / "db", [])
 
     got = tools.get_events(100, t0_s=1.0, t1_s=2.0)
     assert got["status"] == "observed"
@@ -404,19 +404,19 @@ def test_the_unknown_coverage_caveat_is_there_even_beside_real_coverage(ideate_d
     assert any("1 source(s) ran" in c and "0 detections" in c for c in got["caveats"])
 
 
-def test_the_no_detection_caveat_counts_only_what_covered_the_window(ideate_db):
+def test_the_no_detection_caveat_counts_only_what_covered_the_window(shot_design_db):
     """`n_sources_ok` is a count of what RAN -- the logbook lexicon and an unknown-coverage
     actuator included. Putting it in a sentence about detections INSIDE COVERAGE inflates the
     observation: on real 198658 it would have read "24 sources ran ... 0 detections"."""
     write_sources(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _source(100, "text", t_cov0_s=0.0, t_cov1_s=6.5, n_events=1),
             _source(100, "tokeye_track", t_cov0_s=0.0, t_cov1_s=6.0, n_events=0),
             _source(100, "ece_sawtooth", diag="ece", t_cov0_s=5.0, t_cov1_s=6.0, n_events=0),
         ],
     )
-    write_events(ideate_db / "db", [])
+    write_events(shot_design_db / "db", [])
 
     got = tools.get_events(100, t0_s=1.0, t1_s=2.0)
     assert got["status"] == "observed"
@@ -425,18 +425,18 @@ def test_the_no_detection_caveat_counts_only_what_covered_the_window(ideate_db):
                for c in got["caveats"]), got["caveats"]
 
 
-def test_a_curated_database_listing_never_makes_a_shot_observed(ideate_db):
+def test_a_curated_database_listing_never_makes_a_shot_observed(shot_design_db):
     """A `database:<stem>` source is a published table of shots, not a detector, and a
     `evidence_kind="database"` row is its entry. Neither is a diagnostic having looked, so a shot
     whose only completed source is a curated list is `unprocessed`: nobody ran a detector over
     it, and its empty `events` is not an observation of nothing."""
     write_sources(
-        ideate_db / "db",
+        shot_design_db / "db",
         [_source(100, "database:rwm_database", n_events=1,
                  t_cov0_s=float("nan"), t_cov1_s=float("nan"))],
     )
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [_event(100, "rwm", 2.0, 2.0, event_id="100-d-00001", source="database:rwm_database",
                 evidence_kind="database", diag="", channel=-1, pass_name="",
                 t_cov0_s=float("nan"), t_cov1_s=float("nan"))],
@@ -450,10 +450,10 @@ def test_a_curated_database_listing_never_makes_a_shot_observed(ideate_db):
     assert not any("0 detections inside their coverage" in c for c in got["caveats"])
 
 
-def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(ideate_db):
+def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(shot_design_db):
     """A reversed window used to come back as a successful empty result, which reads exactly like
     "nothing happened in that interval" -- for an interval that does not exist."""
-    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+    write_events(shot_design_db / "db", [_event(100, "tearing", 1.0, 2.0)])
 
     reversed_ = tools.get_events(100, t0_s=5.0, t1_s=1.0)
     assert "error" in reversed_ and "reversed" in reversed_["error"]
@@ -465,13 +465,13 @@ def test_a_reversed_or_non_finite_window_is_an_error_not_a_silent_empty(ideate_d
     assert "error" in tools.get_events(100, t1_s=float("inf"))
 
 
-def test_a_text_row_is_a_lexicon_hit_and_never_lands_in_events(ideate_db):
+def test_a_text_row_is_a_lexicon_hit_and_never_lands_in_events(shot_design_db):
     """The API documentation claimed every non-forecast row describes what a diagnostic showed.
     A text row describes what somebody WROTE, which is not the same claim and not the same
     evidence."""
-    write_sources(ideate_db / "db", [_source(100)])
+    write_sources(shot_design_db / "db", [_source(100)])
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
             _event(100, "tearing", 1.0, 2.0, event_id="100-t-00001",
@@ -485,9 +485,9 @@ def test_a_text_row_is_a_lexicon_hit_and_never_lands_in_events(ideate_db):
     assert any("not an assertion that the phenomenon occurred" in c for c in got["caveats"])
 
 
-def test_get_events_filters_by_shot_and_decodes_attrs(ideate_db):
+def test_get_events_filters_by_shot_and_decodes_attrs(shot_design_db):
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, attrs={"m": 2, "n": 1}),
             _event(101, "elm", 1.0, 1.0, event_id="101-x-00001"),
@@ -498,9 +498,9 @@ def test_get_events_filters_by_shot_and_decodes_attrs(ideate_db):
     assert got["events"][0]["attrs"] == {"m": 2, "n": 1}  # decoded, not the JSON string
 
 
-def test_get_events_filters_by_phenomenon_and_by_time_overlap(ideate_db):
+def test_get_events_filters_by_phenomenon_and_by_time_overlap(shot_design_db):
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
             _event(100, "tearing", 4.0, 5.0, event_id="100-x-00002"),
@@ -523,13 +523,13 @@ def test_get_events_filters_by_phenomenon_and_by_time_overlap(ideate_db):
     ]
 
 
-def test_a_forecast_is_never_returned_as_an_observed_event(ideate_db):
+def test_a_forecast_is_never_returned_as_an_observed_event(shot_design_db):
     """The single most important thing this tool does. `label_forecast` rows are a MODEL's claim
     about what was about to happen, computed by the join out of the labels; a detector row is
     somebody's claim about what a diagnostic showed. Handing an assistant one table with both in
     it is how "shot 100 disrupted at 3.2 s" gets written from a risk curve."""
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
             _event(
@@ -545,26 +545,26 @@ def test_a_forecast_is_never_returned_as_an_observed_event(ideate_db):
     assert any("forecast" in c for c in got["caveats"])
 
 
-def test_a_shot_with_no_events_in_the_table_is_not_an_error(ideate_db):
-    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+def test_a_shot_with_no_events_in_the_table_is_not_an_error(shot_design_db):
+    write_events(shot_design_db / "db", [_event(100, "tearing", 1.0, 2.0)])
     got = tools.get_events(101)
     assert got["events"] == [] and got["n"] == 0 and "error" not in got
     assert got["status"] == "unprocessed"
 
 
-def test_an_unreadable_events_table_is_an_error_dict_not_an_exception(ideate_db):
-    (ideate_db / "db" / "events.parquet").write_bytes(b"not parquet")
+def test_an_unreadable_events_table_is_an_error_dict_not_an_exception(shot_design_db):
+    (shot_design_db / "db" / "events.parquet").write_bytes(b"not parquet")
     got = tools.get_events(100)
     assert "error" in got and isinstance(got["caveats"], list)
 
 
-def test_a_row_with_no_recorded_time_is_counted_out_of_a_window_not_dropped_in_silence(ideate_db):
+def test_a_row_with_no_recorded_time_is_counted_out_of_a_window_not_dropped_in_silence(shot_design_db):
     """A NaN compares False against both bounds, so a row whose times were never recorded
     vanishes from a windowed call looking exactly like a row that did not overlap. "We do not
     know when this happened" is not "this did not happen then", and the difference is the whole
     reason `search_shots` carries `nan_excluded`; this is the same hole in the other tool."""
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
             _event(100, "tearing", np.nan, np.nan, event_id="100-x-00002"),
@@ -580,7 +580,7 @@ def test_a_row_with_no_recorded_time_is_counted_out_of_a_window_not_dropped_in_s
     assert not any("no recorded time" in c for c in whole["caveats"])
 
 
-def test_a_missing_value_of_any_pandas_flavour_becomes_null(ideate_db):
+def test_a_missing_value_of_any_pandas_flavour_becomes_null(shot_design_db):
     """`_event_row` mapped non-finite FLOATS to null. A `pd.NaT` or a `pd.NA` -- what a datetime
     or a nullable-integer column hands back, which the events schema will grow one day -- went
     through untouched and would raise inside the JSON encoder, i.e. inside the transport."""
@@ -607,13 +607,13 @@ def _database_row(shot: int, t: float, **over) -> dict:
     )
 
 
-def test_a_curated_table_row_is_a_fourth_list_and_not_an_observation(ideate_db):
+def test_a_curated_table_row_is_a_fourth_list_and_not_an_observation(shot_design_db):
     """A database row is somebody's LIST: it names a shot and a time, and nothing looked at the
     shot to produce it. Merging it into `events` is the same error class the forecast split
     exists to prevent - an assistant would report "a detector saw an RWM at 2.6 s" from a line
     in a spreadsheet."""
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
             _database_row(100, 2.613),
@@ -634,9 +634,9 @@ def test_a_curated_table_row_is_a_fourth_list_and_not_an_observation(ideate_db):
     assert row["attrs"]["table"] == "rwm_onsets_2017"
 
 
-def test_the_four_lists_stay_apart(ideate_db):
+def test_the_four_lists_stay_apart(shot_design_db):
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "tearing", 1.0, 2.0, event_id="100-x-00001"),
             _database_row(100, 2.613),
@@ -653,14 +653,14 @@ def test_the_four_lists_stay_apart(ideate_db):
                & {e["event_id"] for e in got["database_intervals"]}) == 0
 
 
-def test_the_curated_list_caveat_is_absent_when_no_table_named_the_shot(ideate_db):
-    write_events(ideate_db / "db", [_event(100, "tearing", 1.0, 2.0)])
+def test_the_curated_list_caveat_is_absent_when_no_table_named_the_shot(shot_design_db):
+    write_events(shot_design_db / "db", [_event(100, "tearing", 1.0, 2.0)])
     got = tools.get_events(100)
     assert got["database_intervals"] == [] and got["n_database"] == 0
     assert not any("curated" in c for c in got["caveats"])
 
 
-def test_the_empty_answer_carries_the_fourth_list_too(ideate_db):
+def test_the_empty_answer_carries_the_fourth_list_too(shot_design_db):
     """A shot in the database with no events table at all still answers in the same SHAPE.
 
     A caller that has to test for the key's existence before reading it will eventually forget
@@ -697,8 +697,8 @@ def write_claims(db_dir: Path, rows: list[dict]) -> None:
 
 
 @pytest.fixture
-def phenomenon_db(ideate_db: Path) -> Path:
-    """`ideate_db`'s four shots with one evidence class each, as `test_phenomena.phen_db` has it.
+def phenomenon_db(shot_design_db: Path) -> Path:
+    """`shot_design_db`'s four shots with one evidence class each, as `test_phenomena.phen_db` has it.
 
     100 observed (three tracks in the tearing band, and an ELM a detector saw), 101 forecast
     only, 200 the operators' word only, 201 silent. One database that exercises the whole tier
@@ -706,7 +706,7 @@ def phenomenon_db(ideate_db: Path) -> Path:
     """
     track = {"f_centroid_khz": 10.0, "bandwidth_khz": 2.0}
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(100, "coherent_mode", 2.0, 2.5, event_id="100-tokeye_track-00000",
                    attrs=track),
@@ -726,8 +726,8 @@ def phenomenon_db(ideate_db: Path) -> Path:
                    confidence=0.22, horizon_s=0.5, attrs={"label": "tm_risk_500ms"}),
         ],
     )
-    write_claims(ideate_db / "db", [_claim(200, "tearing", snippet="the tearing mode locked")])
-    return ideate_db
+    write_claims(shot_design_db / "db", [_claim(200, "tearing", snippet="the tearing mode locked")])
+    return shot_design_db
 
 
 def test_phenomenon_locate_resolves_an_alias_and_ranks_by_evidence_class_first(phenomenon_db):
@@ -756,7 +756,7 @@ def test_phenomenon_locate_resolves_an_alias_and_ranks_by_evidence_class_first(p
     assert json.loads(json.dumps(got)) == got
 
 
-def test_phenomenon_locate_on_text_naming_nothing_is_an_error_not_an_empty_list(ideate_db):
+def test_phenomenon_locate_on_text_naming_nothing_is_an_error_not_an_empty_list(shot_design_db):
     """The two answers are opposites. "No shot has one" is a finding about the database; "that
     text names no phenomenon I know" is a finding about the question, and only the second is
     true here -- so the reply lists the ids there are, as the CLI's exit-2 does."""
@@ -810,14 +810,14 @@ def test_phenomenon_locate_takes_the_constraints_search_shots_takes(phenomenon_d
     assert [h["shot"] for h in a["hits"]] == [h["shot"] for h in b["hits"]] == [200]
 
 
-def test_phenomenon_locate_says_when_the_database_holds_only_forecasts(ideate_db):
+def test_phenomenon_locate_says_when_the_database_holds_only_forecasts(shot_design_db):
     """What the CLI prints under `resolved:`, for the same reason: on a database with no
     observation in it no hit below can be an observed one, and that changes what every row
     means."""
     from shot_design.retrieval import phenomena as ph
 
     write_events(
-        ideate_db / "db",
+        shot_design_db / "db",
         [
             _event(101, "tearing", 2.0, 2.1, event_id="101-label_forecast-00000",
                    source="label_forecast", evidence_kind="forecast", diag="",
@@ -860,7 +860,7 @@ def test_phenomenon_locate_without_a_database_at_all_names_the_build_command(
 # --------------------------------------------------- fix loop 1 (review I10), findings F1-F7
 
 
-def test_phenomenon_locate_without_an_events_table_says_the_join_has_not_run(ideate_db):
+def test_phenomenon_locate_without_an_events_table_says_the_join_has_not_run(shot_design_db):
     """F1. `ShotDB.load` skips a missing `events.parquet` and hands back the empty typed frame,
     so every reader has to say so in its own words -- `get_events` does, with `NO_EVENTS`.
     Without it the reply on a freshly built database is an empty `hits` list that reads as "no
@@ -870,11 +870,11 @@ def test_phenomenon_locate_without_an_events_table_says_the_join_has_not_run(ide
     assert tools.NO_EVENTS in got["caveats"]
 
 
-def test_phenomenon_locate_names_an_evidence_table_it_could_not_read(ideate_db):
+def test_phenomenon_locate_names_an_evidence_table_it_could_not_read(shot_design_db):
     """F1, the other half. A torn table is recorded in `db.load_errors` and is NOT a missing
     one: `evidence()` would otherwise report `unprocessed`, whose meaning is "no detector ran"
     -- a claim about the machine standing in for a file that would not open."""
-    (ideate_db / "db" / "events.parquet").write_bytes(b"not a parquet file at all")
+    (shot_design_db / "db" / "events.parquet").write_bytes(b"not a parquet file at all")
     got = tools.phenomenon_locate("NTM", n=10)
     assert "error" not in got
     assert any("could not read events.parquet" in c for c in got["caveats"])
@@ -990,26 +990,26 @@ def test_a_half_published_database_is_an_error_dict_naming_the_rebuild(tmp_path,
     assert any("rebuilt" in c and "shot_design build" in c for c in got["caveats"])
 
 
-def test_an_events_table_with_the_wrong_columns_is_an_error_dict_not_a_key_error(ideate_db):
+def test_an_events_table_with_the_wrong_columns_is_an_error_dict_not_a_key_error(shot_design_db):
     """`pd.read_parquet` is inside the try; `df["shot"]` is not. A readable table written by
     something else -- an older schema, another tool's parquet -- raises `KeyError` from a line
     no `except` covers."""
     pd.DataFrame({"shot_number": [100], "t_start": [1.0]}).to_parquet(
-        ideate_db / "db" / "events.parquet"
+        shot_design_db / "db" / "events.parquet"
     )
     got = _registered("get_events")(shot=100)
     assert "KeyError" in got["error"] and "shot" in got["error"]
     assert isinstance(got["caveats"], list)
 
 
-def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db):
+def test_the_server_registers_the_four_tools_and_the_manifest_resource(shot_design_db):
     from mcp.client import Client
 
     async def go():
         async with Client(server_mod.build_server()) as client:
             tool_list = await client.list_tools()
             resources = await client.list_resources()
-            manifest = await client.read_resource("ideate://manifest")
+            manifest = await client.read_resource("shot-design://manifest")
             return tool_list, resources, manifest
 
     tool_list, resources, manifest = asyncio.run(go())
@@ -1018,7 +1018,7 @@ def test_the_server_registers_the_four_tools_and_the_manifest_resource(ideate_db
     ]
     for t in tool_list.tools:
         assert t.description and t.input_schema["type"] == "object"
-    assert [str(r.uri) for r in resources.resources] == ["ideate://manifest"]
+    assert [str(r.uri) for r in resources.resources] == ["shot-design://manifest"]
     assert json.loads(manifest.contents[0].text)["reader"] == "test"
     # The guard at registration must not eat the schema: a `*args` wrapper that did would leave
     # every tool with an empty property set and the model guessing at argument names.
@@ -1036,7 +1036,7 @@ def test_the_manifest_resource_carries_the_missing_database_error(tmp_path, monk
 
     async def go():
         async with Client(server_mod.build_server()) as client:
-            return await client.read_resource("ideate://manifest")
+            return await client.read_resource("shot-design://manifest")
 
     doc = json.loads(asyncio.run(go()).contents[0].text)
     assert "no database" in doc["error"]
@@ -1120,7 +1120,7 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
         assert malformed.is_error or "caveats" not in json.loads(malformed.content[0].text)
 
 
-def test_the_instructions_do_not_promise_a_caveat_the_transport_cannot_deliver(ideate_db):
+def test_the_instructions_do_not_promise_a_caveat_the_transport_cannot_deliver(shot_design_db):
     """The server told models "every reply carries caveats". Application errors do; a call whose
     ARGUMENTS fail the tool schema is rejected by the framework before the function runs, and
     comes back with no `caveats` key at all. Documenting the limit is the fix that was chosen
@@ -1186,14 +1186,14 @@ def test_the_project_mcp_config_points_at_this_server():
     assert _is_repository_checkout_root(entry["cwd"])
 
 
-def test_an_unreadable_optional_table_is_recorded_by_the_store_not_raised(ideate_db):
+def test_an_unreadable_optional_table_is_recorded_by_the_store_not_raised(shot_design_db):
     """`ShotDB.load` reads the label tables eagerly since I9a; a torn `events.parquet` used to
     raise there, turning every MCP call into a protocol error. The core tables load, the
     failure is on `load_errors`, and the events reader reports it in its own words."""
     from shot_design.shotdb.store import ShotDB
 
-    (ideate_db / "db" / "events.parquet").write_bytes(b"not parquet")
-    db = ShotDB.load(ideate_db / "db")
+    (shot_design_db / "db" / "events.parquet").write_bytes(b"not parquet")
+    db = ShotDB.load(shot_design_db / "db")
     assert set(db.load_errors) == {"events"}
     assert "ArrowInvalid" in db.load_errors["events"] or "Parquet" in db.load_errors["events"]
     assert db.events is not None and len(db.events) == 0  # the empty typed frame, not None

@@ -26,7 +26,7 @@ from ..retrieval.describe import describe_parts, phenomenon_rows, scalar_units
 from .scoring import scoring_info
 
 STATIC = Path(__file__).parent / "static"
-COOKIE = "ideate_token"
+COOKIE = "shot_design_token"
 _LOCATE_LOCK = threading.Lock()
 
 

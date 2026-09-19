@@ -6,9 +6,9 @@ FusionAIHub (FAITH) develops multimodal models and analysis tools for tokamak pl
 
 - `src/tokamak_foundation_model/`: data processing, modality models, training, IGNITE codecs/dynamics, and end-to-end models.
 - `src/labelmaker/`: feature resolution, event labeling, calibration, and validation.
-- `src/ideate/`: shot analysis, retrieval, experiment design, and CLI/MCP interfaces.
+- `src/shot_design/`: shot analysis, retrieval, experiment design, and CLI/MCP interfaces.
 - `src/faith/`: package version metadata; the distribution includes all four packages.
-- `tests/`: component suites, including `e2e/`, `ignite/`, `labelmaker/`, and `ideate/`.
+- `tests/`: component suites, including `e2e/`, `ignite/`, `labelmaker/`, and `shot_design/`.
 - `scripts/`: training, evaluation, data preparation, and platform-specific SLURM launchers. `configs/` holds shared configuration; `docs/` holds architecture notes; `analysis/` contains figure-generation scripts.
 
 ## Build, Test, and Development Commands
@@ -19,8 +19,8 @@ Run commands from the repository root. Pixi manages Python 3.11 and installs the
 - `pixi install -e frontier`: install the Frontier environment; follow `README.md` for FlashAttention setup.
 - `pixi run pytest tests/e2e/test_lora.py -q`: run a focused model test.
 - `pixi run -e labelmaker pytest tests/labelmaker -q`: run labeling tests with their environment dependencies.
-- `pixi run -e ideate ideate-test`: run the IDEATE suite.
-- `pixi run -e ideate ideate --help`: inspect the analysis CLI.
+- `pixi run -e shot-design shot_design-test`: run the Shot Designer suite.
+- `pixi run -e shot-design shot_design --help`: inspect the analysis CLI.
 
 ## Coding Style & Naming Conventions
 
@@ -32,7 +32,7 @@ Use pytest with `test_*.py` files and `test_*` functions. Add focused regression
 
 ## Commit & Pull Request Guidelines
 
-Recent commits use component prefixes, such as `labelmaker: ...` and `ideate: ...`. Keep subjects concrete and changes focused. In PRs, explain the behavior change, link relevant issues, report test commands/results, and identify data or hardware requirements. Include plots when reconstruction or prediction quality changes.
+Recent commits use component prefixes, such as `labelmaker: ...` and `shot_design: ...`. Keep subjects concrete and changes focused. In PRs, explain the behavior change, link relevant issues, report test commands/results, and identify data or hardware requirements. Include plots when reconstruction or prediction quality changes.
 
 ## Data & Configuration
 
