@@ -44,7 +44,7 @@ import pandas as pd
 
 from .. import config
 from ..schema import Labels, Outcome, Provenance, Segment, ShotRecord, Status
-from . import features, legacy_raw, text
+from . import features, legacy_raw, select, text
 from .reader import ShotFailed, Signal, SignalReader, Unavailable
 
 _log = logging.getLogger(__name__)
@@ -346,10 +346,7 @@ def _bundle_pulse_length_s(shot: int, paths: config.Paths) -> float | None:
     raw = text.shot_table_row(bundle).get("PULSE-LENGTH")
     if raw is None:
         return None
-    try:
-        return float(str(raw).replace(" ", ""))
-    except ValueError:
-        return None
+    return select._num(raw)
 
 
 def _raw_groups(reader: SignalReader, shot: int) -> list[str]:

@@ -81,3 +81,18 @@ def test_build_record_without_a_bundle_still_has_no_segments(paths):
     )
     assert rec.segments == [] and shapes == {}
     assert rec.coverage_reasons.get("ip") is None
+
+
+def test_bundle_pulse_length_s_delegates_to_selects_num(paths, monkeypatch):
+    """`_bundle_pulse_length_s` re-implemented `select._num`'s parsing rule instead of
+    calling it -- two copies of one rule. Monkeypatching `select._num` proves the call
+    graph (not just that the two happen to agree on today's inputs): it must be
+    `_bundle_pulse_length_s`'s own answer that changes."""
+    from shot_design.shotdb import select
+
+    monkeypatch.setattr(select, "_num", lambda v: 12345.0)
+    shot = 900070
+    bundle = text_bundle(shot, row={"PULSE-LENGTH": "5.0"})
+    (paths.per_shot_txt_dir / f"shot_{shot}.txt").write_text(bundle)
+
+    assert build._bundle_pulse_length_s(shot, paths) == 12345.0
