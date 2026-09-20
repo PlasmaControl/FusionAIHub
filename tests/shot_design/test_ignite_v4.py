@@ -187,3 +187,88 @@ def test_the_pinned_manifest_agrees_with_the_real_checkpoints_modalities():
     ]
     total = sum(e["n_tok"] for e in man.values())
     assert total == ignite.model_cfg()["frame_tokens"] == 1209
+
+
+# --- mirnov, and production's own frame codes ----------------------------------
+
+
+@pytest.fixture
+def prod_cache(tmp_path, monkeypatch):
+    """A stand-in for `model.frame_codes_cache`, the read-only cache production trained on.
+
+    `model_cfg()` is patched rather than the dict it returns: `load_yaml` hands back a DEEP COPY
+    on every call, so mutating one caller's dict is invisible to the next. Both modules that read
+    the key are patched, because each imported the function by name.
+    """
+    from shot_design.design import program_reference as pr
+
+    d = tmp_path / "prod_frame_codes"
+    d.mkdir()
+    cfg = ignite.model_cfg() | {"frame_codes_cache": str(d)}
+    monkeypatch.setattr(ignite, "model_cfg", lambda: cfg)
+    monkeypatch.setattr(pr, "model_cfg", lambda: cfg)
+    return d
+
+
+def _payload(n_frames: int = 3) -> dict:
+    """A frame-code cache in the shipped layout for the pinned generation."""
+    cfg = ignite.model_cfg()
+    return {
+        "codes": {
+            n: torch.zeros(n_frames, cfg["n_tok"][n], dtype=torch.int32)
+            for n in cfg["production_vocabs"]
+        },
+        "actuators": torch.zeros(n_frames, 88, dtype=torch.float16),
+        "n_frames": int(n_frames),
+        "vocabs": dict(cfg["production_vocabs"]),
+    }
+
+
+def test_cache_path_prefers_the_production_v4_cache(paths, prod_cache):
+    """Production's copy wins over ours: its codes are the ones the checkpoint was trained on,
+    and ours are only bit-identical to them by luck (a BLAS thread count flips spectro tokens)."""
+    from shot_design.design import program_reference as pr
+
+    (prod_cache / "190000.pt").write_bytes(b"x")
+    ours = paths.data_root / "frame_codes"
+    ours.mkdir()
+    (ours / "190000.pt").write_bytes(b"y")
+    assert pr._cache_path(190000, paths) == prod_cache / "190000.pt"
+    assert pr._cache_path(190001, paths) is None
+
+
+def test_validate_cache_rejects_a_v2_vocabulary(prod_cache):
+    """A v2 cache and a v4 one are otherwise indistinguishable, and the generation has to be
+    reported BEFORE the structural checks -- 'actuators must be float16' would send the reader
+    looking for a bug in a file whose only fault is that it is a generation old."""
+    from shot_design.design import program_reference as pr
+
+    cache = _payload(1)
+    cache["vocabs"]["ece"] = 32768
+    with pytest.raises(ValueError, match="ece"):
+        pr.validate_cache(cache)
+
+
+def test_frame_codes_reads_the_production_cache_instead_of_re_encoding(paths, prod_cache):
+    """No corpus file exists for this shot, so an encode could not even start."""
+    torch.save(_payload(3), prod_cache / "190000.pt")
+    got = ignite.frame_codes(190000, {"ece": (None, None, "spectro")}, paths, max_frames=2)
+    assert set(got) == {"ece"} and got["ece"].shape == (2, ignite.model_cfg()["n_tok"]["ece"])
+
+
+def test_frame_codes_encodes_when_the_cache_is_refused(paths, prod_cache):
+    """`use_cache=False` is what a parity gate passes: a gate that compared production's cache
+    with a copy of production's cache would pass by construction."""
+    torch.save(_payload(3), prod_cache / "190000.pt")
+    with pytest.raises(FileNotFoundError):
+        ignite.frame_codes(
+            190000, {"ece": (None, None, "spectro")}, paths, use_cache=False
+        )
+
+
+def test_frame_codes_refuses_a_cached_shot_from_another_generation(paths, prod_cache):
+    payload = _payload(3)
+    payload["vocabs"]["ece"] = 32768
+    torch.save(payload, prod_cache / "190000.pt")
+    with pytest.raises(ValueError, match="ece"):
+        ignite.frame_codes(190000, {"ece": (None, None, "spectro")}, paths)

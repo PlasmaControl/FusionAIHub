@@ -187,13 +187,16 @@ FM_DIR = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 def test_codecs_expose_the_encode_then_quantize_contract():
     """`encode(x) -> (B, n_tok, d_model)` PRE-FSQ features and `quantize(feats) -> (quant, codes)`
     -- read off SpectroCodec/SlowTSCodec/FastTSCodec, which all three encodable families share.
-    The video codecs are in the bundle but are not loaded: nothing here holds camera frames."""
+    The video codecs are in the bundle but are not loaded: nothing here holds camera frames.
+
+    Thirteen names, not v2's twelve: generation v4 adds the `mirnov` spectro codec."""
     codecs = ignite.load_codecs(_bundle)
     assert set(codecs) == {
         "ece",
         "bes",
         "mhr",
         "co2",
+        "mirnov",
         "filterscopes",
         "mse",
         "cer_ti",
@@ -225,8 +228,10 @@ def test_frame_codes_reproduce_the_production_cache_bit_for_bit():
     # The current corpus has no co2 samples on this shot; mhr exercises spectro
     # encoding with real data, alongside slowts and fastts.
     codecs = ignite.load_codecs(_bundle, names=["ts_core_density", "filterscopes", "mhr"])
+    # `use_cache=False` or this proves nothing: `frame_codes` otherwise hands back production's
+    # own cache for a shot it holds, and the comparison would be the file against itself.
     got = ignite.frame_codes(
-        190090, codecs, load_paths(), data_dir=FM_DIR, max_frames=20, workers=2
+        190090, codecs, load_paths(), data_dir=FM_DIR, max_frames=20, workers=2, use_cache=False
     )
     assert set(got) == set(codecs)
     for name, codes in got.items():

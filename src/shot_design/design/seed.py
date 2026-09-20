@@ -3,18 +3,20 @@
 THE SHIPPED STRUCTURE. A frame-code cache is a plain `torch.save` dict with exactly four keys,
 and `ignite_infer.validate_shot` refuses a rollout unless they line up with the checkpoint:
 
-    codes      {modality: (F, n_tok) int32}  flat FSQ token indices, 14 modalities
-                 ece / mhr / co2      spectro  192 tok   vocab 32768
-                 bes                  spectro  192 tok   vocab 64000
-                 tangtv_lower/_upper  video    108 tok   vocab 64000
+    codes      {modality: (F, n_tok) int32}  flat FSQ token indices, 15 modalities
+                 ece / bes / mhr /
+                 co2 / mirnov         spectro  192 tok   vocab  1000
+                 tangtv_lower/_upper  video    108 tok   vocab  1000
                  ts_core_density, ts_core_temp, ts_tangential_density, ts_tangential_temp,
                  cer_ti, cer_rot, mse slowts     4 tok   vocab  1000
                  filterscopes         fastts     5 tok   vocab  1000
     actuators  (F, 88) float16  the control trajectory, ALREADY per-shot z-scored
-    n_frames   int              F; 239 for a full shot
+    n_frames   int              F; 219 for a full shot of generation v4, whose frame 0 is at
+                                shot time 1.0 s (v2 started at 0.0 and gave 239)
     vocabs     {modality: int}  codebook size per modality -- the field that tells a v2 cache
-                                from a v3 one, which are otherwise indistinguishable and which
-                                the model reinterprets silently
+                                from a v4 one, which are otherwise indistinguishable and which
+                                the model reinterprets silently. v4 is 1000 everywhere over 15
+                                modalities; v2 mixed 32768 / 64000 / 1000 over 14.
 
 Nothing else. A fifth key would be dropped by nobody and read by nobody, so provenance for a
 cache written here lives beside it in the run log and in the G-ENC gate's JSON, not inside the
@@ -29,13 +31,15 @@ The one thing it cannot get from `frame_codes` is a modality the corpus file sto
 all-NaN `(C, 1)` placeholder. `frame_codes` skips those deliberately: for a retrieval embedding,
 a codec's output on a placeholder is a finite, meaningless number and NaN is the honest answer.
 A frame-code cache is the opposite case -- production encoded the placeholder anyway, and the
-checkpoint's modality table requires all 14 slots -- so the placeholders are topped up here
+checkpoint's modality table requires all 15 slots -- so the placeholders are topped up here
 through the same loader with the presence test bypassed, which reproduces the shipped constant
 codes exactly (bes = 51210, co2 = 312 on 190090). Dropping them instead would produce a cache
 `validate_shot` rejects.
 
-VERIFIED. `scripts/shot_design/g_enc.py` compares freshly encoded shots with the caches shipped in
-the bundle. Over all ten, on a V100S against production's MI250X: nine of the fourteen
+VERIFIED, ON GENERATION v2. `scripts/shot_design/g_enc.py` compares freshly encoded shots with
+the caches shipped in the bundle (it passes `use_cache=False`, or it would be comparing
+production's cache with a copy of itself). Every measurement in this paragraph was taken against
+the v2 bundle and its fourteen modalities; v4 has not been through the gate. Over all ten, on a V100S against production's MI250X: nine of the fourteen
 modalities are bit-identical on every shot, `mhr` on 8/10, `co2` on 4/10 and `ece` on 3/10 (the
 misses agree on >= 99.2 % of tokens), the two video modalities on 8/10 and 6/10, and the 88
 actuator channels are bit-identical in float16 on 8/10. The two exceptions are 190735 and
@@ -67,23 +71,14 @@ from . import provenance as prov
 _log = logging.getLogger(__name__)
 
 #: The checkpoint's modality table, in the bundle's own order (`frame_codes/*.pt`'s `codes`).
-MODALITIES: tuple[str, ...] = (
-    "ece",
-    "bes",
-    "mhr",
-    "co2",
-    "tangtv_lower",
-    "tangtv_upper",
-    "ts_core_density",
-    "ts_core_temp",
-    "ts_tangential_density",
-    "ts_tangential_temp",
-    "cer_ti",
-    "cer_rot",
-    "mse",
-    "filterscopes",
+#: Read off the PINNED generation instead of written out here: v4 added `mirnov` to v2's
+#: fourteen, and a second copy of the list is a second thing to forget. The yaml key order IS
+#: the canonical token order -- `model.families` in configs/shot_design/ignite_modalities.yaml
+#: is itself taken from the pinned bundle's codecs/MANIFEST.json.
+MODALITIES: tuple[str, ...] = tuple(ignite.model_cfg()["families"])
+VIDEO_MODALITIES: tuple[str, ...] = tuple(
+    n for n, family in ignite.model_cfg()["families"].items() if family == "video"
 )
-VIDEO_MODALITIES: tuple[str, ...] = ("tangtv_lower", "tangtv_upper")
 #: `shotdb.ignite.frame_codes` hard-codes this; the placeholder top-up has to match it exactly.
 _BATCH_SIZE = 32
 
@@ -100,15 +95,21 @@ default_workers = ignite._default_workers
 def wanted_modalities(
     include_video: bool = True, modalities: Sequence[str] | None = None
 ) -> tuple[str, ...]:
+    """The requested modalities in canonical token order; all of them by default.
+
+    `model.families` is re-read per call rather than taken from `MODALITIES`, so that pinning a
+    different generation changes the answer without an import-time constant having to be rebuilt.
+    """
+    families = ignite.model_cfg()["families"]
     if modalities is not None:
         names = tuple(dict.fromkeys(modalities))
-        unknown = [n for n in names if n not in MODALITIES]
+        unknown = [n for n in names if n not in families]
         if unknown:
             raise ValueError(f"not IGNITE modalities: {', '.join(unknown)}")
     else:
-        names = MODALITIES
+        names = tuple(families)
     if not include_video:
-        names = tuple(n for n in names if n not in VIDEO_MODALITIES)
+        names = tuple(n for n in names if families[n] != "video")
     return names
 
 
@@ -126,6 +127,7 @@ def encode_frame_codes(
     workers: int | None = None,
     allow_partial: bool = False,
     run_manifest: Path | None = None,
+    use_cache: bool = True,
 ) -> Path:
     """Encode `shot` into `<out_dir>/<shot>.pt` in the shipped layout; return that path.
 
@@ -142,6 +144,12 @@ def encode_frame_codes(
     whose only notion of "missing" was the same reduced dictionary, passed it. `allow_partial=True`
     is the diagnostic escape hatch: the run proceeds without the codec and the cache simply lacks
     that modality, which the gate then FAILS on because it was requested. It is never the gate.
+
+    `use_cache=False` forbids `shotdb.ignite.frame_codes` from answering out of the production
+    frame-code corpus the pinned generation was trained on. Left True, a shot production already
+    encoded comes back as production's OWN codes -- the ones the checkpoint was fitted to, which
+    ours reproduce bit for bit only on some shots. A PARITY GATE has to pass False: comparing
+    production's cache with a copy of production's cache passes whatever the encoder does.
     """
     import torch
 
@@ -180,6 +188,7 @@ def encode_frame_codes(
         max_frames=n_frames,
         device=device,
         workers=workers,
+        use_cache=use_cache,
     )
     per.update(
         _placeholder_codes(shot, codecs, per, data_dir, t0_start, n_frames, device, workers)

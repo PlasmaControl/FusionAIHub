@@ -355,6 +355,10 @@ def encode_one(shot: int, args, codecs, paths, out_dir: Path, ref) -> tuple[dict
         paths=paths,
         workers=args.workers,
         allow_partial=args.allow_partial,
+        # The gate RE-ENCODES. Without this it would be handed production's own frame codes for
+        # any shot in `model.frame_codes_cache` and compare them against the shipped cache they
+        # were copied from, which passes whatever our encoder does.
+        use_cache=False,
     )
     elapsed = time.perf_counter() - started
     return torch.load(path, weights_only=False, map_location="cpu"), elapsed

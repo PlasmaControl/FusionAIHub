@@ -36,6 +36,11 @@ FROZEN_CODEC_CKPTS: Dict[str, Tuple[str, str]] = {
     "bes": ("spectro", "eval_runs/ignite_d5_bes/codec_best.pt"),
     "mhr": ("spectro", "eval_runs/ignite_d5_mhr/codec_best.pt"),
     "co2": ("spectro", "eval_runs/ignite_co2_rawstd192/codec_best.pt"),
+    # NEW IN GENERATION v4 (v2 had no mirnov codec). The row is what makes the name LOADABLE:
+    # `resolve_codec_path` tries `tmpl` first and only falls back here, but `load_frozen_codecs`
+    # reads the FAMILY out of this table unconditionally -- `FROZEN_CODEC_CKPTS[n][0]` -- so a
+    # mirnov resolved from a pinned v4 bundle still died on KeyError without it.
+    "mirnov": ("spectro", "eval_runs/ignite_d5_mirnov/codec_best.pt"),
     "tangtv_lower": ("video", "eval_runs/ignite_d4_tangtv_lower/codec_best.pt"),  # 108 tok, best 2.07
     "tangtv_upper": ("video", "eval_runs/ignite_d4_tangtv_upper/codec_best.pt"),  # 108 tok, best 1.66
     "ts_core_density": ("slowts", "eval_runs/ignite_d5_ts_core_density/codec_best.pt"),

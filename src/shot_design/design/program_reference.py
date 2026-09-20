@@ -17,7 +17,7 @@ import torch
 from ..config import Paths, load_yaml
 from ..env import getenv
 from ..shotdb.corpus import CorpusReader
-from ..shotdb.ignite import bundle_dir
+from ..shotdb.ignite import bundle_dir, model_cfg
 from ..shotdb.reader import ShotFailed, Unavailable
 from . import actuators as act
 
@@ -48,10 +48,21 @@ def _corpus(paths: Paths) -> Path:
 
 
 def _cache_path(shot: int, paths: Paths) -> Path | None:
-    for root in (
-        paths.data_root / "frame_codes",
-        bundle_dir(paths) / "frame_codes",
-    ):
+    """This shot's frame-code cache, PRODUCTION's copy first.
+
+    `model.frame_codes_cache` is the corpus the pinned dynamics checkpoint was trained on --
+    thousands of shots already encoded, read-only, and never written by anything here. When it
+    holds the shot, that file is not merely the cheapest answer (a re-encode is ~40 s of GPU and
+    a 2-5 GB corpus read): it is the only one guaranteed to carry the codes the checkpoint was
+    fitted to. Our own encode agrees bit for bit only on some shots -- changing a BLAS thread
+    count on one machine is enough to move a spectro token (see `scripts/shot_design/g_enc.py`).
+    The two writable locations follow it, for the shots production never encoded.
+    """
+    roots = [paths.data_root / "frame_codes", bundle_dir(paths) / "frame_codes"]
+    production = model_cfg().get("frame_codes_cache")
+    if production:
+        roots.insert(0, Path(production))
+    for root in roots:
         path = root / f"{shot}.pt"
         if path.is_file():
             return path
@@ -77,6 +88,31 @@ def validate_cache(cache: dict) -> None:
         raise ValueError(
             "Seed cache must contain codes, actuators, n_frames and vocabs"
         )
+    contract = load_yaml("ignite_modalities.yaml")
+    specs = contract["modalities"]
+    expected_vocabs = contract["model"]["production_vocabs"]
+    codes, vocabs = cache["codes"], cache["vocabs"]
+    # THE GENERATION COMES FIRST. Two caches of different codec generations are otherwise
+    # indistinguishable -- same four keys, same dtypes, plausible integers -- and `vocabs` is the
+    # only field that tells them apart, which is why it is checked before anything structural.
+    # Reported the other way round, a v2 cache meeting a v4 checkpoint complains about its
+    # actuator dtype or its token width and sends the reader hunting for a bug in a file whose
+    # only fault is its age.
+    if not isinstance(vocabs, dict) or set(vocabs) != set(expected_vocabs):
+        only_one_side = set(expected_vocabs) ^ set(vocabs if isinstance(vocabs, dict) else {})
+        raise ValueError(
+            f"Seed cache names {len(vocabs) if isinstance(vocabs, dict) else 0} modalities, "
+            f"the pinned production generation has {len(expected_vocabs)}; on one side only: "
+            f"{', '.join(sorted(only_one_side)) or '(none)'}"
+        )
+    for name, vocab in vocabs.items():
+        if type(vocab) is not int or vocab < 1:
+            raise ValueError(f"Seed cache {name} has invalid vocabulary metadata")
+        if vocab != expected_vocabs[name]:
+            raise ValueError(
+                f"Seed cache {name} vocabulary {vocab} does not match pinned production "
+                f"vocabulary {expected_vocabs[name]}; use this checkpoint's codec generation"
+            )
     frames = cache["n_frames"]
     if type(frames) is not int or frames < 21:
         raise ValueError(
@@ -92,23 +128,12 @@ def validate_cache(cache: dict) -> None:
         raise ValueError(
             "Seed cache actuators must be finite float16 with shape (F, 88)"
         )
-    contract = load_yaml("ignite_modalities.yaml")
-    specs = contract["modalities"]
-    expected_vocabs = contract["model"]["production_vocabs"]
-    codes, vocabs = cache["codes"], cache["vocabs"]
     if not isinstance(codes, dict) or set(codes) != set(specs):
-        raise ValueError("Seed cache must contain all 14 production modalities")
-    if not isinstance(vocabs, dict) or set(vocabs) != set(codes):
-        raise ValueError("Seed cache vocabulary metadata must match its modalities")
+        raise ValueError(
+            f"Seed cache must contain all {len(specs)} production modalities"
+        )
     for name, tokens in codes.items():
         vocab = vocabs[name]
-        if type(vocab) is not int or vocab < 1:
-            raise ValueError(f"Seed cache {name} has invalid vocabulary metadata")
-        if vocab != expected_vocabs[name]:
-            raise ValueError(
-                f"Seed cache {name} vocabulary {vocab} does not match pinned production "
-                f"vocabulary {expected_vocabs[name]}; use this checkpoint's codec generation"
-            )
         if (
             not isinstance(tokens, torch.Tensor)
             or tokens.dtype != torch.int32
