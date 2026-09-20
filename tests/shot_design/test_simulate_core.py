@@ -78,6 +78,23 @@ def test_run_paired_rejects_code_windows_shorter_than_k0_plus_n_predict():
     assert "4" in str(exc.value) and "5" in str(exc.value)
 
 
+def test_run_paired_rejects_actuator_windows_shorter_than_k0_plus_n_predict():
+    model, cfg = _model()
+    codes = _codes(5)
+    real = torch.zeros(4, 88)  # k0+n_predict is 5; the real arm is one frame short
+    prop = torch.ones(5, 88)
+    with pytest.raises(ValueError, match="actuators must cover") as exc:
+        core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
+    assert "real=4" in str(exc.value) and "5" in str(exc.value)
+
+
+def test_actuator_arms_rejects_actuator_windows_shorter_than_k0_plus_n_predict():
+    ref = {"actuators": torch.randn(5, 88).half()}
+    des = {"actuators": torch.randn(4, 88).half()}  # one frame short
+    with pytest.raises(ValueError, match="design_seed actuators has 4 frames"):
+        core.actuator_arms(ref, des, k0=2, n_predict=3)
+
+
 def test_actuator_arms_rejects_missing_reference_actuators():
     des = {"actuators": torch.randn(5, 88).half()}
     with pytest.raises(ValueError, match="reference_cache"):
