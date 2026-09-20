@@ -44,6 +44,28 @@ class AgyError(RuntimeError):
     """The agy subprocess failed, timed out, or answered something unusable."""
 
 
+def _decode(text) -> str:
+    """`TimeoutExpired.stdout`/`.stderr` come back as raw bytes even when
+    `subprocess.run` was called with `text=True` -- only the success path decodes."""
+    if text is None:
+        return ""
+    if isinstance(text, bytes):
+        text = text.decode(errors="replace")
+    return text.strip()[-4000:]
+
+
+def _is_retryable(message: str) -> bool:
+    """A launch that plausibly hit a transient hiccup (a timeout, or an exit with no
+    output at all) is worth retrying; an exit that actually said something is a real
+    answer from agy (a bad prompt, a quota error, ...) and repeating it would not
+    help."""
+    if message.startswith("agy timed out after"):
+        return True
+    if message.startswith("exit ") and message.split(":", 1)[-1].strip() == "":
+        return True
+    return False
+
+
 def render_prompt(messages: list[dict], tools: list[dict] | None = None) -> str:
     """One text prompt: each message as a labelled section, tools appended as a
     schema-emulation instruction plus their name/description/parameters."""
@@ -166,7 +188,14 @@ class AgyProvider:
                 cmd, capture_output=True, text=True, timeout=timeout_s
             )
         except subprocess.TimeoutExpired as e:
-            raise AgyError(f"agy timed out after {timeout_s:.0f}s") from e
+            tail = _decode(e.stderr) or _decode(e.stdout)
+            detail = f": {tail}" if tail else ""
+            raise AgyError(f"agy timed out after {timeout_s:.0f}s{detail}") from e
+        except OSError as e:
+            # A missing/unexecutable binary raises a raw OSError (FileNotFoundError,
+            # PermissionError, ...) from subprocess.run itself, before there is any
+            # returncode to check.
+            raise AgyError(f"could not launch agy ({cmd[0]!r}): {e}") from e
         if result.returncode != 0:
             tail = (result.stderr or result.stdout or "").strip()[-4000:]
             raise AgyError(f"exit {result.returncode}: {tail}")
@@ -186,11 +215,22 @@ class AgyProvider:
             *[str(a) for a in self.cfg.get("extra_args", [])],
             f"-p={prompt}",
         ]
-        try:
-            raw = self._runner(cmd, prompt)
-        except AgyError as e:
-            raise LLMUnavailable(str(e)) from e
-        try:
-            return _parse_output(raw, model)
-        except AgyError as e:
-            raise LLMUnavailable(str(e)) from e
+        retries = int(self.cfg.get("retries", 0))
+        attempts_left = max(1, retries + 1)
+        last_error: AgyError | None = None
+        while attempts_left:
+            attempts_left -= 1
+            try:
+                raw = self._runner(cmd, prompt)
+            except AgyError as e:
+                last_error = e
+                if attempts_left and _is_retryable(str(e)):
+                    continue
+                raise LLMUnavailable(str(e)) from e
+            try:
+                return _parse_output(raw, model)
+            except AgyError as e:
+                raise LLMUnavailable(str(e)) from e
+        # Unreachable: the loop above always returns (parse success) or raises
+        # (a non-retryable failure, or the last of `attempts_left`).
+        raise LLMUnavailable(str(last_error))
