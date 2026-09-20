@@ -5,9 +5,15 @@ sidebar_position: 4
 
 ## Local LLM and per-shot blurbs
 
-`configs/shot_design/llm.yaml` enables `provider: ollama`. Without an endpoint file,
-the client is unavailable and builds use the existing header + outcome template.
-The UI reads stored blurbs; loading a page does not generate them.
+`configs/shot_design/llm.yaml` is one shared file for both clusters — unlike
+`paths.yaml`/`paths.frontier.yaml`, there is no per-cluster override, so
+whatever is checked in applies everywhere. Its checked-in default is now
+`provider: agy` (see [Frontier: Gemini Flash via `agy`](#frontier-gemini-flash-via-agy)
+below); `shot_design.llm.client.LLMClient` dispatches purely on that key, so
+a Stellar operator running the Ollama path sets `provider: ollama` in this
+same file. Without an endpoint file, the client is unavailable and builds
+use the existing header + outcome template. The UI reads stored blurbs;
+loading a page does not generate them.
 
 Prompt v6 asks for exactly **three plain sentences**, at most **90 words**:
 
@@ -78,9 +84,15 @@ the `blurb_all.sh` wrapper already supplies `--all`.
 
 ### Operator runbook (after merge)
 
-The existing Ollama 0.33.3 binary and both Gemma models are reused in place:
+The existing Ollama 0.33.3 binary and both Gemma models are reused in place.
+`serve_llm.sh` resolves these three directories itself, from hardcoded
+fallback defaults baked into the script (the literal paths below) — it reads
+each as a FLAT top-level `llm.yaml` key, not through the nested `ollama:`
+block that now holds unrelated `null` placeholders for the agy default, so
+that block has no effect on `serve_llm.sh`. Set a flat top-level key of the
+same name in `llm.yaml` to override one:
 
-| `llm.yaml` key | default path |
+| `llm.yaml` key (flat, top-level) | default (hardcoded in `serve_llm.sh`) |
 | --- | --- |
 | `ollama_bin_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/bin/ollama` |
 | `ollama_models_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/ollama` |
@@ -151,8 +163,11 @@ from the login node, which does have network access and an OAuth cache.
 
 `LLMClient.chat(...)` keeps the same signature and `Reply` return for both
 providers; only the body that builds the request and reads the response
-differs. The dispatch lives in `self._providers[self.cfg["provider"]]`, so
-adding `agy` did not touch `ollama`'s code path.
+differs. The dispatch lives in `self._providers[provider]`, keyed by
+`llm.yaml`'s `provider` value (lower-cased and stripped), so adding `agy`
+did not touch `ollama`'s code path. An unregistered provider string raises
+`LLMUnavailable` immediately, naming the known providers, instead of
+silently falling back to Ollama.
 
 ```yaml
 provider: agy
@@ -183,8 +198,9 @@ into one prompt, and asks for a JSON reply matching a fixed schema —
 `--json-schema` flag. The `-p=<prompt>` argument must be last and attached
 with `=`, not a separate token: passing `-p` and `--model` as adjacent
 arguments makes `agy` swallow `--model` as part of the prompt text. The
-response comes back as JSON on stdout with a `structured_output` field
-(preferred), falling back to the first embedded JSON object in `response`;
+response comes back as JSON on stdout: a `structured_output` field is
+preferred, falling back to a JSON-encoded `result` string, then the first
+embedded JSON object found inside `response`;
 a non-`SUCCESS` `status`, a non-zero exit or a timeout all surface as the
 same `LLMUnavailable` error the Ollama path raises when its endpoint is
 unreachable, so callers do not need a provider-specific except clause.

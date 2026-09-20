@@ -33,9 +33,10 @@ sampling noise. Three metrics come out per modality:
 `src/shot_design/simulate/decode.py` turns the predicted/real/gt token
 triples back into physical units for a handful of modalities (band power
 for spectro modalities, raw values for slow/fast time series), and
-`src/shot_design/simulate/report.py` writes `simulation.h5` (tokens,
-decoded series and actuators for all three arms plus provenance attributes:
-`dynamics_sha256`, `codec_generation`, `design_id`, `window_s`), one
+`src/shot_design/simulate/report.py` writes `simulation.h5` (tokens for all
+three arms, decoded series, and the `real`/`proposed` actuator trajectories,
+plus provenance attributes `design_id`, `bundle_manifest_sha256`,
+`codec_generation`, `window_s`, `dynamics_step`), one
 `panels/<modality>.png` three-line plot per decoded modality, and a
 `report.md` with a `modality | frac_static | token_acc | persistence_acc |
 skill | divergence_vs_real` table.
@@ -64,18 +65,27 @@ else to poll.
 
 ## On Frontier
 
-`scripts/slurm_frontier/shot_design_simulate.sh` is the one-GPU, debug-QOS
-wrapper: `sbatch scripts/slurm_frontier/shot_design_simulate.sh <ident>`,
-submitted with the repo root as the working directory (every
-`slurm_frontier` wrapper locates `_shot_design_common.sh` relative to
-`$SLURM_SUBMIT_DIR`, which is only set correctly when `sbatch` is invoked
-from there). The design's Actuator editor UI is expected to submit this same
-job and poll its `status.json` over HTTP (`POST`/`GET
-/api/design/{ident}/simulate`) rather than requiring an operator to run
-`sbatch` by hand — that route is part of the concurrent Frontier UI work and
-had not landed in this checkout at the time this page was written; until it
-does, the CLI and the sbatch wrapper above are the supported way to run a
-simulation.
+`scripts/slurm_frontier/shot_design_simulate.sh` is the one-GPU, `batch -q
+debug` wrapper (1 GPU, 7 CPUs, 1 hour): `sbatch
+scripts/slurm_frontier/shot_design_simulate.sh <ident>`, submitted with the
+repo root as the working directory (every `slurm_frontier` wrapper locates
+`_shot_design_common.sh` relative to `$SLURM_SUBMIT_DIR`, which is only set
+correctly when `sbatch` is invoked from there). The design's Actuator editor
+UI submits this same job and polls its `status.json` over HTTP instead of
+requiring an operator to run `sbatch` by hand:
+
+- `POST /api/design/{ident}/simulate` runs `configs/shot_design/ui.yaml`'s
+  `simulate.submit_cmd` (`sbatch scripts/slurm_frontier/shot_design_simulate.sh
+  {ident}`) and returns `{ident, job_id, status_url}`.
+- `GET /api/design/{ident}/simulate` reads back `status.json`
+  (`{"state": "not_started"}` before the job has written one); the UI polls
+  it every `simulate.poll_s` (15) seconds.
+- `GET /api/design/{ident}/simulate/report` and
+  `GET /api/design/{ident}/simulate/panels/{name}` serve `report.md` and a
+  `panels/<modality>.png` once they exist, 404 until then.
+
+Running the CLI directly (above) or through the sbatch wrapper works the same
+way outside the UI.
 
 ## Reading the result
 

@@ -18,7 +18,7 @@ the `shot_design` family, which other pages link to.
 |---|---|
 | `_frontier_settings.sh` | modules (`PrgEnv-gnu/8.7.0`, `cpe/26.03`, `rocm/7.1.1`, `craype-accel-amd-gfx90a`), `PATH`/`LD_LIBRARY_PATH` for the `frontier` pixi env, `PYTORCH_ROCM_ARCH`, the MIOpen cache, `FLASH_ATTENTION_TRITON_AMD_ENABLE` |
 | `_frontier_common.sh` | ROCm DDP job environment: RCCL/NCCL knobs, MIOpen cache, `MASTER_ADDR`/`MASTER_PORT`, for multi-node training jobs |
-| `_shot_design_common.sh` | sources `_frontier_settings.sh`; exports `REPO`, `ROOT` (`$SHOT_DESIGN_DATA_ROOT`), `PY` (the `shot-design-frontier` interpreter path), `SHOT_DESIGN_PATHS`/`LABELER_ROOT`/`SHOT_DESIGN_CORPUS`, `RCCL_PLUGIN=0` (single-GPU/CPU jobs need no plugin) |
+| `_shot_design_common.sh` | sources `_frontier_settings.sh` only when `$SLURM_JOB_ID` is set (login-node scripts source this file too, and `_frontier_settings.sh` would fail outside a job); exports `REPO`, `ROOT` (`$SHOT_DESIGN_DATA_ROOT`), `PY` (the `shot-design-frontier` interpreter path), `SHOT_DESIGN_PATHS`/`LABELER_ROOT`/`SHOT_DESIGN_CORPUS`, `RCCL_PLUGIN=0` (single-GPU/CPU jobs need no plugin) |
 | `_gpu_sampler.sh` | background `rocm-smi` sampler, one line every interval to `<jobid>.gpu.csv`; `labeler.jobstats.parse_frontier` reads it back as the only GPU-utilization source OLCF offers |
 | `setup_frontier_env.sh` | flash-attention 2 (Triton backend) build for MI250X; run via `pixi run -e frontier setup-flash-attn` on a login node, no GPU needed at build time |
 
@@ -38,8 +38,9 @@ location (the spooled copy `sbatch` runs has no relation to the checkout).
 | `shot_design_simulate.sh` | `batch -q debug`, 1 GPU, 1h | one design's paired real/proposed IGNITE rollout (see [Simulation](../shot-design/simulation.md)) |
 
 See [Database build](../shot-design/database-build.md) for the full
-census → select → labels → build → blurb → encode sequence and exact
-commands, and [Frontier](../clusters/frontier.md#slurm-wrappers) for the
+census → select → logs → labels → features (fdp) → build → encode →
+blurbs → coverage/describe sequence and exact commands, and
+[Frontier](../clusters/frontier.md#slurm-wrappers) for the
 submit-from-repo-root rule.
 
 ## Training and evaluation
