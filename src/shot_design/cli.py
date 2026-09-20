@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import textwrap
@@ -99,28 +100,45 @@ def _ip_spec() -> config.SignalSpec:
     return config.SignalSpec(name="ip", **config.load_yaml("signals.yaml")["signals"]["ip"])
 
 
-def _with_ip(shots: list[int], paths: config.Paths, reader=None) -> tuple[list[int], list[int]]:
-    """Split a shot list into (has an Ip trace on disk, does not).
+def _buildable(
+    shots: list[int], paths: config.Paths, reader=None
+) -> tuple[list[int], list[int]]:
+    """Split a shot list into (has an Ip trace or a usable PULSE-LENGTH proxy, neither).
 
-    `build_record` does not fail on a shot with no raw file: it returns a record with zero
-    segments and an `end_reason` of "no_ip_signal", which is the right answer for one shot and the
-    wrong thing to put in a database for ninety. Ip is the discriminator because it is what
-    `find_segments` needs -- a file that exists but is still being written by a bulk fetch has no
-    usable Ip yet and belongs on the skipped side too.
+    `build_record` does not fail on a shot with no raw file: it returns a record with
+    zero segments and an `end_reason` of "no_ip_signal", which is the right answer for
+    one shot and the wrong thing to put in a database for ninety. Ip is the first
+    discriminator because it is what `find_segments` needs -- a file that exists but is
+    still being written by a bulk fetch has no usable Ip yet and belongs on the skipped
+    side too.
 
-    Asked of the SAME reader the build will use. Asking the d3d_fusion_data layout about a corpus
-    shot answers "no Ip" for every one of them -- the two layouts hold disjoint shot ranges -- and
-    the build would then skip its entire list.
+    A shot with no Ip trace is still buildable when its text bundle's PULSE-LENGTH is
+    long enough for `features.proxy_segments` to give it a real flat top (task F2b:
+    Frontier has no Ip trace at all, so this is the ONLY discriminator there) --
+    `build_record` gives it real segments from the proxy rather than the empty record
+    this gate exists to keep out of a bulk build.
+
+    Asked of the SAME reader the build will use. Asking the d3d_fusion_data layout about
+    a corpus shot answers "no Ip" for every one of them -- the two layouts hold disjoint
+    shot ranges -- and the build would then skip its entire list.
     """
     spec = _ip_spec()
     reader = reader or legacy_raw.LegacyReader(paths)
+    cfg = build_mod.load_build_cfg()["segments"]
+    min_pulse_s = cfg["proxy_ramp_up_s"] + cfg["proxy_ramp_down_s"]
+    bundles = select_mod.read_bundles(paths.per_shot_txt_dir, shots)
     have = []
     for s in shots:
         try:
             if reader.signal_status(s, spec) == "present":
                 have.append(s)
+                continue
         except ShotFailed:  # an unopenable raw file is not a shot with an Ip trace
             continue
+        bundle = bundles.get(s)
+        pulse_s = select_mod.parse_facts(s, bundle).pulse_length_s if bundle else None
+        if pulse_s is not None and math.isfinite(pulse_s) and pulse_s > min_pulse_s:
+            have.append(s)
     return have, [s for s in shots if s not in set(have)]
 
 
@@ -352,13 +370,13 @@ def cmd_build(args) -> int:
     if args.limit is not None:
         wanted = wanted[: args.limit]
     reader = build_mod.make_reader(args.reader, paths)
-    shots, skipped = (wanted, []) if args.all else _with_ip(wanted, paths, reader)
+    shots, skipped = (wanted, []) if args.all else _buildable(wanted, paths, reader)
     if skipped:
         print(
             _fill(
-                f"{len(skipped)} of {len(wanted)} shots have no Ip signal on disk yet and are "
-                f"skipped (fetch them first, or pass --all to build them as empty records): "
-                f"{_brief(skipped)}",
+                f"{len(skipped)} of {len(wanted)} shots have neither an Ip trace nor a "
+                f"PULSE-LENGTH in their shot bundle and are skipped (fetch them first, "
+                f"or pass --all to build them as empty records): {_brief(skipped)}",
                 indent="",
                 hang="  ",
             )

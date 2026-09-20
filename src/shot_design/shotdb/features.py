@@ -118,6 +118,38 @@ def find_segments(ip: Signal, cfg: dict) -> list[Segment]:
     return [sg for sg in segs if sg.t1_ms > sg.t0_ms]
 
 
+def proxy_segments(pulse_length_s: float | None, cfg: dict) -> list[Segment]:
+    """full/ramp_up/flat_top/ramp_down from PULSE-LENGTH alone, for a cluster with no Ip
+    trace.
+
+    Frontier (task F2b) has no plasma-current signal at all -- no corpus `ip` group, no
+    labeler feature file -- so `find_segments` is never reachable there. The DIII-D shot
+    table's PULSE-LENGTH (seconds, counted from breakdown at t=0, same as the corpus
+    `xdata` origin) is the only flat-top evidence left. `cfg["proxy_ramp_up_s"]` /
+    `cfg["proxy_ramp_down_s"]` (retrieval.yaml) split it the same way
+    `select.PROXY_RAMP_S` does for rule (d): ramp-up, then flat top, then ramp-down, in
+    ms.
+
+    `[]` for None, a non-finite pulse length, or a pulse too short to leave any flat
+    top -- exactly `find_segments`'s "no plasma" answer, so a caller cannot tell a proxy
+    shot with no flat top apart from a real one by the shape of the result alone.
+    """
+    if pulse_length_s is None or not np.isfinite(pulse_length_s):
+        return []
+    ramp_up_s, ramp_down_s = cfg["proxy_ramp_up_s"], cfg["proxy_ramp_down_s"]
+    if pulse_length_s - ramp_up_s - ramp_down_s <= 0:
+        return []
+    pulse_ms = pulse_length_s * 1000.0
+    ramp_up_ms = ramp_up_s * 1000.0
+    ramp_down_ms = ramp_down_s * 1000.0
+    return [
+        Segment(name="full", t0_ms=0.0, t1_ms=pulse_ms),
+        Segment(name="ramp_up", t0_ms=0.0, t1_ms=ramp_up_ms),
+        Segment(name="flat_top", t0_ms=ramp_up_ms, t1_ms=pulse_ms - ramp_down_ms),
+        Segment(name="ramp_down", t0_ms=pulse_ms - ramp_down_ms, t1_ms=pulse_ms),
+    ]
+
+
 def _subset(y: np.ndarray, actuator: bool) -> np.ndarray:
     return y[y > 0] if actuator else y
 

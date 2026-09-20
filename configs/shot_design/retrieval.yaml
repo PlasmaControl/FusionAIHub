@@ -9,6 +9,14 @@ segments:
   plasma_frac: 0.10            # plasma exists while Ip >= frac * ip_ref
   target_tolerance: 0.15       # |measured/target - 1| <= this counts as "hit target"
   quench_ms: 50.0              # >50% -> <10% of ip_ref within this = fast current quench
+  # Frontier proxy (task F2b): that cluster has no Ip trace at all, so
+  # `shotdb.build.build_record` falls back to `features.proxy_segments`, which turns
+  # PULSE-LENGTH alone into full/ramp_up/flat_top/ramp_down. Their sum is
+  # `select.PROXY_RAMP_S` (1.27 s, measured ramp-up + ramp-down over 319 shots -- see
+  # the comment above that constant); the 1.0/0.27 split is a RULING (DIII-D Ip ramp-up
+  # to 85% is ~1 s), not a second measurement.
+  proxy_ramp_up_s: 1.0
+  proxy_ramp_down_s: 0.27
 scalar_embedding:
   n_components: 24
   waveform_points: 20
