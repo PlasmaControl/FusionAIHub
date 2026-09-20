@@ -1,4 +1,4 @@
-"""Pollable, authenticated jobs for the small Gemma design harness."""
+"""Pollable, authenticated jobs for the small model design harness."""
 
 from __future__ import annotations
 

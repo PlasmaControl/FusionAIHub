@@ -34,7 +34,7 @@ import tempfile
 import time
 import warnings
 from collections.abc import Sequence
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -880,18 +880,31 @@ def _blurb_counts(shots_df: pd.DataFrame, client=None) -> dict[str, object]:
 def write_blurbs(
     paths: config.Paths, client, only_missing: bool = True, *,
     limit: int | None = None, dry_run: bool = False, shots: Sequence[int] | None = None,
+    workers: int = 1,
 ) -> int:
     """Backfill blurbs into shots.parquet with the model; rewrite the file atomically.
     Return the number of accepted model replies. Select templates, empty blurbs and stale or
     unknown prompt versions in shot order, or exactly the sorted unique targeted `shots` regardless
     of `only_missing`, then apply `limit`. Dry runs print each candidate, gate verdict and final
     text without writing database files or the client's request cache.
+
+    `workers` runs the `_blurb.make` calls (each an `agy` subprocess through
+    `LLMClient.chat`, ~5-10 s) in a `ThreadPoolExecutor` so a large backfill does not
+    run one call at a time; the agy provider is a subprocess per call, so it is
+    thread-safe with no shared mutable state. Whatever runs the calls, results are
+    written into `df` (and printed, for a dry run) from this thread afterwards, in the
+    same shot order `workers=1` always used -- so `shots.parquet` and stdout are
+    identical regardless of thread scheduling, and one shot's failure (caught the same
+    way inside `_blurb.make` either way) never stops another's. `workers=1` takes no
+    executor at all: the original sequential loop, unchanged.
     """
     from ..retrieval import blurb as _blurb
     from .store import ShotDB
 
     if limit is not None and limit < 0:
         raise ValueError("blurb limit must be non-negative")
+    if workers < 1:
+        raise ValueError("blurb workers must be at least 1")
     db = ShotDB.load(paths.db_dir)
     df = db.shots.copy()
     targeted = sorted({int(shot) for shot in shots}) if shots is not None else None
@@ -921,10 +934,22 @@ def write_blurbs(
         todo = todo[:limit]
     if not len(todo):
         return 0
-    n = 0
-    for shot in todo:
+
+    def _one(shot: int):
         rec = db.get(int(shot))
-        b = _blurb.make(rec, client, cache=False if dry_run else None)
+        return rec, _blurb.make(rec, client, cache=False if dry_run else None)
+
+    # Rows are consumed in `todo` (shot) order on this thread whatever the workers do,
+    # so the parquet is byte-stable; the single-worker path stays a lazy stream, so a
+    # dry run prints each shot as it is made instead of after the last one.
+    if workers == 1:
+        rows = ((shot, _one(shot)) for shot in todo)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {shot: ex.submit(_one, shot) for shot in todo}
+        rows = ((shot, fut.result()) for shot, fut in futures.items())
+    n = 0
+    for shot, (rec, b) in rows:
         if dry_run:
             verdict = "PASS" if b.reason is None else f"FAIL ({b.reason})"
             print(

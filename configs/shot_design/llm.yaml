@@ -1,33 +1,28 @@
 version: 2
 # The local language model behind the design chat, the offline shot blurbs and describe.polish.
-# Ollama serves Gemma 4 through its OpenAI-compatible endpoint; the client (shot_design.llm.client)
-# speaks chat completions with tool calling over httpx. A hosted provider later is a base_url and
+# On Frontier the only model is Gemini Flash via the Antigravity CLI (agy); the client
+# (shot_design.llm.client) renders the chat as an agy prompt with a JSON schema and
+# emulates tool calls from the structured output (shot_design.llm.agy). The Stellar
+# Ollama path (Gemma over an OpenAI-compatible endpoint) still works for one release
+# via the `ollama:` block below; a hosted OpenAI-compatible provider is a base_url and
 # a key in the environment (LLM_API_KEY), never a code change.
-provider: ollama                 # no endpoint file means templates; "off" disables all calls
-base_url: null                   # set to e.g. http://127.0.0.1:11434 to bypass the endpoint file
-endpoint_file: llm/endpoint.json # relative to paths.data_root; scripts/shot_design/serve_llm.sh
-# Reuse the existing install and model files in place; never download/copy the binary.
-ollama_bin_dir: /scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/bin/ollama
-ollama_models_dir: /scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/ollama
-ollama_home_dir: /scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/ollama_home
-models:
-  quality: gemma4:26b            # Gemma-4-26B-A4B-it, 4-bit; measured 19444 MiB on one V100S 32 GB
-                                  # at OLLAMA_CONTEXT_LENGTH=16384 (serve_llm.sh's default;
-                                  # Ollama's own 262144 default made it span two cards)
-  fast: gemma4:e4b               # Gemma-4-E4B-it, 9.6 GB
+provider: agy   # "ollama" for the Stellar endpoint; "off" disables all calls
+agy:
+  bin: agy
+  timeout_s: 300
+  retries: 2
+  extra_args: ["--disable-slash-commands"]
+models:                    # replaces the gemma4 entries; `agy models` lists the ids
+  quality: gemini-3.8-flash-high
+  fast: gemini-3.8-flash-low
 default: quality
-timeout_s: 120                   # per model call
+timeout_s: 120                   # per model call (ollama path)
 max_tool_rounds: 8               # per chat turn
 temperature: 0.0
 max_tokens: 600
 cache: true                      # deterministic (temperature 0) requests are cached under llm_cache_dir
-# gemma4:26b is a reasoning model: measured through /v1/chat/completions it spends the whole
-# max_tokens budget on a `reasoning` field and returns content "" (max_tokens 20 -> content "",
-# finish_reason "length"); "reasoning_effort": "none" turns that off (content "ready", 2 completion
-# tokens) where "think": false is ignored. Remove the key for a provider that rejects it.
-reasoning_effort: "none"
 blurb:
-  model: quality
+  model: fast
   max_words: 90
   prompt_version: 6              # part of the prompt: bump to invalidate every cached blurb
                                   # v2: states the word cap explicitly and targets 40-60 words,
@@ -47,3 +42,10 @@ blurb:
                                   # EHO->edge helical, QH->quasi-high, FPP->flat pressure profile,
                                   # PCS->power control system, betan->poloidal beta, V.s->volts,
                                   # and spelled-out numerals.
+# Stellar only; kept readable for one release. None of this exists on Frontier.
+ollama:
+  base_url: null            # e.g. http://127.0.0.1:11434, bypasses the endpoint file
+  endpoint_file: llm/endpoint.json  # paths.data_root-relative; serve_llm.sh writes it
+  ollama_bin_dir: null            # not installed on Frontier; Stellar-only
+  ollama_models_dir: null         # not installed on Frontier; Stellar-only
+  ollama_home_dir: null           # not installed on Frontier; Stellar-only

@@ -297,7 +297,7 @@ def test_format_repair_stops_after_one_attempt(program_source, candidate_search)
     from shot_design.design import assistant
 
     paths, _ = program_source
-    with pytest.raises(ValueError, match="Gemma returned an invalid"):
+    with pytest.raises(ValueError, match="The model returned an invalid"):
         assistant.run_design(
             "Control tearing",
             paths,

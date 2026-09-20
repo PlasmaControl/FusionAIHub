@@ -17,6 +17,8 @@ from shot_design import config
 from shot_design.llm.client import LLMClient, LLMUnavailable, Reply
 from shot_design.retrieval import describe
 
+from .conftest import force_ollama_provider
+
 CFG = {
     "provider": "openai_compatible",
     "base_url": None,
@@ -51,18 +53,37 @@ def _transport(handler_calls: list, reply):
     return httpx.MockTransport(handler)
 
 
+def test_chat_dispatches_to_a_registered_provider(paths):
+    from shot_design.llm.client import LLMClient, Reply
+
+    c = LLMClient(cfg={"provider": "fake", "cache": False}, paths=paths)
+    c._providers["fake"] = lambda body: Reply(content="hi", model="fake")
+    assert c.chat([{"role": "user", "content": "x"}]).content == "hi"
+
+
 def test_llm_yaml_matches_the_shape_the_client_reads():
     cfg = config.load_yaml("llm.yaml")
-    assert cfg["provider"] == "ollama"
-    assert cfg["models"] == {"quality": "gemma4:26b", "fast": "gemma4:e4b"}
+    assert cfg["provider"] == "agy"
+    assert cfg["models"] == {
+        "quality": "gemini-3.8-flash-high",
+        "fast": "gemini-3.8-flash-low",
+    }
     assert cfg["default"] == "quality"
     assert cfg["max_tool_rounds"] == 8 and cfg["timeout_s"] == 120
-    assert cfg["endpoint_file"] == "llm/endpoint.json"
-    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 6}
-    root = "/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender"
-    assert cfg["ollama_bin_dir"] == f"{root}/bin/ollama"
-    assert cfg["ollama_models_dir"] == f"{root}/models/ollama"
-    assert cfg["ollama_home_dir"] == f"{root}/ollama_home"
+    assert cfg["agy"] == {
+        "bin": "agy",
+        "timeout_s": 300,
+        "retries": 2,
+        "extra_args": ["--disable-slash-commands"],
+    }
+    assert cfg["blurb"]["model"] == "fast"
+    assert cfg["blurb"]["max_words"] == 90 and cfg["blurb"]["prompt_version"] == 6
+    assert cfg["ollama"]["endpoint_file"] == "llm/endpoint.json"
+    assert cfg["ollama"]["base_url"] is None
+    # not installed on Frontier; Stellar-only for one more release
+    assert cfg["ollama"]["ollama_bin_dir"] is None
+    assert cfg["ollama"]["ollama_models_dir"] is None
+    assert cfg["ollama"]["ollama_home_dir"] is None
 
 
 def test_no_endpoint_means_unavailable_with_the_start_command(paths):
@@ -71,6 +92,32 @@ def test_no_endpoint_means_unavailable_with_the_start_command(paths):
     ok, hint = c.available()
     assert ok is False and "set base_url" in hint
     with pytest.raises(LLMUnavailable):
+        c.chat([{"role": "user", "content": "hi"}])
+
+
+def test_available_checks_the_agy_binary_on_path(paths, monkeypatch):
+    """agy is a CLI, not a server: availability means the binary is on PATH, never an
+    ollama endpoint file/base_url -- those are meaningless for this provider."""
+    c = LLMClient({**CFG, "provider": "agy", "agy": {"bin": "agy"}}, paths)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    ok, hint = c.available()
+    assert ok is False and "agy" in hint
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/agy")
+    assert c.available() == (True, "")
+
+
+def test_available_is_false_when_the_provider_is_off(paths):
+    c = LLMClient({**CFG, "provider": "off"}, paths)
+    assert c.available() == (False, "configs/shot_design/llm.yaml has provider: off")
+
+
+def test_unknown_provider_raises_llmunavailable_naming_the_known_ones(paths):
+    """A typo'd provider must fail loudly and specifically, not silently fall back to
+    ollama's "start a server" hint, which would be wrong for whatever was
+    misconfigured."""
+    c = LLMClient({**CFG, "provider": "gemma-cli"}, paths)
+    with pytest.raises(LLMUnavailable, match="unknown llm provider 'gemma-cli'"):
         c.chat([{"role": "user", "content": "hi"}])
 
 
@@ -278,8 +325,12 @@ def test_polish_keeps_the_template_when_the_model_changes_a_number(paths, monkey
 
 
 def test_polish_is_silent_when_no_server_is_up(paths, recwarn):
+    # describe._client_for_polish() builds its own LLMClient() from the real
+    # llm.yaml (provider: agy); force ollama so "no server is up" means what it
+    # says (no endpoint) rather than an agy binary happening to be on this PATH.
     template = "Shot 161172."
-    assert describe.polish(template) == (template, False)
+    with force_ollama_provider():
+        assert describe.polish(template) == (template, False)
     assert not [w for w in recwarn if "LLM" in str(w.message) or "llm" in str(w.message)]
 
 
