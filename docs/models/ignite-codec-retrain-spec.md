@@ -1,3 +1,8 @@
+---
+title: "IGNITE Codec Retrain Spec"
+sidebar_position: 3
+---
+
 # IGNITE spectro codec retrain spec (post gate-campaign, 2026-08-01)
 
 Outcome of the 2026-07-31/08-01 FSQ-AE gate campaign (see
@@ -26,9 +31,11 @@ META=/lustre/orion/fus187/proj-shared/foundation_model_meta
 
 Launch pattern (each; all four can run in parallel on `-p batch`):
 
-    MODALITY=<m> N_SHOTS=9000 LR=3e-4 OUT_DIR=eval_runs/ignite_codec_<m>_v3 \
-      EXTRA_ARGS="<from table>" sbatch scripts/slurm_frontier/ignite_codec_prod.sh
-    scontrol update job=<id> Partition=extended,batch,g1   # standing rule
+```bash
+MODALITY=<m> N_SHOTS=9000 LR=3e-4 OUT_DIR=eval_runs/ignite_codec_<m>_v3 \
+  EXTRA_ARGS="<from table>" sbatch scripts/slurm_frontier/ignite_codec_prod.sh
+scontrol update job=<id> Partition=extended,batch,g1   # standing rule
+```
 
 Stats files (already generated + gate-validated, `std_kind=within_shot`, co2 in the
 compose space): `$META/codec_{co2,ece,mhr}_perfreq_stats.pt`. Do NOT regenerate with

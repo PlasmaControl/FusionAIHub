@@ -1,3 +1,8 @@
+---
+title: "Research Plan"
+sidebar_position: 3
+---
+
 # Research Plan: End-to-End Foundation Model for Multi-Modal Tokamak Plasma Prediction
 
 **Institution:** Princeton University / Princeton Plasma Physics Laboratory
@@ -213,17 +218,17 @@ Hard-won design rules encoded in the tests:
 
 | Block | Tests | Runtime | Gate |
 |---|---|---|---|
-| Slow TS Tokenizer | 4 | <10s | Before integration |
-| Fast TS Tokenizer | 5 | <10s | Before integration |
-| Spectrogram Tokenizer | 5 | <30s | Before integration |
-| Video Tokenizer | 8 | <60s | Before integration |
-| Actuator Tokenizer | 4 | <10s | Before integration |
-| Shared Backbone | 7 | <30s | Before integration |
-| Output Heads | 3/type | <10s each | Before integration |
-| Full Model E2E | 4 | <60s | Before Stage 1 |
-| Rollout (random init) | 3 | <60s | Before Stage 1 |
-| Rollout (after training) | 4 | <10min | Before cluster submission |
-| **Total** | **~50** | **<15 min** | — |
+| Slow TS Tokenizer | 4 | `<10s` | Before integration |
+| Fast TS Tokenizer | 5 | `<10s` | Before integration |
+| Spectrogram Tokenizer | 5 | `<30s` | Before integration |
+| Video Tokenizer | 8 | `<60s` | Before integration |
+| Actuator Tokenizer | 4 | `<10s` | Before integration |
+| Shared Backbone | 7 | `<30s` | Before integration |
+| Output Heads | 3/type | `<10s each` | Before integration |
+| Full Model E2E | 4 | `<60s` | Before Stage 1 |
+| Rollout (random init) | 3 | `<60s` | Before Stage 1 |
+| Rollout (after training) | 4 | `<10min` | Before cluster submission |
+| **Total** | **~50** | **`<15 min`** | — |
 
 **Gating rule:** No cluster job is submitted until all applicable tests pass. No exceptions.
 
@@ -263,7 +268,7 @@ The combined approach is preferred over two sequential phases because spectrogra
 
 - Divergent predictions for different actuator trajectories from the same initial condition
 - Comparison against TRANSP for selected scenarios
-- Latency measurement for real-time control feasibility (<50 ms for 80-step rollout)
+- Latency measurement for real-time control feasibility (`<50 ms` for 80-step rollout)
 
 ### 6.4 Phase E: Cross-Machine Transfer (Weeks 6–8, exploratory)
 
@@ -279,7 +284,7 @@ Freeze backbone, train new tokenizers on target device diagnostics (EAST, KSTAR)
 | Copy baseline win rate | Model vs trivial copy | >80% at step 1, >60% at step 10 |
 | Rollout stability | No explosion or collapse over 80 steps | Norm ratio < 10× |
 | Actuator sensitivity | Predictions change with actuator commands | Verified qualitatively and quantitatively |
-| Inference latency | Wall-clock time for 80-step rollout | <50 ms on single GPU |
+| Inference latency | Wall-clock time for 80-step rollout | `<50 ms on single GPU` |
 
 ## 8. Risk Assessment and Mitigations
 

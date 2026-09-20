@@ -936,7 +936,10 @@ def test_the_label_only_caveat_says_what_the_model_actually_scored(shot_design_d
 
 def test_the_config_and_the_docs_state_the_ranking_the_code_implements():
     assert ph.OBSERVED > ph.LABELLED > ph.FORECAST > ph.DATABASE > ph.TEXTUAL
-    for path in (REPO / "configs" / "shot_design" / "retrieval.yaml", REPO / "docs" / "SHOT_DESIGN.md"):
+    for path in (
+        REPO / "configs" / "shot_design" / "retrieval.yaml",
+        REPO / "docs" / "shot-design" / "overview.md",
+    ):
         text = " ".join(path.read_text().replace("#", " ").split())
         assert ph.RANKING_SENTENCE in text, path
 

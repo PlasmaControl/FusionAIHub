@@ -99,8 +99,9 @@ FORECAST_KIND = "forecast"
 #: entry (from a model card) overrides it for that label, which is what `thr` is for.
 DEFAULT_LABEL_FLOOR = 0.5
 
-#: The tier order, in one sentence, so `retrieval.yaml` and `docs/SHOT_DESIGN.md` cannot state it
-#: differently from the code that sorts by it. A test asserts both files contain this string.
+#: The tier order, in one sentence, so `retrieval.yaml` and `docs/shot-design/overview.md` cannot
+#: state it differently from the code that sorts by it. A test asserts both files contain this
+#: string.
 RANKING_SENTENCE = (
     "an observed hit outranks a label-only hit, which outranks a forecast-only hit, which "
     "outranks a curated-list hit, which outranks a text-only hit"

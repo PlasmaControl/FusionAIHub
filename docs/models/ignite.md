@@ -1,3 +1,8 @@
+---
+title: "IGNITE — Design Note"
+sidebar_position: 2
+---
+
 # IGNITE — Design Note
 
 **Status:** design-only, no implementation. This is the consolidated architecture and
@@ -293,3 +298,88 @@ Not design forks — calibration/spec-out at build time:
 9. Phase-B seed: **~10–20 frames** of real context.
 10. Reuse: **zero FAITH model code**; external `vector-quantize-pytorch` + `x-transformers`
     allowed.
+
+## 12. v4 generation
+
+Update, 2026-09-19: the pinned production dynamics model moved from the
+14-modality/1017-token layout described above to a **15-modality**
+generation ("v4"), merged from `peter/dev-peter`. The frame layout, vocab
+size and starting time all changed; treat this section as authoritative over
+Sections 4-5 for the currently pinned bundle.
+
+### Modalities and frame layout
+
+`mirnov` (spectro family, 29 channels, same `n_tok`/vocab shape as `mhr`) is
+added to the 14 modalities of the v2 generation. Every modality now shares a
+single **1000-entry** codebook (`production_vocabs`), and the frame token
+count is:
+
+| family | modalities | tokens each | subtotal |
+|---|---|---|---|
+| spectro | ece, bes, mhr, co2, mirnov | 192 | 960 |
+| video | tangtv_lower, tangtv_upper | 108 | 216 |
+| slow-TS | ts_core_density/temp, ts_tangential_density/temp, cer_ti, cer_rot, mse | 4 | 28 |
+| fast-TS | filterscopes | 5 | 5 |
+
+→ **1209 tokens / frame** (192×5 + 108×2 + 4×7 + 5×1), all at vocab size
+1000. Rollout now starts at `t0_start_s: 1.0` (v2 started at 0.05 s), giving
+**219 frames** for a full shot instead of v2's 239. The actuator vector
+widened from 70 to **88 channels** — `eval_dynamics.load_model` infers this
+directly from the checkpoint's `backbone.act_embed.weight` shape rather than
+from a hardcoded constant, so a bundle with a different actuator width loads
+without a code change.
+
+### Pinned bundle
+
+`configs/shot_design/ignite_modalities.yaml`'s `model:` block records the
+generation, the source paths for the 15 codecs and the dynamics checkpoint,
+and a sha256 manifest so a changed file on disk is caught instead of loaded
+silently:
+
+```yaml
+model:
+  generation: v4
+  local_name: IGNITE_v4
+  codec_tmpl: /lustre/orion/fus187/proj-shared/models/ignite_codecs_v4/{m}/codec_best.pt
+  dynamics_src: /lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/mskfull/dynamics_best.pt
+  dynamics_file: ignite_dynamics_prod_v4_mskfull_step3200.pt
+  frame_codes_cache: /lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes
+  frame_tokens: 1209
+  t0_start_s: 1.0
+```
+
+Pin and verify the bundle with:
+
+```bash
+pixi run --frozen -e shot-design-frontier python -m shot_design model --pin
+pixi run --frozen -e shot-design-frontier python -m shot_design model --check
+```
+
+`--pin` copies every codec (resolving symlinks) plus the dynamics checkpoint
+into `<models_dir>/IGNITE_v4/`, and records each file's sha256 in
+`codecs/MANIFEST.json`; `--check` recomputes those hashes and reports any
+mismatch. `--download` (the v2 Hugging Face path) prints "not used for
+generation v4" for this bundle.
+
+### G-ENC gate
+
+`scripts/shot_design/g_enc.py`, run on Frontier via
+`scripts/slurm_frontier/shot_design_genc.sh`, compares a fresh encode of a
+handful of cached shots against the production `frame_codes_cache` and
+prints a per-modality exact-match fraction (gate: 1.0 for non-spectro/video
+modalities, ≥0.99 for spectro/video). This is part of the Frontier port's
+verification and is run as part of pinning the bundle on that cluster; see
+[Frontier](../clusters/frontier.md#ignite-model-pins) for where the pin
+lives operationally. No G-ENC run has been recorded in this document yet —
+read `$SHOT_DESIGN_DATA_ROOT/runs/genc_v4.json` on Frontier for the measured
+fractions before relying on the cache for a new modality.
+
+### Dynamics caveat
+
+The pinned dynamics checkpoint is `mskfull/dynamics_best.pt` at **step
+3200** — an early checkpoint relative to the v2 production run
+(`prod_d512L8`, step 13.5k). Rollouts from it are qualitative evidence that
+the v4 stack loads and runs end to end, not a claim about prediction
+accuracy. Any report built from it (see
+[Simulation](../shot-design/simulation.md)) should say so explicitly rather
+than let a skill or divergence number stand alone.

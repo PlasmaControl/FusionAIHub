@@ -1,3 +1,8 @@
+---
+title: "shot_design"
+sidebar_position: 1
+---
+
 # shot_design
 
 Environment settings use the `SHOT_DESIGN_*` prefix. Legacy `IDEATE_*` settings
@@ -17,33 +22,11 @@ The source is `src/shot_design/`; the tests are `tests/shot_design/`. Two pixi e
 `shot_design` (CUDA) and `shot_design-cpu` (identical but for the torch wheel — only `design_rollout` needs
 a GPU). Both set `SHOT_DESIGN_DATA_ROOT`, which is where the built database lives.
 
-## The command line
 
-```bash
-pixi run -e shot-design-cpu shot_design <command>          # or: python -m shot_design <command>
-```
-
-| command | what it does |
-| --- | --- |
-| `build` | full rebuild of the database from a shot list (atomic: writes `db.tmp`, swaps) |
-| `add` | incremental upsert of one or more shots |
-| `query` | find similar shots — `--ref SHOT`, `--text`, `--where`, `--actuator` |
-| `show` | print one shot's record |
-| `describe` | describe a stored shot, with phenomenon evidence, forecast ranges, coverage states and attributed quotes |
-| `coverage` | present/unavailable/pending per registry field |
-| `corpus` | the FAITH corpus: what each shot file carries; `corpus select` draws the shot list |
-| `logs` | the shot-log contract (`logs missing`, `logs import`) |
-| `labels` | labeler's labels and events → `labels_wide.parquet`, `events.parquet` |
-| `phenomenon` | which shots show a phenomenon, and what kind of evidence says so (`--list` prints the registry) |
-| `eval` | the frozen evaluation harness: `eval prompts`, `eval latency`, `eval recall` |
-| `export` | `ShotSummary` rows as JSON or Parquet |
-| `actuation`, `blurb`, `llm`, `model` | actuator waveform sets, per-shot blurbs, LLM reachability, the IGNITE bundle |
-
-`shot_design <command> --help` is authoritative; the table is a map, not a specification.
-
-The development universe is `configs/shot_design/shot_lists/recommender_v1.yaml` — 500 shots drawn by
-`shot_design corpus select` under the rule in `src/shot_design/shotdb/select.py`'s module docstring. The
-database built from it is what the MCP server below serves.
+See also: [The command line](./cli.md), [The MCP server](./mcp.md),
+[Local LLM and per-shot blurbs](./llm-providers.md),
+[Actuator programs](./programs.md), [Simulation](./simulation.md) and
+[Database build](./database-build.md) split out of this page by topic.
 
 ## Scratch databases and the pixi activation env
 
@@ -392,100 +375,6 @@ and **0.62** against human annotation). Establishing physical quality is the lab
 workstream's task; this harness measures the retrieval layer built on top of whatever evidence
 exists.
 
-## The MCP server
-
-`shot_design` exposes its retrieval over the Model Context Protocol, so an assistant can search the
-database directly instead of being handed a transcript of a CLI run. Four tools — `search_shots`,
-`describe_shot`, `get_events` and `phenomenon_locate` — and one resource. stdio transport:
-
-```bash
-pixi run -e shot-design-cpu shot_design-mcp        # == python -m shot_design.mcp
-```
-
-### Attaching it in Claude Code
-
-`.mcp.json` at the repo root is the project-scoped configuration; Claude Code reads it for any
-session started in this checkout and asks once whether to trust it.
-
-```json
-{
-  "mcpServers": {
-    "shot_design": {
-      "command": "pixi",
-      "args": ["run", "-e", "shot_design-cpu", "python", "-m", "shot_design.mcp"],
-      "cwd": "/scratch/gpfs/nc1514/FusionAIHub"
-    }
-  }
-}
-```
-
-`cwd` is absolute because the server is started by whatever directory the client happens to be
-in. `SHOT_DESIGN_DATA_ROOT` comes from the `shot_design-cpu` environment's own activation, so the config
-names no data path; add an `"env"` block to point one session at a different database.
-
-`/mcp` in a session lists the connected servers and their tools. Outside Claude Code, any MCP
-client works — the transport is stdio and the command above is the whole contract.
-
-### The tools
-
-| tool | arguments | returns |
-| --- | --- | --- |
-| `search_shots` | `text`, `ref_shot`, `segment`, `constraints`, `actuators`, `require_labels`, `avoid_labels`, `n` | ranked shots with a description, an explanation naming which channel found each one, and the operating-limit flags for the proposed actuators |
-| `describe_shot` | `shot`, `segment` | the prose description and the whole stored record: segments and their scalars, labels and their source, outcome, and the operator logbook verbatim |
-| `get_events` | `shot`, `phenomenon`, `t0_s`, `t1_s` | a `status` — `unindexed`, `unprocessed`, `uncovered` or `observed` — and four lists kept apart: `events` (what a diagnostic showed), `text_mentions` (a lexicon hit in the logbook), `database_intervals` (a curated table's rows), `forecasts` (a model's estimate); plus `coverage`, the per-source table of what ran over which span |
-| `phenomenon_locate` | `phenomenon`, `n`, `segment`, `constraints`, `min_confidence`, `avoid` | the shots carrying evidence of a phenomenon named in free text or by id, ordered by evidence class before score, each hit keeping its classes apart (`intervals`, `label_evidence`, `forecasts`, `text_snippets`) and its own caveats; plus `resolved` (what the text matched) and `notes` (what `avoid` dropped, about shots that are *not* in `hits`) |
-
-Plus one resource, `shot_design://manifest`: the built database's manifest, which is how a caller
-finds out which shots the tools can see at all.
-
-Four things hold for the replies and are worth knowing before reading one:
-
-* **`caveats` is on every reply the tools themselves produce, and it changes what the reply
-  means.** An empty result carrying "no channel had anything to search on" means the query was
-  empty — not that no such shot exists. A result whose constraint excluded shots for having no
-  recorded value says so, because "not measured" is not "out of range". The promise is scoped:
-  a call whose *arguments* fail the tool schema (a string where a shot number belongs) is
-  rejected by the MCP framework before any tool code runs, and comes back as a protocol
-  validation error with no `caveats` field.
-* **`get_events` keeps four kinds of claim in four lists.** An `events` row is a detector's or
-  a heuristic's claim about what a diagnostic showed, with `source` saying who. A `forecasts`
-  row (`evidence_kind == "forecast"`) is a model's estimate of what was about to happen, raised
-  from a risk curve at a threshold. A `text_mentions` row (`evidence_kind == "text"`) is a
-  lexicon hit in the operator logbook — somebody wrote the word — and is *not* evidence that the
-  phenomenon occurred: shot 185980's "Updated ELM detector tuning." is a positive ELM hit about
-  the detector. They arrive in different lists and must stay in different sentences.
-* **`get_events` keeps a curated list out of `events` too.** A row with
-  `evidence_kind == "database"` comes from a table somebody sent us — the first two are Jeremy
-  Hansen's RWM onset databases, under `data/events/resistive_wall_mode/` and declared in
-  `data/events/tables.yaml` — and it arrives in a fourth list, `database_intervals`. It names a
-  shot and a time, not a measurement: its `confidence` is `null`, because a human list has no
-  calibrated probability, and its coverage (`t_cov0_s`/`t_cov1_s`) is `null`, because nobody
-  recorded which interval of the shot was examined. That second null is the load-bearing one — a
-  shot's **absence** from a curated list is not a negative, and nothing downstream may read it as
-  one. `database` is outside `OBSERVED_KINDS`, so a shot whose only rows come from a spreadsheet
-  never answers `status: observed`, and labeler's own `database:<stem>` source row — `ok`,
-  coverage NaN — matches `event_sources.NON_DIAGNOSTIC_SOURCE_PREFIXES`, so it is not counted
-  as a diagnostic having looked and cannot donate coverage either. `shot_design labels join` needs no rule for these rows: `events_union` reads each
-  shot's `events/<shot>_events.parquet` wholesale, so they reach `db/events.parquet` as they
-  are.
-* **`status` says what an empty `events` means**, and the four values are not degrees of one
-  thing. `unindexed`: the shot is not in the database (the error dict `describe_shot` gives).
-  `unprocessed`: it is indexed, but no relevant source is recorded as having
-  completed over it (the phenomenon's covering sources when filtered, all sources otherwise) — absence is not evidence. `uncovered`: detectors ran, but not over the
-  window asked about; the caveat names the covered span. `observed`: some one detector's *own*
-  finite coverage overlaps the window, and an empty list is a real finding of nothing, said in as
-  many words — and the caveat counts only the sources that covered the window, not everything
-  that ran. **A source that completed without recording its coverage (`ok` with NaN `t_cov`, as
-  real shot 198658's `actuator/ech_power_total` is) can neither cover nor un-cover a window: it
-  keeps the shot out of `unprocessed` because it did run, it can never make a window `observed`,
-  and a shot whose every completed source has unknown coverage answers `uncovered` with a caveat
-  naming each one.** A `text` row, a `database:<stem>` row and an `evidence_kind="database"` row
-  are not diagnostics having looked either, and none of them can make a shot `observed`. A
-  reversed, zero-width or non-finite window is an error dict, never a silent empty. (On the
-  `recommender_v1` database today *all* 1,037 event rows are forecasts and no shot has an
-  observed-event product, so `get_events` answers `unprocessed` for every one of the 500 — which
-  is the truth the old empty list hid.)
-
 ## Frame-code provenance
 
 Each `frame_codes/<shot>.pt` has a JSON sibling saying how it was made — device, thread count,
@@ -512,140 +401,6 @@ Nothing in the tools re-implements retrieval: they call `shot_design.retrieval.r
 `shot_design.retrieval.describe` over the same `ShotDB` the CLI opens, so an assistant and
 `shot_design query` cannot disagree about a shot. `src/shot_design/mcp/tools.py` is the whole contract —
 the function signatures and docstrings there *are* the tool schemas the assistant sees.
-
-## Local LLM and per-shot blurbs
-
-`configs/shot_design/llm.yaml` enables `provider: ollama`. Without an endpoint file,
-the client is unavailable and builds use the existing header + outcome template.
-The UI reads stored blurbs; loading a page does not generate them.
-
-Prompt v6 asks for exactly **three plain sentences**, at most **90 words**:
-
-1. What the shot or experiment set out to do.
-2. Whether it succeeded, plainly naming a disruption, fast current quench or early
-   termination when the source records one; say when success is unknown.
-3. One interesting finding from the operator entries or shot brief, or the literal
-   sentence **No notable findings were logged.**
-
-The model uses the mini-proposal title/purpose, run title, shot brief, up to eight
-quotable operator entries, chief-operator status, outcome and verdict. It writes
-in its own words, without quotation marks, headings, lists or invented/rounded
-numbers. Abbreviations, acronyms and symbols must be copied verbatim, never expanded,
-translated or explained, even when the model thinks it knows their meaning; it may
-not introduce an abbreviation absent from the source. Quantities must use digits
-and the unit exactly as given, or be omitted; numbers must never be written as words
-(such as `thirteen`, `several hundred` or `two-one`). The 2026-09-15 audit of the v5
-backfill motivated these rules: shot 200729 incorrectly expanded the source's `AE`
-to `aeroelastic instabilities`.
-
-The gate rejects empty text, overlong text, double/curly quotation marks, numbers
-or shot references absent from the source, and anything other than three complete
-sentences. Before counting sentences, it also checks:
-
-- `number written as a word: [...]`: a number word absent as a whole word from
-  the source, ignoring case and splitting candidate text on whitespace and hyphens.
-  The list covers two through nineteen, tens through ninety, hundred, thousand,
-  million and dozen. `one` and ordinals are exempt; source wording such as
-  `two-day experiment` may be retained.
-- `abbreviation not in source: [...]`: an ALL-CAPS token of two to six letters,
-  with an optional plural `s`, absent from the source. The comparison removes
-  hyphens, ignores case, strips the token's plural `s`, and matches substrings:
-  `L-H` passes for `PLH`, `ELMs` for `ELM`, and `NTMs` for `NTM`. `DIII` is always
-  allowed; single letters, including the `D` in `DIII-D`, are exempt.
-
-Sentence terminators are `.`, `!` and `?` followed by whitespace or end of text;
-decimal points do not split sentences. A rejected reply retains the header + outcome
-template. These mechanical checks do not establish semantic accuracy: inspect the
-dry-run candidates before the full backfill.
-
-Every generated table row carries `blurb`, `blurb_source` (`llm`, `template`, or `human`
-for a summary written by hand from the shot's own text -- shown with a `hand` tag in
-the browser, never selected by a model backfill unless named with `--shots`),
-`blurb_model` (resolved tag, e.g. `gemma4:26b`) and `blurb_prompt_version` (integer).
-The latter two record the configuration used for the attempt, including template
-fallbacks; `blurb_source` says whether the model supplied the final text. Legacy
-rows retain unknown provenance until processed. `manifest.json["blurbs"]` contains
-the whole table's `llm`, `template` and `human` counts plus the latest pass's `model` and
-`prompt_version`. Its `prompt_versions` histogram counts every non-null row version
-with string keys, for example `{"5": 502, "6": 2}`, making mixed versions visible;
-legacy rows with unknown versions are excluded. Builds and additions update the
-same histogram.
-
-`blurb` normally selects templates, empty blurbs, and rows with missing or older
-prompt versions. `--all` selects every row, including current model blurbs.
-`--shots N [N ...]` regenerates exactly the named shots in ascending order, regardless
-of their existing text or prompt version; unknown shots fail before any model call.
-Combining `--shots` with `--all` reports an error on stderr and exits with status 2.
-`--limit N` takes the first N eligible shots after selection (`0` does nothing).
-`--dry-run` prints each shot number, source-text character count, candidate, gate
-verdict/reason and final text; it writes neither database files nor request cache.
-A normal pass atomically replaces `shots.parquet`, then atomically updates the
-manifest. Those are two file replacements, not a transaction across both files.
-
-For a targeted preview, use `shot_design blurb --shots 200729 190511 --dry-run`;
-remove `--dry-run` to regenerate those rows. Invoke the CLI directly for `--shots`:
-the `blurb_all.sh` wrapper already supplies `--all`.
-
-### Operator runbook (after merge)
-
-The existing Ollama 0.33.3 binary and both Gemma models are reused in place:
-
-| `llm.yaml` key | default path |
-| --- | --- |
-| `ollama_bin_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/bin/ollama` |
-| `ollama_models_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/ollama` |
-| `ollama_home_dir` | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/ollama_home` |
-
-`serve_llm.sh` requires `<ollama_bin_dir>/bin/ollama`; a missing binary exits 2
-with its path. Installed model tags bypass pulling; a missing tag uses the retained
-pull loop. No binary installation or copying occurs. Defaults are a 16384-token
-context, 24h keep-alive and two loaded models. The Slurm allocation is one GPU,
-eight CPUs, 64 GB RAM and four hours. See the upstream
-[Ollama serving documentation](https://github.com/ollama/ollama/blob/main/docs/cli.mdx)
-and [environment settings](https://github.com/ollama/ollama/blob/main/docs/faq.mdx).
-
-Run these commands as the operator, from the merged checkout, on the login node:
-
-```bash
-cd /scratch/gpfs/nc1514/FusionAIHub
-export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
-
-# 1. Create the Slurm log directory, then submit the model server.
-mkdir -p /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm
-sbatch scripts/shot_design/serve_llm.sbatch
-
-# 2. Wait for readiness; check the job/log if this does not appear.
-until test -s /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json; do sleep 2; done
-cat /scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design llm
-
-# 3. Inspect five candidates, gate verdicts and final summaries without writing.
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design blurb --all --dry-run --limit 5
-
-# 4. After reviewing the preview, backfill all shots from the login node.
-bash scripts/shot_design/blurb_all.sh
-
-# 5. Stop the existing UI serve process with Ctrl-C in its terminal, then restart
-#    it so its loaded database snapshot contains the new blurbs.
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design serve --port 8765
-```
-
-The blurb wrapper runs the mandated frozen Pixi command with
-`python -m shot_design blurb --all`; additional flags are forwarded. The client
-runs on the CPU and discovers the GPU server through `llm/endpoint.json` under
-`paths.data_root`. A configured `base_url` takes precedence over that file.
-Match the endpoint's `job_id` to the submitted job and check its log for `ready:`;
-the `llm` command prints discovery metadata and does not probe the server.
-
-The Slurm script binds `$(hostname -s):11434` and uses the default data root in its
-literal `#SBATCH -o` directive. For another root, override `sbatch --output` and
-create its `llm` directory first; account for Pixi activation overriding
-`SHOT_DESIGN_DATA_ROOT` as described above. Endpoint JSON contains `url`, `models`,
-`host`, `job_id`, `started` and `version`, and is published with an atomic rename.
-An answering port is refused before any write. On exit, the script removes the
-endpoint only if its URL and start time still match this run, then stops its child.
-To stop the GPU allocation, use `scancel JOB_ID` with the ID printed by `sbatch`;
-to renew it, wait for that job to exit and submit the same script again.
 
 ## Shot Designer: Search, Shot, Locate and Info
 
