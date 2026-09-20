@@ -61,8 +61,12 @@ def submit(ident: str, request: Request):
             500, "configs/shot_design/ui.yaml is missing its simulate: block"
         ) from exc
     cmd = simulate_cfg["submit_cmd"].format(ident=ident)
-    submit_fn = getattr(request.app.state, "submit", default_submit)
-    output = submit_fn(cmd)
+    try:
+        output = request.app.state.submit(cmd)
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(502, exc.stderr or exc.stdout or str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(502, str(exc)) from exc
     match = _JOB_ID.search(output)
     if not match:
         raise HTTPException(502, output)
