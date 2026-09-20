@@ -55,3 +55,12 @@ def test_the_gpu_sampler_measures_only_the_gcds_the_job_was_given():
     text = (SLURM / "_gpu_sampler.sh").read_text()
     assert "ROCR_VISIBLE_DEVICES" in text
     assert "-d " in text
+
+
+def test_build_wrapper_defaults_to_the_corpus_reader_without_encoding():
+    # Frontier has no d3d_fusion_data raw layer: a build with the legacy reader skips every
+    # shot ("no Ip signal on disk") and exits 1 (job 5515059). The corpus IS the raw layer,
+    # and the IGNITE channel comes from shot_design_encode.sh.
+    body = (SLURM / "shot_design_build.sh").read_text(encoding="utf-8")
+    assert "${BUILD_ARGS:---reader corpus --no-encode}" in body
+
