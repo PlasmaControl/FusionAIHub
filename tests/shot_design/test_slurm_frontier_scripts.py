@@ -64,3 +64,12 @@ def test_build_wrapper_defaults_to_the_corpus_reader_without_encoding():
     body = (SLURM / "shot_design_build.sh").read_text(encoding="utf-8")
     assert "${BUILD_ARGS:---reader corpus --no-encode}" in body
 
+
+def test_common_file_skips_the_compute_node_settings_outside_a_job():
+    # The login-node scripts (blurb backfill, demo) source the common file: it must not pull in
+    # _frontier_settings.sh there, which needs SLURM_JOB_ID and SLURM_NODELIST (set -u dies).
+    body = (SLURM / "_shot_design_common.sh").read_text(encoding="utf-8")
+    assert 'if [[ -n "${SLURM_JOB_ID:-}" ]]; then' in body
+    guarded = body.split('if [[ -n "${SLURM_JOB_ID:-}" ]]; then', 1)[1].split("fi", 1)[0]
+    assert "_frontier_settings.sh" in guarded
+
