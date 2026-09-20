@@ -20,7 +20,7 @@ paths-file pattern this port follows.
 | GPU | MI250X, `gfx90a`, 8 GCDs per node, `--gpu-bind=closest` |
 | Partitions used | `batch`, `extended` |
 | Modules | `PrgEnv-gnu/8.7.0`, `cpe/26.03`, `rocm/7.1.1`, `craype-accel-amd-gfx90a` (all in `scripts/slurm_frontier/_frontier_settings.sh`) |
-| Env | `pixi install --frozen -e frontier`, then `pixi run --frozen -e frontier setup-flash-attn` on a compute node |
+| Env | `pixi install --frozen -e frontier`, then `pixi run --frozen -e frontier setup-flash-attn` on the login node (no GPU needed at build time; Triton JIT-compiles kernels at first use) |
 | Network | RCCL over Slingshot, `NCCL_SOCKET_IFNAME=hsn0` |
 
 `_frontier_settings.sh` is sourced by every Frontier wrapper and sets
@@ -72,7 +72,7 @@ network.
 | Script | Purpose |
 |---|---|
 | `_frontier_settings.sh` | modules, `PATH`/`LD_LIBRARY_PATH`, ROCm/MIOpen env — sourced by everything |
-| `_shot_design_common.sh` | sources `_frontier_settings.sh`; exports `REPO`, `ROOT` (`$SHOT_DESIGN_DATA_ROOT`), `PY` (the `shot-design-frontier` interpreter), the four variables above |
+| `_shot_design_common.sh` | sources `_frontier_settings.sh` only when `$SLURM_JOB_ID` is set (so login-node callers like `blurb_frontier.sh` don't trip its compute-node-only `scontrol` call); exports `REPO`, `ROOT` (`$SHOT_DESIGN_DATA_ROOT`), `PY` (the `shot-design-frontier` interpreter), the four variables above |
 | `shot_design_census.sh` | CPU corpus scan → `db/corpus_coverage.parquet` |
 | `shot_design_build.sh` | full database build for a named shot list |
 | `shot_design_encode.sh` | 8-task array, one GCD each, IGNITE frame-code encoding |
@@ -88,9 +88,10 @@ current directory** — `sbatch` copies the script into its spool area, so
 
 Frontier has no path to the Stellar Ollama binary (it is an x86_64 build; a
 ROCm build for MI250X was never produced), and no outbound network from
-compute nodes to pull one. Instead of Ollama/Gemma, the Frontier `llm.yaml`
-uses `provider: agy` — the Antigravity CLI backing Gemini — from the login
-node, which does have network and an OAuth cache:
+compute nodes to pull one. Instead of Ollama/Gemma, `configs/shot_design/llm.yaml`
+— one file shared by both clusters, with no per-cluster override — is
+checked in with `provider: agy` — the Antigravity CLI backing Gemini — run
+from the login node, which does have network and an OAuth cache:
 
 | `llm.yaml` key | Frontier value |
 |---|---|
@@ -115,12 +116,15 @@ commands and the full modality table.
 
 ## Database
 
-The Frontier-only shot list `recommender_frontier_v1` targets roughly 5000
-shots selected from a full corpus census (`shot_design corpus select`), built
-from the Frontier `shotsummary` text bundles (no `sql/` import). Building the
-database and backfilling blurbs is ongoing; see
+The Frontier-only shot list `recommender_frontier_v1` was selected from a
+full corpus census (`shot_design corpus select`) of the Frontier
+`shotsummary` text bundles (no `sql/` import). The census target was 5,000
+shots; the Frontier corpus supplies only 3,031 eligible shots out of 8,753
+total shot files, so the list is all 3,031 of them. Building the database
+and backfilling blurbs is ongoing; see
 [Database build](../shot-design/database-build.md) for the census → select →
-labels → build → blurb → encode sequence and the exact commands.
+logs → labels → features (fdp) → build → encode → blurbs → coverage/describe
+sequence and the exact commands.
 
 ## Data transfer notes (not in git)
 
@@ -145,7 +149,8 @@ corpus itself (53 TB) is already on Frontier as
       decision resolved (Stellar-only, not ported)
 - [x] Frontier SLURM wrappers for census, build, encode, G-ENC gate and
       simulate
-- [ ] `recommender_frontier_v1` at its ~5000-shot target, fully built and
-      blurbed (in progress)
+- [ ] `recommender_frontier_v1` (3,031 shots — the corpus has only 3,031
+      eligible of 8,753 total; the 5,000-shot target was never reachable)
+      fully built and blurbed (in progress)
 - [ ] `shot_design describe <shot>` cross-checked against the equivalent
       Stellar record
