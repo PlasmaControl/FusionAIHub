@@ -274,3 +274,8 @@ eval_runs/*
 !eval_runs/paper_facts/
 # Review packages are regenerable git diffs (hundreds of kB each); ledgers, briefs and reports are kept.
 .claude/superpowers-runtime/sdd/*/review-*.diff
+
+# Docusaurus
+website/node_modules
+website/build
+website/.docusaurus
