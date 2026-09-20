@@ -85,7 +85,9 @@ def fakes(monkeypatch, paths, fake_bundle, tmp_path):
     def fake_load_dynamics(paths_arg, device):
         if calls["raise_in"] == "load_dynamics":
             raise ValueError("boom in load_dynamics")
-        cfg = SimpleNamespace(k0_seed=20, n_predict=80, maskgit_decode_steps=10)
+        cfg = SimpleNamespace(
+            k0_seed=20, n_predict=80, maskgit_decode_steps=10, max_frames=100
+        )
         return SimpleNamespace(), cfg, 4242
 
     def fake_run_paired(model, cfg, codes, real_act, prop_act, *, seed, **kw):
@@ -174,6 +176,53 @@ def test_simulate_rejects_k0_plus_n_predict_over_the_seeds_frame_count(paths, fa
     _, status = _status(paths)
     assert status["state"] == "failed"
     assert "130" in status["error"] and "100" in status["error"]
+
+
+def test_simulate_rejects_k0_plus_n_predict_over_the_checkpoints_trained_horizon(
+    paths, fakes, monkeypatch, tmp_path
+):
+    """`cfg.max_frames` is a property that recomputes from k0+n_predict, so reading it
+    only AFTER `cfg.k0_seed, cfg.n_predict = args.k0, args.n_predict` always finds the
+    guard trivially satisfied (100 == 100) no matter how far past the checkpoint's
+    actual trained horizon the request goes -- the frame embedding then indexes out of
+    range downstream (a device-side assert on GPU). The design seed and reference
+    window here are both made large enough (200/140 frames) that neither of the
+    OTHER two guards (design-seed frame count, actuator_arms's own length check)
+    fires first, so only the checkpoint-horizon guard can be what stops this."""
+    big_seed = _design_seed()
+    big_seed["n_frames"] = 200
+    big_seed["codes"] = {"ece": torch.zeros(200, 4, dtype=torch.int32)}
+    big_seed["actuators"] = torch.zeros(200, 88, dtype=torch.float16)
+    big_seed_path = tmp_path / "big_seed.pt"
+    torch.save(big_seed, big_seed_path)
+    monkeypatch.setattr(
+        program_mod, "export_ignite", lambda prog, paths_arg: big_seed_path
+    )
+    # end_s=7.0 -> display_end 140, so the windowed reference cache also has 140
+    # frames -- comfortably past k0+n_predict=120, so actuator_arms's own guard
+    # cannot be what raises here.
+    big_prog = SimpleNamespace(id=IDENT, reference_shot=1, start_s=1.0, end_s=7.0)
+    monkeypatch.setattr(program_mod, "load_program", lambda ident, paths_arg: big_prog)
+
+    def fake_reference(shot, paths_arg):
+        cache = {"actuators": torch.ones(200, 88, dtype=torch.float16)}
+        return SimpleNamespace(cache=cache)
+
+    monkeypatch.setattr(program_reference_mod, "reference", fake_reference)
+
+    def fake_load_dynamics(paths_arg, device):
+        cfg = SimpleNamespace(
+            k0_seed=20, n_predict=80, maskgit_decode_steps=10, max_frames=100
+        )
+        return SimpleNamespace(), cfg, 4242
+
+    monkeypatch.setattr(core_mod, "load_dynamics", fake_load_dynamics)
+
+    rc = cli.main(["simulate", IDENT, "--k0", "20", "--n-predict", "100"])
+    assert rc == 1
+    _, status = _status(paths)
+    assert status["state"] == "failed"
+    assert "120" in status["error"] and "100" in status["error"]
 
 
 def test_simulate_writes_actuators_into_the_h5(paths, fakes):
