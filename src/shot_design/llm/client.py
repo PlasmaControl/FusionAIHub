@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 
 import httpx
@@ -82,6 +83,9 @@ class LLMClient:
         # string -- the shape any such OpenAI-compatible server is expected to speak.
         self._providers: dict = {
             "ollama": lambda body: self._chat_openai(body, self.endpoint()),
+            # A hosted OpenAI-compatible server is the same wire shape as Ollama, just a
+            # different base_url/API key -- see the module docstring.
+            "openai_compatible": lambda body: self._chat_openai(body, self.endpoint()),
             "agy": agy.AgyProvider(self.cfg.get("agy", {})).chat,
         }
 
@@ -129,6 +133,17 @@ class LLMClient:
     def available(self) -> tuple[bool, str]:
         if self.off:
             return False, "configs/shot_design/llm.yaml has provider: off"
+        provider = str(self.cfg.get("provider", "")).strip().lower()
+        if provider == "agy":
+            # agy is a CLI, not a server: "available" means the binary is on PATH, not
+            # that any endpoint file/base_url exists -- those are ollama-only concepts.
+            bin_name = str((self.cfg.get("agy") or {}).get("bin", "agy"))
+            if shutil.which(bin_name) is None:
+                return False, (
+                    f"the agy CLI ({bin_name!r}) is not installed or not on PATH; "
+                    "load/install it or set agy.bin in configs/shot_design/llm.yaml"
+                )
+            return True, ""
         ep = self.endpoint()
         if ep is None:
             return False, start_hint(self.paths)
@@ -207,7 +222,16 @@ class LLMClient:
             reply.cached = True
             return reply
         provider = str(self.cfg.get("provider", "")).strip().lower()
-        provider_fn = self._providers.get(provider, self._providers["ollama"])
+        try:
+            provider_fn = self._providers[provider]
+        except KeyError:
+            # A typo'd provider must not silently fall back to ollama and print a
+            # "start an Ollama server" hint that is wrong for whatever was actually
+            # misconfigured.
+            raise LLMUnavailable(
+                f"unknown llm provider {provider!r}; known providers: "
+                f"{', '.join(sorted(self._providers))}"
+            ) from None
         reply = provider_fn(body)
         if cache_file:
             cache_file.parent.mkdir(parents=True, exist_ok=True)

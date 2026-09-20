@@ -1,5 +1,13 @@
 """Offline blurbs: what the model sees, what it may say, and what happens when it says more.
 
+Landmine: `config.load_yaml("llm.yaml")`'s checked-in default is `provider: agy`.
+`FakeClient` here only fakes the OpenAI-shaped httpx transport, so merging the real
+yaml with it (or calling `build.build()`/`load_build_cfg()`, which build their own
+`LLMClient()` from the same yaml) reaches the real `agy` CLI unless `provider` is
+overridden -- conftest.py's `_no_real_agy_subprocess` fixture turns that into a loud
+`AssertionError` instead of a slow/flaky real subprocess call, but the fix is still to
+override `provider` explicitly wherever this file builds a client from the real yaml.
+
 Ported from shot-recommender-system (shotrec) @565d548.
 """
 
@@ -17,6 +25,7 @@ from shot_design.retrieval import blurb
 from shot_design.schema import ResultItem
 from shot_design.shotdb import build, store
 
+from .conftest import force_ollama_provider
 from .test_build_store import stub_embeddings  # noqa: F401
 
 CFG = {
@@ -48,7 +57,10 @@ class FakeClient(LLMClient):
 
 @pytest.fixture
 def rec(paths, staged_shot_a, text_fixtures, stub_embeddings):  # noqa: F811
-    build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+    with force_ollama_provider():
+        build.build(
+            [staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False
+        )
     return store.ShotDB.load(paths.db_dir).get(staged_shot_a)
 
 
@@ -221,7 +233,10 @@ def test_shots_parquet_has_blurb_columns_after_build(
     text_fixtures,
     stub_embeddings,  # noqa: F811
 ):
-    build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+    with force_ollama_provider():
+        build.build(
+            [staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False
+        )
     df = pd.read_parquet(paths.db_dir / "shots.parquet")
     assert {"blurb", "blurb_source", "blurb_model", "blurb_prompt_version"} <= set(df.columns)
     assert df["blurb_source"].iloc[0] == "template" and df["blurb"].iloc[0]
@@ -263,9 +278,14 @@ def test_write_blurbs_updates_the_manifest_counts(
     """The backfill rewrites shots.parquet, so the manifest's blurb counts -- the only place a
     reader can see how much of the database the model actually wrote -- have to follow it, or
     `shot_design blurb` leaves a database claiming 0 llm blurbs while every row has one."""
-    build.build(
-        [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False
-    )
+    with force_ollama_provider():
+        build.build(
+            [staged_shot_a, staged_shot_b],
+            paths,
+            build.load_build_cfg(),
+            workers=1,
+            encode=False,
+        )
     before = json.loads((paths.db_dir / "manifest.json").read_text())
     # build.build attempts a blurb with the real (agy) config's default model; the
     # backfill below uses FakeClient's own CFG constant (quality: gemma4:26b) --
@@ -524,8 +544,10 @@ def test_default_ollama_without_endpoint_uses_template_without_a_request(rec, pa
         pytest.fail("a missing endpoint must not open a socket")
 
     cfg = config.load_yaml("llm.yaml")
-    assert cfg["provider"] == "agy"
-    client = LLMClient(cfg, paths, transport=httpx.MockTransport(unexpected))
+    assert cfg["provider"] == "agy"  # production default; this test means ollama
+    client = LLMClient(
+        {**cfg, "provider": "ollama"}, paths, transport=httpx.MockTransport(unexpected)
+    )
     assert client.available()[0] is False
     assert "scripts/shot_design/serve_llm.sbatch" in client.available()[1]
     result = blurb.make(rec, client)
