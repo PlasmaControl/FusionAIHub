@@ -10,7 +10,6 @@
 # wants the shorter debug queue can still ask for it explicitly:
 #   sbatch -q debug scripts/slurm_frontier/shot_design_simulate.sh <ident>
 #SBATCH -N 1
-#SBATCH -N 1
 #SBATCH --gres=gpu:1
 #SBATCH --gpu-bind=closest
 #SBATCH -c 7
