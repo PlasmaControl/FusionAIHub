@@ -74,6 +74,32 @@ def test_unparseable_submit_output_is_502(app):
     assert "something bad happened" in resp.json()["detail"]
 
 
+def test_failing_sbatch_maps_to_502_with_its_stderr(app):
+    def raise_called_process_error(cmd):
+        raise subprocess.CalledProcessError(
+            1, ["sbatch"], output="", stderr="sbatch: error: invalid qos"
+        )
+
+    app.state.submit = raise_called_process_error
+    with TestClient(app) as client:
+        client.cookies.set(COOKIE, "secret")
+        resp = client.post(f"/api/design/{IDENT}/simulate")
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "sbatch: error: invalid qos"
+
+
+def test_sbatch_not_on_path_maps_to_502(app):
+    def raise_file_not_found(cmd):
+        raise FileNotFoundError("[Errno 2] No such file or directory: 'sbatch'")
+
+    app.state.submit = raise_file_not_found
+    with TestClient(app) as client:
+        client.cookies.set(COOKIE, "secret")
+        resp = client.post(f"/api/design/{IDENT}/simulate")
+    assert resp.status_code == 502
+    assert "sbatch" in resp.json()["detail"]
+
+
 def test_missing_simulate_block_in_ui_yaml_is_500(client, monkeypatch):
     orig_load_yaml = sd_config.load_yaml
 
