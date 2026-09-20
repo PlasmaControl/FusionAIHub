@@ -23,9 +23,13 @@ def test_add_to_legacy_database_keeps_unknown_versions_nullable_and_new_versions
     assert pd.isna(updated.loc[staged_shot_a, "blurb_prompt_version"])
     assert pd.isna(updated.loc[staged_shot_a, "blurb_model"])
     assert updated.loc[staged_shot_b, "blurb_prompt_version"] == 6
-    assert updated.loc[staged_shot_b, "blurb_model"] == "gemma4:26b"
+    assert updated.loc[staged_shot_b, "blurb_model"] == "gemini-3.8-flash-low"
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     assert manifest["blurbs"] == {
-        "llm": 0, "template": 2, "human": 0, "model": "gemma4:26b", "prompt_version": 6,
+        "llm": 0,
+        "template": 2,
+        "human": 0,
+        "model": "gemini-3.8-flash-low",
+        "prompt_version": 6,
         "prompt_versions": {"6": 1},
     }

@@ -72,6 +72,13 @@ class LLMClient:
         self.paths = paths or config.load_paths()
         self._transport = transport
         self._ep_cache: tuple[int, Endpoint | None] | None = None  # (mtime_ns, endpoint)
+        # Every provider takes the already-built request `body` and returns a Reply;
+        # `chat` owns discovery, cache and body-building so a provider only has to speak
+        # its own transport. "ollama" is also the fallback for any unregistered provider
+        # string -- the shape any such OpenAI-compatible server is expected to speak.
+        self._providers: dict = {
+            "ollama": lambda body: self._chat_openai(body, self.endpoint()),
+        }
 
     # ------------------------------------------------------------------ discovery
 
@@ -79,14 +86,25 @@ class LLMClient:
     def off(self) -> bool:
         return str(self.cfg.get("provider", "off")).strip().lower() in ("", "off", "none", "false")
 
+    def _ollama_cfg(self, key: str, default=None):
+        """`base_url`/`endpoint_file`/`ollama_*_dir` moved under an `ollama:` block; a
+        caller that still passes a flat cfg dict (an unmigrated script, this project's
+        own tests) is read the same way for one release. A nested key that is present
+        but null (llm.yaml sets every Frontier-absent path that way) falls through to
+        the flat key too, so a caller overriding only the flat key still takes effect."""
+        value = (self.cfg.get("ollama") or {}).get(key)
+        return value if value is not None else self.cfg.get(key, default)
+
     def endpoint_path(self) -> Path:
-        return self.paths.data_root / str(self.cfg.get("endpoint_file", "llm/endpoint.json"))
+        rel = self._ollama_cfg("endpoint_file", "llm/endpoint.json")
+        return self.paths.data_root / str(rel)
 
     def endpoint(self) -> Endpoint | None:
         if self.off:
             return None
-        if self.cfg.get("base_url"):
-            return Endpoint(url=str(self.cfg["base_url"]).rstrip("/"))
+        base_url = self._ollama_cfg("base_url")
+        if base_url:
+            return Endpoint(url=str(base_url).rstrip("/"))
         p = self.endpoint_path()
         try:
             mtime = p.stat().st_mtime_ns
@@ -138,7 +156,7 @@ class LLMClient:
         ]
 
     def model(self, key: str | None = None) -> str:
-        models = self.cfg["models"]
+        models = self.cfg.get("models", {})
         key = key or self.cfg.get("default", "quality")
         return str(models.get(key, key))  # an unknown key is taken as a literal tag
 
@@ -155,9 +173,6 @@ class LLMClient:
     ) -> Reply:
         if self.off:
             raise LLMUnavailable("configs/shot_design/llm.yaml has provider: off")
-        ep = self.endpoint()
-        if ep is None:
-            raise LLMUnavailable(start_hint(self.paths))
         temperature = float(
             self.cfg.get("temperature", 0.0) if temperature is None else temperature
         )
@@ -186,6 +201,19 @@ class LLMClient:
             reply = Reply.model_validate_json(cache_file.read_text(encoding="utf-8"))
             reply.cached = True
             return reply
+        provider = str(self.cfg.get("provider", "")).strip().lower()
+        provider_fn = self._providers.get(provider, self._providers["ollama"])
+        reply = provider_fn(body)
+        if cache_file:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = cache_file.with_suffix(".json.part")
+            tmp.write_text(reply.model_dump_json(), encoding="utf-8")
+            os.replace(tmp, cache_file)
+        return reply
+
+    def _chat_openai(self, body: dict, ep: Endpoint | None) -> Reply:
+        if ep is None:
+            raise LLMUnavailable(start_hint(self.paths))
         headers = {"content-type": "application/json"}
         if os.environ.get("LLM_API_KEY"):
             headers["authorization"] = f"Bearer {os.environ['LLM_API_KEY']}"
@@ -216,18 +244,12 @@ class LLMClient:
                 f"language model at {ep.url} returned an unusable response: {msg or err}"
             )
         try:
-            reply = _parse(data, body["model"])
+            return _parse(data, body["model"])
         except (KeyError, IndexError, TypeError, AttributeError, ValueError) as e:
             raise LLMUnavailable(
                 f"language model at {ep.url} returned an unusable response: "
                 f"malformed completion body ({e})"
             ) from e
-        if cache_file:
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            tmp = cache_file.with_suffix(".json.part")
-            tmp.write_text(reply.model_dump_json(), encoding="utf-8")
-            os.replace(tmp, cache_file)
-        return reply
 
 
 def _parse(data: dict, model: str) -> Reply:
