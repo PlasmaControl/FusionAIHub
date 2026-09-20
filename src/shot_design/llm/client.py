@@ -72,12 +72,17 @@ class LLMClient:
         self.paths = paths or config.load_paths()
         self._transport = transport
         self._ep_cache: tuple[int, Endpoint | None] | None = None  # (mtime_ns, endpoint)
+        # Local import: shot_design.llm.agy imports Reply/ToolCall/LLMUnavailable back
+        # from this module, so importing it at module scope would be circular.
+        from shot_design.llm import agy
+
         # Every provider takes the already-built request `body` and returns a Reply;
         # `chat` owns discovery, cache and body-building so a provider only has to speak
         # its own transport. "ollama" is also the fallback for any unregistered provider
         # string -- the shape any such OpenAI-compatible server is expected to speak.
         self._providers: dict = {
             "ollama": lambda body: self._chat_openai(body, self.endpoint()),
+            "agy": agy.AgyProvider(self.cfg.get("agy", {})).chat,
         }
 
     # ------------------------------------------------------------------ discovery
@@ -90,8 +95,8 @@ class LLMClient:
         """`base_url`/`endpoint_file`/`ollama_*_dir` moved under an `ollama:` block; a
         caller that still passes a flat cfg dict (an unmigrated script, this project's
         own tests) is read the same way for one release. A nested key that is present
-        but null (llm.yaml sets every Frontier-absent path that way) falls through to
-        the flat key too, so a caller overriding only the flat key still takes effect."""
+        but null (llm.yaml sets every Frontier-absent path that way) falls through
+        to the flat key too, so overriding only the flat key still takes effect."""
         value = (self.cfg.get("ollama") or {}).get(key)
         return value if value is not None else self.cfg.get(key, default)
 

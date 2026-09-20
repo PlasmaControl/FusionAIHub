@@ -202,7 +202,14 @@ def test_make_uses_the_model_and_falls_back_on_failure(rec, paths):
 
 
 def test_make_marks_prompt_v6_when_using_the_yaml_config(rec, paths):
-    yaml_cfg = {**config.load_yaml("llm.yaml"), "base_url": "http://llm.test"}
+    # FakeClient only fakes the OpenAI-shaped httpx transport (agy shells out
+    # instead), so this exercises the real yaml's prompt/model wiring over that
+    # transport, not agy itself.
+    yaml_cfg = {
+        **config.load_yaml("llm.yaml"),
+        "provider": "ollama",
+        "base_url": "http://llm.test",
+    }
     client = FakeClient(GOOD, paths, cfg=yaml_cfg)
     assert blurb.make(rec, client).source == "llm"
     assert "(prompt v6)" in client.calls[0]["messages"][0]["content"]
