@@ -1,0 +1,39 @@
+# The three Frontier demo prompts (plan §7, task G1), run through `shot_design assistant`
+# by `scripts/shot_design/demo_frontier.sh`.
+#
+# CAVEAT (2026-09-20, task G1): the design spec and the G1 brief both say these three
+# prompts are "verbatim from the user", but no verbatim prompt text for any of the three
+# was found anywhere in this repository -- not in the design spec's Demo section, not in
+# the plan, not in any task brief or note. What IS on record, and what these three are
+# built from, is: the design spec's own one-line description of each topic ("tearing-mode
+# control with ECCD/ECH", "ELM control with RMP/coils", "Alfven-eigenmode control with
+# NBI", plan §Goal), the retrieval-synonym vocabulary `design/assistant.py` already prompts
+# Gemma with ("tearing/NTM/ECCD, Alfven/AE/TAE, or ELM/RMP"), and the worked reference
+# shot + physical action of each of the three saved Gemma demo examples recorded in
+# `.claude/notes/shot-design-harness.md` ("Saved demo examples" table: 195071 / +30% ECH
+# channels 5,7,10; 193353 / -30% NBI total; 190736 / +20% RMP channels 0-10).
+#
+# Before Step 6 (running the demo) the owner should replace `text:` below with the actual
+# wording, verbatim, and this comment should come out.
+version: 1
+prompts:
+  tearing_eccd:
+    title: Tearing-mode control with ECCD/ECH
+    text: |
+      Design a shot to control a tearing mode using electron cyclotron current drive.
+      Use shot 195071 as the reference and propose increasing the deposited ECH power
+      (roughly channels 5, 7 and 10) by about 30% to better suppress the n=2 NTM, over
+      the 1-5 s window.
+  elm_rmp:
+    title: ELM control with RMP/coils
+    text: |
+      Design a shot for ELM control using resonant magnetic perturbation coils. Use
+      shot 190736 as the reference and propose an RMP coil configuration (channels 0
+      through 10, increased by about 20%) intended for ELM suppression, over the 1-5 s
+      window.
+  ae_nbi:
+    title: Alfven-eigenmode control with NBI
+    text: |
+      Design a shot to control Alfven eigenmode activity by adjusting neutral beam
+      injection. Use shot 193353 as the reference and propose reducing the total NBI
+      power by about 30% to limit the AE drive, over the 1-5 s window.

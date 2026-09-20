@@ -666,6 +666,35 @@ def cmd_llm(args) -> int:
     return 0
 
 
+def cmd_evalsets(args) -> int:
+    if args.what == "prompt":
+        return _evalsets_prompt(args)
+    raise AssertionError(args.what)  # argparse's `choices` makes this unreachable
+
+
+def _evalsets_prompt(args) -> int:
+    """Print one named prompt's text from configs/shot_design/evalsets/<name>.yaml, e.g.
+    for `scripts/shot_design/demo_frontier.sh` to redirect into `prompt.md`."""
+    path = config.CONFIG_DIR / "evalsets" / f"{args.name}.yaml"
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except OSError as e:
+        print(f"no evalset {args.name!r} ({path}): {e}", file=sys.stderr)
+        return 1
+    prompts = (doc or {}).get("prompts") or {}
+    entry = prompts.get(args.slug)
+    if entry is None:
+        known = ", ".join(sorted(prompts)) or "(none)"
+        print(
+            f"no prompt {args.slug!r} in evalset {args.name!r}; known: {known}",
+            file=sys.stderr,
+        )
+        return 2
+    text = entry["text"] if isinstance(entry, dict) else entry
+    print(str(text).strip())
+    return 0
+
+
 def _append_trace(path: Path, record: dict) -> None:
     """One JSON object per line, flushed immediately: a trace is read while (or after) a
     demo run is still in flight, and a partial last line beats a lost one."""
@@ -806,6 +835,113 @@ def cmd_actuation(args) -> int:
     if aset.notes:
         print(f"  notes: {aset.notes}")
     return 0
+
+
+def cmd_design(args) -> int:
+    if args.references or args.actuation_csv:
+        return _design_show_artifact(args)
+    return _design_show(args)
+
+
+def _design_show(args) -> int:
+    """The editable JSON revision (`design.program.load`): id, references, window, and
+    the same physical/model validation `design show` in the UI editor would show."""
+    from .design import program as design_program
+
+    paths = config.load_paths()
+    try:
+        view = design_program.load(args.ident, paths)
+    except (OSError, ValueError) as e:
+        print(f"no saved design {args.ident}: {e}", file=sys.stderr)
+        return 1
+    prog = view["program"]
+    print(f"design {prog['id']}  created {prog['created']}")
+    print(
+        f"  reference shot {prog['reference_shot']}  "
+        f"comparisons {prog['comparison_shots'] or '(none)'}"
+    )
+    print(f"  window {prog['start_s']}-{prog['end_s']} s")
+    if prog["notes"]:
+        print(f"  notes: {prog['notes']}")
+    validation = view["validation"]
+    for label, items in (
+        ("errors", validation["errors"]), ("warnings", validation["warnings"])
+    ):
+        if items:
+            print(f"  {label}:")
+            for item in items:
+                print(f"    - {item}")
+    return 0
+
+
+def _design_show_artifact(args) -> int:
+    """`--references` / `--actuation-csv` read only the saved `outputs/<ident>.h5`
+    (written by `design.assistant._write_hdf5`) -- the same file the Frontier demo
+    script copies to `design.h5` -- not the editable JSON revision."""
+    import h5py
+
+    paths = config.load_paths()
+    artifact = paths.data_root / "outputs" / f"{args.ident}.h5"
+    try:
+        with h5py.File(artifact, "r") as f:
+            if args.actuation_csv:
+                _print_actuation_csv(f)
+            else:
+                _print_design_references(args.ident, json.loads(f["metadata"][()]))
+    except OSError as e:
+        print(
+            f"no saved design artifact for {args.ident} ({artifact}): {e}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def _print_actuation_csv(f) -> None:
+    import csv
+
+    import numpy as np
+
+    names = [n.decode() if isinstance(n, bytes) else n for n in f["channel_names"][()]]
+    times, values, available = f["time_s"][()], f["actuators"][()], f["available"][()]
+    writer = csv.writer(sys.stdout)
+    writer.writerow(["time_s", *names])
+    for t, row_values, row_available in zip(times, values, available):
+        cells = [
+            "" if not ok or not np.isfinite(v) else v
+            for v, ok in zip(row_values, row_available)
+        ]
+        writer.writerow([t, *cells])
+
+
+def _print_design_references(ident: str, metadata: dict) -> None:
+    print(f"# Design {ident}")
+    print()
+    print(f"**Prompt:** {metadata['prompt']}")
+    print()
+    print(f"**Model:** {metadata['model']}")
+    print(f"**Reference shot:** {metadata['reference_shot']}")
+    comparisons = metadata.get("comparison_shots") or []
+    if comparisons:
+        print(f"**Comparison shots:** {', '.join(str(s) for s in comparisons)}")
+    print(f"**Baseline:** {metadata['baseline']}")
+    print()
+    print("## Explanation")
+    print()
+    print(metadata["explanation"])
+    candidates = metadata.get("retrieved_candidates") or []
+    if candidates:
+        print()
+        print("## Retrieved candidates")
+        print()
+        print("| shot | score | description |")
+        print("| --- | --- | --- |")
+        for c in candidates:
+            desc = (c.get("description") or "").replace("|", "\\|").replace("\n", " ")
+            score = c.get("score")
+            is_number = isinstance(score, (int, float))
+            score_text = f"{score:.4f}" if is_number else str(score)
+            print(f"| {c['shot']} | {score_text} | {desc[:160]} |")
 
 
 # --------------------------------------------------------------------------- phase 2 (wired)
@@ -1969,6 +2105,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser(
+        "evalsets", help="named prompt libraries under configs/shot_design/evalsets/"
+    )
+    what = p.add_subparsers(dest="what", required=True)
+    s = what.add_parser("prompt", help="print one named prompt's text")
+    s.add_argument("name", help="the evalset file's stem, e.g. frontier_demo_prompts")
+    s.add_argument("slug", help="the prompt's key within that file")
+    p.set_defaults(func=cmd_evalsets)
+
+    p = sub.add_parser(
         "phenomenon",
         help="which shots show a phenomenon, and what kind of evidence says so",
     )
@@ -2076,6 +2221,22 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("id")
     s.add_argument("--json", action="store_true", help="the stored JSON verbatim")
     p.set_defaults(func=cmd_actuation)
+
+    p = sub.add_parser("design", help="inspect a design the assistant harness saved")
+    what = p.add_subparsers(dest="what", required=True)
+    s = what.add_parser(
+        "show", help="the editable revision, or its saved HDF5's references/actuation"
+    )
+    s.add_argument("ident", help="saved design id (32 hex chars)")
+    s.add_argument(
+        "--references", action="store_true",
+        help="markdown: prompt, references, explanation (from the saved HDF5)",
+    )
+    s.add_argument(
+        "--actuation-csv", action="store_true", dest="actuation_csv",
+        help="CSV of the saved physical actuator waveforms (from the saved HDF5)",
+    )
+    p.set_defaults(func=cmd_design)
 
     p = sub.add_parser("serve", help="open the local Search, Shot and Locate browser UI")
     p.add_argument("--host", choices=["127.0.0.1"], default=None)
