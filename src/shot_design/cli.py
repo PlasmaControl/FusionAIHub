@@ -593,6 +593,19 @@ def cmd_encode(args) -> int:
     return 0 if report["n_encoded"] or report["n_skipped"] else 1
 
 
+def cmd_simulate(args) -> int:
+    """Paired real/proposed IGNITE rollout for one design; writes status.json.
+
+    Delegates entirely to `simulate.cli.run`, imported here rather than at
+    module top: `simulate.cli` pulls in the dynamics/codec loading machinery
+    (torch, the sibling `tokamak_foundation_model.ignite` package), which every
+    other `shot_design` invocation should not pay to import.
+    """
+    from .simulate import cli as simulate_cli
+
+    return simulate_cli.run(args)
+
+
 def _frame_codes_census(paths) -> str:
     """One line per device the encoded caches were written on, plus what has no sidecar.
 
@@ -1706,6 +1719,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chunk", type=int, default=0, help="which contiguous slice this task takes")
     p.add_argument("--n-chunks", type=int, default=1, help="how many tasks share the list")
     p.set_defaults(func=cmd_encode)
+
+    p = sub.add_parser(
+        "simulate",
+        help="paired real/proposed IGNITE rollout for one design (writes status.json)",
+    )
+    p.add_argument("ident", help="saved design id (32 hex chars)")
+    p.add_argument("--seed", type=int, default=0, help="RNG seed shared by both arms")
+    p.add_argument("--k0", type=int, default=20, help="seed frames before prediction")
+    p.add_argument("--n-predict", type=int, default=80, help="predicted frames")
+    p.add_argument(
+        "--decode",
+        help="comma-separated modalities to decode for the report/panels "
+        "(default: filterscopes,mhr,mirnov,ts_core_density,ts_core_temp)",
+    )
+    p.add_argument("--device", help="cuda | cpu (default: cuda when available)")
+    p.add_argument(
+        "--out", help="output dir (default: <data_root>/outputs/<ident>/simulation)"
+    )
+    p.set_defaults(func=cmd_simulate)
 
     p = sub.add_parser("show", help="print one shot's record")
     p.add_argument("shot", type=int)
