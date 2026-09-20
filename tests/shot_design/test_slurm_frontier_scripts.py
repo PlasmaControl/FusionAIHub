@@ -65,6 +65,21 @@ def test_build_wrapper_defaults_to_the_corpus_reader_without_encoding():
     assert "${BUILD_ARGS:---reader corpus --no-encode}" in body
 
 
+def test_simulate_wrapper_does_not_set_debug_qos_so_the_demo_loop_can_submit():
+    """Frontier's debug QOS caps `MaxSubmitJobsPU` at 1, so a wrapper that hardcodes
+    `-q debug` breaks the moment a second job (the demo loop's next design, or the
+    UI's second concurrent simulation) tries to submit while the first is still
+    queued/running (job 5516504). The job is `-t 01:00:00` on `batch`, comfortably
+    inside the debug QOS's own 2 h cap, so `-q debug` bought nothing but the
+    one-job limit. A one-off run can still ask for it explicitly with
+    `sbatch -q debug ...`."""
+    text = (SLURM / "shot_design_simulate.sh").read_text()
+    assert "#SBATCH -q debug" not in text
+    assert "sbatch -q debug" in text, (
+        "the wrapper should still document the debug-QOS opt-in for a one-off run"
+    )
+
+
 def test_common_file_skips_the_compute_node_settings_outside_a_job():
     # The login-node scripts (blurb backfill, demo) source the common file: it must not pull in
     # _frontier_settings.sh there, which needs SLURM_JOB_ID and SLURM_NODELIST (set -u dies).

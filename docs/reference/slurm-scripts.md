@@ -35,7 +35,7 @@ location (the spooled copy `sbatch` runs has no relation to the checkout).
 | `shot_design_build.sh` | `extended`, 1 node, CPU, 6h | full database rebuild for a shot list (`SHOT_LIST`, `BUILD_ARGS`) |
 | `shot_design_encode.sh` | `extended`, array 0-7, 1 GPU each, 6h | IGNITE frame-code encoding, one contiguous chunk of the shot list per task |
 | `shot_design_genc.sh` | `batch -q debug`, 1 GPU, 1h | G-ENC gate: fresh encode vs. the production frame-codes cache |
-| `shot_design_simulate.sh` | `batch -q debug`, 1 GPU, 1h | one design's paired real/proposed IGNITE rollout (see [Simulation](../shot-design/simulation.md)) |
+| `shot_design_simulate.sh` | `batch`, 1 GPU, 1h | one design's paired real/proposed IGNITE rollout (see [Simulation](../shot-design/simulation.md)); no `-q debug` — that QOS allows only one submitted job per user, which breaks the demo loop and concurrent UI runs |
 
 See [Database build](../shot-design/database-build.md) for the full
 census → select → logs → labels → features (fdp) → build → encode →
