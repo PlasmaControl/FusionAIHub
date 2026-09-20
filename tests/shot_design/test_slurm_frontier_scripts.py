@@ -13,7 +13,7 @@ import pytest
 
 SLURM = Path(__file__).resolve().parents[2] / "scripts" / "slurm_frontier"
 SCRIPTS = ["shot_design_census.sh", "shot_design_build.sh", "shot_design_encode.sh",
-           "shot_design_simulate.sh"]
+           "shot_design_simulate.sh", "shot_design_genc.sh"]
 
 
 @pytest.mark.parametrize("name", SCRIPTS)
@@ -25,6 +25,17 @@ def test_frontier_shot_design_scripts_follow_house_style(name):
     assert "/scratch/gpfs" not in text, "Stellar path leaked into a Frontier script"
     assert "gpu-stellar" not in text and "pppl" not in text
     assert "runs/slurm/%j" in text or "runs/slurm/%A_%a" in text
+
+
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_wrappers_source_the_common_file_from_the_submit_dir(name):
+    """`sbatch` executes a spool COPY of the script, so `dirname "$0"` is the spool
+    directory, not the repo (job 5514036 died with `_shot_design_common.sh: No such
+    file`). `$SLURM_SUBMIT_DIR` is where `sbatch` was invoked -- the repo root."""
+    text = (SLURM / name).read_text()
+    assert 'source "$(dirname "$0")/_shot_design_common.sh"' not in text
+    assert ('source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}'
+            '/scripts/slurm_frontier/_shot_design_common.sh"') in text
 
 
 def test_the_census_writes_the_parquet_name_every_consumer_defaults_to():

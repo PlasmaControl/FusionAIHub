@@ -12,6 +12,8 @@
 # Full rebuild of the shot database for one shot list (atomic: db.tmp, then a swap).
 # A PRODUCTION WRITE -- it replaces $SHOT_DESIGN_DATA_ROOT/db. Env overrides: SHOT_LIST,
 # BUILD_ARGS (e.g. `--reader corpus --no-encode`, `--limit 20` for a pilot).
-source "$(dirname "$0")/_shot_design_common.sh"
+# sbatch runs a spool COPY of this file, so `dirname "$0"` is not the repo; the submit
+# directory is (every wrapper is submitted from the repo root). Local runs fall back.
+source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}/scripts/slurm_frontier/_shot_design_common.sh"
 srun -n1 -c56 "$PY" -m shot_design build --workers 48 \
     --list "${SHOT_LIST:-recommender_frontier_v1}" ${BUILD_ARGS:-}
