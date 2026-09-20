@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Repo: `/lustre/orion/fus187/scratch/nchen/FusionAIHub`. Work on branch `nathan_dev` (created in Task A1). Never force-push; never touch `nathan_fm`, `dev-nathan`, `main`.
-- Python for tests until the `shot-design-frontier` env exists (Task B2): `.pixi/envs/frontier/bin/python` with `PYTHONPATH=src`. After B2: `pixi run --frozen -e shot-design-frontier pytest tests/shot_design`.
+- Python for tests: `pixi run --frozen -e shot-design-frontier pytest tests/shot_design tests/labeler` (env exists since Task B2). Every pixi call on Frontier uses `--frozen`; never re-solve the lock.
 - Frontier data roots (spec §2): `SHOT_DESIGN_DATA_ROOT=/lustre/orion/fus187/proj-shared/nchen/shot_design`, `LABELER_ROOT=/lustre/orion/fus187/proj-shared/nchen/labeler`, `SHOT_DESIGN_CORPUS=/lustre/orion/fus187/proj-shared/foundation_model`. Never write there from a test; tests use the `paths` fixture (tmp_path).
 - v4 contract: 15 modalities (spec §"Facts"), every vocab 1000, `t0_start_s: 1.0`, 1209 tokens/frame, actuators `(F, 88)`. Codec template `/lustre/orion/fus187/proj-shared/models/ignite_codecs_v4/{m}/codec_best.pt`; cache `/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes`; dynamics `/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/mskfull/dynamics_best.pt` (step 3200). Pinned copies with sha256 live under `<models_dir>/IGNITE_v4/`.
 - Slurm: `-A fus187 -p batch`; short demo/validation jobs `-q debug` (≤ 2 h, one at a time). Logs to `$SHOT_DESIGN_DATA_ROOT/runs/slurm/%j.out`. Never run production writes (`build`, `add`, `labels join`) without the owner's go-ahead stated in the task.
@@ -358,8 +358,8 @@ rocm-smi --showproductname 2>/dev/null | grep -m1 'Card series' || true
 #SBATCH -t 02:00:00
 #SBATCH --output=/lustre/orion/fus187/proj-shared/nchen/shot_design/runs/slurm/%j.out
 source "$(dirname "$0")/_shot_design_common.sh"
-srun -n1 -c56 "$PY" -m shot_design corpus scan --workers 48 --out "$ROOT/db/census.parquet"
-"$PY" -m shot_design corpus summary "$ROOT/db/census.parquet"
+srun -n1 -c56 "$PY" -m shot_design corpus scan --workers 48 --out "$ROOT/db/corpus_coverage.parquet"
+"$PY" -m shot_design corpus summary "$ROOT/db/corpus_coverage.parquet"
 ```
 `shot_design_build.sh`: same header, `-t 06:00:00`, body `srun -n1 -c56 "$PY" -m shot_design build --workers 48 --list "${SHOT_LIST:-recommender_frontier_v1}" ${BUILD_ARGS:-}`.
 `shot_design_encode.sh`: array of 8 tasks on one node, one GCD each:
@@ -472,6 +472,105 @@ User directive 2026-09-19 16:11: "rename all the ideate to shot_design". Pixi re
 - [ ] **Step 4:** `git mv` nothing (no file is named ideate outside archives); commit `git commit -m "repo: rename ideate environments and tags to shot-design"`.
 
 ## Phase C: IGNITE v4 migration
+
+### Task C0: Merge Peter's v4 training code (`peter/dev-peter` @ 35cfed1)
+
+Added 2026-09-19 18:55 by controller ruling. C1 found that the v4 codecs and the `mskfull` dynamics
+checkpoint were produced by code that is not on `nathan_dev`: Peter's clone
+`/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub` is on `dev-peter` at `35cfed1`, 47
+unpushed commits past the `f71acd4` merged in Task A2. Measured on the login node with the same
+interpreter: with Peter's `src` on `PYTHONPATH`, `train_dynamics._load_codec` loads all 15 v4
+codecs strictly and `eval_dynamics.load_model` loads `mskfull/dynamics_best.pt` (step 3200,
+300,815,000 params, 15 modalities, `actuator_dim 70 -> 88` inferred from
+`backbone.act_embed.weight`); with `nathan_dev`'s `src`, 6 codecs fail (`SpectroCodec` lacks
+`decoder.refine.*`, `FastTSCodec` lacks `encoder.gain_to_tokens.*`) and the dynamics load fails on
+`act_embed` 70 vs 88. His 5 uncommitted files are NOT needed for loading (verified against his
+committed HEAD) and are not taken. The ref is already fetched as `refs/remotes/peter/dev-peter`
+(if absent: `git -c safe.directory='*' fetch /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub dev-peter:refs/remotes/peter/dev-peter`).
+
+**Files (the seven that conflict):**
+- Modify: `scripts/slurm_frontier/_frontier_common.sh`, `scripts/slurm_frontier/train_dynamics.sh`
+- Modify: `src/tokamak_foundation_model/ignite/dynamics.py`, `dynamics_config.py`, `eval_dynamics.py`, `maskgit.py`, `train_dynamics.py`
+- Create: `tests/ignite/test_v4_assets_load.py`
+- Everything else merges cleanly (Peter deleted no files since the base; our `sampling.py`, `scoring.py`, `selfforce.py`, `text_embed.py` stay).
+
+**Interfaces:**
+- Produces: after the merge, `train_dynamics._load_codec(family, path)` loads every `ignite_codecs_v4/<m>/codec_best.pt` strictly; `eval_dynamics.load_model(ckpt_path, device)` loads `mskfull/dynamics_best.pt` and returns `actuator_dim == 88` on its config; `dynamics_config.modalities_from_manifest` (C1) is unchanged.
+
+**Conflict rules (the spec is v4 end to end, so Peter's semantics win wherever they decide how a v4 checkpoint is built or loaded):**
+1. Model construction and checkpoint loading (`maskgit.py`, `dynamics.py`, `dynamics_config.py` fields, `eval_dynamics.load_model`, codec loading in `train_dynamics.py`): take Peter's side.
+2. Our additive, flag-gated features stay and must still be off by default and bit-identical when off: per-shot text-embedding conditioning (`--text_*`, `text_embed.py`), `--snapshot_every`, the Gumbel reveal (`IGNITE_MASKGIT_GUMBEL`), the actuator-counterfactual and honest-video eval panels, the removed diff-panel remnants (do not resurrect `CMAP_DIFF`). Where both sides changed the same function, the result carries both behaviours.
+3. `dynamics_config.py`: keep C1's `modalities_from_manifest` verbatim and Peter's new fields.
+4. Slurm wrappers: keep our `_frontier_common.sh` / `train_dynamics.sh` structure (they source `_frontier_settings.sh` and carry the RCCL plugin fix); bring over Peter's new environment variables and flags only where they are not already present. `bash -n` both.
+
+- [ ] **Step 1: Baseline failure list before merging**
+
+```bash
+pixi run --frozen -e shot-design-frontier pytest tests/ignite tests/shot_design -q -p no:cacheprovider --ignore=tests/ignite/test_train_codec.py -rf 2>&1 | grep -E "^FAILED|passed|failed" > /tmp/c0_before.txt
+```
+(`test_train_codec.py` trainer-loop tests abort natively on a login node — Peter's note 34dc6c3. Never run `tests/labeler/test_labels_layout_integration.py` here.)
+
+- [ ] **Step 2: Failing test**
+
+```python
+# tests/ignite/test_v4_assets_load.py
+from pathlib import Path
+import pytest
+
+CODECS = Path("/lustre/orion/fus187/proj-shared/models/ignite_codecs_v4")
+DYN = Path("/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/mskfull/dynamics_best.pt")
+FAMILIES = {"ece": "spectro", "bes": "spectro", "mhr": "spectro", "co2": "spectro",
+            "mirnov": "spectro", "tangtv_lower": "video", "tangtv_upper": "video",
+            "ts_core_density": "slowts", "ts_core_temp": "slowts",
+            "ts_tangential_density": "slowts", "ts_tangential_temp": "slowts",
+            "cer_ti": "slowts", "cer_rot": "slowts", "mse": "slowts", "filterscopes": "fastts"}
+
+pytestmark = pytest.mark.skipif(not CODECS.exists(), reason="v4 assets are Frontier-only")
+
+
+@pytest.mark.parametrize("name", sorted(FAMILIES))
+def test_every_v4_codec_loads_strictly(name):
+    from tokamak_foundation_model.ignite import train_dynamics as td
+    codec = td._load_codec(FAMILIES[name], CODECS / name / "codec_best.pt")
+    assert codec is not None
+
+
+def test_mskfull_dynamics_checkpoint_loads_with_88_actuators():
+    from tokamak_foundation_model.ignite import eval_dynamics as ed
+    model, cfg, step = ed.load_model(DYN, "cpu")
+    assert step == 3200
+    assert len(cfg.modalities) == 15
+    assert model.backbone.act_embed.weight.shape[1] == 88
+```
+
+Run: `pixi run --frozen -e shot-design-frontier pytest tests/ignite/test_v4_assets_load.py -q` — expected: 6 codec cases and the dynamics case FAIL on `nathan_dev` before the merge.
+
+- [ ] **Step 3: Merge and resolve**
+
+```bash
+git merge --no-ff --no-commit peter/dev-peter
+git diff --name-only --diff-filter=U     # the seven files
+# resolve per the conflict rules; then
+bash -n scripts/slurm_frontier/_frontier_common.sh scripts/slurm_frontier/train_dynamics.sh
+git add -A -- scripts/slurm_frontier src/tokamak_foundation_model tests
+git commit -m "merge peter/dev-peter 35cfed1: v4 codec stack, live-frame weighting, actuator_dim inference"
+```
+
+- [ ] **Step 4: Verify**
+
+```bash
+pixi run --frozen -e shot-design-frontier pytest tests/ignite/test_v4_assets_load.py -q          # 16 passed
+pixi run --frozen -e shot-design-frontier pytest tests/ignite tests/shot_design -q -p no:cacheprovider --ignore=tests/ignite/test_train_codec.py -rf 2>&1 | grep -E "^FAILED|passed|failed" > /tmp/c0_after.txt
+diff /tmp/c0_before.txt /tmp/c0_after.txt
+```
+Expected: every FAILED line in `before` that is not in `after` is a fix; any FAILED line in `after` not in `before` is a regression to fix before reporting (except `tests/shot_design/test_ignite.py::test_codecs_expose_the_encode_then_quantize_contract` if it now fails only on the encodable-name set — that is C2's `mirnov` work; report it).
+
+- [ ] **Step 5: Commit the test**
+
+```bash
+git add tests/ignite/test_v4_assets_load.py
+git commit -m "ignite: test that the pinned v4 codecs and mskfull dynamics checkpoint load"
+```
 
 ### Task C1: Manifest-driven modality table and `shot_design model --pin`
 
@@ -660,8 +759,42 @@ git commit -m "ignite v4: mirnov in the encode path, production cache first, voc
 **Files:**
 - Modify: `src/tokamak_foundation_model/ignite/eval_dynamics.py:121-142` (`load_model`)
 - Modify: `scripts/shot_design/g_enc.py` (compare fresh encodes with `frame_codes_cache`, 15 modalities)
+- Modify: `src/shot_design/shotdb/build.py:296-309` (`frame_codes_dirs`: production cache first, v4 bundle dir)
+- Modify: `src/shot_design/design/program_reference.py` (`_cache_path` reuses `build.frame_codes_dirs`)
 - Create: `scripts/slurm_frontier/shot_design_genc.sh`
 - Test: `tests/ignite/test_load_model_actuator_dim.py`
+- Test: `tests/shot_design/test_build.py` (or the existing build test module) — `frame_codes_dirs` order
+
+**Controller amendment 2026-09-19 20:10 (ruling, from the C2 implementer's follow-ups):**
+`shotdb.build.frame_codes_dirs` still returns the v2 pair `(<data_root>/frame_codes, <models_dir>/IGNITE/frame_codes)`. It is the single source for `build`'s `has_frame_codes` column, `corpus select`'s preferred-shots set (`cli.py:608, 978`) and `frame_codes_path`. Left as is, Task F1 would select 5000 shots blind to the 8752 shots already in the production cache and Task F2 Step 5 would re-encode them on 8 GCDs. Fix it here, before any F-phase job runs.
+
+- [ ] **Step 0a: Failing test** (append to the module that already tests `shotdb.build`; otherwise create `tests/shot_design/test_build_frame_codes_dirs.py`):
+
+```python
+from pathlib import Path
+from shot_design.shotdb import build, ignite
+
+def test_frame_codes_dirs_production_cache_first_then_v4_bundle(paths, monkeypatch):
+    monkeypatch.setattr(ignite, "model_cfg", lambda: {**ignite.model_cfg(), "frame_codes_cache": "/prod/frame_codes"})
+    dirs = build.frame_codes_dirs(paths)
+    assert dirs[0] == Path("/prod/frame_codes")
+    assert dirs[1] == Path(paths.data_root) / "frame_codes"
+    assert dirs[2] == ignite.bundle_dir(paths) / "frame_codes"
+    assert Path(paths.models_dir) / "IGNITE" / "frame_codes" not in dirs
+
+def test_frame_codes_dirs_without_a_production_cache(paths, monkeypatch):
+    monkeypatch.setattr(ignite, "model_cfg", lambda: {k: v for k, v in ignite.model_cfg().items() if k != "frame_codes_cache"})
+    dirs = build.frame_codes_dirs(paths)
+    assert dirs == (Path(paths.data_root) / "frame_codes", ignite.bundle_dir(paths) / "frame_codes")
+```
+
+(`monkeypatch.setitem(ignite.model_cfg(), …)` is a no-op because `load_yaml` deep-copies — patch the function, as Task C2's tests do.)
+
+- [ ] **Step 0b: Implement.** `frame_codes_dirs` returns `(Path(production), data_root/"frame_codes", bundle_dir(paths)/"frame_codes")` with `production = ignite.model_cfg().get("frame_codes_cache")`, omitting the first entry when unset; drop `<models_dir>/IGNITE`. Then make `program_reference._cache_path` iterate `build.frame_codes_dirs(paths)` instead of its own `roots` list (same order; one source of truth). `build.py` deliberately never imports `ignite` at module level (its line-14 comment; see the lazy `from . import ignite` at `build.py:1074, 1293`) — keep that: import `ignite` inside `frame_codes_dirs`. `design/program_reference.py` may import `build` at module level only if `build` does not import `design`; check with `grep -n "^from\|^import" src/shot_design/shotdb/build.py`, and if it does, put the tuple in `shotdb/ignite.py` as `frame_codes_dirs(paths)` and have both callers use it. Run `pytest tests/shot_design -q`; the existing `_cache_path` tests must stay green.
+
+- [ ] **Step 0b-ii: Hermeticity (C2 review, Important, plan-mandated).** `_cache_path`/`frame_codes_dirs` read `model_cfg()["frame_codes_cache"]`, an absolute Frontier path, so any test using a real shot number in the production range silently reads production data instead of its tmp tree. Add to `tests/shot_design/conftest.py` an autouse fixture that patches `shot_design.shotdb.ignite.model_cfg` to return the yaml WITHOUT `frame_codes_cache`; tests that want a production cache set it themselves afterwards (their own `monkeypatch.setattr(ignite, "model_cfg", ...)` runs later and wins — Task C2's `test_ignite_v4.py` cache tests do exactly this; confirm they still pass). Test for the fixture itself: `def test_tests_never_see_the_production_cache(): assert "frame_codes_cache" not in ignite.model_cfg()`. Also point `program_reference._cache_path` at `ignite.production_cache_path(shot)` / `frame_codes_dirs` rather than re-deriving the root (C2 review, Minor 1) — Step 0b already does this if `_cache_path` iterates `frame_codes_dirs`.
+
+- [ ] **Step 0c:** In `g_enc.py`, `FULL_SHOT_FRAMES = 239` is the v2 count (t0 0.05 s). v4 starts at `t0_start_s: 1.0`, so a full shot is 219 frames (the C2 validation measured 219 on shots 190000, 190090, 204346). Set `FULL_SHOT_FRAMES = 219` and derive the expected count from the cache file's `n_frames` when it is present, with the constant as the fallback; update its comment.
 
 - [ ] **Step 1: Failing test**
 
@@ -680,9 +813,9 @@ def test_load_model_builds_the_checkpoints_actuator_width(tmp_path):
     assert cfg2.actuator_dim == 88 and step == 7
 ```
 
-- [ ] **Step 2: Run to fail** → `RuntimeError: size mismatch ... act_embed`.
+- [ ] **Step 2: Run.** Controller amendment 2026-09-19 19:45: Task C0 merged Peter's `eval_dynamics.load_model`, which already infers `actuator_dim` from `backbone.act_embed.weight` (it printed `actuator_dim 70 -> 88` when loading `mskfull`). Expected: this test PASSES as written. Keep the test (it pins the behaviour), skip Step 3, and go to Step 4. Only if it fails, do Step 3.
 
-- [ ] **Step 3: Implement** in `load_model` before `DynamicsConfig(**kw)`:
+- [ ] **Step 3 (only if Step 2 failed): Implement** in `load_model` before `DynamicsConfig(**kw)`:
 
 ```python
     if "cfg_actuator_dim" in ck:
@@ -706,8 +839,10 @@ Wait; read `$ROOT/runs/genc_v4.json`. If a spectro modality misses the bar, the 
 - [ ] **Step 5: Commit**
 
 ```bash
+git add src/shot_design/shotdb/build.py src/shot_design/design/program_reference.py tests/shot_design/test_build_frame_codes_dirs.py
+git commit -m "shot_design: frame_codes_dirs lists the production cache first and the v4 bundle"
 git add src/tokamak_foundation_model/ignite/eval_dynamics.py scripts/shot_design/g_enc.py scripts/slurm_frontier/shot_design_genc.sh tests/ignite/test_load_model_actuator_dim.py
-git commit -m "ignite: load_model reads actuator_dim from the checkpoint; G-ENC gate against the v4 production cache"
+git commit -m "ignite: pin actuator_dim inference in load_model; G-ENC gate against the v4 production cache"
 ```
 
 ---
@@ -866,6 +1001,7 @@ git commit -m "shot_design: simulate subcommand with status file"
 
 **Interfaces:**
 - `POST /api/design/{ident}/simulate` → 202 `{"ident", "job_id", "status_url"}`; runs `ui.yaml simulate.submit_cmd` via `subprocess.run` (mockable through `app.state.submit`), parses `Submitted batch job N`.
+- Controller amendment 2026-09-19 22:05: the wrapper locates `_shot_design_common.sh` through `$SLURM_SUBMIT_DIR`, so `sbatch` MUST be invoked with the repo root as its working directory. The default `app.state.submit` runs `subprocess.run(shlex.split(cmd), cwd=REPO_ROOT, capture_output=True, text=True, check=True)` with `REPO_ROOT = Path(__file__).resolve().parents[3]` (verify that index resolves to the repo root from `src/shot_design/ui/simulate_routes.py`), and the test asserts the fake submit receives the command string (the cwd is the production default's concern; cover it with one test that inspects the default submit's `cwd` via `monkeypatch.setattr(subprocess, "run", fake)`). The existing house-style test `tests/shot_design/test_slurm_frontier_scripts.py::test_wrappers_source_the_common_file_from_the_submit_dir` already pins the source line; keep it green.
 - `GET /api/design/{ident}/simulate` → contents of `outputs/<ident>/simulation/status.json` or `{"state": "not_started"}`.
 - `GET /api/design/{ident}/simulate/report` → `report.md`; `GET .../simulate/panels/{name}.png` → the image (name validated `^[a-z_]+\.png$`).
 
@@ -887,7 +1023,9 @@ git commit -m "shot_design: simulate subcommand with status file"
 #SBATCH -c 7
 #SBATCH -t 01:00:00
 #SBATCH --output=/lustre/orion/fus187/proj-shared/nchen/shot_design/runs/slurm/%j.out
-source "$(dirname "$0")/_shot_design_common.sh"
+# sbatch runs a spool COPY of this file, so `dirname "$0"` is not the repo; the submit
+# directory is (every wrapper is submitted from the repo root). Local runs fall back.
+source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}/scripts/slurm_frontier/_shot_design_common.sh"
 IDENT="${1:?design ident}"
 srun "$PY" -m shot_design simulate "$IDENT" --device cuda "${@:2}"
 ```
@@ -1045,7 +1183,7 @@ The full backfill itself is F2 Step 4.
 
 ### Task F1: Census and selection
 
-- [ ] **Step 1:** `sbatch scripts/slurm_frontier/shot_design_census.sh`; then `pixi run --frozen -e shot-design-frontier python -m shot_design corpus summary $SHOT_DESIGN_DATA_ROOT/db/census.parquet | head -40`. Record eligible count.
+- [ ] **Step 1:** `sbatch scripts/slurm_frontier/shot_design_census.sh`; then `pixi run --frozen -e shot-design-frontier python -m shot_design corpus summary $SHOT_DESIGN_DATA_ROOT/db/corpus_coverage.parquet | head -40`. Record eligible count.
 - [ ] **Step 2:** Read `src/shot_design/shotdb/select.py` and `configs/shot_design/shot_lists/recommender_v1.yaml`. Run `python -m shot_design corpus select --n 5000 --name recommender_frontier_v1 --seed 20260919` with theme quotas ×10 (`fast_ion_ae` first). If eligible < 5000, take all eligible and say so.
 - [ ] **Step 3:** Commit the list: `git add configs/shot_design/shot_lists/recommender_frontier_v1.yaml && git commit -m "shot_design: recommender_frontier_v1 shot list (N shots, full Frontier corpus)"`.
 
