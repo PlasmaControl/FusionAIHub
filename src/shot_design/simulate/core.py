@@ -23,6 +23,10 @@ from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig
 
 from ..shotdb import ignite as shotdb_ignite
 
+# The three arms every SimulationArms field keyed by modality carries, in the fixed
+# order `decode.py` and `report.py` both iterate/write them in (real, proposed, gt).
+ARM_LABELS = ("real", "proposed", "gt")
+
 
 @dataclass
 class SimulationArms:

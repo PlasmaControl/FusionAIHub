@@ -99,6 +99,72 @@ def test_decode_modalities_reduces_spectro_to_F_C():
             assert arr.dtype == np.float32
 
 
+def test_reduce_video_returns_per_frame_mean():
+    # (F=2, C=1, Tv=2, H=2, W=2) -- values chosen so the mean is hand-computable.
+    dec = np.zeros((2, 1, 2, 2, 2), dtype=np.float32)
+    dec[0] = 1.0  # frame 0 mean = 1.0
+    dec[1] = np.array([0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0]).reshape(1, 2, 2, 2)
+    out = decode._reduce_video(dec)
+    assert out.shape == (2, 1)
+    np.testing.assert_allclose(out, np.array([[1.0], [7.0]]), atol=1e-6)
+
+
+def test_reduce_series_returns_per_frame_channel_mean():
+    # (F=2, C=2, Tt=3): each (frame, channel) row averaged over the trailing time axis.
+    dec = np.array(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 4.0, 4.0]],
+            [[0.0, 0.0, 0.0], [10.0, 20.0, 30.0]],
+        ],
+        dtype=np.float32,
+    )
+    out = decode._reduce_series(dec)
+    assert out.shape == (2, 2)
+    np.testing.assert_allclose(out, np.array([[2.0, 4.0], [0.0, 20.0]]))
+
+
+def test_reduce_series_passes_through_when_already_F_C():
+    dec = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    out = decode._reduce_series(dec)
+    np.testing.assert_allclose(out, dec)
+
+
+def test_decode_modalities_uses_the_codecs_device_not_the_arms_device(monkeypatch):
+    # Per controller ruling (fix round 1, finding 1): the codec's own device drives
+    # the decode, since `load_codecs` can place a codec on a different device than
+    # wherever a caller's arms tensors happen to live (e.g. D4 --device cuda). This
+    # is made to actually discriminate the old (arms-derived) vs new (codec-derived)
+    # behavior WITHOUT a real GPU by putting the arms tensors on torch's "meta"
+    # device (always available, no CUDA needed) while the codec stays on cpu: the
+    # old `_device_of(arms)` would report "meta", the fixed one reports "cpu".
+    codec, cfg = _tiny_spectro_codec()
+    codec_device = next(codec.parameters()).device
+    assert codec_device == torch.device("cpu")  # sanity: this test's codec is on cpu
+
+    seen_devices = []
+
+    def _fake_decode_flat_chunked(codec_arg, flat, device, *a, **k):
+        seen_devices.append(device)
+        f = flat.shape[0]
+        return np.zeros((f, cfg.channels, cfg.freq_bins, cfg.time_frames), np.float32)
+
+    monkeypatch.setattr(
+        decode.eval_dynamics, "decode_flat_chunked", _fake_decode_flat_chunked
+    )
+
+    codes = torch.zeros(5, 4, dtype=torch.int64, device="meta")
+    arms = core.SimulationArms(
+        seed_frames=2, predict_frames=3,
+        real={"mhr": codes}, proposed={"mhr": codes}, gt={"mhr": codes},
+        divergence_vs_real={}, token_accuracy={}, persistence_accuracy={},
+    )
+    codecs = {"mhr": (codec, cfg, "spectro")}
+    decode.decode_modalities(codecs, arms, ["mhr"])
+
+    assert len(seen_devices) == 3  # real, proposed, gt
+    assert all(d == codec_device for d in seen_devices)
+
+
 def test_decode_modalities_skips_names_without_a_codec():
     codec, cfg = _tiny_spectro_codec()
     n_tok = (cfg.freq_bins // cfg.patch_f) * (cfg.time_frames // cfg.patch_t)
