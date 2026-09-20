@@ -17,6 +17,7 @@ import pytest
 import yaml
 
 from shot_design import config
+from shot_design.shotdb import ignite
 
 BEAMS = ["15l", "15r", "21l", "21r", "30l", "30r", "33l", "33r"]
 OUR_SCHEMA = "shot-design-raw-v1"  # scripts/fetch_shots.SCHEMA; pinned equal in test_fetch_plan
@@ -64,6 +65,21 @@ def paths(tmp_path: Path, monkeypatch) -> config.Paths:
     monkeypatch.setenv("SHOT_DESIGN_PATHS", str(pfile))
     monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     return config.load_paths()
+
+
+@pytest.fixture(autouse=True)
+def _no_production_frame_codes_cache(monkeypatch):
+    """`model_cfg()["frame_codes_cache"]` is an absolute Frontier path outside any tmp
+    tree, and `shotdb.build.frame_codes_dirs`/`design.program_reference._cache_path`
+    read it first. Without this, a test that happens to use a real shot number in the
+    production range would silently read production's read-only corpus instead of its
+    own tmp fixtures. Every test gets the pinned yaml WITHOUT that key by default; a
+    test that wants a production cache patches `ignite.model_cfg` again afterwards (its
+    own `monkeypatch.setattr` runs later in the same test and wins -- see
+    `tests/shot_design/test_ignite_v4.py`'s `prod_cache` fixture).
+    """
+    cfg = {k: v for k, v in ignite.model_cfg().items() if k != "frame_codes_cache"}
+    monkeypatch.setattr(ignite, "model_cfg", lambda: cfg)
 
 
 def write_frame(path: Path, group: str, t_ms, cols: dict, attrs: dict | None = None) -> None:
