@@ -1,3 +1,8 @@
+---
+title: "Actuator Programs"
+sidebar_position: 5
+---
+
 # Actuator programs for IGNITE
 
 The Shot Designer's **Actuator editor** starts with real reference shots, lets you
