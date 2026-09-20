@@ -18,7 +18,9 @@
 # so more GCDs per task would buy nothing. `--skip-existing` makes a task that hits the
 # wall clock resubmittable. Set N_CHUNKS and the --array range together.
 # `extended` for the same reason as shot_design_build.sh: `batch` caps a one-node job at 2 h.
-source "$(dirname "$0")/_shot_design_common.sh"
+# sbatch runs a spool COPY of this file, so `dirname "$0"` is not the repo; the submit
+# directory is (every wrapper is submitted from the repo root). Local runs fall back.
+source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}/scripts/slurm_frontier/_shot_design_common.sh"
 
 # GPU samples for the utilisation gate: OLCF has no `jobstats`, so this file is the only
 # record of how much of the GCD the job used. Named after the id `sacct` reports -- for an
