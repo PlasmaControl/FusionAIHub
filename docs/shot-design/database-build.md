@@ -121,7 +121,11 @@ own `-p`/`-q`/`-t` overrides to run it in debug QOS instead of waiting on
 (debug QOS caps at 2 h, which is enough for a `--limit`-ed pilot). Gate the
 job afterwards with `labeler.jobstats`, same as any other Frontier job
 (Frontier has no `jobstats` command; the utilization half of the gate comes
-from `rocm-smi` samples written alongside the job).
+from `rocm-smi` samples written alongside the job). `build` (and `add`) also
+stage the text subset via `text.build_logs_subset`, which is a deliberate
+no-op here — logged once as a warning — since there is no `sql/logs.jsonl`
+on Frontier at all; every shot's logbook record then reads back as `None`,
+which downstream code already treats as a handled state.
 
 ## 7. Encode
 
