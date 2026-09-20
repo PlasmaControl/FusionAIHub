@@ -15,7 +15,7 @@ from pathlib import Path
 from shot_design import config
 
 REPO = Path(__file__).resolve().parents[2]
-DOCS = REPO / "docs" / "SHOT_DESIGN.md"
+DOCS = REPO / "docs" / "shot-design" / "overview.md"
 HEADING = "## Scratch databases and the pixi activation env"
 
 
