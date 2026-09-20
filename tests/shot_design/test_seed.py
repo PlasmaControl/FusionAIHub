@@ -380,12 +380,15 @@ def test_g_enc_compare_refuses_a_cache_whose_n_frames_lies_about_its_tensors():
         g_enc.compare(got, ref)
 
 
-def test_g_enc_compare_refuses_a_short_shot_against_the_gates_239_frames():
-    """A full shot is 239 frames. Two caches that agree with each other at 8 frames agree about
-    nothing the gate is asking about."""
+def test_g_enc_compare_refuses_a_short_shot_against_a_full_shots_frame_count():
+    """A full shot is `FULL_SHOT_FRAMES` frames -- 239 under v2 (t0 0.0 s), 219 under
+    the pinned v4 generation (t0 1.0 s); the number is a property of the generation, not
+    fixed here. Two caches that agree with each other at 8 frames agree about nothing
+    the gate is asking about.
+    """
     g_enc = _g_enc()
     short = _synthetic_reference(frames=8)
-    with pytest.raises(ValueError, match="239"):
+    with pytest.raises(ValueError, match=str(g_enc.FULL_SHOT_FRAMES)):
         g_enc.compare(_copy(short), short, expect_frames=g_enc.FULL_SHOT_FRAMES)
 
 

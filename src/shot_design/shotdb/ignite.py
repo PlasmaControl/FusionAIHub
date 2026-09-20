@@ -462,6 +462,13 @@ def filled_channels(processed: Path) -> dict[str, int]:
     group: measured on 185601, whose `bes` is the (64, 1) all-NaN placeholder, CodecPairDataset
     still yields 239 frames of a constant (std 0.0) spectrogram, which the codec would happily
     encode into a meaningless but finite feature. Absence has to be decided from the file.
+
+    Not every top-level group is a signal in this sense: the text-embedding campaign's
+    `text_embed` group (`input`/`total`, no `xdata`/`ydata`) has shipped in the corpus
+    since 2026-09, and `for name in f` walks it like any other group -- discovered when
+    G-ENC's re-encode of 190000 raised `KeyError: 'xdata' doesn't exist` (job 5514051,
+    2026-09-19). A group without `xdata` is not a modality this function has an opinion
+    about, so it is skipped rather than treated as a KeyError.
     """
     with _open(processed) as f:
         return {
@@ -473,7 +480,7 @@ def filled_channels(processed: Path) -> dict[str, int]:
                 )
             )
             for name in f
-            if f[name]["xdata"].shape[0] > 1
+            if "xdata" in f[name] and f[name]["xdata"].shape[0] > 1
         }
 
 
