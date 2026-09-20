@@ -1164,6 +1164,11 @@ def _encode(tmp: Path, records: list[ShotRecord], paths: config.Paths, workers: 
 
 def _check_publish(db_dir: Path, shot_source: str | None, n_shots: int, force: bool):
     """Refuse a different or smaller rebuild, retaining readable history for an override."""
+    if not (db_dir / "shots.parquet").exists():
+        # `shot_design labels join` can write manifest.json (a `labels` block only)
+        # before this db_dir has ever been built. No shots.parquet means no database
+        # to protect -- the first-ever build must proceed without --force.
+        return None
     previous = {}
     problem = None
     try:

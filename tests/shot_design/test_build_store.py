@@ -482,6 +482,33 @@ def test_a_rebuild_removes_only_the_files_the_build_owns(
     assert (db / "shots.parquet").exists() and (db / "manifest.json").exists()
 
 
+def test_a_join_only_manifest_does_not_block_the_first_build(
+    paths, staged_shot_a, text_fixtures, stub_embeddings
+):
+    """`shot_design labels join` can run before the first `build` ever has, leaving
+    `db/manifest.json` with only the join's `labels` block (no `shot_source`/`n_shots`
+    -- those are build-owned fields). A directory with no `shots.parquet` has never
+    been built, so it is not a database `_check_publish` should be protecting, and the
+    first-ever build must proceed without `--force`. The join's three tables must
+    still be there afterwards (build only deletes files it owns)."""
+    db = paths.db_dir
+    db.mkdir(parents=True, exist_ok=True)
+    (db / "manifest.json").write_text(json.dumps({"labels": {"a": 1}}))
+    joined = {
+        "labels_wide.parquet": b"labels",
+        "events.parquet": b"events",
+        "text_claims.parquet": b"claims",
+    }
+    for name, blob in joined.items():
+        (db / name).write_bytes(blob)
+
+    build.build([staged_shot_a], paths, build.load_build_cfg(), workers=1, encode=False)
+
+    assert (db / "shots.parquet").exists()
+    for name, blob in joined.items():
+        assert (db / name).read_bytes() == blob, name
+
+
 def test_a_group_narrower_than_its_address_costs_one_signal_not_the_shot(
     paths, signal_corpus, stub_embeddings
 ):
