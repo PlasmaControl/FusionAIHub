@@ -68,6 +68,7 @@ const ids = [
   'design-ignite', 'design-dirty', 'design-channel-details',
   'design-legend', 'design-prepare', 'design-feedback', 'design-prepare-status',
   'design-delete-point', 'design-simplify', 'design-merge', 'design-merge-status',
+  'design-simulate', 'design-simulate-status', 'design-simulate-report',
 ];
 const targets = Object.fromEntries(ids.map(id => [`#${id}`, new Element('div', id)]));
 for (const id of ['design-reference', 'design-start',
