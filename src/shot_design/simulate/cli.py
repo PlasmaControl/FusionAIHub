@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import tempfile
+import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -25,11 +26,9 @@ from .. import config
 from ..design import actuators as act
 from ..design import program, program_reference
 from ..shotdb import ignite as shotdb_ignite
-from . import core, decode, report
+from . import DEFAULT_DECODE, core, decode, report
 
-# The brief's own default list. Kept here (not duplicated in shot_design/cli.py's
-# argparse setup) so there is exactly one place this default can drift.
-DEFAULT_DECODE = ("filterscopes", "mhr", "mirnov", "ts_core_density", "ts_core_temp")
+__all__ = ["DEFAULT_DECODE", "run"]
 
 
 def _now() -> str:
@@ -125,7 +124,7 @@ def run(args) -> int:
         mcfg = shotdb_ignite.model_cfg()
         meta = {
             "design_id": prog.id,
-            "dynamics_sha256": (
+            "bundle_manifest_sha256": (
                 shotdb_ignite.bundle_identity(paths).get("manifest_sha256") or ""
             ),
             "codec_generation": mcfg.get("generation", "v2"),
@@ -144,7 +143,11 @@ def run(args) -> int:
         _write_status(out_dir, status)
         return 0
     except Exception as exc:  # noqa: BLE001 -- any failure must still fail status.json
+        # status.json's `error` stays the short `str(exc)` (D4's poller reads
+        # it); the full traceback only goes to stderr, which is all a Slurm-run
+        # failure leaves an operator to locate the fault from.
         print(f"shot_design simulate: {exc}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
         status.update(state="failed", error=str(exc), finished=_now())
         _write_status(out_dir, status)
         return 1
