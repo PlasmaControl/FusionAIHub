@@ -1,0 +1,14 @@
+Error: MDX compilation failed for file "/lustre/orion/fus187/scratch/nchen/FusionAIHub-wt-h/docs/IGNITE_CODEC_RETRAIN_SPEC.md"
+Cause: Expected a closing tag for `<id>` (31:25-31:29) before the end of `paragraph`
+  "line": 29,
+      "line": 29,
+      "line": 31,
+  "reason": "Expected a closing tag for `<id>` (31:25-31:29) before the end of `paragraph`",
+Error: MDX compilation failed for file "/lustre/orion/fus187/scratch/nchen/FusionAIHub-wt-h/docs/LABELER.md"
+Cause: Markdown link with URL `../.claude/superpowers-runtime/sdd/task-LC2-report.md` in source file "../docs/LABELER.md" (117:38) couldn't be resolved.
+Error: Markdown link with URL `../.claude/superpowers-runtime/sdd/task-LC2-report.md` in source file "../docs/LABELER.md" (117:38) couldn't be resolved.
+Error: MDX compilation failed for file "/lustre/orion/fus187/scratch/nchen/FusionAIHub-wt-h/docs/spectrogram_tokenizer_plan.md"
+Cause: Unexpected character `2` (U+0032) before name, expected a character that can start a name, such as a letter, `$`, or `_`
+  "line": 64,
+    "line": 64,
+  "reason": "Unexpected character `2` (U+0032) before name, expected a character that can start a name, such as a letter, `$`, or `_`",
