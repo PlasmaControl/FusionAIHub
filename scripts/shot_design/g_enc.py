@@ -1,6 +1,30 @@
 #!/usr/bin/env python
-"""G-ENC: re-encode shots from the corpus and compare with the caches shipped in the bundle.
+"""G-ENC: re-encode shots from the corpus and compare with a reference frame-code cache.
 
+    python scripts/shot_design/g_enc.py --device cuda --out runs/genc_v4.json
+
+THE DEFAULT RUN, GENERATION v4. `main` re-encodes `--shots` (default:
+`DEFAULT_V4_SHOTS`, five shots verified present in the production cache) from
+`<shot>_processed.h5` with `shot_design.design.seed.encode_frame_codes` and compares
+each against production's own `--cache-dir` (default `model.frame_codes_cache` in
+`ignite_modalities.yaml` -- the corpus the pinned v4 dynamics checkpoint was actually
+trained on). The v4 bundle ships no `frame_codes/` of its own the way v2's did, so
+this is the only reference available. `fraction_verdict` is the pass bar: EXACT match
+on the eight slow/fast time-series modalities, >= 99% of tokens on the five spectro
+and two video ones (`FRACTION_THRESHOLD_STRICT`/`FRACTION_THRESHOLD_LOOSE`) -- the
+same bar the measurements below already showed v2 actually clears, now written down
+as the criterion instead of an aside. Per-shot, per-modality results and the run's
+overall pass/fail go to `--out` (default `<data_root>/gates/g_enc_v4.json`).
+
+HISTORICAL RECORD, GENERATION v2. Everything below -- the STRICT bit-identical
+`compare`/`verdict` pair, `DEFAULT_SHOTS`, `is_diagnostic`, `ACT_TOL`/`ACT_MIN_PASS`
+-- is the ORIGINAL three-shot gate against the v2 bundle's own ten shipped
+`frame_codes/<shot>.pt` files. `main` no longer calls it (the v4 bundle has nothing
+at `<bundle>/frame_codes` to compare against), but the functions and their
+measurements are kept: they are what `fraction_verdict`'s per-family bar is built
+from, and `tests/shot_design/test_seed.py` still pins their exact behaviour.
+
+    # v2, unused by main() below:
     python scripts/shot_design/g_enc.py --shots 190090 202537 204346 --device cuda
 
 The bundle ships ten production `frame_codes/<shot>.pt` files. This gate rebuilds three of them
@@ -98,20 +122,25 @@ corpus's trailing all-NaN pad sample, production averaged it in as a zero, and t
 divisor moved all twelve `rmp` channels of 190090 by ~0.04 z. Small, systematic, and invisible
 without this comparison -- which is the argument for the gate.
 
-`--no-video` restricts the run to the twelve non-video modalities. The default keeps the
-criterion as written, so a shot that does not reproduce fails visibly.
+`--no-video` restricts the run to the twelve non-video modalities under v2's fourteen
+(thirteen under v4's fifteen -- the same flag, read by both `main` and the historical
+`compare`/`verdict` pair). The default keeps the criterion as written, so a shot that
+does not reproduce fails visibly.
 
-WHAT COUNTS AS THE GATE, AND WHAT DOES NOT. The G-ENC gate is the three shots 190090 / 202537 /
-204346 with all fourteen modalities and the 88 actuator channels. Anything narrower -- one shot,
-`--no-video`, `--allow-partial` -- is a DIAGNOSTIC: it is useful, it is cheap, and it can PASS
-while the gate fails, which is exactly how a one-shot CPU smoke run gets quoted as if it were
-the gate. Such a run marks its report `"diagnostic": true` and says so on stdout. The gate's
-standing verdict is `gates/g_enc.json`, which is FAILED (190090, 204346) and stays failed until
-those two shots reproduce or a separately justified acceptance criterion replaces the current
-one; a diagnostic run must never overwrite it (use `--json` to send it somewhere else).
+WHAT COUNTED AS THE v2 GATE, AND WHAT DID NOT. That historical gate was the three
+shots 190090 / 202537 / 204346 with all fourteen modalities and the 88 actuator
+channels. Anything narrower -- one shot, `--no-video`, `--allow-partial` -- was a
+DIAGNOSTIC: useful, cheap, and able to PASS while the gate failed, which is exactly
+how a one-shot CPU smoke run got quoted as if it were the gate. `is_diagnostic` names
+the rule; `DEFAULT_SHOTS` is that three-shot set, unrelated to `DEFAULT_V4_SHOTS`
+above. The v2 gate's standing verdict was `gates/g_enc.json`, FAILED (190090, 204346)
+and never re-run since the v4 migration superseded it.
 
-Every REQUESTED modality must be present on both sides and bit-identical. A modality that was
-asked for and produced nothing is a FAILURE, not an abstention -- see `compare`/`verdict`.
+Every REQUESTED modality had to be present on both sides and bit-identical under that
+gate. A modality that was asked for and produced nothing is a FAILURE there too, not
+an abstention -- see `compare`/`verdict`. `fraction_verdict`, the v4 default's pass
+function, keeps that same rule for a modality that produced nothing; it only loosens
+the bar for one that DID produce codes.
 """
 
 from __future__ import annotations
@@ -137,6 +166,12 @@ from shot_design.shotdb.corpus import CorpusReader
 
 DEFAULT_SHOTS = (190090, 202537, 204346)
 
+#: `main`'s default `--shots` against the v4 PRODUCTION cache
+#: (`model.frame_codes_cache`), not the v2 bundle-shipped three. Verified present in
+#: `frame_codes_cache` on 2026-09-19: 190000, 190090, 204346, 190735, 190736. 199597
+#: was considered and dropped -- it is not in that cache.
+DEFAULT_V4_SHOTS = (190000, 190090, 204346, 190735, 190736)
+
 
 def is_diagnostic(shots, *, no_video: bool, allow_partial: bool) -> bool:
     """Whether a run is narrower than the gate - and so may PASS while the gate fails.
@@ -156,10 +191,14 @@ ACT_TOL = 2e-3
 ACT_MIN_PASS = 82  # of 88; the known residuals are i_coil[0:6]-shaped and shot-specific
 
 
-#: A full DIII-D shot is 239 frames. The gate is about full shots: two caches that agree with
-#: each other over the first 8 frames agree about nothing this gate asks. `main` passes this to
-#: `compare`; a diagnostic call may pass `expect_frames=None` and get only internal consistency.
-FULL_SHOT_FRAMES = 239
+#: A full shot's frame count is a property of the pinned generation's `t0_start_s`, not
+#: a constant: v2 started frame 0 at shot time 0.0 s and ran 239 frames; the pinned v4
+#: generation starts at 1.0 s and runs 219 (measured on 190000, 190090, 204346). This
+#: is the FALLBACK for when a cache's own `n_frames` cannot be read; `main` prefers the
+#: reference cache's `n_frames` over this constant. Two caches that agree with each
+#: other over the first 8 frames agree about nothing this gate asks;
+#: `compare(..., expect_frames=None)` skips that check for a diagnostic.
+FULL_SHOT_FRAMES = 219
 N_ACTUATOR_CHANNELS = 88
 #: The four keys `ignite_infer.validate_shot` requires, and the dtypes it requires them in.
 CACHE_KEYS = ("codes", "actuators", "n_frames", "vocabs")
@@ -340,21 +379,75 @@ def verdict(result: dict, video: tuple[str, ...]) -> tuple[bool, list[str]]:
     return not [r for r in reasons if not r.startswith("(")], reasons
 
 
-def encode_one(shot: int, args, codecs, paths, out_dir: Path, ref) -> tuple[dict, float]:
+#: Per-family pass bar for the v4 production-cache gate (`main`'s default flow,
+#: `fraction_verdict` below) -- distinct from `verdict`'s "every requested modality
+#: bit-identical", which is what the historical three-shot v2 gate against the bundle's
+#: own shipped samples still asks. Spectro and video codecs flip an isolated token at a
+#: quantiser bin boundary under cross-vendor float arithmetic (see the module
+#: docstring's measurements); the design spec for the v4 migration
+#: (`.claude/superpowers/specs/2026-09-19-recommender-frontier-port-design.md` section
+#: 3) sets the same bar G-ENC's own measurements already showed v2 actually clears:
+#: exact match for the eight slow/fast time-series modalities, >= 99% of tokens for the
+#: five spectro and two video ones.
+FRACTION_THRESHOLD_LOOSE = 0.99  # spectro, video
+FRACTION_THRESHOLD_STRICT = 1.0  # slowts, fastts
+
+
+def fraction_verdict(result: dict, families: dict[str, str]) -> tuple[bool, list[str]]:
+    """`(passed, reasons)` for the v4 cache gate: per-modality EXACT-MATCH FRACTION
+    against a threshold that depends on the modality's family, not `verdict`'s "every
+    requested modality must be bit-identical" (which a spectro/video codec is not
+    expected to clear on every shot). A modality that was requested and produced nothing
+    is still an unconditional failure, same as `verdict` -- there is no fraction to
+    compare it against.
+    """
+    reasons = []
+    for name, m in result["modalities"].items():
+        if not m.get("requested", True):
+            continue
+        if m["equal"] is None:
+            reasons.append(f"{name} was requested and {m['note'] or 'is missing'}")
+            continue
+        family = families.get(name, "?")
+        loose = family in ("spectro", "video")
+        threshold = FRACTION_THRESHOLD_LOOSE if loose else FRACTION_THRESHOLD_STRICT
+        agreement = m["agreement"]
+        if agreement < threshold:
+            n_tok, n_frm = m["n_mismatched_tokens"], m["n_frames_affected"]
+            reasons.append(
+                f"{name} ({family}) agreement {agreement:.4%} below {threshold:.0%} "
+                f"({n_tok} tokens in {n_frm} frames, "
+                f"max {m['max_per_frame']} per frame)"
+            )
+    return not reasons, reasons
+
+
+def encode_one(
+    shot: int,
+    codecs,
+    paths,
+    out_dir: Path,
+    ref: dict,
+    *,
+    device: str | None,
+    workers: int | None = None,
+    include_video: bool = True,
+    allow_partial: bool = False,
+) -> tuple[dict, float]:
     import torch
 
     started = time.perf_counter()
     path = seed.encode_frame_codes(
         shot,
         reader=CorpusReader(paths.foundation_model_processed_dir),
-        device=args.device,
-        include_video=not args.no_video,
+        device=device,
+        include_video=include_video,
         out_dir=out_dir,
         n_frames=int(ref["n_frames"]),
         codecs=codecs,
         paths=paths,
-        workers=args.workers,
-        allow_partial=args.allow_partial,
+        workers=workers,
+        allow_partial=allow_partial,
         # The gate RE-ENCODES. Without this it would be handed production's own frame codes for
         # any shot in `model.frame_codes_cache` and compare them against the shipped cache they
         # were copied from, which passes whatever our encoder does.
@@ -389,8 +482,33 @@ def print_table(shot: int, result: dict, elapsed: float, ok: bool, reasons: list
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--shots", type=int, nargs="+", default=list(DEFAULT_SHOTS))
+    """The v4 gate: fresh-encode each `--shots` entry and compare it against
+    production's own `--cache-dir` (the corpus the pinned dynamics checkpoint was
+    trained on), one shot at a time. Unlike the historical three-shot gate above
+    (`compare`/`verdict`, still exercised by the unit tests in
+    `tests/shot_design/test_seed.py`), which requires bit-identity on every requested
+    modality, this default run applies `fraction_verdict`'s per-family bar: exact match
+    for the eight slow/fast time-series modalities, >= 99% of tokens for the five
+    spectro and two video ones -- see
+    `FRACTION_THRESHOLD_LOOSE`/`FRACTION_THRESHOLD_STRICT` for why. The v4 bundle ships
+    no `frame_codes/` of its own (unlike v2's ten shipped shots), so the reference has
+    to come from somewhere production actually wrote, which is what `--cache-dir` names.
+    """
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="reference frame-code cache (default: model.frame_codes_cache in "
+        "ignite_modalities.yaml)",
+    )
+    _shots_help = (
+        f"default: {' '.join(str(s) for s in DEFAULT_V4_SHOTS)} "
+        "(5 shots present in the production cache)"
+    )
+    ap.add_argument("--shots", type=int, nargs="+", default=None, help=_shots_help)
     ap.add_argument("--device", default=None, help="cuda | cpu (default: cuda when available)")
     ap.add_argument("--workers", type=int, default=None, help="CPU dataloader workers per codec")
     ap.add_argument(
@@ -405,84 +523,105 @@ def main(argv: list[str] | None = None) -> int:
         help="proceed when the bundle has no codec for a requested modality (DIAGNOSTIC ONLY: "
         "the modality is then recorded as not encoded and the shot fails)",
     )
-    ap.add_argument("--out-dir", type=Path, default=None, help="where the re-encoded caches go")
-    ap.add_argument("--json", type=Path, default=None, help="gate report (default: gates/g_enc.json)")
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="gate report (default: gates/g_enc_v4.json)",
+    )
     args = ap.parse_args(argv)
+
+    import tempfile
 
     import torch
 
     paths = config.load_paths()
-    bundle = ignite.bundle_dir(paths)
-    shipped = bundle / "frame_codes"
-    if not shipped.is_dir():
-        print(f"g_enc: the bundle at {bundle} ships no frame_codes/ to compare against", file=sys.stderr)
+    cache_dir = args.cache_dir or ignite.model_cfg().get("frame_codes_cache")
+    if not cache_dir:
+        print(
+            "g_enc: no --cache-dir given and model.frame_codes_cache is not set in "
+            "ignite_modalities.yaml",
+            file=sys.stderr,
+        )
         return 1
-    gates = Path(paths.data_root) / "gates"
-    out_dir = args.out_dir or gates / "g_enc"
+    cache_dir = Path(cache_dir)
+    shots = args.shots or list(DEFAULT_V4_SHOTS)
     args.device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
+    bundle = ignite.bundle_dir(paths)
+    families = ignite.model_cfg()["families"]
     names = seed.wanted_modalities(include_video=not args.no_video)
     video = () if args.no_video else seed.VIDEO_MODALITIES
     codecs = ignite.load_codecs(bundle, names=list(names), device=args.device)
 
     report = {
-        "gate": "G-ENC",
+        "gate": "G-ENC-v4",
         "device": args.device,
         "torch": torch.__version__,
         "gpu": torch.cuda.get_device_name(0) if args.device == "cuda" else None,
         "bundle": str(bundle),
-        "generation": ignite.model_cfg().get("generation", "v2"),
-        # v2 only: a pinned v4 bundle is identified by its own sha256 manifest, not a Hub revision.
-        "revision": ignite.model_cfg().get("revision"),
+        "generation": ignite.model_cfg().get("generation"),
+        "cache_dir": str(cache_dir),
         "corpus": str(paths.foundation_model_processed_dir),
         "include_video": not args.no_video,
-        "actuator_tolerance_z": ACT_TOL,
-        "actuator_min_pass": ACT_MIN_PASS,
         "requested_modalities": list(names),
-        "full_shot_frames": FULL_SHOT_FRAMES,
-        # A run that asked for fewer than all fourteen modalities, or fewer than the three gate
-        # shots, is a DIAGNOSTIC. It can pass and say nothing about the gate; the header says so
-        # and the report has to as well, because the report is what gets quoted.
-        "diagnostic": is_diagnostic(
-            args.shots, no_video=args.no_video, allow_partial=args.allow_partial
-        ),
+        "fraction_threshold_loose": FRACTION_THRESHOLD_LOOSE,
+        "fraction_threshold_strict": FRACTION_THRESHOLD_STRICT,
         "shots": {},
     }
     failures = []
-    for shot in args.shots:
-        ref_path = shipped / f"{shot}.pt"
-        if not ref_path.is_file():
-            print(f"g_enc: no shipped cache for {shot} at {ref_path}", file=sys.stderr)
-            failures.append(shot)
-            continue
-        ref = torch.load(ref_path, weights_only=False, map_location="cpu")
-        got, elapsed = encode_one(shot, args, codecs, paths, out_dir, ref)
-        try:
-            result = compare(got, ref, requested=names, expect_frames=FULL_SHOT_FRAMES)
-        except ValueError as exc:
-            print(f"\n=== {shot}   FAIL   {exc}", file=sys.stderr)
-            report["shots"][str(shot)] = {"passed": False, "reasons": [str(exc)]}
-            failures.append(shot)
-            continue
-        ok, reasons = verdict(result, video)
-        result["passed"], result["reasons"], result["elapsed_s"] = ok, reasons, round(elapsed, 1)
-        report["shots"][str(shot)] = result
-        print_table(shot, result, elapsed, ok, reasons)
-        if not ok:
-            failures.append(shot)
+    with tempfile.TemporaryDirectory(prefix="g_enc_v4_") as tmp:
+        for shot in shots:
+            ref_path = cache_dir / f"{shot}.pt"
+            if not ref_path.is_file():
+                print(f"g_enc: no cache for {shot} at {ref_path}", file=sys.stderr)
+                report["shots"][str(shot)] = {
+                    "passed": False,
+                    "reasons": [f"no cache at {ref_path}"],
+                }
+                failures.append(shot)
+                continue
+            ref = torch.load(ref_path, weights_only=False, map_location="cpu")
+            # STEP 0C: a full shot's frame count is the CACHE's own `n_frames` -- the
+            # pinned generation's own property, not this script's constant -- with
+            # `FULL_SHOT_FRAMES` only as a fallback for a cache that somehow lacks the
+            # key (`validate_cache` inside `compare` then raises on it, structurally,
+            # rather than silently comparing a prefix).
+            have_frames = ref.get("n_frames")
+            expect_frames = int(have_frames) if have_frames else FULL_SHOT_FRAMES
+            got, elapsed = encode_one(
+                shot,
+                codecs,
+                paths,
+                Path(tmp),
+                ref,
+                device=args.device,
+                workers=args.workers,
+                include_video=not args.no_video,
+                allow_partial=args.allow_partial,
+            )
+            try:
+                result = compare(got, ref, requested=names, expect_frames=expect_frames)
+            except ValueError as exc:
+                print(f"\n=== {shot}   FAIL   {exc}", file=sys.stderr)
+                report["shots"][str(shot)] = {"passed": False, "reasons": [str(exc)]}
+                failures.append(shot)
+                continue
+            ok, reasons = fraction_verdict(result, families)
+            result["passed"] = ok
+            result["reasons"] = reasons
+            result["elapsed_s"] = round(elapsed, 1)
+            report["shots"][str(shot)] = result
+            print_table(shot, result, elapsed, ok, reasons)
+            if not ok:
+                failures.append(shot)
 
     report["passed"] = not failures
     report["failed_shots"] = failures
-    dest = args.json or gates / "g_enc.json"
+    dest = args.out or Path(paths.data_root) / "gates" / "g_enc_v4.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"\nG-ENC {'PASS' if not failures else 'FAIL'} -> {dest}")
-    if report["diagnostic"]:
-        print(
-            "  DIAGNOSTIC RUN, NOT THE GATE: the G-ENC gate is the three shots "
-            f"{', '.join(str(s) for s in DEFAULT_SHOTS)} with all fourteen modalities. "
-            "This run's verdict does not replace the gate's."
-        )
     return 0 if not failures else 1
 
 

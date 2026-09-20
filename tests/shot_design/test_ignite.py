@@ -34,6 +34,26 @@ def test_input_defaults_to_existing_processed_corpus(paths, tmp_path):
     assert list(paths.ignite_inputs_dir.iterdir()) == []
 
 
+def test_filled_channels_skips_a_group_with_no_xdata(paths, tmp_path):
+    """`text_embed` (`input`/`total`, no `xdata`/`ydata`) has shipped in every corpus
+    file since the text-embedding campaign landed; `filled_channels` walking `for name
+    in f` unconditionally used to raise `KeyError` on it (job 5514051, G-ENC re-encode
+    of 190000, 2026-09-19). A group without `xdata` is not a signal this function has
+    an opinion about, so it is skipped, not an error.
+    """
+    import h5py
+
+    processed = tmp_path / "190000_processed.h5"
+    with h5py.File(processed, "w") as file:
+        group = file.create_group("ts_core_density")
+        group["xdata"] = np.array([0.0, 0.05], np.float32)
+        group["ydata"] = np.array([[1.0, 2.0], [np.nan, np.nan]], np.float32)
+        text = file.create_group("text_embed")
+        text["input"] = np.zeros((1, 4), np.float32)
+        text["total"] = np.zeros((1, 4), np.float32)
+    assert ignite.filled_channels(processed) == {"ts_core_density": 1}
+
+
 def test_encode_records_reports_missing_processed_inputs(paths, monkeypatch):
     from types import SimpleNamespace
 
