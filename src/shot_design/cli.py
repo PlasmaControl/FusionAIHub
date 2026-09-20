@@ -676,6 +676,14 @@ def cmd_llm(args) -> int:
         print(hint)
         return 1
     ep = client.endpoint()
+    if ep is None:
+        # A subprocess provider (agy) has no served endpoint: say what would be called.
+        provider = str(client.cfg.get("provider", "?"))
+        binary = str(client.cfg.get(provider, {}).get("bin", provider))
+        models = client.cfg.get("models", {})
+        tags = ", ".join(f"{k}={v}" for k, v in models.items()) or client.model()
+        print(f"provider {provider}  bin {binary}  models {tags}")
+        return 0
     print(
         f"{ep.url}  models {', '.join(ep.models) or '?'}  host {ep.host or '?'}"
         + (f"  job {ep.job_id}" if ep.job_id else "")
