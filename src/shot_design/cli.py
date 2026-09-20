@@ -672,6 +672,9 @@ def cmd_blurb(args) -> int:
     if args.limit is not None and args.limit < 0:
         print("blurb limit must be non-negative", file=sys.stderr)
         return 2
+    if args.workers < 1:
+        print("blurb workers must be at least 1", file=sys.stderr)
+        return 2
     if args.shots and args.all:
         print("blurb --shots cannot be combined with --all", file=sys.stderr)
         return 2
@@ -685,7 +688,7 @@ def cmd_blurb(args) -> int:
         _announce_root("blurb", str(paths.db_dir / "shots.parquet"), paths)
     n = write_blurbs(
         paths, client, only_missing=not args.all, limit=args.limit, dry_run=args.dry_run,
-        shots=args.shots,
+        shots=args.shots, workers=args.workers,
     )
     action = "accepted in dry run (nothing written)" if args.dry_run else "written"
     print(f"{n} blurbs {action} by {client.model(client.cfg['blurb']['model'])}")
@@ -1971,6 +1974,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dry-run", action="store_true",
         help="print candidates, gate verdicts and final text without writing files or cache",
+    )
+    p.add_argument(
+        "--workers", type=int, default=1,
+        help="run this many model calls at once in a thread pool (default 1; agy is a "
+        "subprocess per call, so this is where the backfill's concurrency comes from)",
     )
     p.set_defaults(func=cmd_blurb)
 
