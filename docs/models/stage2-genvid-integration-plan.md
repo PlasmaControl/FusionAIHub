@@ -1,3 +1,8 @@
+---
+title: "Stage 2 GenVid Integration"
+sidebar_position: 6
+---
+
 # Stage 2 / extended Stage 2 integration — generative spectro head + resize-conv video
 
 ## Context

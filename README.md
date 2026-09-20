@@ -1,32 +1,27 @@
 # FusionAIHub (FAITH)
 
-## Frontier setup
+FusionAIHub (FAITH — Fusion AI Toolkit & Hub) is a multi-modal foundation
+model for tokamak fusion plasma data: it fuses DIII-D time series,
+spectrograms, video and text logs to predict future plasma states, and
+includes `shot_design`, a retrieval and simulation layer for proposing and
+checking new shots.
+
+## Install
 
 ```bash
-# 1. Clone to scratch
-cd /lustre/orion/fus187/scratch/$USER
-git clone git@github.com:PlasmaControl/FusionAIHub.git
-cd FusionAIHub
-git switch foundation_model
+# NVIDIA/CUDA (default env)
+pixi install
+pixi shell
+python scripts/run_demo.py
 
-# 2. Install pixi
+# AMD/ROCm (Frontier)
 curl -fsSL https://pixi.sh/install.sh | bash
-source ~/.bashrc
+export PIXI_CACHE_DIR=/tmp/pixi-cache-$USER
+pixi install --frozen -e frontier
+pixi run --frozen -e frontier setup-flash-attn
+```
 
-# 3. Install the Frontier env (~5 min)
-pixi install -e frontier
-
-# 4. Build flash-attention 2 (~2-5 min)
-pixi run -e frontier setup-flash-attn
-
-
-## Other platforms
-
-- **NVIDIA/CUDA**: `pixi install` (default env), scripts in `scripts/slurm/`
-- **della-milan (MI210)**: `bash scripts/slurm_della_milan/setup_rocm_env.sh`,
-  scripts in `scripts/slurm_della_milan/`
-
-## Cluster paths and porting
-
-See `docs/CLUSTERS.md` for Stellar paths, hardware, pixi environments, data
-roots, and the Stellar-to-Frontier path map and transfer list.
+Full docs, including every platform, are published at
+<https://plasmacontrol.github.io/FusionAIHub/> — start with
+[Getting started](docs/getting-started/install.md) and
+[Frontier](docs/clusters/frontier.md).

@@ -1,8 +1,13 @@
+---
+title: "IGNITE Rollout Quality Plan"
+sidebar_position: 8
+---
+
 # IGNITE Rollout Quality — Applying Self-Forcing / Self-Forcing++, Cosmos, and PAN
 
 **Status:** analysis + recommendations, no implementation. Grounded in the code as of
 `nathan_fm` @ 6de6fbe (2026-08-17) and the production run `prod_d512L8` (step 13.5k).
-Companion to `docs/IGNITE_DESIGN.md`.
+Companion to `docs/models/ignite.md`.
 
 **Question answered:** IGNITE memorizes single shots but degrades hard on many shots,
 and modalities drift mutually inconsistent during rollout. Can the Self-Forcing line
@@ -35,7 +40,7 @@ this is the binding constraint, not a nice-to-have:
 - **Scheduled sampling never ran.** Every step of `prod_d512L8/loss_history.jsonl` has
   `"ss": 0.0`; the launcher pins `--ss_final_frac 0`
   (`scripts/slurm_frontier/train_dynamics.sh:166`). The design doc mandated "light
-  scheduled-sampling from the start" (IGNITE_DESIGN.md §5.6, decision #8) — it was
+  scheduled-sampling from the start" (ignite.md §5.6, decision #8) — it was
   never activated, and as written it is memory-infeasible anyway (materializes full
   `(B,F,N,vocab)` logits ≈ 400 GB at F=100, `train_dynamics.py:872-876`).
 - **More training makes rollouts worse.** Controlled bp128 measurement (2026-08-15,
@@ -333,7 +338,7 @@ This is what turns 4 s rollouts into 10 s+ rollouts. [1A at long horizon]
 (8,8,8,5,5,5) instead of one 64 000-way softmax: the four 64k modalities' ~262 M of
 table parameters collapse to ~2 M, and (at constant budget) the dynamics core can
 grow ~8× (33.6 M → ~250 M+, e.g. d768-1024, deeper). Already named as future work in
-`docs/IGNITE_CODEC_RETRAIN_SPEC.md:74`. This is the single biggest *generalization*
+`docs/models/ignite-codec-retrain-spec.md:74`. This is the single biggest *generalization*
 lever: right now 89% of parameters memorize vocabularies instead of modeling
 dynamics — which is exactly "overfits a shot, fails across shots." Also softens the
 confidence-comparability problem R1 works around. [1C, 1B]

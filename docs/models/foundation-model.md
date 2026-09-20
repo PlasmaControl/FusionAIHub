@@ -1,3 +1,8 @@
+---
+title: "Foundation Model — Architecture"
+sidebar_position: 1
+---
+
 # Tokamak E2E World Model — Full Architecture (verified from code, 2026-07-13)
 
 One multimodal foundation model: given **one 50 ms window** of all diagnostics +
