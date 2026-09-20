@@ -24,6 +24,8 @@ from shot_design import cli
 from shot_design.schema import ShotRecord, ShotSummary
 from shot_design.shotdb import text
 
+from .conftest import text_bundle
+
 
 @pytest.fixture
 def stub_embeddings(monkeypatch):
@@ -59,11 +61,12 @@ def test_build_reports_and_prints_the_coverage_table(built, paths, staged_shot_a
 
 
 def test_build_skips_shots_with_no_ip_on_disk(paths, text_fixtures, stub_embeddings, capsys):
-    """A shot whose raw file is absent (or still mid-fetch) would build as a record with zero
-    segments, which is junk in the database rather than a failure anybody notices."""
+    """A shot whose raw file is absent (or still mid-fetch), and with no PULSE-LENGTH in
+    its text bundle either, would build as a record with zero segments, which is junk
+    in the database rather than a failure anybody notices."""
     assert cli.main(["build", "--shots", "999999", "--workers", "1"]) == 1
     out = capsys.readouterr()
-    assert "no Ip signal on disk" in out.out and "999999" in out.out
+    assert "neither an Ip trace nor a PULSE-LENGTH" in out.out and "999999" in out.out
     assert "nothing to build" in out.err
 
 
@@ -83,9 +86,22 @@ def test_build_reader_corpus_reads_the_corpus_and_says_so(
                   "--no-encode"]) == 0
     )  # fmt: skip
     out = capsys.readouterr().out
-    assert "built 1 shots" in out and "no Ip signal on disk" not in out
+    no_proxy_message = "neither an Ip trace nor a PULSE-LENGTH"
+    assert "built 1 shots" in out and no_proxy_message not in out
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
     assert manifest["reader"] == "corpus"
+
+
+def test_buildable_keeps_a_pulse_length_proxy_shot_and_skips_a_bare_one(paths):
+    """task F2b: a shot with no Ip trace but a long enough PULSE-LENGTH is buildable
+    through the proxy (`shotdb.features.proxy_segments`); one with neither is not --
+    this is Frontier's ONLY discriminator, since that cluster has no Ip trace on any
+    shot."""
+    (paths.per_shot_txt_dir / "shot_900060.txt").write_text(
+        text_bundle(900060, row={"PULSE-LENGTH": "5.0"})
+    )
+    have, skipped = cli._buildable([900060, 999999], paths)
+    assert have == [900060] and skipped == [999999]
 
 
 def test_build_defaults_to_the_legacy_reader(tmp_path):

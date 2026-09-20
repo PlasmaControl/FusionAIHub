@@ -330,6 +330,28 @@ def frame_codes_path(shot: int, paths: config.Paths) -> Path | None:
     return None
 
 
+def _bundle_pulse_length_s(shot: int, paths: config.Paths) -> float | None:
+    """`PULSE-LENGTH` (seconds) from this shot's text bundle, or None.
+
+    The same file (`per_shot_txt_dir/shot_<N>.txt`) `text.mp_text` reads for the
+    mini-proposal title -- read again here because that function returns the parsed
+    title, not the raw bundle `text.shot_table_row` needs. None for a missing bundle, a
+    bundle with no shot table row, or a row with no PULSE-LENGTH -- absent evidence,
+    never a proxy of 0. Parse matches `select._num`'s (space-stripped float, else None).
+    """
+    p = paths.per_shot_txt_dir / f"shot_{int(shot)}.txt"
+    if not p.exists():
+        return None
+    bundle = p.read_text(encoding="utf-8", errors="replace")
+    raw = text.shot_table_row(bundle).get("PULSE-LENGTH")
+    if raw is None:
+        return None
+    try:
+        return float(str(raw).replace(" ", ""))
+    except ValueError:
+        return None
+
+
 def _raw_groups(reader: SignalReader, shot: int) -> list[str]:
     """Every raw group this reader sees for the shot, or [] when it cannot say.
 
@@ -368,7 +390,22 @@ def build_record(
     signals, coverage = reader.read_shot(shot, specs)
     totals = features.system_totals(signals, systems)
     ip = signals.get("ip")
-    segs = features.find_segments(ip, cfg["segments"]) if ip is not None else []
+    # Frontier (task F2b) has no Ip trace anywhere: `ip is None` for every shot there,
+    # not just the ones with no raw file at all. A PULSE-LENGTH proxy gives those shots
+    # real segments instead of the empty "no_ip_signal" record `_buildable` exists to
+    # keep out of a bulk build -- honestly marked as a proxy in `coverage_reasons["ip"]`
+    # below, never as if it were a measured flat-top.
+    proxy_ip_reason: str | None = None
+    if ip is not None:
+        segs = features.find_segments(ip, cfg["segments"])
+    else:
+        pulse_length_s = _bundle_pulse_length_s(shot, paths)
+        segs = features.proxy_segments(pulse_length_s, cfg["segments"])
+        if segs:
+            proxy_ip_reason = (
+                "segments from PULSE-LENGTH proxy (ramp-up 1.0 s, ramp-down 0.27 s); "
+                "no Ip trace on this cluster"
+            )
     installed = [s for s in specs if s.installed]
     n_points = cfg["scalar"]["waveform_points"]
     shapes: dict[str, np.ndarray] = {}
@@ -419,6 +456,12 @@ def build_record(
         labels.operational.add("dud")
     if any("locked" in f for f in outcome.fault_strings):
         labels.operational.add("locked_mode")
+    # Merge, never overwrite: the reader's own reasons (e.g. a corpus address that
+    # missed) are about OTHER signals and must survive; the proxy reason is `ip`'s
+    # alone.
+    reasons = dict(getattr(reader, "reasons", None) or {})
+    if proxy_ip_reason:
+        reasons["ip"] = proxy_ip_reason
     return (
         ShotRecord(
             shot=shot,
@@ -445,7 +488,7 @@ def build_record(
             coverage=coverage,
             # Optional and read defensively: only a reader that can narrow a miss below "the
             # group is not there" has anything to say, and `SignalReader` does not require it.
-            coverage_reasons=dict(getattr(reader, "reasons", None) or {}),
+            coverage_reasons=reasons,
             built_at=dt.datetime.now(dt.UTC),
             builder_sha=f"{_git_sha()}+{_config_sha()}",
         ),

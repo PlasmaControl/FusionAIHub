@@ -34,6 +34,24 @@ def test_no_plasma_gives_no_segments(paths, staged_shot_a):
     assert features.find_segments(ip, CFG) == []
 
 
+def test_proxy_segments_splits_pulse_length_into_the_four_segments():
+    segs = {s.name: s for s in features.proxy_segments(5.0, CFG)}
+    assert set(segs) == {"full", "ramp_up", "flat_top", "ramp_down"}
+    assert segs["full"].t0_ms == pytest.approx(0.0)
+    assert segs["full"].t1_ms == pytest.approx(5000.0)
+    assert segs["ramp_up"].t0_ms == pytest.approx(0.0)
+    assert segs["ramp_up"].t1_ms == pytest.approx(1000.0)
+    assert segs["flat_top"].t0_ms == pytest.approx(1000.0)
+    assert segs["flat_top"].t1_ms == pytest.approx(4730.0)
+    assert segs["ramp_down"].t0_ms == pytest.approx(4730.0)
+    assert segs["ramp_down"].t1_ms == pytest.approx(5000.0)
+
+
+@pytest.mark.parametrize("pulse_length_s", [1.2, None, float("nan")])
+def test_proxy_segments_is_empty_when_there_is_no_flat_top(pulse_length_s):
+    assert features.proxy_segments(pulse_length_s, CFG) == []
+
+
 def test_stats_follow_the_peak_convention(paths, staged_shot_a):
     beam = _sig(
         staged_shot_a,
