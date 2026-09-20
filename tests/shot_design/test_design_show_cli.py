@@ -17,6 +17,7 @@ import json
 
 import h5py
 import numpy as np
+import pytest
 
 from shot_design import cli
 from shot_design.design import actuators as act
@@ -116,6 +117,16 @@ def test_actuation_csv_has_a_header_and_one_row_per_frame(paths, capsys):
     assert float(rows[1][0]) == times[0]
     assert float(rows[1][1]) == values[0, 0]
     assert rows[1][2] == ""  # the unavailable channel is blank, not the literal "nan"
+
+
+def test_references_and_actuation_csv_together_is_a_usage_error(paths, capsys):
+    """Before the fix, `--references --actuation-csv` together silently printed only
+    the CSV (`_design_show_artifact` checks `args.actuation_csv` first) with no
+    indication the `--references` flag was ignored."""
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["design", "show", IDENT, "--references", "--actuation-csv"])
+    assert exc_info.value.code == 2
+    assert "not allowed with argument" in capsys.readouterr().err
 
 
 def test_show_missing_artifact_fails_cleanly(paths, capsys):

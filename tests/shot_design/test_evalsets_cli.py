@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from shot_design import cli
+from shot_design import cli, config
 
 SLUGS = ["tearing_eccd", "elm_rmp", "ae_nbi"]
 
@@ -36,3 +36,35 @@ def test_unknown_evalset_name_fails_cleanly(capsys):
 
     assert rc == 1
     assert "does_not_exist" in capsys.readouterr().err
+
+
+def test_malformed_evalset_yaml_fails_cleanly_instead_of_raising(
+    monkeypatch, tmp_path, capsys
+):
+    """A hand-edited evalset with broken YAML must be reported like any other bad
+    evalset (`OSError` path), not crash the CLI with an uncaught `yaml.YAMLError`."""
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    evalsets = tmp_path / "evalsets"
+    evalsets.mkdir()
+    (evalsets / "broken.yaml").write_text("prompts: [unterminated\n")
+
+    rc = cli.main(["evalsets", "prompt", "broken", "x"])
+
+    assert rc == 1
+    assert "broken" in capsys.readouterr().err
+
+
+def test_evalset_entry_without_text_prints_a_message_instead_of_a_traceback(
+    monkeypatch, tmp_path, capsys
+):
+    """A hand-edited entry that is a mapping without a `text` key raised `KeyError`
+    from `entry["text"]` instead of a readable message."""
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    evalsets = tmp_path / "evalsets"
+    evalsets.mkdir()
+    (evalsets / "notext.yaml").write_text("prompts:\n  x:\n    goal: no text here\n")
+
+    rc = cli.main(["evalsets", "prompt", "notext", "x"])
+
+    assert rc == 1
+    assert "prompt has no text" in capsys.readouterr().err
