@@ -51,18 +51,37 @@ def _transport(handler_calls: list, reply):
     return httpx.MockTransport(handler)
 
 
+def test_chat_dispatches_to_a_registered_provider(paths):
+    from shot_design.llm.client import LLMClient, Reply
+
+    c = LLMClient(cfg={"provider": "fake", "cache": False}, paths=paths)
+    c._providers["fake"] = lambda body: Reply(content="hi", model="fake")
+    assert c.chat([{"role": "user", "content": "x"}]).content == "hi"
+
+
 def test_llm_yaml_matches_the_shape_the_client_reads():
     cfg = config.load_yaml("llm.yaml")
-    assert cfg["provider"] == "ollama"
-    assert cfg["models"] == {"quality": "gemma4:26b", "fast": "gemma4:e4b"}
+    assert cfg["provider"] == "agy"
+    assert cfg["models"] == {
+        "quality": "gemini-3.8-flash-high",
+        "fast": "gemini-3.8-flash-low",
+    }
     assert cfg["default"] == "quality"
     assert cfg["max_tool_rounds"] == 8 and cfg["timeout_s"] == 120
-    assert cfg["endpoint_file"] == "llm/endpoint.json"
-    assert cfg["blurb"] == {"model": "quality", "max_words": 90, "prompt_version": 6}
-    root = "/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender"
-    assert cfg["ollama_bin_dir"] == f"{root}/bin/ollama"
-    assert cfg["ollama_models_dir"] == f"{root}/models/ollama"
-    assert cfg["ollama_home_dir"] == f"{root}/ollama_home"
+    assert cfg["agy"] == {
+        "bin": "agy",
+        "timeout_s": 300,
+        "retries": 2,
+        "extra_args": ["--disable-slash-commands"],
+    }
+    assert cfg["blurb"]["model"] == "fast"
+    assert cfg["blurb"]["max_words"] == 90 and cfg["blurb"]["prompt_version"] == 6
+    assert cfg["ollama"]["endpoint_file"] == "llm/endpoint.json"
+    assert cfg["ollama"]["base_url"] is None
+    # not installed on Frontier; Stellar-only for one more release
+    assert cfg["ollama"]["ollama_bin_dir"] is None
+    assert cfg["ollama"]["ollama_models_dir"] is None
+    assert cfg["ollama"]["ollama_home_dir"] is None
 
 
 def test_no_endpoint_means_unavailable_with_the_start_command(paths):

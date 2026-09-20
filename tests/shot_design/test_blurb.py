@@ -218,7 +218,7 @@ def test_shots_parquet_has_blurb_columns_after_build(
     df = pd.read_parquet(paths.db_dir / "shots.parquet")
     assert {"blurb", "blurb_source", "blurb_model", "blurb_prompt_version"} <= set(df.columns)
     assert df["blurb_source"].iloc[0] == "template" and df["blurb"].iloc[0]
-    assert df["blurb_model"].iloc[0] == "gemma4:26b"
+    assert df["blurb_model"].iloc[0] == "gemini-3.8-flash-low"
     assert df["blurb_prompt_version"].iloc[0] == 6
     assert pd.api.types.is_integer_dtype(df["blurb_prompt_version"])
 
@@ -260,9 +260,17 @@ def test_write_blurbs_updates_the_manifest_counts(
         [staged_shot_a, staged_shot_b], paths, build.load_build_cfg(), workers=1, encode=False
     )
     before = json.loads((paths.db_dir / "manifest.json").read_text())
+    # build.build attempts a blurb with the real (agy) config's default model; the
+    # backfill below uses FakeClient's own CFG constant (quality: gemma4:26b) --
+    # two different clients, two different provenance models.
+    provenance_before = {"model": "gemini-3.8-flash-low", "prompt_version": 6}
     provenance = {"model": "gemma4:26b", "prompt_version": 6}
     assert before["blurbs"] == {
-        "llm": 0, "template": 2, "human": 0, "prompt_versions": {"6": 2}, **provenance,
+        "llm": 0,
+        "template": 2,
+        "human": 0,
+        "prompt_versions": {"6": 2},
+        **provenance_before,
     }
     build.write_blurbs(paths, FakeClient(GOOD, paths), True)
     manifest = json.loads((paths.db_dir / "manifest.json").read_text())
@@ -509,7 +517,7 @@ def test_default_ollama_without_endpoint_uses_template_without_a_request(rec, pa
         pytest.fail("a missing endpoint must not open a socket")
 
     cfg = config.load_yaml("llm.yaml")
-    assert cfg["provider"] == "ollama"
+    assert cfg["provider"] == "agy"
     client = LLMClient(cfg, paths, transport=httpx.MockTransport(unexpected))
     assert client.available()[0] is False
     assert "scripts/shot_design/serve_llm.sbatch" in client.available()[1]
