@@ -45,7 +45,7 @@ def test_report_writes_h5_panels_and_markdown(tmp_path):
         decoded,
         {
             "design_id": "abc",
-            "dynamics_sha256": "0" * 64,
+            "bundle_manifest_sha256": "0" * 64,
             "codec_generation": "v4",
             "window_s": [1.0, 5.0],
             "dynamics_step": 3200,
