@@ -1,8 +1,15 @@
 #!/bin/bash
 #SBATCH -A fus187
 #SBATCH -p batch
-#SBATCH -q debug
 #SBATCH -J sd-simulate
+# No -q debug here on purpose: this job is -t 01:00:00 on batch, already inside the
+# debug QOS's own 2 h cap, and Frontier's debug QOS allows only ONE submitted job per
+# user (QOSMaxSubmitJobsPU=1). The three-design demo loop and the UI's second
+# concurrent simulation both submit this wrapper again while an earlier one is still
+# queued/running, and debug refuses that second sbatch outright. A one-off run that
+# wants the shorter debug queue can still ask for it explicitly:
+#   sbatch -q debug scripts/slurm_frontier/shot_design_simulate.sh <ident>
+#SBATCH -N 1
 #SBATCH -N 1
 #SBATCH --gres=gpu:1
 #SBATCH --gpu-bind=closest

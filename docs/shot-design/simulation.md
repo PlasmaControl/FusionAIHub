@@ -65,8 +65,8 @@ else to poll.
 
 ## On Frontier
 
-`scripts/slurm_frontier/shot_design_simulate.sh` is the one-GPU, `batch -q
-debug` wrapper (1 GPU, 7 CPUs, 1 hour): `sbatch
+`scripts/slurm_frontier/shot_design_simulate.sh` is the one-GPU `batch`
+wrapper (1 GPU, 7 CPUs, 1 hour): `sbatch
 scripts/slurm_frontier/shot_design_simulate.sh <ident>`, submitted with the
 repo root as the working directory (every `slurm_frontier` wrapper locates
 `_shot_design_common.sh` relative to `$SLURM_SUBMIT_DIR`, which is only set
