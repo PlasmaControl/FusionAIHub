@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt  # noqa: E402 (must follow matplotlib.use("Agg")
 import numpy as np
 import torch
 
-from .core import SimulationArms
+from .core import ARM_LABELS, SimulationArms
 
 QUALITATIVE_SENTENCE = (
     "IGNITE v4 dynamics (step {step}) is an early checkpoint; "
@@ -71,7 +71,14 @@ def _to_numpy(x, dtype) -> np.ndarray:
 
 
 def _write_panel(path: Path, per_arm: dict[str, np.ndarray], seed_frames: int) -> None:
-    """Three-line (gt, real, proposed) plot of a decoded channel mean over time."""
+    """Three-line (gt, real, proposed) plot of a decoded array over time.
+
+    A judgment call on the brief's "per channel or channel mean": a
+    single-channel ``(F, 1)`` array is plotted as-is, but a multi-channel
+    ``(F, C>1)`` array is collapsed to its per-frame MEAN across channels --
+    one line per arm, not one line per channel -- so the panel stays a
+    three-line comparison regardless of how many channels a modality has.
+    """
     fig, ax = plt.subplots(figsize=(6.0, 3.5))
     for arm_name in ("gt", "real", "proposed"):
         arr = per_arm.get(arm_name)
@@ -144,9 +151,7 @@ def write(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with h5py.File(out_dir / "simulation.h5", "w") as f:
-        arms_by_label = (
-            ("real", arms.real), ("proposed", arms.proposed), ("gt", arms.gt),
-        )
+        arms_by_label = ((label, getattr(arms, label)) for label in ARM_LABELS)
         for arm_name, codes in arms_by_label:
             grp = f.create_group(f"tokens/{arm_name}")
             for m, t in codes.items():

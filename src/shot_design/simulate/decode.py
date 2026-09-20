@@ -32,7 +32,7 @@ import torch
 from tokamak_foundation_model.ignite import eval_dynamics
 from tokamak_foundation_model.ignite.config import STFT_FS
 
-from .core import SimulationArms
+from .core import ARM_LABELS, SimulationArms
 
 # Named in the D2 brief as the two modalities whose panel/report band is 10-60 kHz.
 _BANDED_SPECTRO = ("mhr", "mirnov")
@@ -107,7 +107,22 @@ def _reduce_series(dec: np.ndarray) -> np.ndarray:
     return dec.mean(axis=tuple(range(2, dec.ndim))).astype(np.float32)
 
 
-def _device_of(arms: SimulationArms) -> torch.device:
+def _device_of(codec: torch.nn.Module, arms: SimulationArms) -> torch.device:
+    """Where to run the decode -- the CODEC's device, not the arms' tensors' device.
+
+    ``load_codecs`` places each codec on whatever device the caller asked for
+    independently of where a caller's token tensors happen to live (e.g. D4 on
+    Frontier runs `--device cuda` for the codec while arms built earlier may
+    still be on cpu); `decode_flat_chunked` moves `flat` `.to(device)` before
+    calling `codec.decode`, so `device` must be the codec's own device or that
+    call raises a device-mismatch RuntimeError. Falls back to the arms' own
+    tensor device only for a codec with no parameters (untestable edge case,
+    kept for robustness).
+    """
+    try:
+        return next(codec.parameters()).device
+    except StopIteration:
+        pass
     for arm in (arms.real, arms.proposed, arms.gt):
         for t in arm.values():
             return t.device
@@ -124,17 +139,15 @@ def decode_modalities(
     loaded for it -- placeholder or simply not requested) is skipped
     entirely, matching ``eval_dynamics.decode_all``'s convention.
     """
-    device = _device_of(arms)
     out: dict[str, dict[str, np.ndarray]] = {}
     for name in names:
         entry = codecs.get(name)
         if entry is None:
             continue
         codec, cfg, family = entry
+        device = _device_of(codec, arms)
         per_arm: dict[str, np.ndarray] = {}
-        arms_by_label = (
-            ("real", arms.real), ("proposed", arms.proposed), ("gt", arms.gt),
-        )
+        arms_by_label = ((label, getattr(arms, label)) for label in ARM_LABELS)
         for arm_name, codes in arms_by_label:
             flat = codes.get(name)
             if flat is None:
