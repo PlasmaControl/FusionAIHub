@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from shot_design import cli
+from shot_design import cli, config
 from shot_design.design import assistant as assistant_mod
 from shot_design.llm.client import LLMClient, Reply
 
@@ -127,8 +127,10 @@ def test_provider_defaults_to_the_configured_yaml_value(
     rc = cli.main(["assistant", "--prompt", "x", "--trace", str(trace)])
 
     assert rc == 0
-    # configs/shot_design/llm.yaml's own default; untouched, --provider was not given
-    assert calls[0]["client"].cfg["provider"] == "ollama"
+    # configs/shot_design/llm.yaml's own provider (agy on this branch); untouched,
+    # --provider was not given -- read from the yaml so a provider change cannot fail this
+    expected = config.load_yaml("llm.yaml")["provider"]
+    assert calls[0]["client"].cfg["provider"] == expected
 
 
 def test_a_failed_run_is_reported_on_stderr_with_exit_1(
