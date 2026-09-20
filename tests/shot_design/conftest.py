@@ -6,6 +6,7 @@ Ported from shot-recommender-system (shotrec) @565d548.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -803,6 +804,48 @@ def shot_design_db(tmp_path: Path, monkeypatch) -> Path:
         ],
     )
     return root
+
+
+@contextlib.contextmanager
+def force_ollama_provider():
+    """`build.build()`/`build.add()`/a bare `LLMClient()` all read the real
+    `configs/shot_design/llm.yaml` (`provider: agy`) when no cfg is passed in. A test
+    that wants the "no endpoint means unavailable, blurb falls back to template" path
+    -- not a real agy CLI call -- forces the ollama branch (which this fixture setup's
+    tmp_path has no endpoint file for) for the duration of the `with` block, then
+    restores the real loader."""
+    real_load_yaml = config.load_yaml
+
+    def patched(name):
+        cfg = real_load_yaml(name)
+        return {**cfg, "provider": "ollama"} if name == "llm.yaml" else cfg
+
+    config.load_yaml = patched
+    try:
+        yield
+    finally:
+        config.load_yaml = real_load_yaml
+
+
+@pytest.fixture(autouse=True)
+def _no_real_agy_subprocess(monkeypatch):
+    """Safety net (2026-09-20 review): `configs/shot_design/llm.yaml`'s checked-in
+    default is `provider: agy`, so any test that builds a real `LLMClient`/
+    `AgyProvider` from that yaml -- or from a merge of it -- without overriding
+    `provider` or injecting its own `runner=` would otherwise shell out to the real
+    `agy` CLI: slow, flaky under CI/no-network, and capable of spending real quota.
+    Patch the one real subprocess entry point to fail loudly instead of silently
+    succeeding or hanging; a test that wants the (fake) agy path passes `runner=`
+    to `AgyProvider`, which bypasses this method entirely and is unaffected.
+
+    See also: tests/shot_design/test_blurb.py's module docstring for the specific
+    landmine this closes (an httpx-only fake plus the real yaml still reaches agy).
+    """
+
+    def _forbidden(self, cmd, prompt):
+        raise AssertionError("real agy call from a test")
+
+    monkeypatch.setattr("shot_design.llm.agy.AgyProvider._run_subprocess", _forbidden)
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -1,4 +1,4 @@
-"""A bounded Gemma harness: interpret, retrieve, propose, validate, and save.
+"""A bounded model harness: interpret, retrieve, propose, validate, and save.
 
 Only retrieval supplies shot identities; only measured controls supply waveforms.
 The HDF5 contains physical actuator proposals, not IGNITE diagnostic seed tokens.
@@ -25,9 +25,9 @@ from . import program
 from .program_reference import reference
 
 STAGES = (
-    ("interpret", "Gemma interprets your request"),
+    ("interpret", "The model interprets your request"),
     ("retrieve", "Find matching real shots"),
-    ("propose", "Gemma proposes actuation"),
+    ("propose", "The model proposes actuation"),
     ("validate", "Check controls and source coverage"),
     ("save", "Save HDF5 and editable design"),
 )
@@ -92,7 +92,7 @@ def _completion(client, messages, schema, model):
             except ValueError:
                 break
     raise ValueError(
-        "Gemma returned an invalid design response. Try the request again "
+        "The model returned an invalid design response. Try the request again "
         "or select the quality model. No design was saved."
     )
 
@@ -302,8 +302,10 @@ def run_design(
         raise ValueError("Describe the design goal in 1 to 4000 characters")
     client = client or LLMClient(paths=paths)
     model_name = client.model(model)
-    if "gemma" not in model_name.lower():
-        raise LLMUnavailable("The design assistant requires a configured Gemma model")
+    if client.cfg.get("provider") == "off":
+        raise LLMUnavailable(
+            "The design assistant needs a configured model (llm.yaml provider)"
+        )
     emit = progress or (lambda key, status, detail: None)
     emit(
         "interpret", "running", f"Requesting a structured search plan from {model_name}"
@@ -314,7 +316,7 @@ def run_design(
             {
                 "role": "system",
                 "content": (
-                    "You are the Gemma planning step for a DIII-D shot design harness. "
+                    "You are the planning step for a DIII-D shot design harness. "
                     "Return ONLY JSON with keys search_text, goal, start_s, end_s. "
                     "search_text should preserve the requested physics topic and useful "
                     "retrieval synonyms (tearing/NTM/ECCD, Alfven/AE/TAE, or ELM/RMP). "
@@ -330,7 +332,7 @@ def run_design(
     )
     if intent.end_s <= intent.start_s:
         raise ValueError(
-            "Gemma proposed an empty time window; try a specific time range"
+            "The model proposed an empty time window; try a specific time range"
         )
     emit("interpret", "complete", intent.goal)
     emit(
@@ -407,21 +409,21 @@ def run_design(
     selected = [proposal.reference_shot, *proposal.comparison_shots]
     if any(shot not in by_shot for shot in selected):
         raise ValueError(
-            "Gemma selected a shot outside the retrieved usable references"
+            "The model selected a shot outside the retrieved usable references"
         )
     if len(selected) != len(set(selected)):
-        raise ValueError("Gemma selected duplicate reference shots")
+        raise ValueError("The model selected duplicate reference shots")
     start, end = by_shot[proposal.reference_shot]["window_s"]
     draft = program.DesignProgram(
         reference_shot=proposal.reference_shot,
         comparison_shots=proposal.comparison_shots,
         start_s=start,
         end_s=end,
-        notes=f"Request: {prompt}\n\nGemma ({model_name}): {proposal.explanation}",
+        notes=f"Request: {prompt}\n\n{model_name}: {proposal.explanation}",
     )
     if proposal.baseline == "average":
         if not proposal.comparison_shots:
-            raise ValueError("Gemma requested an average without comparison shots")
+            raise ValueError("The model requested an average without comparison shots")
         view = program.average_references(draft, paths)
         draft = program.DesignProgram(**view["program"])
     else:
@@ -431,7 +433,7 @@ def run_design(
         channel = by_channel.get(key)
         if not channel or not channel["editable"] or not channel["vertices"]:
             raise ValueError(
-                f"Gemma requested a channel without available measurements: {key}"
+                f"The model requested a channel without available measurements: {key}"
             )
         if factor == 1:
             continue

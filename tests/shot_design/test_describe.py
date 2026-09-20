@@ -22,6 +22,8 @@ from shot_design import schema
 from shot_design.retrieval import describe as D
 from shot_design.retrieval import rank
 
+from .conftest import force_ollama_provider
+
 DB_DIR = Path("/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/db")
 WS = re.compile(r"\s+")
 
@@ -328,7 +330,10 @@ def test_polish_returns_the_template_when_no_endpoint_is_published(paths):
     """The shipped config names a provider, but nothing is running: the template comes back
     unchanged, with no warning and no network call (the client stats one absent file)."""
     text = D.describe(record())
-    assert D.polish(text) == (text, False)
+    # force ollama: the real yaml's provider (agy) means a CLI, not an endpoint file --
+    # "no endpoint is published" is this test's ollama-shaped scenario, not agy's.
+    with force_ollama_provider():
+        assert D.polish(text) == (text, False)
 
 
 # -------------------------------------------------------------------------------- real data
