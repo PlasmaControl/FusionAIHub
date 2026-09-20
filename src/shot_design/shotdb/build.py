@@ -896,15 +896,17 @@ def write_blurbs(
         rec = db.get(int(shot))
         return rec, _blurb.make(rec, client, cache=False if dry_run else None)
 
+    # Rows are consumed in `todo` (shot) order on this thread whatever the workers do,
+    # so the parquet is byte-stable; the single-worker path stays a lazy stream, so a
+    # dry run prints each shot as it is made instead of after the last one.
     if workers == 1:
-        results = {shot: _one(shot) for shot in todo}
+        rows = ((shot, _one(shot)) for shot in todo)
     else:
         with ThreadPoolExecutor(max_workers=workers) as ex:
             futures = {shot: ex.submit(_one, shot) for shot in todo}
-            results = {shot: fut.result() for shot, fut in futures.items()}
+        rows = ((shot, fut.result()) for shot, fut in futures.items())
     n = 0
-    for shot in todo:
-        rec, b = results[shot]
+    for shot, (rec, b) in rows:
         if dry_run:
             verdict = "PASS" if b.reason is None else f"FAIL ({b.reason})"
             print(
