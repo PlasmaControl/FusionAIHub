@@ -16,8 +16,8 @@ import torch
 
 from ..config import Paths, load_yaml
 from ..env import getenv
+from ..shotdb import build
 from ..shotdb.corpus import CorpusReader
-from ..shotdb.ignite import bundle_dir, model_cfg
 from ..shotdb.reader import ShotFailed, Unavailable
 from . import actuators as act
 
@@ -57,12 +57,13 @@ def _cache_path(shot: int, paths: Paths) -> Path | None:
     fitted to. Our own encode agrees bit for bit only on some shots -- changing a BLAS thread
     count on one machine is enough to move a spectro token (see `scripts/shot_design/g_enc.py`).
     The two writable locations follow it, for the shots production never encoded.
+
+    The search order is `shotdb.build.frame_codes_dirs`, not a second list kept here:
+    `build` (the `has_frame_codes` column) and `corpus select` read the same function,
+    and a root added to one and not the other is exactly how the two commands used to
+    disagree about one shot.
     """
-    roots = [paths.data_root / "frame_codes", bundle_dir(paths) / "frame_codes"]
-    production = model_cfg().get("frame_codes_cache")
-    if production:
-        roots.insert(0, Path(production))
-    for root in roots:
+    for root in build.frame_codes_dirs(paths):
         path = root / f"{shot}.pt"
         if path.is_file():
             return path

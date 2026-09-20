@@ -294,18 +294,30 @@ def make_reader(kind: str, paths: config.Paths) -> SignalReader:
 
 
 def frame_codes_dirs(paths: config.Paths) -> tuple[Path, ...]:
-    """Where IGNITE frame codes live, in one place, because two commands ask.
+    """Where IGNITE frame codes live, in preference order, because three commands ask.
 
-    Two locations because there are two producers: `design.encode_frame_codes` writes
-    <data_root>/frame_codes/<shot>.pt, and the ten shots that shipped with the IGNITE bundle live
-    under <models_dir>/IGNITE/frame_codes/. `build` (the `has_frame_codes` column) and
-    `corpus select` (§5.7's preference for shots that are already encoded) both need the answer,
-    and when they each kept their own list the two commands disagreed about the same shot.
+    Production's own cache comes first when the pinned generation names one
+    (`model.frame_codes_cache` in configs/shot_design/ignite_modalities.yaml): it is
+    thousands of shots the v4 dynamics checkpoint was actually trained on, read-only,
+    and cheaper than a re-encode. `<data_root>/frame_codes` is where
+    `design.encode_frame_codes` writes shots nobody encoded yet, and
+    `<models_dir>/<local_name>/frame_codes` is the pinned bundle's own directory (empty
+    for v4, which ships no frame codes -- see `shotdb/ignite.py:bundle_dir`). `build`
+    (the `has_frame_codes` column), `corpus select` (its preference for shots already
+    encoded) and `design.program_reference._cache_path` all read this one function, so
+    they cannot disagree about the same shot the way `build` and `corpus select` used to
+    when each kept its own list.
+
+    Left out entirely, never an empty string, when the pinned generation has no
+    `frame_codes_cache` key.
     """
-    return (
-        Path(paths.data_root) / "frame_codes",
-        Path(paths.models_dir) / "IGNITE" / "frame_codes",
-    )
+    from . import ignite
+
+    production = ignite.model_cfg().get("frame_codes_cache")
+    dirs = [Path(production)] if production else []
+    dirs.append(Path(paths.data_root) / "frame_codes")
+    dirs.append(ignite.bundle_dir(paths) / "frame_codes")
+    return tuple(dirs)
 
 
 def frame_codes_path(shot: int, paths: config.Paths) -> Path | None:

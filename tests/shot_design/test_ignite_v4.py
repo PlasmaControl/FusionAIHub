@@ -196,17 +196,18 @@ def test_the_pinned_manifest_agrees_with_the_real_checkpoints_modalities():
 def prod_cache(tmp_path, monkeypatch):
     """A stand-in for `model.frame_codes_cache`, the read-only cache production trained on.
 
-    `model_cfg()` is patched rather than the dict it returns: `load_yaml` hands back a DEEP COPY
-    on every call, so mutating one caller's dict is invisible to the next. Both modules that read
-    the key are patched, because each imported the function by name.
+    `model_cfg()` is patched rather than the dict it returns: `load_yaml` hands back a
+    DEEP COPY on every call, so mutating one caller's dict is invisible to the next.
+    Patching `ignite.model_cfg` is now the only patch needed:
+    `design.program_reference._cache_path` no longer imports `model_cfg` itself, it
+    reads `shotdb.build.frame_codes_dirs(paths)`, which does the lazy `from . import
+    ignite` and calls `ignite.model_cfg()` -- one source of truth instead of two modules
+    each needing their own patch.
     """
-    from shot_design.design import program_reference as pr
-
     d = tmp_path / "prod_frame_codes"
     d.mkdir()
     cfg = ignite.model_cfg() | {"frame_codes_cache": str(d)}
     monkeypatch.setattr(ignite, "model_cfg", lambda: cfg)
-    monkeypatch.setattr(pr, "model_cfg", lambda: cfg)
     return d
 
 
