@@ -666,6 +666,78 @@ def cmd_llm(args) -> int:
     return 0
 
 
+def _append_trace(path: Path, record: dict) -> None:
+    """One JSON object per line, flushed immediately: a trace is read while (or after) a
+    demo run is still in flight, and a partial last line beats a lost one."""
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, default=str) + "\n")
+        f.flush()
+
+
+class _TracingLLMClient:
+    """Wraps `LLMClient` so every `chat()` request/reply is appended to the assistant's
+    own JSONL trace, alongside the stage-progress lines -- one file has the whole run.
+    Everything but `chat` is delegated to the wrapped client (`.model(...)`, `.off`, ...
+    are called directly by `design.assistant`)."""
+
+    def __init__(self, client, trace_path: Path):
+        self._client = client
+        self._trace_path = trace_path
+
+    def chat(self, messages, **kwargs):
+        reply = self._client.chat(messages, **kwargs)
+        record = {
+            "kind": "llm", "messages": messages, "reply": reply.model_dump(mode="json")
+        }
+        _append_trace(self._trace_path, record)
+        return reply
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+def cmd_assistant(args) -> int:
+    """`assistant --prompt TEXT --trace out.jsonl`: run `design.assistant.run_design`
+    once, writing every stage transition and every LLM round trip to one JSONL trace
+    file, and printing the saved design id alone on the last stdout line (the demo
+    script reads it with `tail -1`).
+
+    `--provider` overrides configs/shot_design/llm.yaml's `provider:` key for this run
+    only; omitted, the client uses the yaml's own configured provider.
+    """
+    from .design import assistant as assistant_mod
+    from .llm.client import LLMClient, LLMUnavailable
+
+    paths = config.load_paths()
+    db = _open_db(paths)
+    if db is None:
+        return 1
+
+    cfg = dict(config.load_yaml("llm.yaml"))
+    if args.provider:
+        cfg["provider"] = args.provider
+    trace_path = Path(args.trace)
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text("")  # start each run with a fresh trace file
+    client = _TracingLLMClient(LLMClient(cfg=cfg, paths=paths), trace_path)
+
+    def progress(stage: str, status: str, detail: str) -> None:
+        _append_trace(
+            trace_path,
+            {"stage": stage, "status": status, "detail": detail, "t": time.time()},
+        )
+
+    try:
+        result = assistant_mod.run_design(
+            args.prompt, paths, db, client=client, progress=progress
+        )
+    except (ValueError, LLMUnavailable) as e:
+        print(f"shot_design assistant: {e}", file=sys.stderr)
+        return 1
+    print(result["design_id"])
+    return 0
+
+
 def cmd_blurb(args) -> int:
     from .llm.client import LLMClient
     from .shotdb.build import write_blurbs
@@ -1964,6 +2036,21 @@ def build_parser() -> argparse.ArgumentParser:
         "llm", help="is a language model reachable? prints the endpoint or how to start one"
     )
     p.set_defaults(func=cmd_llm)
+
+    p = sub.add_parser(
+        "assistant",
+        help="run the design harness (interpret, retrieve, propose, validate, save)",
+    )
+    p.add_argument("--prompt", required=True, help="the design request, plain language")
+    p.add_argument(
+        "--provider",
+        help="override configs/shot_design/llm.yaml's provider: key for this run only",
+    )
+    p.add_argument(
+        "--trace", required=True,
+        help="write one JSON line per stage transition and per LLM round trip here",
+    )
+    p.set_defaults(func=cmd_assistant)
 
     p = sub.add_parser(
         "blurb", help="write the model's per-shot blurbs into shots.parquet (needs a running model)"
