@@ -25,13 +25,13 @@
   <div id="view-create" class="view assistant-view">
     <section class="content-panel assistant-panel">
       <h2>Design a shot</h2>
-      <p class="muted">Describe the experiment you want. Gemma will find reference shots, propose actuation, and save a design you can adjust.</p>
+      <p class="muted">Describe the experiment you want. The model will find reference shots, propose actuation, and save a design you can adjust.</p>
       <form id="assistant-form">
         <label class="sr-only" for="assistant-prompt">What would you like to design?</label>
         <textarea id="assistant-prompt" rows="4" maxlength="4000" required placeholder="Design a shot for tearing mode control using ECH, with a steady plasma and moderate NBI heating."></textarea>
         <div class="assistant-form-actions">
           <span class="small muted">Enter to design · Shift+Enter for a new line</span>
-          <label>Gemma mode<select id="assistant-model"><option value="quality">Quality</option><option value="fast">Fast</option></select></label>
+          <label>Model<select id="assistant-model"><option value="quality">Quality</option><option value="fast">Fast</option></select></label>
           <button id="assistant-submit" class="primary" type="submit">Design shot</button>
         </div>
       </form>
