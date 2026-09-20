@@ -433,6 +433,20 @@ def test_verdict_real_corpus_trip_window_widened_with_causal_override():
 # ---------------------------------------------------------------- data access, composition, embeddings
 
 
+def test_build_logs_subset_without_a_logs_jsonl_file_is_a_noop(paths, caplog):
+    """Frontier has no `sql/` layer at all (a deliberate decision, not a missing
+    fixture) -- `paths.logs_jsonl` points at a file that was never written there.
+    `build_logs_subset` must warn once and return 0 rather than blow up with
+    `FileNotFoundError`, leaving `load_log_record` to return None for every shot,
+    which callers already treat as a handled state."""
+    assert not paths.logs_jsonl.exists()
+    with caplog.at_level("WARNING"):
+        n = text.build_logs_subset(paths, {900001, 900003})
+    assert n == 0
+    assert not text.subset_path(paths).exists()
+    assert "logs.jsonl" in caplog.text or str(paths.logs_jsonl) in caplog.text
+
+
 def test_logs_subset_and_records(paths, text_fixtures):
     n = text.build_logs_subset(paths, {900001, 900003})
     assert n == 2 and text.subset_path(paths).exists()

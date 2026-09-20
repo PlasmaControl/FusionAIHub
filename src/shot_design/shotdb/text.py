@@ -803,6 +803,16 @@ def build_logs_subset(paths: Paths, shots: set[int]) -> int:
     trailing line _subset_records now tolerates.) A line of the old file that lacks its newline is
     such a tail and is not carried over; the shot it belonged to is in `wanted` again.
     """
+    if paths.logs_jsonl is None or not paths.logs_jsonl.exists():
+        # Frontier has no sql/ layer at all (a deliberate decision -- nothing was
+        # copied from Stellar), so this file never exists there. Absent, never a
+        # reason to fail a build: `load_log_record` already returns None per shot,
+        # which every caller treats as a handled state.
+        _log.warning(
+            "logbook %s not present; building without logbook records",
+            paths.logs_jsonl,
+        )
+        return 0
     have = set(_read_subset(paths))
     wanted = {s for s in shots if s not in have}
     if not wanted:
